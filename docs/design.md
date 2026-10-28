@@ -452,6 +452,7 @@ The owner chose this rule after testing: one stray click, or an untick and a ret
   They stay separate, because a skipped item is not finished, and a done mark can complete a module requirement (decision 2).
 - Skip sends the override with `dismissed` set to true and the current `marked_complete` value [10].
   For work handed in on Canvas with a redo request, Skip sends `marked_complete` false, because the done mark no longer applies.
+  The same holds for checked work that Canvas still marks missing.
 - Canvas uses the same flag for its own list of missing work [10].
   The first Skip shows a one-time note: "Skipping also hides this item in Canvas's list of missing work."
 - In Past due and No due date, skipped items leave the group.
@@ -828,7 +829,8 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 - A new week shows as soon as its planner items arrive.
   The assignment details of new items load after that, and their chips fill in.
   The refresh marker shows until they arrive.
-  The first load of the current week still waits for everything, so Past due does not change under the student.
+  The first load of the current week waits for the session data, the planner items and the assignment details, so Past due does not change under the student.
+  The undated work and the override list load beside the planner, and teacher status names fill in after the list shows.
 - A long part loads in up to 3 chunks side by side, so it does not page through one long chain of requests.
   - With no cached items to go by, the chunks have the same length, at least two weeks each.
   - Where the cache already holds the range, as in a refresh round, the chunks hold about the same number of cached items, and a range that fits in one page of 100 stays one request.
@@ -1285,8 +1287,10 @@ The owner asked for it after testing an early build: the list should feel like p
 - The in-page list uses the page's own font and the school's brand colors.
   Canvas sets the brand colors as CSS custom properties on the page, such as `--ic-brand-primary`, `--ic-link-color` and `--ic-brand-font-color-dark`.
   Custom properties pass into the shadow root, so the list reads them directly and falls back to Canvas's default colors.
-- The list sits in Canvas's right column like Canvas's own sections: the same heading style and size as "To Do" and "Coming Up", the same divider lines and spacing, and no card frame, rounded box or shadow.
-- Item rows follow Canvas's To Do and planner rows: a type icon in the course color (assignment, quiz, discussion, page, peer review, custom task), the title in the link color, and the course name and due text in Canvas's secondary text style.
+- The list sits in Canvas's right column like Canvas's own sections: the same heading style and size as "To Do" and "Recent Feedback", the same divider lines and spacing, and no card frame, rounded box or shadow.
+  A student's right column shows To Do and Recent Feedback; Coming Up shows only for teachers [13].
+- Item rows follow Canvas's To Do and planner rows: a type icon in the course color as in Canvas's planner list view (assignment, quiz, discussion, page, peer review, custom task), the title in the link color, and the course name and due text in Canvas's secondary text style.
+  Canvas's own To Do sidebar draws these icons in the dark text color; the course color helps scanning a full week.
 - Chips use Canvas's pill style.
   "Missing" looks like the red Missing pill in Canvas's planner.
 - The rings keep the Canvas course colors and use Canvas's type and spacing.
