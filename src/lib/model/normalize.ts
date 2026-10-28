@@ -15,53 +15,55 @@ import { classifyHandIn, type HandInInfo } from './handin';
 import { normalizeInstant } from './time';
 import type { AssignmentData, CanvasFacts, Item, ItemKind, OverrideRef } from './types';
 
-/** The item kind of a planner type, or `null` for types that are not tasks. */
-export function kindForPlannableType(type: PlannableType): ItemKind | null {
-  switch (type) {
-    case 'assignment':
-      return 'assignment';
-    case 'quiz':
-      return 'quiz';
-    case 'discussion_topic':
-      return 'discussion';
-    case 'wiki_page':
-      return 'page';
-    case 'planner_note':
-      return 'note';
-    case 'assessment_request':
-    case 'peer_review_sub_assignment':
-      return 'peer_review';
-    case 'sub_assignment':
-      return 'checkpoint';
-    case 'calendar_event':
-    case 'announcement':
-      return null;
-  }
+interface PlannableRule {
+  /** The item kind, or `null` for types that are not tasks. */
+  kind: ItemKind | null;
+  /**
+   * Where the assignment id comes from: `plannable_id` for assignments, `plannable.assignment_id`
+   * for graded quizzes and graded discussions, and nowhere for everything else, such as a
+   * checkpoint or a peer review sub-assignment.
+   */
+  assignmentId: 'plannable_id' | 'assignment_id' | null;
+  /**
+   * The hand-in method. Assignments need their details, so they give `null` until those load.
+   * Quizzes, discussions, checkpoints and peer reviews are done in Canvas. Pages and custom
+   * tasks have nothing to hand in, but they are tasks, not reminders.
+   */
+  handIn: 'details' | 'canvas' | 'none';
 }
+
+const NOT_A_TASK: PlannableRule = { kind: null, assignmentId: null, handIn: 'none' };
+
+const PLANNABLE_RULES: Readonly<Record<PlannableType, PlannableRule>> = {
+  assignment: { kind: 'assignment', assignmentId: 'plannable_id', handIn: 'details' },
+  quiz: { kind: 'quiz', assignmentId: 'assignment_id', handIn: 'canvas' },
+  discussion_topic: { kind: 'discussion', assignmentId: 'assignment_id', handIn: 'canvas' },
+  wiki_page: { kind: 'page', assignmentId: null, handIn: 'none' },
+  planner_note: { kind: 'note', assignmentId: null, handIn: 'none' },
+  assessment_request: { kind: 'peer_review', assignmentId: null, handIn: 'canvas' },
+  peer_review_sub_assignment: { kind: 'peer_review', assignmentId: null, handIn: 'canvas' },
+  sub_assignment: { kind: 'checkpoint', assignmentId: null, handIn: 'canvas' },
+  calendar_event: NOT_A_TASK,
+  announcement: NOT_A_TASK,
+};
 
 function nonEmpty(value: string | null | undefined): string | null {
   return typeof value === 'string' && value !== '' ? value : null;
 }
 
-/**
- * The assignment id behind a planner item: `plannable_id` for assignments, and
- * `plannable.assignment_id` for graded quizzes and graded discussions. Never the id of a
- * checkpoint or a peer review sub-assignment.
- */
+/** The rule of a planner type. A type that Canvas adds later is not a task. */
+function ruleFor(type: PlannableType): PlannableRule {
+  return Object.hasOwn(PLANNABLE_RULES, type) ? PLANNABLE_RULES[type] : NOT_A_TASK;
+}
+
+/** The assignment id behind a planner item, or `null` when it has none. */
 export function plannerAssignmentId(item: PlannerItem): string | null {
-  switch (item.plannable_type) {
-    case 'assignment':
+  switch (ruleFor(item.plannable_type).assignmentId) {
+    case 'plannable_id':
       return item.plannable_id;
-    case 'quiz':
-    case 'discussion_topic':
+    case 'assignment_id':
       return nonEmpty(item.plannable.assignment_id);
-    case 'wiki_page':
-    case 'planner_note':
-    case 'assessment_request':
-    case 'sub_assignment':
-    case 'peer_review_sub_assignment':
-    case 'calendar_event':
-    case 'announcement':
+    case null:
       return null;
   }
 }
@@ -193,7 +195,7 @@ export function resolvePlannerContext(item: PlannerItem, index: ContextIndex): R
 
 type DetailFacts = Pick<
   CanvasFacts,
-  'latePolicyStatus' | 'customGradeStatusId' | 'lockAt' | 'unlockAt' | 'lockedForUser'
+  'latePolicyStatus' | 'customGradeStatusId' | 'lockAt' | 'unlockAt'
 >;
 
 const DETAILS_NOT_LOADED: DetailFacts = {
@@ -201,7 +203,6 @@ const DETAILS_NOT_LOADED: DetailFacts = {
   customGradeStatusId: undefined,
   lockAt: undefined,
   unlockAt: undefined,
-  lockedForUser: undefined,
 };
 
 /** Facts from the assignments request. All `undefined` until it has loaded. */
@@ -212,7 +213,6 @@ export function detailFacts(assignment: AssignmentData | undefined): DetailFacts
     customGradeStatusId: assignment.submission?.custom_grade_status_id ?? null,
     lockAt: normalizeInstant(assignment.lock_at),
     unlockAt: normalizeInstant(assignment.unlock_at),
-    lockedForUser: assignment.locked_for_user,
   };
 }
 
@@ -251,34 +251,19 @@ export function submissionFacts(assignment: AssignmentData): CanvasFacts {
 const ON_CANVAS: HandInInfo = { handIn: 'canvas', toolName: null, onPaper: false };
 const NOTHING_TO_HAND_IN: HandInInfo = { handIn: 'none', toolName: null, onPaper: false };
 
-/**
- * The hand-in method of a planner item. Assignments need their details, so they give `null`
- * until those load. Quizzes, discussions, checkpoints and peer reviews are done in Canvas.
- * Pages and custom tasks have nothing to hand in, but they are tasks, not reminders.
- */
+/** The hand-in method of a planner item, by the rule of its type. */
 function plannerHandIn(
   type: PlannableType,
   details: AssignmentData | undefined,
 ): HandInInfo | null {
-  switch (type) {
-    case 'assignment':
+  switch (ruleFor(type).handIn) {
+    case 'details':
       return details ? classifyHandIn(details) : null;
-    case 'quiz':
-    case 'discussion_topic':
-    case 'sub_assignment':
-    case 'assessment_request':
-    case 'peer_review_sub_assignment':
+    case 'canvas':
       return ON_CANVAS;
-    case 'wiki_page':
-    case 'planner_note':
-    case 'calendar_event':
-    case 'announcement':
+    case 'none':
       return NOTHING_TO_HAND_IN;
   }
-}
-
-function numberOrNull(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 export interface NormalizeDeps {
@@ -298,7 +283,7 @@ function contextColor(courseId: string | null, deps: NormalizeDeps): string {
 
 /** Normalizes a planner item. Returns `null` for calendar events, announcements and items with no valid date. */
 export function itemFromPlannerItem(item: PlannerItem, deps: NormalizeDeps): Item | null {
-  const kind = kindForPlannableType(item.plannable_type);
+  const { kind } = ruleFor(item.plannable_type);
   const due = normalizeInstant(item.plannable_date);
   if (kind === null || due === null) return null;
   const assignmentId = plannerAssignmentId(item);
@@ -319,7 +304,6 @@ export function itemFromPlannerItem(item: PlannerItem, deps: NormalizeDeps): Ite
     contextLabel: context.label,
     color: contextColor(context.courseId, deps),
     due,
-    points: numberOrNull(item.plannable.points_possible),
     url: isNote ? null : absoluteUrl(deps.origin, item.html_url),
     handIn: handIn?.handIn ?? null,
     toolName: handIn?.toolName ?? null,
@@ -366,7 +350,6 @@ export function itemFromAssignment(
     due:
       normalizeInstant(assignment.due_at) ??
       normalizeInstant(assignment.submission?.cached_due_date),
-    points: numberOrNull(assignment.points_possible),
     url: absoluteUrl(deps.origin, assignment.html_url),
     handIn: handIn.handIn,
     toolName: handIn.toolName,

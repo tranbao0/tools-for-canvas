@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  classifyHttpFailure,
-  parseCanvasJson,
-  parseRetryAfter,
-  stripJsonPrefix,
-} from '../classify';
+import { classifyHttpFailure, parseCanvasJson, stripJsonPrefix } from '../classify';
 import type { CanvasErrorKind } from '../types';
-
-const NOW = Date.UTC(2026, 9, 27, 12, 0, 0);
 
 describe('stripJsonPrefix', () => {
   it('removes a leading while(1); guard', () => {
@@ -37,27 +30,6 @@ describe('parseCanvasJson', () => {
   });
 });
 
-describe('parseRetryAfter', () => {
-  it('reads delay seconds', () => {
-    expect(parseRetryAfter('5', NOW)).toBe(5000);
-    expect(parseRetryAfter(' 1.5 ', NOW)).toBe(1500);
-  });
-
-  it('reads an HTTP date relative to now', () => {
-    expect(parseRetryAfter(new Date(NOW + 7000).toUTCString(), NOW)).toBe(7000);
-  });
-
-  it('gives zero for a date in the past', () => {
-    expect(parseRetryAfter(new Date(NOW - 7000).toUTCString(), NOW)).toBe(0);
-  });
-
-  it('ignores a missing or unreadable header', () => {
-    expect(parseRetryAfter(null, NOW)).toBeUndefined();
-    expect(parseRetryAfter('soon', NOW)).toBeUndefined();
-    expect(parseRetryAfter('-3', NOW)).toBeUndefined();
-  });
-});
-
 describe('classifyHttpFailure', () => {
   const unauthorizedJson = JSON.stringify({
     status: 'unauthorized',
@@ -82,17 +54,8 @@ describe('classifyHttpFailure', () => {
   ];
 
   it.each(cases)('classifies %s', (_name, status, body, kind) => {
-    const error = classifyHttpFailure(status, body, null, NOW);
+    const error = classifyHttpFailure(status, body);
     expect(error.kind).toBe(kind);
     expect(error.status).toBe(status);
-  });
-
-  it('keeps Retry-After on a rate limit', () => {
-    expect(classifyHttpFailure(429, '', '12', NOW).retryAfterMs).toBe(12_000);
-    expect(classifyHttpFailure(403, 'Rate Limit Exceeded', '2', NOW).retryAfterMs).toBe(2000);
-  });
-
-  it('leaves retryAfterMs empty on other errors', () => {
-    expect(classifyHttpFailure(500, '', '12', NOW).retryAfterMs).toBeUndefined();
   });
 });

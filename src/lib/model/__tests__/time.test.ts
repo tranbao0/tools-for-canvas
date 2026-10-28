@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  courseHorizons,
-  defaultHorizon,
-  earliestHorizon,
+  formatInstant,
+  horizons,
   normalizeInstant,
   parseInstant,
-  plannerRange,
   resolveTimeZone,
   sameTimeZone,
   weekBounds,
@@ -106,7 +104,17 @@ describe('weekBounds', () => {
   });
 });
 
-describe('courseHorizons', () => {
+describe('horizons', () => {
+  /** The horizon of each visible course, as UTC instant text. */
+  function courseHorizons(given: Parameters<typeof horizons>[0]): Record<string, string> {
+    return Object.fromEntries(
+      [...horizons(given).byCourse].map(([id, instant]) => [id, formatInstant(instant)]),
+    );
+  }
+
+  const earliestHorizon = (given: Parameters<typeof horizons>[0]): string =>
+    formatInstant(horizons(given).earliest);
+
   const params = {
     now: TUESDAY_2PM,
     timeZone: NY,
@@ -188,7 +196,7 @@ describe('courseHorizons', () => {
   });
 
   it('caps at 00:00 on the day 16 weeks before today', () => {
-    expect(defaultHorizon({ now: TUESDAY_2PM, timeZone: NY })).toBe('2026-07-07T04:00:00.000Z');
+    expect(earliestHorizon({ ...params, courses: [] })).toBe('2026-07-07T04:00:00.000Z');
   });
 
   it('gives the earliest visible horizon', () => {
@@ -197,90 +205,6 @@ describe('courseHorizons', () => {
       '2026-08-24T04:00:00.000Z',
     );
     expect(earliestHorizon({ ...params, courses: [] })).toBe('2026-07-07T04:00:00.000Z');
-  });
-});
-
-describe('plannerRange', () => {
-  const courses = [course('1', 'Biology', '2026-08-24T04:00:00Z')];
-
-  it('starts at the earliest horizon and ends one millisecond before the week ends', () => {
-    expect(
-      plannerRange({
-        now: TUESDAY_2PM,
-        timeZone: NY,
-        weekStartDay: 7,
-        weekOffset: 0,
-        courses,
-        hiddenCourseIds: [],
-      }),
-    ).toEqual({ start: '2026-08-24T04:00:00.000Z', end: '2026-11-01T03:59:59.999Z' });
-  });
-
-  it('ends at the end of tomorrow on the last day of the week, after the daylight saving change', () => {
-    const range = plannerRange({
-      now: '2026-10-31T18:00:00Z',
-      timeZone: NY,
-      weekStartDay: 7,
-      weekOffset: 0,
-      courses,
-      hiddenCourseIds: [],
-    });
-    expect(range.end).toBe('2026-11-02T04:59:59.999Z');
-  });
-
-  it('starts at the viewed week when the week is older than every horizon, and still ends after tomorrow', () => {
-    const range = plannerRange({
-      now: TUESDAY_2PM,
-      timeZone: NY,
-      weekStartDay: 7,
-      weekOffset: -12,
-      courses,
-      hiddenCourseIds: [],
-    });
-    expect(range).toEqual({ start: '2026-08-02T04:00:00.000Z', end: '2026-10-29T03:59:59.999Z' });
-  });
-
-  it('starts no later than the current week when every term starts in the future', () => {
-    const futureTerm = [course('1', 'Biology', '2026-11-02T05:00:00Z')];
-    const range = (weekOffset: number) =>
-      plannerRange({
-        now: TUESDAY_2PM,
-        timeZone: NY,
-        weekStartDay: 7,
-        weekOffset,
-        courses: futureTerm,
-        hiddenCourseIds: [],
-      });
-    expect(range(0)).toEqual({
-      start: '2026-10-25T04:00:00.000Z',
-      end: '2026-11-01T03:59:59.999Z',
-    });
-    expect(range(1).start).toBe('2026-10-25T04:00:00.000Z');
-  });
-
-  it('ignores hidden courses and uses 16 weeks when no course is visible', () => {
-    const range = plannerRange({
-      now: TUESDAY_2PM,
-      timeZone: NY,
-      weekStartDay: 7,
-      weekOffset: 1,
-      courses,
-      hiddenCourseIds: ['1'],
-    });
-    expect(range).toEqual({ start: '2026-07-07T04:00:00.000Z', end: '2026-11-08T04:59:59.999Z' });
-  });
-
-  it('has plain UTC instants with no bracketed zone', () => {
-    const range = plannerRange({
-      now: TUESDAY_2PM,
-      timeZone: 'Asia/Tokyo',
-      weekStartDay: 1,
-      weekOffset: 0,
-      courses,
-      hiddenCourseIds: [],
-    });
-    expect(range.start).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-    expect(range.end).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.999Z$/);
   });
 });
 

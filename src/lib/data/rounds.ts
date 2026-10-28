@@ -27,7 +27,8 @@ import type {
   TimeRange,
   UserSelf,
 } from '../canvas/types';
-import { assignmentIdsToLookup, type AssignmentData } from '../model';
+import { assignmentIdsToLookup } from '../model/normalize';
+import type { AssignmentData } from '../model/types';
 import { toAssignmentData, type RoundScope, type SessionCache, type SessionData } from './cache';
 import {
   chunkInterval,

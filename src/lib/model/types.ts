@@ -46,11 +46,9 @@ export type AssignmentData = Pick<
   | 'due_at'
   | 'lock_at'
   | 'unlock_at'
-  | 'points_possible'
   | 'submission_types'
   | 'is_quiz_lti_assignment'
   | 'has_sub_assignments'
-  | 'locked_for_user'
   | 'html_url'
 > & {
   external_tool_tag_attributes?: { url?: string | null } | null;
@@ -100,7 +98,6 @@ export interface CanvasFacts {
   customGradeStatusId: string | null | undefined;
   lockAt: string | null | undefined;
   unlockAt: string | null | undefined;
-  lockedForUser: boolean | undefined;
 }
 
 export interface OverrideRef {
@@ -128,7 +125,6 @@ export interface Item {
   color: string;
   /** Instant, or `null` when undated. */
   due: string | null;
-  points: number | null;
   /** Absolute URL on the saved Canvas origin, or `null` for custom tasks. */
   url: string | null;
   /** `null` until the assignment details are loaded. */
@@ -212,7 +208,6 @@ export interface ListGroup {
   doneUndated: ItemView[];
   /** `done` only: done items with a warning chip. Checked work that Canvas marks missing is never in Done. */
   warningCount: number;
-  collapsedByDefault: boolean;
 }
 
 export interface Ring {
@@ -241,8 +236,6 @@ export interface WeekView {
   today: string;
   timeZone: string;
   browserTimeZoneDiffers: boolean;
-  /** Canvas `effective_locale`. */
-  locale: string;
   hourCycle: 'h12' | 'h23';
   groups: ListGroup[];
   /** Empty when the rings setting is off. */

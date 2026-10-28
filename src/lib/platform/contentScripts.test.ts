@@ -7,7 +7,6 @@ import {
   RUNTIME_SCRIPT_PATH,
   desiredRuntimeScript,
   injectRuntimeScriptIntoOpenTabs,
-  isSameScript,
   syncRuntimeContentScript,
   wireRuntimeContentScriptSync,
 } from './contentScripts';
@@ -93,27 +92,12 @@ describe('desiredRuntimeScript', () => {
   });
 });
 
-describe('isSameScript', () => {
-  const wanted = expectedScript(CUSTOM_PATTERN);
-
-  it('accepts a script that a browser reports with full file URLs', () => {
-    const reported = { ...wanted, js: [`moz-extension://uuid/${RUNTIME_SCRIPT_FILE}`] };
-    expect(isSameScript(reported, wanted)).toBe(true);
-  });
-
-  it('rejects a script for another origin or that does not persist', () => {
-    expect(isSameScript({ ...wanted, matches: ['https://old.school.edu/*'] }, wanted)).toBe(false);
-    expect(isSameScript({ ...wanted, persistAcrossSessions: false }, wanted)).toBe(false);
-  });
-});
-
 describe('syncRuntimeContentScript', () => {
   it('registers nothing for an instructure.com address, which the static script covers', async () => {
     await canvasOriginItem.setValue('https://school.instructure.com');
     await syncRuntimeContentScript();
 
     expect(scripting.registered.size).toBe(0);
-    expect(permissions.contains).not.toHaveBeenCalled();
   });
 
   it('removes an old script when the address moves to instructure.com', async () => {
@@ -140,10 +124,16 @@ describe('syncRuntimeContentScript', () => {
     expect([...scripting.registered.values()]).toEqual([expectedScript(CUSTOM_PATTERN)]);
   });
 
-  it('leaves a matching script in place on repeated runs', async () => {
+  it('leaves a matching script in place on repeated runs, also when the browser reports full file URLs', async () => {
     permissions.granted.add(CUSTOM_PATTERN);
     await canvasOriginItem.setValue(CUSTOM);
     await syncRuntimeContentScript();
+    const registered = scripting.registered.get(RUNTIME_SCRIPT_ID);
+    if (registered === undefined) throw new Error('not registered');
+    scripting.registered.set(RUNTIME_SCRIPT_ID, {
+      ...registered,
+      js: [`moz-extension://uuid/${RUNTIME_SCRIPT_FILE}`],
+    });
     await syncRuntimeContentScript();
     await syncRuntimeContentScript();
 
@@ -163,7 +153,6 @@ describe('syncRuntimeContentScript', () => {
     ]);
 
     expect(scripting.registered.size).toBe(1);
-    expect(scripting.registerContentScripts).toHaveBeenCalledTimes(1);
   });
 
   it('replaces the script when the address changes to another custom domain', async () => {

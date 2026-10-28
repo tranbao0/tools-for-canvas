@@ -1,18 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { shouldOpenWelcome, wireWelcomePage } from './install';
+import { wireWelcomePage } from './install';
 
 beforeEach(() => {
   fakeBrowser.reset();
-});
-
-describe('shouldOpenWelcome', () => {
-  it('opens the welcome page only on a fresh install', () => {
-    expect(shouldOpenWelcome('install')).toBe(true);
-    expect(shouldOpenWelcome('update')).toBe(false);
-    expect(shouldOpenWelcome('chrome_update')).toBe(false);
-    expect(shouldOpenWelcome('browser_update')).toBe(false);
-  });
 });
 
 describe('wireWelcomePage', () => {
@@ -21,6 +12,7 @@ describe('wireWelcomePage', () => {
     const remove = wireWelcomePage();
 
     await fakeBrowser.runtime.onInstalled.trigger({ reason: 'update', previousVersion: '0.1.0' });
+    await fakeBrowser.runtime.onInstalled.trigger({ reason: 'chrome_update' });
     expect(create).not.toHaveBeenCalled();
 
     await fakeBrowser.runtime.onInstalled.trigger({ reason: 'install' });

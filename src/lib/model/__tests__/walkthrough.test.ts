@@ -5,9 +5,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Assignment, Group, PlannerItem } from '../../canvas/types';
 import { assignmentIdsToLookup } from '../normalize';
-import { plannerRange } from '../time';
 import { DEFAULT_SETTINGS, type ModelInput, type WeekView } from '../types';
-import { buildWeekView } from '../view';
+import { buildWeekView, plannerRangeFor } from '../view';
 import {
   assignment,
   course,
@@ -383,7 +382,6 @@ describe('walk-through: current week', () => {
       today: '2026-10-27',
       timeZone: 'America/New_York',
       browserTimeZoneDiffers: false,
-      locale: 'en',
       hourCycle: 'h12',
       hiddenCourseCount: 1,
       nothingDue: false,
@@ -447,11 +445,8 @@ describe('walk-through: current week', () => {
     expect(keysIn(view, 'done')).toEqual(['assignment:2002', 'wiki_page:6001', 'assignment:1010']);
   });
 
-  it('sets the collapsed groups and the Done warning count', () => {
+  it('sets the Done warning count', () => {
     const byKind = Object.fromEntries(view.groups.map((group) => [group.kind, group]));
-    expect(byKind.no_due_date?.collapsedByDefault).toBe(true);
-    expect(byKind.done?.collapsedByDefault).toBe(true);
-    expect(byKind.past_due?.collapsedByDefault).toBe(false);
     expect(byKind.done?.warningCount).toBe(1);
   });
 
@@ -616,16 +611,10 @@ describe('walk-through: current week', () => {
   });
 
   it('asks the planner for the earliest horizon to the end of the week', () => {
-    expect(
-      plannerRange({
-        now: NOW,
-        timeZone: 'America/New_York',
-        weekStartDay: 7,
-        weekOffset: 0,
-        courses,
-        hiddenCourseIds: ['404'],
-      }),
-    ).toEqual({ start: '2026-07-07T04:00:00.000Z', end: '2026-11-01T03:59:59.999Z' });
+    expect(plannerRangeFor(walkthroughInput())).toEqual({
+      start: '2026-07-07T04:00:00.000Z',
+      end: '2026-11-01T03:59:59.999Z',
+    });
   });
 
   it('looks up assignments, graded quizzes and discussions, but not checkpoints or peer reviews', () => {

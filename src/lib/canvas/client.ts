@@ -14,7 +14,7 @@ import {
   type CanvasResponse,
   type HttpMethod,
 } from './http';
-import { createLimiter, type PrioritySource, type RequestPriority } from './limiter';
+import { createLimiter, type RequestPriority } from './limiter';
 import { findNextLink } from './paging';
 import { withRateLimitRetry } from './retry';
 import {
@@ -35,7 +35,6 @@ import {
   type UserSelf,
 } from './types';
 
-export const DEFAULT_MAX_CONCURRENCY = 3;
 export const PER_PAGE = 100;
 /** Canvas rejects more ids, and `per_page` must be at least the number of ids. */
 export const MAX_ASSIGNMENT_IDS_PER_REQUEST = 100;
@@ -101,20 +100,9 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
     getCsrfToken: options.getCsrfToken,
     fetchImpl: options.fetchImpl,
   });
-  const limit = createLimiter(options.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY);
-  const fixed = new Map<RequestPriority, CanvasApi>();
+  const limit = createLimiter(options.maxConcurrency ?? 3);
 
-  const withPriority = (priority: PrioritySource): CanvasApi => {
-    if (typeof priority === 'function') return clientAt(priority);
-    let api = fixed.get(priority);
-    if (api === undefined) {
-      api = clientAt(priority);
-      fixed.set(priority, api);
-    }
-    return api;
-  };
-
-  function clientAt(priority: PrioritySource): CanvasApi {
+  function withPriority(priority: () => RequestPriority): CanvasApi {
     const send = (request: CanvasRequest): Promise<CanvasResponse> =>
       limit(() => withRateLimitRetry(() => transport(request)), priority);
 
@@ -266,5 +254,5 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
     };
   }
 
-  return withPriority('normal');
+  return withPriority(() => 'normal');
 }

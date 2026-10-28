@@ -270,16 +270,6 @@ describe('createCanvasTransport', () => {
     expect(error).toMatchObject({ kind, status });
   });
 
-  it('reads Retry-After on a rate limit', async () => {
-    server.use(
-      http.get(api('/api/v1/planner/items'), () =>
-        HttpResponse.text('Rate Limit Exceeded', { status: 429, headers: { 'Retry-After': '3' } }),
-      ),
-    );
-    const error = await catchError(transport()({ method: 'GET', url: '/api/v1/planner/items' }));
-    expect(error).toMatchObject({ kind: 'rate_limited', retryAfterMs: 3000 });
-  });
-
   it('classifies a network failure', async () => {
     server.use(http.get(api('/api/v1/planner/items'), () => HttpResponse.error()));
     expect(await kindOf(transport()({ method: 'GET', url: '/api/v1/planner/items' }))).toBe(
@@ -347,21 +337,5 @@ describe('createCanvasTransport', () => {
       expect(error).toMatchObject({ kind: 'unauthorized', status: undefined });
       expect(seen).toEqual([]);
     });
-  });
-
-  it('uses the injected clock for a Retry-After date', async () => {
-    const now = Date.UTC(2026, 9, 27, 12, 0, 0);
-    server.use(
-      http.get(api('/api/v1/planner/items'), () =>
-        HttpResponse.text('', {
-          status: 429,
-          headers: { 'Retry-After': new Date(now + 4000).toUTCString() },
-        }),
-      ),
-    );
-    const error = await catchError(
-      transport({ now: () => now })({ method: 'GET', url: '/api/v1/planner/items' }),
-    );
-    expect(error).toMatchObject({ kind: 'rate_limited', retryAfterMs: 4000 });
   });
 });

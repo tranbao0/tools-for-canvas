@@ -12,7 +12,7 @@ import {
   type PlannerOverride,
   type TimeRange,
 } from '../../canvas/types';
-import { itemKey } from '../../model';
+import { itemKey } from '../../model/normalize';
 import { plannerItemsInRange, type Scenario } from '../../../../tests/fixtures/scenario';
 import { notePlannerItem, plannerItemKey } from '../patches';
 

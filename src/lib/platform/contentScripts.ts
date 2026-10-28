@@ -36,47 +36,29 @@ export function desiredRuntimeScript(
   };
 }
 
-function sameList(a: readonly string[] | undefined, b: readonly string[] | undefined): boolean {
-  const left = [...(a ?? [])].sort();
-  const right = [...(b ?? [])].sort();
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-/** Some browsers report script files as full extension URLs, so compare by path suffix. */
-function sameFiles(
-  registered: readonly string[] | undefined,
-  wanted: readonly string[] | undefined,
-): boolean {
-  const have = registered ?? [];
-  const want = wanted ?? [];
-  return (
-    have.length === want.length && want.every((file, index) => (have[index] ?? '').endsWith(file))
-  );
-}
-
-/** Whether a registered script already matches the wanted one. */
-export function isSameScript(registered: RegisteredScript, wanted: RegisteredScript): boolean {
-  return (
-    registered.id === wanted.id &&
-    sameList(registered.matches, wanted.matches) &&
-    sameFiles(registered.js, wanted.js) &&
-    (registered.runAt ?? 'document_idle') === wanted.runAt &&
-    registered.persistAcrossSessions !== false &&
-    registered.allFrames !== true
-  );
-}
-
 async function wantedScript(): Promise<RegisteredScript | null> {
   const origin = await canvasOriginItem.getValue();
-  if (origin === null || isInstructureHost(origin)) return null;
+  if (origin === null) return null;
   return desiredRuntimeScript(origin, await hasAccess(origin));
+}
+
+/** Whether the registered script already covers the wanted origin with the current file. */
+function isCurrent(registered: RegisteredScript, wanted: RegisteredScript): boolean {
+  const have = [...(registered.matches ?? [])].sort().join(' ');
+  const want = [...(wanted.matches ?? [])].sort().join(' ');
+  // Some browsers report script files as full extension URLs, so compare by path suffix.
+  return (
+    have === want &&
+    registered.js?.length === 1 &&
+    registered.js[0]?.endsWith(RUNTIME_SCRIPT_FILE) === true
+  );
 }
 
 async function syncOnce(): Promise<void> {
   const wanted = await wantedScript();
   const registered = await browser.scripting.getRegisteredContentScripts();
   const current = registered.find((script) => script.id === RUNTIME_SCRIPT_ID) ?? null;
-  if (current !== null && wanted !== null && isSameScript(current, wanted)) return;
+  if (current !== null && wanted !== null && isCurrent(current, wanted)) return;
   if (current !== null) {
     await browser.scripting.unregisterContentScripts({ ids: [RUNTIME_SCRIPT_ID] });
   }
@@ -90,8 +72,8 @@ let queue: Promise<void> = Promise.resolve();
 /**
  * Brings the registration in line with the saved origin and its access grant.
  *
- * It is idempotent: it lists the registered scripts, leaves a matching script in place,
- * and otherwise removes the old script and registers one script for the saved origin.
+ * It is idempotent: it leaves a script for the saved origin in place, and otherwise removes the
+ * registered script and registers one for the saved origin when access is granted.
  * Calls run one after another, so two triggers at once never register a duplicate id.
  * The promise rejects when this run fails; later runs still go ahead.
  */
@@ -159,15 +141,14 @@ export function wireRuntimeContentScriptSync(): () => void {
   const onInstalled = (details: Browser.runtime.InstalledDetails): void => {
     void (details.reason === 'update' ? syncAfterUpdate() : runSync());
   };
-  const onStartup = (): void => void runSync();
-  const onChange = (): void => void runSync();
+  const onEvent = (): void => void runSync();
   browser.runtime.onInstalled.addListener(onInstalled);
-  browser.runtime.onStartup.addListener(onStartup);
-  const stopAccess = onAccessChanged(onChange);
-  const stopOrigin = canvasOriginItem.watch(onChange);
+  browser.runtime.onStartup.addListener(onEvent);
+  const stopAccess = onAccessChanged(onEvent);
+  const stopOrigin = canvasOriginItem.watch(onEvent);
   return () => {
     browser.runtime.onInstalled.removeListener(onInstalled);
-    browser.runtime.onStartup.removeListener(onStartup);
+    browser.runtime.onStartup.removeListener(onEvent);
     stopAccess();
     stopOrigin();
   };

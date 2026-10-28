@@ -13,40 +13,23 @@ export interface Rgba {
   a: number;
 }
 
-const RGB_FUNCTION = /^rgba?\(([^)]*)\)$/i;
+/** A computed color: `rgb(r, g, b)` or `rgba(r, g, b, a)`, with commas. */
+const RGB_FUNCTION =
+  /^rgba?\(\s*(\d*\.?\d+)\s*,\s*(\d*\.?\d+)\s*,\s*(\d*\.?\d+)\s*(?:,\s*(\d*\.?\d+)\s*)?\)$/;
 /** sRGB relative luminance below which white text has more contrast than black text. */
 const DARK_LUMINANCE = 0.179;
 
-function parseChannel(text: string): number | null {
-  const value = Number.parseFloat(text);
-  if (!Number.isFinite(value)) return null;
-  const scaled = text.endsWith('%') ? (value / 100) * 255 : value;
-  return Math.min(255, Math.max(0, scaled));
-}
-
-function parseAlpha(text: string | undefined): number | null {
-  if (text === undefined) return 1;
-  const value = Number.parseFloat(text);
-  if (!Number.isFinite(value)) return null;
-  const scaled = text.endsWith('%') ? value / 100 : value;
-  return Math.min(1, Math.max(0, scaled));
-}
-
 /**
- * Parses a computed CSS color in `rgb()` or `rgba()` form, with commas or spaces.
- * `transparent` is fully transparent. Other forms give `null`.
+ * Parses a computed CSS color in `rgb()` or `rgba()` form, with commas, as browsers report
+ * `getComputedStyle(...).backgroundColor`. `transparent` is fully transparent. Other forms give `null`.
  */
 export function parseCssColor(value: string): Rgba | null {
   const text = value.trim().toLowerCase();
   if (text === 'transparent') return { r: 0, g: 0, b: 0, a: 0 };
-  const inner = RGB_FUNCTION.exec(text)?.[1];
-  if (inner === undefined) return null;
-  const parts = inner.split(/[\s,/]+/).filter((part) => part !== '');
-  if (parts.length < 3 || parts.length > 4) return null;
-  const [r, g, b] = parts.slice(0, 3).map(parseChannel);
-  const a = parseAlpha(parts[3]);
-  if (r == null || g == null || b == null || a === null) return null;
-  return { r, g, b, a };
+  const match = RGB_FUNCTION.exec(text);
+  if (match === null) return null;
+  const [, r, g, b, a = '1'] = match;
+  return { r: Number(r), g: Number(g), b: Number(b), a: Number(a) };
 }
 
 function linearChannel(channel: number): number {

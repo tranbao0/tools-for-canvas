@@ -11,11 +11,11 @@
  */
 import { browser, type Browser } from 'wxt/browser';
 import { logFailure } from '../platform/log';
-import { isCanvasPageLoadedMessage } from '../platform/messages';
 import { canvasOriginItem } from '../platform/storage';
 import type { DataOwner } from './owner';
 import {
   OK_REPLY,
+  isCanvasPageLoadedMessage,
   isDataMessage,
   type CanvasDetectedReply,
   type OkReply,

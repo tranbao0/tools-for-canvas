@@ -5,7 +5,7 @@
  * `Accept: application/json+canvas-string-ids, application/json`.
  * All dates are ISO 8601 strings in UTC, or null.
  */
-import type { PrioritySource } from './limiter';
+import type { RequestPriority } from './limiter';
 
 export type PlannableType =
   | 'assignment'
@@ -23,7 +23,6 @@ export interface PlannerSubmissions {
   submitted: boolean;
   excused: boolean;
   graded: boolean;
-  posted_at?: string | null;
   late: boolean;
   missing: boolean;
   needs_grading: boolean;
@@ -41,9 +40,6 @@ export interface PlannerOverride {
   workflow_state: string;
   marked_complete: boolean;
   dismissed: boolean;
-  created_at?: string;
-  updated_at?: string;
-  deleted_at?: string | null;
 }
 
 export interface Plannable {
@@ -54,7 +50,6 @@ export interface Plannable {
   details?: string | null;
   /** Present on gradable items: graded quizzes, graded discussions and assignments. */
   assignment_id?: string | null;
-  points_possible?: number | null;
   due_at?: string | null;
   /** assessment_request only. `completed` means the peer review is done. */
   workflow_state?: string;
@@ -93,8 +88,8 @@ export interface Submission {
   submitted_at: string | null;
   workflow_state: 'submitted' | 'unsubmitted' | 'graded' | 'pending_review' | string;
   excused: boolean | null;
-  missing: boolean;
   late: boolean;
+  missing: boolean;
   late_policy_status: LatePolicyStatus;
   custom_grade_status_id: string | null;
   redo_request?: boolean;
@@ -110,15 +105,12 @@ export interface Assignment {
   due_at: string | null;
   lock_at: string | null;
   unlock_at: string | null;
-  points_possible: number | null;
   submission_types: string[];
   is_quiz_lti_assignment?: boolean;
   has_sub_assignments?: boolean;
-  locked_for_user?: boolean;
   html_url: string;
   external_tool_tag_attributes?: { url?: string | null } | null;
   submission?: Submission;
-  published?: boolean;
 }
 
 export interface Term {
@@ -132,10 +124,8 @@ export interface Course {
   id: string;
   /** Already the student's nickname when one is set. */
   name: string;
-  original_name?: string;
   course_code: string;
   start_at?: string | null;
-  end_at?: string | null;
   /** When true, the course's own dates replace the term dates for students. */
   restrict_enrollments_to_course_dates?: boolean;
   term?: Term;
@@ -230,15 +220,12 @@ export type CanvasErrorKind =
 export class CanvasError extends Error {
   readonly kind: CanvasErrorKind;
   readonly status: number | undefined;
-  /** Milliseconds to wait before a retry, when the server says so. */
-  readonly retryAfterMs: number | undefined;
 
-  constructor(kind: CanvasErrorKind, message: string, status?: number, retryAfterMs?: number) {
+  constructor(kind: CanvasErrorKind, message: string, status?: number) {
     super(message);
     this.name = 'CanvasError';
     this.kind = kind;
     this.status = status;
-    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -261,10 +248,10 @@ export interface CanvasClientOptions {
 export interface CanvasApi {
   readonly origin: string;
   /**
-   * The same calls on the same request queue, sent with another priority. A function is read
+   * The same calls on the same request queue, sent with another priority. The function is read
    * each time a request slot frees up, so a waiting request can become more urgent.
    */
-  withPriority(priority: PrioritySource): CanvasApi;
+  withPriority(priority: () => RequestPriority): CanvasApi;
   getSelf(): Promise<UserSelf>;
   getProfile(): Promise<Profile>;
   /** Active student enrollments, with `include[]=term`. */

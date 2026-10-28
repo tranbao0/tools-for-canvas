@@ -196,7 +196,8 @@ function GroupSection(props: {
   rowLimit: number | null;
 }) {
   const { group, view, handlers } = props;
-  const [open, setOpen] = useState(!group.collapsedByDefault);
+  const collapsible = group.kind === 'no_due_date' || group.kind === 'done';
+  const [open, setOpen] = useState(!collapsible);
   const [ids] = useState(() => ({ head: newId('group'), body: newId('body') }));
   const when = whenModeFor(group.kind);
   const title = groupTitle(group);
@@ -225,7 +226,7 @@ function GroupSection(props: {
         part="group-head"
         tabIndex={group.kind === 'past_due' ? -1 : undefined}
       >
-        {group.collapsedByDefault ? (
+        {collapsible ? (
           <button
             type="button"
             class="wr-group-toggle"

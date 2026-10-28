@@ -6,7 +6,8 @@
  * started after the confirmation brings fresh data. A failed write only removes its patch.
  */
 import type { Course, OverridePlannableType, PlannerItem, PlannerOverride } from '../canvas/types';
-import { itemKey, plannerAssignmentId, type Item } from '../model';
+import { itemKey, plannerAssignmentId } from '../model/normalize';
+import type { Item } from '../model/types';
 
 /** What a planner override points at. */
 export interface OverrideTarget {

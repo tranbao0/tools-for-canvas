@@ -12,20 +12,25 @@ describe('parseCssColor', () => {
     ['rgb(255, 255, 255)', { r: 255, g: 255, b: 255, a: 1 }],
     ['rgba(0, 0, 0, 0)', { r: 0, g: 0, b: 0, a: 0 }],
     ['rgba(18, 18, 18, 0.5)', { r: 18, g: 18, b: 18, a: 0.5 }],
-    ['rgb(18 18 18 / 50%)', { r: 18, g: 18, b: 18, a: 0.5 }],
-    ['rgb(100%, 0%, 0%)', { r: 255, g: 0, b: 0, a: 1 }],
     ['transparent', { r: 0, g: 0, b: 0, a: 0 }],
     [' RGB(1, 2, 3) ', { r: 1, g: 2, b: 3, a: 1 }],
   ])('parses %j', (value, expected) => {
     expect(parseCssColor(value)).toEqual(expected);
   });
 
-  it.each(['', 'oklch(0.2 0.01 250)', 'rgb(1, 2)', 'rgb(a, b, c)', 'rgb(1, 2, 3, 4, 5)', '#000'])(
-    'gives null for %j',
-    (value) => {
-      expect(parseCssColor(value)).toBeNull();
-    },
-  );
+  it.each([
+    '',
+    'oklch(0.2 0.01 250)',
+    'rgb(18 18 18 / 50%)',
+    'rgb(100%, 0%, 0%)',
+    'rgb(1, 2)',
+    'rgb(a, b, c)',
+    'rgb(1, 2, 3, 4, 5)',
+    'rgb(1.2.3, 2, 3)',
+    '#000',
+  ])('gives null for %j', (value) => {
+    expect(parseCssColor(value)).toBeNull();
+  });
 });
 
 describe('isDarkColor', () => {

@@ -7,8 +7,8 @@
  */
 import { browser, type Browser } from 'wxt/browser';
 import type { Offer } from '../model/types';
+import { parseUrl } from '../model/url';
 import { normalizeAddress } from './address';
-import { BROWSER_KIND, type BrowserKind } from './browserKind';
 import { isCanvasDocument } from './detectCanvas';
 import { logFailure } from './log';
 import { canClosePanel, closePanel, openPanel } from './panel';
@@ -19,19 +19,13 @@ type Tab = Browser.tabs.Tab;
 
 export interface ActionClickOptions {
   registry: Pick<PanelRegistry, 'isOpen'>;
-  kind?: BrowserKind;
 }
 
 /** The https origin of a tab's page, or `null` for other pages and for IP or dotless hosts. */
 export function tabCanvasCandidate(url: string | undefined): string | null {
   if (url === undefined || !url.startsWith('https://')) return null;
-  let origin: string;
-  try {
-    origin = new URL(url).origin;
-  } catch {
-    return null;
-  }
-  return normalizeAddress(origin) === origin ? origin : null;
+  const origin = parseUrl(url)?.origin;
+  return origin !== undefined && normalizeAddress(origin) === origin ? origin : null;
 }
 
 /** The offer for a Canvas tab: "use" when no address is saved, "switch" otherwise. */
@@ -73,14 +67,11 @@ export async function updateOffer(tab: Tab): Promise<void> {
  * The returned promise settles when the follow-up work, such as the offer check, is done.
  */
 export function handleActionClick(tab: Tab, options: ActionClickOptions): Promise<void> {
-  const kind = options.kind ?? BROWSER_KIND;
   const windowId = tab.windowId;
-  if (options.registry.isOpen(windowId) && canClosePanel(kind)) {
-    return closePanel(windowId, kind).catch((error: unknown) => logFailure('panel close', error));
+  if (options.registry.isOpen(windowId) && canClosePanel()) {
+    return closePanel(windowId).catch((error: unknown) => logFailure('panel close', error));
   }
-  const opened = openPanel(windowId, kind).catch((error: unknown) =>
-    logFailure('panel open', error),
-  );
+  const opened = openPanel(windowId).catch((error: unknown) => logFailure('panel open', error));
   const offered = updateOffer(tab).catch((error: unknown) => logFailure('offer check', error));
   return Promise.all([opened, offered]).then(() => undefined);
 }

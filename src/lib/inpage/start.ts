@@ -11,12 +11,12 @@
  * Every path removes a list that an earlier copy of the script left on the page, so a page that
  * gets no list never keeps a frozen one with a hidden native To Do.
  */
+import { browser } from 'wxt/browser';
+import type { CanvasPageLoadedMessage } from '../data/protocol';
 import { logFailure } from '../platform/log';
 import { canvasOriginItem, settingsItem } from '../platform/storage';
-import { mountWhenReady, removeStaleMount, type MountOptions } from './mount';
+import { mountWhenReady, removeStaleMount, type InpageMount, type MountOptions } from './mount';
 import { isSavedCanvasOrigin, resolveSavedOrigin } from './origin';
-import { announceCanvasPageLoaded } from './pageLoaded';
-import type { InpageMount } from './types';
 
 /** Mounts the UI into the container and returns its removal, or `null` when nothing mounted. */
 type MountList = (mount: InpageMount) => (() => void) | null;
@@ -37,6 +37,19 @@ export function attempt(step: string, run: () => void): void {
     run();
   } catch (error) {
     logFailure(step, error);
+  }
+}
+
+/**
+ * Tells the background that a page of the saved Canvas loaded, so that it refreshes the planner
+ * items (decision 11, "Refresh triggers"). A missing or stopped background is not an error here.
+ */
+async function announceCanvasPageLoaded(origin: string): Promise<void> {
+  const message: CanvasPageLoadedMessage = { type: 'weekrow:canvas-page-loaded', origin };
+  try {
+    await browser.runtime.sendMessage(message);
+  } catch {
+    // The background may be updating. The next page load or a focus change refreshes instead.
   }
 }
 

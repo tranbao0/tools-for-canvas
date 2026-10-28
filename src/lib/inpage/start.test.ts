@@ -3,11 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { DEFAULT_SETTINGS } from '../model/types';
 import { canvasOriginItem, settingsItem } from '../platform/storage';
-import { MOUNT_CONTAINER_ID } from './anchors';
-import { DEFAULT_MOUNT_TIMEOUT_MS } from './mount';
+import { MOUNT_CONTAINER_ID } from './adapters';
+import { DEFAULT_MOUNT_TIMEOUT_MS, type InpageMount } from './mount';
 import { HIDE_NATIVE_TODO_STYLE_ID } from './nativeTodo';
 import { canAutoSaveOrigin, isSavedCanvasOrigin, resolveSavedOrigin } from './origin';
-import { announceCanvasPageLoaded } from './pageLoaded';
 import { startInpage, type InpageController, type StartInpageOptions } from './start';
 import {
   CARD_VIEW,
@@ -17,7 +16,6 @@ import {
   injectSidebar,
   loadPage,
 } from './testing/fixtures';
-import type { InpageMount } from './types';
 
 const SCHOOL = 'https://school.instructure.com';
 const CUSTOM = 'https://canvas.school.edu';
@@ -120,19 +118,20 @@ describe('resolveSavedOrigin', () => {
   });
 });
 
-describe('announceCanvasPageLoaded', () => {
-  it('sends the page-loaded message and ignores a missing background', async () => {
+describe('startInpage', () => {
+  it('still mounts when the background does not answer the page-loaded message', async () => {
     sendMessage.mockRejectedValueOnce(new Error('Could not establish connection.'));
-    await announceCanvasPageLoaded(CUSTOM);
+    await canvasOriginItem.setValue(CUSTOM);
+    loadPage(document, COURSE_HOME);
+    await start({ origin: CUSTOM, pathname: '/courses/5' });
 
     expect(sendMessage).toHaveBeenCalledWith({
       type: 'weekrow:canvas-page-loaded',
       origin: CUSTOM,
     });
+    expect(mounts).toHaveLength(1);
   });
-});
 
-describe('startInpage', () => {
   it('mounts on the saved Canvas and tells the background that the page loaded', async () => {
     await canvasOriginItem.setValue(CUSTOM);
     loadPage(document, COURSE_HOME);

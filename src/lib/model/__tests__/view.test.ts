@@ -41,6 +41,54 @@ function placesOf(view: ReturnType<typeof buildWeekView>): Record<string, string
   );
 }
 
+describe('plannerRangeFor', () => {
+  const range = (partial: Partial<ModelInput> = {}) => plannerRangeFor(input(partial));
+
+  it('starts at the earliest horizon and ends one millisecond before the week ends', () => {
+    expect(range()).toEqual({
+      start: '2026-08-24T04:00:00.000Z',
+      end: '2026-11-01T03:59:59.999Z',
+    });
+  });
+
+  it('ends at the end of tomorrow on the last day of the week, after the daylight saving change', () => {
+    expect(range({ now: '2026-10-31T18:00:00Z' }).end).toBe('2026-11-02T04:59:59.999Z');
+  });
+
+  it('starts at the viewed week when the week is older than every horizon, and still ends after tomorrow', () => {
+    expect(range({ weekOffset: -12 })).toEqual({
+      start: '2026-08-02T04:00:00.000Z',
+      end: '2026-10-29T03:59:59.999Z',
+    });
+  });
+
+  it('starts no later than the current week when every term starts in the future', () => {
+    const futureTerm = [course('101', 'Biology', '2026-11-02T05:00:00Z')];
+    expect(range({ courses: futureTerm })).toEqual({
+      start: '2026-10-25T04:00:00.000Z',
+      end: '2026-11-01T03:59:59.999Z',
+    });
+    expect(range({ courses: futureTerm, weekOffset: 1 }).start).toBe('2026-10-25T04:00:00.000Z');
+  });
+
+  it('ignores hidden courses and uses 16 weeks when no course is visible', () => {
+    expect(
+      range({ weekOffset: 1, settings: { ...DEFAULT_SETTINGS, hiddenCourseIds: ['101'] } }),
+    ).toEqual({ start: '2026-07-07T04:00:00.000Z', end: '2026-11-08T04:59:59.999Z' });
+  });
+
+  it('has plain UTC instants with no bracketed zone', () => {
+    const tokyo = input().profile;
+    const result = range({
+      browserTimeZone: 'Asia/Tokyo',
+      profile: { ...tokyo, time_zone: 'Asia/Tokyo' },
+      settings: { ...DEFAULT_SETTINGS, weekStart: 1 },
+    });
+    expect(result.start).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(result.end).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.999Z$/);
+  });
+});
+
 describe('the Tomorrow look-ahead', () => {
   it('shows tomorrow from the next week on the last day of a Sunday week, outside the rings', () => {
     const view = buildWeekView(
@@ -123,7 +171,6 @@ describe('week starts', () => {
       weekStart: '2026-10-24',
       weekEnd: '2026-10-30',
       hourCycle: 'h23',
-      locale: 'ar',
     });
     expect(placesOf(view)).toEqual({
       'assignment:1': 'past_due.items',
@@ -140,7 +187,6 @@ describe('week starts', () => {
     const noLanguage = { ...input().profile, locale: null, effective_locale: '' };
     const view = buildWeekView(input({ profile: noLanguage, browserLanguage: 'en-GB' }));
     expect(view).toMatchObject({
-      locale: 'en-GB',
       weekStart: '2026-10-26',
       weekEnd: '2026-11-01',
       hourCycle: 'h23',
@@ -148,12 +194,12 @@ describe('week starts', () => {
     expect(
       plannerRangeFor(input({ profile: noLanguage, browserLanguage: 'en-GB', courses: [] })),
     ).toEqual({ start: '2026-07-07T04:00:00.000Z', end: '2026-11-02T04:59:59.999Z' });
-    expect(buildWeekView(input({ profile: noLanguage })).locale).toBe('en');
+    expect(buildWeekView(input({ profile: noLanguage })).weekStart).toBe('2026-10-25');
   });
 
   it('prefers the Canvas language over the browser language', () => {
     const view = buildWeekView(input({ browserLanguage: 'de' }));
-    expect(view).toMatchObject({ locale: 'en', weekStart: '2026-10-25' });
+    expect(view).toMatchObject({ weekStart: '2026-10-25' });
   });
 });
 

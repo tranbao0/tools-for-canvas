@@ -26,7 +26,6 @@ const NO_FACTS: CanvasFacts = {
   customGradeStatusId: null,
   lockAt: null,
   unlockAt: null,
-  lockedForUser: false,
 };
 
 export const COURSES = {
@@ -75,7 +74,6 @@ export function mkItem(
     contextLabel: info?.name ?? 'Personal',
     color: info?.color ?? PERSONAL_COLOR,
     due: null,
-    points: 10,
     url: info ? `${ORIGIN}/courses/${info.id}/assignments/${id}` : null,
     handIn: 'canvas',
     toolName: null,
@@ -113,7 +111,6 @@ export function mkNote(
     plannableType: 'planner_note',
     assignmentId: null,
     url: null,
-    points: null,
     noteId,
     ...rest,
   };
@@ -127,7 +124,6 @@ export function mkGroup(patch: Partial<ListGroup> & { kind: ListGroup['kind'] })
     skipped: [],
     doneUndated: [],
     warningCount: 0,
-    collapsedByDefault: patch.kind === 'no_due_date' || patch.kind === 'done',
     ...patch,
   };
 }
@@ -423,7 +419,6 @@ export function mkView(patch: Partial<WeekView> = {}): WeekView {
     today: '2026-10-27',
     timeZone: 'America/New_York',
     browserTimeZoneDiffers: true,
-    locale: 'en',
     hourCycle: 'h12',
     groups: currentWeekGroups(),
     rings: currentRings(),

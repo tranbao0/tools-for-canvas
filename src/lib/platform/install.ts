@@ -7,18 +7,13 @@
 import { browser, type Browser } from 'wxt/browser';
 import { logFailure } from './log';
 
-/** Whether an `onInstalled` event should open the welcome page: only a fresh install. */
-export function shouldOpenWelcome(reason: string): boolean {
-  return reason === 'install';
-}
-
 /**
  * Opens the welcome page on a fresh install. Call it once, synchronously, at the top level of
  * the background. Returns a function that removes the listener.
  */
 export function wireWelcomePage(): () => void {
   const listener = (details: Browser.runtime.InstalledDetails): void => {
-    if (!shouldOpenWelcome(details.reason)) return;
+    if (details.reason !== 'install') return;
     browser.tabs
       .create({ url: browser.runtime.getURL('/welcome.html') })
       .catch((error: unknown) => logFailure('welcome page', error));

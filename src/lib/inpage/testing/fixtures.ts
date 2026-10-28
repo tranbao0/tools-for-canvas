@@ -4,6 +4,8 @@
  * course home view. Only tests import this module.
  */
 
+import { HIDE_NATIVE_TODO_STYLE_ID } from '../nativeTodo';
+
 export interface PageFixture {
   /** Body classes as Canvas renders them. */
   bodyClass: string;
@@ -182,3 +184,8 @@ export const NOT_CANVAS: PageFixture = {
   rightSide: '',
   notCanvas: true,
 };
+
+/** Whether the style that hides the native To Do is on the page. */
+export function nativeTodoHidden(doc: Document = document): boolean {
+  return doc.getElementById(HIDE_NATIVE_TODO_STYLE_ID) !== null;
+}

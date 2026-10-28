@@ -105,6 +105,15 @@ describe('itemFromPlannerItem', () => {
     ).toBeNull();
   });
 
+  it('drops a planner type that Canvas adds later, and looks up no assignment for it', () => {
+    const future = plannerItem({ type: 'assignment', id: '9', courseId: '101', date: DATE });
+    for (const type of ['future_type', 'constructor', '__proto__', 'toString']) {
+      const unknown = { ...future, plannable_type: type } as unknown as typeof future;
+      expect(itemFromPlannerItem(unknown, deps())).toBeNull();
+      expect(assignmentIdsToLookup([unknown])).toEqual({});
+    }
+  });
+
   it('keys assignment-backed items by assignment id and the rest by type and id', () => {
     const keyOf = (spec: Parameters<typeof plannerItem>[0]): string | undefined =>
       itemFromPlannerItem(plannerItem(spec), deps())?.key;
@@ -269,7 +278,7 @@ describe('itemFromPlannerItem', () => {
     expect(withCourse).toMatchObject({ courseId: '202', contextLabel: 'History' });
   });
 
-  it('keeps the checkpoint tag, points and the absolute URL', () => {
+  it('keeps the checkpoint tag and the absolute URL', () => {
     const item = itemFromPlannerItem(
       plannerItem({
         type: 'sub_assignment',
@@ -277,14 +286,12 @@ describe('itemFromPlannerItem', () => {
         courseId: '101',
         date: DATE,
         subAssignmentTag: 'reply_to_topic',
-        points: 5,
         htmlUrl: '/courses/101/discussion_topics/12',
       }),
       deps(),
     );
     expect(item).toMatchObject({
       subtitleTag: 'reply_to_topic',
-      points: 5,
       url: `${ORIGIN}/courses/101/discussion_topics/12`,
       due: '2026-10-29T03:59:00.000Z',
     });

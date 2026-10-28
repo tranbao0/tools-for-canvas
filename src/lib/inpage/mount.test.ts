@@ -1,16 +1,14 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MOUNT_CONTAINER_ID, findSidebarAnchors } from './anchors';
-import { classicDashboardAdapter } from './classicDashboard';
-import { courseHomeAdapter, courseHomeId } from './courseHome';
+import { MOUNT_CONTAINER_ID, isAdapterPath } from './adapters';
 import {
   DEFAULT_MOUNT_TIMEOUT_MS,
   mountWhenReady,
   removeStaleMount,
-  selectAdapter,
+  type InpageMount,
   type MountOutcome,
 } from './mount';
-import { hideNativeTodo, isNativeTodoHidden } from './nativeTodo';
+import { hideNativeTodo } from './nativeTodo';
 import {
   BOTH_LISTS_SIDEBAR,
   CARD_VIEW,
@@ -28,8 +26,8 @@ import {
   WIDGET_DASHBOARD,
   injectSidebar,
   loadPage,
+  nativeTodoHidden,
 } from './testing/fixtures';
-import type { InpageMount } from './types';
 
 let mounts: InpageMount[];
 const onMount = (mount: InpageMount): void => {
@@ -81,18 +79,13 @@ function leaveStaleList(): HTMLElement {
   return stale;
 }
 
-describe('selectAdapter', () => {
-  it.each([
-    ['/', 'dashboard', null],
-    ['/dashboard', 'dashboard', null],
-    ['/courses/5', 'course_home', '5'],
-    ['/courses/5/', 'course_home', '5'],
-    ['/courses/10~42', 'course_home', '10~42'],
-  ])('picks an adapter for %s', (pathname, layout, courseId) => {
-    const selected = selectAdapter(pathname);
-    expect(selected?.adapter.layout).toBe(layout);
-    expect(selected?.match.courseId).toBe(courseId);
-  });
+describe('adapter paths', () => {
+  it.each(['/', '/dashboard', '/courses/5', '/courses/5/', '/courses/10~42'])(
+    'has an adapter for %s',
+    (pathname) => {
+      expect(isAdapterPath(pathname)).toBe(true);
+    },
+  );
 
   it.each([
     '/courses',
@@ -101,13 +94,19 @@ describe('selectAdapter', () => {
     '/calendar',
     '/courses/new',
     '/dashboardx',
-  ])('picks nothing for %s', (pathname) => {
-    expect(selectAdapter(pathname)).toBeNull();
+  ])('has no adapter for %s', (pathname) => {
+    expect(isAdapterPath(pathname)).toBe(false);
   });
 
-  it('reads course ids only from exact course home paths', () => {
-    expect(courseHomeId('/courses/123')).toBe('123');
-    expect(courseHomeId('/courses/123/pages/home')).toBeNull();
+  it.each([
+    ['/dashboard/', CARD_VIEW, STUDENT_SIDEBAR, null],
+    ['/courses/5/', COURSE_HOME, COURSE_HOME.rightSide, '5'],
+    ['/courses/10~42', COURSE_HOME, COURSE_HOME.rightSide, '10~42'],
+  ])('mounts %s with the course id from the path', async (pathname, fixture, sidebar, courseId) => {
+    loadPage(document, { ...fixture, rightSide: sidebar });
+    await mountWhenReady(onMount, { pathname });
+
+    expect(mounts).toEqual([{ courseId, container: container() }]);
   });
 });
 
@@ -125,7 +124,7 @@ describe('classic dashboard', () => {
     const outcome = await done;
 
     expect(outcome.kind).toBe('mounted');
-    expect(mounts).toEqual([{ layout: 'dashboard', courseId: null, container: container() }]);
+    expect(mounts).toEqual([{ courseId: null, container: container() }]);
     expectMountedBeforeRightSide();
   });
 
@@ -208,7 +207,7 @@ describe('course home', () => {
     const outcome = await mountWhenReady(onMount, { pathname: '/courses/5' });
 
     expect(outcome.kind).toBe('mounted');
-    expect(mounts).toEqual([{ layout: 'course_home', courseId: '5', container: container() }]);
+    expect(mounts).toEqual([{ courseId: '5', container: container() }]);
     expectMountedBeforeRightSide();
   });
 
@@ -256,9 +255,9 @@ describe('mountWhenReady', () => {
     expect(outcome.kind).toBe('mounted');
     expect(stale.isConnected).toBe(false);
     expect(document.querySelectorAll(`#${MOUNT_CONTAINER_ID}`)).toHaveLength(1);
-    expect(mounts).toEqual([{ layout: 'course_home', courseId: '5', container: container() }]);
+    expect(mounts).toEqual([{ courseId: '5', container: container() }]);
     expectMountedBeforeRightSide();
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
   });
 
   it('removes a stale list at once, while it still waits for the anchors', async () => {
@@ -270,7 +269,7 @@ describe('mountWhenReady', () => {
     await flushObserver();
     expect(stale.isConnected).toBe(false);
     expect(container()).toBeNull();
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
 
     document.body.classList.add('with-right-side');
     expect((await done).kind).toBe('mounted');
@@ -286,7 +285,7 @@ describe('mountWhenReady', () => {
       kind: 'no_adapter',
     });
     expect(stale.isConnected).toBe(false);
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
   });
 
   it('mounts again after its own list was removed, with one container on the page', async () => {
@@ -324,7 +323,7 @@ describe('mountWhenReady', () => {
       kind: 'cancelled',
     });
     expect(container()).toBe(stale);
-    expect(isNativeTodoHidden()).toBe(true);
+    expect(nativeTodoHidden()).toBe(true);
     expect(mounts).toEqual([]);
   });
 
@@ -346,25 +345,24 @@ describe('removeStaleMount', () => {
     loadPage(document, COURSE_HOME);
     hideNativeTodo(document);
     expect(removeStaleMount(document)).toBe(false);
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
 
     leaveStaleList();
     expect(removeStaleMount(document)).toBe(true);
     expect(container()).toBeNull();
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
   });
 });
 
-describe('findSidebarAnchors', () => {
-  it('needs #right-side directly inside #right-side-wrapper', () => {
+describe('right column anchors', () => {
+  it('need #right-side directly inside #right-side-wrapper', async () => {
     document.body.className = 'with-right-side';
     document.body.innerHTML =
       '<div id="right-side-wrapper"><div><aside id="right-side"></aside></div></div>';
-    expect(findSidebarAnchors(document)).toBeNull();
-  });
+    const done = mountWhenReady(onMount, { pathname: '/courses/5' });
 
-  it('is shared by both adapters', () => {
-    expect(courseHomeAdapter.findAnchors).toBe(findSidebarAnchors);
-    expect(classicDashboardAdapter.layout).toBe('dashboard');
+    await vi.advanceTimersByTimeAsync(DEFAULT_MOUNT_TIMEOUT_MS);
+    expect(await done).toEqual({ kind: 'timeout' });
+    expect(container()).toBeNull();
   });
 });

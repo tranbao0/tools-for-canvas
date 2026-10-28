@@ -3,18 +3,10 @@
  * See docs/design.md, decisions 6 to 9 and 11.
  */
 import type { Course, DashboardPositions, PlannerItem, TimeRange } from '../canvas/types';
-import {
-  buildWeekView,
-  collectItems,
-  plannerRangeFor,
-  resolveViewBasics,
-  weekBounds,
-  type Item,
-  type ModelInput,
-  type Offer,
-  type Settings,
-  type WeekView,
-} from '../model';
+import { buildWeekView, plannerRangeFor, resolveViewBasics } from '../model/view';
+import { collectItems } from '../model/normalize';
+import { weekBounds } from '../model/time';
+import type { Item, ModelInput, Offer, Settings, WeekView } from '../model/types';
 import type { SessionCache, SessionData } from './cache';
 import { coveredItems, isCovered, toInterval, type PlannerCoverage } from './coverage';
 import { applyPatches } from './patches';

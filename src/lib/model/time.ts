@@ -2,7 +2,7 @@
  * Week and range math in the student's Canvas time zone. See docs/design.md, decision 9.
  * Every function takes the current time as a parameter and reads no clock.
  */
-import type { Course, TimeRange } from '../canvas/types';
+import type { Course } from '../canvas/types';
 import type { IsoDayOfWeek } from './types';
 
 /** The past-due horizon never reaches further back than this. */
@@ -88,11 +88,11 @@ export function startOfWeek(
   return date.subtract({ days: daysSinceStart });
 }
 
-function laterOf(a: Temporal.Instant, b: Temporal.Instant): Temporal.Instant {
+export function laterOf(a: Temporal.Instant, b: Temporal.Instant): Temporal.Instant {
   return Temporal.Instant.compare(a, b) >= 0 ? a : b;
 }
 
-function earlierOf(a: Temporal.Instant, b: Temporal.Instant): Temporal.Instant {
+export function earlierOf(a: Temporal.Instant, b: Temporal.Instant): Temporal.Instant {
   return Temporal.Instant.compare(a, b) <= 0 ? a : b;
 }
 
@@ -145,16 +145,6 @@ export interface HorizonParams {
   hiddenCourseIds: readonly string[];
 }
 
-function defaultHorizonInstant(now: string, timeZone: string): Temporal.Instant {
-  const today = plainDateOf(Temporal.Instant.from(now), timeZone);
-  return startOfDay(today.subtract({ weeks: HORIZON_WEEKS }), timeZone);
-}
-
-/** 00:00 on the day 16 weeks before today, in the Canvas time zone. */
-export function defaultHorizon(params: { now: string; timeZone: string }): string {
-  return formatInstant(defaultHorizonInstant(params.now, params.timeZone));
-}
-
 /**
  * When the student's access to the course starts: the course's own `start_at` when the course
  * dates replace the term dates (`restrict_enrollments_to_course_dates`), otherwise the term start.
@@ -168,24 +158,11 @@ function courseStart(course: Course): Temporal.Instant | null {
   return parseInstant(course.term?.start_at);
 }
 
-/** 00:00 on the first day of the current week, in the Canvas time zone. */
-function currentWeekStartInstant(params: HorizonParams): Temporal.Instant {
-  const today = plainDateOf(Temporal.Instant.from(params.now), params.timeZone);
-  return startOfDay(startOfWeek(today, params.weekStartDay), params.timeZone);
-}
-
-function courseHorizonInstants(params: HorizonParams): Map<string, Temporal.Instant> {
-  const oldest = defaultHorizonInstant(params.now, params.timeZone);
-  const latest = currentWeekStartInstant(params);
-  const hidden = new Set(params.hiddenCourseIds);
-  const horizons = new Map<string, Temporal.Instant>();
-  for (const course of params.courses) {
-    if (hidden.has(course.id)) continue;
-    const start = courseStart(course);
-    const horizon = start ? laterOf(start, oldest) : oldest;
-    horizons.set(course.id, earlierOf(horizon, latest));
-  }
-  return horizons;
+export interface Horizons {
+  /** The past-due horizon of each visible course, by course id. */
+  byCourse: Map<string, Temporal.Instant>;
+  /** The earliest horizon of the visible courses, or 16 weeks ago when no course is visible. */
+  earliest: Temporal.Instant;
 }
 
 /**
@@ -194,48 +171,19 @@ function courseHorizonInstants(params: HorizonParams): Map<string, Temporal.Inst
  * work always reaches Past due and the rings. Hidden courses are left out. A course with no start
  * uses 16 weeks ago.
  */
-export function courseHorizons(params: HorizonParams): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const [courseId, horizon] of courseHorizonInstants(params)) {
-    result[courseId] = formatInstant(horizon);
-  }
-  return result;
-}
-
-/** The earliest horizon of the visible courses, or 16 weeks ago when no course is visible. */
-export function earliestHorizon(params: HorizonParams): string {
+export function horizons(params: HorizonParams): Horizons {
+  const today = plainDateOf(Temporal.Instant.from(params.now), params.timeZone);
+  const oldest = startOfDay(today.subtract({ weeks: HORIZON_WEEKS }), params.timeZone);
+  const latest = startOfDay(startOfWeek(today, params.weekStartDay), params.timeZone);
+  const hidden = new Set(params.hiddenCourseIds);
+  const byCourse = new Map<string, Temporal.Instant>();
   let earliest: Temporal.Instant | null = null;
-  for (const horizon of courseHorizonInstants(params).values()) {
+  for (const course of params.courses) {
+    if (hidden.has(course.id)) continue;
+    const start = courseStart(course);
+    const horizon = earlierOf(start ? laterOf(start, oldest) : oldest, latest);
+    byCourse.set(course.id, horizon);
     earliest = earliest ? earlierOf(earliest, horizon) : horizon;
   }
-  return formatInstant(earliest ?? defaultHorizonInstant(params.now, params.timeZone));
-}
-
-export interface PlannerRangeParams extends HorizonParams {
-  weekOffset: number;
-}
-
-/**
- * The planner range that a view needs. The data layer requests only the parts of it that its
- * cache lacks.
- * It starts at the earliest horizon of the visible courses, or at the start of the viewed week when
- * that is earlier, so older-style peer reviews, which Canvas files under the reviewer's own due
- * date, come back in their real week. It ends one millisecond before the end of the viewed week, or
- * before the end of tomorrow when that is later.
- */
-export function plannerRange(params: PlannerRangeParams): TimeRange {
-  const bounds = weekBounds(params);
-  const start = earlierOf(
-    Temporal.Instant.from(earliestHorizon(params)),
-    Temporal.Instant.from(bounds.start),
-  );
-  const endOfTomorrow = startOfDay(
-    Temporal.PlainDate.from(bounds.tomorrow).add({ days: 1 }),
-    params.timeZone,
-  );
-  const endExclusive = laterOf(Temporal.Instant.from(bounds.end), endOfTomorrow);
-  return {
-    start: formatInstant(start),
-    end: formatInstant(endExclusive.subtract({ milliseconds: 1 })),
-  };
+  return { byCourse, earliest: earliest ?? oldest };
 }

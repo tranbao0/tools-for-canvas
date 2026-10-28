@@ -1,5 +1,5 @@
 import { isJsonObject, parseCanvasJson } from './classify';
-import { canvasFetch, readBodyText } from './http';
+import { canvasFetch, readBodyText, toCanvasOrigin } from './http';
 import { CanvasError, type CanvasErrorKind } from './types';
 
 export type ProbeResult = 'canvas' | 'signed_out' | 'redirects' | 'not_canvas' | 'network';
@@ -29,21 +29,8 @@ export function probeResultFor(
 }
 
 function probeResultForError(kind: CanvasErrorKind): ProbeResult {
-  switch (kind) {
-    case 'network':
-      return 'network';
-    case 'redirect':
-      return 'redirects';
-    case 'unauthorized':
-    case 'forbidden':
-    case 'rate_limited':
-    case 'not_found':
-    case 'bad_request':
-    case 'server':
-    case 'not_canvas':
-    case 'origin_blocked':
-      return 'not_canvas';
-  }
+  if (kind === 'network') return 'network';
+  return kind === 'redirect' ? 'redirects' : 'not_canvas';
 }
 
 /**
@@ -53,7 +40,12 @@ function probeResultForError(kind: CanvasErrorKind): ProbeResult {
  */
 export async function probeCanvas(origin: string, fetchImpl?: typeof fetch): Promise<ProbeResult> {
   try {
-    const response = await canvasFetch(origin, '/api/v1/users/self', { method: 'GET' }, fetchImpl);
+    const response = await canvasFetch(
+      toCanvasOrigin(origin),
+      '/api/v1/users/self',
+      { method: 'GET' },
+      fetchImpl,
+    );
     const text = await readBodyText(response);
     return probeResultFor(response.status, response.headers.get('WWW-Authenticate'), text);
   } catch (error) {

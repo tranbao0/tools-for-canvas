@@ -12,7 +12,7 @@ import {
   type Settings,
   type SurfaceState,
   type WeekView,
-} from '../../model';
+} from '../../model/types';
 import {
   canvasOriginItem,
   changeMarkerItem,

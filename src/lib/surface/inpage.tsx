@@ -6,9 +6,9 @@
 import { render } from 'preact';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import { showNativeTodo, syncNativeTodo } from '../inpage/nativeTodo';
+import type { InpageMount } from '../inpage/mount';
 import { attempt, startInpage } from '../inpage/start';
 import { detectPageTheme } from '../inpage/theme';
-import type { InpageMount } from '../inpage/types';
 import { logFailure } from '../platform/log';
 import { settingsItem } from '../platform/storage';
 import { App, APP_CSS } from '../ui';
@@ -16,11 +16,6 @@ import { inpageHost } from './hosts';
 import { createSurfaceRuntime, type SurfaceRuntime } from './runtime';
 import { attachShadowMount } from './shadowMount';
 import { followTheme, inpageTheme, setThemeAttribute, type ThemeSource } from './theme';
-
-/** The course a mount shows: the course of a course home page, or every course. */
-export function scopeFor(mount: InpageMount): string | null {
-  return mount.layout === 'course_home' ? mount.courseId : null;
-}
 
 interface InpageView {
   /** Renders the current state into the container and updates the native To Do. */
@@ -124,7 +119,7 @@ function mountList(ctx: ContentScriptContext, mount: InpageMount): (() => void) 
   if (ctx.isInvalid) return null;
   const runtime = createSurfaceRuntime(inpageHost(window, ctx), {
     surface: 'inpage',
-    scopeCourseId: scopeFor(mount),
+    scopeCourseId: mount.courseId,
   });
   const remove = mountInpageList(mount, { runtime, settings: settingsItem });
   // The interval wrapper reads `ctx.isValid`, which ends the context once the extension is gone.

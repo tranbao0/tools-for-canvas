@@ -26,27 +26,24 @@ export function showNativeTodo(doc: Document = document): void {
   doc.getElementById(HIDE_NATIVE_TODO_STYLE_ID)?.remove();
 }
 
-export function isNativeTodoHidden(doc: Document = document): boolean {
-  return doc.getElementById(HIDE_NATIVE_TODO_STYLE_ID) !== null;
-}
-
-export type NativeTodoAction = 'hide' | 'show' | 'keep';
-
 /**
- * What to do with the native To Do after the in-page list renders a state.
+ * Brings the native To Do in line with the state the in-page list rendered.
  * A list hides it; an error state shows it again; a pending state changes nothing.
  * On the home page of a course the student hid, the surface shows a note instead of the list,
  * so the native To Do shows.
  */
-export function nativeTodoAction(state: SurfaceState): NativeTodoAction {
+export function syncNativeTodo(state: SurfaceState, doc: Document = document): void {
   switch (state.kind) {
     case 'ready':
-      return state.view.scopeCourseHidden ? 'show' : 'hide';
+      if (state.view.scopeCourseHidden) showNativeTodo(doc);
+      else hideNativeTodo(doc);
+      return;
     case 'no_courses':
-      return 'hide';
+      hideNativeTodo(doc);
+      return;
     case 'loading':
     case 'checking':
-      return 'keep';
+      return;
     case 'not_set_up':
     case 'no_access':
     case 'redirects':
@@ -54,21 +51,7 @@ export function nativeTodoAction(state: SurfaceState): NativeTodoAction {
     case 'unreachable':
     case 'signed_out':
     case 'cant_load':
-      return 'show';
-  }
-}
-
-/** Applies `nativeTodoAction` for the rendered state. */
-export function syncNativeTodo(state: SurfaceState, doc: Document = document): void {
-  const action = nativeTodoAction(state);
-  switch (action) {
-    case 'hide':
-      hideNativeTodo(doc);
-      return;
-    case 'show':
       showNativeTodo(doc);
-      return;
-    case 'keep':
       return;
   }
 }

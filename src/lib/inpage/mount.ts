@@ -2,13 +2,24 @@
  * Waits for the mount condition of the page's adapter and creates the mount container.
  * See docs/design.md, decision 4, "In-page rules".
  */
-import { MOUNT_CONTAINER_ID, createMountContainer } from './anchors';
-import { classicDashboardAdapter } from './classicDashboard';
-import { courseHomeAdapter } from './courseHome';
+import {
+  MOUNT_CONTAINER_ID,
+  createMountContainer,
+  findCourseHomeAnchors,
+  findDashboardAnchors,
+  isAdapterPath,
+} from './adapters';
 import { showNativeTodo } from './nativeTodo';
-import type { AdapterMatch, InpageAdapter, InpageMount, MountCallback } from './types';
 
-export const ADAPTERS: readonly InpageAdapter[] = [classicDashboardAdapter, courseHomeAdapter];
+/** What the mount callback gets. */
+export interface InpageMount {
+  /** Set on a course home page: the list shows only this course. */
+  courseId: string | null;
+  /** The empty container, a sibling before `#right-side` inside `#right-side-wrapper`. */
+  container: HTMLElement;
+}
+
+export type MountCallback = (mount: InpageMount) => void;
 
 /** How long to wait for the anchors. Canvas loads the dashboard sidebar after the page. */
 export const DEFAULT_MOUNT_TIMEOUT_MS = 30_000;
@@ -28,24 +39,6 @@ export interface MountOptions {
   timeoutMs?: number;
   /** Aborting stops the wait, for example WXT's `ctx.signal` when the content script ends. */
   signal?: AbortSignal;
-  adapters?: readonly InpageAdapter[];
-}
-
-export interface SelectedAdapter {
-  adapter: InpageAdapter;
-  match: AdapterMatch;
-}
-
-/** The first adapter that applies to the path, or `null`. */
-export function selectAdapter(
-  pathname: string,
-  adapters: readonly InpageAdapter[] = ADAPTERS,
-): SelectedAdapter | null {
-  for (const adapter of adapters) {
-    const match = adapter.match(pathname);
-    if (match !== null) return { adapter, match };
-  }
-  return null;
 }
 
 /**
@@ -78,9 +71,7 @@ export function mountWhenReady(
   if (options.signal?.aborted === true) return Promise.resolve({ kind: 'cancelled' });
   removeStaleMount(doc);
   const pathname = options.pathname ?? doc.defaultView?.location.pathname ?? '';
-  const selected = selectAdapter(pathname, options.adapters);
-  if (selected === null) return Promise.resolve({ kind: 'no_adapter' });
-  const { adapter, match } = selected;
+  if (!isAdapterPath(pathname)) return Promise.resolve({ kind: 'no_adapter' });
 
   return new Promise<MountOutcome>((resolve) => {
     let finished = false;
@@ -102,12 +93,11 @@ export function mountWhenReady(
 
     function tryMount(): boolean {
       if (finished) return true;
-      const anchors = adapter.findAnchors(doc);
-      if (anchors === null) return false;
+      const found = findDashboardAnchors(pathname, doc) ?? findCourseHomeAnchors(pathname, doc);
+      if (found === null) return false;
       const mount: InpageMount = {
-        layout: adapter.layout,
-        courseId: match.courseId,
-        container: createMountContainer(doc, anchors),
+        courseId: found.courseId,
+        container: createMountContainer(doc, found.anchors),
       };
       finish({ kind: 'mounted', mount });
       onMount(mount);

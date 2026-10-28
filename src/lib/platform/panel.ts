@@ -6,7 +6,7 @@
  * browser API synchronously, with no `await` before it, and returns the browser's promise.
  */
 import { browser } from 'wxt/browser';
-import { BROWSER_KIND, type BrowserKind } from './browserKind';
+import { BROWSER_KIND } from './browserKind';
 
 /** The Firefox `sidebarAction` API, which the shared browser types do not include. */
 interface SidebarActionApi {
@@ -32,46 +32,32 @@ function unavailable(api: string): Promise<never> {
   return Promise.reject(new Error(`${api} is not available`));
 }
 
+const firefox = BROWSER_KIND === 'firefox';
+
 /** Whether this browser can close the panel from code. */
-export function canClosePanel(kind: BrowserKind = BROWSER_KIND): boolean {
-  switch (kind) {
-    case 'chrome':
-    case 'edge':
-      return typeof sidePanel()?.close === 'function';
-    case 'firefox':
-      return typeof sidebarAction()?.close === 'function';
-  }
+export function canClosePanel(): boolean {
+  return typeof (firefox ? sidebarAction() : sidePanel())?.close === 'function';
 }
 
 /** Opens the panel in the window. Call it synchronously inside a user gesture handler. */
-export function openPanel(windowId: number, kind: BrowserKind = BROWSER_KIND): Promise<void> {
-  switch (kind) {
-    case 'chrome':
-    case 'edge': {
-      const api = sidePanel();
-      return api === undefined ? unavailable('sidePanel.open') : api.open({ windowId });
-    }
-    case 'firefox': {
-      const api = sidebarAction();
-      return api === undefined ? unavailable('sidebarAction.open') : api.open();
-    }
+export function openPanel(windowId: number): Promise<void> {
+  if (firefox) {
+    const api = sidebarAction();
+    return api === undefined ? unavailable('sidebarAction.open') : api.open();
   }
+  const api = sidePanel();
+  return api === undefined ? unavailable('sidePanel.open') : api.open({ windowId });
 }
 
 /**
  * Closes the panel in the window. Call it synchronously inside a user gesture handler.
  * Check `canClosePanel` first: without a close API the promise rejects.
  */
-export function closePanel(windowId: number, kind: BrowserKind = BROWSER_KIND): Promise<void> {
-  switch (kind) {
-    case 'chrome':
-    case 'edge': {
-      const api = sidePanel();
-      return api?.close === undefined ? unavailable('sidePanel.close') : api.close({ windowId });
-    }
-    case 'firefox': {
-      const api = sidebarAction();
-      return api === undefined ? unavailable('sidebarAction.close') : api.close();
-    }
+export function closePanel(windowId: number): Promise<void> {
+  if (firefox) {
+    const api = sidebarAction();
+    return api === undefined ? unavailable('sidebarAction.close') : api.close();
   }
+  const api = sidePanel();
+  return api?.close === undefined ? unavailable('sidePanel.close') : api.close({ windowId });
 }

@@ -137,8 +137,6 @@ export interface CanvasTransportOptions {
   readonly origin: string;
   readonly getCsrfToken: CsrfTokenSource;
   readonly fetchImpl?: typeof fetch;
-  /** The clock for `Retry-After` dates. Defaults to `Date.now`. */
-  readonly now?: () => number;
 }
 
 /** Every non-GET request carries the CSRF token. Without a token, Canvas cannot accept a write. */
@@ -161,7 +159,6 @@ async function headersFor(
 /** Creates the request function that sends, classifies failures and parses Canvas JSON. */
 export function createCanvasTransport(options: CanvasTransportOptions): CanvasTransport {
   const origin = toCanvasOrigin(options.origin);
-  const now = options.now ?? (() => Date.now());
   return async (request) => {
     const headers = await headersFor(request, options.getCsrfToken);
     const body = request.body === undefined ? undefined : JSON.stringify(request.body);
@@ -173,7 +170,7 @@ export function createCanvasTransport(options: CanvasTransportOptions): CanvasTr
     );
     const text = await readBodyText(response);
     if (!response.ok) {
-      throw classifyHttpFailure(response.status, text, response.headers.get('Retry-After'), now());
+      throw classifyHttpFailure(response.status, text);
     }
     const parsed = parseCanvasJson(text);
     if (!parsed.ok) {

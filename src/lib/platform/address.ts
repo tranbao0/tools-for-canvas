@@ -1,11 +1,11 @@
 /**
  * Canvas address rules. See docs/design.md, decision 5.
  */
+import { isIpHost, parseUrl } from '../model/url';
 
 const SCHEME_PREFIX = /^([a-z][a-z0-9+.-]*):/i;
 /** The text after `host:` when it is a port, such as `8443/path` or an empty port. */
 const PORT_SUFFIX = /^\d*(?:[/?#]|$)/;
-const IPV4_HOST = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 const INSTRUCTURE_DOMAIN = 'instructure.com';
 const TEST_OR_BETA_SUFFIXES = ['.test.instructure.com', '.beta.instructure.com'];
 
@@ -22,18 +22,9 @@ function withScheme(input: string): string | null {
   return PORT_SUFFIX.test(rest) ? `https://${input}` : null;
 }
 
-function parseUrl(text: string): URL | null {
-  try {
-    return new URL(text);
-  } catch {
-    return null;
-  }
-}
-
 /** A dotted host name with no empty label. IP addresses are not Canvas addresses. */
 function isAllowedHostname(hostname: string): boolean {
-  if (hostname.startsWith('[')) return false;
-  if (IPV4_HOST.test(hostname)) return false;
+  if (isIpHost(hostname)) return false;
   const labels = hostname.split('.');
   return labels.length > 1 && labels.every((label) => label !== '');
 }

@@ -1,19 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { toBrowserKind } from './browserKind';
 import { canClosePanel, closePanel, openPanel } from './panel';
-import {
-  installFakeSidePanel,
-  installFakeSidebarAction,
-  removeFakeSidebarAction,
-} from './testing/fakes';
+import { installFakeSidePanel } from './testing/fakes';
 
 beforeEach(() => {
   fakeBrowser.reset();
-});
-
-afterEach(() => {
-  removeFakeSidebarAction();
 });
 
 describe('toBrowserKind', () => {
@@ -25,10 +17,10 @@ describe('toBrowserKind', () => {
   });
 });
 
-describe.each(['chrome', 'edge'] as const)('on %s', (kind) => {
+describe('on Chrome and Edge', () => {
   it('opens the side panel of the window synchronously', async () => {
     const sidePanel = installFakeSidePanel();
-    const pending = openPanel(4, kind);
+    const pending = openPanel(4);
 
     expect(sidePanel.open).toHaveBeenCalledWith({ windowId: 4 });
     await pending;
@@ -36,7 +28,7 @@ describe.each(['chrome', 'edge'] as const)('on %s', (kind) => {
 
   it('closes the side panel of the window synchronously', async () => {
     const sidePanel = installFakeSidePanel();
-    const pending = closePanel(4, kind);
+    const pending = closePanel(4);
 
     expect(sidePanel.close).toHaveBeenCalledWith({ windowId: 4 });
     await pending;
@@ -44,11 +36,11 @@ describe.each(['chrome', 'edge'] as const)('on %s', (kind) => {
 
   it('detects whether sidePanel.close exists', () => {
     installFakeSidePanel();
-    expect(canClosePanel(kind)).toBe(true);
+    expect(canClosePanel()).toBe(true);
 
     installFakeSidePanel({ withClose: false });
-    expect(canClosePanel(kind)).toBe(false);
-    return expect(closePanel(4, kind)).rejects.toThrow('sidePanel.close is not available');
+    expect(canClosePanel()).toBe(false);
+    return expect(closePanel(4)).rejects.toThrow('sidePanel.close is not available');
   });
 
   it('passes on a rejected open, for example without a user gesture', async () => {
@@ -57,31 +49,6 @@ describe.each(['chrome', 'edge'] as const)('on %s', (kind) => {
       new Error('may only be called in response to a user gesture'),
     );
 
-    await expect(openPanel(4, kind)).rejects.toThrow('user gesture');
-  });
-});
-
-describe('on firefox', () => {
-  it('opens and closes the sidebar synchronously', async () => {
-    const sidebar = installFakeSidebarAction();
-
-    const opening = openPanel(4, 'firefox');
-    expect(sidebar.open).toHaveBeenCalledTimes(1);
-    await opening;
-
-    const closing = closePanel(4, 'firefox');
-    expect(sidebar.close).toHaveBeenCalledTimes(1);
-    await closing;
-  });
-
-  it('can close the sidebar when the API exists', () => {
-    expect(canClosePanel('firefox')).toBe(false);
-    installFakeSidebarAction();
-    expect(canClosePanel('firefox')).toBe(true);
-  });
-
-  it('rejects when the sidebar API is missing', async () => {
-    await expect(openPanel(4, 'firefox')).rejects.toThrow('sidebarAction.open is not available');
-    await expect(closePanel(4, 'firefox')).rejects.toThrow('sidebarAction.close is not available');
+    await expect(openPanel(4)).rejects.toThrow('user gesture');
   });
 });

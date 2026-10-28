@@ -4,7 +4,6 @@
  *
  * Surfaces never fetch Canvas. They ask the background for their state, send refresh requests
  * and actions, and learn about new data from the change marker in `storage.local`.
- * The panel presence messages live in src/lib/platform/messages.ts.
  */
 import type { SurfaceState } from '../model/types';
 import type { SurfaceKind, TaskInput } from '../ui/contract';
@@ -122,6 +121,12 @@ export interface OpenPageMessage {
  */
 export interface CanvasDetectedMessage {
   type: 'weekrow:canvas-detected';
+  origin: string;
+}
+
+/** Content script to background: a page of the saved Canvas loaded. Refreshes the planner items. */
+export interface CanvasPageLoadedMessage {
+  type: 'weekrow:canvas-page-loaded';
   origin: string;
 }
 
@@ -322,6 +327,10 @@ export function isOpenPageMessage(value: unknown): value is OpenPageMessage {
 
 export function isCanvasDetectedMessage(value: unknown): value is CanvasDetectedMessage {
   return hasType(value, 'weekrow:canvas-detected') && isNonEmptyString(value['origin']);
+}
+
+export function isCanvasPageLoadedMessage(value: unknown): value is CanvasPageLoadedMessage {
+  return hasType(value, 'weekrow:canvas-page-loaded') && isString(value['origin']);
 }
 
 export function isDataMessage(value: unknown): value is DataMessage {

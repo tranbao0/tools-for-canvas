@@ -3,7 +3,9 @@
  * events. See docs/design.md, decision 11, option A.
  */
 import { browser } from 'wxt/browser';
-import { createCanvasClient, csrfFromCookiesApi, probeCanvas } from '../canvas';
+import { createCanvasClient } from '../canvas/client';
+import { csrfFromCookiesApi } from '../canvas/csrf';
+import { probeCanvas } from '../canvas/probe';
 import { originMatchPattern } from '../platform/address';
 import { BROWSER_KIND } from '../platform/browserKind';
 import { syncRuntimeContentScript } from '../platform/contentScripts';

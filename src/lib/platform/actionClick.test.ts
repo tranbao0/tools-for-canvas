@@ -13,7 +13,6 @@ import { canvasOriginItem, offerItem } from './storage';
 import {
   installFakeScripting,
   installFakeSidePanel,
-  installFakeSidebarAction,
   removeFakeSidebarAction,
   type FakeScripting,
   type FakeSidePanel,
@@ -82,7 +81,7 @@ describe('offerFor', () => {
 describe('handleActionClick', () => {
   it('opens the panel synchronously when it is closed in the window', async () => {
     pageIsCanvas(false);
-    const done = handleActionClick(CANVAS_TAB, { registry, kind: 'chrome' });
+    const done = handleActionClick(CANVAS_TAB, { registry });
 
     expect(sidePanel.open).toHaveBeenCalledWith({ windowId: 1 });
     expect(sidePanel.close).not.toHaveBeenCalled();
@@ -91,7 +90,7 @@ describe('handleActionClick', () => {
 
   it('closes the panel synchronously when it is open in the window', async () => {
     openWindows.add(1);
-    const done = handleActionClick(CANVAS_TAB, { registry, kind: 'chrome' });
+    const done = handleActionClick(CANVAS_TAB, { registry });
 
     expect(sidePanel.close).toHaveBeenCalledWith({ windowId: 1 });
     expect(sidePanel.open).not.toHaveBeenCalled();
@@ -102,7 +101,7 @@ describe('handleActionClick', () => {
   it('uses the state of the clicked window only', async () => {
     openWindows.add(2);
     pageIsCanvas(false);
-    await handleActionClick(CANVAS_TAB, { registry, kind: 'edge' });
+    await handleActionClick(CANVAS_TAB, { registry });
 
     expect(sidePanel.open).toHaveBeenCalledWith({ windowId: 1 });
   });
@@ -111,29 +110,14 @@ describe('handleActionClick', () => {
     sidePanel = installFakeSidePanel({ withClose: false });
     openWindows.add(1);
     pageIsCanvas(false);
-    await handleActionClick(CANVAS_TAB, { registry, kind: 'edge' });
+    await handleActionClick(CANVAS_TAB, { registry });
 
     expect(sidePanel.open).toHaveBeenCalledWith({ windowId: 1 });
   });
 
-  it('toggles the Firefox sidebar', async () => {
-    const sidebar = installFakeSidebarAction();
-    pageIsCanvas(false);
-
-    const opening = handleActionClick(CANVAS_TAB, { registry, kind: 'firefox' });
-    expect(sidebar.open).toHaveBeenCalledTimes(1);
-    await opening;
-
-    openWindows.add(1);
-    const closing = handleActionClick(CANVAS_TAB, { registry, kind: 'firefox' });
-    expect(sidebar.close).toHaveBeenCalledTimes(1);
-    await closing;
-    expect(sidePanel.open).not.toHaveBeenCalled();
-  });
-
   it('offers "Use this Canvas?" on a Canvas tab when no address is saved', async () => {
     pageIsCanvas(true);
-    await handleActionClick(CANVAS_TAB, { registry, kind: 'chrome' });
+    await handleActionClick(CANVAS_TAB, { registry });
 
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 3 },
@@ -148,7 +132,7 @@ describe('handleActionClick', () => {
   it('offers "Switch to this Canvas?" on another Canvas, including instructure.com hosts', async () => {
     await canvasOriginItem.setValue('https://canvas.school.edu');
     pageIsCanvas(true);
-    await handleActionClick(tab(4, 'https://other.instructure.com/'), { registry, kind: 'chrome' });
+    await handleActionClick(tab(4, 'https://other.instructure.com/'), { registry });
 
     expect(await offerItem.getValue()).toEqual({
       origin: 'https://other.instructure.com',
@@ -159,7 +143,7 @@ describe('handleActionClick', () => {
   it('skips the check on the saved Canvas and clears an old offer', async () => {
     await canvasOriginItem.setValue('https://canvas.school.edu');
     await offerItem.setValue({ origin: 'https://other.instructure.com', mode: 'switch' });
-    await handleActionClick(CANVAS_TAB, { registry, kind: 'chrome' });
+    await handleActionClick(CANVAS_TAB, { registry });
 
     expect(scripting.executeScript).not.toHaveBeenCalled();
     expect(await offerItem.getValue()).toBeNull();
@@ -167,7 +151,7 @@ describe('handleActionClick', () => {
 
   it('makes no offer on a page that is not Canvas', async () => {
     pageIsCanvas(false);
-    await handleActionClick(tab(5, 'https://news.example.com/'), { registry, kind: 'chrome' });
+    await handleActionClick(tab(5, 'https://news.example.com/'), { registry });
 
     expect(await offerItem.getValue()).toBeNull();
   });
@@ -176,20 +160,18 @@ describe('handleActionClick', () => {
     scripting.executeScript.mockRejectedValue(new Error('Cannot access contents of the page'));
     await handleActionClick(tab(6, 'https://chromewebstore.google.com/'), {
       registry,
-      kind: 'chrome',
     });
 
     expect(await offerItem.getValue()).toBeNull();
   });
 
   it('does not inject into browser pages, plain http pages or tabs without an id', async () => {
-    await handleActionClick(tab(7, 'chrome://newtab/'), { registry, kind: 'chrome' });
-    await handleActionClick(tab(8, 'http://canvas.school.edu/'), { registry, kind: 'chrome' });
+    await handleActionClick(tab(7, 'chrome://newtab/'), { registry });
+    await handleActionClick(tab(8, 'http://canvas.school.edu/'), { registry });
     await handleActionClick(
       { url: 'https://canvas.school.edu/', windowId: 1 } as Browser.tabs.Tab,
       {
         registry,
-        kind: 'chrome',
       },
     );
 
@@ -199,7 +181,7 @@ describe('handleActionClick', () => {
   it('still checks the tab when the panel fails to open', async () => {
     sidePanel.open.mockRejectedValueOnce(new Error('No user gesture'));
     pageIsCanvas(true);
-    await handleActionClick(CANVAS_TAB, { registry, kind: 'chrome' });
+    await handleActionClick(CANVAS_TAB, { registry });
 
     expect(console.warn).toHaveBeenCalledWith('[weekrow] panel open failed', expect.any(Error));
     expect(await offerItem.getValue()).toEqual({
@@ -224,7 +206,7 @@ describe('updateOffer', () => {
 describe('wireActionClick', () => {
   it('handles toolbar clicks until it is removed', async () => {
     pageIsCanvas(false);
-    const remove = wireActionClick({ registry, kind: 'chrome' });
+    const remove = wireActionClick({ registry });
 
     await fakeBrowser.action.onClicked.trigger(CANVAS_TAB);
     expect(sidePanel.open).toHaveBeenCalledTimes(1);

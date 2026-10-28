@@ -59,12 +59,6 @@ export function placementState(item: Pick<Item, 'facts'>, state: ItemState): Ite
   return isCheckedButMissing(item, state) ? 'open' : state;
 }
 
-/** True when the item has a date before now. */
-export function isPastDue(item: Item, now: Temporal.Instant): boolean {
-  const due = parseInstant(item.due);
-  return due !== null && Temporal.Instant.compare(due, now) < 0;
-}
-
 export interface ChipContext {
   now: Temporal.Instant;
   /** True in a view that has no Past due group, so the Past due chip shows. */
@@ -86,7 +80,8 @@ export function statusChip(item: Item, state: ItemState, context: ChipContext): 
     return { kind: 'teacher_status', name };
   }
   if (facts.latePolicyStatus === 'extended') return { kind: 'extended' };
-  const pastDue = isPastDue(item, context.now);
+  const due = parseInstant(item.due);
+  const pastDue = due !== null && Temporal.Instant.compare(due, context.now) < 0;
   if (pastDue && item.handIn === 'outside') {
     return { kind: 'cant_confirm', tool: item.toolName, onPaper: item.onPaper };
   }
@@ -139,16 +134,7 @@ export function doneChipsFor(item: Item, state: ItemState): DoneChip[] {
   return chips;
 }
 
-export function isWarningChip(chip: DoneChip): boolean {
-  switch (chip.kind) {
-    case 'missing_in_canvas':
-    case 'redo_requested':
-      return true;
-    case 'excused':
-      return false;
-  }
-}
-
+/** Whether a done item has a warning chip: every done chip except Excused is a warning. */
 export function hasWarningChip(chips: readonly DoneChip[]): boolean {
-  return chips.some(isWarningChip);
+  return chips.some((chip) => chip.kind !== 'excused');
 }

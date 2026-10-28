@@ -15,13 +15,10 @@ export type StorageAreaName = 'local' | 'session';
 export type ItemName = `${StorageAreaName}:${string}`;
 
 export interface StorageItem<T> {
-  readonly area: StorageAreaName;
-  readonly key: string;
   /** The stored value, or a fresh copy of the fallback when nothing is stored. */
   getValue(): Promise<T>;
   /** Stores the value. `null` removes the key. */
   setValue(value: T): Promise<void>;
-  removeValue(): Promise<void>;
   /**
    * Calls the listener when the stored value changes, with the fallback in place of a missing
    * value. Writes of an equal value do not call it. Returns a function that stops it.
@@ -53,22 +50,15 @@ export function defineItem<T>(
     return normalize === undefined ? (value as T) : normalize(value);
   };
 
-  const removeValue = async (): Promise<void> => {
-    await storageArea().remove(key);
-  };
-
   return {
-    area,
-    key,
     async getValue() {
       const stored: Record<string, unknown> = await storageArea().get(key);
       return orFallback(stored[key]);
     },
     async setValue(value) {
-      if (value === null || value === undefined) await removeValue();
+      if (value === null || value === undefined) await storageArea().remove(key);
       else await storageArea().set({ [key]: value });
     },
-    removeValue,
     watch(listener) {
       const onChanged = (
         changes: Record<string, { oldValue?: unknown; newValue?: unknown }>,

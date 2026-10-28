@@ -131,26 +131,12 @@ export function slotFor(
 }
 
 export function isLookAheadSlot(slot: Slot): boolean {
-  switch (slot.group) {
-    case 'day':
-    case 'done':
-      return slot.lookAhead;
-    case 'past_due':
-    case 'no_due_date':
-      return false;
-  }
+  return (slot.group === 'day' || slot.group === 'done') && slot.lookAhead;
 }
 
 /** Skip is offered on open items in Past due and No due date. */
 export function slotOffersSkip(slot: Slot): boolean {
-  switch (slot.group) {
-    case 'past_due':
-    case 'no_due_date':
-      return true;
-    case 'day':
-    case 'done':
-      return false;
-  }
+  return slot.group === 'past_due' || slot.group === 'no_due_date';
 }
 
 /** An item in the Past due group that counts as past due: shown in full or under "N older", not skipped. */

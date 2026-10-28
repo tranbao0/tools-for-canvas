@@ -18,6 +18,9 @@ describe('resolveWeekStartDay', () => {
     ['es-ES', 1],
     ['sv-x-k12', 1],
     ['zh-Hans', 1],
+    ['zh-Hant', 1],
+    ['zh-TW', 7],
+    ['zh-CN', 7],
     ['ja', 7],
     ['ko', 7],
     ['ar', 6],
@@ -54,6 +57,8 @@ describe('hourCycleFor', () => {
 
   it('falls back to the locale data for a language that Canvas does not list', () => {
     expect(hourCycleFor('bg')).toBe('h23');
+    expect(hourCycleFor('zh-TW')).toBe('h12');
+    expect(hourCycleFor('ta')).toBe('h12');
   });
 
   it('uses the 12-hour clock for an invalid tag', () => {

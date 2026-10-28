@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { collectItems, type Item } from '../../model';
+import { collectItems } from '../../model/normalize';
+import type { Item } from '../../model/types';
 import { IDS, SCENARIO } from '../../../../tests/fixtures/scenario';
 import {
   applyPatches,

@@ -27,21 +27,6 @@ export function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/**
- * Reads a `Retry-After` header as milliseconds from now.
- * Accepts delay seconds and HTTP dates. Returns undefined when the header is missing or unreadable.
- */
-export function parseRetryAfter(header: string | null, nowMs: number): number | undefined {
-  if (header === null) return undefined;
-  const value = header.trim();
-  if (/^\d+(\.\d+)?$/.test(value)) return Math.round(Number(value) * 1000);
-  // Every HTTP date format starts with a day name, such as "Tue, 27 Oct 2026 12:00:00 GMT".
-  if (!/^[A-Za-z]{3}/.test(value)) return undefined;
-  const dateMs = Date.parse(value);
-  if (Number.isNaN(dateMs)) return undefined;
-  return Math.max(0, dateMs - nowMs);
-}
-
 function isRateLimitResponse(status: number, bodyText: string): boolean {
   return status === 429 || (status === 403 && RATE_LIMIT_TEXT.test(bodyText));
 }
@@ -66,20 +51,9 @@ function kindForStatus(status: number): CanvasErrorKind {
 }
 
 /** Turns a failed HTTP response into a CanvasError. `status` is outside 200-299. */
-export function classifyHttpFailure(
-  status: number,
-  bodyText: string,
-  retryAfterHeader: string | null,
-  nowMs: number,
-): CanvasError {
+export function classifyHttpFailure(status: number, bodyText: string): CanvasError {
   if (isRateLimitResponse(status, bodyText)) {
-    const retryAfterMs = parseRetryAfter(retryAfterHeader, nowMs);
-    return new CanvasError(
-      'rate_limited',
-      `Canvas rate limit (HTTP ${status})`,
-      status,
-      retryAfterMs,
-    );
+    return new CanvasError('rate_limited', `Canvas rate limit (HTTP ${status})`, status);
   }
   if (status === 403) return classifyForbidden(bodyText);
   const kind = kindForStatus(status);

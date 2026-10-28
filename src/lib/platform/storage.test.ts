@@ -124,10 +124,8 @@ describe('defineItem', () => {
 
     await item.setValue('a');
     expect(await fakeBrowser.storage.session.get(null)).toEqual({ example: 'a' });
-    expect(item.area).toBe('session');
-    expect(item.key).toBe('example');
 
-    await item.removeValue();
+    await item.setValue(null);
     expect(await item.getValue()).toBeNull();
     expect(await fakeBrowser.storage.session.get(null)).toEqual({});
   });
@@ -138,7 +136,7 @@ describe('defineItem', () => {
 
     await changeMarkerItem.setValue(5);
     await changeMarkerItem.setValue(8);
-    await changeMarkerItem.removeValue();
+    await fakeBrowser.storage.local.remove('changeMarker');
 
     expect(listener.mock.calls).toEqual([
       [5, 0],

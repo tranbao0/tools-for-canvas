@@ -27,13 +27,15 @@ import {
 import type { TimeRange } from '../canvas/types';
 import {
   RECENT_PAST_DUE_DAYS,
-  courseHorizons,
-  earliestHorizon,
+  earlierOf,
+  formatInstant,
+  horizons,
+  laterOf,
   parseInstant,
   plainDateOf,
-  plannerRange,
   resolveTimeZone,
   sameTimeZone,
+  startOfDay,
   weekBounds,
 } from './time';
 import type {
@@ -63,20 +65,13 @@ function placementContext(
 ): PlacementContext {
   const { timeZone, weekStartDay } = basics;
   const now = Temporal.Instant.from(input.now);
-  const horizonParams = {
+  const { byCourse, earliest } = horizons({
     now: input.now,
     timeZone,
     weekStartDay,
     courses: input.courses,
     hiddenCourseIds: input.settings.hiddenCourseIds,
-  };
-  const horizons = new Map(
-    Object.entries(courseHorizons(horizonParams)).map(([id, value]) => [
-      id,
-      Temporal.Instant.from(value),
-    ]),
-  );
-  const fallbackHorizon = Temporal.Instant.from(earliestHorizon(horizonParams));
+  });
   return {
     timeZone,
     now,
@@ -89,8 +84,7 @@ function placementContext(
     weekStart: Temporal.PlainDate.from(bounds.weekStart),
     weekEnd: Temporal.PlainDate.from(bounds.weekEnd),
     isCurrentWeek: input.weekOffset === 0,
-    horizonFor: (courseId) =>
-      (courseId !== null ? horizons.get(courseId) : undefined) ?? fallbackHorizon,
+    horizonFor: (courseId) => (courseId !== null ? byCourse.get(courseId) : undefined) ?? earliest,
   };
 }
 
@@ -156,7 +150,7 @@ function ringEntry(placed: Placed): RingEntry {
   };
 }
 
-function emptyGroup(kind: GroupKind, date: string | null, collapsedByDefault: boolean): ListGroup {
+function emptyGroup(kind: GroupKind, date: string | null): ListGroup {
   return {
     kind,
     date,
@@ -165,7 +159,6 @@ function emptyGroup(kind: GroupKind, date: string | null, collapsedByDefault: bo
     skipped: [],
     doneUndated: [],
     warningCount: 0,
-    collapsedByDefault,
   };
 }
 
@@ -219,9 +212,9 @@ function buildGroups(
   context: PlacementContext,
   byCourse: ItemComparator,
 ): ListGroup[] {
-  const pastDue = emptyGroup('past_due', null, false);
-  const noDueDate = emptyGroup('no_due_date', null, true);
-  const done = emptyGroup('done', null, true);
+  const pastDue = emptyGroup('past_due', null);
+  const noDueDate = emptyGroup('no_due_date', null);
+  const done = emptyGroup('done', null);
   const days = new Map<string, ListGroup>();
 
   for (const { view, slot } of placed) {
@@ -237,7 +230,7 @@ function buildGroups(
         break;
       case 'day': {
         const group =
-          days.get(slot.date) ?? emptyGroup(dayGroupKind(slot.date, context), slot.date, false);
+          days.get(slot.date) ?? emptyGroup(dayGroupKind(slot.date, context), slot.date);
         group.items.push(view);
         days.set(slot.date, group);
         break;
@@ -286,7 +279,14 @@ export function resolveViewBasics(
   return { timeZone, locale, weekStartDay: resolveWeekStartDay(input.settings.weekStart, locale) };
 }
 
-/** The planner range that a view needs, from the same inputs as `buildWeekView`. */
+/**
+ * The planner range that a view needs, from the same inputs as `buildWeekView`. The data layer
+ * requests only the parts of it that its cache lacks.
+ * It starts at the earliest horizon of the visible courses, or at the start of the viewed week when
+ * that is earlier, so older-style peer reviews, which Canvas files under the reviewer's own due
+ * date, come back in their real week. It ends one millisecond before the end of the viewed week, or
+ * before the end of tomorrow when that is later.
+ */
 export function plannerRangeFor(
   input: Pick<
     ModelInput,
@@ -300,14 +300,29 @@ export function plannerRangeFor(
   >,
 ): TimeRange {
   const { timeZone, weekStartDay } = resolveViewBasics(input);
-  return plannerRange({
+  const bounds = weekBounds({
     now: input.now,
     timeZone,
     weekStartDay,
     weekOffset: input.weekOffset,
+  });
+  const { earliest } = horizons({
+    now: input.now,
+    timeZone,
+    weekStartDay,
     courses: input.courses,
     hiddenCourseIds: input.settings.hiddenCourseIds,
   });
+  const start = earlierOf(earliest, Temporal.Instant.from(bounds.start));
+  const endOfTomorrow = startOfDay(
+    Temporal.PlainDate.from(bounds.tomorrow).add({ days: 1 }),
+    timeZone,
+  );
+  const endExclusive = laterOf(Temporal.Instant.from(bounds.end), endOfTomorrow);
+  return {
+    start: formatInstant(start),
+    end: formatInstant(endExclusive.subtract({ milliseconds: 1 })),
+  };
 }
 
 /**
@@ -369,7 +384,6 @@ export function buildWeekView(input: ModelInput): WeekView {
     today: bounds.today,
     timeZone,
     browserTimeZoneDiffers: !sameTimeZone(timeZone, input.browserTimeZone),
-    locale,
     hourCycle: hourCycleFor(locale),
     groups,
     rings,

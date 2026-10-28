@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { isNativeTodoHidden } from '../inpage/nativeTodo';
+import { nativeTodoHidden } from '../inpage/testing/fixtures';
 import { DEFAULT_SETTINGS, type Settings, type SurfaceState } from '../model/types';
 import { hiddenCourseView, noopActions, readyState } from '../ui/testing/mocks';
-import { createInpageView, mountInpageList, scopeFor } from './inpage';
+import { createInpageView, mountInpageList } from './inpage';
 import type { SurfaceRuntime } from './runtime';
 import { HOST_RESET_CSS, SHADOW_HOST_NAME } from './shadowMount';
 
@@ -58,12 +58,12 @@ describe('createInpageView', () => {
 
     view.setContainer(container);
     expect(container.querySelector('[data-surface="inpage"]')).not.toBeNull();
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
 
     runtime.set(readyState());
     view.draw();
     expect(container.querySelectorAll('input[type="checkbox"]').length).toBeGreaterThan(0);
-    expect(isNativeTodoHidden()).toBe(true);
+    expect(nativeTodoHidden()).toBe(true);
 
     view.setContainer(null);
     expect(container.innerHTML).toBe('');
@@ -75,15 +75,15 @@ describe('createInpageView', () => {
     const runtime = fakeRuntime({ kind: 'loading' });
     const view = createInpageView(runtime);
     view.setContainer(container);
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
 
     runtime.set(readyState());
     view.draw();
-    expect(isNativeTodoHidden()).toBe(true);
+    expect(nativeTodoHidden()).toBe(true);
 
     runtime.set({ kind: 'signed_out', origin: 'https://a.edu', isFirefox: false, offer: null });
     view.draw();
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
   });
 
   it('keeps the native To Do on the home page of a hidden course', () => {
@@ -96,15 +96,7 @@ describe('createInpageView', () => {
     runtime.set(readyState({ view: hiddenCourseView() }));
     view.draw();
 
-    expect(isNativeTodoHidden()).toBe(false);
-  });
-});
-
-describe('scopeFor', () => {
-  it('scopes a course home page to its course and the dashboard to every course', () => {
-    const container = document.createElement('div');
-    expect(scopeFor({ layout: 'course_home', courseId: '101', container })).toBe('101');
-    expect(scopeFor({ layout: 'dashboard', courseId: null, container })).toBeNull();
+    expect(nativeTodoHidden()).toBe(false);
   });
 });
 
@@ -117,10 +109,7 @@ describe('mountInpageList', () => {
     const start = vi.spyOn(runtime, 'start');
     const stop = vi.spyOn(runtime, 'stop');
     const settings = settingsStore(initial);
-    const dispose = mountInpageList(
-      { layout: 'dashboard', courseId: null, container },
-      { runtime, settings },
-    );
+    const dispose = mountInpageList({ courseId: null, container }, { runtime, settings });
     const host = (): HTMLElement => container.querySelector(SHADOW_HOST_NAME) as HTMLElement;
     return { container, runtime, start, stop, settings, dispose, host };
   }
@@ -139,7 +128,7 @@ describe('mountInpageList', () => {
     expect(shadow.querySelector('style')?.textContent?.startsWith(HOST_RESET_CSS)).toBe(true);
     expect(shadow.querySelector('[data-surface="inpage"]')).not.toBeNull();
     expect(shadow.querySelectorAll('input[type="checkbox"]').length).toBeGreaterThan(0);
-    expect(isNativeTodoHidden()).toBe(true);
+    expect(nativeTodoHidden()).toBe(true);
     expect(start).toHaveBeenCalledTimes(1);
   });
 
@@ -198,7 +187,7 @@ describe('mountInpageList', () => {
 
     expect(document.getElementById('weekrow-inpage')).toBeNull();
     expect(document.querySelector(SHADOW_HOST_NAME)).toBeNull();
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
     expect(document.getElementById('right-side')).not.toBeNull();
     expect(stop).toHaveBeenCalledTimes(1);
     expect(settings.listeners.size).toBe(0);
@@ -215,7 +204,7 @@ describe('mountInpageList', () => {
     expect(() => dispose()).not.toThrow();
 
     expect(document.getElementById('weekrow-inpage')).toBeNull();
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
   });
 
   it('removes the list only once', () => {

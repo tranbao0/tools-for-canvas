@@ -70,7 +70,6 @@ export interface PlannerItemSpec {
   workflowState?: string;
   subAssignmentTag?: string;
   details?: string;
-  points?: number;
 }
 
 function hasSubmissionsBlock(spec: PlannerItemSpec): boolean {
@@ -112,7 +111,6 @@ export function plannerItem(spec: PlannerItemSpec): PlannerItem {
       todo_date: isNote || spec.type === 'wiki_page' ? spec.date : null,
       details: spec.details ?? null,
       assignment_id: spec.assignmentId ?? null,
-      points_possible: spec.points ?? null,
       due_at: spec.date,
       ...(spec.workflowState !== undefined ? { workflow_state: spec.workflowState } : {}),
       ...(spec.subAssignmentTag !== undefined ? { sub_assignment_tag: spec.subAssignmentTag } : {}),
@@ -136,7 +134,6 @@ export interface AssignmentSpec {
   toolUrl?: string | null;
   newQuiz?: boolean;
   hasSubAssignments?: boolean;
-  points?: number | null;
   submission?: Partial<Submission>;
 }
 
@@ -167,15 +164,12 @@ export function assignment(spec: AssignmentSpec): Assignment {
     due_at: spec.due ?? null,
     lock_at: spec.lockAt ?? null,
     unlock_at: spec.unlockAt ?? null,
-    points_possible: spec.points ?? 10,
     submission_types: spec.types,
     is_quiz_lti_assignment: spec.newQuiz ?? false,
     has_sub_assignments: spec.hasSubAssignments ?? false,
-    locked_for_user: false,
     html_url: `${ORIGIN}/courses/${spec.courseId}/assignments/${spec.id}`,
     external_tool_tag_attributes: spec.toolUrl ? { url: spec.toolUrl } : null,
     submission: submission(spec.id, { cached_due_date: spec.due ?? null, ...spec.submission }),
-    published: true,
   };
 }
 

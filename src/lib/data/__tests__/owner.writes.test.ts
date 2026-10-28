@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { moveToTodayTodoDate, todoDateFor } from '../../model';
+import { moveToTodayTodoDate, todoDateFor } from '../../model/tasks';
 import { canvasOriginItem, changeMarkerItem } from '../../platform/storage';
 import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
 import { sessionCacheItem, type SessionCache } from '../cache';

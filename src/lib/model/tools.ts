@@ -1,6 +1,7 @@
 /**
  * Readable names for outside tools, taken from the host of `external_tool_tag_attributes.url`.
  */
+import { isIpHost, parseUrl } from './url';
 
 /** Second-level labels of common public suffixes such as `co.uk` or `edu.au`. */
 const SECOND_LEVEL_SUFFIX_LABELS = new Set(['ac', 'co', 'com', 'edu', 'gov', 'net', 'org']);
@@ -21,17 +22,13 @@ const KNOWN_TOOLS: readonly { labels: readonly string[]; name: string }[] = [
   { labels: ['turnitin', 'turnitinuk'], name: 'Turnitin' },
 ];
 
-function isIpAddress(host: string): boolean {
-  return /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith('[');
-}
-
 /**
  * The label that names the site: `connect` in `connect.mheducation.com` is skipped, and
  * `example` is returned for both `example.com` and `lti.example.co.uk`.
  */
 export function registrableLabel(host: string): string | null {
   const labels = host.toLowerCase().replace(/\.$/, '').split('.').filter(Boolean);
-  if (labels.length === 0 || isIpAddress(host)) return null;
+  if (labels.length === 0 || isIpHost(host)) return null;
   if (labels.length === 1) return labels[0] ?? null;
   const last = labels[labels.length - 1] ?? '';
   const secondLast = labels[labels.length - 2] ?? '';
@@ -49,13 +46,9 @@ function titleCase(label: string): string {
 }
 
 function hostOf(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
-    return parsed.hostname || null;
-  } catch {
-    return null;
-  }
+  const parsed = parseUrl(url);
+  if (parsed === null || (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')) return null;
+  return parsed.hostname || null;
 }
 
 /**

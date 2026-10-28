@@ -30,7 +30,6 @@ function facts(partial: Partial<CanvasFacts> = {}): CanvasFacts {
     customGradeStatusId: null,
     lockAt: null,
     unlockAt: null,
-    lockedForUser: false,
     ...partial,
   };
 }
@@ -49,7 +48,6 @@ function item(partial: Partial<Omit<Item, 'facts'>> & { facts?: Partial<CanvasFa
     contextLabel: 'Biology',
     color: '#0076B8',
     due: FUTURE,
-    points: 10,
     url: 'https://school.instructure.com/courses/101/assignments/1',
     handIn: 'canvas',
     toolName: null,

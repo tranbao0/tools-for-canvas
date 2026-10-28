@@ -12,18 +12,10 @@ import type { RequestPriority } from '../canvas/limiter';
 import type { CanvasApi, PlannerNote, PlannerOverride, TimeRange } from '../canvas/types';
 import type { ProbeResult } from '../canvas/probe';
 import { canAutoSaveOrigin } from '../inpage/origin';
-import {
-  assignmentIdsToLookup,
-  isCheckedButMissing,
-  itemState,
-  moveToTodayTodoDate,
-  redoBlocksDone,
-  todoDateFor,
-  type Item,
-  type Offer,
-  type Settings,
-  type SurfaceState,
-} from '../model';
+import { assignmentIdsToLookup } from '../model/normalize';
+import { isCheckedButMissing, itemState, redoBlocksDone } from '../model/rules';
+import { moveToTodayTodoDate, todoDateFor } from '../model/tasks';
+import type { Item, Offer, Settings, SurfaceState } from '../model/types';
 import { isInstructureHost, normalizeAddress, originMatchPattern } from '../platform/address';
 import type { SeenNotes } from '../platform/storage';
 import type { TaskInput } from '../ui/contract';

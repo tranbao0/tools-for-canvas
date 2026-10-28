@@ -109,11 +109,9 @@ const ASSIGNMENT_FIELDS = [
   'due_at',
   'lock_at',
   'unlock_at',
-  'points_possible',
   'submission_types',
   'is_quiz_lti_assignment',
   'has_sub_assignments',
-  'locked_for_user',
   'html_url',
 ] as const satisfies readonly (keyof AssignmentData)[];
 

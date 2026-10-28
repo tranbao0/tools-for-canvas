@@ -174,11 +174,6 @@ export function fakePort(name: string, sender?: Browser.runtime.MessageSender): 
   return port;
 }
 
-/** Sends a message from the other end of the port. */
-export function receive(port: FakePort, message: unknown): void {
-  port.onMessage.trigger(message, port);
-}
-
 /** Closes the port from the other end. */
 export function closeRemote(port: FakePort): void {
   port.onDisconnect.trigger(port);

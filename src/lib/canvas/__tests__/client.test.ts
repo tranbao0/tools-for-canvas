@@ -603,9 +603,9 @@ describe('request priority', () => {
     const calls = [
       ...['1', '2', '3'].map((id) => client.listUndatedAssignments(id)),
       // A load ahead, a refresh round and a week that the student opened.
-      client.withPriority('low').listUndatedAssignments('7'),
+      client.withPriority(() => 'low').listUndatedAssignments('7'),
       client.listUndatedAssignments('8'),
-      client.withPriority('high').listUndatedAssignments('9'),
+      client.withPriority(() => 'high').listUndatedAssignments('9'),
     ];
 
     await settleUntil(() => order.length === 3);
@@ -618,8 +618,7 @@ describe('request priority', () => {
     }
     await Promise.all(calls);
     expect(order).toEqual(['1', '2', '3', '9', '8', '7']);
-    expect(client.withPriority('low')).toBe(client.withPriority('low'));
-    expect(client.withPriority('normal').origin).toBe(client.origin);
+    expect(client.withPriority(() => 'normal').origin).toBe(client.origin);
   });
 });
 
@@ -669,20 +668,6 @@ describe('rate limit backoff', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await expect(result).resolves.toMatchObject({ id: '1' });
     expect(state.calls).toBe(2);
-  });
-
-  it('honors Retry-After', async () => {
-    useRetryFakeTimers();
-    const state = rateLimitedThenOk(1, () =>
-      HttpResponse.text('Rate Limit Exceeded', { status: 429, headers: { 'Retry-After': '5' } }),
-    );
-    const result = testClient().getSelf();
-    await settleUntil(() => state.calls === 1);
-    await vi.advanceTimersByTimeAsync(4999);
-    await settle();
-    expect(state.calls).toBe(1);
-    await vi.advanceTimersByTimeAsync(1);
-    await expect(result).resolves.toMatchObject({ id: '1' });
   });
 
   it('gives up after 3 retries', async () => {

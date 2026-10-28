@@ -5,12 +5,16 @@ import { mkView, readyState } from '../ui/testing/mocks';
 import {
   HIDE_NATIVE_TODO_STYLE_ID,
   hideNativeTodo,
-  isNativeTodoHidden,
-  nativeTodoAction,
   showNativeTodo,
   syncNativeTodo,
 } from './nativeTodo';
-import { BOTH_LISTS_SIDEBAR, CARD_VIEW, injectSidebar, loadPage } from './testing/fixtures';
+import {
+  BOTH_LISTS_SIDEBAR,
+  CARD_VIEW,
+  injectSidebar,
+  loadPage,
+  nativeTodoHidden,
+} from './testing/fixtures';
 
 const ORIGIN = 'https://canvas.school.edu';
 
@@ -44,7 +48,7 @@ describe('hideNativeTodo', () => {
 
     expect(document.querySelectorAll(`#${HIDE_NATIVE_TODO_STYLE_ID}`)).toHaveLength(1);
     expect(document.getElementById(HIDE_NATIVE_TODO_STYLE_ID)?.parentElement).toBe(document.head);
-    expect(isNativeTodoHidden()).toBe(true);
+    expect(nativeTodoHidden()).toBe(true);
   });
 
   it('shows the student To Do again', () => {
@@ -53,13 +57,14 @@ describe('hideNativeTodo', () => {
     hideNativeTodo();
     showNativeTodo();
 
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
     expect(display('.Sidebar__TodoListContainer')).not.toBe('none');
   });
 });
 
-describe('nativeTodoAction', () => {
-  const cases: [SurfaceState, string][] = [
+describe('syncNativeTodo', () => {
+  type Action = 'hide' | 'show' | 'keep';
+  const cases: [SurfaceState, Action][] = [
     [{ kind: 'loading' }, 'keep'],
     [{ kind: 'checking', origin: ORIGIN, savedOrigin: null }, 'keep'],
     [{ kind: 'no_courses', origin: ORIGIN, offer: null, allCourses: [] }, 'hide'],
@@ -70,35 +75,34 @@ describe('nativeTodoAction', () => {
     [{ kind: 'unreachable', origin: ORIGIN, savedOrigin: null }, 'show'],
     [{ kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: null }, 'show'],
     [{ kind: 'cant_load', origin: ORIGIN, offline: true, savedOrigin: null, offer: null }, 'show'],
+    [readyState(), 'hide'],
+    [readyState({ view: mkView({ scopeCourseId: '101' }) }), 'hide'],
+    [
+      readyState({
+        view: mkView({ scopeCourseId: '101', scopeCourseHidden: true, groups: [], rings: [] }),
+      }),
+      'show',
+    ],
   ];
 
   it.each(cases)('maps %j to %s', (state, action) => {
-    expect(nativeTodoAction(state)).toBe(action);
+    for (const before of [false, true]) {
+      showNativeTodo();
+      if (before) hideNativeTodo();
+      syncNativeTodo(state);
+      expect(nativeTodoHidden()).toBe(action === 'keep' ? before : action === 'hide');
+    }
   });
 
-  it('hides it for a rendered list', () => {
-    expect(nativeTodoAction(readyState())).toBe('hide');
-    expect(nativeTodoAction(readyState({ view: mkView({ scopeCourseId: '101' }) }))).toBe('hide');
-  });
-
-  it('shows it on the home page of a hidden course, where the surface shows only a note', () => {
-    const hidden = readyState({
-      view: mkView({ scopeCourseId: '101', scopeCourseHidden: true, groups: [], rings: [] }),
-    });
-    expect(nativeTodoAction(hidden)).toBe('show');
-  });
-});
-
-describe('syncNativeTodo', () => {
   it('hides after the first successful render and shows again on an error', () => {
     syncNativeTodo({ kind: 'loading' });
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
 
     syncNativeTodo({ kind: 'no_courses', origin: ORIGIN, offer: null, allCourses: [] });
-    expect(isNativeTodoHidden()).toBe(true);
+    expect(nativeTodoHidden()).toBe(true);
 
     syncNativeTodo({ kind: 'checking', origin: ORIGIN, savedOrigin: null });
-    expect(isNativeTodoHidden()).toBe(true);
+    expect(nativeTodoHidden()).toBe(true);
 
     syncNativeTodo({
       kind: 'cant_load',
@@ -107,14 +111,14 @@ describe('syncNativeTodo', () => {
       savedOrigin: null,
       offer: null,
     });
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
   });
 
   it('shows it again when a rendered course turns out to be hidden', () => {
     syncNativeTodo(readyState());
-    expect(isNativeTodoHidden()).toBe(true);
+    expect(nativeTodoHidden()).toBe(true);
 
     syncNativeTodo(readyState({ view: mkView({ scopeCourseId: '101', scopeCourseHidden: true }) }));
-    expect(isNativeTodoHidden()).toBe(false);
+    expect(nativeTodoHidden()).toBe(false);
   });
 });
