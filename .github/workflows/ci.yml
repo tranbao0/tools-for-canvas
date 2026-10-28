@@ -91,6 +91,23 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Gallery of every surface state
+        id: gallery
+        # Renders every surface state from mock data at 170, 240, 360 and 480 px in light and
+        # dark, and fails on any page error. The images are for a person to review.
+        run: npm run test:gallery
+        env:
+          WEEKROW_GALLERY_OUT: gallery
+
+      - name: Upload the gallery
+        if: ${{ !cancelled() && steps.gallery.conclusion != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gallery
+          path: gallery/
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Firefox smoke test
         # The runner image ships Firefox and geckodriver; GECKOWEBDRIVER points to the driver folder.
         run: |

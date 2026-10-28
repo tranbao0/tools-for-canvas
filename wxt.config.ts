@@ -31,6 +31,7 @@ export default defineConfig({
     excludeSources: [
       'test-results/**',
       'screenshots/**',
+      'gallery/**',
       'playwright-report/**',
       'coverage/**',
       'web-ext-artifacts/**',

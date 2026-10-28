@@ -28,6 +28,7 @@
     "test:scripts": "node --test \"scripts/**/*.test.mjs\"",
     "test:e2e": "playwright test",
     "test:firefox": "node tests/firefox/smoke.mjs",
+    "test:gallery": "node tests/gallery/screenshot.mjs",
     "setup:firefox": "bash tests/firefox/install-firefox.sh",
     "check:size": "node scripts/check-size.mjs",
     "check:urls": "node scripts/check-urls.mjs",
