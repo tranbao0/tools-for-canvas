@@ -255,10 +255,16 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   An adapter that finds no anchor does nothing.
 - K-5 course home pages have no right column, so the adapter does nothing there [13].
 - The in-page list is a glance, not the full list.
-  A group with more than 4 items shows its first 3, and a "Show N more" link opens the rest in place.
-  A link that would hide only one item takes the same space as that item, so smaller groups show in full.
-  The side panel shows every item.
-  Without this cap, a full week pushes Coming Up and Recent Feedback far down the page.
+  The owner chose this shape after a design review on 2026-10-28 measured the list at about 1,380 px, which pushed Recent Feedback below 1,700 px.
+  - Past due shows as one summary line, such as "11 past due", with the count of Missing items when there are any.
+    A click opens the group in place, with the same rows, "N older" and "Skip all older" as in the side panel.
+  - Today and Tomorrow show in full.
+    A group with more than 4 items shows its first 3, and a "Show N more" link opens the rest in place.
+    A link that would hide only one item takes the same space as that item, so smaller groups show in full.
+  - The later days of the week, No due date and Done sit behind one link, such as "Rest of the week (9)", that opens them in place.
+  - A week with nothing due today or tomorrow shows the next day that has work, so the glance is never empty while work is due.
+  - What the student opened stays open while the page stays open.
+  - The side panel shows every item, with no summary line.
 - On a course home page, the rows do not repeat the course name, because the whole list is that course.
 
 **Widths:**
@@ -632,7 +638,12 @@ Availability is a separate small marker next to the status chip, because it answ
     A long course code wraps to a second line and does not shorten.
   - A click on a ring or a legend row filters the list, as before.
   - When a check changes a count, the ring arc grows to its new length, with no motion under reduced motion.
-  - With more classes than the chart holds legibly (more than 6), the chart shows the 6 with the most work this week, and the legend lists all.
+  - The chart draws at most 4 rings when the surface is narrower than 280 px (the in-page column and narrow panels), and at most 6 when it is wider.
+    It draws the classes with the most work this week, and a "+N" mark in the center area names how many more the legend lists.
+  - The ring stroke stays thick as the count grows: the chart widens the stroke and shrinks the center instead of thinning the rings.
+  - Classes with no work this week stay out of the chart and show only in the legend.
+  - A week with no work at all shows no ring: the chart place shows a short line, such as "Nothing due this week", or a check mark when all work is done.
+  - The legend's past-due count is a labeled badge, such as "1 late", not a bare number.
 - Ring colors come from `GET /api/v1/users/self/colors` [10].
   - A course with no saved color gets one of Canvas's 12 default dashboard colors, picked by a hash of the course id [10].
   - The extension never writes a color back to Canvas.
