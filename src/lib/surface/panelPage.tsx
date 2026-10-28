@@ -2,13 +2,12 @@
  * The side panel page. See docs/design.md, decisions 4, 5, 18 and 19.
  */
 import { browser } from 'wxt/browser';
-import { BROWSER_KIND } from '../platform/browserKind';
 import { logFailure } from '../platform/log';
 import { connectPanelPort } from '../platform/panelPort';
 import { settingsItem } from '../platform/storage';
 import { App } from '../ui/App';
 import { installStyles } from '../ui/styles';
-import { actionShortcut, extensionPageHost } from './hosts';
+import { extensionPageHost } from './hosts';
 import { mountRuntime } from './mountRuntime';
 import { createSurfaceRuntime, type SurfaceRuntime } from './runtime';
 import { followExtensionPageTheme } from './theme';
@@ -25,23 +24,9 @@ export function startPanel(root: HTMLElement): SurfaceRuntime {
     surface: 'panel',
     scopeCourseId: null,
   });
-  let shortcut: string | null = null;
-  const draw = mountRuntime(root, runtime, (state, settings) => (
-    <App
-      surface="panel"
-      state={state}
-      actions={runtime.actions}
-      browser={BROWSER_KIND}
-      shortcut={shortcut}
-      settings={settings}
-    />
+  mountRuntime(root, runtime, (state, settings) => (
+    <App surface="panel" state={state} actions={runtime.actions} settings={settings} />
   ));
-  actionShortcut()
-    .then((value) => {
-      shortcut = value;
-      draw();
-    })
-    .catch((error: unknown) => logFailure('shortcut', error));
   browser.windows
     .getCurrent()
     .then((win) => {

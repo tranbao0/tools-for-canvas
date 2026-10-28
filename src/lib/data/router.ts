@@ -37,7 +37,7 @@ export interface RouterHost {
   isExtensionPage(sender: SenderInfo): boolean;
   /** The saved Canvas address. */
   savedOrigin(): Promise<string | null>;
-  /** Opens an extension page that a content script cannot open itself. */
+  /** Opens the welcome page, which a content script cannot open itself. */
   openPage(page: OpenPageMessage['page']): Promise<void>;
 }
 
@@ -133,15 +133,8 @@ export const browserRouterHost: RouterHost = {
     return sender.url?.startsWith(browser.runtime.getURL('/')) === true;
   },
   savedOrigin: () => canvasOriginItem.getValue(),
-  async openPage(page) {
-    switch (page) {
-      case 'settings':
-        await browser.runtime.openOptionsPage();
-        return;
-      case 'welcome':
-        await browser.tabs.create({ url: browser.runtime.getURL('/welcome.html') });
-        return;
-    }
+  async openPage() {
+    await browser.tabs.create({ url: browser.runtime.getURL('/welcome.html') });
   },
 };
 

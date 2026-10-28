@@ -2,26 +2,24 @@
  * Rules for extension pages only: the page background and scroll bars, the side panel layout
  * and the "Use this Canvas?" offer. The in-page shadow root never loads them, which keeps the
  * content script small (design decision 12). Extension pages load this sheet after styles.css.
- * The page follows the theme of its view: data-theme on the root or on an ancestor of the view.
+ * The page follows the theme of its view: data-theme on the page root element.
  * The settings and welcome pages add their own layout rules from page.css.
  */
 
-:root:has(.wr[data-surface='panel'], .wr[data-surface='page']) {
+:root {
   color-scheme: light dark;
   scrollbar-color: light-dark(#c7cdd1, #4a5b68) transparent;
 }
 
-:root[data-theme='dark'],
-:root:has([data-theme='dark'] .wr, .wr[data-theme='dark']) {
+:root[data-theme='dark'] {
   color-scheme: dark;
 }
 
-:root[data-theme='light'],
-:root:has([data-theme='light'] .wr, .wr[data-theme='light']) {
+:root[data-theme='light'] {
   color-scheme: light;
 }
 
-:root:has(.wr[data-surface='panel'], .wr[data-surface='page']) body {
+body {
   margin: 0;
   background: light-dark(#fff, #1b2330);
 }
@@ -62,16 +60,7 @@
   padding-top: 12px;
 }
 
-/* The "Use this Canvas?" offer shows in the side panel only (design decision 4). */
-
-.wr-offer {
-  display: grid;
-  justify-items: start;
-  gap: 8px;
-  padding: 8px 12px;
-  border: 1px solid var(--wr-brand);
-  border-radius: 4px;
-}
+/* The "Use this Canvas?" offer shows in the side panel only (design decision 4). It is a .wr-box. */
 
 .wr-offer-title {
   font-weight: 700;

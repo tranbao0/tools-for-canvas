@@ -3,14 +3,13 @@
  *
  * In the extension, `t` reads text through `browser.i18n.getMessage`.
  * Unit tests and the gallery have no working `browser.i18n`, so there `t` reads the same file
- * from the bundle and applies the same placeholder rules. Extension builds leave that copy out.
+ * from the bundle and applies the same substitution rules. Extension builds leave that copy out.
  */
 import { browser } from 'wxt/browser';
 import bundled from '../public/_locales/en/messages.json';
 
 interface MessageEntry {
   message: string;
-  placeholders?: Record<string, { content: string }>;
 }
 
 export type MessageKey = keyof typeof bundled;
@@ -50,26 +49,10 @@ function getNative(): GetMessage | null {
   return nativeGetMessage;
 }
 
-/**
- * Applies the `messages.json` substitution rules: `$name$` placeholders whose content
- * refers to `$1`...`$9`, direct `$1`...`$9`, and `$$` for a literal dollar sign.
- */
+/** Applies the `messages.json` substitution rules: direct `$1`...`$9`, and `$$` for a dollar sign. */
 export function formatMessage(entry: MessageEntry, substitutions: readonly string[]): string {
-  const positional = (index: string): string => substitutions[Number(index) - 1] ?? '';
-  const expandContent = (content: string): string =>
-    content.replace(/\$\$|\$([1-9])/g, (token, index: string | undefined) =>
-      index === undefined ? '$' : positional(index),
-    );
-  return entry.message.replace(
-    /\$\$|\$([A-Za-z0-9_@]+)\$|\$([1-9])/g,
-    (token, name: string | undefined, index: string | undefined) => {
-      if (name !== undefined) {
-        const placeholder = entry.placeholders?.[name.toLowerCase()];
-        return placeholder ? expandContent(placeholder.content) : token;
-      }
-      if (index !== undefined) return positional(index);
-      return '$';
-    },
+  return entry.message.replace(/\$\$|\$([1-9])/g, (_token, index: string | undefined) =>
+    index === undefined ? '$' : (substitutions[Number(index) - 1] ?? ''),
   );
 }
 

@@ -116,7 +116,7 @@ describe('routeDataMessage', () => {
       { type: 'weekrow:refresh', reason: 'retry', surface: 'inpage' },
       { type: 'weekrow:action', action: { kind: 'skip', keys: ['assignment:1'] } },
       { type: 'weekrow:change-address' },
-      { type: 'weekrow:open-page', page: 'settings' },
+      { type: 'weekrow:open-page', page: 'welcome' },
     ];
     for (const message of messages) {
       await expect(routeDataMessage(owner, message, sender, host)).rejects.toThrow();
@@ -178,14 +178,14 @@ describe('routeDataMessage', () => {
     expect(owner.setup).toHaveBeenCalledTimes(1);
   });
 
-  it('opens an extension page for a content script', async () => {
+  it('opens the welcome page for a content script', async () => {
     await routeDataMessage(
       owner,
-      { type: 'weekrow:open-page', page: 'settings' },
+      { type: 'weekrow:open-page', page: 'welcome' },
       CONTENT_SCRIPT,
       host,
     );
-    expect(host.openPage).toHaveBeenCalledWith('settings');
+    expect(host.openPage).toHaveBeenCalledWith('welcome');
   });
 
   it('does not answer panel port messages or unknown messages', () => {

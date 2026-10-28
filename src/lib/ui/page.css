@@ -1,6 +1,6 @@
 /*
  * The layout of the settings and welcome pages: a Canvas content page with a page heading,
- * numbered first-run steps and key caps. Only those two pages render these rules (PageStyle), so
+ * numbered first-run steps and key caps. Only those two pages load these rules (PAGE_LAYOUT_CSS), so
  * the side panel and the content script never carry them (design decision 12).
  */
 

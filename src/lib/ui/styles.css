@@ -7,7 +7,7 @@
  * rows, pills, buttons, check boxes and toggles. Custom properties cross the shadow boundary, so
  * the in-page list reads the school's brand colors from the Canvas page.
  *
- * Theme: data-theme="light" or "dark" on the root, on an ancestor or on the shadow host sets it.
+ * Theme: data-theme="light" or "dark" on the list root or on an ancestor of it sets it.
  * With no data-theme, the colors follow prefers-color-scheme. Dark values come from Canvas's
  * dark widget dashboard; borders that must stand out use #6a7883 for 3:1 contrast.
  *
@@ -57,15 +57,11 @@
   -webkit-font-smoothing: antialiased;
 }
 
-[data-theme='dark'] .wr,
-.wr[data-theme='dark'],
-:host([data-theme='dark']) .wr {
+[data-theme='dark'] .wr {
   color-scheme: dark;
 }
 
-[data-theme='light'] .wr,
-.wr[data-theme='light'],
-:host([data-theme='light']) .wr {
+[data-theme='light'] .wr {
   color-scheme: light;
 }
 
@@ -136,6 +132,10 @@
 .wr-icon {
   display: block;
   flex: none;
+}
+
+.wr-flip {
+  transform: scaleX(-1);
 }
 
 .wr-sr {
@@ -366,7 +366,7 @@
   margin-bottom: 8px;
 }
 
-.wr-note {
+.wr-box {
   display: grid;
   justify-items: start;
   gap: 8px;
@@ -497,12 +497,7 @@
 }
 
 .wr-filter {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 8px;
   margin-bottom: 2px;
-  color: var(--wr-text-2);
 }
 
 /* Groups */
@@ -536,12 +531,6 @@
 .wr-count {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
-}
-
-.wr-warn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
 }
 
 .wr-group-toggle {
@@ -796,15 +785,10 @@ button.wr-marker:hover {
   color: var(--wr-text);
 }
 
-/* Footer line and the Undo notice, an InstUI alert. */
+/* The footer line and the Undo notice, an InstUI alert. */
 
 .wr-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 8px;
   margin-top: 10px;
-  color: var(--wr-text-2);
 }
 
 .wr-dock {
@@ -1185,7 +1169,6 @@ input:checked + .wr-switch-track > .wr-switch-knob {
     animation: none;
   }
 
-  .wr-ring,
   .wr-ring-arc {
     transition: none;
   }

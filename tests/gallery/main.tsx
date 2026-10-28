@@ -11,7 +11,11 @@
  */
 import { render, type ComponentChildren, type VNode } from 'preact';
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
-import { App, APP_CSS, installStyles, SettingsView, WelcomeView } from '../../src/lib/ui';
+import { App } from '../../src/lib/ui/App';
+import { SettingsView } from '../../src/lib/ui/SettingsView';
+import { PAGE_LAYOUT_CSS } from '../../src/lib/ui/pageLayout';
+import { APP_CSS, installStyles } from '../../src/lib/ui/styles';
+import { WelcomeView } from '../../src/lib/ui/WelcomeView';
 import type { AppProps, SurfaceKind } from '../../src/lib/ui/contract';
 import { attachShadowMount, type ShadowMount } from '../../src/lib/surface/shadowMount';
 import {
@@ -642,6 +646,6 @@ function Gallery() {
   );
 }
 
-installStyles(document);
+installStyles(document, PAGE_LAYOUT_CSS);
 const root = document.getElementById('gallery');
 if (root) render(<Gallery />, root);

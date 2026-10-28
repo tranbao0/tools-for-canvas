@@ -12,26 +12,10 @@
     "message": "Weekly list"
   },
   "weekRange": {
-    "message": "$START$ - $END$",
-    "placeholders": {
-      "start": {
-        "content": "$1"
-      },
-      "end": {
-        "content": "$2"
-      }
-    }
+    "message": "$1 - $2"
   },
   "weekRangeLong": {
-    "message": "Week of $START$ to $END$",
-    "placeholders": {
-      "start": {
-        "content": "$1"
-      },
-      "end": {
-        "content": "$2"
-      }
-    }
+    "message": "Week of $1 to $2"
   },
   "prevWeek": {
     "message": "Previous week"
@@ -58,20 +42,10 @@
     "message": "Loading settings"
   },
   "timesIn": {
-    "message": "Times in $ZONE$",
-    "placeholders": {
-      "zone": {
-        "content": "$1"
-      }
-    }
+    "message": "Times in $1"
   },
   "timesInLong": {
-    "message": "Times are in the Canvas time zone, $ZONE$.",
-    "placeholders": {
-      "zone": {
-        "content": "$1"
-      }
-    }
+    "message": "Times are in the Canvas time zone, $1."
   },
   "refreshing": {
     "message": "Refreshing"
@@ -80,79 +54,25 @@
     "message": "Progress by course"
   },
   "ringLabel": {
-    "message": "$COURSE$: $DONE$ of $TOTAL$ done this week",
-    "placeholders": {
-      "course": {
-        "content": "$1"
-      },
-      "done": {
-        "content": "$2"
-      },
-      "total": {
-        "content": "$3"
-      }
-    }
+    "message": "$1: $2 of $3 done this week"
   },
   "ringLabelPastDue": {
-    "message": "$COURSE$: $DONE$ of $TOTAL$ done this week, $PAST$ past due",
-    "placeholders": {
-      "course": {
-        "content": "$1"
-      },
-      "done": {
-        "content": "$2"
-      },
-      "total": {
-        "content": "$3"
-      },
-      "past": {
-        "content": "$4"
-      }
-    }
+    "message": "$1: $2 of $3 done this week, $4 past due"
   },
   "weekProgress": {
-    "message": "This week: $DONE$ of $TOTAL$ done, $PERCENT$ percent",
-    "placeholders": {
-      "done": {
-        "content": "$1"
-      },
-      "total": {
-        "content": "$2"
-      },
-      "percent": {
-        "content": "$3"
-      }
-    }
+    "message": "This week: $1 of $2 done, $3 percent"
   },
   "weekComplete": {
-    "message": "This week: all $TOTAL$ done",
-    "placeholders": {
-      "total": {
-        "content": "$1"
-      }
-    }
+    "message": "This week: all $1 done"
   },
   "ringCourseName": {
-    "message": "$CODE$, $NAME$",
-    "placeholders": {
-      "code": {
-        "content": "$1"
-      },
-      "name": {
-        "content": "$2"
-      }
-    }
+    "message": "$1, $2"
   },
   "personal": {
     "message": "Personal"
   },
   "filterShowing": {
-    "message": "Showing $COURSE$ only.",
-    "placeholders": {
-      "course": {
-        "content": "$1"
-      }
-    }
+    "message": "Showing $1 only."
   },
   "filterShowingOne": {
     "message": "Showing one course only."
@@ -179,158 +99,70 @@
     "message": "Nothing due this week"
   },
   "itemCount_one": {
-    "message": "$COUNT$ item",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 item"
   },
   "itemCount_other": {
-    "message": "$COUNT$ items",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 items"
   },
   "olderCount_one": {
-    "message": "$COUNT$ older",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 older"
   },
   "olderCount_other": {
-    "message": "$COUNT$ older",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 older"
   },
   "showMore": {
-    "message": "Show $COUNT$ more",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "Show $1 more"
   },
   "skipAllOlder": {
     "message": "Skip all older"
   },
   "skippedCount_one": {
-    "message": "$COUNT$ skipped",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 skipped"
   },
   "skippedCount_other": {
-    "message": "$COUNT$ skipped",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 skipped"
   },
   "doneCount_one": {
-    "message": "$COUNT$ done",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 done"
   },
   "doneCount_other": {
-    "message": "$COUNT$ done",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 done"
   },
   "warningCount_one": {
-    "message": "$COUNT$ warning",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 warning"
   },
   "warningCount_other": {
-    "message": "$COUNT$ warnings",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 warnings"
   },
   "doneCheckbox": {
-    "message": "Done: $TITLE$",
-    "placeholders": {
-      "title": {
-        "content": "$1"
-      }
-    }
+    "message": "Done: $1"
   },
   "skip": {
     "message": "Skip"
   },
   "skipItem": {
-    "message": "Skip $TITLE$",
-    "placeholders": {
-      "title": {
-        "content": "$1"
-      }
-    }
+    "message": "Skip $1"
   },
   "unskip": {
     "message": "Unskip"
   },
   "unskipItem": {
-    "message": "Unskip $TITLE$",
-    "placeholders": {
-      "title": {
-        "content": "$1"
-      }
-    }
+    "message": "Unskip $1"
   },
   "moveToToday": {
     "message": "Move to today"
   },
   "moveItemToToday": {
-    "message": "Move $TITLE$ to today",
-    "placeholders": {
-      "title": {
-        "content": "$1"
-      }
-    }
+    "message": "Move $1 to today"
   },
   "editTaskItem": {
-    "message": "Edit task: $TITLE$",
-    "placeholders": {
-      "title": {
-        "content": "$1"
-      }
-    }
+    "message": "Edit task: $1"
   },
   "redoTip": {
     "message": "Resubmit in Canvas to finish this."
   },
   "dateTime": {
-    "message": "$DATE$, $TIME$",
-    "placeholders": {
-      "date": {
-        "content": "$1"
-      },
-      "time": {
-        "content": "$2"
-      }
-    }
+    "message": "$1, $2"
   },
   "checkpointReplyToTopic": {
     "message": "Reply to topic"
@@ -340,14 +172,6 @@
   },
   "peerReviewSubtitle": {
     "message": "Peer review"
-  },
-  "showTip": {
-    "message": "Show details: $CHIP$",
-    "placeholders": {
-      "chip": {
-        "content": "$1"
-      }
-    }
   },
   "chipSkipped": {
     "message": "Skipped"
@@ -404,12 +228,7 @@
     "message": "Your teacher excused this work."
   },
   "markerOpens": {
-    "message": "Opens $DATE$",
-    "placeholders": {
-      "date": {
-        "content": "$1"
-      }
-    }
+    "message": "Opens $1"
   },
   "markerClosed": {
     "message": "Closed"
@@ -418,12 +237,7 @@
     "message": "Canvas no longer accepts a hand-in."
   },
   "staleLine": {
-    "message": "Couldn't refresh. Showing your list from $TIME$.",
-    "placeholders": {
-      "time": {
-        "content": "$1"
-      }
-    }
+    "message": "Couldn't refresh. Showing your list from $1."
   },
   "offline": {
     "message": "You're offline."
@@ -432,23 +246,10 @@
     "message": "Retry"
   },
   "skippedCourses": {
-    "message": "Couldn't load $COURSES$.",
-    "placeholders": {
-      "courses": {
-        "content": "$1"
-      }
-    }
+    "message": "Couldn't load $1."
   },
   "listAnd": {
-    "message": "$FIRST$ and $LAST$",
-    "placeholders": {
-      "first": {
-        "content": "$1"
-      },
-      "last": {
-        "content": "$2"
-      }
-    }
+    "message": "$1 and $2"
   },
   "offerUse": {
     "message": "Use this Canvas?"
@@ -469,20 +270,10 @@
     "message": "Your school limits the Canvas planner. Pages, ungraded discussions, ungraded quizzes, peer reviews, discussions with reply due dates and your own tasks can't show."
   },
   "hiddenCourses_one": {
-    "message": "$COUNT$ course hidden",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 course hidden"
   },
   "hiddenCourses_other": {
-    "message": "$COUNT$ courses hidden",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 courses hidden"
   },
   "hiddenCourseHere": {
     "message": "You hid this course from the weekly list."
@@ -494,50 +285,25 @@
     "message": "Marked done"
   },
   "undoDone_other": {
-    "message": "$COUNT$ marked done",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 marked done"
   },
   "undoSkipped_one": {
     "message": "Skipped"
   },
   "undoSkipped_other": {
-    "message": "$COUNT$ skipped",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 skipped"
   },
   "undoSkippedAll_one": {
-    "message": "Skipped $COUNT$ older item",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "Skipped $1 older item"
   },
   "undoSkippedAll_other": {
-    "message": "Skipped $COUNT$ older items",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "Skipped $1 older items"
   },
   "undoDeleted_one": {
     "message": "Task deleted"
   },
   "undoDeleted_other": {
-    "message": "$COUNT$ tasks deleted",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
+    "message": "$1 tasks deleted"
   },
   "closeNotice": {
     "message": "Close notice"
@@ -579,23 +345,13 @@
     "message": "Your browser then asks you to let Tools for Canvas read this site. It talks only to your Canvas."
   },
   "checking": {
-    "message": "Checking $HOST$",
-    "placeholders": {
-      "host": {
-        "content": "$1"
-      }
-    }
+    "message": "Checking $1"
   },
   "noAccessTitle": {
     "message": "Tools for Canvas needs access to your Canvas"
   },
   "noAccessBody": {
-    "message": "Allow access to $HOST$ to show your list.",
-    "placeholders": {
-      "host": {
-        "content": "$1"
-      }
-    }
+    "message": "Allow access to $1 to show your list."
   },
   "redirectsTitle": {
     "message": "This address redirects"
@@ -610,12 +366,7 @@
     "message": "Check the address and try again."
   },
   "unreachableTitle": {
-    "message": "Couldn't reach $HOST$",
-    "placeholders": {
-      "host": {
-        "content": "$1"
-      }
-    }
+    "message": "Couldn't reach $1"
   },
   "unreachableBody": {
     "message": "Check the address."
@@ -633,12 +384,7 @@
     "message": "Change it"
   },
   "keepUsing": {
-    "message": "Keep using $HOST$",
-    "placeholders": {
-      "host": {
-        "content": "$1"
-      }
-    }
+    "message": "Keep using $1"
   },
   "firefoxPrivateHint": {
     "message": "In a private window or a container tab, Firefox keeps a separate sign-in. Sign in to Canvas in a normal window."
@@ -647,12 +393,7 @@
     "message": "No active courses"
   },
   "noCoursesBody": {
-    "message": "Canvas shows no active courses for you at $HOST$.",
-    "placeholders": {
-      "host": {
-        "content": "$1"
-      }
-    }
+    "message": "Canvas shows no active courses for you at $1."
   },
   "cantLoadTitle": {
     "message": "Couldn't load your list"
@@ -685,12 +426,7 @@
     "message": "Time"
   },
   "taskTimeHint": {
-    "message": "With no time, the task is set for $TIME$.",
-    "placeholders": {
-      "time": {
-        "content": "$1"
-      }
-    }
+    "message": "With no time, the task is set for $1."
   },
   "taskCourse": {
     "message": "Course"
@@ -735,12 +471,7 @@
     "message": "Hide a course, such as a club or an orientation course. Its work leaves your list and your rings."
   },
   "hideCourse": {
-    "message": "Hide $COURSE$",
-    "placeholders": {
-      "course": {
-        "content": "$1"
-      }
-    }
+    "message": "Hide $1"
   },
   "noCoursesYet": {
     "message": "Your courses show here after your list loads."
@@ -806,12 +537,7 @@
     "message": "Your list shows on the Canvas dashboard and on course home pages. On any page, click the Tools for Canvas button to open or close it in the sidebar."
   },
   "welcomeShortcut": {
-    "message": "You can also press $KEYS$.",
-    "placeholders": {
-      "keys": {
-        "content": "$1"
-      }
-    }
+    "message": "You can also press $1."
   },
   "welcomeNoShortcut": {
     "message": "You can also set a keyboard shortcut on the extension shortcuts page of your browser."
@@ -820,12 +546,7 @@
     "message": "Connect your Canvas"
   },
   "welcomeReady": {
-    "message": "All set. Tools for Canvas uses $HOST$.",
-    "placeholders": {
-      "host": {
-        "content": "$1"
-      }
-    }
+    "message": "All set. Tools for Canvas uses $1."
   },
   "welcomeReadyNext": {
     "message": "Open your Canvas dashboard to see your week."

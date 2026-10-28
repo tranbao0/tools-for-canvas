@@ -93,12 +93,11 @@ describe('header', () => {
     expect(button.getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('opens the settings in place, not the settings page', () => {
-    const { actions } = setup();
+  it('opens the settings in place', () => {
+    setup();
     const header = screen.getByRole('banner');
     fireEvent.click(within(header).getByRole('button', { name: 'Settings' }));
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy();
-    expect(actions.openSettings).not.toHaveBeenCalled();
   });
 
   it('shows the refreshing indicator', () => {
@@ -871,7 +870,7 @@ describe('one-time notes', () => {
     expect(notes?.getAttribute('role')).toBe('status');
     expect(notes?.children).toHaveLength(0);
     fireEvent.click(screen.getByRole('checkbox', { name: 'Done: Quiz 7: Integration techniques' }));
-    const note = screen.getByText(/^Done marks sync/).closest('.wr-note');
+    const note = screen.getByText(/^Done marks sync/).closest('.wr-box');
     expect(note?.parentElement).toBe(notes);
     expect(note?.closest('.wr-dock')).toBeNull();
     const rings = screen.getByRole('region', { name: 'Progress by course' });
@@ -1262,15 +1261,21 @@ describe('Undo keys', () => {
   it('leaves Ctrl+Z to a text field', () => {
     const { actions } = setup(undoState());
     const input = document.createElement('input');
+    const textarea = document.createElement('textarea');
     const editor = document.createElement('div');
-    editor.contentEditable = 'true';
-    document.body.append(input, editor);
-    const event = press(input, { key: 'z', ctrlKey: true });
-    expect(event.defaultPrevented).toBe(false);
-    press(document.createElement('textarea'), { key: 'z', ctrlKey: true });
+    editor.setAttribute('contenteditable', 'true');
+    document.body.append(input, textarea, editor);
+    for (const field of [input, textarea, editor]) {
+      const event = press(field, { key: 'z', ctrlKey: true });
+      expect(event.defaultPrevented).toBe(false);
+    }
     expect(actions.undo).not.toHaveBeenCalled();
-    input.remove();
-    editor.remove();
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    document.body.append(checkbox);
+    expect(press(checkbox, { key: 'z', ctrlKey: true }).defaultPrevented).toBe(true);
+    expect(actions.undo).toHaveBeenCalledTimes(1);
+    for (const element of [input, textarea, editor, checkbox]) element.remove();
   });
 
   it('does nothing while the task form is open', () => {

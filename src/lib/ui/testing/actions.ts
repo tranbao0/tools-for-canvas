@@ -27,7 +27,6 @@ export function spyActions(): SpyActions {
     keepSavedAddress: vi.fn(),
     openCanvas: vi.fn(),
     retry: vi.fn(),
-    openSettings: vi.fn(),
     saveSettings: vi.fn(),
     markNoteSeen: vi.fn(),
   };

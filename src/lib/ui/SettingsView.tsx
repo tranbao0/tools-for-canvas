@@ -4,11 +4,8 @@ import { t } from '../i18n';
 import type { SettingsProps } from './contract';
 import { hostOf } from './format';
 import { AppMark } from './icons';
-import { PageStyle } from './PageStyle';
 import { HostText, newId } from './parts';
 import { SettingsFields } from './Settings';
-
-export { parseWeekStart, toggleHidden } from './Settings';
 
 export function SettingsView({
   settings,
@@ -20,7 +17,6 @@ export function SettingsView({
   const [addressId] = useState(() => newId('address'));
   return (
     <div class="wr" data-surface="page">
-      <PageStyle />
       <main class="wr-page">
         <header class="wr-page-head">
           <AppMark size={32} />

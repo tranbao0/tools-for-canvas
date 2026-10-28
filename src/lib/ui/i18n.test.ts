@@ -46,12 +46,10 @@ describe('tp', () => {
 });
 
 describe('formatMessage', () => {
-  it('resolves named placeholders, direct positions and a literal dollar sign', () => {
-    const entry = {
-      message: 'Pay $$5 to $WHO$ for $1',
-      placeholders: { who: { content: '$2' } },
-    };
-    expect(formatMessage(entry, ['lunch', 'Sam'])).toBe('Pay $5 to Sam for lunch');
+  it('resolves direct positions and a literal dollar sign', () => {
+    expect(formatMessage({ message: 'Pay $$5 to $2 for $1' }, ['lunch', 'Sam'])).toBe(
+      'Pay $5 to Sam for lunch',
+    );
   });
 
   it('does not expand placeholders inside substituted text', () => {
@@ -70,13 +68,10 @@ describe('messages.json', () => {
     );
   });
 
-  it('defines every placeholder that a message uses', () => {
+  it('uses direct $1...$9 substitutions, not named placeholders', () => {
     for (const [key, entry] of entries) {
-      const used = [...entry.message.matchAll(/\$([A-Za-z0-9_]+)\$/g)].map((m) =>
-        (m[1] ?? '').toLowerCase(),
-      );
-      const defined = Object.keys(entry.placeholders ?? {});
-      expect(defined.sort(), key).toEqual([...new Set(used)].sort());
+      expect(entry, key).not.toHaveProperty('placeholders');
+      expect(entry.message, key).not.toMatch(/\$[A-Za-z0-9_@]+\$/);
     }
   });
 

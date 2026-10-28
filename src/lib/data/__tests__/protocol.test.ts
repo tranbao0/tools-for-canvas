@@ -132,6 +132,7 @@ describe('messages', () => {
     expect(isSetupMessage({ type: 'weekrow:setup', origin: '', fromOffer: false })).toBe(false);
     expect(isChangeAddressMessage({ type: 'weekrow:change-address' })).toBe(true);
     expect(isOpenPageMessage({ type: 'weekrow:open-page', page: 'welcome' })).toBe(true);
+    expect(isOpenPageMessage({ type: 'weekrow:open-page', page: 'settings' })).toBe(false);
     expect(isOpenPageMessage({ type: 'weekrow:open-page', page: 'https://a.edu' })).toBe(false);
   });
 

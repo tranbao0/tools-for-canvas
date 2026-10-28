@@ -6,7 +6,7 @@ import { t } from '../i18n';
 import type { Availability, DoneChip, HandInChip, ItemView, StatusChip } from '../model/types';
 import { formatMonthDay, zonedDate } from './format';
 
-export type TagTone = 'neutral' | 'missing' | 'warning';
+export type TagTone = 'neutral' | 'missing';
 
 export interface Tag {
   /** Stable within one item. */
@@ -94,7 +94,7 @@ export function doneTag(done: DoneChip): Tag {
         done.teacherSet ? t('tipMissingInCanvasTeacher') : t('tipMissingInCanvas'),
       );
     case 'redo_requested':
-      return chip('done-redo', t('chipRedoRequested'), 'warning', t('tipRedoDone'));
+      return chip('done-redo', t('chipRedoRequested'), 'neutral', t('tipRedoDone'));
     case 'excused':
       return chip('done-excused', t('chipExcused'), 'neutral', t('tipExcused'));
   }

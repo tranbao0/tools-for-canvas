@@ -1,5 +1,6 @@
-/** Lines and banners around the list: offer, stale data, limited planner, filter, hidden courses, undo. */
-import { t, tp } from '../i18n';
+/** Lines and banners around the list: offer, notice lines, one-time notes and the Undo dock. */
+import type { ComponentChildren } from 'preact';
+import { t, tp, type MessageKey, type PluralKey } from '../i18n';
 import type { ItemView, Offer, UndoInfo, WeekView } from '../model/types';
 import { formatTimeOrDateTime, hostOf } from './format';
 import { CloseIcon } from './icons';
@@ -15,7 +16,7 @@ export function OfferBanner(props: {
   const { offer } = props;
   const use = offer.mode === 'use';
   return (
-    <div class="wr-offer" role="region" aria-label={use ? t('offerUse') : t('offerSwitch')}>
+    <div class="wr-box" role="region" aria-label={use ? t('offerUse') : t('offerSwitch')}>
       <div>
         <p class="wr-offer-title">{use ? t('offerUse') : t('offerSwitch')}</p>
         <HostText class="wr-offer-host" host={hostOf(offer.origin)} />
@@ -44,19 +45,33 @@ export function staleText(since: string, offline: boolean, view: WeekView): stri
   return offline && browserIsOffline() ? `${t('offline')} ${line}` : line;
 }
 
-export function StaleLine(props: {
-  since: string;
-  offline: boolean;
-  view: WeekView;
-  onRetry(): void;
+/**
+ * One line of quiet text with an optional link-style action: the stale, skipped-course, limited,
+ * filter, hidden-course and hidden-course-note lines. `opener` is the `data-opener` that focus
+ * returns to when the action opens the settings in place.
+ */
+export function NoticeLine(props: {
+  text: ComponentChildren;
+  action?: string;
+  onAction?(): void;
+  opener?: string;
+  role?: 'status';
+  id?: string;
 }) {
   return (
-    <div class="wr-notice" role="status">
-      <span class="wr-notice-text">{staleText(props.since, props.offline, props.view)}</span>
-      <button type="button" class="wr-link-btn" onClick={props.onRetry}>
-        {t('retry')}
-      </button>
-    </div>
+    <p class="wr-notice" role={props.role} id={props.id}>
+      <span>{props.text}</span>
+      {props.action !== undefined && (
+        <button
+          type="button"
+          class="wr-link-btn"
+          data-opener={props.opener}
+          onClick={props.onAction}
+        >
+          {props.action}
+        </button>
+      )}
+    </p>
   );
 }
 
@@ -66,38 +81,6 @@ export function joinNames(names: readonly string[]): string {
   if (last === undefined) return '';
   if (names.length === 1) return last;
   return t('listAnd', names.slice(0, -1).join(', '), last);
-}
-
-/**
- * "Couldn't load BIO 110." for the courses whose requests failed. Retry shows only when the
- * stale line does not already offer it.
- */
-export function SkippedCoursesLine(props: {
-  courses: readonly { id: string; name: string }[];
-  showRetry: boolean;
-  onRetry(): void;
-}) {
-  if (props.courses.length === 0) return null;
-  return (
-    <div class="wr-notice" role="status">
-      <span class="wr-notice-text">
-        {t('skippedCourses', joinNames(props.courses.map((course) => course.name)))}
-      </span>
-      {props.showRetry && (
-        <button type="button" class="wr-link-btn" onClick={props.onRetry}>
-          {t('retry')}
-        </button>
-      )}
-    </div>
-  );
-}
-
-export function LimitedLine(props: { id: string }) {
-  return (
-    <p class="wr-notice" id={props.id}>
-      {t('limitedLine')}
-    </p>
-  );
 }
 
 function groupItems(view: WeekView): ItemView[] {
@@ -127,59 +110,29 @@ export function filterName(
   return courses.find((course) => course.id === filter)?.name ?? null;
 }
 
-export function FilterLine(props: {
-  view: WeekView;
-  courses: readonly { id: string; name: string }[];
-  onClear(): void;
-}) {
-  if (props.view.courseFilter === undefined) return null;
-  const name = filterName(props.view, props.courses);
-  return (
-    <p class="wr-filter">
-      <span>{name === null ? t('filterShowingOne') : t('filterShowing', name)}</span>
-      <button type="button" class="wr-link-btn" onClick={props.onClear}>
-        {t('showAll')}
-      </button>
-    </p>
-  );
+/** "Showing BIO 110 only.", or `null` when the list has no course filter. */
+export function filterText(
+  view: WeekView,
+  courses: readonly { id: string; name: string }[],
+): string | null {
+  if (view.courseFilter === undefined) return null;
+  const name = filterName(view, courses);
+  return name === null ? t('filterShowingOne') : t('filterShowing', name);
 }
 
-/** "1 course hidden" with a link that opens the settings in place. */
-export function HiddenCoursesLine(props: { count: number; onSettings(): void }) {
-  if (props.count <= 0) return null;
-  return (
-    <p class="wr-foot">
-      <span>{tp('hiddenCourses', props.count)}</span>
-      <button type="button" class="wr-link-btn" data-opener="hidden" onClick={props.onSettings}>
-        {t('settings')}
-      </button>
-    </p>
-  );
-}
-
-export function undoText(undo: UndoInfo): string {
-  switch (undo.kind) {
-    case 'done':
-      return tp('undoDone', undo.count);
-    case 'skipped':
-      return tp('undoSkipped', undo.count);
-    case 'skipped_all':
-      return tp('undoSkippedAll', undo.count);
-    case 'deleted':
-      return tp('undoDeleted', undo.count);
-  }
-}
+const UNDO_TEXT = {
+  done: 'undoDone',
+  skipped: 'undoSkipped',
+  skipped_all: 'undoSkippedAll',
+  deleted: 'undoDeleted',
+} as const satisfies Record<UndoInfo['kind'], PluralKey>;
 
 export type OneTimeNote = 'firstDone' | 'firstSkip';
 
-export function noteText(note: OneTimeNote): string {
-  switch (note) {
-    case 'firstDone':
-      return t('noteFirstDone');
-    case 'firstSkip':
-      return t('noteFirstSkip');
-  }
-}
+const NOTE_TEXT = {
+  firstDone: 'noteFirstDone',
+  firstSkip: 'noteFirstSkip',
+} as const satisfies Record<OneTimeNote, MessageKey>;
 
 /**
  * One-time notes, inline at the top of the list (design decision 19), until the student confirms
@@ -189,8 +142,8 @@ export function OneTimeNotes(props: { notes: OneTimeNote[]; onSeen(note: OneTime
   return (
     <div class="wr-notes" role="status">
       {props.notes.map((note) => (
-        <div key={note} class="wr-note">
-          <p>{noteText(note)}</p>
+        <div key={note} class="wr-box">
+          <p>{t(NOTE_TEXT[note])}</p>
           <button
             type="button"
             class="wr-btn wr-btn-small"
@@ -215,7 +168,7 @@ export function Dock(props: { undo: UndoInfo | null; onUndo(): void; onClose(): 
     <div class="wr-dock" role="status" aria-live="polite">
       {props.undo && (
         <div class="wr-toast">
-          <span class="wr-toast-text">{undoText(props.undo)}</span>
+          <span class="wr-toast-text">{tp(UNDO_TEXT[props.undo.kind], props.undo.count)}</span>
           <button
             type="button"
             class="wr-link-btn wr-toast-action"
@@ -241,33 +194,18 @@ export function Dock(props: { undo: UndoInfo | null; onUndo(): void; onClose(): 
   );
 }
 
-const NON_TEXT_INPUTS = new Set([
-  'button',
-  'checkbox',
-  'color',
-  'file',
-  'image',
-  'radio',
-  'range',
-  'reset',
-  'submit',
-]);
-
-/** Whether `target` takes typed text, where Ctrl+Z belongs to the field. */
-export function isTextField(target: EventTarget | null | undefined): boolean {
-  const element = target as HTMLElement | null | undefined;
-  if (!element || typeof element.tagName !== 'string') return false;
-  if (element.isContentEditable) return true;
-  const tag = element.tagName.toUpperCase();
-  if (tag === 'TEXTAREA') return true;
-  if (tag === 'INPUT') return !NON_TEXT_INPUTS.has((element as HTMLInputElement).type);
-  return false;
-}
+/** Elements that take typed text, where Ctrl+Z belongs to the field. */
+const TEXT_FIELD = [
+  'textarea',
+  '[contenteditable]:not([contenteditable="false"])',
+  'input:not([type="button"], [type="checkbox"], [type="color"], [type="file"], [type="image"], [type="radio"], [type="range"], [type="reset"], [type="submit"])',
+].join(', ');
 
 /** Ctrl+Z, or Cmd+Z on a Mac, outside a text field and outside an IME composition. */
 export function isUndoShortcut(event: KeyboardEvent): boolean {
   if (event.defaultPrevented || event.isComposing || event.altKey || event.shiftKey) return false;
   if (!event.ctrlKey && !event.metaKey) return false;
   if (event.key !== 'z' && event.key !== 'Z') return false;
-  return !isTextField(event.composedPath()[0] ?? event.target);
+  const target = (event.composedPath()[0] ?? event.target) as Element | null;
+  return target?.matches?.(TEXT_FIELD) !== true;
 }

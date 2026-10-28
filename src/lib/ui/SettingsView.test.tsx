@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS, type Settings } from '../model/types';
 import { parseTheme } from './Settings';
-import { parseWeekStart, SettingsView, toggleHidden } from './SettingsView';
+import { parseWeekStart, toggleHidden } from './Settings';
+import { SettingsView } from './SettingsView';
 
 afterEach(cleanup);
 

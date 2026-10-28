@@ -1,7 +1,7 @@
 /** Every surface state other than the week list (design decision 11, "States the UI must show"). */
 import type { ComponentChildren } from 'preact';
 import { useRef, useState } from 'preact/hooks';
-import { t } from '../i18n';
+import { t, type MessageKey } from '../i18n';
 import type { SurfaceState } from '../model/types';
 import { normalizeAddress } from '../platform/address';
 import type { Actions } from './contract';
@@ -111,10 +111,6 @@ function KeepSavedAddress(props: {
   );
 }
 
-function Hint(props: { text: string }) {
-  return <p class="wr-state-hint">{props.text}</p>;
-}
-
 /** A sentence with the host of `origin` in it, as breakable host text. */
 function withHost(key: 'checking' | 'noAccessBody' | 'noCoursesBody', origin: string) {
   return withNode(t(key, MARKER), MARKER, <HostText class="wr-state-host" host={hostOf(origin)} />);
@@ -127,6 +123,62 @@ export function Spinner(props: { text: ComponentChildren }) {
       <span class="wr-spinner" aria-hidden="true" />
       <span>{props.text}</span>
     </p>
+  );
+}
+
+/** The message keys of the states that ask for a new address and say what is wrong with the old. */
+const ADDRESS_PROBLEM = {
+  redirects: { title: 'redirectsTitle', body: 'redirectsBody' },
+  not_canvas: { title: 'notCanvasTitle', body: 'notCanvasBody' },
+} as const satisfies Record<string, { title: MessageKey; body: MessageKey }>;
+
+/** A problem with the address: the title and details, then the address form and the way back. */
+function AddressProblem(props: {
+  state: Extract<SurfaceState, { kind: 'redirects' | 'not_canvas' | 'unreachable' }>;
+  actions: Actions;
+  level: HeadingLevel;
+  title: ComponentChildren;
+  children: ComponentChildren;
+}) {
+  const { origin, savedOrigin } = props.state;
+  return (
+    <div class="wr-state">
+      <Heading level={props.level} class="wr-state-title">
+        {props.title}
+      </Heading>
+      {props.children}
+      <SetupForm key={origin} initial={hostOf(origin)} actions={props.actions} />
+      <KeepSavedAddress savedOrigin={savedOrigin} candidate={origin} actions={props.actions} />
+    </div>
+  );
+}
+
+/** A state with one main button, then the link to change the address and any `children`. */
+function ActionState(props: {
+  offer: ComponentChildren;
+  actions: Actions;
+  level: HeadingLevel;
+  title: string;
+  body: ComponentChildren;
+  button: string;
+  onClick(): void;
+  children?: ComponentChildren;
+}) {
+  return (
+    <div class="wr-state">
+      {props.offer}
+      <Heading level={props.level} class="wr-state-title">
+        {props.title}
+      </Heading>
+      <p class="wr-state-body">{props.body}</p>
+      <div class="wr-state-actions">
+        <button type="button" class="wr-btn wr-btn-primary" onClick={props.onClick}>
+          {props.button}
+        </button>
+      </div>
+      <ChangeAddress actions={props.actions} />
+      {props.children}
+    </div>
   );
 }
 
@@ -188,97 +240,68 @@ export function StateBody(props: {
       );
     case 'no_access':
       return (
-        <div class="wr-state">
-          {offer}
-          <Heading level={level} class="wr-state-title">
-            {t('noAccessTitle')}
-          </Heading>
-          <p class="wr-state-body">{withHost('noAccessBody', state.origin)}</p>
-          <div class="wr-state-actions">
-            <button
-              type="button"
-              class="wr-btn wr-btn-primary"
-              onClick={() => actions.allowAccess(state.origin)}
-            >
-              {t('allowAccess')}
-            </button>
-          </div>
-          <ChangeAddress actions={actions} />
+        <ActionState
+          offer={offer}
+          actions={actions}
+          level={level}
+          title={t('noAccessTitle')}
+          body={withHost('noAccessBody', state.origin)}
+          button={t('allowAccess')}
+          onClick={() => actions.allowAccess(state.origin)}
+        >
           <KeepSavedAddress
             savedOrigin={state.savedOrigin}
             candidate={state.origin}
             actions={actions}
           />
-        </div>
+        </ActionState>
       );
     case 'redirects':
     case 'not_canvas': {
-      const redirects = state.kind === 'redirects';
+      const keys = ADDRESS_PROBLEM[state.kind];
       return (
-        <div class="wr-state">
-          <Heading level={level} class="wr-state-title">
-            {t(redirects ? 'redirectsTitle' : 'notCanvasTitle')}
-          </Heading>
+        <AddressProblem state={state} actions={actions} level={level} title={t(keys.title)}>
           <p class="wr-state-body">
             <HostText class="wr-state-host" host={hostOf(state.origin)} />
           </p>
-          <p class="wr-state-body">{t(redirects ? 'redirectsBody' : 'notCanvasBody')}</p>
-          <SetupForm key={state.origin} initial={hostOf(state.origin)} actions={actions} />
-          <KeepSavedAddress
-            savedOrigin={state.savedOrigin}
-            candidate={state.origin}
-            actions={actions}
-          />
-        </div>
+          <p class="wr-state-body">{t(keys.body)}</p>
+        </AddressProblem>
       );
     }
     case 'unreachable':
       // The usual cause is a wrong address, so this state never says "You're offline".
       return (
-        <div class="wr-state">
-          <Heading level={level} class="wr-state-title">
-            {withNode(
-              t('unreachableTitle', MARKER),
-              MARKER,
-              <HostText host={hostOf(state.origin)} />,
-            )}
-          </Heading>
+        <AddressProblem
+          state={state}
+          actions={actions}
+          level={level}
+          title={withNode(
+            t('unreachableTitle', MARKER),
+            MARKER,
+            <HostText host={hostOf(state.origin)} />,
+          )}
+        >
           <p class="wr-state-body">
             {t('unreachableBody')}{' '}
             <button type="button" class="wr-link-btn" onClick={() => actions.retry()}>
               {t('retry')}
             </button>
           </p>
-          <SetupForm key={state.origin} initial={hostOf(state.origin)} actions={actions} />
-          <KeepSavedAddress
-            savedOrigin={state.savedOrigin}
-            candidate={state.origin}
-            actions={actions}
-          />
-        </div>
+        </AddressProblem>
       );
     case 'signed_out':
       return (
-        <div class="wr-state">
-          {offer}
-          <Heading level={level} class="wr-state-title">
-            {t('signedOutTitle')}
-          </Heading>
-          <p class="wr-state-body">
-            <HostText class="wr-state-host" host={hostOf(state.origin)} />
-          </p>
-          <div class="wr-state-actions">
-            <button
-              type="button"
-              class="wr-btn wr-btn-primary"
-              onClick={() => actions.openCanvas()}
-            >
-              {t('signedOutButton')}
-            </button>
-          </div>
-          <ChangeAddress actions={actions} />
-          {state.isFirefox && <Hint text={t('firefoxPrivateHint')} />}
-        </div>
+        <ActionState
+          offer={offer}
+          actions={actions}
+          level={level}
+          title={t('signedOutTitle')}
+          body={<HostText class="wr-state-host" host={hostOf(state.origin)} />}
+          button={t('signedOutButton')}
+          onClick={() => actions.openCanvas()}
+        >
+          {state.isFirefox && <p class="wr-state-hint">{t('firefoxPrivateHint')}</p>}
+        </ActionState>
       );
     case 'no_courses':
       return (

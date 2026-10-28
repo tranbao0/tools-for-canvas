@@ -108,10 +108,10 @@ interface ChangeAddressMessage {
   type: 'weekrow:change-address';
 }
 
-/** Content scripts cannot open extension pages, so they ask the background. */
+/** Content scripts cannot open extension pages, so they ask the background for the welcome page. */
 export interface OpenPageMessage {
   type: 'weekrow:open-page';
-  page: 'settings' | 'welcome';
+  page: 'welcome';
 }
 
 /**
@@ -319,10 +319,7 @@ export function isChangeAddressMessage(value: unknown): value is ChangeAddressMe
 }
 
 export function isOpenPageMessage(value: unknown): value is OpenPageMessage {
-  return (
-    hasType(value, 'weekrow:open-page') &&
-    (value['page'] === 'settings' || value['page'] === 'welcome')
-  );
+  return hasType(value, 'weekrow:open-page') && value['page'] === 'welcome';
 }
 
 export function isCanvasDetectedMessage(value: unknown): value is CanvasDetectedMessage {

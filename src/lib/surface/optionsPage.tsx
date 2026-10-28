@@ -8,6 +8,7 @@ import type { Settings } from '../model/types';
 import { logFailure } from '../platform/log';
 import { canvasOriginItem, changeMarkerItem, settingsItem, watchItems } from '../platform/storage';
 import { SettingsView } from '../ui/SettingsView';
+import { PAGE_LAYOUT_CSS } from '../ui/pageLayout';
 import { installStyles } from '../ui/styles';
 import { sendToBackground } from './hosts';
 import { followExtensionPageTheme } from './theme';
@@ -23,7 +24,7 @@ async function loadCourses(): Promise<CourseChoice[] | null> {
 
 /** The settings page. A change saves the settings, then asks the background to refresh. */
 export async function startOptions(root: HTMLElement): Promise<void> {
-  installStyles(document);
+  installStyles(document, PAGE_LAYOUT_CSS);
   followExtensionPageTheme(settingsItem, [document.documentElement, root], logFailure);
   let settings: Settings = await settingsItem.getValue();
   let origin: string | null = await canvasOriginItem.getValue();

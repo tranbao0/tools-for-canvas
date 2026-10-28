@@ -1,21 +1,14 @@
 /** The custom task form: create, edit and delete (design decision 10). */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../i18n';
+import { defaultTaskDate, taskDateParts } from '../model/tasks';
 import type { ItemView, WeekView } from '../model/types';
 import type { TaskInput } from './contract';
-import { formatClock, zonedDate, zonedTime } from './format';
+import { formatClock } from './format';
 import { CloseIcon } from './icons';
 import { Heading, newIds, type HeadingLevel } from './parts';
 
 export type TaskFormMode = { kind: 'new' } | { kind: 'edit'; item: ItemView };
-
-/** Stored when the time is empty (design decision 10). */
-const NO_TIME = '23:59';
-
-/** Today when today is in the viewed week, otherwise the first day of the viewed week. */
-export function defaultTaskDate(view: WeekView): string {
-  return view.today >= view.weekStart && view.today <= view.weekEnd ? view.today : view.weekStart;
-}
 
 interface Draft {
   title: string;
@@ -28,11 +21,11 @@ interface Draft {
 function initialDraft(mode: TaskFormMode, view: WeekView, courseIds: string[]): Draft {
   if (mode.kind === 'edit') {
     const { item } = mode;
-    const time = item.due ? zonedTime(item.due, view.timeZone) : '';
+    const parts = item.due ? taskDateParts(item.due, view.timeZone) : null;
     return {
       title: item.title,
-      date: item.due ? zonedDate(item.due, view.timeZone) : defaultTaskDate(view),
-      time: time === NO_TIME ? '' : time,
+      date: parts?.date ?? defaultTaskDate(view),
+      time: parts?.time ?? '',
       courseId: item.courseId ?? '',
       details: item.noteDetails ?? '',
     };

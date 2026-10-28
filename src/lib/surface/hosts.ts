@@ -119,11 +119,6 @@ export function extensionPageHost(): SurfaceHost {
         .create({ url: `${origin}/` })
         .catch((error: unknown) => logFailure('open Canvas', error));
     },
-    openSettings() {
-      browser.runtime
-        .openOptionsPage()
-        .catch((error: unknown) => logFailure('open settings', error));
-    },
     markNoteSeen: saveNoteSeen,
     dismissOffer: () => offerItem.setValue(null),
     allowAccess(origin, fromOffer) {
@@ -167,8 +162,8 @@ export function sendFromContentScript(
 
 /**
  * The host for the in-page list. Links open in the same tab. Content scripts cannot open
- * extension pages or ask for permissions, so the background opens the settings or the
- * welcome page, which has the "Allow access" button. The settings shown in place read and save
+ * extension pages or ask for permissions, so the background opens the welcome page, which has
+ * the "Allow access" button. The settings shown in place read and save
  * `storage.local` directly, as the settings page does.
  */
 export function inpageHost(
@@ -176,8 +171,8 @@ export function inpageHost(
   context: ScriptContext | null = null,
 ): SurfaceHost {
   const send = (message: DataMessage): Promise<unknown> => sendFromContentScript(message, context);
-  const openPage = (page: 'settings' | 'welcome'): void => {
-    send({ type: 'weekrow:open-page', page }).catch((error: unknown) =>
+  const openWelcome = (): void => {
+    send({ type: 'weekrow:open-page', page: 'welcome' }).catch((error: unknown) =>
       logFailure('open page', error),
     );
   };
@@ -195,16 +190,11 @@ export function inpageHost(
     openCanvas(origin) {
       win.location.assign(`${origin}/`);
     },
-    openSettings() {
-      openPage('settings');
-    },
     markNoteSeen: saveNoteSeen,
     // The offer lives in `storage.session`, which content scripts cannot reach. Only the side
     // panel shows it.
     dismissOffer: () => Promise.resolve(),
-    allowAccess() {
-      openPage('welcome');
-    },
+    allowAccess: openWelcome,
     log: logFailure,
   };
 }

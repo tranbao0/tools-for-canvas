@@ -9,7 +9,6 @@ import {
   formatWeekRangeLong,
   formatWeekday,
   hostOf,
-  safeTimeZone,
   timeZoneLabel,
   weekdayName,
   zonedDate,
@@ -70,11 +69,6 @@ describe('times', () => {
     expect(formatTimeOrDateTime('2026-10-26T19:05:00Z', '2026-10-27', tz, 'h12')).toBe(
       'Oct 26, 3:05 pm',
     );
-  });
-
-  it('falls back to UTC for an unknown zone', () => {
-    expect(safeTimeZone('Mars/Olympus_Mons')).toBe('UTC');
-    expect(zonedTime('2026-10-27T10:00:00Z', 'Mars/Olympus_Mons')).toBe('10:00');
   });
 });
 

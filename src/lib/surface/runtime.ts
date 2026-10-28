@@ -78,7 +78,6 @@ export interface SurfaceHost {
   openUrl(url: string, origin: string): void;
   /** Opens the saved Canvas, for sign-in. */
   openCanvas(origin: string): void;
-  openSettings(): void;
   /** Saves that the student has seen a one-time note. */
   markNoteSeen(note: keyof SeenNotes): Promise<void>;
   /** Dismisses the pending "Use this Canvas?" offer. Only the side panel shows it. */
@@ -548,9 +547,6 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       sendRefresh('retry')
         .then(() => requestState())
         .catch(report('retry'));
-    },
-    openSettings() {
-      host.openSettings();
     },
     saveSettings(next: Settings) {
       // The view in place shows the change at once; the stored value follows.

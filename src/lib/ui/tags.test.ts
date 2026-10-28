@@ -82,7 +82,11 @@ describe('done chips', () => {
     expect(doneTag({ kind: 'missing_in_canvas', teacherSet: true }).tip).toBe(
       'You checked this off, but your teacher marked it missing in Canvas.',
     );
-    expect(doneTag({ kind: 'redo_requested' })).toMatchObject({ tone: 'warning' });
+    expect(doneTag({ kind: 'redo_requested' })).toMatchObject({
+      label: 'Redo requested',
+      tone: 'neutral',
+      tip: 'You checked this off, but your teacher asked for a redo.',
+    });
     expect(doneTag({ kind: 'excused' }).label).toBe('Excused');
   });
 });

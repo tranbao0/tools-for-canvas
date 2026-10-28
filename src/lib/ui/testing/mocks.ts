@@ -677,7 +677,6 @@ export function noopActions(
     keepSavedAddress: record('keepSavedAddress'),
     openCanvas: record('openCanvas'),
     retry: record('retry'),
-    openSettings: record('openSettings'),
     saveSettings: record('saveSettings'),
     markNoteSeen: record('markNoteSeen'),
   };

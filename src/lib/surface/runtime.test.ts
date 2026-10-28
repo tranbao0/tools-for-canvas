@@ -134,7 +134,6 @@ function fakeHost(): FakeHost {
       },
       openUrl: vi.fn(),
       openCanvas: vi.fn(),
-      openSettings: vi.fn(),
       markNoteSeen: vi.fn(async () => undefined),
       dismissOffer: vi.fn(async () => undefined),
       allowAccess: vi.fn(),
@@ -833,13 +832,12 @@ describe('actions', () => {
     expect(fake.host.allowAccess).toHaveBeenLastCalledWith('https://canvas.school.edu', true);
   });
 
-  it('asks for a refresh on Retry, changes the address and opens pages', async () => {
+  it('asks for a refresh on Retry, changes the address and opens Canvas', async () => {
     const { fake, runtime } = await started();
 
     runtime.actions.retry();
     runtime.actions.changeAddress();
     runtime.actions.openCanvas();
-    runtime.actions.openSettings();
     await settle();
 
     expect(types(fake.sent)).toEqual(
@@ -851,7 +849,6 @@ describe('actions', () => {
       surface: 'panel',
     });
     expect(fake.host.openCanvas).toHaveBeenCalledWith(ORIGIN);
-    expect(fake.host.openSettings).toHaveBeenCalled();
     // The panel shows the address form itself.
     expect(types(fake.sent)).not.toContain('weekrow:open-page');
   });
@@ -1059,17 +1056,6 @@ describe('settings in place', () => {
     fake.changed();
     await settle();
     expect(runtime.settings()?.courses).toEqual([]);
-  });
-
-  it('opens the settings page on request', async () => {
-    const fake = fakeHost();
-    const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
-    runtime.start();
-    await settle();
-
-    runtime.actions.openSettings();
-
-    expect(fake.host.openSettings).toHaveBeenCalledTimes(1);
   });
 });
 

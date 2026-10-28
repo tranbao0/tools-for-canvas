@@ -2,20 +2,16 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Offer, SurfaceState } from '../model/types';
-import { App, HiddenCourseNote } from './App';
-import type { AppProps, SurfaceKind } from './contract';
+import { App } from './App';
+import type { SurfaceKind } from './contract';
 import { spyActions } from './testing/actions';
 import { hiddenCourseView, nonReadyStates, ORIGIN, OTHER_OFFER, readyState } from './testing/mocks';
 
 afterEach(cleanup);
 
-function setup(
-  state: SurfaceState,
-  surface: SurfaceKind = 'panel',
-  extra: Pick<AppProps, 'browser' | 'shortcut'> = {},
-) {
+function setup(state: SurfaceState, surface: SurfaceKind = 'panel') {
   const actions = spyActions();
-  render(<App surface={surface} state={state} actions={actions} {...extra} />);
+  render(<App surface={surface} state={state} actions={actions} />);
   return actions;
 }
 
@@ -271,30 +267,18 @@ describe('changing the address', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Allow access' }));
     expect(actions.allowAccess).toHaveBeenCalledWith('https://canvas.state.edu');
   });
-
-  it('shows no first-run steps on Firefox, because this is not the first run', () => {
-    setup(state, 'panel', { browser: 'firefox', shortcut: null });
-    expect(screen.queryByText('Pin the Tools for Canvas button')).toBeNull();
-  });
 });
 
 describe('first run in the side panel', () => {
-  it('shows only the connect form in every browser, because the welcome page opens on install', () => {
-    for (const browser of ['chrome', 'edge', 'firefox'] as const) {
-      setup(NOT_SET_UP, 'panel', { browser, shortcut: 'Alt+Shift+W' });
-      expect(screen.queryByText('Pin the Tools for Canvas button')).toBeNull();
-      expect(document.querySelector('.wr-steps')).toBeNull();
-      expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Connect your Canvas');
-      cleanup();
-    }
+  it('shows only the connect form, because the welcome page opens on install', () => {
+    setup(NOT_SET_UP);
+    expect(screen.queryByText('Pin the Tools for Canvas button')).toBeNull();
+    expect(document.querySelector('.wr-steps')).toBeNull();
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Connect your Canvas');
   });
 
   it('keeps the offer above the connect form', () => {
-    setup(
-      { kind: 'not_set_up', offer: { origin: ORIGIN, mode: 'use' }, savedOrigin: null },
-      'panel',
-      { browser: 'firefox', shortcut: null },
-    );
+    setup({ kind: 'not_set_up', offer: { origin: ORIGIN, mode: 'use' }, savedOrigin: null });
     const offer = screen.getByRole('region', { name: 'Use this Canvas?' });
     const form = screen.getByLabelText('Canvas address');
     expect(offer.compareDocumentPosition(form)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
@@ -359,24 +343,15 @@ describe('in-page surface', () => {
     expect(screen.getAllByRole('heading', { level: 2 })[0]?.textContent).toContain('Oct 25 - 31');
   });
 
-  it('shows the hidden course note with a link to the settings', () => {
-    let opened = 0;
-    render(<HiddenCourseNote onOpenSettings={() => (opened += 1)} />);
-    expect(screen.getByText('You hid this course from the weekly list.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    expect(opened).toBe(1);
-  });
-
   it('shows the hidden course note instead of the list on a hidden course', () => {
-    const actions = setup(readyState({ view: hiddenCourseView() }), 'inpage');
+    setup(readyState({ view: hiddenCourseView() }), 'inpage');
     expect(screen.getByText('You hid this course from the weekly list.')).toBeTruthy();
     expect(screen.queryByRole('checkbox')).toBeNull();
     expect(screen.queryByRole('heading')).toBeNull();
     expect(document.querySelector('.wr')?.getAttribute('data-surface')).toBe('inpage');
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    // The link opens the settings in place, not the settings page.
+    // The link opens the settings in place.
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
-    expect(actions.openSettings).not.toHaveBeenCalled();
   });
 });
 

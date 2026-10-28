@@ -54,8 +54,6 @@ export interface Actions {
   /** Opens the saved Canvas in a tab, for sign-in. */
   openCanvas(): void;
   retry(): void;
-  /** Opens the extension's own settings page. The gear opens the settings in place instead. */
-  openSettings(): void;
   /** Saves the settings shown in place in the panel or the in-page list. */
   saveSettings(settings: Settings): void;
   markNoteSeen(note: 'firstDone' | 'firstSkip'): void;
@@ -65,10 +63,6 @@ export interface AppProps {
   surface: SurfaceKind;
   state: SurfaceState;
   actions: Actions;
-  /** The browser, so the first run can show the right pin steps. Defaults to 'chrome'. */
-  browser?: 'chrome' | 'edge' | 'firefox';
-  /** The keyboard shortcut for the toolbar button, if one is set. */
-  shortcut?: string | null;
   /**
    * The data for the settings shown in place (decision 18). Missing until loaded; the gear then
    * shows a short loading state.

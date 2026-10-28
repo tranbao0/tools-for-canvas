@@ -5,20 +5,19 @@
  */
 import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { t } from '../i18n';
+import { t, tp } from '../i18n';
 import type { ItemView, SurfaceState } from '../model/types';
 import type { Actions, AppProps, SurfaceKind, TaskInput } from './contract';
 import { Header } from './Header';
 import {
   Dock,
-  FilterLine,
-  HiddenCoursesLine,
+  filterText,
   isUndoShortcut,
-  LimitedLine,
+  joinNames,
+  NoticeLine,
   OfferBanner,
   OneTimeNotes,
-  SkippedCoursesLine,
-  StaleLine,
+  staleText,
   type OneTimeNote,
 } from './Notices';
 import { Bar, newId, type HeadingLevel } from './parts';
@@ -78,7 +77,15 @@ export function App(props: AppProps) {
       />
     );
   } else if (state.kind === 'ready' && state.view.scopeCourseHidden) {
-    body = <HiddenCourseNote onOpenSettings={() => openSettings('note')} />;
+    // The note on the home page of a course the student hid (design decision 4).
+    body = (
+      <NoticeLine
+        text={t('hiddenCourseHere')}
+        action={t('settings')}
+        opener="note"
+        onAction={() => openSettings('note')}
+      />
+    );
   } else if (state.kind === 'ready') {
     body = (
       <ReadyView
@@ -114,21 +121,6 @@ export function App(props: AppProps) {
     >
       {body}
     </div>
-  );
-}
-
-/**
- * The one-line note on the home page of a course the student hid (design decision 4), with a link
- * that opens the settings. `App` shows it when `view.scopeCourseHidden` is set.
- */
-export function HiddenCourseNote(props: { onOpenSettings(): void }) {
-  return (
-    <p class="wr-notice">
-      {t('hiddenCourseHere')}{' '}
-      <button type="button" class="wr-link-btn" data-opener="note" onClick={props.onOpenSettings}>
-        {t('settings')}
-      </button>
-    </p>
   );
 }
 
@@ -315,6 +307,7 @@ function ReadyView(props: {
   };
 
   const visibleNotes = notes.filter((note) => !state.seenNotes[note]);
+  const filter = filterText(view, state.taskCourses);
 
   if (form !== null) {
     return (
@@ -365,19 +358,23 @@ function ReadyView(props: {
           />
         )}
         {state.stale && (
-          <StaleLine
-            since={state.stale.since}
-            offline={state.stale.offline}
-            view={view}
-            onRetry={() => actions.retry()}
+          <NoticeLine
+            role="status"
+            text={staleText(state.stale.since, state.stale.offline, view)}
+            action={t('retry')}
+            onAction={() => actions.retry()}
           />
         )}
-        <SkippedCoursesLine
-          courses={state.skippedCourses}
-          showRetry={state.stale === null}
-          onRetry={() => actions.retry()}
-        />
-        {view.limited && <LimitedLine id={limitedId} />}
+        {state.skippedCourses.length > 0 && (
+          <NoticeLine
+            role="status"
+            text={t('skippedCourses', joinNames(state.skippedCourses.map((course) => course.name)))}
+            // Retry shows only when the stale line does not already offer it.
+            action={state.stale === null ? t('retry') : undefined}
+            onAction={() => actions.retry()}
+          />
+        )}
+        {view.limited && <NoticeLine id={limitedId} text={t('limitedLine')} />}
       </div>
       <OneTimeNotes
         notes={visibleNotes}
@@ -391,11 +388,15 @@ function ReadyView(props: {
         filter={view.courseFilter}
         onSelect={(id) => actions.setCourseFilter(id)}
       />
-      <FilterLine
-        view={view}
-        courses={state.taskCourses}
-        onClear={() => actions.setCourseFilter(undefined)}
-      />
+      {filter !== null && (
+        <div class="wr-filter">
+          <NoticeLine
+            text={filter}
+            action={t('showAll')}
+            onAction={() => actions.setCourseFilter(undefined)}
+          />
+        </div>
+      )}
       <div aria-busy={state.refreshing}>
         <WeekList
           view={view}
@@ -404,10 +405,16 @@ function ReadyView(props: {
           rowLimit={surface === 'inpage' ? INPAGE_ROW_LIMIT : null}
         />
       </div>
-      <HiddenCoursesLine
-        count={view.hiddenCourseCount}
-        onSettings={() => props.onSettings('hidden')}
-      />
+      {view.hiddenCourseCount > 0 && (
+        <div class="wr-foot">
+          <NoticeLine
+            text={tp('hiddenCourses', view.hiddenCourseCount)}
+            action={t('settings')}
+            opener="hidden"
+            onAction={() => props.onSettings('hidden')}
+          />
+        </div>
+      )}
       <Dock undo={state.undo} onUndo={() => actions.undo()} onClose={() => actions.dismissUndo()} />
     </>
   );

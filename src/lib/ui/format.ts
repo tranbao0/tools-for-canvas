@@ -19,23 +19,6 @@ function formatter(options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
   return cached;
 }
 
-const validZones = new Map<string, boolean>();
-
-/** Returns `timeZone` when the runtime knows it, otherwise `UTC`. */
-export function safeTimeZone(timeZone: string): string {
-  let valid = validZones.get(timeZone);
-  if (valid === undefined) {
-    try {
-      new Intl.DateTimeFormat(LOCALE, { timeZone });
-      valid = true;
-    } catch {
-      valid = false;
-    }
-    validZones.set(timeZone, valid);
-  }
-  return valid ? timeZone : 'UTC';
-}
-
 /** A plain date as a `Date` at UTC midnight, to format with `timeZone: 'UTC'`. */
 function plainDateToUtc(date: string): Date {
   const [year = 1970, month = 1, day = 1] = date.split('-').map(Number);
@@ -44,10 +27,6 @@ function plainDateToUtc(date: string): Date {
 
 function formatPlain(date: string, options: Intl.DateTimeFormatOptions): string {
   return formatter({ ...options, timeZone: 'UTC' }).format(plainDateToUtc(date));
-}
-
-function part(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes): string {
-  return parts.find((p) => p.type === type)?.value ?? '';
 }
 
 /** "Oct 28" */
@@ -89,24 +68,15 @@ export function formatWeekRangeLong(start: string, end: string): string {
 
 /** The calendar day of `instant` in `timeZone`, as `YYYY-MM-DD`. */
 export function zonedDate(instant: string, timeZone: string): string {
-  const parts = formatter({
-    timeZone: safeTimeZone(timeZone),
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date(instant));
-  return `${part(parts, 'year')}-${part(parts, 'month')}-${part(parts, 'day')}`;
+  return Temporal.Instant.from(instant).toZonedDateTimeISO(timeZone).toPlainDate().toString();
 }
 
 /** The wall-clock time of `instant` in `timeZone`, as 24-hour `HH:MM`. */
 export function zonedTime(instant: string, timeZone: string): string {
-  const parts = formatter({
-    timeZone: safeTimeZone(timeZone),
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(new Date(instant));
-  return `${part(parts, 'hour')}:${part(parts, 'minute')}`;
+  return Temporal.Instant.from(instant)
+    .toZonedDateTimeISO(timeZone)
+    .toPlainTime()
+    .toString({ smallestUnit: 'minute' });
 }
 
 /** "3:05 pm" on the 12-hour clock, "15:05" on the 24-hour clock. */
@@ -154,10 +124,11 @@ export function formatTimeOrDateTime(
 }
 
 function zoneName(timeZone: string, instant: string, style: 'shortGeneric' | 'short'): string {
-  const parts = formatter({ timeZone: safeTimeZone(timeZone), timeZoneName: style }).formatToParts(
-    new Date(instant),
+  return (
+    formatter({ timeZone, timeZoneName: style })
+      .formatToParts(new Date(instant))
+      .find((p) => p.type === 'timeZoneName')?.value ?? ''
   );
-  return part(parts, 'timeZoneName');
 }
 
 /** A short name for the zone: "ET" or "PT" where one exists, otherwise "GMT+1" or "UTC". */
