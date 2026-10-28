@@ -1,7 +1,7 @@
 # Design
 
 This document records the design decisions for version 1 of the extension.
-The extension is called Weekrow for Canvas (see decision 17).
+The extension is called Tools for Canvas (see decision 17).
 The repository still uses the working name Simple-CanvasTasks.
 Facts were checked on 2026-10-27.
 Each fact has a source in the [Sources](#sources) list at the end, shown as a number in brackets.
@@ -44,7 +44,7 @@ This extension has no account, no server of its own and no telemetry.
 | 14 | Browsers and versions | Chrome and Edge 144+, Firefox 140+, desktop only |
 | 15 | Publishing and privacy | Three stores, one privacy policy, no data collection |
 | 16 | License | GPL-3.0-only, with DCO sign-off for contributions |
-| 17 | Name | Weekrow for Canvas |
+| 17 | Name | Tools for Canvas |
 | 18 | Settings | Five settings, also shown inside the panel and the in-page list |
 | 19 | Accessibility, language and theme | WCAG 2.2 AA, English text, a Theme setting with Automatic, Light and Dark |
 | 20 | No-telemetry guarantee | One fetch wrapper that only reaches the student's Canvas |
@@ -1140,53 +1140,49 @@ Contributions need a DCO sign-off and come in under the same license.
 
 **Question:** What should the extension be called?
 
-**Options:** Twelve candidate names were checked on 2026-10-27 [21].
-Each check covered the Chrome, Firefox and Edge stores, the Apple and Google app stores, GitHub, the web, the USPTO and TMview.
+**History:**
 
-| Candidate | Result |
-|---|---|
-| Weekrow | Clear |
-| Septet | Minor conflict: marks in unrelated fields |
-| Heptad | Minor conflict: an iOS puzzle game |
-| Ringtide | Minor conflict: an AI voice company and two games |
-| Circlet | Minor conflict: registered marks for a medical ring and for school supplies |
-| Annulet | Minor conflict: a UK mark that covers software |
-| Weekfold | Conflict: an iOS weekly to-do app released 2026-10-26 |
-| Weekfill | Conflict: an iOS weekly goal tracker with no account |
-| Weekspan | Conflict: an open-source weekly to-do web app |
-| Weektide | Conflict: a planner app for Mac |
-| Sennight | Conflict: a GitHub week planner and Turkish marks |
-| Hushlist | Conflict: an iOS deadline app and a pending Benelux mark |
+- The first pick, "Weekrow for Canvas", came from a collision check of twelve coined names [21].
+  The owner rejected it after testing, and also rejected a second round of coined names, such as "Whew" and "Tickalong".
+- The owner then chose a plain, clear name, because this is an extension, not a company: the name should describe the product and match what students search for.
+- The scope also widened to Canvas fixes in general (decision 1), so the name must not be about a week.
 
-**Decision:** Weekrow for Canvas.
-Septet for Canvas is the fallback.
+**Options:**
+
+- A. Tools for Canvas.
+- B. Student Tools for Canvas.
+- C. Tweaks for Canvas.
+
+**Decision:** A, Tools for Canvas.
+The owner chose it on 2026-10-27.
 
 **Why:**
 
-- It is the only candidate with no product or mark of the same name in any source that was checked [21].
-- The domains weekrow.com, weekrow.app, weekrow.io and weekrow.co were not registered on 2026-10-27 [21].
-- It suggests one row of seven days, which is what the list shows.
-- It follows the naming rules below.
+- It is plain, short and describes a set of Canvas fixes, so it fits every later fix.
+- On 2026-10-27, neither the Chrome Web Store nor Firefox Add-ons had an extension with this exact name [27].
+- Plain names that were already taken: Canvas Toolkit, Canvas Enhancer, Canvas Pro-Tools, Canvas Refined, Canvas Betterizer, Canvas+ and Fixing Canvas [27].
+
+**Risks:**
+
+- "Canvas" also names a drawing surface, and the stores show drawing tools and teacher tools for the same words [27].
+  The short description therefore names the audience: "Fixes for Canvas LMS students: a weekly to-do list, missing work and due dates."
+- The name differs from "Tasks for Canvas" by one short word, so an Edge reviewer may find them similar.
+  The Edge search was not checked, because its search API did not answer.
 
 **Rules:**
 
-- Use the form "<Name> for Canvas".
-- Do not start with "Canvas".
-  Instructure enforces its CANVAS trademark [20].
-- Do not use a name that contains "Tasks for Canvas".
-  Firefox Add-ons requires a fork to have a clearly different name, and Edge rejects names similar to other extensions [20].
-- "Simple-CanvasTasks" is too close to the live "Simple Canvas Tasks" [9].
-- "Weekboard" is already used by a weekly-planner web app (MyWeekBoard), a college homework planner on GitHub, a stationery brand and an iOS planner [22].
+- Keep the form "<Name> for Canvas", and do not start with "Canvas", because Instructure enforces its CANVAS trademark [20].
+- Do not use a name that contains "Tasks for Canvas" [20].
+- Setting and UI texts name the feature, not the product, so they stay correct as more fixes arrive.
+  For example, "Show the weekly list on Canvas pages", not "Show Tools for Canvas on Canvas pages".
 
-**Follow-up actions for the owner:**
+**Follow-up actions:**
 
-1. Register weekrow.com.
-2. Rename the GitHub repository.
-3. Reserve the store listings soon, because new "Week" planner names appear often [21].
-4. Run a final name check just before the first release.
-
-**Remaining risk:** No full trademark clearance was done [21].
-"Weekrow" joins two plain words, so a trademark for it may be weak.
+1. Rename the product in the code: the extension name and the description in the messages, the package name, the README, the privacy policy, the store texts and the UI texts that name the product.
+2. Change the Firefox add-on id before the first Firefox release, for example to `tools-for-canvas@tranbao0.github.io`.
+   An add-on id cannot change after the first release.
+3. Rename the GitHub repository, for example to `tools-for-canvas`, and update the repository and privacy policy links in the URL allowlist.
+4. Run a final store check for the exact name, including Edge, just before the first release.
 
 ### 18. Settings
 
@@ -1361,3 +1357,4 @@ These items need a live check or an outside answer.
 24. Chrome runtime and scripting API docs, the Chrome extension service worker lifecycle docs, and MDN runtime.sendMessage and scripting docs. https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle and https://developer.chrome.com/docs/extensions/reference/api/runtime#method-sendMessage and https://developer.chrome.com/docs/extensions/reference/api/scripting and https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/sendMessage
 25. Gradescope instructor guide on posting grades to Canvas, seen only as a search result summary because a direct fetch returned 403. https://guides.gradescope.com
 26. Browser color scheme behavior for extension pages: the W3C WebExtensions issue on preferred color schemes, the W3C CSS issue of December 2025 about Chrome's theme mode, and Mozilla's website appearance help page. https://github.com/w3c/webextensions/issues/242 and https://lists.w3.org/Archives/Public/public-css-archive/2025Dec/0569.html and https://support.mozilla.org/en-US/kb/change-website-appearance-settings-firefox
+27. Store searches on 2026-10-27 for plain names, through the Chrome Web Store search pages and the Firefox Add-ons search API. https://chromewebstore.google.com/search/tools%20for%20canvas and https://addons.mozilla.org/api/v5/addons/search/?q=tools%20for%20canvas
