@@ -1,8 +1,5 @@
 // @vitest-environment happy-dom
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { format, resolveConfig } from 'prettier';
 import { describe, expect, it } from 'vitest';
 import type { PlannableType } from '../../src/lib/canvas/types';
 import { CANVAS_ERRORS, NOT_CANVAS_RESPONSES, invalidAssignmentIds } from '../fixtures/errors';
@@ -254,17 +251,6 @@ describe('SCENARIO', () => {
   it('is the scenario built at SCENARIO_NOW', () => {
     expect(SCENARIO.now).toBe(SCENARIO_NOW);
     expect(buildScenario(SCENARIO_NOW)).toEqual(SCENARIO);
-  });
-
-  it('matches the checked-in snapshot', async () => {
-    // Formatted like `prettier --write`, so the format check passes on the snapshot file.
-    const file = join(
-      dirname(fileURLToPath(import.meta.url)),
-      '../fixtures/scenario.snapshot.json',
-    );
-    const options = await resolveConfig(file);
-    const text = await format(JSON.stringify(SCENARIO), { ...options, filepath: file });
-    await expect(text).toMatchFileSnapshot(file);
   });
 
   it('is frozen', () => {

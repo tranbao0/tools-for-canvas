@@ -41,12 +41,6 @@ Every course is in one account that has discussion checkpoints turned on, so eac
 History's undated list still holds its two checkpoint parents, as a server that ignores `exclude_checkpoints` returns them.
 `allAssignmentsInCourse(scenario, courseId)` answers the planner-off request, `include[]=submission&include[]=checkpoints`, with the checkpoint fields on every assignment.
 
-## scenario.snapshot.json
-
-This file is `SCENARIO` as JSON, checked by `tests/unit/fixtures.test.ts`.
-It lets a reader see every exact value without running code.
-After a deliberate change to the scenario, run `npx vitest run tests/unit/fixtures.test.ts -u` to write it again.
-
 ## wire-types.ts
 
 These types extend the shared contract types with every field that Canvas really sends.
