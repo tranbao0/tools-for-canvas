@@ -19,21 +19,6 @@ export interface PanelHeartbeatMessage {
 
 export type PanelPortMessage = PanelHelloMessage | PanelHeartbeatMessage;
 
-/** Background to content script: the side panel in this tab's window opened or closed. */
-export interface PanelOpenMessage {
-  type: 'weekrow:panel-open';
-  open: boolean;
-}
-
-/** Content script to background: is the side panel open in my window? The reply is `PanelStateReply`. */
-export interface PanelStateQuery {
-  type: 'weekrow:panel-state';
-}
-
-export interface PanelStateReply {
-  open: boolean;
-}
-
 /** Content script to background: a page of the saved Canvas loaded. Refreshes the planner items. */
 export interface CanvasPageLoadedMessage {
   type: 'weekrow:canvas-page-loaded';
@@ -50,22 +35,6 @@ export function isPanelHelloMessage(value: unknown): value is PanelHelloMessage 
 
 export function isPanelHeartbeatMessage(value: unknown): value is PanelHeartbeatMessage {
   return hasType(value, 'weekrow:panel-heartbeat');
-}
-
-export function isPanelOpenMessage(value: unknown): value is PanelOpenMessage {
-  return hasType(value, 'weekrow:panel-open') && typeof value.open === 'boolean';
-}
-
-export function isPanelStateQuery(value: unknown): value is PanelStateQuery {
-  return hasType(value, 'weekrow:panel-state');
-}
-
-export function isPanelStateReply(value: unknown): value is PanelStateReply {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { open?: unknown }).open === 'boolean'
-  );
 }
 
 export function isCanvasPageLoadedMessage(value: unknown): value is CanvasPageLoadedMessage {

@@ -1,5 +1,5 @@
 /**
- * The in-page list on Canvas pages (design decision 4, "In-page rules"): the collapsed line while
+ * The in-page list on Canvas pages (design decision 4, "In-page rules"): the list that stays while
  * the side panel is open, course home pages, the mixed-role dashboard, pages that get nothing,
  * and the compact list.
  */
@@ -9,6 +9,7 @@ import { IDS, type Scenario } from '../fixtures/scenario';
 import { readPageFixture } from './support/fake-canvas';
 import { saveAddress, savedAddress } from './support/scenario-api';
 import {
+  addCsrfCookie,
   doneBox,
   expect,
   group,
@@ -17,11 +18,11 @@ import {
   openCanvasPage,
   saveSettings,
   serveScenario,
+  settledList,
   test,
 } from './support/weekrow';
 
 const QUIZ_3 = 'Quiz 3: Cell membranes';
-const SHOWN_IN_PANEL = 'Shown in the side panel';
 
 /**
  * Resolves when the Weekrow content script has started in the page, so a test can tell
@@ -113,41 +114,47 @@ async function expandEverything(list: Locator): Promise<void> {
 }
 
 test.describe('side panel presence', () => {
-  test('collapses to one line while the panel page is open in the same window, and comes back when it closes', async ({
+  test('keeps the full list while the panel page is open in the same window, and after it closes', async ({
     context,
     page,
     background,
     extensionUrl,
   }) => {
     const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }]);
+    await addCsrfCookie(context, canvas.origin);
     await openCanvasPage(page, canvas.origin);
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
     expect(await savedAddress(background)).toBe(canvas.origin);
     const canvasWindow = await windowOfTab(background, `${canvas.origin}/*`);
+    await settledList(page);
+    const rows = await list.locator('[data-part="title"]').count();
 
     const panel = await openPanelTab(context, background, extensionUrl('sidepanel.html'), {
       windowId: canvasWindow,
     });
     await expect(doneBox(panel, QUIZ_3)).toBeVisible();
+    await page.bringToFront();
 
-    await expect(list).toHaveText(SHOWN_IN_PANEL);
-    await expect(doneBox(list, QUIZ_3)).toHaveCount(0);
+    // The Canvas page is the main home: the list stays in full beside the open panel.
+    await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await expect(list.getByText('Shown in the side panel')).toHaveCount(0);
+    await expect(list.locator('[data-part="title"]')).toHaveCount(rows);
+    await expect(group(list, 'past_due')).toBeVisible();
+    await expect(page.locator('#right-side .Sidebar__TodoListContainer')).toBeHidden();
 
-    // A panel in another window changes nothing here.
-    const elsewhere = await openPanelTab(context, background, extensionUrl('sidepanel.html'), {
-      newWindow: true,
-    });
-    await expect(doneBox(elsewhere, QUIZ_3)).toBeVisible();
-    await expect(list).toHaveText(SHOWN_IN_PANEL);
+    // A mark in the panel shows in the list on the page too: the quiz moves to Done.
+    await panel.bringToFront();
+    await doneBox(group(panel, 'today'), QUIZ_3).click();
+    await expect(doneBox(group(panel, 'today'), QUIZ_3)).toHaveCount(0);
+    await page.bringToFront();
+    await expect(doneBox(group(list, 'today'), QUIZ_3)).toHaveCount(0);
+    await expect(group(list, 'past_due')).toBeVisible();
 
     await panel.close();
-
-    await expect(doneBox(list, QUIZ_3)).toBeVisible();
-    await expect(list.getByText(SHOWN_IN_PANEL)).toHaveCount(0);
-    // The panel in the other window is still open, and this list stays expanded.
-    await expect(doneBox(elsewhere, QUIZ_3)).toBeVisible();
-    await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await expect(group(list, 'today')).toBeVisible();
+    await expect(group(list, 'past_due')).toBeVisible();
+    await expect(list.getByText('Shown in the side panel')).toHaveCount(0);
   });
 });
 
@@ -177,11 +184,10 @@ test.describe('course home page', () => {
     await expect(page.locator('#right-side .Sidebar__TodoListContainer')).toBeHidden();
   });
 
-  test('shows a note with a settings link on the home page of a hidden course, and the native To Do stays', async ({
+  test('shows a note on the home page of a hidden course, whose settings show it again in place', async ({
     context,
     page,
     background,
-    extensionUrl,
   }) => {
     const { canvas } = await serveScenario(context, [
       { path: `/courses/${IDS.courses.club}`, page: 'course-home-hidden-course' },
@@ -197,10 +203,21 @@ test.describe('course home page', () => {
     await expect(page.locator('#right-side .Sidebar__TodoListContainer')).toBeVisible();
     await expect(page.locator('#weekrow-hide-native-todo')).toHaveCount(0);
 
-    const opened = context.waitForEvent('page');
+    // The settings open in place, on the Canvas page.
+    const tabs = context.pages().length;
     await list.getByRole('button', { name: 'Settings' }).click();
-    const settings = await opened;
-    await expect(settings).toHaveURL(extensionUrl('options.html'));
+    await expect(list.getByRole('button', { name: 'Back' })).toBeVisible();
+    expect(context.pages()).toHaveLength(tabs);
+    const club = list.getByRole('switch', { name: 'Hide Intramural Ultimate Frisbee Club' });
+    await expect(club).toBeChecked();
+    await club.click();
+    await expect(club).not.toBeChecked();
+    await list.getByRole('button', { name: 'Back' }).click();
+
+    // The course is back, so its list shows and replaces the native To Do.
+    await expect(list.getByText('You hid this course in Weekrow.')).toHaveCount(0);
+    await expect(list.getByRole('checkbox').first()).toBeVisible();
+    await expect(page.locator('#right-side .Sidebar__TodoListContainer')).toBeHidden();
   });
 });
 

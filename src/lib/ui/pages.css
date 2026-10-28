@@ -1,316 +1,90 @@
 /*
- * Rules for extension pages only: the page background, the settings and welcome pages, the
- * first-run steps and the switches. The in-page shadow root never loads them, which keeps the
+ * Rules for extension pages only: the page background and scroll bars, the side panel layout
+ * and the "Use this Canvas?" offer. The in-page shadow root never loads them, which keeps the
  * content script small (design decision 12). Extension pages load this sheet after styles.css.
+ * The page follows the theme of its view: data-theme on the root or on an ancestor of the view.
+ * The settings and welcome pages add their own layout rules from page.css.
  */
 
-:root:has(.wr[data-surface='panel']),
-:root:has(.wr[data-surface='page']) {
+:root:has(.wr[data-surface='panel'], .wr[data-surface='page']) {
   color-scheme: light dark;
-  scrollbar-color: light-dark(#c4c9d1, #3c4046) transparent;
+  scrollbar-color: light-dark(#c7cdd1, #4a5b68) transparent;
 }
 
-:root:has(.wr[data-surface='panel']) body,
-:root:has(.wr[data-surface='page']) body {
+:root[data-theme='dark'],
+:root:has([data-theme='dark'] .wr, .wr[data-theme='dark']) {
+  color-scheme: dark;
+}
+
+:root[data-theme='light'],
+:root:has([data-theme='light'] .wr, .wr[data-theme='light']) {
+  color-scheme: light;
+}
+
+:root:has(.wr[data-surface='panel'], .wr[data-surface='page']) body {
   margin: 0;
-  background: light-dark(#ffffff, #17181b);
+  background: light-dark(#fff, #1b2330);
 }
 
-/* Switches */
+/* The side panel: a full-height column with a sticky header, and room at the sides. */
 
-.wr-switch {
-  position: relative;
-  display: inline-block;
-  flex: none;
-  width: 36px;
-  height: 22px;
-}
-
-.wr-switch > input {
-  position: absolute;
-  inset: -1px;
-  width: calc(100% + 2px);
-  height: calc(100% + 2px);
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.wr-switch-track {
-  position: absolute;
-  inset: 0;
-  border: 1.5px solid var(--wr-line-strong);
-  border-radius: 999px;
-  background: var(--wr-bg);
-  pointer-events: none;
-  transition:
-    background-color 150ms ease-out,
-    border-color 150ms ease-out;
-}
-
-.wr-switch-track::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: var(--wr-line-strong);
-  transition:
-    transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
-    background-color 150ms ease-out;
-}
-
-.wr-switch > input:checked + .wr-switch-track {
-  border-color: var(--wr-accent);
-  background: var(--wr-accent);
-}
-
-.wr-switch > input:checked + .wr-switch-track::after {
-  background: var(--wr-on-accent);
-  transform: translateX(14px);
-}
-
-.wr-switch > input:focus-visible + .wr-switch-track {
-  outline: 2px solid var(--wr-accent);
-  outline-offset: 2px;
-}
-
-/* Pages: settings and welcome */
-
-.wr[data-surface='page'] {
+.wr[data-surface='panel'] {
   min-height: 100vh;
-  --wr-pad: 24px;
-}
-
-.wr-page {
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 32px var(--wr-pad) 48px;
-}
-
-.wr-page-head {
   display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  margin-bottom: 28px;
+  flex-direction: column;
 }
 
-.wr-page-head > .wr-mark {
-  margin-top: -2px;
+.wr[data-surface='panel'] > * {
+  padding-inline: 16px;
 }
 
-.wr-page-title {
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 28px;
-  letter-spacing: -0.015em;
-}
-
-.wr-page-lead {
-  margin-top: 2px;
-  color: var(--wr-text-2);
-  font-size: 14px;
-}
-
-.wr-settings {
-  border-top: 1px solid var(--wr-line);
-}
-
-.wr-setting {
-  display: grid;
-  gap: 8px;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--wr-line);
-}
-
-.wr-setting-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.wr-setting-text {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.wr-setting-name {
-  color: var(--wr-text);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.wr-setting-help {
-  color: var(--wr-text-2);
-  font-size: 13px;
-  line-height: 18px;
-}
-
-.wr-setting select.wr-input {
-  max-width: 320px;
-}
-
-.wr-course-list {
-  display: grid;
-  margin-top: 4px;
-  border: 1px solid var(--wr-line);
-  border-radius: var(--wr-radius);
-}
-
-.wr-course-list > li {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 44px;
-  padding: 6px 12px;
-}
-
-.wr-course-list > li + li {
-  border-top: 1px solid var(--wr-line);
-}
-
-.wr-course-list label {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.wr-address-value {
-  overflow-wrap: break-word;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.wr-steps {
-  display: grid;
-  gap: 0;
-  counter-reset: wr-step;
-}
-
-.wr-step {
-  position: relative;
-  display: grid;
-  gap: 6px;
-  padding: 0 0 28px 44px;
-  counter-increment: wr-step;
-}
-
-.wr-step::before {
-  content: counter(wr-step);
-  position: absolute;
-  top: -2px;
-  left: 0;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--wr-accent-soft);
-  color: var(--wr-accent-text);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.wr-step:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  top: 32px;
-  bottom: 6px;
-  left: 13.5px;
-  width: 1px;
-  background: var(--wr-line);
-}
-
-.wr-step-title {
-  font-size: 15px;
-  font-weight: 650;
-  line-height: 24px;
-}
-
-.wr-step-body {
-  color: var(--wr-text-2);
-  font-size: 14px;
-  line-height: 20px;
-}
-
-/* The setup step on the welcome page reads like the steps above it. */
-.wr-step .wr-state {
-  max-width: none;
-  padding: 0;
-}
-
-.wr-step .wr-state-body {
-  font-size: 14px;
-  line-height: 20px;
-}
-
-/* The same steps in the Firefox sidebar, sized for a narrow panel. */
-.wr-state > .wr-steps .wr-step {
-  gap: 4px;
-  padding: 0 0 20px 34px;
-}
-
-.wr-state > .wr-steps .wr-step:last-child {
-  padding-bottom: 0;
-}
-
-.wr-state > .wr-steps .wr-step::before {
-  top: -1px;
-  width: 22px;
-  height: 22px;
-  font-size: 12px;
-}
-
-.wr-state > .wr-steps .wr-step:not(:last-child)::after {
-  top: 25px;
-  bottom: 4px;
-  left: 10.5px;
-}
-
-.wr-state > .wr-steps .wr-step-title {
-  font-size: 14px;
-  line-height: 20px;
-}
-
-.wr-state > .wr-steps .wr-step-body {
-  font-size: 13px;
-  line-height: 19px;
-}
-
-.wr-state > .wr-steps .wr-address-form {
-  margin-top: 6px;
-}
-
-.wr kbd {
-  display: inline-block;
-  padding: 1px 6px;
-  border: 1px solid var(--wr-line-strong);
-  border-bottom-width: 2px;
-  border-radius: 5px;
-  background: var(--wr-sunken);
-  color: var(--wr-text);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 18px;
-  white-space: nowrap;
+@container wr (width < 360px) {
+  .wr[data-surface='panel'] > * {
+    padding-inline: 12px;
+  }
 }
 
 @container wr (width < 240px) {
-  .wr-state > .wr-steps .wr-step {
-    padding-left: 30px;
+  .wr[data-surface='panel'] > * {
+    padding-inline: 8px;
   }
 }
 
-@media (forced-colors: active) {
-  .wr-switch > input:checked + .wr-switch-track {
-    background: Highlight;
-    border-color: Highlight;
-    color: HighlightText;
-  }
+.wr[data-surface='panel'] .wr-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding-top: 12px;
+  background: var(--wr-bg);
+}
+
+.wr[data-surface='panel'] > :is(.wr-bar, .wr-settings-panel, .wr-form) {
+  padding-top: 12px;
+}
+
+/* The "Use this Canvas?" offer shows in the side panel only (design decision 4). */
+
+.wr-offer {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--wr-brand);
+  border-radius: 4px;
+}
+
+.wr-offer-title {
+  font-weight: 700;
+}
+
+.wr-offer-host {
+  color: var(--wr-text-2);
+  overflow-wrap: break-word;
+}
+
+.wr-offer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
 }

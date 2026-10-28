@@ -144,8 +144,8 @@ Run these steps in one background console, such as the Chrome background.
 Use a new, empty profile, and the student account.
 
 5. Install the build from step 4.
-   Expect on Chrome and Edge: the welcome page opens, and it shows how to pin the toolbar button, the shortcut Alt+Shift+W, the address field and "Allow access".
-   Expect on Firefox: the sidebar opens with the same first-run steps.
+   Expect: the welcome page opens in a tab, and it shows how to pin the toolbar button, the shortcut Alt+Shift+W, the address field and "Allow access".
+   Expect: the side panel (the sidebar on Firefox) does not open by itself.
 6. Open your `instructure.com` Canvas in a tab and sign in.
    Click the toolbar button.
    Expect: the panel opens and offers "Use this Canvas?".
@@ -177,16 +177,19 @@ Use a new, empty profile, and the student account.
 16. Open the new Canvas dashboard (if your school has it) and the List View dashboard.
     Expect: Weekrow adds nothing to these pages.
 17. With the side panel open, look at the Card View dashboard in the same window.
-    Expect: the in-page list shows only the line "Shown in the side panel".
+    Expect: the in-page list shows in full, as it does with the panel closed.
 18. Sign out of Canvas, then open the panel.
     Expect: "Open Canvas to sign in", the saved address and a "Change it" link.
     On Firefox, expect also the note about private windows and container tabs.
 19. Sign in again, turn off the network, and click Retry in the panel.
     Expect: "Couldn't refresh. Showing your list from <time>." and "You're offline."
-20. Open the settings and change each of the four settings.
-    Expect: the first day of the week, the hidden courses, the rings and the in-page list follow the settings, and a hidden course adds a line such as "1 course hidden".
-21. Switch the system between light and dark mode.
-    Expect: the panel follows the system, and the in-page list follows the Canvas page.
+20. Click the gear in the panel and change each of the five settings, then do the same with the gear in the in-page list.
+    Expect: the settings open in place, Back returns to the list, and each change shows at once in the panel, in the in-page list and on the settings page.
+    Expect: the first day of the week, the hidden courses, the rings, the in-page list and the theme follow the settings, and a hidden course adds a line such as "1 course hidden".
+21. Set Theme to Light, then Dark.
+    Expect: the panel, the settings page, the welcome page and the in-page list all use that theme.
+    Set Theme to Automatic, then switch the system between light and dark mode.
+    Expect: the panel follows the browser or the system, and the in-page list follows the Canvas page.
 22. Use the panel with the keyboard only, then with a screen reader.
     Expect: every action works with the keyboard, and each ring has a label such as "3 of 5 done this week".
 23. Make the panel as narrow as the browser allows (360 px on Chrome and Edge, 14em on Firefox).

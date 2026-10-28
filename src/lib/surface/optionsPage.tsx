@@ -1,5 +1,5 @@
 /**
- * The settings page. See docs/design.md, decision 18.
+ * The settings page. See docs/design.md, decisions 18 and 19.
  */
 import { render } from 'preact';
 import { browser } from 'wxt/browser';
@@ -10,6 +10,7 @@ import { canvasOriginItem, settingsItem } from '../platform/storage';
 import { SettingsView } from '../ui/SettingsView';
 import { installStyles } from '../ui/styles';
 import { sendToBackground } from './hosts';
+import { followExtensionPageTheme } from './theme';
 
 async function loadCourses(): Promise<CourseChoice[]> {
   const reply = await sendToBackground({ type: 'weekrow:courses' });
@@ -19,6 +20,7 @@ async function loadCourses(): Promise<CourseChoice[]> {
 /** The settings page. A change saves the settings, then asks the background to refresh. */
 export async function startOptions(root: HTMLElement): Promise<void> {
   installStyles(document);
+  followExtensionPageTheme(settingsItem, [document.documentElement, root], logFailure);
   let settings: Settings = await settingsItem.getValue();
   let origin: string | null = await canvasOriginItem.getValue();
   let courses: CourseChoice[] = [];

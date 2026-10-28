@@ -21,6 +21,7 @@ function fakeRuntime(state: SurfaceState): SurfaceRuntime & { set(next: SurfaceS
   return {
     actions: noopActions(),
     state: () => current,
+    settings: () => undefined,
     subscribe: () => () => undefined,
     start: () => undefined,
     stop: () => undefined,
@@ -28,6 +29,28 @@ function fakeRuntime(state: SurfaceState): SurfaceRuntime & { set(next: SurfaceS
       current = next;
     },
   };
+}
+
+/** Stored settings with a watch, like `settingsItem`. */
+function settingsStore(initial: Partial<Settings> = {}) {
+  let value: Settings = { ...DEFAULT_SETTINGS, ...initial };
+  const listeners = new Set<(next: Settings) => void>();
+  return {
+    getValue: async () => value,
+    watch(listener: (next: Settings) => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    set(next: Partial<Settings>) {
+      value = { ...value, ...next };
+      for (const listener of listeners) listener(value);
+    },
+    listeners,
+  };
+}
+
+async function flushPromises(): Promise<void> {
+  for (let index = 0; index < 5; index += 1) await Promise.resolve();
 }
 
 afterEach(() => {
@@ -58,7 +81,7 @@ describe('the native To Do', () => {
 });
 
 describe('createInpageView', () => {
-  it('renders the list, collapses it while the panel is open and clears it on removal', () => {
+  it('renders the list and clears it on removal', () => {
     const container = document.createElement('div');
     document.body.append(container);
     const runtime = fakeRuntime({ kind: 'loading' });
@@ -72,10 +95,6 @@ describe('createInpageView', () => {
     view.draw();
     expect(container.querySelectorAll('input[type="checkbox"]').length).toBeGreaterThan(0);
     expect(isNativeTodoHidden()).toBe(true);
-
-    view.setCollapsed(true);
-    expect(container.querySelector('.wr-collapsed')).not.toBeNull();
-    expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
 
     view.setContainer(null);
     expect(container.innerHTML).toBe('');
@@ -108,27 +127,20 @@ describe('scopeFor', () => {
 });
 
 describe('mountInpageList', () => {
-  function setup() {
+  function setup(initial: Partial<Settings> = {}) {
     document.body.innerHTML =
       '<div id="right-side-wrapper"><div id="weekrow-inpage"></div><div id="right-side"></div></div>';
     const container = document.getElementById('weekrow-inpage') as HTMLElement;
     const runtime = fakeRuntime(readyState());
     const start = vi.spyOn(runtime, 'start');
     const stop = vi.spyOn(runtime, 'stop');
-    let panelListener: ((open: boolean) => void) | null = null;
-    const stopPanel = vi.fn();
+    const settings = settingsStore(initial);
     const dispose = mountInpageList(
       { layout: 'dashboard', courseId: null, container },
-      {
-        runtime,
-        pageOrigin: ORIGIN,
-        watchPanel(listener) {
-          panelListener = listener;
-          return stopPanel;
-        },
-      },
+      { runtime, pageOrigin: ORIGIN, settings },
     );
-    return { container, runtime, start, stop, stopPanel, dispose, panel: () => panelListener };
+    const host = (): HTMLElement => container.querySelector(SHADOW_HOST_NAME) as HTMLElement;
+    return { container, runtime, start, stop, settings, dispose, host };
   }
 
   it('renders the list in an open shadow root with its styles and the page theme', () => {
@@ -163,15 +175,42 @@ describe('mountInpageList', () => {
     document.removeEventListener('keydown', onKey);
   });
 
-  it('collapses while the side panel is open', () => {
-    const { container, panel } = setup();
-    panel()?.(true);
-    const shadow = (container.querySelector(SHADOW_HOST_NAME) as HTMLElement).shadowRoot;
-    expect(shadow?.querySelector('.wr-collapsed')).not.toBeNull();
+  it('always shows the full list: nothing collapses it, also while the side panel is open', () => {
+    const { host } = setup();
+    const shadow = host().shadowRoot as ShadowRoot;
+    expect(shadow.textContent).not.toContain('Shown in the side panel');
+    expect(shadow.querySelectorAll('input[type="checkbox"]').length).toBeGreaterThan(0);
+  });
+
+  it('applies an explicit theme to the host and the UI root, and follows changes', async () => {
+    const { host, settings } = setup({ theme: 'dark' });
+    const root = (): Element | null => host().shadowRoot?.querySelector('style + div') ?? null;
+    // Before the settings arrive, the list follows the page, which is light.
+    expect(host().getAttribute('data-theme')).toBe('light');
+
+    await flushPromises();
+    expect(host().getAttribute('data-theme')).toBe('dark');
+    expect(root()?.getAttribute('data-theme')).toBe('dark');
+
+    settings.set({ theme: 'light' });
+    expect(host().getAttribute('data-theme')).toBe('light');
+    expect(root()?.getAttribute('data-theme')).toBe('light');
+  });
+
+  it('follows the Canvas page with Automatic', async () => {
+    document.body.style.backgroundColor = 'rgb(20, 20, 24)';
+    const { host, settings } = setup({ theme: 'light' });
+    await flushPromises();
+    expect(host().getAttribute('data-theme')).toBe('light');
+
+    settings.set({ theme: 'auto' });
+
+    expect(host().getAttribute('data-theme')).toBe('dark');
+    document.body.style.backgroundColor = '';
   });
 
   it('removes everything it added when the content script ends', () => {
-    const { stop, stopPanel, dispose } = setup();
+    const { stop, settings, dispose } = setup();
 
     dispose();
 
@@ -180,17 +219,16 @@ describe('mountInpageList', () => {
     expect(isNativeTodoHidden()).toBe(false);
     expect(document.getElementById('right-side')).not.toBeNull();
     expect(stop).toHaveBeenCalledTimes(1);
-    expect(stopPanel).toHaveBeenCalledTimes(1);
+    expect(settings.listeners.size).toBe(0);
   });
 
   it('gives the page back even when an extension call throws in an orphaned script', () => {
-    const { stop, stopPanel, dispose } = setup();
+    const { stop, dispose } = setup();
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const dead = (): never => {
       throw new Error('Extension context invalidated.');
     };
     stop.mockImplementation(dead);
-    stopPanel.mockImplementation(dead);
 
     expect(() => dispose()).not.toThrow();
 

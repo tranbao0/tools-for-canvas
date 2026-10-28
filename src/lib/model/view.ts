@@ -20,6 +20,7 @@ import {
   handInChipFor,
   hasWarningChip,
   itemState,
+  placementState,
   redoBlocksDone,
   statusChip,
 } from './rules';
@@ -51,6 +52,8 @@ interface Placed {
   slot: Slot;
   /** Dated in the viewed week. */
   datedInWeek: boolean;
+  /** Counts as done in the rings. A checked item that Canvas marks missing does not. */
+  countsDone: boolean;
 }
 
 function placementContext(
@@ -111,7 +114,9 @@ function placeItem(item: Item, input: ModelInput, context: PlacementContext): Pl
   const state = itemState(item);
   const doneChips = doneChipsFor(item, state);
   const hasWarning = hasWarningChip(doneChips);
-  const slot = slotFor(item, state, hasWarning, context);
+  // A checked item that Canvas marks missing keeps the place of open work (decision 6).
+  const placeAs = placementState(item, state);
+  const slot = slotFor(item, placeAs, hasWarning, context);
   if (slot === null) return null;
   const gradeStatuses =
     item.courseId !== null ? input.customGradeStatuses[item.courseId] : undefined;
@@ -123,16 +128,21 @@ function placeItem(item: Item, input: ModelInput, context: PlacementContext): Pl
       showPastDueChip: !context.isCurrentWeek,
       gradeStatuses,
     }),
-    availability: availabilityFor(item, state, context.now),
+    availability: availabilityFor(item, placeAs, context.now),
     handInChip: handInChipFor(item),
     doneChips,
     hasWarning,
     checkboxDisabled: redoBlocksDone(item),
-    canSkip: state === 'open' && slotOffersSkip(slot),
+    canSkip: placeAs === 'open' && slotOffersSkip(slot),
     canMoveToToday: canMoveToToday(item, state, context),
     isLookAhead: isLookAheadSlot(slot),
   };
-  return { view, slot, datedInWeek: isDatedInWeek(item, context) };
+  return {
+    view,
+    slot,
+    datedInWeek: isDatedInWeek(item, context),
+    countsDone: placeAs === 'done',
+  };
 }
 
 function ringEntry(placed: Placed): RingEntry {
@@ -141,7 +151,7 @@ function ringEntry(placed: Placed): RingEntry {
     courseId: view.courseId,
     contextLabel: view.contextLabel,
     counted: placed.datedInWeek && view.state !== 'skipped' && !view.isReminder,
-    done: view.state === 'done',
+    done: placed.countsDone,
     pastDue: isCountedPastDue(placed.slot),
   };
 }

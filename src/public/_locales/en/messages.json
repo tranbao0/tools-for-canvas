@@ -51,6 +51,12 @@
   "settings": {
     "message": "Settings"
   },
+  "back": {
+    "message": "Back"
+  },
+  "settingsLoading": {
+    "message": "Loading settings"
+  },
   "timesIn": {
     "message": "Times in $ZONE$",
     "placeholders": {
@@ -459,9 +465,6 @@
   "hiddenCourseHere": {
     "message": "You hid this course in Weekrow."
   },
-  "shownInPanel": {
-    "message": "Shown in the side panel"
-  },
   "undo": {
     "message": "Undo"
   },
@@ -692,7 +695,10 @@
     "message": "First day of the week"
   },
   "weekStartAuto": {
-    "message": "Automatic, from your Canvas language"
+    "message": "Automatic"
+  },
+  "weekStartHelp": {
+    "message": "Automatic takes the first day from your Canvas language."
   },
   "settingHiddenCourses": {
     "message": "Hidden courses"
@@ -715,10 +721,25 @@
     "message": "Show progress rings"
   },
   "settingShowOnCanvas": {
-    "message": "Show Weekrow on Canvas pages"
+    "message": "Show the weekly list on Canvas pages"
   },
   "showOnCanvasHelp": {
     "message": "Shows on the Card View and Recent Activity dashboards and on course home pages. On other pages, use the side panel."
+  },
+  "settingTheme": {
+    "message": "Theme"
+  },
+  "themeAuto": {
+    "message": "Automatic"
+  },
+  "themeLight": {
+    "message": "Light"
+  },
+  "themeDark": {
+    "message": "Dark"
+  },
+  "themeHelp": {
+    "message": "Automatic follows your browser or system. On Canvas pages, the list follows the page."
   },
   "settingAddress": {
     "message": "Canvas address"
@@ -748,13 +769,13 @@
     "message": "Click the Extensions button (the puzzle piece) in the toolbar. Then click the gear next to Weekrow for Canvas and choose Pin to Toolbar."
   },
   "welcomeOpenTitle": {
-    "message": "Open your list"
+    "message": "Find your list"
   },
   "welcomeOpenBody": {
-    "message": "Click the Weekrow button to open or close your list in the side panel."
+    "message": "Your list shows on the Canvas dashboard and on course home pages. On any page, click the Weekrow button to open or close it in the side panel."
   },
   "welcomeOpenBodyFirefox": {
-    "message": "Click the Weekrow button to open or close your list in the sidebar."
+    "message": "Your list shows on the Canvas dashboard and on course home pages. On any page, click the Weekrow button to open or close it in the sidebar."
   },
   "welcomeShortcut": {
     "message": "You can also press $KEYS$.",
@@ -779,6 +800,6 @@
     }
   },
   "welcomeReadyNext": {
-    "message": "Click the Weekrow button to see your week."
+    "message": "Open your Canvas dashboard to see your week."
   }
 }

@@ -15,9 +15,10 @@
  * every piece of the old user's data.
  *
  * A round fetches everything first and returns one update, so a surface never sees half a round.
+ * Only teacher status names come later, in an `ensure` round, because a name never moves an item.
+ * Stored assignments keep only the fields that the model and the data layer read.
  */
 import type {
-  Assignment,
   CanvasApi,
   CustomGradeStatus,
   PlannerItem,
@@ -25,8 +26,8 @@ import type {
   TimeRange,
   UserSelf,
 } from '../canvas/types';
-import { assignmentIdsToLookup } from '../model';
-import type { RoundScope, SessionCache, SessionData } from './cache';
+import { assignmentIdsToLookup, type AssignmentData } from '../model';
+import { toAssignmentData, type RoundScope, type SessionCache, type SessionData } from './cache';
 import {
   chunkInterval,
   coveredItems,
@@ -125,20 +126,20 @@ function missingCourses(
   return courseIds.filter((id) => loaded[id] === undefined && !isSkipped(cache, skip(id)));
 }
 
-function isUndatedItem(assignment: Assignment): boolean {
+function isUndatedItem(assignment: AssignmentData): boolean {
   return assignment.has_sub_assignments !== true;
 }
 
 /** The override list is needed when No due date has items, and always in limited mode. */
 export function overridesNeeded(
   limited: boolean,
-  undated: Readonly<Record<string, Assignment[]>>,
+  undated: Readonly<Record<string, AssignmentData[]>>,
   visibleCourseIds: readonly string[],
 ): boolean {
   return limited || visibleCourseIds.some((id) => (undated[id] ?? []).some(isUndatedItem));
 }
 
-function hasTeacherStatus(assignment: Assignment): boolean {
+function hasTeacherStatus(assignment: AssignmentData): boolean {
   const id = assignment.submission?.custom_grade_status_id;
   return typeof id === 'string' && id !== '';
 }
@@ -150,7 +151,7 @@ export function statusCoursesNeeded(
 ): string[] {
   const visible = new Set(visibleCourseIds);
   const courses = new Set<string>();
-  const consider = (assignment: Assignment): void => {
+  const consider = (assignment: AssignmentData): void => {
     if (visible.has(assignment.course_id) && hasTeacherStatus(assignment)) {
       courses.add(assignment.course_id);
     }
@@ -207,13 +208,13 @@ export interface RoundUpdate {
   session: SessionData;
   /** `null`: the round did not load planner items. */
   planner: PlannerLoad | null;
-  details: Record<string, Assignment>;
-  undated: Record<string, Assignment[]>;
+  details: Record<string, AssignmentData>;
+  undated: Record<string, AssignmentData[]>;
   /** `undefined`: the round did not load the override list. */
   overrides: PlannerOverride[] | undefined;
   gradeStatuses: Record<string, CustomGradeStatus[]>;
   limited: boolean;
-  allAssignments: Record<string, Assignment[]>;
+  allAssignments: Record<string, AssignmentData[]>;
   /** The new skip list. Light and full rounds try every skipped request again. */
   skipped: string[];
   /** Courses whose assignment requests failed. An `ensure` round adds to the earlier list. */
@@ -296,13 +297,18 @@ function throwOnOutage(results: readonly PerCourseResult<unknown>[]): void {
   if (sent > 0 && outages.length === sent) throw outages[0];
 }
 
+/** Assignments as the cache keeps them: only the fields the model and the data layer read. */
+async function assignmentList(load: Promise<AssignmentData[]>): Promise<AssignmentData[]> {
+  return (await load).map(toAssignmentData);
+}
+
 /** The assignment details that a details request brought back. */
 export interface DetailsResult {
-  details: Record<string, Assignment>;
+  details: Record<string, AssignmentData>;
   /** Skip keys of ids that failed, or that Canvas left out of its answer. */
   skipped: string[];
   failedCourses: string[];
-  requests: PerCourseResult<Assignment[]>;
+  requests: PerCourseResult<AssignmentData[]>;
 }
 
 /** Loads assignment details by id, one request per course. */
@@ -311,9 +317,9 @@ export async function loadDetails(
   detailIds: Readonly<Record<string, string[]>>,
 ): Promise<DetailsResult> {
   const requests = await perCourse(Object.keys(detailIds), (courseId) =>
-    api.listAssignmentsByIds(courseId, detailIds[courseId] ?? []),
+    assignmentList(api.listAssignmentsByIds(courseId, detailIds[courseId] ?? [])),
   );
-  const details: Record<string, Assignment> = {};
+  const details: Record<string, AssignmentData> = {};
   for (const list of Object.values(requests.loaded)) {
     for (const assignment of list) details[assignment.id] = assignment;
   }
@@ -395,13 +401,72 @@ async function checkUser(self: () => Promise<UserSelf>, session: SessionData): P
   if (user.id !== session.profile.id) throw new UserChangedError();
 }
 
+/** The undated work and the override list of a round. */
+interface UndatedLoad {
+  undated: PerCourseResult<AssignmentData[]>;
+  /** `undefined`: the round did not load the override list. */
+  overrides: PlannerOverride[] | undefined;
+}
+
+/**
+ * Loads the undated work and, when No due date has items, the override list. Neither depends on
+ * the planner, so a round loads them beside it. The override list starts at once when the cached
+ * undated work already shows that it is needed, and otherwise as soon as the undated work shows
+ * it. It never loads for nothing: it holds every override the student ever made.
+ */
+async function loadUndated(
+  api: CanvasApi,
+  kind: RoundKind,
+  cache: SessionCache,
+  base: Pick<SessionCache, 'skipped'>,
+  visible: readonly string[],
+  overrideList: () => Promise<PlannerOverride[]>,
+): Promise<UndatedLoad> {
+  const courses =
+    kind === 'full' ? visible : missingCourses(visible, cache.undated, base, skipKey.undated);
+  const reloadOverrides = kind === 'full' || cache.overrides === null;
+  const overridesNow = reloadOverrides && overridesNeeded(false, cache.undated, visible);
+  const [undated, early] = await Promise.all([
+    perCourse(courses, (courseId) => assignmentList(api.listUndatedAssignments(courseId))),
+    overridesNow ? overrideList() : Promise.resolve(undefined),
+  ]);
+  if (overridesNow || !reloadOverrides) return { undated, overrides: early };
+  const needed = overridesNeeded(false, { ...cache.undated, ...undated.loaded }, visible);
+  return { undated, overrides: needed ? await overrideList() : undefined };
+}
+
+interface StatusLoad {
+  gradeStatuses: Record<string, CustomGradeStatus[]>;
+  /** Courses whose names did not load. They are tried again after the next light or full round. */
+  missing: string[];
+}
+
+/** Loads teacher status names. They are optional: on failure the chip says "Teacher status". */
+async function loadStatuses(api: CanvasApi, courseIds: readonly string[]): Promise<StatusLoad> {
+  if (courseIds.length === 0) return { gradeStatuses: {}, missing: [] };
+  let gradeStatuses: Record<string, CustomGradeStatus[]> = {};
+  try {
+    gradeStatuses = await api.listCustomGradeStatuses([...courseIds]);
+  } catch {
+    gradeStatuses = {};
+  }
+  return { gradeStatuses, missing: courseIds.filter((id) => gradeStatuses[id] === undefined) };
+}
+
 /**
  * Fetches what the round needs. Rejects with the first error that is not course-scoped, or with
  * `UserChangedError` when another user is signed in.
+ *
+ * The undated work and the override list load beside the planner, and the assignment details
+ * as soon as the planner items arrive. Teacher status names never hold a round back: only an
+ * `ensure` round loads them, beside its other requests, and the data owner starts one after any
+ * round that leaves names to load. A name changes only the text of a chip, never where an item
+ * goes, so the list shows before the names arrive.
  */
 export async function runRound(context: RoundContext): Promise<RoundUpdate> {
   const { api, cache, kind } = context;
   const self = shared(() => api.getSelf());
+  const overrideList = shared(() => api.listPlannerOverrides());
   // A round that loads the session gets the user from the profile, so it needs no check.
   const userCheck =
     kind !== 'ensure' && cache.session !== null ? checkUser(self, cache.session) : null;
@@ -424,9 +489,14 @@ export async function runRound(context: RoundContext): Promise<RoundUpdate> {
     skipped,
     failedCourses: [],
   };
+  if (session.courses.length === 0) {
+    await userCheck;
+    return update;
+  }
+  const statusLoad =
+    kind === 'ensure' ? loadStatuses(api, statusCoursesNeeded(base, visible)) : null;
   // In limited mode, only a full round asks the planner again, to learn whether it is back.
-  const reloadPlanner =
-    session.courses.length > 0 && kind !== 'ensure' && (!cache.limited || kind === 'full');
+  const reloadPlanner = kind !== 'ensure' && (!cache.limited || kind === 'full');
   const current = reloadPlanner ? context.currentRange(session) : null;
   // In limited mode, one request is enough to learn whether the planner is back.
   const chunks =
@@ -435,11 +505,17 @@ export async function runRound(context: RoundContext): Promise<RoundUpdate> {
       : cache.limited
         ? [toInterval(current)]
         : roundChunks(cache.planner, current);
+  // A round that finds the planner limited does not use the undated work. When the planner
+  // fails first, the round fails with the planner's error, so the undated load's own failure
+  // is handled here and dropped.
+  const undatedLoad = cache.limited
+    ? null
+    : loadUndated(api, kind, cache, base, visible, overrideList);
+  undatedLoad?.catch(() => undefined);
   const [planner] = await Promise.all([
     chunks.length > 0 ? loadPlanner(api, chunks, context.now, self) : null,
     userCheck,
   ]);
-  if (session.courses.length === 0) return update;
   if (planner !== null) {
     update.limited = planner.limited;
     update.planner = planner.load;
@@ -454,8 +530,8 @@ export async function runRound(context: RoundContext): Promise<RoundUpdate> {
         : visible;
     const reloadOverrides = kind !== 'ensure' || cache.overrides === null || !cache.limited;
     const [all, overrides] = await Promise.all([
-      perCourse(courses, (courseId) => api.listAllAssignments(courseId)),
-      reloadOverrides ? api.listPlannerOverrides() : Promise.resolve(undefined),
+      perCourse(courses, (courseId) => assignmentList(api.listAllAssignments(courseId))),
+      reloadOverrides ? overrideList() : Promise.resolve(undefined),
     ]);
     if (!sentShared && !reloadOverrides) throwOnOutage([all]);
     update.allAssignments = all.loaded;
@@ -479,45 +555,27 @@ export async function runRound(context: RoundContext): Promise<RoundUpdate> {
       kind === 'full'
         ? joinLookups(assignmentIdsToLookup(fresh, context.hiddenCourseIds), missing)
         : missing;
-    const undatedCourses =
-      kind === 'full' ? visible : missingCourses(visible, cache.undated, base, skipKey.undated);
     const [details, undated] = await Promise.all([
       loadDetails(api, detailIds),
-      perCourse(undatedCourses, (courseId) => api.listUndatedAssignments(courseId)),
+      // The planner is back after limited mode, so the undated work loads now.
+      undatedLoad ?? loadUndated(api, kind, cache, base, visible, overrideList),
     ]);
-    if (!sentShared) throwOnOutage([details.requests, undated]);
+    // The override list is a shared request too.
+    if (!sentShared && undated.overrides === undefined) {
+      throwOnOutage([details.requests, undated.undated]);
+    }
     update.details = details.details;
     skipped.push(...details.skipped);
-    update.undated = undated.loaded;
-    skipped.push(...undated.failed.map(skipKey.undated));
-    [...details.failedCourses, ...undated.failed].forEach((id) => failedCourses.add(id));
-
-    const undatedAfter = { ...cache.undated, ...update.undated };
-    const needed = overridesNeeded(false, undatedAfter, visible);
-    if (needed && (kind === 'full' || cache.overrides === null)) {
-      update.overrides = await api.listPlannerOverrides();
-    }
+    update.undated = undated.undated.loaded;
+    skipped.push(...undated.undated.failed.map(skipKey.undated));
+    [...details.failedCourses, ...undated.undated.failed].forEach((id) => failedCourses.add(id));
+    update.overrides = undated.overrides;
   }
 
-  const statusCourses = statusCoursesNeeded(
-    {
-      details: { ...cache.details, ...update.details },
-      undated: { ...cache.undated, ...update.undated },
-      allAssignments: update.limited ? { ...cache.allAssignments, ...update.allAssignments } : {},
-      gradeStatuses: cache.gradeStatuses,
-      skipped,
-    },
-    visible,
-  );
-  if (statusCourses.length > 0) {
-    try {
-      update.gradeStatuses = await api.listCustomGradeStatuses(statusCourses);
-    } catch {
-      // The names are optional: the chip then says "Teacher status". Try again next round.
-      update.gradeStatuses = {};
-    }
-    const missing = statusCourses.filter((id) => update.gradeStatuses[id] === undefined);
-    skipped.push(...missing.map(skipKey.statuses));
+  if (statusLoad !== null) {
+    const statuses = await statusLoad;
+    update.gradeStatuses = statuses.gradeStatuses;
+    skipped.push(...statuses.missing.map(skipKey.statuses));
   }
   // Teacher status names are optional, so their failures are not course failures.
   update.failedCourses = [...failedCourses];

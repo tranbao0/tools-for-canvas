@@ -3,15 +3,18 @@
  */
 import { BROWSER_KIND } from '../platform/browserKind';
 import { logFailure } from '../platform/log';
+import { settingsItem } from '../platform/storage';
 import { installStyles } from '../ui/styles';
 import { WelcomeView } from '../ui/WelcomeView';
 import { actionShortcut, extensionPageHost } from './hosts';
 import { mountRuntime } from './mountRuntime';
 import { createSurfaceRuntime, type SurfaceRuntime } from './runtime';
+import { followExtensionPageTheme } from './theme';
 
-/** The welcome page that opens on install, with the same setup steps as the panel. */
+/** The welcome page that opens on install in every browser, with the same setup steps as the panel. */
 export function startWelcome(root: HTMLElement): SurfaceRuntime {
   installStyles(document);
+  followExtensionPageTheme(settingsItem, [document.documentElement, root], logFailure);
   const runtime = createSurfaceRuntime(extensionPageHost(), {
     surface: 'page',
     scopeCourseId: null,

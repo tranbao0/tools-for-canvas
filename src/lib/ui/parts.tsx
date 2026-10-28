@@ -1,7 +1,7 @@
 /** Small shared building blocks for the views. */
 import { createElement, Fragment, type ComponentChildren } from 'preact';
 import { t } from '../i18n';
-import { AppMark, GearIcon } from './icons';
+import { CheckIcon, CloseIcon, GearIcon } from './icons';
 
 export type HeadingLevel = 1 | 2 | 3 | 4;
 
@@ -29,6 +29,12 @@ let nextId = 0;
 export function newId(prefix: string): string {
   nextId += 1;
   return `wr-${prefix}-${nextId}`;
+}
+
+/** Document-unique ids for the parts of one component instance, such as `wr-form-3-title`. */
+export function newIds<K extends string>(prefix: string, parts: readonly K[]): Record<K, string> {
+  const base = newId(prefix);
+  return Object.fromEntries(parts.map((part) => [part, `${base}-${part}`])) as Record<K, string>;
 }
 
 /**
@@ -68,30 +74,35 @@ export function HostText(props: { host: string; class?: string }) {
   );
 }
 
-/** The top bar shown with states that have no week yet. */
+/** The settings button. It opens the settings in place, and focus comes back to it after. */
+export function GearButton(props: { onClick(): void }) {
+  return (
+    <button
+      type="button"
+      class="wr-icon-btn"
+      data-opener="gear"
+      aria-label={t('settings')}
+      title={t('settings')}
+      onClick={props.onClick}
+    >
+      <GearIcon />
+    </button>
+  );
+}
+
+/** The section heading shown with states that have no week yet, with the settings button. */
 export function Bar(props: { level: HeadingLevel; onSettings?: () => void }) {
   return (
-    <div class="wr-bar">
-      <AppMark size={20} />
-      <Heading level={props.level} class="wr-bar-name">
+    <div class="wr-head wr-bar">
+      <Heading level={props.level} class="wr-range">
         {t('appName')}
       </Heading>
-      {props.onSettings && (
-        <button
-          type="button"
-          class="wr-icon-btn"
-          aria-label={t('settings')}
-          title={t('settings')}
-          onClick={props.onSettings}
-        >
-          <GearIcon />
-        </button>
-      )}
+      {props.onSettings && <GearButton onClick={props.onSettings} />}
     </div>
   );
 }
 
-/** A switch: a real checkbox with `role="switch"`. */
+/** A switch: a real checkbox with `role="switch"`, drawn as the Canvas toggle. */
 export function Switch(props: {
   id: string;
   checked: boolean;
@@ -112,7 +123,9 @@ export function Switch(props: {
         aria-describedby={props.describedBy}
         onChange={(event) => props.onChange(event.currentTarget.checked)}
       />
-      <span class="wr-switch-track" aria-hidden="true" />
+      <span class="wr-switch-track" aria-hidden="true">
+        <span class="wr-switch-knob">{props.checked ? <CheckIcon /> : <CloseIcon />}</span>
+      </span>
     </span>
   );
 }

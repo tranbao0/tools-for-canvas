@@ -352,6 +352,7 @@ const EXPECTED_PLACES: Record<string, string> = {
   'assignment:2004': 'past_due.items',
   'assignment:1011': 'past_due.items',
   'assignment:1006': 'past_due.older',
+  'assignment:3003': 'past_due.older',
   'assignment:5002': 'past_due.older',
   'assignment:1008': 'past_due.skipped',
   'assignment:2003': 'today@2026-10-27.items',
@@ -365,7 +366,6 @@ const EXPECTED_PLACES: Record<string, string> = {
   'assignment:1003': 'no_due_date.items',
   'assignment:2005': 'no_due_date.skipped',
   'assignment:1005': 'no_due_date.doneUndated',
-  'assignment:3003': 'done.items',
   'assignment:2002': 'done.items',
   'wiki_page:6001': 'done.items',
   'assignment:1010': 'done.items',
@@ -437,15 +437,14 @@ describe('walk-through: current week', () => {
       'assignment:2004',
       'assignment:1011',
     ]);
-    expect(keysIn(view, 'past_due', 'older')).toEqual(['assignment:1006', 'assignment:5002']);
+    expect(keysIn(view, 'past_due', 'older')).toEqual([
+      'assignment:3003',
+      'assignment:1006',
+      'assignment:5002',
+    ]);
     expect(keysIn(view, 'tomorrow@2026-10-28')).toEqual(['assignment:3001', 'planner_note:8001']);
     expect(keysIn(view, 'day@2026-10-30')).toEqual(['sub_assignment:9101', 'assignment:1002']);
-    expect(keysIn(view, 'done')).toEqual([
-      'assignment:3003',
-      'assignment:2002',
-      'wiki_page:6001',
-      'assignment:1010',
-    ]);
+    expect(keysIn(view, 'done')).toEqual(['assignment:2002', 'wiki_page:6001', 'assignment:1010']);
   });
 
   it('sets the collapsed groups and the Done warning count', () => {
@@ -453,7 +452,7 @@ describe('walk-through: current week', () => {
     expect(byKind.no_due_date?.collapsedByDefault).toBe(true);
     expect(byKind.done?.collapsedByDefault).toBe(true);
     expect(byKind.past_due?.collapsedByDefault).toBe(false);
-    expect(byKind.done?.warningCount).toBe(2);
+    expect(byKind.done?.warningCount).toBe(1);
   });
 
   it("shows Can't confirm on the Gradescope work past due today", () => {
@@ -573,11 +572,13 @@ describe('walk-through: current week', () => {
     });
   });
 
-  it('keeps an earlier done item with a warning in Done, and explains excused work', () => {
+  it('keeps checked work that Canvas marks missing in Past due, and explains excused work', () => {
     expect(findItem(view, 'assignment:3003')).toMatchObject({
       state: 'done',
+      chip: null,
       doneChips: [{ kind: 'missing_in_canvas', teacherSet: true }],
       hasWarning: true,
+      canSkip: true,
     });
     expect(findItem(view, 'assignment:1010')).toMatchObject({
       doneChips: [{ kind: 'excused' }],
@@ -606,7 +607,8 @@ describe('walk-through: current week', () => {
     ).toEqual([
       { courseId: '101', label: 'Biology', done: 1, total: 5, pastDue: 3 },
       { courseId: '202', label: 'History', done: 1, total: 3, pastDue: 2 },
-      { courseId: '303', label: 'Chemistry', done: 1, total: 3, pastDue: 0 },
+      // The checked indicator lab that Canvas marks missing counts as past due.
+      { courseId: '303', label: 'Chemistry', done: 1, total: 3, pastDue: 1 },
       { courseId: '505', label: 'Orientation', done: 0, total: 0, pastDue: 1 },
       { courseId: null, label: 'Personal', done: 0, total: 2, pastDue: 1 },
     ]);

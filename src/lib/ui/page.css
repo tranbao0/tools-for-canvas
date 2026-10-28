@@ -1,0 +1,128 @@
+/*
+ * The layout of the settings and welcome pages: a Canvas content page with a page heading,
+ * numbered first-run steps and key caps. Only those two pages render these rules (PageStyle), so
+ * the side panel and the content script never carry them (design decision 12).
+ */
+
+.wr[data-surface='page'] {
+  min-height: 100vh;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.wr-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 36px 24px 48px;
+}
+
+.wr-page-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--wr-line);
+}
+
+.wr-page-title {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.wr-page-lead {
+  color: var(--wr-text-2);
+}
+
+.wr-page .wr-setting {
+  padding-block: 16px;
+}
+
+.wr-page .wr-setting:first-child {
+  padding-top: 0;
+}
+
+.wr-page .wr-setting-name {
+  font-size: 16px;
+}
+
+.wr-page select.wr-input {
+  max-width: 320px;
+}
+
+.wr-address-value {
+  overflow-wrap: break-word;
+}
+
+/* First-run steps, numbered as Canvas's own progress steps. */
+
+.wr-steps {
+  counter-reset: wr-step;
+}
+
+.wr-step {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 0 0 28px 44px;
+  counter-increment: wr-step;
+}
+
+.wr-step::before {
+  content: counter(wr-step);
+  position: absolute;
+  top: -2px;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--wr-primary);
+  color: var(--wr-on-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wr-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 32px;
+  bottom: 6px;
+  left: 13.5px;
+  width: 1px;
+  background: var(--wr-line);
+}
+
+.wr-step-title {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.wr-step-body,
+.wr-step .wr-state-body {
+  color: var(--wr-text-2);
+}
+
+/* The setup step on the welcome page reads like the steps above it. */
+.wr-step .wr-state {
+  max-width: none;
+  padding: 0;
+}
+
+.wr kbd {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--wr-btn-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--wr-hover);
+  color: var(--wr-text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  white-space: nowrap;
+}

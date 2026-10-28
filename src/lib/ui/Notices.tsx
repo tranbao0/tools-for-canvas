@@ -2,7 +2,7 @@
 import { t, tp } from '../i18n';
 import type { ItemView, Offer, UndoInfo, WeekView } from '../model/types';
 import { formatTimeOrDateTime, hostOf } from './format';
-import { CloseIcon, InfoIcon } from './icons';
+import { CloseIcon } from './icons';
 import { browserIsOffline } from './online';
 import { HostText } from './parts';
 import { ringName } from './Rings';
@@ -94,9 +94,8 @@ export function SkippedCoursesLine(props: {
 
 export function LimitedLine(props: { id: string }) {
   return (
-    <p class="wr-notice wr-notice-icon" id={props.id}>
-      <InfoIcon />
-      <span class="wr-notice-text">{t('limitedLine')}</span>
+    <p class="wr-notice" id={props.id}>
+      {t('limitedLine')}
     </p>
   );
 }
@@ -145,12 +144,13 @@ export function FilterLine(props: {
   );
 }
 
+/** "1 course hidden" with a link that opens the settings in place. */
 export function HiddenCoursesLine(props: { count: number; onSettings(): void }) {
   if (props.count <= 0) return null;
   return (
     <p class="wr-foot">
       <span>{tp('hiddenCourses', props.count)}</span>
-      <button type="button" class="wr-link-btn" onClick={props.onSettings}>
+      <button type="button" class="wr-link-btn" data-opener="hidden" onClick={props.onSettings}>
         {t('settings')}
       </button>
     </p>
@@ -190,18 +190,15 @@ export function OneTimeNotes(props: { notes: OneTimeNote[]; onSeen(note: OneTime
     <div class="wr-notes" role="status">
       {props.notes.map((note) => (
         <div key={note} class="wr-note">
-          <InfoIcon />
-          <p class="wr-note-text">{noteText(note)}</p>
-          <div class="wr-note-actions">
-            <button
-              type="button"
-              class="wr-btn wr-btn-small"
-              data-note={note}
-              onClick={() => props.onSeen(note)}
-            >
-              {t('gotIt')}
-            </button>
-          </div>
+          <p>{noteText(note)}</p>
+          <button
+            type="button"
+            class="wr-btn wr-btn-small"
+            data-note={note}
+            onClick={() => props.onSeen(note)}
+          >
+            {t('gotIt')}
+          </button>
         </div>
       ))}
     </div>
@@ -221,7 +218,7 @@ export function Dock(props: { undo: UndoInfo | null; onUndo(): void; onClose(): 
           <span class="wr-toast-text">{undoText(props.undo)}</span>
           <button
             type="button"
-            class="wr-toast-action"
+            class="wr-link-btn wr-toast-action"
             data-part="undo"
             aria-keyshortcuts="Control+Z Meta+Z"
             onClick={props.onUndo}
@@ -230,7 +227,7 @@ export function Dock(props: { undo: UndoInfo | null; onUndo(): void; onClose(): 
           </button>
           <button
             type="button"
-            class="wr-toast-close"
+            class="wr-icon-btn"
             data-part="close-undo"
             aria-label={t('closeNotice')}
             title={t('closeNotice')}

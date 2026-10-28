@@ -4,8 +4,10 @@ import {
   doneChipsFor,
   handInChipFor,
   hasWarningChip,
+  isCheckedButMissing,
   isDone,
   itemState,
+  placementState,
   redoBlocksDone,
   statusChip,
   type ChipContext,
@@ -150,6 +152,33 @@ describe('itemState', () => {
     expect(
       itemState(item({ handIn: 'outside', override: both, facts: { redoRequest: true } })),
     ).toBe('done');
+  });
+});
+
+describe('checked but missing', () => {
+  it('is a done item that Canvas still marks missing, placed as open work', () => {
+    const checked = item({ override: marked, facts: { missing: true } });
+    expect(itemState(checked)).toBe('done');
+    expect(isCheckedButMissing(checked, 'done')).toBe(true);
+    expect(placementState(checked, 'done')).toBe('open');
+    expect(doneChipsFor(checked, 'done')).toEqual([
+      { kind: 'missing_in_canvas', teacherSet: false },
+    ]);
+  });
+
+  it('covers work that is done by its submission too, and nothing that is not done', () => {
+    const submitted = item({ facts: { submitted: true, missing: true } });
+    expect(isCheckedButMissing(submitted, itemState(submitted))).toBe(true);
+
+    const open = item({ facts: { missing: true } });
+    expect(isCheckedButMissing(open, itemState(open))).toBe(false);
+    expect(placementState(open, 'open')).toBe('open');
+
+    const skippedMissing = item({ override: skipped, facts: { missing: true } });
+    expect(placementState(skippedMissing, itemState(skippedMissing))).toBe('skipped');
+
+    const done = item({ override: marked });
+    expect(placementState(done, itemState(done))).toBe('done');
   });
 });
 

@@ -2,7 +2,6 @@
  * Turns raw Canvas data into `Item`s. See docs/design.md, decisions 3, 7 and 11.
  */
 import type {
-  Assignment,
   Colors,
   Course,
   Group,
@@ -14,7 +13,7 @@ import { ringColor } from './colors';
 import { GROUP_CONTEXT_PREFIX, PERSONAL_LABEL } from './context';
 import { classifyHandIn, type HandInInfo } from './handin';
 import { normalizeInstant } from './time';
-import type { CanvasFacts, Item, ItemKind, OverrideRef } from './types';
+import type { AssignmentData, CanvasFacts, Item, ItemKind, OverrideRef } from './types';
 
 /** The item kind of a planner type, or `null` for types that are not tasks. */
 export function kindForPlannableType(type: PlannableType): ItemKind | null {
@@ -206,7 +205,7 @@ const DETAILS_NOT_LOADED: DetailFacts = {
 };
 
 /** Facts from the assignments request. All `undefined` until it has loaded. */
-export function detailFacts(assignment: Assignment | undefined): DetailFacts {
+export function detailFacts(assignment: AssignmentData | undefined): DetailFacts {
   if (!assignment) return DETAILS_NOT_LOADED;
   return {
     latePolicyStatus: assignment.submission?.late_policy_status ?? null,
@@ -218,7 +217,7 @@ export function detailFacts(assignment: Assignment | undefined): DetailFacts {
 }
 
 /** Facts of a planner item: its `submissions` block, plus the assignment details when loaded. */
-export function plannerFacts(item: PlannerItem, details: Assignment | undefined): CanvasFacts {
+export function plannerFacts(item: PlannerItem, details: AssignmentData | undefined): CanvasFacts {
   const submissions = item.submissions === false ? null : item.submissions;
   return {
     submitted: submissions?.submitted === true,
@@ -233,7 +232,7 @@ export function plannerFacts(item: PlannerItem, details: Assignment | undefined)
 }
 
 /** Facts of an assignment from its `submission`, with the same meaning as the planner's `submissions` block. */
-export function submissionFacts(assignment: Assignment): CanvasFacts {
+export function submissionFacts(assignment: AssignmentData): CanvasFacts {
   const submission = assignment.submission;
   const excused = submission?.excused === true;
   const state = submission?.workflow_state;
@@ -257,7 +256,10 @@ const NOTHING_TO_HAND_IN: HandInInfo = { handIn: 'none', toolName: null, onPaper
  * until those load. Quizzes, discussions, checkpoints and peer reviews are done in Canvas.
  * Pages and custom tasks have nothing to hand in, but they are tasks, not reminders.
  */
-function plannerHandIn(type: PlannableType, details: Assignment | undefined): HandInInfo | null {
+function plannerHandIn(
+  type: PlannableType,
+  details: AssignmentData | undefined,
+): HandInInfo | null {
   switch (type) {
     case 'assignment':
       return details ? classifyHandIn(details) : null;
@@ -283,7 +285,7 @@ export interface NormalizeDeps {
   origin: string;
   index: ContextIndex;
   /** Assignment details keyed by assignment id. */
-  assignmentDetails: Readonly<Record<string, Assignment>>;
+  assignmentDetails: Readonly<Record<string, AssignmentData>>;
   /** Saved Canvas colors, for `Item.color`. */
   colors: Colors;
   /** Canvas user id, for the color of the Personal context. */
@@ -330,7 +332,7 @@ export function itemFromPlannerItem(item: PlannerItem, deps: NormalizeDeps): Ite
   };
 }
 
-function assignmentKind(assignment: Assignment): ItemKind {
+function assignmentKind(assignment: AssignmentData): ItemKind {
   if (
     assignment.is_quiz_lti_assignment === true ||
     assignment.submission_types.includes('online_quiz')
@@ -345,7 +347,7 @@ function assignmentKind(assignment: Assignment): ItemKind {
  * The override comes from the override list, matched by the override's `assignment_id`.
  */
 export function itemFromAssignment(
-  assignment: Assignment,
+  assignment: AssignmentData,
   deps: NormalizeDeps,
   override: PlannerOverride | undefined,
 ): Item {
@@ -378,7 +380,7 @@ export function itemFromAssignment(
 }
 
 /** A discussion with checkpoints. Its parent assignment has no due date, so it must not count as undated. */
-function hasCheckpoints(assignment: Assignment): boolean {
+function hasCheckpoints(assignment: AssignmentData): boolean {
   return assignment.has_sub_assignments === true;
 }
 
@@ -390,11 +392,11 @@ export interface CollectParams {
   groups: readonly Group[];
   colors: Colors;
   plannerItems: readonly PlannerItem[];
-  assignmentDetails: Readonly<Record<string, Assignment>>;
-  undatedAssignments: readonly Assignment[];
+  assignmentDetails: Readonly<Record<string, AssignmentData>>;
+  undatedAssignments: readonly AssignmentData[];
   overrides: readonly PlannerOverride[];
   limited: boolean;
-  allAssignments: readonly Assignment[];
+  allAssignments: readonly AssignmentData[];
   hiddenCourseIds: readonly string[];
 }
 
@@ -419,7 +421,7 @@ export function collectItems(params: CollectParams): Item[] {
     if (item.courseId !== null && hidden.has(item.courseId)) return;
     items.set(item.key, item);
   };
-  const addAssignment = (assignment: Assignment): void => {
+  const addAssignment = (assignment: AssignmentData): void => {
     if (!hasCheckpoints(assignment))
       add(itemFromAssignment(assignment, deps, overrides.get(assignment.id)));
   };

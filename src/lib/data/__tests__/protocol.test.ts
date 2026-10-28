@@ -130,7 +130,7 @@ describe('messages', () => {
   });
 
   it('leaves the panel presence and page-load messages to others', () => {
-    expect(isDataMessage({ type: 'weekrow:panel-state' })).toBe(false);
+    expect(isDataMessage({ type: 'weekrow:panel-hello', windowId: 1 })).toBe(false);
     expect(isDataMessage({ type: 'weekrow:canvas-page-loaded', origin: 'https://a.edu' })).toBe(
       false,
     );

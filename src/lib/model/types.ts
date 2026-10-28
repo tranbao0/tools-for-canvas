@@ -16,7 +16,46 @@ import type {
   PlannerItem,
   PlannerOverride,
   Profile,
+  Submission,
 } from '../canvas/types';
+
+/** The submission fields of an assignment that the model reads. */
+export type SubmissionData = Pick<
+  Submission,
+  | 'submitted_at'
+  | 'workflow_state'
+  | 'excused'
+  | 'missing'
+  | 'late_policy_status'
+  | 'custom_grade_status_id'
+  | 'redo_request'
+  | 'cached_due_date'
+  | 'score'
+>;
+
+/**
+ * The fields of a Canvas assignment that the model and the data layer read. The cache keeps only
+ * these, so long descriptions and submission bodies never fill `storage.session` (decision 11).
+ * A full `Assignment` from the client fits this type.
+ */
+export type AssignmentData = Pick<
+  Assignment,
+  | 'id'
+  | 'name'
+  | 'course_id'
+  | 'due_at'
+  | 'lock_at'
+  | 'unlock_at'
+  | 'points_possible'
+  | 'submission_types'
+  | 'is_quiz_lti_assignment'
+  | 'has_sub_assignments'
+  | 'locked_for_user'
+  | 'html_url'
+> & {
+  external_tool_tag_attributes?: { url?: string | null } | null;
+  submission?: SubmissionData;
+};
 
 /** ISO day of week: 1 is Monday, 7 is Sunday. */
 export type IsoDayOfWeek = 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -27,6 +66,11 @@ export interface Settings {
   hiddenCourseIds: string[];
   showRings: boolean;
   showOnCanvasPages: boolean;
+  /**
+   * `auto` follows the color scheme the browser reports to extension pages; the in-page list
+   * then follows the Canvas page. `light` and `dark` apply to every surface (decision 19).
+   */
+  theme: 'auto' | 'light' | 'dark';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -34,6 +78,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hiddenCourseIds: [],
   showRings: true,
   showOnCanvasPages: true,
+  theme: 'auto',
 };
 
 export type ItemKind =
@@ -126,6 +171,12 @@ export type DoneChip =
   | { kind: 'excused' };
 
 export interface ItemView extends Item {
+  /**
+   * `done` is a checked item. A checked item that Canvas still marks missing is `done` too, with a
+   * `missing_in_canvas` done chip: it shows checked where open work goes (Past due, its day or
+   * No due date), offers Skip there, and counts as not done in the rings and the past-due badge
+   * (decision 6, "Checked but missing"). `isCheckedButMissing(item, item.state)` tells it apart.
+   */
   state: ItemState;
   chip: StatusChip | null;
   availability: Availability;
@@ -134,6 +185,10 @@ export interface ItemView extends Item {
   hasWarning: boolean;
   /** Work handed in on Canvas with a redo request. */
   checkboxDisabled: boolean;
+  /**
+   * Skip shows next to the checkbox: open work in Past due or No due date, and checked work there
+   * that Canvas marks missing. Read it on its own, not together with `state`.
+   */
   canSkip: boolean;
   /** A custom task with a past date. */
   canMoveToToday: boolean;
@@ -155,7 +210,7 @@ export interface ListGroup {
   skipped: ItemView[];
   /** `no_due_date` only: done undated items, behind "N done". */
   doneUndated: ItemView[];
-  /** `done` only: done items with a warning chip. */
+  /** `done` only: done items with a warning chip. Checked work that Canvas marks missing is never in Done. */
   warningCount: number;
   collapsedByDefault: boolean;
 }
@@ -228,15 +283,15 @@ export interface ModelInput {
   positions: DashboardPositions;
   plannerItems: PlannerItem[];
   /** Assignment details keyed by assignment id. */
-  assignmentDetails: Record<string, Assignment>;
-  undatedAssignments: Assignment[];
+  assignmentDetails: Record<string, AssignmentData>;
+  undatedAssignments: AssignmentData[];
   /** Used to find done marks of undated items and, in limited mode, of all items. */
   overrides: PlannerOverride[];
   /** Keyed by course id. */
   customGradeStatuses: Record<string, CustomGradeStatus[]>;
   limited: boolean;
   /** Limited mode only: all assignments of the visible courses. */
-  allAssignments: Assignment[];
+  allAssignments: AssignmentData[];
 }
 
 /** Offer shown when the panel opens on a Canvas tab that is not the saved address. */

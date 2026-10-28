@@ -148,3 +148,36 @@ test('a peer review row says "Peer review" under its title, for both kinds of pe
   await expect(review.locator('.wr-subtitle')).toHaveText('Peer review');
   await expect(review).toContainText('BIO 110: Principles of Biology');
 });
+
+test('three quick clicks on Next week land three weeks ahead on a slow Canvas', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  test.setTimeout(90_000);
+  // Every answer takes 700 ms, so the clicks come while the weeks still load.
+  const { canvas } = await serveScenario(context, [], { latencyMs: 700 });
+  await addCsrfCookie(context, canvas.origin);
+  await saveAddress(background, canvas.origin);
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await expect(weekHeading(page, 'Week of October 25 to 31')).toBeVisible({ timeout: 60_000 });
+  await settledList(page);
+  const next = page.getByRole('button', { name: 'Next week' });
+
+  // Each click moves on from the week asked for last, not from the week on screen.
+  await page.evaluate(() => {
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Next week"]');
+    for (let click = 0; click < 3; click += 1) button?.click();
+  });
+
+  await expect(weekHeading(page, 'Week of November 15 to 21')).toBeVisible({ timeout: 15_000 });
+  await settledList(page);
+  await expect(weekHeading(page, 'Week of November 15 to 21')).toBeVisible();
+  // One more step goes on from there.
+  await next.click();
+  await expect(weekHeading(page, 'Week of November 22 to 28')).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'This week', exact: true }).click();
+  await expect(weekHeading(page, 'Week of October 25 to 31')).toBeVisible();
+  expect(canvas.unmatched).toEqual([]);
+});

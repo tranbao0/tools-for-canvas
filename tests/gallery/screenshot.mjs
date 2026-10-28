@@ -64,6 +64,8 @@ try {
     });
     await page.goto(`${baseUrl}?theme=${theme}`);
     await page.waitForSelector('[data-scene]');
+    // Web fonts load when text first uses them; wait for them before any screenshot.
+    await page.evaluate('document.fonts.ready.then(() => true)');
     const names = await page.$$eval('[data-scene]', (els) =>
       els.map((el) => el.getAttribute('data-scene')),
     );
@@ -71,6 +73,7 @@ try {
       if (onlyScenes.length > 0 && !onlyScenes.includes(name)) continue;
       const scene = page.locator(`[data-scene="${name}"][data-done]`);
       await scene.waitFor();
+      await page.evaluate('document.fonts.ready.then(() => true)');
       await scene.screenshot({ path: `${outDir}/${name}-${theme}.png`, animations: 'disabled' });
       count += 1;
       await saveFrames(page, scene, name, theme);

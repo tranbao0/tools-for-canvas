@@ -5,7 +5,6 @@
  * disk, and it survives a service worker restart. It holds the data of one Canvas origin.
  */
 import type {
-  Assignment,
   CanvasErrorKind,
   Colors,
   Course,
@@ -15,7 +14,7 @@ import type {
   PlannerOverride,
   Profile,
 } from '../canvas/types';
-import type { UndoInfo } from '../model/types';
+import type { AssignmentData, SubmissionData, UndoInfo } from '../model/types';
 import { browser } from 'wxt/browser';
 import { defineItem } from '../platform/storage';
 import { emptyCoverage, type PlannerCoverage } from './coverage';
@@ -95,9 +94,9 @@ export interface SessionCache {
   /** The planner items, merged from every load, and the spans they are complete for. */
   planner: PlannerCoverage;
   /** Assignment details keyed by assignment id. Hand-in types rarely change, so they stay all session. */
-  details: Record<string, Assignment>;
+  details: Record<string, AssignmentData>;
   /** Undated work keyed by course id. A missing key means the course was never loaded. */
-  undated: Record<string, Assignment[]>;
+  undated: Record<string, AssignmentData[]>;
   /** `null` until the override list loads. */
   overrides: PlannerOverride[] | null;
   /** Teacher status names keyed by course id. Loaded once per course per session. */
@@ -105,7 +104,7 @@ export interface SessionCache {
   /** The Canvas planner is turned off for the student (Limited Access for Students). */
   limited: boolean;
   /** Limited mode only: all assignments keyed by course id. */
-  allAssignments: Record<string, Assignment[]>;
+  allAssignments: Record<string, AssignmentData[]>;
   /**
    * Requests that failed for one course only, such as `details:<assignment id>` or
    * `undated:<course id>`. They are not tried again until the next refresh round.
@@ -128,6 +127,58 @@ export interface SessionCache {
   noteIds: Record<string, string>;
   /** The next id for patches, temporary note ids and undo tokens. */
   nextId: number;
+}
+
+/** Copies the fields that are set, so an absent optional field stays absent. */
+function pick<T extends object, K extends keyof T>(source: T, keys: readonly K[]): Pick<T, K> {
+  const result: Partial<Pick<T, K>> = {};
+  for (const key of keys) {
+    if (source[key] !== undefined) result[key] = source[key];
+  }
+  return result as Pick<T, K>;
+}
+
+const SUBMISSION_FIELDS = [
+  'submitted_at',
+  'workflow_state',
+  'excused',
+  'missing',
+  'late_policy_status',
+  'custom_grade_status_id',
+  'redo_request',
+  'cached_due_date',
+  'score',
+] as const satisfies readonly (keyof SubmissionData)[];
+
+const ASSIGNMENT_FIELDS = [
+  'id',
+  'name',
+  'course_id',
+  'due_at',
+  'lock_at',
+  'unlock_at',
+  'points_possible',
+  'submission_types',
+  'is_quiz_lti_assignment',
+  'has_sub_assignments',
+  'locked_for_user',
+  'html_url',
+] as const satisfies readonly (keyof AssignmentData)[];
+
+/**
+ * The part of a Canvas assignment that the cache keeps: the fields the model and the data layer
+ * read. A real assignment carries its HTML description, its rubric and the submission's body and
+ * attachments, which would soon fill `storage.session`.
+ */
+export function toAssignmentData(assignment: AssignmentData): AssignmentData {
+  const data: AssignmentData = pick(assignment, ASSIGNMENT_FIELDS);
+  const tool = assignment.external_tool_tag_attributes;
+  if (tool !== undefined)
+    data.external_tool_tag_attributes = tool === null ? null : { url: tool.url };
+  if (assignment.submission !== undefined) {
+    data.submission = pick(assignment.submission, SUBMISSION_FIELDS);
+  }
+  return data;
 }
 
 export function emptyCache(origin: string): SessionCache {

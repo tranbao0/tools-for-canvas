@@ -62,13 +62,12 @@ describe('hand-in chips', () => {
 describe('availability markers', () => {
   it('shows the opening date in the Canvas time zone', () => {
     const tag = availabilityTag({ kind: 'opens', at: '2026-11-03T04:30:00Z' }, 'America/New_York');
-    expect(tag).toMatchObject({ shape: 'marker', label: 'Opens Nov 2', icon: 'clock' });
+    expect(tag).toMatchObject({ shape: 'marker', label: 'Opens Nov 2' });
   });
 
   it('marks closed work with a lock', () => {
     expect(availabilityTag({ kind: 'closed' }, 'UTC')).toMatchObject({
       label: 'Closed',
-      icon: 'lock',
     });
   });
 });
@@ -83,7 +82,7 @@ describe('done chips', () => {
     expect(doneTag({ kind: 'missing_in_canvas', teacherSet: true }).tip).toBe(
       'You checked this off, but your teacher marked it missing in Canvas.',
     );
-    expect(doneTag({ kind: 'redo_requested' })).toMatchObject({ tone: 'warning', icon: 'alert' });
+    expect(doneTag({ kind: 'redo_requested' })).toMatchObject({ tone: 'warning' });
     expect(doneTag({ kind: 'excused' }).label).toBe('Excused');
   });
 });

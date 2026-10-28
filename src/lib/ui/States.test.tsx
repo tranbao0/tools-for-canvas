@@ -12,19 +12,10 @@ afterEach(cleanup);
 function setup(
   state: SurfaceState,
   surface: SurfaceKind = 'panel',
-  collapsedToPanel = false,
   extra: Pick<AppProps, 'browser' | 'shortcut'> = {},
 ) {
   const actions = spyActions();
-  render(
-    <App
-      surface={surface}
-      state={state}
-      actions={actions}
-      collapsedToPanel={collapsedToPanel}
-      {...extra}
-    />,
-  );
+  render(<App surface={surface} state={state} actions={actions} {...extra} />);
   return actions;
 }
 
@@ -282,57 +273,31 @@ describe('changing the address', () => {
   });
 
   it('shows no first-run steps on Firefox, because this is not the first run', () => {
-    setup(state, 'panel', false, { browser: 'firefox', shortcut: null });
+    setup(state, 'panel', { browser: 'firefox', shortcut: null });
     expect(screen.queryByText('Pin the Weekrow button')).toBeNull();
   });
 });
 
-describe('Firefox first run in the sidebar', () => {
-  it('shows the pin and shortcut steps above the connect form', () => {
-    const actions = setup(NOT_SET_UP, 'panel', false, {
-      browser: 'firefox',
-      shortcut: 'Ctrl+Alt+W',
-    });
-    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual(['Pin the Weekrow button', 'Open your list', 'Connect your Canvas']);
-    expect(screen.getByText(/choose Pin to Toolbar\./)).toBeTruthy();
-    expect(
-      screen.getByText('Click the Weekrow button to open or close your list in the sidebar.'),
-    ).toBeTruthy();
-    expect(screen.getByText('Ctrl+Alt+W').tagName).toBe('KBD');
-    const steps = document.querySelectorAll('.wr-steps > .wr-step');
-    expect(steps).toHaveLength(3);
-    expect(steps[2]?.contains(screen.getByLabelText('Canvas address'))).toBe(true);
-    fireEvent.input(screen.getByLabelText('Canvas address'), {
-      target: { value: 'canvas.uw.edu' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Allow access' }));
-    expect(actions.allowAccess).toHaveBeenCalledWith('https://canvas.uw.edu');
-  });
-
-  it('keeps the offer above the steps', () => {
-    setup(
-      { kind: 'not_set_up', offer: { origin: ORIGIN, mode: 'use' }, savedOrigin: null },
-      'panel',
-      false,
-      {
-        browser: 'firefox',
-        shortcut: null,
-      },
-    );
-    const offer = screen.getByRole('region', { name: 'Use this Canvas?' });
-    const steps = document.querySelector('.wr-steps');
-    expect(steps && offer.compareDocumentPosition(steps)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(screen.getByText(/set a keyboard shortcut/)).toBeTruthy();
-  });
-
-  it('shows only the connect form on Chrome and Edge, which have a welcome page', () => {
-    for (const browser of ['chrome', 'edge'] as const) {
-      setup(NOT_SET_UP, 'panel', false, { browser, shortcut: 'Alt+Shift+W' });
+describe('first run in the side panel', () => {
+  it('shows only the connect form in every browser, because the welcome page opens on install', () => {
+    for (const browser of ['chrome', 'edge', 'firefox'] as const) {
+      setup(NOT_SET_UP, 'panel', { browser, shortcut: 'Alt+Shift+W' });
       expect(screen.queryByText('Pin the Weekrow button')).toBeNull();
+      expect(document.querySelector('.wr-steps')).toBeNull();
       expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Connect your Canvas');
       cleanup();
     }
+  });
+
+  it('keeps the offer above the connect form', () => {
+    setup(
+      { kind: 'not_set_up', offer: { origin: ORIGIN, mode: 'use' }, savedOrigin: null },
+      'panel',
+      { browser: 'firefox', shortcut: null },
+    );
+    const offer = screen.getByRole('region', { name: 'Use this Canvas?' });
+    const form = screen.getByLabelText('Canvas address');
+    expect(offer.compareDocumentPosition(form)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 });
 
@@ -382,15 +347,10 @@ describe('the "Switch to this Canvas?" offer', () => {
 });
 
 describe('in-page surface', () => {
-  it('collapses to one line while the side panel is open', () => {
-    setup(readyState(), 'inpage', true);
-    expect(screen.getByText('Shown in the side panel')).toBeTruthy();
-    expect(screen.queryByRole('checkbox')).toBeNull();
-  });
-
-  it('ignores collapsedToPanel in the side panel', () => {
-    setup(readyState(), 'panel', true);
+  it('always shows the list, also while the side panel is open', () => {
+    setup(readyState(), 'inpage');
     expect(screen.queryByText('Shown in the side panel')).toBeNull();
+    expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0);
   });
 
   it('uses level 2 headings inside the Canvas page', () => {
@@ -414,13 +374,9 @@ describe('in-page surface', () => {
     expect(screen.queryByRole('heading')).toBeNull();
     expect(document.querySelector('.wr')?.getAttribute('data-surface')).toBe('inpage');
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    expect(actions.openSettings).toHaveBeenCalledTimes(1);
-  });
-
-  it('shows the hidden course note also while the side panel is open', () => {
-    setup(readyState({ view: hiddenCourseView() }), 'inpage', true);
-    expect(screen.getByText('You hid this course in Weekrow.')).toBeTruthy();
-    expect(screen.queryByText('Shown in the side panel')).toBeNull();
+    // The link opens the settings in place, not the settings page.
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
+    expect(actions.openSettings).not.toHaveBeenCalled();
   });
 });
 

@@ -153,6 +153,27 @@ export function et(date: string, time: string): string {
   return utc.toISOString();
 }
 
+/**
+ * Paper work the student checked off that the teacher still marks missing in Canvas: it stays in
+ * Past due, checked, with the "Missing in Canvas" chip and Skip (decision 6, "Checked but missing").
+ */
+export function checkedButMissing(patch: Partial<ItemView> = {}): ItemView {
+  return mkItem({
+    title: 'Worksheet 4',
+    course: 'chem',
+    due: et('2026-10-26', '23:59'),
+    state: 'done',
+    handIn: 'outside',
+    onPaper: true,
+    handInChip: { kind: 'on_paper' },
+    facts: { ...NO_FACTS, missing: true, latePolicyStatus: 'missing' },
+    doneChips: [{ kind: 'missing_in_canvas', teacherSet: true }],
+    hasWarning: true,
+    canSkip: true,
+    ...patch,
+  });
+}
+
 export function currentWeekGroups(): ListGroup[] {
   return [
     mkGroup({
@@ -174,6 +195,7 @@ export function currentWeekGroups(): ListGroup[] {
           canSkip: true,
           canMoveToToday: true,
         }),
+        checkedButMissing(),
         mkItem({
           title: 'Lab 5 report: Enzyme kinetics and the Michaelis-Menten model',
           course: 'bio',
@@ -340,7 +362,7 @@ export function currentWeekGroups(): ListGroup[] {
     }),
     mkGroup({
       kind: 'done',
-      warningCount: 2,
+      warningCount: 1,
       items: [
         mkItem({
           title: 'Read chapter 7',
@@ -356,17 +378,6 @@ export function currentWeekGroups(): ListGroup[] {
           kind: 'quiz',
           due: et('2026-10-26', '10:00'),
           state: 'done',
-        }),
-        mkItem({
-          title: 'Worksheet 4',
-          course: 'chem',
-          due: et('2026-10-26', '23:59'),
-          state: 'done',
-          handIn: 'outside',
-          onPaper: true,
-          handInChip: { kind: 'on_paper' },
-          doneChips: [{ kind: 'missing_in_canvas', teacherSet: true }],
-          hasWarning: true,
         }),
         mkItem({
           title: 'Essay 1 revision',
@@ -393,7 +404,8 @@ export function currentWeekGroups(): ListGroup[] {
 export function currentRings(): Ring[] {
   return [
     ring('bio', 1, 3, 1),
-    ring('chem', 0, 3, 0),
+    // Worksheet 4 is checked but still missing in Canvas, so it counts as past due, not done.
+    ring('chem', 0, 3, 1),
     ring('engl', 1, 4, 0),
     ring('math', 1, 4, 1),
     ring('hist', 0, 2, 0),
@@ -643,6 +655,7 @@ export function noopActions(
       log(name, args);
   return {
     goToWeek: record('goToWeek'),
+    stepWeek: record('stepWeek'),
     setCourseFilter: record('setCourseFilter'),
     setDone: record('setDone'),
     skip: record('skip'),
@@ -663,6 +676,7 @@ export function noopActions(
     openCanvas: record('openCanvas'),
     retry: record('retry'),
     openSettings: record('openSettings'),
+    saveSettings: record('saveSettings'),
     markNoteSeen: record('markNoteSeen'),
   };
 }

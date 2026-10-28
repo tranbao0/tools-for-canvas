@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isActionReply, isSurfaceState, type DataMessage } from '../data/protocol';
-import type { SurfaceState, UndoInfo } from '../model/types';
+import { DEFAULT_SETTINGS, type Settings, type SurfaceState, type UndoInfo } from '../model/types';
 import { ORIGIN, mkView, readyState } from '../ui/testing/mocks';
 import { TIMER_REFRESH_MS, createSurfaceRuntime, viewItems, type SurfaceHost } from './runtime';
 
 const NOW = '2026-10-27T18:00:00Z';
 const NEXT_MIDNIGHT = Date.parse('2026-10-28T04:00:00Z');
 const UNDO = { token: 'undo-1', info: { kind: 'done', count: 1 } } as const;
+const COURSES = [
+  { id: '101', name: 'Biology' },
+  { id: '106', name: 'Chess Club' },
+];
 
 interface FakeHost {
   host: SurfaceHost;
@@ -19,6 +23,12 @@ interface FakeHost {
   leave(): void;
   /** The data owner drops an undo record, as when the student signs out. */
   forgetUndo(token: string): void;
+  /** The stored settings. */
+  stored: Settings;
+  /** Another surface saves new settings. */
+  storeSettings(next: Settings): void;
+  /** Settings saved through the host. */
+  saved: Settings[];
 }
 
 function fakeHost(): FakeHost {
@@ -26,6 +36,7 @@ function fakeHost(): FakeHost {
   let changeListener: (() => void) | null = null;
   let visibilityListener: ((visible: boolean) => void) | null = null;
   let leaveListener: (() => void) | null = null;
+  let settingsListener: ((settings: Settings) => void) | null = null;
   let visible = true;
   /** The undo records the data owner keeps, by token. */
   const live = new Map<string, UndoInfo>();
@@ -50,10 +61,18 @@ function fakeHost(): FakeHost {
         ? readyState()
         : message.type === 'weekrow:refresh'
           ? { ok: true, retryAt: null }
-          : { undo: null },
+          : message.type === 'weekrow:courses'
+            ? { courses: COURSES }
+            : { undo: null },
     changed: () => changeListener?.(),
     leave: () => leaveListener?.(),
     forgetUndo: (token) => live.delete(token),
+    stored: { ...DEFAULT_SETTINGS },
+    saved: [],
+    storeSettings(next) {
+      fake.stored = next;
+      settingsListener?.(next);
+    },
     setVisible(next) {
       visible = next;
       visibilityListener?.(next);
@@ -68,6 +87,19 @@ function fakeHost(): FakeHost {
         return () => {
           changeListener = null;
         };
+      },
+      settings: {
+        getValue: async () => fake.stored,
+        setValue: async (next) => {
+          fake.saved.push(next);
+          fake.storeSettings(next);
+        },
+        watch(listener) {
+          settingsListener = listener;
+          return () => {
+            settingsListener = null;
+          };
+        },
       },
       clock: { now: () => Date.now() },
       timers: {
@@ -132,8 +164,14 @@ describe('state', () => {
     runtime.start();
     await settle();
 
-    expect(types(fake.sent)).toEqual(['refresh:visible', 'weekrow:get-state']);
-    expect(fake.sent[1]).toEqual({
+    // The course list loads for the settings in place, and again once the list is ready.
+    expect(types(fake.sent)).toEqual([
+      'weekrow:courses',
+      'refresh:visible',
+      'weekrow:get-state',
+      'weekrow:courses',
+    ]);
+    expect(fake.sent[2]).toEqual({
       type: 'weekrow:get-state',
       request: {
         surface: 'inpage',
@@ -611,6 +649,189 @@ describe('actions', () => {
       { type: 'weekrow:change-address' },
       { type: 'weekrow:open-page', page: 'welcome' },
     ]);
+  });
+});
+
+describe('week steps', () => {
+  it('steps from the week last asked for, so quick clicks while a week loads all count', async () => {
+    const fake = fakeHost();
+    const pending: ((state: SurfaceState) => void)[] = [];
+    fake.reply = (message) => {
+      if (message.type !== 'weekrow:get-state') return { ok: true, retryAt: null };
+      const offset = message.request.weekOffset;
+      if (offset === 0) return readyState();
+      // Other weeks answer later, as a slow Canvas does.
+      return new Promise<SurfaceState>((resolve) => pending.push(resolve));
+    };
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'page', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    fake.sent.length = 0;
+
+    runtime.actions.stepWeek(1);
+    runtime.actions.stepWeek(1);
+    runtime.actions.stepWeek(1);
+    await settle();
+
+    const asked = fake.sent.flatMap((m) => (m.type === 'weekrow:get-state' ? [m.request] : []));
+    expect(asked.map((request) => request.weekOffset)).toEqual([1, 2, 3]);
+    // The answers for weeks 1 and 2 come after the one for week 3, and are dropped.
+    pending[2]?.(readyState({ view: mkView({ weekOffset: 3, isCurrentWeek: false }) }));
+    await settle();
+    pending[0]?.(readyState({ view: mkView({ weekOffset: 1, isCurrentWeek: false }) }));
+    pending[1]?.(readyState({ view: mkView({ weekOffset: 2, isCurrentWeek: false }) }));
+    await settle();
+    const state = runtime.state();
+    expect(state.kind === 'ready' ? state.view.weekOffset : null).toBe(3);
+
+    runtime.actions.stepWeek(-1);
+    await settle();
+    expect(fake.sent.at(-1)).toMatchObject({ request: { weekOffset: 2 } });
+  });
+
+  it('jumps to an absolute week and steps from there', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'page', scopeCourseId: null });
+    runtime.start();
+    await settle();
+
+    runtime.actions.goToWeek(-2);
+    runtime.actions.stepWeek(1);
+    runtime.actions.goToWeek(0);
+    runtime.actions.stepWeek(1);
+    await settle();
+
+    const asked = fake.sent.flatMap((m) => (m.type === 'weekrow:get-state' ? [m.request] : []));
+    expect(asked.slice(-4).map((request) => request.weekOffset)).toEqual([-2, -1, 0, 1]);
+  });
+});
+
+describe('settings in place', () => {
+  it('loads the stored settings and every course for the panel and the in-page list', async () => {
+    for (const surface of ['panel', 'inpage'] as const) {
+      const fake = fakeHost();
+      fake.stored = { ...DEFAULT_SETTINGS, theme: 'dark', hiddenCourseIds: ['106'] };
+      const runtime = createSurfaceRuntime(fake.host, { surface, scopeCourseId: null });
+      expect(runtime.settings()).toBeUndefined();
+
+      runtime.start();
+      await settle();
+
+      expect(runtime.settings()).toEqual({ value: fake.stored, courses: COURSES });
+      runtime.stop();
+    }
+  });
+
+  it('loads nothing for the welcome page, which shows no settings in place', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'page', scopeCourseId: null });
+    runtime.start();
+    await settle();
+
+    expect(runtime.settings()).toBeUndefined();
+    expect(types(fake.sent)).not.toContain('weekrow:courses');
+  });
+
+  it('saves the settings, shows them at once, then asks for the settings refresh', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
+    const seen: unknown[] = [];
+    runtime.subscribe(() => seen.push(runtime.settings()?.value.showRings));
+    runtime.start();
+    await settle();
+    fake.sent.length = 0;
+    seen.length = 0;
+
+    const next: Settings = { ...DEFAULT_SETTINGS, showRings: false, theme: 'light' };
+    runtime.actions.saveSettings(next);
+    expect(runtime.settings()?.value).toEqual(next);
+    expect(seen[0]).toBe(false);
+    await settle();
+
+    expect(fake.saved).toEqual([next]);
+    expect(fake.sent).toContainEqual({
+      type: 'weekrow:refresh',
+      reason: 'settings',
+      surface: 'inpage',
+    });
+  });
+
+  it('follows settings that another surface saves', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    const listener = vi.fn();
+    runtime.subscribe(listener);
+    runtime.start();
+    await settle();
+    listener.mockClear();
+
+    fake.storeSettings({ ...DEFAULT_SETTINGS, weekStart: 1 });
+
+    expect(runtime.settings()?.value.weekStart).toBe(1);
+    expect(listener).toHaveBeenCalled();
+    runtime.stop();
+    fake.storeSettings({ ...DEFAULT_SETTINGS, weekStart: 3 });
+    expect(runtime.settings()?.value.weekStart).toBe(1);
+  });
+
+  it('keeps a change that comes while the first read runs', async () => {
+    const fake = fakeHost();
+    let finish: (settings: Settings) => void = () => undefined;
+    fake.host.settings.getValue = () =>
+      new Promise<Settings>((resolve) => {
+        finish = resolve;
+      });
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    fake.storeSettings({ ...DEFAULT_SETTINGS, showRings: false });
+    finish({ ...DEFAULT_SETTINGS });
+    await settle();
+
+    expect(runtime.settings()?.value.showRings).toBe(false);
+  });
+
+  it('loads the courses again after a sign-in and for another address', async () => {
+    const fake = fakeHost();
+    let state: SurfaceState = { kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: null };
+    let courses = [{ id: '1', name: 'Old' }];
+    fake.reply = (message) => {
+      if (message.type === 'weekrow:get-state') return state;
+      if (message.type === 'weekrow:courses') return { courses };
+      return { ok: true, retryAt: null };
+    };
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    expect(runtime.settings()?.courses).toEqual([{ id: '1', name: 'Old' }]);
+
+    courses = COURSES;
+    state = readyState();
+    fake.changed();
+    await settle();
+    expect(runtime.settings()?.courses).toEqual(COURSES);
+
+    courses = [{ id: '9', name: 'State' }];
+    state = readyState({ origin: 'https://canvas.state.edu' });
+    fake.changed();
+    await settle();
+    expect(runtime.settings()?.courses).toEqual([{ id: '9', name: 'State' }]);
+
+    // Another answer from the same Canvas asks nothing new.
+    fake.sent.length = 0;
+    fake.changed();
+    await settle();
+    expect(types(fake.sent)).toEqual(['weekrow:get-state']);
+  });
+
+  it('opens the settings page on request', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
+    runtime.start();
+    await settle();
+
+    runtime.actions.openSettings();
+
+    expect(fake.host.openSettings).toHaveBeenCalledTimes(1);
   });
 });
 

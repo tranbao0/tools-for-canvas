@@ -2,24 +2,14 @@
  * Background side of panel presence. See docs/design.md, decision 4, "Opening and closing the panel".
  *
  * Each open panel holds a `runtime.connect` port named `weekrow-panel`. Its first message
- * carries the window id, and the port closes with the panel. The registry keeps the open
- * ports per window and tells the Canvas tabs of a window when its panel opens or closes, so
- * the in-page list there can collapse to one line.
+ * carries the window id, and the port closes with the panel. The registry keeps the open ports
+ * per window, so a toolbar click knows at once whether to open or close the panel there.
  *
  * After a service worker restart the registry starts empty. The panels connect again at once,
  * and the registry rebuilds itself from those connections.
  */
 import { browser, type Browser } from 'wxt/browser';
-import { originMatchPattern } from './address';
-import { logFailure } from './log';
-import {
-  PANEL_PORT_NAME,
-  isPanelHelloMessage,
-  isPanelStateQuery,
-  type PanelOpenMessage,
-  type PanelStateReply,
-} from './messages';
-import { canvasOriginItem } from './storage';
+import { PANEL_PORT_NAME, isPanelHelloMessage } from './messages';
 
 type Port = Browser.runtime.Port;
 type MessageSender = Browser.runtime.MessageSender;
@@ -36,36 +26,6 @@ export interface PanelRegistry {
   dispose(): void;
 }
 
-export interface PanelRegistryOptions {
-  /** Tells the tabs of a window about a change. Defaults to `notifyCanvasTabs`. */
-  notifyTabs?: (windowId: number, open: boolean) => Promise<void>;
-}
-
-function panelOpenMessage(open: boolean): PanelOpenMessage {
-  return { type: 'weekrow:panel-open', open };
-}
-
-/** Sends a message to a tab and ignores a tab that has no content script listening. */
-async function sendToTab(tabId: number | undefined, message: PanelOpenMessage): Promise<void> {
-  if (tabId === undefined) return;
-  try {
-    await browser.tabs.sendMessage(tabId, message);
-  } catch {
-    // The tab has no Weekrow content script, for example a Canvas page that is still loading.
-  }
-}
-
-/** Sends the panel state to every tab of the window that shows the saved Canvas. */
-export async function notifyCanvasTabs(windowId: number, open: boolean): Promise<void> {
-  const origin = await canvasOriginItem.getValue();
-  if (origin === null) return;
-  const pattern = originMatchPattern(origin);
-  if (pattern === null) return;
-  const tabs = await browser.tabs.query({ windowId, url: pattern });
-  const message = panelOpenMessage(open);
-  await Promise.all(tabs.map((tab) => sendToTab(tab.id, message)));
-}
-
 /** Only extension pages hold panel ports. Content scripts report the web page URL instead. */
 function isExtensionPage(sender: MessageSender | undefined): boolean {
   return sender?.url?.startsWith(browser.runtime.getURL('/')) === true;
@@ -75,8 +35,7 @@ function isExtensionPage(sender: MessageSender | undefined): boolean {
  * Starts tracking panels. Call it once, synchronously, at the top level of the background,
  * so that its listeners exist before any panel connects.
  */
-export function createPanelRegistry(options: PanelRegistryOptions = {}): PanelRegistry {
-  const notifyTabs = options.notifyTabs ?? notifyCanvasTabs;
+export function createPanelRegistry(): PanelRegistry {
   const portsByWindow = new Map<number, Set<Port>>();
   const listeners = new Set<PanelChangeListener>();
 
@@ -84,7 +43,6 @@ export function createPanelRegistry(options: PanelRegistryOptions = {}): PanelRe
 
   const announce = (windowId: number, open: boolean): void => {
     for (const listener of listeners) listener(windowId, open);
-    notifyTabs(windowId, open).catch((error: unknown) => logFailure('panel tab notice', error));
   };
 
   const addPort = (windowId: number, port: Port): void => {
@@ -121,25 +79,7 @@ export function createPanelRegistry(options: PanelRegistryOptions = {}): PanelRe
     port.onDisconnect.addListener(onDisconnect);
   };
 
-  const answerStateQuery = (
-    message: unknown,
-    sender: MessageSender,
-    sendResponse: (reply: PanelStateReply) => void,
-  ): undefined => {
-    if (!isPanelStateQuery(message)) return undefined;
-    const windowId = sender.tab?.windowId;
-    sendResponse({ open: windowId !== undefined && isOpen(windowId) });
-    return undefined;
-  };
-
-  /** A tab dragged to another window takes that window's panel state. */
-  const onAttached = (tabId: number, info: Browser.tabs.OnAttachedInfo): void => {
-    void sendToTab(tabId, panelOpenMessage(isOpen(info.newWindowId)));
-  };
-
   browser.runtime.onConnect.addListener(trackPort);
-  browser.runtime.onMessage.addListener(answerStateQuery);
-  browser.tabs.onAttached.addListener(onAttached);
 
   return {
     isOpen,
@@ -150,8 +90,6 @@ export function createPanelRegistry(options: PanelRegistryOptions = {}): PanelRe
     },
     dispose() {
       browser.runtime.onConnect.removeListener(trackPort);
-      browser.runtime.onMessage.removeListener(answerStateQuery);
-      browser.tabs.onAttached.removeListener(onAttached);
       portsByWindow.clear();
       listeners.clear();
     },

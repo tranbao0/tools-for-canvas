@@ -41,7 +41,7 @@ export {
   plannerAssignmentId,
   type CollectParams,
 } from './normalize';
-export { isDone, itemState, redoBlocksDone } from './rules';
+export { isCheckedButMissing, isDone, itemState, placementState, redoBlocksDone } from './rules';
 export { ringIsComplete } from './rings';
 export {
   DEFAULT_TASK_TIME,

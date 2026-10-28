@@ -222,9 +222,11 @@ function checkFirefox(manifest, fileExists) {
       `sidebar_action.default_panel ${show(sidebar?.default_panel)} is missing from the build`,
     );
   }
-  if (sidebar?.open_at_install !== true) {
+  // The side panel is optional and never opens by itself (decision 4). Firefox opens a sidebar
+  // at install when the key is missing, so it must be false.
+  if (sidebar?.open_at_install !== false) {
     problems.push(
-      `sidebar_action.open_at_install is ${show(sidebar?.open_at_install)}, expected true`,
+      `sidebar_action.open_at_install is ${show(sidebar?.open_at_install)}, expected false`,
     );
   }
   if (manifest.side_panel !== undefined)

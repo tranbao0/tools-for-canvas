@@ -1,10 +1,14 @@
-/** One item in the list: check box, title, course, time, chips and actions. */
+/**
+ * One item in the list, as a row of Canvas's planner: check box, type icon in the course color,
+ * title in the link color, course and due text, then pills and actions.
+ */
 import { useState } from 'preact/hooks';
 import type { TargetedMouseEvent } from 'preact';
 import { t } from '../i18n';
+import { isCheckedButMissing } from '../model/rules';
 import type { ItemView, WeekView } from '../model/types';
 import { formatDateTime, formatTime } from './format';
-import { AlertIcon, CheckIcon, ClockIcon, InfoIcon, LockIcon } from './icons';
+import { CheckIcon, ChevronDownIcon, TypeIcon } from './icons';
 import { newId } from './parts';
 import { itemTags, type Tag } from './tags';
 
@@ -59,19 +63,10 @@ function isPlainLeftClick(event: TargetedMouseEvent<HTMLElement>): boolean {
   return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 }
 
-function TagIcon({ icon }: { icon: Tag['icon'] }) {
-  switch (icon) {
-    case 'lock':
-      return <LockIcon />;
-    case 'clock':
-      return <ClockIcon />;
-    case 'alert':
-      return <AlertIcon />;
-    case null:
-      return null;
-  }
-}
-
+/**
+ * A chip is a Canvas pill: Missing is the danger pill, every other chip the default pill. A
+ * marker is small text. A tag with a tip is a button that opens the tip below the row.
+ */
 function TagView(props: { tag: Tag; tipId: string; open: boolean; onToggle(): void }) {
   const { tag } = props;
   const className = [
@@ -80,12 +75,7 @@ function TagView(props: { tag: Tag; tipId: string; open: boolean; onToggle(): vo
   ]
     .filter(Boolean)
     .join(' ');
-  const content = (
-    <>
-      <TagIcon icon={tag.icon} />
-      <span>{tag.label}</span>
-    </>
-  );
+  const content = <span class="wr-tag-text">{tag.label}</span>;
   if (tag.tip === null) return <span class={className}>{content}</span>;
   return (
     <button
@@ -97,11 +87,7 @@ function TagView(props: { tag: Tag; tipId: string; open: boolean; onToggle(): vo
       onClick={props.onToggle}
     >
       {content}
-      {tag.shape === 'chip' && (
-        <span class="wr-tip-mark">
-          <InfoIcon size={12} />
-        </span>
-      )}
+      <ChevronDownIcon />
     </button>
   );
 }
@@ -112,12 +98,14 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
   const tags = itemTags(item, view.timeZone);
   const shownTip = tags.find((tag) => tag.id === openTip && tag.tip !== null) ?? null;
   const done = item.state === 'done';
+  // Checked, but Canvas still marks it missing: it stays with open work and reads as open.
+  const flagged = isCheckedButMissing(item, item.state);
   const whenLabel = whenText(item, view, when);
   const subtitle = subtitleText(item);
   const isNote = item.kind === 'note';
   // In a view of one course, such as a course home page, every row is that course.
   const showCourse = view.scopeCourseId === null;
-  const hasMeta = showCourse || subtitle !== null || whenLabel !== null;
+  const hasInfo = subtitle !== null || whenLabel !== null;
 
   const onTitleClick = (event: TargetedMouseEvent<HTMLElement>) => {
     if (isNote) {
@@ -129,12 +117,16 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
     handlers.onOpen(item);
   };
 
-  const rowClass = ['wr-item', done ? 'is-done' : '', item.state === 'skipped' ? 'is-skipped' : '']
+  const rowClass = [
+    'wr-item',
+    done && !flagged ? 'is-done' : '',
+    item.state === 'skipped' ? 'is-skipped' : '',
+  ]
     .filter(Boolean)
     .join(' ');
 
   return (
-    <li class={rowClass} data-row-key={item.key}>
+    <li class={rowClass} data-row-key={item.key} style={{ '--wr-course': item.color }}>
       <span class="wr-check" title={item.checkboxDisabled ? t('redoTip') : undefined}>
         <input
           type="checkbox"
@@ -151,7 +143,7 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
           }}
         />
         <span class="wr-check-box" aria-hidden="true">
-          <CheckIcon size={12} />
+          <CheckIcon />
         </span>
         {item.checkboxDisabled && (
           <span id={ids.redo} class="wr-sr">
@@ -159,6 +151,7 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
           </span>
         )}
       </span>
+      <TypeIcon kind={item.kind} />
 
       <div class="wr-item-body">
         {isNote || item.url === null ? (
@@ -183,97 +176,75 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
             {item.title}
           </a>
         )}
-        {hasMeta && (
-          <div class="wr-meta">
-            <div class="wr-meta-line">
-              {showCourse && (
-                <span class="wr-course" style={{ '--wr-course': item.color }}>
-                  <span class="wr-dot" aria-hidden="true" />
-                  <span class="wr-course-name">{courseLabel(item)}</span>
-                </span>
-              )}
-              {subtitle && <span class="wr-subtitle">{subtitle}</span>}
-              {whenLabel && <span class="wr-when">{whenLabel}</span>}
-            </div>
+        {showCourse && <span class="wr-course">{courseLabel(item)}</span>}
+        {hasInfo && (
+          <span class="wr-info">
+            {subtitle && <span class="wr-subtitle">{subtitle}</span>}
+            {whenLabel && <span class="wr-when">{whenLabel}</span>}
+          </span>
+        )}
+        {(tags.length > 0 || hasActions(item)) && (
+          <div class="wr-item-tags">
+            {tags.map((tag) => (
+              <TagView
+                key={tag.id}
+                tag={tag}
+                tipId={ids.tip}
+                open={openTip === tag.id}
+                onToggle={() => setOpenTip(openTip === tag.id ? null : tag.id)}
+              />
+            ))}
+            <ItemActions item={item} handlers={handlers} />
           </div>
         )}
+        {shownTip && (
+          <p id={ids.tip} class="wr-item-tip">
+            {shownTip.tip}
+          </p>
+        )}
       </div>
-
-      {(tags.length > 0 || hasActions(item)) && (
-        <div class="wr-item-tags">
-          {tags.map((tag) => (
-            <TagView
-              key={tag.id}
-              tag={tag}
-              tipId={ids.tip}
-              open={openTip === tag.id}
-              onToggle={() => setOpenTip(openTip === tag.id ? null : tag.id)}
-            />
-          ))}
-          <ItemActions item={item} handlers={handlers} />
-        </div>
-      )}
-      {shownTip && (
-        <p id={ids.tip} class="wr-item-tip">
-          {shownTip.tip}
-        </p>
-      )}
     </li>
   );
 }
 
 function hasActions(item: ItemView): boolean {
-  return (
-    (item.state === 'open' && item.canSkip) ||
-    item.state === 'skipped' ||
-    (item.canMoveToToday && item.noteId !== null)
-  );
+  return item.canSkip || item.state === 'skipped' || (item.canMoveToToday && item.noteId !== null);
 }
 
 function ItemActions({ item, handlers }: { item: ItemView; handlers: ItemHandlers }) {
-  const buttons = [];
-  if (item.state === 'open' && item.canSkip) {
-    buttons.push(
-      <button
-        key="skip"
-        type="button"
-        class="wr-quiet-btn"
-        data-part="skip"
-        aria-label={t('skipItem', item.title)}
-        onClick={() => handlers.onSkip(item)}
-      >
-        {t('skip')}
-      </button>,
-    );
-  }
-  if (item.state === 'skipped') {
-    buttons.push(
-      <button
-        key="unskip"
-        type="button"
-        class="wr-quiet-btn"
-        data-part="unskip"
-        aria-label={t('unskipItem', item.title)}
-        onClick={() => handlers.onUnskip(item)}
-      >
-        {t('unskip')}
-      </button>,
-    );
-  }
-  if (item.canMoveToToday && item.noteId !== null) {
-    buttons.push(
-      <button
-        key="move"
-        type="button"
-        class="wr-quiet-btn"
-        data-part="move"
-        aria-label={t('moveItemToToday', item.title)}
-        onClick={() => handlers.onMoveToToday(item)}
-      >
-        {t('moveToToday')}
-      </button>,
-    );
-  }
-  if (buttons.length === 0) return null;
-  return <div class="wr-item-actions">{buttons}</div>;
+  // `canSkip` alone decides: it is also set on checked work that Canvas still marks missing.
+  const actions: [part: string, label: string, name: string, run: () => void][] = [];
+  if (item.canSkip)
+    actions.push(['skip', t('skip'), t('skipItem', item.title), () => handlers.onSkip(item)]);
+  if (item.state === 'skipped')
+    actions.push([
+      'unskip',
+      t('unskip'),
+      t('unskipItem', item.title),
+      () => handlers.onUnskip(item),
+    ]);
+  if (item.canMoveToToday && item.noteId !== null)
+    actions.push([
+      'move',
+      t('moveToToday'),
+      t('moveItemToToday', item.title),
+      () => handlers.onMoveToToday(item),
+    ]);
+  if (actions.length === 0) return null;
+  return (
+    <div class="wr-item-actions">
+      {actions.map(([part, label, name, run]) => (
+        <button
+          key={part}
+          type="button"
+          class="wr-link-btn"
+          data-part={part}
+          aria-label={name}
+          onClick={run}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
 }

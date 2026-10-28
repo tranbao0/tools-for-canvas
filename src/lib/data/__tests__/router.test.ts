@@ -195,10 +195,8 @@ describe('routeDataMessage', () => {
     expect(host.openPage).toHaveBeenCalledWith('settings');
   });
 
-  it('does not answer the panel state query or unknown messages', () => {
-    expect(
-      routeDataMessage(owner, { type: 'weekrow:panel-state' }, CONTENT_SCRIPT, host),
-    ).toBeNull();
+  it('does not answer panel port messages or unknown messages', () => {
+    expect(routeDataMessage(owner, { type: 'weekrow:other' }, CONTENT_SCRIPT, host)).toBeNull();
     expect(
       routeDataMessage(owner, { type: 'weekrow:panel-hello', windowId: 1 }, EXTENSION_PAGE, host),
     ).toBeNull();
@@ -239,11 +237,9 @@ describe('wireDataRouter', () => {
     );
     fakeBrowser.runtime.onMessage.addListener(other);
 
-    await expect(fakeBrowser.runtime.sendMessage({ type: 'weekrow:panel-state' })).resolves.toEqual(
-      {
-        open: true,
-      },
-    );
+    await expect(fakeBrowser.runtime.sendMessage({ type: 'weekrow:other' })).resolves.toEqual({
+      open: true,
+    });
     expect(owner.getState).not.toHaveBeenCalled();
   });
 

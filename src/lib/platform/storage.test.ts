@@ -77,8 +77,44 @@ describe('settings defaults', () => {
       hiddenCourseIds: [],
       showRings: true,
       showOnCanvasPages: true,
+      theme: 'auto',
     });
     expect(DEFAULT_SETTINGS.hiddenCourseIds).toEqual([]);
+  });
+
+  it('reads settings stored before the theme existed with the Automatic theme', async () => {
+    await fakeBrowser.storage.local.set({
+      settings: { weekStart: 1, hiddenCourseIds: ['7'], showRings: false, showOnCanvasPages: true },
+    });
+
+    expect(await settingsItem.getValue()).toEqual({
+      weekStart: 1,
+      hiddenCourseIds: ['7'],
+      showRings: false,
+      showOnCanvasPages: true,
+      theme: 'auto',
+    });
+  });
+
+  it('keeps a saved theme and reads an unknown theme as Automatic', async () => {
+    await settingsItem.setValue({ ...DEFAULT_SETTINGS, theme: 'dark' });
+    expect((await settingsItem.getValue()).theme).toBe('dark');
+
+    await fakeBrowser.storage.local.set({ settings: { ...DEFAULT_SETTINGS, theme: 'sepia' } });
+    expect(await settingsItem.getValue()).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('gives a watcher complete settings', async () => {
+    const listener = vi.fn();
+    const stop = settingsItem.watch(listener);
+
+    await fakeBrowser.storage.local.set({ settings: { showRings: false } });
+
+    expect(listener).toHaveBeenCalledWith(
+      { ...DEFAULT_SETTINGS, showRings: false },
+      DEFAULT_SETTINGS,
+    );
+    stop();
   });
 });
 

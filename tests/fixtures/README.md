@@ -83,8 +83,8 @@ The pages load no other files, and each page sets an empty favicon so the browse
 ### dashboard-card-view.html
 
 The classic Card View dashboard at `/`, with `with-right-side` on the body.
-After load, `#right-side` gets the student To Do, Coming Up, Recent Feedback and View Grades.
-Canvas shows Coming Up next to the student To Do only for some roles and flags, and this page includes it so a test can check that it stays visible.
+After load, `#right-side` gets the student To Do, Recent Feedback and View Grades, which is the real student layout.
+Coming Up shows only on the mixed-role page.
 
 ### dashboard-recent-activity.html
 

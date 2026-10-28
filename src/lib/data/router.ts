@@ -1,8 +1,8 @@
 /**
  * Routes runtime messages to the data owner. See docs/design.md, decisions 5, 11 and 20.
  *
- * The router answers only the data protocol and the "Canvas page loaded" trigger. It must not
- * answer `weekrow:panel-state`: the panel registry answers that query synchronously.
+ * The router answers only the data protocol and the "Canvas page loaded" trigger, and leaves
+ * every other message to other listeners.
  *
  * Extension pages may send every message. A content script runs on every `instructure.com`
  * page, so it is trusted only for the saved Canvas: its message must come from the top frame of

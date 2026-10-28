@@ -14,6 +14,8 @@ import type { ProbeResult } from '../canvas/probe';
 import { canAutoSaveOrigin } from '../inpage/origin';
 import {
   assignmentIdsToLookup,
+  isCheckedButMissing,
+  itemState,
   moveToTodayTodoDate,
   redoBlocksDone,
   todoDateFor,
@@ -199,7 +201,7 @@ export interface DataOwner {
   setup(origin: string, fromOffer: boolean): Promise<void>;
   /** Opens the address form. The saved address stays until a new one passes the check. */
   changeAddress(): Promise<void>;
-  /** All active student courses, hidden ones included, for the settings page. */
+  /** All active student courses, hidden ones included, for every view of the settings. */
   listCourses(): Promise<CourseChoice[]>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
@@ -312,12 +314,15 @@ function previousFlags(item: Item): OverrideFlags {
 }
 
 /**
- * The flags of a Skip: dismissed, with the current done flag. On work whose redo request blocks
- * done, the done flag goes false, so a later submission that marks it done clears the skip.
+ * The flags of a Skip: dismissed, with the current done flag. The done flag goes false where it
+ * does not count: on work whose redo request blocks done, so a later submission that marks it
+ * done clears the skip, and on checked work that Canvas still marks missing, which a done flag
+ * would keep in place as checked (decision 6, "Checked but missing").
  */
 function skipFlags(item: Item): OverrideFlags {
+  const doneCounts = !redoBlocksDone(item) && !isCheckedButMissing(item, itemState(item));
   return {
-    markedComplete: redoBlocksDone(item) ? false : (item.override?.markedComplete ?? false),
+    markedComplete: doneCounts ? (item.override?.markedComplete ?? false) : false,
     dismissed: true,
   };
 }
@@ -789,6 +794,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
     if (update !== null) {
       cache = prune(settlePatches(commitUpdate(cache, update, clock.now()), startedAt), context);
+      // Teacher status names load after the list shows, in an ensure round of their own.
+      const session = cache.session;
+      if (
+        session !== null &&
+        statusCoursesNeeded(cache, visibleCourseIds(session, context.settings)).length > 0
+      ) {
+        schedule('ensure');
+      }
     } else if (failure?.kind === 'signed_out') {
       clearSessionWork();
       cache = { ...clearData(cache), failure };

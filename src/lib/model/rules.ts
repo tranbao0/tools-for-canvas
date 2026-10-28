@@ -42,6 +42,23 @@ export function itemState(item: Item): ItemState {
   return 'open';
 }
 
+/**
+ * Checked, but Canvas still marks the work missing (decision 6, "Checked but missing"). Such an
+ * item is done by the done rule, so it shows as checked with the "Missing in Canvas" chip, but it
+ * stays where open work goes and counts as not done in the rings and the past-due badge.
+ */
+export function isCheckedButMissing(item: Pick<Item, 'facts'>, state: ItemState): boolean {
+  return state === 'done' && item.facts.missing;
+}
+
+/**
+ * The state that decides where an item goes and whether it counts as done: a checked item that
+ * Canvas marks missing goes where open work goes.
+ */
+export function placementState(item: Pick<Item, 'facts'>, state: ItemState): ItemState {
+  return isCheckedButMissing(item, state) ? 'open' : state;
+}
+
 /** True when the item has a date before now. */
 export function isPastDue(item: Item, now: Temporal.Instant): boolean {
   const due = parseInstant(item.due);
@@ -79,7 +96,8 @@ export function statusChip(item: Item, state: ItemState, context: ChipContext): 
 
 /**
  * "Opens <date>" while the item is locked until a later date. "Closed" after the lock date, only
- * for work handed in on Canvas. Done items show no marker.
+ * for work handed in on Canvas. Done items show no marker. Pass the placement state, so a
+ * checked item that Canvas marks missing shows "Closed" like open work: Skip is then the action.
  */
 export function availabilityFor(item: Item, state: ItemState, now: Temporal.Instant): Availability {
   if (state === 'done') return null;

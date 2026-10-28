@@ -37,8 +37,9 @@ test.describe('first run', () => {
     await expect.poll(() => savedAddress(background)).toBe(canvas.origin);
     await expect(doneBox(page, QUIZ_3)).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Connect your Canvas' })).toHaveCount(0);
-    // The panel page is open in the same window, so the in-page list is one line.
-    await expect(inpageList(canvasTab)).toContainText('Shown in the side panel');
+    // The panel page is open in the same window, and the in-page list shows in full beside it.
+    await expect(doneBox(inpageList(canvasTab), QUIZ_3)).toBeVisible();
+    await expect(inpageList(canvasTab).getByText('Shown in the side panel')).toHaveCount(0);
     expect(canvas.unmatched).toEqual([]);
     expect(canvas.blocked).toEqual([]);
   });

@@ -11,17 +11,28 @@
 /* Canvas layout at desktop widths, after app/stylesheets/base/_ic_app_layout.scss,
    _layout.scss, _right-side.scss and _variables.scss ($ic-sp: 12px, right side 288px,
    course menu 192px, global nav 84px, breakpoints 992px and 1140px). */
+/* Canvas's default brand, which Canvas sets on :root from dist/brandable_css/default/variables-*.css. */
+:root {
+  --ic-brand-primary: #2B7ABC;
+  --ic-brand-font-color-dark: #273540;
+  --ic-link-color: #0E68B3;
+  --ic-link-color-darkened-10: #0D5EA2;
+  --ic-brand-font-color-dark-lightened-28: #636D75;
+  --ic-brand-button--primary-bgd: var(--ic-brand-primary);
+  --ic-brand-button--primary-text: #ffffff;
+  --ic-brand-global-nav-bgd: #334451;
+}
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   font-family: "Lato Extended", Lato, "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 1.5;
-  color: #273540;
+  color: var(--ic-brand-font-color-dark);
   background: #fff;
 }
-a { color: #2b7abc; text-decoration: none; }
-a:hover { text-decoration: underline; }
+a { color: var(--ic-link-color); text-decoration: none; }
+a:hover { color: var(--ic-link-color-darkened-10); text-decoration: underline; }
 h1, h2, h3, h4 { margin: 0; font-weight: 400; line-height: 1.25; }
 p { margin: 0 0 6px; }
 ul { margin: 0; padding: 0; }
@@ -37,7 +48,7 @@ button { font: inherit; }
 #mobile-header { display: none; }
 .ic-app-header {
   position: fixed; top: 0; bottom: 0; left: 0; z-index: 100;
-  width: 84px; background: #394b58; color: #fff;
+  width: 84px; background: var(--ic-brand-global-nav-bgd); color: #fff;
   display: flex; flex-direction: column;
 }
 #skip_navigation_link { position: absolute; left: -10000px; }
@@ -61,14 +72,14 @@ button { font: inherit; }
 }
 .ic-avatar { border-radius: 50%; background: #c7cdd1; border-color: #fff; }
 .ic-app-header__menu-list-item--active { background: #fff; }
-.ic-app-header__menu-list-item--active .ic-app-header__menu-list-link { color: #394b58; }
+.ic-app-header__menu-list-item--active .ic-app-header__menu-list-link { color: var(--ic-link-color); }
 
 /* Columns */
 .ic-Layout-wrapper { box-sizing: border-box; min-height: 100vh; display: flex; flex-direction: column; }
 body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
 .ic-app-nav-toggle-and-crumbs {
   display: flex; align-items: center; box-sizing: border-box;
-  min-height: 72px; margin: 0 24px; border-bottom: 1px solid #c7cdd1;
+  min-height: 72px; margin: 0 24px; border-bottom: 1px solid #e8eaec;
 }
 .ic-app-course-nav-toggle {
   width: 36px; height: 36px; margin-right: 12px; border: 0; border-radius: 4px;
@@ -89,6 +100,9 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
   position: absolute; top: 0; right: 100%; box-sizing: border-box;
   width: 192px; padding: 24px 12px 12px 24px;
 }
+/* Canvas pads the sticky course menu frame, not the menu (_ic_app_layout.scss). */
+#left-side.ic-sticky-on { bottom: 0; padding: 0; }
+.ic-sticky-frame { box-sizing: border-box; padding: 24px 12px 12px 24px; }
 #section-tabs-header-subtitle { display: block; padding: 0 0 12px 12px; font-size: 12px; color: #6b7780; }
 #section-tabs { list-style: none; }
 #section-tabs a {
@@ -113,7 +127,7 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
   .ic-app-header { display: none; }
   #mobile-header {
     display: flex; align-items: center; gap: 12px; height: 50px; padding: 0 12px;
-    background: #394b58; color: #fff;
+    background: var(--ic-brand-global-nav-bgd); color: #fff;
   }
   .mobile-header-title { flex: 1; text-align: center; font-weight: 700; }
   #left-side, .ic-app-nav-toggle-and-crumbs { display: none !important; }
@@ -124,32 +138,39 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
 /* Buttons */
 .btn, .Button {
   display: inline-block; box-sizing: border-box; padding: 8px 14px;
-  border: 1px solid #c7cdd1; border-radius: 4px; background: #f5f5f5;
-  color: #2d3b45; font-size: 14px; line-height: 20px; cursor: pointer;
+  border: 1px solid #e8eaec; border-radius: 3px; background: #f2f4f4;
+  color: #273540; font-size: 16px; line-height: 22px; cursor: pointer;
 }
-.btn:hover, .Button:hover { text-decoration: none; background: #e8eaec; }
-.button-sidebar-wide { display: block; width: 100%; margin-bottom: 6px; text-align: left; }
+.btn:hover, .Button:hover { text-decoration: none; color: #273540; background: #e5e9e9; }
+.button-sidebar-wide { display: block; width: 100%; margin: 5px auto; text-align: left; }
 
 /* Right side */
 #right-side h2, #right-side .h2 {
   overflow: hidden; margin: 0 0 6px; padding-bottom: 6px;
-  border-bottom: 1px solid #c7cdd1; font-size: 16px; font-weight: 700;
+  border-bottom: 1px solid #e8eaec; font-size: 16px; font-weight: 700; line-height: 1.5;
 }
 #right-side .shared-space { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 0; }
 #right-side .shared-space h2 { display: inline-block; margin-bottom: 0; padding-bottom: 0; border-bottom-style: none; }
 #right-side .todo-list-header { margin-top: 17px; }
-#right-side .events_list { margin-top: 17px; }
+#right-side .events_list { margin-bottom: 18px; }
+#right-side * + .events_list { margin-top: 18px; }
 .event-list-view-calendar { font-size: 12px; }
 #right-side .right-side-list { list-style: none; margin: -6px 0 12px; }
 #right-side .right-side-list li a { display: flex; padding: 12px 0; font-size: 14px; }
 #right-side .right-side-list li a:hover { text-decoration: none; }
 #right-side .right-side-list li a > i {
-  box-sizing: border-box; min-width: 24px; padding-right: 12px; color: #6b7780; font-style: normal;
+  box-sizing: border-box; min-width: 24px; padding-right: 12px; color: hsl(0, 0%, 35%); font-style: normal;
 }
+#right-side .right-side-list li a > i.icon-check { color: #03893d; }
+/* Stand-ins for Canvas's icon font, which a fixture page cannot load. Canvas's own CSS wins over them. */
+:where(.icon-check)::before { content: "\2713"; }
+:where(.icon-assignment, .icon-calendar-month)::before { content: "\25CB"; }
 #right-side .right-side-list b, #right-side .right-side-list em, #right-side .right-side-list p {
   display: block; font-weight: 400; line-height: 1.3;
 }
-#right-side .right-side-list p, #right-side .right-side-list .more_link { margin-bottom: 0; font-size: 12px; color: #6b7780; }
+#right-side .right-side-list p, #right-side .right-side-list .more_link { margin-bottom: 0; font-size: 12px; color: #777; }
+#right-side .event-details__title + * { margin-top: 3px; }
+#right-side .recent_feedback_title { margin-bottom: 3px; }
 #right-side .right-side-list small { display: block; font-size: 13px; }
 #right-side .right-side-list .todo-badge-wrapper { min-width: 40px; padding-right: 12px; box-sizing: border-box; text-align: right; }
 .todo-badge {
@@ -158,27 +179,32 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
 }
 .todo-list { margin-top: 6px; }
 
-/* Student To Do list that React renders into .Sidebar__TodoListContainer */
+/* Student To Do list that React renders into .Sidebar__TodoListContainer, with the values of
+   react_todo_sidebar.css and the InstUI Link, Text, InlineList and CloseButton in ToDoItem.tsx. */
 #planner-todosidebar-item-list { list-style: none; margin: 0; padding: 0; }
-.ToDoSidebarItem { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; }
-.ToDoSidebarItem__Icon { flex: none; width: 16px; height: 16px; margin-top: 3px; color: #6b7780; }
-.ToDoSidebarItem__Info { flex: 1; min-width: 0; font-size: 14px; line-height: 1.35; }
-.ToDoSidebarItem__Title a { color: #2b7abc; }
-.fixture-todo-context { display: block; margin-top: 2px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.02em; }
-.fixture-info-row { list-style: none; font-size: 12px; color: #6b7780; }
-.fixture-info-row li { display: inline; }
-.fixture-info-row li + li::before { content: " | "; white-space: pre; }
+.ToDoSidebarItem { display: flex; align-items: flex-start; margin: 0 0 6px; line-height: 1.1; }
+.ToDoSidebarItem__Icon { display: block; flex: none; width: 1em; height: 1em; margin-top: 4px; font-size: 1rem; color: var(--ic-brand-font-color-dark); }
+.ToDoSidebarItem__Info { flex: 1; min-width: 0; margin-top: 4px; padding: 0 6px 0 9px; }
+.ToDoSidebarItem__Title { margin-bottom: 3px; overflow: hidden; font-size: 14px; line-height: 1.125; white-space: nowrap; text-overflow: ellipsis; }
+.ToDoSidebarItem__Title a { color: var(--ic-link-color); text-decoration: underline; }
+.ToDoSidebarItem__Title a:hover { color: #0a4d84; text-decoration: none; }
+.fixture-todo-context { font-size: 14px; font-weight: 700; line-height: 1.125; color: #586874; }
+.fixture-info-row { display: block; margin: 0; padding: 0; list-style: none; }
+.fixture-info-row li { display: inline-block; font-size: 14px; line-height: 1.25; color: var(--ic-brand-font-color-dark); }
+.fixture-info-row li:not(:last-child)::after { content: "|"; margin: 0 8px; }
 .ToDoSidebarItem__Close button {
-  width: 24px; height: 24px; border: 0; border-radius: 4px;
-  background: transparent; color: #6b7780; cursor: pointer;
+  display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 4px;
+  background: transparent; color: var(--ic-brand-font-color-dark); font-size: 16px; cursor: pointer;
 }
-.fixture-show-all { margin-top: 6px; text-align: center; font-size: 14px; }
-.fixture-show-all button { border: 0; background: none; color: #2b7abc; cursor: pointer; }
+.ToDoSidebarItem__Close button:hover { background: #f2f4f4; }
+.fixture-show-all { text-align: center; }
+.fixture-show-all button { border: 0; background: none; color: var(--ic-link-color); font: inherit; cursor: pointer; }
+.fixture-show-all button:hover { color: #0a4d84; text-decoration: underline; }
 
 /* Dashboard */
 .ic-Dashboard-header__layout {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid #c7cdd1;
+  margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid #e8eaec;
 }
 .ic-Dashboard-header__title { font-size: 28px; }
 .ic-Dashboard-header__actions { display: flex; align-items: center; gap: 12px; }
@@ -708,48 +734,23 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
 <template data-fixture-step="replace" data-target="#right-side">
 <div class="Sidebar__TodoListContainer"></div>
 <div class="events_list
-  coming_up">
-  <div class="h2 shared-space">
-    <h2>Coming Up</h2>
-    <a class="event-list-view-calendar icon-calendar-day standalone-icon element_toggler_inst_focus_ring" href="/calendar">View Calendar</a>
-  </div>
-  <ul class="right-side-list events">
-    <li class="event">
-      <a href="/calendar?event_id=9901&include_contexts=course_101" class="tooltip"><i class="icon-calendar-month" aria-hidden="true">&#9675;</i>
-        <div class="event-details"><b class="event-details__title">BIO 110 midterm review session</b><p>BIO 110</p><p>Oct 28 at 5pm</p></div>
-      </a>
-    </li>
-    <li class="event">
-      <a href="/courses/104/assignments/4004" class="tooltip"><i class="icon-assignment" aria-hidden="true">&#9675;</i>
-        <div class="event-details"><b class="event-details__title">Lab 8 pre-lab</b><p>CHEM 120</p><p>Oct 30 at 11:59pm</p></div>
-      </a>
-    </li>
-    <li class="event">
-      <a href="/courses/102/assignments/2006" class="tooltip"><i class="icon-assignment" aria-hidden="true">&#9675;</i>
-        <div class="event-details"><b class="event-details__title">Homework 8</b><p>MATH 221</p><p>Oct 30 at 11:59pm</p></div>
-      </a>
-    </li>
-    <li><a href="#" class="more_link">4 more in the next week &hellip;</a></li>
-  </ul>
-</div>
-<div class="events_list
   recent_feedback">
   <div class="h2 shared-space">
     <h2>Recent Feedback</h2>
   </div>
   <ul class="right-side-list events">
     <li class="event">
-      <a href="/courses/101/assignments/1002/submissions/5501" class="recent_feedback_icon"><i class="icon-check" aria-hidden="true">&#10003;</i>
-        <div class="event-details"><b class="event-details__title recent_feedback_title">Lab report 2: Enzymes</b><p>BIO 110</p><p><strong>12 out of 20</strong></p><p class="event-details__comment recent_feedback_comment">&quot;Please redo the methods section and resubmit.&quot;</p></div>
+      <a href="/courses/101/assignments/1002/submissions/5501" class="recent_feedback_icon"><i class="icon-check" aria-hidden="true"></i>
+        <div class="event-details"><b class="event-details__title recent_feedback_title">Lab report 2: Enzymes</b><p>BIO 110</p><p><strong>12 out of 20</strong></p><p>&quot;Please redo the methods section and resubmit.&quot;</p></div>
       </a>
     </li>
     <li class="event">
-      <a href="/courses/102/assignments/2004/submissions/5501" class="recent_feedback_icon"><i class="icon-check" aria-hidden="true">&#10003;</i>
+      <a href="/courses/102/assignments/2004/submissions/5501" class="recent_feedback_icon"><i class="icon-check" aria-hidden="true"></i>
         <div class="event-details"><b class="event-details__title recent_feedback_title">Homework 6</b><p>MATH 221</p><p><strong>10 out of 10</strong></p></div>
       </a>
     </li>
     <li class="event">
-      <a href="/courses/104/assignments/4001/submissions/5501" class="recent_feedback_icon"><i class="icon-check" aria-hidden="true">&#10003;</i>
+      <a href="/courses/104/assignments/4001/submissions/5501" class="recent_feedback_icon"><i class="icon-check" aria-hidden="true"></i>
         <div class="event-details"><b class="event-details__title recent_feedback_title">Lab 5: Stoichiometry notebook</b><p>CHEM 120</p><p><strong>9 out of 10</strong></p></div>
       </a>
     </li>
@@ -765,92 +766,92 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
   <ul id="planner-todosidebar-item-list">
       <li>
         <div class="ToDoSidebarItem">
-          <svg class="ToDoSidebarItem__Icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="1" width="12" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          <svg class="ToDoSidebarItem__Icon" width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m47 92 5 5-16 15-5-5 16-15zM36 81l5 5-20 21-5-5 20-21zM26 71l5 5-26 26-5-5 26-26zm44-54C92-6 115 5 116 6h1v1c0 0 11 23-11 46l-9 9v41l-14 14-21-20-36-36L5 40 19 26h42zm20 52-23 23 16 15 7-7V69zm21-58c-4-1-20-6-36 11L36 61 62 87l39-39c16-16 12-32 10-37zM54 33H22l-7 7 16 15 23-22z" fill-rule="evenodd"/><path d="m96 23c-3 0-8 1-13 6l-3 3 11 11 2-3c6-5 6-10 6-13v-4h-3z" fill-rule="evenodd"/></svg>
           <div class="ToDoSidebarItem__Info" data-testid="todo-sidebar-item-info">
             <div class="ToDoSidebarItem__Title" data-testid="todo-sidebar-item-title"><a href="/courses/101/quizzes/10012">Quiz 3: Cell membranes</a></div>
-            <span class="fixture-todo-context" style="color: #0B874B">BIO 110</span>
+            <span class="fixture-todo-context">BIO 110</span>
             <ul class="fixture-info-row" data-testid="ToDoSidebarItem__InformationRow"><li>10 points</li><li>Oct 27 at 11:59pm</li></ul>
           </div>
           <div class="ToDoSidebarItem__Close" data-testid="todo-sidebar-item-close">
-            <button type="button" data-testid="todo-sidebar-item-close-button"><span aria-hidden="true">&#10005;</span><span class="screenreader-only">Dismiss Quiz 3: Cell membranes</span></button>
+            <button type="button" data-testid="todo-sidebar-item-close-button"><svg width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m60 52-33-33-8 8 33 33-33 33 8 8 33-33 33 33 8-8-33-33 33-33-8-8z"/></svg><span class="screenreader-only">Dismiss Quiz 3: Cell membranes</span></button>
           </div>
         </div>
       </li>
       <li>
         <div class="ToDoSidebarItem">
-          <svg class="ToDoSidebarItem__Icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="1" width="12" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          <svg class="ToDoSidebarItem__Icon" width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m92 0v35h-7V7H7v106h78V99h7v21H0V0h92zm8 36c1-1 3-1 5 0l14 14c1 2 1 4 0 5L77 98c-1 0-2 1-3 1H60c-2 0-4-2-4-4V81c0-1 1-2 2-2zM90 56 64 83v9h9l26-27-9-9zM42 78v7H21v-7h21zm14-14v7H21v-7h35zm46-20-7 7 9 9 7-7-9-9zM71 21v28H21V21h50zm-7 7H28v14h36V28z" fill-rule="evenodd"/></svg>
           <div class="ToDoSidebarItem__Info" data-testid="todo-sidebar-item-info">
             <div class="ToDoSidebarItem__Title" data-testid="todo-sidebar-item-title"><a href="/courses/103/assignments/3010">Debate 2: Was the Atlantic world one system? Reply to Topic</a></div>
-            <span class="fixture-todo-context" style="color: #8F3E97">History</span>
+            <span class="fixture-todo-context">History</span>
             <ul class="fixture-info-row" data-testid="ToDoSidebarItem__InformationRow"><li>5 points</li><li>Oct 27 at 11:59pm</li></ul>
           </div>
           <div class="ToDoSidebarItem__Close" data-testid="todo-sidebar-item-close">
-            <button type="button" data-testid="todo-sidebar-item-close-button"><span aria-hidden="true">&#10005;</span><span class="screenreader-only">Dismiss Debate 2: Was the Atlantic world one system? Reply to Topic</span></button>
+            <button type="button" data-testid="todo-sidebar-item-close-button"><svg width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m60 52-33-33-8 8 33 33-33 33 8 8 33-33 33 33 8-8-33-33 33-33-8-8z"/></svg><span class="screenreader-only">Dismiss Debate 2: Was the Atlantic world one system? Reply to Topic</span></button>
           </div>
         </div>
       </li>
       <li>
         <div class="ToDoSidebarItem">
-          <svg class="ToDoSidebarItem__Icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="1" width="12" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          <svg class="ToDoSidebarItem__Icon" width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m92 0v35h-7V7H7v106h78V99h7v21H0V0h92zm8 36c1-1 3-1 5 0l14 14c1 2 1 4 0 5L77 98c-1 0-2 1-3 1H60c-2 0-4-2-4-4V81c0-1 1-2 2-2zM90 56 64 83v9h9l26-27-9-9zM42 78v7H21v-7h21zm14-14v7H21v-7h35zm46-20-7 7 9 9 7-7-9-9zM71 21v28H21V21h50zm-7 7H28v14h36V28z" fill-rule="evenodd"/></svg>
           <div class="ToDoSidebarItem__Info" data-testid="todo-sidebar-item-info">
             <div class="ToDoSidebarItem__Title" data-testid="todo-sidebar-item-title"><a href="/courses/103/assignments/3050">Participation: Week 9</a></div>
-            <span class="fixture-todo-context" style="color: #8F3E97">History</span>
+            <span class="fixture-todo-context">History</span>
             <ul class="fixture-info-row" data-testid="ToDoSidebarItem__InformationRow"><li>2 points</li><li>Oct 27 at 11:59pm</li></ul>
           </div>
           <div class="ToDoSidebarItem__Close" data-testid="todo-sidebar-item-close">
-            <button type="button" data-testid="todo-sidebar-item-close-button"><span aria-hidden="true">&#10005;</span><span class="screenreader-only">Dismiss Participation: Week 9</span></button>
+            <button type="button" data-testid="todo-sidebar-item-close-button"><svg width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m60 52-33-33-8 8 33 33-33 33 8 8 33-33 33 33 8-8-33-33 33-33-8-8z"/></svg><span class="screenreader-only">Dismiss Participation: Week 9</span></button>
           </div>
         </div>
       </li>
       <li>
         <div class="ToDoSidebarItem">
-          <svg class="ToDoSidebarItem__Icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="1" width="12" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          <svg class="ToDoSidebarItem__Icon" width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m111 92-19 19V92h19zM78 71v7H21v-7h57zm21-22v7H21v-7h78zM39 0c6 0 10 5 10 11 0 1 0 3-1 4l14 14-4 5-15-14c-1 1-3 1-4 1-6 0-11-5-11-10 0-6 5-11 11-11zm25 14v7h49v64H85v28H7V21h14v-7H0v106h89c3 0 5-1 7-3l21-21c2-2 3-4 3-7V14H64z" fill-rule="evenodd"/></svg>
           <div class="ToDoSidebarItem__Info" data-testid="todo-sidebar-item-info">
             <div class="ToDoSidebarItem__Title" data-testid="todo-sidebar-item-title"><span>Return library books</span></div>
             
             <ul class="fixture-info-row" data-testid="ToDoSidebarItem__InformationRow"><li>To Do</li><li>Oct 27 at 11:59pm</li></ul>
           </div>
           <div class="ToDoSidebarItem__Close" data-testid="todo-sidebar-item-close">
-            <button type="button" data-testid="todo-sidebar-item-close-button"><span aria-hidden="true">&#10005;</span><span class="screenreader-only">Dismiss Return library books</span></button>
+            <button type="button" data-testid="todo-sidebar-item-close-button"><svg width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m60 52-33-33-8 8 33 33-33 33 8 8 33-33 33 33 8-8-33-33 33-33-8-8z"/></svg><span class="screenreader-only">Dismiss Return library books</span></button>
           </div>
         </div>
       </li>
       <li>
         <div class="ToDoSidebarItem">
-          <svg class="ToDoSidebarItem__Icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="1" width="12" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          <svg class="ToDoSidebarItem__Icon" width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m42 1v21h7V8h64v49H99v17L83 57h-5V29H0v64h21v26l26-26h31V65h2l26 26V65h14V1H42zM21 57h35v-7H21v7zm0 15h21v-7H21v7zM7 36h64v50H44l-16 16V86H7V36z" fill-rule="evenodd"/></svg>
           <div class="ToDoSidebarItem__Info" data-testid="todo-sidebar-item-info">
             <div class="ToDoSidebarItem__Title" data-testid="todo-sidebar-item-title"><a href="/courses/103/discussion_topics/33041">Reading circle: Week 9 questions</a></div>
-            <span class="fixture-todo-context" style="color: #8F3E97">History</span>
+            <span class="fixture-todo-context">History</span>
             <ul class="fixture-info-row" data-testid="ToDoSidebarItem__InformationRow"><li>Oct 28 at 12pm</li></ul>
           </div>
           <div class="ToDoSidebarItem__Close" data-testid="todo-sidebar-item-close">
-            <button type="button" data-testid="todo-sidebar-item-close-button"><span aria-hidden="true">&#10005;</span><span class="screenreader-only">Dismiss Reading circle: Week 9 questions</span></button>
+            <button type="button" data-testid="todo-sidebar-item-close-button"><svg width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m60 52-33-33-8 8 33 33-33 33 8 8 33-33 33 33 8-8-33-33 33-33-8-8z"/></svg><span class="screenreader-only">Dismiss Reading circle: Week 9 questions</span></button>
           </div>
         </div>
       </li>
       <li>
         <div class="ToDoSidebarItem">
-          <svg class="ToDoSidebarItem__Icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="1" width="12" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          <svg class="ToDoSidebarItem__Icon" width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m92 0v35h-7V7H7v106h78V99h7v21H0V0h92zm8 36c1-1 3-1 5 0l14 14c1 2 1 4 0 5L77 98c-1 0-2 1-3 1H60c-2 0-4-2-4-4V81c0-1 1-2 2-2zM90 56 64 83v9h9l26-27-9-9zM42 78v7H21v-7h21zm14-14v7H21v-7h35zm46-20-7 7 9 9 7-7-9-9zM71 21v28H21V21h50zm-7 7H28v14h36V28z" fill-rule="evenodd"/></svg>
           <div class="ToDoSidebarItem__Info" data-testid="todo-sidebar-item-info">
             <div class="ToDoSidebarItem__Title" data-testid="todo-sidebar-item-title"><a href="/courses/104/assignments/4003">Lab 7: Titration notebook</a></div>
-            <span class="fixture-todo-context" style="color: #626E7B">CHEM 120</span>
+            <span class="fixture-todo-context">CHEM 120</span>
             <ul class="fixture-info-row" data-testid="ToDoSidebarItem__InformationRow"><li>10 points</li><li>Oct 28 at 1pm</li></ul>
           </div>
           <div class="ToDoSidebarItem__Close" data-testid="todo-sidebar-item-close">
-            <button type="button" data-testid="todo-sidebar-item-close-button"><span aria-hidden="true">&#10005;</span><span class="screenreader-only">Dismiss Lab 7: Titration notebook</span></button>
+            <button type="button" data-testid="todo-sidebar-item-close-button"><svg width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m60 52-33-33-8 8 33 33-33 33 8 8 33-33 33 33 8-8-33-33 33-33-8-8z"/></svg><span class="screenreader-only">Dismiss Lab 7: Titration notebook</span></button>
           </div>
         </div>
       </li>
       <li>
         <div class="ToDoSidebarItem">
-          <svg class="ToDoSidebarItem__Icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="1" width="12" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          <svg class="ToDoSidebarItem__Icon" width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m42 1v21h7V8h64v49H99v17L83 57h-5V29H0v64h21v26l26-26h31V65h2l26 26V65h14V1H42zM21 57h35v-7H21v7zm0 15h21v-7H21v7zM7 36h64v50H44l-16 16V86H7V36z" fill-rule="evenodd"/></svg>
           <div class="ToDoSidebarItem__Info" data-testid="todo-sidebar-item-info">
             <div class="ToDoSidebarItem__Title" data-testid="todo-sidebar-item-title"><a href="/groups/9001/discussion_topics/39001">Lab group 4: Plan the poster</a></div>
-            <span class="fixture-todo-context" style="color: #6B7780">Lab Group 4</span>
+            <span class="fixture-todo-context">Lab Group 4</span>
             <ul class="fixture-info-row" data-testid="ToDoSidebarItem__InformationRow"><li>Oct 28 at 6pm</li></ul>
           </div>
           <div class="ToDoSidebarItem__Close" data-testid="todo-sidebar-item-close">
-            <button type="button" data-testid="todo-sidebar-item-close-button"><span aria-hidden="true">&#10005;</span><span class="screenreader-only">Dismiss Lab group 4: Plan the poster</span></button>
+            <button type="button" data-testid="todo-sidebar-item-close-button"><svg width="16" height="16" viewBox="0 0 120 120" fill="currentColor" aria-hidden="true" focusable="false"><path d="m60 52-33-33-8 8 33 33-33 33 8 8 33-33 33 33 8-8-33-33 33-33-8-8z"/></svg><span class="screenreader-only">Dismiss Lab group 4: Plan the poster</span></button>
           </div>
         </div>
       </li>

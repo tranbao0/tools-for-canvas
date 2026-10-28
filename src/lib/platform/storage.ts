@@ -36,15 +36,22 @@ function sameValue(a: unknown, b: unknown): boolean {
 
 /**
  * Defines one item. `fallback` runs on every read of a missing value, so a caller that changes
- * a read value never changes a shared default.
+ * a read value never changes a shared default. `normalize`, when given, turns a stored value into
+ * a complete one, such as settings that an older version stored without a newer field.
  */
-export function defineItem<T>(name: ItemName, fallback: () => T): StorageItem<T> {
+export function defineItem<T>(
+  name: ItemName,
+  fallback: () => T,
+  normalize?: (stored: unknown) => T,
+): StorageItem<T> {
   const split = name.indexOf(':');
   const area = name.slice(0, split) as StorageAreaName;
   const key = name.slice(split + 1);
   const storageArea = () => browser.storage[area];
-  const orFallback = (value: unknown): T =>
-    value === undefined || value === null ? fallback() : (value as T);
+  const orFallback = (value: unknown): T => {
+    if (value === undefined || value === null) return fallback();
+    return normalize === undefined ? (value as T) : normalize(value);
+  };
 
   const removeValue = async (): Promise<void> => {
     await storageArea().remove(key);
@@ -96,9 +103,26 @@ export interface SeenNotes {
 
 export const DEFAULT_SEEN_NOTES: SeenNotes = { firstDone: false, firstSkip: false };
 
-/** The student's settings (decision 18). */
-export const settingsItem = defineItem<Settings>('local:settings', () =>
-  structuredClone(DEFAULT_SETTINGS),
+const THEMES: readonly unknown[] = ['auto', 'light', 'dark'];
+
+/**
+ * Complete settings from a stored value. A missing field takes its default, so settings stored
+ * before a field existed, such as the theme, read as complete. An unknown theme reads as `auto`.
+ */
+export function normalizeSettings(stored: unknown): Settings {
+  const settings: Settings = {
+    ...structuredClone(DEFAULT_SETTINGS),
+    ...(typeof stored === 'object' && stored !== null ? stored : {}),
+  };
+  if (!THEMES.includes(settings.theme)) settings.theme = DEFAULT_SETTINGS.theme;
+  return settings;
+}
+
+/** The student's settings (decision 18). The theme defaults to `auto` (decision 19). */
+export const settingsItem = defineItem<Settings>(
+  'local:settings',
+  () => structuredClone(DEFAULT_SETTINGS),
+  normalizeSettings,
 );
 
 /** The saved Canvas origin, such as `https://school.instructure.com`, or `null` before setup. */

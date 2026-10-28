@@ -284,7 +284,8 @@ test.describe('in-page list', () => {
       'display',
       'none',
     );
-    await expect(page.locator('#right-side .coming_up')).toBeVisible();
+    // The rest of the sidebar stays, such as Recent Feedback.
+    await expect(page.locator('#right-side .recent_feedback')).toBeVisible();
     expect(canvas.blocked).toEqual([]);
   });
 

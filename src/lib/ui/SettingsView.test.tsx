@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS, type Settings } from '../model/types';
+import { parseTheme } from './Settings';
 import { parseWeekStart, SettingsView, toggleHidden } from './SettingsView';
 
 afterEach(cleanup);
@@ -30,17 +31,20 @@ function setup(
 }
 
 describe('SettingsView', () => {
-  it('shows the four settings and the address', () => {
+  it('shows the five settings and the address', () => {
     setup();
     expect(screen.getByLabelText('First day of the week')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Hidden courses' })).toBeTruthy();
     expect(screen.getByRole('switch', { name: 'Show progress rings' })).toBeTruthy();
-    expect(screen.getByRole('switch', { name: 'Show Weekrow on Canvas pages' })).toBeTruthy();
+    expect(
+      screen.getByRole('switch', { name: 'Show the weekly list on Canvas pages' }),
+    ).toBeTruthy();
     expect(
       screen.getByText(
         'Shows on the Card View and Recent Activity dashboards and on course home pages. On other pages, use the side panel.',
       ),
     ).toBeTruthy();
+    expect(screen.getByLabelText('Theme')).toBeTruthy();
     expect(screen.getByText('school.instructure.com')).toBeTruthy();
   });
 
@@ -48,7 +52,7 @@ describe('SettingsView', () => {
     const { onChange } = setup();
     const select = screen.getByLabelText('First day of the week') as HTMLSelectElement;
     expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
-      'Automatic, from your Canvas language',
+      'Automatic',
       'Sunday',
       'Monday',
       'Tuesday',
@@ -57,8 +61,19 @@ describe('SettingsView', () => {
       'Friday',
       'Saturday',
     ]);
+    expect(
+      document.getElementById(select.getAttribute('aria-describedby') ?? '')?.textContent,
+    ).toBe('Automatic takes the first day from your Canvas language.');
     fireEvent.change(select, { target: { value: '1' } });
     expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, weekStart: 1 });
+  });
+
+  it('changes the theme', () => {
+    const { onChange } = setup({ ...DEFAULT_SETTINGS, theme: 'light' });
+    const select = screen.getByLabelText('Theme') as HTMLSelectElement;
+    expect(select.value).toBe('light');
+    fireEvent.change(select, { target: { value: 'auto' } });
+    expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, theme: 'auto' });
   });
 
   it('hides and shows a course', () => {
@@ -73,7 +88,7 @@ describe('SettingsView', () => {
     const { onChange } = setup();
     fireEvent.click(screen.getByRole('switch', { name: 'Show progress rings' }));
     expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, showRings: false });
-    fireEvent.click(screen.getByRole('switch', { name: 'Show Weekrow on Canvas pages' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Show the weekly list on Canvas pages' }));
     expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, showOnCanvasPages: false });
   });
 
@@ -90,6 +105,13 @@ describe('helpers', () => {
     expect(parseWeekStart('auto')).toBe('auto');
     expect(parseWeekStart('7')).toBe(7);
     expect(parseWeekStart('8')).toBe('auto');
+  });
+
+  it('parses the theme', () => {
+    expect(parseTheme('light')).toBe('light');
+    expect(parseTheme('dark')).toBe('dark');
+    expect(parseTheme('auto')).toBe('auto');
+    expect(parseTheme('sepia')).toBe('auto');
   });
 
   it('toggles a hidden course without duplicates', () => {

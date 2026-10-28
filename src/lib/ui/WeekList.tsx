@@ -4,7 +4,7 @@ import type { ComponentChildren } from 'preact';
 import { t, tp } from '../i18n';
 import type { GroupKind, ItemView, ListGroup, WeekView } from '../model/types';
 import { formatMonthDay, formatWeekday } from './format';
-import { AlertIcon, CheckIcon, ChevronDownIcon } from './icons';
+import { CheckIcon, ChevronDownIcon } from './icons';
 import { ItemRow, type ItemHandlers, type WhenMode } from './ItemRow';
 import { Heading, newId, type HeadingLevel } from './parts';
 
@@ -120,9 +120,7 @@ function SubList(props: {
           aria-controls={open ? id : undefined}
           onClick={() => setOpen(!open)}
         >
-          <span class="wr-chevron">
-            <ChevronDownIcon />
-          </span>
+          <ChevronDownIcon />
           {props.label}
         </button>
         {props.action}
@@ -181,9 +179,7 @@ function LimitedItems(props: {
               setExpanded(true);
             }}
           >
-            <span class="wr-chevron">
-              <ChevronDownIcon />
-            </span>
+            <ChevronDownIcon />
             {t('showMore', String(hidden))}
           </button>
         </div>
@@ -211,10 +207,7 @@ function GroupSection(props: {
       <span class="wr-group-name">{title.name}</span>
       {title.date && <span class="wr-group-date">{title.date}</span>}
       {group.kind === 'done' && group.warningCount > 0 && (
-        <span class="wr-warn">
-          <AlertIcon />
-          {tp('warningCount', group.warningCount)}
-        </span>
+        <span class="wr-warn">{tp('warningCount', group.warningCount)}</span>
       )}
       <span class="wr-count" aria-hidden="true">
         {count}
@@ -240,9 +233,7 @@ function GroupSection(props: {
             aria-controls={open ? ids.body : undefined}
             onClick={() => setOpen(!open)}
           >
-            <span class="wr-chevron">
-              <ChevronDownIcon />
-            </span>
+            <ChevronDownIcon />
             {headContent}
           </button>
         ) : (
@@ -268,7 +259,7 @@ function GroupSection(props: {
               action={
                 <button
                   type="button"
-                  class="wr-quiet-btn"
+                  class="wr-link-btn"
                   data-part="skip-older"
                   onClick={handlers.onSkipAllOlder}
                 >

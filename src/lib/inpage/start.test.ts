@@ -175,7 +175,7 @@ describe('startInpage', () => {
     expect(outcome).toEqual({ kind: 'other_origin' });
   });
 
-  it('mounts nothing when "Show Weekrow on Canvas pages" is off, but still reports the page load', async () => {
+  it('mounts nothing when "Show the weekly list on Canvas pages" is off, but still reports the page load', async () => {
     await canvasOriginItem.setValue(CUSTOM);
     await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: false });
     loadPage(document, COURSE_HOME);

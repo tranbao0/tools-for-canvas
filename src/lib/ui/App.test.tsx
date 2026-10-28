@@ -2,12 +2,13 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/preact';
 import { render as renderNow } from 'preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Ring, SurfaceState } from '../model/types';
+import { DEFAULT_SETTINGS, type Ring, type SurfaceState } from '../model/types';
 import { App } from './App';
-import type { SurfaceKind } from './contract';
+import type { AppProps, SurfaceKind } from './contract';
 import { spyActions, type SpyActions } from './testing/actions';
 import {
   COURSES,
+  hiddenCourseView,
   limitedFilteredView,
   mkGroup,
   mkItem,
@@ -48,12 +49,14 @@ describe('header', () => {
     expect(screen.queryByText(/Times in/)).toBeNull();
   });
 
-  it('moves between weeks with absolute offsets', () => {
+  it('steps from the week the student last asked for, and goes back to this week', () => {
     const { actions } = setup(readyState({ view: pastWeekView() }));
     fireEvent.click(screen.getByRole('button', { name: 'Previous week' }));
     fireEvent.click(screen.getByRole('button', { name: 'Next week' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next week' }));
+    expect(actions.stepWeek.mock.calls).toEqual([[-1], [1], [1]]);
     fireEvent.click(screen.getByRole('button', { name: 'This week' }));
-    expect(actions.goToWeek.mock.calls).toEqual([[-2], [0], [0]]);
+    expect(actions.goToWeek.mock.calls).toEqual([[0]]);
   });
 
   it('turns "This week" off in the current week, and keeps it focusable', () => {
@@ -77,11 +80,12 @@ describe('header', () => {
     expect(button.getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('opens the settings', () => {
+  it('opens the settings in place, not the settings page', () => {
     const { actions } = setup();
     const header = screen.getByRole('banner');
     fireEvent.click(within(header).getByRole('button', { name: 'Settings' }));
-    expect(actions.openSettings).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy();
+    expect(actions.openSettings).not.toHaveBeenCalled();
   });
 
   it('shows the refreshing indicator', () => {
@@ -99,7 +103,12 @@ describe('rings', () => {
       }),
     ).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'CHEM 210 Organic Chemistry I: 0 of 3 done this week' }),
+      screen.getByRole('button', {
+        name: 'CHEM 210 Organic Chemistry I: 0 of 3 done this week, 1 past due',
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'ENGL 112 Academic Writing: 1 of 4 done this week' }),
     ).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Personal: 0 of 1 done this week, 1 past due' }),
@@ -240,13 +249,13 @@ describe('groups', () => {
           .join('|'),
       );
     expect(headings).toEqual([
-      'Past due||6 items',
+      'Past due||7 items',
       'Today|Oct 27|3 items',
       'Tomorrow|Oct 28|2 items',
       'Thursday|Oct 29|3 items',
       'Friday|Oct 30|3 items',
       'No due date||2 items',
-      'Done||5 items',
+      'Done||4 items',
     ]);
   });
 
@@ -270,9 +279,9 @@ describe('groups', () => {
   it('shows the Done warning count on the collapsed header', () => {
     setup();
     const toggle = screen.getByRole('button', { name: /^Done/ });
-    expect(toggle.textContent).toContain('2 warnings');
+    expect(toggle.textContent).toContain('1 warning');
     fireEvent.click(toggle);
-    expect(screen.getByText('Missing in Canvas')).toBeTruthy();
+    expect(within(row('Essay 1 revision')).getByText('Redo requested')).toBeTruthy();
   });
 
   it('collapses older past-due work and skips all of it', () => {
@@ -365,19 +374,20 @@ describe('in-page list', () => {
 });
 
 describe('one-course view', () => {
-  it('leaves out the course name and dot on every row, and keeps the time', () => {
+  it('leaves out the course name on every row, and keeps the type icon and the time', () => {
     setup(readyState({ view: mkView({ scopeCourseId: COURSES.math.id }) }), 'inpage');
     const item = row('Problem Set 6');
     expect(item.textContent).not.toContain('MATH 241 Calculus III');
-    expect(item.querySelector('.wr-dot')).toBeNull();
+    expect(item.querySelector('svg.wr-type')).toBeTruthy();
     expect(item.querySelector('.wr-when')?.textContent).toBe('Oct 26, 11:59 pm');
     expect(document.querySelectorAll('.wr-course')).toHaveLength(0);
   });
 
-  it('shows no empty meta line on a row with nothing to say', () => {
+  it('shows no empty info line on a row with nothing to say', () => {
     setup(readyState({ view: mkView({ scopeCourseId: COURSES.bio.id }) }), 'inpage');
     fireEvent.click(screen.getByRole('button', { name: /No due date/ }));
-    expect(row('Course survey').querySelector('.wr-meta')).toBeNull();
+    expect(row('Course survey').querySelector('.wr-info')).toBeNull();
+    expect(row('Course survey').querySelector('.wr-course')).toBeNull();
   });
 });
 
@@ -393,15 +403,39 @@ describe('items', () => {
     expect(row('Quiz 7: Integration techniques').textContent).not.toContain('Oct 27');
   });
 
-  it('colors the course dot from the item, also with the rings off', () => {
+  it('colors the type icon from the item, also with the rings off', () => {
     const item = mkItem({ title: 'Undated essay', course: 'engl', color: '#123456' });
     setup(
       readyState({
         view: mkView({ rings: [], groups: [mkGroup({ kind: 'today', items: [item] })] }),
       }),
     );
-    const course = row('Undated essay').querySelector<HTMLElement>('.wr-course');
-    expect(course?.style.getPropertyValue('--wr-course')).toBe('#123456');
+    const line = row('Undated essay');
+    expect(line.style.getPropertyValue('--wr-course')).toBe('#123456');
+    expect(line.querySelector('svg.wr-type')).toBeTruthy();
+  });
+
+  it('shows the Canvas type icon of each kind of work', () => {
+    const kinds = [
+      'assignment',
+      'quiz',
+      'discussion',
+      'checkpoint',
+      'page',
+      'peer_review',
+    ] as const;
+    const items = [
+      ...kinds.map((kind) => mkItem({ title: `A ${kind}`, kind })),
+      mkNote({ title: 'A task' }),
+    ];
+    setup(readyState({ view: mkView({ groups: [mkGroup({ kind: 'today', items })] }) }));
+    const paths = [...kinds.map((kind) => `A ${kind}`), 'A task'].map(
+      (title) => row(title).querySelector('svg.wr-type path')?.getAttribute('d') ?? '',
+    );
+    // Discussions and their checkpoints share an icon; every other kind has its own.
+    expect(paths.every((d) => d !== '')).toBe(true);
+    expect(paths[2]).toBe(paths[3]);
+    expect(new Set(paths).size).toBe(6);
   });
 
   it('shows "Personal" for any item with no course', () => {
@@ -410,10 +444,8 @@ describe('items', () => {
       mkItem({ title: 'Account orientation', course: null, contextLabel: 'Northfield' }),
     ];
     setup(readyState({ view: mkView({ groups: [mkGroup({ kind: 'today', items })] }) }));
-    expect(row('Call the bank').querySelector('.wr-course-name')?.textContent).toBe('Personal');
-    expect(row('Account orientation').querySelector('.wr-course-name')?.textContent).toBe(
-      'Personal',
-    );
+    expect(row('Call the bank').querySelector('.wr-course')?.textContent).toBe('Personal');
+    expect(row('Account orientation').querySelector('.wr-course')?.textContent).toBe('Personal');
   });
 
   it('names a tool with no readable name with its own text', () => {
@@ -521,6 +553,172 @@ describe('items', () => {
   it('uses the 24-hour clock from the view', () => {
     setup(readyState({ view: limitedFilteredView() }));
     expect(row('Quiz 7: Integration techniques').textContent).toContain('23:59');
+  });
+});
+
+describe('checked but missing', () => {
+  it('keeps a checked item that Canvas marks missing in Past due, checked, with its chip and Skip', () => {
+    const { actions } = setup();
+    const past = document.querySelector<HTMLElement>('section[data-group="past_due"]');
+    if (!past) throw new Error('no Past due');
+    const item = row('Worksheet 4');
+    expect(past.contains(item)).toBe(true);
+    const box = within(item).getByRole('checkbox', {
+      name: 'Done: Worksheet 4',
+    }) as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    expect(within(item).getByRole('button', { name: /Missing in Canvas/ })).toBeTruthy();
+    // It reads as open work: the title keeps the link color.
+    expect(item.classList.contains('is-done')).toBe(false);
+    fireEvent.click(within(item).getByRole('button', { name: 'Skip Worksheet 4' }));
+    expect(actions.skip).toHaveBeenCalledWith(item.dataset.rowKey);
+    fireEvent.click(box);
+    expect(actions.setDone).toHaveBeenCalledWith(item.dataset.rowKey, false);
+  });
+
+  it('shows Skip only where the model offers it', () => {
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: /^Done/ }));
+    expect(within(row('Essay 1 revision')).queryByRole('button', { name: /^Skip/ })).toBeNull();
+    expect(row('Essay 1 revision').classList.contains('is-done')).toBe(true);
+  });
+});
+
+describe('settings in place', () => {
+  const data = {
+    value: { ...DEFAULT_SETTINGS, hiddenCourseIds: [COURSES.psyc.id] },
+    courses: [
+      { id: COURSES.bio.id, name: COURSES.bio.name },
+      { id: COURSES.psyc.id, name: COURSES.psyc.name },
+    ],
+  };
+
+  /** `null` renders the App before the settings arrive. */
+  function setupSettings(
+    initial: AppProps['settings'] | null = data,
+    state: SurfaceState = readyState(),
+    surface: SurfaceKind = 'panel',
+  ) {
+    const actions: SpyActions = spyActions();
+    const view = (settings: AppProps['settings']) => (
+      <App surface={surface} state={state} actions={actions} settings={settings} />
+    );
+    const result = render(view(initial ?? undefined));
+    const rerender = (next: AppProps['settings']) => result.rerender(view(next));
+    return { actions, rerender };
+  }
+
+  /** The gear comes before the "N courses hidden" line's link. */
+  function gear(): HTMLElement {
+    const button = screen.getAllByRole('button', { name: 'Settings' })[0];
+    if (!button) throw new Error('no gear');
+    return button;
+  }
+
+  function openGear() {
+    fireEvent.click(gear());
+  }
+
+  it('shows a short loading line until the settings arrive', () => {
+    const { rerender } = setupSettings(null);
+    openGear();
+    expect(screen.getByRole('status').textContent).toBe('Loading settings');
+    rerender(data);
+    expect(screen.queryByText('Loading settings')).toBeNull();
+    expect(screen.getByRole('switch', { name: 'Show progress rings' })).toBeTruthy();
+  });
+
+  it('moves focus to the settings heading, and Back returns it to the gear', () => {
+    setupSettings();
+    openGear();
+    const heading = screen.getByRole('heading', { level: 1, name: 'Settings' });
+    expect(document.activeElement).toBe(heading);
+    expect(screen.queryByRole('banner')).toBeNull();
+    const focused: string[] = [];
+    const record = (event: FocusEvent) => {
+      focused.push((event.target as HTMLElement).getAttribute('aria-label') ?? '');
+    };
+    document.addEventListener('focusin', record);
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    document.removeEventListener('focusin', record);
+    expect(screen.getByRole('banner')).toBeTruthy();
+    expect(document.activeElement).toBe(gear());
+    // Focus goes straight to the gear, so a screen reader announces nothing else on the way.
+    expect(focused).toEqual(['Settings']);
+  });
+
+  it('goes back with Escape', () => {
+    setupSettings();
+    openGear();
+    fireEvent.keyDown(screen.getByRole('heading', { name: 'Settings' }), { key: 'Escape' });
+    expect(screen.getByRole('banner')).toBeTruthy();
+  });
+
+  it('saves every change and shows it at once', () => {
+    const { actions, rerender } = setupSettings();
+    openGear();
+    const rings = screen.getByRole('switch', { name: 'Show progress rings' }) as HTMLInputElement;
+    fireEvent.click(rings);
+    expect(actions.saveSettings).toHaveBeenLastCalledWith({ ...data.value, showRings: false });
+    expect(rings.checked).toBe(false);
+
+    fireEvent.click(screen.getByRole('switch', { name: `Hide ${COURSES.bio.name}` }));
+    expect(actions.saveSettings).toHaveBeenLastCalledWith({
+      ...data.value,
+      showRings: false,
+      hiddenCourseIds: [COURSES.psyc.id, COURSES.bio.id],
+    });
+
+    // A value from the runtime, such as a change on another surface, replaces the local one.
+    rerender({ ...data, value: { ...data.value, showRings: true, weekStart: 1 } });
+    expect(rings.checked).toBe(true);
+    expect((screen.getByLabelText('First day of the week') as HTMLSelectElement).value).toBe('1');
+  });
+
+  it('offers the theme: Automatic, Light and Dark, with a help line', () => {
+    const { actions } = setupSettings();
+    openGear();
+    const select = screen.getByLabelText('Theme') as HTMLSelectElement;
+    expect(Array.from(select.options).map((option) => option.textContent)).toEqual([
+      'Automatic',
+      'Light',
+      'Dark',
+    ]);
+    expect(select.value).toBe('auto');
+    expect(
+      document.getElementById(select.getAttribute('aria-describedby') ?? '')?.textContent,
+    ).toBe('Automatic follows your browser or system. On Canvas pages, the list follows the page.');
+    fireEvent.change(select, { target: { value: 'dark' } });
+    expect(actions.saveSettings).toHaveBeenLastCalledWith({ ...data.value, theme: 'dark' });
+  });
+
+  it('opens in place in the Canvas page too, under a level 2 heading', () => {
+    setupSettings(data, readyState(), 'inpage');
+    openGear();
+    expect(screen.getByRole('heading', { level: 2, name: 'Settings' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: 'Hidden courses' })).toBeTruthy();
+  });
+
+  it('opens from the gear of a state with no week', () => {
+    setupSettings(data, {
+      kind: 'no_courses',
+      origin: 'https://school.instructure.com',
+      offer: null,
+    });
+    openGear();
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByText('No active courses')).toBeTruthy();
+  });
+
+  it('opens from the note on a hidden course, and returns focus to its link', () => {
+    setupSettings(data, readyState({ view: hiddenCourseView() }), 'inpage');
+    const link = screen.getByRole('button', { name: 'Settings' });
+    fireEvent.click(link);
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByText('You hid this course in Weekrow.')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Settings' }));
   });
 });
 
@@ -676,12 +874,15 @@ describe('notices', () => {
     expect(screen.queryByRole('form')).toBeNull();
   });
 
-  it('shows how many courses are hidden, with a link to the settings', () => {
-    const { actions } = setup(readyState({ view: limitedFilteredView() }));
+  it('shows how many courses are hidden, with a link that opens the settings in place', () => {
+    setup(readyState({ view: limitedFilteredView() }));
     const line = screen.getByText('2 courses hidden').closest('p');
     if (!line) throw new Error('no hidden line');
     fireEvent.click(within(line).getByRole('button', { name: 'Settings' }));
-    expect(actions.openSettings).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    const back = screen.getByText('2 courses hidden').closest('p');
+    expect(document.activeElement).toBe(back?.querySelector('button'));
   });
 });
 

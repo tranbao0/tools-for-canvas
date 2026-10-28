@@ -1,11 +1,14 @@
-/** The list surface for the side panel and the Canvas page. It renders props and calls actions. */
-import type { RefObject } from 'preact';
+/**
+ * The list surface for the side panel and the Canvas page. It renders props and calls actions.
+ * The gear opens the settings in place (design decision 18); Back returns to the view and to
+ * the control that opened them.
+ */
+import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../i18n';
 import type { ItemView, SurfaceState } from '../model/types';
 import type { Actions, AppProps, SurfaceKind } from './contract';
 import { Header } from './Header';
-import { AppMark } from './icons';
 import {
   Dock,
   FilterLine,
@@ -20,7 +23,8 @@ import {
 } from './Notices';
 import { Bar, newId, type HeadingLevel } from './parts';
 import { Rings } from './Rings';
-import { StateBody } from './States';
+import { SettingsPanel } from './Settings';
+import { Spinner, StateBody } from './States';
 import { TaskForm, type TaskFormMode } from './TaskForm';
 import { INPAGE_ROW_LIMIT, WeekList, type ListHandlers } from './WeekList';
 import { captureFocus, firstRowControl, restoreFocus, usable, type FocusSnapshot } from './focus';
@@ -36,127 +40,116 @@ function subLevel(level: HeadingLevel): HeadingLevel {
   return level === 1 ? 2 : level === 2 ? 3 : 4;
 }
 
-export function App(props: AppProps) {
-  const { surface, state, actions, collapsedToPanel } = props;
-  // The note wins over the collapsed line: the side panel does not show a hidden course either.
-  if (state.kind === 'ready' && state.view.scopeCourseHidden) {
-    return <HiddenCourseNote surface={surface} onOpenSettings={() => actions.openSettings()} />;
-  }
-  if (surface === 'inpage' && collapsedToPanel) return <CollapsedLine />;
-  switch (state.kind) {
-    case 'ready':
-      return <ReadyView surface={surface} state={state} actions={actions} />;
-    case 'loading':
-      return <LoadingView surface={surface} actions={actions} />;
-    case 'not_set_up':
-    case 'checking':
-    case 'no_access':
-    case 'redirects':
-    case 'not_canvas':
-    case 'unreachable':
-    case 'signed_out':
-    case 'no_courses':
-    case 'cant_load': {
-      const browser = props.browser ?? 'chrome';
-      // The Firefox sidebar opens at install, in place of the welcome page (design decision 5).
-      const firstRun =
-        surface === 'panel' && browser === 'firefox'
-          ? { browser, shortcut: props.shortcut ?? null }
-          : null;
-      return (
-        <div class="wr" data-surface={surface}>
-          <Bar level={baseLevel(surface)} onSettings={() => actions.openSettings()} />
-          <StateBody
-            state={state}
-            actions={actions}
-            level={subLevel(baseLevel(surface))}
-            context="surface"
-            showOffer={surface === 'panel'}
-            firstRun={firstRun}
-          />
-        </div>
-      );
-    }
-  }
-}
+/** Opens the settings in place. `opener` names the control that focus returns to (`data-opener`). */
+type OpenSettings = (opener: string) => void;
 
-/** The in-page list while the side panel is open in the same window. */
-export function CollapsedLine() {
+export function App(props: AppProps) {
+  const { surface, state, actions } = props;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [settingsFrom, setSettingsFrom] = useState<string | null>(null);
+  /** The opener to focus once the view is back. */
+  const returnTo = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    const opener = returnTo.current;
+    if (opener === null || settingsFrom !== null) return;
+    returnTo.current = null;
+    const root = rootRef.current;
+    (
+      root?.querySelector<HTMLElement>(`[data-opener="${opener}"]`) ??
+      root?.querySelector<HTMLElement>('[data-opener="gear"]')
+    )?.focus();
+  });
+
+  const openSettings: OpenSettings = (opener) => setSettingsFrom(opener);
+  const level = baseLevel(surface);
+
+  let body: ComponentChildren;
+  if (settingsFrom !== null) {
+    body = (
+      <SettingsPanel
+        data={props.settings}
+        level={level}
+        onChange={(next) => actions.saveSettings(next)}
+        onBack={() => {
+          returnTo.current = settingsFrom;
+          setSettingsFrom(null);
+        }}
+      />
+    );
+  } else if (state.kind === 'ready' && state.view.scopeCourseHidden) {
+    body = <HiddenCourseNote onOpenSettings={() => openSettings('note')} />;
+  } else if (state.kind === 'ready') {
+    body = (
+      <ReadyView
+        surface={surface}
+        state={state}
+        actions={actions}
+        rootRef={rootRef}
+        onSettings={openSettings}
+      />
+    );
+  } else if (state.kind === 'loading') {
+    body = <LoadingView surface={surface} onSettings={openSettings} />;
+  } else {
+    body = (
+      <>
+        <Bar level={level} onSettings={() => openSettings('gear')} />
+        <StateBody
+          state={state}
+          actions={actions}
+          level={subLevel(level)}
+          context="surface"
+          showOffer={surface === 'panel'}
+        />
+      </>
+    );
+  }
   return (
-    <div class="wr" data-surface="inpage">
-      <p class="wr-collapsed">
-        <AppMark size={18} />
-        <span>{t('shownInPanel')}</span>
-      </p>
+    <div
+      class="wr"
+      data-surface={surface}
+      aria-busy={settingsFrom === null && state.kind === 'loading' ? true : undefined}
+      ref={rootRef}
+    >
+      {body}
     </div>
   );
 }
 
 /**
  * The one-line note on the home page of a course the student hid (design decision 4), with a link
- * to the settings. `App` shows it when `view.scopeCourseHidden` is set.
+ * that opens the settings. `App` shows it when `view.scopeCourseHidden` is set.
  */
-export function HiddenCourseNote(props: { onOpenSettings(): void; surface?: SurfaceKind }) {
+export function HiddenCourseNote(props: { onOpenSettings(): void }) {
   return (
-    <div class="wr" data-surface={props.surface ?? 'inpage'}>
-      <p class="wr-collapsed">
-        <AppMark size={18} />
-        <span class="wr-notice-text">{t('hiddenCourseHere')}</span>
-        <button type="button" class="wr-link-btn" onClick={props.onOpenSettings}>
-          {t('settings')}
-        </button>
-      </p>
-    </div>
+    <p class="wr-notice">
+      {t('hiddenCourseHere')}{' '}
+      <button type="button" class="wr-link-btn" data-opener="note" onClick={props.onOpenSettings}>
+        {t('settings')}
+      </button>
+    </p>
   );
 }
 
-function LoadingView(props: { surface: SurfaceKind; actions: Actions }) {
-  const level = baseLevel(props.surface);
+/** Loading: the header keeps its final layout, and a spinner shows, as in Canvas's To Do. */
+function LoadingView(props: { surface: SurfaceKind; onSettings: OpenSettings }) {
   return (
-    <div class="wr" data-surface={props.surface} aria-busy="true">
+    <>
       <Header
         view={null}
-        level={level}
+        level={baseLevel(props.surface)}
         refreshing={false}
         addDisabledReason={null}
-        onWeek={() => undefined}
+        onStep={() => undefined}
+        onThisWeek={() => undefined}
         onAdd={() => undefined}
-        onSettings={() => props.actions.openSettings()}
+        onSettings={() => props.onSettings('gear')}
       />
-      <div class="wr-rings-wrap" aria-hidden="true">
-        <div class="wr-rings">
-          {[0, 1, 2, 3].map((index) => (
-            <div key={index} class="wr-skel-ring-cell">
-              <span class="wr-skel wr-skel-ring" />
-              <span class="wr-skel wr-skel-ring-label" />
-            </div>
-          ))}
-        </div>
+      <div class="wr-state">
+        <Spinner text={t('loading')} />
       </div>
-      <div class="wr-list" aria-hidden="true">
-        <div class="wr-group">
-          <div class="wr-group-head">
-            <span class="wr-skel wr-skel-head" />
-          </div>
-          <ul class="wr-items">
-            {[78, 62, 86, 54].map((width) => (
-              <li key={width} class="wr-item">
-                <span class="wr-check">
-                  <span class="wr-skel wr-skel-check" />
-                </span>
-                <div class="wr-item-body">
-                  <span class="wr-skel wr-skel-title" style={{ width: `${width}%` }} />
-                  <span class="wr-skel wr-skel-meta" />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-      <p class="wr-sr" role="status">
-        {t('loading')}
-      </p>
-    </div>
+    </>
   );
 }
 
@@ -217,14 +210,19 @@ function useStickyInsets(
   }, [rootRef, surface, enabled]);
 }
 
-function ReadyView(props: { surface: SurfaceKind; state: ReadyState; actions: Actions }) {
-  const { surface, state, actions } = props;
+function ReadyView(props: {
+  surface: SurfaceKind;
+  state: ReadyState;
+  actions: Actions;
+  rootRef: RefObject<HTMLDivElement | null>;
+  onSettings: OpenSettings;
+}) {
+  const { surface, state, actions, rootRef } = props;
   const { view } = state;
   const level = baseLevel(surface);
   const [form, setForm] = useState<TaskFormMode | null>(null);
   const [notes, setNotes] = useState<OneTimeNote[]>([]);
   const [limitedId] = useState(() => newId('limited'));
-  const rootRef = useRef<HTMLDivElement>(null);
   /** Where focus goes when the form closes. The list is re-created, so this is a selector. */
   const returnFocus = useRef<string | null>(null);
   /** The last focused control outside the Undo notice. Focus goes back there when it closes. */
@@ -233,15 +231,19 @@ function ReadyView(props: { surface: SurfaceKind; state: ReadyState; actions: Ac
   // Reading focus during render is safe: it only records which control had focus before this update.
   const snapshot = useRef<FocusSnapshot | null>(null);
   snapshot.current = captureFocus(rootRef.current);
+  /** The first render replaces another view, such as the settings, which handles its own focus. */
+  const mounted = useRef(false);
   useLayoutEffect(() => {
     const root = rootRef.current;
-    restoreFocus(root, snapshot.current, () =>
-      root === null
-        ? null
-        : (usable(root, lastFocus.current) ??
-          root.querySelector<HTMLElement>('.wr-add') ??
-          firstRowControl(root)),
-    );
+    if (mounted.current)
+      restoreFocus(root, snapshot.current, () =>
+        root === null
+          ? null
+          : (usable(root, lastFocus.current) ??
+            root.querySelector<HTMLElement>('.wr-add') ??
+            firstRowControl(root)),
+      );
+    mounted.current = true;
     if (returnFocus.current !== null && form === null) {
       root?.querySelector<HTMLElement>(returnFocus.current)?.focus();
       returnFocus.current = null;
@@ -250,11 +252,16 @@ function ReadyView(props: { surface: SurfaceKind; state: ReadyState; actions: Ac
 
   useUndoShortcut(rootRef, form === null && state.undo !== null, () => actions.undo());
   useStickyInsets(rootRef, surface, form === null);
-
-  const onFocusIn = (event: FocusEvent) => {
-    const target = event.target as HTMLElement | null;
-    if (target && !target.closest('.wr-dock')) lastFocus.current = target;
-  };
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && !target.closest('.wr-dock')) lastFocus.current = target;
+    };
+    root.addEventListener('focusin', onFocusIn);
+    return () => root.removeEventListener('focusin', onFocusIn);
+  }, [rootRef]);
 
   const showNote = (note: OneTimeNote) => {
     if (state.seenNotes[note]) return;
@@ -302,39 +309,38 @@ function ReadyView(props: { surface: SurfaceKind; state: ReadyState; actions: Ac
 
   if (form !== null) {
     return (
-      <div class="wr" data-surface={surface} ref={rootRef} onFocusIn={onFocusIn}>
-        <TaskForm
-          mode={form}
-          view={view}
-          courses={state.taskCourses}
-          level={level}
-          onSubmit={(input) => {
-            if (form.kind === 'edit' && form.item.noteId !== null)
-              actions.updateTask(form.item.noteId, input);
-            else actions.createTask(input);
-            closeForm(form.kind === 'edit' ? form.item.key : null);
-          }}
-          onDelete={(noteId) => {
-            actions.deleteTask(noteId);
-            closeForm(null);
-          }}
-          onCancel={() => closeForm(form.kind === 'edit' ? form.item.key : null)}
-        />
-      </div>
+      <TaskForm
+        mode={form}
+        view={view}
+        courses={state.taskCourses}
+        level={level}
+        onSubmit={(input) => {
+          if (form.kind === 'edit' && form.item.noteId !== null)
+            actions.updateTask(form.item.noteId, input);
+          else actions.createTask(input);
+          closeForm(form.kind === 'edit' ? form.item.key : null);
+        }}
+        onDelete={(noteId) => {
+          actions.deleteTask(noteId);
+          closeForm(null);
+        }}
+        onCancel={() => closeForm(form.kind === 'edit' ? form.item.key : null)}
+      />
     );
   }
 
   return (
-    <div class="wr" data-surface={surface} ref={rootRef} onFocusIn={onFocusIn}>
+    <>
       <Header
         view={view}
         level={level}
         refreshing={state.refreshing}
         addDisabledReason={view.limited ? t('limitedLine') : null}
         addDescribedBy={limitedId}
-        onWeek={(offset) => actions.goToWeek(offset)}
+        onStep={(delta) => actions.stepWeek(delta)}
+        onThisWeek={() => actions.goToWeek(0)}
         onAdd={() => openForm({ kind: 'new' })}
-        onSettings={() => actions.openSettings()}
+        onSettings={() => props.onSettings('gear')}
       />
       <div class="wr-notices">
         {/* The offer is for the side panel only (design decision 4). */}
@@ -385,8 +391,11 @@ function ReadyView(props: { surface: SurfaceKind; state: ReadyState; actions: Ac
           rowLimit={surface === 'inpage' ? INPAGE_ROW_LIMIT : null}
         />
       </div>
-      <HiddenCoursesLine count={view.hiddenCourseCount} onSettings={() => actions.openSettings()} />
+      <HiddenCoursesLine
+        count={view.hiddenCourseCount}
+        onSettings={() => props.onSettings('hidden')}
+      />
       <Dock undo={state.undo} onUndo={() => actions.undo()} onClose={() => actions.dismissUndo()} />
-    </div>
+    </>
   );
 }

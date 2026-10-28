@@ -108,7 +108,7 @@ const FIREFOX_MANIFEST = {
     },
   },
   background: { scripts: ['background.js'] },
-  sidebar_action: { default_panel: 'sidepanel.html', open_at_install: true },
+  sidebar_action: { default_panel: 'sidepanel.html', open_at_install: false },
   content_scripts: [
     { matches: ['https://*.instructure.com/*'], js: ['content-scripts/canvas.js'] },
   ],
@@ -391,8 +391,13 @@ describe('check-manifest', () => {
       /data_collection_permissions\.optional/,
     ],
     [
-      'a sidebar that does not open at install',
-      (m) => (m.sidebar_action.open_at_install = false),
+      'a sidebar that opens at install',
+      (m) => (m.sidebar_action.open_at_install = true),
+      /open_at_install is true, expected false/,
+    ],
+    [
+      'a sidebar with no open_at_install, which Firefox reads as true',
+      (m) => delete m.sidebar_action.open_at_install,
       /open_at_install/,
     ],
     ['no sidebar', (m) => delete m.sidebar_action, /sidebar_action\.default_panel/],

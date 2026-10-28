@@ -42,12 +42,20 @@ describe('WelcomeView', () => {
     expect(actions.allowAccess).toHaveBeenCalledWith('https://canvas.uw.edu');
   });
 
+  it('says that the list shows on Canvas pages, and that the side panel is optional', () => {
+    setup('chrome', null, NOT_SET_UP);
+    expect(screen.getByRole('heading', { name: 'Find your list' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Your list shows on the Canvas dashboard and on course home pages. On any page, click the Weekrow button to open or close it in the side panel.',
+      ),
+    ).toBeTruthy();
+  });
+
   it('names the sidebar on Firefox', () => {
     setup('firefox', null, NOT_SET_UP);
     expect(screen.getByText(/choose Pin to Toolbar\./)).toBeTruthy();
-    expect(
-      screen.getByText('Click the Weekrow button to open or close your list in the sidebar.'),
-    ).toBeTruthy();
+    expect(screen.getByText(/open or close it in the sidebar\.$/)).toBeTruthy();
   });
 
   it('offers "Keep using" while the student changes the address', () => {
@@ -74,5 +82,6 @@ describe('WelcomeView', () => {
         (_, el) => el?.textContent === 'All set. Weekrow uses school.instructure.com.',
       ),
     ).toBeTruthy();
+    expect(screen.getByText('Open your Canvas dashboard to see your week.')).toBeTruthy();
   });
 });

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { emptyCache, sessionCacheItem, type SessionCache } from '../cache';
+import type { Assignment } from '../../canvas/types';
+import { emptyCache, sessionCacheItem, toAssignmentData, type SessionCache } from '../cache';
 import { emptyCoverage } from '../coverage';
 
 const ORIGIN = 'https://school.instructure.com';
@@ -68,5 +69,105 @@ describe('the stored cache', () => {
     await fakeBrowser.storage.session.remove('weekrowDetails');
 
     expect((await sessionCacheItem.getValue())?.details).toEqual({});
+  });
+});
+
+describe('toAssignmentData', () => {
+  it('keeps only the fields that the model and the data layer read', () => {
+    const canvas = {
+      id: '5',
+      name: 'Lab 7',
+      course_id: '101',
+      due_at: '2026-10-28T03:59:59Z',
+      lock_at: null,
+      unlock_at: null,
+      points_possible: 10,
+      submission_types: ['external_tool'],
+      is_quiz_lti_assignment: false,
+      locked_for_user: false,
+      html_url: 'https://school.instructure.com/courses/101/assignments/5',
+      published: true,
+      description: `<p>${'Long instructions. '.repeat(500)}</p>`,
+      rubric: [{ id: 'r1', points: 10, description: 'Quality' }],
+      external_tool_tag_attributes: {
+        url: 'https://www.gradescope.com/auth/lti',
+        new_tab: true,
+        resource_link_id: 'abc',
+      },
+      submission: {
+        id: '900',
+        assignment_id: '5',
+        submitted_at: null,
+        workflow_state: 'unsubmitted',
+        excused: null,
+        missing: true,
+        late: false,
+        late_policy_status: 'missing',
+        custom_grade_status_id: null,
+        redo_request: false,
+        cached_due_date: '2026-10-28T03:59:59Z',
+        score: null,
+        grade: null,
+        body: 'A long text entry. '.repeat(500),
+        preview_url: 'https://school.instructure.com/preview',
+        attachments: [{ id: 'f1', url: 'https://files.example/f1' }],
+      },
+    } as unknown as Assignment;
+
+    expect(toAssignmentData(canvas)).toEqual({
+      id: '5',
+      name: 'Lab 7',
+      course_id: '101',
+      due_at: '2026-10-28T03:59:59Z',
+      lock_at: null,
+      unlock_at: null,
+      points_possible: 10,
+      submission_types: ['external_tool'],
+      is_quiz_lti_assignment: false,
+      locked_for_user: false,
+      html_url: 'https://school.instructure.com/courses/101/assignments/5',
+      external_tool_tag_attributes: { url: 'https://www.gradescope.com/auth/lti' },
+      submission: {
+        submitted_at: null,
+        workflow_state: 'unsubmitted',
+        excused: null,
+        missing: true,
+        late_policy_status: 'missing',
+        custom_grade_status_id: null,
+        redo_request: false,
+        cached_due_date: '2026-10-28T03:59:59Z',
+        score: null,
+      },
+    });
+  });
+
+  it('leaves absent optional fields absent', () => {
+    const data = toAssignmentData({
+      id: '6',
+      name: 'Reading',
+      course_id: '101',
+      due_at: null,
+      lock_at: null,
+      unlock_at: null,
+      points_possible: null,
+      submission_types: ['none'],
+      html_url: '/courses/101/assignments/6',
+      external_tool_tag_attributes: null,
+    });
+    expect(Object.keys(data).sort()).toEqual(
+      [
+        'id',
+        'name',
+        'course_id',
+        'due_at',
+        'lock_at',
+        'unlock_at',
+        'points_possible',
+        'submission_types',
+        'html_url',
+        'external_tool_tag_attributes',
+      ].sort(),
+    );
+    expect(data.external_tool_tag_attributes).toBeNull();
   });
 });

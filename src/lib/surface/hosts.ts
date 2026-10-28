@@ -7,7 +7,7 @@ import type { DataMessage } from '../data/protocol';
 import { normalizeAddress } from '../platform/address';
 import { logFailure } from '../platform/log';
 import { requestAccess } from '../platform/permissions';
-import { changeMarkerItem, offerItem, watchItems } from '../platform/storage';
+import { changeMarkerItem, offerItem, settingsItem, watchItems } from '../platform/storage';
 import type { Leave, SurfaceHost, SurfaceTimers, Visibility } from './runtime';
 
 export function sendToBackground(message: DataMessage): Promise<unknown> {
@@ -94,6 +94,7 @@ export function extensionPageHost(): SurfaceHost {
   return {
     send: sendToBackground,
     watchChanges: (listener) => watchItems([changeMarkerItem, offerItem], listener),
+    settings: settingsItem,
     clock: systemClock,
     timers: browserTimers,
     visibility: documentVisibility(),
@@ -153,7 +154,8 @@ export function sendFromContentScript(
 /**
  * The host for the in-page list. Links open in the same tab. Content scripts cannot open
  * extension pages or ask for permissions, so the background opens the settings or the
- * welcome page, which has the "Allow access" button.
+ * welcome page, which has the "Allow access" button. The settings shown in place read and save
+ * `storage.local` directly, as the settings page does.
  */
 export function inpageHost(
   win: Window = window,
@@ -168,6 +170,7 @@ export function inpageHost(
   return {
     send,
     watchChanges: (listener) => watchItems([changeMarkerItem], listener),
+    settings: settingsItem,
     clock: systemClock,
     timers: browserTimers,
     visibility: documentVisibility(win.document),

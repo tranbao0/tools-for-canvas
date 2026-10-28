@@ -6,10 +6,8 @@ import type { SurfaceState } from '../model/types';
 import { normalizeAddress } from '../platform/address';
 import type { Actions } from './contract';
 import { hostOf } from './format';
-import { FirstRunSteps, type BrowserKind } from './FirstRunSteps';
-import { InfoIcon } from './icons';
 import { OfferBanner } from './Notices';
-import { Heading, HostText, MARKER, newId, withNode, type HeadingLevel } from './parts';
+import { Heading, HostText, MARKER, newIds, withNode, type HeadingLevel } from './parts';
 import { browserIsOffline } from './online';
 
 /**
@@ -18,11 +16,7 @@ import { browserIsOffline } from './online';
  * because `permissions.request` needs the user gesture (design decision 5, step 4).
  */
 export function SetupForm(props: { initial: string; actions: Actions }) {
-  const [ids] = useState(() => ({
-    input: newId('address'),
-    error: newId('address-error'),
-    hint: newId('hint'),
-  }));
+  const [ids] = useState(() => newIds('address', ['input', 'error', 'hint']));
   const [value, setValue] = useState(props.initial);
   const [invalid, setInvalid] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -118,23 +112,16 @@ function KeepSavedAddress(props: {
 }
 
 function Hint(props: { text: string }) {
-  return (
-    <p class="wr-state-hint">
-      <InfoIcon />
-      <span>{props.text}</span>
-    </p>
-  );
+  return <p class="wr-state-hint">{props.text}</p>;
 }
 
 /** A sentence with the host of `origin` in it, as breakable host text. */
-function withHost(
-  key: 'checking' | 'noAccessBody' | 'noCoursesBody' | 'welcomeReady',
-  origin: string,
-) {
+function withHost(key: 'checking' | 'noAccessBody' | 'noCoursesBody', origin: string) {
   return withNode(t(key, MARKER), MARKER, <HostText class="wr-state-host" host={hostOf(origin)} />);
 }
 
-function Spinner(props: { text: ComponentChildren }) {
+/** A small spinner with its text, announced as a status. */
+export function Spinner(props: { text: ComponentChildren }) {
   return (
     <p class="wr-checking" role="status">
       <span class="wr-spinner" aria-hidden="true" />
@@ -145,10 +132,7 @@ function Spinner(props: { text: ComponentChildren }) {
 
 export type StateBodyContext = 'surface' | 'welcome';
 
-/**
- * The body for a state with no week list. The welcome page shows the same setup steps,
- * and a short "All set" line once the list is ready.
- */
+/** The body for a state with no week list. The welcome page shows the same setup steps. */
 export function StateBody(props: {
   state: SurfaceState;
   actions: Actions;
@@ -159,8 +143,6 @@ export function StateBody(props: {
    * (design decision 4).
    */
   showOffer?: boolean;
-  /** The Firefox sidebar: the first-run steps show above the connect form (decision 5). */
-  firstRun?: { browser: BrowserKind; shortcut: string | null } | null;
 }) {
   const { state, actions, level } = props;
   const offerSource = 'offer' in state ? state.offer : null;
@@ -180,50 +162,17 @@ export function StateBody(props: {
         </div>
       );
     case 'not_set_up':
-      if (state.savedOrigin !== null)
-        return (
-          <div class="wr-state">
-            {offer}
-            {props.context === 'surface' && (
-              <Heading level={level} class="wr-state-title">
-                {t('changeTitle')}
-              </Heading>
-            )}
-            <p class="wr-state-body">{t('setupIntro')}</p>
-            <SetupForm initial="" actions={actions} />
-            <KeepSavedAddress savedOrigin={state.savedOrigin} actions={actions} />
-          </div>
-        );
-      if (props.firstRun)
-        return (
-          <div class="wr-state">
-            {offer}
-            <ol class="wr-steps">
-              <FirstRunSteps
-                browser={props.firstRun.browser}
-                shortcut={props.firstRun.shortcut}
-                level={level}
-              />
-              <li class="wr-step">
-                <Heading level={level} class="wr-step-title">
-                  {t('welcomeConnectTitle')}
-                </Heading>
-                <p class="wr-step-body">{t('setupIntro')}</p>
-                <SetupForm initial="" actions={actions} />
-              </li>
-            </ol>
-          </div>
-        );
       return (
         <div class="wr-state">
           {offer}
           {props.context === 'surface' && (
             <Heading level={level} class="wr-state-title">
-              {t('setupTitle')}
+              {t(state.savedOrigin === null ? 'setupTitle' : 'changeTitle')}
             </Heading>
           )}
           <p class="wr-state-body">{t('setupIntro')}</p>
           <SetupForm initial="" actions={actions} />
+          <KeepSavedAddress savedOrigin={state.savedOrigin} actions={actions} />
         </div>
       );
     case 'checking':
@@ -263,15 +212,17 @@ export function StateBody(props: {
         </div>
       );
     case 'redirects':
+    case 'not_canvas': {
+      const redirects = state.kind === 'redirects';
       return (
         <div class="wr-state">
           <Heading level={level} class="wr-state-title">
-            {t('redirectsTitle')}
+            {t(redirects ? 'redirectsTitle' : 'notCanvasTitle')}
           </Heading>
           <p class="wr-state-body">
             <HostText class="wr-state-host" host={hostOf(state.origin)} />
           </p>
-          <p class="wr-state-body">{t('redirectsBody')}</p>
+          <p class="wr-state-body">{t(redirects ? 'redirectsBody' : 'notCanvasBody')}</p>
           <SetupForm key={state.origin} initial={hostOf(state.origin)} actions={actions} />
           <KeepSavedAddress
             savedOrigin={state.savedOrigin}
@@ -280,24 +231,7 @@ export function StateBody(props: {
           />
         </div>
       );
-    case 'not_canvas':
-      return (
-        <div class="wr-state">
-          <Heading level={level} class="wr-state-title">
-            {t('notCanvasTitle')}
-          </Heading>
-          <p class="wr-state-body">
-            <HostText class="wr-state-host" host={hostOf(state.origin)} />
-          </p>
-          <p class="wr-state-body">{t('notCanvasBody')}</p>
-          <SetupForm key={state.origin} initial={hostOf(state.origin)} actions={actions} />
-          <KeepSavedAddress
-            savedOrigin={state.savedOrigin}
-            candidate={state.origin}
-            actions={actions}
-          />
-        </div>
-      );
+    }
     case 'unreachable':
       // The usual cause is a wrong address, so this state never says "You're offline".
       return (
@@ -374,11 +308,7 @@ export function StateBody(props: {
         </div>
       );
     case 'ready':
-      return (
-        <div class="wr-state">
-          <p class="wr-state-body">{withHost('welcomeReady', state.origin)}</p>
-          <p class="wr-state-body">{t('welcomeReadyNext')}</p>
-        </div>
-      );
+      // The surfaces show the list; the welcome page shows its own "All set" line.
+      return null;
   }
 }

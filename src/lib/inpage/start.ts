@@ -5,7 +5,7 @@
  *    background saves the page origin.
  * 2. Stop on any other origin.
  * 3. Tell the background that a Canvas page loaded.
- * 4. Stop when "Show Weekrow on Canvas pages" is off.
+ * 4. Stop when "Show the weekly list on Canvas pages" is off.
  * 5. Wait for the page's adapter and call `onMount` with the container.
  *
  * Every path removes a list that an earlier copy of the script left on the page, so a page that
@@ -21,7 +21,7 @@ export type InpageStartOutcome =
   | MountOutcome
   /** The page is not the saved Canvas, or no address is saved. */
   | { kind: 'other_origin' }
-  /** The student turned off "Show Weekrow on Canvas pages". */
+  /** The student turned off "Show the weekly list on Canvas pages". */
   | { kind: 'turned_off' };
 
 export interface StartInpageOptions extends MountOptions {

@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import type { Ring, WeekView } from '../model/types';
 import { CheckIcon } from './icons';
 
-const RADIUS = 17;
+const RADIUS = 17.5;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 /** The full ring name: the course name, or the "Personal" text for the Personal ring. */
@@ -64,7 +64,6 @@ function RingGraphic({ ring }: { ring: Ring }) {
             cy="20"
             r={RADIUS}
             fill="none"
-            stroke={ring.color}
             stroke-width="4"
             stroke-linecap="round"
             stroke-dasharray={CIRCUMFERENCE}
@@ -106,6 +105,7 @@ export function Rings(props: {
               <button
                 type="button"
                 class="wr-ring"
+                style={{ '--wr-course': ring.color }}
                 aria-pressed={selected}
                 aria-label={ringAriaLabel(ring)}
                 title={ringName(ring)}

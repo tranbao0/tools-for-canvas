@@ -11,13 +11,12 @@ export type TagTone = 'neutral' | 'missing' | 'warning';
 export interface Tag {
   /** Stable within one item. */
   id: string;
-  /** `chip` has a border; `marker` is plain small text with an icon. */
+  /** `chip` is a Canvas pill; `marker` is plain small text. */
   shape: 'chip' | 'marker';
   tone: TagTone;
   label: string;
   /** Extra text the student can open below the row. */
   tip: string | null;
-  icon: 'lock' | 'clock' | 'alert' | null;
 }
 
 function chip(
@@ -26,7 +25,7 @@ function chip(
   tone: TagTone = 'neutral',
   tip: string | null = null,
 ): Tag {
-  return { id, shape: 'chip', tone, label, tip, icon: tone === 'warning' ? 'alert' : null };
+  return { id, shape: 'chip', tone, label, tip };
 }
 
 export function statusTag(status: StatusChip, checkboxDisabled: boolean): Tag {
@@ -73,7 +72,6 @@ export function availabilityTag(availability: NonNullable<Availability>, timeZon
         tone: 'neutral',
         label: t('markerOpens', formatMonthDay(zonedDate(availability.at, timeZone))),
         tip: null,
-        icon: 'clock',
       };
     case 'closed':
       return {
@@ -82,7 +80,6 @@ export function availabilityTag(availability: NonNullable<Availability>, timeZon
         tone: 'neutral',
         label: t('markerClosed'),
         tip: t('tipClosed'),
-        icon: 'lock',
       };
   }
 }

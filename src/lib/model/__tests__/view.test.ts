@@ -365,19 +365,23 @@ describe('Done', () => {
           task('this-week', '2026-10-26T16:00:00Z', { submissions: { submitted: true } }),
           task('later-this-week', '2026-10-30T16:00:00Z', { submissions: { graded: true } }),
           task('earlier-plain', '2026-10-14T16:00:00Z', { submissions: { submitted: true } }),
-          task('earlier-missing', '2026-10-14T17:00:00Z', {
-            submissions: { missing: true },
+          task('earlier-redo', '2026-10-14T17:00:00Z', {
+            submissions: { redo_request: true },
             override: override('o1', { markedComplete: true, dismissed: false }),
           }),
           task('before-horizon', '2026-08-01T17:00:00Z', {
-            submissions: { missing: true },
+            submissions: { redo_request: true },
             override: override('o2', { markedComplete: true, dismissed: false }),
           }),
         ],
+        assignmentDetails: detailsById([
+          upload('earlier-redo', { types: ['on_paper'] }),
+          upload('before-horizon', { types: ['on_paper'] }),
+        ]),
       }),
     );
     expect(placesOf(view)).toEqual({
-      'assignment:earlier-missing': 'done.items',
+      'assignment:earlier-redo': 'done.items',
       'assignment:this-week': 'done.items',
       'assignment:later-this-week': 'done.items',
     });
@@ -389,7 +393,6 @@ describe('Done', () => {
     const view = buildWeekView(
       input({
         undatedAssignments: [
-          upload('u-missing', { submission: { missing: true } }),
           upload('u-plain', { submission: { submitted_at: '2026-10-20T10:00:00Z' } }),
           assignment({
             id: 'u-redo',
@@ -402,26 +405,23 @@ describe('Done', () => {
           task('this-week', '2026-10-26T16:00:00Z', { submissions: { submitted: true } }),
         ],
         overrides: [
-          override('o1', { markedComplete: true, dismissed: false }, { assignmentId: 'u-missing' }),
           override('o2', { markedComplete: true, dismissed: false }, { assignmentId: 'u-redo' }),
         ],
       }),
     );
     expect(placesOf(view)).toEqual({
       'assignment:this-week': 'done.items',
-      'assignment:u-missing': 'done.items',
       'assignment:u-redo': 'done.items',
       'assignment:u-plain': 'no_due_date.doneUndated',
     });
     const done = view.groups.find((group) => group.kind === 'done');
     expect(done?.items.map((item) => item.key)).toEqual([
       'assignment:this-week',
-      'assignment:u-missing',
       'assignment:u-redo',
     ]);
-    expect(done?.warningCount).toBe(2);
-    expect(findItem(view, 'assignment:u-missing')).toMatchObject({
-      doneChips: [{ kind: 'missing_in_canvas', teacherSet: false }],
+    expect(done?.warningCount).toBe(1);
+    expect(findItem(view, 'assignment:u-redo')).toMatchObject({
+      doneChips: [{ kind: 'redo_requested' }],
       hasWarning: true,
       isLookAhead: false,
     });
@@ -433,14 +433,142 @@ describe('Done', () => {
       input({
         weekOffset: 1,
         plannerItems: [
-          task('earlier-missing', '2026-10-14T17:00:00Z', {
-            submissions: { missing: true },
+          task('earlier-redo', '2026-10-14T17:00:00Z', {
+            submissions: { redo_request: true },
             override: override('o1', { markedComplete: true, dismissed: false }),
           }),
         ],
+        assignmentDetails: detailsById([upload('earlier-redo', { types: ['on_paper'] })]),
       }),
     );
     expect(view.groups).toEqual([]);
+  });
+});
+
+describe('checked but missing', () => {
+  const checked = override('o1', { markedComplete: true, dismissed: false });
+
+  it('stays in Past due, checked with the red chip and Skip, and counts as not done', () => {
+    const view = buildWeekView(
+      input({
+        plannerItems: [
+          task('recent', '2026-10-26T16:00:00Z', {
+            submissions: { missing: true },
+            override: checked,
+          }),
+          task('older', '2026-10-14T17:00:00Z', {
+            submissions: { missing: true },
+            override: override('o2', { markedComplete: true, dismissed: false }),
+          }),
+          task('plain', '2026-10-26T17:00:00Z', {
+            override: override('o3', { markedComplete: true, dismissed: false }),
+          }),
+          task('before-horizon', '2026-08-01T17:00:00Z', {
+            submissions: { missing: true },
+            override: override('o4', { markedComplete: true, dismissed: false }),
+          }),
+        ],
+        assignmentDetails: detailsById([
+          upload('recent', { lockAt: '2026-10-27T04:00:00Z' }),
+          upload('older'),
+          upload('plain'),
+          upload('before-horizon'),
+        ]),
+      }),
+    );
+    expect(placesOf(view)).toEqual({
+      'assignment:recent': 'past_due.items',
+      'assignment:older': 'past_due.older',
+      'assignment:plain': 'done.items',
+    });
+    expect(findItem(view, 'assignment:recent')).toMatchObject({
+      state: 'done',
+      chip: null,
+      doneChips: [{ kind: 'missing_in_canvas', teacherSet: false }],
+      hasWarning: true,
+      canSkip: true,
+      // Like open work, a closed item shows it: Skip is the right action.
+      availability: { kind: 'closed' },
+    });
+    expect(view.groups.find((group) => group.kind === 'done')?.warningCount).toBe(0);
+    // Two items count as past due, and only the plain checked item counts as done.
+    expect(view.rings[0]).toMatchObject({ done: 1, total: 2, pastDue: 2 });
+  });
+
+  it('keeps the place of open work: its day in other weeks and later this week, and No due date', () => {
+    const missingChecked = { submissions: { missing: true }, override: checked };
+    const lastWeek = buildWeekView(
+      input({
+        weekOffset: -1,
+        plannerItems: [task('last-week', '2026-10-21T16:00:00Z', missingChecked)],
+      }),
+    );
+    expect(placesOf(lastWeek)).toEqual({ 'assignment:last-week': 'day@2026-10-21.items' });
+    expect(findItem(lastWeek, 'assignment:last-week')).toMatchObject({
+      state: 'done',
+      chip: null,
+      canSkip: false,
+    });
+    expect(lastWeek.rings[0]).toMatchObject({ done: 0, total: 1 });
+
+    const thisWeek = buildWeekView(
+      input({
+        plannerItems: [task('friday', '2026-10-30T16:00:00Z', missingChecked)],
+        undatedAssignments: [upload('undated', { submission: { missing: true } })],
+        overrides: [
+          override('o5', { markedComplete: true, dismissed: false }, { assignmentId: 'undated' }),
+        ],
+      }),
+    );
+    expect(placesOf(thisWeek)).toEqual({
+      'assignment:friday': 'day@2026-10-30.items',
+      'assignment:undated': 'no_due_date.items',
+    });
+    expect(findItem(thisWeek, 'assignment:undated')).toMatchObject({
+      state: 'done',
+      canSkip: true,
+      doneChips: [{ kind: 'missing_in_canvas', teacherSet: false }],
+    });
+    expect(thisWeek.rings[0]).toMatchObject({ done: 0, total: 1, pastDue: 0 });
+  });
+
+  it('stays in place when unchecked, and leaves only when skipped or Canvas clears missing', () => {
+    const place = (flags: { markedComplete: boolean; dismissed: boolean }, missing: boolean) =>
+      placesOf(
+        buildWeekView(
+          input({
+            plannerItems: [
+              task('work', '2026-10-26T16:00:00Z', {
+                submissions: { missing },
+                override: override('o1', flags),
+              }),
+            ],
+          }),
+        ),
+      )['assignment:work'];
+
+    expect(place({ markedComplete: true, dismissed: false }, true)).toBe('past_due.items');
+    expect(place({ markedComplete: false, dismissed: false }, true)).toBe('past_due.items');
+    // A module "Mark as done" sets both flags: still checked, and still in view.
+    expect(place({ markedComplete: true, dismissed: true }, true)).toBe('past_due.items');
+    // A Skip of checked missing work sends `marked_complete` false.
+    expect(place({ markedComplete: false, dismissed: true }, true)).toBe('past_due.skipped');
+    expect(place({ markedComplete: true, dismissed: false }, false)).toBe('done.items');
+  });
+
+  it('leaves reminders on their own day', () => {
+    const view = buildWeekView(
+      input({
+        plannerItems: [
+          task('reminder', '2026-10-26T16:00:00Z', {
+            submissions: { missing: true },
+            override: checked,
+          }),
+        ],
+        assignmentDetails: detailsById([upload('reminder', { types: ['not_graded'] })]),
+      }),
+    );
+    expect(placesOf(view)).toEqual({});
   });
 });
 
@@ -654,11 +782,15 @@ describe('nothing due', () => {
       input({
         plannerItems: [
           task('last-week', '2026-10-20T16:00:00Z'),
-          task('earlier-missing', '2026-10-14T17:00:00Z', {
-            submissions: { missing: true },
+          task('earlier-redo', '2026-10-14T17:00:00Z', {
+            submissions: { redo_request: true },
             override: override('o1', { markedComplete: true, dismissed: false }),
           }),
         ],
+        assignmentDetails: detailsById([
+          upload('last-week'),
+          upload('earlier-redo', { types: ['on_paper'] }),
+        ]),
         undatedAssignments: [upload('u')],
       }),
     );

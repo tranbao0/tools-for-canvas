@@ -31,7 +31,7 @@ export interface ShadowMount {
 
 export interface ShadowMountOptions {
   css: string;
-  /** Set as `data-theme` on the host, which the stylesheet reads. */
+  /** The first `data-theme` of the host and the UI root, which the stylesheet reads. */
   theme: PageTheme;
 }
 
@@ -51,6 +51,7 @@ export function attachShadowMount(parent: HTMLElement, options: ShadowMountOptio
   const style = doc.createElement('style');
   style.textContent = `${HOST_RESET_CSS}\n${options.css}`;
   const root = doc.createElement('div');
+  root.setAttribute('data-theme', options.theme);
   shadow.append(style, root);
   for (const type of ISOLATED_EVENTS) shadow.addEventListener(type, stopPropagation);
   parent.append(host);

@@ -1,7 +1,7 @@
 /**
- * The first-run steps before "Connect your Canvas" (design decision 5, "First run"): pin the
- * toolbar button, and open the list with the button or the keyboard shortcut. The welcome page
- * shows them, and so does the Firefox sidebar, which opens at install instead of a welcome page.
+ * The first-run steps before "Connect your Canvas" on the welcome page (design decision 5, "First
+ * run"): pin the toolbar button, and find the list on the Canvas dashboard, or open it in the
+ * side panel with the button or the keyboard shortcut.
  */
 import { t } from '../i18n';
 import type { WelcomeProps } from './contract';

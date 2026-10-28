@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Firefox smoke test (design decision 13, item 4).
-// It installs .output/firefox-mv3 as a temporary add-on in headless Firefox, opens the sidebar
-// page as a tab and checks that it renders. It builds the Firefox target first when the build
-// is missing or older than the sources.
+// It installs .output/firefox-mv3 as a temporary add-on in headless Firefox, checks that the
+// welcome page opens on install (decision 4), then opens the sidebar page as a tab and checks
+// that it renders. It builds the Firefox target first when the build is missing or older than
+// the sources.
 //
 // Usage: node tests/firefox/smoke.mjs
 //
@@ -20,6 +21,7 @@ import { ensureBuild } from '../../scripts/lib/ensure-build.mjs';
 /** A fixed moz-extension:// host, set through the extensions.webextensions.uuids pref. */
 const EXTENSION_UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
 const SIDEBAR_PAGE = 'sidepanel.html';
+const WELCOME_PAGE = 'welcome.html';
 const RENDER_TIMEOUT_MS = 10_000;
 const CACHE_DIR = process.env.WEEKROW_TEST_CACHE ?? path.join(homedir(), '.cache', 'weekrow-test');
 
@@ -93,6 +95,25 @@ async function startFirefox({ firefoxBin, geckodriverBin, addonId }) {
 }
 
 /**
+ * Waits until a tab shows the given URL, and leaves the driver on that tab.
+ * @param {import('selenium-webdriver').WebDriver} driver
+ * @param {string} url
+ */
+async function waitForTab(driver, url) {
+  await driver.wait(
+    async () => {
+      for (const handle of await driver.getAllWindowHandles()) {
+        await driver.switchTo().window(handle);
+        if ((await driver.getCurrentUrl()) === url) return true;
+      }
+      return false;
+    },
+    RENDER_TIMEOUT_MS,
+    `${url} did not open within ${RENDER_TIMEOUT_MS} ms`,
+  );
+}
+
+/**
  * Waits until the page has rendered at least one element into #app.
  * @param {import('selenium-webdriver').WebDriver} driver
  */
@@ -126,6 +147,10 @@ async function main() {
     console.log(`Firefox ${capabilities.get('browserVersion')} with ${geckodriverBin}`);
     await driver.installWebExtension(extensionDir, { permanent: false });
     console.log(`Installed ${addonId} as a temporary add-on`);
+    const welcomeUrl = `moz-extension://${EXTENSION_UUID}/${WELCOME_PAGE}`;
+    await waitForTab(driver, welcomeUrl);
+    await waitForRender(driver);
+    console.log(`${welcomeUrl} opened on install`);
     const url = `moz-extension://${EXTENSION_UUID}/${SIDEBAR_PAGE}`;
     await driver.get(url);
     await waitForRender(driver);

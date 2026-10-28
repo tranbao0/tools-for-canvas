@@ -7,7 +7,6 @@ import { render } from 'preact';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import { mountWhenReady } from '../inpage/mount';
 import { showNativeTodo, syncNativeTodo } from '../inpage/nativeTodo';
-import { watchPanelOpen } from '../inpage/panelPresence';
 import { startInpage, type InpageStartOutcome } from '../inpage/start';
 import { detectPageTheme } from '../inpage/theme';
 import type { InpageMount } from '../inpage/types';
@@ -18,6 +17,7 @@ import { App, APP_CSS } from '../ui';
 import { inpageHost } from './hosts';
 import { createSurfaceRuntime, stateOrigin, type SurfaceRuntime } from './runtime';
 import { attachShadowMount } from './shadowMount';
+import { followTheme, inpageTheme, setThemeAttribute, type ThemeSource } from './theme';
 
 /**
  * Shows or hides the native student To Do after a render. On the home page of a hidden course
@@ -36,7 +36,6 @@ interface InpageView {
   runtime: SurfaceRuntime;
   /** Renders the current state into the container and updates the native To Do. */
   draw(): void;
-  setCollapsed(collapsed: boolean): void;
   setContainer(container: HTMLElement | null): void;
 }
 
@@ -48,8 +47,9 @@ export interface InpageViewOptions {
 
 /**
  * Renders the runtime state into a container. Split out so tests can drive it without WXT.
- * A state of another Canvas, for example after the student switched to it in the side panel,
- * renders nothing, and the page keeps its own To Do.
+ * The list always shows, also while the side panel is open (decision 4). A state of another
+ * Canvas, for example after the student switched to it in the side panel, renders nothing, and
+ * the page keeps its own To Do.
  */
 export function createInpageView(
   runtime: SurfaceRuntime,
@@ -58,7 +58,6 @@ export function createInpageView(
   const doc = options.doc ?? document;
   const pageOrigin = options.pageOrigin ?? doc.defaultView?.location.origin ?? null;
   let container: HTMLElement | null = null;
-  let collapsed = false;
   const draw = (): void => {
     if (container === null) return;
     const state = runtime.state();
@@ -69,7 +68,12 @@ export function createInpageView(
       return;
     }
     render(
-      <App surface="inpage" state={state} actions={runtime.actions} collapsedToPanel={collapsed} />,
+      <App
+        surface="inpage"
+        state={state}
+        actions={runtime.actions}
+        settings={runtime.settings()}
+      />,
       container,
     );
     syncNativeTodoFor(state, doc);
@@ -77,10 +81,6 @@ export function createInpageView(
   return {
     runtime,
     draw,
-    setCollapsed(next) {
-      collapsed = next;
-      draw();
-    },
     setContainer(next) {
       if (container !== null && next === null) render(null, container);
       container = next;
@@ -91,8 +91,8 @@ export function createInpageView(
 
 export interface InpageListDeps extends InpageViewOptions {
   runtime: SurfaceRuntime;
-  /** Calls the listener when the side panel opens or closes in this window. Returns a remover. */
-  watchPanel(listener: (open: boolean) => void): () => void;
+  /** The stored settings, for the Theme setting. */
+  settings: ThemeSource;
 }
 
 function attempt(step: string, run: () => void): void {
@@ -112,10 +112,20 @@ export function mountInpageList(mount: InpageMount, deps: InpageListDeps): () =>
   const doc = deps.doc ?? document;
   const { runtime } = deps;
   const ui = attachShadowMount(mount.container, { css: APP_CSS, theme: detectPageTheme(doc) });
+  // The host and the UI root always carry a theme: the student's choice, or with Automatic
+  // the theme of the Canvas page (decision 19).
+  const stopTheme = followTheme(
+    deps.settings,
+    (theme) =>
+      setThemeAttribute(
+        [ui.host, ui.root],
+        inpageTheme(theme, () => detectPageTheme(doc)),
+      ),
+    logFailure,
+  );
   const view = createInpageView(runtime, { doc, pageOrigin: deps.pageOrigin });
   view.setContainer(ui.root);
   const stopDrawing = runtime.subscribe(() => view.draw());
-  const stopPanel = deps.watchPanel((open) => view.setCollapsed(open));
   runtime.start();
   let removed = false;
   return () => {
@@ -127,7 +137,7 @@ export function mountInpageList(mount: InpageMount, deps: InpageListDeps): () =>
     ui.remove();
     mount.container.remove();
     showNativeTodo(doc);
-    attempt('in-page list removal', stopPanel);
+    attempt('in-page list removal', stopTheme);
     attempt('in-page list removal', () => runtime.stop());
   };
 }
@@ -145,7 +155,7 @@ function mountList(ctx: ContentScriptContext, mount: InpageMount): (() => void) 
     surface: 'inpage',
     scopeCourseId: scopeFor(mount),
   });
-  const remove = mountInpageList(mount, { runtime, watchPanel: watchPanelOpen });
+  const remove = mountInpageList(mount, { runtime, settings: settingsItem });
   const stopListening = ctx.onInvalidated(remove);
   // The interval wrapper reads `ctx.isValid`, which ends the context once the extension is gone.
   const check = ctx.setInterval(() => undefined, CONTEXT_CHECK_MS);
@@ -171,7 +181,7 @@ export interface InpageSurfaceDeps {
 
 /**
  * Keeps the list on an open page of the saved Canvas in line with the student's choices.
- * Turning "Show Weekrow on Canvas pages" off, or switching to another Canvas address, removes
+ * Turning "Show the weekly list on Canvas pages" off, or switching to another Canvas address, removes
  * the list and gives the page its own To Do back. Turning the setting on again, or coming back
  * to this address, mounts the list again. Call it after the in-page flow ended with `outcome`.
  */

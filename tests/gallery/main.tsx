@@ -1,22 +1,21 @@
 /**
  * The view gallery. It renders every surface state from mock data at several widths.
  * `?theme=dark` renders the in-page surfaces with a dark host; extension pages follow
- * `prefers-color-scheme`, which the screenshot script emulates.
+ * `prefers-color-scheme`, which the screenshot script emulates. Scenes named `theme-*` force a
+ * theme with `data-theme`, so they look the same in both runs.
  * `?scene=<name>` renders one scene only.
+ *
+ * In-page scenes get Canvas's default brand custom properties, as a Canvas page has. When the
+ * Canvas fonts are in the local test cache (see vite.config.ts), the gallery loads them, so the
+ * text renders in Canvas's Lato as on a Canvas page.
  */
 import { render, type ComponentChildren, type VNode } from 'preact';
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
-import {
-  App,
-  APP_CSS,
-  CollapsedLine,
-  installStyles,
-  SettingsView,
-  WelcomeView,
-} from '../../src/lib/ui';
+import { App, APP_CSS, installStyles, SettingsView, WelcomeView } from '../../src/lib/ui';
 import type { AppProps, SurfaceKind } from '../../src/lib/ui/contract';
 import { attachShadowMount, type ShadowMount } from '../../src/lib/surface/shadowMount';
 import {
+  checkedButMissing,
   COURSES,
   currentWeekGroups,
   et,
@@ -35,6 +34,9 @@ import {
 } from '../../src/lib/ui/testing/mocks';
 import type { Settings } from '../../src/lib/model/types';
 
+/** The folder with Canvas's Lato fonts, or an empty string when the cache is missing. */
+declare const __CANVAS_FONTS__: string;
+
 const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 const only = params.get('scene');
@@ -49,6 +51,8 @@ interface Scene {
   height?: number;
   /** In-page scenes render inside a shadow root with a themed host. */
   shadow?: boolean;
+  /** Forces `data-theme` on the frame, whatever the run's theme. */
+  forceTheme?: 'light' | 'dark';
   render(): VNode;
   /** Runs after the first render, such as clicks that open groups. */
   setup?(root: ParentNode): Promise<void>;
@@ -68,7 +72,7 @@ async function clickAll(root: ParentNode, selector: string): Promise<void> {
 function app(
   surface: SurfaceKind,
   state: AppProps['state'],
-  options: Pick<AppProps, 'collapsedToPanel' | 'browser' | 'shortcut'> = {},
+  options: Pick<AppProps, 'settings'> = {},
 ) {
   return () => <App surface={surface} state={state} actions={actions} {...options} />;
 }
@@ -118,7 +122,52 @@ const settings: Settings = {
   hiddenCourseIds: [COURSES.psyc.id],
   showRings: true,
   showOnCanvasPages: true,
+  theme: 'auto',
 };
+
+const settingsData: AppProps['settings'] = {
+  value: settings,
+  courses: Object.values(COURSES).map(({ id, name }) => ({ id, name })),
+};
+
+/** Opens the settings in place with the gear. */
+async function openGear(root: ParentNode): Promise<void> {
+  root.querySelector<HTMLElement>('[data-opener="gear"]')?.click();
+  await tick();
+}
+
+/** A week with one checked item that Canvas still marks missing, in Past due and on a day. */
+function checkedMissingView() {
+  return mkView({
+    groups: [
+      mkGroup({
+        kind: 'past_due',
+        items: [
+          checkedButMissing(),
+          mkItem({
+            title: 'Lab 5 report',
+            course: 'bio',
+            due: et('2026-10-23', '17:00'),
+            chip: { kind: 'missing' },
+            availability: { kind: 'closed' },
+            canSkip: true,
+          }),
+        ],
+      }),
+      mkGroup({
+        kind: 'today',
+        date: '2026-10-27',
+        items: [
+          mkItem({ title: 'Quiz 7', course: 'math', kind: 'quiz', due: et('2026-10-27', '23:59') }),
+        ],
+      }),
+    ],
+    rings: mkView().rings.filter(
+      (r) => r.courseId === COURSES.chem.id || r.courseId === COURSES.bio.id,
+    ),
+    hiddenCourseCount: 0,
+  });
+}
 
 const scenes: Scene[] = [
   { name: 'ready', widths: PANEL_WIDTHS, render: app('panel', readyState()) },
@@ -279,24 +328,6 @@ const scenes: Scene[] = [
     },
   },
   {
-    name: 'state-firefox-first-run',
-    widths: PANEL_WIDTHS,
-    render: app(
-      'panel',
-      { kind: 'not_set_up', offer: null, savedOrigin: null },
-      { browser: 'firefox', shortcut: 'Ctrl+Alt+W' },
-    ),
-  },
-  {
-    name: 'state-firefox-first-run-offer',
-    widths: [240, 360],
-    render: app(
-      'panel',
-      { kind: 'not_set_up', offer: { origin: ORIGIN, mode: 'use' }, savedOrigin: null },
-      { browser: 'firefox', shortcut: null },
-    ),
-  },
-  {
     name: 'state-cant-load-offer',
     widths: [240, 360],
     render: app('panel', {
@@ -387,7 +418,68 @@ const scenes: Scene[] = [
     shadow: true,
     render: app('inpage', { kind: 'loading' }),
   },
-  { name: 'inpage-collapsed', widths: [240], shadow: true, render: () => <CollapsedLine /> },
+  {
+    name: 'inpage-checked-missing',
+    widths: [240],
+    shadow: true,
+    render: app('inpage', readyState({ view: checkedMissingView() })),
+  },
+  {
+    name: 'ready-checked-missing',
+    widths: [170, 360],
+    render: app('panel', readyState({ view: checkedMissingView() })),
+  },
+  {
+    name: 'settings-in-place',
+    widths: [240, 360],
+    render: app('panel', readyState(), { settings: settingsData }),
+    setup: openGear,
+  },
+  {
+    name: 'settings-in-place-narrow',
+    widths: [170],
+    render: app('panel', readyState(), { settings: settingsData }),
+    setup: openGear,
+  },
+  {
+    name: 'settings-in-place-loading',
+    widths: [240],
+    render: app('panel', readyState()),
+    setup: openGear,
+  },
+  {
+    name: 'inpage-settings',
+    widths: [240],
+    shadow: true,
+    render: app('inpage', readyState(), { settings: settingsData }),
+    setup: openGear,
+  },
+  {
+    name: 'theme-forced-dark',
+    widths: [240, 360],
+    forceTheme: 'dark',
+    render: app('panel', readyState()),
+  },
+  {
+    name: 'theme-forced-light',
+    widths: [240, 360],
+    forceTheme: 'light',
+    render: app('panel', readyState()),
+  },
+  {
+    name: 'theme-forced-dark-inpage',
+    widths: [240],
+    shadow: true,
+    forceTheme: 'dark',
+    render: app('inpage', readyState({ view: busyWeekView() })),
+  },
+  {
+    name: 'theme-forced-light-inpage',
+    widths: [240],
+    shadow: true,
+    forceTheme: 'light',
+    render: app('inpage', readyState({ view: busyWeekView() })),
+  },
   {
     name: 'inpage-hidden-course',
     widths: [240],
@@ -435,13 +527,17 @@ const scenes: Scene[] = [
 ];
 
 /** Renders `children` into the same shadow mount that the in-page content script uses. */
-function ShadowFrame(props: { children: ComponentChildren; width: number }) {
+function ShadowFrame(props: {
+  children: ComponentChildren;
+  width: number;
+  theme: 'light' | 'dark';
+}) {
   const parentRef = useRef<HTMLDivElement>(null);
   const mountRef = useRef<ShadowMount | null>(null);
   useLayoutEffect(() => {
     const parent = parentRef.current;
     if (!parent) return;
-    mountRef.current ??= attachShadowMount(parent, { css: APP_CSS, theme });
+    mountRef.current ??= attachShadowMount(parent, { css: APP_CSS, theme: props.theme });
     render(<>{props.children}</>, mountRef.current.root);
   });
   return <div ref={parentRef} class="frame-host" style={{ width: `${props.width}px` }} />;
@@ -470,14 +566,27 @@ function SceneView({ scene }: { scene: Scene }) {
           <div key={width} class="frame-wrap">
             <div class="frame-label">{width} px</div>
             <div
-              class={scene.height ? 'frame is-fixed' : 'frame'}
+              class={[
+                'frame',
+                scene.height ? 'is-fixed' : '',
+                scene.shadow ? 'is-canvas' : '',
+                scene.shadow && (scene.forceTheme !== undefined || theme === 'light')
+                  ? 'is-light-page'
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              data-theme={scene.shadow ? undefined : scene.forceTheme}
               style={{
-                width: `${width}px`,
+                // A Canvas frame is the right column: the list's width plus 24 px at each side.
+                width: `${scene.shadow ? width + 48 : width}px`,
                 height: scene.height ? `${scene.height}px` : undefined,
               }}
             >
               {scene.shadow ? (
-                <ShadowFrame width={width}>{scene.render()}</ShadowFrame>
+                <ShadowFrame width={width} theme={scene.forceTheme ?? theme}>
+                  {scene.render()}
+                </ShadowFrame>
               ) : (
                 scene.render()
               )}
@@ -495,20 +604,37 @@ const GALLERY_CSS = `
   .scene-name { margin: 0 0 12px; font-size: 14px; font-weight: 600; }
   .frames { display: flex; align-items: flex-start; gap: 24px; }
   .frame-label { margin-bottom: 6px; font-size: 11px; opacity: .7; }
-  .frame { box-shadow: 0 0 0 1px light-dark(#c8ccd3, #2a2d33); background: light-dark(#fff, #17181b); }
+  .frame { box-sizing: border-box; box-shadow: 0 0 0 1px light-dark(#c8ccd3, #2a2d33); background: light-dark(#fff, #17181b); }
   .frame.is-fixed { overflow: auto; }
   .frame > .wr[data-surface='panel'] { min-height: 0; }
   .frame:not(.is-fixed) .wr-header, .frame:not(.is-fixed) .wr-dock { position: relative; }
   .frame.is-fixed > .wr[data-surface='panel'] { min-height: 100%; }
-  .frame:has(weekrow-list[data-theme='dark']) { background: #1b1c1f; }
-  .frame:has(weekrow-list[data-theme='light']) { background: #fff; }
+  .frame[data-theme='dark'] { background: #1b2330; color-scheme: dark; }
+  .frame[data-theme='light'] { background: #fff; color-scheme: light; }
+  .frame.is-canvas { padding: 24px; background: #181a1b; --ic-brand-primary: #2B7ABC; --ic-brand-font-color-dark: #273540; --ic-link-color: #0E68B3; --ic-link-color-darkened-10: #0D5EA2; --ic-brand-button--primary-bgd: var(--ic-brand-primary); --ic-brand-button--primary-text: #fff; }
+  .frame.is-canvas.is-light-page { background: #fff; }
 `;
+
+/** Canvas's Lato, from the local test cache, as a Canvas page declares it. */
+function canvasFontsCss(dir: string): string {
+  const faces: [string, string, string][] = [
+    ['400', 'normal', 'Lato-Regular-bd03a2cc27.woff2'],
+    ['400', 'italic', 'Lato-Italic-4eb103b4d1.woff2'],
+    ['700', 'normal', 'Lato-Bold-cccb897485.woff2'],
+  ];
+  return faces
+    .map(
+      ([weight, style, file]) =>
+        `@font-face{font-family:"Lato Extended";font-weight:${weight};font-style:${style};src:url("/@fs${dir}/${file}") format("woff2")}`,
+    )
+    .join('');
+}
 
 function Gallery() {
   const shown = only ? scenes.filter((scene) => scene.name === only) : scenes;
   return (
     <>
-      <style>{GALLERY_CSS}</style>
+      <style>{GALLERY_CSS + (__CANVAS_FONTS__ ? canvasFontsCss(__CANVAS_FONTS__) : '')}</style>
       {shown.map((scene) => (
         <SceneView key={scene.name} scene={scene} />
       ))}

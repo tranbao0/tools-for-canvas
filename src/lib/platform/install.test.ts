@@ -7,19 +7,18 @@ beforeEach(() => {
 });
 
 describe('shouldOpenWelcome', () => {
-  it('opens the welcome page only on a fresh install on Chrome and Edge', () => {
-    expect(shouldOpenWelcome('install', 'chrome')).toBe(true);
-    expect(shouldOpenWelcome('install', 'edge')).toBe(true);
-    expect(shouldOpenWelcome('install', 'firefox')).toBe(false);
-    expect(shouldOpenWelcome('update', 'chrome')).toBe(false);
-    expect(shouldOpenWelcome('chrome_update', 'chrome')).toBe(false);
+  it('opens the welcome page only on a fresh install', () => {
+    expect(shouldOpenWelcome('install')).toBe(true);
+    expect(shouldOpenWelcome('update')).toBe(false);
+    expect(shouldOpenWelcome('chrome_update')).toBe(false);
+    expect(shouldOpenWelcome('browser_update')).toBe(false);
   });
 });
 
 describe('wireWelcomePage', () => {
-  it('opens the local welcome page on install', async () => {
+  it('opens the local welcome page on install, in every browser', async () => {
     const create = vi.spyOn(fakeBrowser.tabs, 'create');
-    const remove = wireWelcomePage('chrome');
+    const remove = wireWelcomePage();
 
     await fakeBrowser.runtime.onInstalled.trigger({ reason: 'update', previousVersion: '0.1.0' });
     expect(create).not.toHaveBeenCalled();
@@ -32,13 +31,5 @@ describe('wireWelcomePage', () => {
     remove();
     await fakeBrowser.runtime.onInstalled.trigger({ reason: 'install' });
     expect(create).toHaveBeenCalledTimes(1);
-  });
-
-  it('opens nothing on Firefox, where the sidebar opens at install', async () => {
-    const create = vi.spyOn(fakeBrowser.tabs, 'create');
-    wireWelcomePage('firefox');
-
-    await fakeBrowser.runtime.onInstalled.trigger({ reason: 'install' });
-    expect(create).not.toHaveBeenCalled();
   });
 });

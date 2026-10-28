@@ -3,6 +3,7 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { offerItem, settingsItem } from '../../platform/storage';
 import { sessionCacheItem } from '../cache';
 import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
+import { FULL_REFRESH_INTERVAL_MS } from '../policy';
 import { canvasError } from '../testing/fakeCanvas';
 import {
   FROM_PANEL,
@@ -22,6 +23,42 @@ import {
 
 const C = IDS.courses;
 const VISIBLE_COURSES = [C.biology, C.calculus, C.history, C.chemistry, C.orientation];
+const ASSIGNMENT_KEYS = [
+  'id',
+  'name',
+  'course_id',
+  'due_at',
+  'lock_at',
+  'unlock_at',
+  'points_possible',
+  'submission_types',
+  'is_quiz_lti_assignment',
+  'has_sub_assignments',
+  'locked_for_user',
+  'html_url',
+  'external_tool_tag_attributes',
+  'submission',
+];
+const SUBMISSION_KEYS = [
+  'submitted_at',
+  'workflow_state',
+  'excused',
+  'missing',
+  'late_policy_status',
+  'custom_grade_status_id',
+  'redo_request',
+  'cached_due_date',
+  'score',
+];
+
+/** The item keys of each group and list, to show that nothing moved. */
+function groupKeys(state: ReturnType<typeof expectReady>): string[][] {
+  return state.view.groups.flatMap((group) =>
+    [group.items, group.older, group.skipped, group.doneUndated].map((list) =>
+      list.map((item) => `${group.kind}:${item.key}`),
+    ),
+  );
+}
 
 beforeEach(() => useScenarioClock());
 afterEach(() => vi.useRealTimers());
@@ -84,6 +121,99 @@ describe('first load', () => {
     });
     expect(state.taskCourses.map((course) => course.id)).not.toContain(C.club);
     expect(state.view.hiddenCourseCount).toBe(1);
+  });
+
+  it('loads the undated work and the override list beside the planner, not after it', async () => {
+    const h = await createHarness();
+    const release = h.canvas.hold('listPlannerItems');
+
+    expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
+    // The undated work shows that No due date has items, so the override list starts while the
+    // planner still loads.
+    await vi.waitFor(() => expect(h.canvas.callsOf('listPlannerOverrides')).toHaveLength(1));
+    expect(h.canvas.callsOf('listUndatedAssignments').map(([id]) => id)).toEqual(VISIBLE_COURSES);
+    expect(h.canvas.callsOf('listAssignmentsByIds')).toEqual([]);
+    expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
+
+    release();
+    await h.owner.settled();
+    expect(h.canvas.callsOf('listPlannerOverrides')).toHaveLength(1);
+    expectReady(await h.owner.getState(PANEL));
+  });
+
+  it('starts the override list with the planner when the cached undated work needs it', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    await advance(h, FULL_REFRESH_INTERVAL_MS);
+    h.canvas.resetCalls();
+    const release = h.canvas.hold('listPlannerItems');
+    const hold = h.canvas.hold('listUndatedAssignments');
+
+    await h.owner.refresh('timer', FROM_PANEL);
+    await vi.waitFor(() => expect(h.canvas.callsOf('listPlannerOverrides')).toHaveLength(1));
+    expect(h.canvas.callsOf('listUndatedAssignments').map(([id]) => id)).toEqual(VISIBLE_COURSES);
+    release();
+    hold();
+    await h.owner.settled();
+    expect(h.canvas.callsOf('listPlannerOverrides')).toHaveLength(1);
+  });
+
+  it('waits for the assignment details before the first view, because reminders need them', async () => {
+    const h = await createHarness();
+    const release = h.canvas.hold('listAssignmentsByIds');
+
+    await h.owner.getState(PANEL);
+    await vi.waitFor(() =>
+      expect(h.canvas.callsOf('listAssignmentsByIds').length).toBeGreaterThan(0),
+    );
+    expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
+
+    release();
+    await h.owner.settled();
+    const state = expectReady(await h.owner.getState(PANEL));
+    expect(
+      findItem(state, `assignment:${IDS.assignments.historyParticipationWeek9}`),
+    ).toMatchObject({ isReminder: true });
+  });
+
+  it('shows the list before the teacher status names arrive, and a name moves no item', async () => {
+    const h = await createHarness();
+    const release = h.canvas.hold('listCustomGradeStatuses');
+    const essay = `assignment:${IDS.assignments.historyEssayDraft}`;
+
+    await h.owner.getState(PANEL);
+    await vi.waitFor(() => expect(h.canvas.callsOf('listCustomGradeStatuses')).toHaveLength(1));
+    const before = expectReady(await h.owner.getState(PANEL));
+    expect(findItem(before, essay)?.chip).toEqual({ kind: 'teacher_status', name: null });
+
+    release();
+    await h.owner.settled();
+    const after = expectReady(await h.owner.getState(PANEL));
+    expect(findItem(after, essay)?.chip).toEqual({ kind: 'teacher_status', name: 'Incomplete' });
+    expect(groupKeys(after)).toEqual(groupKeys(before));
+    expect(h.canvas.callsOf('listCustomGradeStatuses')).toEqual([[[C.history]]]);
+  });
+
+  it('keeps only the assignment fields that the list reads in storage.session', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+
+    const cached = await sessionCacheItem.getValue();
+    const stored = [
+      ...Object.values(cached?.details ?? {}),
+      ...Object.values(cached?.undated ?? {}).flat(),
+    ];
+    expect(stored.length).toBeGreaterThan(10);
+    for (const assignment of stored) {
+      for (const key of Object.keys(assignment)) expect(ASSIGNMENT_KEYS).toContain(key);
+      for (const key of Object.keys(assignment.submission ?? {})) {
+        expect(SUBMISSION_KEYS).toContain(key);
+      }
+    }
+    // Real Canvas sends long descriptions and submission previews; none of them is kept.
+    const text = JSON.stringify(stored);
+    expect(text).not.toContain('"description"');
+    expect(text).not.toContain('preview_url');
   });
 
   it('asks Canvas nothing more while the view is complete', async () => {
@@ -411,8 +541,10 @@ describe('states', () => {
     expect(state.view.limited).toBe(true);
     expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
     expect(h.canvas.callsOf('listAllAssignments').map(([id]) => id)).toEqual(VISIBLE_COURSES);
+    // The undated work loads beside the planner, before the round knows that the planner is
+    // limited. The round then drops it, and shares the one override list.
     expect(h.canvas.callsOf('listPlannerOverrides')).toHaveLength(1);
-    expect(h.canvas.callsOf('listUndatedAssignments')).toHaveLength(0);
+    expect(h.canvas.callsOf('listUndatedAssignments').map(([id]) => id)).toEqual(VISIBLE_COURSES);
     expect(h.canvas.callsOf('listAssignmentsByIds')).toHaveLength(0);
     const kinds = new Set(viewItems(state.view).map((item) => item.kind));
     expect(kinds.has('note')).toBe(false);

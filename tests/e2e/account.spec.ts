@@ -154,9 +154,11 @@ test('a different student signs in between rounds, and nothing of the first stud
   await openCanvasPage(canvasTab, second.origin);
 
   // The page load starts a round. Its sign-in check finds the new user, and the round loads the
-  // second student from scratch. The panel page is open in this window, so the in-page list is
-  // one line.
-  await expect(inpageList(canvasTab)).toContainText('Shown in the side panel');
+  // second student from scratch. The in-page list shows in full beside the open panel page.
+  await expect(doneBox(inpageList(canvasTab), SKETCHBOOK)).toBeVisible();
+  for (const title of [QUIZ_3, LAB_7]) {
+    await expect(inpageList(canvasTab).getByText(title)).toHaveCount(0);
+  }
   await expect
     .poll(() => second.requests.some((r) => r.path.startsWith('/api/v1/users/self/profile')))
     .toBe(true);

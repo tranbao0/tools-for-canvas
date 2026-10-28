@@ -5,7 +5,7 @@ import type { ItemView, WeekView } from '../model/types';
 import type { TaskInput } from './contract';
 import { formatClock, zonedDate, zonedTime } from './format';
 import { CloseIcon } from './icons';
-import { Heading, newId, type HeadingLevel } from './parts';
+import { Heading, newIds, type HeadingLevel } from './parts';
 
 export type TaskFormMode = { kind: 'new' } | { kind: 'edit'; item: ItemView };
 
@@ -78,17 +78,19 @@ export function TaskForm(props: {
   onCancel(): void;
 }) {
   const { mode, view } = props;
-  const [ids] = useState(() => ({
-    heading: newId('form'),
-    title: newId('title'),
-    titleError: newId('title-error'),
-    date: newId('date'),
-    dateError: newId('date-error'),
-    time: newId('time'),
-    timeHint: newId('time-hint'),
-    course: newId('course'),
-    details: newId('details'),
-  }));
+  const [ids] = useState(() =>
+    newIds('form', [
+      'heading',
+      'title',
+      'titleError',
+      'date',
+      'dateError',
+      'time',
+      'timeHint',
+      'course',
+      'details',
+    ]),
+  );
   const [draft, setDraft] = useState<Draft>(() =>
     initialDraft(
       mode,
@@ -134,7 +136,7 @@ export function TaskForm(props: {
 
   return (
     <form
-      class="wr-form wr-panel-form"
+      class="wr-form"
       aria-labelledby={ids.heading}
       noValidate
       onSubmit={onSubmit}
@@ -145,8 +147,8 @@ export function TaskForm(props: {
         }
       }}
     >
-      <div class="wr-form-head">
-        <Heading level={props.level} class="wr-form-title" id={ids.heading}>
+      <div class="wr-head">
+        <Heading level={props.level} class="wr-range" id={ids.heading}>
           {mode.kind === 'new' ? t('taskNew') : t('taskEdit')}
         </Heading>
         <button
@@ -260,11 +262,7 @@ export function TaskForm(props: {
 
       <div class="wr-form-actions">
         {noteId !== null && (
-          <button
-            type="button"
-            class="wr-quiet-btn wr-form-delete"
-            onClick={() => props.onDelete(noteId)}
-          >
+          <button type="button" class="wr-link-btn" onClick={() => props.onDelete(noteId)}>
             {t('deleteTask')}
           </button>
         )}

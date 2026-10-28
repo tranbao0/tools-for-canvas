@@ -86,6 +86,8 @@ describe('the fixture scenario: current week', () => {
       [assignment(A.historyEssayDraft)]: 'past_due.items',
       [assignment(A.chemLab6PastDue)]: 'past_due.items',
       [assignment(A.mathProblemSet5LockedMissing)]: 'past_due.older',
+      // Checked, but the teacher marked it missing: it stays in Past due (decision 6).
+      [assignment(A.mathHomework3)]: 'past_due.older',
       [assignment(A.mathHomework5)]: 'past_due.older',
       [assignment(A.bioLabReport2)]: 'past_due.older',
       [assignment(A.orientationModule3Missing)]: 'past_due.older',
@@ -114,7 +116,6 @@ describe('the fixture scenario: current week', () => {
       [assignment(A.chemSafetyContractUndated)]: 'no_due_date.items',
       [assignment(A.bioOptionalReflectionUndatedSkipped)]: 'no_due_date.skipped',
       [assignment(A.orientationIntegrityPledge)]: 'no_due_date.doneUndated',
-      [assignment(A.mathHomework3)]: 'done.items',
       [assignment(A.mathHomework4)]: 'done.items',
       [assignment(A.historyEquianoDiscussion)]: 'done.items',
     });
@@ -167,13 +168,19 @@ describe('the fixture scenario: current week', () => {
       isReminder: true,
       handInChip: { kind: 'no_hand_in' },
     });
-    expect(findItem(view, assignment(A.mathHomework3)).doneChips).toEqual([
-      { kind: 'missing_in_canvas', teacherSet: true },
-    ]);
+    // Checked but missing: it shows checked, with the red chip, and Skip in Past due.
+    expect(findItem(view, assignment(A.mathHomework3))).toMatchObject({
+      state: 'done',
+      chip: null,
+      doneChips: [{ kind: 'missing_in_canvas', teacherSet: true }],
+      hasWarning: true,
+      canSkip: true,
+    });
     expect(findItem(view, assignment(A.mathHomework4)).doneChips).toEqual([
       { kind: 'redo_requested' },
     ]);
-    expect(view.groups.find((group) => group.kind === 'done')?.warningCount).toBe(2);
+    // Done counts only its own warnings: Homework 4's redo request.
+    expect(view.groups.find((group) => group.kind === 'done')?.warningCount).toBe(1);
   });
 
   it('builds the rings in dashboard order with course codes and colors', () => {
@@ -209,7 +216,8 @@ describe('the fixture scenario: current week', () => {
         shortLabel: 'MATH 221',
         done: 0,
         total: 4,
-        pastDue: 4,
+        // Homework 3 is checked, but Canvas still counts it as missing.
+        pastDue: 5,
       },
       {
         courseId: C.chemistry,
