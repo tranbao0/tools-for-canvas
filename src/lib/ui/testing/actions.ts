@@ -15,7 +15,7 @@ export function spyActions(): SpyActions {
     skipAllOlder: vi.fn(),
     undo: vi.fn(),
     dismissUndo: vi.fn(),
-    createTask: vi.fn(),
+    createTask: vi.fn(async () => true),
     updateTask: vi.fn(),
     deleteTask: vi.fn(),
     moveTaskToToday: vi.fn(),

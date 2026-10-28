@@ -6,8 +6,9 @@
  * and actions, and learn about new data from the change marker in `storage.local`.
  * The panel presence messages live in src/lib/platform/messages.ts.
  */
-import type { SurfaceState, UndoInfo } from '../model/types';
+import type { SurfaceState } from '../model/types';
 import type { SurfaceKind, TaskInput } from '../ui/contract';
+import type { OverrideFlags } from './patches';
 
 /** The extension page or surface that asks. `page` is the welcome page. */
 export type RequestSurface = SurfaceKind | 'page';
@@ -21,13 +22,13 @@ export interface SurfaceRequest {
   courseFilter?: string | null;
   /** The course of a course home page, or `null`. */
   scopeCourseId: string | null;
-  /**
-   * The token of the Undo notice the surface shows, if any. A ready reply then carries the
-   * notice in `undo` while its record lives, and `null` once the record is gone, for example
-   * after the student signed out or another user signed in.
-   */
-  undoToken?: string | null;
 }
+
+/**
+ * The reply to a state request. A ready reply also names the signed-in Canvas user, so a surface
+ * can tell that the user changed under its Undo notice.
+ */
+export type StateReply = SurfaceState & { userId?: string };
 
 /**
  * Why a surface asks for a refresh.
@@ -39,39 +40,44 @@ export interface SurfaceRequest {
  */
 export type RefreshReason = 'visible' | 'timer' | 'midnight' | 'retry' | 'settings';
 
-export type SeenNote = 'firstDone' | 'firstSkip';
+/** The flags of one item from before an override action, so Undo can put them back. */
+export interface PreviousOverride {
+  key: string;
+  previous: OverrideFlags;
+}
 
 export type DataAction =
   | { kind: 'setDone'; key: string; done: boolean }
-  | { kind: 'skip'; key: string }
+  /** Skips every item in `keys`: one item, or the items of the "N older" list. */
+  | { kind: 'skip'; keys: readonly string[] }
   | { kind: 'unskip'; key: string }
-  /** Skips every item in the "N older" list of the view. */
-  | { kind: 'skipAllOlder'; request: SurfaceRequest }
-  | { kind: 'undo'; token: string }
+  /**
+   * Undo of an override action. The owner ignores it when `userId` is not the signed-in user or
+   * `origin` is not the saved Canvas, so a notice never writes onto the overrides of another
+   * user or school.
+   */
+  | { kind: 'restore'; userId: string; origin: string; entries: PreviousOverride[] }
   | { kind: 'createTask'; input: TaskInput }
   | { kind: 'updateTask'; noteId: string; input: TaskInput }
   | { kind: 'deleteTask'; noteId: string }
   | { kind: 'moveTaskToToday'; noteId: string }
-  | { kind: 'markNoteSeen'; note: SeenNote }
-  | { kind: 'dismissOffer' }
+  /** The Undo notice of a task delete ended, so the delayed DELETE is sent now. */
+  | { kind: 'sendDelete'; noteId: string }
+  /** Undo of a task delete. It works until the DELETE request has started. */
+  | { kind: 'cancelDelete'; noteId: string }
   /** Leaves the address form or a check of a new address, and goes back to the saved address. */
-  | { kind: 'keepSavedAddress' }
-  /**
-   * Ends an Undo notice: the student closed it or acted again, or the surface went away.
-   * The undo record goes, and a pending task delete is sent then.
-   */
-  | { kind: 'endUndo'; token: string };
+  | { kind: 'keepSavedAddress' };
 
-export type DataActionKind = DataAction['kind'];
+type DataActionKind = DataAction['kind'];
 
-/** Asks for the state of one view. The reply is a `SurfaceState`. */
-export interface GetStateMessage {
+/** Asks for the state of one view. The reply is a `StateReply`. */
+interface GetStateMessage {
   type: 'weekrow:get-state';
   request: SurfaceRequest;
 }
 
 /** The reply is a `RefreshReply`. */
-export interface RefreshMessage {
+interface RefreshMessage {
   type: 'weekrow:refresh';
   reason: RefreshReason;
   /** Retry applies to what this surface shows: the in-page list never checks a new address. */
@@ -79,7 +85,7 @@ export interface RefreshMessage {
 }
 
 /** The reply is an `ActionReply`. */
-export interface ActionMessage {
+interface ActionMessage {
   type: 'weekrow:action';
   action: DataAction;
 }
@@ -88,7 +94,7 @@ export interface ActionMessage {
  * Sent from an extension page after `permissions.request` resolved with a grant.
  * The background checks the address and saves it when it is Canvas. The reply is an `OkReply`.
  */
-export interface SetupMessage {
+interface SetupMessage {
   type: 'weekrow:setup';
   origin: string;
   /** The student accepted the "Use this Canvas?" or "Switch to this Canvas?" offer. */
@@ -99,13 +105,8 @@ export interface SetupMessage {
  * Opens the address form. The saved address stays until a new one passes the check, and the
  * form offers "Keep using" as a cancel. The reply is an `OkReply`.
  */
-export interface ChangeAddressMessage {
+interface ChangeAddressMessage {
   type: 'weekrow:change-address';
-}
-
-/** Asks for all active student courses, hidden ones included. The reply is a `CoursesReply`. */
-export interface CoursesMessage {
-  type: 'weekrow:courses';
 }
 
 /** Content scripts cannot open extension pages, so they ask the background. */
@@ -130,7 +131,6 @@ export type DataMessage =
   | ActionMessage
   | SetupMessage
   | ChangeAddressMessage
-  | CoursesMessage
   | OpenPageMessage
   | CanvasDetectedMessage;
 
@@ -152,23 +152,27 @@ export interface CanvasDetectedReply {
   origin: string | null;
 }
 
-export interface UndoTicket {
-  token: string;
-  info: UndoInfo;
-}
+/** What Undo needs, kept by the surface while its Undo notice shows. */
+export type UndoData =
+  | {
+      kind: 'overrides';
+      /** The signed-in user and the Canvas when the action ran. */
+      userId: string;
+      origin: string;
+      entries: PreviousOverride[];
+    }
+  | { kind: 'delete'; userId: string; origin: string; noteId: string };
 
 export interface ActionReply {
-  /** Set when the action can be undone. The Undo notice ends with an `endUndo` action. */
-  undo: UndoTicket | null;
+  /** Set when the action can be undone. The surface shows the Undo notice and keeps this data. */
+  undo: UndoData | null;
+  /** Only the reply to a task create has it: whether Canvas saved the task. */
+  created?: boolean;
 }
 
 export interface CourseChoice {
   id: string;
   name: string;
-}
-
-export interface CoursesReply {
-  courses: CourseChoice[];
 }
 
 export const OK_REPLY: OkReply = { ok: true };
@@ -208,8 +212,7 @@ export function isSurfaceRequest(value: unknown): value is SurfaceRequest {
     REQUEST_SURFACES.includes(value['surface']) &&
     Number.isInteger(value['weekOffset']) &&
     (filter === undefined || isStringOrNull(filter)) &&
-    isStringOrNull(value['scopeCourseId']) &&
-    (value['undoToken'] === undefined || isStringOrNull(value['undoToken']))
+    isStringOrNull(value['scopeCourseId'])
   );
 }
 
@@ -226,9 +229,20 @@ export function isTaskInput(value: unknown): value is TaskInput {
   );
 }
 
-function isSeenNote(value: unknown): value is SeenNote {
-  return value === 'firstDone' || value === 'firstSkip';
+function isFlags(value: unknown): value is OverrideFlags {
+  return (
+    isObject(value) &&
+    typeof value['markedComplete'] === 'boolean' &&
+    typeof value['dismissed'] === 'boolean'
+  );
 }
+
+function isPreviousOverride(value: unknown): value is PreviousOverride {
+  return isObject(value) && isNonEmptyString(value['key']) && isFlags(value['previous']);
+}
+
+/** The most items one action may name. A student has far fewer in view. */
+export const MAX_ACTION_KEYS = 2000;
 
 export function isDataAction(value: unknown): value is DataAction {
   if (!isObject(value) || !isString(value['kind'])) return false;
@@ -237,23 +251,31 @@ export function isDataAction(value: unknown): value is DataAction {
     case 'setDone':
       return isNonEmptyString(value['key']) && typeof value['done'] === 'boolean';
     case 'skip':
+      return (
+        Array.isArray(value['keys']) &&
+        value['keys'].length > 0 &&
+        value['keys'].length <= MAX_ACTION_KEYS &&
+        value['keys'].every(isNonEmptyString)
+      );
     case 'unskip':
       return isNonEmptyString(value['key']);
-    case 'skipAllOlder':
-      return isSurfaceRequest(value['request']);
-    case 'undo':
-    case 'endUndo':
-      return isNonEmptyString(value['token']);
+    case 'restore':
+      return (
+        isNonEmptyString(value['userId']) &&
+        isNonEmptyString(value['origin']) &&
+        Array.isArray(value['entries']) &&
+        value['entries'].length <= MAX_ACTION_KEYS &&
+        value['entries'].every(isPreviousOverride)
+      );
     case 'createTask':
       return isTaskInput(value['input']);
     case 'updateTask':
       return isNonEmptyString(value['noteId']) && isTaskInput(value['input']);
     case 'deleteTask':
     case 'moveTaskToToday':
+    case 'sendDelete':
+    case 'cancelDelete':
       return isNonEmptyString(value['noteId']);
-    case 'markNoteSeen':
-      return isSeenNote(value['note']);
-    case 'dismissOffer':
     case 'keepSavedAddress':
       return true;
     default:
@@ -291,10 +313,6 @@ export function isChangeAddressMessage(value: unknown): value is ChangeAddressMe
   return hasType(value, 'weekrow:change-address');
 }
 
-export function isCoursesMessage(value: unknown): value is CoursesMessage {
-  return hasType(value, 'weekrow:courses');
-}
-
 export function isOpenPageMessage(value: unknown): value is OpenPageMessage {
   return (
     hasType(value, 'weekrow:open-page') &&
@@ -313,64 +331,7 @@ export function isDataMessage(value: unknown): value is DataMessage {
     isActionMessage(value) ||
     isSetupMessage(value) ||
     isChangeAddressMessage(value) ||
-    isCoursesMessage(value) ||
     isOpenPageMessage(value) ||
     isCanvasDetectedMessage(value)
-  );
-}
-
-const STATE_KINDS: readonly string[] = [
-  'loading',
-  'not_set_up',
-  'checking',
-  'no_access',
-  'redirects',
-  'not_canvas',
-  'unreachable',
-  'signed_out',
-  'no_courses',
-  'cant_load',
-  'ready',
-];
-
-/** A light check of a state reply. The background is the only sender, so the kind is enough. */
-export function isSurfaceState(value: unknown): value is SurfaceState {
-  return isObject(value) && isString(value['kind']) && STATE_KINDS.includes(value['kind']);
-}
-
-const UNDO_KINDS: readonly string[] = ['done', 'skipped', 'skipped_all', 'deleted'];
-
-function isUndoTicket(value: unknown): value is UndoTicket {
-  if (!isObject(value) || !isNonEmptyString(value['token'])) return false;
-  const info = value['info'];
-  return (
-    isObject(info) &&
-    isString(info['kind']) &&
-    UNDO_KINDS.includes(info['kind']) &&
-    Number.isInteger(info['count'])
-  );
-}
-
-export function isActionReply(value: unknown): value is ActionReply {
-  return isObject(value) && (value['undo'] === null || isUndoTicket(value['undo']));
-}
-
-export function isRefreshReply(value: unknown): value is RefreshReply {
-  if (!isObject(value) || value['ok'] !== true) return false;
-  const retryAt = value['retryAt'];
-  return retryAt === null || (typeof retryAt === 'number' && Number.isFinite(retryAt));
-}
-
-export function isCanvasDetectedReply(value: unknown): value is CanvasDetectedReply {
-  return isObject(value) && isStringOrNull(value['origin']);
-}
-
-export function isCoursesReply(value: unknown): value is CoursesReply {
-  return (
-    isObject(value) &&
-    Array.isArray(value['courses']) &&
-    value['courses'].every(
-      (course: unknown) => isObject(course) && isString(course['id']) && isString(course['name']),
-    )
   );
 }

@@ -305,7 +305,7 @@ describe('the "Switch to this Canvas?" offer', () => {
   const states: SurfaceState[] = [
     { kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: OTHER_OFFER },
     { kind: 'no_access', origin: ORIGIN, savedOrigin: null, offer: OTHER_OFFER },
-    { kind: 'no_courses', origin: ORIGIN, offer: OTHER_OFFER },
+    { kind: 'no_courses', origin: ORIGIN, offer: OTHER_OFFER, allCourses: [] },
     { kind: 'cant_load', origin: ORIGIN, offline: false, savedOrigin: null, offer: OTHER_OFFER },
   ];
 

@@ -73,6 +73,10 @@ export function TaskForm(props: {
   view: WeekView;
   courses: { id: string; name: string }[];
   level: HeadingLevel;
+  /** A new task waits for Canvas. The form stays open and cannot be sent or closed again. */
+  saving: boolean;
+  /** The last try to save the task failed. */
+  saveFailed: boolean;
   onSubmit(input: TaskInput): void;
   onDelete(noteId: string): void;
   onCancel(): void;
@@ -119,6 +123,7 @@ export function TaskForm(props: {
 
   const onSubmit = (event: Event) => {
     event.preventDefault();
+    if (props.saving) return;
     const found = validate(draft);
     setErrors(found);
     if (found.title) {
@@ -141,7 +146,7 @@ export function TaskForm(props: {
       noValidate
       onSubmit={onSubmit}
       onKeyDown={(event) => {
-        if (event.key === 'Escape') {
+        if (event.key === 'Escape' && !props.saving) {
           event.preventDefault();
           props.onCancel();
         }
@@ -156,6 +161,7 @@ export function TaskForm(props: {
           class="wr-icon-btn"
           aria-label={t('close')}
           title={t('close')}
+          disabled={props.saving}
           onClick={props.onCancel}
         >
           <CloseIcon />
@@ -260,6 +266,12 @@ export function TaskForm(props: {
         />
       </div>
 
+      {props.saveFailed && (
+        <p class="wr-error" role="alert">
+          {t('taskSaveFailed')}
+        </p>
+      )}
+
       <div class="wr-form-actions">
         {noteId !== null && (
           <button type="button" class="wr-link-btn" onClick={() => props.onDelete(noteId)}>
@@ -267,11 +279,11 @@ export function TaskForm(props: {
           </button>
         )}
         <div class="wr-form-main">
-          <button type="button" class="wr-btn" onClick={props.onCancel}>
+          <button type="button" class="wr-btn" disabled={props.saving} onClick={props.onCancel}>
             {t('cancel')}
           </button>
-          <button type="submit" class="wr-btn wr-btn-primary">
-            {mode.kind === 'new' ? t('addTask') : t('save')}
+          <button type="submit" class="wr-btn wr-btn-primary" disabled={props.saving}>
+            {props.saving ? t('taskSaving') : mode.kind === 'new' ? t('addTask') : t('save')}
           </button>
         </div>
       </div>

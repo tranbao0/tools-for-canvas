@@ -660,6 +660,12 @@
   "taskNew": {
     "message": "New task"
   },
+  "taskSaving": {
+    "message": "Saving"
+  },
+  "taskSaveFailed": {
+    "message": "Couldn't save the task. Try again."
+  },
   "taskEdit": {
     "message": "Edit task"
   },

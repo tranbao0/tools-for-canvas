@@ -7,24 +7,30 @@
  * and midnight timers while the surface is visible. The side panel and the in-page list also
  * hold the data of the settings they show in place. It never fetches Canvas.
  *
- * The Undo notice has no timer. It ends when the student acts again, closes it, or the surface
- * goes away, and the runtime then tells the data owner, which sends a pending task delete.
+ * The Undo notice has no timer. The reply to an action carries what Undo needs, and the runtime
+ * keeps it while the notice shows. The notice ends when the student acts again, closes it, or
+ * the surface goes away, and also when the state is no longer ready or belongs to another user.
+ * For a task delete, the runtime then tells the data owner, which sends the delayed DELETE.
+ *
+ * The replies come from the data owner in the same extension, and a request that the router
+ * rejects has no reply at all, so the runtime checks only that a reply exists.
  */
 import {
-  isActionReply,
-  isCoursesReply,
-  isRefreshReply,
-  isSurfaceState,
+  MAX_ACTION_KEYS,
+  type ActionReply,
   type CourseChoice,
   type DataAction,
   type DataMessage,
   type RefreshReason,
+  type RefreshReply,
   type RequestSurface,
+  type StateReply,
   type SurfaceRequest,
-  type UndoTicket,
+  type UndoData,
 } from '../data/protocol';
 import { nextDayStart } from '../model/time';
-import type { ItemView, Settings, SurfaceState, WeekView } from '../model/types';
+import type { ItemView, Settings, SurfaceState, UndoInfo, WeekView } from '../model/types';
+import type { SeenNotes } from '../platform/storage';
 import type { Actions, AppProps, TaskInput } from '../ui/contract';
 
 /** The full refresh timer of decision 11. */
@@ -47,7 +53,7 @@ export interface Leave {
 }
 
 /** The stored settings, such as `settingsItem` from src/lib/platform/storage.ts. */
-export interface SettingsStore {
+interface SettingsStore {
   getValue(): Promise<Settings>;
   setValue(settings: Settings): Promise<void>;
   /** Calls the listener when the stored settings change. Returns a remover. */
@@ -73,6 +79,10 @@ export interface SurfaceHost {
   /** Opens the saved Canvas, for sign-in. */
   openCanvas(origin: string): void;
   openSettings(): void;
+  /** Saves that the student has seen a one-time note. */
+  markNoteSeen(note: keyof SeenNotes): Promise<void>;
+  /** Dismisses the pending "Use this Canvas?" offer. Only the side panel shows it. */
+  dismissOffer(): Promise<void>;
   /**
    * Asks for host access and then for the setup check. Extension pages call
    * `permissions.request` synchronously here, inside the click handler.
@@ -81,7 +91,7 @@ export interface SurfaceHost {
   log(step: string, error: unknown): void;
 }
 
-export interface SurfaceOptions {
+interface SurfaceOptions {
   surface: RequestSurface;
   /** The course of a course home page, or `null`. */
   scopeCourseId: string | null;
@@ -94,7 +104,7 @@ export interface SurfaceRuntime {
   /**
    * The settings and the course list for the settings shown in place, or `undefined` until both
    * have loaded. Only the side panel and the in-page list load them; extension pages such as the
-   * welcome page show no settings in place.
+   * welcome page show no settings in place. The course list comes with the state.
    */
   settings(): InPlaceSettings | undefined;
   /** Calls the listener after every change of the state or the settings. Returns a remover. */
@@ -109,13 +119,30 @@ const DATA_WRITES: ReadonlySet<DataAction['kind']> = new Set([
   'setDone',
   'skip',
   'unskip',
-  'skipAllOlder',
-  'undo',
+  'restore',
   'createTask',
   'updateTask',
   'deleteTask',
   'moveTaskToToday',
+  'cancelDelete',
 ]);
+
+/** The Undo notice that shows: what it says, and what Undo needs. */
+interface Notice {
+  info: UndoInfo;
+  /** One entry for each message that the action went out in. */
+  data: UndoData[];
+}
+
+/** A skip with more keys than one message may carry goes out in parts. */
+function inParts(action: DataAction): DataAction[] {
+  if (action.kind !== 'skip') return [action];
+  const parts: DataAction[] = [];
+  for (let start = 0; start < action.keys.length; start += MAX_ACTION_KEYS) {
+    parts.push({ kind: 'skip', keys: action.keys.slice(start, start + MAX_ACTION_KEYS) });
+  }
+  return parts;
+}
 
 /** Every item of the view, in every list of every group. */
 export function viewItems(view: WeekView): ItemView[] {
@@ -128,7 +155,7 @@ export function viewItems(view: WeekView): ItemView[] {
 }
 
 /** The saved origin that a state shows, if any. */
-export function stateOrigin(state: SurfaceState): string | null {
+function stateOrigin(state: SurfaceState): string | null {
   return 'origin' in state ? state.origin : null;
 }
 
@@ -142,10 +169,11 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   /** The week the student last asked for. A shown week can lag behind it while a week loads. */
   let weekOffset = 0;
   let settings: Settings | null = null;
+  /** Every active course, from the last state that carried them. */
   let courses: CourseChoice[] | null = null;
-  let coursesSeq = 0;
+  let coursesOrigin: string | null = null;
   let courseFilter: string | null | undefined = undefined;
-  let undo: UndoTicket | null = null;
+  let notice: Notice | null = null;
   /** Counts writes, so only the reply to the newest write shows its Undo notice. */
   let writeSeq = 0;
   let requestSeq = 0;
@@ -160,7 +188,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   const stops: (() => void)[] = [];
 
   function current(): SurfaceState {
-    return base.kind === 'ready' ? { ...base, undo: undo?.info ?? null } : base;
+    return base.kind === 'ready' ? { ...base, undo: notice?.info ?? null } : base;
   }
 
   function emit(): void {
@@ -185,21 +213,6 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     return settings === null || courses === null ? undefined : { value: settings, courses };
   }
 
-  /** Loads the course list for the hidden courses setting. Only the newest answer counts. */
-  function loadCourses(): void {
-    if (stopped || !showsSettingsInPlace(options.surface)) return;
-    coursesSeq += 1;
-    const seq = coursesSeq;
-    host
-      .send({ type: 'weekrow:courses' })
-      .then((reply) => {
-        if (stopped || seq !== coursesSeq || !isCoursesReply(reply)) return;
-        courses = reply.courses;
-        emit();
-      })
-      .catch(report('course list'));
-  }
-
   function loadSettings(): void {
     host.settings
       .getValue()
@@ -218,24 +231,31 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   }
 
   /**
-   * The course list changes with the signed-in user and the address, so it loads again when the
-   * list becomes ready after another state, such as a sign-in, or shows another address.
+   * The course list comes with the ready state. Other states keep the last list, so the settings
+   * stay usable while the address form is open. Another address drops it.
    */
-  function followState(previous: SurfaceState, next: SurfaceState): void {
-    const becameReady = next.kind === 'ready' && previous.kind !== 'ready';
-    const otherOrigin = stateOrigin(next) !== null && stateOrigin(next) !== stateOrigin(previous);
-    if (becameReady || otherOrigin) loadCourses();
+  function followCourses(next: SurfaceState): void {
+    if (next.kind === 'ready' || next.kind === 'no_courses') {
+      courses = next.allCourses;
+      coursesOrigin = next.origin;
+      return;
+    }
+    const origin = stateOrigin(next);
+    if (origin !== null && coursesOrigin !== null && origin !== coursesOrigin) {
+      courses = null;
+      coursesOrigin = null;
+    }
   }
 
   async function requestState(): Promise<void> {
     if (stopped) return;
     requestSeq += 1;
     const seq = requestSeq;
-    // The token lets the data owner say whether the shown Undo notice still applies.
-    const sent: SurfaceRequest = { ...request(), undoToken: undo?.token ?? null };
-    const reply = await host.send({ type: 'weekrow:get-state', request: sent });
+    const sent = request();
+    const reply = (await host.send({ type: 'weekrow:get-state', request: sent })) as
+      StateReply | undefined;
     // Replies can arrive out of order. Only a newer answer than the last shown one counts.
-    if (stopped || seq <= appliedSeq || !isSurfaceState(reply)) return;
+    if (stopped || seq <= appliedSeq || reply === undefined) return;
     appliedSeq = seq;
     // While another week loads, the shown week stays with its refresh marker, so the header
     // and its focused button stay in place.
@@ -258,19 +278,18 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     ) {
       courseFilter = undefined;
     }
-    // The data owner dropped the record of the shown notice, for example after the student
-    // signed out or another user signed in, so the notice goes too.
-    if (
-      reply.kind === 'ready' &&
-      reply.undo === null &&
-      undo !== null &&
-      sent.undoToken === undo.token
-    ) {
-      undo = null;
+    // The notice belongs to the ready state of one user on one Canvas. After a sign-out, an
+    // address change or another user's sign-in, Undo would write onto the wrong overrides, so
+    // the notice goes. The data owner dropped its own state for a task delete in the last two
+    // cases, so only a state that is not ready sends the delete.
+    if (notice !== null) {
+      if (reply.kind !== 'ready') dropNotice();
+      else if (reply.userId !== notice.data[0]?.userId || reply.origin !== notice.data[0]?.origin) {
+        notice = null;
+      }
     }
-    const previous = base;
     base = reply;
-    followState(previous, reply);
+    followCourses(reply);
     scheduleMidnight();
     emit();
   }
@@ -288,7 +307,8 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     return host
       .send({ type: 'weekrow:refresh', reason, surface: options.surface })
       .then((reply) => {
-        if (isRefreshReply(reply) && reply.retryAt !== null) scheduleRetry(reply.retryAt);
+        const retryAt = (reply as RefreshReply | undefined)?.retryAt ?? null;
+        if (retryAt !== null) scheduleRetry(retryAt);
       });
   }
 
@@ -308,23 +328,35 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     );
   }
 
-  /** Tells the data owner that the notice of a token ended. */
-  function sendEndUndo(token: string): void {
+  /** Drops the notice without drawing. A task delete goes out now, as the notice ended. */
+  function dropNotice(): void {
+    const ended = notice;
+    notice = null;
+    for (const data of ended?.data ?? []) if (data.kind === 'delete') endDelete(data.noteId);
+  }
+
+  function endDelete(noteId: string): void {
     host
-      .send({ type: 'weekrow:action', action: { kind: 'endUndo', token } })
+      .send({ type: 'weekrow:action', action: { kind: 'sendDelete', noteId } })
       .catch(report('end undo'));
   }
 
   /** Ends the Undo notice, if one shows. */
   function endUndo(): void {
-    const ticket = undo;
-    if (ticket === null) return;
-    undo = null;
-    sendEndUndo(ticket.token);
+    if (notice === null) return;
+    dropNotice();
     emit();
   }
 
-  function sendAction(action: DataAction): void {
+  /**
+   * Sends an action. `shows` names the Undo notice that the reply may start. A new write ends
+   * the notice of the last one. An action with more keys than one message may carry goes out in
+   * parts, and the replies make one notice.
+   */
+  function sendAction(
+    action: DataAction,
+    shows?: UndoInfo['kind'],
+  ): Promise<ActionReply | undefined> {
     const isWrite = DATA_WRITES.has(action.kind);
     if (isWrite) {
       // The student acted again, so the last notice ends.
@@ -332,21 +364,30 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       writeSeq += 1;
     }
     const seq = writeSeq;
-    host
-      .send({ type: 'weekrow:action', action })
-      .then((reply) => {
-        if (isActionReply(reply) && reply.undo !== null) {
+    return Promise.all(
+      inParts(action).map((part) => host.send({ type: 'weekrow:action', action: part })),
+    )
+      .then(async (sent) => {
+        const replies = sent as (ActionReply | undefined)[];
+        const reply = replies[0];
+        const data = replies.flatMap((r) => (r?.undo ? [r.undo] : []));
+        if (data.length > 0 && shows !== undefined) {
           // A newer write or a stopped surface ends this notice before it shows.
           if (isWrite && seq === writeSeq && !stopped) {
-            undo = reply.undo;
+            const count = data.flatMap((d) => (d.kind === 'overrides' ? d.entries : [null])).length;
+            notice = { info: { kind: shows, count }, data };
             emit();
           } else {
-            sendEndUndo(reply.undo.token);
+            for (const d of data) if (d.kind === 'delete') endDelete(d.noteId);
           }
         }
-        return requestState();
+        await requestState().catch(report('state request'));
+        return reply;
       })
-      .catch(report('action'));
+      .catch((error: unknown) => {
+        report('action')(error);
+        return undefined;
+      });
   }
 
   function scheduleRefreshTick(): void {
@@ -429,35 +470,45 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       reload();
     },
     setDone(key: string, done: boolean) {
-      sendAction({ kind: 'setDone', key, done });
+      sendAction({ kind: 'setDone', key, done }, done ? 'done' : undefined);
     },
     skip(key: string) {
-      sendAction({ kind: 'skip', key });
+      sendAction({ kind: 'skip', keys: [key] }, 'skipped');
     },
     unskip(key: string) {
       sendAction({ kind: 'unskip', key });
     },
     skipAllOlder() {
-      sendAction({ kind: 'skipAllOlder', request: request() });
+      if (base.kind !== 'ready') return;
+      const older = base.view.groups.find((group) => group.kind === 'past_due')?.older ?? [];
+      const keys = older.filter((item) => item.canSkip).map((item) => item.key);
+      if (keys.length > 0) sendAction({ kind: 'skip', keys }, 'skipped_all');
     },
     undo() {
-      const last = undo;
+      const last = notice;
       if (last === null) return;
-      undo = null;
+      notice = null;
       emit();
-      sendAction({ kind: 'undo', token: last.token });
+      for (const data of last.data) {
+        sendAction(
+          data.kind === 'delete'
+            ? { kind: 'cancelDelete', noteId: data.noteId }
+            : { kind: 'restore', userId: data.userId, origin: data.origin, entries: data.entries },
+        );
+      }
     },
     dismissUndo() {
       endUndo();
     },
-    createTask(input: TaskInput) {
-      sendAction({ kind: 'createTask', input });
+    async createTask(input: TaskInput) {
+      const reply = await sendAction({ kind: 'createTask', input });
+      return reply?.created === true;
     },
     updateTask(noteId: string, input: TaskInput) {
       sendAction({ kind: 'updateTask', noteId, input });
     },
     deleteTask(noteId: string) {
-      sendAction({ kind: 'deleteTask', noteId });
+      sendAction({ kind: 'deleteTask', noteId }, 'deleted');
     },
     moveTaskToToday(noteId: string) {
       sendAction({ kind: 'moveTaskToToday', noteId });
@@ -474,7 +525,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       host.allowAccess(origin, true);
     },
     dismissOffer() {
-      sendAction({ kind: 'dismissOffer' });
+      host.dismissOffer().then(reload).catch(report('dismiss offer'));
     },
     keepSavedAddress() {
       sendAction({ kind: 'keepSavedAddress' });
@@ -511,7 +562,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
         .catch(report('save settings'));
     },
     markNoteSeen(note: 'firstDone' | 'firstSkip') {
-      sendAction({ kind: 'markNoteSeen', note });
+      host.markNoteSeen(note).then(reload).catch(report('seen note'));
     },
   };
 
@@ -534,7 +585,6 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       if (showsSettingsInPlace(options.surface)) {
         stops.push(host.settings.watch(onSettings));
         loadSettings();
-        loadCourses();
       }
       if (host.visibility.isVisible()) becameVisible();
       else reload();

@@ -3,18 +3,22 @@
  */
 import { render } from 'preact';
 import { browser } from 'wxt/browser';
-import { isCoursesReply, type CourseChoice } from '../data/protocol';
+import type { CourseChoice, StateReply } from '../data/protocol';
 import type { Settings } from '../model/types';
 import { logFailure } from '../platform/log';
-import { canvasOriginItem, settingsItem } from '../platform/storage';
+import { canvasOriginItem, changeMarkerItem, settingsItem, watchItems } from '../platform/storage';
 import { SettingsView } from '../ui/SettingsView';
 import { installStyles } from '../ui/styles';
 import { sendToBackground } from './hosts';
 import { followExtensionPageTheme } from './theme';
 
-async function loadCourses(): Promise<CourseChoice[]> {
-  const reply = await sendToBackground({ type: 'weekrow:courses' });
-  return isCoursesReply(reply) ? reply.courses : [];
+/** The courses in the state of the saved Canvas, or `null` while the state has none. */
+async function loadCourses(): Promise<CourseChoice[] | null> {
+  const state = (await sendToBackground({
+    type: 'weekrow:get-state',
+    request: { surface: 'page', weekOffset: 0, scopeCourseId: null },
+  })) as StateReply | undefined;
+  return state?.kind === 'ready' || state?.kind === 'no_courses' ? state.allCourses : null;
 }
 
 /** The settings page. A change saves the settings, then asks the background to refresh. */
@@ -24,6 +28,8 @@ export async function startOptions(root: HTMLElement): Promise<void> {
   let settings: Settings = await settingsItem.getValue();
   let origin: string | null = await canvasOriginItem.getValue();
   let courses: CourseChoice[] = [];
+  /** Counts the course requests, so only the newest answer counts. */
+  let coursesSeq = 0;
 
   const onChange = (next: Settings): void => {
     settings = next;
@@ -52,9 +58,14 @@ export async function startOptions(root: HTMLElement): Promise<void> {
       />,
       root,
     );
+  // The list comes with the state, which is not ready until the first round has loaded it. The
+  // change marker asks again when it has. Other states keep the last list.
   const refreshCourses = (): void => {
+    coursesSeq += 1;
+    const seq = coursesSeq;
     loadCourses()
       .then((list) => {
+        if (seq !== coursesSeq || list === null) return;
         courses = list;
         draw();
       })
@@ -71,6 +82,7 @@ export async function startOptions(root: HTMLElement): Promise<void> {
     draw();
     refreshCourses();
   });
+  watchItems([changeMarkerItem], refreshCourses);
   draw();
   refreshCourses();
 }

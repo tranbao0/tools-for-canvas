@@ -324,7 +324,13 @@ export type SurfaceState =
   /** The setup check of a typed address failed at the network level, such as a wrong host name. */
   | { kind: 'unreachable'; origin: string; savedOrigin: string | null }
   | { kind: 'signed_out'; origin: string; isFirefox: boolean; offer: Offer | null }
-  | { kind: 'no_courses'; origin: string; offer: Offer | null }
+  | {
+      kind: 'no_courses';
+      origin: string;
+      offer: Offer | null;
+      /** Every active student course, hidden ones included. Empty here. */
+      allCourses: { id: string; name: string }[];
+    }
   /** A refresh failed and no data is cached. */
   | {
       kind: 'cant_load';
@@ -346,6 +352,8 @@ export type SurfaceState =
       seenNotes: { firstDone: boolean; firstSkip: boolean };
       /** Courses for the task form, not hidden. */
       taskCourses: { id: string; name: string }[];
+      /** Every active student course, hidden ones included, for the settings. */
+      allCourses: { id: string; name: string }[];
       /**
        * Courses whose requests failed in the last round. The list shows a short note for them.
        * `name` is the short label: the trimmed course code, else the course name.

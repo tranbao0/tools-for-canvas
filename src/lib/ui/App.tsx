@@ -7,7 +7,7 @@ import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../i18n';
 import type { ItemView, SurfaceState } from '../model/types';
-import type { Actions, AppProps, SurfaceKind } from './contract';
+import type { Actions, AppProps, SurfaceKind, TaskInput } from './contract';
 import { Header } from './Header';
 import {
   Dock,
@@ -221,6 +221,8 @@ function ReadyView(props: {
   const { view } = state;
   const level = baseLevel(surface);
   const [form, setForm] = useState<TaskFormMode | null>(null);
+  /** A new task waits for Canvas, or the last try to save one failed. */
+  const [save, setSave] = useState<'idle' | 'saving' | 'failed'>('idle');
   const [notes, setNotes] = useState<OneTimeNote[]>([]);
   const [limitedId] = useState(() => newId('limited'));
   /** Where focus goes when the form closes. The list is re-created, so this is a selector. */
@@ -270,11 +272,18 @@ function ReadyView(props: {
 
   const openForm = (mode: TaskFormMode) => setForm(mode);
 
+  /** Creates a task. The form stays open until Canvas answers, so a slow save is never sent twice. */
+  const createTask = async (input: TaskInput) => {
+    setSave('saving');
+    if (await actions.createTask(input)) closeForm(null);
+    else setSave('failed');
+  };
   /** Closes the form and focuses the control that opened it, or the Add button. */
   const closeForm = (focusKey: string | null) => {
     returnFocus.current = focusKey
       ? `[data-row-key="${focusKey.replace(/["\\]/g, '\\$&')}"] [data-part="title"]`
       : '.wr-add';
+    setSave('idle');
     setForm(null);
   };
 
@@ -314,11 +323,15 @@ function ReadyView(props: {
         view={view}
         courses={state.taskCourses}
         level={level}
+        saving={save === 'saving'}
+        saveFailed={save === 'failed'}
         onSubmit={(input) => {
-          if (form.kind === 'edit' && form.item.noteId !== null)
+          if (form.kind === 'edit' && form.item.noteId !== null) {
             actions.updateTask(form.item.noteId, input);
-          else actions.createTask(input);
-          closeForm(form.kind === 'edit' ? form.item.key : null);
+            closeForm(form.item.key);
+          } else {
+            void createTask(input);
+          }
         }}
         onDelete={(noteId) => {
           actions.deleteTask(noteId);

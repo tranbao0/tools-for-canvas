@@ -563,6 +563,7 @@ export function readyState(
     undo: null,
     seenNotes: { firstDone: true, firstSkip: true },
     taskCourses: Object.values(COURSES).map(({ id, name }) => ({ id, name })),
+    allCourses: Object.values(COURSES).map(({ id, name }) => ({ id, name })),
     skippedCourses: [],
     ...patch,
   };
@@ -633,7 +634,10 @@ export function nonReadyStates(): { name: string; state: SurfaceState }[] {
       name: 'signed-out-offer',
       state: { kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: OTHER_OFFER },
     },
-    { name: 'no-courses', state: { kind: 'no_courses', origin: ORIGIN, offer: null } },
+    {
+      name: 'no-courses',
+      state: { kind: 'no_courses', origin: ORIGIN, offer: null, allCourses: [] },
+    },
     {
       name: 'cant-load',
       state: { kind: 'cant_load', origin: ORIGIN, offline: false, savedOrigin: null, offer: null },
@@ -663,7 +667,10 @@ export function noopActions(
     skipAllOlder: record('skipAllOlder'),
     undo: record('undo'),
     dismissUndo: record('dismissUndo'),
-    createTask: record('createTask'),
+    createTask: async (...args) => {
+      record('createTask')(...args);
+      return true;
+    },
     updateTask: record('updateTask'),
     deleteTask: record('deleteTask'),
     moveTaskToToday: record('moveTaskToToday'),

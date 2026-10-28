@@ -7,7 +7,6 @@
  */
 import type { Course, OverridePlannableType, PlannerItem, PlannerOverride } from '../canvas/types';
 import { itemKey, plannerAssignmentId, type Item } from '../model';
-import type { StoredUndo } from './cache';
 
 /** What a planner override points at. */
 export interface OverrideTarget {
@@ -50,21 +49,19 @@ export interface NotePatch {
   noteId: string;
   /** `null` when the task is deleted. */
   note: NoteValue | null;
-  /** Deleted tasks only: epoch milliseconds when the DELETE request is due. */
-  deleteAt: number | null;
   confirmedAt: number | null;
 }
 
 export type Patch = OverridePatch | NotePatch;
 
 /** Context that patched planner items need. */
-export interface PatchContext {
+interface PatchContext {
   courses: readonly Course[];
   userId: string;
 }
 
 /** The data that patches change. */
-export interface PatchableData {
+interface PatchableData {
   plannerItems: readonly PlannerItem[];
   overrides: readonly PlannerOverride[] | null;
 }
@@ -226,50 +223,5 @@ export function propagateOverrideId(patches: readonly Patch[], key: string, id: 
     patch.override.id === ''
       ? { ...patch, override: { ...patch.override, id } }
       : patch,
-  );
-}
-
-/** Replaces a temporary task id with the id Canvas gave the new planner note. */
-export function remapNoteId(patches: readonly Patch[], tempId: string, realId: string): Patch[] {
-  const tempKey = itemKey('planner_note', tempId, null);
-  return patches.map((patch): Patch => {
-    switch (patch.kind) {
-      case 'note':
-        if (patch.noteId !== tempId) return patch;
-        return {
-          ...patch,
-          noteId: realId,
-          note: patch.note === null ? null : { ...patch.note, id: realId },
-        };
-      case 'override':
-        if (patch.key !== tempKey) return patch;
-        return {
-          ...patch,
-          key: itemKey('planner_note', realId, null),
-          target: { ...patch.target, plannableId: realId },
-          override: { ...patch.override, plannable_id: realId },
-        };
-    }
-  });
-}
-
-/** Gives undo records of a new task the id Canvas gave it, so a later Undo targets the real task. */
-export function remapUndoNotes(
-  undos: Readonly<Record<string, StoredUndo>>,
-  tempId: string,
-  realId: string,
-): Record<string, StoredUndo> {
-  const tempKey = itemKey('planner_note', tempId, null);
-  const realKey = itemKey('planner_note', realId, null);
-  return Object.fromEntries(
-    Object.entries(undos).map(([token, stored]): [string, StoredUndo] => {
-      if (stored.record.kind !== 'overrides') return [token, stored];
-      const entries = stored.record.entries.map((entry) =>
-        entry.key === tempKey
-          ? { ...entry, key: realKey, target: { ...entry.target, plannableId: realId } }
-          : entry,
-      );
-      return [token, { ...stored, record: { kind: 'overrides', entries } }];
-    }),
   );
 }

@@ -24,7 +24,7 @@ import {
 } from './protocol';
 
 /** The parts of a message sender the router reads. */
-export interface SenderInfo {
+interface SenderInfo {
   url?: string;
   /** Set for a content script: the tab of its page. */
   tab?: unknown;
@@ -122,8 +122,6 @@ export function routeDataMessage(
       return allowed.then(() => owner.act(message.action));
     case 'weekrow:change-address':
       return allowed.then(() => owner.changeAddress()).then(ok);
-    case 'weekrow:courses':
-      return allowed.then(() => owner.listCourses()).then((courses) => ({ courses }));
     case 'weekrow:open-page':
       return allowed.then(() => host.openPage(message.page)).then(ok);
   }

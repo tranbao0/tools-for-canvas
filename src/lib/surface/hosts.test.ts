@@ -56,7 +56,7 @@ describe('requestAccessThenCheck', () => {
 });
 
 describe('watchChanges', () => {
-  it('follows the change marker and the offer on extension pages', async () => {
+  it('follows the change marker, the offer and the seen notes on extension pages', async () => {
     const listener = vi.fn();
     const stop = extensionPageHost().watchChanges(listener);
 
@@ -65,14 +65,14 @@ describe('watchChanges', () => {
     await offerItem.setValue({ origin: CUSTOM, mode: 'use' });
     expect(listener).toHaveBeenCalledTimes(2);
     await seenNotesItem.setValue({ firstDone: true, firstSkip: false });
-    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledTimes(3);
 
     stop();
     await changeMarkerItem.setValue(6);
-    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledTimes(3);
   });
 
-  it('follows only the change marker in a Canvas page', async () => {
+  it('follows the change marker and the seen notes in a Canvas page, but not the offer', async () => {
     const listener = vi.fn();
     const stop = inpageHost().watchChanges(listener);
 
@@ -80,7 +80,31 @@ describe('watchChanges', () => {
     expect(listener).not.toHaveBeenCalled();
     await changeMarkerItem.setValue(7);
     expect(listener).toHaveBeenCalledTimes(1);
+    await seenNotesItem.setValue({ firstDone: false, firstSkip: true });
+    expect(listener).toHaveBeenCalledTimes(2);
     stop();
+  });
+});
+
+describe('writes of the surface', () => {
+  it('saves a seen note and keeps the other one', async () => {
+    await seenNotesItem.setValue({ firstDone: true, firstSkip: false });
+
+    await extensionPageHost().markNoteSeen('firstSkip');
+    expect(await seenNotesItem.getValue()).toEqual({ firstDone: true, firstSkip: true });
+
+    await inpageHost().markNoteSeen('firstDone');
+    expect(await seenNotesItem.getValue()).toEqual({ firstDone: true, firstSkip: true });
+  });
+
+  it('dismisses the offer on extension pages only', async () => {
+    await offerItem.setValue({ origin: CUSTOM, mode: 'use' });
+
+    await inpageHost().dismissOffer();
+    expect(await offerItem.getValue()).not.toBeNull();
+
+    await extensionPageHost().dismissOffer();
+    expect(await offerItem.getValue()).toBeNull();
   });
 });
 
@@ -114,16 +138,16 @@ describe('openInCanvasTab', () => {
 });
 
 describe('sendFromContentScript', () => {
-  const MESSAGE = { type: 'weekrow:courses' } as const;
+  const MESSAGE = { type: 'weekrow:change-address' } as const;
 
   function context(valid: boolean): ScriptContext & { notifyInvalidated: Mock<() => void> } {
     return { isInvalid: !valid, notifyInvalidated: vi.fn<() => void>() };
   }
 
   it('sends while the extension is there', async () => {
-    const send = vi.fn(async () => ({ courses: [] }));
+    const send = vi.fn(async () => ({ ok: true }));
     await expect(sendFromContentScript(MESSAGE, context(true), send)).resolves.toEqual({
-      courses: [],
+      ok: true,
     });
     expect(send).toHaveBeenCalledWith(MESSAGE);
   });

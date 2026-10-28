@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { offerItem, settingsItem } from '../../platform/storage';
+import { offerItem } from '../../platform/storage';
 import { sessionCacheItem } from '../cache';
 import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
 import { FULL_REFRESH_INTERVAL_MS } from '../policy';
@@ -19,6 +19,8 @@ import {
   useScenarioClock,
   viewItems,
   weekOf,
+  ART,
+  signInOtherUser,
 } from '../testing/harness';
 
 const C = IDS.courses;
@@ -194,6 +196,45 @@ describe('first load', () => {
     expect(h.canvas.callsOf('listCustomGradeStatuses')).toEqual([[[C.history]]]);
   });
 
+  it('asks for the teacher status names once, however many commits bring the status', async () => {
+    const h = await createHarness();
+    const release = h.canvas.hold('listCustomGradeStatuses');
+
+    await h.owner.getState(PANEL);
+    await vi.waitFor(() => expect(h.canvas.callsOf('listCustomGradeStatuses')).toHaveLength(1));
+    // The weeks around it load and commit while the first request is still out.
+    await h.owner.getState({ ...PANEL, weekOffset: 1 });
+    await h.owner.getState({ ...PANEL, weekOffset: -1 });
+    await vi.advanceTimersByTimeAsync(1000);
+    release();
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('listCustomGradeStatuses')).toEqual([[[C.history]]]);
+  });
+
+  it('does not ask again for names that Canvas never answered, until a later round', async () => {
+    const h = await createHarness();
+    h.canvas.fail('listCustomGradeStatuses', canvasError('server', 500), { times: 1 });
+    await loadReady(h);
+    await h.owner.settled();
+
+    // The follow-up ends after one request, even though the names are still missing.
+    expect(h.canvas.callsOf('listCustomGradeStatuses')).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await h.owner.settled();
+    expect(h.canvas.callsOf('listCustomGradeStatuses')).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(61_000);
+    await h.owner.trigger('focus');
+    await h.owner.settled();
+    expect(h.canvas.callsOf('listCustomGradeStatuses')).toHaveLength(2);
+    const essay = `assignment:${IDS.assignments.historyEssayDraft}`;
+    expect(findItem(expectReady(await h.owner.getState(PANEL)), essay)?.chip).toEqual({
+      kind: 'teacher_status',
+      name: 'Incomplete',
+    });
+  });
+
   it('keeps only the assignment fields that the list reads in storage.session', async () => {
     const h = await createHarness();
     await loadReady(h);
@@ -353,6 +394,50 @@ describe('first load', () => {
 
     expect(after.view).toEqual(before.view);
     expect(h.canvas.calls).toEqual([]);
+  });
+
+  it('starts from nothing when the stored cache belongs to another address', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    const stored = await sessionCacheItem.getValue();
+    if (stored === null) throw new Error('Expected a stored cache');
+    await sessionCacheItem.setValue({ ...stored, origin: 'https://other.instructure.com' });
+    h.canvas.resetCalls();
+
+    const restarted = h.restart();
+    expect(await restarted.getState(PANEL)).toEqual({ kind: 'loading' });
+    await restarted.settled();
+
+    expect(h.canvas.callsOf('getProfile')).toHaveLength(1);
+    expect(expectReady(await restarted.getState(PANEL)).view.groups.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['an older shape', { version: 5, origin: ORIGIN, undos: {}, noteIds: {}, patches: [] }],
+    ['a field of the wrong type', { origin: ORIGIN, patches: 'x', pendingDeletes: 7 }],
+  ])('starts from an empty cache when the stored cache has %s', async (_name, stored) => {
+    const h = await createHarness();
+    await fakeBrowser.storage.session.set({ weekrowCache: stored });
+
+    expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
+    await h.owner.settled();
+
+    expectReady(await h.owner.getState(PANEL));
+    expect(h.canvas.callsOf('getProfile')).toHaveLength(1);
+  });
+
+  it('runs one first round for the state requests that arrive while it runs', async () => {
+    const h = await createHarness();
+    const release = h.canvas.hold('getProfile');
+
+    for (let index = 0; index < 4; index += 1) {
+      expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
+    }
+    release();
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('getProfile')).toHaveLength(1);
+    expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
   });
 
   it('builds a scoped view for a course home page', async () => {
@@ -601,6 +686,7 @@ describe('states', () => {
       kind: 'no_courses',
       origin: ORIGIN,
       offer: null,
+      allCourses: [],
     });
     expect(h.canvas.callsOf('listPlannerItems')).toHaveLength(0);
   });
@@ -704,24 +790,6 @@ describe('states', () => {
     },
   );
 
-  it('goes stale when every request of a load with no shared request fails with 5xx', async () => {
-    const h = await createHarness();
-    await loadReady(h);
-    for (const method of ['listUndatedAssignments', 'listAssignmentsByIds'] as const) {
-      h.canvas.fail(method, canvasError('server', 503));
-    }
-    await settingsItem.setValue({ ...(await settingsItem.getValue()), hiddenCourseIds: [] });
-
-    // Showing the club course needs only its own requests.
-    await h.owner.refresh('settings', FROM_PANEL);
-    await h.owner.settled();
-    const state = expectReady(await h.owner.getState(PANEL));
-
-    expect(h.canvas.callsOf('listUndatedAssignments')).toContainEqual([C.club]);
-    expect(state.stale).toMatchObject({ offline: false });
-    expect(state.skippedCourses).toEqual([]);
-  });
-
   it('names the courses whose requests failed, by their course code', async () => {
     const h = await createHarness();
     h.canvas.fail('listUndatedAssignments', canvasError('not_found', 404), {
@@ -790,40 +858,31 @@ describe('states', () => {
     expect(personal.view.courseFilter).toBeNull();
   });
 
-  it('lists every active course for the settings page, hidden ones included', async () => {
+  it('lists every active course in the state, hidden ones included', async () => {
     const h = await createHarness();
-    const courses = await h.owner.listCourses();
-    expect(courses.map((course) => course.id)).toEqual([
-      C.history,
-      C.biology,
-      C.calculus,
-      C.chemistry,
-      C.club,
-      C.orientation,
-    ]);
+    const all = [C.history, C.biology, C.calculus, C.chemistry, C.club, C.orientation];
+
+    const state = await loadReady(h);
+
+    expect(state.allCourses.map((course) => course.id)).toEqual(all);
+    expect(state.taskCourses.map((course) => course.id)).not.toContain(C.club);
+    // The settings page asks for the same list with its own surface.
+    const page = expectReady(await h.owner.getState({ ...PANEL, surface: 'page' }));
+    expect(page.allCourses.map((course) => course.id)).toEqual(all);
+  });
+
+  it('answers a settings page that asks first with loading, then with the courses', async () => {
+    const h = await createHarness();
+    const request = { ...PANEL, surface: 'page' } as const;
+
+    expect(await h.owner.getState(request)).toEqual({ kind: 'loading' });
+    await h.owner.settled();
+
+    expect(expectReady(await h.owner.getState(request)).allCourses).toHaveLength(6);
   });
 });
 
 describe('another user', () => {
-  const ART = '900';
-
-  /** Signs another student in to the same Canvas, with one course and no work. */
-  function signInOtherUser(h: Awaited<ReturnType<typeof createHarness>>): void {
-    const scenario = h.canvas.scenario;
-    const [template] = scenario.courses;
-    if (template === undefined) throw new Error('The scenario has no course');
-    scenario.self = { ...scenario.self, id: '7777', name: 'Sam Other' };
-    scenario.profile = { ...scenario.profile, id: '7777', name: 'Sam Other' };
-    scenario.courses = [{ ...template, id: ART, name: 'Art 101', course_code: 'ART 101' }];
-    scenario.groups = [];
-    scenario.colors = { custom_colors: {} };
-    scenario.dashboardPositions = { dashboard_positions: {} };
-    scenario.plannerItems = [];
-    scenario.assignments = {};
-    scenario.undatedAssignments = {};
-    scenario.customGradeStatuses = {};
-  }
-
   it('drops every piece of the old user and loads the new one from scratch', async () => {
     const h = await createHarness();
     const before = await loadReady(h);
@@ -832,34 +891,35 @@ describe('another user', () => {
       kind: 'deleteTask',
       noteId: IDS.notes.libraryBooksToday,
     });
-    const undoToken = reply.undo?.token ?? '';
-    expect(expectReady(await h.owner.getState({ ...PANEL, undoToken })).undo).toEqual({
-      kind: 'deleted',
-      count: 1,
+    expect(reply.undo).toEqual({
+      kind: 'delete',
+      userId: IDS.user,
+      origin: ORIGIN,
+      noteId: IDS.notes.libraryBooksToday,
     });
     signInOtherUser(h);
     await vi.advanceTimersByTimeAsync(61_000);
 
     await h.owner.trigger('focus');
     await h.owner.settled();
-    const after = expectReady(await h.owner.getState({ ...PANEL, undoToken }));
+    const after = expectReady(await h.owner.getState(PANEL));
 
     expect(h.canvas.callsOf('getProfile')).toHaveLength(2);
     expect(viewItems(after.view)).toEqual([]);
     expect(after.view.rings.map((ring) => ring.courseId)).toEqual([]);
     expect(after.taskCourses).toEqual([{ id: ART, name: 'Art 101' }]);
-    // The surface that shows the old user's Undo notice learns that it is gone.
-    expect(after.undo).toBeNull();
+    // A surface tells the new user from the old one by this id.
+    expect(after.userId).toBe('7777');
     const cached = await sessionCacheItem.getValue();
     if (cached === null) throw new Error('Expected a stored cache');
     expect(cached.session?.profile.id).toBe('7777');
     expect(cached.details).toEqual({});
     expect(Object.keys(cached.undated)).toEqual([ART]);
     expect(cached.patches).toEqual([]);
-    expect(cached.undos).toEqual({});
+    expect(cached.pendingDeletes).toEqual({});
 
     // The old user's pending delete is gone with the data.
-    await h.owner.act({ kind: 'endUndo', token: undoToken });
+    await h.owner.act({ kind: 'sendDelete', noteId: IDS.notes.libraryBooksToday });
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     await h.owner.settled();
     expect(h.canvas.callsOf('deleteNote')).toEqual([]);

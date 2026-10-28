@@ -12,7 +12,7 @@
 import type { PageTheme } from '../inpage/theme';
 import type { Settings } from '../model/types';
 
-export type ThemeChoice = Settings['theme'];
+type ThemeChoice = Settings['theme'];
 
 /** The `data-theme` of an extension page, or `null` to follow `prefers-color-scheme`. */
 export function extensionPageTheme(theme: ThemeChoice): PageTheme | null {

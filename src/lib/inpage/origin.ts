@@ -6,7 +6,7 @@
  * detected Canvas to the background, which saves the page origin when the rules allow it.
  */
 import { browser } from 'wxt/browser';
-import { isCanvasDetectedReply, type CanvasDetectedMessage } from '../data/protocol';
+import type { CanvasDetectedMessage, CanvasDetectedReply } from '../data/protocol';
 import { isInstructureHost, isTestOrBetaHost, normalizeAddress } from '../platform/address';
 import { isCanvasDocument } from '../platform/detectCanvas';
 import { canvasOriginItem } from '../platform/storage';
@@ -30,8 +30,9 @@ export function canAutoSaveOrigin(pageOrigin: string, savedOrigin: string | null
 async function reportCanvas(pageOrigin: string): Promise<string | null> {
   const message: CanvasDetectedMessage = { type: 'weekrow:canvas-detected', origin: pageOrigin };
   try {
-    const reply: unknown = await browser.runtime.sendMessage(message);
-    if (isCanvasDetectedReply(reply)) return reply.origin;
+    // The router answers a rejected message with no reply at all.
+    const reply = (await browser.runtime.sendMessage(message)) as CanvasDetectedReply | undefined;
+    if (reply !== undefined) return reply.origin;
   } catch {
     // The background may be updating. The next page load reports the page again.
   }

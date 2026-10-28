@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { render as renderNow } from 'preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS, type Ring, type SurfaceState } from '../model/types';
@@ -823,6 +823,7 @@ describe('settings in place', () => {
       kind: 'no_courses',
       origin: 'https://school.instructure.com',
       offer: null,
+      allCourses: [],
     });
     openGear();
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
@@ -1006,7 +1007,7 @@ describe('notices', () => {
 });
 
 describe('task form', () => {
-  it('creates a task on today with no time', () => {
+  it('creates a task on today with no time', async () => {
     const { actions } = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
     const form = screen.getByRole('form', { name: 'New task' });
@@ -1023,7 +1024,50 @@ describe('task form', () => {
       courseId: null,
       details: 'Two books',
     });
-    expect(screen.queryByRole('form')).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('form')).toBeNull());
+  });
+
+  it('keeps the form open with a disabled Saving button until Canvas answers, then closes it', async () => {
+    const { actions } = setup();
+    let answer: (saved: boolean) => void = () => undefined;
+    actions.createTask.mockImplementation(
+      () => new Promise<boolean>((resolve) => (answer = resolve)),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
+    const form = screen.getByRole('form', { name: 'New task' });
+    fireEvent.input(within(form).getByLabelText('Title'), { target: { value: 'Return books' } });
+
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    const saving = within(form).getByRole('button', { name: 'Saving' }) as HTMLButtonElement;
+    expect(saving.disabled).toBe(true);
+    expect(
+      (within(form).getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(actions.createTask).toHaveBeenCalledTimes(1);
+    answer(true);
+    await waitFor(() => expect(screen.queryByRole('form')).toBeNull());
+  });
+
+  it('keeps the form and says so when Canvas did not save the task, and sends it again on request', async () => {
+    const { actions } = setup();
+    actions.createTask.mockResolvedValueOnce(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
+    const form = screen.getByRole('form', { name: 'New task' });
+    fireEvent.input(within(form).getByLabelText('Title'), { target: { value: 'Return books' } });
+
+    fireEvent.submit(form);
+
+    expect((await within(form).findByRole('alert')).textContent).toBe(
+      "Couldn't save the task. Try again.",
+    );
+    expect(
+      (within(form).getByRole('button', { name: 'Add task' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.submit(form);
+    await waitFor(() => expect(screen.queryByRole('form')).toBeNull());
+    expect(actions.createTask).toHaveBeenCalledTimes(2);
   });
 
   it('requires a title', () => {

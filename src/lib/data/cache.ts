@@ -14,13 +14,11 @@ import type {
   PlannerOverride,
   Profile,
 } from '../canvas/types';
-import type { AssignmentData, SubmissionData, UndoInfo } from '../model/types';
+import type { AssignmentData, SubmissionData } from '../model/types';
 import { browser } from 'wxt/browser';
 import { defineItem } from '../platform/storage';
 import { emptyCoverage, type PlannerCoverage } from './coverage';
-import type { OverrideFlags, OverrideTarget, Patch } from './patches';
-
-export const CACHE_VERSION = 5;
+import type { Patch } from './patches';
 
 /** Data that loads once per browser session. */
 export interface SessionData {
@@ -31,23 +29,11 @@ export interface SessionData {
   positions: DashboardPositions;
 }
 
-/** What failed: a refresh round, or a write of the student. */
-export type FailureSource = 'round' | 'write';
-
 export type Failure =
   /** Any 401, then `GET /api/v1/users/self` also returned 401. */
   | { kind: 'signed_out' }
-  /**
-   * A refresh or a write failed with a "Can't refresh" cause. The cause is kept for logs and
-   * retries. A write failure does not stop the loads a view needs.
-   */
-  | {
-      kind: 'stale';
-      offline: boolean;
-      cause: CanvasErrorKind | 'unknown';
-      at: number;
-      source: FailureSource;
-    };
+  /** A refresh failed with a "Can't refresh" cause. The cause is kept for logs and retries. */
+  | { kind: 'stale'; offline: boolean; cause: CanvasErrorKind | 'unknown'; at: number };
 
 export type RoundScope = 'light' | 'full';
 
@@ -60,35 +46,7 @@ export interface RoundLimits {
   lastFullAt: number | null;
 }
 
-/** One item of an undoable override write, with its flags from before the write. */
-export interface UndoEntry {
-  key: string;
-  target: OverrideTarget;
-  previous: OverrideFlags;
-}
-
-export type UndoRecord =
-  | { kind: 'overrides'; entries: UndoEntry[] }
-  /**
-   * A delayed task delete. The DELETE is sent when the Undo notice ends, and at the latest
-   * when its patch's `deleteAt` comes. Undo drops the patch before the DELETE starts.
-   */
-  | { kind: 'delete'; patchId: number };
-
-/**
- * An undo record. It has no time limit: it stays until its Undo notice ends, so keyboard and
- * screen reader users have the time they need (decision 6).
- */
-export interface StoredUndo {
-  record: UndoRecord;
-  /** What the Undo notice says. A ready state reports it while the notice still applies. */
-  info: UndoInfo;
-  /** Epoch milliseconds when the action ran. The oldest records go first past the cap. */
-  createdAt: number;
-}
-
 export interface SessionCache {
-  version: typeof CACHE_VERSION;
   origin: string;
   session: SessionData | null;
   /** The planner items, merged from every load, and the spans they are complete for. */
@@ -105,11 +63,6 @@ export interface SessionCache {
   limited: boolean;
   /** Limited mode only: all assignments keyed by course id. */
   allAssignments: Record<string, AssignmentData[]>;
-  /**
-   * Requests that failed for one course only, such as `details:<assignment id>` or
-   * `undated:<course id>`. They are not tried again until the next refresh round.
-   */
-  skipped: string[];
   /** Courses whose requests failed in the last round. The list shows a short note for them. */
   failedCourses: string[];
   /** Epoch milliseconds of the last successful round. */
@@ -119,13 +72,12 @@ export interface SessionCache {
   /** Writes applied on top of the Canvas data until a later round confirms them. */
   patches: Patch[];
   /**
-   * Undo records by token. They live here, in `storage.session`, so an Undo click still works
-   * after a service worker restart.
+   * Task deletes that wait for the end of their Undo notice, by task id, with the epoch
+   * milliseconds when the DELETE is due at the latest (decision 10). They live here, so a
+   * service worker restart still sends them.
    */
-  undos: Record<string, StoredUndo>;
-  /** Real ids of custom tasks that were created, keyed by their temporary id. */
-  noteIds: Record<string, string>;
-  /** The next id for patches, temporary note ids and undo tokens. */
+  pendingDeletes: Record<string, number>;
+  /** The next id for patches. */
   nextId: number;
 }
 
@@ -183,7 +135,6 @@ export function toAssignmentData(assignment: AssignmentData): AssignmentData {
 
 export function emptyCache(origin: string): SessionCache {
   return {
-    version: CACHE_VERSION,
     origin,
     session: null,
     planner: emptyCoverage(),
@@ -193,26 +144,14 @@ export function emptyCache(origin: string): SessionCache {
     gradeStatuses: {},
     limited: false,
     allAssignments: {},
-    skipped: [],
     failedCourses: [],
     lastSuccessAt: null,
     failure: null,
     limits: { lastRoundAt: null, lastRoundScope: null, lastFullAt: null },
     patches: [],
-    undos: {},
-    noteIds: {},
+    pendingDeletes: {},
     nextId: 1,
   };
-}
-
-/** Whether a stored value is a cache this version can read. */
-export function isSessionCache(value: unknown): value is SessionCache {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    (value as { version?: unknown }).version === CACHE_VERSION &&
-    typeof (value as { origin?: unknown }).origin === 'string'
-  );
 }
 
 /**
@@ -245,25 +184,6 @@ export function setupStatusOrigin(status: SetupStatus | null): string | null {
   }
 }
 
-/** Whether a stored value is a setup status this version can read. */
-export function isSetupStatus(value: unknown): value is SetupStatus {
-  if (typeof value !== 'object' || value === null) return false;
-  const fields = value as { kind?: unknown; origin?: unknown; text?: unknown };
-  switch (fields.kind) {
-    case 'entering':
-      return true;
-    case 'rejected':
-      return typeof fields.text === 'string';
-    case 'checking':
-    case 'redirects':
-    case 'not_canvas':
-    case 'unreachable':
-      return typeof fields.origin === 'string';
-    default:
-      return false;
-  }
-}
-
 /** The parts of the cache that weigh most, each under its own key in `storage.session`. */
 const PART_KEYS = {
   planner: 'weekrowPlanner',
@@ -274,7 +194,7 @@ const PART_KEYS = {
 
 type CachePart = keyof typeof PART_KEYS;
 
-/** The key of everything else: versions, session data, limits, patches and undo records. */
+/** The key of everything else: session data, limits, patches and pending deletes. */
 const HEAD_KEY = 'weekrowCache';
 
 const PARTS = Object.keys(PART_KEYS) as CachePart[];

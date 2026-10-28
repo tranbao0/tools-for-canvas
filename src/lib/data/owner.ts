@@ -9,7 +9,7 @@
  * runs. The background uses it today; a panel page or a content script could host it instead.
  */
 import type { RequestPriority } from '../canvas/limiter';
-import type { CanvasApi, PlannerOverride, TimeRange } from '../canvas/types';
+import type { CanvasApi, PlannerNote, PlannerOverride, TimeRange } from '../canvas/types';
 import type { ProbeResult } from '../canvas/probe';
 import { canAutoSaveOrigin } from '../inpage/origin';
 import {
@@ -23,23 +23,18 @@ import {
   type Offer,
   type Settings,
   type SurfaceState,
-  type UndoInfo,
 } from '../model';
 import { isInstructureHost, normalizeAddress, originMatchPattern } from '../platform/address';
 import type { SeenNotes } from '../platform/storage';
 import type { TaskInput } from '../ui/contract';
 import {
   emptyCache,
-  isSessionCache,
-  isSetupStatus,
   setupStatusOrigin,
   type Failure,
+  type RoundScope,
   type SessionCache,
   type SessionData,
   type SetupStatus,
-  type StoredUndo,
-  type UndoEntry,
-  type UndoRecord,
 } from './cache';
 import {
   chunkInterval,
@@ -58,15 +53,13 @@ import {
   type Interval,
   type PlannerCoverage,
 } from './coverage';
-import { failureFor, isCanvasError, isRefreshFailure } from './failures';
+import { failureFor, isCanvasError } from './failures';
 import {
   applyPatch,
   matchesTarget,
   overrideTargetFor,
   pendingOverride,
   propagateOverrideId,
-  remapNoteId,
-  remapUndoNotes,
   type NotePatch,
   type NoteValue,
   type OverrideFlags,
@@ -74,14 +67,20 @@ import {
   type OverrideTarget,
   type Patch,
 } from './patches';
-import { decideRound, limitsAfterStart, scopeForTrigger, type LimitedTrigger } from './policy';
+import {
+  REFRESH_LIMIT_MS,
+  decideRound,
+  limitsAfterStart,
+  scopeForTrigger,
+  type LimitedTrigger,
+} from './policy';
 import type {
   ActionReply,
-  CourseChoice,
   DataAction,
+  PreviousOverride,
   RefreshReason,
   RequestSurface,
-  SeenNote,
+  StateReply,
   SurfaceRequest,
 } from './protocol';
 import {
@@ -89,14 +88,12 @@ import {
   clearData,
   commitUpdate,
   fetchParts,
-  hasNeeds,
   loadDetails,
+  loadStatuses,
   missingDetailIds,
-  needsFor,
   runRound,
   statusCoursesNeeded,
   type DetailsResult,
-  type RoundKind,
   type RoundUpdate,
 } from './rounds';
 import {
@@ -117,31 +114,27 @@ import {
  * the delete, so a closed panel cannot keep a task alive (decision 10).
  */
 export const MAX_DELETE_DELAY_MS = 2 * 60_000;
-/** At most this many undo records are kept. A record past the cap ends like a closed notice. */
-export const MAX_UNDO_RECORDS = 20;
 /** A view counts as in use for this long after a surface showed it. */
 export const ACTIVE_RANGE_MS = 10 * 60_000;
-/** Temporary ids of custom tasks that Canvas has not created yet. */
-export const TEMP_NOTE_PREFIX = 'pending-';
 
-export interface Clock {
+interface Clock {
   /** Epoch milliseconds. */
   now(): number;
 }
 
-export interface Timers {
+interface Timers {
   setTimeout(callback: () => void, ms: number): unknown;
   clearTimeout(handle: unknown): void;
 }
 
 /** A stored value, such as a storage item from src/lib/platform/storage.ts. */
-export interface StoredValue<T> {
+interface StoredValue<T> {
   getValue(): Promise<T>;
   setValue(value: T): Promise<void>;
 }
 
 /** Everything the owner stores. Only settings, the address, the marker and seen notes are local. */
-export interface DataStore {
+interface DataStore {
   origin: StoredValue<string | null>;
   settings: StoredValue<Settings>;
   changeMarker: StoredValue<number>;
@@ -170,7 +163,7 @@ export interface DataOwnerDeps {
 }
 
 /** Refresh triggers that come from the browser rather than from a surface. */
-export type BrowserTrigger = 'page_loaded' | 'focus' | 'startup';
+type BrowserTrigger = 'page_loaded' | 'focus' | 'startup';
 
 /** Who asked for a refresh. */
 export interface RefreshSource {
@@ -179,13 +172,13 @@ export interface RefreshSource {
   fromExtensionPage: boolean;
 }
 
-export interface RefreshResult {
+interface RefreshResult {
   /** Epoch milliseconds when a full round that the 60-second limit put off can run. */
   retryAt: number | null;
 }
 
 export interface DataOwner {
-  getState(request: SurfaceRequest): Promise<SurfaceState>;
+  getState(request: SurfaceRequest): Promise<StateReply>;
   refresh(reason: RefreshReason, source: RefreshSource): Promise<RefreshResult>;
   trigger(reason: BrowserTrigger): Promise<void>;
   /** A page of `origin` loaded. Only the saved Canvas counts. */
@@ -201,8 +194,6 @@ export interface DataOwner {
   setup(origin: string, fromOffer: boolean): Promise<void>;
   /** Opens the address form. The saved address stays until a new one passes the check. */
   changeAddress(): Promise<void>;
-  /** All active student courses, hidden ones included, for every view of the settings. */
-  listCourses(): Promise<CourseChoice[]>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
@@ -226,20 +217,11 @@ interface ShownView {
   at: number;
 }
 
-type JobKind =
-  /** The planner gap of a view that a surface shows. */
-  | 'view'
-  /** The gap of a neighbor week, loaded before the student opens it. */
-  | 'prefetch'
-  /** A cached week other than the current one, loaded again after a refresh round. */
-  | 'refresh';
-
 /**
  * A planner load outside the refresh rounds, so a new week never waits behind a round. It loads
  * planner items first and shows them, then the assignment details of those items.
  */
 interface PlannerJob {
-  kind: JobKind;
   chunks: Interval[];
   /** Read when a request slot frees up, so a prefetch that a view now needs goes first. */
   priority: RequestPriority;
@@ -265,7 +247,7 @@ interface WriteContext {
   items: Map<string, Item>;
 }
 
-type NoteOperation = 'create' | 'update' | 'delete';
+type NoteOperation = 'update' | 'delete';
 
 /** The saved address while the student checks a different one, otherwise `null`. */
 function otherSavedOrigin(saved: string | null, origin: string): string | null {
@@ -302,9 +284,9 @@ function statusApplies(status: SetupStatus, surface: RequestSurface, saved: stri
   return !(surface === 'inpage' && saved !== null && setupStatusOrigin(status) !== saved);
 }
 
-/** Round failures stop ensure loads. A failed write does not, so a new week still loads. */
+/** A failed round stops the loads of views and planner jobs, until a round succeeds. */
 function blocksLoads(failure: Failure | null): boolean {
-  return failure !== null && !(failure.kind === 'stale' && failure.source === 'write');
+  return failure !== null;
 }
 
 function previousFlags(item: Item): OverrideFlags {
@@ -333,8 +315,14 @@ function noteKey(noteId: string): string {
   return `${NOTE_KEY_PREFIX}${noteId}`;
 }
 
-function isTempNoteId(id: string): boolean {
-  return id.startsWith(TEMP_NOTE_PREFIX);
+function noteValue(note: PlannerNote): NoteValue {
+  return {
+    id: note.id,
+    title: note.title,
+    details: note.details,
+    todoDate: note.todo_date,
+    courseId: note.course_id,
+  };
 }
 
 function noteInput(note: NoteValue) {
@@ -356,6 +344,7 @@ async function createOrRecoverOverride(
   api: CanvasApi,
   target: OverrideTarget,
   flags: OverrideFlags,
+  userId: string | null,
 ): Promise<PlannerOverride> {
   try {
     return await api.createOverride({
@@ -370,40 +359,34 @@ async function createOrRecoverOverride(
       (override) => override.workflow_state !== 'deleted' && matchesTarget(override, target),
     );
     if (existing === undefined) throw error;
+    // The override list belongs to the user who is signed in now. Another user's flags never
+    // go onto it.
+    if (existing.user_id !== userId) throw new UserChangedError();
     return api.updateOverride(existing.id, flags);
   }
 }
 
-interface Restored {
-  cache: SessionCache;
-  /** Override writes that never got an answer. They are sent again. */
-  resend: number[];
-  /** Some pending writes could not be sent again, so the list must sync with Canvas. */
-  dropped: boolean;
-}
-
 /**
  * The cache after a service worker restart. Writes that never got an answer died with the old
- * worker. Override writes are sent again, because the POST, 400 recovery and PUT sequence is
- * safe to repeat. A task create or update is not, so it is dropped. Delayed deletes stay.
+ * worker, so their patches go. Confirmed patches stay, and so do the task deletes that wait for
+ * their time (`pendingDeletes`). `dropped` tells that the list must sync with Canvas.
  */
-function restore(stored: SessionCache): Restored {
-  const patches: Patch[] = [];
-  const resend: number[] = [];
-  let dropped = false;
-  for (const patch of stored.patches) {
-    if (patch.confirmedAt !== null) {
-      patches.push(patch);
-    } else if (patch.kind === 'override') {
-      patches.push(patch);
-      resend.push(patch.id);
-    } else if (patch.note === null && patch.deleteAt !== null) {
-      patches.push(patch);
-    } else {
-      dropped = true;
-    }
-  }
-  return { cache: { ...stored, patches }, resend, dropped };
+function withoutUnsentWrites(stored: SessionCache): { cache: SessionCache; dropped: boolean } {
+  const patches = stored.patches.filter(
+    (patch) =>
+      patch.confirmedAt !== null ||
+      (patch.kind === 'note' &&
+        patch.note === null &&
+        stored.pendingDeletes[patch.noteId] !== undefined),
+  );
+  const waiting = new Set(patches.map((patch) => (patch.kind === 'note' ? patch.noteId : '')));
+  const pendingDeletes = Object.fromEntries(
+    Object.entries(stored.pendingDeletes).filter(([noteId]) => waiting.has(noteId)),
+  );
+  return {
+    cache: { ...stored, patches, pendingDeletes },
+    dropped: patches.length < stored.patches.length,
+  };
 }
 
 export function createDataOwner(deps: DataOwnerDeps): DataOwner {
@@ -425,22 +408,31 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   const jobs = new Set<PlannerJob>();
   /** Assignment ids whose details a planner job is fetching now. */
   const detailsInFlight = new Set<string>();
-  const pending: Record<RoundKind, boolean> = { full: false, light: false, ensure: false };
+  const pending: Record<RoundScope, boolean> = { full: false, light: false };
   let running = false;
   let runner: Promise<void> = Promise.resolve();
   let deferTimer: unknown = null;
+  let lightTimer: unknown = null;
 
-  let writeChain: Promise<void> = Promise.resolve();
+  /** Writes of the student run one after the other. Creates have their own queue. */
+  const chains = { writes: Promise.resolve(), creates: Promise.resolve() };
   let pendingWrites = 0;
-  let confirmedSinceRefresh = false;
+  /** A write finished or failed since the last forced round, so Canvas may differ from the cache. */
+  let syncAfterWrites = false;
   let persistChain: Promise<void> = Promise.resolve();
 
-  /** The latest-send timers of delayed task deletes, by patch id. */
-  const deleteTimers = new Map<number, unknown>();
+  /** The latest-send timers of delayed task deletes, by task id. */
+  const deleteTimers = new Map<string, unknown>();
   /** Delayed deletes whose DELETE job is queued. */
-  const queuedDeletes = new Set<number>();
+  const queuedDeletes = new Set<string>();
   /** Delayed deletes whose DELETE request has started. Undo can no longer stop them. */
-  const startedDeletes = new Set<number>();
+  const startedDeletes = new Set<string>();
+  /** Writes and deletes that still use a Canvas address. Its access stays until they end. */
+  const usingOrigin = new Map<string, Set<Promise<unknown>>>();
+  /** Courses whose teacher status names a follow-up request is loading now. */
+  const statusesInFlight = new Set<string>();
+  /** Courses whose names did not load. The next round tries them again. */
+  const statusesFailed = new Set<string>();
   const tasks = new Set<Promise<unknown>>();
 
   function track(promise: Promise<unknown>): void {
@@ -482,17 +474,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     track(bump());
   }
 
-  /** The real id of a custom task, for a temporary id that Canvas has replaced. */
-  function resolveNoteId(id: string): string {
-    return cache?.noteIds[id] ?? id;
-  }
-
-  /** The item key, with a temporary task id replaced by its real id. */
-  function resolveKey(key: string): string {
-    if (!key.startsWith(NOTE_KEY_PREFIX)) return key;
-    return noteKey(resolveNoteId(key.slice(NOTE_KEY_PREFIX.length)));
-  }
-
   async function load(): Promise<void> {
     const [origin, stored, setup, marker] = await Promise.all([
       store.origin.getValue(),
@@ -501,7 +482,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       store.changeMarker.getValue(),
     ]);
     knownOrigin = origin;
-    setupStatus = isSetupStatus(setup) ? setup : null;
+    setupStatus = setup;
     lastMarker = marker;
     // A check that was running when the old worker stopped never finished, so run it again.
     if (setupStatus?.kind === 'checking') track(runSetupCheck(setupStatus.origin));
@@ -509,22 +490,32 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       cache = null;
       return;
     }
-    if (!isSessionCache(stored) || stored.origin !== origin) {
+    if (stored === null || stored.origin !== origin) {
       cache = emptyCache(origin);
       return;
     }
-    const restored = restore(stored);
-    cache = restored.cache;
-    for (const patch of cache.patches) {
-      if (patch.kind === 'note' && patch.confirmedAt === null) scheduleDelete(patch);
+    let restored: ReturnType<typeof withoutUnsentWrites>;
+    try {
+      // A cache of an older shape can lack fields. They take their empty values.
+      restored = withoutUnsentWrites({ ...emptyCache(origin), ...stored });
+    } catch (error) {
+      deps.log('cache restore', error);
+      cache = emptyCache(origin);
+      return;
     }
-    for (const id of restored.resend) enqueueWrite(() => runOverrideWrite(id));
-    // Sent writes ask for a full round when they finish. Dropped ones need it now.
-    if (restored.dropped && restored.resend.length === 0) scheduleForcedFull();
+    cache = restored.cache;
+    for (const [noteId, deleteAt] of Object.entries(cache.pendingDeletes)) {
+      scheduleDelete(noteId, deleteAt);
+    }
+    if (restored.dropped) scheduleForcedFull();
   }
 
   function ready(): Promise<void> {
-    loading ??= load();
+    // A failed load is tried again by the next request.
+    loading ??= load().catch((error: unknown) => {
+      loading = null;
+      throw error;
+    });
     return loading;
   }
 
@@ -594,10 +585,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   // ---------------------------------------------------------------------------------------------
 
   function anyPending(): boolean {
-    return pending.full || pending.light || pending.ensure;
+    return pending.full || pending.light;
   }
 
-  function takeJob(): RoundKind | null {
+  function takeJob(): RoundScope | null {
     if (pending.full) {
       pending.full = false;
       pending.light = false;
@@ -606,10 +597,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (pending.light) {
       pending.light = false;
       return 'light';
-    }
-    if (pending.ensure) {
-      pending.ensure = false;
-      return 'ensure';
     }
     return null;
   }
@@ -628,7 +615,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     })();
   }
 
-  function schedule(kind: RoundKind): void {
+  function schedule(kind: RoundScope): void {
     pending[kind] = true;
     pump();
   }
@@ -641,9 +628,28 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   function cancelDefer(): void {
-    if (deferTimer === null) return;
-    timers.clearTimeout(deferTimer);
+    for (const timer of [deferTimer, lightTimer]) if (timer !== null) timers.clearTimeout(timer);
     deferTimer = null;
+    lightTimer = null;
+  }
+
+  /**
+   * Looks again at the courses that the settings show, when the 60-second limit put off their
+   * light round. This timer is a best effort too: any later light round loads the same work.
+   */
+  function deferLight(at: number | null): void {
+    if (at === null || lightTimer !== null) return;
+    lightTimer = timers.setTimeout(
+      () => {
+        lightTimer = null;
+        track(
+          showsUnloadedCourse()
+            .then((shows) => (shows ? applyTrigger('settings') : null))
+            .then(deferLight),
+        );
+      },
+      Math.max(0, at - clock.now()),
+    );
   }
 
   /**
@@ -721,6 +727,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     deleteTimers.clear();
     queuedDeletes.clear();
     startedDeletes.clear();
+    statusesInFlight.clear();
+    statusesFailed.clear();
     // Running planner jobs finish without a trace, so their parts can load again.
     jobs.clear();
     detailsInFlight.clear();
@@ -742,30 +750,68 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     await bump();
   }
 
-  async function executeRound(job: RoundKind): Promise<void> {
+  /**
+   * The student is signed out of Canvas. Everything of the session goes, and the generation
+   * grows, so no queued write, running load or late reply can touch the cleared cache. A task
+   * delete that waits for the end of its Undo notice is lost with it: no session is left to
+   * send it with, and the task stays in Canvas.
+   */
+  function signOut(failure: Failure): void {
+    if (cache === null) return;
+    generation += 1;
+    clearSessionWork();
+    cache = { ...clearData(cache), failure };
+    // Whoever calls this, the next person to open a surface must not see the old list.
+    persist();
+    bumpLater();
+  }
+
+  /**
+   * Loads the teacher status names that visible items need and the cache lacks. It runs after a
+   * round or a planner job committed, beside the list, because a name changes only the text of
+   * a chip, never where an item goes. It never starts itself again: a course whose names fail
+   * waits for the next round.
+   */
+  function loadStatusNames(settings: Settings, afterRound: boolean): void {
+    const origin = knownOrigin;
+    const session = cache?.session;
+    if (origin === null || cache === null || session == null) return;
+    if (afterRound) statusesFailed.clear();
+    const ids = statusCoursesNeeded(cache, visibleCourseIds(session, settings)).filter(
+      (id) => !statusesInFlight.has(id) && !statusesFailed.has(id),
+    );
+    if (ids.length === 0) return;
+    ids.forEach((id) => statusesInFlight.add(id));
+    const gen = generation;
+    const api = apiFor(origin);
+    track(
+      (async () => {
+        const names = await loadStatuses(api, ids);
+        ids.forEach((id) => statusesInFlight.delete(id));
+        if (gen !== generation || cache === null) return;
+        ids.filter((id) => names[id] === undefined).forEach((id) => statusesFailed.add(id));
+        if (Object.keys(names).length === 0) return;
+        cache = { ...cache, gradeStatuses: { ...cache.gradeStatuses, ...names } };
+        persist();
+        await bump();
+      })(),
+    );
+  }
+
+  async function executeRound(job: RoundScope): Promise<void> {
     const origin = knownOrigin;
     if (origin === null || cache === null) return;
-    if (job === 'ensure' && blocksLoads(cache.failure)) return;
     if (!(await deps.hasAccess(origin))) return;
     const gen = generation;
     const context = await viewContext(origin);
     if (gen !== generation || cache === null) return;
 
-    let kind: RoundKind = job;
+    let kind = job;
     if (cache.session === null) {
       kind = 'full';
       cache = { ...cache, limits: limitsAfterStart(cache.limits, 'full', context.now) };
-    } else if (kind === 'ensure') {
-      const needs = needsFor({
-        cache,
-        ranges: rangesInUse(cache.session, context),
-        visibleCourseIds: visibleCourseIds(cache.session, context.settings),
-        hiddenCourseIds: context.settings.hiddenCourseIds,
-        detailsInFlight,
-      });
-      if (!hasNeeds(needs)) return;
     }
-    if (kind !== 'ensure') bumpLater();
+    bumpLater();
 
     const startedAt = context.now;
     const api = apiFor(origin);
@@ -794,22 +840,23 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
     if (update !== null) {
       cache = prune(settlePatches(commitUpdate(cache, update, clock.now()), startedAt), context);
-      // Teacher status names load after the list shows, in an ensure round of their own.
-      const session = cache.session;
-      if (
-        session !== null &&
-        statusCoursesNeeded(cache, visibleCourseIds(session, context.settings)).length > 0
-      ) {
-        schedule('ensure');
-      }
+      loadStatusNames(context.settings, true);
     } else if (failure?.kind === 'signed_out') {
-      clearSessionWork();
-      cache = { ...clearData(cache), failure };
+      signOut(failure);
     } else {
       cache = { ...cache, failure };
     }
     persist();
     await bump();
+  }
+
+  /** Whether the settings show a course whose work the cache has not loaded. */
+  async function showsUnloadedCourse(): Promise<boolean> {
+    const session = cache?.session;
+    if (cache === null || session == null) return false;
+    const loaded = cache.limited ? cache.allAssignments : cache.undated;
+    const settings = await store.settings.getValue();
+    return visibleCourseIds(session, settings).some((id) => loaded[id] === undefined);
   }
 
   /** Applies the refresh policy. Resolves with the time of a full round it put off, if any. */
@@ -834,7 +881,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         deferFull(decision.at);
         return decision.at;
       case 'skip':
-        return null;
+        // A course that shows again waits for the end of the limit.
+        return trigger === 'settings' && cache.limits.lastRoundAt !== null
+          ? cache.limits.lastRoundAt + REFRESH_LIMIT_MS
+          : null;
     }
   }
 
@@ -874,7 +924,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const gaps = gapsIn(coverage, interval, pendingIntervals());
     if (gaps.length === 0) return;
     const job: PlannerJob = {
-      kind,
       chunks: gaps.flatMap((gap) => chunkInterval(gap, null)),
       priority: kind === 'view' ? 'high' : 'low',
       shown: kind === 'view',
@@ -907,7 +956,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       lastFullAt !== null && own.some((part) => staleParts(coverage, part, lastFullAt).length > 0);
     const times = itemTimes(coverage);
     const job: PlannerJob = {
-      kind: 'refresh',
       chunks: stale.flatMap((part) => chunkInterval(part, times)),
       priority: 'normal',
       shown: true,
@@ -985,7 +1033,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     );
     const detailIds = reloadDetails
       ? notInFlight(lookup)
-      : missingDetailIds(lookup, cache, detailsInFlight);
+      : missingDetailIds(lookup, cache.details, detailsInFlight);
     const ids = Object.values(detailIds).flat();
     ids.forEach((id) => detailsInFlight.add(id));
     persist();
@@ -1001,16 +1049,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     ids.forEach((id) => detailsInFlight.delete(id));
     if (gen !== generation || cache?.session == null) return;
-    const loadedFor = cache.session;
     cache = {
       ...cache,
       details: { ...cache.details, ...result.details },
-      skipped: [...new Set([...cache.skipped, ...result.skipped])],
       failedCourses: [...new Set([...cache.failedCourses, ...result.failedCourses])],
     };
-    // A teacher status in the new details needs its name, which an ensure round loads.
-    const visible = visibleCourseIds(loadedFor, context.settings);
-    if (statusCoursesNeeded(cache, visible).length > 0) schedule('ensure');
+    loadStatusNames(context.settings, false);
     persist();
     await bump();
   }
@@ -1035,8 +1079,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const failure = await failureFor(error, api, clock.now());
     if (gen !== generation || cache === null) return;
     if (failure.kind === 'signed_out') {
-      clearSessionWork();
-      cache = { ...clearData(cache), failure };
+      signOut(failure);
     } else if (!blocksLoads(cache.failure)) {
       cache = { ...cache, failure };
     }
@@ -1053,7 +1096,18 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    * `instructure.com` host (a required permission), not the saved address, and not the address
    * of a check that is running or that Retry can run again.
    */
-  async function releaseGrant(origin: string): Promise<void> {
+  function releaseGrant(origin: string): Promise<void> {
+    const busy = usingOrigin.get(origin);
+    if (busy?.size) {
+      // What still uses the address ends first, without holding the caller: it can take long.
+      // The student may come back to the address meanwhile, so the checks follow the wait.
+      track(Promise.all([...busy]).then(() => releaseGrant(origin)));
+      return Promise.resolve();
+    }
+    return removeUnusedGrant(origin);
+  }
+
+  async function removeUnusedGrant(origin: string): Promise<void> {
     if (isInstructureHost(origin)) return;
     const pattern = originMatchPattern(origin);
     if (pattern === null) return;
@@ -1077,8 +1131,43 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (previous !== null && previous !== setupStatusOrigin(status)) await releaseGrant(previous);
   }
 
+  /**
+   * Sends the task deletes that wait for the end of their Undo notice to the Canvas that the
+   * student leaves, for the same student only. After a sign-out or another student they cannot go
+   * out: there is no session to send them with, and they are lost with the cache.
+   */
+  function sendWaitingDeletes(
+    origin: string,
+    left: SessionCache,
+    started: ReadonlySet<string>,
+  ): void {
+    const userId = left.session?.profile.id;
+    const noteIds = Object.keys(left.pendingDeletes).filter((id) => !started.has(id));
+    if (userId === undefined || noteIds.length === 0) return;
+    const api = apiFor(origin);
+    const sending = api
+      .getSelf()
+      .then(async (self) => {
+        if (self.id === userId) await Promise.all(noteIds.map((id) => api.deleteNote(id)));
+      })
+      .catch((error: unknown) => deps.log('task delete', error));
+    holdOrigin(origin, sending);
+    track(sending);
+  }
+
+  /** Keeps the access to a Canvas address until the work ends. */
+  function holdOrigin(origin: string, work: Promise<unknown>): void {
+    const set = usingOrigin.get(origin) ?? new Set();
+    usingOrigin.set(origin, set);
+    set.add(work);
+    void work.then(() => set.delete(work));
+  }
+
   async function handleOrigin(origin: string | null): Promise<void> {
     if (origin === knownOrigin) return;
+    if (knownOrigin !== null && cache !== null) {
+      sendWaitingDeletes(knownOrigin, cache, new Set(startedDeletes));
+    }
     knownOrigin = origin;
     generation += 1;
     clearSessionWork();
@@ -1146,25 +1235,85 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   // Writes
   // ---------------------------------------------------------------------------------------------
 
-  function enqueueWrite(job: () => Promise<boolean>): void {
+  /** What a queued write belongs to: the generation, the Canvas and the user of the cache. */
+  interface WriteStamp {
+    gen: number;
+    origin: string | null;
+    userId: string | null;
+  }
+
+  function writeStamp(): WriteStamp {
+    return {
+      gen: generation,
+      origin: knownOrigin,
+      userId: cache?.session?.profile.id ?? null,
+    };
+  }
+
+  /** Whether the cache is still the one of the stamp's student on the stamp's Canvas. */
+  function sameStudent(stamp: WriteStamp): boolean {
+    return (
+      cache !== null &&
+      stamp.origin !== null &&
+      stamp.origin === knownOrigin &&
+      stamp.userId === (cache.session?.profile.id ?? null)
+    );
+  }
+
+  /**
+   * Whether a stamp still describes the cache: no sign-out, user change, address change or
+   * abandoned queue since.
+   */
+  function isCurrent(stamp: WriteStamp): boolean {
+    return stamp.gen === generation && sameStudent(stamp);
+  }
+
+  /**
+   * Queues a write behind the earlier ones of its queue. A task create has a queue of its own,
+   * so a long run of done marks does not hold the form. The queue stamps the job, and drops it
+   * when it runs for another generation, Canvas or user than the one that queued it. The job
+   * resolves with whether Canvas may now differ from the cache, after a confirmed write or a
+   * failed one, so a forced round syncs the list once the queues are empty.
+   */
+  function enqueueWrite(
+    job: (stamp: WriteStamp) => Promise<boolean>,
+    queue: keyof typeof chains = 'writes',
+  ): Promise<void> {
+    const stamp = writeStamp();
     pendingWrites += 1;
-    writeChain = writeChain.then(async () => {
+    const done = chains[queue].then(async () => {
       try {
-        if (await job()) confirmedSinceRefresh = true;
+        if (!isCurrent(stamp)) return;
+        if (await job(stamp)) syncAfterWrites = true;
       } catch (error) {
         deps.log('write', error);
+        syncAfterWrites = true;
       } finally {
         pendingWrites -= 1;
-        if (pendingWrites === 0 && confirmedSinceRefresh) {
-          confirmedSinceRefresh = false;
+        if (pendingWrites === 0 && syncAfterWrites) {
+          syncAfterWrites = false;
           scheduleForcedFull();
         }
       }
     });
+    chains[queue] = done;
+    if (stamp.origin !== null) holdOrigin(stamp.origin, done);
+    return done;
   }
 
   function findPatch(id: number): Patch | undefined {
     return cache?.patches.find((patch) => patch.id === id);
+  }
+
+  /** The delete of a task that waits for the end of its Undo notice. */
+  function findDeletePatch(noteId: string): NotePatch | undefined {
+    return cache?.patches.find(
+      (patch): patch is NotePatch =>
+        patch.kind === 'note' &&
+        patch.noteId === noteId &&
+        patch.note === null &&
+        patch.confirmedAt === null,
+    );
   }
 
   function replacePatch(id: number, replacement: Patch): void {
@@ -1180,30 +1329,94 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     cache = { ...cache, patches: cache.patches.filter((patch) => patch.id !== id) };
   }
 
+  function setPendingDelete(noteId: string, deleteAt: number | null): void {
+    if (cache === null) return;
+    const others = Object.entries(cache.pendingDeletes).filter(([id]) => id !== noteId);
+    const entries = deleteAt === null ? others : [...others, [noteId, deleteAt]];
+    cache = { ...cache, pendingDeletes: Object.fromEntries(entries) };
+  }
+
+  /** Forgets the delayed delete of a task: its timer, its queue entry and its `pendingDeletes` entry. */
+  function forgetDelete(noteId: string): void {
+    const timer = deleteTimers.get(noteId);
+    if (timer !== undefined) timers.clearTimeout(timer);
+    deleteTimers.delete(noteId);
+    queuedDeletes.delete(noteId);
+    startedDeletes.delete(noteId);
+    setPendingDelete(noteId, null);
+  }
+
   /**
-   * Removes a failed write. A 401 that the sign-in check confirms shows the signed-out state.
-   * A "Can't refresh" cause of decision 11 shows the stale line. Any other cause means Canvas
-   * refused the write itself, such as a task that is gone, so a full round syncs the list.
+   * Gives up the writes that wait in the queue, because the cache may belong to another student
+   * now and the sign-in check did not say. The generation grows, so every queued stamp fails.
+   * Writes that Canvas has not confirmed go, and the delayed task deletes stay: they queue again
+   * under the new generation. A forced round then syncs the list.
    */
-  async function rollback(
-    patchId: number,
-    error: unknown,
-    api: CanvasApi,
-    gen: number,
-  ): Promise<void> {
-    deps.log('write', error);
-    const failure = await failureFor(error, api, clock.now(), 'write');
-    if (gen !== generation || cache === null) return;
-    dropPatch(patchId);
-    if (failure.kind === 'signed_out') {
-      clearSessionWork();
-      cache = { ...clearData(cache), failure };
-    } else if (isRefreshFailure(failure)) {
-      // A failed round says more than a failed write, so it stays.
-      if (!blocksLoads(cache.failure)) cache = { ...cache, failure };
-    } else {
-      scheduleForcedFull();
+  function abandonQueue(): void {
+    if (cache === null) return;
+    generation += 1;
+    const waiting = new Set(Object.keys(cache.pendingDeletes));
+    cache = {
+      ...cache,
+      patches: cache.patches.filter(
+        (patch) =>
+          patch.confirmedAt !== null ||
+          (patch.kind === 'note' && patch.note === null && waiting.has(patch.noteId)),
+      ),
+    };
+    // A DELETE that is out stays: it ends the task, and sending it again skips the check.
+    for (const noteId of queuedDeletes) if (!startedDeletes.has(noteId)) requeueDelete(noteId);
+    persist();
+    scheduleForcedFull();
+  }
+
+  /** Sends a delayed task delete again, under the current generation. */
+  function requeueDelete(noteId: string): void {
+    queuedDeletes.delete(noteId);
+    startedDeletes.delete(noteId);
+    scheduleDelete(noteId, cache?.pendingDeletes[noteId] ?? clock.now());
+  }
+
+  /**
+   * Asks Canvas who is signed in before a write goes on, and resolves with whether it is still
+   * the student of the stamp. Any other answer ends the queue: another student drops the cache, a
+   * 401 signs out, and a failed check (5xx, network) abandons the queue, because writes with free
+   * text must never go out for a student that nobody has confirmed.
+   */
+  async function verifyUser(stamp: WriteStamp): Promise<boolean> {
+    if (!isCurrent(stamp) || stamp.origin === null) return false;
+    try {
+      const self = await apiFor(stamp.origin).getSelf();
+      if (!isCurrent(stamp)) return false;
+      if (self.id === stamp.userId) return true;
+      await dropUserData();
+    } catch (error) {
+      if (!isCurrent(stamp)) return false;
+      if (isCanvasError(error, 'unauthorized')) signOut({ kind: 'signed_out' });
+      else abandonQueue();
     }
+    return false;
+  }
+
+  /**
+   * Removes a failed write and has the list sync with Canvas. The round that follows finds out
+   * why the write failed: a limit, a server error or a task that is gone. Whatever the cause,
+   * the sign-in check runs before the next write, because the failure may be the first sign of
+   * another student. Resolves with whether the queue ended, after a sign-out, another student or
+   * a failed check.
+   */
+  async function failWrite(
+    patch: Patch | undefined,
+    error: unknown,
+    stamp: WriteStamp,
+  ): Promise<boolean> {
+    deps.log('write', error);
+    if (!isCurrent(stamp)) return false;
+    if (patch !== undefined) {
+      dropPatch(patch.id);
+      if (patch.kind === 'note' && patch.note === null) forgetDelete(patch.noteId);
+    }
+    return !(await verifyUser(stamp));
   }
 
   async function finishWrite(): Promise<void> {
@@ -1211,18 +1424,16 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     await bump();
   }
 
-  async function runOverrideWrite(patchId: number): Promise<boolean> {
-    const origin = knownOrigin;
+  /** A response for another user than the cached one: the cache goes, and the write ends. */
+  async function userChanged(stamp: WriteStamp): Promise<false> {
+    if (sameStudent(stamp)) await dropUserData();
+    return false;
+  }
+
+  async function runOverrideWrite(patchId: number, stamp: WriteStamp): Promise<boolean> {
     const patch = findPatch(patchId);
-    if (origin === null || patch === undefined || patch.kind !== 'override') return false;
-    if (patch.target.plannableType === 'planner_note' && isTempNoteId(patch.target.plannableId)) {
-      // The task this mark belongs to was never created.
-      dropPatch(patchId);
-      await finishWrite();
-      return false;
-    }
-    const gen = generation;
-    const api = apiFor(origin);
+    if (stamp.origin === null || patch === undefined || patch.kind !== 'override') return false;
+    const api = apiFor(stamp.origin);
     const flags = {
       markedComplete: patch.override.marked_complete,
       dismissed: patch.override.dismissed,
@@ -1231,8 +1442,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       const saved =
         patch.override.id !== ''
           ? await api.updateOverride(patch.override.id, flags)
-          : await createOrRecoverOverride(api, patch.target, flags);
-      if (gen !== generation || cache === null) return false;
+          : await createOrRecoverOverride(api, patch.target, flags, stamp.userId);
+      if (!isCurrent(stamp) || cache === null) return false;
+      if (saved.user_id !== stamp.userId) return userChanged(stamp);
       const confirmed: OverridePatch = { ...patch, override: saved, confirmedAt: clock.now() };
       replacePatch(patchId, confirmed);
       cache = bake(
@@ -1242,90 +1454,97 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       await finishWrite();
       return true;
     } catch (error) {
-      await rollback(patchId, error, api, gen);
+      if (error instanceof UserChangedError) return userChanged(stamp);
+      const gone = await failWrite(patch, error, stamp);
       await finishWrite();
-      return false;
+      return !gone;
     }
   }
 
-  async function sendNoteWrite(
-    api: CanvasApi,
-    operation: NoteOperation,
-    patch: NotePatch,
-    noteId: string,
-  ): Promise<NoteValue | null> {
-    switch (operation) {
-      case 'create': {
-        if (patch.note === null) return null;
-        const created = await api.createNote(noteInput(patch.note));
-        return {
-          id: created.id,
-          title: created.title,
-          details: created.details,
-          todoDate: created.todo_date,
-          courseId: created.course_id,
-        };
-      }
-      case 'update': {
-        if (patch.note === null) return null;
-        const updated = await api.updateNote(noteId, noteInput(patch.note));
-        return {
-          id: updated.id,
-          title: updated.title,
-          details: updated.details,
-          todoDate: updated.todo_date,
-          courseId: updated.course_id,
-        };
-      }
-      case 'delete':
-        await api.deleteNote(noteId);
-        return null;
-    }
-  }
-
-  async function runNoteWrite(patchId: number, operation: NoteOperation): Promise<boolean> {
-    const origin = knownOrigin;
-    const patch = findPatch(patchId);
-    if (origin === null || patch === undefined || patch.kind !== 'note') return false;
-    if (operation === 'delete' && patch.confirmedAt !== null) return false;
-    const noteId = resolveNoteId(patch.noteId);
-    if (operation !== 'create' && isTempNoteId(noteId)) {
-      // The task was never created in Canvas, so there is nothing to change.
-      dropPatch(patchId);
-      await finishWrite();
-      return false;
-    }
-    const gen = generation;
-    const api = apiFor(origin);
-    if (operation === 'delete') startedDeletes.add(patchId);
+  /**
+   * Creates a custom task and adds it, confirmed, with the id Canvas gave it. `created` tells
+   * whether Canvas saved it. `sync` tells whether the list must sync with Canvas afterward.
+   */
+  async function runNoteCreate(
+    note: NoteValue,
+    stamp: WriteStamp,
+  ): Promise<{ created: boolean; sync: boolean }> {
+    if (stamp.origin === null) return { created: false, sync: false };
+    // A create carries free text, so Canvas confirms the student first.
+    if (!(await verifyUser(stamp))) return { created: false, sync: false };
     try {
-      const saved = await sendNoteWrite(api, operation, patch, noteId);
-      if (gen !== generation || cache === null) return false;
-      const realId = saved?.id ?? noteId;
-      if (operation === 'create') {
-        cache = {
-          ...cache,
-          noteIds: { ...cache.noteIds, [patch.noteId]: realId },
-          patches: remapNoteId(cache.patches, patch.noteId, realId),
-          undos: remapUndoNotes(cache.undos, patch.noteId, realId),
-        };
+      const api = apiFor(stamp.origin);
+      const response = await api.createNote(noteInput(note));
+      if (response.user_id !== stamp.userId) {
+        // Another student signed in after the check. The text went into the wrong account, so
+        // it comes out again, before the cache of the first student goes.
+        await api.deleteNote(response.id).catch((error: unknown) => deps.log('write', error));
+        await userChanged(stamp);
+        return { created: false, sync: false };
       }
-      const current = findPatch(patchId);
-      if (current === undefined || current.kind !== 'note') return true;
+      // An abandoned queue ends the generation, but Canvas saved the task for the same student:
+      // it shows, and a round syncs the list.
+      if (cache === null || !sameStudent(stamp)) return { created: false, sync: false };
+      const created = noteValue(response);
       const confirmed: NotePatch = {
-        ...current,
-        noteId: realId,
-        note: saved,
+        kind: 'note',
+        id: nextId(),
+        noteId: created.id,
+        note: created,
         confirmedAt: clock.now(),
       };
+      cache = bake({ ...cache, patches: [...cache.patches, confirmed] }, confirmed);
+      await finishWrite();
+      return { created: true, sync: true };
+    } catch (error) {
+      const gone = await failWrite(undefined, error, stamp);
+      await finishWrite();
+      return { created: false, sync: !gone };
+    }
+  }
+
+  async function runNoteWrite(
+    patchId: number,
+    operation: NoteOperation,
+    stamp: WriteStamp,
+  ): Promise<boolean> {
+    const patch = findPatch(patchId);
+    if (stamp.origin === null || patch === undefined || patch.kind !== 'note') return false;
+    if (operation === 'delete' && patch.confirmedAt !== null) return false;
+    const api = apiFor(stamp.origin);
+    if (operation === 'delete') startedDeletes.add(patch.noteId);
+    try {
+      let saved: NoteValue | null = null;
+      if (operation === 'delete') await api.deleteNote(patch.noteId);
+      else if (patch.note !== null) {
+        const response = await api.updateNote(patch.noteId, noteInput(patch.note));
+        if (isCurrent(stamp) && response.user_id !== stamp.userId) return userChanged(stamp);
+        saved = noteValue(response);
+      }
+      // A DELETE that is out ended the task, whatever happened to the queue after it left.
+      if (cache === null || !(operation === 'delete' ? sameStudent(stamp) : isCurrent(stamp))) {
+        return false;
+      }
+      if (operation === 'delete') forgetDelete(patch.noteId);
+      // Patch ids start again with a new cache, so the id alone does not say whose patch it is.
+      const current = findPatch(patchId);
+      if (current?.kind !== 'note' || current.noteId !== patch.noteId) return true;
+      const confirmed: NotePatch = { ...current, note: saved, confirmedAt: clock.now() };
       replacePatch(patchId, confirmed);
       cache = bake(cache, confirmed);
       await finishWrite();
       return true;
     } catch (error) {
-      await rollback(patchId, error, api, gen);
+      // A DELETE that failed after an abandoned queue is for the same student: the task stays
+      // hidden, and the DELETE goes out again under the current generation.
+      if (operation === 'delete' && sameStudent(stamp) && !isCurrent(stamp)) {
+        deps.log('write', error);
+        requeueDelete(patch.noteId);
+        return false;
+      }
+      const gone = await failWrite(patch, error, stamp);
       await finishWrite();
-      return false;
+      return !gone;
     }
   }
 
@@ -1350,85 +1569,52 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       confirmedAt: null,
     };
     addPatch(patch);
-    enqueueWrite(() => runOverrideWrite(patch.id));
+    void enqueueWrite((stamp) => runOverrideWrite(patch.id, stamp));
   }
 
-  function addNotePatch(
-    noteId: string,
-    note: NoteValue | null,
-    operation: NoteOperation,
-  ): NotePatch {
-    const patch: NotePatch = {
-      kind: 'note',
-      id: nextId(),
-      noteId,
-      note,
-      deleteAt: operation === 'delete' ? clock.now() + MAX_DELETE_DELAY_MS : null,
-      confirmedAt: null,
-    };
+  function addNotePatch(noteId: string, note: NoteValue | null): NotePatch {
+    const patch: NotePatch = { kind: 'note', id: nextId(), noteId, note, confirmedAt: null };
     addPatch(patch);
-    if (operation === 'delete') scheduleDelete(patch);
-    else enqueueWrite(() => runNoteWrite(patch.id, operation));
     return patch;
   }
 
   /** Sends a delayed delete at its `deleteAt` at the latest. */
-  function scheduleDelete(patch: NotePatch): void {
-    const delay = Math.max(0, (patch.deleteAt ?? 0) - clock.now());
-    const timer = timers.setTimeout(() => {
-      deleteTimers.delete(patch.id);
-      sendDelete(patch.id);
-    }, delay);
-    deleteTimers.set(patch.id, timer);
+  function scheduleDelete(noteId: string, deleteAt: number): void {
+    const timer = timers.setTimeout(
+      () => {
+        deleteTimers.delete(noteId);
+        sendDelete(noteId);
+      },
+      Math.max(0, deleteAt - clock.now()),
+    );
+    deleteTimers.set(noteId, timer);
   }
 
   /** Queues the DELETE of a delayed task delete, once. */
-  function sendDelete(patchId: number): void {
-    const timer = deleteTimers.get(patchId);
+  function sendDelete(noteId: string): void {
+    const timer = deleteTimers.get(noteId);
     if (timer !== undefined) {
       timers.clearTimeout(timer);
-      deleteTimers.delete(patchId);
+      deleteTimers.delete(noteId);
     }
-    const patch = findPatch(patchId);
-    if (patch?.kind !== 'note' || patch.confirmedAt !== null || queuedDeletes.has(patchId)) return;
-    queuedDeletes.add(patchId);
+    const patch = findDeletePatch(noteId);
+    if (patch === undefined || queuedDeletes.has(noteId)) return;
+    queuedDeletes.add(noteId);
     // A worker that restarts before the job runs sends it at once.
-    replacePatch(patchId, { ...patch, deleteAt: clock.now() });
+    setPendingDelete(noteId, clock.now());
     persist();
-    enqueueWrite(() => runNoteWrite(patchId, 'delete'));
+    void enqueueWrite((stamp) => runNoteWrite(patch.id, 'delete', stamp));
   }
 
-  /** Ends the Undo notice of a record: a delayed task delete is sent now. */
-  function finishRecord(record: UndoRecord): void {
-    if (record.kind === 'delete') sendDelete(record.patchId);
-  }
-
-  /**
-   * Keeps an undo record in the cache, so it survives a service worker restart. It stays until
-   * its notice ends. Past the cap, the oldest records end as if their notice closed.
-   */
-  function addUndo(record: UndoRecord, info: UndoInfo): string {
-    const token = `undo-${nextId()}`;
-    if (cache === null) return token;
-    const entries: [string, StoredUndo][] = [
-      ...Object.entries(cache.undos),
-      [token, { record, info, createdAt: clock.now() }],
-    ];
-    entries.sort(([, a], [, b]) => a.createdAt - b.createdAt);
-    const overflow = entries.splice(0, Math.max(0, entries.length - MAX_UNDO_RECORDS));
-    cache = { ...cache, undos: Object.fromEntries(entries) };
-    for (const [, stored] of overflow) finishRecord(stored.record);
-    return token;
-  }
-
-  /** Removes an undo record and returns it. */
-  function takeUndo(token: string): UndoRecord | null {
-    const entry = cache?.undos[token];
-    if (cache === null || entry === undefined) return null;
-    const rest = Object.entries(cache.undos).filter(([key]) => key !== token);
-    cache = { ...cache, undos: Object.fromEntries(rest) };
+  /** Undo of a task delete. Once the DELETE has started, the task is gone in Canvas. */
+  function cancelDelete(noteId: string): void {
+    const patch = findDeletePatch(noteId);
+    if (patch === undefined || startedDeletes.has(noteId)) return;
+    forgetDelete(noteId);
+    // A queued DELETE job finds no patch and sends nothing.
+    dropPatch(patch.id);
     persist();
-    return entry.record;
+    bumpLater();
   }
 
   async function writeContext(): Promise<WriteContext | null> {
@@ -1442,122 +1628,102 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return { origin, session, context, items };
   }
 
+  /**
+   * Writes the override flags that `flagsFor` picks for each item. With `undoable`, the reply
+   * returns the flags from before, so the surface can keep them for its Undo notice.
+   */
   async function changeOverrides(
     keys: readonly string[],
     flagsFor: (item: Item) => OverrideFlags | null,
-    undoKind: UndoInfo['kind'] | null,
+    undoable: boolean,
   ): Promise<ActionReply> {
     const write = await writeContext();
     if (write === null) return NO_UNDO;
-    const entries: UndoEntry[] = [];
-    for (const key of keys.map(resolveKey)) {
+    const entries: PreviousOverride[] = [];
+    for (const key of new Set(keys)) {
       const item = write.items.get(key);
       const target = item === undefined ? null : overrideTargetFor(item);
       const flags = item === undefined ? null : flagsFor(item);
       if (item === undefined || target === null || flags === null) continue;
       addOverridePatch(key, target, flags, item.override?.id ?? '', write.session.profile.id);
-      entries.push({ key, target, previous: previousFlags(item) });
+      entries.push({ key, previous: previousFlags(item) });
     }
     if (entries.length === 0) return NO_UNDO;
-    const info: UndoInfo | null =
-      undoKind === null ? null : { kind: undoKind, count: entries.length };
-    const token = info === null ? null : addUndo({ kind: 'overrides', entries }, info);
     persist();
     bumpLater();
-    if (token === null || info === null) return NO_UNDO;
-    return { undo: { token, info } };
+    if (!undoable) return NO_UNDO;
+    return {
+      undo: { kind: 'overrides', userId: write.session.profile.id, origin: write.origin, entries },
+    };
   }
 
-  async function skipAllOlder(request: SurfaceRequest): Promise<ActionReply> {
-    await ready();
-    const origin = knownOrigin;
-    if (origin === null || cache?.session == null) return NO_UNDO;
-    const context = await viewContext(origin);
-    if (cache?.session == null) return NO_UNDO;
-    const result = viewFor(cache, cache.session, { ...request, weekOffset: 0 }, context);
-    const older = result?.view.groups.find((group) => group.kind === 'past_due')?.older ?? [];
-    const keys = older.filter((item) => item.canSkip).map((item) => item.key);
-    return changeOverrides(keys, skipFlags, 'skipped_all');
-  }
-
-  async function undo(token: string): Promise<ActionReply> {
-    await ready();
-    const record = takeUndo(token);
-    if (record === null) return NO_UNDO;
-    switch (record.kind) {
-      case 'overrides': {
-        const write = await writeContext();
-        if (write === null) return NO_UNDO;
-        for (const { key: rawKey, target, previous } of record.entries) {
-          const key = resolveKey(rawKey);
-          const current = write.items.get(key);
-          const plannableId =
-            target.plannableType === 'planner_note'
-              ? resolveNoteId(target.plannableId)
-              : target.plannableId;
-          addOverridePatch(
-            key,
-            { ...target, plannableId },
-            previous,
-            current?.override?.id ?? '',
-            write.session.profile.id,
-          );
-        }
-        break;
-      }
-      case 'delete': {
-        const patch = findPatch(record.patchId);
-        // Once the DELETE has started, the task is gone in Canvas.
-        if (
-          patch === undefined ||
-          patch.confirmedAt !== null ||
-          startedDeletes.has(record.patchId)
-        ) {
-          return NO_UNDO;
-        }
-        const timer = deleteTimers.get(record.patchId);
-        if (timer !== undefined) timers.clearTimeout(timer);
-        deleteTimers.delete(record.patchId);
-        queuedDeletes.delete(record.patchId);
-        // A queued DELETE job finds no patch and sends nothing.
-        dropPatch(record.patchId);
-        break;
-      }
+  /** Undo of an override action: the flags from before go back, for the same user and Canvas only. */
+  async function restoreOverrides(
+    userId: string,
+    origin: string,
+    entries: readonly PreviousOverride[],
+  ): Promise<ActionReply> {
+    const write = await writeContext();
+    if (write === null || write.session.profile.id !== userId || write.origin !== origin) {
+      return NO_UNDO;
     }
-    persist();
-    bumpLater();
-    return NO_UNDO;
-  }
-
-  /** The Undo notice of a token ended, so its record goes and a delayed delete is sent. */
-  async function endUndo(token: string): Promise<ActionReply> {
-    await ready();
-    const record = takeUndo(token);
-    if (record !== null) finishRecord(record);
+    let changed = false;
+    const done = new Set<string>();
+    for (const { key, previous } of entries) {
+      if (done.has(key)) continue;
+      done.add(key);
+      const item = write.items.get(key);
+      const target = item === undefined ? null : overrideTargetFor(item);
+      if (item === undefined || target === null) continue;
+      addOverridePatch(key, target, previous, item.override?.id ?? '', userId);
+      changed = true;
+    }
+    if (changed) {
+      persist();
+      bumpLater();
+    }
     return NO_UNDO;
   }
 
   async function writeNote(
-    rawNoteId: string | null,
-    build: (write: WriteContext, timeZone: string, current: Item | null) => NoteValue | null,
+    noteId: string,
+    build: (write: WriteContext, timeZone: string, current: Item) => NoteValue | null,
     operation: NoteOperation,
   ): Promise<ActionReply> {
     const write = await writeContext();
     if (write === null || cache === null || cache.limited) return NO_UNDO;
-    const noteId = rawNoteId === null ? null : resolveNoteId(rawNoteId);
-    const current = noteId === null ? null : (write.items.get(noteKey(noteId)) ?? null);
-    if (noteId !== null && current === null) return NO_UNDO;
+    const current = write.items.get(noteKey(noteId));
+    if (current === undefined) return NO_UNDO;
     const note = build(write, canvasTimeZone(write.session, write.context), current);
-    if (operation !== 'delete' && note === null) return NO_UNDO;
-    const id = noteId ?? note?.id ?? '';
-    const patch = addNotePatch(id, note === null ? null : { ...note, id }, operation);
-    const info: UndoInfo = { kind: 'deleted', count: 1 };
-    const token =
-      operation === 'delete' ? addUndo({ kind: 'delete', patchId: patch.id }, info) : null;
+    if (operation === 'update' && note === null) return NO_UNDO;
+    const patch = addNotePatch(noteId, note === null ? null : { ...note, id: noteId });
+    if (operation === 'update') {
+      void enqueueWrite((stamp) => runNoteWrite(patch.id, 'update', stamp));
+    } else {
+      const deleteAt = clock.now() + MAX_DELETE_DELAY_MS;
+      setPendingDelete(noteId, deleteAt);
+      scheduleDelete(noteId, deleteAt);
+    }
     persist();
     bumpLater();
-    if (token === null) return NO_UNDO;
-    return { undo: { token, info } };
+    if (operation === 'update') return NO_UNDO;
+    return {
+      undo: { kind: 'delete', userId: write.session.profile.id, origin: write.origin, noteId },
+    };
+  }
+
+  /** Creates a task. The reply comes after Canvas answered, so the task shows with its real id. */
+  async function createTask(input: TaskInput): Promise<ActionReply> {
+    const write = await writeContext();
+    if (write === null || cache === null || cache.limited) return NO_UNDO;
+    const timeZone = canvasTimeZone(write.session, write.context);
+    let created = false;
+    await enqueueWrite(async (stamp) => {
+      const result = await runNoteCreate(taskNote('', input, timeZone), stamp);
+      created = result.created;
+      return result.sync;
+    }, 'creates');
+    return { undo: null, created };
   }
 
   function taskNote(id: string, input: TaskInput, timeZone: string): NoteValue {
@@ -1578,13 +1744,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return NO_UNDO;
   }
 
-  async function markNoteSeen(note: SeenNote): Promise<ActionReply> {
-    const seen = await store.seenNotes.getValue();
-    await store.seenNotes.setValue({ ...seen, [note]: true });
-    await bump();
-    return NO_UNDO;
-  }
-
   async function act(action: DataAction): Promise<ActionReply> {
     switch (action.kind) {
       case 'setDone':
@@ -1594,33 +1753,24 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
             action.done
               ? { markedComplete: true, dismissed: item.override?.dismissed ?? false }
               : { markedComplete: false, dismissed: false },
-          action.done ? 'done' : null,
+          action.done,
         );
       case 'skip':
-        return changeOverrides([action.key], skipFlags, 'skipped');
+        return changeOverrides(action.keys, skipFlags, true);
       case 'unskip':
         return changeOverrides(
           [action.key],
           (item) => ({ markedComplete: item.override?.markedComplete ?? false, dismissed: false }),
-          null,
+          false,
         );
-      case 'skipAllOlder':
-        return skipAllOlder(action.request);
-      case 'undo':
-        return undo(action.token);
-      case 'endUndo':
-        return endUndo(action.token);
+      case 'restore':
+        return restoreOverrides(action.userId, action.origin, action.entries);
       case 'createTask':
-        return writeNote(
-          null,
-          (_write, timeZone) => taskNote(`${TEMP_NOTE_PREFIX}${nextId()}`, action.input, timeZone),
-          'create',
-        );
+        return createTask(action.input);
       case 'updateTask':
         return writeNote(
           action.noteId,
-          (_write, timeZone, current) =>
-            current === null ? null : taskNote(current.plannableId, action.input, timeZone),
+          (_write, timeZone, current) => taskNote(current.plannableId, action.input, timeZone),
           'update',
         );
       case 'deleteTask':
@@ -1629,7 +1779,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         return writeNote(
           action.noteId,
           (write, timeZone, current) =>
-            current === null || current.due === null
+            current.due === null
               ? null
               : {
                   id: current.plannableId,
@@ -1644,11 +1794,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
                 },
           'update',
         );
-      case 'markNoteSeen':
-        return markNoteSeen(action.note);
-      case 'dismissOffer':
-        await store.offer.setValue(null);
-        await bump();
+      case 'sendDelete':
+        sendDelete(action.noteId);
+        return NO_UNDO;
+      case 'cancelDelete':
+        cancelDelete(action.noteId);
         return NO_UNDO;
       case 'keepSavedAddress':
         return keepSavedAddress();
@@ -1659,19 +1809,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   // State
   // ---------------------------------------------------------------------------------------------
 
-  function requestEnsure(session: SessionData, context: ViewContext): void {
-    if (cache === null || blocksLoads(cache.failure)) return;
-    const needs = needsFor({
-      cache,
-      ranges: rangesInUse(session, context),
-      visibleCourseIds: visibleCourseIds(session, context.settings),
-      hiddenCourseIds: context.settings.hiddenCourseIds,
-      detailsInFlight,
-    });
-    if (hasNeeds(needs)) schedule('ensure');
-  }
-
-  async function getState(request: SurfaceRequest): Promise<SurfaceState> {
+  async function getState(request: SurfaceRequest): Promise<StateReply> {
     await ready();
     const origin = await store.origin.getValue();
     if (origin !== knownOrigin) await handleOrigin(origin);
@@ -1693,17 +1831,17 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (session === null) {
       if (blocksLoads(failure))
         return { kind: 'cant_load', origin, offline, savedOrigin: null, offer };
-      schedule('ensure');
+      // The first round loads the session. Every state request waits for it.
+      if (!running && !anyPending()) schedule('full');
       return { kind: 'loading' };
     }
-    if (session.courses.length === 0) return { kind: 'no_courses', origin, offer };
+    if (session.courses.length === 0) return { kind: 'no_courses', origin, offer, allCourses: [] };
 
     const context = await viewContext(origin);
     if (cache === null) return { kind: 'loading' };
     const range = plannerRangeForView(session, request.weekOffset, context);
     noteShown(session, request.weekOffset, range, context);
     loadGaps(range, 'view', context);
-    requestEnsure(session, context);
     const result = viewFor(cache, session, request, context);
     if (result === null) {
       return blocksLoads(failure)
@@ -1723,14 +1861,16 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           : null,
       refreshing: running || !result.exact || shownJobRunning(range),
       offer,
-      // The notice the surface holds, while its record lives.
-      undo: (request.undoToken ? cache.undos[request.undoToken]?.info : undefined) ?? null,
+      // The surface holds its own Undo notice.
+      undo: null,
+      userId: session.profile.id,
       seenNotes: { firstDone: seenNotes.firstDone, firstSkip: seenNotes.firstSkip },
       taskCourses: courseChoices(
         session.courses,
         session.positions,
         context.settings.hiddenCourseIds,
       ),
+      allCourses: courseChoices(session.courses, session.positions),
       skippedCourses: skippedCourseChoices(
         session,
         cache.failedCourses,
@@ -1742,7 +1882,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
   async function settled(): Promise<void> {
     for (;;) {
-      await Promise.all([runner, writeChain, persistChain, ...tasks]);
+      await Promise.all([runner, chains.writes, chains.creates, persistChain, ...tasks]);
       if (!running && !anyPending() && pendingWrites === 0 && tasks.size === 0) {
         await persistChain;
         return;
@@ -1760,8 +1900,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         case 'timer':
           return { retryAt: await applyTrigger(reason) };
         case 'midnight':
+          return { retryAt: await applyTrigger(reason) };
         case 'settings':
-          if (cache !== null && !blocksLoads(cache.failure)) schedule('ensure');
+          // The surfaces build their views from the saved settings. Only a course that shows
+          // again has data to load, and that takes a light round under the 60-second limit.
+          if (await showsUnloadedCourse()) deferLight(await applyTrigger(reason));
           await bump();
           return NO_RETRY;
         case 'retry': {
@@ -1825,18 +1968,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       await ready();
       setupRun += 1;
       await setSetup({ kind: 'entering' });
-    },
-
-    async listCourses() {
-      await ready();
-      const origin = knownOrigin;
-      if (origin === null || cache === null) return [];
-      if (cache.session === null && !blocksLoads(cache.failure) && (await deps.hasAccess(origin))) {
-        schedule('ensure');
-        await runner;
-      }
-      const session = cache?.session;
-      return session == null ? [] : courseChoices(session.courses, session.positions);
     },
 
     async originChanged(origin) {

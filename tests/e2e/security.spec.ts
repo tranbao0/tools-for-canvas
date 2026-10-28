@@ -46,13 +46,30 @@ test('the background refuses data messages from a content script on another Canv
   const intruder = await contentScriptWorld(other);
   const messages = [
     { type: 'weekrow:get-state', request: IN_PAGE_REQUEST },
-    { type: 'weekrow:courses' },
     { type: 'weekrow:refresh', reason: 'retry', surface: 'inpage' },
     {
       type: 'weekrow:action',
       action: { kind: 'setDone', key: `assignment:${IDS.assignments.bioQuiz3Today}`, done: true },
     },
-    { type: 'weekrow:action', action: { kind: 'skipAllOlder', request: IN_PAGE_REQUEST } },
+    {
+      type: 'weekrow:action',
+      action: { kind: 'skip', keys: [`assignment:${IDS.assignments.bioQuiz3Today}`] },
+    },
+    {
+      type: 'weekrow:action',
+      action: {
+        kind: 'restore',
+        userId: IDS.user,
+        entries: [
+          {
+            key: `assignment:${IDS.assignments.bioQuiz3Today}`,
+            previous: { markedComplete: true, dismissed: false },
+          },
+        ],
+      },
+    },
+    { type: 'weekrow:action', action: { kind: 'sendDelete', noteId: IDS.notes.bioStudyGroup } },
+    { type: 'weekrow:action', action: { kind: 'cancelDelete', noteId: IDS.notes.bioStudyGroup } },
     { type: 'weekrow:change-address' },
     { type: 'weekrow:open-page', page: 'settings' },
     { type: 'weekrow:setup', origin: OTHER, fromOffer: false },

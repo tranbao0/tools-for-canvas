@@ -8,8 +8,6 @@ import {
   pendingOverride,
   plannerItemKey,
   propagateOverrideId,
-  remapNoteId,
-  remapUndoNotes,
   type NotePatch,
   type OverridePatch,
 } from '../patches';
@@ -124,15 +122,14 @@ describe('applying patches', () => {
     const add: NotePatch = {
       kind: 'note',
       id: 2,
-      noteId: 'pending-2',
+      noteId: '9002',
       note: {
-        id: 'pending-2',
+        id: '9002',
         title: 'New',
         details: null,
         todoDate: '2026-10-29T03:59:00.000Z',
         courseId: '101',
       },
-      deleteAt: null,
       confirmedAt: null,
     };
     const remove: NotePatch = { ...add, id: 3, noteId: IDS.notes.bioStudyGroup, note: null };
@@ -142,7 +139,7 @@ describe('applying patches', () => {
       CONTEXT,
     );
 
-    const added = result.plannerItems.find((item) => item.plannable_id === 'pending-2');
+    const added = result.plannerItems.find((item) => item.plannable_id === '9002');
     expect(added).toMatchObject({
       plannable_type: 'planner_note',
       plannable_date: '2026-10-29T03:59:00.000Z',
@@ -155,85 +152,12 @@ describe('applying patches', () => {
     expect(result.overrides).toBeNull();
   });
 
-  it('gives queued writes the id from the first answer and the real id of a new task', () => {
+  it('gives queued writes the id from the first answer', () => {
     const second: OverridePatch = { ...overridePatch, id: 4 };
     const patched = propagateOverrideId([overridePatch, second], quizKey, '77');
     expect(patched.map((patch) => (patch.kind === 'override' ? patch.override.id : null))).toEqual([
       '77',
       '77',
     ]);
-
-    const noteTarget = {
-      plannableType: 'planner_note',
-      plannableId: 'pending-9',
-      assignmentId: null,
-    } as const;
-    const noteDone: OverridePatch = {
-      ...overridePatch,
-      key: 'planner_note:pending-9',
-      target: noteTarget,
-      override: pendingOverride(
-        noteTarget,
-        { markedComplete: true, dismissed: false },
-        '',
-        IDS.user,
-      ),
-    };
-    const [remapped] = remapNoteId([noteDone], 'pending-9', '8899');
-    expect(remapped).toMatchObject({
-      key: 'planner_note:8899',
-      target: { plannableId: '8899' },
-      override: { plannable_id: '8899' },
-    });
-  });
-
-  it('gives the undo records of a new task its real id', () => {
-    const target = {
-      plannableType: 'planner_note',
-      plannableId: 'pending-9',
-      assignmentId: null,
-    } as const;
-    const other = { plannableType: 'assignment', plannableId: '5', assignmentId: '5' } as const;
-    const undos = {
-      'undo-1': {
-        createdAt: 1,
-        info: { kind: 'done' as const, count: 2 },
-        record: {
-          kind: 'overrides' as const,
-          entries: [
-            {
-              key: 'planner_note:pending-9',
-              target,
-              previous: { markedComplete: false, dismissed: false },
-            },
-            {
-              key: 'assignment:5',
-              target: other,
-              previous: { markedComplete: true, dismissed: false },
-            },
-          ],
-        },
-      },
-      'undo-2': {
-        createdAt: 2,
-        info: { kind: 'deleted' as const, count: 1 },
-        record: { kind: 'delete' as const, patchId: 4 },
-      },
-    };
-
-    const remapped = remapUndoNotes(undos, 'pending-9', '8899');
-
-    expect(remapped['undo-1']?.record).toEqual({
-      kind: 'overrides',
-      entries: [
-        {
-          key: 'planner_note:8899',
-          target: { ...target, plannableId: '8899' },
-          previous: { markedComplete: false, dismissed: false },
-        },
-        undos['undo-1'].record.entries[1],
-      ],
-    });
-    expect(remapped['undo-2']).toEqual(undos['undo-2']);
   });
 });

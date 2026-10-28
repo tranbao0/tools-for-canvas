@@ -29,7 +29,7 @@ export interface ShadowMount {
   remove(): void;
 }
 
-export interface ShadowMountOptions {
+interface ShadowMountOptions {
   css: string;
   /** The first `data-theme` of the host and the UI root, which the stylesheet reads. */
   theme: PageTheme;

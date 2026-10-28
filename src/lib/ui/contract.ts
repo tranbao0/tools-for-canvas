@@ -34,7 +34,8 @@ export interface Actions {
   undo(): void;
   /** Closes the Undo notice. A pending task delete is sent then. */
   dismissUndo(): void;
-  createTask(input: TaskInput): void;
+  /** Resolves with whether Canvas saved the task. The form waits for it. */
+  createTask(input: TaskInput): Promise<boolean>;
   updateTask(noteId: string, input: TaskInput): void;
   deleteTask(noteId: string): void;
   moveTaskToToday(noteId: string): void;

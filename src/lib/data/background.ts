@@ -35,7 +35,7 @@ async function removeAccess(origin: string): Promise<void> {
 }
 
 /** The dependencies of the data owner in the background. */
-export function backgroundDataDeps(): DataOwnerDeps {
+function backgroundDataDeps(): DataOwnerDeps {
   return {
     createApi: (origin) => createCanvasClient({ origin, getCsrfToken: csrfFromCookiesApi(origin) }),
     probe: (origin) => probeCanvas(origin),

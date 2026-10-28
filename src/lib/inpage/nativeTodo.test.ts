@@ -62,7 +62,7 @@ describe('nativeTodoAction', () => {
   const cases: [SurfaceState, string][] = [
     [{ kind: 'loading' }, 'keep'],
     [{ kind: 'checking', origin: ORIGIN, savedOrigin: null }, 'keep'],
-    [{ kind: 'no_courses', origin: ORIGIN, offer: null }, 'hide'],
+    [{ kind: 'no_courses', origin: ORIGIN, offer: null, allCourses: [] }, 'hide'],
     [{ kind: 'not_set_up', offer: null, savedOrigin: null }, 'show'],
     [{ kind: 'no_access', origin: ORIGIN, savedOrigin: null, offer: null }, 'show'],
     [{ kind: 'redirects', origin: ORIGIN, savedOrigin: null }, 'show'],
@@ -94,7 +94,7 @@ describe('syncNativeTodo', () => {
     syncNativeTodo({ kind: 'loading' });
     expect(isNativeTodoHidden()).toBe(false);
 
-    syncNativeTodo({ kind: 'no_courses', origin: ORIGIN, offer: null });
+    syncNativeTodo({ kind: 'no_courses', origin: ORIGIN, offer: null, allCourses: [] });
     expect(isNativeTodoHidden()).toBe(true);
 
     syncNativeTodo({ kind: 'checking', origin: ORIGIN, savedOrigin: null });

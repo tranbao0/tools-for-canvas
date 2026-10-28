@@ -329,7 +329,7 @@ describe('midnight, settings and address changes', () => {
   /** Saturday 00:00:01 in New York: the Tomorrow look-ahead now reaches into the next week. */
   const SATURDAY = Date.parse('2026-10-31T04:00:01Z');
 
-  it('loads only the day that a range grew by after midnight in the Canvas time zone', async () => {
+  it('loads the day that a range grew by at high priority, beside the light round of the midnight', async () => {
     const h = await firstLoadOnly();
     expect(h.canvas.scenario.now).toBe('2026-10-27T18:00:00.000Z');
 
@@ -339,37 +339,59 @@ describe('midnight, settings and address changes', () => {
     await h.owner.settled();
 
     expect(state.view.today).toBe('2026-10-31');
-    // Tomorrow is the first day of the next week, and only that day was missing.
-    expect(h.canvas.plannerRanges()).toEqual([
-      { start: (await weekOf(h, 1)).start, end: (await rangeOf(h, 0)).end },
-    ]);
-    expect(h.canvas.calls[0]?.priority).toBe('high');
+    // Tomorrow is the first day of the next week, and that day was missing.
+    expect(h.canvas.plannerRanges()).toContainEqual({
+      start: (await weekOf(h, 1)).start,
+      end: (await rangeOf(h, 0)).end,
+    });
+    const dayStart = (await weekOf(h, 1)).start;
+    const day = h.canvas.calls.find(
+      (call) =>
+        call.method === 'listPlannerItems' &&
+        (call.args[0] as { start: string }).start === dayStart,
+    );
+    expect(day?.priority).toBe('high');
+    expect(methods(h).has('getSelf')).toBe(true);
+    // A light round does not reload the override list.
+    expect(methods(h).has('listPlannerOverrides')).toBe(false);
   });
 
-  it('needs no request after a midnight when the week ahead already loaded', async () => {
+  it('runs only a light round after a midnight when the week ahead already loaded', async () => {
     const h = await loaded();
 
     vi.setSystemTime(SATURDAY);
     await h.owner.refresh('midnight', FROM_PANEL);
+    await h.owner.settled();
     const state = expectReady(await h.owner.getState(PANEL));
     await h.owner.settled();
 
     expect(state.view.today).toBe('2026-10-31');
     expect(state.refreshing).toBe(false);
-    expect(h.canvas.callsOf('listPlannerItems')).toEqual([]);
+    expect(methods(h)).toEqual(new Set(LIGHT));
+    expect(h.canvas.calls.every((call) => call.priority !== 'high')).toBe(true);
   });
 
-  it('needs no request after a midnight that the cached range still covers', async () => {
+  it('runs only a light round after a midnight that the cached range still covers', async () => {
     const h = await loaded();
 
     vi.setSystemTime(Date.parse('2026-10-28T04:00:01Z'));
     await h.owner.refresh('midnight', FROM_PANEL);
     await h.owner.settled();
 
-    expect(h.canvas.calls).toEqual([]);
+    expect(methods(h)).toEqual(new Set(LIGHT));
     const state = expectReady(await h.owner.getState(PANEL));
     expect(state.view.today).toBe('2026-10-28');
     expect(state.refreshing).toBe(false);
+  });
+
+  it('puts the light round of a midnight under the 60-second limit', async () => {
+    const h = await loaded();
+    await advance(h, 5000);
+
+    await h.owner.refresh('midnight', FROM_PANEL);
+    await h.owner.settled();
+
+    expect(h.canvas.calls).toEqual([]);
   });
 
   it('shows the list from the old range while the new range loads', async () => {
@@ -386,15 +408,54 @@ describe('midnight, settings and address changes', () => {
     expect(expectReady(await h.owner.getState(PANEL)).refreshing).toBe(false);
   });
 
-  it('loads what a settings change needs and tells the surfaces', async () => {
+  it('saves a setting with a new change marker and no request', async () => {
     const h = await loaded();
+    await advance(h, 5000);
+    h.canvas.resetCalls();
     const marker = await changeMarkerItem.getValue();
+
+    // Four saves in 20 seconds, such as a student trying the themes.
+    for (let index = 0; index < 4; index += 1) {
+      await settingsItem.setValue({
+        ...(await settingsItem.getValue()),
+        showRings: index % 2 === 1,
+      });
+      await h.owner.refresh('settings', FROM_PANEL);
+      await advance(h, 5000);
+    }
+
+    expect(await changeMarkerItem.getValue()).toBeGreaterThan(marker);
+    expect(h.canvas.calls).toEqual([]);
+  });
+
+  it('runs a light round under the 60-second limit when a setting shows a course again', async () => {
+    const h = await loaded();
+    await advance(h, 61_000);
+    h.canvas.resetCalls();
     await settingsItem.setValue({ ...(await settingsItem.getValue()), hiddenCourseIds: [] });
 
     await h.owner.refresh('settings', FROM_PANEL);
     await h.owner.settled();
 
-    expect(await changeMarkerItem.getValue()).toBeGreaterThan(marker);
+    expect(h.canvas.callsOf('listUndatedAssignments')).toEqual([[IDS.courses.club]]);
+    expect(methods(h)).toEqual(
+      new Set([...LIGHT, 'listUndatedAssignments', 'listAssignmentsByIds']),
+    );
+  });
+
+  it('waits for the end of the limit before it loads a course that a setting shows again', async () => {
+    const h = await loaded();
+    await advance(h, 5000);
+    h.canvas.resetCalls();
+    await settingsItem.setValue({ ...(await settingsItem.getValue()), hiddenCourseIds: [] });
+
+    await h.owner.refresh('settings', FROM_PANEL);
+    await h.owner.settled();
+    expect(h.canvas.calls).toEqual([]);
+
+    await advance(h, REFRESH_LIMIT_MS - 5000 - 1);
+    expect(h.canvas.calls).toEqual([]);
+    await advance(h, 1);
     expect(h.canvas.callsOf('listUndatedAssignments')).toEqual([[IDS.courses.club]]);
   });
 

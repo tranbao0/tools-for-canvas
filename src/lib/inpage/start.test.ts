@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { DEFAULT_SETTINGS } from '../model/types';
 import { canvasOriginItem, settingsItem } from '../platform/storage';
@@ -8,7 +8,7 @@ import { DEFAULT_MOUNT_TIMEOUT_MS } from './mount';
 import { HIDE_NATIVE_TODO_STYLE_ID } from './nativeTodo';
 import { canAutoSaveOrigin, isSavedCanvasOrigin, resolveSavedOrigin } from './origin';
 import { announceCanvasPageLoaded } from './pageLoaded';
-import { startInpage } from './start';
+import { startInpage, type InpageController, type StartInpageOptions } from './start';
 import {
   CARD_VIEW,
   COURSE_HOME,
@@ -24,18 +24,33 @@ const CUSTOM = 'https://canvas.school.edu';
 
 let sendMessage: ReturnType<typeof vi.fn>;
 let mounts: InpageMount[];
-const onMount = (mount: InpageMount): void => {
+let removed: Mock<() => void>;
+/** Mounts nothing into the page itself and hands out the removal. */
+const mountList = vi.fn((mount: InpageMount): (() => void) => {
   mounts.push(mount);
-};
+  return removed;
+});
+/** The controllers a test started, stopped after it. */
+let started: InpageController[];
+
+async function start(options?: StartInpageOptions) {
+  const controller = await startInpage(mountList, options);
+  started.push(controller);
+  return controller;
+}
 
 beforeEach(() => {
   fakeBrowser.reset();
   sendMessage = vi.fn(async () => undefined);
   Object.assign(fakeBrowser.runtime, { sendMessage });
   mounts = [];
+  removed = vi.fn<() => void>();
+  mountList.mockClear();
+  started = [];
 });
 
 afterEach(() => {
+  for (const controller of started) controller.stop();
   vi.useRealTimers();
   document.body.className = '';
   document.body.innerHTML = '';
@@ -121,10 +136,10 @@ describe('startInpage', () => {
   it('mounts on the saved Canvas and tells the background that the page loaded', async () => {
     await canvasOriginItem.setValue(CUSTOM);
     loadPage(document, COURSE_HOME);
-    const outcome = await startInpage(onMount, { origin: CUSTOM, pathname: '/courses/5' });
+    await start({ origin: CUSTOM, pathname: '/courses/5' });
 
-    expect(outcome.kind).toBe('mounted');
     expect(mounts).toHaveLength(1);
+    expect(mounts[0]?.courseId).toBe('5');
     expect(sendMessage).toHaveBeenCalledWith({
       type: 'weekrow:canvas-page-loaded',
       origin: CUSTOM,
@@ -135,53 +150,50 @@ describe('startInpage', () => {
     vi.useFakeTimers();
     backgroundSaves();
     loadPage(document, CARD_VIEW);
-    const done = startInpage(onMount, { origin: SCHOOL, pathname: '/' });
+    const done = start({ origin: SCHOOL, pathname: '/' });
     await vi.advanceTimersByTimeAsync(0);
     injectSidebar(document, STUDENT_SIDEBAR);
+    await done;
+    await vi.advanceTimersByTimeAsync(0);
 
-    expect((await done).kind).toBe('mounted');
+    expect(mounts).toHaveLength(1);
     expect(await canvasOriginItem.getValue()).toBe(SCHOOL);
   });
 
   it('does nothing on a Canvas host that is not the saved address', async () => {
     await canvasOriginItem.setValue(CUSTOM);
     loadPage(document, COURSE_HOME);
-    const outcome = await startInpage(onMount, { origin: SCHOOL, pathname: '/courses/5' });
+    await start({ origin: SCHOOL, pathname: '/courses/5' });
 
-    expect(outcome).toEqual({ kind: 'other_origin' });
+    expect(mounts).toEqual([]);
     expect(document.getElementById(MOUNT_CONTAINER_ID)).toBeNull();
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it('does nothing on a test host before setup', async () => {
     loadPage(document, COURSE_HOME);
-    const outcome = await startInpage(onMount, {
-      origin: 'https://school.test.instructure.com',
-      pathname: '/courses/5',
-    });
+    await start({ origin: 'https://school.test.instructure.com', pathname: '/courses/5' });
 
-    expect(outcome).toEqual({ kind: 'other_origin' });
+    expect(mounts).toEqual([]);
     expect(await canvasOriginItem.getValue()).toBeNull();
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it('does nothing on a page that is not Canvas', async () => {
     loadPage(document, NOT_CANVAS);
-    const outcome = await startInpage(onMount, {
-      origin: 'https://www.instructure.com',
-      pathname: '/',
-    });
+    await start({ origin: 'https://www.instructure.com', pathname: '/' });
 
-    expect(outcome).toEqual({ kind: 'other_origin' });
+    expect(mounts).toEqual([]);
+    expect(document.getElementById(MOUNT_CONTAINER_ID)).toBeNull();
   });
 
   it('mounts nothing when "Show the weekly list on Canvas pages" is off, but still reports the page load', async () => {
     await canvasOriginItem.setValue(CUSTOM);
     await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: false });
     loadPage(document, COURSE_HOME);
-    const outcome = await startInpage(onMount, { origin: CUSTOM, pathname: '/courses/5' });
+    await start({ origin: CUSTOM, pathname: '/courses/5' });
 
-    expect(outcome).toEqual({ kind: 'turned_off' });
+    expect(mounts).toEqual([]);
     expect(document.getElementById(MOUNT_CONTAINER_ID)).toBeNull();
     expect(sendMessage).toHaveBeenCalledTimes(1);
   });
@@ -198,17 +210,16 @@ describe('startInpage', () => {
       hide.id = HIDE_NATIVE_TODO_STYLE_ID;
       document.head.append(hide);
 
-      const outcome = await startInpage(onMount, { origin, pathname: '/courses/5' });
+      await start({ origin, pathname: '/courses/5' });
 
-      expect(outcome.kind).toBe(origin === CUSTOM ? 'turned_off' : 'other_origin');
       expect(document.getElementById(MOUNT_CONTAINER_ID)).toBeNull();
       expect(document.getElementById(HIDE_NATIVE_TODO_STYLE_ID)).toBeNull();
     }
   });
 
-  it('keeps the list of a newer copy when its own signal has aborted', async () => {
+  it('leaves the page to a newer copy when its own signal has aborted, whatever the setting', async () => {
     await canvasOriginItem.setValue(CUSTOM);
-    await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: false });
+    await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: true });
     loadPage(document, COURSE_HOME);
     const newer = document.createElement('div');
     newer.id = MOUNT_CONTAINER_ID;
@@ -216,26 +227,171 @@ describe('startInpage', () => {
     const replaced = new AbortController();
     replaced.abort();
 
-    await startInpage(onMount, { origin: CUSTOM, pathname: '/courses/5', signal: replaced.signal });
+    await start({ origin: CUSTOM, pathname: '/courses/5', signal: replaced.signal });
+    await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: false });
+    await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: true });
 
+    expect(mounts).toEqual([]);
     expect(document.getElementById(MOUNT_CONTAINER_ID)).toBe(newer);
   });
 
-  it('ends at the timeout on a saved-Canvas page without anchors', async () => {
+  it('mounts nothing on a saved-Canvas page without anchors', async () => {
     vi.useFakeTimers();
     await canvasOriginItem.setValue(CUSTOM);
     loadPage(document, CARD_VIEW);
-    const done = startInpage(onMount, { origin: CUSTOM, pathname: '/' });
+    await start({ origin: CUSTOM, pathname: '/' });
     await vi.advanceTimersByTimeAsync(DEFAULT_MOUNT_TIMEOUT_MS);
 
-    expect(await done).toEqual({ kind: 'timeout' });
+    expect(mounts).toEqual([]);
+    expect(document.getElementById(MOUNT_CONTAINER_ID)).toBeNull();
   });
 
   it('reads the page origin by default', async () => {
     await canvasOriginItem.setValue(location.origin);
     loadPage(document, COURSE_HOME);
-    const outcome = await startInpage(onMount, { pathname: '/courses/5' });
+    await start({ pathname: '/courses/5' });
 
-    expect(outcome.kind).toBe('mounted');
+    expect(mounts).toHaveLength(1);
+  });
+});
+
+describe('the choices of the student', () => {
+  const OFF = { ...DEFAULT_SETTINGS, showOnCanvasPages: false };
+  const ON = { ...DEFAULT_SETTINGS, showOnCanvasPages: true };
+
+  async function onSavedCanvas(settings = ON) {
+    await canvasOriginItem.setValue(CUSTOM);
+    await settingsItem.setValue(settings);
+    loadPage(document, COURSE_HOME);
+    return start({ origin: CUSTOM, pathname: '/courses/5' });
+  }
+
+  async function flush(): Promise<void> {
+    await vi.advanceTimersByTimeAsync(0);
+  }
+
+  beforeEach(() => vi.useFakeTimers());
+
+  it('removes the list when the student turns the setting off, and mounts it again', async () => {
+    await onSavedCanvas();
+    expect(mountList).toHaveBeenCalledTimes(1);
+
+    await settingsItem.setValue(OFF);
+    expect(removed).toHaveBeenCalledTimes(1);
+
+    await settingsItem.setValue(ON);
+    await flush();
+    expect(mountList).toHaveBeenCalledTimes(2);
+
+    await settingsItem.setValue(OFF);
+    expect(removed).toHaveBeenCalledTimes(2);
+  });
+
+  it('removes the list when the student switches to another Canvas address, and mounts it on return', async () => {
+    await onSavedCanvas();
+
+    await canvasOriginItem.setValue('https://canvas.state.edu');
+    expect(removed).toHaveBeenCalledTimes(1);
+    // The setting does not bring the list back on a page of another address.
+    await settingsItem.setValue(OFF);
+    await settingsItem.setValue(ON);
+    await flush();
+    expect(mountList).toHaveBeenCalledTimes(1);
+
+    await canvasOriginItem.setValue(CUSTOM);
+    await flush();
+    expect(mountList).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores other settings, and mounts once however often the same choice is saved', async () => {
+    await onSavedCanvas();
+
+    await settingsItem.setValue({ ...ON, showRings: false });
+    await settingsItem.setValue({ ...ON, showRings: true, theme: 'dark' });
+    await canvasOriginItem.setValue(CUSTOM);
+    await flush();
+
+    expect(removed).not.toHaveBeenCalled();
+    expect(mountList).toHaveBeenCalledTimes(1);
+  });
+
+  it('mounts nothing when the setting turns off while the page waits for its anchors', async () => {
+    await canvasOriginItem.setValue(CUSTOM);
+    loadPage(document, CARD_VIEW);
+    await start({ origin: CUSTOM, pathname: '/' });
+
+    await settingsItem.setValue(OFF);
+    injectSidebar(document, STUDENT_SIDEBAR);
+    await flush();
+
+    expect(mountList).not.toHaveBeenCalled();
+    expect(document.getElementById(MOUNT_CONTAINER_ID)).toBeNull();
+  });
+
+  it('waits for the anchors again when the setting turns on, after an earlier wait timed out', async () => {
+    await canvasOriginItem.setValue(CUSTOM);
+    loadPage(document, CARD_VIEW);
+    await start({ origin: CUSTOM, pathname: '/' });
+    await vi.advanceTimersByTimeAsync(DEFAULT_MOUNT_TIMEOUT_MS);
+
+    await settingsItem.setValue(OFF);
+    await settingsItem.setValue(ON);
+    injectSidebar(document, STUDENT_SIDEBAR);
+    await flush();
+
+    expect(mountList).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies a choice that changes while the first reads run', async () => {
+    await canvasOriginItem.setValue(CUSTOM);
+    await settingsItem.setValue(ON);
+    loadPage(document, COURSE_HOME);
+    const done = start({ origin: CUSTOM, pathname: '/courses/5' });
+
+    await settingsItem.setValue(OFF);
+    await done;
+    await flush();
+
+    expect(mountList).not.toHaveBeenCalled();
+  });
+
+  it('stops watching, waiting and the list when the content script ends', async () => {
+    const mountedCopy = new AbortController();
+    await canvasOriginItem.setValue(CUSTOM);
+    loadPage(document, COURSE_HOME);
+    await start({ origin: CUSTOM, pathname: '/courses/5', signal: mountedCopy.signal });
+    expect(mountList).toHaveBeenCalledTimes(1);
+
+    mountedCopy.abort();
+    expect(removed).toHaveBeenCalledTimes(1);
+    await settingsItem.setValue(OFF);
+    await settingsItem.setValue(ON);
+    await flush();
+    expect(mountList).toHaveBeenCalledTimes(1);
+    expect(removed).toHaveBeenCalledTimes(1);
+
+    // A copy that still waits for the anchors stops waiting.
+    const waitingCopy = new AbortController();
+    loadPage(document, CARD_VIEW);
+    await start({ origin: CUSTOM, pathname: '/', signal: waitingCopy.signal });
+    waitingCopy.abort();
+    injectSidebar(document, STUDENT_SIDEBAR);
+    await flush();
+    expect(mountList).toHaveBeenCalledTimes(1);
+    expect(document.getElementById(MOUNT_CONTAINER_ID)).toBeNull();
+  });
+
+  it('logs a mount that throws and keeps watching', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mountList.mockImplementationOnce(() => {
+      throw new Error('mount failed');
+    });
+    await onSavedCanvas();
+
+    await settingsItem.setValue(OFF);
+    await settingsItem.setValue(ON);
+    await flush();
+
+    expect(mountList).toHaveBeenCalledTimes(2);
   });
 });

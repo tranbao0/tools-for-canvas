@@ -30,7 +30,7 @@ import {
 import { sessionCacheItem, setupStatusItem, type SessionData } from '../cache';
 import { mergeIntervals, toInterval, toRange } from '../coverage';
 import { createDataOwner, type DataOwner, type DataOwnerDeps, type RefreshSource } from '../owner';
-import type { SurfaceRequest } from '../protocol';
+import type { StateReply, SurfaceRequest } from '../protocol';
 import { plannerRangeForView, weekRange, type ViewContext } from '../state';
 import { createFakeCanvas, type FakeCanvas } from './fakeCanvas';
 
@@ -41,7 +41,7 @@ export const FROM_PANEL: RefreshSource = { surface: 'panel', fromExtensionPage: 
 /** A refresh request from the in-page list. */
 export const FROM_INPAGE: RefreshSource = { surface: 'inpage', fromExtensionPage: false };
 
-export interface HarnessOptions {
+interface HarnessOptions {
   origin?: string | null;
   settings?: Partial<Settings>;
   scenario?: Scenario;
@@ -125,9 +125,9 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
   };
 }
 
-export type ReadyState = Extract<SurfaceState, { kind: 'ready' }>;
+export type ReadyState = Extract<SurfaceState, { kind: 'ready' }> & { userId?: string };
 
-export function expectReady(state: SurfaceState): ReadyState {
+export function expectReady(state: StateReply): ReadyState {
   if (state.kind !== 'ready') throw new Error(`Expected a ready state, got ${state.kind}`);
   return state;
 }
@@ -203,4 +203,27 @@ export async function weekOf(harness: Harness, weekOffset: number): Promise<Time
 /** Planner ranges joined where they touch or overlap, such as the chunks of one request. */
 export function joinRanges(ranges: readonly TimeRange[]): TimeRange[] {
   return mergeIntervals(ranges.map(toInterval)).map(toRange);
+}
+
+/** The id of the only course of the other student that `signInOtherUser` signs in. */
+export const ART = '900';
+
+/**
+ * Signs another student in to the same fake Canvas, with one course and no work. The cache of
+ * the owner still holds the first student until a request finds the change.
+ */
+export function signInOtherUser(h: Harness): void {
+  const scenario = h.canvas.scenario;
+  const [template] = scenario.courses;
+  if (template === undefined) throw new Error('The scenario has no course');
+  scenario.self = { ...scenario.self, id: '7777', name: 'Sam Other' };
+  scenario.profile = { ...scenario.profile, id: '7777', name: 'Sam Other' };
+  scenario.courses = [{ ...template, id: ART, name: 'Art 101', course_code: 'ART 101' }];
+  scenario.groups = [];
+  scenario.colors = { custom_colors: {} };
+  scenario.dashboardPositions = { dashboard_positions: {} };
+  scenario.plannerItems = [];
+  scenario.assignments = {};
+  scenario.undatedAssignments = {};
+  scenario.customGradeStatuses = {};
 }

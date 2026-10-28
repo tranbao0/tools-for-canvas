@@ -1,19 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { moveToTodayTodoDate, todoDateFor } from '../../model';
-import { changeMarkerItem, seenNotesItem } from '../../platform/storage';
-import { IDS } from '../../../../tests/fixtures/scenario';
+import { canvasOriginItem, changeMarkerItem } from '../../platform/storage';
+import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
 import { sessionCacheItem, type SessionCache } from '../cache';
-import { MAX_DELETE_DELAY_MS, MAX_UNDO_RECORDS } from '../owner';
+import { MAX_DELETE_DELAY_MS } from '../owner';
 import { pendingOverride, type NotePatch, type OverridePatch } from '../patches';
+import type { ActionReply } from '../protocol';
 import type { TaskInput } from '../../ui/contract';
-import { canvasError } from '../testing/fakeCanvas';
+import { canvasError, createFakeCanvas } from '../testing/fakeCanvas';
 import {
   PANEL,
   advance,
   createHarness,
   expectReady,
   findItem,
+  ORIGIN,
   loadReady,
+  signInOtherUser,
   useScenarioClock,
   type Harness,
 } from '../testing/harness';
@@ -39,6 +42,31 @@ async function item(h: Harness, key: string) {
   return findItem(expectReady(await h.owner.getState(PANEL)), key);
 }
 
+const input: TaskInput = {
+  title: '  Buy lab coat ',
+  date: '2026-10-29',
+  time: null,
+  courseId: null,
+  details: '',
+};
+
+const secret: TaskInput = { ...input, title: 'A private task', details: 'secret' };
+
+function shownTask(state: ReturnType<typeof expectReady>) {
+  return state.view.groups
+    .flatMap((group) => [...group.items, ...group.doneUndated])
+    .find((entry) => entry.title === 'Buy lab coat');
+}
+
+/** The Undo of an override action, as a surface sends it with the data from the reply. */
+function restoreOf(reply: ActionReply) {
+  if (reply.undo?.kind !== 'overrides') throw new Error('Expected an override undo');
+  const { userId, origin, entries } = reply.undo;
+  return { kind: 'restore', userId, origin, entries } as const;
+}
+
+const NOT_DONE = { markedComplete: false, dismissed: false };
+
 describe('done marks', () => {
   it('shows a done mark at once, then creates the override as type assignment for a quiz', async () => {
     const h = await loaded();
@@ -46,7 +74,12 @@ describe('done marks', () => {
 
     const reply = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
 
-    expect(reply.undo?.info).toEqual({ kind: 'done', count: 1 });
+    expect(reply.undo).toEqual({
+      kind: 'overrides',
+      userId: IDS.user,
+      origin: ORIGIN,
+      entries: [{ key: QUIZ_3, previous: NOT_DONE }],
+    });
     expect((await item(h, QUIZ_3))?.state).toBe('done');
     release();
     await h.owner.settled();
@@ -116,20 +149,6 @@ describe('done marks', () => {
     expect((await item(h, QUIZ_3))?.state).toBe('done');
   });
 
-  it('rolls back and shows the stale line when Canvas fails the write with 5xx', async () => {
-    const h = await loaded();
-    const loadedAt = new Date(Date.now()).toISOString();
-    h.canvas.fail('createOverride', canvasError('server', 500), { times: 1 });
-
-    await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
-    await h.owner.settled();
-    const state = expectReady(await h.owner.getState(PANEL));
-
-    expect(findItem(state, QUIZ_3)?.state).toBe('open');
-    expect(state.stale).toEqual({ since: loadedAt, offline: false });
-    expect(h.canvas.callsOf('listPlannerItems')).toHaveLength(0);
-  });
-
   it('still loads a new week after a failed write', async () => {
     const h = await loaded();
     h.canvas.fail('createOverride', canvasError('server', 500), { times: 1 });
@@ -188,70 +207,23 @@ describe('done marks', () => {
     await h.owner.settled();
     const [created] = h.canvas.overrides().filter((o) => o.assignment_id === A.bioQuiz3Today);
 
-    await h.owner.act({ kind: 'undo', token: reply.undo?.token ?? '' });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
     await h.owner.settled();
 
-    expect(h.canvas.callsOf('updateOverride')).toEqual([
-      [created?.id, { markedComplete: false, dismissed: false }],
-    ]);
+    expect(h.canvas.callsOf('updateOverride')).toEqual([[created?.id, NOT_DONE]]);
     expect((await item(h, QUIZ_3))?.state).toBe('open');
   });
 
-  it('keeps the undo while its notice shows, however long that is', async () => {
+  it('undoes however long the notice showed, because the surface keeps the data', async () => {
     const h = await loaded();
     const reply = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
     await advance(h, 30 * 60_000);
 
-    await h.owner.act({ kind: 'undo', token: reply.undo?.token ?? '' });
+    await h.owner.act(restoreOf(reply));
     await h.owner.settled();
 
     expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
     expect((await item(h, QUIZ_3))?.state).toBe('open');
-  });
-
-  it('forgets the undo when its notice ends', async () => {
-    const h = await loaded();
-    const reply = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
-    await h.owner.settled();
-
-    await h.owner.act({ kind: 'endUndo', token: reply.undo?.token ?? '' });
-    await h.owner.act({ kind: 'undo', token: reply.undo?.token ?? '' });
-    await h.owner.settled();
-
-    expect(h.canvas.callsOf('updateOverride')).toEqual([]);
-    expect((await item(h, QUIZ_3))?.state).toBe('done');
-  });
-
-  it('tells a surface whether the notice it shows still applies', async () => {
-    const h = await loaded();
-    const reply = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
-    const undoToken = reply.undo?.token ?? '';
-    await h.owner.settled();
-
-    const shown = expectReady(await h.owner.getState({ ...PANEL, undoToken }));
-    expect(shown.undo).toEqual({ kind: 'done', count: 1 });
-    // A surface without that notice gets none.
-    expect(expectReady(await h.owner.getState(PANEL)).undo).toBeNull();
-
-    await h.owner.act({ kind: 'endUndo', token: undoToken });
-    expect(expectReady(await h.owner.getState({ ...PANEL, undoToken })).undo).toBeNull();
-  });
-
-  it('keeps a bounded number of undo records', async () => {
-    const h = await loaded();
-    const first = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
-    for (let index = 0; index < MAX_UNDO_RECORDS; index += 1) {
-      await advance(h, 10);
-      await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
-    }
-    await h.owner.settled();
-
-    const cache = (await sessionCacheItem.getValue()) as SessionCache;
-    expect(Object.keys(cache.undos).length).toBeLessThanOrEqual(MAX_UNDO_RECORDS);
-    expect(cache.undos[first.undo?.token ?? '']).toBeUndefined();
-    // The surface that still shows the oldest notice learns that it ended.
-    const oldest = await h.owner.getState({ ...PANEL, undoToken: first.undo?.token ?? null });
-    expect(expectReady(oldest).undo).toBeNull();
   });
 
   it('undoes a done mark after a service worker restart', async () => {
@@ -263,24 +235,74 @@ describe('done marks', () => {
 
     const restarted = h.restart();
     await vi.advanceTimersByTimeAsync(2000);
-    await restarted.act({ kind: 'undo', token: reply.undo?.token ?? '' });
+    await restarted.act(restoreOf(reply));
     await restarted.settled();
 
-    expect(h.canvas.callsOf('updateOverride')).toEqual([
-      [created?.id, { markedComplete: false, dismissed: false }],
-    ]);
+    expect(h.canvas.callsOf('updateOverride')).toEqual([[created?.id, NOT_DONE]]);
     expect(findItem(expectReady(await restarted.getState(PANEL)), QUIZ_3)?.state).toBe('open');
   });
 
-  it('uses each undo only once', async () => {
+  it('ignores an Undo of another user, so a notice never writes onto the overrides of someone else', async () => {
     const h = await loaded();
     const reply = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
     await h.owner.settled();
+    h.canvas.resetCalls();
+    const other = { ...restoreOf(reply), userId: '7777' };
 
-    await h.owner.act({ kind: 'undo', token: reply.undo?.token ?? '' });
-    await h.owner.act({ kind: 'undo', token: reply.undo?.token ?? '' });
+    await h.owner.act(other);
     await h.owner.settled();
 
+    expect(h.canvas.callsOf('updateOverride')).toEqual([]);
+    expect(h.canvas.callsOf('createOverride')).toEqual([]);
+    expect((await item(h, QUIZ_3))?.state).toBe('done');
+  });
+
+  it('ignores an Undo of another Canvas, even for the same user id', async () => {
+    const h = await loaded();
+    const reply = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    await h.owner.settled();
+    await canvasOriginItem.setValue('https://other.instructure.com');
+    await loadReady(h);
+    h.canvas.resetCalls();
+
+    await h.owner.act(restoreOf(reply));
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('updateOverride')).toEqual([]);
+    expect(h.canvas.callsOf('createOverride')).toEqual([]);
+  });
+
+  it('ignores the items of an Undo that the cache no longer holds', async () => {
+    const h = await loaded();
+    const reply = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    await h.owner.settled();
+    h.canvas.resetCalls();
+    const undo = restoreOf(reply);
+
+    await h.owner.act({
+      ...undo,
+      entries: [...undo.entries, { key: 'assignment:gone', previous: NOT_DONE }],
+    });
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
+    expect((await item(h, QUIZ_3))?.state).toBe('open');
+  });
+
+  it('writes a key once, however often an action names it', async () => {
+    const h = await loaded();
+
+    const reply = await h.owner.act({ kind: 'skip', keys: [QUIZ_3, QUIZ_3, QUIZ_3] });
+    await h.owner.settled();
+
+    expect(reply.undo?.kind === 'overrides' ? reply.undo.entries : []).toHaveLength(1);
+    expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
+
+    await h.owner.act({
+      ...restoreOf(reply),
+      entries: [...restoreOf(reply).entries, ...restoreOf(reply).entries],
+    });
+    await h.owner.settled();
     expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
   });
 
@@ -304,7 +326,7 @@ describe('skip', () => {
     const h = await loaded();
     expect((await item(h, LAB_REPORT_2))?.checkboxDisabled).toBe(true);
 
-    await h.owner.act({ kind: 'skip', key: LAB_REPORT_2 });
+    await h.owner.act({ kind: 'skip', keys: [LAB_REPORT_2] });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('updateOverride')).toEqual([
@@ -316,9 +338,14 @@ describe('skip', () => {
   it('sets dismissed with the current done flag, and Unskip clears it', async () => {
     const h = await loaded();
 
-    const skipped = await h.owner.act({ kind: 'skip', key: PROBLEM_SET_6 });
+    const skipped = await h.owner.act({ kind: 'skip', keys: [PROBLEM_SET_6] });
     await h.owner.settled();
-    expect(skipped.undo?.info).toEqual({ kind: 'skipped', count: 1 });
+    expect(skipped.undo).toEqual({
+      kind: 'overrides',
+      userId: IDS.user,
+      origin: ORIGIN,
+      entries: [{ key: PROBLEM_SET_6, previous: NOT_DONE }],
+    });
     expect(h.canvas.callsOf('createOverride')).toEqual([
       [
         {
@@ -349,10 +376,13 @@ describe('skip', () => {
     const states = new Map(older.map((entry) => [entry.key, entry.state]));
     expect(states.get(HOMEWORK_3)).toBe('done');
 
-    const reply = await h.owner.act({ kind: 'skipAllOlder', request: PANEL });
+    const keys = older.map((entry) => entry.key);
+    const reply = await h.owner.act({ kind: 'skip', keys });
     await h.owner.settled();
 
-    expect(reply.undo?.info).toEqual({ kind: 'skipped_all', count: 5 });
+    expect(reply.undo?.kind === 'overrides' ? reply.undo.entries.map((e) => e.key) : []).toEqual(
+      keys,
+    );
     const after = expectReady(await h.owner.getState(PANEL));
     for (const entry of older) expect(findItem(after, entry.key)?.state).toBe('skipped');
     // Lab report 2 already has an override, so it gets a PUT. Its redo request blocks done, so
@@ -368,7 +398,7 @@ describe('skip', () => {
     ]);
     expect(h.canvas.callsOf('createOverride')).toHaveLength(3);
 
-    await h.owner.act({ kind: 'undo', token: reply.undo?.token ?? '' });
+    await h.owner.act(restoreOf(reply));
     await h.owner.settled();
     const undone = expectReady(await h.owner.getState(PANEL));
     for (const entry of older) {
@@ -409,7 +439,7 @@ describe('checked but missing', () => {
     await h.owner.settled();
 
     const reply = await h.owner.act({ kind: 'setDone', key: HOMEWORK_3, done: true });
-    expect(reply.undo?.info).toEqual({ kind: 'done', count: 1 });
+    expect(reply.undo?.kind).toBe('overrides');
     expect(await placeOf(h, HOMEWORK_3)).toBe('past_due.older');
     await h.owner.settled();
 
@@ -428,14 +458,14 @@ describe('checked but missing', () => {
   it('leaves Past due when skipped, with marked_complete false, and comes back on Undo', async () => {
     const h = await loaded();
 
-    const reply = await h.owner.act({ kind: 'skip', key: HOMEWORK_3 });
+    const reply = await h.owner.act({ kind: 'skip', keys: [HOMEWORK_3] });
     expect(await placeOf(h, HOMEWORK_3)).toBe('past_due.skipped');
     await h.owner.settled();
     expect(h.canvas.callsOf('updateOverride')).toEqual([
       [IDS.overrides.mathHomework3, { markedComplete: false, dismissed: true }],
     ]);
 
-    await h.owner.act({ kind: 'undo', token: reply.undo?.token ?? '' });
+    await h.owner.act(restoreOf(reply));
     await h.owner.settled();
     expect(await placeOf(h, HOMEWORK_3)).toBe('past_due.older');
     expect((await item(h, HOMEWORK_3))?.state).toBe('done');
@@ -443,26 +473,21 @@ describe('checked but missing', () => {
 });
 
 describe('custom tasks', () => {
-  const input: TaskInput = {
-    title: '  Buy lab coat ',
-    date: '2026-10-29',
-    time: null,
-    courseId: null,
-    details: '',
-  };
-
-  it('creates a task at once and stores 11:59 pm when the time is empty', async () => {
+  it('waits for Canvas, then shows the task with its real id and 11:59 pm when the time is empty', async () => {
     const h = await loaded();
     const release = h.canvas.hold('createNote');
 
-    await h.owner.act({ kind: 'createTask', input });
-    const pending = expectReady(await h.owner.getState(PANEL));
-    const shown = pending.view.groups
-      .flatMap((group) => group.items)
-      .find((entry) => entry.title === 'Buy lab coat');
-    expect(shown?.noteId).toMatch(/^pending-/);
+    let answered = false;
+    const done = h.owner.act({ kind: 'createTask', input }).then(() => {
+      answered = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    // The POST is out, and the task does not show before Canvas answers.
+    expect(h.canvas.callsOf('createNote')).toHaveLength(1);
+    expect(shownTask(expectReady(await h.owner.getState(PANEL)))).toBeUndefined();
+    expect(answered).toBe(false);
     release();
-    await h.owner.settled();
+    await done;
 
     expect(h.canvas.callsOf('createNote')).toEqual([
       [
@@ -474,29 +499,33 @@ describe('custom tasks', () => {
         },
       ],
     ]);
-    const created = expectReady(await h.owner.getState(PANEL))
-      .view.groups.flatMap((group) => group.items)
-      .find((entry) => entry.title === 'Buy lab coat');
+    // The reply comes after the task is in the cache.
+    const created = shownTask(expectReady(await h.owner.getState(PANEL)));
     expect(created?.noteId).toMatch(/^\d+$/);
+    await h.owner.settled();
+    expect(shownTask(expectReady(await h.owner.getState(PANEL)))?.noteId).toBe(created?.noteId);
   });
 
-  it('turns actions on a new task into requests with its real id', async () => {
+  it('syncs the list with a forced round after a create', async () => {
     const h = await loaded();
-    const release = h.canvas.hold('createNote');
-    await h.owner.act({ kind: 'createTask', input });
-    const pending = expectReady(await h.owner.getState(PANEL))
-      .view.groups.flatMap((group) => group.items)
-      .find((entry) => entry.title === 'Buy lab coat');
 
-    await h.owner.act({ kind: 'setDone', key: pending?.key ?? '', done: true });
-    release();
+    const reply = await h.owner.act({ kind: 'createTask', input });
     await h.owner.settled();
 
-    const created = expectReady(await h.owner.getState(PANEL))
-      .view.groups.flatMap((group) => group.items)
-      .find((entry) => entry.title === 'Buy lab coat');
-    expect(created?.noteId).toMatch(/^\d+$/);
-    expect(created?.state).toBe('done');
+    expect(reply.created).toBe(true);
+    // One check of the student before the POST, and one for the round that syncs the list.
+    expect(h.canvas.callsOf('getSelf')).toHaveLength(2);
+    expect(h.canvas.callsOf('listPlannerItems').length).toBeGreaterThan(0);
+  });
+
+  it('acts on a created task with its real id', async () => {
+    const h = await loaded();
+    await h.owner.act({ kind: 'createTask', input });
+    const created = shownTask(expectReady(await h.owner.getState(PANEL)));
+
+    await h.owner.act({ kind: 'setDone', key: created?.key ?? '', done: true });
+    await h.owner.settled();
+
     expect(h.canvas.callsOf('createOverride')).toEqual([
       [
         {
@@ -507,6 +536,22 @@ describe('custom tasks', () => {
         },
       ],
     ]);
+    expect(shownTask(expectReady(await h.owner.getState(PANEL)))?.state).toBe('done');
+  });
+
+  it('creates a task without waiting for the done marks that went before it', async () => {
+    const h = await loaded();
+    const release = h.canvas.hold('createOverride');
+    await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+
+    const reply = await h.owner.act({ kind: 'createTask', input });
+
+    // The done mark still waits at Canvas, and the task is saved.
+    expect(reply.created).toBe(true);
+    expect(h.canvas.callsOf('createNote')).toHaveLength(1);
+    expect(shownTask(expectReady(await h.owner.getState(PANEL)))).toBeDefined();
+    release();
+    await h.owner.settled();
   });
 
   it('updates a task with PUT', async () => {
@@ -538,12 +583,20 @@ describe('custom tasks', () => {
     const key = `planner_note:${N.libraryBooksToday}`;
 
     const reply = await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
-    expect(reply.undo?.info).toEqual({ kind: 'deleted', count: 1 });
+    expect(reply.undo).toEqual({
+      kind: 'delete',
+      userId: IDS.user,
+      origin: ORIGIN,
+      noteId: N.libraryBooksToday,
+    });
     expect(await item(h, key)).toBeUndefined();
+    expect(((await sessionCacheItem.getValue()) as SessionCache).pendingDeletes).toEqual({
+      [N.libraryBooksToday]: Date.now() + MAX_DELETE_DELAY_MS,
+    });
 
     await advance(h, 60_000);
     expect(h.canvas.callsOf('deleteNote')).toEqual([]);
-    await h.owner.act({ kind: 'endUndo', token: reply.undo?.token ?? '' });
+    await h.owner.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
     await h.owner.settled();
     expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday]]);
     expect(await item(h, key)).toBeUndefined();
@@ -554,29 +607,42 @@ describe('custom tasks', () => {
 
   it('sends DELETE at the latest 2 minutes after the delete', async () => {
     const h = await loaded();
-    const reply = await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
 
     await advance(h, MAX_DELETE_DELAY_MS - 1);
     expect(h.canvas.callsOf('deleteNote')).toEqual([]);
     await advance(h, 1);
     expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday]]);
 
-    await h.owner.act({ kind: 'endUndo', token: reply.undo?.token ?? '' });
+    await h.owner.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
     await h.owner.settled();
     expect(h.canvas.callsOf('deleteNote')).toHaveLength(1);
+  });
+
+  it('sends the DELETE once, however often the notice ends', async () => {
+    const h = await loaded();
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+
+    await h.owner.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
+    await h.owner.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
+    await advance(h, MAX_DELETE_DELAY_MS);
+
+    expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday]]);
+    expect(((await sessionCacheItem.getValue()) as SessionCache).pendingDeletes).toEqual({});
   });
 
   it('never sends DELETE when the delete is undone', async () => {
     const h = await loaded();
     const key = `planner_note:${N.libraryBooksToday}`;
 
-    const reply = await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
     await advance(h, 2000);
-    await h.owner.act({ kind: 'undo', token: reply.undo?.token ?? '' });
+    await h.owner.act({ kind: 'cancelDelete', noteId: N.libraryBooksToday });
     await advance(h, MAX_DELETE_DELAY_MS);
 
     expect(h.canvas.callsOf('deleteNote')).toEqual([]);
     expect((await item(h, key))?.title).toBe('Return library books');
+    expect(((await sessionCacheItem.getValue()) as SessionCache).pendingDeletes).toEqual({});
   });
 
   it('undoes a delete whose DELETE is queued behind another write but not sent', async () => {
@@ -584,10 +650,10 @@ describe('custom tasks', () => {
     const key = `planner_note:${N.libraryBooksToday}`;
     const release = h.canvas.hold('createOverride');
     await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
-    const reply = await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
     await vi.advanceTimersByTimeAsync(MAX_DELETE_DELAY_MS);
 
-    await h.owner.act({ kind: 'undo', token: reply.undo?.token ?? '' });
+    await h.owner.act({ kind: 'cancelDelete', noteId: N.libraryBooksToday });
     release();
     await h.owner.settled();
 
@@ -599,11 +665,11 @@ describe('custom tasks', () => {
     const h = await loaded();
     const key = `planner_note:${N.libraryBooksToday}`;
     const release = h.canvas.hold('deleteNote');
-    const reply = await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
     await vi.advanceTimersByTimeAsync(MAX_DELETE_DELAY_MS);
     expect(h.canvas.callsOf('deleteNote')).toHaveLength(1);
 
-    await h.owner.act({ kind: 'undo', token: reply.undo?.token ?? '' });
+    await h.owner.act({ kind: 'cancelDelete', noteId: N.libraryBooksToday });
     release();
     await h.owner.settled();
 
@@ -617,6 +683,7 @@ describe('custom tasks', () => {
 
     h.owner.dispose();
 
+    h.canvas.resetCalls();
     const restarted = h.restart();
     expect(
       findItem(expectReady(await restarted.getState(PANEL)), `planner_note:${N.libraryBooksToday}`),
@@ -629,12 +696,12 @@ describe('custom tasks', () => {
 
   it('sends DELETE at once when the notice ends after a service worker restart', async () => {
     const h = await loaded();
-    const reply = await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
     await h.owner.settled();
     h.owner.dispose();
 
     const restarted = h.restart();
-    await restarted.act({ kind: 'endUndo', token: reply.undo?.token ?? '' });
+    await restarted.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
     await restarted.settled();
 
     expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday]]);
@@ -643,13 +710,13 @@ describe('custom tasks', () => {
   it('undoes a delete after a service worker restart, so DELETE is never sent', async () => {
     const h = await loaded();
     const key = `planner_note:${N.libraryBooksToday}`;
-    const reply = await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
     await h.owner.settled();
     h.owner.dispose();
 
     const restarted = h.restart();
     await vi.advanceTimersByTimeAsync(2000);
-    await restarted.act({ kind: 'undo', token: reply.undo?.token ?? '' });
+    await restarted.act({ kind: 'cancelDelete', noteId: N.libraryBooksToday });
     await vi.advanceTimersByTimeAsync(10_000);
     await restarted.settled();
 
@@ -679,75 +746,20 @@ describe('custom tasks', () => {
     expect((await item(h, key))?.canMoveToToday).toBe(false);
   });
 
-  it('undoes a done mark of a new task after Canvas created it', async () => {
+  it('undoes a done mark of a created task', async () => {
     const h = await loaded();
-    const release = h.canvas.hold('createNote');
     await h.owner.act({ kind: 'createTask', input });
-    const pending = expectReady(await h.owner.getState(PANEL))
-      .view.groups.flatMap((group) => group.items)
-      .find((entry) => entry.title === 'Buy lab coat');
-    const done = await h.owner.act({ kind: 'setDone', key: pending?.key ?? '', done: true });
-    release();
+    const created = shownTask(expectReady(await h.owner.getState(PANEL)));
+    const done = await h.owner.act({ kind: 'setDone', key: created?.key ?? '', done: true });
     await h.owner.settled();
 
-    await h.owner.act({ kind: 'undo', token: done.undo?.token ?? '' });
+    await h.owner.act(restoreOf(done));
     await h.owner.settled();
 
-    const after = expectReady(await h.owner.getState(PANEL))
-      .view.groups.flatMap((group) => group.items)
-      .find((entry) => entry.title === 'Buy lab coat');
-    expect(after?.noteId).toMatch(/^\d+$/);
-    const created = h.canvas.overrides().find((o) => o.plannable_id === after?.noteId);
-    expect(h.canvas.callsOf('updateOverride')).toEqual([
-      [created?.id, { markedComplete: false, dismissed: false }],
-    ]);
+    const after = shownTask(expectReady(await h.owner.getState(PANEL)));
+    const override = h.canvas.overrides().find((o) => o.plannable_id === created?.noteId);
+    expect(h.canvas.callsOf('updateOverride')).toEqual([[override?.id, NOT_DONE]]);
     expect(after?.state).toBe('open');
-  });
-
-  it('accepts the temporary id of a task that Canvas already created', async () => {
-    const h = await loaded();
-    const release = h.canvas.hold('createNote');
-    await h.owner.act({ kind: 'createTask', input });
-    const pending = expectReady(await h.owner.getState(PANEL))
-      .view.groups.flatMap((group) => group.items)
-      .find((entry) => entry.title === 'Buy lab coat');
-    release();
-    await h.owner.settled();
-
-    // A surface that still shows the temporary row acts on it.
-    await h.owner.act({ kind: 'setDone', key: pending?.key ?? '', done: true });
-    await h.owner.act({
-      kind: 'updateTask',
-      noteId: pending?.noteId ?? '',
-      input: { ...input, title: 'Buy two lab coats' },
-    });
-    await h.owner.settled();
-
-    const created = expectReady(await h.owner.getState(PANEL))
-      .view.groups.flatMap((group) => [...group.items, ...group.doneUndated])
-      .find((entry) => entry.title === 'Buy two lab coats');
-    const realId = created?.noteId;
-    expect(realId).toMatch(/^\d+$/);
-    expect(created?.state).toBe('done');
-    expect(h.canvas.callsOf('createNote')).toHaveLength(1);
-    expect(h.canvas.callsOf('createOverride')).toContainEqual([
-      expect.objectContaining({ plannableType: 'planner_note', plannableId: realId }),
-    ]);
-    expect(h.canvas.callsOf('updateNote')).toEqual([[realId, expect.anything()]]);
-  });
-
-  it('rolls a failed task back', async () => {
-    const h = await loaded();
-    h.canvas.fail('createNote', canvasError('network'), { times: 1 });
-
-    await h.owner.act({ kind: 'createTask', input });
-    await h.owner.settled();
-    const state = expectReady(await h.owner.getState(PANEL));
-
-    expect(
-      state.view.groups.flatMap((group) => group.items).map((entry) => entry.title),
-    ).not.toContain('Buy lab coat');
-    expect(state.stale?.offline).toBe(true);
   });
 });
 
@@ -761,66 +773,78 @@ describe('a service worker restart', () => {
     return h.restart();
   }
 
-  it('sends a done mark again that never got an answer', async () => {
+  const target = {
+    plannableType: 'assignment',
+    plannableId: A.bioQuiz3Today,
+    assignmentId: A.bioQuiz3Today,
+  } as const;
+  const unconfirmed: OverridePatch = {
+    kind: 'override',
+    id: 900,
+    key: QUIZ_3,
+    target,
+    override: pendingOverride(target, { markedComplete: true, dismissed: false }, '', IDS.user),
+    confirmedAt: null,
+  };
+
+  it.each([
+    [
+      'a done mark',
+      unconfirmed,
+      (state: ReturnType<typeof expectReady>) => findItem(state, QUIZ_3)?.state === 'open',
+    ],
+    [
+      'a task update',
+      {
+        kind: 'note',
+        id: 901,
+        noteId: N.bioStudyGroup,
+        note: {
+          id: N.bioStudyGroup,
+          title: 'Lost rename',
+          details: null,
+          todoDate: todoDateFor('2026-10-29', null, TIME_ZONE),
+          courseId: null,
+        },
+        confirmedAt: null,
+      } satisfies NotePatch,
+      (state: ReturnType<typeof expectReady>) =>
+        !state.view.groups.some((group) => group.items.some((i) => i.title === 'Lost rename')),
+    ],
+  ] as const)(
+    'drops %s that never got an answer and syncs the list',
+    async (_name, patch, reverted) => {
+      const h = await loaded();
+      const restarted = await withStoredPatches(h, (cache) => ({ ...cache, patches: [patch] }));
+
+      expect(reverted(expectReady(await restarted.getState(PANEL)))).toBe(true);
+      await restarted.settled();
+
+      for (const method of ['createOverride', 'updateOverride', 'updateNote'] as const) {
+        expect(h.canvas.callsOf(method)).toEqual([]);
+      }
+      expect(h.canvas.callsOf('listPlannerItems')).toHaveLength(1);
+      expect(reverted(expectReady(await restarted.getState(PANEL)))).toBe(true);
+    },
+  );
+
+  it('keeps a confirmed write and a pending delete, and runs no round for them', async () => {
     const h = await loaded();
-    const target = {
-      plannableType: 'assignment',
-      plannableId: A.bioQuiz3Today,
-      assignmentId: A.bioQuiz3Today,
-    } as const;
-    const patch: OverridePatch = {
-      kind: 'override',
-      id: 900,
-      key: QUIZ_3,
-      target,
-      override: pendingOverride(target, { markedComplete: true, dismissed: false }, '', IDS.user),
-      confirmedAt: null,
-    };
-    const restarted = await withStoredPatches(h, (cache) => ({ ...cache, patches: [patch] }));
+    await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    await h.owner.settled();
+    h.owner.dispose();
+    h.canvas.resetCalls();
 
-    expect(findItem(expectReady(await restarted.getState(PANEL)), QUIZ_3)?.state).toBe('done');
-    await restarted.settled();
-
-    expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
-    expect(h.canvas.callsOf('listPlannerItems')).toHaveLength(1);
-    expect(findItem(expectReady(await restarted.getState(PANEL)), QUIZ_3)?.state).toBe('done');
-  });
-
-  it('drops a task create that never got an answer and syncs the list', async () => {
-    const h = await loaded();
-    const patch: NotePatch = {
-      kind: 'note',
-      id: 901,
-      noteId: 'pending-901',
-      note: {
-        id: 'pending-901',
-        title: 'Lost task',
-        details: null,
-        todoDate: todoDateFor('2026-10-29', null, TIME_ZONE),
-        courseId: null,
-      },
-      deleteAt: null,
-      confirmedAt: null,
-    };
-    const restarted = await withStoredPatches(h, (cache) => ({ ...cache, patches: [patch] }));
-
+    const restarted = h.restart();
     const state = expectReady(await restarted.getState(PANEL));
+    await vi.advanceTimersByTimeAsync(1000);
     await restarted.settled();
 
-    expect(state.view.groups.flatMap((group) => group.items).map((i) => i.title)).not.toContain(
-      'Lost task',
-    );
-    expect(h.canvas.callsOf('createNote')).toEqual([]);
-    expect(h.canvas.callsOf('listPlannerItems')).toHaveLength(1);
-  });
-});
-
-describe('one-time notes and offers', () => {
-  it('remembers a seen note', async () => {
-    const h = await loaded();
-    await h.owner.act({ kind: 'markNoteSeen', note: 'firstDone' });
-    expect(await seenNotesItem.getValue()).toEqual({ firstDone: true, firstSkip: false });
-    expect(expectReady(await h.owner.getState(PANEL)).seenNotes.firstDone).toBe(true);
+    expect(findItem(state, QUIZ_3)?.state).toBe('done');
+    expect(findItem(state, `planner_note:${N.libraryBooksToday}`)).toBeUndefined();
+    expect(h.canvas.callsOf('getSelf')).toEqual([]);
+    expect(h.canvas.callsOf('deleteNote')).toEqual([]);
   });
 });
 
@@ -834,14 +858,14 @@ describe('optimistic updates', () => {
     {
       name: 'skip',
       method: 'createOverride',
-      action: { kind: 'skip', key: PROBLEM_SET_6 },
+      action: { kind: 'skip', keys: [PROBLEM_SET_6] },
       key: PROBLEM_SET_6,
       shows: { state: 'skipped' },
     },
     {
       name: 'skip all older',
       method: 'updateOverride',
-      action: { kind: 'skipAllOlder', request: PANEL },
+      action: { kind: 'skip', keys: [LAB_REPORT_2] },
       key: LAB_REPORT_2,
       shows: { state: 'skipped' },
     },
@@ -880,5 +904,593 @@ describe('optimistic updates', () => {
     await h.owner.settled();
     expect(h.canvas.callsOf(method).length).toBeGreaterThan(0);
     expect(await item(h, key)).toMatchObject(shows);
+  });
+});
+
+describe('a failed write', () => {
+  const writes = [
+    {
+      name: 'a done mark',
+      method: 'createOverride',
+      checks: 2,
+      send: (h: Harness) => h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true }),
+      reverted: (state: ReturnType<typeof expectReady>) =>
+        findItem(state, QUIZ_3)?.state === 'open',
+    },
+    {
+      name: 'a task create',
+      method: 'createNote',
+      checks: 3,
+      send: (h: Harness) => h.owner.act({ kind: 'createTask', input }),
+      reverted: (state: ReturnType<typeof expectReady>) => shownTask(state) === undefined,
+    },
+  ] as const;
+
+  it.each(writes)(
+    'reverts $name and shows the stale line when the round that follows fails too',
+    async (write) => {
+      const h = await loaded();
+      const loadedAt = new Date(Date.now()).toISOString();
+      h.canvas.fail(write.method, canvasError('server', 500), { times: 1 });
+      h.canvas.fail('listPlannerItems', canvasError('server', 503), { times: 10 });
+
+      const reply = await write.send(h);
+      await h.owner.settled();
+      const state = expectReady(await h.owner.getState(PANEL));
+
+      expect(reply.created).not.toBe(true);
+      expect(write.reverted(state)).toBe(true);
+      expect(state.stale).toEqual({ since: loadedAt, offline: false });
+    },
+  );
+
+  it.each(writes)(
+    'reverts $name and syncs the list with one forced round when Canvas is fine again',
+    async (write) => {
+      const h = await loaded();
+      h.canvas.fail(write.method, canvasError('server', 500), { times: 1 });
+
+      await write.send(h);
+      await h.owner.settled();
+      const state = expectReady(await h.owner.getState(PANEL));
+
+      expect(write.reverted(state)).toBe(true);
+      expect(state.stale).toBeNull();
+      // Checks of the student around the write, and one for the round that syncs the list.
+      expect(h.canvas.callsOf('getSelf')).toHaveLength(write.checks);
+    },
+  );
+});
+
+describe('writes across a sign-out, another user or another Canvas', () => {
+  /** A round, 61 seconds on, finds out who is signed in. */
+  async function findSignIn(h: Harness): Promise<void> {
+    await vi.advanceTimersByTimeAsync(61_000);
+    await h.owner.trigger('focus');
+    await vi.advanceTimersByTimeAsync(100);
+  }
+
+  /** A create whose check of the student waits at Canvas. */
+  async function holdCreate(h: Harness) {
+    const release = h.canvas.hold('getSelf');
+    const created = h.owner.act({ kind: 'createTask', input: secret });
+    await vi.advanceTimersByTimeAsync(0);
+    return { release, created };
+  }
+
+  /** The keys of the "N older" list, the first of them with an override of its own. */
+  async function olderKeys(h: Harness): Promise<string[]> {
+    const state = expectReady(await h.owner.getState(PANEL));
+    return (state.view.groups.find((group) => group.kind === 'past_due')?.older ?? [])
+      .filter((entry) => entry.canSkip)
+      .map((entry) => entry.key);
+  }
+
+  function writeCalls(h: Harness): number {
+    return h.canvas.callsOf('createOverride').length + h.canvas.callsOf('updateOverride').length;
+  }
+
+  it('never sends a create for the student who signed in after it was queued', async () => {
+    const h = await loaded();
+    const { release, created } = await holdCreate(h);
+    signInOtherUser(h);
+
+    release();
+    const reply = await created;
+    await h.owner.settled();
+
+    expect(reply.created).toBe(false);
+    expect(h.canvas.callsOf('createNote')).toEqual([]);
+    expect(expectReady(await h.owner.getState(PANEL)).userId).toBe('7777');
+    expect(JSON.stringify(await sessionCacheItem.getValue())).not.toContain('A private task');
+  });
+
+  it('never sends a create to another Canvas', async () => {
+    const h = await loaded();
+    const { release, created } = await holdCreate(h);
+    await h.owner.originChanged('https://other.instructure.com');
+
+    release();
+    const reply = await created;
+    await h.owner.settled();
+
+    expect(reply.created).toBe(false);
+    expect(h.canvas.callsOf('createNote')).toEqual([]);
+  });
+
+  it('sends no create when the check of the student fails, and syncs the list', async () => {
+    const h = await loaded();
+    h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
+
+    const reply = await h.owner.act({ kind: 'createTask', input: secret });
+    await h.owner.settled();
+
+    expect(reply.created).toBe(false);
+    expect(h.canvas.callsOf('createNote')).toEqual([]);
+    expect(h.canvas.callsOf('listPlannerItems').length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    [
+      'a 500 on a done mark',
+      'createOverride',
+      canvasError('server', 500),
+      (keys: string[]) => keys,
+    ],
+    [
+      'a 404 on a change of an override that exists',
+      'updateOverride',
+      canvasError('not_found', 404),
+      (keys: string[]) => [`assignment:${A.bioLabReport2}`, ...keys],
+    ],
+  ] as const)(
+    'ends the queue at %s when Canvas has another student signed in, without a 401',
+    async (_name, method, error, order) => {
+      const h = await loaded();
+      const keys = order(await olderKeys(h));
+      expect(keys.length).toBeGreaterThan(2);
+      h.canvas.fail(method, error, { times: 1 });
+      signInOtherUser(h);
+
+      await h.owner.act({ kind: 'skip', keys });
+      await h.owner.settled();
+
+      expect(writeCalls(h)).toBe(1);
+      expect(h.canvas.overrides().filter((override) => override.user_id === '7777')).toEqual([]);
+      expect(expectReady(await h.owner.getState(PANEL)).userId).toBe('7777');
+    },
+  );
+
+  it('ends the queue at a failed write whose check of the student fails too, and syncs the list', async () => {
+    const h = await loaded();
+    const keys = await olderKeys(h);
+    h.canvas.fail('createOverride', canvasError('server', 500), { times: 1 });
+    h.canvas.fail('updateOverride', canvasError('server', 500), { times: 1 });
+    h.canvas.fail('getSelf', canvasError('network'), { times: 1 });
+    signInOtherUser(h);
+
+    await h.owner.act({ kind: 'skip', keys });
+    await h.owner.settled();
+
+    expect(writeCalls(h)).toBe(1);
+    expect(h.canvas.overrides().filter((override) => override.user_id === '7777')).toEqual([]);
+    // The forced round that follows finds the other student.
+    expect(expectReady(await h.owner.getState(PANEL)).userId).toBe('7777');
+  });
+
+  it('ends the queue at a 401 when the check of the student fails with 5xx', async () => {
+    const h = await loaded();
+    const keys = await olderKeys(h);
+    h.canvas.fail('createOverride', canvasError('unauthorized', 401), { times: 1 });
+    h.canvas.fail('updateOverride', canvasError('unauthorized', 401), { times: 1 });
+    h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
+    signInOtherUser(h);
+
+    await h.owner.act({ kind: 'skip', keys });
+    await h.owner.settled();
+
+    expect(writeCalls(h)).toBe(1);
+    expect(h.canvas.overrides().filter((override) => override.user_id === '7777')).toEqual([]);
+  });
+
+  it('sends a task delete again that waited in an abandoned queue', async () => {
+    const h = await loaded();
+    const release = h.canvas.hold('createOverride');
+    await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    await h.owner.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
+    h.canvas.fail('createOverride', canvasError('server', 500), { times: 1 });
+    h.canvas.fail('getSelf', canvasError('network'), { times: 1 });
+
+    release();
+    await advance(h, 1000);
+
+    expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday]]);
+  });
+
+  it('sends the task deletes that wait to the Canvas that the student leaves', async () => {
+    const h = await loaded();
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+
+    await h.owner.originChanged('https://other.instructure.com');
+    await h.owner.settled();
+    await advance(h, MAX_DELETE_DELAY_MS);
+
+    expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday]]);
+  });
+
+  it('does not send a waiting task delete for another student after the address changed', async () => {
+    const h = await loaded();
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    signInOtherUser(h);
+
+    await h.owner.originChanged('https://other.instructure.com');
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('deleteNote')).toEqual([]);
+  });
+
+  it('loses a waiting task delete at a sign-out, because no session can send it', async () => {
+    const h = await loaded();
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    h.canvas.fail('getSelf', canvasError('unauthorized', 401), { times: 100 });
+    h.canvas.fail('listPlannerItems', canvasError('unauthorized', 401), { times: 100 });
+    await findSignIn(h);
+    expect((await h.owner.getState(PANEL)).kind).toBe('signed_out');
+
+    await advance(h, MAX_DELETE_DELAY_MS);
+
+    expect(h.canvas.callsOf('deleteNote')).toEqual([]);
+  });
+
+  it('stops the queue at a 401 that the sign-in check confirms, and signs out', async () => {
+    const h = await loaded();
+    const before = expectReady(await h.owner.getState(PANEL));
+    const keys = (before.view.groups.find((group) => group.kind === 'past_due')?.older ?? [])
+      .filter((entry) => entry.canSkip)
+      .map((entry) => entry.key);
+    expect(keys.length).toBeGreaterThan(2);
+    h.canvas.fail('createOverride', canvasError('unauthorized', 401), { times: 100 });
+    h.canvas.fail('updateOverride', canvasError('unauthorized', 401), { times: 100 });
+    h.canvas.fail('getSelf', canvasError('unauthorized', 401), { times: 100 });
+
+    await h.owner.act({ kind: 'skip', keys });
+    await h.owner.settled();
+
+    const writes =
+      h.canvas.callsOf('createOverride').length + h.canvas.callsOf('updateOverride').length;
+    expect(writes).toBe(1);
+    expect((await h.owner.getState(PANEL)).kind).toBe('signed_out');
+  });
+
+  it('stops the queue at a 401 when another student is signed in now, and loads that student', async () => {
+    const h = await loaded();
+    const before = expectReady(await h.owner.getState(PANEL));
+    const keys = (before.view.groups.find((group) => group.kind === 'past_due')?.older ?? [])
+      .filter((entry) => entry.canSkip)
+      .map((entry) => entry.key);
+    h.canvas.fail('createOverride', canvasError('unauthorized', 401), { times: 100 });
+    h.canvas.fail('updateOverride', canvasError('unauthorized', 401), { times: 100 });
+    signInOtherUser(h);
+
+    await h.owner.act({ kind: 'skip', keys });
+    await h.owner.settled();
+
+    const writes =
+      h.canvas.callsOf('createOverride').length + h.canvas.callsOf('updateOverride').length;
+    expect(writes).toBe(1);
+    expect(h.canvas.overrides().filter((override) => override.user_id === '7777')).toEqual([]);
+    expect(expectReady(await h.owner.getState(PANEL)).userId).toBe('7777');
+  });
+
+  it('does not bake the reply of a write that Canvas answered for another user', async () => {
+    const h = await loaded();
+    const release = h.canvas.hold('createOverride');
+    await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    signInOtherUser(h);
+    // Hold the round that follows, so the cache shows what the reply itself did.
+    const releaseSelf = h.canvas.hold('getSelf');
+    const releaseProfile = h.canvas.hold('getProfile');
+
+    release();
+    await vi.advanceTimersByTimeAsync(10);
+
+    const cache = (await sessionCacheItem.getValue()) as SessionCache;
+    expect(cache.session).toBeNull();
+    expect(cache.patches).toEqual([]);
+    releaseSelf();
+    releaseProfile();
+    await h.owner.settled();
+    expect(expectReady(await h.owner.getState(PANEL)).userId).toBe('7777');
+    expect(h.canvas.callsOf('updateOverride')).toEqual([]);
+  });
+
+  it('does not put the flags of one student onto an override of another that Canvas lists', async () => {
+    const h = await loaded();
+    h.canvas.addOverrideElsewhere({
+      id: '555',
+      plannable_type: 'quiz',
+      plannable_id: IDS.quizzes.bioQuiz3Today,
+      user_id: '7777',
+      assignment_id: A.bioQuiz3Today,
+      workflow_state: 'active',
+      marked_complete: false,
+      dismissed: false,
+    });
+
+    await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('updateOverride')).toEqual([]);
+  });
+
+  it('does not add a created task to the cache after the student signed out', async () => {
+    const h = await loaded();
+    const release = h.canvas.hold('createNote');
+    const created = h.owner.act({ kind: 'createTask', input: secret });
+    await vi.advanceTimersByTimeAsync(0);
+    h.canvas.fail('getSelf', canvasError('unauthorized', 401), { times: 100 });
+    h.canvas.fail('listPlannerItems', canvasError('unauthorized', 401), { times: 100 });
+    await findSignIn(h);
+    expect((await h.owner.getState(PANEL)).kind).toBe('signed_out');
+
+    release();
+    const reply = await created;
+    await h.owner.settled();
+
+    expect(reply.created).toBe(false);
+    const cache = (await sessionCacheItem.getValue()) as SessionCache;
+    expect(cache.patches).toEqual([]);
+    expect(JSON.stringify(cache)).not.toContain('A private task');
+  });
+
+  it('stores the sign-out and tells the surfaces when the check before a create finds a 401', async () => {
+    const h = await loaded();
+    const marker = await changeMarkerItem.getValue();
+    h.canvas.fail('getSelf', canvasError('unauthorized', 401), { times: 1 });
+
+    const reply = await h.owner.act({ kind: 'createTask', input: secret });
+    await h.owner.settled();
+
+    expect(reply.created).toBe(false);
+    expect(h.canvas.callsOf('createNote')).toEqual([]);
+    const stored = (await sessionCacheItem.getValue()) as SessionCache;
+    expect(stored.session).toBeNull();
+    expect(stored.failure).toEqual({ kind: 'signed_out' });
+    expect(await changeMarkerItem.getValue()).toBeGreaterThan(marker);
+    // The next person who opens a panel, after a worker restart, sees no list of the first.
+    h.owner.dispose();
+    expect((await h.restart().getState(PANEL)).kind).toBe('signed_out');
+  });
+
+  it('takes a create out of the account of the student who signed in after the check', async () => {
+    const h = await loaded();
+    const release = h.canvas.hold('createNote');
+    const created = h.owner.act({ kind: 'createTask', input: secret });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+    // The POST leaves after another student signed in.
+    signInOtherUser(h);
+
+    release();
+    const reply = await created;
+    await h.owner.settled();
+
+    expect(reply.created).toBe(false);
+    expect(h.canvas.callsOf('createNote')).toHaveLength(1);
+    expect(h.canvas.callsOf('deleteNote')).toEqual([[expect.stringMatching(/^\d+$/)]]);
+    const state = expectReady(await h.owner.getState(PANEL));
+    expect(state.userId).toBe('7777');
+    expect(JSON.stringify(await sessionCacheItem.getValue())).not.toContain('A private task');
+  });
+
+  it('shows a task that Canvas saved while an abandoned queue ended the generation', async () => {
+    const h = await loaded();
+    const releaseMark = h.canvas.hold('createOverride');
+    await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    const releaseNote = h.canvas.hold('createNote');
+    const created = h.owner.act({ kind: 'createTask', input: secret });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.canvas.callsOf('createNote')).toHaveLength(1);
+    // The done mark fails, and the check of the student fails too: the queue is abandoned.
+    h.canvas.fail('createOverride', canvasError('server', 500), { times: 1 });
+    h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
+    releaseMark();
+    await vi.advanceTimersByTimeAsync(0);
+
+    releaseNote();
+    const reply = await created;
+    await h.owner.settled();
+
+    expect(reply.created).toBe(true);
+    expect(h.canvas.callsOf('createNote')).toHaveLength(1);
+    const state = expectReady(await h.owner.getState(PANEL));
+    expect(
+      state.view.groups.some((g) =>
+        [...g.items, ...g.doneUndated].some((i) => i.title === 'A private task'),
+      ),
+    ).toBe(true);
+  });
+
+  it('sends a DELETE that is out once, when an abandoned queue would queue it again', async () => {
+    const h = await loaded();
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    const releaseDelete = h.canvas.hold('deleteNote');
+    await h.owner.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.canvas.callsOf('deleteNote')).toHaveLength(1);
+    h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
+
+    const reply = await h.owner.act({ kind: 'createTask', input: secret });
+    // The timer of the abandoned queue fires while the DELETE is still out.
+    await vi.advanceTimersByTimeAsync(10);
+    expect(h.canvas.callsOf('deleteNote')).toHaveLength(1);
+    releaseDelete();
+    await advance(h, MAX_DELETE_DELAY_MS);
+
+    expect(reply.created).toBe(false);
+    expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday]]);
+    expect(((await sessionCacheItem.getValue()) as SessionCache).pendingDeletes).toEqual({});
+  });
+
+  it('sends a DELETE again that failed after an abandoned queue, instead of leaving the task stuck', async () => {
+    const h = await loaded();
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    const releaseDelete = h.canvas.hold('deleteNote');
+    await h.owner.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
+    await vi.advanceTimersByTimeAsync(0);
+    h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
+    await h.owner.act({ kind: 'createTask', input: secret });
+    h.canvas.fail('deleteNote', canvasError('server', 500), { times: 1 });
+
+    releaseDelete();
+    await advance(h, MAX_DELETE_DELAY_MS);
+
+    expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday], [N.libraryBooksToday]]);
+    expect(((await sessionCacheItem.getValue()) as SessionCache).pendingDeletes).toEqual({});
+    expect(
+      findItem(expectReady(await h.owner.getState(PANEL)), `planner_note:${N.libraryBooksToday}`),
+    ).toBeUndefined();
+  });
+
+  it('does not confirm the patch of another task when the address changed and came back', async () => {
+    const h = await loaded();
+    const other = createFakeCanvas(buildScenario(new Date(Date.now()).toISOString()));
+    h.createApi.mockImplementation((origin) => (origin === ORIGIN ? h.canvas : other));
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    const releaseDelete = h.canvas.hold('deleteNote');
+    await h.owner.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
+    await vi.advanceTimersByTimeAsync(0);
+    // Away and back: the new cache numbers its patches from the start again.
+    await canvasOriginItem.setValue('https://other.instructure.com');
+    await h.owner.originChanged('https://other.instructure.com');
+    await canvasOriginItem.setValue(ORIGIN);
+    await h.owner.originChanged(ORIGIN);
+    await vi.advanceTimersByTimeAsync(3000);
+    await h.owner.getState(PANEL);
+    await vi.advanceTimersByTimeAsync(3000);
+    await h.owner.act({ kind: 'deleteTask', noteId: N.bioStudyGroup });
+
+    releaseDelete();
+    await advance(h, MAX_DELETE_DELAY_MS);
+
+    expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday], [N.bioStudyGroup]]);
+  });
+});
+
+describe('a Canvas on a custom domain that the student leaves', () => {
+  const CUSTOM = 'https://canvas.school.edu';
+  const OTHER = 'https://other.instructure.com';
+
+  async function customSchool() {
+    const h = await createHarness({ origin: CUSTOM });
+    await loadReady(h);
+    h.canvas.resetCalls();
+    const other = createFakeCanvas(buildScenario(new Date(Date.now()).toISOString()));
+    h.createApi.mockImplementation((origin) => (origin === CUSTOM ? h.canvas : other));
+    const events: string[] = [];
+    h.removeAccess.mockImplementation(async (origin) => {
+      events.push(`removeAccess ${origin}`);
+    });
+    return { h, events };
+  }
+
+  it('sends the waiting task delete before it removes the access to the old address', async () => {
+    const { h, events } = await customSchool();
+    const deleteNote = h.canvas.deleteNote.bind(h.canvas);
+    h.canvas.deleteNote = async (id: string) => {
+      events.push(`deleteNote ${id}`);
+      return deleteNote(id);
+    };
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    // The check of the student, before the DELETE goes, is slow.
+    const releaseSelf = h.canvas.hold('getSelf');
+
+    await h.owner.setup(OTHER, false);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(events).toEqual([]);
+    releaseSelf();
+    await h.owner.settled();
+
+    expect(events).toEqual([`deleteNote ${N.libraryBooksToday}`, `removeAccess ${CUSTOM}`]);
+  });
+
+  it('keeps the access until the cleanup of a create that crossed the address change is out', async () => {
+    const { h, events } = await customSchool();
+    let revoked = false;
+    h.removeAccess.mockImplementation(async (origin) => {
+      events.push(`removeAccess ${origin}`);
+      revoked = revoked || origin === CUSTOM;
+    });
+    const deleteNote = h.canvas.deleteNote.bind(h.canvas);
+    h.canvas.deleteNote = async (id: string) => {
+      events.push(`deleteNote revoked=${revoked}`);
+      if (revoked) throw canvasError('network');
+      return deleteNote(id);
+    };
+    const release = h.canvas.hold('createNote');
+    const created = h.owner.act({ kind: 'createTask', input: secret });
+    await vi.advanceTimersByTimeAsync(0);
+    signInOtherUser(h);
+    await h.owner.setup(OTHER, false);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(events).toEqual([]);
+
+    release();
+    await created;
+    await h.owner.settled();
+
+    expect(events).toEqual(['deleteNote revoked=false', `removeAccess ${CUSTOM}`]);
+  });
+
+  it('keeps the access when the student goes back to the address while the old deletes wait', async () => {
+    const { h, events } = await customSchool();
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    const releaseSelf = h.canvas.hold('getSelf');
+    await h.owner.setup(OTHER, false);
+    await vi.advanceTimersByTimeAsync(50);
+    await h.owner.changeAddress();
+    await h.owner.setup(CUSTOM, false);
+    await vi.advanceTimersByTimeAsync(50);
+
+    releaseSelf();
+    await h.owner.settled();
+
+    expect(await canvasOriginItem.getValue()).toBe(CUSTOM);
+    expect(events).not.toContain(`removeAccess ${CUSTOM}`);
+  });
+
+  it('waits for the newest delete of an address, when an older one for it ends first', async () => {
+    const { h, events } = await customSchool();
+    const gates: (() => void)[] = [];
+    const getSelf = h.canvas.getSelf.bind(h.canvas);
+    h.canvas.getSelf = async () => {
+      await new Promise<void>((resolve) => gates.push(resolve));
+      return getSelf();
+    };
+    const leave = async (noteId: string) => {
+      await h.owner.act({ kind: 'deleteTask', noteId });
+      await h.owner.changeAddress();
+      await h.owner.setup(OTHER, false);
+      await vi.advanceTimersByTimeAsync(50);
+    };
+    const back = async () => {
+      await h.owner.changeAddress();
+      await h.owner.setup(CUSTOM, false);
+      await vi.advanceTimersByTimeAsync(3000);
+    };
+    await leave(N.libraryBooksToday);
+    await back();
+    await leave(N.bioStudyGroup);
+    expect(gates).toHaveLength(2);
+
+    gates[0]?.();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(events).not.toContain(`removeAccess ${CUSTOM}`);
+    gates[1]?.();
+    await vi.advanceTimersByTimeAsync(100);
+    await h.owner.settled();
+
+    expect(events).toContain(`removeAccess ${CUSTOM}`);
   });
 });

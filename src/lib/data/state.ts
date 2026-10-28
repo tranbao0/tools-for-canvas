@@ -77,7 +77,7 @@ export function weekRange(
   return { start: bounds.start, end: isoInstant(Date.parse(bounds.end) - 1) };
 }
 
-export interface PlannerFit {
+interface PlannerFit {
   /** The cache holds every item of the view's planner range, from the horizon on. */
   exact: boolean;
   /**
@@ -122,7 +122,7 @@ function visibleUndated(cache: SessionCache) {
 }
 
 /** The short name of a course for a one-line note: its trimmed Canvas code, or its name. */
-export function courseShortName(course: Course): string {
+function courseShortName(course: Course): string {
   const code = course.course_code?.trim();
   return code ? code : course.name;
 }
@@ -152,7 +152,7 @@ export function skippedCourseChoices(
 }
 
 /** The model input for a view, with the pending writes applied. */
-export function modelInputFor(
+function modelInputFor(
   cache: SessionCache,
   session: SessionData,
   plannerItems: readonly PlannerItem[],
@@ -181,7 +181,7 @@ export function modelInputFor(
   };
 }
 
-export interface ViewResult {
+interface ViewResult {
   view: WeekView;
   /** The planner items cover the whole planner range of the view. */
   exact: boolean;
@@ -191,7 +191,7 @@ export interface ViewResult {
  * Whether a course filter still makes sense: the rings are on, and the course is still in the
  * list, as a visible course or through a ring or an item of the filtered view.
  */
-export function courseFilterApplies(
+function courseFilterApplies(
   filter: string | null,
   view: WeekView,
   session: Pick<SessionData, 'courses'>,
@@ -272,7 +272,7 @@ export function allItems(cache: SessionCache, session: SessionData, context: Vie
 }
 
 /** The offer to show: never one for the saved address. */
-export function visibleOffer(offer: Offer | null, savedOrigin: string | null): Offer | null {
+function visibleOffer(offer: Offer | null, savedOrigin: string | null): Offer | null {
   return offer !== null && offer.origin === savedOrigin ? null : offer;
 }
 

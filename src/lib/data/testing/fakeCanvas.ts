@@ -18,7 +18,7 @@ import { notePlannerItem, plannerItemKey } from '../patches';
 
 export type FakeMethod = Exclude<keyof CanvasApi, 'origin' | 'withPriority'>;
 
-export interface FakeCall {
+interface FakeCall {
   method: FakeMethod;
   args: unknown[];
   /** The priority the call was sent with. */

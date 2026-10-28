@@ -1,16 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isActionReply, isSurfaceState, type DataMessage } from '../data/protocol';
-import { DEFAULT_SETTINGS, type Settings, type SurfaceState, type UndoInfo } from '../model/types';
+import type { DataMessage, StateReply, UndoData } from '../data/protocol';
+import {
+  DEFAULT_SETTINGS,
+  type ItemView,
+  type ListGroup,
+  type Settings,
+  type SurfaceState,
+} from '../model/types';
 import { ORIGIN, mkView, readyState } from '../ui/testing/mocks';
-import { TIMER_REFRESH_MS, createSurfaceRuntime, viewItems, type SurfaceHost } from './runtime';
+import {
+  TIMER_REFRESH_MS,
+  createSurfaceRuntime,
+  viewItems,
+  type SurfaceHost,
+  type SurfaceRuntime,
+} from './runtime';
 
 const NOW = '2026-10-27T18:00:00Z';
 const NEXT_MIDNIGHT = Date.parse('2026-10-28T04:00:00Z');
-const UNDO = { token: 'undo-1', info: { kind: 'done', count: 1 } } as const;
-const COURSES = [
-  { id: '101', name: 'Biology' },
-  { id: '106', name: 'Chess Club' },
-];
+const USER = 'user-1';
+const NOT_DONE = { markedComplete: false, dismissed: false };
+/** What the data owner answers to a done mark of one item. */
+const UNDO: UndoData = {
+  kind: 'overrides',
+  userId: USER,
+  origin: ORIGIN,
+  entries: [{ key: 'assignment:1', previous: NOT_DONE }],
+};
+const DONE_INFO = { kind: 'done', count: 1 } as const;
+const ALL_COURSES = readyState().allCourses;
 
 interface FakeHost {
   host: SurfaceHost;
@@ -21,8 +39,9 @@ interface FakeHost {
   setVisible(visible: boolean): void;
   /** The surface goes away, as when the panel closes. */
   leave(): void;
-  /** The data owner drops an undo record, as when the student signs out. */
-  forgetUndo(token: string): void;
+  /** The signed-in user and the Canvas address that ready states name. */
+  user: string;
+  origin: string;
   /** The stored settings. */
   stored: Settings;
   /** Another surface saves new settings. */
@@ -31,42 +50,32 @@ interface FakeHost {
   saved: Settings[];
 }
 
+/** A ready reply, as the data owner sends it: with the signed-in user. */
+function readyFor(user: string, patch: Parameters<typeof readyState>[0] = {}): StateReply {
+  return { ...readyState(patch), userId: user };
+}
+
 function fakeHost(): FakeHost {
+  const ready = (patch: Parameters<typeof readyState>[0] = {}): StateReply =>
+    readyFor(fake.user, { origin: fake.origin, ...patch });
   const sent: DataMessage[] = [];
   let changeListener: (() => void) | null = null;
   let visibilityListener: ((visible: boolean) => void) | null = null;
   let leaveListener: (() => void) | null = null;
   let settingsListener: ((settings: Settings) => void) | null = null;
   let visible = true;
-  /** The undo records the data owner keeps, by token. */
-  const live = new Map<string, UndoInfo>();
-  /** Fills in what the data owner knows about undo records, as the real one does. */
-  const asOwner = (message: DataMessage, reply: unknown): unknown => {
-    if (message.type === 'weekrow:action') {
-      const { action } = message;
-      if (action.kind === 'undo' || action.kind === 'endUndo') live.delete(action.token);
-      if (isActionReply(reply) && reply.undo !== null) live.set(reply.undo.token, reply.undo.info);
-      return reply;
-    }
-    if (message.type !== 'weekrow:get-state' || !isSurfaceState(reply)) return reply;
-    if (reply.kind !== 'ready' || reply.undo !== null) return reply;
-    const token = message.request.undoToken;
-    const info = token ? live.get(token) : undefined;
-    return info === undefined ? reply : { ...reply, undo: info };
-  };
   const fake: FakeHost = {
     sent,
+    user: USER,
+    origin: ORIGIN,
     reply: (message) =>
       message.type === 'weekrow:get-state'
-        ? readyState()
+        ? ready()
         : message.type === 'weekrow:refresh'
           ? { ok: true, retryAt: null }
-          : message.type === 'weekrow:courses'
-            ? { courses: COURSES }
-            : { undo: null },
+          : { undo: null },
     changed: () => changeListener?.(),
     leave: () => leaveListener?.(),
-    forgetUndo: (token) => live.delete(token),
     stored: { ...DEFAULT_SETTINGS },
     saved: [],
     storeSettings(next) {
@@ -80,7 +89,7 @@ function fakeHost(): FakeHost {
     host: {
       send: vi.fn(async (message: DataMessage) => {
         sent.push(message);
-        return asOwner(message, await fake.reply(message));
+        return fake.reply(message);
       }),
       watchChanges(listener) {
         changeListener = listener;
@@ -126,6 +135,8 @@ function fakeHost(): FakeHost {
       openUrl: vi.fn(),
       openCanvas: vi.fn(),
       openSettings: vi.fn(),
+      markNoteSeen: vi.fn(async () => undefined),
+      dismissOffer: vi.fn(async () => undefined),
       allowAccess: vi.fn(),
       log: vi.fn(),
     },
@@ -164,21 +175,14 @@ describe('state', () => {
     runtime.start();
     await settle();
 
-    // The course list loads for the settings in place, and again once the list is ready.
-    expect(types(fake.sent)).toEqual([
-      'weekrow:courses',
-      'refresh:visible',
-      'weekrow:get-state',
-      'weekrow:courses',
-    ]);
-    expect(fake.sent[2]).toEqual({
+    expect(types(fake.sent)).toEqual(['refresh:visible', 'weekrow:get-state']);
+    expect(fake.sent[1]).toEqual({
       type: 'weekrow:get-state',
       request: {
         surface: 'inpage',
         weekOffset: 0,
         courseFilter: undefined,
         scopeCourseId: '101',
-        undoToken: null,
       },
     });
     expect(runtime.state().kind).toBe('ready');
@@ -250,7 +254,6 @@ describe('state', () => {
         weekOffset: -2,
         courseFilter: null,
         scopeCourseId: null,
-        undoToken: null,
       },
     });
   });
@@ -281,7 +284,7 @@ describe('state', () => {
       if (message.type !== 'weekrow:get-state') return { ok: true };
       call += 1;
       if (call === 1) return new Promise((resolve) => (firstAnswer = resolve));
-      return { kind: 'no_courses', origin: ORIGIN, offer: null };
+      return { kind: 'no_courses', origin: ORIGIN, offer: null, allCourses: [] };
     };
     const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
     runtime.start();
@@ -291,7 +294,12 @@ describe('state', () => {
     firstAnswer({ kind: 'loading' });
     await settle();
 
-    expect(runtime.state()).toEqual({ kind: 'no_courses', origin: ORIGIN, offer: null });
+    expect(runtime.state()).toEqual({
+      kind: 'no_courses',
+      origin: ORIGIN,
+      offer: null,
+      allCourses: [],
+    });
   });
 
   it('keeps the shown week, marked as refreshing, while another week loads', async () => {
@@ -353,32 +361,39 @@ describe('actions', () => {
     return { fake, runtime };
   }
 
-  /** Every write answers with a new Undo ticket. */
-  function ticketHost(): FakeHost {
+  /** Every undoable write answers with the data that Undo needs. */
+  function undoHost(): FakeHost {
     const fake = fakeHost();
-    let next = 0;
     fake.reply = (message) => {
-      if (message.type === 'weekrow:get-state') return readyState();
+      if (message.type === 'weekrow:get-state') return readyFor(fake.user, { origin: fake.origin });
       if (message.type === 'weekrow:refresh') return { ok: true, retryAt: null };
       if (message.type !== 'weekrow:action') return { ok: true };
-      if (message.action.kind === 'endUndo' || message.action.kind === 'markNoteSeen') {
-        return { undo: null };
+      const { action } = message;
+      switch (action.kind) {
+        case 'setDone':
+          return action.done ? { undo: UNDO } : { undo: null };
+        case 'skip':
+          return {
+            undo: {
+              kind: 'overrides',
+              userId: fake.user,
+              origin: fake.origin,
+              entries: action.keys.map((key) => ({ key, previous: NOT_DONE })),
+            },
+          };
+        case 'deleteTask':
+          return {
+            undo: { kind: 'delete', userId: fake.user, origin: fake.origin, noteId: action.noteId },
+          };
+        default:
+          return { undo: null };
       }
-      next += 1;
-      return { undo: { ...UNDO, token: `undo-${next}` } };
     };
     return fake;
   }
 
   it('sends writes and keeps their Undo notice with no time limit', async () => {
-    const fake = fakeHost();
-    fake.reply = (message) =>
-      message.type === 'weekrow:action'
-        ? { undo: UNDO }
-        : message.type === 'weekrow:get-state'
-          ? readyState()
-          : { ok: true, retryAt: null };
-    const { runtime } = await started(fake);
+    const { fake, runtime } = await started(undoHost());
 
     runtime.actions.setDone('assignment:1', true);
     await settle();
@@ -387,82 +402,194 @@ describe('actions', () => {
       type: 'weekrow:action',
       action: { kind: 'setDone', key: 'assignment:1', done: true },
     });
-    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: UNDO.info });
+    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: DONE_INFO });
     await vi.advanceTimersByTimeAsync(60 * 60_000);
-    expect(runtime.state()).toMatchObject({ undo: UNDO.info });
-    expect(sentActions(fake.sent)).not.toContainEqual({ kind: 'endUndo', token: 'undo-1' });
+    expect(runtime.state()).toMatchObject({ undo: DONE_INFO });
+    expect(sentActions(fake.sent)).toHaveLength(1);
+
+    // Unchecking has no notice.
+    runtime.actions.setDone('assignment:1', false);
+    await settle();
+    expect(runtime.state()).toMatchObject({ undo: null });
   });
 
-  it('asks with the token of its notice, and drops the notice once the data owner drops it', async () => {
-    const fake = fakeHost();
+  it('skips the items of the "N older" list that it shows, with one notice', async () => {
+    const { fake, runtime } = await started(undoHost());
+    const state = runtime.state();
+    if (state.kind !== 'ready') throw new Error('not ready');
+    const keys = (state.view.groups.find((group) => group.kind === 'past_due')?.older ?? [])
+      .filter((item) => item.canSkip)
+      .map((item) => item.key);
+    expect(keys.length).toBeGreaterThan(1);
+
+    runtime.actions.skipAllOlder();
+    await settle();
+
+    expect(sentActions(fake.sent)).toEqual([{ kind: 'skip', keys }]);
+    expect(runtime.state()).toMatchObject({ undo: { kind: 'skipped_all', count: keys.length } });
+  });
+
+  it('sends nothing for Skip all older when the view has no older items', async () => {
+    const fake = undoHost();
+    const base = fake.reply;
     fake.reply = (message) =>
-      message.type === 'weekrow:action'
-        ? { undo: UNDO }
-        : message.type === 'weekrow:get-state'
-          ? readyState()
-          : { ok: true, retryAt: null };
+      message.type === 'weekrow:get-state'
+        ? readyFor(fake.user, { view: mkView({ groups: [] }) })
+        : base(message);
     const { runtime } = await started(fake);
+
+    runtime.actions.skipAllOlder();
+    await settle();
+
+    expect(sentActions(fake.sent)).toEqual([]);
+  });
+
+  const CHANGES = [
+    {
+      name: 'another user',
+      apply: (fake: FakeHost) => {
+        fake.user = 'user-2';
+      },
+    },
+    {
+      name: 'another Canvas',
+      apply: (fake: FakeHost) => {
+        fake.origin = 'https://canvas.state.edu';
+      },
+    },
+  ];
+  const NOTICES = [
+    {
+      name: 'a done notice',
+      start: (runtime: SurfaceRuntime) => runtime.actions.setDone('assignment:1', true),
+    },
+    {
+      name: 'a delete notice',
+      start: (runtime: SurfaceRuntime) => runtime.actions.deleteTask('8'),
+    },
+  ];
+
+  it.each(CHANGES.flatMap((change) => NOTICES.map((notice) => ({ change, notice }))))(
+    'drops $notice.name for $change.name without a message, because the data owner dropped its data',
+    async ({ change, notice }) => {
+      const { fake, runtime } = await started(undoHost());
+      notice.start(runtime);
+      await settle();
+      // The same user on the same Canvas keeps the notice.
+      fake.changed();
+      await settle();
+      expect(runtime.state()).not.toMatchObject({ undo: null });
+      fake.sent.length = 0;
+
+      change.apply(fake);
+      fake.changed();
+      await settle();
+      runtime.actions.undo();
+      await settle();
+
+      expect(runtime.state()).toMatchObject({ kind: 'ready', undo: null });
+      expect(sentActions(fake.sent)).toEqual([]);
+    },
+  );
+
+  it.each([
+    ['signed_out', { kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: null }],
+    ['loading', { kind: 'loading' }],
+    ['the address form', { kind: 'not_set_up', offer: null, savedOrigin: ORIGIN }],
+  ] as const)('drops the notice when the state is %s', async (_name, other) => {
+    const { fake, runtime } = await started(undoHost());
     runtime.actions.setDone('assignment:1', true);
     await settle();
-    const lastRequest = () =>
-      fake.sent.flatMap((m) => (m.type === 'weekrow:get-state' ? [m.request] : [])).at(-1);
-    expect(lastRequest()?.undoToken).toBe(UNDO.token);
+    const base = fake.reply;
+    fake.reply = (message) => (message.type === 'weekrow:get-state' ? other : base(message));
 
-    // A refresh while the record lives keeps the notice.
     fake.changed();
     await settle();
-    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: UNDO.info });
 
-    // Another user signs in, and the data owner drops every undo record.
-    fake.forgetUndo(UNDO.token);
+    expect(runtime.state().kind).toBe(other.kind);
+    fake.reply = base;
     fake.changed();
     await settle();
     expect(runtime.state()).toMatchObject({ kind: 'ready', undo: null });
-    fake.changed();
-    await settle();
-    expect(lastRequest()?.undoToken).toBeNull();
-    // The record is gone, so the surface has nothing to end.
-    expect(sentActions(fake.sent)).not.toContainEqual({ kind: 'endUndo', token: UNDO.token });
   });
 
-  it('keeps a new notice when an answer to a request sent before it has no notice', async () => {
-    const fake = fakeHost();
-    const answers: ((state: SurfaceState) => void)[] = [];
+  it('keeps the notice while another week loads and the shown week stays', async () => {
+    const { fake, runtime } = await started(undoHost());
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+    const base = fake.reply;
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state' && message.request.weekOffset === 1
+        ? { kind: 'loading' }
+        : base(message);
+
+    runtime.actions.goToWeek(1);
+    await settle();
+
+    expect(runtime.state()).toMatchObject({ kind: 'ready', refreshing: true, undo: DONE_INFO });
+  });
+
+  it('sends the delete when a delete notice drops because the state is not ready', async () => {
+    const { fake, runtime } = await started(undoHost());
+    runtime.actions.deleteTask('8');
+    await settle();
+    const base = fake.reply;
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state' ? { kind: 'loading' } : base(message);
+    fake.sent.length = 0;
+
+    fake.changed();
+    await settle();
+
+    expect(runtime.state()).toEqual({ kind: 'loading' });
+    expect(sentActions(fake.sent)).toEqual([{ kind: 'sendDelete', noteId: '8' }]);
+  });
+
+  it('keeps a new notice when an answer to a request sent before it arrives late', async () => {
+    const fake = undoHost();
+    const answers: ((state: StateReply) => void)[] = [];
     const { runtime } = await started(fake);
-    fake.reply = (message) => {
-      if (message.type === 'weekrow:action') return { undo: UNDO };
-      if (message.type !== 'weekrow:get-state') return { ok: true, retryAt: null };
-      return new Promise((resolve) => answers.push(resolve));
-    };
-    // A state request without a token is on its way when the write and its notice arrive.
+    const base = fake.reply;
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state'
+        ? new Promise((resolve) => answers.push(resolve))
+        : base(message);
+    // A state request is on its way when the write and its notice arrive.
     fake.changed();
     runtime.actions.setDone('assignment:1', true);
     await settle();
-    const requests = fake.sent.flatMap((m) => (m.type === 'weekrow:get-state' ? [m.request] : []));
-    expect(requests.map((request) => request.undoToken)).toEqual([null, UNDO.token]);
 
-    answers[0]?.(readyState());
+    answers[0]?.(readyFor(USER));
     await settle();
-    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: UNDO.info });
-    answers[1]?.(readyState({ undo: UNDO.info }));
+    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: DONE_INFO });
+    answers[1]?.(readyFor(USER));
     await settle();
-    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: UNDO.info });
+    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: DONE_INFO });
   });
 
-  it('ends the notice when the student closes it', async () => {
-    const { fake, runtime } = await started(ticketHost());
+  it('ends a delete notice when the student closes it, and a done notice with no message', async () => {
+    const { fake, runtime } = await started(undoHost());
     runtime.actions.deleteTask('8');
     await settle();
 
     runtime.actions.dismissUndo();
     expect(runtime.state()).toMatchObject({ undo: null });
     await settle();
+    expect(sentActions(fake.sent)).toEqual([
+      { kind: 'deleteTask', noteId: '8' },
+      { kind: 'sendDelete', noteId: '8' },
+    ]);
 
-    expect(sentActions(fake.sent)).toContainEqual({ kind: 'endUndo', token: 'undo-1' });
+    fake.sent.length = 0;
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+    runtime.actions.dismissUndo();
+    await settle();
+    expect(sentActions(fake.sent)).toEqual([{ kind: 'setDone', key: 'assignment:1', done: true }]);
   });
 
   it('ends the notice of the last write when the student acts again', async () => {
-    const { fake, runtime } = await started(ticketHost());
+    const { fake, runtime } = await started(undoHost());
     runtime.actions.deleteTask('8');
     await settle();
 
@@ -471,14 +598,14 @@ describe('actions', () => {
 
     expect(sentActions(fake.sent)).toEqual([
       { kind: 'deleteTask', noteId: '8' },
-      { kind: 'endUndo', token: 'undo-1' },
-      { kind: 'skip', key: 'assignment:2' },
+      { kind: 'sendDelete', noteId: '8' },
+      { kind: 'skip', keys: ['assignment:2'] },
     ]);
-    expect(runtime.state()).toMatchObject({ undo: UNDO.info });
+    expect(runtime.state()).toMatchObject({ undo: { kind: 'skipped', count: 1 } });
   });
 
   it('ends a notice whose reply comes after a newer write', async () => {
-    const fake = ticketHost();
+    const fake = undoHost();
     const { runtime } = await started(fake);
     const base = fake.reply;
     let first!: () => void;
@@ -496,63 +623,98 @@ describe('actions', () => {
     first();
     await settle();
 
-    expect(sentActions(fake.sent)).toContainEqual({ kind: 'endUndo', token: 'undo-1' });
-    expect(runtime.state()).toMatchObject({ undo: UNDO.info });
+    expect(sentActions(fake.sent)).toContainEqual({ kind: 'sendDelete', noteId: '8' });
+    expect(runtime.state()).toMatchObject({ undo: { kind: 'skipped', count: 1 } });
   });
 
   it('ends the notice when the surface goes away or stops', async () => {
-    const left = await started(ticketHost());
+    const left = await started(undoHost());
     left.runtime.actions.deleteTask('8');
     await settle();
     left.fake.leave();
     await settle();
     expect(left.runtime.state()).toMatchObject({ undo: null });
-    expect(sentActions(left.fake.sent)).toContainEqual({ kind: 'endUndo', token: 'undo-1' });
+    expect(sentActions(left.fake.sent)).toContainEqual({ kind: 'sendDelete', noteId: '8' });
 
-    const stopped = await started(ticketHost());
+    const stopped = await started(undoHost());
     stopped.runtime.actions.deleteTask('8');
     await settle();
     stopped.runtime.stop();
     await settle();
-    expect(sentActions(stopped.fake.sent)).toContainEqual({ kind: 'endUndo', token: 'undo-1' });
+    expect(sentActions(stopped.fake.sent)).toContainEqual({ kind: 'sendDelete', noteId: '8' });
   });
 
-  it('sends Undo with the last token and hides the notice at once', async () => {
-    const fake = fakeHost();
-    fake.reply = (message) =>
-      message.type === 'weekrow:action' && message.action.kind === 'skip'
-        ? { undo: { ...UNDO, info: { kind: 'skipped', count: 1 } } }
-        : message.type === 'weekrow:get-state'
-          ? readyState()
-          : { undo: null };
-    const { runtime } = await started(fake);
+  it('sends Undo of an override action with the previous flags and the user, once', async () => {
+    const { fake, runtime } = await started(undoHost());
     runtime.actions.skip('assignment:1');
     await settle();
 
     runtime.actions.undo();
     expect(runtime.state()).toMatchObject({ undo: null });
+    runtime.actions.undo();
     await settle();
 
-    expect(sentActions(fake.sent)).toContainEqual({ kind: 'undo', token: 'undo-1' });
-    // The undo uses the token, so no end of the notice follows.
-    expect(sentActions(fake.sent)).not.toContainEqual({ kind: 'endUndo', token: 'undo-1' });
+    expect(sentActions(fake.sent).slice(1)).toEqual([
+      {
+        kind: 'restore',
+        userId: USER,
+        origin: ORIGIN,
+        entries: [{ key: 'assignment:1', previous: NOT_DONE }],
+      },
+    ]);
+  });
+
+  it('sends Undo of a task delete as a cancel, and sends no end of the notice', async () => {
+    const { fake, runtime } = await started(undoHost());
+    runtime.actions.deleteTask('8');
+    await settle();
+
+    runtime.actions.undo();
+    await settle();
+
+    expect(sentActions(fake.sent)).toEqual([
+      { kind: 'deleteTask', noteId: '8' },
+      { kind: 'cancelDelete', noteId: '8' },
+    ]);
+  });
+
+  it('shows no notice for the reply of a write that Undo replaced', async () => {
+    const fake = undoHost();
+    const { runtime } = await started(fake);
+    const base = fake.reply;
+    let answer!: () => void;
+    fake.reply = (message) => {
+      const reply = base(message);
+      if (message.type === 'weekrow:action' && message.action.kind === 'setDone') {
+        return new Promise((resolve) => (answer = () => resolve(reply)));
+      }
+      return reply;
+    };
+    runtime.actions.setDone('assignment:1', true);
+    runtime.actions.createTask({
+      title: 'A',
+      date: '2026-10-28',
+      time: null,
+      courseId: null,
+      details: null,
+    });
+    await settle();
+
+    answer();
+    await settle();
+
+    expect(runtime.state()).toMatchObject({ undo: null });
   });
 
   it('drops the Undo notice when a later write has none, but not for a seen note', async () => {
-    const fake = fakeHost();
-    fake.reply = (message) =>
-      message.type === 'weekrow:action' && message.action.kind === 'setDone'
-        ? { undo: UNDO }
-        : message.type === 'weekrow:get-state'
-          ? readyState()
-          : { undo: null };
-    const { runtime } = await started(fake);
+    const { fake, runtime } = await started(undoHost());
     runtime.actions.setDone('assignment:1', true);
     await settle();
 
     runtime.actions.markNoteSeen('firstDone');
     await settle();
-    expect(runtime.state()).toMatchObject({ undo: UNDO.info });
+    expect(runtime.state()).toMatchObject({ undo: DONE_INFO });
+    expect(fake.host.markNoteSeen).toHaveBeenCalledWith('firstDone');
 
     runtime.actions.createTask({
       title: 'A',
@@ -565,29 +727,88 @@ describe('actions', () => {
     expect(runtime.state()).toMatchObject({ undo: null });
   });
 
+  it('writes a seen note and a dismissed offer through the host, then asks for the state', async () => {
+    const { fake, runtime } = await started();
+
+    runtime.actions.markNoteSeen('firstSkip');
+    runtime.actions.dismissOffer();
+    await settle();
+
+    expect(fake.host.markNoteSeen).toHaveBeenCalledWith('firstSkip');
+    expect(fake.host.dismissOffer).toHaveBeenCalledTimes(1);
+    expect(sentActions(fake.sent)).toEqual([]);
+    expect(types(fake.sent)).toEqual(['weekrow:get-state', 'weekrow:get-state']);
+  });
+
+  it.each([
+    ['saved', { undo: null, created: true }, true],
+    ['not saved', { undo: null, created: false }, false],
+    ['not answered', undefined, false],
+  ])('resolves a task create with whether Canvas %s', async (_name, answer, saved) => {
+    const fake = fakeHost();
+    const { runtime } = await started(fake);
+    const base = fake.reply;
+    fake.reply = (message) =>
+      message.type === 'weekrow:action' && message.action.kind === 'createTask'
+        ? answer
+        : base(message);
+    const input = { title: 'A', date: '2026-10-28', time: null, courseId: null, details: null };
+
+    const result = runtime.actions.createTask(input);
+    await settle();
+
+    await expect(result).resolves.toBe(saved);
+  });
+
+  it('sends Skip all older in parts of at most 2000 keys, and shows one notice with every item', async () => {
+    const fake = undoHost();
+    const base = fake.reply;
+    const template = readyState().view.groups.find((group) => group.kind === 'past_due');
+    const many = Array.from({ length: 4500 }, (_, index) => ({
+      ...(template?.older[0] as ItemView),
+      key: `assignment:${index}`,
+    }));
+    const view = mkView({
+      groups: [{ ...(template as ListGroup), older: many }],
+    });
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state' ? readyFor(fake.user, { view }) : base(message);
+    const { runtime } = await started(fake);
+
+    runtime.actions.skipAllOlder();
+    await settle();
+
+    const sizes = sentActions(fake.sent).map((action) =>
+      action.kind === 'skip' ? action.keys.length : 0,
+    );
+    expect(sizes).toEqual([2000, 2000, 500]);
+    expect(runtime.state()).toMatchObject({ undo: { kind: 'skipped_all', count: 4500 } });
+
+    fake.sent.length = 0;
+    runtime.actions.undo();
+    await settle();
+    expect(
+      sentActions(fake.sent).map((action) =>
+        action.kind === 'restore' ? action.entries.length : 0,
+      ),
+    ).toEqual([2000, 2000, 500]);
+  });
+
   it('sends every other write with its arguments', async () => {
     const { fake, runtime } = await started();
     const input = { title: 'A', date: '2026-10-28', time: '08:00', courseId: '101', details: 'x' };
     runtime.actions.unskip('k');
-    runtime.actions.skipAllOlder();
     runtime.actions.updateTask('8', input);
-    runtime.actions.deleteTask('8');
     runtime.actions.moveTaskToToday('8');
-    runtime.actions.dismissOffer();
+    runtime.actions.createTask(input);
     runtime.actions.keepSavedAddress();
     await settle();
 
-    const actions = fake.sent.flatMap((m) => (m.type === 'weekrow:action' ? [m.action] : []));
-    expect(actions).toEqual([
+    expect(sentActions(fake.sent)).toEqual([
       { kind: 'unskip', key: 'k' },
-      {
-        kind: 'skipAllOlder',
-        request: { surface: 'panel', weekOffset: 0, courseFilter: undefined, scopeCourseId: null },
-      },
       { kind: 'updateTask', noteId: '8', input },
-      { kind: 'deleteTask', noteId: '8' },
       { kind: 'moveTaskToToday', noteId: '8' },
-      { kind: 'dismissOffer' },
+      { kind: 'createTask', input },
       { kind: 'keepSavedAddress' },
     ]);
   });
@@ -707,7 +928,7 @@ describe('week steps', () => {
 });
 
 describe('settings in place', () => {
-  it('loads the stored settings and every course for the panel and the in-page list', async () => {
+  it('loads the stored settings, and the courses from the state, for the panel and the in-page list', async () => {
     for (const surface of ['panel', 'inpage'] as const) {
       const fake = fakeHost();
       fake.stored = { ...DEFAULT_SETTINGS, theme: 'dark', hiddenCourseIds: ['106'] };
@@ -717,7 +938,7 @@ describe('settings in place', () => {
       runtime.start();
       await settle();
 
-      expect(runtime.settings()).toEqual({ value: fake.stored, courses: COURSES });
+      expect(runtime.settings()).toEqual({ value: fake.stored, courses: ALL_COURSES });
       runtime.stop();
     }
   });
@@ -729,7 +950,7 @@ describe('settings in place', () => {
     await settle();
 
     expect(runtime.settings()).toBeUndefined();
-    expect(types(fake.sent)).not.toContain('weekrow:courses');
+    expect(types(fake.sent)).toEqual(['refresh:visible', 'weekrow:get-state']);
   });
 
   it('saves the settings, shows them at once, then asks for the settings refresh', async () => {
@@ -790,37 +1011,54 @@ describe('settings in place', () => {
     expect(runtime.settings()?.value.showRings).toBe(false);
   });
 
-  it('loads the courses again after a sign-in and for another address', async () => {
+  it('keeps the courses across other states and drops them for another address', async () => {
     const fake = fakeHost();
-    let state: SurfaceState = { kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: null };
-    let courses = [{ id: '1', name: 'Old' }];
-    fake.reply = (message) => {
-      if (message.type === 'weekrow:get-state') return state;
-      if (message.type === 'weekrow:courses') return { courses };
-      return { ok: true, retryAt: null };
-    };
+    let state: StateReply = { kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: null };
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state' ? state : { ok: true, retryAt: null };
     const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
     runtime.start();
     await settle();
-    expect(runtime.settings()?.courses).toEqual([{ id: '1', name: 'Old' }]);
+    expect(runtime.settings()).toBeUndefined();
 
-    courses = COURSES;
-    state = readyState();
+    state = readyFor(USER, { allCourses: [{ id: '1', name: 'Old' }] });
     fake.changed();
     await settle();
-    expect(runtime.settings()?.courses).toEqual(COURSES);
+    expect(runtime.settings()?.courses).toEqual([{ id: '1', name: 'Old' }]);
 
-    courses = [{ id: '9', name: 'State' }];
-    state = readyState({ origin: 'https://canvas.state.edu' });
+    // The address form of the same Canvas keeps the list.
+    state = { kind: 'not_set_up', offer: null, savedOrigin: ORIGIN };
+    fake.changed();
+    await settle();
+    expect(runtime.settings()?.courses).toEqual([{ id: '1', name: 'Old' }]);
+    state = { kind: 'checking', origin: ORIGIN, savedOrigin: ORIGIN };
+    fake.changed();
+    await settle();
+    expect(runtime.settings()?.courses).toEqual([{ id: '1', name: 'Old' }]);
+
+    // Another Canvas drops it, and its ready state brings its own.
+    state = {
+      kind: 'signed_out',
+      origin: 'https://canvas.state.edu',
+      isFirefox: false,
+      offer: null,
+    };
+    fake.changed();
+    await settle();
+    expect(runtime.settings()).toBeUndefined();
+    state = readyFor(USER, {
+      origin: 'https://canvas.state.edu',
+      allCourses: [{ id: '9', name: 'State' }],
+    });
     fake.changed();
     await settle();
     expect(runtime.settings()?.courses).toEqual([{ id: '9', name: 'State' }]);
 
-    // Another answer from the same Canvas asks nothing new.
-    fake.sent.length = 0;
+    // No active courses is a state with an empty list.
+    state = { kind: 'no_courses', origin: 'https://canvas.state.edu', offer: null, allCourses: [] };
     fake.changed();
     await settle();
-    expect(types(fake.sent)).toEqual(['weekrow:get-state']);
+    expect(runtime.settings()?.courses).toEqual([]);
   });
 
   it('opens the settings page on request', async () => {

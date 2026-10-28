@@ -1,13 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   isActionMessage,
-  isActionReply,
   isCanvasDetectedMessage,
-  isCanvasDetectedReply,
-  isRefreshReply,
   isChangeAddressMessage,
-  isCoursesMessage,
-  isCoursesReply,
   isDataAction,
   isDataMessage,
   isGetStateMessage,
@@ -15,7 +10,6 @@ import {
   isRefreshMessage,
   isSetupMessage,
   isSurfaceRequest,
-  isSurfaceState,
   isTaskInput,
   type DataAction,
 } from '../protocol';
@@ -29,8 +23,6 @@ describe('surface requests', () => {
     expect(isSurfaceRequest({ ...REQUEST, courseFilter: '101' })).toBe(true);
     expect(isSurfaceRequest({ ...REQUEST, courseFilter: null })).toBe(true);
     expect(isSurfaceRequest({ ...REQUEST, courseFilter: undefined })).toBe(true);
-    expect(isSurfaceRequest({ ...REQUEST, undoToken: 'undo-3' })).toBe(true);
-    expect(isSurfaceRequest({ ...REQUEST, undoToken: null })).toBe(true);
     expect(
       isSurfaceRequest({ ...REQUEST, surface: 'page', weekOffset: -3, scopeCourseId: '7' }),
     ).toBe(true);
@@ -41,7 +33,6 @@ describe('surface requests', () => {
     { ...REQUEST, weekOffset: 0.5 },
     { ...REQUEST, weekOffset: '1' },
     { ...REQUEST, courseFilter: 101 },
-    { ...REQUEST, undoToken: 3 },
     { surface: 'panel', weekOffset: 0 },
     null,
   ])('rejects %j', (value) => {
@@ -68,18 +59,22 @@ describe('task input', () => {
 describe('actions', () => {
   const valid: DataAction[] = [
     { kind: 'setDone', key: 'assignment:1', done: true },
-    { kind: 'skip', key: 'assignment:1' },
+    { kind: 'skip', keys: ['assignment:1'] },
+    { kind: 'skip', keys: ['assignment:1', 'planner_note:4'] },
     { kind: 'unskip', key: 'assignment:1' },
-    { kind: 'skipAllOlder', request: { surface: 'inpage', weekOffset: 0, scopeCourseId: null } },
-    { kind: 'undo', token: 'undo-3' },
+    {
+      kind: 'restore',
+      userId: '9',
+      origin: 'https://a.edu',
+      entries: [{ key: 'assignment:1', previous: { markedComplete: false, dismissed: true } }],
+    },
     { kind: 'createTask', input: TASK },
     { kind: 'updateTask', noteId: '8', input: TASK },
     { kind: 'deleteTask', noteId: '8' },
     { kind: 'moveTaskToToday', noteId: '8' },
-    { kind: 'markNoteSeen', note: 'firstSkip' },
-    { kind: 'dismissOffer' },
+    { kind: 'sendDelete', noteId: '8' },
+    { kind: 'cancelDelete', noteId: '8' },
     { kind: 'keepSavedAddress' },
-    { kind: 'endUndo', token: 'undo-3' },
   ];
 
   it.each(valid)('accepts $kind', (action) => {
@@ -90,11 +85,23 @@ describe('actions', () => {
   it.each([
     { kind: 'setDone', key: 'assignment:1' },
     { kind: 'setDone', key: '', done: true },
-    { kind: 'skipAllOlder' },
-    { kind: 'undo', token: '' },
-    { kind: 'endUndo' },
+    { kind: 'skip', key: 'assignment:1' },
+    { kind: 'skip', keys: [] },
+    { kind: 'skip', keys: Array.from({ length: 2001 }, (_, index) => `assignment:${index}`) },
+    { kind: 'skip', keys: ['assignment:1', ''] },
+    { kind: 'restore', userId: '', origin: 'https://a.edu', entries: [] },
+    { kind: 'restore', userId: '9', origin: '', entries: [] },
+    { kind: 'restore', userId: '9', entries: [] },
+    { kind: 'restore', userId: '9', origin: 'https://a.edu' },
+    {
+      kind: 'restore',
+      userId: '9',
+      origin: 'https://a.edu',
+      entries: [{ key: 'assignment:1', previous: { markedComplete: true } }],
+    },
+    { kind: 'sendDelete', noteId: '' },
+    { kind: 'cancelDelete' },
     { kind: 'createTask', input: { ...TASK, title: '' } },
-    { kind: 'markNoteSeen', note: 'other' },
     { kind: 'deleteOverride', key: 'assignment:1' },
     { key: 'assignment:1' },
   ])('rejects %j', (action) => {
@@ -124,7 +131,6 @@ describe('messages', () => {
     ).toBe(true);
     expect(isSetupMessage({ type: 'weekrow:setup', origin: '', fromOffer: false })).toBe(false);
     expect(isChangeAddressMessage({ type: 'weekrow:change-address' })).toBe(true);
-    expect(isCoursesMessage({ type: 'weekrow:courses' })).toBe(true);
     expect(isOpenPageMessage({ type: 'weekrow:open-page', page: 'welcome' })).toBe(true);
     expect(isOpenPageMessage({ type: 'weekrow:open-page', page: 'https://a.edu' })).toBe(false);
   });
@@ -136,26 +142,5 @@ describe('messages', () => {
     );
     expect(isDataMessage({ type: 'weekrow:get-state' })).toBe(false);
     expect(isDataMessage('weekrow:get-state')).toBe(false);
-  });
-});
-
-describe('replies', () => {
-  it('checks states, action replies and course lists', () => {
-    expect(isSurfaceState({ kind: 'loading' })).toBe(true);
-    expect(isSurfaceState({ kind: 'unreachable' })).toBe(true);
-    expect(isRefreshReply({ ok: true, retryAt: null })).toBe(true);
-    expect(isRefreshReply({ ok: true, retryAt: 5 })).toBe(true);
-    expect(isRefreshReply({ ok: true })).toBe(false);
-    expect(isRefreshReply({ ok: true, retryAt: Number.NaN })).toBe(false);
-    expect(isCanvasDetectedReply({ origin: null })).toBe(true);
-    expect(isCanvasDetectedReply({ origin: 5 })).toBe(false);
-    expect(isSurfaceState({ kind: 'other' })).toBe(false);
-    expect(isSurfaceState(undefined)).toBe(false);
-    expect(isActionReply({ undo: null })).toBe(true);
-    expect(isActionReply({ undo: { token: 't', info: { kind: 'done', count: 1 } } })).toBe(true);
-    expect(isActionReply({ undo: { token: 't', info: { kind: 'moved', count: 1 } } })).toBe(false);
-    expect(isActionReply(undefined)).toBe(false);
-    expect(isCoursesReply({ courses: [{ id: '1', name: 'Biology' }] })).toBe(true);
-    expect(isCoursesReply({ courses: [{ id: 1, name: 'Biology' }] })).toBe(false);
   });
 });

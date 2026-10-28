@@ -10,7 +10,7 @@
 import { browser } from 'wxt/browser';
 import { openPanel } from '../platform/panel';
 
-export const OPEN_PANEL_BUTTON_ID = 'e2e-open-side-panel';
+const OPEN_PANEL_BUTTON_ID = 'e2e-open-side-panel';
 
 /**
  * Adds the button to the end of the page body. The browser accepts `sidePanel.open` only during

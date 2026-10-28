@@ -7,7 +7,14 @@ import type { DataMessage } from '../data/protocol';
 import { normalizeAddress } from '../platform/address';
 import { logFailure } from '../platform/log';
 import { requestAccess } from '../platform/permissions';
-import { changeMarkerItem, offerItem, settingsItem, watchItems } from '../platform/storage';
+import {
+  changeMarkerItem,
+  offerItem,
+  seenNotesItem,
+  settingsItem,
+  watchItems,
+  type SeenNotes,
+} from '../platform/storage';
 import type { Leave, SurfaceHost, SurfaceTimers, Visibility } from './runtime';
 
 export function sendToBackground(message: DataMessage): Promise<unknown> {
@@ -21,15 +28,20 @@ export async function actionShortcut(): Promise<string | null> {
   return shortcut === undefined || shortcut === '' ? null : shortcut;
 }
 
-export const browserTimers: SurfaceTimers = {
+/** Saves that the student has seen a one-time note. */
+async function saveNoteSeen(note: keyof SeenNotes): Promise<void> {
+  await seenNotesItem.setValue({ ...(await seenNotesItem.getValue()), [note]: true });
+}
+
+const browserTimers: SurfaceTimers = {
   setTimeout: (callback, ms) => setTimeout(callback, ms),
   clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
 };
 
-export const systemClock = { now: (): number => Date.now() };
+const systemClock = { now: (): number => Date.now() };
 
 /** Document visibility: a hidden panel or a background tab stops its timers. */
-export function documentVisibility(doc: Document = document): Visibility {
+function documentVisibility(doc: Document = document): Visibility {
   const isVisible = (): boolean => doc.visibilityState === 'visible';
   return {
     isVisible,
@@ -93,7 +105,7 @@ export function requestAccessThenCheck(
 export function extensionPageHost(): SurfaceHost {
   return {
     send: sendToBackground,
-    watchChanges: (listener) => watchItems([changeMarkerItem, offerItem], listener),
+    watchChanges: (listener) => watchItems([changeMarkerItem, offerItem, seenNotesItem], listener),
     settings: settingsItem,
     clock: systemClock,
     timers: browserTimers,
@@ -112,6 +124,8 @@ export function extensionPageHost(): SurfaceHost {
         .openOptionsPage()
         .catch((error: unknown) => logFailure('open settings', error));
     },
+    markNoteSeen: saveNoteSeen,
+    dismissOffer: () => offerItem.setValue(null),
     allowAccess(origin, fromOffer) {
       requestAccessThenCheck(origin, fromOffer).catch((error: unknown) =>
         logFailure('allow access', error),
@@ -169,7 +183,7 @@ export function inpageHost(
   };
   return {
     send,
-    watchChanges: (listener) => watchItems([changeMarkerItem], listener),
+    watchChanges: (listener) => watchItems([changeMarkerItem, seenNotesItem], listener),
     settings: settingsItem,
     clock: systemClock,
     timers: browserTimers,
@@ -184,6 +198,10 @@ export function inpageHost(
     openSettings() {
       openPage('settings');
     },
+    markNoteSeen: saveNoteSeen,
+    // The offer lives in `storage.session`, which content scripts cannot reach. Only the side
+    // panel shows it.
+    dismissOffer: () => Promise.resolve(),
     allowAccess() {
       openPage('welcome');
     },

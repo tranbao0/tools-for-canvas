@@ -19,7 +19,6 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
     act: vi.fn(async () => ({ undo: null })),
     setup: vi.fn(async () => undefined),
     changeAddress: vi.fn(async () => undefined),
-    listCourses: vi.fn(async () => [{ id: '1', name: 'Biology' }]),
     originChanged: vi.fn(async () => undefined),
     accessChanged: vi.fn(async () => undefined),
     settled: vi.fn(async () => undefined),
@@ -83,7 +82,7 @@ describe('routeDataMessage', () => {
       fromExtensionPage: false,
     });
 
-    const action = { kind: 'skip', key: 'assignment:1' };
+    const action = { kind: 'skip', keys: ['assignment:1'] };
     await expect(
       routeDataMessage(owner, { type: 'weekrow:action', action }, CONTENT_SCRIPT, host),
     ).resolves.toEqual({ undo: null });
@@ -91,10 +90,6 @@ describe('routeDataMessage', () => {
 
     await routeDataMessage(owner, { type: 'weekrow:change-address' }, CONTENT_SCRIPT, host);
     expect(owner.changeAddress).toHaveBeenCalled();
-
-    await expect(
-      routeDataMessage(owner, { type: 'weekrow:courses' }, EXTENSION_PAGE, host),
-    ).resolves.toEqual({ courses: [{ id: '1', name: 'Biology' }] });
   });
 
   it('treats a Canvas page load as a refresh trigger, with the origin of the sender page', async () => {
@@ -119,9 +114,8 @@ describe('routeDataMessage', () => {
     const messages = [
       { type: 'weekrow:get-state', request: REQUEST },
       { type: 'weekrow:refresh', reason: 'retry', surface: 'inpage' },
-      { type: 'weekrow:action', action: { kind: 'skip', key: 'assignment:1' } },
+      { type: 'weekrow:action', action: { kind: 'skip', keys: ['assignment:1'] } },
       { type: 'weekrow:change-address' },
-      { type: 'weekrow:courses' },
       { type: 'weekrow:open-page', page: 'settings' },
     ];
     for (const message of messages) {
@@ -131,7 +125,6 @@ describe('routeDataMessage', () => {
     expect(owner.refresh).not.toHaveBeenCalled();
     expect(owner.act).not.toHaveBeenCalled();
     expect(owner.changeAddress).not.toHaveBeenCalled();
-    expect(owner.listCourses).not.toHaveBeenCalled();
     expect(host.openPage).not.toHaveBeenCalled();
   });
 

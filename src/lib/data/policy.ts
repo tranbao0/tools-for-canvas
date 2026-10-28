@@ -1,8 +1,9 @@
 /**
  * The refresh policy. See docs/design.md, decision 11, "Refresh triggers".
  *
- * - A "Canvas page loaded" message, a window that gains focus, or the browser start refreshes
- *   the planner items only (a light round).
+ * - A "Canvas page loaded" message, a window that gains focus, the browser start, a new day in
+ *   the Canvas time zone (midnight), or a setting that shows a course again refreshes the
+ *   planner items only (a light round).
  * - The 5-minute timer refreshes everything (a full round). Every visible surface runs its own
  *   timer, so a timer tick runs a full round only when the last one is about 5 minutes old.
  * - A surface that starts or becomes visible again asks for a full round when the last one is
@@ -21,7 +22,8 @@ export const FULL_REFRESH_INTERVAL_MS = 5 * 60_000;
 export const TIMER_FULL_AFTER_MS = FULL_REFRESH_INTERVAL_MS - 60_000;
 
 /** Refresh triggers that follow the 60-second limit. */
-export type LimitedTrigger = 'page_loaded' | 'focus' | 'startup' | 'visible' | 'timer';
+export type LimitedTrigger =
+  'page_loaded' | 'focus' | 'startup' | 'midnight' | 'settings' | 'visible' | 'timer';
 
 /** Whether the last full round is at least `age` old. A clock that went back counts as old. */
 function fullIsOlderThan(limits: RoundLimits, now: number, age: number): boolean {
@@ -38,6 +40,8 @@ export function scopeForTrigger(
     case 'page_loaded':
     case 'focus':
     case 'startup':
+    case 'midnight':
+    case 'settings':
       return 'light';
     case 'timer':
       return fullIsOlderThan(limits, now, TIMER_FULL_AFTER_MS) ? 'full' : null;
@@ -46,7 +50,7 @@ export function scopeForTrigger(
   }
 }
 
-export type LimitDecision =
+type LimitDecision =
   | { kind: 'run'; scope: RoundScope }
   /** Run a full round at this epoch millisecond, when the 60-second window ends. */
   | { kind: 'defer'; at: number }
