@@ -1195,7 +1195,7 @@ The owner chose it on 2026-10-27.
 | First day of the week | Automatic, from the Canvas language |
 | Hidden courses | None, so all active student courses show |
 | Show progress rings | On |
-| Show Weekrow on Canvas pages | On |
+| Show the weekly list on Canvas pages | On |
 | Theme | Automatic (see decision 19) |
 
 - The settings show in three places with the same view: inside the side panel, inside the in-page list, and on the extension's own settings page.
@@ -1205,7 +1205,7 @@ The owner chose it on 2026-10-27.
 - "Hidden courses" is a list of the student's courses with a switch for each one, for example to hide a club or an orientation course.
   - When any course is hidden, the list ends with one quiet line, such as "1 course hidden", with a link to the settings.
   - So the student always knows that the list is filtered.
-- "Show Weekrow on Canvas pages" has one help line: "Shows on the Card View and Recent Activity dashboards and on course home pages. On other pages, use the side panel."
+- "Show the weekly list on Canvas pages" has one help line: "Shows on the Card View and Recent Activity dashboards and on course home pages. On other pages, use the side panel."
 - The settings page also shows the Canvas address, with a way to change it.
 
 **Why:**
