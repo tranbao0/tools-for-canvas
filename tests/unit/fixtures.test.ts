@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
+import { customGradeStatusesQuery, readCustomGradeStatuses } from '../../src/lib/canvas/graphql';
 import type { PlannableType } from '../../src/lib/canvas/types';
 import { CANVAS_ERRORS, NOT_CANVAS_RESPONSES, invalidAssignmentIds } from '../fixtures/errors';
+import { customGradeStatusesAnswer } from '../fixtures/graphql';
 import { FIXTURE_PAGES, renderFixturePage, type FixturePage } from '../fixtures/pages';
 import {
   IDS,
@@ -354,13 +356,30 @@ describe('SCENARIO', () => {
     expect(items.map((i) => i.plannable_id)).toEqual([IDS.assignments.mathProblemSet7Midnight]);
   });
 
-  it('answers the GraphQL query for every course', () => {
-    const course = SCENARIO.graphqlCustomGradeStatuses.data[`course_${IDS.courses.history}`];
-    expect(course?.customGradeStatusesConnection?.nodes).toEqual([
-      { _id: '1', name: 'Incomplete' },
-      { _id: '2', name: 'Conference needed' },
-      { _id: '3', name: 'Medical excuse' },
+  it('answers the GraphQL query by alias, whatever the order of the courses', () => {
+    const { biology, history } = IDS.courses;
+    const statuses = (courseIds: string[]) =>
+      readCustomGradeStatuses(
+        courseIds,
+        customGradeStatusesAnswer(SCENARIO, JSON.stringify(customGradeStatusesQuery(courseIds))),
+      );
+    expect(statuses([biology, history])).toEqual({
+      [biology]: SCENARIO.customGradeStatuses[biology],
+      [history]: SCENARIO.customGradeStatuses[history],
+    });
+    expect(statuses([history, biology])).toEqual(statuses([biology, history]));
+    expect(SCENARIO.customGradeStatuses[history]).toEqual([
+      { id: '1', name: 'Incomplete' },
+      { id: '2', name: 'Conference needed' },
+      { id: '3', name: 'Medical excuse' },
     ]);
+  });
+
+  it('answers null for a course that is not in the scenario', () => {
+    const query = customGradeStatusesQuery([IDS.courses.history, '9999']);
+    const answer = customGradeStatusesAnswer(SCENARIO, JSON.stringify(query));
+    expect(Object.keys(answer.data)).toEqual(['c0', 'c1']);
+    expect(answer.data['c1']).toBeNull();
   });
 });
 

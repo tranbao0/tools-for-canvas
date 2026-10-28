@@ -1,18 +1,22 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import type { Page, Worker } from '@playwright/test';
+import type { Locator, Page, Worker } from '@playwright/test';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/lib/model/types';
 import { FIXTURE_READY_SELECTOR } from '../fixtures/pages';
 import { buildScenario } from '../fixtures/scenario';
-import { test } from './support/extension';
-import { serveFakeCanvas } from './support/fake-canvas';
+import { expect, test } from './support/extension';
+import { serveFakeCanvas, type FakeCanvas } from './support/fake-canvas';
 import { apiRoutes, saveAddress, type StorageArea } from './support/scenario-api';
 
 /**
  * Screenshots of the real extension against the fake Canvas, for a person to review.
  * Runs only with WEEKROW_VISUAL=1. Images go to test-results/visual/, or to the folder in
- * WEEKROW_VISUAL_OUT.
+ * WEEKROW_VISUAL_OUT. CI runs it and keeps the images as an artifact.
+ *
+ * The images are not compared with saved ones, because fonts differ between machines. Each shot
+ * instead checks that the page rendered: its root element is visible and has a size, its heading
+ * is there, and the page logged no error.
  *
  * When ~/.cache/weekrow-test/canvas-css holds Canvas's production CSS (see its README.txt), the
  * fake pages also get Canvas's real common CSS, fonts and default brand variables before the
@@ -49,6 +53,49 @@ function canvasCss(): string | null {
 
 const REAL_CSS = canvasCss();
 
+/**
+ * The one request that the saved Canvas pages make off the fake origin: the Canvas logo. The fake
+ * blocks it, so the browser logs a failed load for it.
+ */
+const FIXTURE_LOGO = /^https:\/\/[^/]+\.cloudfront\.net\/dist\/images\/canvas_logomark_only/;
+
+/** Collects the page errors and console errors of a page, except the blocked fixture logo. */
+function watchErrors(page: Page): string[] {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(`page error: ${error.message}`));
+  page.on('console', (message) => {
+    if (message.type() !== 'error' || FIXTURE_LOGO.test(message.location().url)) return;
+    errors.push(`console error: ${message.text()}`);
+  });
+  return errors;
+}
+
+/**
+ * Checks that a shot shows a real render, without comparing pixels: the root has a size, the
+ * heading is there, the page logged no error, and the extension asked the fake Canvas for
+ * nothing that it lacks or blocks.
+ */
+async function expectRendered(
+  canvas: FakeCanvas,
+  root: Locator,
+  heading: Locator,
+  errors: string[],
+): Promise<void> {
+  await expect(root).toBeVisible();
+  const box = await root.boundingBox();
+  expect(box?.width ?? 0).toBeGreaterThan(0);
+  expect(box?.height ?? 0).toBeGreaterThan(0);
+  await expect(heading).toBeVisible();
+  expect(errors).toEqual([]);
+  expect(canvas.unmatched.map((request) => request.path)).toEqual([]);
+  expect(
+    canvas.blocked.map((request) => request.url).filter((url) => !FIXTURE_LOGO.test(url)),
+  ).toEqual([]);
+}
+
+/** The heading of the list, such as "Week of October 25 to 31". */
+const WEEK = /^Week of /;
+
 async function settle(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(400);
@@ -72,6 +119,7 @@ async function useRealCanvasCss(page: Page): Promise<void> {
 for (const scheme of ['light', 'dark'] as const) {
   for (const width of [360, 240, 200]) {
     test(`panel ${width}px ${scheme}`, async ({ context, page, serviceWorker, extensionUrl }) => {
+      const errors = watchErrors(page);
       const scenario = buildScenario(new Date().toISOString());
       const canvas = await serveFakeCanvas(context, apiRoutes(scenario));
       await saveAddress(serviceWorker, canvas.origin);
@@ -79,7 +127,16 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.setViewportSize({ width, height: 1400 });
       await page.goto(extensionUrl('sidepanel.html'));
       await settle(page);
-      await page.screenshot({ path: `${OUT}/panel-${width}-${scheme}.png`, fullPage: true });
+      try {
+        await expectRendered(
+          canvas,
+          page.locator('#app'),
+          page.getByRole('heading', { level: 1, name: WEEK }),
+          errors,
+        );
+      } finally {
+        await page.screenshot({ path: `${OUT}/panel-${width}-${scheme}.png`, fullPage: true });
+      }
     });
   }
 }
@@ -97,6 +154,7 @@ const THEMES: { name: string; theme: Settings['theme'] }[] = [
 for (const fixture of Object.keys(PAGES)) {
   for (const { name: suffix, theme } of THEMES) {
     test(`in-page ${fixture || 'dashboard'}${suffix}`, async ({ context, page, serviceWorker }) => {
+      const errors = watchErrors(page);
       const scenario = buildScenario(new Date().toISOString());
       const canvas = await serveFakeCanvas(context, [
         { path: `/${fixture}`, page: PAGES[fixture] ?? '' },
@@ -110,8 +168,18 @@ for (const fixture of Object.keys(PAGES)) {
       await useRealCanvasCss(page);
       await settle(page);
       await page.waitForTimeout(800);
+      const list = page.locator('#right-side-wrapper > #weekrow-inpage');
       const name = `inpage-${fixture ? fixture.replace('/', '-') : 'dashboard'}${suffix}`;
-      await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: true });
+      try {
+        await expectRendered(
+          canvas,
+          list,
+          list.getByRole('heading', { level: 2, name: WEEK }),
+          errors,
+        );
+      } finally {
+        await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: true });
+      }
       // The right column alone, zoomed to twice the size, to compare the list with Canvas's
       // sections. The viewport doubles too, so the page keeps its 1280 px layout.
       await page.setViewportSize({ width: 2560, height: 2400 });
@@ -122,14 +190,32 @@ for (const fixture of Object.keys(PAGES)) {
   }
 }
 
-for (const pageName of ['welcome.html', 'options.html']) {
+const PAGE_TITLES: Record<string, string> = {
+  'welcome.html': 'Welcome to Tools for Canvas',
+  'options.html': 'Settings',
+};
+
+for (const pageName of Object.keys(PAGE_TITLES)) {
   test(`page ${pageName}`, async ({ context, page, serviceWorker, extensionUrl }) => {
+    const errors = watchErrors(page);
     const scenario = buildScenario(new Date().toISOString());
     const canvas = await serveFakeCanvas(context, apiRoutes(scenario));
     if (pageName === 'options.html') await saveAddress(serviceWorker, canvas.origin);
     await page.setViewportSize({ width: 900, height: 1000 });
     await page.goto(extensionUrl(pageName));
     await settle(page);
-    await page.screenshot({ path: `${OUT}/${pageName.replace('.html', '')}.png`, fullPage: true });
+    try {
+      await expectRendered(
+        canvas,
+        page.locator('#app'),
+        page.getByRole('heading', { level: 1, name: PAGE_TITLES[pageName] }),
+        errors,
+      );
+    } finally {
+      await page.screenshot({
+        path: `${OUT}/${pageName.replace('.html', '')}.png`,
+        fullPage: true,
+      });
+    }
   });
 }

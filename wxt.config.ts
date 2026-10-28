@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { defineConfig } from 'wxt';
 import preact from '@preact/preset-vite';
 
@@ -5,6 +6,19 @@ export default defineConfig({
   srcDir: 'src',
   publicDir: 'src/public',
   manifestVersion: 3,
+  hooks: {
+    // `WXT_E2E=1` builds the extension for the end-to-end tests, with the test-only code that
+    // `import.meta.env.WXT_E2E` guards. The build is otherwise a production build. It goes to
+    // `.output-e2e`, so no folder of release output holds the test-only code.
+    'config:resolved': (wxt) => {
+      if (process.env['WXT_E2E'] !== '1') return;
+      wxt.config.outBaseDir = path.resolve(wxt.config.root, '.output-e2e');
+      wxt.config.outDir = path.resolve(
+        wxt.config.outBaseDir,
+        `${wxt.config.browser}-mv${wxt.config.manifestVersion}`,
+      );
+    },
+  },
   vite: () => ({
     plugins: [preact()],
     build: {
@@ -16,6 +30,7 @@ export default defineConfig({
   zip: {
     excludeSources: [
       'test-results/**',
+      'screenshots/**',
       'playwright-report/**',
       'coverage/**',
       'web-ext-artifacts/**',

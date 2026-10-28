@@ -38,6 +38,7 @@ const unusedOptions = {
 export default defineConfig([
   globalIgnores([
     '.output/',
+    '.output-e2e/',
     '.wxt/',
     'node_modules/',
     'coverage/',

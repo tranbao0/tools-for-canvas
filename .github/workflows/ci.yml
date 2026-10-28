@@ -73,6 +73,24 @@ jobs:
       - name: End-to-end tests in Chromium
         run: npm run test:e2e
 
+      - name: Screenshot tests in Chromium
+        id: screenshots
+        # The tests check that each page renders and logs no error. They compare no pixels,
+        # because fonts differ between machines. The images are for a person to review.
+        run: npx playwright test tests/e2e/visual.spec.ts
+        env:
+          WEEKROW_VISUAL: '1'
+          WEEKROW_VISUAL_OUT: screenshots
+
+      - name: Upload the screenshots
+        if: ${{ !cancelled() && steps.screenshots.conclusion != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots
+          path: screenshots/
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Firefox smoke test
         # The runner image ships Firefox and geckodriver; GECKOWEBDRIVER points to the driver folder.
         run: |

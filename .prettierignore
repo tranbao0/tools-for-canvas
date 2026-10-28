@@ -1,5 +1,6 @@
 # Build output and generated files
 .output/
+.output-e2e/
 .wxt/
 node_modules/
 coverage/

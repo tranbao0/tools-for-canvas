@@ -395,15 +395,13 @@ export interface WireGraphqlCustomGradeStatusNode {
 }
 
 /**
- * The body of `POST /api/graphql` for one aliased `course` field per course. See
- * `CUSTOM_GRADE_STATUSES_QUERY_EXAMPLE` in `scenario.ts` for the query it answers.
+ * The body of the `POST /api/graphql` answer to the teacher status query: one entry per alias of
+ * the query, such as `c0`. An entry is null for a course Canvas does not find, and its
+ * connection is null when the feature is off.
  */
 export interface WireGraphqlCustomGradeStatusesBody {
   data: Record<
     string,
-    {
-      _id: string;
-      customGradeStatusesConnection: { nodes: WireGraphqlCustomGradeStatusNode[] } | null;
-    } | null
+    { customGradeStatusesConnection: { nodes: WireGraphqlCustomGradeStatusNode[] } | null } | null
   >;
 }

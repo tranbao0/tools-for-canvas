@@ -7,16 +7,20 @@ import { fileURLToPath } from 'node:url';
 /** The repository root. */
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+/** @typedef {'release' | 'e2e'} BuildMode */
+
 /** Files and folders whose changes make a build stale. */
 const BUILD_INPUTS = ['src', 'wxt.config.ts', 'tsconfig.json', 'package.json', 'package-lock.json'];
 
 /**
  * Returns the build directory of a browser, such as `<root>/.output/chrome-mv3`.
+ * The `e2e` build, which holds test-only code, goes to `.output-e2e`, so no release output has it.
  * @param {'chrome' | 'edge' | 'firefox'} browser
+ * @param {BuildMode} [mode]
  * @returns {string}
  */
-export function targetDir(browser) {
-  return path.join(ROOT, '.output', `${browser}-mv3`);
+export function targetDir(browser, mode = 'release') {
+  return path.join(ROOT, mode === 'e2e' ? '.output-e2e' : '.output', `${browser}-mv3`);
 }
 
 /**
@@ -37,10 +41,11 @@ function newestModification(entry) {
 /**
  * Tells whether the build of a browser exists and is newer than every build input.
  * @param {'chrome' | 'edge' | 'firefox'} browser
+ * @param {BuildMode} [mode]
  * @returns {boolean}
  */
-export function isBuildFresh(browser) {
-  const manifest = path.join(targetDir(browser), 'manifest.json');
+export function isBuildFresh(browser, mode = 'release') {
+  const manifest = path.join(targetDir(browser, mode), 'manifest.json');
   if (!existsSync(manifest)) return false;
   const builtAt = statSync(manifest).mtimeMs;
   return BUILD_INPUTS.every((input) => newestModification(path.join(ROOT, input)) <= builtAt);
@@ -48,13 +53,18 @@ export function isBuildFresh(browser) {
 
 /**
  * Builds a browser target with `npm run build:<browser>` unless its build is fresh.
+ * The `e2e` mode builds with `WXT_E2E=1`, which adds the test-only code.
  * @param {'chrome' | 'edge' | 'firefox'} browser
+ * @param {BuildMode} [mode]
  * @returns {string} the build directory
  */
-export function ensureBuild(browser) {
-  if (!isBuildFresh(browser)) {
-    console.log(`Building the ${browser} extension...`);
-    execSync(`npm run build:${browser}`, { cwd: ROOT, stdio: 'inherit' });
+export function ensureBuild(browser, mode = 'release') {
+  if (!isBuildFresh(browser, mode)) {
+    console.log(`Building the ${browser} extension (${mode})...`);
+    // A release build never takes WXT_E2E from the shell, so it always writes the release output.
+    const { WXT_E2E: _unused, ...releaseEnv } = process.env;
+    const env = mode === 'e2e' ? { ...releaseEnv, WXT_E2E: '1' } : releaseEnv;
+    execSync(`npm run build:${browser}`, { cwd: ROOT, stdio: 'inherit', env });
   }
-  return targetDir(browser);
+  return targetDir(browser, mode);
 }

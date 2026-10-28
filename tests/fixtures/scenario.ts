@@ -55,7 +55,6 @@ import type {
   WireColors,
   WireCourse,
   WireDashboardPositions,
-  WireGraphqlCustomGradeStatusesBody,
   WireGroup,
   WirePlannerItem,
   WirePlannerOverride,
@@ -217,22 +216,6 @@ export const IDS = {
   customGradeStatuses: { incomplete: '1', conferenceNeeded: '2', medicalExcuse: '3' },
 } as const;
 
-/**
- * The GraphQL query that `graphqlCustomGradeStatuses` and `buildCustomGradeStatusesBody` answer:
- * one aliased `course` field per course, named `course_<id>`.
- */
-export const CUSTOM_GRADE_STATUSES_QUERY_EXAMPLE = `query CustomGradeStatuses {
-  course_101: course(id: "101") {
-    _id
-    customGradeStatusesConnection {
-      nodes {
-        _id
-        name
-      }
-    }
-  }
-}`;
-
 export interface Scenario {
   now: string;
   origin: string;
@@ -278,8 +261,6 @@ export interface Scenario {
   plannerNotes: PlannerNote[];
   /** Teacher status names by course id, as `CanvasApi.listCustomGradeStatuses` returns them. */
   customGradeStatuses: Record<string, CustomGradeStatus[]>;
-  /** `POST /api/graphql` body for `CUSTOM_GRADE_STATUSES_QUERY_EXAMPLE` over every course. */
-  graphqlCustomGradeStatuses: WireGraphqlCustomGradeStatusesBody;
 }
 
 /** The key Canvas planner items are matched by in `plannerRangeDates`. */
@@ -316,27 +297,6 @@ export function allAssignmentsInCourse(scenario: Scenario, courseId: string): Wi
       checkpoints: withCheckpoints?.checkpoints ?? [],
     };
   });
-}
-
-/** The GraphQL body for `CUSTOM_GRADE_STATUSES_QUERY_EXAMPLE` over the given courses. */
-export function buildCustomGradeStatusesBody(
-  statuses: Record<string, CustomGradeStatus[]>,
-  courseIds: readonly string[],
-): WireGraphqlCustomGradeStatusesBody {
-  const data: WireGraphqlCustomGradeStatusesBody['data'] = {};
-  for (const courseId of courseIds) {
-    const nodes = statuses[courseId];
-    data[`course_${courseId}`] =
-      nodes === undefined
-        ? null
-        : {
-            _id: courseId,
-            customGradeStatusesConnection: {
-              nodes: nodes.map((s) => ({ _id: s.id, name: s.name })),
-            },
-          };
-  }
-  return { data };
 }
 
 // ---------------------------------------------------------------------------
@@ -435,10 +395,6 @@ export function buildScenario(now: string): Scenario {
     plannerOverrides: listedOverrides(specs),
     plannerNotes: specs.notes.map((n) => plannerNoteJson(ctx, n)),
     customGradeStatuses,
-    graphqlCustomGradeStatuses: buildCustomGradeStatusesBody(
-      customGradeStatuses,
-      specs.courses.map((c) => c.id),
-    ),
   };
 }
 

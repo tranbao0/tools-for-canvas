@@ -4,8 +4,19 @@ import { targetDir } from '../../../scripts/lib/ensure-build.mjs';
 /** The unpacked Chrome build that the tests load. tests/e2e/global-setup.ts keeps it fresh. */
 export const CHROME_EXTENSION_DIR = targetDir('chrome');
 
+/**
+ * The Chrome build with the test-only button that opens the real side panel. It lives outside
+ * `.output`, so no release output has the button.
+ */
+export const CHROME_E2E_EXTENSION_DIR = targetDir('chrome', 'e2e');
+
 /** How long to wait for the extension service worker after launch. */
 const WORKER_TIMEOUT_MS = 10_000;
+
+export interface ExtensionOptions {
+  /** The unpacked extension that the context loads. Defaults to {@link CHROME_EXTENSION_DIR}. */
+  extensionDir: string;
+}
 
 export interface ExtensionFixtures {
   /** A new persistent Chromium context, headless, with the built extension loaded. */
@@ -26,27 +37,25 @@ function isExtensionWorker(worker: Worker): boolean {
  * The Playwright test function with the extension fixtures.
  * The built-in `page` fixture opens a tab in the extension context.
  */
-export const test = base.extend<ExtensionFixtures>({
-  context: async ({}, use) => {
+export const test = base.extend<ExtensionFixtures & ExtensionOptions>({
+  extensionDir: [CHROME_EXTENSION_DIR, { option: true }],
+  context: async ({ extensionDir }, use) => {
     const context = await chromium.launchPersistentContext('', {
       channel: 'chromium',
       headless: true,
-      args: [
-        `--disable-extensions-except=${CHROME_EXTENSION_DIR}`,
-        `--load-extension=${CHROME_EXTENSION_DIR}`,
-      ],
+      args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],
     });
     await use(context);
     await context.close();
   },
-  serviceWorker: async ({ context }, use) => {
+  serviceWorker: async ({ context, extensionDir }, use) => {
     const worker =
       context.serviceWorkers().find(isExtensionWorker) ??
       (await context
         .waitForEvent('serviceworker', { predicate: isExtensionWorker, timeout: WORKER_TIMEOUT_MS })
         .catch((error: unknown) => {
           throw new Error(
-            `The extension service worker did not start. Chromium may have rejected ${CHROME_EXTENSION_DIR}; ` +
+            `The extension service worker did not start. Chromium may have rejected ${extensionDir}; ` +
               'run "npm run check:manifest" to look for manifest problems.',
             { cause: error },
           );

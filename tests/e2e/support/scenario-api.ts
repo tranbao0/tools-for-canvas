@@ -1,4 +1,5 @@
 import type { Worker } from '@playwright/test';
+import { customGradeStatusesAnswer } from '../../fixtures/graphql';
 import { IDS, type Scenario } from '../../fixtures/scenario';
 import type { FakeCanvasRoute, JsonValue } from './fake-canvas';
 
@@ -43,18 +44,7 @@ export function apiRoutes(scenario: Scenario): FakeCanvasRoute[] {
     {
       method: 'POST',
       path: '/api/graphql',
-      body: json({
-        data: {
-          c0: {
-            customGradeStatusesConnection: {
-              nodes: (scenario.customGradeStatuses[IDS.courses.history] ?? []).map((status) => ({
-                _id: status.id,
-                name: status.name,
-              })),
-            },
-          },
-        },
-      }),
+      respond: (request) => ({ body: json(customGradeStatusesAnswer(scenario, request.postData)) }),
     },
   ];
 }
