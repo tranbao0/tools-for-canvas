@@ -623,6 +623,14 @@ Availability is a separate small marker next to the status chip, because it answ
 - Custom tasks with no course share one "Personal" ring.
 - When the course lookup fails for an item, the ring uses the course or group name that the planner item carries (`context_name`) [10].
 - Rings appear in dashboard order from `GET /api/v1/users/self/dashboard_positions` [10].
+- The rings are the main progress display, as in the original Tasks for Canvas [9].
+  The owner asked for this after testing: the rings must show the week's progress clearly and stand out more than any other element.
+  - One chart holds concentric rings, one per class, in the class colors, with thick strokes on a light track.
+  - The center shows the week's total, such as "62%" over "8/13", and a check mark when every class is done with nothing past due.
+  - A legend next to the chart lists each class: the color, the course code and "done/total", and the past-due count when there is one.
+  - A click on a ring or a legend row filters the list, as before.
+  - When a check changes a count, the ring arc grows to its new length, with no motion under reduced motion.
+  - With more classes than the chart holds legibly (more than 6), the chart shows the 6 with the most work this week, and the legend lists all.
 - Ring colors come from `GET /api/v1/users/self/colors` [10].
   - A course with no saved color gets one of Canvas's 12 default dashboard colors, picked by a hash of the course id [10].
   - The extension never writes a color back to Canvas.
