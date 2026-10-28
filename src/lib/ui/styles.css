@@ -43,8 +43,6 @@
   --wr-error: light-dark(#c71f23, #f08a8d);
   --wr-on: light-dark(#03893d, #6fcf8a);
   --wr-selected: light-dark(#e0ebf5, #253443);
-  --wr-ring: 40px;
-  --wr-ring-cell: 58px;
 
   margin: 0;
   background: var(--wr-bg);
@@ -377,106 +375,125 @@
   border-radius: 4px;
 }
 
-/* Rings */
+/* Progress chart */
 
 .wr-rings {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--wr-ring-cell), 1fr));
-  align-items: start;
-  gap: 0 2px;
-  margin-bottom: 2px;
-}
-
-.wr-ring {
-  --wr-arc: light-dark(var(--wr-course), color-mix(in srgb, var(--wr-course) 70%, #fff));
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  width: 100%;
-  padding: 6px 0 4px;
-  border-radius: 4px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
-.wr-ring:hover {
-  background: var(--wr-hover);
-}
-
-.wr-ring[aria-pressed='true'] {
-  background: var(--wr-selected);
-  box-shadow: inset 0 0 0 1px var(--wr-brand);
-}
-
-.wr-ring-graphic {
+.wr-chart {
   position: relative;
-  display: grid;
-  place-items: center;
-  width: var(--wr-ring);
-  height: var(--wr-ring);
+  flex: none;
+  align-self: center;
+  width: min(112px, 100%);
+  aspect-ratio: 1;
 }
 
-.wr-ring-graphic > svg {
-  position: absolute;
-  inset: 0;
+.wr-chart > svg {
+  display: block;
   width: 100%;
   height: 100%;
   transform: rotate(-90deg);
 }
 
+.wr-ring,
+.wr-legend-row {
+  --wr-arc: light-dark(var(--wr-course), color-mix(in srgb, var(--wr-course) 70%, #fff));
+}
+
+.wr-ring {
+  cursor: pointer;
+}
+
+.wr-chart:has([aria-pressed='true']) .wr-ring[aria-pressed='false'] {
+  opacity: 0.35;
+}
+
 .wr-ring-track {
-  stroke: var(--wr-line);
+  stroke: light-dark(#e3e7ea, #2e3e4e);
 }
 
 .wr-ring-arc {
   stroke: var(--wr-arc);
+  transition: stroke-dashoffset 0.45s ease;
 }
 
-.wr-ring-center {
-  position: relative;
+.wr-chart-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.wr-chart-center > b {
+  font-size: 18px;
+  line-height: 20px;
+}
+
+.wr-chart-center > .wr-icon {
+  font-size: 18px;
+  color: var(--wr-on);
+}
+
+.wr-chart-center > span {
+  color: var(--wr-text-2);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.wr-legend {
+  flex: 1;
+  min-width: 0;
+}
+
+.wr-legend-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 3px 1px;
+  border-radius: 4px;
   font-size: 12px;
-  font-weight: 700;
+  line-height: 16px;
   font-variant-numeric: tabular-nums;
 }
 
-.wr-ring-center.is-long {
-  font-size: 10px;
+.wr-legend-row:hover {
+  background: var(--wr-hover);
 }
 
-.wr-ring-center > .wr-icon {
-  color: var(--wr-arc);
-  font-size: 16px;
+.wr-legend-row[aria-pressed='true'] {
+  background: var(--wr-selected);
+  box-shadow: inset 0 0 0 1px var(--wr-brand);
 }
 
-/* The past-due count: a neutral badge, not red, because red is only for Missing. */
-.wr-ring-badge {
-  position: absolute;
-  top: -2px;
-  right: -6px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 4px;
-  border-radius: 9px;
+.wr-legend-row > i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--wr-arc);
+}
+
+.wr-legend-code {
+  overflow-wrap: anywhere;
+}
+
+.wr-legend-row > em {
+  padding: 0 3px;
+  border-radius: 8px;
   background: var(--wr-text-2);
   color: var(--wr-bg);
-  font-size: 10px;
+  font-size: 11px;
+  font-style: normal;
   font-weight: 700;
-  line-height: 15px;
   text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.wr-ring-label {
-  display: -webkit-box;
-  width: 100%;
-  overflow: hidden;
-  color: var(--wr-text-2);
-  font-size: 12px;
-  line-height: 15px;
-  text-align: center;
-  overflow-wrap: break-word;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
 }
 
 .wr-filter {
@@ -1095,17 +1112,6 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   transform: translateX(14px);
 }
 
-/* Narrow widths: four rings per row in a 240 px column. */
-
-/* Up to 360 px, such as the 240 px Canvas column: course codes fit under four rings in a row. */
-
-@container wr (width < 360px) {
-  .wr-ring-label {
-    font-size: 11px;
-    line-height: 14px;
-  }
-}
-
 /* Medium widths */
 
 @container wr (width >= 320px) {
@@ -1118,14 +1124,18 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   }
 }
 
-/* Compact layout below 240 px: smaller rings and buttons, and no type icon, as Canvas's planner. */
+/* The legend sits beside the chart only where course codes fit in full. */
+
+@container wr (width >= 280px) {
+  .wr-rings {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
+/* Compact layout below 240 px: smaller buttons and no type icon, as Canvas's planner. */
 
 @container wr (width < 240px) {
-  .wr > * {
-    --wr-ring: 32px;
-    --wr-ring-cell: 50px;
-  }
-
   .wr-icon-btn {
     min-width: 24px;
     height: 24px;
@@ -1153,14 +1163,6 @@ input:checked + .wr-switch-track > .wr-switch-knob {
     display: none;
   }
 
-  .wr-ring-center {
-    font-size: 11px;
-  }
-
-  .wr-ring-center.is-long {
-    font-size: 9px;
-  }
-
   .wr-sublist {
     margin-left: 4px;
     padding-left: 6px;
@@ -1182,6 +1184,11 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   .wr-spinner {
     animation: none;
   }
+
+  .wr-ring,
+  .wr-ring-arc {
+    transition: none;
+  }
 }
 
 @media (forced-colors: active) {
@@ -1192,7 +1199,7 @@ input:checked + .wr-switch-track > .wr-switch-knob {
     color: HighlightText;
   }
 
-  .wr-ring[aria-pressed='true'] {
+  .wr-legend-row[aria-pressed='true'] {
     outline: 2px solid Highlight;
   }
 }

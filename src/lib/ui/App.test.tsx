@@ -29,6 +29,19 @@ function setup(state: SurfaceState = readyState(), surface: SurfaceKind = 'panel
   return { ...result, actions, rerender };
 }
 
+function ringOf(patch: Partial<Ring> = {}): Ring {
+  return {
+    courseId: '900',
+    label: 'Cell Biology',
+    shortLabel: 'Cell Biology',
+    color: '#1770AB',
+    done: 0,
+    total: 1,
+    pastDue: 0,
+    ...patch,
+  };
+}
+
 function row(title: string): HTMLElement {
   const link = screen.getAllByText(title)[0];
   const li = link?.closest('li');
@@ -115,14 +128,127 @@ describe('rings', () => {
     ).toBeTruthy();
   });
 
-  it('shows a check mark only at 100 percent with nothing past due', () => {
+  it('shows the week total in the center', () => {
     setup();
-    const complete = screen.getByRole('button', { name: /^PSYC 100.*1 of 1 done/ });
-    expect(complete.querySelector('.wr-ring-center svg')).toBeTruthy();
-    expect(complete.querySelector('.wr-ring-badge')).toBeNull();
+    const center = document.querySelector('.wr-chart-center');
+    expect(center?.querySelector('b')?.textContent).toBe('22%');
+    expect(center?.querySelector('span')?.textContent).toBe('4/18');
+    expect(center?.querySelector('svg')).toBeNull();
+  });
+
+  it('shows a check mark only when every item is done and nothing is past due', () => {
+    const { rerender } = setup(
+      readyState({
+        view: mkView({
+          rings: [ringOf({ done: 2, total: 2 }), ringOf({ courseId: '2', done: 1, total: 1 })],
+        }),
+      }),
+    );
+    const center = document.querySelector('.wr-chart-center');
+    expect(center?.querySelector('svg')).toBeTruthy();
+    expect(center?.querySelector('b')).toBeNull();
+    expect(center?.querySelector('span')?.textContent).toBe('3/3');
+
+    rerender(readyState({ view: mkView({ rings: [ringOf({ done: 2, total: 2, pastDue: 1 })] }) }));
+    expect(document.querySelector('.wr-chart-center svg')).toBeNull();
+    expect(document.querySelector('.wr-chart-center b')?.textContent).toBe('100%');
+
+    rerender(readyState({ view: mkView({ rings: [ringOf({ done: 0, total: 0 })] }) }));
+    expect(document.querySelector('.wr-chart-center b')?.textContent).toBe('0%');
+  });
+
+  it('keeps the percent between 1 and 99 until the week is done', () => {
+    const percentOf = (done: number, total: number) => {
+      cleanup();
+      setup(readyState({ view: mkView({ rings: [ringOf({ done, total })] }) }));
+      return document.querySelector('.wr-chart-center b')?.textContent;
+    };
+    expect(percentOf(199, 200)).toBe('99%');
+    expect(percentOf(1, 300)).toBe('1%');
+    expect(percentOf(8, 13)).toBe('62%');
+    expect(percentOf(0, 5)).toBe('0%');
+  });
+
+  it('names the chart center for screen readers', () => {
+    const { rerender } = setup();
+    expect(document.querySelector('.wr-chart-center')?.getAttribute('aria-hidden')).toBe('true');
+    expect(document.querySelector('.wr-chart .wr-sr')?.textContent).toBe(
+      'This week: 4 of 18 done, 22 percent',
+    );
+    rerender(readyState({ view: mkView({ rings: [ringOf({ done: 3, total: 3 })] }) }));
+    expect(document.querySelector('.wr-chart .wr-sr')?.textContent).toBe('This week: all 3 done');
+  });
+
+  it('draws one arc per class, with its length from the counts', () => {
+    setup(
+      readyState({
+        view: mkView({
+          rings: [
+            ringOf({ done: 1, total: 4 }),
+            ringOf({ courseId: '2', done: 0, total: 3 }),
+            ringOf({ courseId: '3', done: 0, total: 0 }),
+          ],
+        }),
+      }),
+    );
+    expect(document.querySelectorAll('.wr-ring-track')).toHaveLength(3);
+    const arcs = [...document.querySelectorAll('.wr-ring-arc')];
+    expect(arcs.map((arc) => arc.getAttribute('stroke-dashoffset'))).toEqual(['0.75', '1', '1']);
+    expect(document.querySelector('.wr-chart svg')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('draws the 6 classes with the most work, in dashboard order, and lists all in the legend', () => {
+    setup(
+      readyState({
+        view: mkView({
+          rings: Array.from({ length: 8 }, (_, i) =>
+            ringOf({
+              courseId: String(i),
+              shortLabel: `C${i}`,
+              color: `rgb(${i}, 0, 0)`,
+              total: i === 1 || i === 4 ? 1 : 5,
+            }),
+          ),
+        }),
+      }),
+    );
+    const drawn = [...document.querySelectorAll<SVGElement>('.wr-ring')].map((el) =>
+      el.style.getPropertyValue('--wr-course'),
+    );
+    expect(drawn).toEqual([0, 2, 3, 5, 6, 7].map((i) => `rgb(${i}, 0, 0)`));
+    expect(document.querySelectorAll('.wr-legend-row')).toHaveLength(8);
+    expect(document.querySelector('.wr-chart-center span')?.textContent).toBe('0/32');
+  });
+
+  it('lists every class in the legend with its code, counts and past-due count', () => {
+    setup();
+    const rows = [...document.querySelectorAll('.wr-legend-row')];
+    expect(rows.map((el) => el.querySelector('.wr-legend-code')?.textContent)).toEqual([
+      'BIO 201',
+      'CHEM 210',
+      'ENGL 112',
+      'MATH 241',
+      'HIST 150',
+      'PSYC 100',
+      'Personal',
+    ]);
     const bio = screen.getByRole('button', { name: /^BIO 201/ });
-    expect(bio.querySelector('.wr-ring-center')?.textContent).toBe('1/3');
-    expect(bio.querySelector('.wr-ring-badge')?.textContent).toBe('1');
+    expect(bio.textContent).toBe('BIO 2011/31');
+    expect(bio.querySelector('em')?.textContent).toBe('1');
+    const psyc = screen.getByRole('button', { name: /^PSYC 100/ });
+    expect(psyc.querySelector('em')).toBeNull();
+  });
+
+  it('filters when a chart ring is clicked, and clears on a second click', () => {
+    const { actions, rerender } = setup();
+    const first = document.querySelector('.wr-ring') as SVGElement;
+    fireEvent.click(first);
+    expect(actions.setCourseFilter).toHaveBeenLastCalledWith(COURSES.bio.id);
+    rerender(readyState({ view: mkView({ courseFilter: COURSES.bio.id }) }));
+    const selected = document.querySelectorAll(".wr-ring[aria-pressed='true']");
+    expect(selected).toHaveLength(1);
+    fireEvent.click(selected[0] as SVGElement);
+    expect(actions.setCourseFilter).toHaveBeenLastCalledWith(undefined);
   });
 
   it('filters on click and clears on a second click', () => {
@@ -170,22 +296,15 @@ describe('rings', () => {
     expect(screen.getByText('Showing one course only.')).toBeTruthy();
   });
 
-  it('shows no rings when the setting is off', () => {
+  it('shows no chart and no legend when the setting is off', () => {
     setup(readyState({ view: mkView({ rings: [] }) }));
     expect(screen.queryByRole('region', { name: 'Progress by course' })).toBeNull();
+    expect(document.querySelector('.wr-chart')).toBeNull();
+    expect(document.querySelector('.wr-legend')).toBeNull();
   });
 
   it('labels a ring with the course code from the view, or the full name with no code', () => {
-    const ring = (patch: Partial<Ring>): Ring => ({
-      courseId: '900',
-      label: 'Cell Biology',
-      shortLabel: 'Cell Biology',
-      color: '#1770AB',
-      done: 0,
-      total: 1,
-      pastDue: 0,
-      ...patch,
-    });
+    const ring = ringOf;
     setup(
       readyState({
         view: mkView({
@@ -197,7 +316,7 @@ describe('rings', () => {
         }),
       }),
     );
-    const labels = [...document.querySelectorAll('.wr-ring-label')].map((el) => el.textContent);
+    const labels = [...document.querySelectorAll('.wr-legend-code')].map((el) => el.textContent);
     expect(labels).toEqual(['BIOL-201-F26', 'Robotics club', 'Personal']);
     expect(
       screen.getByRole('button', { name: 'BIOL-201-F26, Cell Biology: 0 of 1 done this week' }),
@@ -211,8 +330,8 @@ describe('rings', () => {
   it('starts the accessible name of every ring with its visible label', () => {
     const { rerender } = setup();
     const check = () => {
-      for (const ring of document.querySelectorAll<HTMLElement>('.wr-ring')) {
-        const visible = ring.querySelector('.wr-ring-label')?.textContent ?? '';
+      for (const ring of document.querySelectorAll<HTMLElement>('.wr-legend-row')) {
+        const visible = ring.querySelector('.wr-legend-code')?.textContent ?? '';
         expect(visible).not.toBe('');
         expect(ring.getAttribute('aria-label')?.startsWith(visible)).toBe(true);
       }

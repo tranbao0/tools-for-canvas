@@ -101,7 +101,7 @@ test.describe('settings in place', () => {
     extensionUrl,
   }) => {
     const { list, panel } = await openBoth(context, page, extensionUrl('sidepanel.html'));
-    await expect(list.locator('.wr-ring').first()).toBeVisible();
+    await expect(list.locator('.wr-chart').first()).toBeVisible();
 
     const tabs = context.pages().length;
     await openSettingsInPlace(panel);
@@ -114,10 +114,10 @@ test.describe('settings in place', () => {
 
     await panel.getByRole('button', { name: 'Back' }).click();
     await expect(doneBox(panel, QUIZ_3)).toBeVisible();
-    await expect(panel.locator('.wr-ring')).toHaveCount(0);
+    await expect(panel.locator('.wr-chart')).toHaveCount(0);
 
     await page.bringToFront();
-    await expect(list.locator('.wr-ring')).toHaveCount(0);
+    await expect(list.locator('.wr-chart')).toHaveCount(0);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
   });
 

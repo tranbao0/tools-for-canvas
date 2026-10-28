@@ -268,7 +268,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - The Firefox sidebar opens at 18em and can shrink to 14em [12].
   Inferred from common system font sizes, that is about 170 to 230 px.
 - The shared UI must work from 170 px up.
-  Below 240 px, it uses a compact layout: smaller rings that wrap to more rows, and icon-only header buttons.
+  Below 240 px, it uses a compact layout: smaller buttons and icon-only header buttons.
 - Canvas stacks the right column under the content below 992 px, or below 1140 px with the course navigation open [13].
   The in-page list then appears below the content, as the Canvas To Do does.
 
@@ -615,11 +615,11 @@ Availability is a separate small marker next to the status chip, because it answ
 - A ring counts items, not points, as in the original [9].
   Skipped items and reminders do not count.
   A checked item that Canvas still marks missing counts as not done.
-- The center of the ring shows "done/total".
-  A course with no items this week shows an empty ring.
-- A ring shows a check mark at 100 percent only when the course has no item in Past due.
-  Otherwise, a small badge on the ring shows the number of past-due items.
-- Each ring has a text label for screen readers, such as "3 of 3 done this week, 1 past due".
+- A course with no items this week shows an empty ring.
+- The chart center shows a check mark at 100 percent only when no course has an item in Past due.
+  Otherwise, the legend row of a course shows the number of its past-due items.
+- Each legend row has a text label for screen readers, such as "3 of 3 done this week, 1 past due".
+  The chart center has a text label for the week, such as "This week: 4 of 18 done, 22 percent".
 - Custom tasks with no course share one "Personal" ring.
 - When the course lookup fails for an item, the ring uses the course or group name that the planner item carries (`context_name`) [10].
 - Rings appear in dashboard order from `GET /api/v1/users/self/dashboard_positions` [10].
@@ -627,7 +627,9 @@ Availability is a separate small marker next to the status chip, because it answ
   The owner asked for this after testing: the rings must show the week's progress clearly and stand out more than any other element.
   - One chart holds concentric rings, one per class, in the class colors, with thick strokes on a light track.
   - The center shows the week's total, such as "62%" over "8/13", and a check mark when every class is done with nothing past due.
-  - A legend next to the chart lists each class: the color, the course code and "done/total", and the past-due count when there is one.
+  - A legend lists each class: the color, the course code and "done/total", and the past-due count when there is one.
+    It sits beside the chart when the list is at least 280 px wide, and under the chart when it is narrower.
+    A long course code wraps to a second line and does not shorten.
   - A click on a ring or a legend row filters the list, as before.
   - When a check changes a count, the ring arc grows to its new length, with no motion under reduced motion.
   - With more classes than the chart holds legibly (more than 6), the chart shows the 6 with the most work this week, and the legend lists all.
@@ -1020,7 +1022,7 @@ These sizes come from one test build of the same small app [19].
 2. **Unit tests:** Vitest with the WXT Vitest plugin and its fake browser [19].
    - Canvas responses come from JSON fixtures with the real Canvas shape, served by MSW, as canvas-lms does in its own tests [19].
    - Fixtures include a checkpoint course, Gradescope and on-paper work, a no-submission column, an extension, a teacher-set status, a redo request after a done mark, a locked item, a locked missing item, a Gradescope item past its lock date, a peer review due in a later week, a module "Mark as done" override with both flags true, a long-running course for the horizon cap, a mixed-role layout, the Limited Access 403, the rate-limit 403 and 429, and every UI state.
-   - Tests cover week math across time zones and daylight saving changes, the Saturday and Sunday week edges, the done rule, the placement rules in the current week and in past weeks, every status chip and availability marker, reminders, the undated-work rules, peer reviews placed on their real date, the term horizon and its 16-week cap, the Tomorrow look-ahead, the ring check mark and badge, the planner-off list, paging, the override sequence including the 400 recovery, Skip, and the CSRF header.
+   - Tests cover week math across time zones and daylight saving changes, the Saturday and Sunday week edges, the done rule, the placement rules in the current week and in past weeks, every status chip and availability marker, reminders, the undated-work rules, peer reviews placed on their real date, the term horizon and its 16-week cap, the Tomorrow look-ahead, the chart center check mark and the legend past-due count, the planner-off list, paging, the override sequence including the 400 recovery, Skip, and the CSRF header.
    - Tests also cover a background restart while a panel is open, ten page-loaded messages in ten seconds (one refresh round), and the content script sync for both kinds of address.
 3. **Chromium end-to-end tests:** Playwright with the `chromium` channel, in headless mode [19].
    - `context.route` serves a fake `https://school.instructure.com` with saved copies of the classic dashboard, the widget dashboard, a course home page and a mixed-role dashboard, plus the API [19].

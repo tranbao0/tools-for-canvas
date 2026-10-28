@@ -170,8 +170,8 @@ test('a different student signs in between rounds, and nothing of the first stud
   for (const title of [QUIZ_3, LAB_7, 'Return library books']) {
     await expect(page.getByText(title)).toHaveCount(0);
   }
-  await expect(page.locator('.wr-ring')).toHaveCount(1);
-  await expect(page.locator('.wr-ring-label')).toHaveText(['ART 150']);
+  await expect(page.locator('.wr-chart')).toHaveCount(1);
+  await expect(page.locator('.wr-legend-code')).toHaveText(['ART 150']);
   await page.keyboard.press('Control+z');
 
   await page.getByRole('button', { name: 'Add task' }).click();

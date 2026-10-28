@@ -110,6 +110,28 @@
       }
     }
   },
+  "weekProgress": {
+    "message": "This week: $DONE$ of $TOTAL$ done, $PERCENT$ percent",
+    "placeholders": {
+      "done": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      },
+      "percent": {
+        "content": "$3"
+      }
+    }
+  },
+  "weekComplete": {
+    "message": "This week: all $TOTAL$ done",
+    "placeholders": {
+      "total": {
+        "content": "$1"
+      }
+    }
+  },
   "ringCourseName": {
     "message": "$CODE$, $NAME$",
     "placeholders": {

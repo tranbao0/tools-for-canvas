@@ -117,8 +117,3 @@ export function buildRings(entries: readonly RingEntry[], params: RingParams): R
   const compare = contextComparator(params.positions, (courseId) => labels.get(courseId) ?? '');
   return [...rings.values()].sort((a, b) => compare(a.courseId, b.courseId));
 }
-
-/** True when the ring shows a check mark: every counted item is done and nothing is past due. */
-export function ringIsComplete(ring: Ring): boolean {
-  return ring.total > 0 && ring.done === ring.total && ring.pastDue === 0;
-}

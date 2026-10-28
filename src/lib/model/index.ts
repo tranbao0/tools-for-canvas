@@ -42,7 +42,6 @@ export {
   type CollectParams,
 } from './normalize';
 export { isCheckedButMissing, isDone, itemState, placementState, redoBlocksDone } from './rules';
-export { ringIsComplete } from './rings';
 export {
   DEFAULT_TASK_TIME,
   defaultTaskDate,

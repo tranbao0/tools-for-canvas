@@ -7,7 +7,7 @@ import {
   ringColor,
   savedColor,
 } from '../colors';
-import { buildRings, ringIsComplete, type RingEntry } from '../rings';
+import { buildRings, type RingEntry } from '../rings';
 import { buildWeekView } from '../view';
 import { course, modelInput, override, plannerItem } from './builders';
 
@@ -136,24 +136,6 @@ describe('ring colors', () => {
     ).toBeNull();
     expect(ringColor(null, { custom_colors: {} }, '1')).toBe(PERSONAL_RING_COLOR);
     expect(savedColor({} as { custom_colors: Record<string, string> }, 'course_1')).toBeNull();
-  });
-});
-
-describe('ringIsComplete', () => {
-  it('shows a check mark only at 100 percent with nothing past due', () => {
-    const ring = {
-      courseId: '1',
-      label: 'A',
-      shortLabel: 'A',
-      color: '#000000',
-      done: 3,
-      total: 3,
-      pastDue: 0,
-    };
-    expect(ringIsComplete(ring)).toBe(true);
-    expect(ringIsComplete({ ...ring, pastDue: 1 })).toBe(false);
-    expect(ringIsComplete({ ...ring, done: 2 })).toBe(false);
-    expect(ringIsComplete({ ...ring, done: 0, total: 0, pastDue: 1 })).toBe(false);
   });
 });
 
