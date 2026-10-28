@@ -32,7 +32,7 @@ This extension has no account, no server of its own and no telemetry.
 | 2 | Where done marks and custom tasks live | In Canvas, as planner overrides and planner notes |
 | 3 | What counts as a task | All work the student must do; no calendar events or announcements |
 | 4 | Where the list appears | In the Canvas page where the To Do list was; an optional side panel for other pages |
-| 5 | Site access and onboarding | Required access to instructure.com, optional access to one custom domain, and a guided first run |
+| 5 | Site access and onboarding | Access to all sites, a tiny Canvas detector, and no setup step |
 | 6 | List layout and item placement | Items are placed by date and done state only, each in one group |
 | 7 | Item status | One set of status chips, the same on every item in every view |
 | 8 | What counts as done, and the rings | The Canvas planner rule, plus excused and graded work; rings count items |
@@ -207,7 +207,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 
 **Opening and closing the panel:**
 
-- The extension declares a toolbar action, and the `activeTab` permission, which shows no install warning.
+- The extension declares a toolbar action.
 - One `action.onClicked` handler opens or closes the panel.
   - It calls the open or close API first, with no `await` before it, because both browsers require a user gesture [11] [12].
   - Chrome and Edge use `sidePanel.open`, and `sidePanel.close` from Chrome 141 [11].
@@ -215,8 +215,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - Firefox uses `sidebarAction.open` and `sidebarAction.close` [12].
   - The extension does not use `openPanelOnActionClick`, because with it the click handler never runs [11].
 - A click on the toolbar button always toggles the panel, like any toggle button.
-- When a click opens the panel on a web page that is not the saved Canvas, the extension checks whether that tab is a Canvas site, with `activeTab` and `scripting` [15].
-  - If it is Canvas, the panel offers "Use this Canvas?" when no address is saved, and "Switch to this Canvas?" otherwise.
+- When the detector finds a Canvas that is not the saved one, the panel offers "Switch to this Canvas?".
   - The same flow works for `instructure.com` hosts and for custom domains, because the student does not know which kind their school uses.
   - The offer shows only in the panel, in every state that has a saved address too.
     The in-page list never shows it, because it lives on the saved Canvas page.
@@ -288,83 +287,59 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - B. Required access to `https://*.instructure.com/*`, plus optional access to `https://*/*` that the student grants for one custom domain.
 - C. Optional access only.
 
-**Decision:** B.
+**Decision:** A.
+The owner chose it on 2026-10-28 after testing: the extension must link to Canvas by itself and work right after install, with no setup step.
+An earlier version used option B; schools on their own domain then needed an "Allow access" step, and the grant flow added much complex code.
 
 **Manifest:**
 
 - `manifest_version`: 3 for every browser.
-  WXT builds Firefox as Manifest V2 by default, and a V2 build silently drops `optional_host_permissions` [19].
-- `host_permissions`: `https://*.instructure.com/*`
-- `optional_host_permissions`: `https://*/*`
-- `permissions`: `storage`, `cookies`, `scripting`, `activeTab`, and `sidePanel` on Chrome and Edge
+- `host_permissions`: `https://*/*`
+- `permissions`: `storage`, `cookies`, `scripting`, and `sidePanel` on Chrome and Edge
 - `action`, with no popup
 - `side_panel` on Chrome and Edge, and `sidebar_action` on Firefox
+- One static content script, the Canvas detector, on `https://*/*` in the top frame only.
 
 **Why:**
 
-- Access to all sites shows the strongest install warning: "Read and change all your data on all websites" [15].
-  It can also slow the Chrome Web Store review [15] [16].
-- Optional host permissions show no install warning [11] [15].
-- Custom domains are rare among all Canvas schools but common among large universities.
-  They are about 7 percent of school domains, but at least 24 of 39 large US universities checked use one [15].
-  So the first run must be smooth.
-- Chrome is testing a change that makes new installs ask before the extension runs on any site, even for required permissions [15].
-  If it ships, a grant step is needed anyway.
-- The `cookies` permission lets the extension read the `_csrf_token` cookie for writes, and it shows no install warning [11].
+- Every Canvas works the same way, including schools on their own domain, which are common among large universities (at least 24 of 39 checked) [15].
+- No grant step, no runtime script registration and no grant release, which removes a large part of the code and its edge cases.
+- The original Tasks for Canvas, BetterCampus and Simple Canvas Tasks ask for the same access and passed store review [9] [20].
 
-**First run:**
+**Costs and how the design limits them:**
 
-- In every browser, a local welcome page opens on install.
-  The page says that the list shows on the Canvas dashboard, and how to pin the toolbar button and use the keyboard shortcut for the side panel.
-  It also has the address field and the "Allow access" button, because an extension page can call `permissions.request` [15].
-- On Firefox, the sidebar does not open at install (`open_at_install` is false), because the side panel is optional (decision 4).
-  Firefox then also does not reopen the sidebar at startup [12], which matches that rule.
+- The install shows the strongest warning, "Read and change all your data on all websites" [15], and Chrome review can take longer [15] [16].
+  The store listing and the privacy policy explain why: Canvas runs on many school domains.
+- The detector runs on every https page, so it must stay tiny and harmless:
+  - It reads only Canvas markers in the page: `#application.ic-app`, or an inline script that sets both `ENV` and `INST`.
+  - It reads no other page content, sends nothing anywhere, and stops at once on a page that is not Canvas.
+  - On a Canvas page it asks the background to inject the full in-page script with `scripting.executeScript`, so other sites never load the list code.
+  - A CI check keeps the detector under 2 KB gzip.
+
+**Seamless first run:**
+
+1. On install, the background injects the detector into every open https tab with `scripting.executeScript`.
+   Chrome does not run static content scripts in tabs that were open before the install, so without this step an open Canvas tab would need a reload.
+2. In any tab that is a Canvas page, the background saves that address and the list appears at once, as long as the student is signed in.
+3. The welcome page opens on install only when no open tab is Canvas.
+   It says to open Canvas, and shows how to pin the toolbar button and the shortcut for the side panel.
+   It has no address form.
+4. An update injects the detector into open tabs again in the same way, so an old list never stays frozen on a page.
 
 **Finding the Canvas address:**
 
-1. When the student opens the panel from a Canvas tab, the panel offers "Use this Canvas?" (decision 4).
-2. On an `instructure.com` Canvas page, the content script detects Canvas and saves the address, but only when no address is saved yet.
-3. The student can also type the address.
-   The extension reduces the input to an origin: it adds `https://` and removes any path.
-4. The student clicks "Allow access".
-   The click handler calls `permissions.request` at once, with no `await` before it [12] [15].
-5. The extension confirms the site with `GET /api/v1/users/self`.
-   A 200 response or a 401 response with `WWW-Authenticate: Bearer realm="canvas-lms"` means Canvas [15].
-6. All requests use `redirect: "manual"`, so a redirect returns an opaque response with no target address.
-   If the check gets such a response, the panel says that this address redirects.
-   It asks the student to open Canvas in a tab, sign in and click the toolbar button there, so that step 1 gives the real address.
-   Chrome drops Lax cookies when any host in the redirect chain lacks permission, so the extension must use the final host [11].
-7. The extension saves the address only after step 5 succeeds.
-
-**Rules after setup:**
-
-- Version 1 supports one Canvas address.
-- On any other Canvas host, the content script does nothing.
-  To switch, the student opens the panel from that Canvas tab, and the panel offers "Switch to this Canvas?" (decision 4).
+- The first Canvas page the student opens sets the address.
 - Test and beta hosts (`*.test.instructure.com`, `*.beta.instructure.com`) are never saved automatically.
-- The static content script for `*.instructure.com` detects Canvas, and it mounts only when the page origin equals the saved address.
-- One idempotent sync function keeps the runtime content script registration correct [24].
-  - It registers a script only when the saved address is outside `instructure.com`, so that one page never runs two copies.
-  - It lists the registered scripts, removes the old ones and registers one script for the saved origin.
-  - It registers only when `permissions.contains` is true.
-  - It runs on install, on update, at browser start, when permissions change and when the address changes.
-  - A plain re-register at startup would fail, because registered scripts persist and a duplicate id is an error [24].
-  - Firefox clears registered scripts on update [24].
-- In WXT, the runtime-registered content script must not declare `https://*/*` in its matches.
-  WXT adds those matches to the required host permissions [19].
-  CI checks the built manifest.
-- If access is later withheld or removed, the panel shows an "Allow access" state.
+- Version 1 supports one Canvas address.
+  On another Canvas, the in-page list does not show, and the side panel offers "Switch to this Canvas?".
+- The background saves an address only when the report comes from the top frame of a page with that origin.
+
+**When the browser withholds access:**
+
+- Chrome is testing a change that makes new installs ask before an extension runs on any site [15].
+  If access to the Canvas site is withheld, the panel and the welcome page show one "Allow access" button.
   `permissions.request` can grant a withheld required permission again [15].
-- In the "Signed out" state, the panel shows the saved address and a "Wrong address? Change it" link.
-- "Change" in the settings and "Wrong address? Change it" open the address form, but they keep the saved address until a new one passes the check.
-  The form offers "Keep using school.instructure.com" as a cancel.
-- When the check of a new address fails while another address is still saved, the panel offers "Keep using school.instructure.com".
-  That action goes back to the saved address and its list.
-- When the check of a typed address fails at the network level, the panel says "Couldn't reach <host>. Check the address." with the form.
-  It does not say "You're offline", because the usual cause is a wrong address.
-- The extension removes an optional site grant that it no longer needs: after a check ends as not Canvas or as a redirect, and after the student replaces or clears a custom domain.
-- A content script never saves the address itself.
-  It reports a detected Canvas to the background, which saves it only when no address is saved and the sender page has that origin.
+- In the "Signed out" state, the panel shows the saved address and an "Open Canvas to sign in" button.
 
 ### 6. List layout and item placement
 
@@ -918,14 +893,12 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | State | How it is detected | What the UI shows |
 |---|---|---|
 | Loading | No cached data yet | A skeleton with the final layout, so nothing jumps |
-| Not set up | No saved Canvas address | The first-run steps |
+| Not set up | No saved Canvas address | "Open your Canvas to see your list", with a button that opens the last known Canvas or a short hint |
 | No access | `permissions.contains` is false | An "Allow access" button |
-| Signed out | Any 401, then `GET /api/v1/users/self` returns 401 | An "Open Canvas to sign in" button, the saved address and a "Change it" link |
+| Signed out | Any 401, then `GET /api/v1/users/self` returns 401 | An "Open Canvas to sign in" button and the saved address |
 | Planner turned off | `users/self` returns 200, and the planner returns 403 with JSON `status` `unauthorized` | The same list and chips, built from the "All assignments" request and the override list. One line says: "Your school limits the Canvas planner. Pages, ungraded discussions, ungraded quizzes, peer reviews, discussions with reply due dates and your own tasks can't show." The add-task button is disabled, with that reason. |
 | No active courses | The courses list is empty | "No active courses" |
 | Nothing due | The week has no items | "Nothing due this week" |
-| Not Canvas | Setup check fails | "This address is not a Canvas site" |
-| Unreachable | The setup check fails with a network error | "Couldn't reach <host>. Check the address." with the form |
 | Can't refresh | HTTP 429, 403 with "Rate Limit Exceeded", HTTP 5xx, or a network error | The last data, with one line: "Couldn't refresh. Showing your list from 3:05 pm." and a Retry button. On a network error while the browser reports no connection, the line also says "You're offline." |
 
 Notes on these states:
