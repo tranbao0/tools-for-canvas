@@ -4,60 +4,34 @@ import type { ComponentChildren } from 'preact';
 import { t, tp } from '../i18n';
 import type { GroupKind, ItemView, ListGroup, WeekView } from '../model/types';
 import { formatMonthDay, formatWeekday } from './format';
-import { CheckIcon, ChevronDownIcon } from './icons';
+import { ChevronDownIcon } from './icons';
 import { ItemRow, type ItemHandlers, type WhenMode } from './ItemRow';
 import { Heading, newId, type HeadingLevel } from './parts';
+import { NothingDue } from './Rings';
 
 export interface ListHandlers extends ItemHandlers {
   onSkipAllOlder(): void;
 }
 
 /**
- * The in-page list is a glance (design decision 4): a group with more rows than this plus one
+ * The in-page list is a glance (design decision 4). A group with more rows than this plus one
  * shows this many, and "Show N more" opens the rest in place. A link that would hide only one
  * row takes the same space as that row, so such a group shows in full. The side panel shows
  * every row.
  */
-export const INPAGE_ROW_LIMIT = 3;
-
-/** Whether a group of `count` rows is cut to `limit` rows (`null`: never cut). */
-export function isCut(count: number, limit: number | null): boolean {
-  return limit !== null && count > limit + 1;
-}
+const GLANCE_ROW_LIMIT = 3;
 
 /** How each group shows the due time of its items. */
-export function whenModeFor(kind: GroupKind): WhenMode {
-  switch (kind) {
-    case 'past_due':
-    case 'done':
-      return 'datetime';
-    case 'today':
-    case 'tomorrow':
-    case 'day':
-      return 'time';
-    case 'no_due_date':
-      return 'none';
-  }
-}
+const whenMode = (kind: GroupKind): WhenMode =>
+  kind === 'no_due_date' ? 'none' : kind === 'past_due' || kind === 'done' ? 'datetime' : 'time';
 
-export function groupTitle(group: ListGroup): { name: string; date: string | null } {
-  switch (group.kind) {
-    case 'past_due':
-      return { name: t('groupPastDue'), date: null };
-    case 'today':
-      return { name: t('groupToday'), date: group.date ? formatMonthDay(group.date) : null };
-    case 'tomorrow':
-      return { name: t('groupTomorrow'), date: group.date ? formatMonthDay(group.date) : null };
-    case 'day':
-      return group.date
-        ? { name: formatWeekday(group.date), date: formatMonthDay(group.date) }
-        : { name: '', date: null };
-    case 'no_due_date':
-      return { name: t('groupNoDueDate'), date: null };
-    case 'done':
-      return { name: t('groupDone'), date: null };
-  }
-}
+const GROUP_NAMES = {
+  past_due: 'groupPastDue',
+  today: 'groupToday',
+  tomorrow: 'groupTomorrow',
+  no_due_date: 'groupNoDueDate',
+  done: 'groupDone',
+} as const;
 
 /** The number in the group heading. */
 export function groupCount(group: ListGroup): number {
@@ -70,21 +44,16 @@ export function isGroupEmpty(group: ListGroup): boolean {
   );
 }
 
-function groupKey(group: ListGroup): string {
-  return `${group.kind}:${group.date ?? ''}`;
-}
-
 function ItemList(props: {
   items: ItemView[];
   view: WeekView;
   when: WhenMode;
   handlers: ItemHandlers;
-  id?: string;
   nested?: boolean;
 }) {
   if (props.items.length === 0) return null;
   return (
-    <ul id={props.id} class={props.nested ? 'wr-items wr-sublist' : 'wr-items'}>
+    <ul class={props.nested ? 'wr-items wr-sublist' : 'wr-items'}>
       {props.items.map((item) => (
         <ItemRow
           key={item.key}
@@ -98,6 +67,45 @@ function ItemList(props: {
   );
 }
 
+/** What the student opened in the in-page glance. It lives above the list, so it survives the task form, the settings and a filter that empties a section. */
+export interface Glance {
+  pastDue: boolean;
+  rest: boolean;
+  toggle(part: 'pastDue' | 'rest'): void;
+}
+
+export function useGlance(): Glance {
+  const [opened, setOpened] = useState({ pastDue: false, rest: false });
+  return { ...opened, toggle: (part) => setOpened({ ...opened, [part]: !opened[part] }) };
+}
+
+/** A collapsed line such as "12 older" that opens `children` in place. */
+function Disclosure(props: {
+  label: string;
+  open: boolean;
+  onToggle(): void;
+  action?: ComponentChildren;
+  children: ComponentChildren;
+}) {
+  return (
+    <>
+      <div class="wr-subline">
+        <button
+          type="button"
+          class="wr-sub-toggle"
+          aria-expanded={props.open}
+          onClick={props.onToggle}
+        >
+          <ChevronDownIcon />
+          {props.label}
+        </button>
+        {props.action}
+      </div>
+      {props.open && props.children}
+    </>
+  );
+}
+
 /** A collapsed line such as "12 older" that opens a nested list. */
 function SubList(props: {
   label: string;
@@ -108,34 +116,22 @@ function SubList(props: {
   action?: ComponentChildren;
 }) {
   const [open, setOpen] = useState(false);
-  const [id] = useState(() => newId('sub'));
   if (props.items.length === 0) return null;
   return (
-    <>
-      <div class="wr-subline">
-        <button
-          type="button"
-          class="wr-sub-toggle"
-          aria-expanded={open}
-          aria-controls={open ? id : undefined}
-          onClick={() => setOpen(!open)}
-        >
-          <ChevronDownIcon />
-          {props.label}
-        </button>
-        {props.action}
-      </div>
-      {open && (
-        <ItemList
-          id={id}
-          items={props.items}
-          view={props.view}
-          when={props.when}
-          handlers={props.handlers}
-          nested
-        />
-      )}
-    </>
+    <Disclosure
+      label={props.label}
+      open={open}
+      onToggle={() => setOpen(!open)}
+      action={props.action}
+    >
+      <ItemList
+        items={props.items}
+        view={props.view}
+        when={props.when}
+        handlers={props.handlers}
+        nested
+      />
+    </Disclosure>
   );
 }
 
@@ -145,7 +141,8 @@ function SubList(props: {
  */
 function LimitedItems(props: {
   items: ItemView[];
-  limit: number | null;
+  /** `Infinity` shows every row. */
+  limit: number;
   view: WeekView;
   when: WhenMode;
   handlers: ItemHandlers;
@@ -162,9 +159,9 @@ function LimitedItems(props: {
     );
     row?.querySelector<HTMLElement>('[data-part="title"]')?.focus();
   });
-  const limit = props.limit ?? props.items.length;
-  const cut = !expanded && isCut(props.items.length, props.limit);
-  const shown = cut ? props.items.slice(0, limit) : props.items;
+  const { limit } = props;
+  const shown =
+    !expanded && props.items.length > limit + 1 ? props.items.slice(0, limit) : props.items;
   const hidden = props.items.length - shown.length;
   return (
     <div ref={listRef}>
@@ -180,7 +177,7 @@ function LimitedItems(props: {
             }}
           >
             <ChevronDownIcon />
-            {t('showMore', String(hidden))}
+            {tp('showMore', hidden)}
           </button>
         </div>
       )}
@@ -193,20 +190,31 @@ function GroupSection(props: {
   view: WeekView;
   level: HeadingLevel;
   handlers: ListHandlers;
-  rowLimit: number | null;
+  rowLimit: number;
+  /** The glance shows Past due as one line that opens in place. */
+  summary?: { open: boolean; toggle(): void };
 }) {
-  const { group, view, handlers } = props;
-  const collapsible = group.kind === 'no_due_date' || group.kind === 'done';
-  const [open, setOpen] = useState(!collapsible);
-  const [ids] = useState(() => ({ head: newId('group'), body: newId('body') }));
-  const when = whenModeFor(group.kind);
-  const title = groupTitle(group);
+  const { group, view, handlers, summary } = props;
+  const collapsible = summary || group.kind === 'no_due_date' || group.kind === 'done';
+  const [ownOpen, setOwnOpen] = useState(!collapsible);
+  const open = summary ? summary.open : ownOpen;
+  const [id] = useState(() => newId('group'));
+  const rows = { view, when: whenMode(group.kind), handlers };
+  const { kind, date } = group;
   const count = groupCount(group);
+  const missing = [...group.items, ...group.older].filter((i) => i.facts.missing).length;
 
-  const headContent = (
+  const headContent = summary ? (
     <>
-      <span class="wr-group-name">{title.name}</span>
-      {title.date && <span class="wr-group-date">{title.date}</span>}
+      <span class="wr-group-name">{tp('pastDueSummary', count)}</span>
+      {missing > 0 && <span class="wr-chip wr-chip-missing">{tp('missingCount', missing)}</span>}
+    </>
+  ) : (
+    <>
+      <span class="wr-group-name">
+        {kind === 'day' ? date && formatWeekday(date) : t(GROUP_NAMES[kind])}
+      </span>
+      {date && <span class="wr-group-date">{formatMonthDay(date)}</span>}
       {group.kind === 'done' && group.warningCount > 0 && (
         <span class="wr-warn">{tp('warningCount', group.warningCount)}</span>
       )}
@@ -218,11 +226,11 @@ function GroupSection(props: {
   );
 
   return (
-    <section class="wr-group" aria-labelledby={ids.head} data-group={group.kind}>
+    <section class="wr-group" aria-labelledby={id} data-group={group.kind}>
       <Heading
         level={props.level}
         class="wr-group-head"
-        id={ids.head}
+        id={id}
         part="group-head"
         tabIndex={group.kind === 'past_due' ? -1 : undefined}
       >
@@ -231,8 +239,7 @@ function GroupSection(props: {
             type="button"
             class="wr-group-toggle"
             aria-expanded={open}
-            aria-controls={open ? ids.body : undefined}
-            onClick={() => setOpen(!open)}
+            onClick={summary ? summary.toggle : () => setOwnOpen(!ownOpen)}
           >
             <ChevronDownIcon />
             {headContent}
@@ -242,21 +249,13 @@ function GroupSection(props: {
         )}
       </Heading>
       {open && (
-        <div id={ids.body}>
-          <LimitedItems
-            items={group.items}
-            limit={props.rowLimit}
-            view={view}
-            when={when}
-            handlers={handlers}
-          />
+        <div>
+          <LimitedItems {...rows} items={group.items} limit={props.rowLimit} />
           {group.kind === 'past_due' && (
             <SubList
+              {...rows}
               label={tp('olderCount', group.older.length)}
               items={group.older}
-              view={view}
-              when={when}
-              handlers={handlers}
               action={
                 <button
                   type="button"
@@ -270,18 +269,14 @@ function GroupSection(props: {
             />
           )}
           <SubList
+            {...rows}
             label={tp('doneCount', group.doneUndated.length)}
             items={group.doneUndated}
-            view={view}
-            when={when}
-            handlers={handlers}
           />
           <SubList
+            {...rows}
             label={tp('skippedCount', group.skipped.length)}
             items={group.skipped}
-            view={view}
-            when={when}
-            handlers={handlers}
           />
         </div>
       )}
@@ -289,46 +284,59 @@ function GroupSection(props: {
   );
 }
 
-function NothingDue() {
-  return (
-    <p class="wr-empty">
-      <CheckIcon />
-      {t('nothingDue')}
-    </p>
-  );
-}
-
 /**
- * Renders the groups in order. When the week has no items, "Nothing due this week"
- * takes the place of the day groups: after Past due, before No due date and Done.
+ * Renders the groups in order. "Nothing due this week" takes the place of the day groups: before
+ * No due date and Done, and in the glance before "Rest of the week". The glance (in-page list)
+ * shows Past due as one line and puts the later days, No due date and Done behind one link.
  */
 export function WeekList(props: {
   view: WeekView;
   level: HeadingLevel;
   handlers: ListHandlers;
-  /** Rows per group before "Show N more", or `null` for every row. */
-  rowLimit?: number | null;
+  /** Set for the in-page list, which is a glance; the side panel shows every group in full. */
+  glance?: Glance;
 }) {
-  const { view } = props;
-  const nodes: ComponentChildren[] = [];
-  let emptyShown = false;
-  for (const group of view.groups) {
-    if (view.nothingDue && !emptyShown && (group.kind === 'no_due_date' || group.kind === 'done')) {
-      nodes.push(<NothingDue key="nothing-due" />);
-      emptyShown = true;
-    }
-    if (isGroupEmpty(group)) continue;
-    nodes.push(
+  const { view, glance } = props;
+  const live = view.groups.filter((group) => !isGroupEmpty(group));
+  // The glance shows Past due, Today and Tomorrow, or else the next day with work.
+  const near = live.filter((g) => g.kind === 'today' || g.kind === 'tomorrow');
+  const days = near.length ? near : live.filter((g) => g.kind === 'day').slice(0, 1);
+  // Past due with only skipped rows has no count to summarize, so it waits behind the link.
+  const isNow = (g: ListGroup) => g.kind === 'past_due' && groupCount(g) > 0;
+  const head = glance ? live.filter((g) => isNow(g) || days.includes(g)) : live;
+  const rest = glance ? live.filter((g) => !head.includes(g)) : [];
+  const section = (group: ListGroup) => {
+    const summary = glance && isNow(group);
+    return (
       <GroupSection
-        key={groupKey(group)}
+        key={`${group.kind}:${group.date}`}
         group={group}
         view={view}
         level={props.level}
         handlers={props.handlers}
-        rowLimit={props.rowLimit ?? null}
-      />,
+        rowLimit={glance && !summary ? GLANCE_ROW_LIMIT : Infinity}
+        summary={
+          summary ? { open: glance.pastDue, toggle: () => glance.toggle('pastDue') } : undefined
+        }
+      />
     );
-  }
-  if (view.nothingDue && !emptyShown) nodes.push(<NothingDue key="nothing-due" />);
+  };
+  const nodes: ComponentChildren[] = head.map(section);
+  // The chart says "Nothing due this week" itself when no class has work.
+  if (view.nothingDue && (!view.rings.length || view.rings.some((ring) => ring.total)))
+    nodes.splice(head[0]?.kind === 'past_due' ? 1 : 0, 0, <NothingDue />);
+  if (glance && rest.length > 0)
+    nodes.push(
+      <Disclosure
+        label={tp(
+          'restOfWeek',
+          rest.reduce((sum, g) => sum + groupCount(g), 0),
+        )}
+        open={glance.rest}
+        onToggle={() => glance.toggle('rest')}
+      >
+        {rest.map(section)}
+      </Disclosure>,
+    );
   return <div class="wr-list">{nodes}</div>;
 }

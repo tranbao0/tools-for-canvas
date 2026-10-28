@@ -19,9 +19,11 @@ import { WelcomeView } from '../../src/lib/ui/WelcomeView';
 import type { AppProps, SurfaceKind } from '../../src/lib/ui/contract';
 import { attachShadowMount, type ShadowMount } from '../../src/lib/surface/shadowMount';
 import {
+  allDoneView,
   checkedButMissing,
   COURSES,
   currentWeekGroups,
+  eightCoursesView,
   et,
   hiddenCourseView,
   limitedFilteredView,
@@ -224,6 +226,16 @@ const scenes: Scene[] = [
     render: app('panel', readyState({ view: nothingDueView() })),
   },
   {
+    name: 'ready-eight-courses',
+    widths: [240, 360],
+    render: app('panel', readyState({ view: eightCoursesView() })),
+  },
+  {
+    name: 'ready-all-done',
+    widths: [240, 360],
+    render: app('panel', readyState({ view: allDoneView() })),
+  },
+  {
     name: 'ready-limited-filter',
     widths: PANEL_WIDTHS,
     render: app(
@@ -386,6 +398,42 @@ const scenes: Scene[] = [
     widths: [240],
     shadow: true,
     render: app('inpage', readyState({ view: busyWeekView() })),
+  },
+  {
+    name: 'inpage-glance',
+    widths: [170, 240],
+    shadow: true,
+    render: app('inpage', readyState({ view: busyWeekView() })),
+  },
+  {
+    // Past due and the rest of the week open in place.
+    name: 'inpage-glance-open',
+    widths: [170, 240],
+    shadow: true,
+    render: app('inpage', readyState({ view: busyWeekView() })),
+    async setup(root) {
+      root.querySelector<HTMLElement>('[data-group="past_due"] .wr-group-toggle')?.click();
+      root.querySelector<HTMLElement>('.wr-list > .wr-subline .wr-sub-toggle')?.click();
+      await tick();
+    },
+  },
+  {
+    name: 'inpage-eight-courses',
+    widths: [170, 240],
+    shadow: true,
+    render: app('inpage', readyState({ view: eightCoursesView() })),
+  },
+  {
+    name: 'inpage-nothing-due',
+    widths: [170, 240],
+    shadow: true,
+    render: app('inpage', readyState({ view: nothingDueView() })),
+  },
+  {
+    name: 'inpage-all-done',
+    widths: [170, 240],
+    shadow: true,
+    render: app('inpage', readyState({ view: allDoneView() })),
   },
   {
     name: 'inpage-busy-expanded',

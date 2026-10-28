@@ -2,12 +2,21 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { render as renderNow } from 'preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SETTINGS, type Ring, type SurfaceState } from '../model/types';
+import {
+  DEFAULT_SETTINGS,
+  type ItemView,
+  type ListGroup,
+  type Ring,
+  type SurfaceState,
+} from '../model/types';
 import { App } from './App';
 import type { AppProps, SurfaceKind } from './contract';
 import { spyActions, type SpyActions } from './testing/actions';
 import {
+  allDoneView,
+  checkedButMissing,
   COURSES,
+  eightCoursesView,
   hiddenCourseView,
   limitedFilteredView,
   mkGroup,
@@ -41,6 +50,29 @@ function ringOf(patch: Partial<Ring> = {}): Ring {
     ...patch,
   };
 }
+
+/** The width that the chart section reports, as the browser reports it to a resize observer. */
+function setSurfaceWidth(width: number) {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(private readonly callback: () => void) {}
+      observe() {
+        this.callback();
+      }
+      disconnect() {}
+    },
+  );
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+    configurable: true,
+    get: () => width,
+  });
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth');
+});
 
 function row(title: string): HTMLElement {
   const link = screen.getAllByText(title)[0];
@@ -146,14 +178,15 @@ describe('rings', () => {
     const center = document.querySelector('.wr-chart-center');
     expect(center?.querySelector('svg')).toBeTruthy();
     expect(center?.querySelector('b')).toBeNull();
-    expect(center?.querySelector('span')?.textContent).toBe('3/3');
+    expect(center?.querySelector('span')?.textContent).toBe('All done');
 
     rerender(readyState({ view: mkView({ rings: [ringOf({ done: 2, total: 2, pastDue: 1 })] }) }));
     expect(document.querySelector('.wr-chart-center svg')).toBeNull();
     expect(document.querySelector('.wr-chart-center b')?.textContent).toBe('100%');
 
-    rerender(readyState({ view: mkView({ rings: [ringOf({ done: 0, total: 0 })] }) }));
-    expect(document.querySelector('.wr-chart-center b')?.textContent).toBe('0%');
+    rerender(readyState({ view: allDoneView() }));
+    expect(document.querySelector('.wr-chart-center svg')).toBeTruthy();
+    expect(document.querySelector('.wr-chart-center span')?.textContent).toBe('11/11');
   });
 
   it('keeps the percent between 1 and 99 until the week is done', () => {
@@ -182,41 +215,107 @@ describe('rings', () => {
     setup(
       readyState({
         view: mkView({
+          rings: [ringOf({ done: 1, total: 4 }), ringOf({ courseId: '2', done: 0, total: 3 })],
+        }),
+      }),
+    );
+    expect(document.querySelectorAll('.wr-ring-track')).toHaveLength(2);
+    const arcs = [...document.querySelectorAll('.wr-ring-arc')];
+    expect(arcs.map((arc) => arc.getAttribute('stroke-dashoffset'))).toEqual(['0.75', '1']);
+    expect(document.querySelector('.wr-chart svg')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('keeps classes with no work this week out of the chart and in the legend', () => {
+    setup(
+      readyState({
+        view: mkView({
           rings: [
             ringOf({ done: 1, total: 4 }),
-            ringOf({ courseId: '2', done: 0, total: 3 }),
-            ringOf({ courseId: '3', done: 0, total: 0 }),
+            ringOf({ courseId: '3', shortLabel: 'Late only', done: 0, total: 0, pastDue: 2 }),
           ],
         }),
       }),
     );
-    expect(document.querySelectorAll('.wr-ring-track')).toHaveLength(3);
-    const arcs = [...document.querySelectorAll('.wr-ring-arc')];
-    expect(arcs.map((arc) => arc.getAttribute('stroke-dashoffset'))).toEqual(['0.75', '1', '1']);
-    expect(document.querySelector('.wr-chart svg')?.getAttribute('aria-hidden')).toBe('true');
+    expect(document.querySelectorAll('.wr-ring')).toHaveLength(1);
+    const late = screen.getByRole('button', { name: /^Late only/ });
+    expect(late.textContent).toBe('Late only2 late');
+    expect(document.querySelector('.wr-chart-more')).toBeNull();
   });
 
-  it('draws the 6 classes with the most work, in dashboard order, and lists all in the legend', () => {
-    setup(
-      readyState({
-        view: mkView({
-          rings: Array.from({ length: 8 }, (_, i) =>
-            ringOf({
-              courseId: String(i),
-              shortLabel: `C${i}`,
-              color: `rgb(${i}, 0, 0)`,
-              total: i === 1 || i === 4 ? 1 : 5,
-            }),
-          ),
-        }),
-      }),
-    );
-    const drawn = [...document.querySelectorAll<SVGElement>('.wr-ring')].map((el) =>
-      el.style.getPropertyValue('--wr-course'),
-    );
-    expect(drawn).toEqual([0, 2, 3, 5, 6, 7].map((i) => `rgb(${i}, 0, 0)`));
-    expect(document.querySelectorAll('.wr-legend-row')).toHaveLength(8);
-    expect(document.querySelector('.wr-chart-center span')?.textContent).toBe('0/32');
+  describe('class cap by width', () => {
+    const codes = () =>
+      [...document.querySelectorAll<SVGElement>('.wr-ring')].map((el) =>
+        el.style.getPropertyValue('--wr-course'),
+      );
+    // BIO 3, CHEM 3, ENGL 4, MATH 4, HIST 2, PSYC 1, Personal 1, ART 2 (dashboard order).
+    const colors = (...keys: (keyof typeof COURSES)[]): string[] =>
+      keys.map((key) => COURSES[key].color);
+
+    it('draws the 4 classes with the most work below 280 px, and shows +N', () => {
+      setSurfaceWidth(240);
+      setup(readyState({ view: eightCoursesView() }));
+      expect(codes()).toEqual(colors('bio', 'chem', 'engl', 'math'));
+      expect(document.querySelector('.wr-chart-more')?.textContent).toBe('+4');
+      expect(document.querySelectorAll('.wr-legend-row')).toHaveLength(8);
+    });
+
+    it('draws the 6 classes with the most work from 280 px, and shows +N', () => {
+      setSurfaceWidth(360);
+      setup(readyState({ view: eightCoursesView() }));
+      expect(codes()).toEqual(colors('bio', 'chem', 'engl', 'math', 'hist').concat('#0B874B'));
+      expect(document.querySelector('.wr-chart-more')?.textContent).toBe('+2');
+      expect(document.querySelectorAll('.wr-legend-row')).toHaveLength(8);
+    });
+
+    it('shows no +N when every class with work fits', () => {
+      setSurfaceWidth(240);
+      setup(readyState({ view: mkView({ rings: [ringOf(), ringOf({ courseId: '2' })] }) }));
+      expect(codes()).toHaveLength(2);
+      expect(document.querySelector('.wr-chart-more')).toBeNull();
+    });
+
+    it('keeps the stroke thick as the count grows', () => {
+      setSurfaceWidth(360);
+      const widthFor = (count: number) => {
+        cleanup();
+        const rings = Array.from({ length: count }, (_, i) => ringOf({ courseId: String(i) }));
+        setup(readyState({ view: mkView({ rings }) }));
+        return Number(document.querySelector('.wr-chart svg')?.getAttribute('stroke-width'));
+      };
+      expect(widthFor(1)).toBe(10);
+      expect(widthFor(4)).toBeGreaterThanOrEqual(8);
+      expect(widthFor(6)).toBeGreaterThanOrEqual(5);
+    });
+  });
+
+  it('shows "Nothing due this week" in place of the chart when no class has work', () => {
+    setup(readyState({ view: nothingDueView() }));
+    expect(document.querySelector('.wr-chart')).toBeNull();
+    expect(document.querySelectorAll('.wr-ring')).toHaveLength(0);
+    expect(
+      within(screen.getByRole('region', { name: 'Progress by course' })).getByText(
+        'Nothing due this week',
+      ),
+    ).toBeTruthy();
+    expect(screen.getAllByText('Nothing due this week')).toHaveLength(1);
+    const bio = screen.getByRole('button', { name: /^BIO 201/ });
+    expect(bio.textContent).toBe('BIO 2011 late');
+  });
+
+  it('shows a check mark and "All done" in the chart when every class is done', () => {
+    setup(readyState({ view: mkView({ rings: [ringOf({ done: 2, total: 2 })] }) }));
+    const center = document.querySelector('.wr-chart-center');
+    expect(center?.querySelector('svg')).toBeTruthy();
+    expect(center?.textContent).toBe('All done');
+  });
+
+  it('labels the past-due count as a neutral badge, with the full text for screen readers', () => {
+    setup();
+    const bio = screen.getByRole('button', {
+      name: 'BIO 201 Cell Biology: 1 of 3 done this week, 1 past due',
+    });
+    expect(bio.querySelector('em')?.textContent).toBe('1 late');
+    expect(bio.querySelector('em')?.className).not.toContain('missing');
   });
 
   it('lists every class in the legend with its code, counts and past-due count', () => {
@@ -232,8 +331,8 @@ describe('rings', () => {
       'Personal',
     ]);
     const bio = screen.getByRole('button', { name: /^BIO 201/ });
-    expect(bio.textContent).toBe('BIO 2011/31');
-    expect(bio.querySelector('em')?.textContent).toBe('1');
+    expect(bio.textContent).toBe('BIO 2011 late1/3');
+    expect(bio.querySelector('em')?.textContent).toBe('1 late');
     const psyc = screen.getByRole('button', { name: /^PSYC 100/ });
     expect(psyc.querySelector('em')).toBeNull();
   });
@@ -412,7 +511,8 @@ describe('groups', () => {
   });
 
   it('puts "Nothing due this week" after Past due and before No due date', () => {
-    setup(readyState({ view: nothingDueView() }));
+    const view = nothingDueView();
+    setup(readyState({ view: { ...view, rings: [] } }));
     const list = document.querySelector('.wr-list');
     const order = Array.from(list?.children ?? []).map(
       (el) => (el as HTMLElement).dataset.group ?? el.textContent,
@@ -421,8 +521,20 @@ describe('groups', () => {
   });
 
   it('shows "Nothing due this week" first when nothing is past due', () => {
-    setup(readyState({ view: mkView({ groups: [], nothingDue: true }) }));
+    setup(readyState({ view: mkView({ rings: [], groups: [], nothingDue: true }) }));
     expect(screen.getByText('Nothing due this week')).toBeTruthy();
+  });
+
+  it('shows the line in the list when the chart does not say it', () => {
+    // A filter on a class with no items: the other classes still have work, so the chart draws.
+    setup(
+      readyState({
+        view: mkView({ groups: [], nothingDue: true, courseFilter: COURSES.psyc.id }),
+      }),
+    );
+    expect(document.querySelector('.wr-chart svg')).toBeTruthy();
+    expect(screen.getAllByText('Nothing due this week')).toHaveLength(1);
+    expect(document.querySelector('.wr-list')?.textContent).toBe('Nothing due this week');
   });
 
   it('shows the status chip on items in other weeks', () => {
@@ -436,18 +548,27 @@ describe('groups', () => {
 
 describe('in-page list', () => {
   const titles = ['One', 'Two', 'Three', 'Four', 'Five'];
-  function longToday(pastDue = false) {
-    const items = titles.map((title) => mkItem({ title, course: 'bio', canSkip: pastDue }));
-    const group = pastDue
-      ? mkGroup({ kind: 'past_due', items, older: [mkItem({ title: 'Old one' })] })
-      : mkGroup({ kind: 'today', date: '2026-10-27', items });
-    return readyState({ view: mkView({ groups: [group] }) });
-  }
+  const dueItems = (list: string[], patch: Partial<ItemView> = {}) =>
+    list.map((title) => mkItem({ title, course: 'bio', ...patch }));
+  const today = (items: ItemView[]) => mkGroup({ kind: 'today', date: '2026-10-27', items });
+  const day = (date: string, items: ItemView[]) => mkGroup({ kind: 'day', date, items });
+  const stateOf = (...groups: ListGroup[]) => readyState({ view: mkView({ groups }) });
   const shown = () =>
     [...document.querySelectorAll('.wr-item .wr-title')].map((el) => el.textContent);
+  const pastDue = (missing = 0) =>
+    mkGroup({
+      kind: 'past_due',
+      items: dueItems(['Late one', 'Late two'], { canSkip: true }).map((item, i) =>
+        i < missing
+          ? { ...item, chip: { kind: 'missing' } as const, facts: { ...item.facts, missing: true } }
+          : item,
+      ),
+      older: [mkItem({ title: 'Old one', canSkip: true })],
+      skipped: [mkItem({ title: 'Skipped one', state: 'skipped', chip: { kind: 'skipped' } })],
+    });
 
   it('shows the first 3 rows of a group and opens the rest in place', () => {
-    setup(longToday(), 'inpage');
+    setup(stateOf(today(dueItems(titles))), 'inpage');
     expect(shown()).toEqual(['One', 'Two', 'Three']);
 
     fireEvent.click(screen.getByRole('button', { name: 'Show 2 more' }));
@@ -458,42 +579,190 @@ describe('in-page list', () => {
   });
 
   it('shows a group of 4 in full, because a link would hide only one row', () => {
-    const items = titles.slice(0, 4).map((title) => mkItem({ title, course: 'bio' }));
-    setup(
-      readyState({
-        view: mkView({ groups: [mkGroup({ kind: 'today', date: '2026-10-27', items })] }),
-      }),
-      'inpage',
-    );
+    setup(stateOf(today(dueItems(titles.slice(0, 4)))), 'inpage');
     expect(shown()).toEqual(['One', 'Two', 'Three', 'Four']);
     expect(screen.queryByRole('button', { name: /^Show \d+ more/ })).toBeNull();
   });
 
   it('shows every row in the side panel', () => {
-    setup(longToday(), 'panel');
+    setup(stateOf(today(dueItems(titles))), 'panel');
     expect(shown()).toEqual(titles);
     expect(screen.queryByRole('button', { name: /^Show \d+ more/ })).toBeNull();
   });
 
-  it('keeps "N older" apart from the row limit in Past due', () => {
-    setup(longToday(true), 'inpage');
-    expect(shown()).toEqual(['One', 'Two', 'Three']);
-    expect(screen.getByRole('button', { name: 'Show 2 more' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '1 older' })).toBeTruthy();
+  describe('past due', () => {
+    it('is one summary line with the counts, and a disclosure button', () => {
+      setup(stateOf(pastDue(1)), 'inpage');
+      const summary = screen.getByRole('button', { name: /3 past due/ });
+      expect(summary.textContent).toBe('3 past due1 missing');
+      expect(summary.getAttribute('aria-expanded')).toBe('false');
+      expect(shown()).toEqual([]);
+      expect(screen.queryByRole('button', { name: '1 older' })).toBeNull();
+    });
+
+    it('leaves out "missing" when no item has the Missing chip', () => {
+      setup(stateOf(pastDue(0)), 'inpage');
+      expect(screen.getByRole('button', { name: /3 past due/ }).textContent).toBe('3 past due');
+    });
+
+    it('opens in place with every row, "N older", "N skipped" and "Skip all older"', () => {
+      const { actions } = setup(stateOf(pastDue(1)), 'inpage');
+      const summary = screen.getByRole('button', { name: /3 past due/ });
+      fireEvent.click(summary);
+      expect(summary.getAttribute('aria-expanded')).toBe('true');
+      expect(shown()).toEqual(['Late one', 'Late two']);
+      expect(screen.getByRole('button', { name: '1 older' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: '1 skipped' })).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Skip all older' }));
+      expect(actions.skipAllOlder).toHaveBeenCalledTimes(1);
+      fireEvent.click(summary);
+      expect(shown()).toEqual([]);
+    });
+
+    it('stays open when the view updates', () => {
+      const { rerender } = setup(stateOf(pastDue(0)), 'inpage');
+      fireEvent.click(screen.getByRole('button', { name: /3 past due/ }));
+      rerender(stateOf(pastDue(1)));
+      expect(shown()).toEqual(['Late one', 'Late two']);
+    });
+
+    it('counts a checked item that Canvas still marks missing', () => {
+      const group = mkGroup({ kind: 'past_due', items: [checkedButMissing()] });
+      setup(stateOf(group), 'inpage');
+      expect(screen.getByRole('button', { name: /^1 past due/ }).textContent).toBe(
+        '1 past due1 missing',
+      );
+    });
+
+    it('waits behind "Rest of the week" when only skipped rows are left', () => {
+      const skipped = mkItem({ title: 'Skipped one', state: 'skipped', chip: { kind: 'skipped' } });
+      setup(stateOf(mkGroup({ kind: 'past_due', skipped: [skipped] })), 'inpage');
+      expect(screen.queryByText(/^0 past due/)).toBeNull();
+      expect(screen.getByRole('button', { name: /^Rest of the week/ })).toBeTruthy();
+    });
+
+    it('stays open after the settings or the task form closed', () => {
+      const data = { value: DEFAULT_SETTINGS, courses: [] };
+      const actions = spyActions();
+      const state = stateOf(pastDue(0));
+      const result = render(
+        <App surface="inpage" state={state} actions={actions} settings={data} />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: /3 past due/ }));
+      fireEvent.click(document.querySelector('[data-opener="gear"]') as HTMLElement);
+      fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+      expect(shown()).toEqual(['Late one', 'Late two']);
+      fireEvent.click(screen.getByRole('button', { name: /^Edit task|Add task/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(shown()).toEqual(['Late one', 'Late two']);
+      result.unmount();
+    });
+
+    it('is a full group in the side panel', () => {
+      setup(stateOf(pastDue(1)), 'panel');
+      expect(screen.queryByText(/past due$/)).toBeNull();
+      expect(shown()).toEqual(['Late one', 'Late two']);
+      expect(screen.getByRole('button', { name: '1 older' })).toBeTruthy();
+    });
   });
 
-  it('limits a collapsed group too once it is opened', () => {
-    const items = titles.map((title) => mkItem({ title, state: 'done' }));
-    setup(readyState({ view: mkView({ groups: [mkGroup({ kind: 'done', items })] }) }), 'inpage');
-    fireEvent.click(screen.getByRole('button', { name: /^Done/ }));
-    expect(shown()).toEqual(['One', 'Two', 'Three']);
-    expect(screen.getByRole('button', { name: 'Show 2 more' })).toBeTruthy();
+  describe('rest of the week', () => {
+    const week = () =>
+      stateOf(
+        today(dueItems(['Today one'])),
+        mkGroup({ kind: 'tomorrow', date: '2026-10-28', items: dueItems(['Tomorrow one']) }),
+        day('2026-10-29', dueItems(['Thursday one'])),
+        mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) }),
+        mkGroup({ kind: 'done', items: dueItems(['Finished one'], { state: 'done' }) }),
+      );
+
+    it('puts later days, No due date and Done behind one link with their row count', () => {
+      setup(week(), 'inpage');
+      expect(shown()).toEqual(['Today one', 'Tomorrow one']);
+      const link = screen.getByRole('button', { name: 'Rest of the week (3)' });
+      expect(link.getAttribute('aria-expanded')).toBe('false');
+      expect(document.querySelector('[data-group="day"]')).toBeNull();
+    });
+
+    it('opens them in place and keeps them open when the view updates', () => {
+      const { rerender } = setup(week(), 'inpage');
+      fireEvent.click(screen.getByRole('button', { name: 'Rest of the week (3)' }));
+      expect(shown()).toEqual(['Today one', 'Tomorrow one', 'Thursday one']);
+      expect(screen.getByRole('button', { name: /^No due date/ })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^Done/ })).toBeTruthy();
+      rerender(week());
+      expect(shown()).toEqual(['Today one', 'Tomorrow one', 'Thursday one']);
+    });
+
+    it('has no link when nothing is behind it', () => {
+      setup(stateOf(today(dueItems(['Today one']))), 'inpage');
+      expect(screen.queryByRole('button', { name: /^Rest of the week/ })).toBeNull();
+    });
+
+    it('is not in the side panel, which shows every group', () => {
+      setup(week(), 'panel');
+      expect(screen.queryByRole('button', { name: /^Rest of the week/ })).toBeNull();
+      expect(shown()).toEqual(['Today one', 'Tomorrow one', 'Thursday one']);
+    });
+
+    it('limits a group once it is opened', () => {
+      const items = dueItems(titles, { state: 'done' });
+      setup(stateOf(today(dueItems(['Today one'])), mkGroup({ kind: 'done', items })), 'inpage');
+      fireEvent.click(screen.getByRole('button', { name: 'Rest of the week (5)' }));
+      fireEvent.click(screen.getByRole('button', { name: /^Done/ }));
+      expect(shown()).toEqual(['Today one', 'One', 'Two', 'Three']);
+      expect(screen.getByRole('button', { name: 'Show 2 more' })).toBeTruthy();
+    });
+  });
+
+  describe('next day with work', () => {
+    it('shows the next day in full when Today and Tomorrow are empty', () => {
+      setup(
+        stateOf(
+          day('2026-10-29', dueItems(['Thursday one'])),
+          day('2026-10-30', dueItems(['Friday one'])),
+        ),
+        'inpage',
+      );
+      expect(shown()).toEqual(['Thursday one']);
+      expect(screen.getByRole('button', { name: 'Rest of the week (1)' })).toBeTruthy();
+    });
+
+    it('applies the row limit to that day', () => {
+      setup(stateOf(day('2026-10-29', dueItems(titles))), 'inpage');
+      expect(shown()).toEqual(['One', 'Two', 'Three']);
+      expect(screen.getByRole('button', { name: 'Show 2 more' })).toBeTruthy();
+    });
+
+    it('is not used when Tomorrow has work', () => {
+      setup(
+        stateOf(
+          mkGroup({ kind: 'tomorrow', date: '2026-10-28', items: dueItems(['Tomorrow one']) }),
+          day('2026-10-29', dueItems(['Thursday one'])),
+        ),
+        'inpage',
+      );
+      expect(shown()).toEqual(['Tomorrow one']);
+    });
+  });
+
+  it('puts "Nothing due this week" before the link when the chart is off', () => {
+    const view = nothingDueView();
+    setup(readyState({ view: { ...view, rings: [] } }), 'inpage');
+    const list = document.querySelector('.wr-list');
+    const order = Array.from(list?.children ?? []).map(
+      (el) => (el as HTMLElement).dataset.group ?? el.textContent,
+    );
+    expect(order[0]).toBe('past_due');
+    expect(order[1]).toBe('Nothing due this week');
+    expect(order[2]).toMatch(/^Rest of the week/);
   });
 });
 
 describe('one-course view', () => {
   it('leaves out the course name on every row, and keeps the type icon and the time', () => {
     setup(readyState({ view: mkView({ scopeCourseId: COURSES.math.id }) }), 'inpage');
+    fireEvent.click(screen.getByRole('button', { name: /^\d+ past due/ }));
     const item = row('Problem Set 6');
     expect(item.textContent).not.toContain('MATH 241 Calculus III');
     expect(item.querySelector('svg.wr-type')).toBeTruthy();
@@ -503,6 +772,7 @@ describe('one-course view', () => {
 
   it('shows no empty info line on a row with nothing to say', () => {
     setup(readyState({ view: mkView({ scopeCourseId: COURSES.bio.id }) }), 'inpage');
+    fireEvent.click(screen.getByRole('button', { name: /^Rest of the week/ }));
     fireEvent.click(screen.getByRole('button', { name: /No due date/ }));
     expect(row('Course survey').querySelector('.wr-info')).toBeNull();
     expect(row('Course survey').querySelector('.wr-course')).toBeNull();

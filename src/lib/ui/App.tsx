@@ -25,7 +25,7 @@ import { Rings } from './Rings';
 import { SettingsPanel } from './Settings';
 import { Spinner, StateBody } from './States';
 import { TaskForm, type TaskFormMode } from './TaskForm';
-import { INPAGE_ROW_LIMIT, WeekList, type ListHandlers } from './WeekList';
+import { useGlance, WeekList, type Glance, type ListHandlers } from './WeekList';
 import { captureFocus, firstRowControl, restoreFocus, usable, type FocusSnapshot } from './focus';
 
 type ReadyState = Extract<SurfaceState, { kind: 'ready' }>;
@@ -46,6 +46,7 @@ export function App(props: AppProps) {
   const { surface, state, actions } = props;
   const rootRef = useRef<HTMLDivElement>(null);
   const [settingsFrom, setSettingsFrom] = useState<string | null>(null);
+  const glance = useGlance();
   /** The opener to focus once the view is back. */
   const returnTo = useRef<string | null>(null);
 
@@ -93,6 +94,7 @@ export function App(props: AppProps) {
         state={state}
         actions={actions}
         rootRef={rootRef}
+        glance={surface === 'inpage' ? glance : undefined}
         onSettings={openSettings}
       />
     );
@@ -207,6 +209,7 @@ function ReadyView(props: {
   state: ReadyState;
   actions: Actions;
   rootRef: RefObject<HTMLDivElement | null>;
+  glance: Glance | undefined;
   onSettings: OpenSettings;
 }) {
   const { surface, state, actions, rootRef } = props;
@@ -398,12 +401,7 @@ function ReadyView(props: {
         </div>
       )}
       <div aria-busy={state.refreshing}>
-        <WeekList
-          view={view}
-          level={subLevel(level)}
-          handlers={handlers}
-          rowLimit={surface === 'inpage' ? INPAGE_ROW_LIMIT : null}
-        />
+        <WeekList view={view} level={subLevel(level)} handlers={handlers} glance={props.glance} />
       </div>
       {view.hiddenCourseCount > 0 && (
         <div class="wr-foot">

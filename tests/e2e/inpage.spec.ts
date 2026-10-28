@@ -295,6 +295,29 @@ test.describe('pages with other layouts', () => {
 });
 
 test.describe('compact in-page list', () => {
+  test('Past due is one summary line that opens in place', async ({ context, page }) => {
+    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }]);
+    await openCanvasPage(page, canvas.origin);
+    const list = inpageList(page);
+    await expect(doneBox(list, QUIZ_3)).toBeVisible();
+
+    const section = group(list, 'past_due');
+    const summary = section.getByRole('button', { name: /\d+ past due/ });
+    await expect(summary).toHaveAttribute('aria-expanded', 'false');
+    await expect(section.locator('li')).toHaveCount(0);
+
+    await summary.focus();
+    await page.keyboard.press('Enter');
+    await expect(summary).toHaveAttribute('aria-expanded', 'true');
+    // The group opens with all of its rows, without "Show N more".
+    await expect(mainRows(section)).toHaveCount(6);
+    await expect(section.getByRole('button', { name: /^Show \d+ more$/ })).toHaveCount(0);
+
+    await page.keyboard.press('Space');
+    await expect(summary).toHaveAttribute('aria-expanded', 'false');
+    await expect(section.locator('li')).toHaveCount(0);
+  });
+
   test('a group with more than 4 items shows 3 rows and "Show N more"', async ({
     context,
     page,
@@ -304,15 +327,52 @@ test.describe('compact in-page list', () => {
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
 
-    // Past due has 6 items in full, and Tomorrow has 6.
-    for (const kind of ['past_due', 'tomorrow']) {
-      const section = group(list, kind);
-      await expect(mainRows(section), kind).toHaveCount(3);
-      const more = section.getByRole('button', { name: 'Show 3 more' });
-      await expect(more, kind).toBeVisible();
-      await more.click();
-      await expect(mainRows(section), kind).toHaveCount(6);
-      await expect(more, kind).toHaveCount(0);
+    // Tomorrow has 6 items.
+    const section = group(list, 'tomorrow');
+    await expect(mainRows(section)).toHaveCount(3);
+    const more = section.getByRole('button', { name: 'Show 3 more' });
+    await expect(more).toBeVisible();
+    await more.click();
+    await expect(mainRows(section)).toHaveCount(6);
+    await expect(more).toHaveCount(0);
+  });
+
+  test('later days, No due date and Done sit behind "Rest of the week"', async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }]);
+    await openCanvasPage(page, canvas.origin);
+    const list = inpageList(page);
+    await expect(doneBox(list, QUIZ_3)).toBeVisible();
+
+    await expect(group(list, 'day')).toHaveCount(0);
+    await expect(group(list, 'no_due_date')).toHaveCount(0);
+    await expect(group(list, 'done')).toHaveCount(0);
+    const link = list.getByRole('button', { name: /^Rest of the week \(\d+\)$/ });
+    await expect(link).toHaveAttribute('aria-expanded', 'false');
+
+    await link.click();
+
+    await expect(link).toHaveAttribute('aria-expanded', 'true');
+    await expect(group(list, 'day').first()).toBeVisible();
+  });
+
+  test('the chart draws at most 4 rings in the narrow column and the legend lists every class', async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }]);
+    await openCanvasPage(page, canvas.origin);
+    const list = inpageList(page);
+    await expect(doneBox(list, QUIZ_3)).toBeVisible();
+
+    const legend = await list.locator('.wr-legend-row').count();
+    const drawn = await list.locator('.wr-ring').count();
+    expect(drawn).toBeLessThanOrEqual(4);
+    if (legend > 4) {
+      // Classes with no work this week stay out of the chart and out of the +N count.
+      await expect(list.locator('.wr-chart-more')).toHaveText(/^\+[1-9]\d*$/);
     }
   });
 

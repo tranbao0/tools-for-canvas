@@ -229,11 +229,15 @@ test.describe('in-page list', () => {
     const host = page.locator('#weekrow-inpage > weekrow-list');
     await expect(host).toHaveAttribute('data-theme', 'light');
     expect(await host.evaluate((element) => element.shadowRoot?.mode)).toBe('open');
+    // Past due is one summary line until the student opens it.
     const pastDue = host.locator('section[data-group="past_due"]');
-    await expect(pastDue.locator('.wr-sublist')).toHaveCount(0);
-    const rows = pastDue.locator(':scope > div > div > ul > li');
+    const summary = pastDue.getByRole('button', { name: /\d+ past due/ });
+    await expect(summary).toHaveAttribute('aria-expanded', 'false');
+    await expect(pastDue.locator('li')).toHaveCount(0);
+    const tomorrow = host.locator('section[data-group="tomorrow"]');
+    const rows = tomorrow.locator(':scope > div > div > ul > li');
     await expect(rows).toHaveCount(3);
-    const more = pastDue.getByRole('button', { name: /^Show \d+ more$/ });
+    const more = tomorrow.getByRole('button', { name: /^Show \d+ more$/ });
     const hidden = Number((await more.textContent())?.match(/\d+/)?.[0]);
 
     await more.click();

@@ -2,16 +2,27 @@
  * The week's progress chart (design decision 8): concentric rings, one per class, over a legend.
  * A click on a ring or a legend row filters the list; a second click clears it.
  */
-import { t } from '../i18n';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { t, tp } from '../i18n';
 import type { Ring, WeekView } from '../model/types';
 import { CheckIcon } from './icons';
 
-/** The chart draws at most this many classes. The legend lists all of them. */
-const MAX_RINGS = 6;
+/** The width where the legend moves beside the chart (the container query in styles.css). */
+const WIDE_FROM = 280;
 /** Chart units: the outer edge, the hole for the center text, and the gap between two rings. */
 const OUTER = 58;
-const HOLE = 30;
-const GAP = 1.5;
+const HOLE = 22;
+const GAP = 1;
+
+/** "Nothing due this week", in the chart place of the rings or in the list. */
+export function NothingDue() {
+  return (
+    <p class="wr-empty">
+      <CheckIcon />
+      {t('nothingDue')}
+    </p>
+  );
+}
 
 /** The full ring name: the course name, or the "Personal" text for the Personal ring. */
 export function ringName(ring: Ring): string {
@@ -49,75 +60,96 @@ export function isRingSelected(ring: Ring, filter: WeekView['courseFilter']): bo
   return filter !== undefined && filter === ring.courseId;
 }
 
-/** The classes the chart draws: the ones with the most work this week, in dashboard order. */
-function chartRings(rings: Ring[]): Ring[] {
-  if (rings.length <= MAX_RINGS) return rings;
-  const keep = new Set([...rings].sort((a, b) => b.total - a.total).slice(0, MAX_RINGS));
-  return rings.filter((ring) => keep.has(ring));
-}
-
 export function Rings(props: {
   rings: Ring[];
   filter: WeekView['courseFilter'];
   onSelect(courseId: string | null | undefined): void;
 }) {
   const { rings, filter } = props;
+  const ref = useRef<HTMLElement>(null);
+  const [wide, setWide] = useState(false);
+  // The legend sits beside the chart from WIDE_FROM on, and the chart then draws more classes.
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    // The observer reports the width once when it starts, before the first paint.
+    const observer = new ResizeObserver(() => setWide(element.clientWidth >= WIDE_FROM));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [rings.length > 0]);
   if (rings.length === 0) return null;
-  const drawn = chartRings(rings);
+  // The classes with the most work this week, in dashboard order. A class with no work stays in
+  // the legend only.
+  const worked = rings.filter((ring) => ring.total > 0);
+  const top = new Set([...worked].sort((a, b) => b.total - a.total).slice(0, wide ? 6 : 4));
+  const drawn = worked.filter((ring) => top.has(ring));
+  const more = worked.length - drawn.length;
   let [done, total, pastDue] = [0, 0, 0];
   for (const ring of rings) {
     done += ring.done;
     total += ring.total;
     pastDue += ring.pastDue;
   }
-  const finished = total > 0 && done >= total && pastDue === 0;
+  const finished = done >= total && pastDue === 0;
   // 1 to 99 until every item is done, so a nearly empty or nearly full week never reads 0 or 100.
-  const percent =
-    total &&
-    Math.min(done >= total ? 100 : 99, Math.max(done && 1, Math.round((done * 100) / total)));
+  const percent = Math.min(
+    done >= total ? 100 : 99,
+    Math.max(done && 1, Math.round((done * 100) / total)),
+  );
+  // The stroke stays thick as the count grows: the hole shrinks instead of the rings thinning.
   const width = Math.min(10, (OUTER - HOLE - GAP * (drawn.length - 1)) / drawn.length);
   const select = (ring: Ring) =>
     props.onSelect(isRingSelected(ring, filter) ? undefined : ring.courseId);
   return (
-    <section class="wr-rings" aria-label={t('ringsLabel')}>
-      <div class="wr-chart">
-        <svg viewBox="0 0 120 120" aria-hidden="true" fill="none" stroke-width={width}>
-          {drawn.map((ring, i) => {
-            const radius = OUTER - width / 2 - i * (width + GAP);
-            const fraction = ring.total > 0 ? Math.min(ring.done / ring.total, 1) : 0;
-            return (
-              <g
-                key={ring.courseId ?? 'personal'}
-                class="wr-ring"
-                aria-pressed={isRingSelected(ring, filter)}
-                style={{ '--wr-course': ring.color }}
-                onClick={() => select(ring)}
-              >
-                <circle class="wr-ring-track" cx="60" cy="60" r={radius} />
-                <circle
-                  class="wr-ring-arc"
-                  cx="60"
-                  cy="60"
-                  r={radius}
-                  pathLength="1"
-                  stroke-linecap="round"
-                  stroke-dasharray="1 2"
-                  stroke-dashoffset={1 - fraction}
-                />
-              </g>
-            );
-          })}
-        </svg>
-        <div class="wr-chart-center" aria-hidden="true">
-          {finished ? <CheckIcon /> : <b>{percent}%</b>}
-          <span>{`${done}/${total}`}</span>
+    <section ref={ref} class="wr-rings" aria-label={t('ringsLabel')}>
+      {drawn.length === 0 ? (
+        <NothingDue />
+      ) : (
+        <div class="wr-chart">
+          <svg viewBox="0 0 120 120" aria-hidden="true" fill="none" stroke-width={width}>
+            {drawn.map((ring, i) => {
+              const radius = OUTER - width / 2 - i * (width + GAP);
+              const fraction = ring.done / ring.total;
+              return (
+                <g
+                  key={ring.courseId ?? 'personal'}
+                  class="wr-ring"
+                  aria-pressed={isRingSelected(ring, filter)}
+                  style={{ '--wr-course': ring.color }}
+                  onClick={() => select(ring)}
+                >
+                  <circle class="wr-ring-track" cx="60" cy="60" r={radius} />
+                  <circle
+                    class="wr-ring-arc"
+                    cx="60"
+                    cy="60"
+                    r={radius}
+                    pathLength="1"
+                    stroke-linecap="round"
+                    stroke-dasharray="1 2"
+                    stroke-dashoffset={1 - fraction}
+                  />
+                </g>
+              );
+            })}
+          </svg>
+          <div class="wr-chart-center" aria-hidden="true">
+            {finished ? <CheckIcon /> : <b>{percent}%</b>}
+            {/* With 3 or more rings the hole is too small for "All done", so the count stays. */}
+            <span>{finished && drawn.length < 3 ? t('allDone') : `${done}/${total}`}</span>
+          </div>
+          {more > 0 && (
+            <span class="wr-chart-more" aria-hidden="true">
+              {`+${more}`}
+            </span>
+          )}
+          <span class="wr-sr">
+            {finished
+              ? t('weekComplete', String(total))
+              : t('weekProgress', String(done), String(total), String(percent))}
+          </span>
         </div>
-        <span class="wr-sr">
-          {finished
-            ? t('weekComplete', String(total))
-            : t('weekProgress', String(done), String(total), String(percent))}
-        </span>
-      </div>
+      )}
       <ul class="wr-legend">
         {rings.map((ring) => {
           const selected = isRingSelected(ring, filter);
@@ -134,8 +166,8 @@ export function Rings(props: {
               >
                 <i />
                 <span class="wr-legend-code">{ringShortLabel(ring)}</span>
-                <span>{`${ring.done}/${ring.total}`}</span>
-                {ring.pastDue > 0 && <em title={t('groupPastDue')}>{ring.pastDue}</em>}
+                {ring.pastDue > 0 && <em>{tp('lateBadge', ring.pastDue)}</em>}
+                {ring.total > 0 && <span>{`${ring.done}/${ring.total}`}</span>}
               </button>
             </li>
           );

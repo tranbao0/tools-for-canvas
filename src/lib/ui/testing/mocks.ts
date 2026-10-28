@@ -511,6 +511,42 @@ export function nothingDueView(): WeekView {
   });
 }
 
+/** Eight classes with work this week, so the chart has more classes than it can draw. */
+export function eightCoursesView(): WeekView {
+  const art: Ring = {
+    ...ring('bio', 1, 2, 0),
+    courseId: '107',
+    label: 'ART 101 Drawing',
+    shortLabel: 'ART 101',
+    color: '#0B874B',
+  };
+  return mkView({ rings: [...currentRings(), art] });
+}
+
+/** The current week with every item done and nothing past due, in six classes. */
+export function allDoneView(): WeekView {
+  const done = ['Quiz 7', 'Problem Set 7', 'Essay 2 final draft'].map((title, index) =>
+    mkItem({
+      title,
+      course: index === 1 ? 'math' : 'engl',
+      due: et('2026-10-27', '23:59'),
+      state: 'done',
+    }),
+  );
+  return mkView({
+    groups: [mkGroup({ kind: 'done', items: done })],
+    rings: [
+      ring('bio', 2, 2, 0),
+      ring('chem', 3, 3, 0),
+      ring('engl', 2, 2, 0),
+      ring('math', 1, 1, 0),
+      ring('hist', 2, 2, 0),
+      ring('psyc', 1, 1, 0),
+    ],
+    hiddenCourseCount: 0,
+  });
+}
+
 /** The planner turned off, filtered to one course, on a 24-hour clock. */
 export function limitedFilteredView(): WeekView {
   const math = COURSES.math.id;

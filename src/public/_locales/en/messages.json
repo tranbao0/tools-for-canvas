@@ -98,6 +98,33 @@
   "nothingDue": {
     "message": "Nothing due this week"
   },
+  "allDone": {
+    "message": "All done"
+  },
+  "lateBadge_one": {
+    "message": "$1 late"
+  },
+  "lateBadge_other": {
+    "message": "$1 late"
+  },
+  "pastDueSummary_one": {
+    "message": "$1 past due"
+  },
+  "pastDueSummary_other": {
+    "message": "$1 past due"
+  },
+  "missingCount_one": {
+    "message": "$1 missing"
+  },
+  "missingCount_other": {
+    "message": "$1 missing"
+  },
+  "restOfWeek_one": {
+    "message": "Rest of the week ($1)"
+  },
+  "restOfWeek_other": {
+    "message": "Rest of the week ($1)"
+  },
   "itemCount_one": {
     "message": "$1 item"
   },
@@ -110,7 +137,10 @@
   "olderCount_other": {
     "message": "$1 older"
   },
-  "showMore": {
+  "showMore_one": {
+    "message": "Show $1 more"
+  },
+  "showMore_other": {
     "message": "Show $1 more"
   },
   "skipAllOlder": {
