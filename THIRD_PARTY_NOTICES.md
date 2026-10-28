@@ -1,11 +1,11 @@
 # Third-party notices
 
-Weekrow includes material from the projects below.
+Tools for Canvas includes material from the projects below.
 Each keeps its own license, as stated here.
 
 ## Instructure UI icons
 
-Weekrow draws its icons with paths from `@instructure/ui-icons` 11.6.0, part of Instructure UI (https://github.com/instructure/instructure-ui).
+Tools for Canvas draws its icons with paths from `@instructure/ui-icons` 11.6.0, part of Instructure UI (https://github.com/instructure/instructure-ui).
 These are the icons that Canvas itself uses, so the list looks like a part of Canvas.
 
 - The icons are `IconAssignmentLine`, `IconQuizLine`, `IconDiscussionLine`, `IconDocumentLine`, `IconPeerReviewLine`, `IconNoteLine`, `IconSettingsLine`, `IconAddLine`, `IconArrowOpenStartLine`, `IconArrowOpenEndLine`, `IconArrowOpenDownSolid`, `IconXLine` and `IconCheckMarkSolid`.

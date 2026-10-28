@@ -20,7 +20,7 @@ function setup(browser: WelcomeProps['browser'], shortcut: string | null, state:
 describe('WelcomeView', () => {
   it('shows how to pin the button in Chrome, and the shortcut', () => {
     setup('chrome', 'Alt+Shift+W', NOT_SET_UP);
-    expect(screen.getByText(/Then click the pin next to Weekrow for Canvas\./)).toBeTruthy();
+    expect(screen.getByText(/Then click the pin next to Tools for Canvas\./)).toBeTruthy();
     expect(screen.getByText('Alt+Shift+W').tagName).toBe('KBD');
     expect(screen.getByText(/You can also press/).textContent).toBe(
       'You can also press Alt+Shift+W.',
@@ -29,7 +29,7 @@ describe('WelcomeView', () => {
 
   it('shows the Edge pin steps and a shortcut hint when none is set', () => {
     setup('edge', null, NOT_SET_UP);
-    expect(screen.getByText(/Then click the eye next to Weekrow for Canvas\./)).toBeTruthy();
+    expect(screen.getByText(/Then click the eye next to Tools for Canvas\./)).toBeTruthy();
     expect(screen.getByText(/set a keyboard shortcut/)).toBeTruthy();
   });
 
@@ -47,7 +47,7 @@ describe('WelcomeView', () => {
     expect(screen.getByRole('heading', { name: 'Find your list' })).toBeTruthy();
     expect(
       screen.getByText(
-        'Your list shows on the Canvas dashboard and on course home pages. On any page, click the Weekrow button to open or close it in the side panel.',
+        'Your list shows on the Canvas dashboard and on course home pages. On any page, click the Tools for Canvas button to open or close it in the side panel.',
       ),
     ).toBeTruthy();
   });
@@ -79,7 +79,7 @@ describe('WelcomeView', () => {
     setup('chrome', null, readyState());
     expect(
       screen.getByText(
-        (_, el) => el?.textContent === 'All set. Weekrow uses school.instructure.com.',
+        (_, el) => el?.textContent === 'All set. Tools for Canvas uses school.instructure.com.',
       ),
     ).toBeTruthy();
     expect(screen.getByText('Open your Canvas dashboard to see your week.')).toBeTruthy();

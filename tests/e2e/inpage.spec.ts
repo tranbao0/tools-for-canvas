@@ -25,14 +25,14 @@ import {
 const QUIZ_3 = 'Quiz 3: Cell membranes';
 
 /**
- * Resolves when the Weekrow content script has started in the page, so a test can tell
+ * Resolves when the extension content script has started in the page, so a test can tell
  * "it ran and added nothing" from "it never ran". Call it before the page navigates.
  */
 async function watchContentScript(page: Page): Promise<() => boolean> {
   const cdp = await page.context().newCDPSession(page);
   let started = false;
   cdp.on('Runtime.executionContextCreated', ({ context }) => {
-    if (context.name === 'Weekrow for Canvas' && context.origin.startsWith('chrome-extension://')) {
+    if (context.name === 'Tools for Canvas' && context.origin.startsWith('chrome-extension://')) {
       started = true;
     }
   });
@@ -198,7 +198,7 @@ test.describe('course home page', () => {
     await openCanvasPage(page, canvas.origin, `/courses/${IDS.courses.club}`);
 
     const list = inpageList(page);
-    await expect(list.getByText('You hid this course in Weekrow.')).toBeVisible();
+    await expect(list.getByText('You hid this course from the weekly list.')).toBeVisible();
     await expect(list.getByRole('checkbox')).toHaveCount(0);
     await expect(page.locator('#right-side .Sidebar__TodoListContainer')).toBeVisible();
     await expect(page.locator('#weekrow-hide-native-todo')).toHaveCount(0);
@@ -215,7 +215,7 @@ test.describe('course home page', () => {
     await list.getByRole('button', { name: 'Back' }).click();
 
     // The course is back, so its list shows and replaces the native To Do.
-    await expect(list.getByText('You hid this course in Weekrow.')).toHaveCount(0);
+    await expect(list.getByText('You hid this course from the weekly list.')).toHaveCount(0);
     await expect(list.getByRole('checkbox').first()).toBeVisible();
     await expect(page.locator('#right-side .Sidebar__TodoListContainer')).toBeHidden();
   });

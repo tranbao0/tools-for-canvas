@@ -1,4 +1,4 @@
-/** Public entry for the Weekrow views. */
+/** Public entry for the list views. */
 export { App, HiddenCourseNote } from './App';
 export { SettingsPanel } from './Settings';
 export { SettingsView } from './SettingsView';

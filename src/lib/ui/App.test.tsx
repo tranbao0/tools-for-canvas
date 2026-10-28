@@ -717,7 +717,7 @@ describe('settings in place', () => {
     fireEvent.click(link);
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    expect(screen.getByText('You hid this course in Weekrow.')).toBeTruthy();
+    expect(screen.getByText('You hid this course from the weekly list.')).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Settings' }));
   });
 });

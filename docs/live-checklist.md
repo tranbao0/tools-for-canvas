@@ -32,10 +32,10 @@ If a background read or write fails on a browser, that browser uses the fallback
    - Firefox: open `about:debugging#/runtime/this-firefox`, click "Load Temporary Add-on" and select `.output/firefox-mv3/manifest.json`.
 2. In each browser, open a tab, go to your Canvas site and sign in as the student.
 3. Open the four consoles that the test uses:
-   - Chrome and Edge side panel: click the Weekrow toolbar button, right-click inside the panel and click "Inspect".
-   - Chrome and Edge background: on the extensions page, click the "service worker" link of Weekrow.
-   - Firefox sidebar: open the sidebar, then on `about:debugging` click "Inspect" next to Weekrow, and select `sidepanel.html` with the frame picker of the toolbox.
-   - Firefox background: on `about:debugging`, click "Inspect" next to Weekrow, and keep the background page selected in the frame picker.
+   - Chrome and Edge side panel: click the Tools for Canvas toolbar button, right-click inside the panel and click "Inspect".
+   - Chrome and Edge background: on the extensions page, click the "service worker" link of Tools for Canvas.
+   - Firefox sidebar: open the sidebar, then on `about:debugging` click "Inspect" next to Tools for Canvas, and select `sidepanel.html` with the frame picker of the toolbox.
+   - Firefox background: on `about:debugging`, click "Inspect" next to Tools for Canvas, and keep the background page selected in the frame picker.
 4. Paste this code into each console.
    Replace `<school>` with your Canvas host.
 
@@ -77,7 +77,7 @@ Do steps 5 to 10 in each of the six consoles: the Chrome panel, the Chrome backg
    Write down the id as `<override id>`.
 8. Run `await write('PUT', '/api/v1/planner/overrides/<override id>', { marked_complete: false, dismissed: false })`.
    Expect: status 200, and the item is not done in Canvas after a page reload.
-9. Run `await write('POST', '/api/v1/planner_notes', { title: 'Weekrow live test', todo_date: new Date(Date.now() + 86400000).toISOString() })`.
+9. Run `await write('POST', '/api/v1/planner_notes', { title: 'Tools for Canvas live test', todo_date: new Date(Date.now() + 86400000).toISOString() })`.
    Expect: status 200 with a note `id`, and the note shows in the Canvas To Do list for tomorrow.
 10. Run `await write('DELETE', '/api/v1/planner_notes/<note id>')` with the id from step 9.
     Expect: status 200, and the note is gone from Canvas.
@@ -123,7 +123,7 @@ Run these steps in one background console, such as the Chrome background.
       Expect: status 200.
     - `await api('/api/v1/planner/overrides?per_page=100')` and the POST and PUT from steps 7 and 8.
       Expect: status 200 for each.
-    - `await write('POST', '/api/v1/planner_notes', { title: 'Weekrow live test', todo_date: new Date().toISOString() })`.
+    - `await write('POST', '/api/v1/planner_notes', { title: 'Tools for Canvas live test', todo_date: new Date().toISOString() })`.
       Expect: status 403.
     Turn the setting off when you finish.
 18. Record the results of steps 5 to 17 in the design document, and update decisions 8 and 11 and the open risks if a result differs from the design.
@@ -173,9 +173,9 @@ Use a new, empty profile, and the student account.
 14. Check the rings.
     Expect: each ring shows "done/total" for the week, a ring at 100 percent with no past-due work shows a check mark, and a click on a ring shows only that course.
 15. Open the Canvas Card View dashboard, then the Recent Activity dashboard, then a course home page.
-    Expect: the Weekrow list replaces the Canvas To Do list, and on the course home page it shows only that course.
+    Expect: the weekly list replaces the Canvas To Do list, and on the course home page it shows only that course.
 16. Open the new Canvas dashboard (if your school has it) and the List View dashboard.
-    Expect: Weekrow adds nothing to these pages.
+    Expect: Tools for Canvas adds nothing to these pages.
 17. With the side panel open, look at the Card View dashboard in the same window.
     Expect: the in-page list shows in full, as it does with the panel closed.
 18. Sign out of Canvas, then open the panel.

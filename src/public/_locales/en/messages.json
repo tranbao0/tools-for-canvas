@@ -1,15 +1,15 @@
 {
   "extName": {
-    "message": "Weekrow for Canvas"
+    "message": "Tools for Canvas"
   },
   "extDescription": {
-    "message": "Your Canvas coursework for the week, as a simple to-do list."
+    "message": "Fixes for Canvas LMS students: a weekly to-do list, missing work and due dates."
   },
   "actionTitle": {
-    "message": "Open Weekrow"
+    "message": "Open Tools for Canvas"
   },
-  "appName": {
-    "message": "Weekrow"
+  "listTitle": {
+    "message": "Weekly list"
   },
   "weekRange": {
     "message": "$START$ - $END$",
@@ -463,7 +463,7 @@
     }
   },
   "hiddenCourseHere": {
-    "message": "You hid this course in Weekrow."
+    "message": "You hid this course from the weekly list."
   },
   "undo": {
     "message": "Undo"
@@ -536,7 +536,7 @@
     "message": "Connect your Canvas"
   },
   "setupIntro": {
-    "message": "Open Canvas in a tab and click the Weekrow button there. Or type the address you use to sign in to Canvas."
+    "message": "Open Canvas in a tab and click the Tools for Canvas button there. Or type the address you use to sign in to Canvas."
   },
   "changeTitle": {
     "message": "Change your Canvas address"
@@ -554,7 +554,7 @@
     "message": "Allow access"
   },
   "allowAccessHint": {
-    "message": "Your browser then asks you to let Weekrow read this site. Weekrow talks only to your Canvas."
+    "message": "Your browser then asks you to let Tools for Canvas read this site. It talks only to your Canvas."
   },
   "checking": {
     "message": "Checking $HOST$",
@@ -565,7 +565,7 @@
     }
   },
   "noAccessTitle": {
-    "message": "Weekrow needs access to your Canvas"
+    "message": "Tools for Canvas needs access to your Canvas"
   },
   "noAccessBody": {
     "message": "Allow access to $HOST$ to show your list.",
@@ -579,7 +579,7 @@
     "message": "This address redirects"
   },
   "redirectsBody": {
-    "message": "Open Canvas in a tab and sign in. Then click the Weekrow button in the toolbar while that tab is open."
+    "message": "Open Canvas in a tab and sign in. Then click the Tools for Canvas button in the toolbar while that tab is open."
   },
   "notCanvasTitle": {
     "message": "This address is not a Canvas site"
@@ -689,7 +689,7 @@
     "message": "Close"
   },
   "settingsTitle": {
-    "message": "Weekrow settings"
+    "message": "Settings"
   },
   "settingWeekStart": {
     "message": "First day of the week"
@@ -715,7 +715,7 @@
     }
   },
   "noCoursesYet": {
-    "message": "Your courses show here after Weekrow loads your list."
+    "message": "Your courses show here after your list loads."
   },
   "settingShowRings": {
     "message": "Show progress rings"
@@ -751,31 +751,31 @@
     "message": "Change"
   },
   "welcomeTitle": {
-    "message": "Welcome to Weekrow"
+    "message": "Welcome to Tools for Canvas"
   },
   "welcomeIntro": {
-    "message": "Your Canvas coursework for the week, as a simple to-do list."
+    "message": "Fixes for Canvas LMS students, starting with a weekly to-do list."
   },
   "welcomePinTitle": {
-    "message": "Pin the Weekrow button"
+    "message": "Pin the Tools for Canvas button"
   },
   "welcomePinChrome": {
-    "message": "Click the Extensions button (the puzzle piece) in the toolbar. Then click the pin next to Weekrow for Canvas."
+    "message": "Click the Extensions button (the puzzle piece) in the toolbar. Then click the pin next to Tools for Canvas."
   },
   "welcomePinEdge": {
-    "message": "Click the Extensions button (the puzzle piece) in the toolbar. Then click the eye next to Weekrow for Canvas."
+    "message": "Click the Extensions button (the puzzle piece) in the toolbar. Then click the eye next to Tools for Canvas."
   },
   "welcomePinFirefox": {
-    "message": "Click the Extensions button (the puzzle piece) in the toolbar. Then click the gear next to Weekrow for Canvas and choose Pin to Toolbar."
+    "message": "Click the Extensions button (the puzzle piece) in the toolbar. Then click the gear next to Tools for Canvas and choose Pin to Toolbar."
   },
   "welcomeOpenTitle": {
     "message": "Find your list"
   },
   "welcomeOpenBody": {
-    "message": "Your list shows on the Canvas dashboard and on course home pages. On any page, click the Weekrow button to open or close it in the side panel."
+    "message": "Your list shows on the Canvas dashboard and on course home pages. On any page, click the Tools for Canvas button to open or close it in the side panel."
   },
   "welcomeOpenBodyFirefox": {
-    "message": "Your list shows on the Canvas dashboard and on course home pages. On any page, click the Weekrow button to open or close it in the sidebar."
+    "message": "Your list shows on the Canvas dashboard and on course home pages. On any page, click the Tools for Canvas button to open or close it in the sidebar."
   },
   "welcomeShortcut": {
     "message": "You can also press $KEYS$.",
@@ -792,7 +792,7 @@
     "message": "Connect your Canvas"
   },
   "welcomeReady": {
-    "message": "All set. Weekrow uses $HOST$.",
+    "message": "All set. Tools for Canvas uses $HOST$.",
     "placeholders": {
       "host": {
         "content": "$1"

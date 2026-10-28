@@ -1,6 +1,7 @@
-# Weekrow for Canvas
+# Tools for Canvas
 
-Weekrow for Canvas shows your Canvas coursework for the week as a simple to-do list, with a progress ring for each course.
+Tools for Canvas is a set of fixes for Canvas LMS students.
+The first fix is a weekly to-do list that shows your Canvas coursework for the week, with a progress ring for each course.
 It is a browser extension for Chrome, Edge and Firefox.
 It has no account, no server of its own and no telemetry.
 
@@ -22,16 +23,16 @@ It has no account, no server of its own and no telemetry.
 
 ## Done marks change Canvas
 
-Weekrow keeps no copy of your work.
+Tools for Canvas keeps no copy of your work.
 Done marks, skip marks and your own tasks live in your Canvas account, as Canvas planner data.
 So the Canvas To Do list and the Canvas mobile apps show the same done marks.
 
 A done mark can have a side effect in Canvas.
 On a module item, Canvas can count a done mark as the module's "Mark as done" requirement.
-The first time you check an item off, Weekrow shows this note: "Done marks sync to Canvas and its apps. On a module item, this can count as 'Mark as done'."
+The first time you check an item off, Tools for Canvas shows this note: "Done marks sync to Canvas and its apps. On a module item, this can count as 'Mark as done'."
 
 Skip uses the Canvas "dismissed" flag.
-The first time you skip an item, Weekrow shows this note: "Skipping also hides this item in Canvas's list of missing work."
+The first time you skip an item, Tools for Canvas shows this note: "Skipping also hides this item in Canvas's list of missing work."
 
 ## Browsers
 
@@ -39,18 +40,18 @@ The first time you skip an item, Weekrow shows this note: "Skipping also hides t
 - Microsoft Edge 144 or later.
 - Firefox 140 or later.
 
-Weekrow runs on desktop browsers only.
+Tools for Canvas runs on desktop browsers only.
 Safari and mobile browsers are not supported.
 
 ## Site access
 
-Weekrow asks for access to `https://*.instructure.com` when you install it.
-If your school uses its own Canvas address, such as `canvas.example.edu`, Weekrow asks for access to that one address when you click "Allow access".
+Tools for Canvas asks for access to `https://*.instructure.com` when you install it.
+If your school uses its own Canvas address, such as `canvas.example.edu`, Tools for Canvas asks for access to that one address when you click "Allow access".
 It reads and writes data only on the Canvas address that you save.
 
 ## Privacy
 
-Weekrow reads your Canvas data in your browser and shows it to you.
+Tools for Canvas reads your Canvas data in your browser and shows it to you.
 It writes only done marks, skip marks and your own tasks, and only to your own Canvas.
 On your device, it stores only its settings, your Canvas address, a change time stamp and which one-time notes you have seen.
 Nothing goes anywhere else: there are no analytics, no error reports and no remote configuration.
@@ -115,10 +116,10 @@ Every commit needs a DCO sign-off.
 
 ## License
 
-Weekrow for Canvas is free software under the GNU General Public License, version 3 only (GPL-3.0-only).
+Tools for Canvas is free software under the GNU General Public License, version 3 only (GPL-3.0-only).
 See [LICENSE](LICENSE).
 
-The name "Weekrow" is not licensed under the GPL.
+The name "Tools for Canvas" is not licensed under the GPL.
 As section 7(e) of the GPL allows, this project grants no rights under trademark law to the name.
 If you distribute a modified version, give it a different name.
 

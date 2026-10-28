@@ -29,7 +29,7 @@ const EXPECTED_TEXT: Record<string, string> = {
   'not-set-up-saved': 'Change your Canvas address',
   checking: 'Checking',
   'checking-saved': 'Keep using',
-  'no-access': 'Weekrow needs access to your Canvas',
+  'no-access': 'Tools for Canvas needs access to your Canvas',
   redirects: 'This address redirects',
   'not-canvas': 'This address is not a Canvas site',
   'not-canvas-saved': 'Keep using',
@@ -128,7 +128,7 @@ describe('setup form', () => {
     setup({ kind: 'redirects', origin: 'https://lms.state.edu', savedOrigin: null });
     expect(
       screen.getByText(
-        'Open Canvas in a tab and sign in. Then click the Weekrow button in the toolbar while that tab is open.',
+        'Open Canvas in a tab and sign in. Then click the Tools for Canvas button in the toolbar while that tab is open.',
       ),
     ).toBeTruthy();
   });
@@ -274,7 +274,7 @@ describe('changing the address', () => {
 
   it('shows no first-run steps on Firefox, because this is not the first run', () => {
     setup(state, 'panel', { browser: 'firefox', shortcut: null });
-    expect(screen.queryByText('Pin the Weekrow button')).toBeNull();
+    expect(screen.queryByText('Pin the Tools for Canvas button')).toBeNull();
   });
 });
 
@@ -282,7 +282,7 @@ describe('first run in the side panel', () => {
   it('shows only the connect form in every browser, because the welcome page opens on install', () => {
     for (const browser of ['chrome', 'edge', 'firefox'] as const) {
       setup(NOT_SET_UP, 'panel', { browser, shortcut: 'Alt+Shift+W' });
-      expect(screen.queryByText('Pin the Weekrow button')).toBeNull();
+      expect(screen.queryByText('Pin the Tools for Canvas button')).toBeNull();
       expect(document.querySelector('.wr-steps')).toBeNull();
       expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Connect your Canvas');
       cleanup();
@@ -362,14 +362,14 @@ describe('in-page surface', () => {
   it('shows the hidden course note with a link to the settings', () => {
     let opened = 0;
     render(<HiddenCourseNote onOpenSettings={() => (opened += 1)} />);
-    expect(screen.getByText('You hid this course in Weekrow.')).toBeTruthy();
+    expect(screen.getByText('You hid this course from the weekly list.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     expect(opened).toBe(1);
   });
 
   it('shows the hidden course note instead of the list on a hidden course', () => {
     const actions = setup(readyState({ view: hiddenCourseView() }), 'inpage');
-    expect(screen.getByText('You hid this course in Weekrow.')).toBeTruthy();
+    expect(screen.getByText('You hid this course from the weekly list.')).toBeTruthy();
     expect(screen.queryByRole('checkbox')).toBeNull();
     expect(screen.queryByRole('heading')).toBeNull();
     expect(document.querySelector('.wr')?.getAttribute('data-surface')).toBe('inpage');

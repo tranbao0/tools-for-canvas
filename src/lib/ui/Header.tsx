@@ -9,7 +9,7 @@ import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from './icons';
 import { GearButton, Heading, type HeadingLevel } from './parts';
 
 export interface HeaderProps {
-  /** `null` while loading: the header keeps its final layout, with the app name for the range. */
+  /** `null` while loading: the header keeps its final layout, with the list title for the range. */
   view: WeekView | null;
   level: HeadingLevel;
   refreshing: boolean;
@@ -38,7 +38,7 @@ export function Header(props: HeaderProps) {
               <span class="wr-sr">{formatWeekRangeLong(view.weekStart, view.weekEnd)}</span>
             </>
           ) : (
-            t('appName')
+            t('listTitle')
           )}
         </Heading>
         <button

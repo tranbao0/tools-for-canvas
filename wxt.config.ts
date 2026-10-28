@@ -36,11 +36,11 @@ export default defineConfig({
       ? {
           browser_specific_settings: {
             gecko: {
-              id: 'weekrow@tranbao0.github.io',
+              id: 'tools-for-canvas@tranbao0.github.io',
               strict_min_version: '140.0',
               data_collection_permissions: { required: ['none'] },
             },
-            // Weekrow is desktop only (decision 14). This only states the minimum version on
+            // The extension is desktop only (decision 14). This only states the minimum version on
             // Android, where the data collection setting needs Firefox 142.
             gecko_android: { strict_min_version: '142.0' },
           },

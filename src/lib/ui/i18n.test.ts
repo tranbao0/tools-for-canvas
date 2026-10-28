@@ -9,7 +9,7 @@ afterEach(() => {
 
 describe('t', () => {
   it('reads the bundled English text when the browser API is not implemented', () => {
-    expect(t('extName')).toBe('Weekrow for Canvas');
+    expect(t('extName')).toBe('Tools for Canvas');
     expect(t('timesIn', 'ET')).toBe('Times in ET');
     expect(t('ringLabelPastDue', 'BIO 101', '3', '5', '1')).toBe(
       'BIO 101: 3 of 5 done this week, 1 past due',
@@ -20,7 +20,7 @@ describe('t', () => {
     const getMessage = vi
       .spyOn(fakeBrowser.i18n, 'getMessage')
       .mockImplementation((name: string) =>
-        name === 'extName' ? 'Weekrow for Canvas' : `native:${name}`,
+        name === 'extName' ? 'Tools for Canvas' : `native:${name}`,
       );
     resetI18nForTests();
     expect(t('thisWeek')).toBe('native:thisWeek');
@@ -29,7 +29,7 @@ describe('t', () => {
 
   it('falls back to the bundle when the browser returns no text', () => {
     vi.spyOn(fakeBrowser.i18n, 'getMessage').mockImplementation((name: string) =>
-      name === 'extName' ? 'Weekrow for Canvas' : '',
+      name === 'extName' ? 'Tools for Canvas' : '',
     );
     resetI18nForTests();
     expect(t('thisWeek')).toBe('This week');

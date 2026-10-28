@@ -1,11 +1,11 @@
 # Privacy policy
 
-This policy covers the Weekrow for Canvas browser extension for Chrome, Microsoft Edge and Firefox.
+This policy covers the Tools for Canvas browser extension for Chrome, Microsoft Edge and Firefox.
 Last updated: 2026-10-27.
 
 ## Summary
 
-Weekrow for Canvas has no account, no server of its own and no telemetry.
+Tools for Canvas has no account, no server of its own and no telemetry.
 It reads your Canvas data in your browser and shows it to you.
 It writes only done marks, skip marks and custom tasks, and only to your own Canvas.
 Nothing goes anywhere else.
@@ -82,7 +82,7 @@ No person reads your data, except you.
 
 ## Chrome Web Store Limited Use
 
-The use of information that Weekrow for Canvas receives adheres to the Chrome Web Store User Data Policy, including the [Limited Use](https://developer.chrome.com/docs/webstore/program-policies/limited-use) requirements.
+The use of information that Tools for Canvas receives adheres to the Chrome Web Store User Data Policy, including the [Limited Use](https://developer.chrome.com/docs/webstore/program-policies/limited-use) requirements.
 In particular:
 
 - The extension uses your data only to show your Canvas coursework as a to-do list, which is its single purpose.

@@ -76,7 +76,9 @@ test.describe('typed address on the welcome page', () => {
     await expect(page.getByRole('status')).toHaveText('Checking school.instructure.com');
     expect(await savedAddress(background)).toBeNull();
     releaseCheck();
-    await expect(page.getByText('All set. Weekrow uses school.instructure.com.')).toBeVisible();
+    await expect(
+      page.getByText('All set. Tools for Canvas uses school.instructure.com.'),
+    ).toBeVisible();
     expect(await savedAddress(background)).toBe(canvas.origin);
     expect(canvas.requests.filter((r) => r.path === '/api/v1/users/self')).toHaveLength(1);
 
@@ -112,7 +114,7 @@ test.describe('typed address on the welcome page', () => {
     await expect(page.getByRole('heading', { name: 'This address redirects' })).toBeVisible();
     await expect(
       page.getByText(
-        'Open Canvas in a tab and sign in. Then click the Weekrow button in the toolbar while that tab is open.',
+        'Open Canvas in a tab and sign in. Then click the Tools for Canvas button in the toolbar while that tab is open.',
       ),
     ).toBeVisible();
     await expect(page.getByText('northfield.instructure.com', { exact: true })).toBeVisible();
@@ -187,7 +189,9 @@ test.describe('an address that cannot be reached', () => {
     // The student fixes the typo, and the check passes.
     await page.getByLabel('Canvas address').fill('school.instructure.com');
     await page.getByRole('button', { name: 'Allow access' }).click();
-    await expect(page.getByText('All set. Weekrow uses school.instructure.com.')).toBeVisible();
+    await expect(
+      page.getByText('All set. Tools for Canvas uses school.instructure.com.'),
+    ).toBeVisible();
     expect(await savedAddress(background)).toBe(canvas.origin);
     // Nothing but the two checks left the fake Canvas.
     expect(canvas.blocked).toHaveLength(2);
@@ -239,7 +243,9 @@ test.describe('changing the address', () => {
     await expect(page.getByRole('heading', { name: 'Change your Canvas address' })).toHaveCount(0);
     expect(await savedAddress(background)).toBe(canvas.origin);
     await welcome.bringToFront();
-    await expect(welcome.getByText('All set. Weekrow uses school.instructure.com.')).toBeVisible();
+    await expect(
+      welcome.getByText('All set. Tools for Canvas uses school.instructure.com.'),
+    ).toBeVisible();
     expect(canvas.unmatched).toEqual([]);
   });
 });

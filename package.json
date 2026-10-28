@@ -1,8 +1,8 @@
 {
-  "name": "weekrow",
+  "name": "tools-for-canvas",
   "version": "0.1.0",
   "private": true,
-  "description": "Your Canvas coursework for the week, as a simple to-do list.",
+  "description": "Fixes for Canvas LMS students: a weekly to-do list, missing work and due dates.",
   "license": "GPL-3.0-only",
   "type": "module",
   "engines": {

@@ -1,4 +1,4 @@
-# Contributing to Weekrow for Canvas
+# Contributing to Tools for Canvas
 
 Thank you for your help.
 This page tells you how to set up the project, which checks to run and how to sign off your work.

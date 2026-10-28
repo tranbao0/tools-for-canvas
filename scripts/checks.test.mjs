@@ -102,7 +102,7 @@ const FIREFOX_MANIFEST = {
   action: { default_title: '__MSG_actionTitle__' },
   browser_specific_settings: {
     gecko: {
-      id: 'weekrow@tranbao0.github.io',
+      id: 'tools-for-canvas@tranbao0.github.io',
       strict_min_version: '140.0',
       data_collection_permissions: { required: ['none'] },
     },

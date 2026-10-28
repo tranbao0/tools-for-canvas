@@ -95,7 +95,7 @@ export function Bar(props: { level: HeadingLevel; onSettings?: () => void }) {
   return (
     <div class="wr-head wr-bar">
       <Heading level={props.level} class="wr-range">
-        {t('appName')}
+        {t('listTitle')}
       </Heading>
       {props.onSettings && <GearButton onClick={props.onSettings} />}
     </div>

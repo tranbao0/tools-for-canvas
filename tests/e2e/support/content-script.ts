@@ -3,7 +3,7 @@ import { expect } from './extension';
 import { readPageFixture } from './fake-canvas';
 
 /** The name Chromium gives the isolated world of the extension's content scripts. */
-const EXTENSION_NAME = 'Weekrow for Canvas';
+const EXTENSION_NAME = 'Tools for Canvas';
 
 export interface ContentScriptWorld {
   /**
@@ -14,7 +14,7 @@ export interface ContentScriptWorld {
   send(message: unknown): Promise<unknown>;
 }
 
-/** Waits for the Weekrow content script in the page's top frame and returns its world. */
+/** Waits for the extension content script in the page's top frame and returns its world. */
 export async function contentScriptWorld(page: Page): Promise<ContentScriptWorld> {
   const cdp = await page.context().newCDPSession(page);
   const worlds: { id: number; frameId: unknown }[] = [];
