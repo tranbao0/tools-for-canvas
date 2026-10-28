@@ -189,8 +189,9 @@ test.describe('course home page', () => {
     page,
     background,
   }) => {
+    // The adapter takes the course from the path, so the regular course home page stands in for the club's.
     const { canvas } = await serveScenario(context, [
-      { path: `/courses/${IDS.courses.club}`, page: 'course-home-hidden-course' },
+      { path: `/courses/${IDS.courses.club}`, page: 'course-home' },
     ]);
     await saveAddress(background, canvas.origin);
     await saveSettings(background, { ...DEFAULT_SETTINGS, hiddenCourseIds: [IDS.courses.club] });

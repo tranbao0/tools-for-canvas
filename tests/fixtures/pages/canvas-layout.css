@@ -1,0 +1,264 @@
+/* Canvas layout at desktop widths, after app/stylesheets/base/_ic_app_layout.scss,
+   _layout.scss, _right-side.scss and _variables.scss ($ic-sp: 12px, right side 288px,
+   course menu 192px, global nav 84px, breakpoints 992px and 1140px). */
+/* Canvas's default brand, which Canvas sets on :root from dist/brandable_css/default/variables-*.css. */
+:root {
+  --ic-brand-primary: #2B7ABC;
+  --ic-brand-font-color-dark: #273540;
+  --ic-link-color: #0E68B3;
+  --ic-link-color-darkened-10: #0D5EA2;
+  --ic-brand-font-color-dark-lightened-28: #636D75;
+  --ic-brand-button--primary-bgd: var(--ic-brand-primary);
+  --ic-brand-button--primary-text: #ffffff;
+  --ic-brand-global-nav-bgd: #334451;
+}
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  font-family: "Lato Extended", Lato, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ic-brand-font-color-dark);
+  background: #fff;
+}
+a { color: var(--ic-link-color); text-decoration: none; }
+a:hover { color: var(--ic-link-color-darkened-10); text-decoration: underline; }
+h1, h2, h3, h4 { margin: 0; font-weight: 400; line-height: 1.25; }
+p { margin: 0 0 6px; }
+ul { margin: 0; padding: 0; }
+button { font: inherit; }
+.screenreader-only {
+  position: absolute !important;
+  width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); border: 0;
+}
+.ic-app { box-sizing: border-box; min-height: 100vh; }
+
+/* Global navigation */
+#mobile-header { display: none; }
+.ic-app-header {
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: 100;
+  width: 84px; background: var(--ic-brand-global-nav-bgd); color: #fff;
+  display: flex; flex-direction: column;
+}
+#skip_navigation_link { position: absolute; left: -10000px; }
+.ic-app-header__logomark-container {
+  height: 85px; display: flex; align-items: center; justify-content: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+}
+.ic-app-header__logomark {
+  width: 46px; height: 46px; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 22%, #e72429 23% 100%);
+}
+.ic-app-header__menu-list { list-style: none; }
+.ic-app-header__menu-list-link {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 10px 0 9px; color: #fff; font-size: 12px; line-height: 1.2; text-align: center;
+}
+.ic-app-header__menu-list-link:hover { text-decoration: none; background: rgba(0, 0, 0, 0.2); }
+.menu-item-icon-container {
+  width: 22px; height: 22px; margin-bottom: 5px;
+  border: 2px solid currentColor; border-radius: 6px;
+}
+.ic-avatar { border-radius: 50%; background: #c7cdd1; border-color: #fff; }
+.ic-app-header__menu-list-item--active { background: #fff; }
+.ic-app-header__menu-list-item--active .ic-app-header__menu-list-link { color: var(--ic-link-color); }
+
+/* Columns */
+.ic-Layout-wrapper { box-sizing: border-box; min-height: 100vh; display: flex; flex-direction: column; }
+body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
+.ic-app-nav-toggle-and-crumbs {
+  display: flex; align-items: center; box-sizing: border-box;
+  min-height: 72px; margin: 0 24px; border-bottom: 1px solid #e8eaec;
+}
+.ic-app-course-nav-toggle {
+  width: 36px; height: 36px; margin-right: 12px; border: 0; border-radius: 4px;
+  background: transparent; color: #2d3b45; font-size: 20px; cursor: pointer;
+}
+#breadcrumbs ul { list-style: none; display: flex; gap: 8px; font-size: 18px; }
+#breadcrumbs li + li::before { content: ">"; margin-right: 8px; color: #6b7780; }
+#breadcrumbs li.home a::before { content: "\2302"; color: #2d3b45; font-size: 22px; line-height: 1; }
+.ic-Layout-columns { position: relative; box-sizing: border-box; z-index: 10; flex: 1 0 auto; min-width: 1px; }
+.ic-app-main-content { box-sizing: border-box; flex: 1; min-width: 1px; }
+.ic-Layout-contentWrapper { box-sizing: border-box; }
+.ic-Layout-contentMain { padding: 36px 48px 48px; }
+#right-side-wrapper { display: none; position: relative; }
+.with-right-side #right-side-wrapper { display: block; }
+.ic-app-main-content__secondary { box-sizing: border-box; min-width: 1px; padding: 24px; }
+#right-side { position: relative; z-index: 10; min-height: 20px; }
+#left-side {
+  position: absolute; top: 0; right: 100%; box-sizing: border-box;
+  width: 192px; padding: 24px 12px 12px 24px;
+}
+/* Canvas pads the sticky course menu frame, not the menu (_ic_app_layout.scss). */
+#left-side.ic-sticky-on { bottom: 0; padding: 0; }
+.ic-sticky-frame { box-sizing: border-box; padding: 24px 12px 12px 24px; }
+#section-tabs-header-subtitle { display: block; padding: 0 0 12px 12px; font-size: 12px; color: #6b7780; }
+#section-tabs { list-style: none; }
+#section-tabs a {
+  display: block; padding: 5px 8px 5px 12px; font-size: 14px;
+  border-left: 3px solid transparent; color: #2b7abc;
+}
+#section-tabs a.active { border-left-color: #2d3b45; color: #2d3b45; font-weight: 700; }
+
+@media (min-width: 992px) {
+  .ic-Layout-wrapper { margin-left: 84px; }
+  body.course-menu-expanded .ic-Layout-columns { margin-left: 192px; }
+  body:not(.course-menu-expanded) .ic-app-main-content { display: flex; }
+  body:not(.course-menu-expanded) .ic-Layout-contentWrapper { flex: 1; min-width: 1px; }
+  body:not(.course-menu-expanded) .ic-app-main-content__secondary { flex: none; width: 288px; padding-left: 24px; }
+}
+@media (min-width: 1140px) {
+  body.course-menu-expanded .ic-app-main-content { display: flex; }
+  body.course-menu-expanded .ic-Layout-contentWrapper { flex: 1; min-width: 1px; }
+  body.course-menu-expanded .ic-app-main-content__secondary { flex: none; width: 288px; padding-left: 24px; }
+}
+@media (max-width: 991px) {
+  .ic-app-header { display: none; }
+  #mobile-header {
+    display: flex; align-items: center; gap: 12px; height: 50px; padding: 0 12px;
+    background: var(--ic-brand-global-nav-bgd); color: #fff;
+  }
+  .mobile-header-title { flex: 1; text-align: center; font-weight: 700; }
+  #left-side, .ic-app-nav-toggle-and-crumbs { display: none !important; }
+  .ic-Layout-contentMain { padding: 24px 12px; }
+  .ic-app-main-content__secondary { padding-left: 12px; padding-right: 12px; }
+}
+
+/* Buttons */
+.btn, .Button {
+  display: inline-block; box-sizing: border-box; padding: 8px 14px;
+  border: 1px solid #e8eaec; border-radius: 3px; background: #f2f4f4;
+  color: #273540; font-size: 16px; line-height: 22px; cursor: pointer;
+}
+.btn:hover, .Button:hover { text-decoration: none; color: #273540; background: #e5e9e9; }
+.button-sidebar-wide { display: block; width: 100%; margin: 5px auto; text-align: left; }
+
+/* Right side */
+#right-side h2, #right-side .h2 {
+  overflow: hidden; margin: 0 0 6px; padding-bottom: 6px;
+  border-bottom: 1px solid #e8eaec; font-size: 16px; font-weight: 700; line-height: 1.5;
+}
+#right-side .shared-space { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 0; }
+#right-side .shared-space h2 { display: inline-block; margin-bottom: 0; padding-bottom: 0; border-bottom-style: none; }
+#right-side .todo-list-header { margin-top: 17px; }
+#right-side .events_list { margin-bottom: 18px; }
+#right-side * + .events_list { margin-top: 18px; }
+.event-list-view-calendar { font-size: 12px; }
+#right-side .right-side-list { list-style: none; margin: -6px 0 12px; }
+#right-side .right-side-list li a { display: flex; padding: 12px 0; font-size: 14px; }
+#right-side .right-side-list li a:hover { text-decoration: none; }
+#right-side .right-side-list li a > i {
+  box-sizing: border-box; min-width: 24px; padding-right: 12px; color: hsl(0, 0%, 35%); font-style: normal;
+}
+#right-side .right-side-list li a > i.icon-check { color: #03893d; }
+/* Stand-ins for Canvas's icon font, which a fixture page cannot load. Canvas's own CSS wins over them. */
+:where(.icon-check)::before { content: "\2713"; }
+:where(.icon-assignment, .icon-calendar-month)::before { content: "\25CB"; }
+#right-side .right-side-list b, #right-side .right-side-list em, #right-side .right-side-list p {
+  display: block; font-weight: 400; line-height: 1.3;
+}
+#right-side .right-side-list p, #right-side .right-side-list .more_link { margin-bottom: 0; font-size: 12px; color: #777; }
+#right-side .event-details__title + * { margin-top: 3px; }
+#right-side .recent_feedback_title { margin-bottom: 3px; }
+#right-side .right-side-list small { display: block; font-size: 13px; }
+#right-side .right-side-list .todo-badge-wrapper { min-width: 40px; padding-right: 12px; box-sizing: border-box; text-align: right; }
+.todo-badge {
+  display: inline-block; min-width: 18px; padding: 0 4px; border-radius: 9px;
+  background: #e72429; color: #fff; font-size: 12px; text-align: center;
+}
+.todo-list { margin-top: 6px; }
+
+/* Student To Do list that React renders into .Sidebar__TodoListContainer, with the values of
+   react_todo_sidebar.css and the InstUI Link, Text, InlineList and CloseButton in ToDoItem.tsx. */
+#planner-todosidebar-item-list { list-style: none; margin: 0; padding: 0; }
+.ToDoSidebarItem { display: flex; align-items: flex-start; margin: 0 0 6px; line-height: 1.1; }
+.ToDoSidebarItem__Icon { display: block; flex: none; width: 1em; height: 1em; margin-top: 4px; font-size: 1rem; color: var(--ic-brand-font-color-dark); }
+.ToDoSidebarItem__Info { flex: 1; min-width: 0; margin-top: 4px; padding: 0 6px 0 9px; }
+.ToDoSidebarItem__Title { margin-bottom: 3px; overflow: hidden; font-size: 14px; line-height: 1.125; white-space: nowrap; text-overflow: ellipsis; }
+.ToDoSidebarItem__Title a { color: var(--ic-link-color); text-decoration: underline; }
+.ToDoSidebarItem__Title a:hover { color: #0a4d84; text-decoration: none; }
+.fixture-todo-context { font-size: 14px; font-weight: 700; line-height: 1.125; color: #586874; }
+.fixture-info-row { display: block; margin: 0; padding: 0; list-style: none; }
+.fixture-info-row li { display: inline-block; font-size: 14px; line-height: 1.25; color: var(--ic-brand-font-color-dark); }
+.fixture-info-row li:not(:last-child)::after { content: "|"; margin: 0 8px; }
+.ToDoSidebarItem__Close button {
+  display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 4px;
+  background: transparent; color: var(--ic-brand-font-color-dark); font-size: 16px; cursor: pointer;
+}
+.ToDoSidebarItem__Close button:hover { background: #f2f4f4; }
+.fixture-show-all { text-align: center; }
+.fixture-show-all button { border: 0; background: none; color: var(--ic-link-color); font: inherit; cursor: pointer; }
+.fixture-show-all button:hover { color: #0a4d84; text-decoration: underline; }
+
+/* Dashboard */
+.ic-Dashboard-header__layout {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid #e8eaec;
+}
+.ic-Dashboard-header__title { font-size: 28px; }
+.ic-Dashboard-header__actions { display: flex; align-items: center; gap: 12px; }
+.ic-DashboardCard__box { display: flex; flex-wrap: wrap; gap: 0 36px; }
+.ic-DashboardCard {
+  width: 262px; margin-bottom: 36px; overflow: hidden;
+  border-radius: 4px; background: #fff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+.ic-DashboardCard__header_hero { height: 146px; }
+.ic-DashboardCard__header_content { padding: 12px 24px 6px; }
+.ic-DashboardCard__header-title { margin: 0 0 4px; font-size: 16px; font-weight: 700; }
+.ic-DashboardCard__header-subtitle { font-size: 14px; color: #273540; }
+.ic-DashboardCard__header-term { font-size: 12px; color: #6b7780; }
+.ic-DashboardCard__action-container { display: flex; gap: 24px; padding: 6px 24px 14px; }
+.ic-DashboardCard__action { width: 24px; height: 24px; border-radius: 4px; background: #e8eaec; }
+.ic-Dashboard-Activity .recent_activity { list-style: none; }
+.stream-category {
+  margin-bottom: 12px; padding: 12px 16px;
+  border: 1px solid #c7cdd1; border-radius: 4px;
+}
+.stream-category .category_name { font-weight: 700; }
+.stream-category .details { font-size: 14px; color: #6b7780; }
+.CanvasPlanner__HeaderContainer .Button + .Button { margin-left: 8px; }
+.fixture-planner-day { padding: 12px 0; border-top: 1px solid #c7cdd1; }
+.fixture-planner-day h2 { margin-bottom: 8px; font-size: 18px; font-weight: 700; }
+.fixture-planner-item {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 8px; padding: 10px 12px;
+  border-left: 4px solid #c7cdd1; background: #f5f5f5; font-size: 14px;
+}
+.fixture-planner-item .fixture-planner-course { min-width: 120px; font-size: 12px; text-transform: uppercase; }
+
+/* Widget dashboard */
+.fixture-widget-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.fixture-widget-header h1 { flex: 1; font-size: 28px; }
+.fixture-widget-tabs { display: flex; gap: 24px; margin-bottom: 24px; border-bottom: 1px solid #c7cdd1; }
+.fixture-widget-tabs span { padding: 8px 0; }
+.fixture-widget-tabs span[aria-selected="true"] { border-bottom: 3px solid #2b7abc; font-weight: 700; }
+[data-testid="widget-columns"] { display: flex; align-items: flex-start; gap: 12px; }
+[data-testid="widget-column-1"] { flex: 2; min-width: 0; }
+[data-testid="widget-column-2"] { flex: 1; min-width: 0; }
+@media (max-width: 1379px) { [data-testid="widget-columns"] { flex-direction: column; align-items: stretch; } }
+.fixture-widget {
+  margin-bottom: 12px; padding: 20px 24px;
+  border: 1px solid #d7dade; border-radius: 12px; background: #fff;
+}
+.fixture-widget h2 { margin-bottom: 12px; font-size: 18px; font-weight: 700; }
+.fixture-widget ul { list-style: none; }
+.fixture-widget li { padding: 8px 0; border-top: 1px solid #eef0f2; font-size: 14px; }
+
+/* Course home */
+.context_module {
+  margin-bottom: 24px; border: 1px solid #c7cdd1; border-radius: 4px; overflow: hidden;
+}
+.context_module .ig-header { padding: 10px 16px; background: #f5f5f5; font-weight: 700; }
+.context_module .ig-list { list-style: none; }
+.context_module .ig-row { padding: 10px 16px 10px 40px; border-top: 1px solid #e8eaec; font-size: 14px; }
+.context_module .ig-details { display: block; font-size: 12px; color: #6b7780; }
+
+/* K-5 subject */
+.k5-subject-header { margin: -36px -48px 24px; padding: 32px 48px; color: #fff; }
+.k5-subject-header h1 { font-size: 32px; font-weight: 700; }
+.k5-tabs { display: flex; gap: 8px; margin-bottom: 24px; }
+.k5-tabs span { padding: 8px 16px; border-radius: 18px; background: #f5f5f5; font-weight: 700; }
+.k5-tabs span[aria-selected="true"] { background: #2d3b45; color: #fff; }
+.k5-card { margin-bottom: 12px; padding: 16px; border: 1px solid #c7cdd1; border-radius: 8px; }
+
+.mobile-header-hamburger { border: 0; background: transparent; color: #fff; font-size: 22px; }

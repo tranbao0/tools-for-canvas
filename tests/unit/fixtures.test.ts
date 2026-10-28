@@ -1,9 +1,8 @@
 // @vitest-environment happy-dom
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { PlannableType } from '../../src/lib/canvas/types';
 import { CANVAS_ERRORS, NOT_CANVAS_RESPONSES, invalidAssignmentIds } from '../fixtures/errors';
-import { FIXTURE_PAGES, fixturePagePath, type FixturePage } from '../fixtures/pages';
+import { FIXTURE_PAGES, renderFixturePage, type FixturePage } from '../fixtures/pages';
 import {
   IDS,
   SCENARIO,
@@ -389,7 +388,7 @@ describe('CANVAS_ERRORS', () => {
 });
 
 describe.each(Object.entries(FIXTURE_PAGES))('page %s', (_name, page: FixturePage) => {
-  const html = readFileSync(fixturePagePath(page), 'utf8');
+  const html = renderFixturePage(page);
   const isCanvas = page.url.startsWith('https://school.instructure.com/');
 
   /** The page after Canvas's late steps, which the page's own script replays in a browser. */
@@ -449,7 +448,7 @@ describe.each(Object.entries(FIXTURE_PAGES))('page %s', (_name, page: FixturePag
 describe('page layouts that must get no injected node', () => {
   it('hides the right column in List View', () => {
     const doc = new DOMParser().parseFromString(
-      readFileSync(fixturePagePath(FIXTURE_PAGES.dashboardListView), 'utf8'),
+      renderFixturePage(FIXTURE_PAGES.dashboardListView),
       'text/html',
     );
     expect(doc.querySelector('#dashboard-planner-header')).not.toBeNull();
@@ -459,7 +458,7 @@ describe('page layouts that must get no injected node', () => {
 
   it('renders the widget dashboard into #content with an empty right side', () => {
     const doc = new DOMParser().parseFromString(
-      readFileSync(fixturePagePath(FIXTURE_PAGES.dashboardWidgets), 'utf8'),
+      renderFixturePage(FIXTURE_PAGES.dashboardWidgets),
       'text/html',
     );
     const step = doc.querySelector('template[data-fixture-step][data-target="#content"]');

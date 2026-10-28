@@ -2,15 +2,13 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { BrowserContext, Request, Route } from '@playwright/test';
 import { ROOT } from '../../../scripts/lib/ensure-build.mjs';
+import { renderFixturePageByName } from '../../fixtures/pages';
 
 /** The origin of the fake Canvas site. */
 export const FAKE_CANVAS_ORIGIN = 'https://school.instructure.com';
 
 /** JSON fixtures with the real Canvas response shape, read by name: `<name>.json`. */
 export const FIXTURES_DIR = path.join(ROOT, 'tests', 'fixtures');
-
-/** Saved copies of Canvas pages, read by name: `<name>.html`. */
-export const PAGES_DIR = path.join(FIXTURES_DIR, 'pages');
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 
@@ -31,7 +29,7 @@ interface RouteMatch {
   headers?: Readonly<Record<string, string>>;
 }
 
-/** Serves `tests/fixtures/pages/<page>.html`. */
+/** Serves the fake page built from `tests/fixtures/pages/<page>.html`. */
 export interface PageRoute extends RouteMatch {
   page: string;
   json?: never;
@@ -142,9 +140,9 @@ export function readJsonFixture(name: string): string {
   return readFileSync(fixturePath(FIXTURES_DIR, name, '.json'), 'utf8');
 }
 
-/** Reads `tests/fixtures/pages/<name>.html` as text. */
+/** Builds the full HTML of the fake page in `tests/fixtures/pages/<name>.html`. */
 export function readPageFixture(name: string): string {
-  return readFileSync(fixturePath(PAGES_DIR, name, '.html'), 'utf8');
+  return renderFixturePageByName(name);
 }
 
 function lowerCaseKeys(headers: Readonly<Record<string, string>> = {}): Record<string, string> {

@@ -64,26 +64,31 @@ These helpers compute local days and Canvas-style instants from one given `now`.
 ## pages.ts
 
 `FIXTURE_PAGES` lists each page with the URL to serve it at and what the in-page adapter must do there.
-`fixturePagePath(page)` gives the file path for a route handler.
+It also holds the title and the body class of each Canvas page.
+`renderFixturePage(page)` returns the full HTML of a page.
+`renderFixturePageByName(name)` does the same for a file name without `.html`, such as `course-home`.
+The fake Canvas route `{ page: 'course-home' }`, the unit tests and the visual spec all use these functions.
 
 ## pages/
 
-Each Canvas page has `#application.ic-app`, an inline script that sets `INST` and `ENV`, and Canvas's column layout.
+Each Canvas page file holds only the markup inside `<body>`.
+`renderFixturePage` wraps that markup in the head that every Canvas page shares.
+`canvas-layout.css` is the shared stylesheet.
+`pages.ts` holds the `INST` and `ENV` script, which sets only the fields that the extension or a test reads.
+`replay-steps.js` is the script that replays Canvas's late steps, and it runs at the end of `<body>`.
+A page needs `#application.ic-app`, the shared script that sets `INST` and `ENV`, and Canvas's column layout.
 At 992 px and wider, the right column is 288 px wide with 240 px of content; below that it stacks under the content.
 Canvas fills parts of a page after load, so each page replays those steps from `template[data-fixture-step]` elements.
 Wait for `html[data-fixture-ready="true"]` before you assert, or add `?fixture_delay_ms=0` to the URL.
 The pages load no other files, and each page sets an empty favicon so the browser requests nothing.
+`not-canvas.html` is the one complete document, because it is not a Canvas page.
 
 ### dashboard-card-view.html
 
 The classic Card View dashboard at `/`, with `with-right-side` on the body.
 After load, `#right-side` gets the student To Do, Recent Feedback and View Grades, which is the real student layout.
 Coming Up shows only on the mixed-role page.
-
-### dashboard-recent-activity.html
-
-The Recent Activity dashboard at `/`, with the stream in `#dashboard-activity`.
-Its right side has the student To Do, Recent Feedback and View Grades, which is the real student layout.
+The adapter treats Recent Activity the same as Card View, so `src/lib/inpage/testing/fixtures.ts` covers that layout in the adapter unit tests.
 
 ### dashboard-list-view.html
 
@@ -107,11 +112,8 @@ The list mounts above the teacher To Do, which stays visible.
 
 The biology course home at `/courses/101`, with the course navigation open.
 Its right side has the course buttons, the course To Do in `.todo-list.Sidebar__TodoListContainer` and Recent Feedback.
-
-### course-home-hidden-course.html
-
-The home page of the club course at `/courses/106`, which the scenario student hides.
-The list shows a one-line note with a settings link here instead of the list.
+A test can serve it at another course path, because the adapter takes the course id from the path.
+The hidden course test serves it at `/courses/106`, the club course that the scenario student hides.
 
 ### course-home-k5.html
 
