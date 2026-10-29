@@ -36,7 +36,7 @@ This extension has no account, no server of its own and no telemetry.
 | 6 | List layout and item placement | Items are placed by date and done state only, each in one group |
 | 7 | Item status | One set of status chips, the same on every item in every view |
 | 8 | What counts as done, and the rings | The Canvas planner rule, plus excused and graded work; rings count items |
-| 9 | Week, time zone and past-due work | A calendar week in the Canvas time zone, a Past due group back to the term start (at most 16 weeks), and a look-ahead for tomorrow |
+| 9 | Week, time zone and past-due work | A span the student picks (Day, Week, 2 weeks, Month or 2 to 90 days), on the calendar in the Canvas time zone, a Past due group back to the term start (at most 16 weeks), and a look-ahead for tomorrow |
 | 10 | Custom tasks | Create, edit and delete Canvas planner notes |
 | 11 | Data loading, refresh and errors | One data owner in the background, with a memory-only cache |
 | 12 | Build tools and UI framework | WXT, TypeScript and Preact |
@@ -45,7 +45,7 @@ This extension has no account, no server of its own and no telemetry.
 | 15 | Publishing and privacy | Three stores, one privacy policy, no data collection |
 | 16 | License | GPL-3.0-only, with DCO sign-off for contributions |
 | 17 | Name | Tools for Canvas |
-| 18 | Settings | Five settings, also shown inside the panel and the in-page list |
+| 18 | Settings | Six settings, also shown inside the panel and the in-page list |
 | 19 | Accessibility, language and theme | WCAG 2.2 AA, English text, a Theme setting with Automatic, Light and Dark |
 | 20 | No-telemetry guarantee | One fetch wrapper that only reaches the student's Canvas |
 | 21 | Visual design | Looks like a native part of Canvas, not an add-on sidebar |
@@ -260,7 +260,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - Today and Tomorrow show in full.
     A group with more than 4 items shows its first 3, and a "Show N more" link opens the rest in place.
     A link that would hide only one item takes the same space as that item, so smaller groups show in full.
-  - The later days of the week, No due date and Done sit behind one link, such as "Rest of the week (9)", that opens them in place.
+  - The later days of the shown span, No due date and Done sit behind one link that names the span, such as "Rest of the week (9)" or "Rest of the month (40)", and opens them in place.
   - A week with nothing due today or tomorrow shows the next day that has work, so the glance is never empty while work is due.
   - What the student opened stays open while the page stays open.
   - The side panel shows every item, with no summary line.
@@ -670,8 +670,26 @@ Availability is a separate small marker next to the status chip, because it answ
   `locale` is null for most students, so it is only a fallback, and the browser language comes after it.
 - The start day is Sunday for English (US), Monday for English (UK), English (Australia) and most European languages, and Saturday for Arabic and Persian [10].
 - Canvas has no setting for the first day of the week [10], so the extension has its own setting.
-- The arrows move one week.
-  A "This week" button returns to the current week.
+- The arrows move by the shown span.
+  A "Today" button returns to the span that holds today.
+
+**The shown span:**
+
+The owner asked on 2026-10-29 that students pick the span the list shows, not only one week.
+
+- The student picks a span with a small control next to the arrows: Day, Week, 2 weeks, Month, or "Custom: N days".
+- Spans follow the calendar:
+  - Day shows one day.
+  - Week starts on the week start day.
+  - 2 weeks shows the week that holds today and the next week, and the arrows move two weeks.
+  - Month shows the calendar month.
+  - A custom span holds 2 to 90 days, starts today, and the arrows move by N days.
+- The choice is one saved setting (decision 18).
+  It stays after the browser closes, and the side panel and the in-page list use the same span.
+- The rings, Past due and the look-ahead follow the shown span.
+  Where this document says "the viewed week" or "this week", read "the shown span" and "the span that holds today".
+- A long span loads in several planner requests on the first view.
+  The cache keeps them, so the arrows and later views reuse what it holds (decision 11).
 - Date math uses the Temporal API.
   Chrome and Edge ship it from version 144, and Firefox from version 139 [18].
 
@@ -713,9 +731,9 @@ Availability is a separate small marker next to the status chip, because it answ
 
 **Past-due work:**
 
-- Past due shows in the current-week view only.
-  In other weeks, items stay on their day with their status chip.
-- Past-due items from earlier in the current week also go to Past due, not to their day.
+- Past due shows only in the span that holds today.
+  In other spans, items stay on their day with their status chip.
+- Past-due items from earlier in the current span also go to Past due, not to their day.
 
 **Look-ahead:**
 
@@ -1211,10 +1229,11 @@ The owner chose it on 2026-10-27.
 
 **Question:** Which settings does version 1 have?
 
-**Decision:** Five settings.
+**Decision:** Six settings.
 
 | Setting | Default |
 |---|---|
+| Shown span (decision 9) | Week |
 | First day of the week | Automatic, from the Canvas language |
 | Hidden courses | None, so all active student courses show |
 | Show progress rings | On |
