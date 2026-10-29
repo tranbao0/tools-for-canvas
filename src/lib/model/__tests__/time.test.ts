@@ -6,30 +6,46 @@ import {
   parseInstant,
   resolveTimeZone,
   sameTimeZone,
-  weekBounds,
+  spanBounds,
 } from '../time';
+import type { IsoDayOfWeek, Span } from '../types';
 import { course } from './builders';
 
+const WEEK: Span = { kind: 'week', days: 7 };
 const NY = 'America/New_York';
 /** Tuesday 2026-10-27, 2:00 pm in New York. */
 const TUESDAY_2PM = '2026-10-27T18:00:00Z';
 
-describe('weekBounds', () => {
+describe('spanBounds', () => {
   it('gives a Sunday-to-Saturday week in New York', () => {
-    expect(weekBounds({ now: TUESDAY_2PM, timeZone: NY, weekStartDay: 7, weekOffset: 0 })).toEqual({
+    expect(
+      spanBounds({
+        now: TUESDAY_2PM,
+        timeZone: NY,
+        weekStartDay: 7,
+        span: WEEK,
+        spanOffset: 0,
+      }),
+    ).toEqual({
       today: '2026-10-27',
       tomorrow: '2026-10-28',
-      weekStart: '2026-10-25',
-      weekEnd: '2026-10-31',
+      spanStart: '2026-10-25',
+      spanEnd: '2026-10-31',
       start: '2026-10-25T04:00:00.000Z',
       end: '2026-11-01T04:00:00.000Z',
     });
   });
 
   it('covers the daylight saving change on 2026-11-01, so the week is one hour longer', () => {
-    const bounds = weekBounds({ now: TUESDAY_2PM, timeZone: NY, weekStartDay: 7, weekOffset: 1 });
-    expect(bounds.weekStart).toBe('2026-11-01');
-    expect(bounds.weekEnd).toBe('2026-11-07');
+    const bounds = spanBounds({
+      now: TUESDAY_2PM,
+      timeZone: NY,
+      weekStartDay: 7,
+      span: WEEK,
+      spanOffset: 1,
+    });
+    expect(bounds.spanStart).toBe('2026-11-01');
+    expect(bounds.spanEnd).toBe('2026-11-07');
     expect(bounds.start).toBe('2026-11-01T04:00:00.000Z');
     expect(bounds.end).toBe('2026-11-08T05:00:00.000Z');
     const hours = Temporal.Instant.from(bounds.start)
@@ -39,68 +55,310 @@ describe('weekBounds', () => {
   });
 
   it('starts on Monday, with the week end after the daylight saving change', () => {
-    const bounds = weekBounds({ now: TUESDAY_2PM, timeZone: NY, weekStartDay: 1, weekOffset: 0 });
-    expect(bounds.weekStart).toBe('2026-10-26');
-    expect(bounds.weekEnd).toBe('2026-11-01');
+    const bounds = spanBounds({
+      now: TUESDAY_2PM,
+      timeZone: NY,
+      weekStartDay: 1,
+      span: WEEK,
+      spanOffset: 0,
+    });
+    expect(bounds.spanStart).toBe('2026-10-26');
+    expect(bounds.spanEnd).toBe('2026-11-01');
     expect(bounds.start).toBe('2026-10-26T04:00:00.000Z');
     expect(bounds.end).toBe('2026-11-02T05:00:00.000Z');
   });
 
   it('starts on Saturday', () => {
-    const bounds = weekBounds({ now: TUESDAY_2PM, timeZone: NY, weekStartDay: 6, weekOffset: 0 });
-    expect(bounds.weekStart).toBe('2026-10-24');
-    expect(bounds.weekEnd).toBe('2026-10-30');
+    const bounds = spanBounds({
+      now: TUESDAY_2PM,
+      timeZone: NY,
+      weekStartDay: 6,
+      span: WEEK,
+      spanOffset: 0,
+    });
+    expect(bounds.spanStart).toBe('2026-10-24');
+    expect(bounds.spanEnd).toBe('2026-10-30');
   });
 
   it('moves into the new week at exactly 00:00 on its start day', () => {
-    const atMidnight = weekBounds({
+    const atMidnight = spanBounds({
       now: '2026-11-01T04:00:00Z',
       timeZone: NY,
       weekStartDay: 7,
-      weekOffset: 0,
+      span: WEEK,
+      spanOffset: 0,
     });
     expect(atMidnight.today).toBe('2026-11-01');
-    expect(atMidnight.weekStart).toBe('2026-11-01');
-    const justBefore = weekBounds({
+    expect(atMidnight.spanStart).toBe('2026-11-01');
+    const justBefore = spanBounds({
       now: '2026-11-01T03:59:59.999Z',
       timeZone: NY,
       weekStartDay: 7,
-      weekOffset: 0,
+      span: WEEK,
+      spanOffset: 0,
     });
     expect(justBefore.today).toBe('2026-10-31');
-    expect(justBefore.weekStart).toBe('2026-10-25');
+    expect(justBefore.spanStart).toBe('2026-10-25');
   });
 
   it('moves back by whole weeks', () => {
-    const bounds = weekBounds({ now: TUESDAY_2PM, timeZone: NY, weekStartDay: 7, weekOffset: -2 });
-    expect(bounds.weekStart).toBe('2026-10-11');
-    expect(bounds.weekEnd).toBe('2026-10-17');
+    const bounds = spanBounds({
+      now: TUESDAY_2PM,
+      timeZone: NY,
+      weekStartDay: 7,
+      span: WEEK,
+      spanOffset: -2,
+    });
+    expect(bounds.spanStart).toBe('2026-10-11');
+    expect(bounds.spanEnd).toBe('2026-10-17');
   });
 
   it('uses the Canvas zone for the day: Asia/Tokyo is already Wednesday', () => {
-    const bounds = weekBounds({
+    const bounds = spanBounds({
       now: '2026-10-27T15:30:00Z',
       timeZone: 'Asia/Tokyo',
       weekStartDay: 7,
-      weekOffset: 0,
+      span: WEEK,
+      spanOffset: 0,
     });
     expect(bounds.today).toBe('2026-10-28');
-    expect(bounds.weekStart).toBe('2026-10-25');
+    expect(bounds.spanStart).toBe('2026-10-25');
     expect(bounds.start).toBe('2026-10-24T15:00:00.000Z');
     expect(bounds.end).toBe('2026-10-31T15:00:00.000Z');
   });
 
   it('handles Pacific/Auckland across its daylight saving start on 2026-09-27', () => {
-    const bounds = weekBounds({
+    const bounds = spanBounds({
       now: '2026-09-28T00:00:00Z',
       timeZone: 'Pacific/Auckland',
       weekStartDay: 7,
-      weekOffset: 0,
+      span: WEEK,
+      spanOffset: 0,
     });
     expect(bounds.today).toBe('2026-09-28');
-    expect(bounds.weekStart).toBe('2026-09-27');
+    expect(bounds.spanStart).toBe('2026-09-27');
     expect(bounds.start).toBe('2026-09-26T12:00:00.000Z');
     expect(bounds.end).toBe('2026-10-03T11:00:00.000Z');
+  });
+});
+
+describe('spanBounds for each span', () => {
+  function days(
+    now: string,
+    span: Span,
+    spanOffset: number,
+    weekStartDay: IsoDayOfWeek = 7,
+    timeZone = NY,
+  ): [string, string] {
+    const bounds = spanBounds({ now, timeZone, weekStartDay, span, spanOffset });
+    return [bounds.spanStart, bounds.spanEnd];
+  }
+
+  const DAY: Span = { kind: 'day', days: 7 };
+  const FORTNIGHT: Span = { kind: 'fortnight', days: 7 };
+  const MONTH: Span = { kind: 'month', days: 7 };
+  const custom = (n: number): Span => ({ kind: 'custom', days: n });
+
+  it('Day is one day, and the arrows move one day', () => {
+    expect(days(TUESDAY_2PM, DAY, 0)).toEqual(['2026-10-27', '2026-10-27']);
+    expect(days(TUESDAY_2PM, DAY, 1)).toEqual(['2026-10-28', '2026-10-28']);
+    expect(days(TUESDAY_2PM, DAY, -3)).toEqual(['2026-10-24', '2026-10-24']);
+    expect(
+      spanBounds({ now: TUESDAY_2PM, timeZone: NY, weekStartDay: 7, span: DAY, spanOffset: 0 }),
+    ).toMatchObject({ start: '2026-10-27T04:00:00.000Z', end: '2026-10-28T04:00:00.000Z' });
+  });
+
+  it('Day holds 25 hours when the clocks go back, and 23 when they go forward', () => {
+    const back = spanBounds({
+      now: '2026-10-31T16:00:00Z',
+      timeZone: NY,
+      weekStartDay: 7,
+      span: DAY,
+      spanOffset: 1,
+    });
+    expect([back.start, back.end]).toEqual([
+      '2026-11-01T04:00:00.000Z',
+      '2026-11-02T05:00:00.000Z',
+    ]);
+    const forward = spanBounds({
+      now: '2026-03-07T17:00:00Z',
+      timeZone: NY,
+      weekStartDay: 7,
+      span: DAY,
+      spanOffset: 1,
+    });
+    expect([forward.start, forward.end]).toEqual([
+      '2026-03-08T05:00:00.000Z',
+      '2026-03-09T04:00:00.000Z',
+    ]);
+  });
+
+  it('2 weeks is the week that holds today and the next, and the arrows move 2 weeks', () => {
+    expect(days(TUESDAY_2PM, FORTNIGHT, 0)).toEqual(['2026-10-25', '2026-11-07']);
+    expect(days(TUESDAY_2PM, FORTNIGHT, 1)).toEqual(['2026-11-08', '2026-11-21']);
+    expect(days(TUESDAY_2PM, FORTNIGHT, -1)).toEqual(['2026-10-11', '2026-10-24']);
+  });
+
+  it('2 weeks follows the week start day', () => {
+    expect(days(TUESDAY_2PM, FORTNIGHT, 0, 1)).toEqual(['2026-10-26', '2026-11-08']);
+    expect(days(TUESDAY_2PM, FORTNIGHT, 0, 6)).toEqual(['2026-10-24', '2026-11-06']);
+    expect(days(TUESDAY_2PM, FORTNIGHT, 0, 3)).toEqual(['2026-10-21', '2026-11-03']);
+  });
+
+  it('2 weeks covers the change of the clocks with one hour more', () => {
+    const bounds = spanBounds({
+      now: TUESDAY_2PM,
+      timeZone: NY,
+      weekStartDay: 7,
+      span: FORTNIGHT,
+      spanOffset: 0,
+    });
+    const hours = (Date.parse(bounds.end) - Date.parse(bounds.start)) / 3_600_000;
+    expect(hours).toBe(14 * 24 + 1);
+  });
+
+  it('Month is the calendar month, and the arrows move one month', () => {
+    expect(days(TUESDAY_2PM, MONTH, 0)).toEqual(['2026-10-01', '2026-10-31']);
+    expect(days(TUESDAY_2PM, MONTH, 1)).toEqual(['2026-11-01', '2026-11-30']);
+    expect(days(TUESDAY_2PM, MONTH, -1)).toEqual(['2026-09-01', '2026-09-30']);
+    expect(days(TUESDAY_2PM, MONTH, 2)).toEqual(['2026-12-01', '2026-12-31']);
+  });
+
+  it('Month ignores the week start day', () => {
+    for (const weekStartDay of [1, 2, 3, 4, 5, 6, 7] as const) {
+      expect(days(TUESDAY_2PM, MONTH, 0, weekStartDay)).toEqual(['2026-10-01', '2026-10-31']);
+    }
+  });
+
+  it('Month steps from the 1st, so the 31st never skips a month', () => {
+    const jan31 = '2027-01-31T17:00:00Z';
+    expect(days(jan31, MONTH, 0)).toEqual(['2027-01-01', '2027-01-31']);
+    expect(days(jan31, MONTH, 1)).toEqual(['2027-02-01', '2027-02-28']);
+    expect(days(jan31, MONTH, 2)).toEqual(['2027-03-01', '2027-03-31']);
+    expect(days('2028-01-31T17:00:00Z', MONTH, 1)).toEqual(['2028-02-01', '2028-02-29']);
+    expect(days('2026-10-31T17:00:00Z', MONTH, 4)).toEqual(['2027-02-01', '2027-02-28']);
+  });
+
+  it('Month crosses the year in both directions', () => {
+    expect(days('2026-12-15T17:00:00Z', MONTH, 1)).toEqual(['2027-01-01', '2027-01-31']);
+    expect(days('2027-01-15T17:00:00Z', MONTH, -1)).toEqual(['2026-12-01', '2026-12-31']);
+  });
+
+  it('Month holds the last instants of the month in the Canvas zone', () => {
+    const bounds = spanBounds({
+      now: '2026-10-31T20:00:00Z',
+      timeZone: NY,
+      weekStartDay: 7,
+      span: MONTH,
+      spanOffset: 0,
+    });
+    expect(bounds.today).toBe('2026-10-31');
+    expect(bounds.start).toBe('2026-10-01T04:00:00.000Z');
+    expect(bounds.end).toBe('2026-11-01T04:00:00.000Z');
+    // At 00:05 on November 1 in New York, the month has moved on.
+    const next = spanBounds({
+      now: '2026-11-01T04:05:00Z',
+      timeZone: NY,
+      weekStartDay: 7,
+      span: MONTH,
+      spanOffset: 0,
+    });
+    expect([next.spanStart, next.spanEnd]).toEqual(['2026-11-01', '2026-11-30']);
+  });
+
+  it('a custom span starts today, holds N days, and the arrows move N days', () => {
+    expect(days(TUESDAY_2PM, custom(10), 0)).toEqual(['2026-10-27', '2026-11-05']);
+    expect(days(TUESDAY_2PM, custom(10), 1)).toEqual(['2026-11-06', '2026-11-15']);
+    expect(days(TUESDAY_2PM, custom(10), -1)).toEqual(['2026-10-17', '2026-10-26']);
+    expect(days(TUESDAY_2PM, custom(2), 0)).toEqual(['2026-10-27', '2026-10-28']);
+    expect(days(TUESDAY_2PM, custom(2), 3)).toEqual(['2026-11-02', '2026-11-03']);
+    expect(days(TUESDAY_2PM, custom(90), 0)).toEqual(['2026-10-27', '2027-01-24']);
+    expect(days(TUESDAY_2PM, custom(90), 1)).toEqual(['2027-01-25', '2027-04-24']);
+  });
+
+  it('a custom span ignores the week start day', () => {
+    for (const weekStartDay of [1, 4, 7] as const) {
+      expect(days(TUESDAY_2PM, custom(5), 0, weekStartDay)).toEqual(['2026-10-27', '2026-10-31']);
+    }
+  });
+
+  it('a custom span across the spring change ends at local midnight', () => {
+    const bounds = spanBounds({
+      now: '2026-03-06T17:00:00Z',
+      timeZone: NY,
+      weekStartDay: 7,
+      span: custom(4),
+      spanOffset: 0,
+    });
+    expect([bounds.spanStart, bounds.spanEnd]).toEqual(['2026-03-06', '2026-03-09']);
+    expect(bounds.start).toBe('2026-03-06T05:00:00.000Z');
+    expect(bounds.end).toBe('2026-03-10T04:00:00.000Z');
+  });
+
+  it('a week across the spring change starts and ends at local midnight', () => {
+    const bounds = spanBounds({
+      now: '2026-03-10T17:00:00Z',
+      timeZone: NY,
+      weekStartDay: 7,
+      span: WEEK,
+      spanOffset: -1,
+    });
+    expect([bounds.spanStart, bounds.spanEnd]).toEqual(['2026-03-01', '2026-03-07']);
+    expect(bounds.end).toBe('2026-03-08T05:00:00.000Z');
+  });
+
+  it('offset 0 holds today for every span, week start day and day of the year', () => {
+    const spans: Span[] = [
+      WEEK,
+      DAY,
+      FORTNIGHT,
+      MONTH,
+      custom(2),
+      custom(7),
+      custom(31),
+      custom(90),
+    ];
+    let checked = 0;
+    for (let offset = 0; offset < 370; offset += 1) {
+      const now = Temporal.Instant.from('2026-01-01T12:00:00Z').add({ hours: 24 * offset });
+      for (const span of spans) {
+        for (const weekStartDay of [1, 2, 3, 4, 5, 6, 7] as const) {
+          const bounds = spanBounds({
+            now: now.toString(),
+            timeZone: NY,
+            weekStartDay,
+            span,
+            spanOffset: 0,
+          });
+          expect(bounds.spanStart <= bounds.today && bounds.today <= bounds.spanEnd).toBe(true);
+          checked += 1;
+        }
+      }
+    }
+    expect(checked).toBe(370 * spans.length * 7);
+  });
+
+  it('neighbor spans touch with no gap and no overlap, for every span', () => {
+    const spans: Span[] = [WEEK, DAY, FORTNIGHT, MONTH, custom(3), custom(90)];
+    for (const span of spans) {
+      for (let offset = -4; offset < 4; offset += 1) {
+        const left = spanBounds({
+          now: TUESDAY_2PM,
+          timeZone: NY,
+          weekStartDay: 1,
+          span,
+          spanOffset: offset,
+        });
+        const right = spanBounds({
+          now: TUESDAY_2PM,
+          timeZone: NY,
+          weekStartDay: 1,
+          span,
+          spanOffset: offset + 1,
+        });
+        expect(left.end).toBe(right.start);
+      }
+    }
   });
 });
 
@@ -119,6 +377,7 @@ describe('horizons', () => {
     now: TUESDAY_2PM,
     timeZone: NY,
     weekStartDay: 7 as const,
+    span: WEEK,
     courses: [
       course('1', 'Recent term', '2026-08-24T04:00:00Z'),
       course('2', 'Long-running', '2024-08-01T04:00:00Z'),
@@ -191,7 +450,13 @@ describe('horizons', () => {
       '6': '2026-10-25T04:00:00.000Z',
     });
     expect(
-      courseHorizons({ ...params, weekStartDay: 1, courses: [courses[0]!], hiddenCourseIds: [] }),
+      courseHorizons({
+        ...params,
+        weekStartDay: 1,
+        span: WEEK,
+        courses: [courses[0]!],
+        hiddenCourseIds: [],
+      }),
     ).toEqual({ '1': '2026-10-26T04:00:00.000Z' });
   });
 
@@ -205,6 +470,24 @@ describe('horizons', () => {
       '2026-08-24T04:00:00.000Z',
     );
     expect(earliestHorizon({ ...params, courses: [] })).toBe('2026-07-07T04:00:00.000Z');
+  });
+
+  describe('the cap at the start of the span that holds today', () => {
+    const futureTerm = { ...params, courses: [course('1', 'Future', '2027-01-04T05:00:00Z')] };
+    const cap = (span: Span, weekStartDay: IsoDayOfWeek = 7): string =>
+      formatInstant(horizons({ ...futureTerm, weekStartDay, span }).earliest);
+
+    it('is the first day of the week for Week and 2 weeks', () => {
+      expect(cap(WEEK)).toBe('2026-10-25T04:00:00.000Z');
+      expect(cap({ kind: 'fortnight', days: 7 })).toBe('2026-10-25T04:00:00.000Z');
+      expect(cap(WEEK, 1)).toBe('2026-10-26T04:00:00.000Z');
+    });
+
+    it('is the 1st for Month, and today for Day and a custom span', () => {
+      expect(cap({ kind: 'month', days: 7 })).toBe('2026-10-01T04:00:00.000Z');
+      expect(cap({ kind: 'day', days: 7 })).toBe('2026-10-27T04:00:00.000Z');
+      expect(cap({ kind: 'custom', days: 30 })).toBe('2026-10-27T04:00:00.000Z');
+    });
   });
 });
 

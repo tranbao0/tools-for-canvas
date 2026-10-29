@@ -22,7 +22,7 @@ const QUIZ_3 = 'Quiz 3: Cell membranes';
 const SCHOOL = 'https://school.instructure.com';
 const OTHER = 'https://other.instructure.com';
 const BETA = 'https://school.beta.instructure.com';
-const IN_PAGE_REQUEST = { surface: 'inpage', weekOffset: 0, scopeCourseId: null };
+const IN_PAGE_REQUEST = { surface: 'inpage', spanOffset: 0, scopeCourseId: null };
 
 test('the background refuses data messages from a content script on another Canvas', async ({
   context,

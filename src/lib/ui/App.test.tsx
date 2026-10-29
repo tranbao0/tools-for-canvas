@@ -86,7 +86,7 @@ function row(title: string): HTMLElement {
 describe('header', () => {
   it('shows the week range and the time zone label', () => {
     setup();
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Oct 25 - 31');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Oct 25\u00a0- 31');
     expect(screen.getByText('Week of October 25 to 31')).toBeTruthy();
     expect(screen.getByText('Times in ET')).toBeTruthy();
   });
@@ -96,32 +96,32 @@ describe('header', () => {
     expect(screen.queryByText(/Times in/)).toBeNull();
   });
 
-  it('steps from the week the student last asked for, and goes back to this week', () => {
+  it('steps from the week the student last asked for, and goes back to today', () => {
     const { actions } = setup(readyState({ view: pastWeekView() }));
     fireEvent.click(screen.getByRole('button', { name: 'Previous week' }));
     fireEvent.click(screen.getByRole('button', { name: 'Next week' }));
     fireEvent.click(screen.getByRole('button', { name: 'Next week' }));
-    expect(actions.stepWeek.mock.calls).toEqual([[-1], [1], [1]]);
-    fireEvent.click(screen.getByRole('button', { name: 'This week' }));
-    expect(actions.goToWeek.mock.calls).toEqual([[0]]);
+    expect(actions.stepSpan.mock.calls).toEqual([[-1], [1], [1]]);
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }));
+    expect(actions.goToSpan.mock.calls).toEqual([[0]]);
   });
 
-  it('turns "This week" off in the current week, and keeps it focusable', () => {
+  it('turns "Today" off in the current week, and keeps it focusable', () => {
     const { actions } = setup();
-    const button = screen.getByRole('button', { name: 'This week' }) as HTMLButtonElement;
+    const button = screen.getByRole('button', { name: 'Today' }) as HTMLButtonElement;
     expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(button.disabled).toBe(false);
     fireEvent.click(button);
-    expect(actions.goToWeek).not.toHaveBeenCalled();
+    expect(actions.goToSpan).not.toHaveBeenCalled();
   });
 
-  it('keeps focus on "This week" when it takes the student back to the current week', () => {
+  it('keeps focus on "Today" when it takes the student back to the current week', () => {
     const { actions, rerender } = setup(readyState({ view: pastWeekView() }));
-    const button = screen.getByRole('button', { name: 'This week' });
+    const button = screen.getByRole('button', { name: 'Today' });
     expect(button.getAttribute('aria-disabled')).toBe('false');
     button.focus();
     fireEvent.click(button);
-    expect(actions.goToWeek).toHaveBeenCalledWith(0);
+    expect(actions.goToSpan).toHaveBeenCalledWith(0);
     rerender(readyState());
     expect(document.activeElement).toBe(button);
     expect(button.getAttribute('aria-disabled')).toBe('true');
@@ -207,10 +207,12 @@ describe('rings', () => {
     const { rerender } = setup();
     expect(document.querySelector('.wr-chart-center')?.getAttribute('aria-hidden')).toBe('true');
     expect(document.querySelector('.wr-chart .wr-sr')?.textContent).toBe(
-      'This week: 4 of 18 done, 22 percent',
+      'Progress this week: 4 of 18 done, 22 percent',
     );
     rerender(readyState({ view: mkView({ rings: [ringOf({ done: 3, total: 3 })] }) }));
-    expect(document.querySelector('.wr-chart .wr-sr')?.textContent).toBe('This week: all 3 done');
+    expect(document.querySelector('.wr-chart .wr-sr')?.textContent).toBe(
+      'Progress this week: all 3 done',
+    );
   });
 
   it('draws one arc per class, with its length from the counts', () => {
@@ -920,8 +922,8 @@ describe('items', () => {
     setup(
       readyState({
         view: mkView({
-          weekStart: '2026-10-25',
-          weekEnd: '2026-10-31',
+          spanStart: '2026-10-25',
+          spanEnd: '2026-10-31',
           today: '2026-10-31',
           groups: [mkGroup({ kind: 'tomorrow', date: '2026-11-01', items: [lookAhead] })],
         }),
@@ -1708,5 +1710,318 @@ describe('sticky header and dock', () => {
       document.querySelector<HTMLElement>('.wr')?.style.getPropertyValue('--wr-inset-top'),
     ).toBe('0px');
     vi.unstubAllGlobals();
+  });
+});
+
+describe('shown span', () => {
+  const FORTNIGHT = {
+    span: { kind: 'fortnight', days: 7 },
+    spanStart: '2026-10-25',
+    spanEnd: '2026-11-07',
+  } as const;
+  const MONTH = {
+    span: { kind: 'month', days: 7 },
+    spanStart: '2026-11-01',
+    spanEnd: '2026-11-30',
+    spanOffset: 1,
+    isCurrentSpan: false,
+  } as const;
+  const DAY = {
+    span: { kind: 'day', days: 7 },
+    spanStart: '2026-10-27',
+    spanEnd: '2026-10-27',
+  } as const;
+  const CUSTOM = {
+    span: { kind: 'custom', days: 10 },
+    spanStart: '2026-10-27',
+    spanEnd: '2026-11-05',
+  } as const;
+  const stateOf = (patch: Partial<ReturnType<typeof mkView>>, groups?: ListGroup[]) =>
+    readyState({ view: mkView({ ...patch, ...(groups ? { groups } : {}) }) });
+  const picker = () => screen.getByRole('combobox', { name: 'Span shown' }) as HTMLSelectElement;
+  const dueItems = (list: string[]) => list.map((title) => mkItem({ title, course: 'bio' }));
+
+  /** The panel with the settings loaded, so the control is on. The saved span is the view's. */
+  const setupSpan = (patch: Partial<ReturnType<typeof mkView>> = {}) => {
+    const actions = spyActions();
+    const view = mkView(patch);
+    const value = { ...DEFAULT_SETTINGS, span: view.span };
+    const result = render(
+      <App
+        surface="panel"
+        state={readyState({ view })}
+        actions={actions}
+        settings={{ value, courses: [] }}
+      />,
+    );
+    return { ...result, actions, value };
+  };
+  const field = () => screen.getByLabelText('Days') as HTMLInputElement;
+
+  it('offers the five spans, with the saved one selected', () => {
+    setupSpan(CUSTOM);
+    expect([...picker().options].map((option) => option.textContent)).toEqual([
+      'Day',
+      'Week',
+      '2 weeks',
+      'Month',
+      'Custom: 10 days',
+    ]);
+    expect(picker().value).toBe('custom');
+  });
+
+  it('is off until the settings load', () => {
+    setup(stateOf({}));
+    expect(picker().disabled).toBe(true);
+  });
+
+  it('saves the span the student picks and keeps the remembered number of days', () => {
+    const { actions, value } = setupSpan();
+    fireEvent.change(picker(), { target: { value: 'month' } });
+    expect(actions.saveSettings).toHaveBeenLastCalledWith({
+      ...value,
+      span: { kind: 'month', days: 7 },
+    });
+    fireEvent.change(picker(), { target: { value: 'custom' } });
+    expect(actions.saveSettings).toHaveBeenLastCalledWith({
+      ...value,
+      span: { kind: 'custom', days: 7 },
+    });
+  });
+
+  it('follows the saved span while the view still shows the old one', () => {
+    const actions = spyActions();
+    render(
+      <App
+        surface="panel"
+        state={stateOf({})}
+        actions={actions}
+        settings={{
+          value: { ...DEFAULT_SETTINGS, span: { kind: 'month', days: 7 } },
+          courses: [],
+        }}
+      />,
+    );
+    expect(picker().value).toBe('month');
+    expect(screen.getByRole('button', { name: 'Next month' })).toBeTruthy();
+  });
+
+  it('shows a number field for a custom span with the browser limits of 2 to 90 whole days', () => {
+    setupSpan(CUSTOM);
+    expect(field().value).toBe('10');
+    expect(field().type).toBe('number');
+    expect(field().min).toBe('2');
+    expect(field().max).toBe('90');
+    expect(field().required).toBe(true);
+  });
+
+  it('saves a valid number when the browser reports a change, and not with each key', () => {
+    const { actions, value } = setupSpan(CUSTOM);
+    fireEvent.input(field(), { target: { value: '14' } });
+    expect(actions.saveSettings).not.toHaveBeenCalled();
+    fireEvent.change(field());
+    expect(actions.saveSettings).toHaveBeenCalledTimes(1);
+    expect(actions.saveSettings).toHaveBeenCalledWith({
+      ...value,
+      span: { kind: 'custom', days: 14 },
+    });
+  });
+
+  it('saves a valid number when the student presses Enter, and refuses an invalid one', () => {
+    const { actions, value } = setupSpan(CUSTOM);
+    const form = field().closest('form') as HTMLFormElement;
+    fireEvent.input(field(), { target: { value: '30' } });
+    fireEvent.submit(form);
+    expect(actions.saveSettings).toHaveBeenCalledWith({
+      ...value,
+      span: { kind: 'custom', days: 30 },
+    });
+    actions.saveSettings.mockClear();
+    fireEvent.input(field(), { target: { value: '300' } });
+    fireEvent.submit(form);
+    expect(actions.saveSettings).not.toHaveBeenCalled();
+  });
+
+  it('keeps what the student types when the list draws again, and shows a length from elsewhere', () => {
+    const { rerender } = setupSpan(CUSTOM);
+    const draw = (days: number) =>
+      rerender(
+        <App
+          surface="panel"
+          state={stateOf({ ...CUSTOM, span: { kind: 'custom', days } })}
+          actions={spyActions()}
+          settings={{
+            value: { ...DEFAULT_SETTINGS, span: { kind: 'custom', days } },
+            courses: [],
+          }}
+        />,
+      );
+    field().focus();
+    fireEvent.input(field(), { target: { value: '3' } });
+    draw(10);
+    expect(field().value).toBe('3');
+    draw(21);
+    expect(field().value).toBe('3');
+    field().blur();
+    draw(25);
+    expect(field().value).toBe('25');
+  });
+
+  it.each(['1', '91', '', '2.5', '-3'])(
+    'does not save %j days, and shows the browser message',
+    (days) => {
+      const { actions } = setupSpan(CUSTOM);
+      const report = vi.spyOn(field(), 'reportValidity');
+      fireEvent.input(field(), { target: { value: days } });
+      fireEvent.change(field());
+      expect(actions.saveSettings).not.toHaveBeenCalled();
+      expect(report).toHaveBeenCalled();
+      expect(field().checkValidity()).toBe(false);
+    },
+  );
+
+  it.each(['2', '90'])('saves the limit of %s days', (days) => {
+    const { actions, value } = setupSpan(CUSTOM);
+    fireEvent.input(field(), { target: { value: days } });
+    fireEvent.change(field());
+    expect(field().checkValidity()).toBe(true);
+    expect(actions.saveSettings).toHaveBeenCalledWith({
+      ...value,
+      span: { kind: 'custom', days: Number(days) },
+    });
+  });
+
+  it('has no number field for the other spans', () => {
+    setup(stateOf(MONTH));
+    expect(screen.queryByLabelText('Days')).toBeNull();
+  });
+
+  it.each([
+    ['Week', {}, 'Oct 25 - 31', 'Week of October 25 to 31', 'week'],
+    ['Day', DAY, 'Tue, Oct 27', 'Tuesday, October 27', 'day'],
+    ['2 weeks', FORTNIGHT, 'Oct 25 - Nov 7', 'October 25 to November 7', '2 weeks'],
+    ['Month', MONTH, 'November 2026', 'November 2026', 'month'],
+    ['Custom', CUSTOM, 'Oct 27 - Nov 5', 'October 27 to November 5', '10 days'],
+  ] as const)(
+    '%s: the header, and the arrows named by the span',
+    (_, patch, text, spoken, unit) => {
+      setup(stateOf(patch));
+      const heading = screen.getByRole('heading', { level: 1 });
+      expect(
+        heading.querySelector('[aria-hidden="true"]')?.textContent?.replaceAll('\u00a0', ' '),
+      ).toBe(text);
+      expect(heading.querySelector('.wr-sr')?.textContent).toBe(spoken);
+      expect(screen.getByRole('button', { name: `Previous ${unit}` })).toBeTruthy();
+      expect(screen.getByRole('button', { name: `Next ${unit}` })).toBeTruthy();
+    },
+  );
+
+  it('turns Today off in the span that holds today and on in another span', () => {
+    const { rerender } = setup(stateOf(MONTH));
+    const today = screen.getByRole('button', { name: 'Today' });
+    expect(today.getAttribute('aria-disabled')).toBe('false');
+    rerender(stateOf(FORTNIGHT));
+    expect(today.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('keeps the control and its focus while another span loads', () => {
+    const { rerender } = setupSpan({});
+    picker().focus();
+    rerender(
+      <App
+        surface="panel"
+        state={stateOf(DAY)}
+        actions={spyActions()}
+        settings={{ value: { ...DEFAULT_SETTINGS, span: DAY.span }, courses: [] }}
+      />,
+    );
+    expect(document.activeElement).toBe(picker());
+  });
+
+  it('names the span in the rings and in the empty text', () => {
+    setup(stateOf({ ...MONTH, ...{ nothingDue: true, rings: [] } }));
+    expect(screen.getByText('Nothing due this month')).toBeTruthy();
+    cleanup();
+    setup(stateOf({ ...CUSTOM, nothingDue: true, rings: [] }));
+    expect(screen.getByText('Nothing due in these 10 days')).toBeTruthy();
+    cleanup();
+    setup(stateOf(FORTNIGHT));
+    expect(
+      screen.getByRole('button', {
+        name: 'BIO 201 Cell Biology: 1 of 3 done in these 2 weeks, 1 past due',
+      }),
+    ).toBeTruthy();
+    expect(document.querySelector('.wr-chart .wr-sr')?.textContent).toMatch(
+      /^Progress in these 2 weeks: \d+ of \d+ done, \d+ percent$/,
+    );
+  });
+
+  describe('the glance link', () => {
+    const rest = (patch: Partial<ReturnType<typeof mkView>>) =>
+      stateOf(patch, [
+        mkGroup({ kind: 'today', date: '2026-10-27', items: dueItems(['Today one']) }),
+        mkGroup({
+          kind: 'day',
+          date: '2026-10-29',
+          items: dueItems(['Thursday one', 'Later one']),
+        }),
+        mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) }),
+      ]);
+
+    it.each([
+      ['week', {}, 'Rest of the week (3)'],
+      ['month', { span: { kind: 'month', days: 7 } }, 'Rest of the month (3)'],
+      ['2 weeks', FORTNIGHT, 'Rest of these 2 weeks (3)'],
+      ['custom', CUSTOM, 'Rest of these 10 days (3)'],
+    ] as const)('names the %s span', (_, patch, label) => {
+      setup(rest(patch), 'inpage');
+      expect(screen.getByRole('button', { name: label })).toBeTruthy();
+    });
+
+    it('for Day holds only No due date and Done', () => {
+      const state = stateOf(DAY, [
+        mkGroup({ kind: 'today', date: '2026-10-27', items: dueItems(['Today one']) }),
+        mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) }),
+        mkGroup({ kind: 'done', items: dueItems(['Finished one']) }),
+      ]);
+      setup(state, 'inpage');
+      const link = screen.getByRole('button', { name: 'No due date and done (2)' });
+      fireEvent.click(link);
+      expect(
+        [...document.querySelectorAll('[data-group]')].map((el) => el.getAttribute('data-group')),
+      ).toEqual(['today', 'no_due_date', 'done']);
+    });
+
+    it('for Day has no link when there is no undated or done work', () => {
+      setup(
+        stateOf(DAY, [
+          mkGroup({ kind: 'today', date: '2026-10-27', items: dueItems(['Today one']) }),
+        ]),
+        'inpage',
+      );
+      expect(screen.queryByRole('button', { name: /^(Rest of|No due date and done)/ })).toBeNull();
+    });
+  });
+
+  describe('in the settings', () => {
+    it('shows the Shown span setting first and saves a change', () => {
+      const actions = spyActions();
+      render(
+        <App
+          surface="panel"
+          state={readyState()}
+          actions={actions}
+          settings={{ value: DEFAULT_SETTINGS, courses: [] }}
+        />,
+      );
+      fireEvent.click(document.querySelector('[data-opener="gear"]') as HTMLElement);
+      const select = screen.getByLabelText('Shown span') as HTMLSelectElement;
+      expect(select.value).toBe('week');
+      fireEvent.change(select, { target: { value: 'fortnight' } });
+      expect(actions.saveSettings).toHaveBeenCalledWith({
+        ...DEFAULT_SETTINGS,
+        span: { kind: 'fortnight', days: 7 },
+      });
+    });
   });
 });

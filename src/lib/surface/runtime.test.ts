@@ -179,7 +179,7 @@ describe('state', () => {
       type: 'weekrow:get-state',
       request: {
         surface: 'inpage',
-        weekOffset: 0,
+        spanOffset: 0,
         courseFilter: undefined,
         scopeCourseId: '101',
       },
@@ -196,7 +196,7 @@ describe('state', () => {
 
     runtime.actions.setCourseFilter('101');
     await settle();
-    runtime.actions.goToWeek(1);
+    runtime.actions.goToSpan(1);
     await settle();
 
     const requests = fake.sent.flatMap((m) => (m.type === 'weekrow:get-state' ? [m.request] : []));
@@ -227,13 +227,13 @@ describe('state', () => {
     await settle();
     held.get('101')?.();
     await settle();
-    runtime.actions.goToWeek(1);
+    runtime.actions.goToSpan(1);
     await settle();
     held.get('101')?.();
     await settle();
 
     const requests = fake.sent.flatMap((m) => (m.type === 'weekrow:get-state' ? [m.request] : []));
-    expect(requests.at(-1)).toMatchObject({ weekOffset: 1, courseFilter: '101' });
+    expect(requests.at(-1)).toMatchObject({ spanOffset: 1, courseFilter: '101' });
   });
 
   it('asks again with the week and course filter it shows', async () => {
@@ -242,7 +242,7 @@ describe('state', () => {
     runtime.start();
     await settle();
 
-    runtime.actions.goToWeek(-2);
+    runtime.actions.goToSpan(-2);
     runtime.actions.setCourseFilter(null);
     await settle();
 
@@ -250,7 +250,7 @@ describe('state', () => {
       type: 'weekrow:get-state',
       request: {
         surface: 'panel',
-        weekOffset: -2,
+        spanOffset: -2,
         courseFilter: null,
         scopeCourseId: null,
       },
@@ -287,7 +287,7 @@ describe('state', () => {
     };
     const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
     runtime.start();
-    runtime.actions.goToWeek(1);
+    runtime.actions.goToSpan(1);
     await settle();
 
     firstAnswer({ kind: 'loading' });
@@ -309,16 +309,16 @@ describe('state', () => {
     let answer!: (state: SurfaceState) => void;
     fake.reply = (message) => {
       if (message.type !== 'weekrow:get-state') return { ok: true, retryAt: null };
-      if (message.request.weekOffset === 0) return readyState();
+      if (message.request.spanOffset === 0) return readyState();
       return { kind: 'loading' };
     };
 
-    runtime.actions.goToWeek(1);
+    runtime.actions.goToSpan(1);
     await settle();
     expect(runtime.state()).toMatchObject({
       kind: 'ready',
       refreshing: true,
-      view: { weekOffset: 0 },
+      view: { spanOffset: 0 },
     });
 
     fake.reply = (message) => {
@@ -327,12 +327,12 @@ describe('state', () => {
     };
     fake.changed();
     await settle();
-    answer(readyState({ view: mkView({ weekOffset: 1 }) }));
+    answer(readyState({ view: mkView({ spanOffset: 1 }) }));
     await settle();
     expect(runtime.state()).toMatchObject({
       kind: 'ready',
       refreshing: false,
-      view: { weekOffset: 1 },
+      view: { spanOffset: 1 },
     });
   });
 
@@ -518,11 +518,11 @@ describe('actions', () => {
     await settle();
     const base = fake.reply;
     fake.reply = (message) =>
-      message.type === 'weekrow:get-state' && message.request.weekOffset === 1
+      message.type === 'weekrow:get-state' && message.request.spanOffset === 1
         ? { kind: 'loading' }
         : base(message);
 
-    runtime.actions.goToWeek(1);
+    runtime.actions.goToSpan(1);
     await settle();
 
     expect(runtime.state()).toMatchObject({ kind: 'ready', refreshing: true, undo: DONE_INFO });
@@ -863,7 +863,7 @@ describe('week steps', () => {
     const pending: ((state: SurfaceState) => void)[] = [];
     fake.reply = (message) => {
       if (message.type !== 'weekrow:get-state') return { ok: true, retryAt: null };
-      const offset = message.request.weekOffset;
+      const offset = message.request.spanOffset;
       if (offset === 0) return readyState();
       // Other weeks answer later, as a slow Canvas does.
       return new Promise<SurfaceState>((resolve) => pending.push(resolve));
@@ -873,25 +873,25 @@ describe('week steps', () => {
     await settle();
     fake.sent.length = 0;
 
-    runtime.actions.stepWeek(1);
-    runtime.actions.stepWeek(1);
-    runtime.actions.stepWeek(1);
+    runtime.actions.stepSpan(1);
+    runtime.actions.stepSpan(1);
+    runtime.actions.stepSpan(1);
     await settle();
 
     const asked = fake.sent.flatMap((m) => (m.type === 'weekrow:get-state' ? [m.request] : []));
-    expect(asked.map((request) => request.weekOffset)).toEqual([1, 2, 3]);
+    expect(asked.map((request) => request.spanOffset)).toEqual([1, 2, 3]);
     // The answers for weeks 1 and 2 come after the one for week 3, and are dropped.
-    pending[2]?.(readyState({ view: mkView({ weekOffset: 3, isCurrentWeek: false }) }));
+    pending[2]?.(readyState({ view: mkView({ spanOffset: 3, isCurrentSpan: false }) }));
     await settle();
-    pending[0]?.(readyState({ view: mkView({ weekOffset: 1, isCurrentWeek: false }) }));
-    pending[1]?.(readyState({ view: mkView({ weekOffset: 2, isCurrentWeek: false }) }));
+    pending[0]?.(readyState({ view: mkView({ spanOffset: 1, isCurrentSpan: false }) }));
+    pending[1]?.(readyState({ view: mkView({ spanOffset: 2, isCurrentSpan: false }) }));
     await settle();
     const state = runtime.state();
-    expect(state.kind === 'ready' ? state.view.weekOffset : null).toBe(3);
+    expect(state.kind === 'ready' ? state.view.spanOffset : null).toBe(3);
 
-    runtime.actions.stepWeek(-1);
+    runtime.actions.stepSpan(-1);
     await settle();
-    expect(fake.sent.at(-1)).toMatchObject({ request: { weekOffset: 2 } });
+    expect(fake.sent.at(-1)).toMatchObject({ request: { spanOffset: 2 } });
   });
 
   it('jumps to an absolute week and steps from there', async () => {
@@ -900,14 +900,108 @@ describe('week steps', () => {
     runtime.start();
     await settle();
 
-    runtime.actions.goToWeek(-2);
-    runtime.actions.stepWeek(1);
-    runtime.actions.goToWeek(0);
-    runtime.actions.stepWeek(1);
+    runtime.actions.goToSpan(-2);
+    runtime.actions.stepSpan(1);
+    runtime.actions.goToSpan(0);
+    runtime.actions.stepSpan(1);
     await settle();
 
     const asked = fake.sent.flatMap((m) => (m.type === 'weekrow:get-state' ? [m.request] : []));
-    expect(asked.slice(-4).map((request) => request.weekOffset)).toEqual([-2, -1, 0, 1]);
+    expect(asked.slice(-4).map((request) => request.spanOffset)).toEqual([-2, -1, 0, 1]);
+  });
+});
+
+describe('the shown span', () => {
+  const asked = (fake: FakeHost) =>
+    fake.sent.flatMap((m) => (m.type === 'weekrow:get-state' ? [m.request.spanOffset] : []));
+  const MONTH = { kind: 'month', days: 7 } as const;
+
+  it('starts at the span that holds today after the student picks another span', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    runtime.actions.stepSpan(3);
+    await settle();
+    fake.sent.length = 0;
+
+    runtime.actions.saveSettings({ ...DEFAULT_SETTINGS, span: MONTH });
+    await settle();
+
+    expect(fake.saved.at(-1)).toEqual({ ...DEFAULT_SETTINGS, span: MONTH });
+    expect(asked(fake)).toEqual([0]);
+    runtime.actions.stepSpan(1);
+    await settle();
+    expect(asked(fake).at(-1)).toBe(1);
+  });
+
+  it('reads the span from storage before it asks, so the data owner sees the new span', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    const order: string[] = [];
+    fake.host.settings.setValue = async (next) => {
+      order.push('saved');
+      fake.saved.push(next);
+    };
+    fake.reply = (message) => {
+      if (message.type === 'weekrow:get-state') order.push('state');
+      return message.type === 'weekrow:get-state' ? readyState() : { ok: true, retryAt: null };
+    };
+
+    runtime.actions.saveSettings({ ...DEFAULT_SETTINGS, span: MONTH });
+    await settle();
+
+    expect(order).toEqual(['saved', 'state']);
+  });
+
+  it('follows a span that another surface saves, and starts at the span that holds today', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    runtime.actions.goToSpan(2);
+    await settle();
+    fake.sent.length = 0;
+
+    fake.storeSettings({ ...DEFAULT_SETTINGS, span: MONTH });
+    await settle();
+
+    expect(runtime.settings()?.value.span).toEqual(MONTH);
+    expect(asked(fake)).toEqual([0]);
+  });
+
+  it('keeps the offset when another setting changes', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    runtime.actions.goToSpan(2);
+    await settle();
+    fake.sent.length = 0;
+
+    fake.storeSettings({ ...DEFAULT_SETTINGS, showRings: false });
+    await settle();
+    runtime.actions.stepSpan(1);
+    await settle();
+
+    expect(asked(fake).at(-1)).toBe(3);
+  });
+
+  it('keeps the shown list, with its refresh marker, while the new span loads', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state' ? { kind: 'loading' } : { ok: true, retryAt: null };
+
+    runtime.actions.saveSettings({ ...DEFAULT_SETTINGS, span: MONTH });
+    await settle();
+
+    const state = runtime.state();
+    expect(state.kind === 'ready' ? state.refreshing : null).toBe(true);
   });
 });
 

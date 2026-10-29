@@ -21,9 +21,9 @@ export interface PlacementContext {
   olderBefore: Temporal.Instant;
   today: Temporal.PlainDate;
   tomorrow: Temporal.PlainDate;
-  weekStart: Temporal.PlainDate;
-  weekEnd: Temporal.PlainDate;
-  isCurrentWeek: boolean;
+  spanStart: Temporal.PlainDate;
+  spanEnd: Temporal.PlainDate;
+  isCurrentSpan: boolean;
   /** The past-due horizon of a course, or of items with no known course. */
   horizonFor(courseId: string | null): Temporal.Instant;
 }
@@ -31,16 +31,16 @@ export interface PlacementContext {
 const { compare: compareDates } = Temporal.PlainDate;
 const { compare: compareInstants } = Temporal.Instant;
 
-export function isInWeek(date: Temporal.PlainDate, context: PlacementContext): boolean {
-  return compareDates(date, context.weekStart) >= 0 && compareDates(date, context.weekEnd) <= 0;
+export function isInSpan(date: Temporal.PlainDate, context: PlacementContext): boolean {
+  return compareDates(date, context.spanStart) >= 0 && compareDates(date, context.spanEnd) <= 0;
 }
 
 /** Tomorrow in the current-week view, when tomorrow falls in the next week. */
 export function isLookAheadDate(date: Temporal.PlainDate, context: PlacementContext): boolean {
   return (
-    context.isCurrentWeek &&
+    context.isCurrentSpan &&
     date.equals(context.tomorrow) &&
-    compareDates(context.tomorrow, context.weekEnd) > 0
+    compareDates(context.tomorrow, context.spanEnd) > 0
   );
 }
 
@@ -54,7 +54,7 @@ function undatedSlot(
   hasWarning: boolean,
   context: PlacementContext,
 ): Slot | null {
-  if (!context.isCurrentWeek || item.isReminder || item.handIn === 'none') return null;
+  if (!context.isCurrentSpan || item.isReminder || item.handIn === 'none') return null;
   switch (state) {
     case 'done':
       return hasWarning
@@ -71,7 +71,7 @@ function undatedSlot(
 function reminderSlot(date: Temporal.PlainDate, context: PlacementContext): Slot | null {
   const lookAhead = isLookAheadDate(date, context);
   const visibleDay =
-    isInWeek(date, context) && (!context.isCurrentWeek || compareDates(date, context.today) >= 0);
+    isInSpan(date, context) && (!context.isCurrentSpan || compareDates(date, context.today) >= 0);
   return visibleDay || lookAhead ? { group: 'day', date: date.toString(), lookAhead } : null;
 }
 
@@ -82,12 +82,12 @@ function doneSlot(
   item: Item,
   context: PlacementContext,
 ): Slot | null {
-  if (isInWeek(date, context)) return { group: 'done', lookAhead: false };
+  if (isInSpan(date, context)) return { group: 'done', lookAhead: false };
   if (isLookAheadDate(date, context)) return { group: 'done', lookAhead: true };
   const earlierWithWarning =
-    context.isCurrentWeek &&
+    context.isCurrentSpan &&
     hasWarning &&
-    compareDates(date, context.weekStart) < 0 &&
+    compareDates(date, context.spanStart) < 0 &&
     compareInstants(due, context.horizonFor(item.courseId)) >= 0;
   return earlierWithWarning ? { group: 'done', lookAhead: false } : null;
 }
@@ -122,10 +122,10 @@ export function slotFor(
   const date = plainDateOf(due, context.timeZone);
   if (item.isReminder) return reminderSlot(date, context);
   if (state === 'done') return doneSlot(due, date, hasWarning, item, context);
-  if (context.isCurrentWeek && compareInstants(due, context.now) < 0)
+  if (context.isCurrentSpan && compareInstants(due, context.now) < 0)
     return pastDueSlot(due, state, item, context);
   const lookAhead = isLookAheadDate(date, context);
-  return isInWeek(date, context) || lookAhead
+  return isInSpan(date, context) || lookAhead
     ? { group: 'day', date: date.toString(), lookAhead }
     : null;
 }

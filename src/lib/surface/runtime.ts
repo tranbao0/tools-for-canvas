@@ -28,6 +28,7 @@ import {
   type SurfaceRequest,
   type UndoData,
 } from '../data/protocol';
+import { sameSpan } from '../model/settings';
 import { nextDayStart } from '../model/time';
 import type { ItemView, Settings, SurfaceState, UndoInfo, WeekView } from '../model/types';
 import type { SeenNotes } from '../platform/storage';
@@ -165,8 +166,8 @@ function showsSettingsInPlace(surface: RequestSurface): boolean {
 
 export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions): SurfaceRuntime {
   let base: SurfaceState = { kind: 'loading' };
-  /** The week the student last asked for. A shown week can lag behind it while a week loads. */
-  let weekOffset = 0;
+  /** The span the student last asked for. A shown span can lag behind it while a span loads. */
+  let spanOffset = 0;
   let settings: Settings | null = null;
   /** Every active course, from the last state that carried them. */
   let courses: CourseChoice[] | null = null;
@@ -198,7 +199,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   function request(): SurfaceRequest {
     return {
       surface: options.surface,
-      weekOffset,
+      spanOffset,
       courseFilter,
       scopeCourseId: options.scopeCourseId,
     };
@@ -224,9 +225,18 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       .catch(report('settings'));
   }
 
+  /** A new span starts at the span that holds today, on this surface and on every other. */
+  function followSpan(next: Settings): boolean {
+    const changed = settings !== null && !sameSpan(settings.span, next.span);
+    if (changed) spanOffset = 0;
+    return changed;
+  }
+
   function onSettings(value: Settings): void {
+    const changed = followSpan(value);
     settings = value;
     emit();
+    if (changed && started && host.visibility.isVisible()) reload();
   }
 
   /**
@@ -256,12 +266,13 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     // Replies can arrive out of order. Only a newer answer than the last shown one counts.
     if (stopped || seq <= appliedSeq || reply === undefined) return;
     appliedSeq = seq;
-    // While another week loads, the shown week stays with its refresh marker, so the header
+    // While another span loads, the shown span stays with its refresh marker, so the header
     // and its focused button stay in place.
     if (
       reply.kind === 'loading' &&
       base.kind === 'ready' &&
-      base.view.weekOffset !== sent.weekOffset
+      (base.view.spanOffset !== sent.spanOffset ||
+        (settings !== null && !sameSpan(base.view.span, settings.span)))
     ) {
       base = { ...base, refreshing: true };
       emit();
@@ -453,13 +464,13 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   }
 
   const actions: Actions = {
-    goToWeek(offset: number) {
-      weekOffset = offset;
+    goToSpan(offset: number) {
+      spanOffset = offset;
       reload();
     },
-    stepWeek(delta: number) {
-      // From the week last asked for, so each of several quick clicks counts.
-      weekOffset += delta;
+    stepSpan(delta: number) {
+      // From the span last asked for, so each of several quick clicks counts.
+      spanOffset += delta;
       reload();
     },
     setCourseFilter(courseId: string | null | undefined) {
@@ -537,11 +548,16 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     },
     saveSettings(next: Settings) {
       // The view in place shows the change at once; the stored value follows.
+      const changed = followSpan(next);
       settings = next;
       emit();
       host.settings
         .setValue(next)
         .then(() => sendRefresh('settings'))
+        .then(() => {
+          // The new span is in storage now, so the data owner reads it for this request.
+          if (changed) reload();
+        })
         .catch(report('save settings'));
     },
     markNoteSeen(note: 'firstDone' | 'firstSkip') {

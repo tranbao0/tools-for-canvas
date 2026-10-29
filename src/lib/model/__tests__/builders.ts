@@ -190,7 +190,7 @@ export function modelInput(partial: Partial<ModelInput> & { now: string }): Mode
       effective_locale: 'en',
     },
     settings: DEFAULT_SETTINGS,
-    weekOffset: 0,
+    spanOffset: 0,
     courses: [],
     groups: [],
     colors: { custom_colors: {} },

@@ -1,9 +1,9 @@
-/** The groups of the week, in the order the model gives (design decision 6). */
+/** The groups of the shown span, in the order the model gives (design decision 6). */
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { t, tp } from '../i18n';
 import type { GroupKind, ItemView, ListGroup, WeekView } from '../model/types';
-import { formatMonthDay, formatWeekday } from './format';
+import { formatMonthDay, formatWeekday, restOfSpanLabel } from './format';
 import { ChevronDownIcon } from './icons';
 import { ItemRow, type ItemHandlers, type WhenMode } from './ItemRow';
 import { Heading, newId, type HeadingLevel } from './parts';
@@ -286,7 +286,8 @@ function GroupSection(props: {
 
 /**
  * Renders the groups in order. "Nothing due this week" takes the place of the day groups: before
- * No due date and Done, and in the glance before "Rest of the week". The glance (in-page list)
+ * No due date and Done, and in the glance before the link that opens the rest of the span, such as
+ * "Rest of the week". The glance (in-page list)
  * shows Past due as one line and puts the later days, No due date and Done behind one link.
  */
 export function WeekList(props: {
@@ -324,12 +325,12 @@ export function WeekList(props: {
   const nodes: ComponentChildren[] = head.map(section);
   // The chart says "Nothing due this week" itself when no class has work.
   if (view.nothingDue && (!view.rings.length || view.rings.some((ring) => ring.total)))
-    nodes.splice(head[0]?.kind === 'past_due' ? 1 : 0, 0, <NothingDue />);
+    nodes.splice(head[0]?.kind === 'past_due' ? 1 : 0, 0, <NothingDue span={view.span} />);
   if (glance && rest.length > 0)
     nodes.push(
       <Disclosure
-        label={tp(
-          'restOfWeek',
+        label={restOfSpanLabel(
+          view.span,
           rest.reduce((sum, g) => sum + groupCount(g), 0),
         )}
         open={glance.rest}

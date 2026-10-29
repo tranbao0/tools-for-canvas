@@ -1,9 +1,9 @@
 /**
- * Week and range math in the student's Canvas time zone. See docs/design.md, decision 9.
+ * Span and range math in the student's Canvas time zone. See docs/design.md, decision 9.
  * Every function takes the current time as a parameter and reads no clock.
  */
 import type { Course } from '../canvas/types';
-import type { IsoDayOfWeek } from './types';
+import type { IsoDayOfWeek, Span } from './types';
 
 /** The past-due horizon never reaches further back than this. */
 export const HORIZON_WEEKS = 16;
@@ -71,7 +71,7 @@ export function startOfDay(date: Temporal.PlainDate, timeZone: string): Temporal
 }
 
 /**
- * The instant of the next 00:00 in the time zone, when the surfaces recompute the current week
+ * The instant of the next 00:00 in the time zone, when the surfaces recompute the current span
  * and the day groups.
  */
 export function nextDayStart(now: string, timeZone: string): string {
@@ -96,42 +96,74 @@ export function earlierOf(a: Temporal.Instant, b: Temporal.Instant): Temporal.In
   return Temporal.Instant.compare(a, b) <= 0 ? a : b;
 }
 
-export interface WeekParams {
+export interface SpanParams {
   /** Instant. */
   now: string;
   timeZone: string;
   weekStartDay: IsoDayOfWeek;
-  /** 0 is the current week. */
-  weekOffset: number;
+  span: Span;
+  /** How many spans away from the span that holds today. 0 holds today. */
+  spanOffset: number;
 }
 
-export interface WeekBounds {
+export interface SpanBounds {
   /** Plain date of today. */
   today: string;
   /** Plain date of tomorrow. */
   tomorrow: string;
-  /** First day of the viewed week, plain date. */
-  weekStart: string;
-  /** Last day of the viewed week, plain date. */
-  weekEnd: string;
-  /** Instant of 00:00 on `weekStart`. */
+  /** First day of the shown span, plain date. */
+  spanStart: string;
+  /** Last day of the shown span, plain date. */
+  spanEnd: string;
+  /** Instant of 00:00 on `spanStart`. */
   start: string;
-  /** Instant of 00:00 on the day after `weekEnd`. Exclusive. */
+  /** Instant of 00:00 on the day after `spanEnd`. Exclusive. */
   end: string;
 }
 
-/** The plain dates and instants of the viewed week in the Canvas time zone. */
-export function weekBounds(params: WeekParams): WeekBounds {
+/** The first and the last day of the span that lies `offset` spans from the one that holds today. */
+function spanDays(
+  today: Temporal.PlainDate,
+  weekStartDay: IsoDayOfWeek,
+  span: Span,
+  offset: number,
+): { first: Temporal.PlainDate; last: Temporal.PlainDate } {
+  switch (span.kind) {
+    case 'day': {
+      const day = today.add({ days: offset });
+      return { first: day, last: day };
+    }
+    case 'week': {
+      const first = startOfWeek(today, weekStartDay).add({ weeks: offset });
+      return { first, last: first.add({ days: 6 }) };
+    }
+    case 'fortnight': {
+      const first = startOfWeek(today, weekStartDay).add({ weeks: 2 * offset });
+      return { first, last: first.add({ days: 13 }) };
+    }
+    case 'month': {
+      // From the 1st, so a month with fewer days never clamps the date.
+      const first = today.with({ day: 1 }).add({ months: offset });
+      return { first, last: first.add({ months: 1 }).subtract({ days: 1 }) };
+    }
+    case 'custom': {
+      const first = today.add({ days: offset * span.days });
+      return { first, last: first.add({ days: span.days - 1 }) };
+    }
+  }
+}
+
+/** The plain dates and instants of the shown span in the Canvas time zone. */
+export function spanBounds(params: SpanParams): SpanBounds {
   const today = plainDateOf(Temporal.Instant.from(params.now), params.timeZone);
-  const weekStart = startOfWeek(today, params.weekStartDay).add({ weeks: params.weekOffset });
-  const weekEnd = weekStart.add({ days: 6 });
+  const { first, last } = spanDays(today, params.weekStartDay, params.span, params.spanOffset);
   return {
     today: today.toString(),
     tomorrow: today.add({ days: 1 }).toString(),
-    weekStart: weekStart.toString(),
-    weekEnd: weekEnd.toString(),
-    start: formatInstant(startOfDay(weekStart, params.timeZone)),
-    end: formatInstant(startOfDay(weekEnd.add({ days: 1 }), params.timeZone)),
+    spanStart: first.toString(),
+    spanEnd: last.toString(),
+    start: formatInstant(startOfDay(first, params.timeZone)),
+    end: formatInstant(startOfDay(last.add({ days: 1 }), params.timeZone)),
   };
 }
 
@@ -139,8 +171,9 @@ export interface HorizonParams {
   /** Instant. */
   now: string;
   timeZone: string;
-  /** The first day of the week, for the cap at the start of the current week. */
+  /** The first day of the week, for the cap at the start of the span that holds today. */
   weekStartDay: IsoDayOfWeek;
+  span: Span;
   courses: readonly Course[];
   hiddenCourseIds: readonly string[];
 }
@@ -167,14 +200,17 @@ export interface Horizons {
 
 /**
  * The past-due horizon of each visible course: the later of its start (`courseStart`) and
- * 16 weeks ago, but never later than 00:00 on the first day of the current week, so this week's
- * work always reaches Past due and the rings. Hidden courses are left out. A course with no start
+ * 16 weeks ago, but never later than 00:00 on the first day of the span that holds today, so
+ * that span's work always reaches Past due and the rings. Hidden courses are left out. A course with no start
  * uses 16 weeks ago.
  */
 export function horizons(params: HorizonParams): Horizons {
   const today = plainDateOf(Temporal.Instant.from(params.now), params.timeZone);
   const oldest = startOfDay(today.subtract({ weeks: HORIZON_WEEKS }), params.timeZone);
-  const latest = startOfDay(startOfWeek(today, params.weekStartDay), params.timeZone);
+  const latest = startOfDay(
+    spanDays(today, params.weekStartDay, params.span, 0).first,
+    params.timeZone,
+  );
   const hidden = new Set(params.hiddenCourseIds);
   const byCourse = new Map<string, Temporal.Instant>();
   let earliest: Temporal.Instant | null = null;

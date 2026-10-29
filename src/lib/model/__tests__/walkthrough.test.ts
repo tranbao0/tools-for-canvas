@@ -375,10 +375,10 @@ describe('walk-through: current week', () => {
 
   it('describes the week', () => {
     expect(view).toMatchObject({
-      weekStart: '2026-10-25',
-      weekEnd: '2026-10-31',
-      weekOffset: 0,
-      isCurrentWeek: true,
+      spanStart: '2026-10-25',
+      spanEnd: '2026-10-31',
+      spanOffset: 0,
+      isCurrentSpan: true,
       today: '2026-10-27',
       timeZone: 'America/New_York',
       browserTimeZoneDiffers: false,
@@ -681,11 +681,11 @@ describe('walk-through: filters and scope', () => {
 
 describe('walk-through: other weeks', () => {
   it('places the next-week peer review on its real date', () => {
-    const view = buildWeekView(walkthroughInput({ weekOffset: 1 }));
+    const view = buildWeekView(walkthroughInput({ spanOffset: 1 }));
     expect(view).toMatchObject({
-      weekStart: '2026-11-01',
-      weekEnd: '2026-11-07',
-      isCurrentWeek: false,
+      spanStart: '2026-11-01',
+      spanEnd: '2026-11-07',
+      isCurrentSpan: false,
       nothingDue: false,
     });
     expect(
@@ -704,7 +704,7 @@ describe('walk-through: other weeks', () => {
   });
 
   it('keeps open work on its day with a chip in a past week', () => {
-    const view = buildWeekView(walkthroughInput({ weekOffset: -1 }));
+    const view = buildWeekView(walkthroughInput({ spanOffset: -1 }));
     expect(
       Object.fromEntries([...placements(view)].map(([key, places]) => [key, places.join(' + ')])),
     ).toEqual({

@@ -156,12 +156,12 @@ describe('done marks', () => {
     await h.owner.settled();
 
     // The next week loaded ahead, so the week after it needs a request.
-    const next = { ...PANEL, weekOffset: 2 };
+    const next = { ...PANEL, spanOffset: 2 };
     expect(await h.owner.getState(next)).toEqual({ kind: 'loading' });
     await h.owner.settled();
 
     const state = expectReady(await h.owner.getState(next));
-    expect(state.view.weekOffset).toBe(2);
+    expect(state.view.spanOffset).toBe(2);
     expect(state.refreshing).toBe(false);
   });
 

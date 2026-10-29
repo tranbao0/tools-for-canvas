@@ -43,11 +43,11 @@ export function taskDateParts(
 /** The default "Do on" date: today when today is in the viewed week, otherwise its first day. */
 export function defaultTaskDate(view: {
   today: string;
-  weekStart: string;
-  weekEnd: string;
+  spanStart: string;
+  spanEnd: string;
 }): string {
-  const inWeek = view.today >= view.weekStart && view.today <= view.weekEnd;
-  return inWeek ? view.today : view.weekStart;
+  const inWeek = view.today >= view.spanStart && view.today <= view.spanEnd;
+  return inWeek ? view.today : view.spanStart;
 }
 
 /**

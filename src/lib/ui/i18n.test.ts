@@ -11,7 +11,7 @@ describe('t', () => {
   it('reads the bundled English text when the browser API is not implemented', () => {
     expect(t('extName')).toBe('Tools for Canvas');
     expect(t('timesIn', 'ET')).toBe('Times in ET');
-    expect(t('ringLabelPastDue', 'BIO 101', '3', '5', '1')).toBe(
+    expect(t('ringLabelPastDue', 'BIO 101', '3', '5', '1', 'this week')).toBe(
       'BIO 101: 3 of 5 done this week, 1 past due',
     );
   });
@@ -23,8 +23,8 @@ describe('t', () => {
         name === 'extName' ? 'Tools for Canvas' : `native:${name}`,
       );
     resetI18nForTests();
-    expect(t('thisWeek')).toBe('native:thisWeek');
-    expect(getMessage).toHaveBeenCalledWith('thisWeek', []);
+    expect(t('goToToday')).toBe('native:goToToday');
+    expect(getMessage).toHaveBeenCalledWith('goToToday', []);
   });
 
   it('falls back to the bundle when the browser returns no text', () => {
@@ -32,7 +32,7 @@ describe('t', () => {
       name === 'extName' ? 'Tools for Canvas' : '',
     );
     resetI18nForTests();
-    expect(t('thisWeek')).toBe('This week');
+    expect(t('goToToday')).toBe('Today');
   });
 });
 

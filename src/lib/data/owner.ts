@@ -92,7 +92,7 @@ import {
   plannerRangeForView,
   skippedCourseChoices,
   viewFor,
-  weekRange,
+  spanRange,
   type ViewContext,
 } from './state';
 
@@ -486,12 +486,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   /** Remembers that a surface shows a view, for its details and for what the cache keeps. */
   function noteShown(
     session: SessionData,
-    weekOffset: number,
+    spanOffset: number,
     range: TimeRange,
     context: ViewContext,
   ): void {
-    const neighbors = [weekOffset - 1, weekOffset + 1].map((offset) =>
-      toInterval(weekRange(session, offset, context)),
+    const neighbors = [spanOffset - 1, spanOffset + 1].map((offset) =>
+      toInterval(spanRange(session, offset, context)),
     );
     const key = `${range.start}/${range.end}`;
     requested.delete(key);
@@ -508,7 +508,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (session === null) return target;
     const keep = hull([
       toInterval(plannerRangeForView(session, 0, context)),
-      toInterval(weekRange(session, 1, context)),
+      toInterval(spanRange(session, 1, context)),
       ...recentViews(context.now).map((view) => view.keep),
     ]);
     return { ...target, planner: clipCoverage(target.planner, keep) };
@@ -877,11 +877,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    * has started since it loaded. Rounds reload only the current week's range, so a week that a
    * surface shows catches up this way. After a full round, its assignment details load again too.
    */
-  function refreshIfStale(session: SessionData, weekOffset: number, context: ViewContext): void {
+  function refreshIfStale(session: SessionData, spanOffset: number, context: ViewContext): void {
     const coverage = plannerCoverage();
     const limits = cache?.limits;
     if (coverage === null || limits === undefined || limits.lastRoundAt === null) return;
-    const own = subtractIntervals(toInterval(weekRange(session, weekOffset, context)), [
+    const own = subtractIntervals(toInterval(spanRange(session, spanOffset, context)), [
       toInterval(plannerRangeForView(session, 0, context)),
     ]);
     const lastRoundAt = limits.lastRoundAt;
@@ -905,9 +905,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   /** After a view shows: its week catches up after a round, and its neighbor weeks load ahead. */
-  function loadAround(session: SessionData, weekOffset: number, context: ViewContext): void {
-    if (weekOffset !== 0) refreshIfStale(session, weekOffset, context);
-    for (const offset of [weekOffset + 1, weekOffset - 1]) {
+  function loadAround(session: SessionData, spanOffset: number, context: ViewContext): void {
+    if (spanOffset !== 0) refreshIfStale(session, spanOffset, context);
+    for (const offset of [spanOffset + 1, spanOffset - 1]) {
       loadGaps(plannerRangeForView(session, offset, context), 'prefetch', context);
     }
   }
@@ -1684,8 +1684,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
     const context = await viewContext(origin);
     if (cache === null) return { kind: 'loading' };
-    const range = plannerRangeForView(session, request.weekOffset, context);
-    noteShown(session, request.weekOffset, range, context);
+    const range = plannerRangeForView(session, request.spanOffset, context);
+    noteShown(session, request.spanOffset, range, context);
     loadGaps(range, 'view', context);
     const result = viewFor(cache, session, request, context);
     if (result === null) {
@@ -1693,7 +1693,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         ? { kind: 'cant_load', origin, offline, offer }
         : { kind: 'loading' };
     }
-    if (result.exact) loadAround(session, request.weekOffset, context);
+    if (result.exact) loadAround(session, request.spanOffset, context);
 
     const seenNotes = await store.seenNotes.getValue();
     return {

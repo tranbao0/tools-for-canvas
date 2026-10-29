@@ -109,7 +109,7 @@ test('a content script on the saved Canvas gets the in-page view of the state, n
   for (const surface of ['panel', 'page', 'inpage']) {
     const state = await world.send({
       type: 'weekrow:get-state',
-      request: { surface, weekOffset: 0, scopeCourseId: null },
+      request: { surface, spanOffset: 0, scopeCourseId: null },
     });
     expect(state, surface).toMatchObject({ kind: 'ready', offer: null });
   }

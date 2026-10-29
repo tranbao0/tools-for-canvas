@@ -1,5 +1,5 @@
 /**
- * The settings (design decision 18). The same five settings show in three places: in the side
+ * The settings (design decision 18). The same six settings show in three places: in the side
  * panel and in the in-page list, where the gear opens them in place with a Back button, and on
  * the extension's own settings page (SettingsView), which also shows the Canvas address.
  */
@@ -10,6 +10,7 @@ import type { AppProps } from './contract';
 import { weekdayName } from './format';
 import { ChevronLeftIcon } from './icons';
 import { Heading, newIds, Switch, type HeadingLevel } from './parts';
+import { SpanPicker } from './SpanPicker';
 import { Spinner } from './States';
 
 /** Sunday first, as Canvas shows the week for English (US). */
@@ -35,7 +36,7 @@ export function toggleHidden(hidden: string[], courseId: string, hide: boolean):
   return hide ? [...without, courseId] : without;
 }
 
-/** The five settings. `level` is the heading level of the settings that have a heading. */
+/** The six settings. `level` is the heading level of the settings that have a heading. */
 export function SettingsFields(props: {
   settings: Settings;
   courses: { id: string; name: string }[];
@@ -45,6 +46,7 @@ export function SettingsFields(props: {
   const { settings, courses } = props;
   const [ids] = useState(() =>
     newIds('set', [
+      'span',
       'weekStart',
       'weekStartHelp',
       'hidden',
@@ -59,6 +61,17 @@ export function SettingsFields(props: {
 
   return (
     <div class="wr-settings">
+      <div class="wr-setting">
+        <label class="wr-setting-name" for={ids.span}>
+          {t('settingSpan')}
+        </label>
+        <SpanPicker
+          span={settings.span}
+          selectId={ids.span}
+          onChange={(span) => update({ span })}
+        />
+      </div>
+
       <div class="wr-setting">
         <label class="wr-setting-name" for={ids.weekStart}>
           {t('settingWeekStart')}

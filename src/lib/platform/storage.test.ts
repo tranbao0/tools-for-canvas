@@ -74,6 +74,7 @@ describe('settings defaults', () => {
     first.showRings = false;
 
     expect(await settingsItem.getValue()).toEqual({
+      span: { kind: 'week', days: 7 },
       weekStart: 'auto',
       hiddenCourseIds: [],
       showRings: true,
@@ -83,12 +84,13 @@ describe('settings defaults', () => {
     expect(DEFAULT_SETTINGS.hiddenCourseIds).toEqual([]);
   });
 
-  it('reads settings stored before the theme existed with the Automatic theme', async () => {
+  it('reads settings stored before the theme and the span existed with their defaults', async () => {
     await fakeBrowser.storage.local.set({
       settings: { weekStart: 1, hiddenCourseIds: ['7'], showRings: false, showOnCanvasPages: true },
     });
 
     expect(await settingsItem.getValue()).toEqual({
+      span: { kind: 'week', days: 7 },
       weekStart: 1,
       hiddenCourseIds: ['7'],
       showRings: false,

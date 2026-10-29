@@ -8,6 +8,7 @@ import {
 import { DEFAULT_SETTINGS, type Settings } from '../types';
 
 const STORED: Settings = {
+  span: { kind: 'custom', days: 10 },
   weekStart: 2,
   hiddenCourseIds: ['7', '1~2'],
   showRings: false,
@@ -44,6 +45,15 @@ describe('normalizeSettings', () => {
   });
 
   it.each([
+    ['span', 'week'],
+    ['span', null],
+    ['span', { kind: 'year', days: 7 }],
+    ['span', { kind: 'custom', days: 1 }],
+    ['span', { kind: 'custom', days: 91 }],
+    ['span', { kind: 'custom', days: 2.5 }],
+    ['span', { kind: 'custom', days: '5' }],
+    ['span', { kind: 'week' }],
+    ['span', { kind: 'week', days: 7, extra: true }],
     ['weekStart', 99],
     ['weekStart', 0],
     ['weekStart', '1'],
@@ -90,6 +100,27 @@ describe('normalizeSettings', () => {
     for (const weekStart of ['auto', 1, 2, 3, 4, 5, 6, 7] as const) {
       expect(normalizeSettings({ weekStart }).weekStart).toBe(weekStart);
     }
+  });
+
+  it('keeps every kind of span and the limits of a custom span', () => {
+    for (const kind of ['day', 'week', 'fortnight', 'month', 'custom'] as const) {
+      expect(normalizeSettings({ span: { kind, days: 7 } }).span).toEqual({ kind, days: 7 });
+    }
+    for (const days of [2, 90]) {
+      expect(normalizeSettings({ span: { kind: 'custom', days } }).span).toEqual({
+        kind: 'custom',
+        days,
+      });
+    }
+  });
+
+  it('gives a copy of the span, so a caller never changes what it read', () => {
+    const result = normalizeSettings(STORED);
+    result.span.days = 20;
+
+    expect(STORED.span.days).toBe(10);
+    normalizeSettings(undefined).span.kind = 'day';
+    expect(DEFAULT_SETTINGS.span.kind).toBe('week');
   });
 
   it('drops keys that are not settings', () => {

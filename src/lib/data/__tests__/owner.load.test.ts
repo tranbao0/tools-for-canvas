@@ -17,7 +17,7 @@ import {
   rangeOf,
   useScenarioClock,
   viewItems,
-  weekOf,
+  spanOf,
   ART,
   signInOtherUser,
 } from '../testing/harness';
@@ -103,7 +103,7 @@ describe('first load', () => {
       undo: null,
       seenNotes: { firstDone: false, firstSkip: false },
     });
-    expect(state.view.isCurrentWeek).toBe(true);
+    expect(state.view.isCurrentSpan).toBe(true);
     expect(state.view.groups.map((group) => group.kind)).toEqual([
       'past_due',
       'today',
@@ -200,8 +200,8 @@ describe('first load', () => {
     await h.owner.getState(PANEL);
     await vi.waitFor(() => expect(h.canvas.callsOf('listCustomGradeStatuses')).toHaveLength(1));
     // The weeks around it load and commit while the first request is still out.
-    await h.owner.getState({ ...PANEL, weekOffset: 1 });
-    await h.owner.getState({ ...PANEL, weekOffset: -1 });
+    await h.owner.getState({ ...PANEL, spanOffset: 1 });
+    await h.owner.getState({ ...PANEL, spanOffset: -1 });
     await vi.advanceTimersByTimeAsync(1000);
     release();
     await h.owner.settled();
@@ -276,14 +276,14 @@ describe('first load', () => {
     await h.owner.settled();
 
     // Only the week after the cached range, at low priority, with the details of its work.
-    expect(h.canvas.plannerRanges()).toEqual([await weekOf(h, 1)]);
+    expect(h.canvas.plannerRanges()).toEqual([await spanOf(h, 1)]);
     expect(h.canvas.calls.length).toBeGreaterThan(1);
     expect(h.canvas.calls.every((call) => call.priority === 'low')).toBe(true);
     expect(h.canvas.callsOf('listAssignmentsByIds').length).toBeGreaterThan(0);
     h.canvas.resetCalls();
 
-    const next = expectReady(await h.owner.getState({ ...PANEL, weekOffset: 1 }));
-    expect(next.view.weekStart).toBe('2026-11-01');
+    const next = expectReady(await h.owner.getState({ ...PANEL, spanOffset: 1 }));
+    expect(next.view.spanStart).toBe('2026-11-01');
     expect(next.refreshing).toBe(false);
     // The peer review that Canvas files under last week's due date shows on its own day.
     expect(
@@ -291,7 +291,7 @@ describe('first load', () => {
     ).toBeDefined();
     // Nothing for the shown week: only the week after it starts to load ahead.
     await h.owner.settled();
-    expect(h.canvas.plannerRanges()).toEqual([await weekOf(h, 2)]);
+    expect(h.canvas.plannerRanges()).toEqual([await spanOf(h, 2)]);
     expect(h.canvas.calls.every((call) => call.priority === 'low')).toBe(true);
   });
 
@@ -299,26 +299,26 @@ describe('first load', () => {
     const h = await createHarness();
     await loadReady(h);
     h.canvas.resetCalls();
-    const later = { ...PANEL, weekOffset: 2 };
+    const later = { ...PANEL, spanOffset: 2 };
 
     expect(await h.owner.getState(later)).toEqual({ kind: 'loading' });
-    expect(h.canvas.plannerRanges()).toEqual([await weekOf(h, 2)]);
+    expect(h.canvas.plannerRanges()).toEqual([await spanOf(h, 2)]);
     expect(h.canvas.calls[0]?.priority).toBe('high');
     await h.owner.settled();
     const state = expectReady(await h.owner.getState(later));
     await h.owner.settled();
 
-    expect(state.view.weekStart).toBe('2026-11-08');
+    expect(state.view.spanStart).toBe('2026-11-08');
     expect(h.canvas.callsOf('getProfile')).toHaveLength(0);
     // The week after it loads ahead, and nothing reaches back to the horizon.
-    expect(h.canvas.plannerRanges()).toEqual([await weekOf(h, 2), await weekOf(h, 3)]);
+    expect(h.canvas.plannerRanges()).toEqual([await spanOf(h, 2), await spanOf(h, 3)]);
   });
 
   it('shows a new week as soon as its planner items arrive, before its assignment details', async () => {
     const h = await createHarness();
     await loadReady(h);
     const release = h.canvas.hold('listAssignmentsByIds');
-    const later = { ...PANEL, weekOffset: 2 };
+    const later = { ...PANEL, spanOffset: 2 };
 
     await h.owner.getState(later);
     const shown = await vi.waitFor(async () => expectReady(await h.owner.getState(later)));
@@ -340,10 +340,10 @@ describe('first load', () => {
     await loadReady(h);
     h.canvas.resetCalls();
 
-    const previous = expectReady(await h.owner.getState({ ...PANEL, weekOffset: -1 }));
+    const previous = expectReady(await h.owner.getState({ ...PANEL, spanOffset: -1 }));
     await h.owner.settled();
 
-    expect(previous.view.weekStart).toBe('2026-10-18');
+    expect(previous.view.spanStart).toBe('2026-10-18');
     expect(previous.refreshing).toBe(false);
     expect(h.canvas.calls).toEqual([]);
   });
@@ -358,7 +358,7 @@ describe('first load', () => {
     h.canvas.resetCalls();
 
     // The week is on its way, so showing it asks for nothing new.
-    expect(await h.owner.getState({ ...PANEL, weekOffset: 1 })).toEqual({ kind: 'loading' });
+    expect(await h.owner.getState({ ...PANEL, spanOffset: 1 })).toEqual({ kind: 'loading' });
     expect(h.canvas.calls).toEqual([]);
     release();
     await h.owner.settled();
@@ -367,7 +367,7 @@ describe('first load', () => {
     const details = h.canvas.calls.filter((call) => call.method === 'listAssignmentsByIds');
     expect(details.length).toBeGreaterThan(0);
     expect(details.every((call) => call.priority === 'high')).toBe(true);
-    expect(expectReady(await h.owner.getState({ ...PANEL, weekOffset: 1 })).refreshing).toBe(false);
+    expect(expectReady(await h.owner.getState({ ...PANEL, spanOffset: 1 })).refreshing).toBe(false);
   });
 
   it('keeps Canvas data in storage.session and only allowed keys in storage.local', async () => {
@@ -441,7 +441,7 @@ describe('first load', () => {
     const h = await createHarness();
     const state = await loadReady(h, {
       surface: 'inpage',
-      weekOffset: 0,
+      spanOffset: 0,
       scopeCourseId: C.biology,
     });
 
@@ -452,9 +452,75 @@ describe('first load', () => {
 
   it('marks the home page of a hidden course', async () => {
     const h = await createHarness();
-    const state = await loadReady(h, { surface: 'inpage', weekOffset: 0, scopeCourseId: C.club });
+    const state = await loadReady(h, { surface: 'inpage', spanOffset: 0, scopeCourseId: C.club });
 
     expect(state.view.scopeCourseHidden).toBe(true);
+  });
+});
+
+describe('the shown span', () => {
+  beforeEach(() => {
+    useScenarioClock();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const MONTH = { span: { kind: 'month', days: 7 } } as const;
+
+  it('loads the planner range of the shown span, from the horizon to the end of the month', async () => {
+    const h = await createHarness({ settings: MONTH });
+    const state = await loadReady(h);
+
+    expect(state.view).toMatchObject({
+      span: { kind: 'month', days: 7 },
+      spanStart: '2026-10-01',
+      spanEnd: '2026-10-31',
+    });
+    // The first views load the month and the month after it, which loads ahead.
+    expect(joinRanges(h.canvas.plannerRanges())).toEqual([
+      { start: (await rangeOf(h, 0)).start, end: (await rangeOf(h, 1)).end },
+    ]);
+    expect((await rangeOf(h, 0)).end).toBe('2026-11-01T03:59:59.999Z');
+  });
+
+  it('loads the neighbor span ahead, and only what the cache lacks', async () => {
+    const h = await createHarness({ settings: MONTH });
+    await loadReady(h);
+    h.canvas.resetCalls();
+
+    const next = expectReady(await h.owner.getState({ ...PANEL, spanOffset: 1 }));
+    await h.owner.settled();
+
+    expect(next.view).toMatchObject({ spanStart: '2026-11-01', spanEnd: '2026-11-30' });
+    // The month after the shown month was loaded ahead, so the arrow shows it at once.
+    expect(joinRanges(h.canvas.plannerRanges())).toEqual([await spanOf(h, 2)]);
+  });
+
+  it('shows a span that the student switched to, after the settings change', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    const { settingsItem } = await import('../../platform/storage');
+    await settingsItem.setValue({ ...(await settingsItem.getValue()), span: MONTH.span });
+    await h.owner.refresh('settings');
+    h.canvas.resetCalls();
+
+    const state = expectReady(await h.owner.getState(PANEL));
+    await h.owner.settled();
+
+    expect(state.view).toMatchObject({ spanStart: '2026-10-01', spanEnd: '2026-10-31' });
+    // The cache held the week and its neighbor, so only the rest of the month is requested.
+    for (const range of h.canvas.plannerRanges()) {
+      expect(Date.parse(range.end)).toBeGreaterThan(Date.parse('2026-11-01T04:00:00Z'));
+    }
+  });
+
+  it('shows a custom span from today, with Past due for the work before it', async () => {
+    const h = await createHarness({ settings: { span: { kind: 'custom', days: 14 } } });
+    const state = await loadReady(h);
+
+    expect(state.view).toMatchObject({ spanStart: '2026-10-27', spanEnd: '2026-11-09' });
+    expect(state.view.groups[0]?.kind).toBe('past_due');
   });
 });
 
@@ -682,7 +748,7 @@ describe('states', () => {
     await h.owner.settled();
 
     expect(h.log).toHaveBeenCalledWith('planner load', expect.anything());
-    const next = { ...PANEL, weekOffset: 1 };
+    const next = { ...PANEL, spanOffset: 1 };
     expect(await h.owner.getState(next)).toEqual({ kind: 'loading' });
     await h.owner.settled();
     expect(expectReady(await h.owner.getState(next)).stale).toBeNull();
@@ -692,7 +758,7 @@ describe('states', () => {
     const h = await createHarness();
     await loadReady(h);
     h.canvas.fail('listPlannerItems', canvasError('network'), { times: 1 });
-    const later = { ...PANEL, weekOffset: 2 };
+    const later = { ...PANEL, spanOffset: 2 };
 
     expect(await h.owner.getState(later)).toEqual({ kind: 'loading' });
     await h.owner.settled();
@@ -705,7 +771,7 @@ describe('states', () => {
     const h = await createHarness();
     await loadReady(h);
     h.canvas.fail('listPlannerItems', canvasError('forbidden', 403));
-    const later = { ...PANEL, weekOffset: 2 };
+    const later = { ...PANEL, spanOffset: 2 };
 
     await h.owner.getState(later);
     await h.owner.settled();
@@ -721,7 +787,7 @@ describe('states', () => {
     h.canvas.fail('listPlannerItems', canvasError('unauthorized', 401), { times: 1 });
     h.canvas.fail('getSelf', canvasError('unauthorized', 401), { times: 1 });
 
-    await h.owner.getState({ ...PANEL, weekOffset: 2 });
+    await h.owner.getState({ ...PANEL, spanOffset: 2 });
     await h.owner.settled();
 
     expect((await h.owner.getState(PANEL)).kind).toBe('signed_out');
@@ -810,7 +876,7 @@ describe('states', () => {
     const filtered = { ...PANEL, courseFilter: C.biology };
 
     expect(expectReady(await h.owner.getState(filtered)).view.courseFilter).toBe(C.biology);
-    const later = { ...filtered, weekOffset: 30 };
+    const later = { ...filtered, spanOffset: 30 };
     await h.owner.getState(later);
     await h.owner.settled();
     expect(expectReady(await h.owner.getState(later)).view.courseFilter).toBe(C.biology);

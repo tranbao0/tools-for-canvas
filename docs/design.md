@@ -261,6 +261,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     A group with more than 4 items shows its first 3, and a "Show N more" link opens the rest in place.
     A link that would hide only one item takes the same space as that item, so smaller groups show in full.
   - The later days of the shown span, No due date and Done sit behind one link that names the span, such as "Rest of the week (9)" or "Rest of the month (40)", and opens them in place.
+    With a custom span the link reads "Rest of these 10 days (12)", and with 2 weeks it reads "Rest of these 2 weeks (15)".
+    With Day, the link holds only No due date and Done, and reads "No due date and done (2)".
   - A week with nothing due today or tomorrow shows the next day that has work, so the glance is never empty while work is due.
   - What the student opened stays open while the page stays open.
   - The side panel shows every item, with no summary line.
@@ -1024,6 +1026,7 @@ These sizes come from one test build of the same small app [19].
 - No runtime dependencies besides Preact and `@preact/signals`.
 - Each entry point must stay under 30 KB after gzip.
   CI checks this limit.
+  The extension pages load one shared chunk for all code under `src/lib`, because several small chunks cost more after gzip.
   A test build with Preact had a 9.3 KB content script [19].
 - The package manager is npm.
 - Development and tests use Node 26.
@@ -1258,7 +1261,7 @@ The owner chose it on 2026-10-27.
 - There is no switch for undated work.
   The No due date group starts collapsed, and Skip clears single items.
 
-**Left out from the original:** day, three-day and month views, the rolling view, list length, theme color, confetti, streaks, the Announcements tab, repeat-weekly custom tasks, Gradescope data, teacher mode and the 12-hour or 24-hour setting [9].
+**Left out from the original:** the three-day view, the rolling view, list length, theme color, confetti, streaks, the Announcements tab, repeat-weekly custom tasks, Gradescope data, teacher mode and the 12-hour or 24-hour setting [9].
 
 ### 19. Accessibility, language and theme
 

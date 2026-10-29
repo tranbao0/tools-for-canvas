@@ -253,7 +253,9 @@ describe('in-page surface', () => {
   it('uses level 2 headings inside the Canvas page', () => {
     setup(readyState(), 'inpage');
     expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
-    expect(screen.getAllByRole('heading', { level: 2 })[0]?.textContent).toContain('Oct 25 - 31');
+    expect(screen.getAllByRole('heading', { level: 2 })[0]?.textContent).toContain(
+      'Oct 25\u00a0- 31',
+    );
   });
 
   it('shows the hidden course note instead of the list on a hidden course', () => {

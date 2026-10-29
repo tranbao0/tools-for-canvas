@@ -1,6 +1,38 @@
 import path from 'node:path';
 import { defineConfig } from 'wxt';
+import type { Plugin } from 'vite';
 import preact from '@preact/preset-vite';
+
+/**
+ * In the build of the extension pages, all code under `src/lib` and all libraries go in one
+ * chunk, which every page loads. Several small chunks cost more after gzip than one, because each
+ * chunk needs its own import list and cannot reuse the text of the others (design decision 12).
+ * The builds of the scripts, which have one entry each, keep their single file.
+ */
+function pagesShareOneChunk(): Plugin {
+  return {
+    name: 'pages-share-one-chunk',
+    config(config) {
+      const input = config.build?.rollupOptions?.input;
+      const isPageBuild =
+        typeof input === 'object' &&
+        input !== null &&
+        Object.values(input).some((entry) => String(entry).endsWith('.html'));
+      if (!isPageBuild) return;
+      return {
+        build: {
+          rolldownOptions: {
+            output: {
+              codeSplitting: {
+                groups: [{ name: 'shared', test: /[\\/](?:src[\\/]lib|node_modules)[\\/]/ }],
+              },
+            },
+          },
+        },
+      };
+    },
+  };
+}
 
 export default defineConfig({
   srcDir: 'src',
@@ -20,7 +52,7 @@ export default defineConfig({
     },
   },
   vite: () => ({
-    plugins: [preact()],
+    plugins: [preact(), pagesShareOneChunk()],
     build: {
       modulePreload: { polyfill: false },
       target: ['chrome144', 'edge144', 'firefox140'],

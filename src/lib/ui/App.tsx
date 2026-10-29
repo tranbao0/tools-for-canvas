@@ -6,7 +6,13 @@
 import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { t, tp } from '../i18n';
-import type { ItemView, SurfaceState } from '../model/types';
+import {
+  DEFAULT_SPAN,
+  type ItemView,
+  type Settings,
+  type Span,
+  type SurfaceState,
+} from '../model/types';
 import type { Actions, AppProps, SurfaceKind, TaskInput } from './contract';
 import { Header } from './Header';
 import {
@@ -95,11 +101,18 @@ export function App(props: AppProps) {
         actions={actions}
         rootRef={rootRef}
         glance={surface === 'inpage' ? glance : undefined}
+        settings={props.settings?.value}
         onSettings={openSettings}
       />
     );
   } else if (state.kind === 'loading') {
-    body = <LoadingView surface={surface} onSettings={openSettings} />;
+    body = (
+      <LoadingView
+        surface={surface}
+        span={props.settings?.value.span ?? DEFAULT_SPAN}
+        onSettings={openSettings}
+      />
+    );
   } else {
     body = (
       <>
@@ -127,7 +140,7 @@ export function App(props: AppProps) {
 }
 
 /** Loading: the header keeps its final layout, and a spinner shows, as in Canvas's To Do. */
-function LoadingView(props: { surface: SurfaceKind; onSettings: OpenSettings }) {
+function LoadingView(props: { surface: SurfaceKind; span: Span; onSettings: OpenSettings }) {
   return (
     <>
       <Header
@@ -135,8 +148,10 @@ function LoadingView(props: { surface: SurfaceKind; onSettings: OpenSettings }) 
         level={baseLevel(props.surface)}
         refreshing={false}
         addDisabledReason={null}
+        span={props.span}
+        onSpan={null}
         onStep={() => undefined}
-        onThisWeek={() => undefined}
+        onToday={() => undefined}
         onAdd={() => undefined}
         onSettings={() => props.onSettings('gear')}
       />
@@ -210,10 +225,13 @@ function ReadyView(props: {
   actions: Actions;
   rootRef: RefObject<HTMLDivElement | null>;
   glance: Glance | undefined;
+  /** The saved settings, or `undefined` until they load. */
+  settings: Settings | undefined;
   onSettings: OpenSettings;
 }) {
   const { surface, state, actions, rootRef } = props;
   const { view } = state;
+  const saved = props.settings;
   const level = baseLevel(surface);
   const [form, setForm] = useState<TaskFormMode | null>(null);
   /** A new task waits for Canvas, or the last try to save one failed. */
@@ -346,8 +364,10 @@ function ReadyView(props: {
         refreshing={state.refreshing}
         addDisabledReason={view.limited ? t('limitedLine') : null}
         addDescribedBy={limitedId}
-        onStep={(delta) => actions.stepWeek(delta)}
-        onThisWeek={() => actions.goToWeek(0)}
+        span={saved?.span ?? view.span}
+        onSpan={saved ? (span) => actions.saveSettings({ ...saved, span }) : null}
+        onStep={(delta) => actions.stepSpan(delta)}
+        onToday={() => actions.goToSpan(0)}
         onAdd={() => openForm({ kind: 'new' })}
         onSettings={() => props.onSettings('gear')}
       />
@@ -389,6 +409,7 @@ function ReadyView(props: {
       />
       <Rings
         rings={view.rings}
+        span={view.span}
         filter={view.courseFilter}
         onSelect={(id) => actions.setCourseFilter(id)}
       />

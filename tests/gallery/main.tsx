@@ -80,7 +80,14 @@ function app(
   state: AppProps['state'],
   options: Pick<AppProps, 'settings'> = {},
 ) {
-  return () => <App surface={surface} state={state} actions={actions} {...options} />;
+  // The span control is on once the settings have loaded, with the span that the view shows.
+  const loaded: AppProps['settings'] =
+    state.kind === 'ready'
+      ? { value: { ...settings, span: state.view.span }, courses: [] }
+      : undefined;
+  return () => (
+    <App surface={surface} state={state} actions={actions} settings={loaded} {...options} />
+  );
 }
 
 /** A busy week for the in-page list: groups longer than its row limit. */
@@ -124,6 +131,7 @@ function busyWeekView() {
 }
 
 const settings: Settings = {
+  span: { kind: 'week', days: 7 },
   weekStart: 'auto',
   hiddenCourseIds: [COURSES.psyc.id],
   showRings: true,
@@ -219,6 +227,64 @@ const scenes: Scene[] = [
     name: 'ready-past-week',
     widths: PANEL_WIDTHS,
     render: app('panel', readyState({ view: pastWeekView() })),
+  },
+  {
+    name: 'ready-span-day',
+    widths: PANEL_WIDTHS,
+    render: app(
+      'panel',
+      readyState({
+        view: mkView({
+          span: { kind: 'day', days: 7 },
+          spanStart: '2026-10-27',
+          spanEnd: '2026-10-27',
+        }),
+      }),
+    ),
+  },
+  {
+    name: 'ready-span-month',
+    widths: PANEL_WIDTHS,
+    render: app(
+      'panel',
+      readyState({
+        view: mkView({
+          span: { kind: 'month', days: 7 },
+          spanStart: '2026-10-01',
+          spanEnd: '2026-10-31',
+        }),
+      }),
+    ),
+  },
+  {
+    name: 'ready-span-custom',
+    widths: PANEL_WIDTHS,
+    render: app(
+      'panel',
+      readyState({
+        view: mkView({
+          span: { kind: 'custom', days: 10 },
+          spanStart: '2026-10-27',
+          spanEnd: '2026-11-05',
+        }),
+      }),
+    ),
+  },
+  {
+    name: 'inpage-span-fortnight',
+    widths: [240],
+    shadow: true,
+    render: app(
+      'inpage',
+      readyState({
+        view: {
+          ...busyWeekView(),
+          span: { kind: 'fortnight', days: 7 },
+          spanStart: '2026-10-25',
+          spanEnd: '2026-11-07',
+        },
+      }),
+    ),
   },
   {
     name: 'ready-nothing-due',

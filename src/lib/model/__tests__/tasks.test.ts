@@ -37,10 +37,10 @@ describe('taskDateParts', () => {
 describe('defaultTaskDate', () => {
   it('is today in the current week and the first day of any other week', () => {
     expect(
-      defaultTaskDate({ today: '2026-10-27', weekStart: '2026-10-25', weekEnd: '2026-10-31' }),
+      defaultTaskDate({ today: '2026-10-27', spanStart: '2026-10-25', spanEnd: '2026-10-31' }),
     ).toBe('2026-10-27');
     expect(
-      defaultTaskDate({ today: '2026-10-27', weekStart: '2026-11-01', weekEnd: '2026-11-07' }),
+      defaultTaskDate({ today: '2026-10-27', spanStart: '2026-11-01', spanEnd: '2026-11-07' }),
     ).toBe('2026-11-01');
   });
 });
@@ -84,7 +84,7 @@ describe('resolveViewBasics and plannerRangeFor', () => {
         profile,
         settings: DEFAULT_SETTINGS,
         browserTimeZone: NY,
-        weekOffset: 0,
+        spanOffset: 0,
         courses: [course('1', 'Biology', '2026-08-24T04:00:00Z')],
       }),
     ).toEqual({ start: '2026-08-24T04:00:00.000Z', end: '2026-11-02T04:59:59.999Z' });

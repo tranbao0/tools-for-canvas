@@ -265,12 +265,10 @@
 .wr-range {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
   font-size: 16px;
   font-weight: 700;
   line-height: 24px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  text-wrap: balance;
 }
 
 .wr-range:focus-visible {
@@ -302,6 +300,53 @@
 
 .wr-this-week[aria-disabled='true'] {
   color: var(--wr-text-2);
+}
+
+/* The span control: a compact select, with the number field of a custom span beside it. */
+.wr-span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  --wr-span-h: 28px;
+  --wr-span-pad: 6px;
+  --wr-span-font: 14px;
+}
+
+.wr-setting .wr-span {
+  --wr-span-h: 38px;
+  --wr-span-pad: 10px;
+  --wr-span-font: 16px;
+}
+
+.wr-span .wr-input {
+  height: var(--wr-span-h);
+  padding: 0 var(--wr-span-pad);
+  font-size: var(--wr-span-font);
+}
+
+.wr-span .wr-span-select {
+  width: auto;
+  max-width: 100%;
+}
+
+.wr-setting .wr-span .wr-span-select {
+  width: 100%;
+}
+
+.wr-span-days {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wr-span .wr-span-input {
+  width: 64px;
+}
+
+.wr-span-input:invalid {
+  border-color: var(--wr-error);
 }
 
 .wr-tz {

@@ -8,7 +8,7 @@ import {
   type PlacementContext,
   type Slot,
   isCountedPastDue,
-  isInWeek,
+  isInSpan,
   isLookAheadSlot,
   slotFor,
   slotOffersSkip,
@@ -36,7 +36,7 @@ import {
   resolveTimeZone,
   sameTimeZone,
   startOfDay,
-  weekBounds,
+  spanBounds,
 } from './time';
 import type {
   GroupKind,
@@ -53,7 +53,7 @@ interface Placed {
   view: ItemView;
   slot: Slot;
   /** Dated in the viewed week. */
-  datedInWeek: boolean;
+  datedInSpan: boolean;
   /** Counts as done in the rings. A checked item that Canvas marks missing does not. */
   countsDone: boolean;
 }
@@ -61,7 +61,7 @@ interface Placed {
 function placementContext(
   input: ModelInput,
   basics: Pick<ViewBasics, 'timeZone' | 'weekStartDay'>,
-  bounds: ReturnType<typeof weekBounds>,
+  bounds: ReturnType<typeof spanBounds>,
 ): PlacementContext {
   const { timeZone, weekStartDay } = basics;
   const now = Temporal.Instant.from(input.now);
@@ -69,6 +69,7 @@ function placementContext(
     now: input.now,
     timeZone,
     weekStartDay,
+    span: input.settings.span,
     courses: input.courses,
     hiddenCourseIds: input.settings.hiddenCourseIds,
   });
@@ -81,16 +82,16 @@ function placementContext(
       .toInstant(),
     today: Temporal.PlainDate.from(bounds.today),
     tomorrow: Temporal.PlainDate.from(bounds.tomorrow),
-    weekStart: Temporal.PlainDate.from(bounds.weekStart),
-    weekEnd: Temporal.PlainDate.from(bounds.weekEnd),
-    isCurrentWeek: input.weekOffset === 0,
+    spanStart: Temporal.PlainDate.from(bounds.spanStart),
+    spanEnd: Temporal.PlainDate.from(bounds.spanEnd),
+    isCurrentSpan: input.spanOffset === 0,
     horizonFor: (courseId) => (courseId !== null ? byCourse.get(courseId) : undefined) ?? earliest,
   };
 }
 
-function isDatedInWeek(item: Item, context: PlacementContext): boolean {
+function isDatedInSpan(item: Item, context: PlacementContext): boolean {
   const due = parseInstant(item.due);
-  return due !== null && isInWeek(plainDateOf(due, context.timeZone), context);
+  return due !== null && isInSpan(plainDateOf(due, context.timeZone), context);
 }
 
 /** A custom task with a date before today. */
@@ -119,7 +120,7 @@ function placeItem(item: Item, input: ModelInput, context: PlacementContext): Pl
     state,
     chip: statusChip(item, state, {
       now: context.now,
-      showPastDueChip: !context.isCurrentWeek,
+      showPastDueChip: !context.isCurrentSpan,
       gradeStatuses,
     }),
     availability: availabilityFor(item, placeAs, context.now),
@@ -134,7 +135,7 @@ function placeItem(item: Item, input: ModelInput, context: PlacementContext): Pl
   return {
     view,
     slot,
-    datedInWeek: isDatedInWeek(item, context),
+    datedInSpan: isDatedInSpan(item, context),
     countsDone: placeAs === 'done',
   };
 }
@@ -144,7 +145,7 @@ function ringEntry(placed: Placed): RingEntry {
   return {
     courseId: view.courseId,
     contextLabel: view.contextLabel,
-    counted: placed.datedInWeek && view.state !== 'skipped' && !view.isReminder,
+    counted: placed.datedInSpan && view.state !== 'skipped' && !view.isReminder,
     done: placed.countsDone,
     pastDue: isCountedPastDue(placed.slot),
   };
@@ -282,9 +283,9 @@ export function resolveViewBasics(
 /**
  * The planner range that a view needs, from the same inputs as `buildWeekView`. The data layer
  * requests only the parts of it that its cache lacks.
- * It starts at the earliest horizon of the visible courses, or at the start of the viewed week when
+ * It starts at the earliest horizon of the visible courses, or at the start of the shown span when
  * that is earlier, so older-style peer reviews, which Canvas files under the reviewer's own due
- * date, come back in their real week. It ends one millisecond before the end of the viewed week, or
+ * date, come back in their real span. It ends one millisecond before the end of the shown span, or
  * before the end of tomorrow when that is later.
  */
 export function plannerRangeFor(
@@ -295,21 +296,23 @@ export function plannerRangeFor(
     | 'settings'
     | 'browserTimeZone'
     | 'browserLanguage'
-    | 'weekOffset'
+    | 'spanOffset'
     | 'courses'
   >,
 ): TimeRange {
   const { timeZone, weekStartDay } = resolveViewBasics(input);
-  const bounds = weekBounds({
+  const bounds = spanBounds({
     now: input.now,
     timeZone,
     weekStartDay,
-    weekOffset: input.weekOffset,
+    span: input.settings.span,
+    spanOffset: input.spanOffset,
   });
   const { earliest } = horizons({
     now: input.now,
     timeZone,
     weekStartDay,
+    span: input.settings.span,
     courses: input.courses,
     hiddenCourseIds: input.settings.hiddenCourseIds,
   });
@@ -331,11 +334,12 @@ export function plannerRangeFor(
  */
 export function buildWeekView(input: ModelInput): WeekView {
   const { timeZone, locale, weekStartDay } = resolveViewBasics(input);
-  const bounds = weekBounds({
+  const bounds = spanBounds({
     now: input.now,
     timeZone,
     weekStartDay,
-    weekOffset: input.weekOffset,
+    span: input.settings.span,
+    spanOffset: input.spanOffset,
   });
   const context = placementContext(input, { timeZone, weekStartDay }, bounds);
   const hidden = new Set(input.settings.hiddenCourseIds);
@@ -377,10 +381,11 @@ export function buildWeekView(input: ModelInput): WeekView {
   const groups = buildGroups(visible, context, byCourse);
 
   return {
-    weekStart: bounds.weekStart,
-    weekEnd: bounds.weekEnd,
-    weekOffset: input.weekOffset,
-    isCurrentWeek: context.isCurrentWeek,
+    span: input.settings.span,
+    spanStart: bounds.spanStart,
+    spanEnd: bounds.spanEnd,
+    spanOffset: input.spanOffset,
+    isCurrentSpan: context.isCurrentSpan,
     today: bounds.today,
     timeZone,
     browserTimeZoneDiffers: !sameTimeZone(timeZone, input.browserTimeZone),
@@ -389,7 +394,7 @@ export function buildWeekView(input: ModelInput): WeekView {
     rings,
     courseFilter: input.courseFilter,
     hiddenCourseCount: input.courses.filter((course) => hidden.has(course.id)).length,
-    nothingDue: !visible.some((placed) => placed.datedInWeek),
+    nothingDue: !visible.some((placed) => placed.datedInSpan),
     limited: input.limited,
     scopeCourseId,
     scopeCourseHidden,

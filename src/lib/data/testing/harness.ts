@@ -30,11 +30,11 @@ import { sessionCacheItem, type SessionData } from '../cache';
 import { mergeIntervals, toInterval, toRange } from '../coverage';
 import { createDataOwner, type DataOwner, type DataOwnerDeps } from '../owner';
 import type { StateReply, SurfaceRequest } from '../protocol';
-import { plannerRangeForView, weekRange, type ViewContext } from '../state';
+import { plannerRangeForView, spanRange, type ViewContext } from '../state';
 import { createFakeCanvas, type FakeCanvas } from './fakeCanvas';
 
 export const ORIGIN = SCENARIO_ORIGIN;
-export const PANEL: SurfaceRequest = { surface: 'panel', weekOffset: 0, scopeCourseId: null };
+export const PANEL: SurfaceRequest = { surface: 'panel', spanOffset: 0, scopeCourseId: null };
 
 interface HarnessOptions {
   origin?: string | null;
@@ -171,15 +171,15 @@ async function scenarioView(
 }
 
 /** The planner range that a view of the scenario needs, at the current fake time. */
-export async function rangeOf(harness: Harness, weekOffset: number): Promise<TimeRange> {
+export async function rangeOf(harness: Harness, spanOffset: number): Promise<TimeRange> {
   const { session, context } = await scenarioView(harness);
-  return plannerRangeForView(session, weekOffset, context);
+  return plannerRangeForView(session, spanOffset, context);
 }
 
 /** The instants of a week of the scenario, both ends included, at the current fake time. */
-export async function weekOf(harness: Harness, weekOffset: number): Promise<TimeRange> {
+export async function spanOf(harness: Harness, spanOffset: number): Promise<TimeRange> {
   const { session, context } = await scenarioView(harness);
-  return weekRange(session, weekOffset, context);
+  return spanRange(session, spanOffset, context);
 }
 
 /** Planner ranges joined where they touch or overlap, such as the chunks of one request. */

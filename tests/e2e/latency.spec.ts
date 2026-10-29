@@ -243,7 +243,7 @@ test('a new week shows within one round trip on a slow Canvas with a full term o
   await expect(
     wednesday.locator('li', { hasText: 'Lab report 3: Photosynthesis' }).locator('.wr-subtitle'),
   ).toHaveText('Peer review');
-  const back = await measure(page, canvas, 'This week', 'This week', 'Week of October 25 to 31');
+  const back = await measure(page, canvas, 'Today', 'Today', 'Week of October 25 to 31');
   steps.push(back);
   const previous = await measure(
     page,
@@ -253,7 +253,7 @@ test('a new week shows within one round trip on a slow Canvas with a full term o
     'Week of October 18 to 24',
   );
   steps.push(previous);
-  steps.push(await measure(page, canvas, 'This week', 'This week', 'Week of October 25 to 31'));
+  steps.push(await measure(page, canvas, 'Today', 'Today', 'Week of October 25 to 31'));
 
   // A jump of three weeks: Next week three times, each click as soon as the week shows.
   const jump = [

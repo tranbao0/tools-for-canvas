@@ -1,5 +1,5 @@
 /**
- * The week arrows and "This week" (design decisions 6 and 9). The background clock is Tuesday
+ * The week arrows and "Today" (design decisions 6 and 9). The background clock is Tuesday
  * 2026-10-27 at 2:00 pm in New York, so the current week runs from Sunday Oct 25 to Saturday
  * Oct 31, and daylight saving time ends on Sunday Nov 1.
  */
@@ -42,7 +42,7 @@ function weekHeading(page: Page, name: string) {
   return page.getByRole('heading', { level: 1, name });
 }
 
-test('the week arrows show the next and previous weeks, and "This week" comes back', async ({
+test('the week arrows show the next and previous weeks, and "Today" comes back', async ({
   context,
   page,
   background,
@@ -53,10 +53,10 @@ test('the week arrows show the next and previous weeks, and "This week" comes ba
   await addCsrfCookie(context, canvas.origin);
   await saveAddress(background, canvas.origin);
   await openExtensionPage(page, extensionUrl('sidepanel.html'));
-  const thisWeek = page.getByRole('button', { name: 'This week', exact: true });
+  const today = page.getByRole('button', { name: 'Today', exact: true });
   await expect(weekHeading(page, 'Week of October 25 to 31')).toBeVisible();
   await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('Oct 25 - 31');
-  await expect(thisWeek).toBeDisabled();
+  await expect(today).toBeDisabled();
   await expect(doneBox(page, 'Quiz 3: Cell membranes')).toBeVisible();
   await settledList(page);
 
@@ -64,7 +64,7 @@ test('the week arrows show the next and previous weeks, and "This week" comes ba
 
   await expect(weekHeading(page, 'Week of November 1 to 7')).toBeVisible();
   await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('Nov 1 - 7');
-  await expect(thisWeek).toBeEnabled();
+  await expect(today).toBeEnabled();
   await expect(doneBox(page, 'Problem set 7')).toBeVisible();
   await settledList(page);
   const next = await shownGroups(page);
@@ -88,12 +88,12 @@ test('the week arrows show the next and previous weeks, and "This week" comes ba
 
   await page.getByRole('button', { name: 'Previous week' }).click();
   await expect(weekHeading(page, 'Week of October 25 to 31')).toBeVisible();
-  await expect(thisWeek).toBeDisabled();
+  await expect(today).toBeDisabled();
   await page.getByRole('button', { name: 'Previous week' }).click();
 
   await expect(weekHeading(page, 'Week of October 18 to 24')).toBeVisible();
   await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('Oct 18 - 24');
-  await expect(thisWeek).toBeEnabled();
+  await expect(today).toBeEnabled();
   await settledList(page);
   const previous = await shownGroups(page);
   expect(previous.map((shown) => shown.kind)).not.toContain('past_due');
@@ -108,10 +108,10 @@ test('the week arrows show the next and previous weeks, and "This week" comes ba
   await expect(row('Saturday', 'Pre-lab worksheet 7')).toContainText('Missing');
   await expect(doneBox(page, 'Quiz 3: Cell membranes')).toHaveCount(0);
 
-  await thisWeek.click();
+  await today.click();
 
   await expect(weekHeading(page, 'Week of October 25 to 31')).toBeVisible();
-  await expect(thisWeek).toBeDisabled();
+  await expect(today).toBeDisabled();
   await expect(group(page, 'past_due')).toBeVisible();
   await expect(doneBox(group(page, 'today'), 'Quiz 3: Cell membranes')).toBeVisible();
   expect(canvas.unmatched).toEqual([]);
@@ -177,7 +177,7 @@ test('three quick clicks on Next week land three weeks ahead on a slow Canvas', 
   // One more step goes on from there.
   await next.click();
   await expect(weekHeading(page, 'Week of November 22 to 28')).toBeVisible({ timeout: 15_000 });
-  await page.getByRole('button', { name: 'This week', exact: true }).click();
+  await page.getByRole('button', { name: 'Today', exact: true }).click();
   await expect(weekHeading(page, 'Week of October 25 to 31')).toBeVisible();
   expect(canvas.unmatched).toEqual([]);
 });

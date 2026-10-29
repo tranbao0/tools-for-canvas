@@ -5,7 +5,7 @@ import type { DataOwner } from '../owner';
 import { routeDataMessage, wireDataRouter, type RouterHost } from '../router';
 
 const SAVED = 'https://school.instructure.com';
-const REQUEST = { surface: 'panel', weekOffset: 0, scopeCourseId: null } as const;
+const REQUEST = { surface: 'panel', spanOffset: 0, scopeCourseId: null } as const;
 const EXTENSION_PAGE = { url: 'chrome-extension://test-extension-id/sidepanel.html' };
 const CONTENT_SCRIPT = { url: `${SAVED}/courses/5`, tab: { id: 3 }, frameId: 0 };
 const OTHER_CANVAS = { url: 'https://other.instructure.com/', tab: { id: 4 }, frameId: 0 };

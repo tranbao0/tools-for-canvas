@@ -5,7 +5,7 @@
 import type { Course, DashboardPositions, PlannerItem, TimeRange } from '../canvas/types';
 import { buildWeekView, plannerRangeFor, resolveViewBasics } from '../model/view';
 import { collectItems } from '../model/normalize';
-import { weekBounds } from '../model/time';
+import { spanBounds } from '../model/time';
 import type { Item, ModelInput, Offer, Settings, WeekView } from '../model/types';
 import type { SessionCache, SessionData } from './cache';
 import { coveredItems, isCovered, toInterval, type PlannerCoverage } from './coverage';
@@ -28,17 +28,17 @@ export function isoInstant(epochMs: number): string {
 
 type BasicsInput = Pick<
   ModelInput,
-  'now' | 'profile' | 'settings' | 'browserTimeZone' | 'browserLanguage' | 'weekOffset' | 'courses'
+  'now' | 'profile' | 'settings' | 'browserTimeZone' | 'browserLanguage' | 'spanOffset' | 'courses'
 >;
 
-function basicsInput(session: SessionData, weekOffset: number, context: ViewContext): BasicsInput {
+function basicsInput(session: SessionData, spanOffset: number, context: ViewContext): BasicsInput {
   return {
     now: isoInstant(context.now),
     profile: session.profile,
     settings: context.settings,
     browserTimeZone: context.browserTimeZone,
     browserLanguage: context.browserLanguage,
-    weekOffset,
+    spanOffset,
     courses: session.courses,
   };
 }
@@ -51,21 +51,27 @@ export function canvasTimeZone(session: SessionData, context: ViewContext): stri
 /** The planner range that a view needs. */
 export function plannerRangeForView(
   session: SessionData,
-  weekOffset: number,
+  spanOffset: number,
   context: ViewContext,
 ): TimeRange {
-  return plannerRangeFor(basicsInput(session, weekOffset, context));
+  return plannerRangeFor(basicsInput(session, spanOffset, context));
 }
 
-/** The instants of the viewed week, both ends included. */
-export function weekRange(
+/** The instants of the shown span, both ends included. */
+export function spanRange(
   session: SessionData,
-  weekOffset: number,
+  spanOffset: number,
   context: ViewContext,
 ): TimeRange {
-  const input = basicsInput(session, weekOffset, context);
+  const input = basicsInput(session, spanOffset, context);
   const { timeZone, weekStartDay } = resolveViewBasics(input);
-  const bounds = weekBounds({ now: input.now, timeZone, weekStartDay, weekOffset });
+  const bounds = spanBounds({
+    now: input.now,
+    timeZone,
+    weekStartDay,
+    span: input.settings.span,
+    spanOffset,
+  });
   return { start: bounds.start, end: isoInstant(Date.parse(bounds.end) - 1) };
 }
 
@@ -156,7 +162,7 @@ function modelInputFor(
     userId: session.profile.id,
   });
   return {
-    ...basicsInput(session, request.weekOffset, context),
+    ...basicsInput(session, request.spanOffset, context),
     origin: context.origin,
     courseFilter: request.courseFilter,
     scopeCourseId: request.scopeCourseId,
@@ -233,8 +239,8 @@ function viewForRequest(
       exact: true,
     };
   }
-  const range = plannerRangeForView(session, request.weekOffset, context);
-  const fit = plannerFit(cache.planner, range, weekRange(session, request.weekOffset, context));
+  const range = plannerRangeForView(session, request.spanOffset, context);
+  const fit = plannerFit(cache.planner, range, spanRange(session, request.spanOffset, context));
   if (!fit.showable) return null;
   // Every cached item goes in: the model places each by its own date and drops the rest, so a
   // peer review shows in its real week whichever request brought it.
@@ -252,7 +258,7 @@ export function allItems(cache: SessionCache, session: SessionData, context: Vie
     cache,
     session,
     plannerItems,
-    { surface: 'panel', weekOffset: 0, scopeCourseId: null },
+    { surface: 'panel', spanOffset: 0, scopeCourseId: null },
     context,
   );
   return collectItems({

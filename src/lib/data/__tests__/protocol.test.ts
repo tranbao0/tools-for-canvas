@@ -18,7 +18,7 @@ import {
   type DataAction,
 } from '../protocol';
 
-const REQUEST = { surface: 'panel', weekOffset: 0, scopeCourseId: null };
+const REQUEST = { surface: 'panel', spanOffset: 0, scopeCourseId: null };
 const TASK = { title: 'Read', date: '2026-10-29', time: '09:30', courseId: '101', details: null };
 
 describe('surface requests', () => {
@@ -28,16 +28,16 @@ describe('surface requests', () => {
     expect(isSurfaceRequest({ ...REQUEST, courseFilter: null })).toBe(true);
     expect(isSurfaceRequest({ ...REQUEST, courseFilter: undefined })).toBe(true);
     expect(
-      isSurfaceRequest({ ...REQUEST, surface: 'page', weekOffset: -3, scopeCourseId: '7' }),
+      isSurfaceRequest({ ...REQUEST, surface: 'page', spanOffset: -3, scopeCourseId: '7' }),
     ).toBe(true);
   });
 
   it.each([
     { ...REQUEST, surface: 'popup' },
-    { ...REQUEST, weekOffset: 0.5 },
-    { ...REQUEST, weekOffset: '1' },
+    { ...REQUEST, spanOffset: 0.5 },
+    { ...REQUEST, spanOffset: '1' },
     { ...REQUEST, courseFilter: 101 },
-    { surface: 'panel', weekOffset: 0 },
+    { surface: 'panel', spanOffset: 0 },
     null,
   ])('rejects %j', (value) => {
     expect(isSurfaceRequest(value)).toBe(false);
@@ -151,6 +151,7 @@ describe('messages', () => {
 
 describe('the messages of the in-page script', () => {
   const SETTINGS = {
+    span: { kind: 'month', days: 7 },
     weekStart: 'auto',
     hiddenCourseIds: ['7'],
     showRings: true,
@@ -167,6 +168,13 @@ describe('the messages of the in-page script', () => {
 
   it.each([
     [{ ...SETTINGS, extra: true }],
+    [{ ...SETTINGS, span: 'week' }],
+    [{ ...SETTINGS, span: { kind: 'year', days: 7 } }],
+    [{ ...SETTINGS, span: { kind: 'custom', days: 1 } }],
+    [{ ...SETTINGS, span: { kind: 'custom', days: 91 } }],
+    [{ ...SETTINGS, span: { kind: 'custom', days: 2.5 } }],
+    [{ ...SETTINGS, span: { kind: 'custom' } }],
+    [{ ...SETTINGS, span: { kind: 'week', days: 7, extra: 1 } }],
     [{ ...SETTINGS, weekStart: 0 }],
     [{ ...SETTINGS, weekStart: '1' }],
     [{ ...SETTINGS, theme: 'sepia' }],

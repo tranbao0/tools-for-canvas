@@ -16,7 +16,7 @@ import {
   rangeOf,
   type Harness,
   useScenarioClock,
-  weekOf,
+  spanOf,
 } from '../testing/harness';
 
 beforeEach(() => useScenarioClock());
@@ -116,7 +116,7 @@ describe('light and full rounds', () => {
   it('refreshes only the current week, and a shown week catches up in the background', async () => {
     const h = await loaded();
     for (let offset = 1; offset <= 3; offset += 1) {
-      await h.owner.getState({ ...PANEL, weekOffset: offset });
+      await h.owner.getState({ ...PANEL, spanOffset: offset });
       await h.owner.settled();
     }
     await advance(h, 61_000);
@@ -130,48 +130,48 @@ describe('light and full rounds', () => {
     h.canvas.resetCalls();
 
     // A shown week shows at once and loads its own week again after the round.
-    const shown = expectReady(await h.owner.getState({ ...PANEL, weekOffset: 2 }));
-    expect(shown.view.weekStart).toBe('2026-11-08');
+    const shown = expectReady(await h.owner.getState({ ...PANEL, spanOffset: 2 }));
+    expect(shown.view.spanStart).toBe('2026-11-08');
     expect(shown.refreshing).toBe(true);
     await h.owner.settled();
-    expect(h.canvas.plannerRanges()).toEqual([await weekOf(h, 2)]);
+    expect(h.canvas.plannerRanges()).toEqual([await spanOf(h, 2)]);
     // After a light round, only its planner items.
     expect(h.canvas.callsOf('listAssignmentsByIds')).toEqual([]);
     expect(h.canvas.calls.every((call) => call.priority === 'normal')).toBe(true);
 
     // Then it asks nothing more until the next round.
     h.canvas.resetCalls();
-    expect(expectReady(await h.owner.getState({ ...PANEL, weekOffset: 2 })).refreshing).toBe(false);
+    expect(expectReady(await h.owner.getState({ ...PANEL, spanOffset: 2 })).refreshing).toBe(false);
     await h.owner.settled();
     expect(h.canvas.calls).toEqual([]);
   });
 
   it('reloads the assignment details of a shown week after a full round', async () => {
     const h = await loaded();
-    await h.owner.getState({ ...PANEL, weekOffset: 1 });
+    await h.owner.getState({ ...PANEL, spanOffset: 1 });
     await h.owner.settled();
     await advance(h, 5 * 60_000);
     await h.owner.refresh('timer');
     await h.owner.settled();
     h.canvas.resetCalls();
 
-    await h.owner.getState({ ...PANEL, weekOffset: 1 });
+    await h.owner.getState({ ...PANEL, spanOffset: 1 });
     await h.owner.settled();
 
-    expect(h.canvas.plannerRanges()).toEqual([await weekOf(h, 1)]);
+    expect(h.canvas.plannerRanges()).toEqual([await spanOf(h, 1)]);
     expect(h.canvas.callsOf('listAssignmentsByIds').length).toBeGreaterThan(0);
     expect(h.canvas.callsOf('listUndatedAssignments')).toEqual([]);
   });
 
   it('keeps one contiguous coverage, and forgets weeks no view used for 10 minutes', async () => {
     const h = await loaded();
-    await h.owner.getState({ ...PANEL, weekOffset: 1 });
+    await h.owner.getState({ ...PANEL, spanOffset: 1 });
     await h.owner.settled();
-    await h.owner.getState({ ...PANEL, weekOffset: 2 });
+    await h.owner.getState({ ...PANEL, spanOffset: 2 });
     await h.owner.settled();
     // From the horizon to the week after the last shown one, which loaded ahead.
     expect(await cachedSpans()).toEqual([
-      { start: (await rangeOf(h, 0)).start, end: (await weekOf(h, 3)).end },
+      { start: (await rangeOf(h, 0)).start, end: (await spanOf(h, 3)).end },
     ]);
 
     await advance(h, ACTIVE_RANGE_MS + 61_000);
@@ -180,10 +180,10 @@ describe('light and full rounds', () => {
 
     // The current week's range and the next week stay.
     expect(await cachedSpans()).toEqual([
-      { start: (await rangeOf(h, 0)).start, end: (await weekOf(h, 1)).end },
+      { start: (await rangeOf(h, 0)).start, end: (await spanOf(h, 1)).end },
     ]);
     const cache = (await sessionCacheItem.getValue()) as SessionCache;
-    const end = Date.parse((await weekOf(h, 1)).end);
+    const end = Date.parse((await spanOf(h, 1)).end);
     const dates = Object.values(cache.planner.items).map((item) => Date.parse(item.plannable_date));
     expect(dates.every((date) => date <= end)).toBe(true);
   });
@@ -340,10 +340,10 @@ describe('midnight, settings and address changes', () => {
     expect(state.view.today).toBe('2026-10-31');
     // Tomorrow is the first day of the next week, and that day was missing.
     expect(h.canvas.plannerRanges()).toContainEqual({
-      start: (await weekOf(h, 1)).start,
+      start: (await spanOf(h, 1)).start,
       end: (await rangeOf(h, 0)).end,
     });
-    const dayStart = (await weekOf(h, 1)).start;
+    const dayStart = (await spanOf(h, 1)).start;
     const day = h.canvas.calls.find(
       (call) =>
         call.method === 'listPlannerItems' &&

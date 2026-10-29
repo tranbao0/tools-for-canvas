@@ -25,7 +25,7 @@ function setup(
 }
 
 describe('SettingsView', () => {
-  it('shows the five settings and the address', () => {
+  it('shows the six settings and the address', () => {
     setup();
     expect(screen.getByLabelText('First day of the week')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Hidden courses' })).toBeTruthy();

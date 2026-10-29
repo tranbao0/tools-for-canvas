@@ -197,18 +197,34 @@ Use a new, empty profile, and the student account.
     On Firefox, expect also the note about private windows and container tabs.
 19. Sign in again, turn off the network, and click Retry in the panel.
     Expect: "Couldn't refresh. Showing your list from <time>." and "You're offline."
-20. Click the gear in the panel and change each of the five settings, then do the same with the gear in the in-page list.
+20. Click the gear in the panel and change each of the six settings, then do the same with the gear in the in-page list.
     Expect: the settings open in place, Back returns to the list, and each change shows at once in the panel, in the in-page list and on the settings page.
-    Expect: the first day of the week, the hidden courses, the rings, the in-page list and the theme follow the settings, and a hidden course adds a line such as "1 course hidden".
-21. Set Theme to Light, then Dark.
+    Expect: the shown span, the first day of the week, the hidden courses, the rings, the in-page list and the theme follow the settings, and a hidden course adds a line such as "1 course hidden".
+21. In the panel, pick each span in the control next to the arrows: Day, Week, 2 weeks, Month and Custom with 10 days.
+    Expect: the header shows "Tue, Oct 27" for Day, "Oct 25 - 31" for Week, "Oct 25 - Nov 7" for 2 weeks, "October 2026" for Month and "Oct 27 - Nov 5" for Custom, with the dates in your Canvas time zone.
+    Expect: Week and 2 weeks start on the first day of the week from the settings, Month is the calendar month, and Custom starts today.
+    Expect: the arrows are named by the span, such as "Next month" and "Next 10 days", and each step moves by one span.
+    Expect: Today is dim in the span that holds today, and it returns to that span from any other span.
+    Expect: Past due shows only in the span that holds today, and the rings and the empty text name the span, such as "3 of 5 done this month" and "Nothing due in these 10 days".
+    Expect: with Day, tomorrow still shows as the look-ahead, outside the rings.
+22. Type 1, 91 and 2.5 in the Custom days field, and press Enter or leave the field.
+    Expect: the browser says the number must be a whole number from 2 to 90, and the list keeps its last span.
+    Type 2, then 90.
+    Expect: the list shows 2 days, then 90 days, and the first view of 90 days loads in several requests.
+23. Pick a span in the panel, then open the Canvas dashboard and pick another span in the in-page list, then close the browser and open it again.
+    Expect: the panel and the in-page list always show the same span, and "Shown span" on the settings page shows it too.
+    Expect: the span is still the same after the browser opens again, and a new span starts at the span that holds today.
+    Expect: the link in the in-page list names the span: "Rest of the week (9)", "Rest of the month (40)", "Rest of these 2 weeks (15)" or "Rest of these 10 days (12)", and for Day it is "No due date and done (2)" when the student has such items.
+    Expect: the chart, the legend and the list agree with the shown span, with and without the panel open.
+24. Set Theme to Light, then Dark.
     Expect: the panel, the settings page, the welcome page and the in-page list all use that theme.
     Set Theme to Automatic, then switch the system between light and dark mode.
     Expect: the panel follows the browser or the system, and the in-page list follows the Canvas page.
-22. Use the panel with the keyboard only, then with a screen reader.
-    Expect: every action works with the keyboard, and each ring has a label such as "3 of 5 done this week".
-23. Make the panel as narrow as the browser allows (360 px on Chrome and Edge, 14em on Firefox).
-    Expect: the compact layout shows, and no text or button is cut off.
-24. Open a second Canvas site, such as `https://canvas.example.edu`, sign in, and click the toolbar button.
+25. Use the panel with the keyboard only, then with a screen reader.
+    Expect: every action works with the keyboard, including the span control and the Custom days field, and each ring has a label such as "3 of 5 done this week".
+26. Make the panel as narrow as the browser allows (360 px on Chrome and Edge, 14em on Firefox).
+    Expect: the compact layout shows, and no text or button is cut off, including the span control and the Custom days field with each span.
+27. Open a second Canvas site, such as `https://canvas.example.edu`, sign in, and click the toolbar button.
     Expect: the in-page list does not show on the second site.
     Expect: the panel offers "Switch to this Canvas?".
     Click "Switch".
@@ -224,32 +240,32 @@ Use a new, empty profile, and the student account.
     With the offer open in the welcome page or the side panel, open another Canvas on its own domain in a tab.
     Expect: the offer shows the new host in a new box, and its "Use it" or "Switch" button is dim and does nothing for one second.
     Expect: in Chrome and Edge, a page cannot read or write the extension storage from its own console world, and in Firefox a changed `canvasOrigin`, `settings` or `seenNotes` in `storage.local` is put back from the extension's own database.
-25. In Firefox, mark an item done so that the Undo notice shows, then press Tab and Shift+Tab through the whole panel.
+28. In Firefox, mark an item done so that the Undo notice shows, then press Tab and Shift+Tab through the whole panel.
     Expect: no focused control is hidden under the sticky header or the Undo notice.
-26. With a Canvas tab open, turn the extension off and on again on the browser's extensions page, then go back to that tab.
+29. With a Canvas tab open, turn the extension off and on again on the browser's extensions page, then go back to that tab.
     Expect: the tab shows either the in-page list or the native Canvas To Do, never a frozen list.
     Reload the tab.
     Expect: the in-page list shows.
     Install an update of the extension with a Canvas tab open.
     Expect: the tab shows the new list with no reload.
-27. In the browser's site access settings for the extension, set access to "On click" or remove the Canvas site, then open the panel.
+30. In the browser's site access settings for the extension, set access to "On click" or remove the Canvas site, then open the panel.
     Expect: the panel shows "Tools for Canvas needs access to your Canvas" and one "Allow access" button.
     Click "Allow access" and allow it.
     Expect: the list loads.
-28. Remove the extension.
+31. Remove the extension.
     Expect: no web page opens, and your done marks and custom tasks are still in Canvas.
 
 ### Store listings
 
-29. Check the Chrome Web Store listing.
+32. Check the Chrome Web Store listing.
     Expect: the single purpose is "Show your Canvas coursework for the week as a to-do list.", the data usage ticks "Website content" processed only on the device, the account is a non-trader, and 2-Step Verification is on.
-30. Check the Edge Add-ons listing.
+33. Check the Edge Add-ons listing.
     Expect: the description has the license link and does not mention other browsers.
-31. Check the Firefox Add-ons listing.
+34. Check the Firefox Add-ons listing.
     Expect: the source zip and the lockfile are attached, the reviewer notes say that the only writes are done marks, skip marks and custom tasks sent to the student's own Canvas at the student's request, and two-factor authentication is on.
-32. Check every listing.
+35. Check every listing.
     Expect: the privacy policy link opens `docs/privacy.md` on the project site.
     Expect: the description ends with the trademark notice at the end of the README.
-33. Sign in to the reviewer test account.
+36. Sign in to the reviewer test account.
     Expect: the planner, done marks and custom tasks work in its course.
-34. Before the first release only, run the final name check from design decision 17.
+37. Before the first release only, run the final name check from design decision 17.

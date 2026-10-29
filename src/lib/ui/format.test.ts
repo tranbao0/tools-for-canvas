@@ -4,16 +4,24 @@ import {
   formatDateTime,
   formatMonthDay,
   formatTime,
+  formatSpanRange,
+  formatSpanRangeLong,
   formatTimeOrDateTime,
   formatWeekRange,
   formatWeekRangeLong,
   formatWeekday,
   hostOf,
+  restOfSpanLabel,
+  spanPhrase,
+  spanUnit,
   timeZoneLabel,
   weekdayName,
   zonedDate,
   zonedTime,
 } from './format';
+
+/** The range text ties its dash to the date before it with a no-break space. */
+const plain = (text: string) => text.replaceAll('\u00a0', ' ');
 
 describe('dates', () => {
   it('formats plain dates in English without a time zone shift', () => {
@@ -24,13 +32,73 @@ describe('dates', () => {
   });
 
   it('formats the week range within a month, across months and across years', () => {
-    expect(formatWeekRange('2026-10-25', '2026-10-31')).toBe('Oct 25 - 31');
-    expect(formatWeekRange('2026-10-26', '2026-11-01')).toBe('Oct 26 - Nov 1');
-    expect(formatWeekRange('2026-12-28', '2027-01-03')).toBe('Dec 28 - Jan 3');
+    expect(plain(formatWeekRange('2026-10-25', '2026-10-31'))).toBe('Oct 25 - 31');
+    expect(plain(formatWeekRange('2026-10-26', '2026-11-01'))).toBe('Oct 26 - Nov 1');
+    expect(plain(formatWeekRange('2026-12-28', '2027-01-03'))).toBe('Dec 28 - Jan 3');
     expect(formatWeekRangeLong('2026-10-25', '2026-10-31')).toBe('Week of October 25 to 31');
     expect(formatWeekRangeLong('2026-10-26', '2026-11-01')).toBe(
       'Week of October 26 to November 1',
     );
+  });
+});
+
+describe('spans', () => {
+  const week = { kind: 'week', days: 7 } as const;
+  const day = { kind: 'day', days: 7 } as const;
+  const fortnight = { kind: 'fortnight', days: 7 } as const;
+  const month = { kind: 'month', days: 7 } as const;
+  const custom = { kind: 'custom', days: 10 } as const;
+
+  it('formats the header of each span', () => {
+    expect(plain(formatSpanRange(week, '2026-11-01', '2026-11-07'))).toBe('Nov 1 - 7');
+    expect(plain(formatSpanRange(day, '2026-10-27', '2026-10-27'))).toBe('Tue, Oct 27');
+    expect(plain(formatSpanRange(fortnight, '2026-11-02', '2026-11-15'))).toBe('Nov 2 - Nov 15');
+    expect(plain(formatSpanRange(month, '2026-11-01', '2026-11-30'))).toBe('November 2026');
+    expect(plain(formatSpanRange(custom, '2026-12-28', '2027-01-06'))).toBe('Dec 28 - Jan 6');
+  });
+
+  it('ties the dash to the date before it, so a narrow header wraps only after the dash', () => {
+    expect(formatSpanRange(fortnight, '2026-11-02', '2026-11-15')).toBe('Nov 2\u00a0- Nov 15');
+    expect(formatSpanRange(week, '2026-11-01', '2026-11-07')).toBe('Nov 1\u00a0- 7');
+  });
+
+  it('says each span in full for a screen reader', () => {
+    expect(formatSpanRangeLong(week, '2026-11-01', '2026-11-07')).toBe('Week of November 1 to 7');
+    expect(formatSpanRangeLong(day, '2026-10-27', '2026-10-27')).toBe('Tuesday, October 27');
+    expect(formatSpanRangeLong(fortnight, '2026-11-02', '2026-11-15')).toBe(
+      'November 2 to November 15',
+    );
+    expect(formatSpanRangeLong(month, '2026-11-01', '2026-11-30')).toBe('November 2026');
+    expect(formatSpanRangeLong(custom, '2026-12-28', '2027-01-06')).toBe(
+      'December 28 to January 6',
+    );
+  });
+
+  it('names what an arrow moves by, and the span in a sentence', () => {
+    expect([week, day, fortnight, month, custom].map(spanUnit)).toEqual([
+      'week',
+      'day',
+      '2 weeks',
+      'month',
+      '10 days',
+    ]);
+    expect([week, day, fortnight, month, custom].map(spanPhrase)).toEqual([
+      'this week',
+      'this day',
+      'in these 2 weeks',
+      'this month',
+      'in these 10 days',
+    ]);
+  });
+
+  it('names the span in the link that opens the rest', () => {
+    expect([week, day, fortnight, month, custom].map((span) => restOfSpanLabel(span, 9))).toEqual([
+      'Rest of the week (9)',
+      'No due date and done (9)',
+      'Rest of these 2 weeks (9)',
+      'Rest of the month (9)',
+      'Rest of these 10 days (9)',
+    ]);
   });
 });
 

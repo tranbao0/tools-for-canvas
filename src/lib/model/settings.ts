@@ -4,7 +4,14 @@
  * clean up what storage returns, because on Firefox a web page's content script can write to
  * `storage.local`, and a bad value must never break the extension.
  */
-import { DEFAULT_SETTINGS, type Settings } from './types';
+import {
+  DEFAULT_SETTINGS,
+  MAX_CUSTOM_DAYS,
+  MIN_CUSTOM_DAYS,
+  SPAN_KINDS,
+  type Settings,
+  type Span,
+} from './types';
 
 const WEEK_STARTS: readonly unknown[] = ['auto', 1, 2, 3, 4, 5, 6, 7];
 const THEMES: readonly unknown[] = ['auto', 'light', 'dark'];
@@ -20,6 +27,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isWeekStart(value: unknown): value is Settings['weekStart'] {
   return WEEK_STARTS.includes(value);
+}
+
+/** Whether the value is a whole number of days that a custom span may hold. */
+export function isCustomDays(value: unknown): value is number {
+  return (
+    Number.isInteger(value) &&
+    (value as number) >= MIN_CUSTOM_DAYS &&
+    (value as number) <= MAX_CUSTOM_DAYS
+  );
+}
+
+function isSpan(value: unknown): value is Span {
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === 2 &&
+    (SPAN_KINDS as readonly unknown[]).includes(value['kind']) &&
+    isCustomDays(value['days'])
+  );
+}
+
+/** Whether two spans show the same days. The length counts only for a custom span. */
+export function sameSpan(a: Span, b: Span): boolean {
+  return a.kind === b.kind && (a.kind !== 'custom' || a.days === b.days);
 }
 
 function isTheme(value: unknown): value is Settings['theme'] {
@@ -38,7 +68,8 @@ function isCourseIdList(value: unknown): value is string[] {
 export function isSettings(value: unknown): value is Settings {
   return (
     isRecord(value) &&
-    Object.keys(value).length === 5 &&
+    Object.keys(value).length === 6 &&
+    isSpan(value['span']) &&
     isWeekStart(value['weekStart']) &&
     isCourseIdList(value['hiddenCourseIds']) &&
     typeof value['showRings'] === 'boolean' &&
@@ -56,6 +87,7 @@ export function normalizeSettings(stored: unknown): Settings {
   const input = isRecord(stored) ? stored : {};
   const fallback = structuredClone(DEFAULT_SETTINGS);
   return {
+    span: isSpan(input['span']) ? { ...input['span'] } : fallback.span,
     weekStart: isWeekStart(input['weekStart']) ? input['weekStart'] : fallback.weekStart,
     hiddenCourseIds: isCourseIdList(input['hiddenCourseIds'])
       ? [...input['hiddenCourseIds']]

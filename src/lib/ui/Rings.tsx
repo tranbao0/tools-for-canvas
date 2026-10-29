@@ -4,7 +4,8 @@
  */
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { t, tp } from '../i18n';
-import type { Ring, WeekView } from '../model/types';
+import type { Ring, Span, WeekView } from '../model/types';
+import { spanPhrase } from './format';
 import { CheckIcon } from './icons';
 
 /** The width where the legend moves beside the chart (the container query in styles.css). */
@@ -15,11 +16,11 @@ const HOLE = 22;
 const GAP = 1;
 
 /** "Nothing due this week", in the chart place of the rings or in the list. */
-export function NothingDue() {
+export function NothingDue(props: { span: Span }) {
   return (
     <p class="wr-empty">
       <CheckIcon />
-      {t('nothingDue')}
+      {t('nothingDue', spanPhrase(props.span))}
     </p>
   );
 }
@@ -47,13 +48,13 @@ export function ringSpokenName(ring: Ring): string {
 }
 
 /** "BIO 101, Cell Biology: 3 of 5 done this week, 1 past due" */
-export function ringAriaLabel(ring: Ring): string {
+export function ringAriaLabel(ring: Ring, phrase: string): string {
   const name = ringSpokenName(ring);
   const done = String(ring.done);
   const total = String(ring.total);
   return ring.pastDue > 0
-    ? t('ringLabelPastDue', name, done, total, String(ring.pastDue))
-    : t('ringLabel', name, done, total);
+    ? t('ringLabelPastDue', name, done, total, String(ring.pastDue), phrase)
+    : t('ringLabel', name, done, total, phrase);
 }
 
 export function isRingSelected(ring: Ring, filter: WeekView['courseFilter']): boolean {
@@ -62,10 +63,13 @@ export function isRingSelected(ring: Ring, filter: WeekView['courseFilter']): bo
 
 export function Rings(props: {
   rings: Ring[];
+  /** The span the rings count, from the view. */
+  span: Span;
   filter: WeekView['courseFilter'];
   onSelect(courseId: string | null | undefined): void;
 }) {
-  const { rings, filter } = props;
+  const { rings, filter, span } = props;
+  const phrase = spanPhrase(span);
   const ref = useRef<HTMLElement>(null);
   const [wide, setWide] = useState(false);
   // The legend sits beside the chart from WIDE_FROM on, and the chart then draws more classes.
@@ -103,7 +107,7 @@ export function Rings(props: {
   return (
     <section ref={ref} class="wr-rings" aria-label={t('ringsLabel')}>
       {drawn.length === 0 ? (
-        <NothingDue />
+        <NothingDue span={span} />
       ) : (
         <div class="wr-chart">
           <svg viewBox="0 0 120 120" aria-hidden="true" fill="none" stroke-width={width}>
@@ -145,8 +149,8 @@ export function Rings(props: {
           )}
           <span class="wr-sr">
             {finished
-              ? t('weekComplete', String(total))
-              : t('weekProgress', String(done), String(total), String(percent))}
+              ? t('spanComplete', String(total), phrase)
+              : t('spanProgress', String(done), String(total), String(percent), phrase)}
           </span>
         </div>
       )}
@@ -160,7 +164,7 @@ export function Rings(props: {
                 class="wr-legend-row"
                 style={{ '--wr-course': ring.color }}
                 aria-pressed={selected}
-                aria-label={ringAriaLabel(ring)}
+                aria-label={ringAriaLabel(ring, phrase)}
                 title={ringName(ring)}
                 onClick={() => select(ring)}
               >

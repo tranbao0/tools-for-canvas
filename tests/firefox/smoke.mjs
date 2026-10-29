@@ -159,7 +159,7 @@ async function checkAddressVault(driver) {
       await browser.runtime.sendMessage({ type: 'weekrow:accept-offer', origin: address });
       const state = await browser.runtime.sendMessage({
         type: 'weekrow:get-state',
-        request: { surface: 'page', weekOffset: 0, scopeCourseId: null },
+        request: { surface: 'page', spanOffset: 0, scopeCourseId: null },
       });
       const saved = { vault: await vault(), mirror: await mirror(), state: state?.kind ?? null };
       await browser.storage.local.set({ canvasOrigin: 'https://evil.example' });
@@ -202,10 +202,11 @@ async function checkBadSettings(driver) {
     `
     const done = arguments[arguments.length - 1];
     const mirror = async (key) => (await browser.storage.local.get(key))[key] ?? null;
-    const request = { surface: 'page', weekOffset: 0, scopeCourseId: null };
+    const request = { surface: 'page', spanOffset: 0, scopeCourseId: null };
     (async () => {
       await browser.storage.local.set({
         settings: {
+          span: { kind: 'custom', days: 500 },
           weekStart: 'auto',
           hiddenCourseIds: 5,
           showRings: true,
@@ -241,13 +242,16 @@ async function checkBadSettings(driver) {
     clean === null ||
     !Array.isArray(clean.hiddenCourseIds) ||
     clean.hiddenCourseIds.length !== 0 ||
-    clean.showOnCanvasPages !== true
+    clean.showOnCanvasPages !== true ||
+    clean.span?.kind !== 'week' ||
+    clean.span?.days !== 7
   ) {
     throw new Error(`The settings that the page gets are not clean: ${JSON.stringify(result)}`);
   }
   if (
     !Array.isArray(result.settings?.hiddenCourseIds) ||
     result.settings.showOnCanvasPages !== true ||
+    result.settings.span?.kind !== 'week' ||
     result.notes?.firstDone === 'yes'
   ) {
     throw new Error(`The mirror was not repaired from the vault: ${JSON.stringify(result)}`);

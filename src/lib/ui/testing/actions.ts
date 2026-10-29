@@ -6,8 +6,8 @@ export type SpyActions = { [K in keyof Actions]: Mock<Actions[K]> };
 
 export function spyActions(): SpyActions {
   return {
-    goToWeek: vi.fn(),
-    stepWeek: vi.fn(),
+    goToSpan: vi.fn(),
+    stepSpan: vi.fn(),
     setCourseFilter: vi.fn(),
     setDone: vi.fn(),
     skip: vi.fn(),

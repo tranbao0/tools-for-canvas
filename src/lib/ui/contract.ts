@@ -18,13 +18,13 @@ export interface TaskInput {
 }
 
 export interface Actions {
-  /** Absolute week offset. 0 is the current week. */
-  goToWeek(offset: number): void;
+  /** Absolute span offset. 0 is the span that holds today. */
+  goToSpan(offset: number): void;
   /**
-   * Moves by `delta` weeks from the week the student last asked for, not from the week on screen,
-   * so quick clicks while a week loads are never lost.
+   * Moves by `delta` spans from the span the student last asked for, not from the span on screen,
+   * so quick clicks while a span loads are never lost.
    */
-  stepWeek(delta: number): void;
+  stepSpan(delta: number): void;
   /** `undefined`: no filter. `null`: the Personal ring. */
   setCourseFilter(courseId: string | null | undefined): void;
   setDone(key: string, done: boolean): void;

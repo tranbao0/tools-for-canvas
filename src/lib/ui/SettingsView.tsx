@@ -1,4 +1,4 @@
-/** The extension's settings page: the five settings and the Canvas address (design decision 18). */
+/** The extension's settings page: the six settings and the Canvas address (design decision 18). */
 import { useState } from 'preact/hooks';
 import { t } from '../i18n';
 import type { SettingsProps } from './contract';

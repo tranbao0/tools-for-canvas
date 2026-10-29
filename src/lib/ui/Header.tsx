@@ -1,12 +1,14 @@
 /**
- * The week header, styled as a Canvas right-column section heading: the week range with the add
- * and settings buttons, then the week arrows, "This week" and the time zone label.
+ * The span header, styled as a Canvas right-column section heading: the range of the shown span
+ * with the add and settings buttons, then the arrows, "Today", the span control and the time zone
+ * label.
  */
 import { t } from '../i18n';
-import type { WeekView } from '../model/types';
-import { formatWeekRange, formatWeekRangeLong, timeZoneLabel } from './format';
+import type { Span, WeekView } from '../model/types';
+import { formatSpanRange, formatSpanRangeLong, spanUnit, timeZoneLabel } from './format';
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from './icons';
 import { GearButton, Heading, type HeadingLevel } from './parts';
+import { SpanPicker } from './SpanPicker';
 
 export interface HeaderProps {
   /** `null` while loading: the header keeps its final layout, with the list title for the range. */
@@ -16,9 +18,13 @@ export interface HeaderProps {
   /** Set when adding a task is not possible, with the reason. */
   addDisabledReason: string | null;
   addDescribedBy?: string;
-  /** Moves from the week the student last asked for: -1 or 1. */
+  /** The span the student picked. The arrows and the control follow it, not the view on screen. */
+  span: Span;
+  /** Saves the span the student picks. `null` while the settings load: the control is off. */
+  onSpan: ((span: Span) => void) | null;
+  /** Moves from the span the student last asked for: -1 or 1. */
   onStep(delta: number): void;
-  onThisWeek(): void;
+  onToday(): void;
   onAdd(): void;
   onSettings(): void;
 }
@@ -26,7 +32,10 @@ export interface HeaderProps {
 export function Header(props: HeaderProps) {
   const { view } = props;
   const addDisabled = view === null || props.addDisabledReason !== null;
-  const thisWeekOff = view === null || view.isCurrentWeek;
+  const todayOff = view === null || view.isCurrentSpan;
+  const unit = spanUnit(props.span);
+  const prev = t('prevSpan', unit);
+  const next = t('nextSpan', unit);
   const zoneInstant = view ? `${view.today}T12:00:00Z` : '';
   return (
     <header class="wr-header">
@@ -34,8 +43,12 @@ export function Header(props: HeaderProps) {
         <Heading level={props.level} class="wr-range">
           {view ? (
             <>
-              <span aria-hidden="true">{formatWeekRange(view.weekStart, view.weekEnd)}</span>
-              <span class="wr-sr">{formatWeekRangeLong(view.weekStart, view.weekEnd)}</span>
+              <span aria-hidden="true">
+                {formatSpanRange(view.span, view.spanStart, view.spanEnd)}
+              </span>
+              <span class="wr-sr">
+                {formatSpanRangeLong(view.span, view.spanStart, view.spanEnd)}
+              </span>
             </>
           ) : (
             t('listTitle')
@@ -63,12 +76,12 @@ export function Header(props: HeaderProps) {
         )}
       </div>
       <div class="wr-nav-row">
-        <div class="wr-nav" role="group" aria-label={t('weekNav')}>
+        <div class="wr-nav" role="group" aria-label={t('spanNav')}>
           <button
             type="button"
             class="wr-icon-btn"
-            aria-label={t('prevWeek')}
-            title={t('prevWeek')}
+            aria-label={prev}
+            title={prev}
             disabled={view === null}
             onClick={() => props.onStep(-1)}
           >
@@ -76,29 +89,35 @@ export function Header(props: HeaderProps) {
           </button>
           {/*
            * aria-disabled, not disabled: a disabled button drops focus, and this one turns off
-           * while it has focus, when it brings the student back to the current week.
+           * while it has focus, when it brings the student back to the span that holds today.
            */}
           <button
             type="button"
             class="wr-this-week"
-            aria-disabled={thisWeekOff}
+            aria-disabled={todayOff}
             onClick={() => {
-              if (!thisWeekOff) props.onThisWeek();
+              if (!todayOff) props.onToday();
             }}
           >
-            {t('thisWeek')}
+            {t('goToToday')}
           </button>
           <button
             type="button"
             class="wr-icon-btn"
-            aria-label={t('nextWeek')}
-            title={t('nextWeek')}
+            aria-label={next}
+            title={next}
             disabled={view === null}
             onClick={() => props.onStep(1)}
           >
             <ChevronRightIcon />
           </button>
         </div>
+        <SpanPicker
+          span={props.span}
+          selectLabel={t('spanPicker')}
+          disabled={props.onSpan === null}
+          onChange={(span) => props.onSpan?.(span)}
+        />
         {view?.browserTimeZoneDiffers && (
           <span class="wr-tz" title={t('timesInLong', view.timeZone)}>
             {t('timesIn', timeZoneLabel(view.timeZone, zoneInstant))}

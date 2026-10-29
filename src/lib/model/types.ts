@@ -58,7 +58,25 @@ export type AssignmentData = Pick<
 /** ISO day of week: 1 is Monday, 7 is Sunday. */
 export type IsoDayOfWeek = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
+/** The kinds of span the list can show (design decision 9, "The shown span"). */
+export const SPAN_KINDS = ['day', 'week', 'fortnight', 'month', 'custom'] as const;
+export type SpanKind = (typeof SPAN_KINDS)[number];
+
+/** The fewest and the most days that a custom span holds. */
+export const MIN_CUSTOM_DAYS = 2;
+export const MAX_CUSTOM_DAYS = 90;
+
+/** The span the list shows. `days` is the length of a custom span and is ignored for other kinds. */
+export interface Span {
+  kind: SpanKind;
+  days: number;
+}
+
+export const DEFAULT_SPAN: Span = { kind: 'week', days: 7 };
+
 export interface Settings {
+  /** The span the list shows. */
+  span: Span;
   /** `auto` takes the first day of the week from the Canvas language. */
   weekStart: 'auto' | IsoDayOfWeek;
   hiddenCourseIds: string[];
@@ -72,6 +90,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  span: DEFAULT_SPAN,
   weekStart: 'auto',
   hiddenCourseIds: [],
   showRings: true,
@@ -225,13 +244,16 @@ export interface Ring {
 }
 
 export interface WeekView {
-  /** First day of the viewed week, plain date. */
-  weekStart: string;
-  /** Last day of the viewed week, plain date. */
-  weekEnd: string;
-  /** 0 is the current week. */
-  weekOffset: number;
-  isCurrentWeek: boolean;
+  /** The span this view shows. */
+  span: Span;
+  /** First day of the shown span, plain date. */
+  spanStart: string;
+  /** Last day of the shown span, plain date. */
+  spanEnd: string;
+  /** How many spans the shown span lies from the span that holds today. 0 holds today. */
+  spanOffset: number;
+  /** The shown span holds today. */
+  isCurrentSpan: boolean;
   /** Plain date of today in the Canvas time zone. */
   today: string;
   timeZone: string;
@@ -246,7 +268,7 @@ export interface WeekView {
    */
   courseFilter: string | null | undefined;
   hiddenCourseCount: number;
-  /** The week has no items. The day groups are replaced by "Nothing due this week". */
+  /** The span has no items. The day groups are replaced by "Nothing due" with the span named. */
   nothingDue: boolean;
   /** The Canvas planner is turned off for the student. */
   limited: boolean;
@@ -267,7 +289,7 @@ export interface ModelInput {
   browserLanguage?: string | null;
   profile: Profile;
   settings: Settings;
-  weekOffset: number;
+  spanOffset: number;
   courseFilter?: string | null | undefined;
   scopeCourseId?: string | null;
   courses: Course[];

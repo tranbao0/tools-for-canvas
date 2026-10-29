@@ -1,6 +1,6 @@
 /**
  * The settings in place and the Theme setting (design decisions 18 and 19). The gear in the side
- * panel and in the in-page list opens the same five settings in place, with a Back button. A
+ * panel and in the in-page list opens the same six settings in place, with a Back button. A
  * change saves at once, and every surface follows it.
  */
 import type { BrowserContext, Locator, Page, Worker } from '@playwright/test';
@@ -213,4 +213,44 @@ test.describe('theme', () => {
     await openExtensionPage(page, extensionUrl('welcome.html'));
     await expect.poll(() => panelTheme(page)).toBe('dark');
   });
+});
+
+test('the Shown span setting saves from the in-page settings, and the panel and the settings page follow it', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const { list, panel } = await openBoth(context, page, extensionUrl('sidepanel.html'));
+
+  await openSettingsInPlace(list);
+  const setting = list.getByLabel('Shown span');
+  await expect(setting).toHaveValue('week');
+  await setting.selectOption('month');
+  await expect
+    .poll(() => storedSettings(background))
+    .toMatchObject({
+      span: { kind: 'month', days: 7 },
+    });
+  await list.getByRole('button', { name: 'Back' }).click();
+  await expect(list.getByRole('heading', { level: 2 })).toHaveText(/October 2026/);
+
+  await panel.bringToFront();
+  await expect(panel.getByRole('heading', { level: 1, name: 'October 2026' })).toBeVisible();
+
+  const options = await context.newPage();
+  await openExtensionPage(options, extensionUrl('options.html'));
+  await expect(options.getByLabel('Shown span')).toHaveValue('month');
+  await options.getByLabel('Shown span').selectOption('custom');
+  await options.getByLabel('Days', { exact: true }).fill('14');
+  await options.getByLabel('Days', { exact: true }).press('Enter');
+  await expect
+    .poll(() => storedSettings(background))
+    .toMatchObject({
+      span: { kind: 'custom', days: 14 },
+    });
+  await panel.bringToFront();
+  await expect(
+    panel.getByRole('heading', { level: 1, name: 'October 27 to November 9' }),
+  ).toBeVisible();
 });

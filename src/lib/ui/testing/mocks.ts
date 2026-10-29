@@ -412,10 +412,11 @@ export function currentRings(): Ring[] {
 
 export function mkView(patch: Partial<WeekView> = {}): WeekView {
   return {
-    weekStart: '2026-10-25',
-    weekEnd: '2026-10-31',
-    weekOffset: 0,
-    isCurrentWeek: true,
+    span: { kind: 'week', days: 7 },
+    spanStart: '2026-10-25',
+    spanEnd: '2026-10-31',
+    spanOffset: 0,
+    isCurrentSpan: true,
     today: '2026-10-27',
     timeZone: 'America/New_York',
     browserTimeZoneDiffers: true,
@@ -435,10 +436,10 @@ export function mkView(patch: Partial<WeekView> = {}): WeekView {
 /** The view of the previous week: day groups with status chips, then Done. */
 export function pastWeekView(): WeekView {
   return mkView({
-    weekStart: '2026-10-18',
-    weekEnd: '2026-10-24',
-    weekOffset: -1,
-    isCurrentWeek: false,
+    spanStart: '2026-10-18',
+    spanEnd: '2026-10-24',
+    spanOffset: -1,
+    isCurrentSpan: false,
     browserTimeZoneDiffers: false,
     hiddenCourseCount: 0,
     rings: [ring('chem', 2, 3, 0), ring('engl', 1, 3, 0), ring('math', 3, 3, 0)],
@@ -652,8 +653,8 @@ export function noopActions(
     (...args: unknown[]) =>
       log(name, args);
   return {
-    goToWeek: record('goToWeek'),
-    stepWeek: record('stepWeek'),
+    goToSpan: record('goToSpan'),
+    stepSpan: record('stepSpan'),
     setCourseFilter: record('setCourseFilter'),
     setDone: record('setDone'),
     skip: record('skip'),

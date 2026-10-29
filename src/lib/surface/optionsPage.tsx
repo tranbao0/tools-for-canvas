@@ -16,7 +16,7 @@ import { followExtensionPageTheme } from './theme';
 async function loadCourses(): Promise<CourseChoice[] | null> {
   const state = (await sendToBackground({
     type: 'weekrow:get-state',
-    request: { surface: 'page', weekOffset: 0, scopeCourseId: null },
+    request: { surface: 'page', spanOffset: 0, scopeCourseId: null },
   })) as StateReply | undefined;
   return state?.kind === 'ready' || state?.kind === 'no_courses' ? state.allCourses : null;
 }

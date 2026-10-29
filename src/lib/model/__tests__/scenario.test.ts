@@ -39,7 +39,7 @@ function scenarioInput(partial: Partial<ModelInput> = {}): ModelInput {
     browserTimeZone: SCENARIO.timeZone,
     profile: SCENARIO.profile,
     settings: SETTINGS,
-    weekOffset: 0,
+    spanOffset: 0,
     courses: SCENARIO.courses,
     ...partial,
   };
@@ -269,7 +269,7 @@ describe('the fixture scenario: current week', () => {
 
 describe('the fixture scenario: other weeks and scopes', () => {
   it('places next-week work, the peer review and the midnight item with their own range', () => {
-    const view = buildWeekView(scenarioInput({ weekOffset: 1 }));
+    const view = buildWeekView(scenarioInput({ spanOffset: 1 }));
     expect(placesOf(view)).toEqual({
       [assignment(A.mathProblemSet7Midnight)]: 'day@2026-11-01.items',
       [assignment(A.historyParticipationWeek10)]: 'day@2026-11-03.items',

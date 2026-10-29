@@ -17,7 +17,7 @@ export type RequestSurface = SurfaceKind | 'page';
 export interface SurfaceRequest {
   surface: RequestSurface;
   /** 0 is the current week. */
-  weekOffset: number;
+  spanOffset: number;
   /** Missing or `undefined`: no filter. `null`: the Personal ring. */
   courseFilter?: string | null;
   /** The course of a course home page, or `null`. */
@@ -237,7 +237,7 @@ export function isSurfaceRequest(value: unknown): value is SurfaceRequest {
   return (
     isString(value['surface']) &&
     REQUEST_SURFACES.includes(value['surface']) &&
-    Number.isInteger(value['weekOffset']) &&
+    Number.isInteger(value['spanOffset']) &&
     (filter === undefined || isStringOrNull(filter)) &&
     isStringOrNull(value['scopeCourseId'])
   );
