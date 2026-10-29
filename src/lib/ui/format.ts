@@ -49,74 +49,57 @@ function sameMonth(a: string, b: string): boolean {
   return a.slice(0, 7) === b.slice(0, 7);
 }
 
-/** "Oct 25 - 31", or "Oct 26 - Nov 1" across months. */
-export function formatWeekRange(start: string, end: string): string {
-  const endText = sameMonth(start, end)
-    ? formatPlain(end, { day: 'numeric' })
-    : formatMonthDay(end);
-  return t('weekRange', formatMonthDay(start), endText);
-}
-
-/** "Week of October 25 to 31", for screen readers. */
-export function formatWeekRangeLong(start: string, end: string): string {
-  const startText = formatPlain(start, { month: 'long', day: 'numeric' });
-  const endText = sameMonth(start, end)
-    ? formatPlain(end, { day: 'numeric' })
-    : formatPlain(end, { month: 'long', day: 'numeric' });
-  return t('weekRangeLong', startText, endText);
-}
-
 const MONTH_YEAR = { month: 'long', year: 'numeric' } as const;
+const MONTH_DAY = { month: 'short', day: 'numeric' } as const;
 const MONTH_DAY_LONG = { month: 'long', day: 'numeric' } as const;
+
+/** The text of a span, short for the header or long for a screen reader. */
+function spanRangeText(span: Span, start: string, end: string, long: boolean): string {
+  const { kind } = span;
+  if (kind === 'month') return formatPlain(start, MONTH_YEAR);
+  const format = long ? MONTH_DAY_LONG : MONTH_DAY;
+  if (kind === 'day') return formatPlain(start, { weekday: long ? 'long' : 'short', ...format });
+  // A week inside one month shows its last day alone: "Oct 25 - 31".
+  const endText =
+    kind === 'week' && sameMonth(start, end)
+      ? formatPlain(end, { day: 'numeric' })
+      : formatPlain(end, format);
+  return t(long ? `spanRangeLong_${kind}` : 'weekRange', formatPlain(start, format), endText);
+}
 
 /**
  * The header text of a span: "Tue, Oct 27", "Oct 25 - 31", "Oct 25 - Nov 7" or "November 2026".
  * The month shows the year, because no other span is as long.
  */
 export function formatSpanRange(span: Span, start: string, end: string): string {
-  switch (span.kind) {
-    case 'day':
-      return formatPlain(start, { weekday: 'short', month: 'short', day: 'numeric' });
-    case 'week':
-      return formatWeekRange(start, end);
-    case 'month':
-      return formatPlain(start, MONTH_YEAR);
-    default:
-      return t('weekRange', formatMonthDay(start), formatMonthDay(end));
-  }
+  return spanRangeText(span, start, end, false);
 }
 
 /** The span as a screen reader says it: "Tuesday, October 27" or "Week of October 25 to 31". */
 export function formatSpanRangeLong(span: Span, start: string, end: string): string {
-  switch (span.kind) {
-    case 'day':
-      return formatPlain(start, { weekday: 'long', ...MONTH_DAY_LONG });
-    case 'week':
-      return formatWeekRangeLong(start, end);
-    case 'month':
-      return formatPlain(start, MONTH_YEAR);
-    default:
-      return t(
-        'spanRangeLong',
-        formatPlain(start, MONTH_DAY_LONG),
-        formatPlain(end, MONTH_DAY_LONG),
-      );
-  }
+  return spanRangeText(span, start, end, true);
+}
+
+type SpanTextPrefix = 'spanUnit' | 'spanThis' | 'restOf';
+
+/** The text `prefix_kind`, with the count first and the days of a custom span second. */
+function spanText(prefix: SpanTextPrefix, span: Span, count = ''): string {
+  return t(`${prefix}_${span.kind}`, count, String(span.days));
 }
 
 /** "day", "week", "2 weeks", "month" or "10 days": what an arrow moves by. */
 export function spanUnit(span: Span): string {
-  return t(`spanUnit_${span.kind}`, String(span.days));
+  return spanText('spanUnit', span);
 }
 
 /** "this week", "in these 2 weeks": the span in a sentence about its work. */
 export function spanPhrase(span: Span): string {
-  return t(`spanThis_${span.kind}`, String(span.days));
+  return spanText('spanThis', span);
 }
 
 /** The text of the glance link that opens the rest of the span: "Rest of the week (9)". */
 export function restOfSpanLabel(span: Span, count: number): string {
-  return t(`restOf_${span.kind}`, String(count), String(span.days));
+  return spanText('restOf', span, String(count));
 }
 
 /** The calendar day of `instant` in `timeZone`, as `YYYY-MM-DD`. */

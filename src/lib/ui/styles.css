@@ -283,7 +283,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0 8px;
+  gap: 4px 8px;
   margin: -2px 0 4px;
 }
 
@@ -309,30 +309,22 @@
   align-items: center;
   gap: 4px 8px;
   min-width: 0;
-  --wr-span-h: 28px;
-  --wr-span-pad: 6px;
-  --wr-span-font: 14px;
 }
 
-.wr-setting .wr-span {
-  --wr-span-h: 38px;
-  --wr-span-pad: 10px;
-  --wr-span-font: 16px;
+.wr-nav-row .wr-span {
+  display: contents;
 }
 
 .wr-span .wr-input {
-  height: var(--wr-span-h);
-  padding: 0 var(--wr-span-pad);
-  font-size: var(--wr-span-font);
+  height: 28px;
+  padding: 0 6px;
+  font-size: 14px;
 }
 
 .wr-span .wr-span-select {
+  field-sizing: content;
   width: auto;
   max-width: 100%;
-}
-
-.wr-setting .wr-span .wr-span-select {
-  width: 100%;
 }
 
 .wr-span-days {
@@ -343,6 +335,16 @@
 
 .wr-span .wr-span-input {
   width: 64px;
+}
+
+.wr-setting .wr-span .wr-input {
+  height: 38px;
+  padding: 0 10px;
+  font-size: 16px;
+}
+
+.wr-setting .wr-span .wr-span-select {
+  width: 100%;
 }
 
 .wr-span-input:invalid {
@@ -497,7 +499,7 @@
 
 .wr-chart-more {
   position: absolute;
-  inset: auto 0 0 auto;
+  inset: auto -15px -3px auto;
 }
 
 .wr-legend {
@@ -1149,6 +1151,19 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   .wr-rings {
     flex-direction: row;
     align-items: center;
+  }
+
+  .wr-chart {
+    margin-right: 15px;
+  }
+}
+
+/* Below 360 px the time zone note takes its own line, at the left edge like the rows above. */
+
+@container wr (width < 360px) {
+  .wr-tz {
+    flex-basis: 100%;
+    margin-left: 0;
   }
 }
 

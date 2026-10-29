@@ -205,6 +205,7 @@ Use a new, empty profile, and the student account.
     Expect: Week and 2 weeks start on the first day of the week from the settings, Month is the calendar month, and Custom starts today.
     Expect: the arrows are named by the span, such as "Next month" and "Next 10 days", and each step moves by one span.
     Expect: Today is dim in the span that holds today, and it returns to that span from any other span.
+    Expect: with the arrow keys in the closed select, each pick shows at once, and the list changes only after a short pause or when the select loses focus.
     Expect: Past due shows only in the span that holds today, and the rings and the empty text name the span, such as "3 of 5 done this month" and "Nothing due in these 10 days".
     Expect: with Day, tomorrow still shows as the look-ahead, outside the rings.
 22. Type 1, 91 and 2.5 in the Custom days field, and press Enter or leave the field.

@@ -11,6 +11,7 @@ import {
 } from '../model/types';
 import { App } from './App';
 import { OFFER_ARM_MS } from './Notices';
+import { KIND_SAVE_DELAY_MS } from './SpanPicker';
 import type { AppProps, SurfaceKind } from './contract';
 import { spyActions, type SpyActions } from './testing/actions';
 import {
@@ -1775,17 +1776,60 @@ describe('shown span', () => {
     expect(picker().disabled).toBe(true);
   });
 
-  it('saves the span the student picks and keeps the remembered number of days', () => {
-    const { actions, value } = setupSpan();
-    fireEvent.change(picker(), { target: { value: 'month' } });
-    expect(actions.saveSettings).toHaveBeenLastCalledWith({
-      ...value,
-      span: { kind: 'month', days: 7 },
+  describe('picking a kind', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('shows the pick at once and saves the kind that stays, with the remembered days', () => {
+      vi.useFakeTimers();
+      const { actions, value } = setupSpan();
+      fireEvent.change(picker(), { target: { value: 'month' } });
+      expect(picker().value).toBe('month');
+      expect(actions.saveSettings).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(KIND_SAVE_DELAY_MS);
+      expect(actions.saveSettings).toHaveBeenCalledTimes(1);
+      expect(actions.saveSettings).toHaveBeenLastCalledWith({
+        ...value,
+        span: { kind: 'month', days: 7 },
+      });
     });
-    fireEvent.change(picker(), { target: { value: 'custom' } });
-    expect(actions.saveSettings).toHaveBeenLastCalledWith({
-      ...value,
-      span: { kind: 'custom', days: 7 },
+
+    it('saves only the last kind when the student passes through others', () => {
+      vi.useFakeTimers();
+      const { actions, value } = setupSpan();
+      for (const kind of ['fortnight', 'month', 'custom']) {
+        fireEvent.change(picker(), { target: { value: kind } });
+        vi.advanceTimersByTime(KIND_SAVE_DELAY_MS - 1);
+      }
+      expect(actions.saveSettings).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(actions.saveSettings).toHaveBeenCalledTimes(1);
+      expect(actions.saveSettings).toHaveBeenCalledWith({
+        ...value,
+        span: { kind: 'custom', days: 7 },
+      });
+    });
+
+    it('saves at once when the select loses focus', () => {
+      vi.useFakeTimers();
+      const { actions, value } = setupSpan();
+      fireEvent.change(picker(), { target: { value: 'day' } });
+      fireEvent.blur(picker());
+      expect(actions.saveSettings).toHaveBeenCalledWith({
+        ...value,
+        span: { kind: 'day', days: 7 },
+      });
+      vi.advanceTimersByTime(KIND_SAVE_DELAY_MS * 2);
+      expect(actions.saveSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it('saves nothing when the student comes back to the saved kind', () => {
+      vi.useFakeTimers();
+      const { actions } = setupSpan();
+      fireEvent.change(picker(), { target: { value: 'month' } });
+      fireEvent.change(picker(), { target: { value: 'week' } });
+      vi.advanceTimersByTime(KIND_SAVE_DELAY_MS * 2);
+      expect(actions.saveSettings).not.toHaveBeenCalled();
+      expect(picker().value).toBe('week');
     });
   });
 
@@ -1829,16 +1873,15 @@ describe('shown span', () => {
 
   it('saves a valid number when the student presses Enter, and refuses an invalid one', () => {
     const { actions, value } = setupSpan(CUSTOM);
-    const form = field().closest('form') as HTMLFormElement;
     fireEvent.input(field(), { target: { value: '30' } });
-    fireEvent.submit(form);
+    fireEvent.keyDown(field(), { key: 'Enter' });
     expect(actions.saveSettings).toHaveBeenCalledWith({
       ...value,
       span: { kind: 'custom', days: 30 },
     });
     actions.saveSettings.mockClear();
     fireEvent.input(field(), { target: { value: '300' } });
-    fireEvent.submit(form);
+    fireEvent.keyDown(field(), { key: 'Enter' });
     expect(actions.saveSettings).not.toHaveBeenCalled();
   });
 
@@ -2018,6 +2061,7 @@ describe('shown span', () => {
       const select = screen.getByLabelText('Shown span') as HTMLSelectElement;
       expect(select.value).toBe('week');
       fireEvent.change(select, { target: { value: 'fortnight' } });
+      fireEvent.blur(select);
       expect(actions.saveSettings).toHaveBeenCalledWith({
         ...DEFAULT_SETTINGS,
         span: { kind: 'fortnight', days: 7 },

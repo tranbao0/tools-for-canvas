@@ -7,8 +7,6 @@ import {
   formatSpanRange,
   formatSpanRangeLong,
   formatTimeOrDateTime,
-  formatWeekRange,
-  formatWeekRangeLong,
   formatWeekday,
   hostOf,
   restOfSpanLabel,
@@ -32,11 +30,12 @@ describe('dates', () => {
   });
 
   it('formats the week range within a month, across months and across years', () => {
-    expect(plain(formatWeekRange('2026-10-25', '2026-10-31'))).toBe('Oct 25 - 31');
-    expect(plain(formatWeekRange('2026-10-26', '2026-11-01'))).toBe('Oct 26 - Nov 1');
-    expect(plain(formatWeekRange('2026-12-28', '2027-01-03'))).toBe('Dec 28 - Jan 3');
-    expect(formatWeekRangeLong('2026-10-25', '2026-10-31')).toBe('Week of October 25 to 31');
-    expect(formatWeekRangeLong('2026-10-26', '2026-11-01')).toBe(
+    const week = { kind: 'week', days: 7 } as const;
+    expect(plain(formatSpanRange(week, '2026-10-25', '2026-10-31'))).toBe('Oct 25 - 31');
+    expect(plain(formatSpanRange(week, '2026-10-26', '2026-11-01'))).toBe('Oct 26 - Nov 1');
+    expect(plain(formatSpanRange(week, '2026-12-28', '2027-01-03'))).toBe('Dec 28 - Jan 3');
+    expect(formatSpanRangeLong(week, '2026-10-25', '2026-10-31')).toBe('Week of October 25 to 31');
+    expect(formatSpanRangeLong(week, '2026-10-26', '2026-11-01')).toBe(
       'Week of October 26 to November 1',
     );
   });

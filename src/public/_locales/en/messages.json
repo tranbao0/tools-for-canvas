@@ -12,12 +12,15 @@
     "message": "Weekly list"
   },
   "weekRange": {
-    "message": "$1\u00a0- $2"
+    "message": "$1 - $2"
   },
-  "weekRangeLong": {
+  "spanRangeLong_week": {
     "message": "Week of $1 to $2"
   },
-  "spanRangeLong": {
+  "spanRangeLong_fortnight": {
+    "message": "$1 to $2"
+  },
+  "spanRangeLong_custom": {
     "message": "$1 to $2"
   },
   "prevSpan": {
@@ -63,7 +66,7 @@
     "message": "month"
   },
   "spanUnit_custom": {
-    "message": "$1 days"
+    "message": "$2 days"
   },
   "spanThis_day": {
     "message": "this day"
@@ -78,7 +81,7 @@
     "message": "this month"
   },
   "spanThis_custom": {
-    "message": "in these $1 days"
+    "message": "in these $2 days"
   },
   "spanDaysLabel": {
     "message": "Days"

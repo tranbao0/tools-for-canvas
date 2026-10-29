@@ -221,10 +221,12 @@ test('the control works with the keyboard alone', async ({
 
   await page.keyboard.press('Tab');
   await expect(days(page)).toBeFocused();
+  await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.type('5');
   await page.keyboard.press('Enter');
-  await expect(title(page, 'October 27 to November 2')).toBeVisible();
-  await page.keyboard.press('Backspace');
+  await expect(title(page, 'October 27 to October 31')).toBeVisible();
+  await expect(days(page)).toBeFocused();
+  await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.type('4');
   await page.keyboard.press('Enter');
   await expect(title(page, 'October 27 to October 30')).toBeVisible();
@@ -329,12 +331,59 @@ for (const scheme of ['light', 'dark'] as const) {
             };
           }),
         );
+        await checkRows(label);
         for (const box of boxes) {
           expect(box.left, `${label}: ${box.name} starts inside`).toBeGreaterThanOrEqual(-0.5);
           expect(box.right, `${label}: ${box.name} ends inside`).toBeLessThanOrEqual(width + 0.5);
           expect(box.height, `${label}: ${box.name} is tall enough`).toBeGreaterThanOrEqual(24);
           expect(box.clipped, `${label}: ${box.name} is not cut off`).toBe(false);
         }
+      };
+
+      /**
+       * The span select shares the row of the arrows when it fits, and then wraps with the same
+       * left edge as the heading. The time zone note is at the left edge below 360 px, and it is
+       * never right-aligned under the select.
+       */
+      const checkRows = async (label: string) => {
+        const rect = (selector: string) =>
+          page
+            .locator(selector)
+            .first()
+            .evaluate((element) => {
+              const box = element.getBoundingClientRect();
+              return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+            });
+        const nav = await rect('.wr-nav');
+        const select = await rect('.wr-span-select');
+        const heading = await rect('.wr-range');
+        const zone = await rect('.wr-tz');
+        // The note takes the whole row, so its text decides whether it hangs at the right.
+        const zoneText = await page.locator('.wr-tz').evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return range.getBoundingClientRect().right;
+        });
+        const sameRow = select.top < nav.bottom - 2;
+        if (width >= 360 || (width === 240 && label !== 'Custom' && label !== 'Custom, invalid')) {
+          expect(sameRow, `${label}: the select is on the row of the arrows`).toBe(true);
+        }
+        if (!sameRow) {
+          expect(Math.abs(select.left - heading.left), `${label}: select aligns left`).toBeLessThan(
+            1.5,
+          );
+        }
+        if (width < 360) {
+          expect(
+            Math.abs(zone.left - heading.left),
+            `${label}: time zone aligns left`,
+          ).toBeLessThan(1.5);
+          expect(zoneText, `${label}: time zone is not right-aligned`).toBeLessThan(width - 40);
+        }
+        const gap = await page
+          .locator('.wr-span-days')
+          .evaluateAll((labels) => labels.map((element) => getComputedStyle(element).columnGap));
+        for (const value of gap) expect(value, `${label}: the Days label has a gap`).toBe('8px');
       };
 
       const shot = async (name: string) => {
@@ -374,4 +423,142 @@ for (const scheme of ['light', 'dark'] as const) {
       await shot('span-fortnight');
     });
   }
+}
+
+test('arrow keys in the closed select show each span at once and save only the one that stays', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  await openPanel(context, page, background, extensionUrl);
+  await background.evaluate(() => {
+    const scope = globalThis as unknown as {
+      saves: number;
+      chrome: {
+        storage: {
+          onChanged: {
+            addListener(listener: (changes: Record<string, unknown>, area: string) => void): void;
+          };
+        };
+      };
+    };
+    scope.saves = 0;
+    scope.chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && 'settings' in changes) scope.saves += 1;
+    });
+  });
+  const saves = () => background.evaluate(() => (globalThis as unknown as { saves: number }).saves);
+
+  await picker(page).focus();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+
+  // The select shows the pick at once, and nothing is saved yet.
+  await expect(picker(page)).toHaveValue('month');
+  await expect(title(page, 'Week of October 25 to 31')).toBeVisible();
+  expect(await saves()).toBe(0);
+  // After the pause the one span that stayed is saved, once.
+  await expect(title(page, 'October 2026')).toBeVisible();
+  expect(await saves()).toBe(1);
+
+  // Leaving the select saves at once.
+  await page.keyboard.press('ArrowUp');
+  await expect(picker(page)).toHaveValue('fortnight');
+  await page.keyboard.press('Tab');
+  await expect(title(page, 'October 25 to November 7')).toBeVisible();
+  expect(await saves()).toBe(2);
+});
+
+/** The WCAG contrast ratio of two `rgb(...)` colors. */
+function contrast(a: string, b: string): number {
+  const luminance = (color: string) => {
+    const [r = 0, g = 0, bl = 0] = (color.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+    const [lr, lg, lb] = [r, g, bl].map((channel) => {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * (lr ?? 0) + 0.7152 * (lg ?? 0) + 0.0722 * (lb ?? 0);
+  };
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return ((light ?? 0) + 0.05) / ((dark ?? 0) + 0.05);
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`Today looks the same in every span and meets AA contrast in the ${scheme} theme`, async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await openPanel(context, page, background, extensionUrl);
+    const today = page.getByRole('button', { name: 'Today', exact: true });
+    const colors = async () =>
+      today.evaluate((element) => ({
+        text: getComputedStyle(element).color,
+        background: getComputedStyle(element.closest('.wr') as HTMLElement).backgroundColor,
+        disabled: element.getAttribute('aria-disabled'),
+      }));
+
+    const seen: string[] = [];
+    for (const kind of ['week', 'day', 'fortnight', 'month', 'week']) {
+      await picker(page).selectOption(kind);
+      await expect(picker(page)).toHaveValue(kind);
+      await expect(page.locator('.wr-range')).not.toBeEmpty();
+      await expect(today).toHaveAttribute('aria-disabled', 'true');
+      const state = await colors();
+      expect(contrast(state.text, state.background), `${kind} disabled`).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      seen.push(state.text);
+    }
+    // Every span that holds today shows the same color.
+    expect(new Set(seen).size).toBe(1);
+
+    await page.getByRole('button', { name: 'Next week', exact: true }).click();
+    await expect(today).toHaveAttribute('aria-disabled', 'false');
+    const enabled = await colors();
+    expect(contrast(enabled.text, enabled.background), 'enabled').toBeGreaterThanOrEqual(4.5);
+    expect(enabled.text).not.toBe(seen[0]);
+  });
+}
+
+for (const width of [170, 240, 360, 480]) {
+  test(`the +N badge touches no ring in a panel ${width} px wide`, async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    await page.setViewportSize({ width, height: 640 });
+    await openPanel(context, page, background, extensionUrl);
+    const badge = page.locator('.wr-chart-more');
+    await expect(badge).toBeVisible();
+
+    const geometry = await page.locator('.wr-chart').evaluate((chart) => {
+      const svg = chart.querySelector('svg') as SVGSVGElement;
+      const box = svg.getBoundingClientRect();
+      const scale = box.width / 120;
+      const radii = Array.from(chart.querySelectorAll('.wr-ring-track'), (circle) => {
+        const r = Number(circle.getAttribute('r'));
+        const stroke = Number(svg.getAttribute('stroke-width'));
+        return (r + stroke / 2) * scale;
+      });
+      const more = (chart.querySelector('.wr-chart-more') as HTMLElement).getBoundingClientRect();
+      const cx = box.left + box.width / 2;
+      const cy = box.top + box.height / 2;
+      // The nearest point of the badge to the center of the rings.
+      const nearestX = Math.max(more.left, Math.min(cx, more.right));
+      const nearestY = Math.max(more.top, Math.min(cy, more.bottom));
+      return {
+        outer: Math.max(...radii),
+        distance: Math.hypot(nearestX - cx, nearestY - cy),
+        inside:
+          more.right <= window.innerWidth && more.bottom <= document.documentElement.scrollHeight,
+      };
+    });
+    expect(geometry.distance).toBeGreaterThan(geometry.outer + 1);
+    expect(geometry.inside).toBe(true);
+  });
 }
