@@ -472,10 +472,10 @@ describe('horizons', () => {
     expect(earliestHorizon({ ...params, courses: [] })).toBe('2026-07-07T04:00:00.000Z');
   });
 
-  describe('the cap at the start of the span that holds today', () => {
+  describe('the cap at the earlier of the week and the span that hold today', () => {
     const futureTerm = { ...params, courses: [course('1', 'Future', '2027-01-04T05:00:00Z')] };
-    const cap = (span: Span, weekStartDay: IsoDayOfWeek = 7): string =>
-      formatInstant(horizons({ ...futureTerm, weekStartDay, span }).earliest);
+    const cap = (span: Span, weekStartDay: IsoDayOfWeek = 7, now: string = TUESDAY_2PM): string =>
+      formatInstant(horizons({ ...futureTerm, now, weekStartDay, span }).earliest);
 
     it('is the first day of the week for Week and 2 weeks', () => {
       expect(cap(WEEK)).toBe('2026-10-25T04:00:00.000Z');
@@ -483,10 +483,25 @@ describe('horizons', () => {
       expect(cap(WEEK, 1)).toBe('2026-10-26T04:00:00.000Z');
     });
 
-    it('is the 1st for Month, and today for Day and a custom span', () => {
+    it('is the first day of the week for Day and a custom span, so earlier work this week shows', () => {
+      expect(cap({ kind: 'day', days: 7 })).toBe('2026-10-25T04:00:00.000Z');
+      expect(cap({ kind: 'custom', days: 30 })).toBe('2026-10-25T04:00:00.000Z');
+      expect(cap({ kind: 'day', days: 7 }, 1)).toBe('2026-10-26T04:00:00.000Z');
+    });
+
+    it('is the 1st for Month when the month starts before the week', () => {
       expect(cap({ kind: 'month', days: 7 })).toBe('2026-10-01T04:00:00.000Z');
-      expect(cap({ kind: 'day', days: 7 })).toBe('2026-10-27T04:00:00.000Z');
-      expect(cap({ kind: 'custom', days: 30 })).toBe('2026-10-27T04:00:00.000Z');
+    });
+
+    it('is the start of the week for Month when the week starts before the month', () => {
+      // Wednesday 2026-12-02: with Monday weeks the week starts on Nov 30, before December 1.
+      const wednesday = '2026-12-02T17:00:00Z';
+      expect(cap({ kind: 'month', days: 7 }, 1, wednesday)).toBe('2026-11-30T05:00:00.000Z');
+      expect(cap({ kind: 'month', days: 7 }, 7, wednesday)).toBe('2026-11-29T05:00:00.000Z');
+      // With a week that starts on the 1st, the month and the week start together.
+      expect(cap({ kind: 'month', days: 7 }, 7, '2026-11-04T17:00:00Z')).toBe(
+        '2026-11-01T04:00:00.000Z',
+      );
     });
   });
 });

@@ -7,6 +7,7 @@ import {
   type ItemView,
   type ListGroup,
   type Ring,
+  type Span,
   type SurfaceState,
 } from '../model/types';
 import { App } from './App';
@@ -1779,25 +1780,50 @@ describe('shown span', () => {
   describe('picking a kind', () => {
     afterEach(() => vi.useRealTimers());
 
-    it('shows the pick at once and saves the kind that stays, with the remembered days', () => {
+    /** A pick with an arrow key on the closed select, which fires a change per key. */
+    const pickWithKey = (kind: string) => {
+      fireEvent.keyDown(picker(), { key: 'ArrowDown' });
+      fireEvent.change(picker(), { target: { value: kind } });
+    };
+
+    it('saves a pick from the open list or a mouse pick at once, with the remembered days', () => {
       vi.useFakeTimers();
       const { actions, value } = setupSpan();
+      fireEvent.pointerDown(picker());
       fireEvent.change(picker(), { target: { value: 'month' } });
-      expect(picker().value).toBe('month');
-      expect(actions.saveSettings).not.toHaveBeenCalled();
-      vi.advanceTimersByTime(KIND_SAVE_DELAY_MS);
       expect(actions.saveSettings).toHaveBeenCalledTimes(1);
       expect(actions.saveSettings).toHaveBeenLastCalledWith({
         ...value,
         span: { kind: 'month', days: 7 },
       });
+      fireEvent.keyDown(picker(), { key: 'Enter' });
+      fireEvent.change(picker(), { target: { value: 'day' } });
+      expect(actions.saveSettings).toHaveBeenCalledTimes(2);
+    });
+
+    it('shows a key pick at once, with the refresh marker, and saves the kind that stays', () => {
+      vi.useFakeTimers();
+      const { actions, value } = setupSpan();
+      pickWithKey('month');
+      expect(picker().value).toBe('month');
+      expect(screen.getByRole('progressbar', { name: 'Refreshing' })).toBeTruthy();
+      expect(actions.saveSettings).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(KIND_SAVE_DELAY_MS);
+      });
+      expect(actions.saveSettings).toHaveBeenCalledTimes(1);
+      expect(actions.saveSettings).toHaveBeenLastCalledWith({
+        ...value,
+        span: { kind: 'month', days: 7 },
+      });
+      expect(screen.queryByRole('progressbar', { name: 'Refreshing' })).toBeNull();
     });
 
     it('saves only the last kind when the student passes through others', () => {
       vi.useFakeTimers();
       const { actions, value } = setupSpan();
       for (const kind of ['fortnight', 'month', 'custom']) {
-        fireEvent.change(picker(), { target: { value: kind } });
+        pickWithKey(kind);
         vi.advanceTimersByTime(KIND_SAVE_DELAY_MS - 1);
       }
       expect(actions.saveSettings).not.toHaveBeenCalled();
@@ -1809,10 +1835,10 @@ describe('shown span', () => {
       });
     });
 
-    it('saves at once when the select loses focus', () => {
+    it('saves at once when the select loses focus, and then the pause saves nothing more', () => {
       vi.useFakeTimers();
       const { actions, value } = setupSpan();
-      fireEvent.change(picker(), { target: { value: 'day' } });
+      pickWithKey('day');
       fireEvent.blur(picker());
       expect(actions.saveSettings).toHaveBeenCalledWith({
         ...value,
@@ -1825,11 +1851,76 @@ describe('shown span', () => {
     it('saves nothing when the student comes back to the saved kind', () => {
       vi.useFakeTimers();
       const { actions } = setupSpan();
-      fireEvent.change(picker(), { target: { value: 'month' } });
-      fireEvent.change(picker(), { target: { value: 'week' } });
+      pickWithKey('month');
+      pickWithKey('week');
       vi.advanceTimersByTime(KIND_SAVE_DELAY_MS * 2);
       expect(actions.saveSettings).not.toHaveBeenCalled();
       expect(picker().value).toBe('week');
+    });
+
+    it('does not show a pick that was saved when another surface changes the span', () => {
+      vi.useFakeTimers();
+      const actions = spyActions();
+      const draw = (span: Span) => (
+        <App
+          surface="panel"
+          state={stateOf({ span })}
+          actions={actions}
+          settings={{ value: { ...DEFAULT_SETTINGS, span }, courses: [] }}
+        />
+      );
+      const week: Span = { kind: 'week', days: 7 };
+      const day: Span = { kind: 'day', days: 7 };
+      const { rerender } = render(draw(week));
+      fireEvent.pointerDown(picker());
+      fireEvent.change(picker(), { target: { value: 'day' } });
+      rerender(draw(day));
+      expect(picker().value).toBe('day');
+      // Another panel picks Week.
+      rerender(draw(week));
+      expect(picker().value).toBe('week');
+      actions.saveSettings.mockClear();
+      fireEvent.blur(picker());
+      vi.advanceTimersByTime(KIND_SAVE_DELAY_MS * 2);
+      expect(actions.saveSettings).not.toHaveBeenCalled();
+    });
+
+    it('saves the settings as they are when the pause ends, not as they were at the pick', () => {
+      vi.useFakeTimers();
+      const actions = spyActions();
+      const draw = (showRings: boolean) => (
+        <App
+          surface="panel"
+          state={stateOf({})}
+          actions={actions}
+          settings={{ value: { ...DEFAULT_SETTINGS, showRings }, courses: [] }}
+        />
+      );
+      const { rerender } = render(draw(true));
+      pickWithKey('month');
+      rerender(draw(false));
+      vi.advanceTimersByTime(KIND_SAVE_DELAY_MS);
+      expect(actions.saveSettings).toHaveBeenCalledWith({
+        ...DEFAULT_SETTINGS,
+        showRings: false,
+        span: { kind: 'month', days: 7 },
+      });
+    });
+
+    it('saves the kind that waits when the number is refused, with the days the list holds', () => {
+      vi.useFakeTimers();
+      const { actions, value } = setupSpan();
+      pickWithKey('custom');
+      expect(field().value).toBe('7');
+      fireEvent.input(field(), { target: { value: '120' } });
+      fireEvent.keyDown(field(), { key: 'Enter' });
+      expect(actions.saveSettings).toHaveBeenCalledTimes(1);
+      expect(actions.saveSettings).toHaveBeenCalledWith({
+        ...value,
+        span: { kind: 'custom', days: 7 },
+      });
+      vi.advanceTimersByTime(KIND_SAVE_DELAY_MS * 2);
+      expect(actions.saveSettings).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -2061,7 +2152,6 @@ describe('shown span', () => {
       const select = screen.getByLabelText('Shown span') as HTMLSelectElement;
       expect(select.value).toBe('week');
       fireEvent.change(select, { target: { value: 'fortnight' } });
-      fireEvent.blur(select);
       expect(actions.saveSettings).toHaveBeenCalledWith({
         ...DEFAULT_SETTINGS,
         span: { kind: 'fortnight', days: 7 },

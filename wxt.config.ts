@@ -54,7 +54,8 @@ export default defineConfig({
   vite: () => ({
     plugins: [preact(), pagesShareOneChunk()],
     build: {
-      modulePreload: { polyfill: false },
+      // The pages are local files, so a preload link for the shared chunk only adds bytes.
+      modulePreload: false,
       target: ['chrome144', 'edge144', 'firefox140'],
       cssTarget: ['chrome144', 'edge144', 'firefox140'],
     },

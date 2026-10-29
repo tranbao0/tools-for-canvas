@@ -171,7 +171,7 @@ export interface HorizonParams {
   /** Instant. */
   now: string;
   timeZone: string;
-  /** The first day of the week, for the cap at the start of the span that holds today. */
+  /** The first day of the week, for the cap at the start of the week that holds today. */
   weekStartDay: IsoDayOfWeek;
   span: Span;
   courses: readonly Course[];
@@ -200,15 +200,18 @@ export interface Horizons {
 
 /**
  * The past-due horizon of each visible course: the later of its start (`courseStart`) and
- * 16 weeks ago, but never later than 00:00 on the first day of the span that holds today, so
- * that span's work always reaches Past due and the rings. Hidden courses are left out. A course with no start
- * uses 16 weeks ago.
+ * 16 weeks ago, but never later than 00:00 on the first day of the week that holds today or of
+ * the span that holds today, whichever is earlier. So the work of that week and of that span
+ * always reaches Past due and the rings, even when a term starts in the future. Hidden courses
+ * are left out. A course with no start uses 16 weeks ago.
  */
 export function horizons(params: HorizonParams): Horizons {
   const today = plainDateOf(Temporal.Instant.from(params.now), params.timeZone);
   const oldest = startOfDay(today.subtract({ weeks: HORIZON_WEEKS }), params.timeZone);
+  const weekStart = startOfWeek(today, params.weekStartDay);
+  const spanStart = spanDays(today, params.weekStartDay, params.span, 0).first;
   const latest = startOfDay(
-    spanDays(today, params.weekStartDay, params.span, 0).first,
+    Temporal.PlainDate.compare(spanStart, weekStart) < 0 ? spanStart : weekStart,
     params.timeZone,
   );
   const hidden = new Set(params.hiddenCourseIds);

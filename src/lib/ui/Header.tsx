@@ -3,6 +3,7 @@
  * with the add and settings buttons, then the arrows, "Today", the span control and the time zone
  * label.
  */
+import { useState } from 'preact/hooks';
 import { t } from '../i18n';
 import type { Span, WeekView } from '../model/types';
 import { formatSpanRange, formatSpanRangeLong, spanUnit, timeZoneLabel } from './format';
@@ -31,6 +32,9 @@ export interface HeaderProps {
 
 export function Header(props: HeaderProps) {
   const { view } = props;
+  /** A picked span waits to be saved: the list shows the refresh marker meanwhile. */
+  const [pending, setPending] = useState(false);
+  const refreshing = props.refreshing || pending;
   const addDisabled = view === null || props.addDisabledReason !== null;
   const todayOff = view === null || view.isCurrentSpan;
   const unit = spanUnit(props.span);
@@ -71,9 +75,7 @@ export function Header(props: HeaderProps) {
           </span>
         </button>
         <GearButton onClick={props.onSettings} />
-        {props.refreshing && (
-          <div class="wr-progress" role="progressbar" aria-label={t('refreshing')} />
-        )}
+        {refreshing && <div class="wr-progress" role="progressbar" aria-label={t('refreshing')} />}
       </div>
       <div class="wr-nav-row">
         <div class="wr-nav" role="group" aria-label={t('spanNav')}>
@@ -117,6 +119,7 @@ export function Header(props: HeaderProps) {
           selectLabel={t('spanPicker')}
           disabled={props.onSpan === null}
           onChange={(span) => props.onSpan?.(span)}
+          onPending={setPending}
         />
         {view?.browserTimeZoneDiffers && (
           <span class="wr-tz" title={t('timesInLong', view.timeZone)}>

@@ -1224,6 +1224,23 @@ describe('the shown span', () => {
     expect(view(span('month')).nothingDue).toBe(false);
   });
 
+  it('shows unsubmitted work from earlier this week in Past due for any span, in a course that starts next week', () => {
+    const futureCourse = [course('101', 'Biology', '2026-11-02T05:00:00Z')];
+    const monday = [task('mon', '2026-10-26T15:00:00Z')];
+    const monDetails = detailsById([upload('mon')]);
+    for (const kind of ['day', 'week', 'fortnight', 'month', 'custom'] as const) {
+      const shown = buildWeekView(
+        input({
+          ...span(kind, 5),
+          courses: futureCourse,
+          plannerItems: monday,
+          assignmentDetails: monDetails,
+        }),
+      );
+      expect(placesOf(shown), kind).toEqual({ 'assignment:mon': 'past_due.items' });
+    }
+  });
+
   describe('the planner range', () => {
     const range = (partial: Partial<ModelInput>) => plannerRangeFor(input(partial));
 

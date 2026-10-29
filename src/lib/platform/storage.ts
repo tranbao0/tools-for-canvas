@@ -40,20 +40,20 @@ export function normalizeSeenNotes(stored: unknown): SeenNotes {
 }
 
 /** The student's settings (decision 18). The theme defaults to `auto` (decision 19). */
-export const settingsItem: StorageItem<Settings> = createTrustedItem({
+export const settingsItem: StorageItem<Settings> = /* @__PURE__ */ createTrustedItem({
   key: 'settings',
   fallback: () => structuredClone(DEFAULT_SETTINGS),
   normalize: normalizeSettings,
 });
 
 /** The saved Canvas origin, such as `https://school.instructure.com`, or `null` before setup. */
-export const canvasOriginItem: StorageItem<string | null> = createTrustedItem({
+export const canvasOriginItem: StorageItem<string | null> = /* @__PURE__ */ createTrustedItem({
   key: 'canvasOrigin',
   fallback: () => null,
 });
 
 /** The one-time notes the student has already seen. */
-export const seenNotesItem: StorageItem<SeenNotes> = createTrustedItem({
+export const seenNotesItem: StorageItem<SeenNotes> = /* @__PURE__ */ createTrustedItem({
   key: 'seenNotes',
   fallback: () => ({ ...DEFAULT_SEEN_NOTES }),
   normalize: normalizeSeenNotes,
@@ -63,13 +63,16 @@ export const seenNotesItem: StorageItem<SeenNotes> = createTrustedItem({
  * A time stamp in milliseconds, written after each Canvas write.
  * Every surface watches it and refreshes.
  */
-export const changeMarkerItem = defineItem<number>('local:changeMarker', () => 0);
+export const changeMarkerItem = /* @__PURE__ */ defineItem<number>('local:changeMarker', () => 0);
 
 /**
  * The Canvas that the detector found and the student has not answered yet, or `null`. The welcome
  * page and the side panel show it as "Use <host> as your Canvas?" or "Switch to this Canvas?".
  */
-export const offerItem = defineItem<Offer | null>('session:offer', () => null);
+export const offerItem = /* @__PURE__ */ defineItem<Offer | null>('session:offer', () => null);
 
 /** Whether a Canvas that waits for an answer already prompted in this browser session (decision 5). */
-export const welcomePromptedItem = defineItem<boolean>('session:welcomePrompted', () => false);
+export const welcomePromptedItem = /* @__PURE__ */ defineItem<boolean>(
+  'session:welcomePrompted',
+  () => false,
+);

@@ -303,11 +303,15 @@
 }
 
 /* The span control: a compact select, with the number field of a custom span beside it. */
-.wr-span {
+.wr-span,
+.wr-span-days {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 4px 8px;
+}
+
+.wr-span {
+  flex-wrap: wrap;
   min-width: 0;
 }
 
@@ -325,12 +329,6 @@
   field-sizing: content;
   width: auto;
   max-width: 100%;
-}
-
-.wr-span-days {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .wr-span .wr-span-input {

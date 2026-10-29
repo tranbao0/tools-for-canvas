@@ -397,11 +397,15 @@ for (const scheme of ['light', 'dark'] as const) {
 
       await picker(page).selectOption('month');
       await expect(title(page, 'October 2026')).toBeVisible();
+      await expect(picker(page)).toHaveValue('month');
       await checkFit('Month');
       await shot('span-month');
 
       await picker(page).selectOption('custom');
       await expect(days(page)).toBeVisible();
+      // The heading matches the select before the shot is taken.
+      await expect(title(page, 'October 27 to November 2')).toBeVisible();
+      await expect(picker(page)).toHaveValue('custom');
       await checkFit('Custom');
       await shot('span-custom');
 
@@ -411,6 +415,9 @@ for (const scheme of ['light', 'dark'] as const) {
         'border-top-color',
         scheme === 'dark' ? 'rgb(240, 138, 141)' : 'rgb(199, 31, 35)',
       );
+      // The refused number changes nothing: the heading still shows the 7 days.
+      await expect(title(page, 'October 27 to November 2')).toBeVisible();
+      await expect(picker(page)).toHaveValue('custom');
       await checkFit('Custom, invalid');
       await shot('span-custom-invalid');
 
@@ -454,12 +461,14 @@ test('arrow keys in the closed select show each span at once and save only the o
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowDown');
 
-  // The select shows the pick at once, and nothing is saved yet.
+  // The select shows the pick at once with the refresh marker, and nothing is saved yet.
   await expect(picker(page)).toHaveValue('month');
   await expect(title(page, 'Week of October 25 to 31')).toBeVisible();
+  await expect(page.getByRole('progressbar', { name: 'Refreshing' })).toBeVisible();
   expect(await saves()).toBe(0);
   // After the pause the one span that stayed is saved, once.
   await expect(title(page, 'October 2026')).toBeVisible();
+  await settledList(page);
   expect(await saves()).toBe(1);
 
   // Leaving the select saves at once.
@@ -562,3 +571,57 @@ for (const width of [170, 240, 360, 480]) {
     expect(geometry.inside).toBe(true);
   });
 }
+
+test('a pick saved in one panel replaces what another panel shows, and its blur saves nothing', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  await openPanel(context, page, background, extensionUrl);
+  const second = await context.newPage();
+  await openExtensionPage(second, extensionUrl('sidepanel.html'));
+  await expect(doneBox(second, 'Quiz 3: Cell membranes')).toBeVisible();
+  await settledList(second);
+  await background.evaluate(() => {
+    const scope = globalThis as unknown as {
+      saves: number;
+      chrome: {
+        storage: {
+          onChanged: {
+            addListener(listener: (changes: Record<string, unknown>, area: string) => void): void;
+          };
+        };
+      };
+    };
+    scope.saves = 0;
+    scope.chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && 'settings' in changes) scope.saves += 1;
+    });
+  });
+  const saves = () => background.evaluate(() => (globalThis as unknown as { saves: number }).saves);
+
+  // A picks Day, then B picks Week.
+  await page.bringToFront();
+  await picker(page).selectOption('day');
+  await expect(title(page, 'Tuesday, October 27')).toBeVisible();
+  await expect(title(second, 'Tuesday, October 27')).toBeVisible();
+  await second.bringToFront();
+  await picker(second).selectOption('week');
+  await expect(title(second, 'Week of October 25 to 31')).toBeVisible();
+
+  // A follows: its select and its heading both say Week.
+  await page.bringToFront();
+  await expect(title(page, 'Week of October 25 to 31')).toBeVisible();
+  await expect(picker(page)).toHaveValue('week');
+  const before = await saves();
+
+  // Leaving A's select saves nothing, and Day does not come back.
+  await picker(page).focus();
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(600);
+  expect(await saves()).toBe(before);
+  await expect(picker(page)).toHaveValue('week');
+  await expect(picker(second)).toHaveValue('week');
+  await expect(title(page, 'Week of October 25 to 31')).toBeVisible();
+});
