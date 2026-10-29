@@ -71,8 +71,8 @@ Read the full [privacy policy](docs/privacy.md).
 You need Node.js 26 (see `.nvmrc`) and npm.
 
 ```sh
-git clone https://github.com/tranbao0/Simple-CanvasTasks.git
-cd Simple-CanvasTasks
+git clone https://github.com/tranbao0/tools-for-canvas.git
+cd tools-for-canvas
 npm ci
 npm run build
 ```

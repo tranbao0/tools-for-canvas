@@ -2,7 +2,7 @@
 
 This document records the design decisions for version 1 of the extension.
 The extension is called Tools for Canvas (see decision 17).
-The repository still uses the working name Simple-CanvasTasks.
+The repository is `tranbao0/tools-for-canvas`.
 Facts were checked on 2026-10-27.
 Each fact has a source in the [Sources](#sources) list at the end, shown as a number in brackets.
 "Inferred from source" means the fact comes from reading code, not from a live test.
@@ -1227,7 +1227,7 @@ The owner chose it on 2026-10-27.
 1. Rename the product in the code: the extension name and the description in the messages, the package name, the README, the privacy policy, the store texts and the UI texts that name the product.
 2. Change the Firefox add-on id before the first Firefox release, for example to `tools-for-canvas@tranbao0.github.io`.
    An add-on id cannot change after the first release.
-3. Rename the GitHub repository, for example to `tools-for-canvas`, and update the repository and privacy policy links in the URL allowlist.
+3. Done on 2026-10-29: the GitHub repository is `tranbao0/tools-for-canvas`, and the URL allowlist uses the new repository and privacy policy links.
 4. Run a final store check for the exact name, including Edge, just before the first release.
 
 ### 18. Settings

@@ -131,7 +131,7 @@ The project's change history shows every earlier version.
 
 ## Contact
 
-Open an issue in the [project repository](https://github.com/tranbao0/Simple-CanvasTasks).
+Open an issue in the [project repository](https://github.com/tranbao0/tools-for-canvas).
 
 Canvas is a trademark of Instructure, Inc.
 This independent project is not affiliated with or endorsed by Instructure.
