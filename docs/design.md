@@ -328,7 +328,11 @@ An earlier version used option B; schools on their own domain then needed an "Al
 
 **Finding the Canvas address:**
 
-- The first Canvas page the student opens sets the address.
+- The first Canvas page the student opens on `*.instructure.com` sets the address by itself.
+- On a Canvas with its own domain, the first visit shows one line in the Canvas sidebar, in the place of the list: "Show your weekly list on canvas.school.edu?" with a "Show" button.
+  One click saves the address, and the list appears at once, with no reload.
+  The owner chose this on 2026-10-28: a hostile page can copy the Canvas markers, so a domain outside `instructure.com` needs the student's one click on its own name.
+  About 93 percent of Canvas school domains are on `instructure.com` [15], so most students never see the line.
 - Test and beta hosts (`*.test.instructure.com`, `*.beta.instructure.com`) are never saved automatically.
 - Version 1 supports one Canvas address.
   On another Canvas, the in-page list does not show, and the side panel offers "Switch to this Canvas?".
