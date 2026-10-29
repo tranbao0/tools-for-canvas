@@ -16,6 +16,12 @@ import { formatKb, listFiles, runForTargets } from './lib/build-output.mjs';
 export const BUDGET_BYTES = 30_000;
 
 /**
+ * The gzip budget for an extension page (side panel, settings, welcome). These pages load from
+ * the extension's own files, not from a web page, so they get more room.
+ */
+export const PAGE_BUDGET_BYTES = 40_000;
+
+/**
  * The gzip budget for the detector content script, in bytes. It runs on every https page
  * (decision 5), so it must stay tiny.
  */
@@ -30,7 +36,8 @@ export const DETECTOR_ENTRY = 'detector.js';
  * @returns {number}
  */
 export function budgetFor(name) {
-  return name === DETECTOR_ENTRY ? DETECTOR_BUDGET_BYTES : BUDGET_BYTES;
+  if (name === DETECTOR_ENTRY) return DETECTOR_BUDGET_BYTES;
+  return name.endsWith('.html') ? PAGE_BUDGET_BYTES : BUDGET_BYTES;
 }
 
 const HTML_ASSET = /<(?:script|link)\b[^>]*?\b(?:src|href)\s*=\s*["']([^"']+)["']/gi;

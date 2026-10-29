@@ -12,6 +12,7 @@ import { checkManifest } from './check-manifest.mjs';
 import {
   BUDGET_BYTES,
   DETECTOR_BUDGET_BYTES,
+  PAGE_BUDGET_BYTES,
   budgetFor,
   entryClosure,
   findEntryPoints,
@@ -223,6 +224,8 @@ describe('check-size', () => {
     assert.equal(DETECTOR_BUDGET_BYTES, 2000);
     assert.equal(budgetFor('inpage.js'), BUDGET_BYTES);
     assert.equal(budgetFor('background.js'), BUDGET_BYTES);
+    assert.equal(budgetFor('sidepanel.html'), PAGE_BUDGET_BYTES);
+    assert.equal(PAGE_BUDGET_BYTES, 40000);
   });
 
   test('the command fails when the detector is over 2,000 bytes gzip', async () => {

@@ -96,21 +96,21 @@ Other commands:
 
 ## Test and check
 
-| Command                  | What it does                                                                          |
-| ------------------------ | ------------------------------------------------------------------------------------- |
-| `npm run lint`           | ESLint, including the rule that allows network calls only in the Canvas fetch wrapper |
-| `npm run format:check`   | Prettier check                                                                        |
-| `npm run typecheck`      | TypeScript check                                                                      |
-| `npm test`               | Unit tests with Vitest                                                                |
-| `npm run test:scripts`   | Tests for the build checks                                                            |
-| `npm run check`          | Builds all browsers, then runs the four build checks below                            |
-| `npm run check:size`     | Fails if an entry point is over 30 KB after gzip                                      |
-| `npm run check:urls`     | Fails if the build contains a URL that is not in `scripts/url-allowlist.json`         |
-| `npm run check:manifest` | Checks the permissions and browser settings in each built manifest                    |
-| `npm run check:fetch`    | Fails if a built bundle other than the background script calls `fetch`                |
-| `npm run lint:webext`    | Runs `web-ext lint` on the Firefox build                                              |
-| `npm run test:e2e`       | End-to-end tests in Chromium with Playwright, against a fake Canvas site              |
-| `npm run test:firefox`   | Firefox smoke test with Selenium and geckodriver                                      |
+| Command                  | What it does                                                                           |
+| ------------------------ | -------------------------------------------------------------------------------------- |
+| `npm run lint`           | ESLint, including the rule that allows network calls only in the Canvas fetch wrapper  |
+| `npm run format:check`   | Prettier check                                                                         |
+| `npm run typecheck`      | TypeScript check                                                                       |
+| `npm test`               | Unit tests with Vitest                                                                 |
+| `npm run test:scripts`   | Tests for the build checks                                                             |
+| `npm run check`          | Builds all browsers, then runs the four build checks below                             |
+| `npm run check:size`     | Fails if an entry point is over its gzip limit (30 KB, 40 KB for pages, 2 KB detector) |
+| `npm run check:urls`     | Fails if the build contains a URL that is not in `scripts/url-allowlist.json`          |
+| `npm run check:manifest` | Checks the permissions and browser settings in each built manifest                     |
+| `npm run check:fetch`    | Fails if a built bundle other than the background script calls `fetch`                 |
+| `npm run lint:webext`    | Runs `web-ext lint` on the Firefox build                                               |
+| `npm run test:e2e`       | End-to-end tests in Chromium with Playwright, against a fake Canvas site               |
+| `npm run test:firefox`   | Firefox smoke test with Selenium and geckodriver                                       |
 
 Before the first end-to-end run, install the Playwright browser with `npx playwright install chromium`.
 For the Firefox smoke test on Linux, `npm run setup:firefox` downloads a pinned Firefox and geckodriver into `~/.cache/weekrow-test`.

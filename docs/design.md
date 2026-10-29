@@ -1024,8 +1024,10 @@ These sizes come from one test build of the same small app [19].
 - The in-page UI uses px units, because rem units follow the page's font size [19].
 - Plain CSS with custom properties for colors and spacing; no CSS framework.
 - No runtime dependencies besides Preact and `@preact/signals`.
-- Each entry point must stay under 30 KB after gzip.
-  CI checks this limit.
+- Each script entry point (the background and the in-page script) must stay under 30 KB after gzip, and the detector under 2 KB.
+  Each extension page (side panel, settings, welcome) must stay under 40 KB, because it loads from the extension's own files.
+  The owner raised the page limit on 2026-10-29, when the span feature filled the 30 KB.
+  CI checks these limits.
   The extension pages load one shared chunk for all code under `src/lib`, because several small chunks cost more after gzip.
   A test build with Preact had a 9.3 KB content script [19].
 - The package manager is npm.
