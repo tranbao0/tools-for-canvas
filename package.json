@@ -34,7 +34,8 @@
     "check:urls": "node scripts/check-urls.mjs",
     "check:manifest": "node scripts/check-manifest.mjs",
     "check:fetch": "node scripts/check-fetch.mjs",
-    "check": "npm run build && npm run check:size && npm run check:urls && npm run check:manifest && npm run check:fetch"
+    "check:storage": "node scripts/check-storage.mjs",
+    "check": "npm run build && npm run check:size && npm run check:urls && npm run check:manifest && npm run check:fetch && npm run check:storage"
   },
   "devDependencies": {
     "@babel/core": "7.29.7",

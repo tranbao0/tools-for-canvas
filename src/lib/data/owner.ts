@@ -2,7 +2,7 @@
  * The single data owner. See docs/design.md, decisions 2, 5, 6, 9, 10 and 11.
  *
  * It owns every Canvas request, the memory-only cache, the refresh policy, the optimistic
- * writes and the setup check. Surfaces ask it for their state and send it actions; they learn
+ * writes and the saved Canvas address. Surfaces ask it for their state and send it actions; they learn
  * about new data from the change marker in `storage.local`.
  *
  * Everything it touches comes in through `DataOwnerDeps`, so it does not depend on where it
@@ -10,23 +10,19 @@
  */
 import type { RequestPriority } from '../canvas/limiter';
 import type { CanvasApi, PlannerNote, PlannerOverride, TimeRange } from '../canvas/types';
-import type { ProbeResult } from '../canvas/probe';
-import { canAutoSaveOrigin } from '../inpage/origin';
 import { assignmentIdsToLookup } from '../model/normalize';
 import { isCheckedButMissing, itemState, redoBlocksDone } from '../model/rules';
 import { moveToTodayTodoDate, todoDateFor } from '../model/tasks';
-import type { Item, Offer, Settings, SurfaceState } from '../model/types';
-import { isInstructureHost, normalizeAddress, originMatchPattern } from '../platform/address';
+import type { Item, Offer, Settings } from '../model/types';
+import { canAutoSaveOrigin, isUsableOrigin } from '../platform/address';
 import type { SeenNotes } from '../platform/storage';
 import type { TaskInput } from '../ui/contract';
 import {
   emptyCache,
-  setupStatusOrigin,
   type Failure,
   type RoundScope,
   type SessionCache,
   type SessionData,
-  type SetupStatus,
 } from './cache';
 import {
   chunkInterval,
@@ -71,7 +67,6 @@ import type {
   DataAction,
   PreviousOverride,
   RefreshReason,
-  RequestSurface,
   StateReply,
   SurfaceRequest,
 } from './protocol';
@@ -133,18 +128,12 @@ interface DataStore {
   seenNotes: StoredValue<SeenNotes>;
   offer: StoredValue<Offer | null>;
   cache: StoredValue<SessionCache | null>;
-  setup: StoredValue<SetupStatus | null>;
 }
 
 export interface DataOwnerDeps {
   createApi(origin: string): CanvasApi;
-  /** The setup check of decision 5. */
-  probe(origin: string): Promise<ProbeResult>;
+  /** Whether the browser lets the extension reach the origin now (decision 5). */
   hasAccess(origin: string): Promise<boolean>;
-  /** Removes an optional host grant that the extension no longer needs (decision 5). */
-  removeAccess(origin: string): Promise<void>;
-  /** Keeps the runtime content script registration correct after the address changes. */
-  syncContentScripts(): Promise<void>;
   store: DataStore;
   clock: Clock;
   timers: Timers;
@@ -154,15 +143,11 @@ export interface DataOwnerDeps {
   log(step: string, error: unknown): void;
 }
 
+/** What the page of a detected Canvas shows. See {@link DataOwner.canvasDetected}. */
+export type Detection = 'saved' | 'confirm' | 'other';
+
 /** Refresh triggers that come from the browser rather than from a surface. */
 type BrowserTrigger = 'page_loaded' | 'focus' | 'startup';
-
-/** Who asked for a refresh. */
-export interface RefreshSource {
-  surface: RequestSurface;
-  /** The sender is an extension page, not a content script. */
-  fromExtensionPage: boolean;
-}
 
 interface RefreshResult {
   /** Epoch milliseconds when a full round that the 60-second limit put off can run. */
@@ -171,26 +156,31 @@ interface RefreshResult {
 
 export interface DataOwner {
   getState(request: SurfaceRequest): Promise<StateReply>;
-  refresh(reason: RefreshReason, source: RefreshSource): Promise<RefreshResult>;
+  refresh(reason: RefreshReason): Promise<RefreshResult>;
   trigger(reason: BrowserTrigger): Promise<void>;
   /** A page of `origin` loaded. Only the saved Canvas counts. */
   pageLoaded(origin: string): Promise<void>;
   /**
-   * A content script found Canvas on an `instructure.com` page of `origin`. Saves the origin
-   * when no address is saved yet and it may be saved without asking. Resolves with the saved
-   * address after the call.
+   * The detector found Canvas on a page of `origin`. Saves the origin when no address is saved
+   * yet and it may be saved without asking (an `instructure.com` host). Resolves with:
+   * - `saved`: the origin is the saved address, so the page gets the list;
+   * - `confirm`: no address is saved and the origin may not be saved without asking. The owner
+   *   stores the offer, and the student answers it in the welcome page or the side panel;
+   * - `other`: another address is saved, or the origin is not usable. The owner stores the offer
+   *   for the side panel in the first case.
    */
-  canvasDetected(origin: string): Promise<string | null>;
+  canvasDetected(origin: string): Promise<Detection>;
+  /**
+   * The student accepted the offer for `origin`. Saves the address and resolves with `true`, or
+   * resolves with `false` when the offer stored is not for that origin.
+   */
+  acceptOffer(origin: string): Promise<boolean>;
   act(action: DataAction): Promise<ActionReply>;
-  /** Starts the setup check for an address. The permission must already be granted. */
-  setup(origin: string, fromOffer: boolean): Promise<void>;
-  /** Opens the address form. The saved address stays until a new one passes the check. */
-  changeAddress(): Promise<void>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
   accessChanged(): Promise<void>;
-  /** Resolves when no round, write, setup check or storage write is running or queued. */
+  /** Resolves when no round, write or storage write is running or queued. */
   settled(): Promise<void>;
   /** Stops every timer, as when the worker that hosts the owner stops. */
   dispose(): void;
@@ -240,41 +230,6 @@ interface WriteContext {
 }
 
 type NoteOperation = 'update' | 'delete';
-
-/** The saved address while the student checks a different one, otherwise `null`. */
-function otherSavedOrigin(saved: string | null, origin: string): string | null {
-  return saved !== null && saved !== origin ? saved : null;
-}
-
-function setupState(status: SetupStatus, saved: string | null, offer: Offer | null): SurfaceState {
-  switch (status.kind) {
-    case 'entering':
-      return { kind: 'not_set_up', offer, savedOrigin: saved };
-    case 'rejected':
-      return {
-        kind: 'not_canvas',
-        origin: status.text,
-        savedOrigin: otherSavedOrigin(saved, status.text),
-      };
-    case 'checking':
-    case 'redirects':
-    case 'not_canvas':
-    case 'unreachable':
-      return {
-        kind: status.kind,
-        origin: status.origin,
-        savedOrigin: otherSavedOrigin(saved, status.origin),
-      };
-  }
-}
-
-/**
- * Whether a setup status shows on a surface. The in-page list runs on the saved Canvas, so the
- * address form and checks of other addresses are not its business.
- */
-function statusApplies(status: SetupStatus, surface: RequestSurface, saved: string | null) {
-  return !(surface === 'inpage' && saved !== null && setupStatusOrigin(status) !== saved);
-}
 
 /** A failed round stops the loads of views and planner jobs, until a round succeeds. */
 function blocksLoads(failure: Failure | null): boolean {
@@ -387,11 +342,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   let loading: Promise<void> | null = null;
   let knownOrigin: string | null = null;
   let cache: SessionCache | null = null;
-  let setupStatus: SetupStatus | null = null;
   /** Grows when the address changes or the data is cleared, so old async work is dropped. */
   let generation = 0;
   let lastMarker = 0;
-  let setupRun = 0;
 
   const apis = new Map<string, CanvasApi>();
   /** The views that surfaces showed lately, by their planner range. */
@@ -419,8 +372,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   const queuedDeletes = new Set<string>();
   /** Delayed deletes whose DELETE request has started. Undo can no longer stop them. */
   const startedDeletes = new Set<string>();
-  /** Writes and deletes that still use a Canvas address. Its access stays until they end. */
-  const usingOrigin = new Map<string, Set<Promise<unknown>>>();
   /** Courses whose teacher status names a follow-up request is loading now. */
   const statusesInFlight = new Set<string>();
   /** Courses whose names did not load. The next round tries them again. */
@@ -467,17 +418,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   async function load(): Promise<void> {
-    const [origin, stored, setup, marker] = await Promise.all([
-      store.origin.getValue(),
+    const [origin, stored, marker] = await Promise.all([
+      savedOrigin(),
       store.cache.getValue(),
-      store.setup.getValue(),
       store.changeMarker.getValue(),
     ]);
     knownOrigin = origin;
-    setupStatus = setup;
     lastMarker = marker;
-    // A check that was running when the old worker stopped never finished, so run it again.
-    if (setupStatus?.kind === 'checking') track(runSetupCheck(setupStatus.origin));
     if (origin === null) {
       cache = null;
       return;
@@ -1080,47 +1027,20 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Address and setup
+  // Address
   // ---------------------------------------------------------------------------------------------
 
   /**
-   * Removes the optional host grant of an address that is no longer in use: not an
-   * `instructure.com` host (a required permission), not the saved address, and not the address
-   * of a check that is running or that Retry can run again.
+   * Runs a step that reads the saved address and then writes it or the offer, after the steps
+   * before it. Reports from several tabs can arrive together, as when the detector runs in every
+   * open tab at install. Each report then sees the address that the one before it saved, so only
+   * the first Canvas is saved, and no later one is told that its page is the saved address.
    */
-  function releaseGrant(origin: string): Promise<void> {
-    const busy = usingOrigin.get(origin);
-    if (busy?.size) {
-      // What still uses the address ends first, without holding the caller: it can take long.
-      // The student may come back to the address meanwhile, so the checks follow the wait.
-      track(Promise.all([...busy]).then(() => releaseGrant(origin)));
-      return Promise.resolve();
-    }
-    return removeUnusedGrant(origin);
-  }
-
-  async function removeUnusedGrant(origin: string): Promise<void> {
-    if (isInstructureHost(origin)) return;
-    const pattern = originMatchPattern(origin);
-    if (pattern === null) return;
-    const saved = await store.origin.getValue();
-    if (saved !== null && originMatchPattern(saved) === pattern) return;
-    const status = setupStatus;
-    if (
-      (status?.kind === 'checking' || status?.kind === 'unreachable') &&
-      originMatchPattern(status.origin) === pattern
-    ) {
-      return;
-    }
-    await deps.removeAccess(origin).catch((error: unknown) => deps.log('remove access', error));
-  }
-
-  async function setSetup(status: SetupStatus | null): Promise<void> {
-    const previous = setupStatusOrigin(setupStatus);
-    setupStatus = status;
-    await store.setup.setValue(status);
-    await bump();
-    if (previous !== null && previous !== setupStatusOrigin(status)) await releaseGrant(previous);
+  let addressChain: Promise<unknown> = Promise.resolve();
+  function changingAddress<T>(step: () => Promise<T>): Promise<T> {
+    const run = addressChain.then(step);
+    addressChain = run.catch(() => undefined);
+    return run;
   }
 
   /**
@@ -1137,25 +1057,27 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const noteIds = Object.keys(left.pendingDeletes).filter((id) => !started.has(id));
     if (userId === undefined || noteIds.length === 0) return;
     const api = apiFor(origin);
-    const sending = api
-      .getSelf()
-      .then(async (self) => {
-        if (self.id === userId) await Promise.all(noteIds.map((id) => api.deleteNote(id)));
-      })
-      .catch((error: unknown) => deps.log('task delete', error));
-    holdOrigin(origin, sending);
-    track(sending);
+    track(
+      api
+        .getSelf()
+        .then(async (self) => {
+          if (self.id === userId) await Promise.all(noteIds.map((id) => api.deleteNote(id)));
+        })
+        .catch((error: unknown) => deps.log('task delete', error)),
+    );
   }
 
-  /** Keeps the access to a Canvas address until the work ends. */
-  function holdOrigin(origin: string, work: Promise<unknown>): void {
-    const set = usingOrigin.get(origin) ?? new Set();
-    usingOrigin.set(origin, set);
-    set.add(work);
-    void work.then(() => set.delete(work));
+  /**
+   * The saved address, or `null` when nothing is saved or the stored text is not a usable https
+   * origin. Whatever the store holds, the owner never requests data from anything else.
+   */
+  async function savedOrigin(): Promise<string | null> {
+    const stored = await store.origin.getValue();
+    return stored !== null && isUsableOrigin(stored) ? stored : null;
   }
 
-  async function handleOrigin(origin: string | null): Promise<void> {
+  async function handleOrigin(candidate: string | null): Promise<void> {
+    const origin = candidate !== null && isUsableOrigin(candidate) ? candidate : null;
     if (origin === knownOrigin) return;
     if (knownOrigin !== null && cache !== null) {
       sendWaitingDeletes(knownOrigin, cache, new Set(startedDeletes));
@@ -1169,58 +1091,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     persist();
     if (origin !== null) scheduleForcedFull();
     await bump();
-  }
-
-  async function syncContentScripts(): Promise<void> {
-    await deps
-      .syncContentScripts()
-      .catch((error: unknown) => deps.log('content script sync', error));
-  }
-
-  /** Saves an address that passed the check. It replaces the saved one only now. */
-  async function saveAddress(origin: string): Promise<void> {
-    const previous = await store.origin.getValue();
-    // The origin watcher of the background also calls `handleOrigin`. Whichever call comes
-    // first starts the full round, and the other one does nothing.
-    const changed = origin !== knownOrigin;
-    await store.origin.setValue(origin);
-    await setSetup(null);
-    if (changed) await handleOrigin(origin);
-    else scheduleForcedFull();
-    if (previous !== null && previous !== origin) await releaseGrant(previous);
-    await syncContentScripts();
-  }
-
-  async function runSetupCheck(origin: string): Promise<void> {
-    setupRun += 1;
-    const run = setupRun;
-    // Only a usable https origin is ever checked, whatever was stored.
-    if (normalizeAddress(origin) !== origin) {
-      await setSetup({ kind: 'rejected', text: origin });
-      return;
-    }
-    let result: ProbeResult;
-    try {
-      result = await deps.probe(origin);
-    } catch (error) {
-      deps.log('setup check', error);
-      result = 'network';
-    }
-    if (run !== setupRun) return;
-    switch (result) {
-      case 'canvas':
-      case 'signed_out':
-        await saveAddress(origin);
-        return;
-      case 'redirects':
-      case 'not_canvas':
-        await setSetup({ kind: result, origin });
-        await releaseGrant(origin);
-        return;
-      case 'network':
-        await setSetup({ kind: 'unreachable', origin });
-        return;
-    }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1289,7 +1159,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       }
     });
     chains[queue] = done;
-    if (stamp.origin !== null) holdOrigin(stamp.origin, done);
     return done;
   }
 
@@ -1728,14 +1597,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     };
   }
 
-  /** Leaves the address form or a check of a new address, so the saved address shows again. */
-  async function keepSavedAddress(): Promise<ActionReply> {
-    if ((await store.origin.getValue()) === null || setupStatus === null) return NO_UNDO;
-    setupRun += 1;
-    await setSetup(null);
-    return NO_UNDO;
-  }
-
   async function act(action: DataAction): Promise<ActionReply> {
     switch (action.kind) {
       case 'setDone':
@@ -1792,8 +1653,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       case 'cancelDelete':
         cancelDelete(action.noteId);
         return NO_UNDO;
-      case 'keepSavedAddress':
-        return keepSavedAddress();
     }
   }
 
@@ -1803,16 +1662,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
   async function getState(request: SurfaceRequest): Promise<StateReply> {
     await ready();
-    const origin = await store.origin.getValue();
+    const origin = await savedOrigin();
     if (origin !== knownOrigin) await handleOrigin(origin);
     const offer = offerForSurface(await store.offer.getValue(), origin, request.surface);
-    if (setupStatus !== null && statusApplies(setupStatus, request.surface, origin)) {
-      return setupState(setupStatus, origin, offer);
-    }
-    if (origin === null) return { kind: 'not_set_up', offer, savedOrigin: null };
-    if (!(await deps.hasAccess(origin))) {
-      return { kind: 'no_access', origin, savedOrigin: null, offer };
-    }
+    if (origin === null) return { kind: 'not_set_up', offer };
+    if (!(await deps.hasAccess(origin))) return { kind: 'no_access', origin, offer };
     if (cache === null) return { kind: 'loading' };
     const failure = cache.failure;
     const offline = failure?.kind === 'stale' && failure.offline;
@@ -1821,8 +1675,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     const session = cache.session;
     if (session === null) {
-      if (blocksLoads(failure))
-        return { kind: 'cant_load', origin, offline, savedOrigin: null, offer };
+      if (blocksLoads(failure)) return { kind: 'cant_load', origin, offline, offer };
       // The first round loads the session. Every state request waits for it.
       if (!running && !anyPending()) schedule('full');
       return { kind: 'loading' };
@@ -1837,7 +1690,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const result = viewFor(cache, session, request, context);
     if (result === null) {
       return blocksLoads(failure)
-        ? { kind: 'cant_load', origin, offline, savedOrigin: null, offer }
+        ? { kind: 'cant_load', origin, offline, offer }
         : { kind: 'loading' };
     }
     if (result.exact) loadAround(session, request.weekOffset, context);
@@ -1885,7 +1738,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   return {
     getState,
 
-    async refresh(reason, source) {
+    async refresh(reason) {
       await ready();
       switch (reason) {
         case 'visible':
@@ -1899,22 +1752,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           if (await showsUnloadedCourse()) deferLight(await applyTrigger(reason));
           await bump();
           return NO_RETRY;
-        case 'retry': {
-          // Only an extension page may check a new address again (decision 5). Every other
-          // Retry, such as one in the in-page list, refreshes the saved address.
-          const status = setupStatus;
-          if (
-            status?.kind === 'unreachable' &&
-            source.fromExtensionPage &&
-            source.surface !== 'inpage'
-          ) {
-            await setSetup({ kind: 'checking', origin: status.origin });
-            track(runSetupCheck(status.origin));
-            return NO_RETRY;
-          }
+        case 'retry':
           scheduleForcedFull();
           return NO_RETRY;
-        }
       }
     },
 
@@ -1924,42 +1764,46 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
     async pageLoaded(origin) {
       await ready();
-      if (origin !== (await store.origin.getValue())) return;
+      if (origin !== (await savedOrigin())) return;
       await applyTrigger('page_loaded');
     },
 
-    async canvasDetected(origin) {
-      await ready();
-      const saved = await store.origin.getValue();
-      if (!canAutoSaveOrigin(origin, saved)) return saved;
-      await store.origin.setValue(origin);
-      await handleOrigin(origin);
-      await syncContentScripts();
-      return origin;
+    canvasDetected(origin) {
+      return changingAddress(async (): Promise<Detection> => {
+        await ready();
+        const saved = await savedOrigin();
+        if (origin === saved) return 'saved';
+        if (!isUsableOrigin(origin)) return 'other';
+        if (saved === null) {
+          if (!canAutoSaveOrigin(origin, saved)) {
+            await store.offer.setValue({ origin });
+            return 'confirm';
+          }
+          await store.origin.setValue(origin);
+          await handleOrigin(origin);
+          return 'saved';
+        }
+        // Another Canvas than the saved one: the panel offers it, and the student decides.
+        await store.offer.setValue({ origin });
+        return 'other';
+      });
+    },
+
+    acceptOffer(origin) {
+      return changingAddress(async () => {
+        await ready();
+        const offer = await store.offer.getValue();
+        if (offer === null || offer.origin !== origin || !isUsableOrigin(origin)) return false;
+        await store.offer.setValue(null);
+        await store.origin.setValue(origin);
+        await handleOrigin(origin);
+        return true;
+      });
     },
 
     async act(action) {
       await ready();
       return act(action);
-    },
-
-    async setup(origin, fromOffer) {
-      await ready();
-      if (fromOffer) await store.offer.setValue(null);
-      const normalized = normalizeAddress(origin);
-      if (normalized === null) {
-        setupRun += 1;
-        await setSetup({ kind: 'rejected', text: origin });
-        return;
-      }
-      await setSetup({ kind: 'checking', origin: normalized });
-      track(runSetupCheck(normalized));
-    },
-
-    async changeAddress() {
-      await ready();
-      setupRun += 1;
-      await setSetup({ kind: 'entering' });
     },
 
     async originChanged(origin) {

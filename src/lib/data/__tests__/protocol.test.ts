@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
+import { isSettings } from '../../model/settings';
 import {
+  isAcceptOfferMessage,
   isActionMessage,
   isCanvasDetectedMessage,
-  isChangeAddressMessage,
   isDataAction,
   isDataMessage,
   isGetStateMessage,
+  isMarkNoteSeenMessage,
+  isPageChangedMessage,
+  isPageContextMessage,
+  isSaveSettingsMessage,
   isOpenPageMessage,
   isRefreshMessage,
-  isSetupMessage,
   isSurfaceRequest,
   isTaskInput,
   type DataAction,
@@ -74,7 +78,6 @@ describe('actions', () => {
     { kind: 'moveTaskToToday', noteId: '8' },
     { kind: 'sendDelete', noteId: '8' },
     { kind: 'cancelDelete', noteId: '8' },
-    { kind: 'keepSavedAddress' },
   ];
 
   it.each(valid)('accepts $kind', (action) => {
@@ -103,6 +106,7 @@ describe('actions', () => {
     { kind: 'cancelDelete' },
     { kind: 'createTask', input: { ...TASK, title: '' } },
     { kind: 'deleteOverride', key: 'assignment:1' },
+    { kind: 'keepSavedAddress' },
     { key: 'assignment:1' },
   ])('rejects %j', (action) => {
     expect(isDataAction(action)).toBe(false);
@@ -112,25 +116,17 @@ describe('actions', () => {
 describe('messages', () => {
   it('recognizes each message type', () => {
     expect(isGetStateMessage({ type: 'weekrow:get-state', request: REQUEST })).toBe(true);
-    expect(isRefreshMessage({ type: 'weekrow:refresh', reason: 'timer', surface: 'panel' })).toBe(
-      true,
-    );
-    expect(isRefreshMessage({ type: 'weekrow:refresh', reason: 'timer' })).toBe(false);
-    expect(isRefreshMessage({ type: 'weekrow:refresh', reason: 'timer', surface: 'popup' })).toBe(
-      false,
-    );
-    expect(
-      isRefreshMessage({ type: 'weekrow:refresh', reason: 'page_loaded', surface: 'panel' }),
-    ).toBe(false);
+    expect(isRefreshMessage({ type: 'weekrow:refresh', reason: 'timer' })).toBe(true);
+    expect(isRefreshMessage({ type: 'weekrow:refresh' })).toBe(false);
+    expect(isRefreshMessage({ type: 'weekrow:refresh', reason: 'page_loaded' })).toBe(false);
     expect(
       isCanvasDetectedMessage({ type: 'weekrow:canvas-detected', origin: 'https://a.edu' }),
     ).toBe(true);
     expect(isCanvasDetectedMessage({ type: 'weekrow:canvas-detected', origin: '' })).toBe(false);
-    expect(
-      isSetupMessage({ type: 'weekrow:setup', origin: 'https://a.edu', fromOffer: false }),
-    ).toBe(true);
-    expect(isSetupMessage({ type: 'weekrow:setup', origin: '', fromOffer: false })).toBe(false);
-    expect(isChangeAddressMessage({ type: 'weekrow:change-address' })).toBe(true);
+    expect(isAcceptOfferMessage({ type: 'weekrow:accept-offer', origin: 'https://a.edu' })).toBe(
+      true,
+    );
+    expect(isAcceptOfferMessage({ type: 'weekrow:accept-offer', origin: '' })).toBe(false);
     expect(isOpenPageMessage({ type: 'weekrow:open-page', page: 'welcome' })).toBe(true);
     expect(isOpenPageMessage({ type: 'weekrow:open-page', page: 'settings' })).toBe(false);
     expect(isOpenPageMessage({ type: 'weekrow:open-page', page: 'https://a.edu' })).toBe(false);
@@ -142,6 +138,60 @@ describe('messages', () => {
       false,
     );
     expect(isDataMessage({ type: 'weekrow:get-state' })).toBe(false);
+    // The typed-address messages no longer exist.
+    expect(
+      isDataMessage({ type: 'weekrow:setup', origin: 'https://a.edu', fromOffer: false }),
+    ).toBe(false);
+    expect(isDataMessage({ type: 'weekrow:change-address' })).toBe(false);
+    // The in-page confirmation no longer exists: only extension pages answer an offer.
+    expect(isDataMessage({ type: 'weekrow:confirm-canvas' })).toBe(false);
     expect(isDataMessage('weekrow:get-state')).toBe(false);
+  });
+});
+
+describe('the messages of the in-page script', () => {
+  const SETTINGS = {
+    weekStart: 'auto',
+    hiddenCourseIds: ['7'],
+    showRings: true,
+    showOnCanvasPages: false,
+    theme: 'dark',
+  };
+
+  it('accept settings of exactly the right shape', () => {
+    expect(isSettings(SETTINGS)).toBe(true);
+    expect(isSettings({ ...SETTINGS, weekStart: 7 })).toBe(true);
+    expect(isSaveSettingsMessage({ type: 'weekrow:save-settings', settings: SETTINGS })).toBe(true);
+    expect(isDataMessage({ type: 'weekrow:save-settings', settings: SETTINGS })).toBe(true);
+  });
+
+  it.each([
+    [{ ...SETTINGS, extra: true }],
+    [{ ...SETTINGS, weekStart: 0 }],
+    [{ ...SETTINGS, weekStart: '1' }],
+    [{ ...SETTINGS, theme: 'sepia' }],
+    [{ ...SETTINGS, hiddenCourseIds: 'all' }],
+    [{ ...SETTINGS, hiddenCourseIds: [7] }],
+    [{ ...SETTINGS, hiddenCourseIds: [''] }],
+    [{ ...SETTINGS, hiddenCourseIds: ['1'.repeat(41)] }],
+    [{ ...SETTINGS, hiddenCourseIds: Array.from({ length: 1001 }, (_, i) => `${i + 1}`) }],
+    [{ ...SETTINGS, showRings: 1 }],
+    [{ weekStart: 'auto' }],
+    [null],
+    ['settings'],
+  ])('refuse settings of the wrong shape: %j', (value) => {
+    expect(isSettings(value)).toBe(false);
+    expect(isSaveSettingsMessage({ type: 'weekrow:save-settings', settings: value })).toBe(false);
+  });
+
+  it('recognize the note, context and change messages', () => {
+    expect(isMarkNoteSeenMessage({ type: 'weekrow:mark-note-seen', note: 'firstDone' })).toBe(true);
+    expect(isMarkNoteSeenMessage({ type: 'weekrow:mark-note-seen', note: 'firstSkip' })).toBe(true);
+    expect(isMarkNoteSeenMessage({ type: 'weekrow:mark-note-seen', note: 'other' })).toBe(false);
+    expect(isPageContextMessage({ type: 'weekrow:page-context' })).toBe(true);
+    expect(isDataMessage({ type: 'weekrow:page-context' })).toBe(true);
+    // The change message goes from the background to the page. The router is not its receiver.
+    expect(isPageChangedMessage({ type: 'weekrow:changed' })).toBe(true);
+    expect(isDataMessage({ type: 'weekrow:changed' })).toBe(false);
   });
 });

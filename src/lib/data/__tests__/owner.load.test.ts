@@ -6,7 +6,6 @@ import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
 import { FULL_REFRESH_INTERVAL_MS } from '../policy';
 import { canvasError } from '../testing/fakeCanvas';
 import {
-  FROM_PANEL,
   ORIGIN,
   PANEL,
   advance,
@@ -149,7 +148,7 @@ describe('first load', () => {
     const release = h.canvas.hold('listPlannerItems');
     const hold = h.canvas.hold('listUndatedAssignments');
 
-    await h.owner.refresh('timer', FROM_PANEL);
+    await h.owner.refresh('timer');
     await vi.waitFor(() => expect(h.canvas.callsOf('listPlannerOverrides')).toHaveLength(1));
     expect(h.canvas.callsOf('listUndatedAssignments').map(([id]) => id)).toEqual(VISIBLE_COURSES);
     release();
@@ -460,51 +459,38 @@ describe('first load', () => {
 });
 
 describe('states', () => {
-  it('shows the first-run steps when no address is saved', async () => {
+  it('shows the open-Canvas state when no address is saved, on every surface', async () => {
     const h = await createHarness({ origin: null });
-    expect(await h.owner.getState(PANEL)).toEqual({
-      kind: 'not_set_up',
-      offer: null,
-      savedOrigin: null,
-    });
-
-    await offerItem.setValue({ origin: 'https://state.instructure.com', mode: 'use' });
-    expect(await h.owner.getState(PANEL)).toEqual({
-      kind: 'not_set_up',
-      offer: { origin: 'https://state.instructure.com', mode: 'use' },
-      savedOrigin: null,
-    });
-    // The welcome page has its own form, so only the panel shows the offer.
-    expect(await h.owner.getState({ ...PANEL, surface: 'page' })).toEqual({
-      kind: 'not_set_up',
-      offer: null,
-      savedOrigin: null,
-    });
+    for (const surface of ['panel', 'inpage', 'page'] as const) {
+      expect(await h.owner.getState({ ...PANEL, surface })).toEqual({
+        kind: 'not_set_up',
+        offer: null,
+      });
+    }
     expect(h.canvas.calls).toEqual([]);
   });
 
   it('ignores an offer for the saved address', async () => {
     const h = await createHarness();
-    await offerItem.setValue({ origin: ORIGIN, mode: 'switch' });
+    await offerItem.setValue({ origin: ORIGIN });
     expect((await loadReady(h)).offer).toBeNull();
 
-    await offerItem.setValue({ origin: 'https://other.instructure.com', mode: 'switch' });
+    await offerItem.setValue({ origin: 'https://other.instructure.com' });
     expect(expectReady(await h.owner.getState(PANEL)).offer).toEqual({
       origin: 'https://other.instructure.com',
-      mode: 'switch',
     });
   });
 
   it('never shows the offer in the in-page list, which lives on the saved Canvas page', async () => {
     const h = await createHarness();
     await loadReady(h);
-    await offerItem.setValue({ origin: 'https://other.instructure.com', mode: 'switch' });
+    await offerItem.setValue({ origin: 'https://other.instructure.com' });
 
     expect(expectReady(await h.owner.getState({ ...PANEL, surface: 'inpage' })).offer).toBeNull();
   });
 
   it('offers the switch in the panel while the saved address shows no list', async () => {
-    const offer = { origin: 'https://other.instructure.com', mode: 'switch' } as const;
+    const offer = { origin: 'https://other.instructure.com' } as const;
     const signedOut = await createHarness();
     await offerItem.setValue(offer);
     signedOut.canvas.fail('getProfile', canvasError('unauthorized', 401));
@@ -543,7 +529,6 @@ describe('states', () => {
     expect(await h.owner.getState(PANEL)).toEqual({
       kind: 'no_access',
       origin: ORIGIN,
-      savedOrigin: null,
       offer: null,
     });
     await h.owner.settled();
@@ -610,7 +595,6 @@ describe('states', () => {
       kind: 'cant_load',
       origin: ORIGIN,
       offline: false,
-      savedOrigin: null,
       offer: null,
     });
   });
@@ -645,7 +629,6 @@ describe('states', () => {
       kind: 'cant_load',
       origin: ORIGIN,
       offline: true,
-      savedOrigin: null,
       offer: null,
     });
   });
@@ -778,7 +761,7 @@ describe('states', () => {
       h.canvas.fail('listUndatedAssignments', canvasError(kind, status), { firstArg: C.calculus });
       h.canvas.fail('listAssignmentsByIds', canvasError(kind, status), { firstArg: C.calculus });
 
-      await h.owner.refresh('timer', FROM_PANEL);
+      await h.owner.refresh('timer');
       await h.owner.settled();
       const state = expectReady(await h.owner.getState(PANEL));
 
@@ -815,7 +798,7 @@ describe('states', () => {
     });
     expect((await loadReady(h)).skippedCourses).toEqual([{ id: C.calculus, name: 'MATH 221' }]);
 
-    await h.owner.refresh('retry', FROM_PANEL);
+    await h.owner.refresh('retry');
     await h.owner.settled();
 
     expect(expectReady(await h.owner.getState(PANEL)).skippedCourses).toEqual([]);

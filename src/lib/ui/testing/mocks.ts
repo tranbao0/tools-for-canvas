@@ -601,57 +601,20 @@ export function readyState(
 }
 
 /** The offer of another Canvas, as the panel gets it from a Canvas tab of another school. */
-export const OTHER_OFFER = { origin: 'https://canvas.state.edu', mode: 'switch' } as const;
+export const OTHER_OFFER = { origin: 'https://canvas.state.edu' } as const;
 
 /** One example of every non-ready state. */
 export function nonReadyStates(): { name: string; state: SurfaceState }[] {
   return [
     { name: 'loading', state: { kind: 'loading' } },
-    { name: 'not-set-up', state: { kind: 'not_set_up', offer: null, savedOrigin: null } },
+    { name: 'not-set-up', state: { kind: 'not_set_up', offer: null } },
     {
-      name: 'not-set-up-offer',
-      state: { kind: 'not_set_up', offer: { origin: ORIGIN, mode: 'use' }, savedOrigin: null },
-    },
-    {
-      name: 'not-set-up-saved',
-      state: { kind: 'not_set_up', offer: null, savedOrigin: ORIGIN },
-    },
-    {
-      name: 'checking',
-      state: { kind: 'checking', origin: 'https://canvas.state.edu', savedOrigin: null },
-    },
-    {
-      name: 'checking-saved',
-      state: { kind: 'checking', origin: 'https://canvas.state.edu', savedOrigin: ORIGIN },
+      name: 'not-set-up-use',
+      state: { kind: 'not_set_up', offer: { origin: 'https://canvas.school.edu' } },
     },
     {
       name: 'no-access',
-      state: {
-        kind: 'no_access',
-        origin: 'https://canvas.state.edu',
-        savedOrigin: null,
-        offer: null,
-      },
-    },
-    {
-      name: 'redirects',
-      state: { kind: 'redirects', origin: 'https://lms.state.edu', savedOrigin: null },
-    },
-    {
-      name: 'not-canvas',
-      state: { kind: 'not_canvas', origin: 'https://www.state.edu', savedOrigin: null },
-    },
-    {
-      name: 'not-canvas-saved',
-      state: { kind: 'not_canvas', origin: 'https://www.state.edu', savedOrigin: ORIGIN },
-    },
-    {
-      name: 'unreachable',
-      state: { kind: 'unreachable', origin: 'https://canvas.stat.edu', savedOrigin: null },
-    },
-    {
-      name: 'unreachable-saved',
-      state: { kind: 'unreachable', origin: 'https://canvas.stat.edu', savedOrigin: ORIGIN },
+      state: { kind: 'no_access', origin: 'https://canvas.state.edu', offer: null },
     },
     {
       name: 'signed-out',
@@ -671,11 +634,11 @@ export function nonReadyStates(): { name: string; state: SurfaceState }[] {
     },
     {
       name: 'cant-load',
-      state: { kind: 'cant_load', origin: ORIGIN, offline: false, savedOrigin: null, offer: null },
+      state: { kind: 'cant_load', origin: ORIGIN, offline: false, offer: null },
     },
     {
       name: 'cant-load-offline',
-      state: { kind: 'cant_load', origin: ORIGIN, offline: true, savedOrigin: null, offer: null },
+      state: { kind: 'cant_load', origin: ORIGIN, offline: true, offer: null },
     },
   ];
 }
@@ -709,8 +672,6 @@ export function noopActions(
     allowAccess: record('allowAccess'),
     acceptOffer: record('acceptOffer'),
     dismissOffer: record('dismissOffer'),
-    changeAddress: record('changeAddress'),
-    keepSavedAddress: record('keepSavedAddress'),
     openCanvas: record('openCanvas'),
     retry: record('retry'),
     saveSettings: record('saveSettings'),

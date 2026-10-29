@@ -1,8 +1,8 @@
 /**
- * The in-page entry flow for the content scripts. See docs/design.md, decisions 4, 5, 11 and 18.
+ * The in-page entry flow for the content script. See docs/design.md, decisions 4, 5, 11 and 18.
  *
- * 1. Resolve the saved Canvas origin. On a first visit to an `instructure.com` Canvas page, the
- *    background saves the page origin.
+ * 1. Read the saved Canvas origin. The detector and the background save it, not this script.
+ *    Neither this script nor any other content script can read or write the extension's storage.
  * 2. Tell the background that a Canvas page loaded, when the page is the saved Canvas.
  * 3. Keep the list in line with two choices: "Show the weekly list on Canvas pages" is on, and
  *    the page origin is the saved address. When both hold, wait for the page's anchors and mount
@@ -14,14 +14,33 @@
 import { browser } from 'wxt/browser';
 import type { CanvasPageLoadedMessage } from '../data/protocol';
 import { logFailure } from '../platform/log';
-import { canvasOriginItem, settingsItem } from '../platform/storage';
+import type { Settings } from '../model/types';
 import { mountWhenReady, removeStaleMount, type InpageMount, type MountOptions } from './mount';
-import { isSavedCanvasOrigin, resolveSavedOrigin } from './origin';
+import { isSavedCanvasOrigin } from './origin';
 
 /** Mounts the UI into the container and returns its removal, or `null` when nothing mounted. */
 type MountList = (mount: InpageMount) => (() => void) | null;
 
+/**
+ * The two choices that decide what the page shows, as the in-page script reads them: the saved
+ * Canvas address and the stored settings. In the browser they come from the background through
+ * checked messages (src/lib/surface/pageChannel.ts), because no content script can read the
+ * extension's storage.
+ */
+export interface PageChoices {
+  origin: {
+    getValue(): Promise<string | null>;
+    watch(listener: (origin: string | null) => void): () => void;
+  };
+  settings: {
+    getValue(): Promise<Settings>;
+    watch(listener: (settings: Settings) => void): () => void;
+  };
+}
+
 export interface StartInpageOptions extends MountOptions {
+  /** Where the saved address and the settings come from. */
+  choices: PageChoices;
   /** Defaults to the origin of the document's window. */
   origin?: string;
 }
@@ -59,11 +78,11 @@ async function announceCanvasPageLoaded(origin: string): Promise<void> {
  */
 export async function startInpage(
   mountList: MountList,
-  options: StartInpageOptions = {},
+  options: StartInpageOptions,
 ): Promise<InpageController> {
   const doc = options.doc ?? document;
   const origin = options.origin ?? doc.defaultView?.location.origin ?? '';
-  const { signal } = options;
+  const { signal, choices } = options;
 
   let show: boolean | undefined;
   let saved: string | null | undefined;
@@ -97,11 +116,11 @@ export async function startInpage(
     else if (signal?.aborted !== true) removeStaleMount(doc);
   }
 
-  const stopSettings = settingsItem.watch((next) => {
+  const stopSettings = choices.settings.watch((next) => {
     show = next.showOnCanvasPages;
     sync();
   });
-  const stopOrigin = canvasOriginItem.watch((next) => {
+  const stopOrigin = choices.origin.watch((next) => {
     saved = next;
     sync();
   });
@@ -117,10 +136,10 @@ export async function startInpage(
   signal?.addEventListener('abort', controller.stop, { once: true });
 
   // A change that arrives while a read runs is newer than the read.
-  const resolved = await resolveSavedOrigin(origin, doc);
+  const resolved = await choices.origin.getValue();
   if (saved === undefined) saved = resolved;
   if (isSavedCanvasOrigin(origin, resolved)) void announceCanvasPageLoaded(origin);
-  const settings = await settingsItem.getValue();
+  const settings = await choices.settings.getValue();
   if (show === undefined) show = settings.showOnCanvasPages;
   sync();
   return controller;

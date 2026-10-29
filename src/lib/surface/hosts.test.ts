@@ -1,57 +1,78 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
+import { DEFAULT_SETTINGS } from '../model/types';
 import { changeMarkerItem, offerItem, seenNotesItem } from '../platform/storage';
-import {
-  actionShortcut,
-  extensionPageHost,
-  inpageHost,
-  openInCanvasTab,
-  pageLeave,
-  requestAccessThenCheck,
-  sendFromContentScript,
-  type ScriptContext,
-} from './hosts';
+import { actionShortcut, extensionPageHost, openInCanvasTab, pageLeave } from './hosts';
+import { inpageHost, sendFromContentScript, type ScriptContext } from './inpageHost';
+import type { PageChannel } from './pageChannel';
 
 const CUSTOM = 'https://canvas.school.edu';
 
+/** A page channel that records what the in-page host asks of it. */
+function fakeChannel(): PageChannel & { changeListeners: Set<() => void> } {
+  const changeListeners = new Set<() => void>();
+  const settings = {
+    getValue: vi.fn(async () => DEFAULT_SETTINGS),
+    setValue: vi.fn(async () => undefined),
+    watch: vi.fn(() => () => undefined),
+  };
+  return {
+    changeListeners,
+    choices: {
+      origin: { getValue: async () => CUSTOM, watch: () => () => undefined },
+      settings,
+    },
+    settings,
+    watchChanges(listener) {
+      changeListeners.add(listener);
+      return () => changeListeners.delete(listener);
+    },
+    markNoteSeen: vi.fn(async () => undefined),
+    stop: vi.fn(),
+  };
+}
+
+/** The in-page host, as the page script builds it. */
+function pageHost(channel = fakeChannel(), context: ScriptContext | null = null) {
+  return inpageHost(window, context, channel);
+}
+
 beforeEach(() => fakeBrowser.reset());
 
-describe('requestAccessThenCheck', () => {
-  it('asks for the permission before it returns, then asks for the check', async () => {
+describe('allowAccess', () => {
+  it('asks the browser for the access at once, inside the click', () => {
     const request = vi.fn(async () => true);
     Object.assign(fakeBrowser.permissions, { request });
-    const send = vi.fn(async () => ({ ok: true }));
 
-    const done = requestAccessThenCheck(`${CUSTOM}/courses/1`, true, send);
+    extensionPageHost().allowAccess(CUSTOM);
+
+    expect(request).toHaveBeenCalledTimes(1);
     expect(request).toHaveBeenCalledWith({ origins: [`${CUSTOM}/*`] });
-    await done;
-
-    expect(send).toHaveBeenCalledWith({ type: 'weekrow:setup', origin: CUSTOM, fromOffer: true });
   });
 
-  it('does not run the check when the student declines', async () => {
-    Object.assign(fakeBrowser.permissions, { request: vi.fn(async () => false) });
-    const send = vi.fn(async () => ({ ok: true }));
-
-    await requestAccessThenCheck(CUSTOM, false, send);
-
-    expect(send).not.toHaveBeenCalled();
-  });
-
-  it('sends an address that is not a web origin to the check, which rejects it', async () => {
+  it('asks nothing for text that is not an origin, and logs a refused request', async () => {
     const request = vi.fn(async () => true);
     Object.assign(fakeBrowser.permissions, { request });
-    const send = vi.fn(async () => ({ ok: true }));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    await requestAccessThenCheck('10.0.0.1', false, send);
-
+    extensionPageHost().allowAccess('nope');
     expect(request).not.toHaveBeenCalled();
-    expect(send).toHaveBeenCalledWith({
-      type: 'weekrow:setup',
-      origin: '10.0.0.1',
-      fromOffer: false,
-    });
+
+    request.mockRejectedValueOnce(new Error('No user gesture'));
+    extensionPageHost().allowAccess(CUSTOM);
+    await vi.waitFor(() =>
+      expect(console.warn).toHaveBeenCalledWith('[weekrow] allow access failed', expect.any(Error)),
+    );
+  });
+
+  it('opens the welcome page from a Canvas page, which cannot ask for access', async () => {
+    const send = vi.fn(async () => ({ ok: true }));
+    Object.assign(fakeBrowser.runtime, { sendMessage: send });
+
+    pageHost().allowAccess(CUSTOM);
+
+    expect(send).toHaveBeenCalledWith({ type: 'weekrow:open-page', page: 'welcome' });
   });
 });
 
@@ -62,7 +83,7 @@ describe('watchChanges', () => {
 
     await changeMarkerItem.setValue(5);
     expect(listener).toHaveBeenCalledTimes(1);
-    await offerItem.setValue({ origin: CUSTOM, mode: 'use' });
+    await offerItem.setValue({ origin: CUSTOM });
     expect(listener).toHaveBeenCalledTimes(2);
     await seenNotesItem.setValue({ firstDone: true, firstSkip: false });
     expect(listener).toHaveBeenCalledTimes(3);
@@ -72,35 +93,49 @@ describe('watchChanges', () => {
     expect(listener).toHaveBeenCalledTimes(3);
   });
 
-  it('follows the change marker and the seen notes in a Canvas page, but not the offer', async () => {
+  it('follows what the background says in a Canvas page, and reads no storage', async () => {
+    const channel = fakeChannel();
     const listener = vi.fn();
-    const stop = inpageHost().watchChanges(listener);
+    const stop = pageHost(channel).watchChanges(listener);
 
-    await offerItem.setValue({ origin: CUSTOM, mode: 'use' });
-    expect(listener).not.toHaveBeenCalled();
+    // A content script gets no storage events: the offer and the marker do not reach it.
+    await offerItem.setValue({ origin: CUSTOM });
     await changeMarkerItem.setValue(7);
+    expect(listener).not.toHaveBeenCalled();
+
+    for (const change of channel.changeListeners) change();
     expect(listener).toHaveBeenCalledTimes(1);
-    await seenNotesItem.setValue({ firstDone: false, firstSkip: true });
-    expect(listener).toHaveBeenCalledTimes(2);
     stop();
+    expect(channel.changeListeners.size).toBe(0);
   });
 });
 
 describe('writes of the surface', () => {
-  it('saves a seen note and keeps the other one', async () => {
+  it('saves a seen note and keeps the other one on extension pages', async () => {
     await seenNotesItem.setValue({ firstDone: true, firstSkip: false });
 
     await extensionPageHost().markNoteSeen('firstSkip');
-    expect(await seenNotesItem.getValue()).toEqual({ firstDone: true, firstSkip: true });
 
-    await inpageHost().markNoteSeen('firstDone');
     expect(await seenNotesItem.getValue()).toEqual({ firstDone: true, firstSkip: true });
   });
 
-  it('dismisses the offer on extension pages only', async () => {
-    await offerItem.setValue({ origin: CUSTOM, mode: 'use' });
+  it('sends the seen note and the settings of the page through the channel, not to storage', async () => {
+    const channel = fakeChannel();
+    const host = pageHost(channel);
 
-    await inpageHost().dismissOffer();
+    await host.markNoteSeen('firstDone');
+    await host.settings.setValue(DEFAULT_SETTINGS);
+
+    expect(channel.markNoteSeen).toHaveBeenCalledWith('firstDone');
+    expect(channel.settings.setValue).toHaveBeenCalledWith(DEFAULT_SETTINGS);
+    expect(await seenNotesItem.getValue()).toEqual({ firstDone: false, firstSkip: false });
+    expect(await fakeBrowser.storage.local.get(null)).toEqual({});
+  });
+
+  it('dismisses the offer on extension pages only', async () => {
+    await offerItem.setValue({ origin: CUSTOM });
+
+    await pageHost().dismissOffer();
     expect(await offerItem.getValue()).not.toBeNull();
 
     await extensionPageHost().dismissOffer();
@@ -138,7 +173,7 @@ describe('openInCanvasTab', () => {
 });
 
 describe('sendFromContentScript', () => {
-  const MESSAGE = { type: 'weekrow:change-address' } as const;
+  const MESSAGE = { type: 'weekrow:open-page', page: 'welcome' } as const;
 
   function context(valid: boolean): ScriptContext & { notifyInvalidated: Mock<() => void> } {
     return { isInvalid: !valid, notifyInvalidated: vi.fn<() => void>() };
@@ -171,7 +206,7 @@ describe('sendFromContentScript', () => {
   });
 
   it('lets the in-page host reject in an orphaned content script', async () => {
-    const host = inpageHost(window, context(false));
+    const host = pageHost(fakeChannel(), context(false));
     await expect(host.send(MESSAGE)).rejects.toThrow();
   });
 });

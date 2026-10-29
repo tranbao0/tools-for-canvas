@@ -15,12 +15,7 @@ function page(head: string, body: string): Document {
   return doc;
 }
 
-function clearCookie(): void {
-  document.cookie = '_csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-}
-
 afterEach(() => {
-  clearCookie();
   document.head.innerHTML = '';
   document.body.innerHTML = '';
 });
@@ -36,20 +31,11 @@ describe('isCanvasDocument', () => {
     );
   });
 
-  it('finds a small layout by its ENV script and the _csrf_token cookie', () => {
+  it('does not accept the ENV script alone, or the _csrf_token cookie', () => {
     document.head.innerHTML = '<script>ENV = {"LOGIN": true};</script>';
     document.cookie = '_csrf_token=abc%2Bdef; path=/';
-
-    expect(isCanvasDocument(document)).toBe(true);
-  });
-
-  it('does not accept the ENV script or the cookie alone', () => {
-    document.head.innerHTML = '<script>ENV = {"LOGIN": true};</script>';
     expect(isCanvasDocument(document)).toBe(false);
-
-    document.head.innerHTML = '';
-    document.cookie = '_csrf_token=abc; path=/';
-    expect(isCanvasDocument(document)).toBe(false);
+    document.cookie = '_csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
   });
 
   it('rejects ordinary pages', () => {

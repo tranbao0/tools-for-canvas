@@ -2,7 +2,6 @@
  * The settings page. See docs/design.md, decisions 18 and 19.
  */
 import { render } from 'preact';
-import { browser } from 'wxt/browser';
 import type { CourseChoice, StateReply } from '../data/protocol';
 import type { Settings } from '../model/types';
 import { logFailure } from '../platform/log';
@@ -37,26 +36,12 @@ export async function startOptions(root: HTMLElement): Promise<void> {
     draw();
     settingsItem
       .setValue(next)
-      .then(() =>
-        sendToBackground({ type: 'weekrow:refresh', reason: 'settings', surface: 'page' }),
-      )
+      .then(() => sendToBackground({ type: 'weekrow:refresh', reason: 'settings' }))
       .catch((error: unknown) => logFailure('save settings', error));
-  };
-  // The welcome page shows the address form, with the saved address kept as a way back.
-  const onChangeAddress = (): void => {
-    sendToBackground({ type: 'weekrow:change-address' })
-      .then(() => browser.tabs.create({ url: browser.runtime.getURL('/welcome.html') }))
-      .catch((error: unknown) => logFailure('change address', error));
   };
   const draw = (): void =>
     render(
-      <SettingsView
-        settings={settings}
-        courses={courses}
-        origin={origin}
-        onChange={onChange}
-        onChangeAddress={onChangeAddress}
-      />,
+      <SettingsView settings={settings} courses={courses} origin={origin} onChange={onChange} />,
       root,
     );
   // The list comes with the state, which is not ready until the first round has loaded it. The

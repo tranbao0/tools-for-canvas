@@ -1,76 +1,46 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canAutoSaveOrigin,
   isInstructureHost,
   isTestOrBetaHost,
-  normalizeAddress,
-  originHostname,
+  isUsableOrigin,
   originMatchPattern,
 } from './address';
 
-describe('normalizeAddress', () => {
+describe('isUsableOrigin', () => {
   it.each([
-    ['canvas.school.edu', 'https://canvas.school.edu'],
-    ['  canvas.school.edu  ', 'https://canvas.school.edu'],
-    ['https://canvas.school.edu', 'https://canvas.school.edu'],
-    ['https://canvas.school.edu/', 'https://canvas.school.edu'],
-    ['https://canvas.school.edu/courses/12/assignments?x=1#top', 'https://canvas.school.edu'],
-    ['canvas.school.edu/courses/12', 'https://canvas.school.edu'],
-    ['canvas.school.edu?login_success=1', 'https://canvas.school.edu'],
-    ['canvas.school.edu#hash', 'https://canvas.school.edu'],
-    ['HTTPS://Canvas.School.EDU/Dashboard', 'https://canvas.school.edu'],
-    ['School.Instructure.com', 'https://school.instructure.com'],
-    ['  School.Instructure.com/  ', 'https://school.instructure.com'],
-    ['http://canvas.school.edu/login', 'https://canvas.school.edu'],
-    ['canvas.school.edu.', 'https://canvas.school.edu'],
-    ['canvas.school.edu:8443/courses', 'https://canvas.school.edu:8443'],
-    ['https://canvas.school.edu:443', 'https://canvas.school.edu'],
-    ['canvas.school.edu:', 'https://canvas.school.edu'],
-    ['https://user:secret@canvas.school.edu/', 'https://canvas.school.edu'],
-    ['café.example.edu', 'https://xn--caf-dma.example.edu'],
-  ])('reduces %j to %j', (input, expected) => {
-    expect(normalizeAddress(input)).toBe(expected);
+    ['https://canvas.school.edu'],
+    ['https://school.instructure.com'],
+    ['https://canvas.school.edu:8443'],
+    ['https://xn--caf-dma.example.edu'],
+  ])('accepts %j', (origin) => {
+    expect(isUsableOrigin(origin)).toBe(true);
   });
 
   it.each([
     [''],
-    ['   '],
+    ['canvas.school.edu'],
+    ['http://canvas.school.edu'],
+    ['https://canvas.school.edu/'],
+    ['https://canvas.school.edu/courses/12'],
+    ['https://canvas.school.edu?x=1'],
+    ['https://user:secret@canvas.school.edu'],
+    ['https://canvas.school.edu.'],
+    ['https://canvas..school.edu'],
     ['ftp://canvas.school.edu'],
     ['file:///home/me/canvas.html'],
     ['javascript:alert(1)'],
-    ['mailto:help@school.edu'],
-    ['chrome-extension://abc/sidepanel.html'],
-    ['localhost'],
-    ['localhost:3000'],
-    ['canvas'],
-    ['https://canvas/'],
-    ['192.168.1.20'],
-    ['https://10.0.0.1/courses'],
-    ['0x7f.1'],
-    ['[::1]'],
-    ['https://[2001:db8::1]/'],
-    ['canvas school.edu'],
-    ['not a host.com'],
-    ['https://'],
-    ['.school.edu'],
-    ['canvas.school.edu..'],
-    ['canvas..school.edu'],
-    ['https://canvas..school.edu/login'],
-  ])('rejects %j', (input) => {
-    expect(normalizeAddress(input)).toBeNull();
-  });
-});
-
-describe('isInstructureHost', () => {
-  it.each([
-    ['https://school.instructure.com', true],
-    ['https://school.test.instructure.com', true],
-    ['https://instructure.com', true],
-    ['https://canvas.school.edu', false],
-    ['https://notinstructure.com', false],
-    ['https://instructure.com.evil.example', false],
-    ['not an origin', false],
-  ])('%s gives %s', (origin, expected) => {
-    expect(isInstructureHost(origin)).toBe(expected);
+    ['chrome-extension://abc'],
+    ['https://localhost'],
+    ['https://localhost:3000'],
+    ['https://canvas'],
+    ['https://192.168.1.20'],
+    ['https://10.0.0.1'],
+    ['https://[::1]'],
+    ['https://[2001:db8::1]'],
+    ['not an origin'],
+  ])('rejects %j', (origin) => {
+    expect(isUsableOrigin(origin)).toBe(false);
   });
 });
 
@@ -87,6 +57,60 @@ describe('isTestOrBetaHost', () => {
   });
 });
 
+describe('isInstructureHost', () => {
+  it.each([
+    ['https://school.instructure.com', true],
+    ['https://school.test.instructure.com', true],
+    ['https://instructure.com', true],
+    ['https://canvas.school.edu', false],
+    ['https://notinstructure.com', false],
+    ['https://instructure.com.evil.example', false],
+    ['https://evil.example/instructure.com', false],
+    ['not an origin', false],
+  ])('%s gives %s', (origin, expected) => {
+    expect(isInstructureHost(origin)).toBe(expected);
+  });
+});
+
+describe('canAutoSaveOrigin', () => {
+  it.each([['https://school.instructure.com'], ['https://school.instructure.com:8443']])(
+    'saves %s when no address is saved',
+    (origin) => {
+      expect(canAutoSaveOrigin(origin, null)).toBe(true);
+    },
+  );
+
+  it.each([
+    ['a custom domain', 'https://canvas.school.edu'],
+    ['a custom domain with a port', 'https://canvas.school.edu:8443'],
+    ['a look-alike host', 'https://instructure.com.evil.example'],
+    ['a look-alike subdomain', 'https://school.instructure.com.evil.example'],
+  ])('never saves %s without the click of the student', (_name, origin) => {
+    expect(canAutoSaveOrigin(origin, null)).toBe(false);
+  });
+
+  it('saves nothing when an address is saved, not even the same one again', () => {
+    expect(
+      canAutoSaveOrigin('https://other.instructure.com', 'https://school.instructure.com'),
+    ).toBe(false);
+    expect(
+      canAutoSaveOrigin('https://school.instructure.com', 'https://school.instructure.com'),
+    ).toBe(false);
+  });
+
+  it.each([
+    ['https://school.test.instructure.com'],
+    ['https://school.beta.instructure.com'],
+    ['http://school.instructure.com'],
+    ['https://192.168.1.20'],
+    ['https://canvas'],
+    ['chrome-extension://abc'],
+    ['null'],
+  ])('never saves %s without asking', (origin) => {
+    expect(canAutoSaveOrigin(origin, null)).toBe(false);
+  });
+});
+
 describe('originMatchPattern', () => {
   it('matches every page of the origin', () => {
     expect(originMatchPattern('https://canvas.school.edu')).toBe('https://canvas.school.edu/*');
@@ -100,12 +124,5 @@ describe('originMatchPattern', () => {
 
   it('gives null for text that is not an origin', () => {
     expect(originMatchPattern('nope')).toBeNull();
-  });
-});
-
-describe('originHostname', () => {
-  it('reads the host name', () => {
-    expect(originHostname('https://canvas.school.edu:8443')).toBe('canvas.school.edu');
-    expect(originHostname('nope')).toBeNull();
   });
 });

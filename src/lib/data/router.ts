@@ -4,32 +4,39 @@
  * The router answers only the data protocol and the "Canvas page loaded" trigger, and leaves
  * every other message to other listeners.
  *
- * Extension pages may send every message. A content script runs on every `instructure.com`
- * page, so it is trusted only for the saved Canvas: its message must come from the top frame of
- * a tab whose page has the saved origin. The page origin always comes from the sender, never
- * from the message.
+ * Extension pages may send every message. The detector runs on every https page, so its
+ * message is untrusted input: it counts only when it comes from the top frame of a tab, and
+ * the page origin always comes from the sender URL, never from the message. The in-page list
+ * is trusted only for the saved Canvas: its message must come from the top frame of a tab whose
+ * page has the saved origin.
  */
 import { browser, type Browser } from 'wxt/browser';
+import type { Settings } from '../model/types';
+import { injectInpage, injectInpageIntoOrigin } from '../platform/inject';
+import { openWelcomePrompt } from '../platform/install';
 import { logFailure } from '../platform/log';
-import { canvasOriginItem } from '../platform/storage';
+import { canvasOriginItem, seenNotesItem, settingsItem } from '../platform/storage';
 import type { DataOwner } from './owner';
 import {
   OK_REPLY,
   isCanvasPageLoadedMessage,
   isDataMessage,
-  type CanvasDetectedReply,
   type OkReply,
+  type PageContextReply,
   type OpenPageMessage,
   type RefreshReply,
+  type SeenNote,
 } from './protocol';
 
 /** The parts of a message sender the router reads. */
 interface SenderInfo {
   url?: string;
   /** Set for a content script: the tab of its page. */
-  tab?: unknown;
+  tab?: { id?: number } | null;
   /** Set for a content script: 0 is the top frame. */
   frameId?: number;
+  /** Set for a content script in browsers that have it: the document that sent the message. */
+  documentId?: string;
 }
 
 export interface RouterHost {
@@ -39,6 +46,20 @@ export interface RouterHost {
   savedOrigin(): Promise<string | null>;
   /** Opens the welcome page, which a content script cannot open itself. */
   openPage(page: OpenPageMessage['page']): Promise<void>;
+  /** The stored settings, for the in-page script, which cannot read the storage itself. */
+  readSettings(): Promise<Settings>;
+  saveSettings(settings: Settings): Promise<void>;
+  /** Saves that the student has seen a one-time note. */
+  markNoteSeen(note: SeenNote): Promise<void>;
+  /** Opens the welcome page for a Canvas that waits for an answer, once per browser session. */
+  openWelcomePrompt(): Promise<void>;
+  /**
+   * Runs the in-page list script in the top frame of a tab, or in the given document of it. The
+   * tab must still show a page of `origin`.
+   */
+  injectInpage(tabId: number, origin: string, documentId?: string): Promise<void>;
+  /** Runs the in-page list script in every open tab whose page has exactly this origin. */
+  injectInpageIntoOrigin(origin: string): Promise<unknown>;
 }
 
 function ok(): OkReply {
@@ -59,6 +80,31 @@ export function senderPageOrigin(sender: SenderInfo): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Answers a detector report. The owner saves the address or stores the offer. The in-page script
+ * goes into the sender tab only when the page origin is the saved address after that, so a page
+ * that is not the saved Canvas never gets it. A Canvas that needs the student's answer, because
+ * no address is saved and its host is not saved by itself, opens the welcome page once per
+ * browser session, where the student answers the offer.
+ */
+async function answerDetection(
+  owner: DataOwner,
+  origin: string,
+  sender: { tabId: number; documentId?: string },
+  host: RouterHost,
+): Promise<OkReply> {
+  const detection = await owner.canvasDetected(origin);
+  if (detection === 'saved') {
+    await host
+      .injectInpage(sender.tabId, origin, sender.documentId)
+      .catch((error: unknown) => logFailure('in-page injection', error));
+  } else if (detection === 'confirm') {
+    await host.openWelcomePrompt().catch((error: unknown) => logFailure('welcome page', error));
+  }
+  // The reply does not name the saved address, which a page has no business knowing.
+  return OK_REPLY;
 }
 
 /** Resolves when the sender may use the data of the saved Canvas, and rejects otherwise. */
@@ -91,37 +137,52 @@ export function routeDataMessage(
     case 'weekrow:canvas-detected': {
       // The sender reports its own page only, and the owner saves it only when nothing is saved.
       const origin = senderPageOrigin(sender);
-      if (origin === null || origin !== message.origin) {
+      const tabId = sender.tab?.id;
+      if (origin === null || tabId === undefined || origin !== message.origin) {
         return reject('A content script may report only its own page');
       }
-      return owner.canvasDetected(origin).then((saved): CanvasDetectedReply => ({ origin: saved }));
+      return answerDetection(owner, origin, { tabId, documentId: sender.documentId }, host);
     }
-    case 'weekrow:setup':
-      // The setup check follows a permission grant, which only an extension page can ask for.
+    case 'weekrow:accept-offer':
+      // Saving an address is the student's choice, made in the panel.
       if (!host.isExtensionPage(sender)) {
-        return reject('The setup check runs only from extension pages');
+        return reject('Only extension pages may accept an offer');
       }
-      return owner.setup(message.origin, message.fromOffer).then(ok);
+      return owner.acceptOffer(message.origin).then(async (accepted) => {
+        if (accepted) {
+          await host
+            .injectInpageIntoOrigin(message.origin)
+            .catch((error: unknown) => logFailure('in-page injection', error));
+        }
+        return ok();
+      });
     default:
       break;
   }
   const allowed = checkSender(sender, host);
   switch (message.type) {
-    case 'weekrow:get-state':
-      return allowed.then(() => owner.getState(message.request));
-    case 'weekrow:refresh': {
-      const source = {
-        surface: message.surface,
-        fromExtensionPage: host.isExtensionPage(sender),
-      };
-      return allowed
-        .then(() => owner.refresh(message.reason, source))
-        .then((result): RefreshReply => ({ ok: true, retryAt: result.retryAt }));
+    case 'weekrow:get-state': {
+      // A content script is an in-page list, whatever it says. The other surfaces see the offer
+      // of a Canvas, and a page must not read it.
+      const request = host.isExtensionPage(sender)
+        ? message.request
+        : { ...message.request, surface: 'inpage' as const };
+      return allowed.then(() => owner.getState(request));
     }
+    case 'weekrow:page-context':
+      return allowed.then(async (): Promise<PageContextReply> => ({
+        settings: await host.readSettings(),
+      }));
+    case 'weekrow:save-settings':
+      return allowed.then(() => host.saveSettings(message.settings)).then(ok);
+    case 'weekrow:mark-note-seen':
+      return allowed.then(() => host.markNoteSeen(message.note)).then(ok);
+    case 'weekrow:refresh':
+      return allowed
+        .then(() => owner.refresh(message.reason))
+        .then((result): RefreshReply => ({ ok: true, retryAt: result.retryAt }));
     case 'weekrow:action':
       return allowed.then(() => owner.act(message.action));
-    case 'weekrow:change-address':
-      return allowed.then(() => owner.changeAddress()).then(ok);
     case 'weekrow:open-page':
       return allowed.then(() => host.openPage(message.page)).then(ok);
   }
@@ -136,6 +197,14 @@ export const browserRouterHost: RouterHost = {
   async openPage() {
     await browser.tabs.create({ url: browser.runtime.getURL('/welcome.html') });
   },
+  readSettings: () => settingsItem.getValue(),
+  saveSettings: (settings) => settingsItem.setValue(settings),
+  async markNoteSeen(note) {
+    await seenNotesItem.setValue({ ...(await seenNotesItem.getValue()), [note]: true });
+  },
+  openWelcomePrompt,
+  injectInpage,
+  injectInpageIntoOrigin,
 };
 
 /**

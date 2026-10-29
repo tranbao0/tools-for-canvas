@@ -269,13 +269,17 @@ function visibleOffer(offer: Offer | null, savedOrigin: string | null): Offer | 
 }
 
 /**
- * The offer for a surface. Only the side panel shows it (decision 4): the in-page list lives on
- * the saved Canvas page, where page scripts could read it, and the welcome page has its own form.
+ * The offer for a surface. Only extension pages show it (decision 4): the side panel always, and
+ * the welcome page while no address is saved. The in-page list lives on the saved Canvas page,
+ * where page scripts could read it.
  */
 export function offerForSurface(
   offer: Offer | null,
   savedOrigin: string | null,
   surface: RequestSurface,
 ): Offer | null {
-  return surface === 'panel' ? visibleOffer(offer, savedOrigin) : null;
+  if (surface === 'panel' || (surface === 'page' && savedOrigin === null)) {
+    return visibleOffer(offer, savedOrigin);
+  }
+  return null;
 }

@@ -83,10 +83,10 @@ export interface SurfaceHost {
   /** Dismisses the pending "Use this Canvas?" offer. Only the side panel shows it. */
   dismissOffer(): Promise<void>;
   /**
-   * Asks for host access and then for the setup check. Extension pages call
+   * Asks the browser for access to the saved Canvas. Extension pages call
    * `permissions.request` synchronously here, inside the click handler.
    */
-  allowAccess(origin: string, fromOffer: boolean): void;
+  allowAccess(origin: string): void;
   log(step: string, error: unknown): void;
 }
 
@@ -303,12 +303,10 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   }
 
   function sendRefresh(reason: RefreshReason): Promise<void> {
-    return host
-      .send({ type: 'weekrow:refresh', reason, surface: options.surface })
-      .then((reply) => {
-        const retryAt = (reply as RefreshReply | undefined)?.retryAt ?? null;
-        if (retryAt !== null) scheduleRetry(retryAt);
-      });
+    return host.send({ type: 'weekrow:refresh', reason }).then((reply) => {
+      const retryAt = (reply as RefreshReply | undefined)?.retryAt ?? null;
+      if (retryAt !== null) scheduleRetry(retryAt);
+    });
   }
 
   /**
@@ -518,27 +516,16 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       if (url !== null) host.openUrl(url, base.origin);
     },
     allowAccess(origin: string) {
-      host.allowAccess(origin, false);
+      host.allowAccess(origin);
     },
     acceptOffer(origin: string) {
-      host.allowAccess(origin, true);
+      host
+        .send({ type: 'weekrow:accept-offer', origin })
+        .then(reload)
+        .catch(report('accept offer'));
     },
     dismissOffer() {
       host.dismissOffer().then(reload).catch(report('dismiss offer'));
-    },
-    keepSavedAddress() {
-      sendAction({ kind: 'keepSavedAddress' });
-    },
-    changeAddress() {
-      host
-        .send({ type: 'weekrow:change-address' })
-        .then(() =>
-          // The in-page list never shows the address form, so the welcome page opens with it.
-          options.surface === 'inpage'
-            ? host.send({ type: 'weekrow:open-page', page: 'welcome' })
-            : requestState(),
-        )
-        .catch(report('change address'));
     },
     openCanvas() {
       originAction((origin) => host.openCanvas(origin));

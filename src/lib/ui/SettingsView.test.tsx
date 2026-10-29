@@ -18,17 +18,10 @@ function setup(
   origin: string | null = 'https://school.instructure.com',
 ) {
   const onChange = vi.fn<(settings: Settings) => void>();
-  const onChangeAddress = vi.fn();
   render(
-    <SettingsView
-      settings={settings}
-      courses={courses}
-      origin={origin}
-      onChange={onChange}
-      onChangeAddress={onChangeAddress}
-    />,
+    <SettingsView settings={settings} courses={courses} origin={origin} onChange={onChange} />,
   );
-  return { onChange, onChangeAddress };
+  return { onChange };
 }
 
 describe('SettingsView', () => {
@@ -93,11 +86,15 @@ describe('SettingsView', () => {
     expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, showOnCanvasPages: false });
   });
 
-  it('changes the address', () => {
-    const { onChangeAddress } = setup(DEFAULT_SETTINGS, null);
+  it('shows the address the first Canvas page set, with no way to type another', () => {
+    setup(DEFAULT_SETTINGS, null);
     expect(screen.getByText('Not set')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Change' }));
-    expect(onChangeAddress).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByText(
+        'The first Canvas page you open sets it. To use another Canvas, open it and choose Switch in the side panel.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
   });
 });
 

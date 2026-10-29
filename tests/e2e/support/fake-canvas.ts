@@ -109,6 +109,11 @@ export interface FakeCanvasOptions {
    * Requests wait side by side, so parallel requests do not add up. Defaults to 0.
    */
   latencyMs?: number;
+  /**
+   * Leaves requests to other origins to the fake that was served before, instead of aborting them.
+   * A test serves a second Canvas next to the first one this way.
+   */
+  alongside?: boolean;
 }
 
 interface Reply {
@@ -220,7 +225,8 @@ function isHttp(url: URL): boolean {
  *
  * The first route that matches a request answers it.
  * Fixture files are read now, so a missing fixture fails the test at once.
- * Requests to other http or https origins are aborted and recorded in `blocked`.
+ * Requests to other http or https origins are aborted and recorded in `blocked`, unless the
+ * fake is served `alongside` an earlier one.
  */
 export async function serveFakeCanvas(
   context: BrowserContext,
@@ -239,6 +245,10 @@ export async function serveFakeCanvas(
     const request = route.request();
     const url = new URL(request.url());
     if (url.origin !== origin) {
+      if (options.alongside === true) {
+        await route.fallback();
+        return;
+      }
       blocked.push(record(request, url));
       await route.abort('blockedbyclient');
       return;

@@ -7,26 +7,30 @@ let permissions: FakePermissions;
 
 beforeEach(() => {
   fakeBrowser.reset();
-  permissions = installFakePermissions(['https://*.instructure.com/*']);
+  permissions = installFakePermissions(['https://*/*']);
 });
 
 describe('hasAccess', () => {
-  it('is true for an instructure.com host under the required permission', async () => {
-    expect(await hasAccess('https://school.instructure.com')).toBe(true);
+  it.each(['https://school.instructure.com', 'https://canvas.school.edu'])(
+    'is true for %s under the access to all https sites',
+    async (origin) => {
+      expect(await hasAccess(origin)).toBe(true);
+    },
+  );
+
+  it('asks the browser about the pattern of the origin', async () => {
+    await hasAccess('https://canvas.school.edu:8443');
     expect(permissions.contains).toHaveBeenCalledWith({
-      origins: ['https://school.instructure.com/*'],
+      origins: ['https://canvas.school.edu/*'],
     });
   });
 
-  it('is false for a custom domain until it is granted', async () => {
+  it('is false when the browser withholds the access, and true when it is given back', async () => {
+    permissions.revoke('https://*/*');
     expect(await hasAccess('https://canvas.school.edu')).toBe(false);
     permissions.grant('https://canvas.school.edu/*');
     expect(await hasAccess('https://canvas.school.edu')).toBe(true);
-  });
-
-  it('is false when the student withholds the required permission', async () => {
-    permissions.revoke('https://*.instructure.com/*');
-    expect(await hasAccess('https://school.instructure.com')).toBe(false);
+    expect(await hasAccess('https://other.school.edu')).toBe(false);
   });
 
   it('is false for text that is not an origin, without asking the browser', async () => {

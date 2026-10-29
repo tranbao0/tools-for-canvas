@@ -6,11 +6,14 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { browserOf, readJson, runForTargets } from './lib/build-output.mjs';
 
-export const REQUIRED_HOST = 'https://*.instructure.com/*';
-export const OPTIONAL_HOST = 'https://*/*';
-const BROAD_MATCHES = new Set([OPTIONAL_HOST, 'http://*/*', '*://*/*', '<all_urls>']);
-const CHROMIUM_PERMISSIONS = ['storage', 'cookies', 'scripting', 'activeTab', 'sidePanel'];
-const FIREFOX_PERMISSIONS = ['storage', 'cookies', 'scripting', 'activeTab'];
+/** The one host permission, and the only match of the detector (decision 5). */
+export const ALL_HTTPS = 'https://*/*';
+/** The detector, the only static content script. */
+export const DETECTOR_SCRIPT = 'detector.js';
+/** The in-page list script. The background injects it, so the manifest must not list it. */
+export const INPAGE_SCRIPT = 'inpage.js';
+const CHROMIUM_PERMISSIONS = ['storage', 'cookies', 'scripting', 'sidePanel'];
+const FIREFOX_PERMISSIONS = ['storage', 'cookies', 'scripting'];
 const GECKO_ID = /^(?:[^@\s]+@[^@\s]+|\{[0-9a-f-]{36}\})$/i;
 
 /**
@@ -34,18 +37,6 @@ export function expectedPermissions(browser) {
     default:
       throw new Error(`Unknown browser ${String(browser)}`);
   }
-}
-
-/**
- * Tells whether a content script match pattern stays inside the required host permission.
- * @param {string} pattern
- * @returns {boolean}
- */
-export function isInsideRequiredHost(pattern) {
-  const match = /^https:\/\/([^/]+)\/.*$/.exec(pattern);
-  if (match === null) return false;
-  const host = match[1] ?? '';
-  return host === '*.instructure.com' || /^(?:[a-z0-9-]+\.)+instructure\.com$/i.test(host);
 }
 
 /**
@@ -90,14 +81,14 @@ function checkCommon(browser, manifest, fileExists) {
   if (manifest.manifest_version !== 3) {
     problems.push(`manifest_version is ${show(manifest.manifest_version)}, expected 3`);
   }
-  if (!isExactList(manifest.host_permissions, [REQUIRED_HOST])) {
+  if (!isExactList(manifest.host_permissions, [ALL_HTTPS])) {
     problems.push(
-      `host_permissions is ${show(manifest.host_permissions)}, expected ["${REQUIRED_HOST}"]`,
+      `host_permissions is ${show(manifest.host_permissions)}, expected ["${ALL_HTTPS}"]`,
     );
   }
-  if (!isExactList(manifest.optional_host_permissions, [OPTIONAL_HOST])) {
+  if (!isEmptyOrMissing(manifest.optional_host_permissions)) {
     problems.push(
-      `optional_host_permissions is ${show(manifest.optional_host_permissions)}, expected ["${OPTIONAL_HOST}"]`,
+      `optional_host_permissions is ${show(manifest.optional_host_permissions)}, expected none`,
     );
   }
   const permissions = expectedPermissions(browser);
@@ -114,12 +105,19 @@ function checkCommon(browser, manifest, fileExists) {
   } else if (manifest.action.default_popup !== undefined) {
     problems.push('action has a default_popup, but the toolbar button must have no popup');
   }
+  for (const field of ['web_accessible_resources', 'externally_connectable']) {
+    if (manifest[field] !== undefined) {
+      problems.push(`${field} is set, but no page may reach the extension (decision 20)`);
+    }
+  }
   problems.push(...checkContentScripts(manifest, fileExists));
   problems.push(...checkLocales(manifest, fileExists));
   return problems;
 }
 
 /**
+ * The only static content script is the detector: it matches every https page in the top frame,
+ * and nothing else. The in-page list script is injected, so the manifest must not list it.
  * @param {Manifest} manifest
  * @param {FileExists} fileExists
  * @returns {string[]}
@@ -127,19 +125,33 @@ function checkCommon(browser, manifest, fileExists) {
 function checkContentScripts(manifest, fileExists) {
   const problems = [];
   const scripts = Array.isArray(manifest.content_scripts) ? manifest.content_scripts : [];
+  if (scripts.length !== 1) {
+    problems.push(`content_scripts has ${scripts.length} entries, expected only the detector`);
+  }
   for (const script of scripts) {
-    for (const pattern of script.matches ?? []) {
-      if (BROAD_MATCHES.has(pattern)) {
-        problems.push(
-          `a content script matches ${pattern}; only the runtime-registered script may reach other hosts`,
-        );
-      } else if (!isInsideRequiredHost(pattern)) {
-        problems.push(`a content script matches ${pattern}, which is outside ${REQUIRED_HOST}`);
+    if (!isExactList(script.matches, [ALL_HTTPS])) {
+      problems.push(`a content script matches ${show(script.matches)}, expected ["${ALL_HTTPS}"]`);
+    }
+    if (!isExactList(script.js, [DETECTOR_SCRIPT])) {
+      problems.push(`a content script runs ${show(script.js)}, expected ["${DETECTOR_SCRIPT}"]`);
+    }
+    if (script.all_frames === true) {
+      problems.push('the detector must run in the top frame of a page only');
+    }
+    for (const field of ['match_origin_as_fallback', 'match_about_blank', 'world', 'css']) {
+      if (script[field] !== undefined && !(field === 'css' && isEmptyOrMissing(script.css))) {
+        problems.push(`the detector has ${field}, which the manifest must not set`);
       }
+    }
+    if (script.run_at !== 'document_idle') {
+      problems.push(`the detector run_at is ${show(script.run_at)}, expected "document_idle"`);
     }
     for (const file of [...(script.js ?? []), ...(script.css ?? [])]) {
       if (!fileExists(file)) problems.push(`content script file ${file} is missing`);
     }
+  }
+  if (!fileExists(INPAGE_SCRIPT)) {
+    problems.push(`${INPAGE_SCRIPT} is missing from the build, but the background injects it`);
   }
   return problems;
 }

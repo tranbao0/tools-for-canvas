@@ -5,10 +5,7 @@
 import { browser } from 'wxt/browser';
 import { createCanvasClient } from '../canvas/client';
 import { csrfFromCookiesApi } from '../canvas/csrf';
-import { probeCanvas } from '../canvas/probe';
-import { originMatchPattern } from '../platform/address';
 import { BROWSER_KIND } from '../platform/browserKind';
-import { syncRuntimeContentScript } from '../platform/contentScripts';
 import { logFailure } from '../platform/log';
 import { hasAccess, onAccessChanged } from '../platform/permissions';
 import {
@@ -18,7 +15,7 @@ import {
   seenNotesItem,
   settingsItem,
 } from '../platform/storage';
-import { sessionCacheItem, setupStatusItem } from './cache';
+import { sessionCacheItem } from './cache';
 import { createDataOwner, type DataOwner, type DataOwnerDeps } from './owner';
 
 function browserTimeZone(): string {
@@ -29,21 +26,11 @@ function browserLanguage(): string | null {
   return typeof navigator === 'undefined' ? null : (navigator.language ?? null);
 }
 
-/** Removes the optional host grant of an origin. The data owner never asks for a required one. */
-async function removeAccess(origin: string): Promise<void> {
-  const pattern = originMatchPattern(origin);
-  if (pattern === null) return;
-  await browser.permissions.remove({ origins: [pattern] });
-}
-
 /** The dependencies of the data owner in the background. */
 function backgroundDataDeps(): DataOwnerDeps {
   return {
     createApi: (origin) => createCanvasClient({ origin, getCsrfToken: csrfFromCookiesApi(origin) }),
-    probe: (origin) => probeCanvas(origin),
     hasAccess,
-    removeAccess,
-    syncContentScripts: syncRuntimeContentScript,
     store: {
       origin: canvasOriginItem,
       settings: settingsItem,
@@ -51,7 +38,6 @@ function backgroundDataDeps(): DataOwnerDeps {
       seenNotes: seenNotesItem,
       offer: offerItem,
       cache: sessionCacheItem,
-      setup: setupStatusItem,
     },
     clock: { now: () => Date.now() },
     timers: {

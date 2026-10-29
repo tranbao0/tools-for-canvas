@@ -41,9 +41,13 @@ export default defineConfig({
     name: '__MSG_extName__',
     description: '__MSG_extDescription__',
     default_locale: 'en',
-    permissions: ['storage', 'cookies', 'scripting', 'activeTab'],
-    host_permissions: ['https://*.instructure.com/*'],
-    optional_host_permissions: ['https://*/*'],
+    permissions: ['storage', 'cookies', 'scripting'],
+    // Canvas runs on many school domains, so the extension asks for every https site. The
+    // detector content script reads only Canvas markers (docs/design.md, decision 5).
+    host_permissions: ['https://*/*'],
+    // The detector is the one static content script. It is an unlisted script that WXT builds as
+    // `detector.js` without the content script wrapper, which posts a message to every page.
+    content_scripts: [{ matches: ['https://*/*'], js: ['detector.js'], run_at: 'document_idle' }],
     action: { default_title: '__MSG_actionTitle__' },
     commands: {
       _execute_action: { suggested_key: { default: 'Alt+Shift+W' } },

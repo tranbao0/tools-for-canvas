@@ -1,19 +1,19 @@
 /**
- * The in-page list on the Canvas dashboard and course home pages, shared by the static
- * `*.instructure.com` content script and the runtime-registered one for a custom domain.
- * See docs/design.md, decisions 4, 12 and 19.
+ * The in-page list on the Canvas dashboard and course home pages, in the script that the
+ * background injects into a page of the saved Canvas. See docs/design.md, decisions 4, 12 and 19.
  */
 import { render } from 'preact';
-import type { ContentScriptContext } from 'wxt/utils/content-script-context';
+import { browser, type Browser } from 'wxt/browser';
 import { showNativeTodo, syncNativeTodo } from '../inpage/nativeTodo';
 import type { InpageMount } from '../inpage/mount';
 import { attempt, startInpage } from '../inpage/start';
 import { detectPageTheme } from '../inpage/theme';
 import { logFailure } from '../platform/log';
-import { settingsItem } from '../platform/storage';
 import { App } from '../ui/App';
 import { APP_CSS } from '../ui/styles';
-import { inpageHost } from './hosts';
+import { inpageHost, sendFromContentScript } from './inpageHost';
+import { createPageChannel, type PageChannel } from './pageChannel';
+import type { PageScriptContext } from './pageScript';
 import { createSurfaceRuntime, type SurfaceRuntime } from './runtime';
 import { attachShadowMount } from './shadowMount';
 import { followTheme, inpageTheme, setThemeAttribute, type ThemeSource } from './theme';
@@ -116,20 +116,33 @@ export function mountInpageList(mount: InpageMount, deps: InpageListDeps): () =>
 const CONTEXT_CHECK_MS = 5000;
 
 /** Mounts the list for one mount. Returns its removal, or `null` when nothing mounted. */
-function mountList(ctx: ContentScriptContext, mount: InpageMount): (() => void) | null {
+function mountList(
+  ctx: PageScriptContext,
+  channel: PageChannel,
+  mount: InpageMount,
+): (() => void) | null {
   if (ctx.isInvalid) return null;
-  const runtime = createSurfaceRuntime(inpageHost(window, ctx), {
+  const runtime = createSurfaceRuntime(inpageHost(window, ctx, channel), {
     surface: 'inpage',
     scopeCourseId: mount.courseId,
   });
-  const remove = mountInpageList(mount, { runtime, settings: settingsItem });
-  // The interval wrapper reads `ctx.isValid`, which ends the context once the extension is gone.
+  const remove = mountInpageList(mount, { runtime, settings: channel.settings });
   // The context ending stops the page flow, and that removes the list.
-  const check = ctx.setInterval(() => undefined, CONTEXT_CHECK_MS);
+  const stopWatching = ctx.watchValidity(CONTEXT_CHECK_MS);
   return () => {
-    clearInterval(check);
+    stopWatching();
     remove();
   };
+}
+
+/** Passes the messages that the background sends to this page, and no others. */
+function listenToBackground(handler: (message: unknown) => void): () => void {
+  const listener = (message: unknown, sender: Browser.runtime.MessageSender): void => {
+    // A page cannot send a runtime message to a content script. The sender is the extension.
+    if (sender.id === browser.runtime.id && sender.tab === undefined) handler(message);
+  };
+  browser.runtime.onMessage.addListener(listener);
+  return () => browser.runtime.onMessage.removeListener(listener);
 }
 
 /**
@@ -138,6 +151,15 @@ function mountList(ctx: ContentScriptContext, mount: InpageMount): (() => void) 
  * the setting off or switching to another Canvas address removes the list and gives the page its
  * own To Do back. Pages without the anchors get nothing.
  */
-export async function startInpageSurface(ctx: ContentScriptContext): Promise<void> {
-  await startInpage((target) => mountList(ctx, target), { signal: ctx.signal });
+export async function startInpageSurface(ctx: PageScriptContext): Promise<void> {
+  const channel = createPageChannel({
+    send: (message) => sendFromContentScript(message, ctx),
+    pageOrigin: window.location.origin,
+    listen: listenToBackground,
+  });
+  ctx.signal.addEventListener('abort', channel.stop, { once: true });
+  await startInpage((target) => mountList(ctx, channel, target), {
+    signal: ctx.signal,
+    choices: channel.choices,
+  });
 }

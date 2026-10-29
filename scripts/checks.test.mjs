@@ -8,9 +8,11 @@ import path from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { checkManifest, isInsideRequiredHost } from './check-manifest.mjs';
+import { checkManifest } from './check-manifest.mjs';
 import {
   BUDGET_BYTES,
+  DETECTOR_BUDGET_BYTES,
+  budgetFor,
   entryClosure,
   findEntryPoints,
   measureEntryPoints,
@@ -80,25 +82,21 @@ const CHROME_MANIFEST = {
   manifest_version: 3,
   name: '__MSG_extName__',
   default_locale: 'en',
-  permissions: ['storage', 'cookies', 'scripting', 'activeTab', 'sidePanel'],
-  host_permissions: ['https://*.instructure.com/*'],
-  optional_host_permissions: ['https://*/*'],
+  permissions: ['storage', 'cookies', 'scripting', 'sidePanel'],
+  host_permissions: ['https://*/*'],
   action: { default_title: '__MSG_actionTitle__' },
   minimum_chrome_version: '144',
   background: { service_worker: 'background.js' },
   side_panel: { default_path: 'sidepanel.html' },
-  content_scripts: [
-    { matches: ['https://*.instructure.com/*'], js: ['content-scripts/canvas.js'] },
-  ],
+  content_scripts: [{ matches: ['https://*/*'], js: ['detector.js'], run_at: 'document_idle' }],
 };
 
 const FIREFOX_MANIFEST = {
   manifest_version: 3,
   name: '__MSG_extName__',
   default_locale: 'en',
-  permissions: ['storage', 'cookies', 'scripting', 'activeTab'],
-  host_permissions: ['https://*.instructure.com/*'],
-  optional_host_permissions: ['https://*/*'],
+  permissions: ['storage', 'cookies', 'scripting'],
+  host_permissions: ['https://*/*'],
   action: { default_title: '__MSG_actionTitle__' },
   browser_specific_settings: {
     gecko: {
@@ -109,15 +107,14 @@ const FIREFOX_MANIFEST = {
   },
   background: { scripts: ['background.js'] },
   sidebar_action: { default_panel: 'sidepanel.html', open_at_install: false },
-  content_scripts: [
-    { matches: ['https://*.instructure.com/*'], js: ['content-scripts/canvas.js'] },
-  ],
+  content_scripts: [{ matches: ['https://*/*'], js: ['detector.js'], run_at: 'document_idle' }],
 };
 
 const BUILT_FILES = new Set([
   'background.js',
   'sidepanel.html',
-  'content-scripts/canvas.js',
+  'detector.js',
+  'inpage.js',
   '_locales/en/messages.json',
 ]);
 const exists = (/** @type {string} */ file) => BUILT_FILES.has(file);
@@ -155,8 +152,8 @@ describe('check-size', () => {
     const entries = findEntryPoints([
       'background.js',
       'chunks/sidepanel-1.js',
-      'content-scripts/canvas.css',
-      'content-scripts/canvas.js',
+      'content-scripts/inpage.css',
+      'content-scripts/inpage.js',
       'content-scripts/styles-only.css',
       'icon/128.png',
       'manifest.json',
@@ -165,8 +162,8 @@ describe('check-size', () => {
     assert.deepEqual(entries, [
       { name: 'background.js', roots: ['background.js'] },
       {
-        name: 'content-scripts/canvas.js',
-        roots: ['content-scripts/canvas.js', 'content-scripts/canvas.css'],
+        name: 'content-scripts/inpage.js',
+        roots: ['content-scripts/inpage.js', 'content-scripts/inpage.css'],
       },
       { name: 'content-scripts/styles-only.css', roots: ['content-scripts/styles-only.css'] },
       { name: 'sidepanel.html', roots: ['sidepanel.html'] },
@@ -221,10 +218,44 @@ describe('check-size', () => {
     assert.ok(background && background.gzipBytes < 100);
   });
 
+  test('the detector has a budget of 2,000 bytes, and other entry points 30,000', () => {
+    assert.equal(budgetFor('detector.js'), DETECTOR_BUDGET_BYTES);
+    assert.equal(DETECTOR_BUDGET_BYTES, 2000);
+    assert.equal(budgetFor('inpage.js'), BUDGET_BYTES);
+    assert.equal(budgetFor('background.js'), BUDGET_BYTES);
+  });
+
+  test('the command fails when the detector is over 2,000 bytes gzip', async () => {
+    const detector = 'detector.js';
+    const fine = await writeTree({
+      'chrome-mv3/background.js': 'console.log(1)',
+      [`chrome-mv3/${detector}`]: incompressible(DETECTOR_BUDGET_BYTES - 100),
+    });
+    const heavy = await writeTree({
+      'chrome-mv3/background.js': 'console.log(1)',
+      [`chrome-mv3/${detector}`]: incompressible(DETECTOR_BUDGET_BYTES + 100),
+    });
+    assert.equal((await runScript('check-size.mjs', ['--out-dir', fine, 'chrome-mv3'])).code, 0);
+    const result = await runScript('check-size.mjs', ['--out-dir', heavy, 'chrome-mv3']);
+    assert.equal(result.code, 1);
+    assert.match(result.output, /detector\.js is .* over the 2\.0 KB budget/);
+  });
+
+  test('the command fails when the detector is missing from the build', async () => {
+    const none = await writeTree({ 'chrome-mv3/background.js': 'console.log(1)' });
+    const result = await runScript('check-size.mjs', ['--out-dir', none, 'chrome-mv3']);
+    assert.equal(result.code, 1);
+    assert.match(result.output, /detector\.js is missing/);
+  });
+
   test('the command fails over the budget and passes under it', async () => {
-    const small = await writeTree({ 'chrome-mv3/background.js': 'console.log(1)' });
+    const small = await writeTree({
+      'chrome-mv3/background.js': 'console.log(1)',
+      'chrome-mv3/detector.js': 'console.log(2)',
+    });
     const large = await writeTree({
       'chrome-mv3/background.js': incompressible(BUDGET_BYTES + 1000),
+      'chrome-mv3/detector.js': 'console.log(2)',
     });
     assert.equal((await runScript('check-size.mjs', ['--out-dir', small, 'chrome-mv3'])).code, 0);
     const result = await runScript('check-size.mjs', ['--out-dir', large, 'chrome-mv3']);
@@ -261,9 +292,9 @@ describe('check-urls', () => {
   });
 
   test('keeps match patterns whole', () => {
-    assert.deepEqual(extractUrls('matches:["https://*.instructure.com/*","https://*/*"]'), [
-      'https://*.instructure.com/*',
+    assert.deepEqual(extractUrls('matches:["https://*/*","https://*.example.edu/*"]'), [
       'https://*/*',
+      'https://*.example.edu/*',
     ]);
   });
 
@@ -284,7 +315,7 @@ describe('check-urls', () => {
 
   test('the reviewed allowlist has a reason for every entry', async () => {
     const allowlist = await loadAllowlist();
-    assert.ok(allowlist.has('https://*.instructure.com/*'));
+    assert.ok(allowlist.has('https://*/*'));
     assert.ok(allowlist.has('http://www.w3.org/2000/svg'));
   });
 
@@ -310,26 +341,83 @@ describe('check-manifest', () => {
     assert.deepEqual(checkManifest('firefox', FIREFOX_MANIFEST, exists), []);
   });
 
-  test('tells which content script matches stay inside the required host', () => {
-    assert.ok(isInsideRequiredHost('https://*.instructure.com/*'));
-    assert.ok(isInsideRequiredHost('https://school.instructure.com/courses/*'));
-    assert.ok(!isInsideRequiredHost('https://*/*'));
-    assert.ok(!isInsideRequiredHost('https://instructure.com.evil.example/*'));
-    assert.ok(!isInsideRequiredHost('http://*.instructure.com/*'));
-  });
-
   const chromeCases = [
     ['manifest version 2', (m) => (m.manifest_version = 2), /manifest_version is 2/],
     [
-      'a content script on every site',
-      (m) =>
-        m.content_scripts.push({ matches: ['https://*/*'], js: ['content-scripts/canvas.js'] }),
-      /content script matches https:\/\/\*\/\*/,
+      'a second content script',
+      (m) => m.content_scripts.push({ matches: ['https://*/*'], js: ['inpage.js'] }),
+      /content_scripts has 2 entries/,
     ],
     [
-      'a host permission added by a content script',
-      (m) => m.host_permissions.push('https://*/*'),
+      'the in-page script as a static content script',
+      (m) => (m.content_scripts[0].js = ['inpage.js']),
+      /a content script runs \["inpage\.js"\]/,
+    ],
+    [
+      'a detector on every scheme',
+      (m) => (m.content_scripts[0].matches = ['*://*/*']),
+      /a content script matches \["\*:\/\/\*\/\*"\]/,
+    ],
+    [
+      'a detector on only instructure.com',
+      (m) => (m.content_scripts[0].matches = ['https://*.instructure.com/*']),
+      /a content script matches/,
+    ],
+    [
+      'a detector in every frame',
+      (m) => (m.content_scripts[0].all_frames = true),
+      /top frame of a page only/,
+    ],
+    [
+      'a detector that runs at document start',
+      (m) => (m.content_scripts[0].run_at = 'document_start'),
+      /run_at is "document_start"/,
+    ],
+    ['no content script', (m) => delete m.content_scripts, /content_scripts has 0 entries/],
+    [
+      'a detector in about:blank frames',
+      (m) => (m.content_scripts[0].match_about_blank = true),
+      /match_about_blank/,
+    ],
+    [
+      'a detector in the page world',
+      (m) => (m.content_scripts[0].world = 'MAIN'),
+      /detector has world/,
+    ],
+    [
+      'a detector that takes the origin of an opaque frame',
+      (m) => (m.content_scripts[0].match_origin_as_fallback = true),
+      /match_origin_as_fallback/,
+    ],
+    [
+      'a detector with a style sheet',
+      (m) => (m.content_scripts[0].css = ['x.css']),
+      /detector has css/,
+    ],
+    [
+      'resources that pages can load',
+      (m) => (m.web_accessible_resources = [{ resources: ['a.js'], matches: ['https://*/*'] }]),
+      /web_accessible_resources is set/,
+    ],
+    [
+      'a page that can message the extension',
+      (m) => (m.externally_connectable = { matches: ['https://*/*'] }),
+      /externally_connectable is set/,
+    ],
+    [
+      'a narrow host permission',
+      (m) => (m.host_permissions = ['https://*.instructure.com/*']),
       /host_permissions is/,
+    ],
+    [
+      'an extra host permission',
+      (m) => m.host_permissions.push('http://*/*'),
+      /host_permissions is/,
+    ],
+    [
+      'the activeTab permission',
+      (m) => m.permissions.push('activeTab'),
+      /permissions is .*"activeTab"/,
     ],
     ['an extra permission', (m) => m.permissions.push('tabs'), /permissions is .*"tabs"/],
     ['a missing permission', (m) => m.permissions.pop(), /expected exactly/],
@@ -339,8 +427,8 @@ describe('check-manifest', () => {
       /optional_permissions/,
     ],
     [
-      'a wider optional host',
-      (m) => (m.optional_host_permissions = ['<all_urls>']),
+      'an optional host',
+      (m) => (m.optional_host_permissions = ['https://*/*']),
       /optional_host_permissions/,
     ],
     ['a popup', (m) => (m.action.default_popup = 'popup.html'), /default_popup/],
@@ -351,11 +439,7 @@ describe('check-manifest', () => {
       (m) => (m.default_locale = 'fr'),
       /_locales\/fr\/messages\.json is missing/,
     ],
-    [
-      'a missing content script file',
-      (m) => (m.content_scripts[0].js = ['x.js']),
-      /x\.js is missing/,
-    ],
+    ['a missing detector file', (m) => (m.content_scripts[0].js = ['x.js']), /x\.js is missing/],
   ];
   for (const [name, change, problem] of chromeCases) {
     test(`rejects a Chrome manifest with ${name}`, () => {

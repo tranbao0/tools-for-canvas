@@ -66,15 +66,11 @@ describe('syncNativeTodo', () => {
   type Action = 'hide' | 'show' | 'keep';
   const cases: [SurfaceState, Action][] = [
     [{ kind: 'loading' }, 'keep'],
-    [{ kind: 'checking', origin: ORIGIN, savedOrigin: null }, 'keep'],
     [{ kind: 'no_courses', origin: ORIGIN, offer: null, allCourses: [] }, 'hide'],
-    [{ kind: 'not_set_up', offer: null, savedOrigin: null }, 'show'],
-    [{ kind: 'no_access', origin: ORIGIN, savedOrigin: null, offer: null }, 'show'],
-    [{ kind: 'redirects', origin: ORIGIN, savedOrigin: null }, 'show'],
-    [{ kind: 'not_canvas', origin: ORIGIN, savedOrigin: null }, 'show'],
-    [{ kind: 'unreachable', origin: ORIGIN, savedOrigin: null }, 'show'],
+    [{ kind: 'not_set_up', offer: null }, 'show'],
+    [{ kind: 'no_access', origin: ORIGIN, offer: null }, 'show'],
     [{ kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: null }, 'show'],
-    [{ kind: 'cant_load', origin: ORIGIN, offline: true, savedOrigin: null, offer: null }, 'show'],
+    [{ kind: 'cant_load', origin: ORIGIN, offline: true, offer: null }, 'show'],
     [readyState(), 'hide'],
     [readyState({ view: mkView({ scopeCourseId: '101' }) }), 'hide'],
     [
@@ -101,14 +97,13 @@ describe('syncNativeTodo', () => {
     syncNativeTodo({ kind: 'no_courses', origin: ORIGIN, offer: null, allCourses: [] });
     expect(nativeTodoHidden()).toBe(true);
 
-    syncNativeTodo({ kind: 'checking', origin: ORIGIN, savedOrigin: null });
+    syncNativeTodo({ kind: 'loading' });
     expect(nativeTodoHidden()).toBe(true);
 
     syncNativeTodo({
       kind: 'cant_load',
       origin: ORIGIN,
       offline: false,
-      savedOrigin: null,
       offer: null,
     });
     expect(nativeTodoHidden()).toBe(false);

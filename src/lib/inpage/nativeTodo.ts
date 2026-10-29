@@ -42,13 +42,9 @@ export function syncNativeTodo(state: SurfaceState, doc: Document = document): v
       hideNativeTodo(doc);
       return;
     case 'loading':
-    case 'checking':
       return;
     case 'not_set_up':
     case 'no_access':
-    case 'redirects':
-    case 'not_canvas':
-    case 'unreachable':
     case 'signed_out':
     case 'cant_load':
       showNativeTodo(doc);

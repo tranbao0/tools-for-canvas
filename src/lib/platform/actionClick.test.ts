@@ -1,15 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import {
-  handleActionClick,
-  offerFor,
-  tabCanvasCandidate,
-  updateOffer,
-  wireActionClick,
-} from './actionClick';
-import { isCanvasDocument } from './detectCanvas';
-import { canvasOriginItem, offerItem } from './storage';
+import { handleActionClick, wireActionClick } from './actionClick';
 import {
   installFakeScripting,
   installFakeSidePanel,
@@ -29,10 +21,6 @@ function tab(id: number, url: string | undefined, windowId = 1): Browser.tabs.Ta
   return { id, url, windowId } as Browser.tabs.Tab;
 }
 
-function pageIsCanvas(isCanvas: boolean): void {
-  scripting.executeScript.mockResolvedValue([{ frameId: 0, documentId: 'doc', result: isCanvas }]);
-}
-
 beforeEach(() => {
   fakeBrowser.reset();
   scripting = installFakeScripting();
@@ -45,42 +33,8 @@ afterEach(() => {
   removeFakeSidebarAction();
 });
 
-describe('tabCanvasCandidate', () => {
-  it('gives the https origin of a web page', () => {
-    expect(tabCanvasCandidate('https://canvas.school.edu/courses/5?x=1')).toBe(
-      'https://canvas.school.edu',
-    );
-    expect(tabCanvasCandidate('https://canvas.school.edu:8443/')).toBe(
-      'https://canvas.school.edu:8443',
-    );
-  });
-
-  it('gives null for pages that cannot be a saved Canvas', () => {
-    expect(tabCanvasCandidate(undefined)).toBeNull();
-    expect(tabCanvasCandidate('http://canvas.school.edu/')).toBeNull();
-    expect(tabCanvasCandidate('chrome://extensions/')).toBeNull();
-    expect(tabCanvasCandidate('https://10.0.0.1/')).toBeNull();
-    expect(tabCanvasCandidate('https://localhost/')).toBeNull();
-  });
-});
-
-describe('offerFor', () => {
-  it('offers "use" with no saved address and "switch" otherwise', () => {
-    expect(offerFor('https://a.instructure.com', null)).toEqual({
-      origin: 'https://a.instructure.com',
-      mode: 'use',
-    });
-    expect(offerFor('https://a.instructure.com', 'https://b.edu')).toEqual({
-      origin: 'https://a.instructure.com',
-      mode: 'switch',
-    });
-    expect(offerFor('https://b.edu', 'https://b.edu')).toBeNull();
-  });
-});
-
 describe('handleActionClick', () => {
   it('opens the panel synchronously when it is closed in the window', async () => {
-    pageIsCanvas(false);
     const done = handleActionClick(CANVAS_TAB, { registry });
 
     expect(sidePanel.open).toHaveBeenCalledWith({ windowId: 1 });
@@ -100,7 +54,6 @@ describe('handleActionClick', () => {
 
   it('uses the state of the clicked window only', async () => {
     openWindows.add(2);
-    pageIsCanvas(false);
     await handleActionClick(CANVAS_TAB, { registry });
 
     expect(sidePanel.open).toHaveBeenCalledWith({ windowId: 1 });
@@ -109,103 +62,30 @@ describe('handleActionClick', () => {
   it('opens again when the browser cannot close the panel', async () => {
     sidePanel = installFakeSidePanel({ withClose: false });
     openWindows.add(1);
-    pageIsCanvas(false);
     await handleActionClick(CANVAS_TAB, { registry });
 
     expect(sidePanel.open).toHaveBeenCalledWith({ windowId: 1 });
   });
 
-  it('offers "Use this Canvas?" on a Canvas tab when no address is saved', async () => {
-    pageIsCanvas(true);
+  it('only toggles the panel: it reads no page and stores no offer', async () => {
     await handleActionClick(CANVAS_TAB, { registry });
-
-    expect(scripting.executeScript).toHaveBeenCalledWith({
-      target: { tabId: 3 },
-      func: isCanvasDocument,
-    });
-    expect(await offerItem.getValue()).toEqual({
-      origin: 'https://canvas.school.edu',
-      mode: 'use',
-    });
-  });
-
-  it('offers "Switch to this Canvas?" on another Canvas, including instructure.com hosts', async () => {
-    await canvasOriginItem.setValue('https://canvas.school.edu');
-    pageIsCanvas(true);
-    await handleActionClick(tab(4, 'https://other.instructure.com/'), { registry });
-
-    expect(await offerItem.getValue()).toEqual({
-      origin: 'https://other.instructure.com',
-      mode: 'switch',
-    });
-  });
-
-  it('skips the check on the saved Canvas and clears an old offer', async () => {
-    await canvasOriginItem.setValue('https://canvas.school.edu');
-    await offerItem.setValue({ origin: 'https://other.instructure.com', mode: 'switch' });
-    await handleActionClick(CANVAS_TAB, { registry });
+    await handleActionClick(tab(8, 'https://news.example.com/'), { registry });
+    await handleActionClick(tab(9, 'chrome://newtab/'), { registry });
 
     expect(scripting.executeScript).not.toHaveBeenCalled();
-    expect(await offerItem.getValue()).toBeNull();
+    expect(sidePanel.open).toHaveBeenCalledTimes(3);
   });
 
-  it('makes no offer on a page that is not Canvas', async () => {
-    pageIsCanvas(false);
-    await handleActionClick(tab(5, 'https://news.example.com/'), { registry });
-
-    expect(await offerItem.getValue()).toBeNull();
-  });
-
-  it('makes no offer where scripts are not allowed', async () => {
-    scripting.executeScript.mockRejectedValue(new Error('Cannot access contents of the page'));
-    await handleActionClick(tab(6, 'https://chromewebstore.google.com/'), {
-      registry,
-    });
-
-    expect(await offerItem.getValue()).toBeNull();
-  });
-
-  it('does not inject into browser pages, plain http pages or tabs without an id', async () => {
-    await handleActionClick(tab(7, 'chrome://newtab/'), { registry });
-    await handleActionClick(tab(8, 'http://canvas.school.edu/'), { registry });
-    await handleActionClick(
-      { url: 'https://canvas.school.edu/', windowId: 1 } as Browser.tabs.Tab,
-      {
-        registry,
-      },
-    );
-
-    expect(scripting.executeScript).not.toHaveBeenCalled();
-  });
-
-  it('still checks the tab when the panel fails to open', async () => {
+  it('logs a panel that fails to open', async () => {
     sidePanel.open.mockRejectedValueOnce(new Error('No user gesture'));
-    pageIsCanvas(true);
     await handleActionClick(CANVAS_TAB, { registry });
 
     expect(console.warn).toHaveBeenCalledWith('[weekrow] panel open failed', expect.any(Error));
-    expect(await offerItem.getValue()).toEqual({
-      origin: 'https://canvas.school.edu',
-      mode: 'use',
-    });
-  });
-});
-
-describe('updateOffer', () => {
-  it('drops the offer when the content script saved the same address during the check', async () => {
-    scripting.executeScript.mockImplementation(async () => {
-      await canvasOriginItem.setValue('https://canvas.school.edu');
-      return [{ frameId: 0, documentId: 'doc', result: true }];
-    });
-    await updateOffer(CANVAS_TAB);
-
-    expect(await offerItem.getValue()).toBeNull();
   });
 });
 
 describe('wireActionClick', () => {
   it('handles toolbar clicks until it is removed', async () => {
-    pageIsCanvas(false);
     const remove = wireActionClick({ registry });
 
     await fakeBrowser.action.onClicked.trigger(CANVAS_TAB);

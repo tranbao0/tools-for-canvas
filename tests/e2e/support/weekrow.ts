@@ -46,23 +46,31 @@ export interface ScenarioOptions {
   latencyMs?: number;
   /** See `CanvasState.plannerPageSize`. */
   plannerPageSize?: number;
+  /** The instant the scenario is built around. Defaults to `SCENARIO_NOW`. */
+  now?: string;
+  /** The origin of the Canvas. Defaults to the fake Canvas origin. */
+  origin?: string;
+  /** Serves this Canvas next to one that is already served. See `FakeCanvasOptions.alongside`. */
+  alongside?: boolean;
 }
 
 /**
- * Serves the scenario Canvas with state at `https://school.instructure.com`. Page routes and
- * other overrides go first, so they win over the API.
+ * Serves the scenario Canvas with state at `https://school.instructure.com`, or at the origin of
+ * the options. Page routes and other overrides go first, so they win over the API.
  */
 export async function serveScenario(
   context: BrowserContext,
   first: readonly FakeCanvasRoute[] = [],
   options: ScenarioOptions = {},
 ): Promise<ServedCanvas> {
-  const scenario = buildScenario(SCENARIO_NOW);
+  const scenario = buildScenario(options.now ?? SCENARIO_NOW);
   options.extend?.(scenario);
   const state = new CanvasState(scenario);
   state.plannerPageSize = options.plannerPageSize ?? null;
   const canvas = await serveFakeCanvas(context, [...first, ...state.routes()], {
     latencyMs: options.latencyMs,
+    origin: options.origin,
+    alongside: options.alongside,
   });
   return { canvas, state, scenario };
 }

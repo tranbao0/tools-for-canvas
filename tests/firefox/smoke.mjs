@@ -130,6 +130,131 @@ async function waitForRender(driver) {
   );
 }
 
+/**
+ * Firefox cannot lock `storage.local`, so the background keeps the saved address in the IndexedDB
+ * of the extension and mirrors it to `storage.local` (src/lib/platform/trustedStorage.ts). This
+ * runs in the welcome page, which is an extension page: it saves an address through the real
+ * accept-offer route, reads the vault, then writes a different address to the mirror, as a page
+ * could, and checks that the background repairs the mirror from the vault.
+ * @param {import('selenium-webdriver').WebDriver} driver
+ */
+async function checkAddressVault(driver) {
+  const address = 'https://school.instructure.com';
+  const result = await driver.executeAsyncScript(
+    `
+    const done = arguments[arguments.length - 1];
+    const address = arguments[0];
+    const vault = () => new Promise((resolve, reject) => {
+      const open = indexedDB.open('weekrow-trusted', 1);
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const get = open.result.transaction('values').objectStore('values').get('canvasOrigin');
+        get.onsuccess = () => resolve(get.result ?? null);
+        get.onerror = () => reject(get.error);
+      };
+    });
+    const mirror = async () => (await browser.storage.local.get('canvasOrigin')).canvasOrigin ?? null;
+    (async () => {
+      await browser.storage.session.set({ offer: { origin: address } });
+      await browser.runtime.sendMessage({ type: 'weekrow:accept-offer', origin: address });
+      const state = await browser.runtime.sendMessage({
+        type: 'weekrow:get-state',
+        request: { surface: 'page', weekOffset: 0, scopeCourseId: null },
+      });
+      const saved = { vault: await vault(), mirror: await mirror(), state: state?.kind ?? null };
+      await browser.storage.local.set({ canvasOrigin: 'https://evil.example' });
+      let repaired = null;
+      for (let tries = 0; tries < 20 && repaired !== address; tries += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        repaired = await mirror();
+      }
+      return { saved, repaired, vault: await vault() };
+    })().then(done, (error) => done({ error: String(error) }));
+    `,
+    address,
+  );
+  if (result?.error !== undefined)
+    throw new Error(`The address vault check failed: ${result.error}`);
+  if (result.saved.vault !== address || result.saved.mirror !== address) {
+    throw new Error(
+      `The address was not saved in the vault and its mirror: ${JSON.stringify(result)}`,
+    );
+  }
+  if (result.saved.state === 'not_set_up' || result.saved.state === null) {
+    throw new Error(`The background did not use the saved address: ${JSON.stringify(result)}`);
+  }
+  if (result.repaired !== address || result.vault !== address) {
+    throw new Error(`The mirror was not repaired from the vault: ${JSON.stringify(result)}`);
+  }
+  console.log('The address lives in the vault, and a changed mirror is repaired');
+}
+
+/**
+ * A content script on any https page can write `storage.local` in Firefox, so a bad value there
+ * must never break the extension (src/lib/platform/trustedStorage.ts, src/lib/model/settings.ts).
+ * This runs in the welcome page: it writes settings and notes of the wrong type, as a page could,
+ * and checks that the state still answers, that the page context holds clean defaults, and that
+ * the background repairs the mirror from the vault.
+ * @param {import('selenium-webdriver').WebDriver} driver
+ */
+async function checkBadSettings(driver) {
+  const result = await driver.executeAsyncScript(
+    `
+    const done = arguments[arguments.length - 1];
+    const mirror = async (key) => (await browser.storage.local.get(key))[key] ?? null;
+    const request = { surface: 'page', weekOffset: 0, scopeCourseId: null };
+    (async () => {
+      await browser.storage.local.set({
+        settings: {
+          weekStart: 'auto',
+          hiddenCourseIds: 5,
+          showRings: true,
+          showOnCanvasPages: false,
+          theme: 'auto',
+        },
+        seenNotes: { firstDone: 'yes', firstSkip: true },
+      });
+      const state = await browser.runtime.sendMessage({ type: 'weekrow:get-state', request });
+      const context = await browser.runtime.sendMessage({ type: 'weekrow:page-context' });
+      let settings = null;
+      for (let tries = 0; tries < 20; tries += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        settings = await mirror('settings');
+        if (Array.isArray(settings?.hiddenCourseIds) && settings.showOnCanvasPages === true) break;
+      }
+      return {
+        state: state?.kind ?? null,
+        context: context?.settings ?? null,
+        settings,
+        notes: await mirror('seenNotes'),
+      };
+    })().then(done, (error) => done({ error: String(error) }));
+    `,
+  );
+  if (result?.error !== undefined)
+    throw new Error(`The bad settings check failed: ${result.error}`);
+  if (typeof result.state !== 'string') {
+    throw new Error(`Bad settings in storage broke the state: ${JSON.stringify(result)}`);
+  }
+  const clean = result.context;
+  if (
+    clean === null ||
+    !Array.isArray(clean.hiddenCourseIds) ||
+    clean.hiddenCourseIds.length !== 0 ||
+    clean.showOnCanvasPages !== true
+  ) {
+    throw new Error(`The settings that the page gets are not clean: ${JSON.stringify(result)}`);
+  }
+  if (
+    !Array.isArray(result.settings?.hiddenCourseIds) ||
+    result.settings.showOnCanvasPages !== true ||
+    result.notes?.firstDone === 'yes'
+  ) {
+    throw new Error(`The mirror was not repaired from the vault: ${JSON.stringify(result)}`);
+  }
+  console.log('Bad settings in storage change nothing, and the mirror is repaired');
+}
+
 async function main() {
   // Selenium Manager must never download a browser or a driver during a test.
   process.env.SE_OFFLINE = 'true';
@@ -151,6 +276,8 @@ async function main() {
     await waitForTab(driver, welcomeUrl);
     await waitForRender(driver);
     console.log(`${welcomeUrl} opened on install`);
+    await checkAddressVault(driver);
+    await checkBadSettings(driver);
     const url = `moz-extension://${EXTENSION_UUID}/${SIDEBAR_PAGE}`;
     await driver.get(url);
     await waitForRender(driver);

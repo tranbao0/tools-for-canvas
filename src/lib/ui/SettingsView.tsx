@@ -7,13 +7,7 @@ import { AppMark } from './icons';
 import { HostText, newId } from './parts';
 import { SettingsFields } from './Settings';
 
-export function SettingsView({
-  settings,
-  courses,
-  origin,
-  onChange,
-  onChangeAddress,
-}: SettingsProps) {
+export function SettingsView({ settings, courses, origin, onChange }: SettingsProps) {
   const [addressId] = useState(() => newId('address'));
   return (
     <div class="wr" data-surface="page">
@@ -23,20 +17,16 @@ export function SettingsView({
           <h1 class="wr-page-title">{t('settingsTitle')}</h1>
         </header>
         <SettingsFields settings={settings} courses={courses} level={2} onChange={onChange} />
-        <section class="wr-setting wr-setting-row wr-address" aria-labelledby={addressId}>
-          <div>
-            <h2 class="wr-setting-name" id={addressId}>
-              {t('settingAddress')}
-            </h2>
-            {origin ? (
-              <HostText class="wr-address-value" host={hostOf(origin)} />
-            ) : (
-              <p class="wr-setting-help">{t('addressNotSet')}</p>
-            )}
-          </div>
-          <button type="button" class="wr-btn wr-btn-small" onClick={onChangeAddress}>
-            {t('changeAddress')}
-          </button>
+        <section class="wr-setting wr-address" aria-labelledby={addressId}>
+          <h2 class="wr-setting-name" id={addressId}>
+            {t('settingAddress')}
+          </h2>
+          {origin ? (
+            <HostText class="wr-address-value" host={hostOf(origin)} />
+          ) : (
+            <p class="wr-setting-help">{t('addressNotSet')}</p>
+          )}
+          <p class="wr-setting-help">{t('addressHelp')}</p>
         </section>
       </main>
     </div>

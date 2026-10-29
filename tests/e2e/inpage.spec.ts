@@ -253,7 +253,7 @@ test.describe('pages with other layouts', () => {
     await openCanvasPage(page, canvas.origin, '/courses/107');
 
     await expect.poll(ran).toBe(true);
-    // The page is Canvas, so the content script saved the address and told the background.
+    // The page is Canvas, so the detector told the background, which saved the address.
     await expect.poll(() => savedAddress(background)).toBe(canvas.origin);
     await expect
       .poll(() => canvas.requests.some((r) => r.path.startsWith('/api/v1/planner/items')))
@@ -276,12 +276,12 @@ test.describe('pages with other layouts', () => {
       );
     }
 
-    // The school's news site: the extension has no access there.
+    // The school's news site: the detector runs there, finds no Canvas marker and adds nothing.
     await page.goto('https://news.northfield.edu/');
     await expect(page.locator('h1')).toHaveText('Campus News');
     await expect(page.locator('#weekrow-inpage, weekrow-list')).toHaveCount(0);
 
-    // An instructure.com page that is not Canvas: the content script runs, and saves nothing.
+    // An instructure.com page that is not Canvas: the detector runs, and saves nothing.
     const ran = await watchContentScript(page);
     await page.goto('https://www.instructure.com/');
     await expect.poll(ran).toBe(true);

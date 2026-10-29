@@ -5,7 +5,8 @@
  * Surfaces never fetch Canvas. They ask the background for their state, send refresh requests
  * and actions, and learn about new data from the change marker in `storage.local`.
  */
-import type { SurfaceState } from '../model/types';
+import { isSettings } from '../model/settings';
+import type { Settings, SurfaceState } from '../model/types';
 import type { SurfaceKind, TaskInput } from '../ui/contract';
 import type { OverrideFlags } from './patches';
 
@@ -63,9 +64,7 @@ export type DataAction =
   /** The Undo notice of a task delete ended, so the delayed DELETE is sent now. */
   | { kind: 'sendDelete'; noteId: string }
   /** Undo of a task delete. It works until the DELETE request has started. */
-  | { kind: 'cancelDelete'; noteId: string }
-  /** Leaves the address form or a check of a new address, and goes back to the saved address. */
-  | { kind: 'keepSavedAddress' };
+  | { kind: 'cancelDelete'; noteId: string };
 
 type DataActionKind = DataAction['kind'];
 
@@ -79,8 +78,6 @@ interface GetStateMessage {
 interface RefreshMessage {
   type: 'weekrow:refresh';
   reason: RefreshReason;
-  /** Retry applies to what this surface shows: the in-page list never checks a new address. */
-  surface: RequestSurface;
 }
 
 /** The reply is an `ActionReply`. */
@@ -90,22 +87,13 @@ interface ActionMessage {
 }
 
 /**
- * Sent from an extension page after `permissions.request` resolved with a grant.
- * The background checks the address and saves it when it is Canvas. The reply is an `OkReply`.
+ * Sent from an extension page when the student accepts the "Use this Canvas?" or "Switch to this
+ * Canvas?" offer. The background saves the address only when the stored offer is for `origin`.
+ * The reply is an `OkReply`.
  */
-interface SetupMessage {
-  type: 'weekrow:setup';
+interface AcceptOfferMessage {
+  type: 'weekrow:accept-offer';
   origin: string;
-  /** The student accepted the "Use this Canvas?" or "Switch to this Canvas?" offer. */
-  fromOffer: boolean;
-}
-
-/**
- * Opens the address form. The saved address stays until a new one passes the check, and the
- * form offers "Keep using" as a cancel. The reply is an `OkReply`.
- */
-interface ChangeAddressMessage {
-  type: 'weekrow:change-address';
 }
 
 /** Content scripts cannot open extension pages, so they ask the background for the welcome page. */
@@ -115,9 +103,10 @@ export interface OpenPageMessage {
 }
 
 /**
- * Content script to background: this `instructure.com` page is Canvas. The background saves the
- * page origin only when no address is saved yet, the sender page has that origin, and it is not
- * a test or beta host (decision 5). The reply is a `CanvasDetectedReply`.
+ * Detector to background: this page is Canvas. The background saves the page origin only when no
+ * address is saved yet, the sender page has that origin, and it is not a test or beta host
+ * (decision 5). Another Canvas than the saved one becomes the offer for the side panel. The
+ * reply is an `OkReply`, which never names the saved address.
  */
 export interface CanvasDetectedMessage {
   type: 'weekrow:canvas-detected';
@@ -130,12 +119,50 @@ export interface CanvasPageLoadedMessage {
   origin: string;
 }
 
+/**
+ * In-page script to background: asks for the settings. No content script can read the storage of
+ * the extension, so the in-page script gets them here. The reply is a `PageContextReply`, and the
+ * background answers only the page of the saved Canvas.
+ */
+export interface PageContextMessage {
+  type: 'weekrow:page-context';
+}
+
+export interface PageContextReply {
+  settings: Settings;
+}
+
+/** In-page script to background: the student changed the settings shown in place. */
+interface SaveSettingsMessage {
+  type: 'weekrow:save-settings';
+  settings: Settings;
+}
+
+export type SeenNote = 'firstDone' | 'firstSkip';
+
+/** In-page script to background: the student saw a one-time note. */
+interface MarkNoteSeenMessage {
+  type: 'weekrow:mark-note-seen';
+  note: SeenNote;
+}
+
+/**
+ * Background to the in-page script, with `tabs.sendMessage`: the data, the settings, the notes or
+ * the saved address changed, so the script asks again. It replaces the storage change events
+ * that content scripts cannot get. The message carries no data.
+ */
+export interface PageChangedMessage {
+  type: 'weekrow:changed';
+}
+
 export type DataMessage =
   | GetStateMessage
   | RefreshMessage
   | ActionMessage
-  | SetupMessage
-  | ChangeAddressMessage
+  | AcceptOfferMessage
+  | PageContextMessage
+  | SaveSettingsMessage
+  | MarkNoteSeenMessage
   | OpenPageMessage
   | CanvasDetectedMessage;
 
@@ -150,11 +177,6 @@ export interface RefreshReply {
    * surface then asks again with its timer, because the background can stop before then.
    */
   retryAt: number | null;
-}
-
-export interface CanvasDetectedReply {
-  /** The saved address after the message. */
-  origin: string | null;
 }
 
 /** What Undo needs, kept by the surface while its Undo notice shows. */
@@ -281,8 +303,6 @@ export function isDataAction(value: unknown): value is DataAction {
     case 'sendDelete':
     case 'cancelDelete':
       return isNonEmptyString(value['noteId']);
-    case 'keepSavedAddress':
-      return true;
     default:
       return false;
   }
@@ -296,9 +316,7 @@ export function isRefreshMessage(value: unknown): value is RefreshMessage {
   return (
     hasType(value, 'weekrow:refresh') &&
     isString(value['reason']) &&
-    REFRESH_REASONS.includes(value['reason']) &&
-    isString(value['surface']) &&
-    REQUEST_SURFACES.includes(value['surface'])
+    REFRESH_REASONS.includes(value['reason'])
   );
 }
 
@@ -306,16 +324,27 @@ export function isActionMessage(value: unknown): value is ActionMessage {
   return hasType(value, 'weekrow:action') && isDataAction(value['action']);
 }
 
-export function isSetupMessage(value: unknown): value is SetupMessage {
-  return (
-    hasType(value, 'weekrow:setup') &&
-    isNonEmptyString(value['origin']) &&
-    typeof value['fromOffer'] === 'boolean'
-  );
+export function isAcceptOfferMessage(value: unknown): value is AcceptOfferMessage {
+  return hasType(value, 'weekrow:accept-offer') && isNonEmptyString(value['origin']);
 }
 
-export function isChangeAddressMessage(value: unknown): value is ChangeAddressMessage {
-  return hasType(value, 'weekrow:change-address');
+export function isPageContextMessage(value: unknown): value is PageContextMessage {
+  return hasType(value, 'weekrow:page-context');
+}
+
+export function isPageChangedMessage(value: unknown): value is PageChangedMessage {
+  return hasType(value, 'weekrow:changed');
+}
+
+export function isSaveSettingsMessage(value: unknown): value is SaveSettingsMessage {
+  return hasType(value, 'weekrow:save-settings') && isSettings(value['settings']);
+}
+
+export function isMarkNoteSeenMessage(value: unknown): value is MarkNoteSeenMessage {
+  return (
+    hasType(value, 'weekrow:mark-note-seen') &&
+    (value['note'] === 'firstDone' || value['note'] === 'firstSkip')
+  );
 }
 
 export function isOpenPageMessage(value: unknown): value is OpenPageMessage {
@@ -335,8 +364,10 @@ export function isDataMessage(value: unknown): value is DataMessage {
     isGetStateMessage(value) ||
     isRefreshMessage(value) ||
     isActionMessage(value) ||
-    isSetupMessage(value) ||
-    isChangeAddressMessage(value) ||
+    isAcceptOfferMessage(value) ||
+    isPageContextMessage(value) ||
+    isSaveSettingsMessage(value) ||
+    isMarkNoteSeenMessage(value) ||
     isOpenPageMessage(value) ||
     isCanvasDetectedMessage(value)
   );

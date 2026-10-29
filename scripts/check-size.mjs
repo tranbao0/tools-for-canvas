@@ -15,6 +15,24 @@ import { formatKb, listFiles, runForTargets } from './lib/build-output.mjs';
 /** The gzip budget for one entry point: 30 KB, with 1 KB = 1000 bytes. */
 export const BUDGET_BYTES = 30_000;
 
+/**
+ * The gzip budget for the detector content script, in bytes. It runs on every https page
+ * (decision 5), so it must stay tiny.
+ */
+export const DETECTOR_BUDGET_BYTES = 2000;
+
+/** The built detector content script. */
+export const DETECTOR_ENTRY = 'detector.js';
+
+/**
+ * The gzip budget of an entry point.
+ * @param {string} name the entry point name, a built file path
+ * @returns {number}
+ */
+export function budgetFor(name) {
+  return name === DETECTOR_ENTRY ? DETECTOR_BUDGET_BYTES : BUDGET_BYTES;
+}
+
 const HTML_ASSET = /<(?:script|link)\b[^>]*?\b(?:src|href)\s*=\s*["']([^"']+)["']/gi;
 const JS_IMPORT =
   /\b(?:import|export)\b[^"'`;]*?\bfrom\s*["']([^"']+)["']|\bimport\s*\(?\s*["']([^"']+)["']/g;
@@ -147,15 +165,19 @@ async function checkTarget(dir, target) {
   const sizes = await measureEntryPoints(dir);
   if (sizes.length === 0) return ['no entry points found'];
   const problems = [];
+  if (!sizes.some((size) => size.name === DETECTOR_ENTRY)) {
+    problems.push(`${DETECTOR_ENTRY} is missing, so its size is not checked`);
+  }
   for (const size of sizes) {
-    const over = size.gzipBytes > BUDGET_BYTES;
+    const budget = budgetFor(size.name);
+    const over = size.gzipBytes > budget;
     const files = `${size.files.length} file${size.files.length === 1 ? '' : 's'}`;
     console.log(
       `  ${over ? 'OVER' : 'ok  '} ${target} ${size.name}: ${formatKb(size.gzipBytes)} gzip (${files})`,
     );
     if (over) {
       problems.push(
-        `${size.name} is ${formatKb(size.gzipBytes)} after gzip, over the ${formatKb(BUDGET_BYTES)} budget`,
+        `${size.name} is ${formatKb(size.gzipBytes)} after gzip, over the ${formatKb(budget)} budget`,
       );
     }
   }

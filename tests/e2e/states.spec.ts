@@ -29,7 +29,7 @@ const STALE_LINE = "Couldn't refresh. Showing your list from 2:00 pm.";
 const LATER_MS = 6 * 60_000;
 
 test.describe('signed out', () => {
-  test('shows the saved address and a button that opens Canvas to sign in', async ({
+  test('shows the saved address and a button that opens Canvas to sign in, with no address form', async ({
     context,
     page,
     background,
@@ -46,8 +46,7 @@ test.describe('signed out', () => {
 
     await expect(page.getByRole('heading', { name: "You're signed out of Canvas" })).toBeVisible();
     await expect(page.getByText('school.instructure.com', { exact: true })).toBeVisible();
-    await expect(page.getByText('Wrong address?')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Change it' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Change it' })).toHaveCount(0);
     // A 401 alone is not enough: the sign-in check confirmed it.
     expect(canvas.requests.map((r) => r.path)).toContain('/api/v1/users/self');
 
@@ -182,7 +181,7 @@ test.describe("can't refresh", () => {
 /** The other Canvas the student opened the panel from, which the panel offers to switch to. */
 const OTHER_CANVAS = 'https://other.instructure.com';
 
-/** Stores the "Switch to this Canvas?" offer, as a toolbar click on another Canvas tab does. */
+/** Stores the "Switch to this Canvas?" offer, as the detector of another Canvas tab does. */
 async function offerOtherCanvas(worker: Worker): Promise<void> {
   await worker.evaluate(async (origin) => {
     const api = (
@@ -190,7 +189,7 @@ async function offerOtherCanvas(worker: Worker): Promise<void> {
         chrome: { storage: { session: { set(items: object): Promise<void> } } };
       }
     ).chrome;
-    await api.storage.session.set({ offer: { origin, mode: 'switch' } });
+    await api.storage.session.set({ offer: { origin } });
   }, OTHER_CANVAS);
 }
 

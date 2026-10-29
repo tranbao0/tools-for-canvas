@@ -16,6 +16,7 @@ A step passes only when the result matches the "Expect" line.
   A Canvas Lite course where you are the teacher and the student is an invited user works.
 - For the "Limited Access for Students" step, an account admin who can turn that setting on.
 - For the custom-domain steps in part 2, a Canvas site with its own address, such as `https://canvas.example.edu`.
+- For the "Switch to this Canvas?" step in part 2, a second Canvas site, and a normal web page that is not Canvas.
 - Chrome 144 or later, Edge 144 or later and Firefox 140 or later, each with a new, empty profile.
 - A build from `npm run build`.
 
@@ -143,13 +144,26 @@ Run these steps in one background console, such as the Chrome background.
 
 Use a new, empty profile, and the student account.
 
-5. Install the build from step 4.
-   Expect: the welcome page opens in a tab, and it shows how to pin the toolbar button, the shortcut Alt+Shift+W, the address field and "Allow access".
-   Expect: the side panel (the sidebar on Firefox) does not open by itself.
-6. Open your `instructure.com` Canvas in a tab and sign in.
-   Click the toolbar button.
-   Expect: the panel opens and offers "Use this Canvas?".
+5. Before you install, open your Canvas in one tab, sign in, and open the Card View dashboard.
+   Open a normal web page that is not Canvas in a second tab.
+   Install the build from step 4.
+   The browser shows the warning "Read and change all your data on all websites".
    Accept it.
+   Expect: the Card View dashboard tab shows the weekly list at once, with no reload, on an `instructure.com` Canvas.
+   Expect: on a Canvas with its own domain, the tab shows nothing of the extension, the welcome page opens with "Use <host> as your Canvas?", and one click on "Use it" shows the list in that tab with no reload.
+   Expect: on an `instructure.com` Canvas, no welcome page opens, because the Canvas tab is saved by itself.
+   Expect: the tab that is not Canvas shows no list and no change.
+   Expect: the side panel (the sidebar on Firefox) does not open by itself.
+6. Remove the extension, close every Canvas tab, and install the build again.
+   Expect: the welcome page opens in a tab.
+   Expect: it says to open your Canvas, that the list shows on the Canvas dashboard, how to pin the toolbar button and the shortcut Alt+Shift+W, and it has no address field.
+   Open your Canvas in a tab and sign in.
+   Expect: on an `instructure.com` Canvas, the weekly list shows on the dashboard with no setup step and no click.
+   Expect: on a Canvas with its own domain, the Canvas page shows nothing of the extension, the open welcome page and the side panel ask "Use <host> as your Canvas?", and the Canvas To Do stays.
+   Click "Use it".
+   Expect: the weekly list appears in the Canvas tab with no reload, on the dashboard and on course home pages.
+   Expect: with List View or the new widget dashboard, the Canvas page shows no list, and the side panel shows the list.
+   Open the panel.
    Expect: the list loads for the current week.
 7. Click the toolbar button again, then press Alt+Shift+W twice.
    Expect: each action closes or opens the panel.
@@ -179,7 +193,7 @@ Use a new, empty profile, and the student account.
 17. With the side panel open, look at the Card View dashboard in the same window.
     Expect: the in-page list shows in full, as it does with the panel closed.
 18. Sign out of Canvas, then open the panel.
-    Expect: "Open Canvas to sign in", the saved address and a "Change it" link.
+    Expect: "Open Canvas to sign in" and the saved address, with no address field.
     On Firefox, expect also the note about private windows and container tabs.
 19. Sign in again, turn off the network, and click Retry in the panel.
     Expect: "Couldn't refresh. Showing your list from <time>." and "You're offline."
@@ -194,32 +208,48 @@ Use a new, empty profile, and the student account.
     Expect: every action works with the keyboard, and each ring has a label such as "3 of 5 done this week".
 23. Make the panel as narrow as the browser allows (360 px on Chrome and Edge, 14em on Firefox).
     Expect: the compact layout shows, and no text or button is cut off.
-24. Open a Canvas site with its own address, such as `https://canvas.example.edu`, sign in, and click the toolbar button.
+24. Open a second Canvas site, such as `https://canvas.example.edu`, sign in, and click the toolbar button.
+    Expect: the in-page list does not show on the second site.
     Expect: the panel offers "Switch to this Canvas?".
-    Accept it and click "Allow access".
-    Expect: the browser asks for access to that one site, and the list loads after you allow it.
-    Reload the Card View dashboard of that site.
-    Expect: the in-page list shows.
+    Click "Switch".
+    Expect: the list loads for the second Canvas, and the Card View dashboard tab of that site shows the in-page list with no reload.
+    Open a normal web page that is not Canvas, and the panel.
+    Expect: no offer shows for the normal page.
+    Open a Canvas test or beta host (`*.test.instructure.com` or `*.beta.instructure.com`) in a new profile.
+    Expect: no address is saved by itself, and the welcome page and the side panel ask "Use <host> as your Canvas?".
+    Open a normal web page that is not Canvas and click everywhere on it.
+    Expect: nothing is saved, and the extension adds nothing to the page.
+    Open several pages that are not your school, and close the welcome page first.
+    Expect: no second welcome page opens in the same browser session.
+    With the offer open in the welcome page or the side panel, open another Canvas on its own domain in a tab.
+    Expect: the offer shows the new host in a new box, and its "Use it" or "Switch" button is dim and does nothing for one second.
+    Expect: in Chrome and Edge, a page cannot read or write the extension storage from its own console world, and in Firefox a changed `canvasOrigin`, `settings` or `seenNotes` in `storage.local` is put back from the extension's own database.
 25. In Firefox, mark an item done so that the Undo notice shows, then press Tab and Shift+Tab through the whole panel.
     Expect: no focused control is hidden under the sticky header or the Undo notice.
-26. With a Canvas tab of a custom address open, turn the extension off and on again on the browser's extensions page, then go back to that tab.
+26. With a Canvas tab open, turn the extension off and on again on the browser's extensions page, then go back to that tab.
     Expect: the tab shows either the in-page list or the native Canvas To Do, never a frozen list.
     Reload the tab.
     Expect: the in-page list shows.
-27. Remove the extension.
+    Install an update of the extension with a Canvas tab open.
+    Expect: the tab shows the new list with no reload.
+27. In the browser's site access settings for the extension, set access to "On click" or remove the Canvas site, then open the panel.
+    Expect: the panel shows "Tools for Canvas needs access to your Canvas" and one "Allow access" button.
+    Click "Allow access" and allow it.
+    Expect: the list loads.
+28. Remove the extension.
     Expect: no web page opens, and your done marks and custom tasks are still in Canvas.
 
 ### Store listings
 
-28. Check the Chrome Web Store listing.
+29. Check the Chrome Web Store listing.
     Expect: the single purpose is "Show your Canvas coursework for the week as a to-do list.", the data usage ticks "Website content" processed only on the device, the account is a non-trader, and 2-Step Verification is on.
-29. Check the Edge Add-ons listing.
+30. Check the Edge Add-ons listing.
     Expect: the description has the license link and does not mention other browsers.
-30. Check the Firefox Add-ons listing.
+31. Check the Firefox Add-ons listing.
     Expect: the source zip and the lockfile are attached, the reviewer notes say that the only writes are done marks, skip marks and custom tasks sent to the student's own Canvas at the student's request, and two-factor authentication is on.
-31. Check every listing.
+32. Check every listing.
     Expect: the privacy policy link opens `docs/privacy.md` on the project site.
     Expect: the description ends with the trademark notice at the end of the README.
-32. Sign in to the reviewer test account.
+33. Sign in to the reviewer test account.
     Expect: the planner, done marks and custom tasks work in its course.
-33. Before the first release only, run the final name check from design decision 17.
+34. Before the first release only, run the final name check from design decision 17.

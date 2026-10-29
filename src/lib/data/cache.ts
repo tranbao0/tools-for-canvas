@@ -16,7 +16,6 @@ import type {
 } from '../canvas/types';
 import type { AssignmentData, SubmissionData } from '../model/types';
 import { browser } from 'wxt/browser';
-import { defineItem } from '../platform/storage';
 import { emptyCoverage, type PlannerCoverage } from './coverage';
 import type { Patch } from './patches';
 
@@ -152,36 +151,6 @@ export function emptyCache(origin: string): SessionCache {
   };
 }
 
-/**
- * The address form, a setup check in progress, or its result. Every `origin` here passed
- * `normalizeAddress`, so only a usable https origin is ever checked again.
- */
-export type SetupStatus =
-  /** The student opened the address form. The saved address stays until a new one passes. */
-  | { kind: 'entering' }
-  | { kind: 'checking'; origin: string }
-  | { kind: 'redirects'; origin: string }
-  | { kind: 'not_canvas'; origin: string }
-  /** The check failed at the network level, such as a wrong host name. Retry checks again. */
-  | { kind: 'unreachable'; origin: string }
-  /** The typed text is not a usable address. It is kept for display only, never checked. */
-  | { kind: 'rejected'; text: string };
-
-/** The address a setup status is about, or `null` when it has none to check. */
-export function setupStatusOrigin(status: SetupStatus | null): string | null {
-  if (status === null) return null;
-  switch (status.kind) {
-    case 'entering':
-    case 'rejected':
-      return null;
-    case 'checking':
-    case 'redirects':
-    case 'not_canvas':
-    case 'unreachable':
-      return status.origin;
-  }
-}
-
 /** The parts of the cache that weigh most, each under its own key in `storage.session`. */
 const PART_KEYS = {
   planner: 'weekrowPlanner',
@@ -248,6 +217,3 @@ function createSessionCacheItem() {
 
 /** The cache item in `storage.session`. */
 export const sessionCacheItem = createSessionCacheItem();
-
-/** The setup status item in `storage.session`, so a service worker restart keeps it. */
-export const setupStatusItem = defineItem<SetupStatus | null>('session:weekrowSetup', () => null);

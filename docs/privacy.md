@@ -1,7 +1,7 @@
 # Privacy policy
 
 This policy covers the Tools for Canvas browser extension for Chrome, Microsoft Edge and Firefox.
-Last updated: 2026-10-27.
+Last updated: 2026-10-28.
 
 ## Summary
 
@@ -12,7 +12,9 @@ Nothing goes anywhere else.
 
 ## What the extension reads
 
-The extension reads these data from the Canvas site whose address you save, with your own Canvas sign-in:
+The extension reads these data from the Canvas site whose address you save, with your own Canvas sign-in.
+The first Canvas page that you open on `instructure.com` sets that address.
+For a Canvas with its own address, you answer "Use <address> as your Canvas?" in the extension's welcome page or side panel to set it.
 
 - your name, time zone and Canvas language;
 - your active courses, your course groups, your course colors and your dashboard order;
@@ -26,8 +28,27 @@ The extension processes these data only on your device, to show your list.
 It keeps the Canvas data in browser memory (`storage.session`) while the browser runs.
 That memory is never written to disk, and the browser clears it when it closes.
 
-When you click the toolbar button on a web page, the extension checks whether that page is a Canvas site.
-It does this only on the page that you clicked on, and it keeps nothing from that page except a Canvas address that you choose to use.
+## What the extension checks on web pages
+
+The extension can read all websites, because Canvas runs on many school addresses.
+A small script runs on each web page that you open, in the top frame only.
+It checks only for the page markers of Canvas.
+The markers are one page element and the settings that Canvas writes in its inline scripts.
+The script looks at the text of inline scripts only to find those settings, and it keeps none of that text.
+It reads nothing else on the page.
+It does not read your cookies, your text input or your history.
+It does not announce itself to the page.
+It sends nothing to any server.
+On a page that is not Canvas, it stops at once and keeps nothing.
+On a Canvas page, it sends the address of that page to the extension itself.
+The extension keeps that address only when it is the first `instructure.com` Canvas that you open, when you answer "Use it" to the question for a Canvas with its own address, or when you choose "Switch to this Canvas?".
+Until you answer, the extension keeps the detected Canvas address in session storage (`storage.session`), as the offer that the question shows.
+Session storage stays in browser memory and the browser clears it when it closes.
+The extension opens its welcome page once per browser session when it finds a Canvas that waits for your answer.
+The extension shows its list only on the Canvas address that you saved.
+The list script runs only there.
+It sends no message and no event to the page.
+Neither the list script nor the page script can read or write the storage of the extension: the background answers them through checked messages.
 
 ## What the extension writes
 
@@ -51,6 +72,10 @@ The extension stores only these items in browser storage on your device:
 - a change time stamp, so that open lists refresh after a write;
 - which one-time notes you have seen.
 
+The settings, the address and the notes are in storage that web pages cannot reach.
+In Chrome and Edge, the extension locks its `storage.local` against page scripts.
+In Firefox, they live in the extension's own IndexedDB, with a copy in `storage.local` that the extension checks and repairs.
+
 ## What the extension sends elsewhere
 
 Nothing.
@@ -58,7 +83,6 @@ The extension sends no data to the developer or to any third party.
 It has no analytics, no error reporting, no advertising and no remote configuration.
 It opens no web page on install or uninstall.
 All network requests go to the one Canvas address that you saved.
-While you set up a new address, the extension also sends one request to that address to confirm that it is a Canvas site.
 
 The code enforces this.
 All network requests go through one function that allows only your Canvas address.
@@ -68,11 +92,10 @@ A lint rule forbids network calls anywhere else in the code, and a CI check scan
 
 | Permission | Why the extension needs it |
 |---|---|
-| Access to `https://*.instructure.com/*` | To read and write your data on Canvas sites that Instructure hosts |
-| Optional access to one other site | To reach your school's Canvas when it uses its own address; the extension asks for it only when you click "Allow access" |
+| Access to all `https://` sites | To find your Canvas on any school address, to check each page for the Canvas markers, and to read and write your data on your saved Canvas only |
 | `storage` | To store the settings and the Canvas address listed above, and to hold Canvas data in memory |
 | `cookies` | To read the `_csrf_token` cookie that Canvas requires for a write |
-| `scripting` and `activeTab` | To check whether the page where you click the toolbar button is a Canvas site |
+| `scripting` | To run the Canvas check in the tabs that were open before you installed or updated the extension, and to show the list in your saved Canvas |
 | `sidePanel` (Chrome and Edge) | To show the list in the browser side panel |
 
 ## Sharing and sale

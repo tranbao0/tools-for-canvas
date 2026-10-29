@@ -41,16 +41,13 @@ export interface Actions {
   moveTaskToToday(noteId: string): void;
   openItem(key: string): void;
   /**
-   * Runs `permissions.request` at once, then checks the address and saves it when it is Canvas.
-   * Call it directly from a click handler, with no await before it.
+   * Runs `permissions.request` for the saved Canvas at once, for a browser that withholds
+   * access. Call it directly from a click handler, with no await before it.
    */
   allowAccess(origin: string): void;
   /** Accept the "Use this Canvas?" or "Switch to this Canvas?" offer. */
   acceptOffer(origin: string): void;
   dismissOffer(): void;
-  changeAddress(): void;
-  /** Leaves a failed check of a new address and goes back to the saved address. */
-  keepSavedAddress(): void;
   /** Opens the saved Canvas in a tab, for sign-in. */
   openCanvas(): void;
   retry(): void;
@@ -76,7 +73,6 @@ export interface SettingsProps {
   courses: { id: string; name: string }[];
   origin: string | null;
   onChange(settings: Settings): void;
-  onChangeAddress(): void;
 }
 
 export interface WelcomeProps {

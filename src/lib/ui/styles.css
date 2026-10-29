@@ -204,6 +204,15 @@
   background: color-mix(in srgb, var(--wr-primary) 88%, #000);
 }
 
+/* A button that is off for a moment, such as the accept button of an offer that just showed. */
+.wr-btn[aria-disabled='true'] {
+  opacity: 0.55;
+}
+
+.wr-btn[aria-disabled='true']:hover {
+  background: var(--wr-primary);
+}
+
 .wr-btn-small {
   min-height: 28px;
   padding: 2px 8px;
@@ -231,12 +240,6 @@
   display: inline-block;
   max-width: 100%;
   text-decoration: inherit;
-}
-
-/* A link button whose text, with a host name in it, wraps like a sentence. */
-.wr-keep {
-  display: inline-block;
-  white-space: normal;
 }
 
 /* Section heading, as Canvas's right-column "To Do" and "Recent Feedback" headings. */
@@ -976,25 +979,6 @@ textarea.wr-input {
   flex-wrap: wrap;
   gap: 8px;
   margin-left: auto;
-}
-
-.wr-address-form {
-  display: grid;
-  gap: 6px;
-}
-
-.wr-address-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.wr-address-field {
-  display: grid;
-  flex: 1 1 180px;
-  gap: 4px;
-  min-width: 0;
 }
 
 /* Settings */

@@ -45,9 +45,17 @@ Safari and mobile browsers are not supported.
 
 ## Site access
 
-Tools for Canvas asks for access to `https://*.instructure.com` when you install it.
-If your school uses its own Canvas address, such as `canvas.example.edu`, Tools for Canvas asks for access to that one address when you click "Allow access".
-It reads and writes data only on the Canvas address that you save.
+Tools for Canvas asks for access to all websites (`https://*/*`) when you install it.
+Canvas runs on many school addresses, such as `canvas.example.edu`, so the extension cannot know your address in advance.
+With this access, it works right after you install it, with no setup step.
+A tiny script runs on each web page and checks only for the Canvas page markers.
+It keeps no page text, announces nothing to the page and sends nothing anywhere.
+On a Canvas page, it asks the extension to show your list.
+The first Canvas page that you open on `instructure.com` sets your Canvas address.
+On a Canvas with its own address, the welcome page and the side panel ask "Use canvas.example.edu as your Canvas?", and one click on "Use it" sets the address.
+A page can copy the Canvas markers, so the extension asks once, in its own pages, before it trusts an address outside `instructure.com`.
+The extension reads and writes data only on that Canvas address.
+On another Canvas, the side panel offers "Switch to this Canvas?".
 
 ## Privacy
 

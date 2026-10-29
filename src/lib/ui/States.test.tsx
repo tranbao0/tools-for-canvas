@@ -1,13 +1,24 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Offer, SurfaceState } from '../model/types';
 import { App } from './App';
+import { OFFER_ARM_MS } from './Notices';
 import type { SurfaceKind } from './contract';
 import { spyActions } from './testing/actions';
 import { hiddenCourseView, nonReadyStates, ORIGIN, OTHER_OFFER, readyState } from './testing/mocks';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+/** Lets the accept button of an offer switch on, which takes a second. */
+function armOffer(): void {
+  act(() => {
+    vi.advanceTimersByTime(OFFER_ARM_MS);
+  });
+}
 
 function setup(state: SurfaceState, surface: SurfaceKind = 'panel') {
   const actions = spyActions();
@@ -15,22 +26,15 @@ function setup(state: SurfaceState, surface: SurfaceKind = 'panel') {
   return actions;
 }
 
-const NOT_SET_UP: SurfaceState = { kind: 'not_set_up', offer: null, savedOrigin: null };
+const NOT_SET_UP: SurfaceState = { kind: 'not_set_up', offer: null };
 
 const EXPECTED_TEXT: Record<string, string> = {
   loading: 'Loading your list',
-  'not-set-up': 'Connect your Canvas',
+  'not-set-up': 'Open your Canvas to see your list',
+  // The offer shows in the panel and the welcome page; its own tests cover it.
+  'not-set-up-use': 'Open your Canvas to see your list',
   // The offer itself shows in the side panel only; its own tests cover it.
-  'not-set-up-offer': 'Connect your Canvas',
-  'not-set-up-saved': 'Change your Canvas address',
-  checking: 'Checking',
-  'checking-saved': 'Keep using',
   'no-access': 'Tools for Canvas needs access to your Canvas',
-  redirects: 'This address redirects',
-  'not-canvas': 'This address is not a Canvas site',
-  'not-canvas-saved': 'Keep using',
-  unreachable: "Couldn't reach canvas.stat.edu",
-  'unreachable-saved': 'Keep using',
   'signed-out': "You're signed out of Canvas",
   'signed-out-firefox': "You're signed out of Canvas",
   'signed-out-offer': "You're signed out of Canvas",
@@ -69,64 +73,47 @@ describe('loading', () => {
   });
 });
 
-describe('setup form', () => {
-  it('asks for a valid address', () => {
-    const actions = setup(NOT_SET_UP);
-    const input = screen.getByLabelText('Canvas address');
-    fireEvent.input(input, { target: { value: 'school' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Allow access' }));
-    expect(input.getAttribute('aria-invalid')).toBe('true');
-    expect(screen.getByText('Enter a web address, such as school.instructure.com.')).toBeTruthy();
-    expect(actions.allowAccess).not.toHaveBeenCalled();
+describe('not set up', () => {
+  it('asks the student to open Canvas, with no address form', () => {
+    setup(NOT_SET_UP);
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(
+      'Open your Canvas to see your list',
+    );
+    expect(
+      screen.getByText(
+        "Open your school's Canvas in a browser tab. Tools for Canvas finds it by itself.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByLabelText('Canvas address')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Allow access' })).toBeNull();
   });
+});
 
-  it('calls allowAccess with the origin inside the submit handler', () => {
-    const actions = setup(NOT_SET_UP);
-    fireEvent.input(screen.getByLabelText('Canvas address'), {
-      target: { value: 'canvas.state.edu/courses/12' },
-    });
-    // The click dispatches submit synchronously, so the call happens inside the user gesture.
-    fireEvent.click(screen.getByRole('button', { name: 'Allow access' }));
-    expect(actions.allowAccess).toHaveBeenCalledTimes(1);
-    expect(actions.allowAccess).toHaveBeenCalledWith('https://canvas.state.edu');
-  });
+describe('the "Use <host> as your Canvas?" offer', () => {
+  const state: SurfaceState = {
+    kind: 'not_set_up',
+    offer: { origin: 'https://canvas.school.edu' },
+  };
 
-  it('uses the shared address rules, so an IP address is not accepted', () => {
-    const actions = setup(NOT_SET_UP);
-    const input = screen.getByLabelText('Canvas address');
-    fireEvent.input(input, { target: { value: '192.168.1.20' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Allow access' }));
-    expect(input.getAttribute('aria-invalid')).toBe('true');
-    expect(actions.allowAccess).not.toHaveBeenCalled();
-  });
-
-  it('accepts or dismisses the "Use this Canvas?" offer', () => {
-    const actions = setup({
-      kind: 'not_set_up',
-      offer: { origin: ORIGIN, mode: 'use' },
-      savedOrigin: null,
-    });
-    expect(screen.getByText('school.instructure.com')).toBeTruthy();
+  it('shows in the side panel above the open-Canvas line, with the real host', () => {
+    vi.useFakeTimers();
+    const actions = setup(state);
+    const offer = screen.getByRole('region', { name: 'Use canvas.school.edu as your Canvas?' });
+    expect(offer.closest('.wr-state')?.firstElementChild).toBe(offer);
+    expect(offer.textContent).toContain('Use canvas.school.edu as your Canvas?');
+    expect(offer.querySelector('.wr-host')?.textContent).toBe('canvas.school.edu');
+    armOffer();
     fireEvent.click(screen.getByRole('button', { name: 'Use it' }));
-    expect(actions.acceptOffer).toHaveBeenCalledWith(ORIGIN);
+    expect(actions.acceptOffer).toHaveBeenCalledWith('https://canvas.school.edu');
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
     expect(actions.dismissOffer).toHaveBeenCalledTimes(1);
   });
 
-  it('prefills the address after a failed check', () => {
-    setup({ kind: 'not_canvas', origin: 'https://www.state.edu', savedOrigin: null });
-    expect((screen.getByLabelText('Canvas address') as HTMLInputElement).value).toBe(
-      'www.state.edu',
-    );
-  });
-
-  it('tells the student how to find the real address when it redirects', () => {
-    setup({ kind: 'redirects', origin: 'https://lms.state.edu', savedOrigin: null });
-    expect(
-      screen.getByText(
-        'Open Canvas in a tab and sign in. Then click the Tools for Canvas button in the toolbar while that tab is open.',
-      ),
-    ).toBeTruthy();
+  it('never shows in the in-page list', () => {
+    setup(state, 'inpage');
+    expect(screen.queryByRole('button', { name: 'Use it' })).toBeNull();
+    expect(document.body.textContent).not.toContain('canvas.school.edu');
   });
 });
 
@@ -135,21 +122,26 @@ describe('access and sign-in', () => {
     const actions = setup({
       kind: 'no_access',
       origin: 'https://canvas.state.edu',
-      savedOrigin: null,
       offer: null,
     });
     fireEvent.click(screen.getByRole('button', { name: 'Allow access' }));
     expect(actions.allowAccess).toHaveBeenCalledWith('https://canvas.state.edu');
   });
 
-  it('shows the saved address, the sign-in button and the Change it link', () => {
+  it('shows the saved address and the sign-in button, and no way to type another address', () => {
     const actions = setup({ kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: null });
     expect(screen.getByText('school.instructure.com')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open Canvas to sign in' }));
     expect(actions.openCanvas).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Change it' }));
-    expect(actions.changeAddress).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Change it' })).toBeNull();
     expect(screen.queryByText(/private window/)).toBeNull();
+  });
+
+  it('keeps each host name as one unit that breaks only after its dots', () => {
+    setup({ kind: 'no_access', origin: 'https://canvas.state.edu', offer: null });
+    const hosts = [...document.querySelectorAll('.wr-host')];
+    expect(hosts.map((host) => host.textContent)).toEqual(['canvas.state.edu']);
+    expect(hosts[0]?.querySelectorAll('wbr')).toHaveLength(2);
   });
 
   it('adds the private window hint on Firefox', () => {
@@ -166,7 +158,6 @@ describe('access and sign-in', () => {
       kind: 'cant_load',
       origin: ORIGIN,
       offline: false,
-      savedOrigin: null,
       offer: null,
     });
     expect(screen.queryByText("You're offline.")).toBeNull();
@@ -179,7 +170,6 @@ describe('access and sign-in', () => {
       kind: 'cant_load',
       origin: ORIGIN,
       offline: true,
-      savedOrigin: null,
       offer: null,
     };
     const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
@@ -195,111 +185,34 @@ describe('access and sign-in', () => {
   });
 });
 
-describe('unreachable address', () => {
-  const state: SurfaceState = {
-    kind: 'unreachable',
-    origin: 'https://canvas.stat.edu',
-    savedOrigin: null,
-  };
-
-  it('asks the student to check the address, with the form prefilled', () => {
-    setup(state);
-    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(
-      "Couldn't reach canvas.stat.edu",
-    );
-    expect(screen.getByText(/^Check the address\./)).toBeTruthy();
-    expect((screen.getByLabelText('Canvas address') as HTMLInputElement).value).toBe(
-      'canvas.stat.edu',
-    );
-    expect(screen.queryByRole('button', { name: /^Keep using/ })).toBeNull();
-  });
-
-  it('keeps each host name as one unit that breaks only after its dots', () => {
-    setup({ ...state, savedOrigin: ORIGIN });
-    const hosts = [...document.querySelectorAll('.wr-host')];
-    expect(hosts.map((host) => host.textContent)).toEqual([
-      'canvas.stat.edu',
-      'school.instructure.com',
-    ]);
-    expect(hosts[0]?.closest('h2')).not.toBeNull();
-    expect(hosts[1]?.closest('button')?.textContent).toBe('Keep using school.instructure.com');
-    expect(hosts[1]?.querySelectorAll('wbr')).toHaveLength(2);
-  });
-
-  it('retries the check, or checks a corrected address', () => {
-    const actions = setup(state);
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(actions.retry).toHaveBeenCalledTimes(1);
-    fireEvent.input(screen.getByLabelText('Canvas address'), {
-      target: { value: 'canvas.state.edu' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Allow access' }));
-    expect(actions.allowAccess).toHaveBeenCalledWith('https://canvas.state.edu');
-  });
-
-  it('never says "You\'re offline.", because the usual cause is a wrong address', () => {
-    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
-    setup(state);
-    expect(screen.queryByText(/offline/)).toBeNull();
-  });
-});
-
-describe('changing the address', () => {
-  const state: SurfaceState = { kind: 'not_set_up', offer: null, savedOrigin: ORIGIN };
-
-  it('opens an empty address form with "Keep using" as a cancel', () => {
-    const actions = setup(state);
-    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(
-      'Change your Canvas address',
-    );
-    expect((screen.getByLabelText('Canvas address') as HTMLInputElement).value).toBe('');
-    const keep = screen.getByRole('button', { name: /^Keep using/ });
-    expect(keep.textContent).toBe('Keep using school.instructure.com');
-    fireEvent.click(keep);
-    expect(actions.keepSavedAddress).toHaveBeenCalledTimes(1);
-  });
-
-  it('checks the new address', () => {
-    const actions = setup(state);
-    fireEvent.input(screen.getByLabelText('Canvas address'), {
-      target: { value: 'canvas.state.edu' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Allow access' }));
-    expect(actions.allowAccess).toHaveBeenCalledWith('https://canvas.state.edu');
-  });
-});
-
 describe('first run in the side panel', () => {
-  it('shows only the connect form, because the welcome page opens on install', () => {
+  it('shows only the open-Canvas line, because the welcome page opens on install', () => {
     setup(NOT_SET_UP);
     expect(screen.queryByText('Pin the Tools for Canvas button')).toBeNull();
     expect(document.querySelector('.wr-steps')).toBeNull();
-    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Connect your Canvas');
-  });
-
-  it('keeps the offer above the connect form', () => {
-    setup({ kind: 'not_set_up', offer: { origin: ORIGIN, mode: 'use' }, savedOrigin: null });
-    const offer = screen.getByRole('region', { name: 'Use this Canvas?' });
-    const form = screen.getByLabelText('Canvas address');
-    expect(offer.compareDocumentPosition(form)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(
+      'Open your Canvas to see your list',
+    );
   });
 });
 
 describe('the "Switch to this Canvas?" offer', () => {
   const states: SurfaceState[] = [
     { kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: OTHER_OFFER },
-    { kind: 'no_access', origin: ORIGIN, savedOrigin: null, offer: OTHER_OFFER },
+    { kind: 'no_access', origin: ORIGIN, offer: OTHER_OFFER },
     { kind: 'no_courses', origin: ORIGIN, offer: OTHER_OFFER, allCourses: [] },
-    { kind: 'cant_load', origin: ORIGIN, offline: false, savedOrigin: null, offer: OTHER_OFFER },
+    { kind: 'cant_load', origin: ORIGIN, offline: false, offer: OTHER_OFFER },
   ];
 
   it.each(states.map((state) => [state.kind, state] as const))(
     'shows at the top of %s in the side panel',
     (_, state) => {
+      vi.useFakeTimers();
       const actions = setup(state);
       const banner = screen.getByRole('region', { name: 'Switch to this Canvas?' });
       expect(banner.closest('.wr-state')?.firstElementChild).toBe(banner);
       expect(banner.textContent).toContain('canvas.state.edu');
+      armOffer();
       fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
       expect(actions.acceptOffer).toHaveBeenCalledWith(OTHER_OFFER.origin);
       fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
@@ -352,32 +265,5 @@ describe('in-page surface', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     // The link opens the settings in place.
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
-  });
-});
-
-describe('keeping the saved address', () => {
-  const CANDIDATE = 'https://www.state.edu';
-
-  it.each<SurfaceState>([
-    { kind: 'not_set_up', offer: null, savedOrigin: ORIGIN },
-    { kind: 'checking', origin: CANDIDATE, savedOrigin: ORIGIN },
-    { kind: 'no_access', origin: CANDIDATE, savedOrigin: ORIGIN, offer: null },
-    { kind: 'redirects', origin: CANDIDATE, savedOrigin: ORIGIN },
-    { kind: 'not_canvas', origin: CANDIDATE, savedOrigin: ORIGIN },
-    { kind: 'unreachable', origin: CANDIDATE, savedOrigin: ORIGIN },
-  ])('offers to keep the saved address in $kind', (state) => {
-    const actions = setup(state);
-    const button = screen.getByRole('button', { name: /^Keep using/ });
-    expect(button.textContent).toBe('Keep using school.instructure.com');
-    fireEvent.click(button);
-    expect(actions.keepSavedAddress).toHaveBeenCalledTimes(1);
-  });
-
-  it('offers nothing when no other address is saved', () => {
-    setup({ kind: 'not_canvas', origin: CANDIDATE, savedOrigin: null });
-    expect(screen.queryByRole('button', { name: /^Keep using/ })).toBeNull();
-    cleanup();
-    setup({ kind: 'redirects', origin: ORIGIN, savedOrigin: ORIGIN });
-    expect(screen.queryByRole('button', { name: /^Keep using/ })).toBeNull();
   });
 });

@@ -13,8 +13,9 @@ const PIN_TEXT = {
 } as const satisfies Record<WelcomeProps['browser'], MessageKey>;
 
 /**
- * The steps are pin the toolbar button, find the list on the Canvas dashboard or open it in the
- * side panel with the button or the keyboard shortcut, and connect Canvas.
+ * The steps are open Canvas, which sets the address by itself and shows the list on the Canvas
+ * dashboard, and pin the toolbar button to open the side panel with the button or the keyboard
+ * shortcut.
  */
 export function WelcomeView({ browser, shortcut, state, actions }: WelcomeProps) {
   return (
@@ -29,26 +30,7 @@ export function WelcomeView({ browser, shortcut, state, actions }: WelcomeProps)
         </header>
         <ol class="wr-steps">
           <li class="wr-step">
-            <Heading level={2} class="wr-step-title">
-              {t('welcomePinTitle')}
-            </Heading>
-            <p class="wr-step-body">{t(PIN_TEXT[browser])}</p>
-          </li>
-          <li class="wr-step">
-            <Heading level={2} class="wr-step-title">
-              {t('welcomeOpenTitle')}
-            </Heading>
-            <p class="wr-step-body">
-              {browser === 'firefox' ? t('welcomeOpenBodyFirefox') : t('welcomeOpenBody')}
-            </p>
-            <p class="wr-step-body">
-              {shortcut
-                ? withNode(t('welcomeShortcut', MARKER), MARKER, <kbd>{shortcut}</kbd>)
-                : t('welcomeNoShortcut')}
-            </p>
-          </li>
-          <li class="wr-step">
-            <h2 class="wr-step-title">{t('welcomeConnectTitle')}</h2>
+            <h2 class="wr-step-title">{t('welcomeOpenCanvasTitle')}</h2>
             {state.kind === 'ready' ? (
               <div class="wr-state">
                 <p class="wr-state-body">
@@ -61,8 +43,34 @@ export function WelcomeView({ browser, shortcut, state, actions }: WelcomeProps)
                 <p class="wr-state-body">{t('welcomeReadyNext')}</p>
               </div>
             ) : (
-              <StateBody state={state} actions={actions} level={3} context="welcome" />
+              <StateBody
+                state={state}
+                actions={actions}
+                level={3}
+                context="welcome"
+                showOffer={state.kind === 'not_set_up'}
+              />
             )}
+            <p class="wr-step-body">{t('welcomeListBody')}</p>
+          </li>
+          <li class="wr-step">
+            <Heading level={2} class="wr-step-title">
+              {t('welcomePinTitle')}
+            </Heading>
+            <p class="wr-step-body">{t(PIN_TEXT[browser])}</p>
+          </li>
+          <li class="wr-step">
+            <Heading level={2} class="wr-step-title">
+              {t('welcomePanelTitle')}
+            </Heading>
+            <p class="wr-step-body">
+              {browser === 'firefox' ? t('welcomePanelBodyFirefox') : t('welcomePanelBody')}
+            </p>
+            <p class="wr-step-body">
+              {shortcut
+                ? withNode(t('welcomeShortcut', MARKER), MARKER, <kbd>{shortcut}</kbd>)
+                : t('welcomeNoShortcut')}
+            </p>
           </li>
         </ol>
       </main>

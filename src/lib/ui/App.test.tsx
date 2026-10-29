@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { render as renderNow } from 'preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -10,6 +10,7 @@ import {
   type SurfaceState,
 } from '../model/types';
 import { App } from './App';
+import { OFFER_ARM_MS } from './Notices';
 import type { AppProps, SurfaceKind } from './contract';
 import { spyActions, type SpyActions } from './testing/actions';
 import {
@@ -70,6 +71,7 @@ function setSurfaceWidth(width: number) {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth');
 });
@@ -1240,10 +1242,12 @@ describe('notices', () => {
   });
 
   it('offers to switch to another Canvas', () => {
-    const { actions } = setup(
-      readyState({ offer: { origin: 'https://canvas.state.edu', mode: 'switch' } }),
-    );
+    vi.useFakeTimers();
+    const { actions } = setup(readyState({ offer: { origin: 'https://canvas.state.edu' } }));
     expect(screen.getByText('Switch to this Canvas?')).toBeTruthy();
+    act(() => {
+      vi.advanceTimersByTime(OFFER_ARM_MS);
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
     expect(actions.acceptOffer).toHaveBeenCalledWith('https://canvas.state.edu');
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));

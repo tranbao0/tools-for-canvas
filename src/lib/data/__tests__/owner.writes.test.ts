@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { moveToTodayTodoDate, todoDateFor } from '../../model/tasks';
-import { canvasOriginItem, changeMarkerItem } from '../../platform/storage';
+import { canvasOriginItem, changeMarkerItem, offerItem } from '../../platform/storage';
 import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
 import { sessionCacheItem, type SessionCache } from '../cache';
 import { MAX_DELETE_DELAY_MS } from '../owner';
@@ -1378,7 +1378,7 @@ describe('writes across a sign-out, another user or another Canvas', () => {
   });
 });
 
-describe('a Canvas on a custom domain that the student leaves', () => {
+describe('a Canvas that the student leaves by accepting another one', () => {
   const CUSTOM = 'https://canvas.school.edu';
   const OTHER = 'https://other.instructure.com';
 
@@ -1389,14 +1389,15 @@ describe('a Canvas on a custom domain that the student leaves', () => {
     const other = createFakeCanvas(buildScenario(new Date(Date.now()).toISOString()));
     h.createApi.mockImplementation((origin) => (origin === CUSTOM ? h.canvas : other));
     const events: string[] = [];
-    h.removeAccess.mockImplementation(async (origin) => {
-      events.push(`removeAccess ${origin}`);
-    });
-    return { h, events };
+    const switchTo = async (origin: string): Promise<void> => {
+      await offerItem.setValue({ origin });
+      await h.owner.acceptOffer(origin);
+    };
+    return { h, events, switchTo };
   }
 
-  it('sends the waiting task delete before it removes the access to the old address', async () => {
-    const { h, events } = await customSchool();
+  it('sends the waiting task delete to the old address, once the check of the student is done', async () => {
+    const { h, events, switchTo } = await customSchool();
     const deleteNote = h.canvas.deleteNote.bind(h.canvas);
     h.canvas.deleteNote = async (id: string) => {
       events.push(`deleteNote ${id}`);
@@ -1406,33 +1407,27 @@ describe('a Canvas on a custom domain that the student leaves', () => {
     // The check of the student, before the DELETE goes, is slow.
     const releaseSelf = h.canvas.hold('getSelf');
 
-    await h.owner.setup(OTHER, false);
+    await switchTo(OTHER);
     await vi.advanceTimersByTimeAsync(50);
     expect(events).toEqual([]);
     releaseSelf();
     await h.owner.settled();
 
-    expect(events).toEqual([`deleteNote ${N.libraryBooksToday}`, `removeAccess ${CUSTOM}`]);
+    expect(events).toEqual([`deleteNote ${N.libraryBooksToday}`]);
   });
 
-  it('keeps the access until the cleanup of a create that crossed the address change is out', async () => {
-    const { h, events } = await customSchool();
-    let revoked = false;
-    h.removeAccess.mockImplementation(async (origin) => {
-      events.push(`removeAccess ${origin}`);
-      revoked = revoked || origin === CUSTOM;
-    });
+  it('cleans up a create that crossed the address change, on the Canvas that took it', async () => {
+    const { h, events, switchTo } = await customSchool();
     const deleteNote = h.canvas.deleteNote.bind(h.canvas);
     h.canvas.deleteNote = async (id: string) => {
-      events.push(`deleteNote revoked=${revoked}`);
-      if (revoked) throw canvasError('network');
+      events.push('deleteNote');
       return deleteNote(id);
     };
     const release = h.canvas.hold('createNote');
     const created = h.owner.act({ kind: 'createTask', input: secret });
     await vi.advanceTimersByTimeAsync(0);
     signInOtherUser(h);
-    await h.owner.setup(OTHER, false);
+    await switchTo(OTHER);
     await vi.advanceTimersByTimeAsync(50);
     expect(events).toEqual([]);
 
@@ -1440,57 +1435,6 @@ describe('a Canvas on a custom domain that the student leaves', () => {
     await created;
     await h.owner.settled();
 
-    expect(events).toEqual(['deleteNote revoked=false', `removeAccess ${CUSTOM}`]);
-  });
-
-  it('keeps the access when the student goes back to the address while the old deletes wait', async () => {
-    const { h, events } = await customSchool();
-    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
-    const releaseSelf = h.canvas.hold('getSelf');
-    await h.owner.setup(OTHER, false);
-    await vi.advanceTimersByTimeAsync(50);
-    await h.owner.changeAddress();
-    await h.owner.setup(CUSTOM, false);
-    await vi.advanceTimersByTimeAsync(50);
-
-    releaseSelf();
-    await h.owner.settled();
-
-    expect(await canvasOriginItem.getValue()).toBe(CUSTOM);
-    expect(events).not.toContain(`removeAccess ${CUSTOM}`);
-  });
-
-  it('waits for the newest delete of an address, when an older one for it ends first', async () => {
-    const { h, events } = await customSchool();
-    const gates: (() => void)[] = [];
-    const getSelf = h.canvas.getSelf.bind(h.canvas);
-    h.canvas.getSelf = async () => {
-      await new Promise<void>((resolve) => gates.push(resolve));
-      return getSelf();
-    };
-    const leave = async (noteId: string) => {
-      await h.owner.act({ kind: 'deleteTask', noteId });
-      await h.owner.changeAddress();
-      await h.owner.setup(OTHER, false);
-      await vi.advanceTimersByTimeAsync(50);
-    };
-    const back = async () => {
-      await h.owner.changeAddress();
-      await h.owner.setup(CUSTOM, false);
-      await vi.advanceTimersByTimeAsync(3000);
-    };
-    await leave(N.libraryBooksToday);
-    await back();
-    await leave(N.bioStudyGroup);
-    expect(gates).toHaveLength(2);
-
-    gates[0]?.();
-    await vi.advanceTimersByTimeAsync(100);
-    expect(events).not.toContain(`removeAccess ${CUSTOM}`);
-    gates[1]?.();
-    await vi.advanceTimersByTimeAsync(100);
-    await h.owner.settled();
-
-    expect(events).toContain(`removeAccess ${CUSTOM}`);
+    expect(events).toEqual(['deleteNote']);
   });
 });

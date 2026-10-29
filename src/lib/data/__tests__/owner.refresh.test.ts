@@ -7,7 +7,6 @@ import { ACTIVE_RANGE_MS } from '../owner';
 import { REFRESH_LIMIT_MS, TIMER_FULL_AFTER_MS } from '../policy';
 import { canvasError, type FakeMethod } from '../testing/fakeCanvas';
 import {
-  FROM_PANEL,
   PANEL,
   advance,
   createHarness,
@@ -91,7 +90,7 @@ describe('light and full rounds', () => {
     const h = await loaded();
     await advance(h, 5 * 60_000);
 
-    await h.owner.refresh('timer', FROM_PANEL);
+    await h.owner.refresh('timer');
     await h.owner.settled();
 
     expect([...methods(h)].sort()).toEqual([...LIGHT, ...FULL_EXTRA].sort());
@@ -104,13 +103,13 @@ describe('light and full rounds', () => {
     const h = await loaded();
     await advance(h, 2 * 60_000);
 
-    await h.owner.refresh('visible', FROM_PANEL);
+    await h.owner.refresh('visible');
     await h.owner.settled();
     expect([...methods(h)]).toEqual(LIGHT);
 
     h.canvas.resetCalls();
     await advance(h, 4 * 60_000);
-    await h.owner.refresh('visible', FROM_PANEL);
+    await h.owner.refresh('visible');
     await h.owner.settled();
     expect([...methods(h)].sort()).toEqual([...LIGHT, ...FULL_EXTRA].sort());
   });
@@ -152,7 +151,7 @@ describe('light and full rounds', () => {
     await h.owner.getState({ ...PANEL, weekOffset: 1 });
     await h.owner.settled();
     await advance(h, 5 * 60_000);
-    await h.owner.refresh('timer', FROM_PANEL);
+    await h.owner.refresh('timer');
     await h.owner.settled();
     h.canvas.resetCalls();
 
@@ -222,7 +221,7 @@ describe('the 60-second limit', () => {
     h.canvas.resetCalls();
 
     await advance(h, 10_000);
-    const result = await h.owner.refresh('timer', FROM_PANEL);
+    const result = await h.owner.refresh('timer');
     await h.owner.settled();
     expect(h.canvas.calls).toEqual([]);
     // The surfaces learn when to ask again, because a stopped worker loses its own timer.
@@ -238,13 +237,13 @@ describe('the 60-second limit', () => {
     await h.owner.trigger('focus');
     await h.owner.settled();
     await advance(h, 10_000);
-    const { retryAt } = await h.owner.refresh('timer', FROM_PANEL);
+    const { retryAt } = await h.owner.refresh('timer');
     h.canvas.resetCalls();
 
     // A surface timer asks first; the background timer then finds the round done.
     await advance(h, (retryAt ?? 0) - Date.now() - 1);
     vi.setSystemTime(retryAt ?? 0);
-    await h.owner.refresh('timer', FROM_PANEL);
+    await h.owner.refresh('timer');
     await advance(h, 10_000);
 
     expect(h.canvas.callsOf('listUndatedAssignments')).toHaveLength(5);
@@ -254,18 +253,18 @@ describe('the 60-second limit', () => {
   it('shares one full round between the timers of several surfaces', async () => {
     const h = await loaded();
     await advance(h, 5 * 60_000);
-    await h.owner.refresh('timer', FROM_PANEL);
+    await h.owner.refresh('timer');
     await h.owner.settled();
     h.canvas.resetCalls();
 
     // Another surface's timer ticks two minutes later.
     await advance(h, 2 * 60_000);
-    expect(await h.owner.refresh('timer', FROM_PANEL)).toEqual({ retryAt: null });
+    expect(await h.owner.refresh('timer')).toEqual({ retryAt: null });
     await h.owner.settled();
     expect(h.canvas.calls).toEqual([]);
 
     await advance(h, TIMER_FULL_AFTER_MS - 2 * 60_000);
-    await h.owner.refresh('timer', FROM_PANEL);
+    await h.owner.refresh('timer');
     await h.owner.settled();
     expect(h.canvas.callsOf('listUndatedAssignments')).toHaveLength(5);
   });
@@ -274,7 +273,7 @@ describe('the 60-second limit', () => {
     const h = await loaded();
     await advance(h, 20_000);
 
-    await h.owner.refresh('timer', FROM_PANEL);
+    await h.owner.refresh('timer');
     await advance(h, 120_000);
 
     expect(h.canvas.calls).toEqual([]);
@@ -284,7 +283,7 @@ describe('the 60-second limit', () => {
     const h = await loaded();
     await advance(h, 5000);
 
-    await h.owner.refresh('retry', FROM_PANEL);
+    await h.owner.refresh('retry');
     await h.owner.settled();
 
     expect([...methods(h)].sort()).toEqual([...LIGHT, ...FULL_EXTRA].sort());
@@ -334,7 +333,7 @@ describe('midnight, settings and address changes', () => {
     expect(h.canvas.scenario.now).toBe('2026-10-27T18:00:00.000Z');
 
     vi.setSystemTime(SATURDAY);
-    await h.owner.refresh('midnight', FROM_PANEL);
+    await h.owner.refresh('midnight');
     const state = expectReady(await h.owner.getState(PANEL));
     await h.owner.settled();
 
@@ -360,7 +359,7 @@ describe('midnight, settings and address changes', () => {
     const h = await loaded();
 
     vi.setSystemTime(SATURDAY);
-    await h.owner.refresh('midnight', FROM_PANEL);
+    await h.owner.refresh('midnight');
     await h.owner.settled();
     const state = expectReady(await h.owner.getState(PANEL));
     await h.owner.settled();
@@ -375,7 +374,7 @@ describe('midnight, settings and address changes', () => {
     const h = await loaded();
 
     vi.setSystemTime(Date.parse('2026-10-28T04:00:01Z'));
-    await h.owner.refresh('midnight', FROM_PANEL);
+    await h.owner.refresh('midnight');
     await h.owner.settled();
 
     expect(methods(h)).toEqual(new Set(LIGHT));
@@ -388,7 +387,7 @@ describe('midnight, settings and address changes', () => {
     const h = await loaded();
     await advance(h, 5000);
 
-    await h.owner.refresh('midnight', FROM_PANEL);
+    await h.owner.refresh('midnight');
     await h.owner.settled();
 
     expect(h.canvas.calls).toEqual([]);
@@ -420,7 +419,7 @@ describe('midnight, settings and address changes', () => {
         ...(await settingsItem.getValue()),
         showRings: index % 2 === 1,
       });
-      await h.owner.refresh('settings', FROM_PANEL);
+      await h.owner.refresh('settings');
       await advance(h, 5000);
     }
 
@@ -434,7 +433,7 @@ describe('midnight, settings and address changes', () => {
     h.canvas.resetCalls();
     await settingsItem.setValue({ ...(await settingsItem.getValue()), hiddenCourseIds: [] });
 
-    await h.owner.refresh('settings', FROM_PANEL);
+    await h.owner.refresh('settings');
     await h.owner.settled();
 
     expect(h.canvas.callsOf('listUndatedAssignments')).toEqual([[IDS.courses.club]]);
@@ -449,7 +448,7 @@ describe('midnight, settings and address changes', () => {
     h.canvas.resetCalls();
     await settingsItem.setValue({ ...(await settingsItem.getValue()), hiddenCourseIds: [] });
 
-    await h.owner.refresh('settings', FROM_PANEL);
+    await h.owner.refresh('settings');
     await h.owner.settled();
     expect(h.canvas.calls).toEqual([]);
 

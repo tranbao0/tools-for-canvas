@@ -282,7 +282,7 @@
     "message": "$1 and $2"
   },
   "offerUse": {
-    "message": "Use this Canvas?"
+    "message": "Use $1 as your Canvas?"
   },
   "offerSwitch": {
     "message": "Switch to this Canvas?"
@@ -351,31 +351,13 @@
     "message": "Loading your list"
   },
   "setupTitle": {
-    "message": "Connect your Canvas"
+    "message": "Open your Canvas to see your list"
   },
   "setupIntro": {
-    "message": "Open Canvas in a tab and click the Tools for Canvas button there. Or type the address you use to sign in to Canvas."
-  },
-  "changeTitle": {
-    "message": "Change your Canvas address"
-  },
-  "addressLabel": {
-    "message": "Canvas address"
-  },
-  "addressPlaceholder": {
-    "message": "school.instructure.com"
-  },
-  "addressInvalid": {
-    "message": "Enter a web address, such as school.instructure.com."
+    "message": "Open your school's Canvas in a browser tab. Tools for Canvas finds it by itself."
   },
   "allowAccess": {
     "message": "Allow access"
-  },
-  "allowAccessHint": {
-    "message": "Your browser then asks you to let Tools for Canvas read this site. It talks only to your Canvas."
-  },
-  "checking": {
-    "message": "Checking $1"
   },
   "noAccessTitle": {
     "message": "Tools for Canvas needs access to your Canvas"
@@ -383,38 +365,11 @@
   "noAccessBody": {
     "message": "Allow access to $1 to show your list."
   },
-  "redirectsTitle": {
-    "message": "This address redirects"
-  },
-  "redirectsBody": {
-    "message": "Open Canvas in a tab and sign in. Then click the Tools for Canvas button in the toolbar while that tab is open."
-  },
-  "notCanvasTitle": {
-    "message": "This address is not a Canvas site"
-  },
-  "notCanvasBody": {
-    "message": "Check the address and try again."
-  },
-  "unreachableTitle": {
-    "message": "Couldn't reach $1"
-  },
-  "unreachableBody": {
-    "message": "Check the address."
-  },
   "signedOutTitle": {
     "message": "You're signed out of Canvas"
   },
   "signedOutButton": {
     "message": "Open Canvas to sign in"
-  },
-  "wrongAddress": {
-    "message": "Wrong address?"
-  },
-  "changeIt": {
-    "message": "Change it"
-  },
-  "keepUsing": {
-    "message": "Keep using $1"
   },
   "firefoxPrivateHint": {
     "message": "In a private window or a container tab, Firefox keeps a separate sign-in. Sign in to Canvas in a normal window."
@@ -536,14 +491,20 @@
   "addressNotSet": {
     "message": "Not set"
   },
-  "changeAddress": {
-    "message": "Change"
+  "addressHelp": {
+    "message": "The first Canvas page you open sets it. To use another Canvas, open it and choose Switch in the side panel."
   },
   "welcomeTitle": {
     "message": "Welcome to Tools for Canvas"
   },
   "welcomeIntro": {
     "message": "Fixes for Canvas LMS students, starting with a weekly to-do list."
+  },
+  "welcomeOpenCanvasTitle": {
+    "message": "Open your Canvas"
+  },
+  "welcomeListBody": {
+    "message": "Your list shows on the Canvas dashboard and on course home pages."
   },
   "welcomePinTitle": {
     "message": "Pin the Tools for Canvas button"
@@ -557,23 +518,20 @@
   "welcomePinFirefox": {
     "message": "Click the Extensions button (the puzzle piece) in the toolbar. Then click the gear next to Tools for Canvas and choose Pin to Toolbar."
   },
-  "welcomeOpenTitle": {
-    "message": "Find your list"
+  "welcomePanelTitle": {
+    "message": "Use the side panel"
   },
-  "welcomeOpenBody": {
-    "message": "Your list shows on the Canvas dashboard and on course home pages. On any page, click the Tools for Canvas button to open or close it in the side panel."
+  "welcomePanelBody": {
+    "message": "On any page, click the Tools for Canvas button to open or close your list in the side panel."
   },
-  "welcomeOpenBodyFirefox": {
-    "message": "Your list shows on the Canvas dashboard and on course home pages. On any page, click the Tools for Canvas button to open or close it in the sidebar."
+  "welcomePanelBodyFirefox": {
+    "message": "On any page, click the Tools for Canvas button to open or close your list in the sidebar."
   },
   "welcomeShortcut": {
     "message": "You can also press $1."
   },
   "welcomeNoShortcut": {
     "message": "You can also set a keyboard shortcut on the extension shortcuts page of your browser."
-  },
-  "welcomeConnectTitle": {
-    "message": "Connect your Canvas"
   },
   "welcomeReady": {
     "message": "All set. Tools for Canvas uses $1."

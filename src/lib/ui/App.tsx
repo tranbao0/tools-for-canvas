@@ -356,6 +356,7 @@ function ReadyView(props: {
         {surface === 'panel' && state.offer && (
           <OfferBanner
             offer={state.offer}
+            mode="switch"
             onAccept={(origin) => actions.acceptOffer(origin)}
             onDismiss={() => actions.dismissOffer()}
           />

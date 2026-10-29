@@ -14,16 +14,8 @@
       "reason": "MathML namespace URI. Preact uses it to create MathML elements."
     },
     {
-      "url": "https://*.instructure.com/*",
-      "reason": "Match pattern of the required host permission and the static content script (decision 5)."
-    },
-    {
       "url": "https://*/*",
-      "reason": "Match pattern of the optional host permission (decision 5)."
-    },
-    {
-      "url": "https://",
-      "reason": "Scheme prefix that turns a typed Canvas address into an origin (decision 5)."
+      "reason": "Match pattern of the host permission and of the detector content script (decision 5)."
     },
     {
       "url": "https://github.com/tranbao0/Simple-CanvasTasks",

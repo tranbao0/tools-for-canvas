@@ -3,7 +3,6 @@ import type { Browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { handleActionClick } from './actionClick';
 import {
-  installFakeScripting,
   installFakeSidePanel,
   installFakeSidebarAction,
   removeFakeSidebarAction,
@@ -19,9 +18,6 @@ const registry = { isOpen: (windowId: number): boolean => openWindows.has(window
 beforeEach(() => {
   fakeBrowser.reset();
   removeFakeSidebarAction();
-  installFakeScripting().executeScript.mockResolvedValue([
-    { frameId: 0, documentId: 'doc', result: false },
-  ]);
   openWindows = new Set();
 });
 

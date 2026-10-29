@@ -800,7 +800,6 @@ describe('actions', () => {
     runtime.actions.updateTask('8', input);
     runtime.actions.moveTaskToToday('8');
     runtime.actions.createTask(input);
-    runtime.actions.keepSavedAddress();
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([
@@ -808,7 +807,6 @@ describe('actions', () => {
       { kind: 'updateTask', noteId: '8', input },
       { kind: 'moveTaskToToday', noteId: '8' },
       { kind: 'createTask', input },
-      { kind: 'keepSavedAddress' },
     ]);
   });
 
@@ -823,50 +821,39 @@ describe('actions', () => {
     expect(fake.host.openUrl).toHaveBeenCalledWith(item?.url, ORIGIN);
   });
 
-  it('asks the host for access synchronously, for the form and for an offer', async () => {
+  it('asks the host for access synchronously, for a browser that withholds it', async () => {
     const { fake, runtime } = await started();
 
-    runtime.actions.allowAccess('https://canvas.school.edu');
-    expect(fake.host.allowAccess).toHaveBeenLastCalledWith('https://canvas.school.edu', false);
-    runtime.actions.acceptOffer('https://canvas.school.edu');
-    expect(fake.host.allowAccess).toHaveBeenLastCalledWith('https://canvas.school.edu', true);
+    runtime.actions.allowAccess(ORIGIN);
+
+    expect(fake.host.allowAccess).toHaveBeenLastCalledWith(ORIGIN);
   });
 
-  it('asks for a refresh on Retry, changes the address and opens Canvas', async () => {
+  it('accepts an offer by telling the background, then asks for the state again', async () => {
+    const { fake, runtime } = await started();
+    fake.sent.length = 0;
+
+    runtime.actions.acceptOffer('https://canvas.school.edu');
+    await settle();
+
+    expect(types(fake.sent)).toEqual(['weekrow:accept-offer', 'weekrow:get-state']);
+    expect(fake.sent[0]).toEqual({
+      type: 'weekrow:accept-offer',
+      origin: 'https://canvas.school.edu',
+    });
+  });
+
+  it('asks for a refresh on Retry and opens Canvas', async () => {
     const { fake, runtime } = await started();
 
     runtime.actions.retry();
-    runtime.actions.changeAddress();
     runtime.actions.openCanvas();
     await settle();
 
-    expect(types(fake.sent)).toEqual(
-      expect.arrayContaining(['refresh:retry', 'weekrow:change-address']),
-    );
-    expect(fake.sent).toContainEqual({
-      type: 'weekrow:refresh',
-      reason: 'retry',
-      surface: 'panel',
-    });
+    expect(types(fake.sent)).toEqual(expect.arrayContaining(['refresh:retry']));
+    expect(fake.sent).toContainEqual({ type: 'weekrow:refresh', reason: 'retry' });
     expect(fake.host.openCanvas).toHaveBeenCalledWith(ORIGIN);
-    // The panel shows the address form itself.
     expect(types(fake.sent)).not.toContain('weekrow:open-page');
-  });
-
-  it('opens the welcome page with the address form when the in-page list changes the address', async () => {
-    const fake = fakeHost();
-    const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
-    runtime.start();
-    await settle();
-    fake.sent.length = 0;
-
-    runtime.actions.changeAddress();
-    await settle();
-
-    expect(fake.sent).toEqual([
-      { type: 'weekrow:change-address' },
-      { type: 'weekrow:open-page', page: 'welcome' },
-    ]);
   });
 });
 
@@ -970,7 +957,6 @@ describe('settings in place', () => {
     expect(fake.sent).toContainEqual({
       type: 'weekrow:refresh',
       reason: 'settings',
-      surface: 'inpage',
     });
   });
 
@@ -1023,12 +1009,12 @@ describe('settings in place', () => {
     await settle();
     expect(runtime.settings()?.courses).toEqual([{ id: '1', name: 'Old' }]);
 
-    // The address form of the same Canvas keeps the list.
-    state = { kind: 'not_set_up', offer: null, savedOrigin: ORIGIN };
+    // A state without an address of its own keeps the list.
+    state = { kind: 'loading' };
     fake.changed();
     await settle();
     expect(runtime.settings()?.courses).toEqual([{ id: '1', name: 'Old' }]);
-    state = { kind: 'checking', origin: ORIGIN, savedOrigin: ORIGIN };
+    state = { kind: 'no_access', origin: ORIGIN, offer: null };
     fake.changed();
     await settle();
     expect(runtime.settings()?.courses).toEqual([{ id: '1', name: 'Old' }]);
@@ -1090,7 +1076,7 @@ describe('timers', () => {
     await vi.advanceTimersByTimeAsync(40_000 - 1);
     expect(fake.sent).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
-    expect(fake.sent).toEqual([{ type: 'weekrow:refresh', reason: 'timer', surface: 'inpage' }]);
+    expect(fake.sent).toEqual([{ type: 'weekrow:refresh', reason: 'timer' }]);
   });
 
   it('drops the retry when the surface is hidden', async () => {

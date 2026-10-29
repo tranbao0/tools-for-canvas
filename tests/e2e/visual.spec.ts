@@ -219,3 +219,34 @@ for (const pageName of Object.keys(PAGE_TITLES)) {
     }
   });
 }
+
+test('page welcome.html with the offer of a Canvas on its own domain', async ({
+  context,
+  page,
+  serviceWorker,
+  extensionUrl,
+}) => {
+  const errors = watchErrors(page);
+  const canvas = await serveFakeCanvas(context, [], { origin: 'https://canvas.school.edu' });
+  await page.setViewportSize({ width: 900, height: 1000 });
+  await page.goto(extensionUrl('welcome.html'));
+  await settle(page);
+  await serviceWorker.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        chrome: { storage: { session: { set(items: object): Promise<void> } } };
+      }
+    ).chrome;
+    await api.storage.session.set({ offer: { origin: 'https://canvas.school.edu' } });
+  });
+  try {
+    await expectRendered(
+      canvas,
+      page.locator('#app'),
+      page.getByRole('button', { name: 'Use it', exact: true }),
+      errors,
+    );
+  } finally {
+    await page.screenshot({ path: `${OUT}/welcome-offer.png`, fullPage: true });
+  }
+});

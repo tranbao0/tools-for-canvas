@@ -3,6 +3,7 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { DEFAULT_SETTINGS } from '../model/types';
 import {
   DEFAULT_SEEN_NOTES,
+  normalizeSeenNotes,
   canvasOriginItem,
   changeMarkerItem,
   defineItem,
@@ -41,10 +42,10 @@ describe('storage items', () => {
   });
 
   it('keeps the offer in storage.session only', async () => {
-    await offerItem.setValue({ origin: 'https://school.instructure.com', mode: 'use' });
+    await offerItem.setValue({ origin: 'https://school.instructure.com' });
 
     expect(await fakeBrowser.storage.session.get('offer')).toEqual({
-      offer: { origin: 'https://school.instructure.com', mode: 'use' },
+      offer: { origin: 'https://school.instructure.com' },
     });
     expect(await fakeBrowser.storage.local.get(null)).toEqual({});
   });
@@ -167,12 +168,47 @@ describe('defineItem', () => {
     const stop = watchItems([changeMarkerItem, offerItem], listener);
 
     await changeMarkerItem.setValue(3);
-    await offerItem.setValue({ origin: 'https://school.instructure.com', mode: 'use' });
+    await offerItem.setValue({ origin: 'https://school.instructure.com' });
     await seenNotesItem.setValue({ firstDone: true, firstSkip: true });
 
     expect(listener).toHaveBeenCalledTimes(2);
     stop();
     await changeMarkerItem.setValue(4);
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('normalizeSeenNotes', () => {
+  it.each([
+    [undefined, { firstDone: false, firstSkip: false }],
+    [null, { firstDone: false, firstSkip: false }],
+    ['seen', { firstDone: false, firstSkip: false }],
+    [{ firstDone: true }, { firstDone: true, firstSkip: false }],
+    [
+      { firstDone: 'yes', firstSkip: 1 },
+      { firstDone: false, firstSkip: false },
+    ],
+    [
+      { firstDone: true, firstSkip: true, extra: 1 },
+      { firstDone: true, firstSkip: true },
+    ],
+  ])('reads %j as %j', (stored, expected) => {
+    expect(normalizeSeenNotes(stored)).toEqual(expected);
+  });
+
+  it('cleans what the notes item reads from storage', async () => {
+    await fakeBrowser.storage.local.set({ seenNotes: { firstDone: 'x', firstSkip: true } });
+
+    expect(await seenNotesItem.getValue()).toEqual({ firstDone: false, firstSkip: true });
+  });
+});
+
+describe('the settings item', () => {
+  it('cleans what it reads from storage, so a bad value never reaches a surface', async () => {
+    await fakeBrowser.storage.local.set({
+      settings: { weekStart: 'auto', hiddenCourseIds: 5, showRings: true, showOnCanvasPages: true },
+    });
+
+    expect(await settingsItem.getValue()).toEqual(DEFAULT_SETTINGS);
   });
 });

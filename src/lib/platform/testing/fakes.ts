@@ -34,7 +34,7 @@ export function fakeEvent<Args extends unknown[]>(): FakeEvent<Args> {
   };
 }
 
-/** Whether a URL matches a match pattern such as `https://*.instructure.com/*`. */
+// Whether a URL matches a match pattern such as the all-https pattern or `https://*.example.edu/*`.
 export function matchesPattern(pattern: string, url: string): boolean {
   const patternMatch = /^(https?):\/\/([^/]+)\/(.*)$/.exec(pattern);
   if (patternMatch === null) return false;
@@ -46,9 +46,12 @@ export function matchesPattern(pattern: string, url: string): boolean {
     return false;
   }
   if (target.protocol !== `${scheme}:`) return false;
-  const hostOk = host.startsWith('*.')
-    ? target.hostname === host.slice(2) || target.hostname.endsWith(host.slice(1))
-    : target.hostname === host;
+  const hostOk =
+    host === '*'
+      ? true
+      : host.startsWith('*.')
+        ? target.hostname === host.slice(2) || target.hostname.endsWith(host.slice(1))
+        : target.hostname === host;
   const pathOk = path === '*' || target.pathname.slice(1) === path;
   return hostOk && pathOk;
 }
@@ -103,54 +106,15 @@ export function installFakePermissions(initial: string[] = []): FakePermissions 
   };
 }
 
-type RegisteredScript = Browser.scripting.RegisteredContentScript;
-
 export interface FakeScripting {
-  registered: Map<string, RegisteredScript>;
-  getRegisteredContentScripts: ReturnType<typeof vi.fn>;
-  registerContentScripts: ReturnType<typeof vi.fn>;
-  unregisterContentScripts: ReturnType<typeof vi.fn>;
   executeScript: ReturnType<typeof vi.fn>;
 }
 
-/**
- * Replaces `browser.scripting` with an in-memory fake that, like Chrome, rejects a duplicate
- * script id and the removal of an unknown id.
- */
+/** Replaces `browser.scripting.executeScript` with a spy that resolves to no results. */
 export function installFakeScripting(): FakeScripting {
-  const registered = new Map<string, RegisteredScript>();
-  const getRegisteredContentScripts = vi.fn(async (filter?: { ids?: string[] }) =>
-    [...registered.values()]
-      .filter((script) => filter?.ids === undefined || filter.ids.includes(script.id))
-      .map((script) => structuredClone(script)),
-  );
-  const registerContentScripts = vi.fn(async (scripts: RegisteredScript[]) => {
-    for (const script of scripts) {
-      if (registered.has(script.id)) throw new Error(`Duplicate script ID '${script.id}'`);
-    }
-    for (const script of scripts) registered.set(script.id, structuredClone(script));
-  });
-  const unregisterContentScripts = vi.fn(async (filter?: { ids?: string[] }) => {
-    const ids = filter?.ids ?? [...registered.keys()];
-    for (const id of ids) {
-      if (!registered.has(id)) throw new Error(`Nonexistent script ID '${id}'`);
-    }
-    for (const id of ids) registered.delete(id);
-  });
   const executeScript = vi.fn(async () => []);
-  Object.assign(fakeBrowser.scripting, {
-    getRegisteredContentScripts,
-    registerContentScripts,
-    unregisterContentScripts,
-    executeScript,
-  });
-  return {
-    registered,
-    getRegisteredContentScripts,
-    registerContentScripts,
-    unregisterContentScripts,
-    executeScript,
-  };
+  Object.assign(fakeBrowser.scripting, { executeScript });
+  return { executeScript };
 }
 
 export interface FakePort {

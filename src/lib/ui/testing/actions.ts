@@ -23,8 +23,6 @@ export function spyActions(): SpyActions {
     allowAccess: vi.fn(),
     acceptOffer: vi.fn(),
     dismissOffer: vi.fn(),
-    changeAddress: vi.fn(),
-    keepSavedAddress: vi.fn(),
     openCanvas: vi.fn(),
     retry: vi.fn(),
     saveSettings: vi.fn(),

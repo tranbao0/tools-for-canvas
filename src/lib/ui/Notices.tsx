@@ -1,31 +1,69 @@
 /** Lines and banners around the list: offer, notice lines, one-time notes and the Undo dock. */
 import type { ComponentChildren } from 'preact';
+import { useEffect, useState } from 'preact/hooks';
 import { t, tp, type MessageKey, type PluralKey } from '../i18n';
 import type { ItemView, Offer, UndoInfo, WeekView } from '../model/types';
 import { formatTimeOrDateTime, hostOf } from './format';
 import { CloseIcon } from './icons';
 import { browserIsOffline } from './online';
-import { HostText } from './parts';
+import { HostText, MARKER, withNode } from './parts';
 import { ringName } from './Rings';
 
-export function OfferBanner(props: {
+/** How long the accept button stays off after the offer shows or its host changes. */
+export const OFFER_ARM_MS = 1000;
+
+interface OfferProps {
   offer: Offer;
+  mode: 'use' | 'switch';
   onAccept(origin: string): void;
   onDismiss(): void;
-}) {
+}
+
+/**
+ * The offer of a Canvas that the detector found. With no address saved (`use`), it reads "Use
+ * canvas.school.edu as your Canvas?" with a "Use it" button. With an address saved (`switch`), it
+ * reads "Switch to this Canvas?" with the host under it. The host name is the real one, which a
+ * page cannot change here: only extension pages show the offer.
+ *
+ * A page can load again and replace the offer while the student reads it, so a new host is a new
+ * element (the key), and the accept button stays off for a second after the offer shows or its
+ * host changes. A click that was aimed at the old host then does nothing.
+ */
+export function OfferBanner(props: OfferProps) {
+  return <OfferBox key={props.offer.origin} {...props} />;
+}
+
+function OfferBox(props: OfferProps) {
   const { offer } = props;
-  const use = offer.mode === 'use';
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setArmed(true), OFFER_ARM_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  const host = hostOf(offer.origin);
+  const use = props.mode === 'use';
   return (
-    <div class="wr-box" role="region" aria-label={use ? t('offerUse') : t('offerSwitch')}>
+    <div class="wr-box" role="region" aria-label={use ? t('offerUse', host) : t('offerSwitch')}>
       <div>
-        <p class="wr-offer-title">{use ? t('offerUse') : t('offerSwitch')}</p>
-        <HostText class="wr-offer-host" host={hostOf(offer.origin)} />
+        {use ? (
+          <p class="wr-offer-title">
+            {withNode(t('offerUse', MARKER), MARKER, <HostText host={host} />)}
+          </p>
+        ) : (
+          <>
+            <p class="wr-offer-title">{t('offerSwitch')}</p>
+            <HostText class="wr-offer-host" host={host} />
+          </>
+        )}
       </div>
       <div class="wr-offer-actions">
         <button
           type="button"
           class="wr-btn wr-btn-primary wr-btn-small"
-          onClick={() => props.onAccept(offer.origin)}
+          aria-disabled={!armed}
+          onClick={() => {
+            if (armed) props.onAccept(offer.origin);
+          }}
         >
           {use ? t('offerUseButton') : t('offerSwitchButton')}
         </button>

@@ -198,7 +198,7 @@ const scenes: Scene[] = [
       readyState({
         stale: { since: '2026-10-27T19:05:00Z', offline: true },
         refreshing: true,
-        offer: { origin: 'https://canvas.state.edu', mode: 'switch' },
+        offer: { origin: 'https://canvas.state.edu' },
         undo: { kind: 'done', count: 1 },
         seenNotes: { firstDone: false, firstSkip: false },
       }),
@@ -335,22 +335,12 @@ const scenes: Scene[] = [
     render: app('panel', entry.state),
   })),
   {
-    name: 'state-address-error',
-    widths: [170, 360],
-    render: app('panel', { kind: 'not_set_up', offer: null, savedOrigin: null }),
-    async setup(root) {
-      root.querySelector<HTMLElement>('button[type="submit"]')?.click();
-      await tick();
-    },
-  },
-  {
     name: 'state-cant-load-offer',
     widths: [240, 360],
     render: app('panel', {
       kind: 'cant_load',
       origin: ORIGIN,
       offline: false,
-      savedOrigin: null,
       offer: OTHER_OFFER,
     }),
   },
@@ -553,7 +543,6 @@ const scenes: Scene[] = [
         courses={Object.values(COURSES).map(({ id, name }) => ({ id, name }))}
         origin={ORIGIN}
         onChange={(next) => console.info('settings', next)}
-        onChangeAddress={() => actions.changeAddress()}
       />
     ),
   },
@@ -564,7 +553,19 @@ const scenes: Scene[] = [
       <WelcomeView
         browser="chrome"
         shortcut="Alt+Shift+W"
-        state={{ kind: 'not_set_up', offer: null, savedOrigin: null }}
+        state={{ kind: 'not_set_up', offer: null }}
+        actions={actions}
+      />
+    ),
+  },
+  {
+    name: 'welcome-offer',
+    widths: [360, 720],
+    render: () => (
+      <WelcomeView
+        browser="chrome"
+        shortcut="Alt+Shift+W"
+        state={{ kind: 'not_set_up', offer: { origin: 'https://canvas.school.edu' } }}
         actions={actions}
       />
     ),

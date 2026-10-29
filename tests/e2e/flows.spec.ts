@@ -303,7 +303,7 @@ test.describe('in-page list', () => {
 
       await openCanvasPage(page, canvas);
 
-      // The content script ran on this page: it saved the address and the list data loaded.
+      // The in-page script ran on this page: the address is saved and the list data loaded.
       await expect.poll(() => savedAddress(serviceWorker)).toBe(canvas.origin);
       await expect
         .poll(() =>

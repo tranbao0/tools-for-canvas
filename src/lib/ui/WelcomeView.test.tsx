@@ -1,15 +1,19 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SurfaceState } from '../model/types';
 import type { WelcomeProps } from './contract';
 import { spyActions } from './testing/actions';
-import { ORIGIN, readyState } from './testing/mocks';
+import { ORIGIN, OTHER_OFFER, readyState } from './testing/mocks';
+import { OFFER_ARM_MS } from './Notices';
 import { WelcomeView } from './WelcomeView';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
-const NOT_SET_UP: SurfaceState = { kind: 'not_set_up', offer: null, savedOrigin: null };
+const NOT_SET_UP: SurfaceState = { kind: 'not_set_up', offer: null };
 
 function setup(browser: WelcomeProps['browser'], shortcut: string | null, state: SurfaceState) {
   const actions = spyActions();
@@ -33,21 +37,38 @@ describe('WelcomeView', () => {
     expect(screen.getByText(/set a keyboard shortcut/)).toBeTruthy();
   });
 
-  it('has the same setup steps as the panel', () => {
-    const actions = setup('chrome', null, NOT_SET_UP);
-    fireEvent.input(screen.getByLabelText('Canvas address'), {
-      target: { value: 'canvas.uw.edu' },
+  it('has no address form, and asks the student to open Canvas', () => {
+    setup('chrome', null, NOT_SET_UP);
+    expect(screen.getByRole('heading', { name: 'Open your Canvas' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Open your school's Canvas in a browser tab. Tools for Canvas finds it by itself.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByLabelText('Canvas address')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Allow access' })).toBeNull();
+  });
+
+  it('shows the Allow access button when the browser withholds access', () => {
+    const actions = setup('chrome', null, {
+      kind: 'no_access',
+      origin: 'https://canvas.uw.edu',
+      offer: null,
     });
     fireEvent.click(screen.getByRole('button', { name: 'Allow access' }));
     expect(actions.allowAccess).toHaveBeenCalledWith('https://canvas.uw.edu');
   });
 
-  it('says that the list shows on Canvas pages, and that the side panel is optional', () => {
+  it('says that the list shows on Canvas pages, and how to use the side panel', () => {
     setup('chrome', null, NOT_SET_UP);
-    expect(screen.getByRole('heading', { name: 'Find your list' })).toBeTruthy();
+    expect(
+      screen.getByText('Your list shows on the Canvas dashboard and on course home pages.'),
+    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Use the side panel' })).toBeTruthy();
     expect(
       screen.getByText(
-        'Your list shows on the Canvas dashboard and on course home pages. On any page, click the Tools for Canvas button to open or close it in the side panel.',
+        'On any page, click the Tools for Canvas button to open or close your list in the side panel.',
       ),
     ).toBeTruthy();
   });
@@ -55,24 +76,36 @@ describe('WelcomeView', () => {
   it('names the sidebar on Firefox', () => {
     setup('firefox', null, NOT_SET_UP);
     expect(screen.getByText(/choose Pin to Toolbar\./)).toBeTruthy();
-    expect(screen.getByText(/open or close it in the sidebar\.$/)).toBeTruthy();
+    expect(screen.getByText(/open or close your list in the sidebar\.$/)).toBeTruthy();
   });
 
-  it('offers "Keep using" while the student changes the address', () => {
-    const actions = setup('chrome', null, { kind: 'not_set_up', offer: null, savedOrigin: ORIGIN });
-    const keep = screen.getByRole('button', { name: /^Keep using/ });
-    expect(keep.textContent).toBe('Keep using school.instructure.com');
-    fireEvent.click(keep);
-    expect(actions.keepSavedAddress).toHaveBeenCalledTimes(1);
-  });
-
-  it('never shows the offer, which belongs to the side panel', () => {
-    setup('chrome', null, {
+  it('asks "Use <host> as your Canvas?" when no address is saved, and answers with the buttons', () => {
+    vi.useFakeTimers();
+    const actions = setup('chrome', null, {
       kind: 'not_set_up',
-      offer: { origin: ORIGIN, mode: 'use' },
-      savedOrigin: null,
+      offer: { origin: 'https://canvas.school.edu' },
     });
-    expect(screen.queryByText('Use this Canvas?')).toBeNull();
+
+    const offer = screen.getByRole('region', { name: 'Use canvas.school.edu as your Canvas?' });
+    expect(offer.textContent).toContain('Use canvas.school.edu as your Canvas?');
+    act(() => {
+      vi.advanceTimersByTime(OFFER_ARM_MS);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Use it' }));
+    expect(actions.acceptOffer).toHaveBeenCalledWith('https://canvas.school.edu');
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(actions.dismissOffer).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no offer while an address is saved, which is a matter for the side panel', () => {
+    setup('chrome', null, {
+      kind: 'signed_out',
+      origin: ORIGIN,
+      isFirefox: false,
+      offer: OTHER_OFFER,
+    });
+    expect(screen.queryByText('Switch to this Canvas?')).toBeNull();
+    expect(document.body.textContent).not.toContain('canvas.state.edu');
   });
 
   it('confirms the address once the list is ready', () => {

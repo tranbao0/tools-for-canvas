@@ -4,7 +4,6 @@
  */
 import { vi, type Mock } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import type { ProbeResult } from '../../canvas/probe';
 import type { TimeRange } from '../../canvas/types';
 import {
   DEFAULT_SETTINGS,
@@ -27,19 +26,15 @@ import {
   buildScenario,
   type Scenario,
 } from '../../../../tests/fixtures/scenario';
-import { sessionCacheItem, setupStatusItem, type SessionData } from '../cache';
+import { sessionCacheItem, type SessionData } from '../cache';
 import { mergeIntervals, toInterval, toRange } from '../coverage';
-import { createDataOwner, type DataOwner, type DataOwnerDeps, type RefreshSource } from '../owner';
+import { createDataOwner, type DataOwner, type DataOwnerDeps } from '../owner';
 import type { StateReply, SurfaceRequest } from '../protocol';
 import { plannerRangeForView, weekRange, type ViewContext } from '../state';
 import { createFakeCanvas, type FakeCanvas } from './fakeCanvas';
 
 export const ORIGIN = SCENARIO_ORIGIN;
 export const PANEL: SurfaceRequest = { surface: 'panel', weekOffset: 0, scopeCourseId: null };
-/** A refresh request from the side panel. */
-export const FROM_PANEL: RefreshSource = { surface: 'panel', fromExtensionPage: true };
-/** A refresh request from the in-page list. */
-export const FROM_INPAGE: RefreshSource = { surface: 'inpage', fromExtensionPage: false };
 
 interface HarnessOptions {
   origin?: string | null;
@@ -53,10 +48,7 @@ export interface Harness {
   canvas: FakeCanvas;
   owner: DataOwner;
   deps: DataOwnerDeps;
-  probe: Mock<(origin: string) => Promise<ProbeResult>>;
   hasAccess: Mock<(origin: string) => Promise<boolean>>;
-  removeAccess: Mock<(origin: string) => Promise<void>>;
-  syncContentScripts: Mock<() => Promise<void>>;
   createApi: Mock<(origin: string) => FakeCanvas>;
   log: Mock<(step: string, error: unknown) => void>;
   /** Builds a second owner on the same storage, as after a service worker restart. */
@@ -80,18 +72,12 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     ...options.settings,
   });
 
-  const probe = vi.fn<(origin: string) => Promise<ProbeResult>>(async () => 'canvas');
   const hasAccess = vi.fn<(origin: string) => Promise<boolean>>(async () => options.access ?? true);
-  const removeAccess = vi.fn<(origin: string) => Promise<void>>(async () => undefined);
-  const syncContentScripts = vi.fn<() => Promise<void>>(async () => undefined);
   const createApi = vi.fn<(origin: string) => FakeCanvas>(() => canvas);
   const log = vi.fn<(step: string, error: unknown) => void>();
   const deps: DataOwnerDeps = {
     createApi,
-    probe,
     hasAccess,
-    removeAccess,
-    syncContentScripts,
     store: {
       origin: canvasOriginItem,
       settings: settingsItem,
@@ -99,7 +85,6 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
       seenNotes: seenNotesItem,
       offer: offerItem,
       cache: sessionCacheItem,
-      setup: setupStatusItem,
     },
     clock: { now: () => Date.now() },
     timers: {
@@ -115,10 +100,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     canvas,
     owner: createDataOwner(deps),
     deps,
-    probe,
     hasAccess,
-    removeAccess,
-    syncContentScripts,
     createApi,
     log,
     restart: () => createDataOwner(deps),

@@ -6,8 +6,13 @@ import { canvasOriginItem, settingsItem } from '../platform/storage';
 import { MOUNT_CONTAINER_ID } from './adapters';
 import { DEFAULT_MOUNT_TIMEOUT_MS, type InpageMount } from './mount';
 import { HIDE_NATIVE_TODO_STYLE_ID } from './nativeTodo';
-import { canAutoSaveOrigin, isSavedCanvasOrigin, resolveSavedOrigin } from './origin';
-import { startInpage, type InpageController, type StartInpageOptions } from './start';
+import { isSavedCanvasOrigin } from './origin';
+import {
+  startInpage,
+  type InpageController,
+  type PageChoices,
+  type StartInpageOptions,
+} from './start';
 import {
   CARD_VIEW,
   COURSE_HOME,
@@ -31,8 +36,11 @@ const mountList = vi.fn((mount: InpageMount): (() => void) => {
 /** The controllers a test started, stopped after it. */
 let started: InpageController[];
 
-async function start(options?: StartInpageOptions) {
-  const controller = await startInpage(mountList, options);
+/** The choices as the page flow reads them. Here the stored items stand in for the background. */
+const choices: PageChoices = { origin: canvasOriginItem, settings: settingsItem };
+
+async function start(options: Omit<StartInpageOptions, 'choices'> = {}) {
+  const controller = await startInpage(mountList, { ...options, choices });
   started.push(controller);
   return controller;
 }
@@ -59,62 +67,6 @@ describe('isSavedCanvasOrigin', () => {
     expect(isSavedCanvasOrigin(CUSTOM, CUSTOM)).toBe(true);
     expect(isSavedCanvasOrigin(SCHOOL, CUSTOM)).toBe(false);
     expect(isSavedCanvasOrigin(CUSTOM, null)).toBe(false);
-  });
-});
-
-describe('canAutoSaveOrigin', () => {
-  it('allows only an instructure.com host when nothing is saved', () => {
-    expect(canAutoSaveOrigin(SCHOOL, null)).toBe(true);
-    expect(canAutoSaveOrigin(SCHOOL, CUSTOM)).toBe(false);
-    expect(canAutoSaveOrigin(CUSTOM, null)).toBe(false);
-  });
-
-  it('never saves a test or beta host', () => {
-    expect(canAutoSaveOrigin('https://school.test.instructure.com', null)).toBe(false);
-    expect(canAutoSaveOrigin('https://school.beta.instructure.com', null)).toBe(false);
-  });
-});
-
-/** Answers the detected-Canvas report as the background does: it saves the page origin. */
-function backgroundSaves(): void {
-  sendMessage.mockImplementation(async (message: { type: string; origin: string }) => {
-    if (message.type !== 'weekrow:canvas-detected') return undefined;
-    await canvasOriginItem.setValue(message.origin);
-    return { origin: message.origin };
-  });
-}
-
-describe('resolveSavedOrigin', () => {
-  it('asks the background to save an instructure.com Canvas page origin', async () => {
-    sendMessage.mockResolvedValueOnce({ origin: SCHOOL });
-    loadPage(document, CARD_VIEW);
-
-    expect(await resolveSavedOrigin(SCHOOL, document)).toBe(SCHOOL);
-
-    expect(sendMessage).toHaveBeenCalledWith({ type: 'weekrow:canvas-detected', origin: SCHOOL });
-    // The content script never writes the address itself.
-    expect(await canvasOriginItem.getValue()).toBeNull();
-  });
-
-  it('reads the saved address when the background does not answer', async () => {
-    sendMessage.mockRejectedValueOnce(new Error('Could not establish connection.'));
-    loadPage(document, CARD_VIEW);
-
-    expect(await resolveSavedOrigin(SCHOOL, document)).toBeNull();
-  });
-
-  it('keeps the saved address on another Canvas host', async () => {
-    await canvasOriginItem.setValue(CUSTOM);
-    loadPage(document, CARD_VIEW);
-
-    expect(await resolveSavedOrigin(SCHOOL, document)).toBe(CUSTOM);
-    expect(await canvasOriginItem.getValue()).toBe(CUSTOM);
-  });
-
-  it('reports nothing for an instructure.com page that is not Canvas', async () => {
-    loadPage(document, NOT_CANVAS);
-    expect(await resolveSavedOrigin('https://community.instructure.com', document)).toBeNull();
-    expect(sendMessage).not.toHaveBeenCalled();
   });
 });
 
@@ -145,20 +97,6 @@ describe('startInpage', () => {
     });
   });
 
-  it('saves and mounts on a first visit to an instructure.com dashboard', async () => {
-    vi.useFakeTimers();
-    backgroundSaves();
-    loadPage(document, CARD_VIEW);
-    const done = start({ origin: SCHOOL, pathname: '/' });
-    await vi.advanceTimersByTimeAsync(0);
-    injectSidebar(document, STUDENT_SIDEBAR);
-    await done;
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(mounts).toHaveLength(1);
-    expect(await canvasOriginItem.getValue()).toBe(SCHOOL);
-  });
-
   it('does nothing on a Canvas host that is not the saved address', async () => {
     await canvasOriginItem.setValue(CUSTOM);
     loadPage(document, COURSE_HOME);
@@ -169,7 +107,7 @@ describe('startInpage', () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it('does nothing on a test host before setup', async () => {
+  it('does nothing before an address is saved, and never saves one itself', async () => {
     loadPage(document, COURSE_HOME);
     await start({ origin: 'https://school.test.instructure.com', pathname: '/courses/5' });
 

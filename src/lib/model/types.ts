@@ -287,10 +287,12 @@ export interface ModelInput {
   allAssignments: AssignmentData[];
 }
 
-/** Offer shown when the panel opens on a Canvas tab that is not the saved address. */
+/**
+ * A Canvas that the detector found and that the student answers in an extension page: "Use it"
+ * when no address is saved, and "Switch" when another address is saved.
+ */
 export interface Offer {
   origin: string;
-  mode: 'use' | 'switch';
 }
 
 /**
@@ -305,17 +307,12 @@ export interface UndoInfo {
 export type SurfaceState =
   | { kind: 'loading' }
   /**
-   * `savedOrigin` is set while the student changes the address: the old one stays saved until a new
-   * one passes the check, and the form offers "Keep using" as a cancel.
+   * No Canvas address is saved. The offer is a Canvas that the detector found and that the student
+   * has to confirm, such as one on its own domain.
    */
-  | { kind: 'not_set_up'; offer: Offer | null; savedOrigin: string | null }
-  /** `savedOrigin` is the address still saved while the student checks a different one. */
-  | { kind: 'checking'; origin: string; savedOrigin: string | null }
-  | { kind: 'no_access'; origin: string; savedOrigin: string | null; offer: Offer | null }
-  | { kind: 'redirects'; origin: string; savedOrigin: string | null }
-  | { kind: 'not_canvas'; origin: string; savedOrigin: string | null }
-  /** The setup check of a typed address failed at the network level, such as a wrong host name. */
-  | { kind: 'unreachable'; origin: string; savedOrigin: string | null }
+  | { kind: 'not_set_up'; offer: Offer | null }
+  /** The browser withholds access to the saved Canvas. */
+  | { kind: 'no_access'; origin: string; offer: Offer | null }
   | { kind: 'signed_out'; origin: string; isFirefox: boolean; offer: Offer | null }
   | {
       kind: 'no_courses';
@@ -329,7 +326,6 @@ export type SurfaceState =
       kind: 'cant_load';
       origin: string;
       offline: boolean;
-      savedOrigin: string | null;
       offer: Offer | null;
     }
   | {

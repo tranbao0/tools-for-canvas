@@ -329,14 +329,37 @@ An earlier version used option B; schools on their own domain then needed an "Al
 **Finding the Canvas address:**
 
 - The first Canvas page the student opens on `*.instructure.com` sets the address by itself.
-- On a Canvas with its own domain, the first visit shows one line in the Canvas sidebar, in the place of the list: "Show your weekly list on canvas.school.edu?" with a "Show" button.
-  One click saves the address, and the list appears at once, with no reload.
-  The owner chose this on 2026-10-28: a hostile page can copy the Canvas markers, so a domain outside `instructure.com` needs the student's one click on its own name.
-  About 93 percent of Canvas school domains are on `instructure.com` [15], so most students never see the line.
+- On a Canvas with its own domain, the student confirms it once in the extension's own UI, which a page cannot change.
+  - When the detector finds such a Canvas and no address is saved, the extension opens its welcome tab once per browser session.
+    The tab says "Use canvas.school.edu as your Canvas?" with a "Use it" button, showing the real domain name.
+  - The side panel shows the same choice when the student opens it.
+  - After the click, the list appears in the Canvas tab at once, with no reload, on every Canvas page layout.
+  - Test and beta hosts follow the same rule.
+  - The owner chose this on 2026-10-29.
+    A hostile page can copy the Canvas markers, and a security review showed that any button inside a page can be disguised or hidden, so the confirmation lives only in extension pages.
+  - About 93 percent of Canvas school domains are on `instructure.com` [15], so most students never see this step.
 - Test and beta hosts (`*.test.instructure.com`, `*.beta.instructure.com`) are never saved automatically.
 - Version 1 supports one Canvas address.
   On another Canvas, the in-page list does not show, and the side panel offers "Switch to this Canvas?".
 - The background saves an address only when the report comes from the top frame of a page with that origin.
+
+**Keeping pages away from saved data:**
+
+- A content script runs inside every https page, so it must not be able to read or change the saved address, the settings or the cached Canvas data.
+- On Chrome and Edge, the background calls `storage.local.setAccessLevel('TRUSTED_CONTEXTS')` when it starts, so only extension pages and the background can use `storage.local`.
+  Chrome 144 is the first version that accepts this call for `local`, which sets the minimum version.
+- Firefox has no such lock.
+  There, the saved address, the settings and the seen notes live in an IndexedDB database of the extension origin, which content scripts cannot open.
+  `storage.local` holds only a copy that the background repairs, and nothing reads that copy to decide where data goes.
+- Content scripts never get `storage.session`, so the cached Canvas data and a pending domain offer stay out of reach on every browser.
+- The background checks every stored value when it reads it, and uses the default for a field that is not valid.
+- The in-page script has no storage access.
+  It talks to the background only through messages, and the background answers only the top frame of the saved Canvas:
+  - `page-context` returns the settings and the week the list needs.
+  - `save-settings` and `mark-note-seen` change only the fields the in-page list can change, with size limits.
+  - The background sends `changed` to the Canvas tab when the data or the settings change.
+- The detector and the in-page script post no events and no messages to the page.
+- The install welcome and the custom-domain prompt use separate flags, so one does not stop the other.
 
 **When the browser withholds access:**
 
