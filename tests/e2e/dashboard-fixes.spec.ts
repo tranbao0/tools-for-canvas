@@ -208,7 +208,14 @@ test.describe('announcements in place', () => {
 
     // Wait for any late write, then check that none went out.
     await page.waitForTimeout(500);
-    expect(canvas.requests.filter((r) => r.method === 'PUT')).toEqual([]);
+    // The extension reads Canvas through GET and through GraphQL queries. No mutation goes out.
+    const writes = canvas.requests.filter(
+      (r) =>
+        r.method !== 'GET' &&
+        !(r.path === '/api/graphql' && !(r.postData ?? '').trimStart().startsWith('mutation')),
+    );
+    expect(writes).toEqual([]);
+    expect(canvas.requests.filter((r) => (r.postData ?? '').includes('mutation'))).toEqual([]);
     expect(canvas.requests.filter((r) => r.path.endsWith('/read'))).toEqual([]);
     expect(state.readAnnouncements.has('101:31901')).toBe(false);
     expect(canvas.unmatched).toEqual([]);

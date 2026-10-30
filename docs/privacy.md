@@ -62,7 +62,7 @@ The extension writes only to your own Canvas, and only when you ask it to:
 
 The extension does not mark an announcement as read.
 When you open an announcement in place, it only reads the announcement.
-Only you mark an announcement as read, with the read circle that Canvas shows.
+Only you mark an announcement as read, with the read circle of the widget or by opening its Canvas page.
 
 Done marks and skip marks are Canvas planner overrides.
 Custom tasks are Canvas planner notes.

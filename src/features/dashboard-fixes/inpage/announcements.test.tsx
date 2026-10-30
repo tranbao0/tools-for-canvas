@@ -329,6 +329,30 @@ describe('announcementsFix: the course filter', () => {
       document.querySelector('[data-wr-list]')?.shadowRoot?.querySelector('.wr-body')?.textContent,
     ).toBe('Hello world');
   });
+
+  it('keeps an unread entry in the list after the message opens and closes, and sends no write', async () => {
+    await choose('101');
+    const shadow = () => document.querySelector('[data-wr-list]')?.shadowRoot;
+    const press = (label: string) =>
+      act(() =>
+        [...(shadow()?.querySelectorAll('button') ?? [])]
+          .find((candidate) => candidate.textContent === label)
+          ?.click(),
+      );
+    expect(shadow()?.textContent).toContain('First');
+    press('Read more');
+    await flush();
+    expect(shadow()?.querySelector('.wr-body')?.textContent).toBe('Hello world');
+    expect(shadow()?.textContent).not.toContain('Marked as read');
+    press('Show less');
+    await flush();
+    expect(shadow()?.querySelector('.wr-body')).toBeNull();
+    expect(shadow()?.textContent).toContain('First');
+    const types = context.sent.map((m) => (m as { type: string }).type);
+    expect(types.filter((type) => type !== 'weekrow:announcement-list')).toEqual([
+      'weekrow:announcement',
+    ]);
+  });
 });
 
 describe('announcementsFix: remove', () => {

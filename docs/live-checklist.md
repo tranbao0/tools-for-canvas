@@ -306,7 +306,7 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
     Expect: the whole message shows in the card, with its links, images and lists, and the page does not change.
     Expect: the announcement does not show "Marked as read.", and the circle of the card does not change.
     Click "Show less".
-    Expect: with the Unread filter, the announcement stays in the list, and in Canvas it is still unread (check the unread count and the Canvas page of the announcement without opening it).
+    Expect: with the Unread filter, the announcement stays in the list, and in Canvas it is still unread (check the unread count of Canvas, and do not open the page of the announcement, because Canvas marks it as read when the page opens).
     Click the read circle of the card.
     Expect: the widget marks the announcement as read in its own way, and it leaves the Unread list.
     Click the title of another announcement.

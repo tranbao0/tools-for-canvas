@@ -1577,12 +1577,13 @@ I read each of them in the package source.
 - `GET /api/v1/announcements` takes `context_codes[]`, `start_date` and `end_date`.
   Without dates it returns the 14 days before today and the 28 days after the start.
   `PUT /api/v1/courses/:id/discussion_topics/:id/read` marks a topic as read and answers 204.
-- Two requests do not mark a topic as read.
+- Three requests do not mark a topic as read.
   `GET /api/v1/courses/:id/discussion_topics/:id` (the `show` action of `DiscussionTopicsApiController`) only logs the access of the asset and renders the topic with its read state.
   `GET /api/v1/announcements` (`AnnouncementsApiController#index`) only lists the announcements.
   `GET /api/v1/courses/:id/discussion_topics/:id/view` (the `view` action) logs the access and renders the materialized view of the entries, and it does not change the read state of the topic.
   The topic HTML page does mark it: `DiscussionTopicsController#show` calls `change_read_state("read")` for the signed-in user when the student can read the topic.
-  So the extension never opens the topic page for the student, and it uses only the first two requests.
+  So the extension never loads the topic page itself, and it uses only the first two requests.
+  A page that the student opens on Canvas, such as with Ctrl+click on "Read more", marks the topic as read by Canvas, as it does without the extension.
 
 **Where the code lives.**
 
@@ -1624,7 +1625,8 @@ I read each of them in the package source.
    It sends no write, it does not change the read state, and it does not refresh the widget.
    The extension shows no "Marked as read." line, and it does not change the circle of the card.
    The owner chose on 2026-10-30 that only an explicit student action marks an announcement as read.
-   The read circle of the widget is the only way to mark one, and the fix leaves its native behavior alone.
+   The read circle of the widget is the only control of the dashboard that marks one, and the fix leaves its native behavior alone.
+   The extension makes no such mark, and the Canvas page of an announcement marks it as read when the student opens that page.
    The owner found the first design on a live Canvas on 2026-10-30.
    With the Unread filter, the student opened and closed a message, and the extension had marked it as read, so it left the list.
    The extension has no request that writes to an announcement.
