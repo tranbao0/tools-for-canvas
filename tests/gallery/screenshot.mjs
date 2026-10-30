@@ -74,6 +74,34 @@ try {
       const scene = page.locator(`[data-scene="${name}"][data-done]`);
       await scene.waitFor();
       await page.evaluate('document.fonts.ready.then(() => true)');
+      if (name === 'announcements') {
+        for (const frame of await scene.locator('.frame').all()) {
+          const tabs = frame.getByRole('tab');
+          const strip = await frame.getByRole('tablist').boundingBox();
+          const boxes = await tabs.evaluateAll((buttons) =>
+            buttons.map((button) => {
+              const { x, y, width, height } = button.getBoundingClientRect();
+              return { x, y, width, height };
+            }),
+          );
+          if (
+            boxes.length !== 2 ||
+            boxes[0].y !== boxes[1].y ||
+            boxes.some(
+              (box) =>
+                box.width < 24 ||
+                box.height < 24 ||
+                !strip ||
+                box.x < strip.x ||
+                box.x + box.width > strip.x + strip.width,
+            )
+          ) {
+            throw new Error(
+              `Tabs must share one row with 24 px targets: ${theme} ${JSON.stringify(boxes)}`,
+            );
+          }
+        }
+      }
       await scene.screenshot({ path: `${outDir}/${name}-${theme}.png`, animations: 'disabled' });
       count += 1;
       await saveFrames(page, scene, name, theme);

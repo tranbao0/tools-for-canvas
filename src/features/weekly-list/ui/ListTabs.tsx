@@ -63,12 +63,21 @@ export function ListTabs(props: {
             aria-label={
               id === 'announcements' && unread !== null && unread > 0
                 ? t('tabAnnouncementsUnread', String(unread))
-                : undefined
+                : id === 'tasks'
+                  ? t('tabTasks')
+                  : t('tabAnnouncements')
             }
             tabIndex={selected ? 0 : -1}
             onClick={() => props.onSelect(id)}
           >
-            {id === 'tasks' ? t('tabTasks') : t('tabAnnouncements')}
+            <span class="wr-tab-label">
+              {id === 'tasks' ? t('tabTasks') : t('tabAnnouncements')}
+            </span>
+            {id === 'announcements' && (
+              <span class="wr-tab-compact" aria-hidden="true">
+                {t('tabAnnouncementsCompact')}
+              </span>
+            )}
             {id === 'announcements' && badge !== null && (
               <span class="wr-tab-badge" aria-hidden="true">
                 {unread !== null && unread > MAX_BADGE ? `${MAX_BADGE}+` : badge}

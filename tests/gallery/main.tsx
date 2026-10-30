@@ -294,7 +294,7 @@ const scenes: Scene[] = [
   },
   {
     name: 'announcements',
-    widths: PANEL_WIDTHS,
+    widths: [170, 200, 240, 360],
     render: app('panel', readyState(), { announcements: announcementsProps() }),
   },
   {

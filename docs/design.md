@@ -2009,7 +2009,8 @@ Announcements are still not tasks (decision 3), so they stay out of the groups, 
 **Widths.**
 
 The tabs and the rows work from 170 px up.
-Below 240 px the tab strip is compact, and at 170 px the two tabs can stand on two lines.
+Below 240 px the tab strip uses "News" for Announcements and stays on one row.
+The accessible names stay "Tasks" and "Announcements, N unread".
 The message of a row is part of the same column, so wide content scrolls inside it.
 
 **Size.**

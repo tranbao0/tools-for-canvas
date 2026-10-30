@@ -70,9 +70,13 @@ describe('the tabs', () => {
 
   it('shows no count for no unread announcement, and 99+ for many', () => {
     const { rerender } = setup(feedWith({ rows: [], unread: 0 }));
-    expect(screen.getByRole('tab', { name: 'Announcements' }).textContent).toMatch(
-      /^Announcements$/,
-    );
+    expect(
+      screen.getByRole('tab', { name: 'Announcements' }).querySelector('.wr-tab-label')
+        ?.textContent,
+    ).toBe('Announcements');
+    expect(
+      screen.getByRole('tab', { name: 'Announcements' }).querySelector('.wr-tab-badge'),
+    ).toBeNull();
 
     rerender(feedWith({ unread: 150 }));
     expect(screen.getByRole('tab', { name: 'Announcements, 150 unread' }).textContent).toContain(

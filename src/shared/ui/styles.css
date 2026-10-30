@@ -1368,7 +1368,7 @@ input:checked + .wr-switch-track > .wr-switch-knob {
 
 .wr-tabs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0 4px;
   margin: 2px 0 4px;
   border-bottom: 1px solid var(--wr-line);
@@ -1385,6 +1385,10 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   color: var(--wr-text-2);
   line-height: 20px;
   white-space: nowrap;
+}
+
+.wr-tab-compact {
+  display: none;
 }
 
 .wr-tab:hover {
@@ -1686,6 +1690,14 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   .wr-sublist {
     margin-left: 4px;
     padding-left: 6px;
+  }
+
+  .wr-tab[data-part='tab-announcements'] .wr-tab-label {
+    display: none;
+  }
+
+  .wr-tab-compact {
+    display: inline;
   }
 
   .wr-tab {
