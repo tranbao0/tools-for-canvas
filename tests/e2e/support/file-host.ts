@@ -24,7 +24,7 @@ export interface FileHost {
  * on, the way Canvas redirects to its file storage. Run Chromium with {@link TRUST_TEST_CERTIFICATE}.
  */
 export async function startFileHost(
-  files: Readonly<Record<string, { body: string; contentType: string }>>,
+  files: Readonly<Record<string, { body: string; contentType: string; location?: string }>>,
 ): Promise<FileHost> {
   const dir = mkdtempSync(path.join(tmpdir(), 'weekrow-file-host-'));
   const key = path.join(dir, 'key.pem');
@@ -48,6 +48,10 @@ export async function startFileHost(
       const file = files[url.pathname];
       if (file === undefined) {
         response.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
+        return;
+      }
+      if (file.location !== undefined) {
+        response.writeHead(302, { location: file.location }).end();
         return;
       }
       response.writeHead(200, { 'content-type': file.contentType }).end(file.body);

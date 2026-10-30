@@ -32,6 +32,8 @@ export const ORIGIN = SCENARIO_ORIGIN;
 export const PANEL: SurfaceRequest = { surface: 'panel', spanOffset: 0, scopeCourseId: null };
 
 interface HarnessOptions {
+  /** Limits concurrent requests when the test needs a queue. */
+  maxConcurrency?: number;
   origin?: string | null;
   settings?: Partial<Settings>;
   scenario?: Scenario;
@@ -71,7 +73,7 @@ function track(owner: DataOwner): DataOwner {
 export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   fakeBrowser.reset();
   const scenario = options.scenario ?? buildScenario(new Date(Date.now()).toISOString());
-  const canvas = createFakeCanvas(scenario);
+  const canvas = createFakeCanvas(scenario, options.maxConcurrency);
   const origin = options.origin === undefined ? ORIGIN : options.origin;
   if (origin !== null) await canvasOriginItem.setValue(origin);
   await settingsItem.setValue({

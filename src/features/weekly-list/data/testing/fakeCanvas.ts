@@ -2,7 +2,11 @@
  * A fake `CanvasApi` that answers from the scenario fixture and remembers writes, like Canvas.
  * Tests only.
  */
-import type { PrioritySource, RequestPriority } from '../../../../shared/canvas/limiter';
+import {
+  createLimiter,
+  type PrioritySource,
+  type RequestPriority,
+} from '../../../../shared/canvas/limiter';
 import {
   CanvasError,
   type AnnouncementTopic,
@@ -22,7 +26,7 @@ export type FakeMethod = Exclude<keyof CanvasApi, 'origin' | 'withPriority'>;
 interface FakeCall {
   method: FakeMethod;
   args: unknown[];
-  /** The priority the call was sent with. */
+  /** The priority when the request starts. */
   priority: RequestPriority;
 }
 
@@ -73,8 +77,12 @@ function overrideKey(override: PlannerOverride): string {
       );
 }
 
-export function createFakeCanvas(scenario: Scenario): FakeCanvas {
+export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): FakeCanvas {
   const calls: FakeCall[] = [];
+  const limit =
+    maxConcurrency === undefined
+      ? <T>(task: () => Promise<T>) => task()
+      : createLimiter(maxConcurrency);
   const failures = new Map<FakeMethod, Failure[]>();
   const holds = new Map<FakeMethod, Promise<void>>();
   const conditionalHolds: {
@@ -104,25 +112,31 @@ export function createFakeCanvas(scenario: Scenario): FakeCanvas {
     run: () => T,
     priority: PrioritySource,
   ): Promise<T> {
-    calls.push({ method, args, priority: typeof priority === 'function' ? priority() : priority });
-    await holds.get(method);
-    for (const hold of conditionalHolds) {
-      if (hold.method === method && hold.match(args)) await hold.wait;
-    }
-    const matched = conditionalFailures.find(
-      (entry) => entry.method === method && entry.match(args),
-    );
-    if (matched !== undefined) throw matched.error;
-    const list = failures.get(method) ?? [];
-    const failure = list.find(
-      (entry) =>
-        entry.remaining > 0 && (entry.firstArg === undefined || entry.firstArg === args[0]),
-    );
-    if (failure !== undefined) {
-      failure.remaining -= 1;
-      throw failure.error;
-    }
-    return structuredClone(run());
+    return limit(async () => {
+      calls.push({
+        method,
+        args,
+        priority: typeof priority === 'function' ? priority() : priority,
+      });
+      await holds.get(method);
+      for (const hold of conditionalHolds) {
+        if (hold.method === method && hold.match(args)) await hold.wait;
+      }
+      const matched = conditionalFailures.find(
+        (entry) => entry.method === method && entry.match(args),
+      );
+      if (matched !== undefined) throw matched.error;
+      const list = failures.get(method) ?? [];
+      const failure = list.find(
+        (entry) =>
+          entry.remaining > 0 && (entry.firstArg === undefined || entry.firstArg === args[0]),
+      );
+      if (failure !== undefined) {
+        failure.remaining -= 1;
+        throw failure.error;
+      }
+      return structuredClone(run());
+    }, priority);
   }
 
   function plannerItems(range: TimeRange): PlannerItem[] {

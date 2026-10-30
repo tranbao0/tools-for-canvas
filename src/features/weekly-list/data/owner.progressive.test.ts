@@ -42,6 +42,32 @@ function plannerCalls(h: Harness) {
 }
 
 describe('the order of a long span', () => {
+  it('starts the new view before the queued chunks of a view the student left', async () => {
+    const h = await createHarness({ settings: MONTH, maxConcurrency: 4 });
+    await loadReady(h);
+    h.canvas.resetCalls();
+    const release = h.canvas.hold('listPlannerItems');
+    try {
+      await h.owner.getState({ ...PANEL, spanOffset: -6 });
+      await vi.waitFor(() => expect(plannerCalls(h)).toHaveLength(4));
+      const oldRanges = plannerCalls(h).map((call) => call.range);
+      await h.owner.getState({ ...PANEL, spanOffset: 6 });
+      expect(plannerCalls(h)).toHaveLength(4);
+      release();
+      await h.owner.settled();
+      const calls = plannerCalls(h).slice(4);
+      const newCalls = calls.filter((call) => startOf(call.range) > Date.parse('2027-01-01'));
+      const oldCalls = calls.filter((call) => startOf(call.range) < Date.parse('2026-10-01'));
+      expect(oldRanges).toHaveLength(4);
+      expect(newCalls.length).toBeGreaterThan(0);
+      expect(oldCalls.length).toBeGreaterThan(0);
+      expect(oldCalls.every((call) => call.priority === 'low')).toBe(true);
+      expect(calls.indexOf(newCalls.at(-1)!)).toBeLessThan(calls.indexOf(oldCalls[0]!));
+    } finally {
+      release();
+    }
+  });
+
   it('loads a month from today outward in short chunks at high priority, then Past due at normal priority', async () => {
     const h = await createHarness({ settings: MONTH });
     await openFrame(h);

@@ -12,6 +12,7 @@
 //              else $GECKOWEBDRIVER/geckodriver (GitHub runner images), else `geckodriver` on PATH.
 // Run `npm run setup:firefox` to download both into ~/.cache/weekrow-test.
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { Builder } from 'selenium-webdriver';
@@ -49,7 +50,7 @@ function onPath(name) {
 /**
  * @returns {{ firefoxBin: string | undefined, geckodriverBin: string | undefined }}
  */
-function findBrowserTools() {
+export function findBrowserTools() {
   const runnerDriver = process.env.GECKOWEBDRIVER;
   return {
     firefoxBin:
@@ -69,7 +70,7 @@ function findBrowserTools() {
  * @param {string} extensionDir
  * @returns {string}
  */
-function readAddonId(extensionDir) {
+export function readAddonId(extensionDir) {
   const manifest = JSON.parse(readFileSync(path.join(extensionDir, 'manifest.json'), 'utf8'));
   const id = manifest.browser_specific_settings?.gecko?.id;
   if (typeof id !== 'string' || id === '') throw new Error('The Firefox manifest has no gecko.id');
@@ -78,13 +79,21 @@ function readAddonId(extensionDir) {
 
 /**
  * Starts headless Firefox with the extension UUID pinned.
- * @param {{ firefoxBin: string, geckodriverBin: string, addonId: string }} setup
+ * @param {{ firefoxBin: string, geckodriverBin: string, addonId: string, acceptInsecureCerts?: boolean, localDomains?: string }} setup
  */
-async function startFirefox({ firefoxBin, geckodriverBin, addonId }) {
+export async function startFirefox({
+  firefoxBin,
+  geckodriverBin,
+  addonId,
+  acceptInsecureCerts,
+  localDomains,
+}) {
   const options = new firefox.Options()
     .addArguments('-headless')
     .setBinary(firefoxBin)
     .setPreference('extensions.webextensions.uuids', JSON.stringify({ [addonId]: EXTENSION_UUID }));
+  if (acceptInsecureCerts !== undefined) options.setAcceptInsecureCerts(acceptInsecureCerts);
+  if (localDomains !== undefined) options.setPreference('network.dns.localDomains', localDomains);
   // Firefox 153 and later open extension pages under geckodriver only with this flag.
   const service = new firefox.ServiceBuilder(geckodriverBin).addArguments('--allow-system-access');
   return new Builder()
@@ -99,7 +108,7 @@ async function startFirefox({ firefoxBin, geckodriverBin, addonId }) {
  * @param {import('selenium-webdriver').WebDriver} driver
  * @param {string} url
  */
-async function waitForTab(driver, url) {
+export async function waitForTab(driver, url) {
   await driver.wait(
     async () => {
       for (const handle of await driver.getAllWindowHandles()) {
@@ -293,10 +302,12 @@ async function main() {
   }
 }
 
-try {
-  process.exitCode = await main();
-} catch (error) {
-  console.error('Firefox smoke test: failed.');
-  console.error(error);
-  process.exitCode = 1;
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  try {
+    process.exitCode = await main();
+  } catch (error) {
+    console.error('Firefox smoke test: failed.');
+    console.error(error);
+    process.exitCode = 1;
+  }
 }
