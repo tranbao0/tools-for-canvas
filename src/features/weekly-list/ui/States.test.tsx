@@ -64,9 +64,10 @@ describe('loading', () => {
     setup({ kind: 'loading' });
     expect(document.querySelector('.wr')?.getAttribute('aria-busy')).toBe('true');
     expect(screen.getByRole('status').textContent).toBe('Loading your list');
+    // The arrows and the span control work while the list loads.
     expect(
       (screen.getByRole('button', { name: 'Previous week' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    ).toBe(false);
     expect(screen.getByRole('button', { name: 'Add task' }).getAttribute('aria-disabled')).toBe(
       'true',
     );

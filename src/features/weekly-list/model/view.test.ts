@@ -1335,3 +1335,81 @@ describe('Past due in every span', () => {
     expect(placesOf(shown)).toEqual({});
   });
 });
+
+describe('days and Past due that are still loading', () => {
+  const items = [
+    task('this-morning', '2026-10-27T13:00:00Z'),
+    task('tuesday', '2026-10-27T22:00:00Z'),
+    task('thursday', '2026-10-29T16:00:00Z'),
+    task('older', '2026-10-01T16:00:00Z'),
+  ];
+  const withItems = {
+    plannerItems: items,
+    assignmentDetails: detailsById(
+      items.map((item) => upload(item.plannable_id as string, { due: item.plannable_date })),
+    ),
+  };
+
+  it('puts a placeholder group on each loading day, in date order, with no items', () => {
+    const shown = buildWeekView(
+      input({
+        ...withItems,
+        loading: { days: ['2026-10-28', '2026-10-29', '2026-10-31'], pastDue: false },
+      }),
+    );
+
+    expect(
+      shown.groups.map((g) => [g.kind, g.date, g.loading === true, g.items.length] as const),
+    ).toEqual([
+      ['past_due', null, false, 1],
+      ['today', '2026-10-27', false, 1],
+      ['tomorrow', '2026-10-28', true, 0],
+      ['day', '2026-10-29', true, 0],
+      ['day', '2026-10-31', true, 0],
+    ]);
+    expect(shown.loading).toBe(true);
+  });
+
+  it('never says nothing is due while days load, and says so once they arrive', () => {
+    const none = { plannerItems: [], assignmentDetails: {} };
+    expect(
+      buildWeekView(input({ ...none, loading: { days: ['2026-10-28'], pastDue: false } }))
+        .nothingDue,
+    ).toBe(false);
+    expect(buildWeekView(input({ ...none, loading: { days: [], pastDue: true } })).nothingDue).toBe(
+      false,
+    );
+    const done = buildWeekView(input(none));
+    expect(done.nothingDue).toBe(true);
+    expect(done.loading).toBe(false);
+  });
+
+  it('shows Past due as one loading group with none of its items, and still counts them late', () => {
+    const shown = buildWeekView(input({ ...withItems, loading: { days: [], pastDue: true } }));
+
+    const pastDue = shown.groups[0];
+    expect(pastDue).toMatchObject({ kind: 'past_due', loading: true, items: [], older: [] });
+    expect(shown.loading).toBe(true);
+    // The rings grow with what has arrived.
+    expect(shown.rings[0]?.pastDue).toBe(2);
+    // The real group replaces the line once the range is loaded.
+    const loaded = buildWeekView(input(withItems));
+    expect(loaded.groups[0]?.loading).toBeUndefined();
+    expect(loaded.groups[0]?.items.length).toBe(1);
+  });
+
+  it('shows a loading Past due group even when its range holds nothing', () => {
+    const shown = buildWeekView(
+      input({ plannerItems: [], assignmentDetails: {}, loading: { days: [], pastDue: true } }),
+    );
+    expect(shown.groups.map((g) => g.kind)).toEqual(['past_due']);
+  });
+
+  it('keeps the items of a day out of its placeholder, and in the rings', () => {
+    const shown = buildWeekView(
+      input({ ...withItems, loading: { days: ['2026-10-29'], pastDue: false } }),
+    );
+    const thursday = shown.groups.find((g) => g.date === '2026-10-29');
+    expect(thursday).toMatchObject({ loading: true, items: [] });
+  });
+});

@@ -440,6 +440,9 @@
   "loading": {
     "message": "Loading your list"
   },
+  "loadingPastDue": {
+    "message": "Loading past due…"
+  },
   "setupTitle": {
     "message": "Open your Canvas to see your list"
   },

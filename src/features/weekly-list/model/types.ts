@@ -218,6 +218,12 @@ export interface ListGroup {
   doneUndated: ItemView[];
   /** `done` only: done items with a warning chip. */
   warningCount: number;
+  /**
+   * The group's items are still on their way. A day group then shows placeholder rows and no
+   * items. Past due shows one "Loading past due" line and none of its items, so it never changes
+   * under the student while its range loads (decision 11).
+   */
+  loading?: boolean;
 }
 
 export interface Ring {
@@ -261,6 +267,11 @@ export interface WeekView {
   hiddenCourseCount: number;
   /** The span has no items. The day groups are replaced by "Nothing due" with the span named. */
   nothingDue: boolean;
+  /**
+   * Some days of the span, or the past-due range, are still loading. The items and the rings
+   * show what has arrived so far.
+   */
+  loading: boolean;
   /** The Canvas planner is turned off for the student. */
   limited: boolean;
   /** Set when the view is limited to one course, such as a course home page. */
@@ -298,6 +309,12 @@ export interface ModelInput {
   limited: boolean;
   /** Limited mode only: all assignments of the visible courses. */
   allAssignments: AssignmentData[];
+  /**
+   * What the data layer has not loaded yet. `days` are plain dates of the shown span whose
+   * planner items are missing; `pastDue` is set while the past-due range loads. Missing means
+   * nothing is loading.
+   */
+  loading?: { days: readonly string[]; pastDue: boolean };
 }
 
 export type { Offer };

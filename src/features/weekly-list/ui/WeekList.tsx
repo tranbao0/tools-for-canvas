@@ -40,6 +40,7 @@ export function groupCount(group: ListGroup): number {
 
 export function isGroupEmpty(group: ListGroup): boolean {
   return (
+    group.loading !== true &&
     group.items.length + group.older.length + group.skipped.length + group.doneUndated.length === 0
   );
 }
@@ -197,6 +198,49 @@ function LimitedItems(props: {
   );
 }
 
+/** How many placeholder bars a day group shows while its items load. */
+const SKELETON_BARS = 2;
+
+/**
+ * A group whose items are still on their way. Past due is one line, so it never changes under
+ * the student while its range loads. A day keeps its heading and shows light placeholder bars,
+ * which the real rows replace in place.
+ */
+function LoadingGroup(props: { group: ListGroup; level: HeadingLevel; bars: number }) {
+  const { group } = props;
+  const [id] = useState(() => newId('group'));
+  const { kind, date } = group;
+  return (
+    <section
+      class="wr-group wr-group-loading"
+      aria-labelledby={id}
+      aria-busy="true"
+      data-group={kind}
+      data-loading="true"
+    >
+      <Heading level={props.level} class="wr-group-head" id={id} part="group-head" tabIndex={-1}>
+        <span class="wr-group-name">
+          {kind === 'past_due'
+            ? t('loadingPastDue')
+            : kind === 'day'
+              ? date && formatWeekday(date)
+              : t(GROUP_NAMES[kind as keyof typeof GROUP_NAMES])}
+        </span>
+        {date && <span class="wr-group-date">{formatMonthDay(date)}</span>}
+      </Heading>
+      {kind !== 'past_due' && (
+        <ul class="wr-items wr-skel-list" aria-hidden="true">
+          {Array.from({ length: props.bars }, (_, index) => (
+            <li class="wr-skel-row" key={index}>
+              <span class="wr-skel-bar" />
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function GroupSection(props: {
   group: ListGroup;
   view: WeekView;
@@ -309,14 +353,28 @@ export function WeekList(props: {
 }) {
   const { view, glance } = props;
   const live = view.groups.filter((group) => !isGroupEmpty(group));
+  // The nearest day that still loads shows two bars, the later ones one, so a long span does not
+  // fill the list with placeholders.
+  const firstLoading = live.find((g) => g.loading === true && g.kind !== 'past_due');
   // The glance shows Past due, Today and Tomorrow, or else the next day with work.
   const near = live.filter((g) => g.kind === 'today' || g.kind === 'tomorrow');
   const days = near.length ? near : live.filter((g) => g.kind === 'day').slice(0, 1);
   // Past due with only skipped rows has no count to summarize, so it waits behind the link.
-  const isNow = (g: ListGroup) => g.kind === 'past_due' && groupCount(g) > 0;
+  const isNow = (g: ListGroup) =>
+    g.kind === 'past_due' && (groupCount(g) > 0 || g.loading === true);
   const head = glance ? live.filter((g) => isNow(g) || days.includes(g)) : live;
   const rest = glance ? live.filter((g) => !head.includes(g)) : [];
   const section = (group: ListGroup) => {
+    if (group.loading === true) {
+      return (
+        <LoadingGroup
+          key={`${group.kind}:${group.date}`}
+          group={group}
+          level={props.level}
+          bars={group === firstLoading ? SKELETON_BARS : 1}
+        />
+      );
+    }
     const summary = glance && isNow(group);
     return (
       <GroupSection
@@ -336,7 +394,8 @@ export function WeekList(props: {
   // The chart says "Nothing due in these 7 days" itself when no class has work.
   if (view.nothingDue && (!view.rings.length || view.rings.some((ring) => ring.total)))
     nodes.splice(head[0]?.kind === 'past_due' ? 1 : 0, 0, <NothingDue span={view.span} />);
-  if (glance && rest.length > 0)
+  // A rest that only waits for its items has nothing to count or open yet.
+  if (glance && rest.some((g) => g.loading !== true))
     nodes.push(
       <Disclosure
         label={restOfSpanLabel(

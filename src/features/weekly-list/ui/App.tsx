@@ -111,6 +111,8 @@ export function App(props: AppProps) {
       <LoadingView
         surface={surface}
         span={props.settings?.value.span ?? DEFAULT_SPAN}
+        settings={props.settings?.value}
+        actions={actions}
         onSettings={openSettings}
       />
     );
@@ -140,8 +142,18 @@ export function App(props: AppProps) {
   );
 }
 
-/** Loading: the header keeps its final layout, and a spinner shows, as in Canvas's To Do. */
-function LoadingView(props: { surface: SurfaceKind; span: Span; onSettings: OpenSettings }) {
+/**
+ * Loading before any data: the header keeps its final layout and works, and a spinner shows, as
+ * in Canvas's To Do. The student can already pick a span or step to another one.
+ */
+function LoadingView(props: {
+  surface: SurfaceKind;
+  span: Span;
+  settings: Settings | undefined;
+  actions: Actions;
+  onSettings: OpenSettings;
+}) {
+  const { settings, actions } = props;
   return (
     <>
       <Header
@@ -150,9 +162,9 @@ function LoadingView(props: { surface: SurfaceKind; span: Span; onSettings: Open
         refreshing={false}
         addDisabledReason={null}
         span={props.span}
-        onSpan={null}
-        onStep={() => undefined}
-        onToday={() => undefined}
+        onSpan={settings ? (span) => actions.saveSettings({ ...settings, span }) : null}
+        onStep={(delta) => actions.stepSpan(delta)}
+        onToday={() => actions.goToSpan(0)}
         onAdd={() => undefined}
         onSettings={() => props.onSettings('gear')}
       />
@@ -432,6 +444,7 @@ function ReadyView(props: {
         rings={view.rings}
         span={view.span}
         filter={view.courseFilter}
+        loading={view.loading}
         onSelect={(id) => actions.setCourseFilter(id)}
       />
       {filter !== null && (

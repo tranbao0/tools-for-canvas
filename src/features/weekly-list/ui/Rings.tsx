@@ -66,9 +66,11 @@ export function Rings(props: {
   /** The span the rings count, from the view. */
   span: Span;
   filter: WeekView['courseFilter'];
+  /** Some days, or Past due, still load: the rings show what has arrived and keep growing. */
+  loading?: boolean;
   onSelect(courseId: string | null | undefined): void;
 }) {
-  const { rings, filter, span } = props;
+  const { rings, filter, span, loading = false } = props;
   const phrase = spanPhrase(span);
   const ref = useRef<HTMLElement>(null);
   const [wide, setWide] = useState(false);
@@ -94,7 +96,8 @@ export function Rings(props: {
     total += ring.total;
     pastDue += ring.pastDue;
   }
-  const finished = done >= total && pastDue === 0;
+  // The span is not finished while days or Past due still load, whatever has arrived.
+  const finished = !loading && done >= total && pastDue === 0;
   // 1 to 99 until every item is done, so a nearly empty or nearly full span never reads 0 or 100.
   const percent = Math.min(
     done >= total ? 100 : 99,
@@ -106,7 +109,13 @@ export function Rings(props: {
     props.onSelect(isRingSelected(ring, filter) ? undefined : ring.courseId);
   return (
     <section ref={ref} class="wr-rings" aria-label={t('ringsLabel')}>
-      {drawn.length === 0 ? (
+      {drawn.length === 0 && loading ? (
+        <div class="wr-chart wr-chart-loading" aria-hidden="true">
+          <svg viewBox="0 0 120 120" fill="none" stroke-width={10}>
+            <circle class="wr-ring-track" cx="60" cy="60" r={OUTER - 5} />
+          </svg>
+        </div>
+      ) : drawn.length === 0 ? (
         <NothingDue span={span} />
       ) : (
         <div class="wr-chart">

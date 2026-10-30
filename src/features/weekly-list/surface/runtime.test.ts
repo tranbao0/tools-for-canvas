@@ -301,7 +301,7 @@ describe('state', () => {
     });
   });
 
-  it('keeps the shown week, marked as refreshing, while another week loads', async () => {
+  it('shows the week that the data owner sends while it still loads, then the complete week', async () => {
     const fake = fakeHost();
     const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
     runtime.start();
@@ -310,15 +310,16 @@ describe('state', () => {
     fake.reply = (message) => {
       if (message.type !== 'weekrow:get-state') return { ok: true, retryAt: null };
       if (message.request.spanOffset === 0) return readyState();
-      return { kind: 'loading' };
+      return readyState({ refreshing: true, view: mkView({ spanOffset: 1, loading: true }) });
     };
 
     runtime.actions.goToSpan(1);
     await settle();
+    // The frame and the days that arrived show at once, with the refresh marker.
     expect(runtime.state()).toMatchObject({
       kind: 'ready',
       refreshing: true,
-      view: { spanOffset: 0 },
+      view: { spanOffset: 1, loading: true },
     });
 
     fake.reply = (message) => {
@@ -512,14 +513,18 @@ describe('actions', () => {
     expect(runtime.state()).toMatchObject({ kind: 'ready', undo: null });
   });
 
-  it('keeps the notice while another week loads and the shown week stays', async () => {
+  it('keeps the notice while another week loads', async () => {
     const { fake, runtime } = await started(undoHost());
     runtime.actions.setDone('assignment:1', true);
     await settle();
     const base = fake.reply;
     fake.reply = (message) =>
       message.type === 'weekrow:get-state' && message.request.spanOffset === 1
-        ? { kind: 'loading' }
+        ? {
+            ...(base(message) as object),
+            refreshing: true,
+            view: mkView({ spanOffset: 1, loading: true }),
+          }
         : base(message);
 
     runtime.actions.goToSpan(1);
@@ -989,19 +994,27 @@ describe('the shown span', () => {
     expect(asked(fake).at(-1)).toBe(3);
   });
 
-  it('keeps the shown list, with its refresh marker, while the new span loads', async () => {
+  it('shows the new span at once, with the refresh marker, while its days load', async () => {
     const fake = fakeHost();
     const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
     runtime.start();
     await settle();
     fake.reply = (message) =>
-      message.type === 'weekrow:get-state' ? { kind: 'loading' } : { ok: true, retryAt: null };
+      message.type === 'weekrow:get-state'
+        ? readyState({
+            refreshing: true,
+            view: mkView({ span: MONTH, spanEnd: '2026-11-26', loading: true }),
+          })
+        : { ok: true, retryAt: null };
 
     runtime.actions.saveSettings({ ...DEFAULT_SETTINGS, span: MONTH });
     await settle();
 
-    const state = runtime.state();
-    expect(state.kind === 'ready' ? state.refreshing : null).toBe(true);
+    expect(runtime.state()).toMatchObject({
+      kind: 'ready',
+      refreshing: true,
+      view: { span: MONTH, loading: true },
+    });
   });
 });
 

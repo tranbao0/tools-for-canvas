@@ -84,7 +84,6 @@ export function Header(props: HeaderProps) {
             class="wr-icon-btn"
             aria-label={prev}
             title={prev}
-            disabled={view === null}
             onClick={() => props.onStep(-1)}
           >
             <ChevronLeftIcon />
@@ -108,7 +107,6 @@ export function Header(props: HeaderProps) {
             class="wr-icon-btn"
             aria-label={next}
             title={next}
-            disabled={view === null}
             onClick={() => props.onStep(1)}
           >
             <ChevronRightIcon />

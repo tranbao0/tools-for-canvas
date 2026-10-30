@@ -24,6 +24,7 @@ import {
   allDoneView,
   checkedButMissing,
   COURSES,
+  currentRings,
   currentWeekGroups,
   eightCoursesView,
   et,
@@ -183,6 +184,32 @@ function checkedMissingView() {
       .rings.filter((r) => r.courseId === COURSES.chem.id || r.courseId === COURSES.bio.id)
       .map((r) => (r.courseId === COURSES.chem.id ? { ...r, pastDue: 0 } : r)),
     hiddenCourseCount: 0,
+  });
+}
+
+/**
+ * A week in the middle of its first load: Today and Tomorrow arrived, the later days wait, and
+ * Past due is still on its way. `days` is how many later days wait, and `arrived: false` shows
+ * the frame before any day arrived.
+ */
+function loadingDaysView(options: { days?: number; arrived?: boolean } = {}) {
+  const { days = 5, arrived = true } = options;
+  const real = currentWeekGroups().filter((g) => g.kind === 'today' || g.kind === 'tomorrow');
+  const later = ['2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02'];
+  const waiting = later.slice(0, days).map((date) => mkGroup({ kind: 'day', date, loading: true }));
+  const first = arrived
+    ? real
+    : [
+        mkGroup({ kind: 'today', date: '2026-10-27', loading: true }),
+        mkGroup({ kind: 'tomorrow', date: '2026-10-28', loading: true }),
+      ];
+  return mkView({
+    groups: [mkGroup({ kind: 'past_due', loading: true }), ...first, ...waiting],
+    loading: true,
+    nothingDue: false,
+    rings: currentRings().map((r) =>
+      arrived ? { ...r, total: Math.ceil(r.total / 2) } : { ...r, done: 0, total: 0, pastDue: 0 },
+    ),
   });
 }
 
@@ -533,6 +560,33 @@ const scenes: Scene[] = [
         }),
       }),
     ),
+  },
+  {
+    // The days near today are in, the later days show placeholders, and Past due is one line.
+    name: 'loading-days',
+    widths: [240, 360],
+    render: app('panel', readyState({ refreshing: true, view: loadingDaysView() })),
+  },
+  {
+    // Right after the frame: nothing has arrived yet.
+    name: 'loading-all-days',
+    widths: [240, 360],
+    render: app(
+      'panel',
+      readyState({ refreshing: true, view: loadingDaysView({ arrived: false }) }),
+    ),
+  },
+  {
+    // Past due is the last to arrive.
+    name: 'loading-past-due',
+    widths: [240, 360],
+    render: app('panel', readyState({ refreshing: true, view: loadingDaysView({ days: 0 }) })),
+  },
+  {
+    name: 'inpage-loading-days',
+    widths: [240],
+    shadow: true,
+    render: app('inpage', readyState({ refreshing: true, view: loadingDaysView() })),
   },
   {
     name: 'inpage-loading',

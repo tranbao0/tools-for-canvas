@@ -712,6 +712,37 @@
   color: var(--wr-text-2);
 }
 
+/*
+ * Placeholders for days and rings that still load: light bars in the divider color, as Canvas
+ * draws loading blocks, with a slow pulse. A real row replaces them in the same place.
+ */
+
+.wr-group-loading > .wr-group-head > .wr-group-name {
+  color: var(--wr-text-2);
+}
+
+.wr-skel-row {
+  padding: 5px 0;
+}
+
+.wr-skel-bar {
+  display: block;
+  height: 36px;
+  border-radius: 4px;
+  background: var(--wr-line);
+  animation: wr-skel 1.4s ease-in-out infinite;
+}
+
+.wr-chart-loading .wr-ring-track {
+  animation: wr-skel 1.4s ease-in-out infinite;
+}
+
+@keyframes wr-skel {
+  50% {
+    opacity: 0.5;
+  }
+}
+
 /* Rows: check box, type icon in the course color, then title, course, due text and pills. */
 
 .wr-item {
@@ -1312,6 +1343,11 @@ input:checked + .wr-switch-track > .wr-switch-knob {
     animation: none;
   }
 
+  .wr-skel-bar,
+  .wr-chart-loading .wr-ring-track {
+    animation: none;
+  }
+
   .wr-ring-arc {
     transition: none;
   }
@@ -1327,5 +1363,9 @@ input:checked + .wr-switch-track > .wr-switch-knob {
 
   .wr-legend-row[aria-pressed='true'] {
     outline: 2px solid Highlight;
+  }
+
+  .wr-skel-bar {
+    border: 1px solid GrayText;
   }
 }

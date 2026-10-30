@@ -2423,3 +2423,133 @@ describe('shown span', () => {
     });
   });
 });
+
+describe('progressive loading', () => {
+  const loadingDay = (date: string, kind: ListGroup['kind'] = 'day') =>
+    mkGroup({ kind, date, loading: true });
+  const loadingPastDue = () => mkGroup({ kind: 'past_due', loading: true });
+  const loadingView = (groups: ListGroup[], patch = {}) =>
+    readyState({
+      refreshing: true,
+      view: mkView({ groups, loading: true, nothingDue: false, ...patch }),
+    });
+  const real = mkGroup({
+    kind: 'today',
+    date: '2026-10-27',
+    items: [mkItem({ title: 'Quiz now', course: 'bio' })],
+  });
+
+  it('shows a loading day with its heading and placeholder bars, no more than 2 per day', () => {
+    setup(loadingView([real, loadingDay('2026-10-28', 'tomorrow'), loadingDay('2026-10-29')]));
+
+    const days = [...document.querySelectorAll('section[data-loading="true"]')];
+    expect(days.map((day) => day.querySelector('.wr-group-name')?.textContent)).toEqual([
+      'Tomorrow',
+      'Thursday',
+    ]);
+    // The nearest loading day shows 2 bars and the later days 1, so a long span stays short.
+    expect(days.map((day) => day.querySelectorAll('.wr-skel-bar').length)).toEqual([2, 1]);
+    // The placeholders are decoration, and the real row stays a real row.
+    for (const bars of document.querySelectorAll('.wr-skel-list')) {
+      expect(bars.getAttribute('aria-hidden')).toBe('true');
+    }
+    expect(screen.getByText('Quiz now')).toBeTruthy();
+    expect(screen.getByRole('progressbar', { name: 'Refreshing' })).toBeTruthy();
+  });
+
+  it('shows the Past due group as one line, with no rows and no count', () => {
+    setup(loadingView([loadingPastDue(), real]));
+
+    const pastDue = document.querySelector('section[data-group="past_due"]');
+    expect(pastDue?.getAttribute('data-loading')).toBe('true');
+    expect(pastDue?.textContent).toBe('Loading past due…');
+    expect(pastDue?.querySelector('.wr-skel-bar')).toBeNull();
+    expect(pastDue?.querySelector('.wr-count')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Loading past due…' })).toBeTruthy();
+  });
+
+  it('replaces a placeholder with the real group at the same place', () => {
+    const { rerender } = setup(loadingView([real, loadingDay('2026-10-28', 'tomorrow')]));
+    const order = () =>
+      [...document.querySelectorAll('section[data-group]')].map((el) =>
+        el.getAttribute('data-group'),
+      );
+    expect(order()).toEqual(['today', 'tomorrow']);
+    const quiz = screen.getByText('Quiz now');
+
+    rerender(
+      readyState({
+        view: mkView({
+          groups: [
+            real,
+            mkGroup({
+              kind: 'tomorrow',
+              date: '2026-10-28',
+              items: [mkItem({ title: 'Essay due', course: 'hist' })],
+            }),
+          ],
+        }),
+      }),
+    );
+
+    expect(order()).toEqual(['today', 'tomorrow']);
+    expect(document.querySelector('[data-loading="true"]')).toBeNull();
+    expect(document.querySelector('.wr-skel-bar')).toBeNull();
+    expect(screen.getByText('Essay due')).toBeTruthy();
+    // The row above did not remount.
+    expect(screen.getByText('Quiz now')).toBe(quiz);
+    expect(screen.queryByRole('progressbar', { name: 'Refreshing' })).toBeNull();
+  });
+
+  it('keeps the rings from saying that everything is done, or that nothing is due, while it loads', () => {
+    setup(
+      loadingView([loadingDay('2026-10-27', 'today')], { rings: [ringOf({ done: 0, total: 0 })] }),
+    );
+    expect(document.querySelector('.wr-chart-loading')).toBeTruthy();
+    expect(screen.queryByText(/Nothing due/)).toBeNull();
+    cleanup();
+
+    setup(loadingView([real], { rings: [ringOf({ done: 2, total: 2 })] }));
+    expect(document.querySelector('.wr-chart-center')?.textContent).not.toContain('All done');
+    expect(document.querySelector('.wr-chart-center')?.textContent).toContain('100%');
+  });
+
+  it('shows the placeholders and the Past due line in the glance of the in-page list', () => {
+    setup(loadingView([loadingPastDue(), loadingDay('2026-10-27', 'today')]), 'inpage');
+    expect(document.querySelector('section[data-group="past_due"]')?.textContent).toBe(
+      'Loading past due…',
+    );
+    expect(document.querySelector('section[data-group="today"] .wr-skel-bar')).toBeTruthy();
+    // Days that only wait for their items give the link nothing to count or open.
+    cleanup();
+    setup(
+      loadingView([real, loadingDay('2026-10-28', 'tomorrow'), loadingDay('2026-10-30')]),
+      'inpage',
+    );
+    expect(screen.queryByRole('button', { name: /^Next 7 days/ })).toBeNull();
+    cleanup();
+    setup(
+      loadingView([
+        real,
+        mkGroup({
+          kind: 'day',
+          date: '2026-10-30',
+          items: [mkItem({ title: 'Friday work', course: 'hist' })],
+        }),
+        loadingDay('2026-10-31'),
+      ]),
+      'inpage',
+    );
+    expect(screen.getByRole('button', { name: 'Next 7 days (1)' })).toBeTruthy();
+  });
+
+  it('keeps the header working while the first load runs, before any data', () => {
+    const { actions } = setup({ kind: 'loading' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next week' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Previous week' }));
+
+    expect(actions.stepSpan.mock.calls).toEqual([[1], [-1]]);
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+  });
+});

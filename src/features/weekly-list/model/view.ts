@@ -155,6 +155,7 @@ function emptyGroup(kind: GroupKind, date: string | null): ListGroup {
 
 function hasContent(group: ListGroup): boolean {
   return (
+    group.loading === true ||
     group.items.length + group.older.length + group.skipped.length + group.doneUndated.length > 0
   );
 }
@@ -202,16 +203,21 @@ function buildGroups(
   placed: readonly Placed[],
   context: PlacementContext,
   byCourse: ItemComparator,
+  loading: NonNullable<ModelInput['loading']>,
 ): ListGroup[] {
   const pastDue = emptyGroup('past_due', null);
   const noDueDate = emptyGroup('no_due_date', null);
   const done = emptyGroup('done', null);
   const days = new Map<string, ListGroup>();
+  // A day whose planner items have not arrived shows placeholders and no items.
+  for (const date of loading.days) {
+    days.set(date, { ...emptyGroup(dayGroupKind(date, context), date), loading: true });
+  }
 
   for (const { view, slot } of placed) {
     switch (slot.group) {
       case 'past_due':
-        pastDue[slot.list].push(view);
+        if (!loading.pastDue) pastDue[slot.list].push(view);
         break;
       case 'no_due_date':
         noDueDate[slot.list].push(view);
@@ -222,7 +228,7 @@ function buildGroups(
       case 'day': {
         const group =
           days.get(slot.date) ?? emptyGroup(dayGroupKind(slot.date, context), slot.date);
-        group.items.push(view);
+        if (group.loading !== true) group.items.push(view);
         days.set(slot.date, group);
         break;
       }
@@ -243,6 +249,8 @@ function buildGroups(
   const dayGroups = [...days.values()].sort((a, b) => ((a.date ?? '') < (b.date ?? '') ? -1 : 1));
   for (const group of dayGroups) group.items.sort(chronological);
 
+  // The Past due line shows while its range loads, also when the range turns out to hold nothing.
+  if (loading.pastDue) pastDue.loading = true;
   return [pastDue, ...dayGroups, noDueDate, done].filter(hasContent);
 }
 
@@ -363,7 +371,9 @@ export function buildWeekView(input: ModelInput): WeekView {
   const visible = placed.filter(({ view }) =>
     matchesCourseFilter(view.courseId, input.courseFilter),
   );
-  const groups = buildGroups(visible, context, byCourse);
+  const loading = input.loading ?? { days: [], pastDue: false };
+  const groups = buildGroups(visible, context, byCourse, loading);
+  const isLoading = loading.pastDue || loading.days.length > 0;
 
   return {
     span: input.settings.span,
@@ -379,7 +389,9 @@ export function buildWeekView(input: ModelInput): WeekView {
     rings,
     courseFilter: input.courseFilter,
     hiddenCourseCount: input.courses.filter((course) => hidden.has(course.id)).length,
-    nothingDue: !visible.some((placed) => placed.datedInSpan),
+    // Nothing is due only once every day of the span has arrived.
+    nothingDue: !isLoading && !visible.some((placed) => placed.datedInSpan),
+    loading: isLoading,
     limited: input.limited,
     scopeCourseId,
     scopeCourseHidden,
