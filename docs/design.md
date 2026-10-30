@@ -298,8 +298,9 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - Today and Tomorrow show in full.
     A group with more than 4 items shows its first 3, and a "Show N more" link opens the rest in place.
     A link that would hide only one item takes the same space as that item, so smaller groups show in full.
-  - The later days of the shown span, No due date and Done sit behind one link that names the span, such as "Next 7 days (9)" or "Next month (40)", and opens them in place.
-    With a custom span the link reads "Next 10 days (12)", and with 2 weeks it reads "Next 14 days (15)".
+  - The later days of the shown span, No due date and Done sit behind one link that names the span, such as "Next 7 days (9)" or "Rest of this month (40)", and opens them in place.
+    With a custom span the link reads "Rest of these 10 days (12)", and with 2 weeks it reads "Next 14 days (15)".
+    The link never has the same name as an arrow, such as "Next month", so a screen reader user can tell them apart.
     In a span that does not start today, the link reads "Rest of these 7 days (9)".
     With Day, the link holds only No due date and Done, and reads "No due date and done (2)".
   - A span with nothing due today or tomorrow shows the next day that has work, so the glance is never empty while work is due.

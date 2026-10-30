@@ -189,10 +189,10 @@
     "message": "Next 14 days ($1)"
   },
   "restOf_month": {
-    "message": "Next month ($1)"
+    "message": "Rest of this month ($1)"
   },
   "restOf_custom": {
-    "message": "Next $2 days ($1)"
+    "message": "Rest of these $2 days ($1)"
   },
   "restOfShown_day": {
     "message": "No due date and done ($1)"

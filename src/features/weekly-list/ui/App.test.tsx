@@ -2366,9 +2366,9 @@ describe('shown span', () => {
 
     it.each([
       ['week', {}, 'Next 7 days (3)'],
-      ['month', { span: { kind: 'month', days: 7 } }, 'Next month (3)'],
+      ['month', { span: { kind: 'month', days: 7 } }, 'Rest of this month (3)'],
       ['2 weeks', FORTNIGHT, 'Next 14 days (3)'],
-      ['custom', CUSTOM, 'Next 10 days (3)'],
+      ['custom', CUSTOM, 'Rest of these 10 days (3)'],
       ['week later', { spanOffset: 1, isCurrentSpan: false }, 'Rest of these 7 days (3)'],
       ['month later', MONTH, 'Rest of this month (3)'],
     ] as const)('names the %s span', (_, patch, label) => {

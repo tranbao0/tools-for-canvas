@@ -257,7 +257,7 @@ test('the panel and the in-page list share one span, and the link names it', asy
   // The control in the list changes the span.
   await picker(list).selectOption('month');
   await expect(listTitle).toHaveText(/October 27 to November 26/);
-  await expect(link(/^Next month \(\d+\)$/)).toBeVisible();
+  await expect(link(/^Rest of this month \(\d+\)$/)).toBeVisible();
   await expect(list.getByRole('button', { name: /done in this month/ }).first()).toBeVisible();
 
   // The panel opens on the same span.
@@ -285,7 +285,7 @@ test('the panel and the in-page list share one span, and the link names it', asy
   await days(list).fill('10');
   await days(list).press('Enter');
   await expect(listTitle).toHaveText(/October 27 to November 5/);
-  await expect(link(/^Next 10 days \(\d+\)$/)).toBeVisible();
+  await expect(link(/^Rest of these 10 days \(\d+\)$/)).toBeVisible();
   await panel.bringToFront();
   await expect(title(panel, 'October 27 to November 5')).toBeVisible();
   await expect(days(panel)).toHaveValue('10');
