@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { HOSTILE_MESSAGE } from '../../../tests/fixtures/announcements';
 import { htmlToText, sanitizeHtml } from './sanitize';
 
@@ -257,18 +257,67 @@ describe('sanitizeHtml: the hostile corpus', () => {
     ).toBe('<table><tbody><tr><td>a</td><td>b</td></tr></tbody></table>');
   });
 
-  it('stays fast and flat on deep and large input', () => {
-    const deep = `${'<div>'.repeat(5000)}x${'</div>'.repeat(5000)}`;
-    const box = parsed(deep);
-    let depth = 0;
-    for (let node: Element | null = box.firstElementChild; node; node = node.firstElementChild) {
-      depth += 1;
+  // Count source reads, including repeated iteration over the same children.
+  // The parser is outside this check so its nesting limits cannot hide unbounded traversal.
+  function countedSource(maxReads: number) {
+    let reads = 0;
+    function read() {
+      if (++reads > maxReads) throw new Error('Source traversal exceeds its work bound');
     }
-    expect(depth).toBeLessThanOrEqual(41);
-    // Beyond the limit the rest is dropped, and nothing throws.
-    expect(
-      parsed('<span>a</span>'.repeat(20000)).querySelectorAll('span').length,
-    ).toBeLessThanOrEqual(5000);
+    function node(children: Node[], text?: string): Node {
+      return {
+        get nodeType() {
+          read();
+          return text === undefined ? 1 : 3;
+        },
+        localName: 'span',
+        namespaceURI: 'http://www.w3.org/1999/xhtml',
+        data: text,
+        get childNodes() {
+          read();
+          return {
+            *[Symbol.iterator]() {
+              for (const child of children) {
+                read();
+                yield child;
+              }
+            },
+          };
+        },
+      } as unknown as Node;
+    }
+    function sanitize(body: Node) {
+      const parser = vi
+        .spyOn(DOMParser.prototype, 'parseFromString')
+        .mockReturnValue({ body } as unknown as Document);
+      try {
+        return sanitizeHtml('', { origin: ORIGIN, doc: document });
+      } finally {
+        parser.mockRestore();
+      }
+    }
+    return { node, sanitize, reads: () => reads };
+  }
+
+  it('bounds traversal on very deep input and limits output nesting', () => {
+    const source = countedSource(1000);
+    let tree = source.node([], 'too deep');
+    for (let i = 0; i < 20000; i++) tree = source.node([tree]);
+    const result = source.sanitize(source.node([tree]));
+    let depth = 0;
+    for (let node = result.firstElementChild; node; node = node.firstElementChild) depth++;
+    expect(depth).toBe(40);
+    expect(result.textContent).toBe('');
+    expect(source.reads()).toBeLessThanOrEqual(1000);
+  });
+
+  it.each([100, 1000, 20000])('bounds source work linearly for %i sibling elements', (size) => {
+    const source = countedSource(8 * size + 10);
+    const children = Array.from({ length: size }, () => source.node([source.node([], 'a')]));
+    const result = source.sanitize(source.node(children));
+    expect(result.childNodes.length).toBe(Math.min(size, 2500));
+    expect(result.textContent).toBe('a'.repeat(Math.min(size, 2500)));
+    expect(source.reads()).toBeLessThanOrEqual(8 * size + 10);
   });
 
   it('makes no element of an unclosed tag, and no link from an empty address', () => {
