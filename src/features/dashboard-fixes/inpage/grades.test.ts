@@ -188,3 +188,19 @@ it('saved override {103:false} survives toggle off, card leaves page, toggle on'
   fix.apply(ctx);
   expect(grade('103')).toBe('•••');
 });
+
+it('clears an observation when the server confirms it', () => {
+  drawDashboard();
+  const store = {
+    observed: new Map([['course-grades-widget', new Map([['107', false]])]]),
+    serverStates: new Map(),
+  };
+  const fix = gradesFix(store);
+  fix.apply(
+    fakeContext({
+      ...dashboardData(),
+      gradeVisibilities: { 'course-grades-widget': { '107': false } },
+    }),
+  );
+  expect(store.observed.get('course-grades-widget')?.has('107')).toBe(false);
+});

@@ -29,13 +29,20 @@ function cardCourseId(card: HTMLElement): string {
   return (card.getAttribute('data-testid') ?? '').replace('course-grade-card-', '');
 }
 
-export function gradesFix(): Fix {
+export interface GradeVisibilityStore {
+  userId?: string;
+  serverStates: Map<string, Record<string, boolean>>;
+  observed: Map<string, Map<string, boolean>>;
+}
+
+export function gradesFix(
+  store: GradeVisibilityStore = { serverStates: new Map(), observed: new Map() },
+): Fix {
   let doc: Document | null = null;
   /** What each grid shows. It stays out of the page, where a script could read the grades. */
   const signatures = new WeakMap<Element, string>();
   const nativeStates = new WeakMap<Element, { hidden: boolean; values: Map<string, boolean> }>();
-  const serverStates = new Map<string, Record<string, boolean>>();
-  let observed = new Map<string, Map<string, boolean>>();
+  const { serverStates, observed } = store;
 
   /** Sets the text of the element with `suffix`, and removes it when there is no text. */
   function fill(card: HTMLElement, id: string, suffix: string, text: string | null): void {
@@ -184,8 +191,6 @@ export function gradesFix(): Fix {
       for (const found of findGradeWidgets(context.doc)) sync(context, found);
     },
     remove() {
-      observed = new Map();
-      serverStates.clear();
       for (const node of doc?.querySelectorAll('[data-wr-card]') ?? []) node.remove();
       for (const node of doc?.querySelectorAll('[data-wr-grades]') ?? []) {
         node.removeAttribute('data-wr-grades');

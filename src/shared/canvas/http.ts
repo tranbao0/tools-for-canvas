@@ -67,6 +67,7 @@ function isRedirect(response: Response): boolean {
 const globalFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
 
 export interface CanvasFetchInit {
+  readonly signal?: AbortSignal;
   readonly method: HttpMethod;
   readonly headers?: Readonly<Record<string, string>>;
   readonly body?: string;
@@ -96,6 +97,7 @@ export async function canvasFetch(
       body: init.body,
       credentials: 'include',
       redirect: 'manual',
+      ...(init.signal ? { signal: init.signal } : {}),
     });
   } catch (error) {
     throw toNetworkError(error);

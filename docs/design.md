@@ -1741,7 +1741,13 @@ I read each of them in the package source.
    The page reads these preferences when the widget toggle or configuration changes.
    Values observed on native cards take precedence over stale server preferences for this page view.
    A later server value clears an observation when it confirms it or changes the previous server value.
-   A request whose timer expires in the queue gets one fresh attempt when a slot opens.
+   The visibility store belongs to the page view and keeps observations and server states by confirmed user and widget.
+   Removing the fix removes its DOM only.
+   Only a different confirmed user clears the store.
+   A reply with no user id leaves the store and the read state unchanged.
+   The five-second timer starts when the request starts and covers every retry.
+   An overall twelve-second cap starts when the read is created.
+   A late result updates copies through the normal dashboard data path.
    Normal data change notices do not read them again.
    Cached dashboard data never waits for this read.
    Copies hide their grades while preferences are unknown.

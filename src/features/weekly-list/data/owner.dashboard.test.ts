@@ -323,10 +323,11 @@ describe('dashboardGradeVisibility', () => {
   it('reads live preferences without the cache ownership check', async () => {
     const h = await loaded();
     const read = vi.fn(async () => ({ 'course-grades-widget': { '107': false } }));
-    vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+    const priority = vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
     h.canvas.getWidgetGradeVisibility = read;
     const result = await h.owner.dashboardGradeVisibility();
     expect(result.gradeVisibilities).toEqual({ 'course-grades-widget': { '107': false } });
+    expect(priority.mock.calls.at(-1)?.[0]()).toBe('high');
     expect(read).toHaveBeenCalledTimes(1);
     expect(h.canvas.calls).toEqual([]);
   });
@@ -341,4 +342,21 @@ describe('dashboardGradeVisibility', () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect((await pending).gradeVisibilities).toBeNull();
   });
+});
+
+it('publishes a visibility result after the owner wait ends', async () => {
+  const h = await loaded();
+  let finish!: (value: Record<string, Record<string, boolean>>) => void;
+  vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+  h.canvas.getWidgetGradeVisibility = () =>
+    new Promise((resolve) => {
+      finish = resolve;
+    });
+  const pending = h.owner.dashboardGradeVisibility();
+  await vi.advanceTimersByTimeAsync(5000);
+  expect((await pending).gradeVisibilities).toBeNull();
+  const value = { 'course-grades-widget': { '107': false } };
+  finish(value);
+  await vi.advanceTimersByTimeAsync(0);
+  expect((await h.owner.dashboardData()).gradeVisibilities).toEqual(value);
 });

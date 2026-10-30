@@ -180,24 +180,22 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
       withPriority,
 
       getWidgetGradeVisibility: async (userId) => {
-        const signal = AbortSignal.timeout(5000);
-        const response = await limit(
-          () =>
-            withRateLimitRetry(() =>
-              transport({
-                method: 'POST',
-                url: GRAPHQL_PATH,
-                // A request whose timer expired in the queue gets one fresh attempt.
-                signal: signal.aborted ? AbortSignal.timeout(5000) : signal,
-                body: {
-                  query:
-                    'query WidgetGradeVisibility($id: ID!) { legacyNode(_id: $id, type: User) { ... on User { widgetDashboardConfig } } }',
-                  variables: { id: userId },
-                },
-              }),
-            ),
-          'high',
-        );
+        const overall = AbortSignal.timeout(12000);
+        const response = await limit(() => {
+          const signal = AbortSignal.any([overall, AbortSignal.timeout(5000)]);
+          return withRateLimitRetry(() =>
+            transport({
+              method: 'POST',
+              url: GRAPHQL_PATH,
+              signal,
+              body: {
+                query:
+                  'query WidgetGradeVisibility($id: ID!) { legacyNode(_id: $id, type: User) { ... on User { widgetDashboardConfig } } }',
+                variables: { id: userId },
+              },
+            }),
+          );
+        }, 'high');
         const body = response.data as {
           data?: { legacyNode?: { widgetDashboardConfig?: string | null } };
         };

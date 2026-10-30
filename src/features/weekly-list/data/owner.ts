@@ -205,7 +205,16 @@ export interface DataOwner {
    */
   acceptOffer(origin: string): Promise<boolean>;
   act(action: DataAction): Promise<ActionReply>;
-  /** The data of the dashboard fixes, from the cache. It may request GET /users/self to check the signed-in student (decision 22). */
+  /**
+   * Reads dashboard data from the cache and checks the student with GET /users/self.
+   * A different student calls dropUserData(), persists the cleared cache, sends a change
+   * notice and schedules a full refresh round.
+   * That round requests the profile, courses, groups, colors, dashboard positions,
+   * planner items, planner overrides, assignment details, undated assignments and custom
+   * grade statuses, plus all assignments when the planner is limited.
+   * It writes the refreshed cache and sends change notices.
+   * A 401 calls signOut() and clears the session.
+   */
   dashboardData(): Promise<DashboardData>;
   dashboardGradeVisibility(): Promise<DashboardData>;
   /** One announcement of the saved Canvas with its full message. */
@@ -1939,16 +1948,33 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       origin,
       ready: result.exact && !blocksLoads(cache.failure),
       userId: session.profile.id,
+      ...(lateVisibility?.origin === origin &&
+      lateVisibility.userId === session.profile.id &&
+      lateVisibility.generation === generation
+        ? { gradeVisibilities: lateVisibility.value }
+        : {}),
       courses: dashboardCourses(session.courses, session.colors, session.profile.id),
       extras: extrasFromView(result.view),
     };
   }
+
+  let lateVisibility:
+    | {
+        origin: string;
+        userId: string;
+        generation: number;
+        value: DashboardData['gradeVisibilities'];
+      }
+    | undefined;
 
   async function dashboardGradeVisibility(): Promise<DashboardData> {
     await ready();
     const origin = await savedOrigin();
     const base: DashboardData = { origin: origin ?? '', ready: false, courses: [], extras: [] };
     const userId = cache?.session?.profile.id;
+    const readGeneration = generation;
+    lateVisibility = undefined;
+    let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const read = (origin ? apiFor(origin).withPriority(() => 'high') : null)
@@ -1956,9 +1982,24 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       const gradeVisibilities =
         userId && read
           ? await Promise.race([
-              read(userId),
+              read(userId).then(async (value) => {
+                if (
+                  timedOut &&
+                  origin &&
+                  generation === readGeneration &&
+                  cache?.session?.profile.id === userId &&
+                  (await savedOrigin()) === origin
+                ) {
+                  lateVisibility = { origin, userId, generation: readGeneration, value };
+                  await bump();
+                }
+                return value;
+              }),
               new Promise<null>((resolve) => {
-                timer = setTimeout(() => resolve(null), 5000);
+                timer = setTimeout(() => {
+                  timedOut = true;
+                  resolve(null);
+                }, 5000);
               }),
             ])
           : null;

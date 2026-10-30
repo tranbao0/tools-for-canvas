@@ -15,7 +15,7 @@ import { announcementsFix } from './announcements';
 import { courseColorsFix } from './colors';
 import { isFixNode, type Fix, type FixContext } from './context';
 import { courseWorkFix } from './courseWork';
-import { gradesFix } from './grades';
+import { gradesFix, type GradeVisibilityStore } from './grades';
 import { findGradeWidgets } from '../../../shared/canvas/widgetDashboard';
 import { FIXES_CSS } from './styles';
 
@@ -57,11 +57,12 @@ function isForeign(records: readonly MutationRecord[]): boolean {
 
 export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   const { doc, origin } = options;
+  const gradeStore: GradeVisibilityStore = { serverStates: new Map(), observed: new Map() };
   const fixes: Record<FixKey, Fix> = {
     courseColors: courseColorsFix(),
     announcementsInPlace: announcementsFix(),
     courseWorkExtras: courseWorkFix(),
-    allCourseGrades: gradesFix(),
+    allCourseGrades: gradesFix(gradeStore),
   };
   const keys = Object.keys(fixes) as FixKey[];
   let settings: DashboardFixesSettings | null = null;
@@ -223,12 +224,20 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         if (seq !== loadSeq) return;
         const next = reply as DashboardData | undefined;
         if (typeof next?.origin !== 'string' || !Array.isArray(next.courses)) return;
-        if (data !== null && data.userId !== next.userId) {
-          fixes.allCourseGrades.remove();
-          visibility = null;
-          visibilitySeq += 1;
-          requestedVisibility = false;
+        // A reply without a user id is a failed sign-in check. It says nothing about the student.
+        if (next.userId !== undefined && next.userId !== gradeStore.userId) {
+          const changed = gradeStore.userId !== undefined;
+          gradeStore.userId = next.userId;
+          if (changed) {
+            gradeStore.observed.clear();
+            gradeStore.serverStates.clear();
+            fixes.allCourseGrades.remove();
+            visibility = null;
+            visibilitySeq += 1;
+            requestedVisibility = false;
+          }
         }
+        if (next.gradeVisibilities != null) visibility = next.gradeVisibilities;
         data = { ...next, gradeVisibilities: visibility };
         schedule(0);
       })

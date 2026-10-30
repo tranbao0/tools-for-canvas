@@ -968,3 +968,150 @@ describe('widget grade visibility', () => {
     );
   });
 });
+
+it('starts one five-second visibility timer at request start and reuses it for retries', async () => {
+  vi.useFakeTimers();
+  const timeout = vi.spyOn(AbortSignal, 'timeout');
+  let release!: () => void;
+  const signals: AbortSignal[] = [];
+  let attempts = 0;
+  let ordinary = 0;
+  const order: string[] = [];
+  const client = createCanvasClient({
+    origin: ORIGIN,
+    getCsrfToken: async () => CSRF_TOKEN,
+    maxConcurrency: 1,
+    fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      order.push(String(input).includes('graphql') ? 'visibility' : 'ordinary');
+      if (!String(input).includes('graphql')) {
+        if (ordinary++ === 0)
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        return new Response('{}');
+      }
+      signals.push(input instanceof Request ? input.signal : init!.signal!);
+      attempts += 1;
+      return attempts < 3
+        ? new Response('{}', { status: 429 })
+        : Response.json({ data: { legacyNode: { widgetDashboardConfig: '{}' } } });
+    }) as typeof fetch,
+  });
+  try {
+    const busy = client.getProfile();
+    await vi.advanceTimersByTimeAsync(0);
+    const queued = client.getProfile();
+    const pending = client.getWidgetGradeVisibility!('5');
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([12000]);
+    release();
+    await busy;
+    await vi.advanceTimersByTimeAsync(3000);
+    await pending;
+    await queued;
+    expect(order[1]).toBe('visibility');
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([12000, 5000]);
+    expect(signals).toHaveLength(3);
+    expect(timeout.mock.calls.filter(([ms]) => ms === 5000)).toHaveLength(1);
+    expect(signals[0]!.aborted).toBe(false);
+  } finally {
+    timeout.mockRestore();
+    vi.useRealTimers();
+  }
+});
+
+describe('widget grade visibility timers', () => {
+  /** Makes `AbortSignal.timeout` follow the fake timers. */
+  function fakeAbortTimeout() {
+    return vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new DOMException('timeout', 'TimeoutError')), ms);
+      return controller.signal;
+    });
+  }
+
+  function hangingClient() {
+    let release!: () => void;
+    let ordinary = 0;
+    let started = 0;
+    const client = createCanvasClient({
+      origin: ORIGIN,
+      getCsrfToken: async () => CSRF_TOKEN,
+      maxConcurrency: 1,
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (!String(input).includes('graphql')) {
+          if (ordinary++ === 0)
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+          return new Response('{}');
+        }
+        started += 1;
+        const signal = input instanceof Request ? input.signal : init!.signal!;
+        return new Promise<Response>((_, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        });
+      }) as typeof fetch,
+    });
+    return { client, release: () => release(), started: () => started };
+  }
+
+  it('aborts a request five seconds after it starts, not five seconds after it was created', async () => {
+    vi.useFakeTimers();
+    const timeout = fakeAbortTimeout();
+    try {
+      const { client, release, started } = hangingClient();
+      const busy = client.getProfile();
+      await vi.advanceTimersByTimeAsync(0);
+      const pending = client.getWidgetGradeVisibility!('5');
+      const outcome = pending.then(
+        () => 'done',
+        () => 'aborted',
+      );
+      await vi.advanceTimersByTimeAsync(4000);
+      release();
+      await busy;
+      await vi.advanceTimersByTimeAsync(0);
+      expect(started()).toBe(1);
+      await vi.advanceTimersByTimeAsync(4900);
+      let settled = false;
+      void outcome.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(await outcome).toBe('aborted');
+    } finally {
+      timeout.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('aborts a request twelve seconds after it was created at the latest', async () => {
+    vi.useFakeTimers();
+    const timeout = fakeAbortTimeout();
+    try {
+      const { client, release, started } = hangingClient();
+      const busy = client.getProfile();
+      await vi.advanceTimersByTimeAsync(0);
+      const pending = client.getWidgetGradeVisibility!('5');
+      const outcome = pending.then(
+        () => 'done',
+        () => 'aborted',
+      );
+      await vi.advanceTimersByTimeAsync(9000);
+      release();
+      await busy;
+      await vi.advanceTimersByTimeAsync(0);
+      expect(started()).toBe(1);
+      let settled = false;
+      void outcome.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(2900);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(await outcome).toBe('aborted');
+    } finally {
+      timeout.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+});
