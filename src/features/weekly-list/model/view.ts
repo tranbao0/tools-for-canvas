@@ -116,7 +116,7 @@ function placeItem(item: Item, input: ModelInput, context: PlacementContext): Pl
     state,
     chip: statusChip(item, state, {
       now: context.now,
-      showPastDueChip: !context.isCurrentSpan,
+      showPastDueChip: slot.group !== 'past_due',
       gradeStatuses,
     }),
     availability: availabilityFor(item, placeAs, context.now),

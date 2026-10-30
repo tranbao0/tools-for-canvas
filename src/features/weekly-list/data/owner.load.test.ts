@@ -326,7 +326,10 @@ describe('first load', () => {
 
     // The week shows with its refresh marker while the chips fill in.
     expect(shown.refreshing).toBe(true);
-    const assignments = viewItems(shown.view).filter((item) => item.kind === 'assignment');
+    // The work of Past due is from earlier spans, whose details are loaded.
+    const assignments = viewItems(shown.view).filter(
+      (item) => item.kind === 'assignment' && (item.due ?? '') >= shown.view.spanStart,
+    );
     expect(assignments.length).toBeGreaterThan(0);
     expect(assignments.every((item) => item.handIn === null)).toBe(true);
     release();

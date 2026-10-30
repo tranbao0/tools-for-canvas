@@ -220,7 +220,8 @@ Use a new, empty profile, and the student account.
     Expect: the arrows are named by the span, such as "Next month" and "Next 10 days", and each step moves by one span.
     Expect: Today is dim in the span that starts today, and it returns to that span from any other span.
     Expect: with the arrow keys in the closed select, each pick shows at once, and the list changes only after a short pause or when the select loses focus.
-    Expect: Past due shows only in the span that holds today, and the rings and the empty text name the span, such as "3 of 5 done in this month" and "Nothing due in these 10 days".
+    Expect: Past due shows the same overdue work in every span, and in a span that ended before today the work dated inside that span stays on its day with a "Past due" chip.
+    Expect: the "N late" badge of a ring counts the items of the Past due group, and the rings and the empty text name the span, such as "3 of 5 done in this month" and "Nothing due in these 10 days".
     Expect: with Day, tomorrow still shows as the look-ahead, outside the rings.
 22. Type 1, 91 and 2.5 in the Custom days field, and press Enter or leave the field.
     Expect: the browser says the number must be a whole number from 2 to 90, and the list keeps its last span.

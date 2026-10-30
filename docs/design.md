@@ -36,7 +36,7 @@ This extension has no account, no server of its own and no telemetry.
 | 6 | List layout and item placement | Items are placed by date and done state only, each in one group |
 | 7 | Item status | One set of status chips, the same on every item in every view |
 | 8 | What counts as done, and the rings | The Canvas planner rule, plus excused and graded work; rings count items |
-| 9 | The shown span, time zone and past-due work | A span the student picks (Day, Week, 2 weeks, Month or 2 to 90 days) that starts today in the Canvas time zone, a Past due group back to the term start (at most 16 weeks), and a look-ahead for tomorrow |
+| 9 | The shown span, time zone and past-due work | A span the student picks (Day, Week, 2 weeks, Month or 2 to 90 days) that starts today in the Canvas time zone, a Past due group in every span back to the term start (at most 16 weeks), and a look-ahead for tomorrow |
 | 10 | Custom tasks | Create, edit and delete Canvas planner notes |
 | 11 | Data loading, refresh and errors | One data owner in the background, with a memory-only cache |
 | 12 | Build tools and UI framework | WXT, TypeScript and Preact |
@@ -443,33 +443,36 @@ Each item is in one of three states, checked in this order:
    Canvas sets both flags when the student submits or uses a module's "Mark as done", so that pair means the student finished the work before the redo request.
 3. **Open:** everything else.
 
-**Groups in the current-week view, from top to bottom:**
+**Groups in the span that starts today, from top to bottom:**
 
 1. **Past due:** open work with a due date before now.
    - Items due in the last 7 days show in full, newest first.
    - Older items collapse under "N older".
      That line has a "Skip all older" action with an Undo notice, so a student who installs in the middle of a term can clear old work at once.
-2. **Today**, **Tomorrow**, then each later day of the week that has items.
+2. **Today**, **Tomorrow**, then each later day of the span that has items.
 3. **No due date:** collapsed, with a count.
 4. **Done:** collapsed, with a count.
 
-When the week has no items, "Nothing due this week" replaces the day groups only.
+When the span has no items, "Nothing due in these 7 days" replaces the day groups only.
 Past due, No due date and Done still show.
 
-**Other weeks:** one group for each day with items, then Done.
-Every item that is not done stays in its day group, with its status chip (decision 7).
+**Other spans:** Past due comes first, with the same items, the same "N older" line and the same "N skipped" line.
+Then comes one group for each day with items, and Done.
+No due date shows only in the span that starts today.
+Open work that is not past due stays in its day group, with its status chip (decision 7).
+A span that ended before today has one exception: open work dated inside it stays in its day group, with its status chip, so the span does not look empty.
 
 **Placement rules:**
 
 - Each item has one key: the assignment id for assignment-backed items, otherwise the planner type plus the planner id.
 - Each item goes to exactly one group, chosen by its date and its state:
   - checked, but Canvas still marks it missing: where an open item would go (see "Checked but missing" below);
-  - done and dated in the viewed week: Done;
-  - open and past due, in the current-week view: Past due;
+  - done and dated in the shown span: Done;
+  - open and past due, in every span: Past due, except open work dated inside a span that ended before today, which stays on its day;
   - open and due later: its day;
   - open with no due date: No due date;
   - skipped: the "N skipped" line of its group (see Skip).
-- In the current-week view, Done also holds done items from earlier weeks that still have a warning chip (decision 7).
+- In the span that starts today, Done also holds done items from before today that still have a warning chip (decision 7).
   So the warning count on the Done header covers them.
 
 **Checked but missing:**
@@ -510,14 +513,14 @@ The owner chose this rule after testing: one stray click, or an untick and a ret
   The first Skip shows a one-time note: "Skipping also hides this item in Canvas's list of missing work."
 - In Past due and No due date, skipped items leave the group.
   An "N skipped" line at the end of the group shows them again, with an "Unskip" action.
-- In a day group of any week, a skipped item stays on its day with a neutral "Skipped" chip and an "Unskip" action.
+- In a day group of any span, a skipped item stays on its day with a neutral "Skipped" chip and an "Unskip" action.
 - When the student unchecks a done item, the extension sends `dismissed` false with `marked_complete` false.
   Canvas also sets `dismissed` to true when a student uses a module's "Mark as done" [10].
   Without this rule, an unchecked item would turn into a skipped item.
 
 **Rings and filters:**
 
-- Rings count the items dated in the viewed week, wherever they show (decision 8).
+- Rings count the items dated in the shown span, wherever they show (decision 8).
 - A click on a ring filters every group to that course.
 
 ### 7. Item status
@@ -573,8 +576,8 @@ The first rule that matches wins.
    The chip reads "Can't confirm: Gradescope", "Can't confirm: On paper" or "Can't confirm: External tool".
    It takes the place of the hand-in chip, because both chips would state one fact about the same hand-in.
    Its tip says: "Canvas can't see this hand-in. If you handed it in, check it off."
-7. **Past due:** any other open item with a date before now, in a view that has no Past due group.
-   In the current-week view, the Past due group already says this, so the chip does not show there.
+7. **Past due:** any other open item with a date before now that is not in the Past due group, such as work dated inside a span that ended before today.
+   The Past due group already says this for its items, so the chip does not show there.
 
 There is no warning color on any chip except Missing.
 
@@ -665,16 +668,16 @@ Availability is a separate small marker next to the status chip, because it answ
 
 **Rings:**
 
-- There is one ring per course that has items dated in the viewed week.
-  In the current-week view, every course with items in Past due also has a ring.
+- There is one ring per course that has items dated in the shown span.
+  In every span, every course with items in Past due also has a ring.
 - A ring counts items, not points, as in the original [9].
   Skipped items and reminders do not count.
   A checked item that Canvas still marks missing counts as not done.
-- A course with no items this week shows an empty ring.
+- A course with no items in the span shows an empty ring.
 - The chart center shows a check mark at 100 percent only when no course has an item in Past due.
   Otherwise, the legend row of a course shows the number of its past-due items.
-- Each legend row has a text label for screen readers, such as "3 of 3 done this week, 1 past due".
-  The chart center has a text label for the week, such as "This week: 4 of 18 done, 22 percent".
+- Each legend row has a text label for screen readers, such as "3 of 3 done in these 7 days, 1 past due".
+  The chart center has a text label for the span, such as "Progress in these 7 days: 4 of 18 done, 22 percent".
 - Custom tasks with no course share one "Personal" ring.
 - When the course lookup fails for an item, the ring uses the course or group name that the planner item carries (`context_name`) [10].
 - Rings appear in dashboard order from `GET /api/v1/users/self/dashboard_positions` [10].
@@ -688,11 +691,12 @@ Availability is a separate small marker next to the status chip, because it answ
   - A click on a ring or a legend row filters the list, as before.
   - When a check changes a count, the ring arc grows to its new length, with no motion under reduced motion.
   - The chart draws at most 4 rings when the surface is narrower than 280 px (the in-page column and narrow panels), and at most 6 when it is wider.
-    It draws the classes with the most work this week, and a "+N" mark in the center area names how many more the legend lists.
+    It draws the classes with the most work in the span, and a "+N" mark in the center area names how many more the legend lists.
   - The ring stroke stays thick as the count grows: the chart widens the stroke and shrinks the center instead of thinning the rings.
-  - Classes with no work this week stay out of the chart and show only in the legend.
-  - A week with no work at all shows no ring: the chart place shows a short line, such as "Nothing due this week", or a check mark when all work is done.
+  - Classes with no work in the span stay out of the chart and show only in the legend.
+  - A span with no work at all shows no ring: the chart place shows a short line, such as "Nothing due in these 7 days", or a check mark when all work is done.
   - The legend's past-due count is a labeled badge, such as "1 late", not a bare number.
+    It counts the items of the Past due group in every span, so the badge and the group always agree.
 - Ring colors come from `GET /api/v1/users/self/colors` [10].
   - A course with no saved color gets one of Canvas's 12 default dashboard colors, picked by a hash of the course id [10].
   - The extension never writes a color back to Canvas.
@@ -730,7 +734,8 @@ Option A was the first decision, and it put the first days of a long span in the
 - The extension has no setting for the first day of the week, because no span depends on it.
 - The choice is one saved setting (decision 18).
   It stays after the browser closes, and the side panel and the in-page list use the same span.
-- The rings, Past due and the look-ahead follow the shown span.
+- The rings and the look-ahead follow the shown span.
+  Past due does not: it holds the same overdue work in every span (see "Past-due work").
   Where this document says "the viewed week" or "this week", read "the shown span" and "the span that starts today".
 - A long span loads in several planner requests on the first view.
   The cache keeps them, so the arrows and later views reuse what it holds (decision 11).
@@ -779,9 +784,14 @@ Option A was the first decision, and it put the first days of a long span in the
 
 **Past-due work:**
 
-- Past due shows only in the span that holds today.
-  In other spans, items stay on their day with their status chip.
-- Past-due items from earlier in the current span also go to Past due, not to their day.
+- Past due shows in every span, with the same items, the same "N older" line and the same "N skipped" line.
+  An open item with a date before now is in Past due, whether its date falls before, inside or after the shown span.
+- One exception: in a span that ended before today, an open item dated inside that span stays on its day, with its status chip.
+  This keeps a past span from looking empty.
+- Each item stays in one place only.
+- The rings count only the items dated in the shown span, so overdue work from another span adds to the "N late" badge and not to "done of total".
+- Why: a student who looks ahead still owes the work that is overdue now.
+  A later span that hid it would show a list that is shorter than the student's real work.
 
 **Look-ahead:**
 

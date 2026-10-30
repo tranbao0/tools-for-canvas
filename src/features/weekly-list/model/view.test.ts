@@ -1137,11 +1137,15 @@ describe('the shown span', () => {
     expect(month.rings[0]).toMatchObject({ total: 5, done: 0, pastDue: 2 });
   });
 
-  it('Month, a month ahead, shows that month on its days and nothing in Past due', () => {
+  it('Month, a month ahead, shows that month on its days and the overdue work in Past due', () => {
     const next = view({ ...span('month'), spanOffset: 1 });
     expect(next).toMatchObject({ spanStart: '2026-11-27', spanEnd: '2026-12-26' });
-    expect(placesOf(next)).toEqual({ 'assignment:dec1': 'day@2026-12-01.items' });
-    expect(next.rings[0]).toMatchObject({ total: 1, done: 0, pastDue: 0 });
+    expect(placesOf(next)).toEqual({
+      'assignment:mon': 'past_due.items',
+      'assignment:oct5': 'past_due.older',
+      'assignment:dec1': 'day@2026-12-01.items',
+    });
+    expect(next.rings[0]).toMatchObject({ total: 1, done: 0, pastDue: 2 });
   });
 
   it('2 weeks shows 14 days from today, and counts them in the rings', () => {
@@ -1183,10 +1187,14 @@ describe('the shown span', () => {
     expect(day.rings[0]).toMatchObject({ total: 1, pastDue: 2 });
   });
 
-  it('Day, another day, shows that day and no Past due', () => {
+  it('Day, another day, shows that day and the overdue work in Past due', () => {
     const other = view({ ...span('day'), spanOffset: 7 });
     expect(other).toMatchObject({ spanStart: '2026-11-03', spanEnd: '2026-11-03' });
-    expect(placesOf(other)).toEqual({ 'assignment:nov3': 'day@2026-11-03.items' });
+    expect(placesOf(other)).toEqual({
+      'assignment:mon': 'past_due.items',
+      'assignment:oct5': 'past_due.older',
+      'assignment:nov3': 'day@2026-11-03.items',
+    });
   });
 
   it('says nothing is due when the span holds no dated work', () => {
@@ -1232,5 +1240,86 @@ describe('the shown span', () => {
     it('starts at the span when it is older than the horizon', () => {
       expect(range({ ...span('month'), spanOffset: -4 }).start).toBe('2026-06-27T04:00:00.000Z');
     });
+  });
+});
+
+describe('Past due in every span', () => {
+  /** Thursday 2026-10-29 at noon in Los Angeles, with the Canvas zone set to match. */
+  const THURSDAY_NOON = '2026-10-29T19:00:00Z';
+  const losAngeles = (partial: Partial<ModelInput> = {}): ModelInput => {
+    const base = input({ now: THURSDAY_NOON, ...partial });
+    return {
+      ...base,
+      browserTimeZone: 'America/Los_Angeles',
+      profile: { ...base.profile, time_zone: 'America/Los_Angeles' },
+    };
+  };
+  const items = [
+    // Overdue: Tuesday, before the span that starts today.
+    task('tuesday', '2026-10-27T19:00:00Z'),
+    task('older', '2026-10-05T19:00:00Z'),
+    // Overdue today, and open work in the span.
+    task('this-morning', '2026-10-29T15:00:00Z'),
+    task('soon', '2026-11-03T19:00:00Z'),
+    task('later', '2026-11-06T19:00:00Z'),
+  ];
+  const details = detailsById(items.map((item) => upload(item.plannable_id)));
+  const view = (partial: Partial<ModelInput>) =>
+    buildWeekView(losAngeles({ plannerItems: items, assignmentDetails: details, ...partial }));
+
+  it('shows Past due in the span after the one that starts today, with the late count', () => {
+    const next = view({ spanOffset: 1 });
+    expect(next).toMatchObject({ spanStart: '2026-11-05', spanEnd: '2026-11-11' });
+    expect(placesOf(next)).toEqual({
+      'assignment:tuesday': 'past_due.items',
+      'assignment:this-morning': 'past_due.items',
+      'assignment:older': 'past_due.older',
+      'assignment:later': 'day@2026-11-06.items',
+    });
+    // The overdue work is no part of the total of that span, but it is late.
+    expect(next.rings[0]).toMatchObject({ total: 1, done: 0, pastDue: 3 });
+    // The group says it, so the items carry no Past due chip.
+    expect(findItem(next, 'assignment:tuesday').chip).toBeNull();
+  });
+
+  it('shows the same Past due group in a span three spans ahead', () => {
+    const far = view({ spanOffset: 3 });
+    expect(placesOf(far)).toEqual({
+      'assignment:tuesday': 'past_due.items',
+      'assignment:this-morning': 'past_due.items',
+      'assignment:older': 'past_due.older',
+    });
+    expect(far.nothingDue).toBe(true);
+  });
+
+  it('keeps work dated inside a span that ended before today on its day, with the chip', () => {
+    const past = view({ spanOffset: -1 });
+    expect(past).toMatchObject({ spanStart: '2026-10-22', spanEnd: '2026-10-28' });
+    expect(placesOf(past)).toEqual({
+      'assignment:tuesday': 'day@2026-10-27.items',
+      // Overdue work dated outside the span goes to Past due.
+      'assignment:this-morning': 'past_due.items',
+      'assignment:older': 'past_due.older',
+    });
+    expect(findItem(past, 'assignment:tuesday').chip).toEqual({ kind: 'past_due' });
+    // The late count follows the Past due group, not the work dated inside the span.
+    expect(past.rings[0]).toMatchObject({ total: 1, done: 0, pastDue: 2 });
+  });
+
+  it('places every item in one place only', () => {
+    for (const spanOffset of [-2, -1, 0, 1, 2, 3]) {
+      const shown = view({ spanOffset });
+      for (const [key, places] of placements(shown)) expect(places, key).toHaveLength(1);
+    }
+  });
+
+  it('leaves out overdue work from before the horizon of the course in a later span', () => {
+    const early = [task('before-term', '2026-08-01T19:00:00Z')];
+    const shown = view({
+      spanOffset: 1,
+      plannerItems: early,
+      assignmentDetails: detailsById([upload('before-term')]),
+    });
+    expect(placesOf(shown)).toEqual({});
   });
 });

@@ -272,7 +272,13 @@ describe('the fixture scenario: the span that starts today', () => {
 describe('the fixture scenario: other spans and scopes', () => {
   it('places next-span work, the peer review and the midnight item with their own range', () => {
     const view = buildWeekView(scenarioInput({ spanOffset: 1 }));
+    // Past due holds the same overdue work as in the span that starts today.
+    const pastDue = Object.entries(placesOf(buildWeekView(scenarioInput()))).filter(([, place]) =>
+      place.startsWith('past_due.'),
+    );
+    expect(pastDue.length).toBeGreaterThan(5);
     expect(placesOf(view)).toEqual({
+      ...Object.fromEntries(pastDue),
       [assignment(A.historyParticipationWeek10)]: 'day@2026-11-03.items',
       [`planner_note:${IDS.notes.springRegistration}`]: 'day@2026-11-03.items',
       [`assessment_request:${IDS.assessmentRequests.bioLabReport3Review}`]: 'day@2026-11-04.items',

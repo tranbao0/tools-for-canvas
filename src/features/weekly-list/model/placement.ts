@@ -35,6 +35,11 @@ export function isInSpan(date: Temporal.PlainDate, context: PlacementContext): b
   return compareDates(date, context.spanStart) >= 0 && compareDates(date, context.spanEnd) <= 0;
 }
 
+/** The shown span ends before today. */
+function isPastSpan(context: PlacementContext): boolean {
+  return compareDates(context.spanEnd, context.today) < 0;
+}
+
 /** Tomorrow in the span that starts today, when that span ends today. */
 export function isLookAheadDate(date: Temporal.PlainDate, context: PlacementContext): boolean {
   return (
@@ -122,9 +127,12 @@ export function slotFor(
   const date = plainDateOf(due, context.timeZone);
   if (item.isReminder) return reminderSlot(date, context);
   if (state === 'done') return doneSlot(due, date, hasWarning, item, context);
-  if (context.isCurrentSpan && compareInstants(due, context.now) < 0)
-    return pastDueSlot(due, state, item, context);
   const lookAhead = isLookAheadDate(date, context);
+  const overdue = compareInstants(due, context.now) < 0;
+  // In a span that ended before today, work dated inside it stays on its day, so the span does
+  // not look empty. Every other overdue item is in Past due, in any span.
+  const staysOnItsDay = overdue && isInSpan(date, context) && isPastSpan(context);
+  if (overdue && !staysOnItsDay) return pastDueSlot(due, state, item, context);
   return isInSpan(date, context) || lookAhead
     ? { group: 'day', date: date.toString(), lookAhead }
     : null;

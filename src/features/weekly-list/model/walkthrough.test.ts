@@ -370,6 +370,11 @@ const EXPECTED_PLACES: Record<string, string> = {
   'assignment:1010': 'done.items',
 };
 
+/** Past due holds the same items in every span, so the other spans show this group too. */
+const PAST_DUE_PLACES: Record<string, string> = Object.fromEntries(
+  Object.entries(EXPECTED_PLACES).filter(([, place]) => place.startsWith('past_due.')),
+);
+
 describe('walk-through: the span that starts today', () => {
   const view: WeekView = buildWeekView(walkthroughInput());
 
@@ -692,6 +697,7 @@ describe('walk-through: other spans', () => {
       Object.fromEntries([...placements(view)].map(([key, places]) => [key, places.join(' + ')])),
     ).toEqual({
       'assessment_request:7001': 'day@2026-11-03.items',
+      ...PAST_DUE_PLACES,
     });
     expect(findItem(view, 'assessment_request:7001')).toMatchObject({
       kind: 'peer_review',
@@ -700,10 +706,16 @@ describe('walk-through: other spans', () => {
     });
     expect(
       view.rings.map(({ courseId, done, total, pastDue }) => ({ courseId, done, total, pastDue })),
-    ).toEqual([{ courseId: '101', done: 0, total: 1, pastDue: 0 }]);
+    ).toEqual([
+      { courseId: '101', done: 0, total: 1, pastDue: 3 },
+      { courseId: '202', done: 0, total: 0, pastDue: 2 },
+      { courseId: '303', done: 0, total: 0, pastDue: 1 },
+      { courseId: '505', done: 0, total: 0, pastDue: 1 },
+      { courseId: null, done: 0, total: 0, pastDue: 1 },
+    ]);
   });
 
-  it('keeps open work on its day with a chip in a past span', () => {
+  it('keeps open work dated in a past span on its day with a chip', () => {
     const view = buildWeekView(walkthroughInput({ spanOffset: -1 }));
     expect(
       Object.fromEntries([...placements(view)].map(([key, places]) => [key, places.join(' + ')])),
@@ -714,6 +726,12 @@ describe('walk-through: other spans', () => {
       'assignment:2002': 'done.items',
       'assignment:2004': 'day@2026-10-23.items',
       'planner_note:8002': 'day@2026-10-26.items',
+      // Overdue work from outside the span is in Past due, and each item shows once.
+      'assignment:1006': 'past_due.older',
+      'assignment:1008': 'past_due.skipped',
+      'assignment:2001': 'past_due.items',
+      'assignment:3003': 'past_due.older',
+      'assignment:5002': 'past_due.older',
     });
     expect(findItem(view, 'assignment:1011').chip).toEqual({
       kind: 'teacher_status',
@@ -730,8 +748,10 @@ describe('walk-through: other spans', () => {
     expect(
       view.rings.map(({ courseId, done, total, pastDue }) => ({ courseId, done, total, pastDue })),
     ).toEqual([
-      { courseId: '101', done: 1, total: 3, pastDue: 0 },
-      { courseId: '202', done: 1, total: 2, pastDue: 0 },
+      { courseId: '101', done: 1, total: 3, pastDue: 1 },
+      { courseId: '202', done: 1, total: 2, pastDue: 1 },
+      { courseId: '303', done: 0, total: 0, pastDue: 1 },
+      { courseId: '505', done: 0, total: 0, pastDue: 1 },
       { courseId: null, done: 0, total: 1, pastDue: 0 },
     ]);
   });

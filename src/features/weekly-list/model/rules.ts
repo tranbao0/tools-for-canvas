@@ -61,7 +61,7 @@ export function placementState(item: Pick<Item, 'facts'>, state: ItemState): Ite
 
 export interface ChipContext {
   now: Temporal.Instant;
-  /** True in a view that has no Past due group, so the Past due chip shows. */
+  /** True when the item is not in the Past due group, so the Past due chip shows. */
   showPastDueChip: boolean;
   /** Teacher statuses of the item's course. */
   gradeStatuses: readonly CustomGradeStatus[] | undefined;

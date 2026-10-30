@@ -1,9 +1,11 @@
 /**
  * The shown span (design decision 9, "The shown span"): the control next to the arrows in the side
  * panel and in the in-page list, the one saved setting that both share, and the control at the
- * narrow widths of the panel. The background clock is Tuesday 2026-10-27 at 2:00 pm in New York.
+ * narrow widths of the panel. The background clock is Tuesday 2026-10-27 at 2:00 pm in New York,
+ * except in the tests of the last part, which run on Thursday 2026-10-29 at noon in Los Angeles.
  */
 import type { Locator, Page } from '@playwright/test';
+import { setBackgroundClock } from './support/clock';
 import { saveAddress } from './support/scenario-api';
 import {
   addCsrfCookie,
@@ -11,6 +13,7 @@ import {
   expect,
   group,
   inpageList,
+  mainRows,
   openCanvasPage,
   openExtensionPage,
   serveScenario,
@@ -76,7 +79,7 @@ test('the panel shows each span, and the arrows and Today move by it', async ({
   await page.getByRole('button', { name: 'Next day', exact: true }).click();
   await expect(title(page, 'Wednesday, October 28')).toBeVisible();
   await expect(today).toHaveAttribute('aria-disabled', 'false');
-  await expect(group(page, 'past_due')).toHaveCount(0);
+  await expect(group(page, 'past_due')).toBeVisible();
   await expect(group(page, 'today')).toHaveCount(0);
   await page.getByRole('button', { name: 'Previous day', exact: true }).click();
   await page.getByRole('button', { name: 'Previous day', exact: true }).click();
@@ -94,7 +97,7 @@ test('the panel shows each span, and the arrows and Today move by it', async ({
   await expect(page.getByRole('button', { name: /done in these 14 days/ }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Next 2 weeks', exact: true }).click();
   await expect(title(page, 'November 10 to November 23')).toBeVisible();
-  await expect(group(page, 'past_due')).toHaveCount(0);
+  await expect(group(page, 'past_due')).toBeVisible();
   await expect(doneBox(page, 'Problem set 7')).toHaveCount(0);
   await page.getByRole('button', { name: 'Previous 2 weeks', exact: true }).click();
   await expect(title(page, 'October 27 to November 9')).toBeVisible();
@@ -110,7 +113,7 @@ test('the panel shows each span, and the arrows and Today move by it', async ({
   await expect(title(page, 'November 27 to December 26')).toBeVisible();
   await expect(doneBox(page, 'Problem set 7')).toHaveCount(0);
   await expect(today).toHaveAttribute('aria-disabled', 'false');
-  expect(await groupKinds(page)).not.toContain('past_due');
+  expect(await groupKinds(page)).toContain('past_due');
   await settledList(page);
   await page.getByRole('button', { name: 'Next month', exact: true }).click();
   await expect(title(page, 'December 27 to January 26')).toBeVisible();
@@ -130,7 +133,7 @@ test('the panel shows each span, and the arrows and Today move by it', async ({
   await expect(group(page, 'past_due')).toBeVisible();
   await page.getByRole('button', { name: 'Next 10 days', exact: true }).click();
   await expect(title(page, 'November 6 to November 15')).toBeVisible();
-  await expect(group(page, 'past_due')).toHaveCount(0);
+  await expect(group(page, 'past_due')).toBeVisible();
   await page.getByRole('button', { name: 'Previous 10 days', exact: true }).click();
   await expect(title(page, 'October 27 to November 5')).toBeVisible();
 
@@ -624,4 +627,77 @@ test('a pick saved in one panel replaces what another panel shows, and its blur 
   await expect(picker(page)).toHaveValue('week');
   await expect(picker(second)).toHaveValue('week');
   await expect(title(page, 'October 27 to November 2')).toBeVisible();
+});
+
+const THURSDAY_NOON_PT = '2026-10-29T19:00:00Z';
+
+/** Opens the panel on Thursday 2026-10-29 at noon, with the Canvas time zone in Los Angeles. */
+async function openPanelInLosAngeles(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  background: Parameters<typeof saveAddress>[0],
+  extensionUrl: (path: string) => string,
+) {
+  await setBackgroundClock(background, THURSDAY_NOON_PT);
+  const { canvas } = await serveScenario(context, [], {
+    now: THURSDAY_NOON_PT,
+    extend: (scenario) => {
+      scenario.timeZone = 'America/Los_Angeles';
+      scenario.profile = { ...scenario.profile, time_zone: 'America/Los_Angeles' };
+    },
+  });
+  await addCsrfCookie(context, canvas.origin);
+  await saveAddress(background, canvas.origin);
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await expect(doneBox(page, 'Quiz 3: Cell membranes')).toBeVisible();
+  await settledList(page);
+  return canvas;
+}
+
+test('on a Thursday, every span starts today in the Canvas time zone', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  await openPanelInLosAngeles(context, page, background, extensionUrl);
+  const today = page.getByRole('button', { name: 'Today', exact: true });
+  await expect(title(page, 'October 29 to November 4')).toBeVisible();
+
+  await picker(page).selectOption('fortnight');
+  await expect(title(page, 'October 29 to November 11')).toBeVisible();
+  await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('Oct 29 - Nov 11');
+  await page.getByRole('button', { name: 'Next 2 weeks', exact: true }).click();
+  await expect(title(page, 'November 12 to November 25')).toBeVisible();
+  await today.click();
+  await expect(title(page, 'October 29 to November 11')).toBeVisible();
+
+  await picker(page).selectOption('month');
+  await expect(title(page, 'October 29 to November 28')).toBeVisible();
+});
+
+test('Past due shows in the span after the one that starts today', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  await openPanelInLosAngeles(context, page, background, extensionUrl);
+  const lateBadge = page.getByRole('button', { name: /^BIO 110.*past due/ });
+  await expect(group(page, 'past_due')).toBeVisible();
+  await expect(lateBadge).toBeVisible();
+  const first = await mainRows(group(page, 'past_due')).count();
+
+  await page.getByRole('button', { name: 'Next week', exact: true }).click();
+  await expect(title(page, 'November 5 to 11')).toBeVisible();
+  await settledList(page);
+
+  const pastDue = group(page, 'past_due');
+  await expect(pastDue).toBeVisible();
+  await expect(mainRows(pastDue)).toHaveCount(first);
+  await expect(lateBadge).toBeVisible();
+  // Past due is the first group, and no item shows twice.
+  expect((await groupKinds(page))[0]).toBe('past_due');
+  const titles = await page.locator('[data-part="title"]').allTextContents();
+  expect(new Set(titles).size).toBe(titles.length);
 });
