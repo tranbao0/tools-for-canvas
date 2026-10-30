@@ -33,20 +33,12 @@ function setup(
 }
 
 describe('SettingsView', () => {
-  it('shows the five settings and the address', () => {
+  it('shows the four settings and the address', () => {
     setup();
     expect(screen.getByLabelText('Shown span')).toBeTruthy();
     expect(screen.queryByLabelText('First day of the week')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Show in my list' })).toBeTruthy();
     expect(screen.getByRole('switch', { name: 'Show progress rings' })).toBeTruthy();
-    expect(
-      screen.getByRole('switch', { name: 'Show the weekly list on Canvas pages' }),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(
-        'Shows on your Canvas dashboard and on course home pages. On other pages, use the side panel.',
-      ),
-    ).toBeTruthy();
     expect(screen.getByLabelText('Theme')).toBeTruthy();
     expect(screen.getByText('school.instructure.com')).toBeTruthy();
   });
@@ -88,12 +80,11 @@ describe('SettingsView', () => {
     expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, hiddenCourseIds: ['9'] });
   });
 
-  it('turns the rings and the in-page list off', () => {
+  it('turns the rings off, and has no switch for the in-page list', () => {
     const { onChange } = setup();
     fireEvent.click(screen.getByRole('switch', { name: 'Show progress rings' }));
     expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, showRings: false });
-    fireEvent.click(screen.getByRole('switch', { name: 'Show the weekly list on Canvas pages' }));
-    expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, showOnCanvasPages: false });
+    expect(screen.queryByRole('switch', { name: /weekly list on Canvas/ })).toBeNull();
   });
 
   it('shows the address the first Canvas page set, with no way to type another', () => {

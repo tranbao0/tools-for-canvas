@@ -1,9 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { DEFAULT_SETTINGS } from '../model/types';
 import { canvasOriginItem } from '../../../shared/platform/storage';
-import { settingsItem } from '../data/storage';
 import { MOUNT_CONTAINER_ID } from './adapters';
 import { DEFAULT_MOUNT_TIMEOUT_MS, type InpageMount } from './mount';
 import { HIDE_NATIVE_TODO_STYLE_ID } from './nativeTodo';
@@ -38,8 +36,8 @@ const mountList = vi.fn((mount: InpageMount): (() => void) => {
 /** The controllers a test started, stopped after it. */
 let started: InpageController[];
 
-/** The choices as the page flow reads them. Here the stored items stand in for the background. */
-const choices: PageChoices = { origin: canvasOriginItem, settings: settingsItem };
+/** The choice as the page flow reads it. Here the stored item stands in for the background. */
+const choices: PageChoices = { origin: canvasOriginItem };
 
 async function start(options: Omit<StartInpageOptions, 'choices'> = {}) {
   const controller = await startInpage(mountList, { ...options, choices });
@@ -126,39 +124,24 @@ describe('startInpage', () => {
     expect(document.getElementById(MOUNT_CONTAINER_ID)).toBeNull();
   });
 
-  it('mounts nothing when "Show the weekly list on Canvas pages" is off, but still reports the page load', async () => {
+  it('removes a list that an earlier copy left when the page is another Canvas', async () => {
     await canvasOriginItem.setValue(CUSTOM);
-    await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: false });
     loadPage(document, COURSE_HOME);
-    await start({ origin: CUSTOM, pathname: '/courses/5' });
+    const stale = document.createElement('div');
+    stale.id = MOUNT_CONTAINER_ID;
+    document.body.append(stale);
+    const hide = document.createElement('style');
+    hide.id = HIDE_NATIVE_TODO_STYLE_ID;
+    document.head.append(hide);
 
-    expect(mounts).toEqual([]);
+    await start({ origin: SCHOOL, pathname: '/courses/5' });
+
     expect(document.getElementById(MOUNT_CONTAINER_ID)).toBeNull();
-    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(document.getElementById(HIDE_NATIVE_TODO_STYLE_ID)).toBeNull();
   });
 
-  it('removes a list that an earlier copy left when the setting is off or the page is another Canvas', async () => {
+  it('leaves the page to a newer copy when its own signal has aborted, whatever the address does', async () => {
     await canvasOriginItem.setValue(CUSTOM);
-    await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: false });
-    for (const origin of [CUSTOM, SCHOOL]) {
-      loadPage(document, COURSE_HOME);
-      const stale = document.createElement('div');
-      stale.id = MOUNT_CONTAINER_ID;
-      document.body.append(stale);
-      const hide = document.createElement('style');
-      hide.id = HIDE_NATIVE_TODO_STYLE_ID;
-      document.head.append(hide);
-
-      await start({ origin, pathname: '/courses/5' });
-
-      expect(document.getElementById(MOUNT_CONTAINER_ID)).toBeNull();
-      expect(document.getElementById(HIDE_NATIVE_TODO_STYLE_ID)).toBeNull();
-    }
-  });
-
-  it('leaves the page to a newer copy when its own signal has aborted, whatever the setting', async () => {
-    await canvasOriginItem.setValue(CUSTOM);
-    await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: true });
     loadPage(document, COURSE_HOME);
     const newer = document.createElement('div');
     newer.id = MOUNT_CONTAINER_ID;
@@ -167,8 +150,8 @@ describe('startInpage', () => {
     replaced.abort();
 
     await start({ origin: CUSTOM, pathname: '/courses/5', signal: replaced.signal });
-    await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: false });
-    await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: true });
+    await canvasOriginItem.setValue(SCHOOL);
+    await canvasOriginItem.setValue(CUSTOM);
 
     expect(mounts).toEqual([]);
     expect(document.getElementById(MOUNT_CONTAINER_ID)).toBe(newer);
@@ -204,8 +187,8 @@ describe('startInpage', () => {
 
     expect(document.body.outerHTML).toBe(before);
     expect(document.querySelector('[data-weekrow-styled], [data-weekrow-column]')).toBeNull();
-    // Turning the setting off must not bring anything back.
-    await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: false });
+    // Switching to another address must not bring anything back.
+    await canvasOriginItem.setValue('https://canvas.state.edu');
     document.body.classList.add('x');
     await vi.advanceTimersByTimeAsync(0);
     expect(document.body.classList.contains('with-right-side')).toBe(false);
@@ -221,13 +204,9 @@ describe('startInpage', () => {
   });
 });
 
-describe('the choices of the student', () => {
-  const OFF = { ...DEFAULT_SETTINGS, showOnCanvasPages: false };
-  const ON = { ...DEFAULT_SETTINGS, showOnCanvasPages: true };
-
-  async function onSavedCanvas(settings = ON) {
+describe('the saved address', () => {
+  async function onSavedCanvas() {
     await canvasOriginItem.setValue(CUSTOM);
-    await settingsItem.setValue(settings);
     loadPage(document, COURSE_HOME);
     return start({ origin: CUSTOM, pathname: '/courses/5' });
   }
@@ -238,42 +217,22 @@ describe('the choices of the student', () => {
 
   beforeEach(() => vi.useFakeTimers());
 
-  it('removes the list when the student turns the setting off, and mounts it again', async () => {
-    await onSavedCanvas();
-    expect(mountList).toHaveBeenCalledTimes(1);
-
-    await settingsItem.setValue(OFF);
-    expect(removed).toHaveBeenCalledTimes(1);
-
-    await settingsItem.setValue(ON);
-    await flush();
-    expect(mountList).toHaveBeenCalledTimes(2);
-
-    await settingsItem.setValue(OFF);
-    expect(removed).toHaveBeenCalledTimes(2);
-  });
-
   it('removes the list when the student switches to another Canvas address, and mounts it on return', async () => {
     await onSavedCanvas();
+    expect(mountList).toHaveBeenCalledTimes(1);
 
     await canvasOriginItem.setValue('https://canvas.state.edu');
     expect(removed).toHaveBeenCalledTimes(1);
-    // The setting does not bring the list back on a page of another address.
-    await settingsItem.setValue(OFF);
-    await settingsItem.setValue(ON);
-    await flush();
-    expect(mountList).toHaveBeenCalledTimes(1);
 
     await canvasOriginItem.setValue(CUSTOM);
     await flush();
     expect(mountList).toHaveBeenCalledTimes(2);
   });
 
-  it('ignores other settings, and mounts once however often the same choice is saved', async () => {
+  it('mounts once however often the same address is saved', async () => {
     await onSavedCanvas();
 
-    await settingsItem.setValue({ ...ON, showRings: false });
-    await settingsItem.setValue({ ...ON, showRings: true, theme: 'dark' });
+    await canvasOriginItem.setValue(CUSTOM);
     await canvasOriginItem.setValue(CUSTOM);
     await flush();
 
@@ -281,12 +240,12 @@ describe('the choices of the student', () => {
     expect(mountList).toHaveBeenCalledTimes(1);
   });
 
-  it('mounts nothing when the setting turns off while the page waits for its anchors', async () => {
+  it('mounts nothing when the address changes while the page waits for its anchors', async () => {
     await canvasOriginItem.setValue(CUSTOM);
     loadPage(document, CARD_VIEW);
     await start({ origin: CUSTOM, pathname: '/' });
 
-    await settingsItem.setValue(OFF);
+    await canvasOriginItem.setValue('https://canvas.state.edu');
     injectSidebar(document, STUDENT_SIDEBAR);
     await flush();
 
@@ -294,31 +253,31 @@ describe('the choices of the student', () => {
     expect(document.getElementById(MOUNT_CONTAINER_ID)).toBeNull();
   });
 
-  it('waits for the anchors again when the setting turns on, after an earlier wait timed out', async () => {
+  it('waits for the anchors again when the address returns, after an earlier wait timed out', async () => {
     await canvasOriginItem.setValue(CUSTOM);
     loadPage(document, CARD_VIEW);
     await start({ origin: CUSTOM, pathname: '/' });
     await vi.advanceTimersByTimeAsync(DEFAULT_MOUNT_TIMEOUT_MS);
 
-    await settingsItem.setValue(OFF);
-    await settingsItem.setValue(ON);
+    await canvasOriginItem.setValue('https://canvas.state.edu');
+    await canvasOriginItem.setValue(CUSTOM);
     injectSidebar(document, STUDENT_SIDEBAR);
     await flush();
 
     expect(mountList).toHaveBeenCalledTimes(1);
   });
 
-  it('applies a choice that changes while the first reads run', async () => {
+  it('leaves no list when the address changes while the first read runs', async () => {
     await canvasOriginItem.setValue(CUSTOM);
-    await settingsItem.setValue(ON);
     loadPage(document, COURSE_HOME);
     const done = start({ origin: CUSTOM, pathname: '/courses/5' });
 
-    await settingsItem.setValue(OFF);
+    await canvasOriginItem.setValue('https://canvas.state.edu');
     await done;
     await flush();
 
-    expect(mountList).not.toHaveBeenCalled();
+    // The list may mount for the address that the read saw, and then it goes with the change.
+    expect(removed).toHaveBeenCalledTimes(mountList.mock.calls.length);
   });
 
   it('stops watching, waiting and the list when the content script ends', async () => {
@@ -330,8 +289,8 @@ describe('the choices of the student', () => {
 
     mountedCopy.abort();
     expect(removed).toHaveBeenCalledTimes(1);
-    await settingsItem.setValue(OFF);
-    await settingsItem.setValue(ON);
+    await canvasOriginItem.setValue('https://canvas.state.edu');
+    await canvasOriginItem.setValue(CUSTOM);
     await flush();
     expect(mountList).toHaveBeenCalledTimes(1);
     expect(removed).toHaveBeenCalledTimes(1);
@@ -354,8 +313,8 @@ describe('the choices of the student', () => {
     });
     await onSavedCanvas();
 
-    await settingsItem.setValue(OFF);
-    await settingsItem.setValue(ON);
+    await canvasOriginItem.setValue('https://canvas.state.edu');
+    await canvasOriginItem.setValue(CUSTOM);
     await flush();
 
     expect(mountList).toHaveBeenCalledTimes(2);

@@ -1,7 +1,7 @@
 /** Small shared building blocks for the views. */
 import { createElement, Fragment, type ComponentChildren } from 'preact';
 import { t } from './i18n';
-import { CheckIcon, CloseIcon, GearIcon } from './icons';
+import { CheckIcon, CloseIcon, GearIcon, MinusIcon } from './icons';
 
 export type HeadingLevel = 1 | 2 | 3 | 4;
 
@@ -90,14 +90,36 @@ export function GearButton(props: { onClick(): void }) {
   );
 }
 
+/** The minimize button of the in-page list. The list then shows as a slim bar. */
+export function MinimizeButton(props: { onClick(): void }) {
+  return (
+    <button
+      type="button"
+      class="wr-icon-btn"
+      data-part="minimize"
+      aria-expanded="true"
+      aria-label={t('minimizeList')}
+      title={t('minimizeList')}
+      onClick={props.onClick}
+    >
+      <MinusIcon />
+    </button>
+  );
+}
+
 /** The section heading shown with states that have no week yet, with the settings button. */
-export function Bar(props: { level: HeadingLevel; onSettings?: () => void }) {
+export function Bar(props: {
+  level: HeadingLevel;
+  onSettings?: () => void;
+  onMinimize?: () => void;
+}) {
   return (
     <div class="wr-head wr-bar">
       <Heading level={props.level} class="wr-range">
         {t('listTitle')}
       </Heading>
       {props.onSettings && <GearButton onClick={props.onSettings} />}
+      {props.onMinimize && <MinimizeButton onClick={props.onMinimize} />}
     </div>
   );
 }

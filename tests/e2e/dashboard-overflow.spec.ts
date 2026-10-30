@@ -9,13 +9,11 @@
  */
 import path from 'node:path';
 import type { Page } from '@playwright/test';
-import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import {
   doneBox,
   expect,
   inpageList,
   openCanvasPage,
-  saveSettings,
   serveScenario,
   settledList,
   test,
@@ -132,7 +130,9 @@ async function measure(page: Page): Promise<Measure> {
         baselines: headings,
         listBaseline: range ? baseline(range) : null,
         header: [
-          ...document.querySelectorAll('.fixture-widget-header > *, [data-testid="dashboard-tabs"]'),
+          ...document.querySelectorAll(
+            '.fixture-widget-header > *, [data-testid="dashboard-tabs"]',
+          ),
         ].map((e) => rect(e) as Box),
       };
     },
@@ -170,44 +170,69 @@ function problems(without: Measure, withList: Measure): string[] {
   withList.columns.forEach((width, index) => {
     const before = without.columns[index] ?? 0;
     if (Math.abs(width - before) > TOLERANCE) {
-      broken.push(`column ${index + 1} changed: ${width.toFixed(1)} instead of ${before.toFixed(1)}`);
+      broken.push(
+        `column ${index + 1} changed: ${width.toFixed(1)} instead of ${before.toFixed(1)}`,
+      );
     }
   });
   return broken.map((text) => `${text} (mode ${mode})`);
 }
 
+/** Sets the window of a page: its width in CSS pixels, and the zoom of the browser. */
+async function setWindow(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  width: number,
+  zoom: number,
+): Promise<void> {
+  if (zoom === 1) {
+    await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
+    return;
+  }
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width,
+    height: Math.round(VIEWPORT_HEIGHT / zoom),
+    deviceScaleFactor: zoom,
+    mobile: false,
+  });
+}
+
+/**
+ * The page with the list, and the same page without it. The extension adds nothing to a Canvas
+ * that is not the saved one, so a copy of the page on another address shows the page without the
+ * list. The saved address is the first Canvas that a tab opens.
+ */
 async function openPair(
   context: Parameters<typeof serveScenario>[0],
   page: Page,
-  background: Parameters<typeof saveSettings>[0],
   width: number,
   zoom = 1,
 ): Promise<{ without: Measure; withList: Measure }> {
-  await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
   const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
-  if (zoom === 1) {
-    await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
-  } else {
-    const cdp = await context.newCDPSession(page);
-    await cdp.send('Emulation.setDeviceMetricsOverride', {
-      width,
-      height: Math.round(VIEWPORT_HEIGHT / zoom),
-      deviceScaleFactor: zoom,
-      mobile: false,
-    });
-  }
+  await setWindow(context, page, width, zoom);
   await openCanvasPage(page, canvas.origin);
-  const without = await measure(page);
-  await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: true });
   await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
   await settledList(page);
-  return { without, withList: await measure(page) };
+  const withList = await measure(page);
+
+  const other = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }], {
+    origin: 'https://other.instructure.com',
+    alongside: true,
+  });
+  const plain = await context.newPage();
+  await setWindow(context, plain, width, zoom);
+  await openCanvasPage(plain, other.canvas.origin);
+  const without = await measure(plain);
+  await plain.close();
+  await page.bringToFront();
+  return { without, withList };
 }
 
 test.describe('the list on the widget dashboard, in the light theme', () => {
   for (const width of WIDTHS) {
-    test(`does not push the page sideways at ${width} px`, async ({ context, page, background }) => {
-      const { without, withList } = await openPair(context, page, background, width);
+    test(`does not push the page sideways at ${width} px`, async ({ context, page }) => {
+      const { without, withList } = await openPair(context, page, width);
       expect(problems(without, withList)).toEqual([]);
     });
   }
@@ -218,9 +243,8 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
       test(`does not push the page sideways at ${Math.round(zoom * 100)}% zoom in a ${size} px window (${width} CSS px)`, async ({
         context,
         page,
-        background,
       }) => {
-        const { without, withList } = await openPair(context, page, background, width, zoom);
+        const { without, withList } = await openPair(context, page, width, zoom);
         expect(problems(without, withList)).toEqual([]);
       });
     }
@@ -230,9 +254,8 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
     test(`lines up with the widgets at the top of the page at ${width} px`, async ({
       context,
       page,
-      background,
     }) => {
-      const { without, withList } = await openPair(context, page, background, width);
+      const { without, withList } = await openPair(context, page, width);
       const card = withList.card as Box;
       const [first, second] = without.firstCards as [Box, Box];
       const firstTop = Math.min(first.y, second.y);
@@ -240,7 +263,9 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
       // The top of the card is the top of the first widget row, in both places the card can take.
       expect(Math.abs(card.y - firstTop)).toBeLessThanOrEqual(TOLERANCE);
       if (withList.mode === 'area') {
-        expect(Math.abs(card.x - (second.x + second.width + gutter))).toBeLessThanOrEqual(TOLERANCE);
+        expect(Math.abs(card.x - (second.x + second.width + gutter))).toBeLessThanOrEqual(
+          TOLERANCE,
+        );
         // The margin to the window edge is at least the margin of the page at its left, or a gutter.
         const leftMargin = first.x - (withList.wrapper?.left ?? 0);
         expect(withList.clientWidth - (card.x + card.width)).toBeGreaterThanOrEqual(
@@ -270,12 +295,8 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
     });
   }
 
-  test('scrolls with the page, in the free area beside the grid', async ({
-    context,
-    page,
-    background,
-  }) => {
-    await openPair(context, page, background, 1920);
+  test('scrolls with the page, in the free area beside the grid', async ({ context, page }) => {
+    await openPair(context, page, 1920);
     await page.evaluate(() => {
       const filler = document.createElement('div');
       filler.style.height = '3000px';
@@ -289,7 +310,9 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
             ?.shadowRoot?.querySelector('.wr')
             ?.getBoundingClientRect().top ?? 0) + window.scrollY,
       );
-    expect(await page.evaluate(() => document.querySelector('weekrow-list')?.getAttribute('data-panel'))).toBe('area');
+    expect(
+      await page.evaluate(() => document.querySelector('weekrow-list')?.getAttribute('data-panel')),
+    ).toBe('area');
     const before = await pageTop();
     await page.evaluate(() => window.scrollTo(0, 1500));
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(1500);
@@ -300,9 +323,8 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
     test(`has the card look of a widget at ${width} px: no border, the same shadow and corners`, async ({
       context,
       page,
-      background,
     }) => {
-      await openPair(context, page, background, width);
+      await openPair(context, page, width);
       const look = await page.evaluate((cardsCss) => {
         const pick = (element: Element | null | undefined): Record<string, string> | null => {
           if (!element) return null;

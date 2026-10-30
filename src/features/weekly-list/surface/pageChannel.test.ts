@@ -54,18 +54,18 @@ async function settle(): Promise<void> {
 }
 
 describe('the choices of the page', () => {
-  it('give the page origin and the settings when the background answers', async () => {
+  it('give the page origin, and the settings of the channel, when the background answers', async () => {
     const { channel } = setup(DARK);
 
     expect(await channel.choices.origin.getValue()).toBe(SCHOOL);
-    expect(await channel.choices.settings.getValue()).toEqual(DARK);
+    expect(await channel.settings.getValue()).toEqual(DARK);
   });
 
   it('give no origin when the background refuses, as for a page that is not the saved Canvas', async () => {
     const { channel } = setup('refuse');
 
     expect(await channel.choices.origin.getValue()).toBeNull();
-    expect(await channel.choices.settings.getValue()).toEqual(DEFAULT_SETTINGS);
+    expect(await channel.settings.getValue()).toEqual(DEFAULT_SETTINGS);
   });
 
   it('give no origin when the background is not there', async () => {
@@ -196,7 +196,7 @@ describe('what the background pushes', () => {
     const onSettings = vi.fn();
     channel.watchChanges(onChange);
     channel.choices.origin.watch(onOrigin);
-    channel.choices.settings.watch(onSettings);
+    channel.settings.watch(onSettings);
 
     push({ type: 'weekrow:changed' });
     await settle();

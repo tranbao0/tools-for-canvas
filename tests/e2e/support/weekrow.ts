@@ -143,7 +143,7 @@ export function group(scope: Page | Locator, kind: string): Locator {
 
 /** The rows a group shows in its main list, without "N older", "N skipped" or "N done" lines. */
 export function mainRows(section: Locator): Locator {
-  return section.locator(':scope > div > div > ul:not(.wr-sublist) > li');
+  return section.locator(':scope > div > ul:not(.wr-sublist) > li');
 }
 
 /** The checkbox of an item, by its title. */

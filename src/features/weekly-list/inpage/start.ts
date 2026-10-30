@@ -4,9 +4,10 @@
  * 1. Read the saved Canvas origin. The detector and the background save it, not this script.
  *    Neither this script nor any other content script can read or write the extension's storage.
  * 2. Tell the background that a Canvas page loaded, when the page is the saved Canvas.
- * 3. Keep the list in line with two choices: "Show the weekly list on Canvas pages" is on, and
- *    the page origin is the saved address. When both hold, wait for the page's anchors and mount
- *    the list. Otherwise remove it and give the page its native To Do back.
+ * 3. Keep the list in line with the saved address. While the page origin is the saved address,
+ *    wait for the page's anchors and mount the list. Otherwise remove it and give the page its
+ *    native To Do back. The student cannot turn the list off: a minimized list is a slim bar
+ *    that the list itself draws (design decision 18).
  *
  * Every path removes a list that an earlier copy of the script left on the page, so a page that
  * gets no list never keeps a frozen one with a hidden native To Do.
@@ -14,7 +15,6 @@
 import { browser } from 'wxt/browser';
 import type { CanvasPageLoadedMessage } from '../data/protocol';
 import { logFailure } from '../../../shared/platform/log';
-import type { Settings } from '../model/types';
 import { mountWhenReady, removeStaleMount, type InpageMount, type MountOptions } from './mount';
 
 /*
@@ -32,19 +32,15 @@ export function isSavedCanvasOrigin(pageOrigin: string, savedOrigin: string | nu
 type MountList = (mount: InpageMount) => (() => void) | null;
 
 /**
- * The two choices that decide what the page shows, as the in-page script reads them: the saved
- * Canvas address and the stored settings. In the browser they come from the background through
- * checked messages (src/features/weekly-list/surface/pageChannel.ts), because no content script
- * can read the extension's storage.
+ * What decides whether the page shows the list, as the in-page script reads it: the saved Canvas
+ * address. In the browser it comes from the background through checked messages
+ * (src/features/weekly-list/surface/pageChannel.ts), because no content script can read the
+ * extension's storage.
  */
 export interface PageChoices {
   origin: {
     getValue(): Promise<string | null>;
     watch(listener: (origin: string | null) => void): () => void;
-  };
-  settings: {
-    getValue(): Promise<Settings>;
-    watch(listener: (settings: Settings) => void): () => void;
   };
 }
 
@@ -94,7 +90,8 @@ export async function startInpage(
   const origin = options.origin ?? doc.defaultView?.location.origin ?? '';
   const { signal, choices } = options;
 
-  let show: boolean | undefined;
+  /** The script stopped, so the list is off for good. */
+  let stopped = false;
   let saved: string | null | undefined;
   let removeList: (() => void) | null = null;
   /** The wait for the page's anchors. A wait that ended stays until a choice removes the list. */
@@ -117,8 +114,8 @@ export async function startInpage(
 
   /** Brings the page in line with the choices: the list mounts when both hold, else it goes. */
   function sync(): void {
-    if (show === undefined || saved === undefined) return;
-    if (signal?.aborted !== true && show && isSavedCanvasOrigin(origin, saved)) {
+    if (saved === undefined) return;
+    if (signal?.aborted !== true && !stopped && isSavedCanvasOrigin(origin, saved)) {
       if (removeList === null && wait === null) {
         const own = new AbortController();
         wait = own;
@@ -135,20 +132,15 @@ export async function startInpage(
     else if (signal?.aborted !== true) removeStaleMount(doc);
   }
 
-  const stopSettings = choices.settings.watch((next) => {
-    show = next.showOnCanvasPages;
-    sync();
-  });
   const stopOrigin = choices.origin.watch((next) => {
     saved = next;
     sync();
   });
   const controller: InpageController = {
     stop() {
-      stopSettings();
       stopOrigin();
-      // A choice that arrives later changes nothing: the list is off for good.
-      show = false;
+      // A change that arrives later changes nothing: the list is off for good.
+      stopped = true;
       sync();
     },
   };
@@ -158,8 +150,6 @@ export async function startInpage(
   const resolved = await choices.origin.getValue();
   if (saved === undefined) saved = resolved;
   if (isSavedCanvasOrigin(origin, resolved)) void announceCanvasPageLoaded(origin);
-  const settings = await choices.settings.getValue();
-  if (show === undefined) show = settings.showOnCanvasPages;
   sync();
   return controller;
 }

@@ -77,7 +77,11 @@ export interface Settings {
   span: Span;
   hiddenCourseIds: string[];
   showRings: boolean;
-  showOnCanvasPages: boolean;
+  /**
+   * The list on the Canvas page shows as a slim bar. The state is the same on every Canvas page
+   * and in every tab. The side panel ignores it.
+   */
+  minimized: boolean;
   /**
    * `auto` follows the color scheme the browser reports to extension pages; the in-page list
    * then follows the Canvas page. `light` and `dark` apply to every surface (decision 19).
@@ -89,7 +93,7 @@ export const DEFAULT_SETTINGS: Settings = {
   span: DEFAULT_SPAN,
   hiddenCourseIds: [],
   showRings: true,
-  showOnCanvasPages: true,
+  minimized: false,
   theme: 'auto',
 };
 

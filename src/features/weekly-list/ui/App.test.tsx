@@ -17,7 +17,6 @@ import type { AppProps, SurfaceKind } from './contract';
 import { spyActions, type SpyActions } from './testing/actions';
 import {
   allDoneView,
-  checkedButMissing,
   COURSES,
   eightCoursesView,
   hiddenCourseView,
@@ -577,27 +576,80 @@ describe('in-page list', () => {
       skipped: [mkItem({ title: 'Skipped one', state: 'skipped', chip: { kind: 'skipped' } })],
     });
 
-  it('shows the first 3 rows of a group and opens the rest in place', () => {
+  it('shows every row of a group, with no link that opens more', () => {
     setup(stateOf(today(dueItems(titles))), 'inpage');
-    expect(shown()).toEqual(['One', 'Two', 'Three']);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show 2 more' }));
-
     expect(shown()).toEqual(titles);
     expect(screen.queryByRole('button', { name: /^Show \d+ more/ })).toBeNull();
-    expect((document.activeElement as HTMLElement).textContent).toBe('Four');
   });
 
-  it('shows a group of 4 in full, because a link would hide only one row', () => {
-    setup(stateOf(today(dueItems(titles.slice(0, 4)))), 'inpage');
-    expect(shown()).toEqual(['One', 'Two', 'Three', 'Four']);
-    expect(screen.queryByRole('button', { name: /^Show \d+ more/ })).toBeNull();
-  });
-
-  it('shows every row in the side panel', () => {
+  it('shows every row in the side panel too', () => {
     setup(stateOf(today(dueItems(titles))), 'panel');
     expect(shown()).toEqual(titles);
-    expect(screen.queryByRole('button', { name: /^Show \d+ more/ })).toBeNull();
+  });
+
+  it('shows every group of the span, and no link to the rest of the span', () => {
+    setup(
+      stateOf(
+        today(dueItems(['Today one'])),
+        mkGroup({ kind: 'tomorrow', date: '2026-10-28', items: dueItems(['Tomorrow one']) }),
+        day('2026-10-29', dueItems(['Thursday one'])),
+        mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) }),
+        mkGroup({ kind: 'done', items: dueItems(['Finished one'], { state: 'done' }) }),
+      ),
+      'inpage',
+    );
+    expect(shown()).toEqual(['Today one', 'Tomorrow one', 'Thursday one']);
+    expect(
+      [...document.querySelectorAll('[data-group]')].map((el) => el.getAttribute('data-group')),
+    ).toEqual(['today', 'tomorrow', 'day', 'no_due_date', 'done']);
+    expect(screen.queryByRole('button', { name: /^(Next 7 days|Rest of)/ })).toBeNull();
+  });
+
+  describe('scrolling inside the card', () => {
+    it('puts the groups in one region that the keyboard reaches', () => {
+      setup(stateOf(today(dueItems(titles))), 'inpage');
+      const region = screen.getByRole('region', { name: 'Tasks by day' });
+      expect(region.getAttribute('tabindex')).toBe('0');
+      expect(region.querySelector('.wr-list')).not.toBeNull();
+      // The header and the rings stay outside it.
+      expect(region.querySelector('.wr-header')).toBeNull();
+      expect(region.querySelector('.wr-chart')).toBeNull();
+    });
+
+    it('is not in the side panel, which scrolls as a page', () => {
+      setup(stateOf(today(dueItems(titles))), 'panel');
+      expect(screen.queryByRole('region', { name: 'Tasks by day' })).toBeNull();
+    });
+
+    it('keeps the position over a redraw and the settings, and starts a new span at the top', () => {
+      const data = { value: DEFAULT_SETTINGS, courses: [] };
+      const actions = spyActions();
+      const state = stateOf(today(dueItems(titles)));
+      const view = (next: SurfaceState) => (
+        <App surface="inpage" state={next} actions={actions} settings={data} />
+      );
+      const result = render(view(state));
+      const region = () => screen.getByRole('region', { name: 'Tasks by day' });
+      region().scrollTop = 120;
+      fireEvent.scroll(region());
+
+      result.rerender(view(stateOf(today(dueItems(titles.slice(0, 4))))));
+      expect(region().scrollTop).toBe(120);
+
+      fireEvent.click(document.querySelector('[data-opener="gear"]') as HTMLElement);
+      fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+      expect(region().scrollTop).toBe(120);
+
+      const nextSpan = readyState({
+        view: mkView({
+          groups: [today(dueItems(titles))],
+          spanStart: '2026-11-01',
+          spanEnd: '2026-11-07',
+        }),
+      });
+      result.rerender(view(nextSpan));
+      expect(region().scrollTop).toBe(0);
+    });
   });
 
   describe('disclosure links', () => {
@@ -606,32 +658,8 @@ describe('in-page list', () => {
       return id === null ? null : document.getElementById(id);
     };
 
-    it('point at the region they open, open or closed', () => {
-      setup(
-        stateOf(pastDue(1), today(dueItems(titles)), day('2026-10-29', dueItems(['Thursday one']))),
-        'inpage',
-      );
-      const links = [
-        screen.getByRole('button', { name: /3 past due/ }),
-        screen.getByRole('button', { name: 'Show 2 more' }),
-        screen.getByRole('button', { name: /^Next 7 days/ }),
-      ];
-      for (const link of links) {
-        expect(link.getAttribute('aria-expanded')).toBe('false');
-        expect(regionOf(link)).not.toBeNull();
-      }
-      const summary = links[0];
-      if (!summary) throw new Error('no summary');
-      const region = regionOf(summary);
-      expect(region?.querySelector('li')).toBeNull();
-      fireEvent.click(summary);
-      expect(summary.getAttribute('aria-expanded')).toBe('true');
-      expect(regionOf(summary)).toBe(region);
-      expect(region?.querySelector('li')).not.toBeNull();
-    });
-
     it('also name the regions of the "N older" and "N skipped" lines', () => {
-      setup(stateOf(pastDue(1)), 'panel');
+      setup(stateOf(pastDue(1)), 'inpage');
       for (const name of ['1 older', '1 skipped']) {
         const link = screen.getByRole('button', { name });
         expect(regionOf(link)).not.toBeNull();
@@ -640,8 +668,8 @@ describe('in-page list', () => {
       }
     });
 
-    it('name the region of a collapsible group in the side panel', () => {
-      setup(stateOf(mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) })), 'panel');
+    it('name the region of a collapsible group', () => {
+      setup(stateOf(mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) })), 'inpage');
       const toggle = screen.getByRole('button', { name: /^No due date/ });
       expect(regionOf(toggle)).not.toBeNull();
       fireEvent.click(toggle);
@@ -650,183 +678,122 @@ describe('in-page list', () => {
   });
 
   describe('past due', () => {
-    it('is one summary line with the counts, and a disclosure button', () => {
-      setup(stateOf(pastDue(1)), 'inpage');
-      const summary = screen.getByRole('button', { name: /3 past due/ });
-      expect(summary.textContent).toBe('3 past due1 missing');
-      expect(summary.getAttribute('aria-expanded')).toBe('false');
-      expect(shown()).toEqual([]);
-      expect(screen.queryByRole('button', { name: '1 older' })).toBeNull();
-    });
-
-    it('leaves out "missing" when no item has the Missing chip', () => {
-      setup(stateOf(pastDue(0)), 'inpage');
-      expect(screen.getByRole('button', { name: /3 past due/ }).textContent).toBe('3 past due');
-    });
-
-    it('opens in place with every row, "N older", "N skipped" and "Skip all older"', () => {
+    it('is a full group, with every row, "N older" and "N skipped"', () => {
       const { actions } = setup(stateOf(pastDue(1)), 'inpage');
-      const summary = screen.getByRole('button', { name: /3 past due/ });
-      fireEvent.click(summary);
-      expect(summary.getAttribute('aria-expanded')).toBe('true');
+      expect(screen.queryByRole('button', { name: /3 past due/ })).toBeNull();
       expect(shown()).toEqual(['Late one', 'Late two']);
       expect(screen.getByRole('button', { name: '1 older' })).toBeTruthy();
       expect(screen.getByRole('button', { name: '1 skipped' })).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Skip all older' }));
       expect(actions.skipAllOlder).toHaveBeenCalledTimes(1);
-      fireEvent.click(summary);
-      expect(shown()).toEqual([]);
-    });
-
-    it('stays open when the view updates', () => {
-      const { rerender } = setup(stateOf(pastDue(0)), 'inpage');
-      fireEvent.click(screen.getByRole('button', { name: /3 past due/ }));
-      rerender(stateOf(pastDue(1)));
-      expect(shown()).toEqual(['Late one', 'Late two']);
-    });
-
-    it('counts the items that Canvas marks missing', () => {
-      const missing = mkItem({
-        title: 'Worksheet 5',
-        chip: { kind: 'missing' },
-        facts: { ...checkedButMissing().facts },
-      });
-      const group = mkGroup({ kind: 'past_due', items: [missing] });
-      setup(stateOf(group), 'inpage');
-      expect(screen.getByRole('button', { name: /^1 past due/ }).textContent).toBe(
-        '1 past due1 missing',
-      );
-    });
-
-    it('waits behind "Next 7 days" when only skipped rows are left', () => {
-      const skipped = mkItem({ title: 'Skipped one', state: 'skipped', chip: { kind: 'skipped' } });
-      setup(stateOf(mkGroup({ kind: 'past_due', skipped: [skipped] })), 'inpage');
-      expect(screen.queryByText(/^0 past due/)).toBeNull();
-      expect(screen.getByRole('button', { name: /^Next 7 days/ })).toBeTruthy();
-    });
-
-    it('stays open after the settings or the task form closed', () => {
-      const data = { value: DEFAULT_SETTINGS, courses: [] };
-      const actions = spyActions();
-      const state = stateOf(pastDue(0));
-      const result = render(
-        <App surface="inpage" state={state} actions={actions} settings={data} />,
-      );
-      fireEvent.click(screen.getByRole('button', { name: /3 past due/ }));
-      fireEvent.click(document.querySelector('[data-opener="gear"]') as HTMLElement);
-      fireEvent.click(screen.getByRole('button', { name: /Back/ }));
-      expect(shown()).toEqual(['Late one', 'Late two']);
-      fireEvent.click(screen.getByRole('button', { name: /^Edit task|Add task/ }));
-      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-      expect(shown()).toEqual(['Late one', 'Late two']);
-      result.unmount();
-    });
-
-    it('is a full group in the side panel', () => {
-      setup(stateOf(pastDue(1)), 'panel');
-      expect(screen.queryByText(/past due$/)).toBeNull();
-      expect(shown()).toEqual(['Late one', 'Late two']);
-      expect(screen.getByRole('button', { name: '1 older' })).toBeTruthy();
     });
   });
+});
 
-  describe('the link to the rest of the span', () => {
-    const week = () =>
-      stateOf(
-        today(dueItems(['Today one'])),
-        mkGroup({ kind: 'tomorrow', date: '2026-10-28', items: dueItems(['Tomorrow one']) }),
-        day('2026-10-29', dueItems(['Thursday one'])),
-        mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) }),
-        mkGroup({ kind: 'done', items: dueItems(['Finished one'], { state: 'done' }) }),
-      );
-
-    it('puts later days, No due date and Done behind one link with their row count', () => {
-      setup(week(), 'inpage');
-      expect(shown()).toEqual(['Today one', 'Tomorrow one']);
-      const link = screen.getByRole('button', { name: 'Next 7 days (3)' });
-      expect(link.getAttribute('aria-expanded')).toBe('false');
-      expect(document.querySelector('[data-group="day"]')).toBeNull();
+describe('the minimized list', () => {
+  const dueItems = (list: string[]) => list.map((title) => mkItem({ title, course: 'bio' }));
+  const group = (kind: 'today' | 'past_due', count: number) =>
+    mkGroup({
+      kind,
+      date: kind === 'today' ? '2026-10-27' : null,
+      items: dueItems(Array.from({ length: count }, (_, i) => `${kind} ${i + 1}`)),
+    });
+  const state = (today: number, late: number) =>
+    readyState({
+      view: mkView({
+        groups: [
+          late > 0 ? group('past_due', late) : null,
+          today > 0 ? group('today', today) : null,
+        ].filter((g): g is ListGroup => g !== null),
+      }),
     });
 
-    it('opens them in place and keeps them open when the view updates', () => {
-      const { rerender } = setup(week(), 'inpage');
-      fireEvent.click(screen.getByRole('button', { name: 'Next 7 days (3)' }));
-      expect(shown()).toEqual(['Today one', 'Tomorrow one', 'Thursday one']);
-      expect(screen.getByRole('button', { name: /^No due date/ })).toBeTruthy();
-      expect(screen.getByRole('button', { name: /^Done/ })).toBeTruthy();
-      rerender(week());
-      expect(shown()).toEqual(['Today one', 'Tomorrow one', 'Thursday one']);
-    });
-
-    it('has no link when nothing is behind it', () => {
-      setup(stateOf(today(dueItems(['Today one']))), 'inpage');
-      expect(screen.queryByRole('button', { name: /^Next 7 days/ })).toBeNull();
-    });
-
-    it('is not in the side panel, which shows every group', () => {
-      setup(week(), 'panel');
-      expect(screen.queryByRole('button', { name: /^Next 7 days/ })).toBeNull();
-      expect(shown()).toEqual(['Today one', 'Tomorrow one', 'Thursday one']);
-    });
-
-    it('limits a group once it is opened', () => {
-      const items = dueItems(titles, { state: 'done' });
-      setup(stateOf(today(dueItems(['Today one'])), mkGroup({ kind: 'done', items })), 'inpage');
-      fireEvent.click(screen.getByRole('button', { name: 'Next 7 days (5)' }));
-      fireEvent.click(screen.getByRole('button', { name: /^Done/ }));
-      expect(shown()).toEqual(['Today one', 'One', 'Two', 'Three']);
-      expect(screen.getByRole('button', { name: 'Show 2 more' })).toBeTruthy();
-    });
-  });
-
-  describe('next day with work', () => {
-    it('shows the next day in full when Today and Tomorrow are empty', () => {
-      setup(
-        stateOf(
-          day('2026-10-29', dueItems(['Thursday one'])),
-          day('2026-10-30', dueItems(['Friday one'])),
-        ),
-        'inpage',
-      );
-      expect(shown()).toEqual(['Thursday one']);
-      expect(screen.getByRole('button', { name: 'Next 7 days (1)' })).toBeTruthy();
-    });
-
-    it('applies the row limit to that day', () => {
-      setup(stateOf(day('2026-10-29', dueItems(titles))), 'inpage');
-      expect(shown()).toEqual(['One', 'Two', 'Three']);
-      expect(screen.getByRole('button', { name: 'Show 2 more' })).toBeTruthy();
-    });
-
-    it('is not used when Tomorrow has work', () => {
-      setup(
-        stateOf(
-          mkGroup({ kind: 'tomorrow', date: '2026-10-28', items: dueItems(['Tomorrow one']) }),
-          day('2026-10-29', dueItems(['Thursday one'])),
-        ),
-        'inpage',
-      );
-      expect(shown()).toEqual(['Tomorrow one']);
-    });
-  });
-
-  it('puts "Nothing due in these 7 days" before the link when the chart is off', () => {
-    const view = nothingDueView();
-    setup(readyState({ view: { ...view, rings: [] } }), 'inpage');
-    const list = document.querySelector('.wr-list');
-    const order = Array.from(list?.children ?? []).map(
-      (el) => (el as HTMLElement).dataset.group ?? el.textContent,
+  function setupInpage(next: SurfaceState, minimized: boolean, surface: SurfaceKind = 'inpage') {
+    const actions: SpyActions = spyActions();
+    const data = { value: { ...DEFAULT_SETTINGS, minimized }, courses: [] };
+    const view = (value: typeof data) => (
+      <App surface={surface} state={next} actions={actions} settings={value} />
     );
-    expect(order[0]).toBe('past_due');
-    expect(order[1]).toBe('Nothing due in these 7 days');
-    expect(order[2]).toMatch(/^Next 7 days/);
+    const result = render(view(data));
+    return {
+      actions,
+      data,
+      show: (minimizedNow: boolean) =>
+        result.rerender(view({ ...data, value: { ...data.value, minimized: minimizedNow } })),
+    };
+  }
+
+  it('shows a bar with the title and the counts, and no header, rings or rows', () => {
+    setupInpage(state(3, 11), true);
+    const bar = screen.getByRole('button', { name: /Weekly list/ });
+    expect(bar.textContent).toBe('Weekly list3 due today \u00b7 11 past dueExpand list');
+    expect(bar.getAttribute('aria-expanded')).toBe('false');
+    expect(document.querySelector('.wr-header, .wr-chart, .wr-list')).toBeNull();
+  });
+
+  it.each([
+    [0, 11, '11 past due'],
+    [1, 0, '1 due today'],
+    [0, 0, ''],
+  ])('leaves out a zero part: %i due today, %i past due', (today, late, text) => {
+    setupInpage(state(today, late), true);
+    expect(document.querySelector('.wr-minbar-status')?.textContent ?? '').toBe(text);
+  });
+
+  it('expands on a click on the bar, and saves the choice', () => {
+    const { actions, data } = setupInpage(state(1, 0), true);
+    fireEvent.click(screen.getByRole('button', { name: /Weekly list/ }));
+    expect(actions.saveSettings).toHaveBeenLastCalledWith({ ...data.value, minimized: false });
+  });
+
+  it('minimizes from the header, next to the gear, and saves the choice', () => {
+    const { actions, data } = setupInpage(state(1, 0), false);
+    const button = screen.getByRole('button', { name: 'Minimize list' });
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(button.previousElementSibling?.getAttribute('data-opener')).toBe('gear');
+    fireEvent.click(button);
+    expect(actions.saveSettings).toHaveBeenLastCalledWith({ ...data.value, minimized: true });
+  });
+
+  it('moves focus to the bar after a minimize and to the minimize button after an expand', () => {
+    const { show } = setupInpage(state(1, 0), false);
+    fireEvent.click(screen.getByRole('button', { name: 'Minimize list' }));
+    show(true);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Weekly list/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Weekly list/ }));
+    show(false);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Minimize list' }));
+  });
+
+  it('leaves focus alone when the choice comes from another tab', () => {
+    const { show } = setupInpage(state(1, 0), false);
+    show(true);
+    expect(document.activeElement).toBe(document.body);
+    show(false);
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('does not take focus when the list starts minimized', () => {
+    setupInpage(state(1, 0), true);
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('has no minimize button in the side panel, and ignores the saved choice there', () => {
+    setupInpage(state(1, 0), true, 'panel');
+    expect(screen.queryByRole('button', { name: 'Minimize list' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Weekly list/ })).toBeNull();
+    expect(document.querySelector('.wr-header')).not.toBeNull();
+  });
+
+  it('shows the minimize button while the list loads', () => {
+    setupInpage({ kind: 'loading' }, false);
+    expect(screen.getByRole('button', { name: 'Minimize list' })).toBeTruthy();
   });
 });
 
 describe('one-course view', () => {
   it('leaves out the course name on every row, and keeps the type icon and the time', () => {
     setup(readyState({ view: mkView({ scopeCourseId: COURSES.math.id }) }), 'inpage');
-    fireEvent.click(screen.getByRole('button', { name: /^\d+ past due/ }));
     const item = row('Problem Set 6');
     expect(item.textContent).not.toContain('MATH 241 Calculus III');
     expect(item.querySelector('svg.wr-type')).toBeTruthy();
@@ -836,7 +803,6 @@ describe('one-course view', () => {
 
   it('shows no empty info line on a row with nothing to say', () => {
     setup(readyState({ view: mkView({ scopeCourseId: COURSES.bio.id }) }), 'inpage');
-    fireEvent.click(screen.getByRole('button', { name: /^Next 7 days/ }));
     fireEvent.click(screen.getByRole('button', { name: /No due date/ }));
     expect(row('Course survey').querySelector('.wr-info')).toBeNull();
     expect(row('Course survey').querySelector('.wr-course')).toBeNull();
@@ -1655,7 +1621,7 @@ describe('keyboard focus', () => {
   });
 });
 
-describe('focus when the last visible row leaves the glance', () => {
+describe('focus when the last row of a group leaves the list', () => {
   const item = (title: string) => mkItem({ title, course: 'bio' });
   const today = (...titles: string[]) =>
     mkGroup({ kind: 'today', date: '2026-10-27', items: titles.map(item) });
@@ -1666,19 +1632,18 @@ describe('focus when the last visible row leaves the glance', () => {
     view: { ...state.view, groups },
   });
 
-  it('goes to the "Next 7 days" link when no row or heading is left', () => {
+  it('goes to the Done group when no row or heading is left above it', () => {
     const state = readyState({ view: mkView({ groups: [today('Only one'), done('Old one')] }) });
     const { rerender } = setup(state, 'inpage');
     screen.getByRole('checkbox', { name: 'Done: Only one' }).focus();
 
     rerender(withGroups(state, done('Old one', 'Only one')));
 
-    const link = screen.getByRole('button', { name: /^Next 7 days/ });
-    expect(document.activeElement).toBe(link);
-    expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Add task' }));
+    const toggle = screen.getByRole('button', { name: /^Done/ });
+    expect(document.activeElement).toBe(toggle);
   });
 
-  it('goes to the Past due summary line when nothing follows the row', () => {
+  it('goes to the previous row when no row follows and no opener is left', () => {
     const late = mkGroup({ kind: 'past_due', items: [item('Late one')] });
     const state = readyState({ view: mkView({ groups: [late, today('Only one')] }) });
     const { rerender } = setup(state, 'inpage');
@@ -1686,7 +1651,7 @@ describe('focus when the last visible row leaves the glance', () => {
 
     rerender(withGroups(state, late));
 
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^1 past due/ }));
+    expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: 'Done: Late one' }));
   });
 
   it('goes to the heading of the group when the group stays', () => {
@@ -1716,32 +1681,6 @@ describe('focus when the last visible row leaves the glance', () => {
     rerender(withGroups(state, group(two)));
 
     expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: 'Done: Two' }));
-  });
-});
-
-describe('focus when "Show N more" fills the slot of a checked row', () => {
-  it('goes to the row that now holds the place, not past it', () => {
-    const items = ['One', 'Two', 'Three', 'Four', 'Five', 'Six'].map((title) =>
-      mkItem({ title, course: 'bio' }),
-    );
-    const group = (list: ItemView[]) => mkGroup({ kind: 'today', date: '2026-10-27', items: list });
-    const tomorrow = mkGroup({
-      kind: 'tomorrow',
-      date: '2026-10-28',
-      items: [mkItem({ title: 'Later', course: 'bio' })],
-    });
-    const state = readyState({ view: mkView({ groups: [group(items), tomorrow] }) });
-    const { rerender } = setup(state, 'inpage');
-    expect(screen.queryByRole('checkbox', { name: 'Done: Four' })).toBeNull();
-    screen.getByRole('checkbox', { name: 'Done: Three' }).focus();
-
-    rerender({
-      ...state,
-      view: { ...state.view, groups: [group(items.filter((i) => i.title !== 'Three')), tomorrow] },
-    });
-
-    // Row 4 took the third slot. Focus goes there, and not to the first row of Tomorrow.
-    expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: 'Done: Four' }));
   });
 });
 
@@ -2003,8 +1942,6 @@ describe('shown span', () => {
   const stateOf = (patch: Partial<ReturnType<typeof mkView>>, groups?: ListGroup[]) =>
     readyState({ view: mkView({ ...patch, ...(groups ? { groups } : {}) }) });
   const picker = () => screen.getByRole('combobox', { name: 'Span shown' }) as HTMLSelectElement;
-  const dueItems = (list: string[]) => list.map((title) => mkItem({ title, course: 'bio' }));
-
   /** The panel with the settings loaded, so the control is on. The saved span is the view's. */
   const setupSpan = (patch: Partial<ReturnType<typeof mkView>> = {}) => {
     const actions = spyActions();
@@ -2352,55 +2289,6 @@ describe('shown span', () => {
     );
   });
 
-  describe('the glance link', () => {
-    const rest = (patch: Partial<ReturnType<typeof mkView>>) =>
-      stateOf(patch, [
-        mkGroup({ kind: 'today', date: '2026-10-27', items: dueItems(['Today one']) }),
-        mkGroup({
-          kind: 'day',
-          date: '2026-10-29',
-          items: dueItems(['Thursday one', 'Later one']),
-        }),
-        mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) }),
-      ]);
-
-    it.each([
-      ['week', {}, 'Next 7 days (3)'],
-      ['month', { span: { kind: 'month', days: 7 } }, 'Rest of this month (3)'],
-      ['2 weeks', FORTNIGHT, 'Next 14 days (3)'],
-      ['custom', CUSTOM, 'Rest of these 10 days (3)'],
-      ['week later', { spanOffset: 1, isCurrentSpan: false }, 'Rest of these 7 days (3)'],
-      ['month later', MONTH, 'Rest of this month (3)'],
-    ] as const)('names the %s span', (_, patch, label) => {
-      setup(rest(patch), 'inpage');
-      expect(screen.getByRole('button', { name: label })).toBeTruthy();
-    });
-
-    it('for Day holds only No due date and Done', () => {
-      const state = stateOf(DAY, [
-        mkGroup({ kind: 'today', date: '2026-10-27', items: dueItems(['Today one']) }),
-        mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) }),
-        mkGroup({ kind: 'done', items: dueItems(['Finished one']) }),
-      ]);
-      setup(state, 'inpage');
-      const link = screen.getByRole('button', { name: 'No due date and done (2)' });
-      fireEvent.click(link);
-      expect(
-        [...document.querySelectorAll('[data-group]')].map((el) => el.getAttribute('data-group')),
-      ).toEqual(['today', 'no_due_date', 'done']);
-    });
-
-    it('for Day has no link when there is no undated or done work', () => {
-      setup(
-        stateOf(DAY, [
-          mkGroup({ kind: 'today', date: '2026-10-27', items: dueItems(['Today one']) }),
-        ]),
-        'inpage',
-      );
-      expect(screen.queryByRole('button', { name: /^(Rest of|No due date and done)/ })).toBeNull();
-    });
-  });
-
   describe('in the settings', () => {
     it('shows the Shown span setting first and saves a change', () => {
       const actions = spyActions();
@@ -2514,33 +2402,12 @@ describe('progressive loading', () => {
     expect(document.querySelector('.wr-chart-center')?.textContent).toContain('100%');
   });
 
-  it('shows the placeholders and the Past due line in the glance of the in-page list', () => {
+  it('shows the placeholders and the Past due line in the in-page list', () => {
     setup(loadingView([loadingPastDue(), loadingDay('2026-10-27', 'today')]), 'inpage');
     expect(document.querySelector('section[data-group="past_due"]')?.textContent).toBe(
       'Loading past due…',
     );
     expect(document.querySelector('section[data-group="today"] .wr-skel-bar')).toBeTruthy();
-    // Days that only wait for their items give the link nothing to count or open.
-    cleanup();
-    setup(
-      loadingView([real, loadingDay('2026-10-28', 'tomorrow'), loadingDay('2026-10-30')]),
-      'inpage',
-    );
-    expect(screen.queryByRole('button', { name: /^Next 7 days/ })).toBeNull();
-    cleanup();
-    setup(
-      loadingView([
-        real,
-        mkGroup({
-          kind: 'day',
-          date: '2026-10-30',
-          items: [mkItem({ title: 'Friday work', course: 'hist' })],
-        }),
-        loadingDay('2026-10-31'),
-      ]),
-      'inpage',
-    );
-    expect(screen.getByRole('button', { name: 'Next 7 days (1)' })).toBeTruthy();
   });
 
   it('keeps the header working while the first load runs, before any data', () => {

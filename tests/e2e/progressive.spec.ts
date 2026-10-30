@@ -32,7 +32,7 @@ const MONTH: Settings = {
   span: { kind: 'month', days: 30 },
   hiddenCourseIds: [],
   showRings: true,
-  showOnCanvasPages: true,
+  minimized: false,
   theme: 'auto',
 };
 

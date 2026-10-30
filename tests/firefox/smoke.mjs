@@ -210,7 +210,7 @@ async function checkBadSettings(driver) {
           span: { kind: 'custom', days: 500 },
           hiddenCourseIds: 5,
           showRings: true,
-          showOnCanvasPages: false,
+          minimized: true,
           theme: 'auto',
         },
         seenNotes: { firstDone: 'yes', firstSkip: true },
@@ -221,7 +221,7 @@ async function checkBadSettings(driver) {
       for (let tries = 0; tries < 20; tries += 1) {
         await new Promise((resolve) => setTimeout(resolve, 100));
         settings = await mirror('settings');
-        if (Array.isArray(settings?.hiddenCourseIds) && settings.showOnCanvasPages === true) break;
+        if (Array.isArray(settings?.hiddenCourseIds) && settings.minimized === false) break;
       }
       return {
         state: state?.kind ?? null,
@@ -242,7 +242,7 @@ async function checkBadSettings(driver) {
     clean === null ||
     !Array.isArray(clean.hiddenCourseIds) ||
     clean.hiddenCourseIds.length !== 0 ||
-    clean.showOnCanvasPages !== true ||
+    clean.minimized !== false ||
     clean.span?.kind !== 'week' ||
     clean.span?.days !== 7
   ) {
@@ -250,7 +250,7 @@ async function checkBadSettings(driver) {
   }
   if (
     !Array.isArray(result.settings?.hiddenCourseIds) ||
-    result.settings.showOnCanvasPages !== true ||
+    result.settings.minimized !== false ||
     result.settings.span?.kind !== 'week' ||
     result.notes?.firstDone === 'yes'
   ) {

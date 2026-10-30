@@ -1,9 +1,9 @@
 /** The groups of the shown span, in the order the model gives (design decision 6). */
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { t, tp } from '../../../shared/ui/i18n';
 import type { GroupKind, ItemView, ListGroup, WeekView } from '../model/types';
-import { formatMonthDay, formatWeekday, restOfSpanLabel } from './format';
+import { formatMonthDay, formatWeekday } from './format';
 import { ChevronDownIcon } from '../../../shared/ui/icons';
 import { ItemRow, type ItemHandlers, type WhenMode } from './ItemRow';
 import { Heading, newId, type HeadingLevel } from '../../../shared/ui/parts';
@@ -12,14 +12,6 @@ import { NothingDue } from './Rings';
 export interface ListHandlers extends ItemHandlers {
   onSkipAllOlder(): void;
 }
-
-/**
- * The in-page list is a glance (design decision 4). A group with more rows than this plus one
- * shows this many, and "Show N more" opens the rest in place. A link that would hide only one
- * row takes the same space as that row, so such a group shows in full. The side panel shows
- * every row.
- */
-const GLANCE_ROW_LIMIT = 3;
 
 /** How each group shows the due time of its items. */
 const whenMode = (kind: GroupKind): WhenMode =>
@@ -67,18 +59,6 @@ function ItemList(props: {
       ))}
     </ul>
   );
-}
-
-/** What the student opened in the in-page glance. It lives above the list, so it survives the task form, the settings and a filter that empties a section. */
-export interface Glance {
-  pastDue: boolean;
-  rest: boolean;
-  toggle(part: 'pastDue' | 'rest'): void;
-}
-
-export function useGlance(): Glance {
-  const [opened, setOpened] = useState({ pastDue: false, rest: false });
-  return { ...opened, toggle: (part) => setOpened({ ...opened, [part]: !opened[part] }) };
 }
 
 /** A collapsed line such as "12 older" that opens `children` in place. */
@@ -139,65 +119,6 @@ function SubList(props: {
   );
 }
 
-/**
- * The rows of a group, cut to `limit` until the student asks for the rest. Focus then moves to
- * the first row that was hidden, because the "Show N more" button goes away.
- */
-function LimitedItems(props: {
-  items: ItemView[];
-  /** `Infinity` shows every row. */
-  limit: number;
-  view: WeekView;
-  when: WhenMode;
-  handlers: ItemHandlers;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [listId] = useState(() => newId('rows'));
-  const focusKey = useRef<string | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const key = focusKey.current;
-    if (key === null) return;
-    focusKey.current = null;
-    const row = listRef.current?.querySelector<HTMLElement>(
-      `[data-row-key="${key.replace(/["\\]/g, '\\$&')}"]`,
-    );
-    row?.querySelector<HTMLElement>('[data-part="title"]')?.focus();
-  });
-  const { limit } = props;
-  const shown =
-    !expanded && props.items.length > limit + 1 ? props.items.slice(0, limit) : props.items;
-  const hidden = props.items.length - shown.length;
-  return (
-    <div ref={listRef}>
-      <ItemList
-        id={listId}
-        items={shown}
-        view={props.view}
-        when={props.when}
-        handlers={props.handlers}
-      />
-      {hidden > 0 && (
-        <div class="wr-subline">
-          <button
-            type="button"
-            class="wr-sub-toggle wr-more"
-            aria-expanded="false"
-            aria-controls={listId}
-            onClick={() => {
-              focusKey.current = props.items[shown.length]?.key ?? null;
-              setExpanded(true);
-            }}
-          >
-            <ChevronDownIcon />
-            {tp('showMore', hidden)}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** How many placeholder bars a day group shows while its items load. */
 const SKELETON_BARS = 2;
 
@@ -246,27 +167,17 @@ function GroupSection(props: {
   view: WeekView;
   level: HeadingLevel;
   handlers: ListHandlers;
-  rowLimit: number;
-  /** The glance shows Past due as one line that opens in place. */
-  summary?: { open: boolean; toggle(): void };
 }) {
-  const { group, view, handlers, summary } = props;
-  const collapsible = summary || group.kind === 'no_due_date' || group.kind === 'done';
-  const [ownOpen, setOwnOpen] = useState(!collapsible);
-  const open = summary ? summary.open : ownOpen;
+  const { group, view, handlers } = props;
+  const collapsible = group.kind === 'no_due_date' || group.kind === 'done';
+  const [open, setOpen] = useState(!collapsible);
   const [id] = useState(() => newId('group'));
   const [bodyId] = useState(() => newId('body'));
   const rows = { view, when: whenMode(group.kind), handlers };
   const { kind, date } = group;
   const count = groupCount(group);
-  const missing = [...group.items, ...group.older].filter((i) => i.facts.missing).length;
 
-  const headContent = summary ? (
-    <>
-      <span class="wr-group-name">{tp('pastDueSummary', count)}</span>
-      {missing > 0 && <span class="wr-chip wr-chip-missing">{tp('missingCount', missing)}</span>}
-    </>
-  ) : (
+  const headContent = (
     <>
       <span class="wr-group-name">
         {kind === 'day' ? date && formatWeekday(date) : t(GROUP_NAMES[kind])}
@@ -291,7 +202,7 @@ function GroupSection(props: {
             class="wr-group-toggle"
             aria-expanded={open}
             aria-controls={bodyId}
-            onClick={summary ? summary.toggle : () => setOwnOpen(!ownOpen)}
+            onClick={() => setOpen(!open)}
           >
             <ChevronDownIcon />
             {headContent}
@@ -303,7 +214,7 @@ function GroupSection(props: {
       <div id={bodyId}>
         {open && (
           <>
-            <LimitedItems {...rows} items={group.items} limit={props.rowLimit} />
+            <ItemList {...rows} items={group.items} />
             {group.kind === 'past_due' && (
               <SubList
                 {...rows}
@@ -339,75 +250,35 @@ function GroupSection(props: {
 }
 
 /**
- * Renders the groups in order. "Nothing due in these 7 days" takes the place of the day groups:
- * before No due date and Done, and in the glance before the link that opens the rest of the span,
- * such as "Next 7 days". The glance (in-page list)
- * shows Past due as one line and puts the later days, No due date and Done behind one link.
+ * Renders the groups in order. "Nothing due in these 7 days" takes the place of the day groups,
+ * before No due date and Done. The side panel and the in-page list show every group in full.
  */
-export function WeekList(props: {
-  view: WeekView;
-  level: HeadingLevel;
-  handlers: ListHandlers;
-  /** Set for the in-page list, which is a glance; the side panel shows every group in full. */
-  glance?: Glance;
-}) {
-  const { view, glance } = props;
+export function WeekList(props: { view: WeekView; level: HeadingLevel; handlers: ListHandlers }) {
+  const { view } = props;
   const live = view.groups.filter((group) => !isGroupEmpty(group));
   // The nearest day that still loads shows two bars, the later ones one, so a long span does not
   // fill the list with placeholders.
   const firstLoading = live.find((g) => g.loading === true && g.kind !== 'past_due');
-  // The glance shows Past due, Today and Tomorrow, or else the next day with work.
-  const near = live.filter((g) => g.kind === 'today' || g.kind === 'tomorrow');
-  const days = near.length ? near : live.filter((g) => g.kind === 'day').slice(0, 1);
-  // Past due with only skipped rows has no count to summarize, so it waits behind the link.
-  const isNow = (g: ListGroup) =>
-    g.kind === 'past_due' && (groupCount(g) > 0 || g.loading === true);
-  const head = glance ? live.filter((g) => isNow(g) || days.includes(g)) : live;
-  const rest = glance ? live.filter((g) => !head.includes(g)) : [];
-  const section = (group: ListGroup) => {
-    if (group.loading === true) {
-      return (
-        <LoadingGroup
-          key={`${group.kind}:${group.date}`}
-          group={group}
-          level={props.level}
-          bars={group === firstLoading ? SKELETON_BARS : 1}
-        />
-      );
-    }
-    const summary = glance && isNow(group);
-    return (
+  const nodes: ComponentChildren[] = live.map((group) =>
+    group.loading === true ? (
+      <LoadingGroup
+        key={`${group.kind}:${group.date}`}
+        group={group}
+        level={props.level}
+        bars={group === firstLoading ? SKELETON_BARS : 1}
+      />
+    ) : (
       <GroupSection
         key={`${group.kind}:${group.date}`}
         group={group}
         view={view}
         level={props.level}
         handlers={props.handlers}
-        rowLimit={glance && !summary ? GLANCE_ROW_LIMIT : Infinity}
-        summary={
-          summary ? { open: glance.pastDue, toggle: () => glance.toggle('pastDue') } : undefined
-        }
       />
-    );
-  };
-  const nodes: ComponentChildren[] = head.map(section);
+    ),
+  );
   // The chart says "Nothing due in these 7 days" itself when no class has work.
   if (view.nothingDue && (!view.rings.length || view.rings.some((ring) => ring.total)))
-    nodes.splice(head[0]?.kind === 'past_due' ? 1 : 0, 0, <NothingDue span={view.span} />);
-  // A rest that only waits for its items has nothing to count or open yet.
-  if (glance && rest.some((g) => g.loading !== true))
-    nodes.push(
-      <Disclosure
-        label={restOfSpanLabel(
-          view.span,
-          rest.reduce((sum, g) => sum + groupCount(g), 0),
-          view.isCurrentSpan,
-        )}
-        open={glance.rest}
-        onToggle={() => glance.toggle('rest')}
-      >
-        {rest.map(section)}
-      </Disclosure>,
-    );
+    nodes.splice(live[0]?.kind === 'past_due' ? 1 : 0, 0, <NothingDue span={view.span} />);
   return <div class="wr-list">{nodes}</div>;
 }

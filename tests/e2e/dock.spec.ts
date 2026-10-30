@@ -216,7 +216,7 @@ test.describe('the classic dashboard with a long Recent Activity', () => {
     await expect(doneBox(list, QUIZ_3)).toHaveCount(0);
   });
 
-  test('goes away when the setting is off, with no spacer or sentinel left', async ({
+  test('shows the slim bar when the list is minimized, and the page keeps no side scroll', async ({
     context,
     page,
     background,
@@ -226,11 +226,13 @@ test.describe('the classic dashboard with a long Recent Activity', () => {
     const columnEnd = (await dockState(page)).sentinelTop;
     await scrollTo(page, columnEnd + 60);
     await expect.poll(async () => (await dockState(page)).panel).toBe('dock');
-    await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
-    await expect(page.locator('#weekrow-inpage')).toHaveCount(0);
-    await expect(
-      page.locator('[id^="weekrow-"], [data-weekrow-styled], [data-weekrow-column]'),
-    ).toHaveCount(0);
+    await saveSettings(background, { ...DEFAULT_SETTINGS, minimized: true });
+    await expect(inpageList(page).getByRole('button', { name: /^Weekly list/ })).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
   });
 
   test('does not dock when the column sits under the content on a narrow window', async ({

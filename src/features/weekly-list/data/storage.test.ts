@@ -57,7 +57,7 @@ describe('settings defaults', () => {
       span: { kind: 'week', days: 7 },
       hiddenCourseIds: [],
       showRings: true,
-      showOnCanvasPages: true,
+      minimized: false,
       theme: 'auto',
     });
     expect(DEFAULT_SETTINGS.hiddenCourseIds).toEqual([]);
@@ -65,14 +65,14 @@ describe('settings defaults', () => {
 
   it('reads settings stored before the theme and the span existed with their defaults', async () => {
     await fakeBrowser.storage.local.set({
-      settings: { hiddenCourseIds: ['7'], showRings: false, showOnCanvasPages: true },
+      settings: { hiddenCourseIds: ['7'], showRings: false, showOnCanvasPages: false },
     });
 
     expect(await settingsItem.getValue()).toEqual({
       span: { kind: 'week', days: 7 },
       hiddenCourseIds: ['7'],
       showRings: false,
-      showOnCanvasPages: true,
+      minimized: false,
       theme: 'auto',
     });
   });
@@ -127,7 +127,7 @@ describe('normalizeSeenNotes', () => {
 describe('the settings item', () => {
   it('cleans what it reads from storage, so a bad value never reaches a surface', async () => {
     await fakeBrowser.storage.local.set({
-      settings: { hiddenCourseIds: 5, showRings: true, showOnCanvasPages: true },
+      settings: { hiddenCourseIds: 5, showRings: true, minimized: false },
     });
 
     expect(await settingsItem.getValue()).toEqual(DEFAULT_SETTINGS);
@@ -140,7 +140,8 @@ describe('the settings item', () => {
         weekStart: 1,
         hiddenCourseIds: ['7'],
         showRings: false,
-        showOnCanvasPages: true,
+        showOnCanvasPages: false,
+        minimized: true,
         theme: 'dark',
       },
     });
@@ -149,7 +150,7 @@ describe('the settings item', () => {
       span: { kind: 'month', days: 7 },
       hiddenCourseIds: ['7'],
       showRings: false,
-      showOnCanvasPages: true,
+      minimized: true,
       theme: 'dark',
     });
   });

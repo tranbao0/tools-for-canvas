@@ -1,22 +1,18 @@
 /**
  * The in-page list on the widget dashboard and in List View (design decision 4, "In-page rules").
  *
- * Neither page has a right column, so the list takes a place in the page content: a widget column
- * of its own in the grid of the widget dashboard, first in the last widget column when the grid
- * has no room, or a floating card in the free area beside the content. The tests measure the
- * layout with Canvas's layout rules from the fixture stylesheet.
+ * Neither page has a right column, so the list takes a place in the page content: a card in the
+ * free area beside the widget grid, first in the last widget column when that area is too small,
+ * and a floating card in List View. The tests measure the layout with Canvas's layout rules from
+ * the fixture stylesheet. The sweep over all widths is in dashboard-overflow.spec.ts.
  */
 import type { Locator, Page } from '@playwright/test';
-import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
-import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import {
   doneBox,
   expect,
   group,
   inpageList,
   openCanvasPage,
-  saveSettings,
-  saveTools,
   serveScenario,
   test,
   settledList,
@@ -68,10 +64,6 @@ async function listBox(page: Page): Promise<Box> {
   return box;
 }
 
-async function columnWidths(page: Page): Promise<number[]> {
-  return (await boxes(page, CANVAS_COLUMNS)).map((box) => box.width);
-}
-
 async function noSideScroll(page: Page): Promise<boolean> {
   return page.evaluate(
     () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
@@ -105,54 +97,6 @@ async function scrollTo(page: Page, y: number): Promise<number> {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     return window.scrollY;
   }, y);
-}
-
-/**
- * Everything the list could change on the page: the box, the layout styles and the attributes of
- * the elements around the content. The mounted list is part of `#content`, so a page with the list
- * off has to match the page before the list came.
- */
-async function snapshot(page: Page): Promise<unknown[]> {
-  await scrollTo(page, 0);
-  return page.evaluate(() => {
-    const props = [
-      'display',
-      'position',
-      'width',
-      'height',
-      'margin-top',
-      'margin-right',
-      'margin-bottom',
-      'margin-left',
-      'padding-top',
-      'padding-right',
-      'padding-bottom',
-      'padding-left',
-      'flex-grow',
-      'flex-shrink',
-      'flex-basis',
-      'top',
-      'left',
-      'align-self',
-    ];
-    const selector =
-      'html, body, #wrapper, #main, #not_right_side, #content-wrapper, #content, #content *, #right-side-wrapper, #right-side';
-    return [...document.querySelectorAll(selector)].map((element) => {
-      const { x, y, width, height } = element.getBoundingClientRect();
-      const style = getComputedStyle(element);
-      return {
-        tag: element.tagName,
-        id: element.id,
-        box: [x, y, width, height],
-        style: props.map((name) => style.getPropertyValue(name)).join('|'),
-        attributes: element
-          .getAttributeNames()
-          .sort()
-          .map((name) => `${name}=${element.getAttribute(name)}`)
-          .join(';'),
-      };
-    });
-  });
 }
 
 /** Replays a Canvas fixture step again: React re-rendering the content of the dashboard. */
@@ -193,121 +137,71 @@ async function setEditMode(page: Page, editing: boolean): Promise<void> {
   }, editing);
 }
 
-/** The dashboard fixes add their own height after the data arrives, which these layout checks do not measure. */
-const NO_FIXES = {
-  dashboardFixes: Object.fromEntries(
-    Object.keys(DEFAULT_TOOLS_SETTINGS.dashboardFixes).map((key) => [key, false]),
-  ) as unknown as typeof DEFAULT_TOOLS_SETTINGS.dashboardFixes,
-};
-
 const PAGE_WIDTHS = [1920, 1600, 1280, 1000, 700];
+/** A width of the widget dashboard where the free area beside the grid holds the card, and one where not. */
+const AREA_WIDTH = 1920;
+const COLUMN_WIDTH = 1400;
+
+async function openPage(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  pageName: string,
+  width: number,
+): Promise<void> {
+  const { canvas } = await serveScenario(context, [{ path: '/', page: pageName }]);
+  await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
+  await openCanvasPage(page, canvas.origin);
+  await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+  await settledList(page);
+}
 
 test.describe('the widget dashboard', () => {
-  async function open(
-    context: Parameters<typeof serveScenario>[0],
-    page: Page,
-    width: number,
-  ): Promise<void> {
-    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
-    await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
-    await openCanvasPage(page, canvas.origin);
-    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-    await settledList(page);
-  }
-
-  test('puts the card in the grid at 1920 px, beside the last column, in line with the first row', async ({
+  test('puts the card in the free area beside the grid, in line with the first row', async ({
     context,
     page,
   }) => {
-    await open(context, page, 1920);
-    await expectMode(page, 'grid');
+    await openPage(context, page, 'dashboard-widgets', AREA_WIDTH);
+    await expectMode(page, 'area');
     const columns = await boxes(page, CANVAS_COLUMNS);
     const card = await listBox(page);
     expect(columns).toHaveLength(2);
-    const last = columns[columns.length - 1] as Box;
-    // One gutter, the gap between the Canvas columns, lies between the last column and the card.
-    const gutter = (columns[1] as Box).x - ((columns[0] as Box).x + (columns[0] as Box).width);
-    expect(card.x - (last.x + last.width)).toBeCloseTo(gutter, 0);
-    expect(card.width).toBeGreaterThanOrEqual(340);
-    expect(card.y).toBeCloseTo(last.y, 0);
+    const last = columns[1] as Box;
+    // The card is outside the grid, a sibling of the content, so React never removes it.
+    await expect(page.locator(`${GRID} #weekrow-inpage`)).toHaveCount(0);
+    await expect(page.locator('#content-wrapper > #weekrow-inpage')).toHaveCount(1);
+    expect(card.x).toBeGreaterThan(last.x + last.width);
     for (const column of columns) expect(overlap(column, card)).toBe(false);
-    expect(card.x + card.width).toBeLessThanOrEqual(1920);
-    expect(await noSideScroll(page)).toBe(true);
-    // The card is the last child of the grid, a column of its own.
-    await expect(page.locator(`${GRID} > #weekrow-inpage`)).toHaveCount(1);
-    expect(
-      await page.evaluate(() => document.querySelector('#weekrow-inpage')?.nextElementSibling),
-    ).toBeNull();
-  });
-
-  test('scrolls with the page, as the other widgets do', async ({ context, page }) => {
-    await open(context, page, 1920);
-    await expectMode(page, 'grid');
-    const before = await listBox(page);
-    const scrolled = await scrollTo(page, 500);
-    expect(scrolled).toBeGreaterThan(300);
-    const after = await listBox(page);
-    expect(before.y - after.y).toBeCloseTo(scrolled, 0);
-  });
-
-  test('puts the card first in the last column at 1600 px, where the grid has no room', async ({
-    context,
-    page,
-  }) => {
-    await open(context, page, 1600);
-    await expectMode(page, 'column');
-    const [first, last] = await boxes(page, CANVAS_COLUMNS);
-    const card = await listBox(page);
-    expect(first).toBeDefined();
-    expect(card.x).toBeCloseTo((last as Box).x, 0);
-    expect(card.width).toBeCloseTo((last as Box).width, 0);
-    expect(card.y).toBeCloseTo((last as Box).y, 0);
-    expect(card.width).toBeGreaterThanOrEqual(340);
-    await expect(
-      page.locator(
-        `${GRID} > [data-testid^="widget-column-"]:last-child > #weekrow-inpage:first-child`,
-      ),
-    ).toHaveCount(1);
     expect(await noSideScroll(page)).toBe(true);
   });
 
-  test('puts the card first in the last column at 1280 px, below the first column', async ({
-    context,
-    page,
-  }) => {
-    await open(context, page, 1280);
-    await expectMode(page, 'column');
-    const [first, last] = await boxes(page, CANVAS_COLUMNS);
-    const card = await listBox(page);
-    // The grid is one stack here. The card comes first in the last column, under the first one.
-    expect((first as Box).y + (first as Box).height).toBeLessThanOrEqual(card.y + 1);
-    expect(card.x).toBeCloseTo((last as Box).x, 0);
-    expect(card.width).toBeCloseTo((last as Box).width, 0);
-  });
-
-  for (const width of PAGE_WIDTHS) {
-    test(`keeps the Canvas columns at their width and overlaps no widget at ${width} px`, async ({
+  for (const [width, column] of [
+    [COLUMN_WIDTH, 2],
+    [1280, 1],
+  ] as const) {
+    test(`puts the card first in column ${column} at ${width} px, where the free area is too small`, async ({
       context,
       page,
-      background,
     }) => {
-      await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
-      const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
-      await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
-      await openCanvasPage(page, canvas.origin);
-      const without = await columnWidths(page);
-      const widgetsWithout = await boxes(page, '[data-testid^="widget-container-"]');
-      await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: true });
-      await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-      await settledList(page);
-      // The Canvas columns never shrink, in every mode.
-      expect(await columnWidths(page)).toEqual(without);
-      const widgets = await boxes(page, '[data-testid^="widget-container-"]');
+      await openPage(context, page, 'dashboard-widgets', width);
+      await expectMode(page, 'column');
+      const columns = await boxes(page, CANVAS_COLUMNS);
       const card = await listBox(page);
-      expect(widgets).toHaveLength(widgetsWithout.length);
-      for (const widget of widgets) expect(overlap(widget, card)).toBe(false);
-      expect(card.x + card.width).toBeLessThanOrEqual(width + 1);
-      expect(card.x).toBeGreaterThanOrEqual(0);
+      // The card has the margin of a widget card, so its edges are those of the widgets below it.
+      const [section] = await boxes(
+        page,
+        `[data-testid^="widget-column-${column}"] section[data-testid^="widget-"]`,
+      );
+      expect(card.x).toBeCloseTo((section as Box).x, 0);
+      expect(card.width).toBeCloseTo((section as Box).width, 0);
+      const target = columns[column - 1] as Box;
+      expect(card.x + card.width).toBeLessThanOrEqual(target.x + target.width + 1);
+      // The card is the first widget of its column, and the first in the stack of one column.
+      expect(card.y).toBeLessThan((section as Box).y);
+      await expect(
+        page.locator(
+          `${GRID} > [data-testid^="widget-column-${column}"] > #weekrow-inpage:first-child`,
+        ),
+      ).toHaveCount(1);
       expect(await noSideScroll(page)).toBe(true);
     });
   }
@@ -316,181 +210,103 @@ test.describe('the widget dashboard', () => {
     context,
     page,
   }) => {
-    await open(context, page, 1920);
-    await expectMode(page, 'grid');
+    await openPage(context, page, 'dashboard-widgets', COLUMN_WIDTH);
+    await expectMode(page, 'column');
     await page.evaluate(() => {
       const container = document.getElementById('weekrow-inpage');
       if (container) container.dataset['same'] = 'yes';
     });
-    // The student opens the past due group, and the group shows its rows.
-    const pastDueSummary = (): Locator =>
-      group(inpageList(page), 'past_due').getByRole('button', { name: /\d+ past due/ });
-    const pastDue = pastDueSummary();
-    await pastDue.click();
-    await expect(pastDue).toHaveAttribute('aria-expanded', 'true');
+    // The student opens the older past due work, and the group shows its rows.
+    const older = (): Locator =>
+      group(inpageList(page), 'past_due').getByRole('button', { name: /\d+ older/ });
+    await older().click();
+    await expect(older()).toHaveAttribute('aria-expanded', 'true');
     await rerenderContent(page);
-    await expect(page.locator(`${GRID} > #weekrow-inpage`)).toHaveCount(1);
-    await expectMode(page, 'grid');
+    await expect(page.locator(`${GRID} > * > #weekrow-inpage`)).toHaveCount(1);
+    await expectMode(page, 'column');
     // The same container comes back with its list, not a new one, and the group is still open.
     await expect(page.locator('#weekrow-inpage[data-same="yes"]')).toHaveCount(1);
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
     await settledList(page);
-    await expect(pastDueSummary()).toHaveAttribute('aria-expanded', 'true');
-    const columns = await boxes(page, CANVAS_COLUMNS);
-    const card = await listBox(page);
-    expect(card.y).toBeCloseTo((columns[1] as Box).y, 0);
+    await expect(older()).toHaveAttribute('aria-expanded', 'true');
   });
 
-  test('keeps the scroll position of the floating card when the page removes the container', async ({
+  test('keeps the card in the free area when React renders the grid again', async ({
     context,
     page,
   }) => {
-    await open(context, page, 1920);
-    await setEditMode(page, true);
-    await expectMode(page, 'float');
-    await addHeight(page);
-    await scrollTo(page, 300);
-    // Make the card taller than the viewport, then scroll inside it.
-    const scrolled = await page.evaluate(async () => {
-      const card = document
-        .querySelector('#weekrow-inpage > weekrow-list')
-        ?.shadowRoot?.querySelector<HTMLElement>('.wr');
-      if (!card) return -1;
-      const filler = document.createElement('div');
-      filler.style.height = '2000px';
-      card.append(filler);
-      card.scrollTop = 400;
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      return card.scrollTop;
+    await openPage(context, page, 'dashboard-widgets', AREA_WIDTH);
+    await page.evaluate(() => {
+      const container = document.getElementById('weekrow-inpage');
+      if (container) container.dataset['same'] = 'yes';
     });
-    expect(scrolled).toBe(400);
-    await page.evaluate(() => document.getElementById('weekrow-inpage')?.remove());
-    await expect(page.locator('#content-wrapper > #weekrow-inpage')).toHaveCount(1);
-    await expectMode(page, 'float');
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            document
-              .querySelector('#weekrow-inpage > weekrow-list')
-              ?.shadowRoot?.querySelector<HTMLElement>('.wr')?.scrollTop,
-        ),
-      )
-      .toBeGreaterThan(300);
+    await rerenderContent(page);
+    await page.waitForTimeout(200);
+    await expectMode(page, 'area');
+    await expect(page.locator('#weekrow-inpage[data-same="yes"]')).toHaveCount(1);
   });
 
-  test('floats for the rest of the page view after the page removes the card too often', async ({
+  test('leaves the last column for the rest of the page view after the page removes the card too often', async ({
     context,
     page,
   }) => {
-    await open(context, page, 1920);
-    await expectMode(page, 'grid');
+    await openPage(context, page, 'dashboard-widgets', COLUMN_WIDTH);
+    await expectMode(page, 'column');
     for (let round = 0; round < 4; round += 1) {
       await rerenderContent(page);
       await expect(page.locator('#weekrow-inpage')).toHaveCount(1);
       await page.waitForTimeout(50);
     }
-    await expectMode(page, 'float');
+    // The free area is too small for the card, so it stacks above the content.
+    await expectMode(page, 'stack');
     expect(
       await page.evaluate(() => document.getElementById('weekrow-inpage')?.parentElement?.id),
     ).toBe('content-wrapper');
-    // The card stays floating, also when the grid is stable again.
     await rerenderContent(page);
     await page.waitForTimeout(300);
-    await expectMode(page, 'float');
-    const widgets = await boxes(page, '[data-testid^="widget-container-"]');
-    const card = await listBox(page);
-    for (const widget of widgets) expect(overlap(widget, card)).toBe(false);
+    await expectMode(page, 'stack');
+    expect(await noSideScroll(page)).toBe(true);
   });
 
-  test('floats while the student edits the dashboard, and returns to the grid after', async ({
+  test('stays in the free area while the student edits the dashboard', async ({
     context,
     page,
   }) => {
-    await open(context, page, 1920);
-    await expectMode(page, 'grid');
+    await openPage(context, page, 'dashboard-widgets', AREA_WIDTH);
+    await expectMode(page, 'area');
     await setEditMode(page, true);
-    await expectMode(page, 'float');
-    await expect(page.locator(`${GRID} > #weekrow-inpage`)).toHaveCount(0);
-    const widgets = await boxes(page, '[data-testid^="widget-container-"]');
-    const card = await listBox(page);
-    for (const widget of widgets) expect(overlap(widget, card)).toBe(false);
-    expect(card.width).toBeGreaterThanOrEqual(360);
+    await page.waitForTimeout(200);
+    await expectMode(page, 'area');
     await setEditMode(page, false);
-    await expectMode(page, 'grid');
-    await expect(page.locator(`${GRID} > #weekrow-inpage`)).toHaveCount(1);
+    await expectMode(page, 'area');
   });
 
-  test('floats when the grid goes away for good', async ({ context, page }) => {
-    await open(context, page, 1920);
-    await expectMode(page, 'grid');
+  test('hides while the student edits the dashboard and the free area has no room, and returns after', async ({
+    context,
+    page,
+  }) => {
+    await openPage(context, page, 'dashboard-widgets', COLUMN_WIDTH);
+    await expectMode(page, 'column');
+    await setEditMode(page, true);
+    await expect(page.locator('#weekrow-inpage')).toBeHidden();
+    // The columns hold nothing of the list while the student drags widgets.
+    await expect(page.locator(`${GRID} #weekrow-inpage`)).toHaveCount(0);
+    await setEditMode(page, false);
+    await expectMode(page, 'column');
+    await expect(page.locator('#weekrow-inpage')).toBeVisible();
+  });
+
+  test('stays in the free area when the grid goes away for good', async ({ context, page }) => {
+    await openPage(context, page, 'dashboard-widgets', AREA_WIDTH);
+    await expectMode(page, 'area');
     await page.evaluate(() => document.querySelector('[data-testid="widget-columns"]')?.remove());
-    await expectMode(page, 'float');
     await page.waitForTimeout(2000);
-    await expectMode(page, 'float');
+    await expectMode(page, 'area');
     await rerenderContent(page);
     await page.waitForTimeout(300);
-    // The grid is back, but the list floats for the rest of the page view.
-    await expectMode(page, 'float');
-  });
-
-  for (const width of PAGE_WIDTHS) {
-    test(`puts the page back when the setting is off at ${width} px`, async ({
-      context,
-      page,
-      background,
-    }) => {
-      await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
-      await saveTools(background, NO_FIXES);
-      const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
-      await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
-      await openCanvasPage(page, canvas.origin);
-      const before = await snapshot(page);
-
-      await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: true });
-      await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-      await settledList(page);
-      await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
-      await expect(page.locator('#weekrow-inpage, weekrow-list')).toHaveCount(0);
-
-      expect(await snapshot(page)).toEqual(before);
-      await expect(
-        page.locator('[id^="weekrow-"], [data-weekrow-column], [data-weekrow-styled]'),
-      ).toHaveCount(0);
-      await expect(page.locator('#right-side-wrapper')).toBeHidden();
-    });
-  }
-
-  test('puts the page back after the list floated in edit mode', async ({
-    context,
-    page,
-    background,
-  }) => {
-    await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
-    await saveTools(background, NO_FIXES);
-    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
-    await page.setViewportSize({ width: 1280, height: VIEWPORT_HEIGHT });
-    await openCanvasPage(page, canvas.origin);
-    const before = await snapshot(page);
-    await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: true });
-    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-    await settledList(page);
-    await setEditMode(page, true);
-    await expectMode(page, 'float');
-    await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
-    await expect(page.locator('#weekrow-inpage')).toHaveCount(0);
-    await setEditMode(page, false);
-    expect(await snapshot(page)).toEqual(before);
-  });
-
-  test('mounts again when the setting comes back on', async ({ context, page, background }) => {
-    await open(context, page, 1920);
-    await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
-    await expect(page.locator('#weekrow-inpage')).toHaveCount(0);
-    await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: true });
-    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-    await settledList(page);
-    await expectMode(page, 'grid');
+    // The grid is back, but the list keeps its place for the rest of the page view.
+    await expectMode(page, 'area');
+    expect(await noSideScroll(page)).toBe(true);
   });
 });
 
@@ -498,76 +314,52 @@ test.describe('the floating card', () => {
   async function openFloating(
     context: Parameters<typeof serveScenario>[0],
     page: Page,
-    pageName: string,
     width: number,
   ): Promise<void> {
-    const { canvas } = await serveScenario(context, [{ path: '/', page: pageName }]);
-    await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
-    await openCanvasPage(page, canvas.origin);
-    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-    await settledList(page);
-    if (pageName === 'dashboard-widgets') {
-      await setEditMode(page, true);
-      await expectMode(page, width <= 1000 ? 'stack' : 'float');
-    }
+    await openPage(context, page, 'dashboard-list-view', width);
   }
 
-  for (const pageName of ['dashboard-widgets', 'dashboard-list-view']) {
-    const name =
-      pageName === 'dashboard-widgets' ? 'the widget dashboard in edit mode' : 'List View';
-    for (const width of PAGE_WIDTHS) {
-      test(`on ${name} at ${width} px`, async ({ context, page }) => {
-        await openFloating(context, page, pageName, width);
-        if (pageName === 'dashboard-list-view') await addHeight(page);
-        const stacked = width <= 1000;
-        await expectMode(page, stacked ? 'stack' : 'float');
-        const content = (await boxes(page, '#content'))[0] as Box;
-        const blocks = await boxes(
-          page,
-          pageName === 'dashboard-widgets'
-            ? '[data-testid^="widget-container-"], [data-testid="widget-columns"]'
-            : '#dashboard_header_container, .fixture-planner-item',
-        );
-        const card = await listBox(page);
-        for (const block of blocks)
-          expect(overlap(block, card), `block ${JSON.stringify(block)}`).toBe(false);
-        expect(await noSideScroll(page)).toBe(true);
-        expect(card.x + card.width).toBeLessThanOrEqual(width + 1);
+  for (const width of PAGE_WIDTHS) {
+    test(`on List View at ${width} px`, async ({ context, page }) => {
+      await openFloating(context, page, width);
+      await addHeight(page);
+      const stacked = width <= 1000;
+      await expectMode(page, stacked ? 'stack' : 'float');
+      const content = (await boxes(page, '#content'))[0] as Box;
+      const blocks = await boxes(page, '#dashboard_header_container, .fixture-planner-item');
+      const card = await listBox(page);
+      for (const block of blocks)
+        expect(overlap(block, card), `block ${JSON.stringify(block)}`).toBe(false);
+      expect(await noSideScroll(page)).toBe(true);
+      expect(card.x + card.width).toBeLessThanOrEqual(width + 1);
 
-        if (stacked) {
-          // The card sits above the content, at the width of the content.
-          for (const block of blocks) expect(card.y + card.height).toBeLessThanOrEqual(block.y + 1);
-          expect(card.width).toBeGreaterThan(content.width * 0.8);
-          return;
-        }
-        expect(card.width).toBeGreaterThanOrEqual(360);
-        // The top lines up with the first widget row, or with the top of the content in List View.
-        const top =
-          pageName === 'dashboard-widgets'
-            ? (await boxes(page, GRID))[0]?.y
-            : (await boxes(page, '#content > :first-child'))[0]?.y;
-        expect(card.y).toBeCloseTo(top ?? -1, 0);
-        // The card stays in view after the page scrolls 1500 px.
-        const scrolled = await scrollTo(page, 1500);
-        expect(scrolled).toBeGreaterThan(900);
-        const after = await listBox(page);
-        expect(after.y).toBeCloseTo(24, 0);
-        expect(after.y + after.height).toBeLessThanOrEqual(VIEWPORT_HEIGHT - 24 + 1);
-        for (const block of await boxes(
-          page,
-          '[data-testid^="widget-container-"], .fixture-planner-item',
-        )) {
-          expect(overlap(block, after)).toBe(false);
-        }
-      });
-    }
+      if (stacked) {
+        // The card sits above the content, at the width of the content.
+        for (const block of blocks) expect(card.y + card.height).toBeLessThanOrEqual(block.y + 1);
+        expect(card.width).toBeGreaterThan(content.width * 0.8);
+        return;
+      }
+      expect(card.width).toBeGreaterThanOrEqual(360);
+      // The top lines up with the top of the content.
+      const top = (await boxes(page, '#content > :first-child'))[0]?.y;
+      expect(card.y).toBeCloseTo(top ?? -1, 0);
+      // The card stays in view after the page scrolls 1500 px.
+      const scrolled = await scrollTo(page, 1500);
+      expect(scrolled).toBeGreaterThan(900);
+      const after = await listBox(page);
+      expect(after.y).toBeCloseTo(24, 0);
+      expect(after.y + after.height).toBeLessThanOrEqual(VIEWPORT_HEIGHT - 24 + 1);
+      for (const block of await boxes(page, '.fixture-planner-item')) {
+        expect(overlap(block, after)).toBe(false);
+      }
+    });
   }
 
   test('keeps the scroll position of the floating card when the window changes size', async ({
     context,
     page,
   }) => {
-    await openFloating(context, page, 'dashboard-list-view', 1920);
+    await openFloating(context, page, 1920);
     await addHeight(page);
     await scrollTo(page, 300);
     await page.evaluate(async () => {
@@ -592,31 +384,8 @@ test.describe('the floating card', () => {
     expect(top).toBe(500);
   });
 
-  test('scrolls the card inside only where it floats, so the Undo notice stays at the window', async ({
-    context,
-    page,
-  }) => {
-    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
-    await page.setViewportSize({ width: 1920, height: VIEWPORT_HEIGHT });
-    await openCanvasPage(page, canvas.origin);
-    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-    await settledList(page);
-    const overflow = (): Promise<string | undefined> =>
-      page.evaluate(() => {
-        const card = document
-          .querySelector('#weekrow-inpage > weekrow-list')
-          ?.shadowRoot?.querySelector('.wr');
-        return card ? getComputedStyle(card).overflowY : undefined;
-      });
-    await expectMode(page, 'grid');
-    expect(await overflow()).toBe('visible');
-    await setEditMode(page, true);
-    await expectMode(page, 'float');
-    expect(await overflow()).toBe('auto');
-  });
-
   test('lets clicks through the host below the card', async ({ context, page }) => {
-    await openFloating(context, page, 'dashboard-list-view', 1920);
+    await openFloating(context, page, 1920);
     await addHeight(page);
     await scrollTo(page, 300);
     const card = await listBox(page);
@@ -636,11 +405,11 @@ test.describe('the floating card', () => {
     expect(onCard).toBe('WEEKROW-LIST');
   });
 
-  test('keeps the header of the list in view while the list scrolls inside', async ({
+  test('keeps the header of the list in view while the card scrolls inside', async ({
     context,
     page,
   }) => {
-    await openFloating(context, page, 'dashboard-list-view', 1920);
+    await openFloating(context, page, 1920);
     await addHeight(page);
     await scrollTo(page, 300);
     const result = await page.evaluate(async () => {
@@ -662,7 +431,7 @@ test.describe('the floating card', () => {
       };
     });
     expect(result?.scrollTop).toBeGreaterThan(0);
-    expect(result?.headerTop).toBeCloseTo((result?.cardTop ?? 0) + 1, 0);
+    expect(result?.headerTop).toBeCloseTo(result?.cardTop ?? 0, 0);
     expect(result?.cardHeight).toBeLessThanOrEqual(VIEWPORT_HEIGHT - 48 + 1);
   });
 
@@ -670,7 +439,7 @@ test.describe('the floating card', () => {
     context,
     page,
   }) => {
-    await openFloating(context, page, 'dashboard-list-view', 1920);
+    await openFloating(context, page, 1920);
     await page.evaluate(() => document.getElementById('weekrow-inpage')?.remove());
     await expect(page.locator('#content-wrapper > #weekrow-inpage')).toHaveCount(1);
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
@@ -678,45 +447,30 @@ test.describe('the floating card', () => {
     await expectMode(page, 'float');
   });
 
-  test('on List View, puts the page back when the setting is off', async ({
-    context,
-    page,
-    background,
-  }) => {
-    await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
-    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-list-view' }]);
-    for (const width of PAGE_WIDTHS) {
-      await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
-      await openCanvasPage(page, canvas.origin);
-      const before = await snapshot(page);
-      await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: true });
-      await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-      await settledList(page);
-      await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
-      await expect(page.locator('#weekrow-inpage, weekrow-list')).toHaveCount(0);
-      expect(await snapshot(page), `${width}px`).toEqual(before);
-      await expect(
-        page.locator('[id^="weekrow-"], [data-weekrow-column], [data-weekrow-styled]'),
-      ).toHaveCount(0);
-    }
-  });
-
   test('the content keeps its width except for the padding that the card needs', async ({
     context,
     page,
-    background,
   }) => {
-    await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
-    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-list-view' }]);
-    await page.setViewportSize({ width: 1600, height: VIEWPORT_HEIGHT });
-    await openCanvasPage(page, canvas.origin);
-    const [before] = await boxes(page, '#dashboard_header_container');
-    await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: true });
-    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-    await settledList(page);
+    await openFloating(context, page, 1600);
     await expectMode(page, 'float');
-    // 198 px are free at 1600 px, and the card needs 420: the content gives up 222 px.
-    const [after] = await boxes(page, '#dashboard_header_container');
-    expect((before as Box).width - (after as Box).width).toBeCloseTo(222, 0);
+    // 198 px are free at 1600 px, and the card needs 420: the content gives up 222 px. Without
+    // the list the header container fills the content box.
+    const [header] = await boxes(page, '#dashboard_header_container');
+    const content = await page.evaluate(() => {
+      const element = document.getElementById('content');
+      if (!element) return null;
+      const style = getComputedStyle(element);
+      return {
+        width: element.getBoundingClientRect().width,
+        left: Number.parseFloat(style.paddingLeft),
+        right: Number.parseFloat(style.paddingRight),
+      };
+    });
+    expect(content).not.toBeNull();
+    expect(content?.right).toBeCloseTo(48 + 222, 0);
+    expect((header as Box).width).toBeCloseTo(
+      (content?.width ?? 0) - (content?.left ?? 0) - (content?.right ?? 0),
+      0,
+    );
   });
 });

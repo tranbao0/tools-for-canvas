@@ -11,6 +11,30 @@
   "listTitle": {
     "message": "Weekly list"
   },
+  "minimizeList": {
+    "message": "Minimize list"
+  },
+  "expandList": {
+    "message": "Expand list"
+  },
+  "minimizedBarName": {
+    "message": "Weekly list, minimized"
+  },
+  "dueTodayCount_one": {
+    "message": "$1 due today"
+  },
+  "dueTodayCount_other": {
+    "message": "$1 due today"
+  },
+  "pastDueCount_one": {
+    "message": "$1 past due"
+  },
+  "pastDueCount_other": {
+    "message": "$1 past due"
+  },
+  "scrollRegionLabel": {
+    "message": "Tasks by day"
+  },
   "weekRange": {
     "message": "$1 - $2"
   },
@@ -167,48 +191,6 @@
   "lateBadge_other": {
     "message": "$1 late"
   },
-  "pastDueSummary_one": {
-    "message": "$1 past due"
-  },
-  "pastDueSummary_other": {
-    "message": "$1 past due"
-  },
-  "missingCount_one": {
-    "message": "$1 missing"
-  },
-  "missingCount_other": {
-    "message": "$1 missing"
-  },
-  "restOf_day": {
-    "message": "No due date and done ($1)"
-  },
-  "restOf_week": {
-    "message": "Next 7 days ($1)"
-  },
-  "restOf_fortnight": {
-    "message": "Next 14 days ($1)"
-  },
-  "restOf_month": {
-    "message": "Rest of this month ($1)"
-  },
-  "restOf_custom": {
-    "message": "Rest of these $2 days ($1)"
-  },
-  "restOfShown_day": {
-    "message": "Done ($1)"
-  },
-  "restOfShown_week": {
-    "message": "Rest of these 7 days ($1)"
-  },
-  "restOfShown_fortnight": {
-    "message": "Rest of these 14 days ($1)"
-  },
-  "restOfShown_month": {
-    "message": "Rest of this month ($1)"
-  },
-  "restOfShown_custom": {
-    "message": "Rest of these $2 days ($1)"
-  },
   "itemCount_one": {
     "message": "$1 item"
   },
@@ -220,12 +202,6 @@
   },
   "olderCount_other": {
     "message": "$1 older"
-  },
-  "showMore_one": {
-    "message": "Show $1 more"
-  },
-  "showMore_other": {
-    "message": "Show $1 more"
   },
   "skipAllOlder": {
     "message": "Skip all older"
@@ -568,12 +544,6 @@
   },
   "settingShowRings": {
     "message": "Show progress rings"
-  },
-  "settingShowOnCanvas": {
-    "message": "Show the weekly list on Canvas pages"
-  },
-  "showOnCanvasHelp": {
-    "message": "Shows on your Canvas dashboard and on course home pages. On other pages, use the side panel."
   },
   "settingTheme": {
     "message": "Theme"

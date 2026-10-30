@@ -11,7 +11,7 @@ const STORED: Settings = {
   span: { kind: 'custom', days: 10 },
   hiddenCourseIds: ['7', '1~2'],
   showRings: false,
-  showOnCanvasPages: false,
+  minimized: true,
   theme: 'dark',
 };
 
@@ -63,8 +63,8 @@ describe('normalizeSettings', () => {
     ['hiddenCourseIds', Array.from({ length: MAX_HIDDEN_COURSES + 1 }, (_, i) => `${i + 1}`)],
     ['showRings', 'yes'],
     ['showRings', 1],
-    ['showOnCanvasPages', 'false'],
-    ['showOnCanvasPages', null],
+    ['minimized', 'true'],
+    ['minimized', null],
     ['theme', 'neon'],
     ['theme', 1],
   ])('replaces a bad %s (%j) with its default, and changes nothing else', (field, bad) => {
@@ -82,16 +82,22 @@ describe('normalizeSettings', () => {
       weekStart: 'x',
       hiddenCourseIds: 5,
       showRings: 0,
-      showOnCanvasPages: false,
+      minimized: true,
       theme: 'light',
     });
 
-    expect(result).toEqual({ ...DEFAULT_SETTINGS, showOnCanvasPages: false, theme: 'light' });
+    expect(result).toEqual({ ...DEFAULT_SETTINGS, minimized: true, theme: 'light' });
   });
 
   it('keeps ids of the longest length that counts', () => {
     const longest = '1'.repeat(MAX_COURSE_ID_LENGTH);
     expect(normalizeSettings({ hiddenCourseIds: [longest] }).hiddenCourseIds).toEqual([longest]);
+  });
+
+  it('drops the switch for the list on Canvas pages that an earlier version stored', () => {
+    expect(normalizeSettings({ ...STORED, showOnCanvasPages: false })).toEqual(STORED);
+    expect(normalizeSettings({ showOnCanvasPages: false })).toEqual(DEFAULT_SETTINGS);
+    expect(isSettings({ ...STORED, showOnCanvasPages: false })).toBe(false);
   });
 
   it('drops a first day of the week that an earlier version stored', () => {

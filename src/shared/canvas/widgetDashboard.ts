@@ -3,10 +3,10 @@
  * docs/design.md, decision 4, "In-page rules".
  *
  * The widget dashboard is a React package (`@instructure/platform-widget-dashboard`) that has
- * only test ids, no stable classes, and its markup changes with its releases. The in-grid card
- * depends on these anchors, and no other file reads them. When Canvas changes its markup, this
- * is the one file to edit. The layout falls back to the floating panel when the anchors are
- * missing.
+ * only test ids, no stable classes, and its markup changes with its releases. The placement of
+ * the list beside the grid depends on these anchors. When Canvas changes its markup, this is the
+ * one file to edit. The layout takes the free area beside the content, or the stack above it,
+ * when the anchors are missing.
  *
  * As of package version 16.1.0, in `WidgetGrid`:
  * - `[data-testid="widget-columns"]` is a flex container with the columns as its children. On a

@@ -300,8 +300,8 @@ test.describe('pages with other layouts', () => {
   });
 });
 
-test.describe('compact in-page list', () => {
-  test('Past due is one summary line that opens in place', async ({ context, page }) => {
+test.describe('in-page list', () => {
+  test('Past due is a full group, with its rows and no summary line', async ({ context, page }) => {
     const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }]);
     await openCanvasPage(page, canvas.origin);
     const list = inpageList(page);
@@ -309,23 +309,12 @@ test.describe('compact in-page list', () => {
     await settledList(page);
 
     const section = group(list, 'past_due');
-    const summary = section.getByRole('button', { name: /\d+ past due/ });
-    await expect(summary).toHaveAttribute('aria-expanded', 'false');
-    await expect(section.locator('li')).toHaveCount(0);
-
-    await summary.focus();
-    await page.keyboard.press('Enter');
-    await expect(summary).toHaveAttribute('aria-expanded', 'true');
-    // The group opens with all of its rows, without "Show N more".
+    await expect(section.getByRole('button', { name: /\d+ past due/ })).toHaveCount(0);
     await expect(mainRows(section)).toHaveCount(6);
     await expect(section.getByRole('button', { name: /^Show \d+ more$/ })).toHaveCount(0);
-
-    await page.keyboard.press('Space');
-    await expect(summary).toHaveAttribute('aria-expanded', 'false');
-    await expect(section.locator('li')).toHaveCount(0);
   });
 
-  test('a group with more than 4 items shows 3 rows and "Show N more"', async ({
+  test('a group with many items shows every row, with no "Show N more"', async ({
     context,
     page,
   }) => {
@@ -337,31 +326,24 @@ test.describe('compact in-page list', () => {
 
     // Tomorrow has 6 items.
     const section = group(list, 'tomorrow');
-    await expect(mainRows(section)).toHaveCount(3);
-    const more = section.getByRole('button', { name: 'Show 3 more' });
-    await expect(more).toBeVisible();
-    await more.click();
     await expect(mainRows(section)).toHaveCount(6);
-    await expect(more).toHaveCount(0);
+    await expect(section.getByRole('button', { name: /^Show \d+ more$/ })).toHaveCount(0);
   });
 
-  test('later days, No due date and Done sit behind "Next 7 days"', async ({ context, page }) => {
+  test('every day, No due date and Done show in the list, with no link to the rest of the span', async ({
+    context,
+    page,
+  }) => {
     const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }]);
     await openCanvasPage(page, canvas.origin);
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
     await settledList(page);
 
-    await expect(group(list, 'day')).toHaveCount(0);
-    await expect(group(list, 'no_due_date')).toHaveCount(0);
-    await expect(group(list, 'done')).toHaveCount(0);
-    const link = list.getByRole('button', { name: /^Next 7 days \(\d+\)$/ });
-    await expect(link).toHaveAttribute('aria-expanded', 'false');
-
-    await link.click();
-
-    await expect(link).toHaveAttribute('aria-expanded', 'true');
     await expect(group(list, 'day').first()).toBeVisible();
+    await expect(group(list, 'no_due_date')).toHaveCount(1);
+    await expect(group(list, 'done')).toHaveCount(1);
+    await expect(list.getByRole('button', { name: /^(Next 7 days|Rest of)/ })).toHaveCount(0);
   });
 
   test('the chart draws at most 4 rings in the narrow column and the legend lists every class', async ({
@@ -382,25 +364,9 @@ test.describe('compact in-page list', () => {
       await expect(list.locator('.wr-chart-more')).toHaveText(/^\+[1-9]\d*$/);
     }
   });
-
-  // Design decision 4 cuts only groups with more than 4 items, because a link that hides one
-  // item takes the same space as that item.
-  test('a group of 4 items shows all 4 rows with no "Show more"', async ({ context, page }) => {
-    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }]);
-    await openCanvasPage(page, canvas.origin);
-    const list = inpageList(page);
-    await expect(doneBox(list, QUIZ_3)).toBeVisible();
-    await settledList(page);
-
-    // Today has 4 items: Quiz 3, Return library books, Participation: Week 9 and Debate 2.
-    // The list renders each group in one pass, so these counts need no waiting.
-    const today = group(list, 'today');
-    expect(await today.getByRole('button', { name: /^Show \d+ more$/ }).count()).toBe(0);
-    expect(await mainRows(today).count()).toBe(4);
-  });
 });
 
-test.describe('glance disclosure links and focus', () => {
+test.describe('in-page links and focus', () => {
   test('each link names the region it opens with aria-controls', async ({ context, page }) => {
     const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }]);
     await openCanvasPage(page, canvas.origin);
@@ -408,12 +374,8 @@ test.describe('glance disclosure links and focus', () => {
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
     await settledList(page);
 
-    const summary = group(list, 'past_due').getByRole('button', { name: /\d+ past due/ });
-    const links = [
-      summary,
-      list.getByRole('button', { name: /^Next 7 days \(\d+\)$/ }),
-      group(list, 'tomorrow').getByRole('button', { name: 'Show 3 more' }),
-    ];
+    const older = group(list, 'past_due').getByRole('button', { name: /\d+ older/ });
+    const links = [older, group(list, 'done').getByRole('button').first()];
     for (const link of links) {
       await expect(link).toHaveAttribute('aria-expanded', 'false');
       const id = await link.getAttribute('aria-controls');
@@ -422,18 +384,18 @@ test.describe('glance disclosure links and focus', () => {
     }
 
     // The region that a link opens is the element that holds the new rows.
-    const region = list.locator(`[id="${await summary.getAttribute('aria-controls')}"]`);
+    const region = list.locator(`[id="${await older.getAttribute('aria-controls')}"]`);
     await expect(region.locator('li')).toHaveCount(0);
-    await summary.click();
-    await expect(summary).toHaveAttribute('aria-expanded', 'true');
+    await older.click();
+    await expect(older).toHaveAttribute('aria-expanded', 'true');
     await expect(region.locator('li').first()).toBeVisible();
   });
 
-  test('checking the last visible row moves focus to a link of the list, not to Add', async ({
+  test('checking the last row of a group moves focus to the previous row, not to Add', async ({
     context,
     page,
   }) => {
-    // Past due holds one row behind its summary line, and Today holds two rows.
+    // Past due holds one row, and Today holds two rows.
     const keep = new Set(['Problem set 6', QUIZ_3, 'Return library books']);
     const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }], {
       extend(scenario) {
@@ -450,29 +412,15 @@ test.describe('glance disclosure links and focus', () => {
     await settledList(page);
     await settledList(page);
 
-    /** What has focus in the shadow root of the list. */
-    const focused = () =>
-      list.locator('weekrow-list').evaluate((host) => {
-        const el = host.shadowRoot?.activeElement ?? null;
-        return {
-          add: el?.closest('.wr-add') != null,
-          expanded: el?.getAttribute('aria-expanded') ?? null,
-          text: (el?.textContent ?? '').trim(),
-        };
-      });
-
     // The first row has a row after it, so focus moves to that row.
     await doneBox(list, QUIZ_3).focus();
     await page.keyboard.press('Space');
     await expect(doneBox(list, QUIZ_3)).toHaveCount(0);
     await expect(doneBox(list, 'Return library books')).toBeFocused();
 
-    // The last visible row has none: focus goes to the next link of the list.
+    // The last row of Today has none after it: focus goes to the row before it, in Past due.
     await page.keyboard.press('Space');
     await expect(doneBox(list, 'Return library books')).toHaveCount(0);
-    await expect.poll(async () => (await focused()).text).toMatch(/^Next 7 days \(\d+\)$/);
-    const last = await focused();
-    expect(last.add).toBe(false);
-    expect(last.expanded).toBe('false');
+    await expect(doneBox(list, 'Problem set 6')).toBeFocused();
   });
 });

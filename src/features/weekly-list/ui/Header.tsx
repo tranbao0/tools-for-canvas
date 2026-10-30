@@ -8,7 +8,7 @@ import { t } from '../../../shared/ui/i18n';
 import type { Span, WeekView } from '../model/types';
 import { formatSpanRange, formatSpanRangeLong, spanUnit, timeZoneLabel } from './format';
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from '../../../shared/ui/icons';
-import { GearButton, Heading, type HeadingLevel } from '../../../shared/ui/parts';
+import { GearButton, Heading, MinimizeButton, type HeadingLevel } from '../../../shared/ui/parts';
 import { SpanPicker } from './SpanPicker';
 
 export interface HeaderProps {
@@ -30,6 +30,8 @@ export interface HeaderProps {
   onToday(): void;
   onAdd(): void;
   onSettings(): void;
+  /** Set on the Canvas page, where the list can shrink to a bar. The side panel has none. */
+  onMinimize?: () => void;
 }
 
 export function Header(props: HeaderProps) {
@@ -77,6 +79,7 @@ export function Header(props: HeaderProps) {
           </span>
         </button>
         <GearButton onClick={props.onSettings} />
+        {props.onMinimize && <MinimizeButton onClick={props.onMinimize} />}
         {refreshing && <div class="wr-progress" role="progressbar" aria-label={t('refreshing')} />}
       </div>
       <div class="wr-nav-row">

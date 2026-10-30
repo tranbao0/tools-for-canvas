@@ -1,5 +1,5 @@
 /**
- * The settings (design decision 18). The same five settings show in three places: in the side
+ * The settings (design decision 18). The same four settings show in three places: in the side
  * panel and in the in-page list, where the gear opens them in place with a Back button, and on
  * the extension's own settings page (SettingsView), which also shows the Canvas address.
  */
@@ -31,7 +31,7 @@ export function toggleHidden(hidden: string[], courseId: string, hide: boolean):
   return hide ? [...without, courseId] : without;
 }
 
-/** The five settings. `level` is the heading level of the settings that have a heading. */
+/** The four settings. `level` is the heading level of the settings that have a heading. */
 export function SettingsFields(props: {
   settings: Settings;
   courses: { id: string; name: string }[];
@@ -42,9 +42,7 @@ export function SettingsFields(props: {
   onToolsChange?(tools: ToolsSettings): void;
 }) {
   const { settings, courses } = props;
-  const [ids] = useState(() =>
-    newIds('set', ['span', 'courses', 'rings', 'canvas', 'canvasHelp', 'theme', 'themeHelp']),
-  );
+  const [ids] = useState(() => newIds('set', ['span', 'courses', 'rings', 'theme', 'themeHelp']));
   const update = (patch: Partial<Settings>) => props.onChange({ ...settings, ...patch });
 
   return (
@@ -100,21 +98,6 @@ export function SettingsFields(props: {
           checked={settings.showRings}
           onChange={(showRings) => update({ showRings })}
         />
-      </div>
-
-      <div class="wr-setting wr-setting-row">
-        <label class="wr-setting-name" for={ids.canvas}>
-          {t('settingShowOnCanvas')}
-        </label>
-        <Switch
-          id={ids.canvas}
-          checked={settings.showOnCanvasPages}
-          describedBy={ids.canvasHelp}
-          onChange={(showOnCanvasPages) => update({ showOnCanvasPages })}
-        />
-        <p class="wr-setting-help" id={ids.canvasHelp}>
-          {t('showOnCanvasHelp')}
-        </p>
       </div>
 
       <div class="wr-setting">

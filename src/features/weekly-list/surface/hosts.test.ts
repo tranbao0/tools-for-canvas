@@ -30,7 +30,6 @@ function fakeChannel(): PageChannel & { changeListeners: Set<() => void> } {
     send: vi.fn(async () => undefined),
     choices: {
       origin: { getValue: async () => CUSTOM, watch: () => () => undefined },
-      settings,
     },
     settings,
     watchChanges(listener) {

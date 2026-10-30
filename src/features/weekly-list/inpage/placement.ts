@@ -15,7 +15,7 @@ export const STYLED_ATTRIBUTE = 'data-weekrow-styled';
  * How the list sits on the page. The shadow stylesheet reads it from the `data-panel` attribute
  * of the host:
  * - `area`: a card in the free area beside the widget grid, out of the flow, not sticky.
- * - `column`: first in the last widget column.
+ * - `column`: first in the last widget column, or first in the first column when the grid is one stack.
  * - `float`: a card that floats in the free area beside the content, sticky, in List View.
  * - `stack`: a card above the content, at the width of the content.
  * - `dock`: a card that floats in the right column after the column's items scrolled out of view.
@@ -96,10 +96,8 @@ export function setPanelMode(container: HTMLElement, mode: PanelMode | null): vo
   else if (host.getAttribute('data-panel') !== mode) host.setAttribute('data-panel', mode);
 }
 
-/** The custom properties that a sticky panel reads: how far from the viewport edge it stays. */
-export const PANEL_VARIABLES =
-  `--wr-panel-top:${PANEL_EDGE_GAP_PX}px;` +
-  `--wr-panel-max-height:calc(100vh - ${2 * PANEL_EDGE_GAP_PX}px)`;
+/** The custom property that a sticky panel reads: how far from the viewport edge it stays. */
+export const PANEL_VARIABLES = `--wr-panel-top:${PANEL_EDGE_GAP_PX}px`;
 
 /** Writes the style attribute of the container, and only when it changes. */
 export function setContainerStyle(container: HTMLElement, css: string): void {

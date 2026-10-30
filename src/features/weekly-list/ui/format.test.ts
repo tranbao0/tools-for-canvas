@@ -9,7 +9,6 @@ import {
   formatTimeOrDateTime,
   formatWeekday,
   hostOf,
-  restOfSpanLabel,
   spanPhrase,
   spanUnit,
   timeZoneLabel,
@@ -85,44 +84,6 @@ describe('spans', () => {
       'in this month',
       'in these 10 days',
     ]);
-  });
-
-  it('names the span in the link that opens the rest', () => {
-    const spans = [week, day, fortnight, month, custom];
-    expect(spans.map((span) => restOfSpanLabel(span, 9, true))).toEqual([
-      'Next 7 days (9)',
-      'No due date and done (9)',
-      'Next 14 days (9)',
-      'Rest of this month (9)',
-      'Rest of these 10 days (9)',
-    ]);
-    expect(spans.map((span) => restOfSpanLabel(span, 9, false))).toEqual([
-      'Rest of these 7 days (9)',
-      'Done (9)',
-      'Rest of these 14 days (9)',
-      'Rest of this month (9)',
-      'Rest of these 10 days (9)',
-    ]);
-  });
-});
-
-describe('the glance link and the arrows', () => {
-  it('never share a name, so a screen reader tells them apart', () => {
-    const spans = [
-      { kind: 'week', days: 7 },
-      { kind: 'day', days: 7 },
-      { kind: 'fortnight', days: 7 },
-      { kind: 'month', days: 7 },
-      { kind: 'custom', days: 10 },
-    ] as const;
-    for (const span of spans) {
-      const arrows = [`Previous ${spanUnit(span)}`, `Next ${spanUnit(span)}`];
-      for (const startsToday of [true, false]) {
-        const link = restOfSpanLabel(span, 9, startsToday);
-        for (const arrow of arrows)
-          expect(link.startsWith(arrow), `${link} / ${arrow}`).toBe(false);
-      }
-    }
   });
 });
 

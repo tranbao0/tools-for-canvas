@@ -154,7 +154,7 @@ describe('the messages of the in-page script', () => {
     span: { kind: 'month', days: 7 },
     hiddenCourseIds: ['7'],
     showRings: true,
-    showOnCanvasPages: false,
+    minimized: true,
     theme: 'dark',
   };
 

@@ -67,7 +67,7 @@ export function isSettings(value: unknown): value is Settings {
     isSpan(value['span']) &&
     isCourseIdList(value['hiddenCourseIds']) &&
     typeof value['showRings'] === 'boolean' &&
-    typeof value['showOnCanvasPages'] === 'boolean' &&
+    typeof value['minimized'] === 'boolean' &&
     isTheme(value['theme'])
   );
 }
@@ -86,10 +86,7 @@ export function normalizeSettings(stored: unknown): Settings {
       ? [...input['hiddenCourseIds']]
       : fallback.hiddenCourseIds,
     showRings: typeof input['showRings'] === 'boolean' ? input['showRings'] : fallback.showRings,
-    showOnCanvasPages:
-      typeof input['showOnCanvasPages'] === 'boolean'
-        ? input['showOnCanvasPages']
-        : fallback.showOnCanvasPages,
+    minimized: typeof input['minimized'] === 'boolean' ? input['minimized'] : fallback.minimized,
     theme: isTheme(input['theme']) ? input['theme'] : fallback.theme,
   };
 }

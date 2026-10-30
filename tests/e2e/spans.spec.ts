@@ -235,7 +235,7 @@ test('the control works with the keyboard alone', async ({
   await expect(title(page, 'October 27 to October 30')).toBeVisible();
 });
 
-test('the panel and the in-page list share one span, and the link names it', async ({
+test('the panel and the in-page list share one span', async ({
   context,
   page,
   background,
@@ -249,15 +249,14 @@ test('the panel and the in-page list share one span, and the link names it', asy
   await expect(doneBox(list, 'Quiz 3: Cell membranes')).toBeVisible();
   await settledList(page);
   const listTitle = list.getByRole('heading', { level: 2 });
-  const link = (name: RegExp) => list.getByRole('button', { name });
 
   await expect(picker(list)).toHaveValue('week');
-  await expect(link(/^Next 7 days \(\d+\)$/)).toBeVisible();
+  // The list shows every group of the span, with no link to the rest of it.
+  await expect(list.getByRole('button', { name: /^(Next 7 days|Rest of)/ })).toHaveCount(0);
 
   // The control in the list changes the span.
   await picker(list).selectOption('month');
   await expect(listTitle).toHaveText(/October 27 to November 26/);
-  await expect(link(/^Rest of this month \(\d+\)$/)).toBeVisible();
   await expect(list.getByRole('button', { name: /done in this month/ }).first()).toBeVisible();
 
   // The panel opens on the same span.
@@ -271,13 +270,9 @@ test('the panel and the in-page list share one span, and the link names it', asy
   await expect(title(panel, 'October 27 to November 9')).toBeVisible();
   await page.bringToFront();
   await expect(picker(list)).toHaveValue('fortnight');
-  await expect(link(/^Next 14 days \(\d+\)$/)).toBeVisible();
 
   await picker(list).selectOption('day');
   await expect(listTitle).toHaveText(/Tuesday, October 27/);
-  await expect(link(/^No due date and done \(\d+\)$/)).toBeVisible();
-  // For Day the link holds only No due date and Done.
-  await link(/^No due date and done/).click();
   expect(await groupKinds(list)).toEqual(['past_due', 'today', 'tomorrow', 'no_due_date', 'done']);
   await page.getByRole('button', { name: 'Next day' }).click();
 
@@ -285,7 +280,6 @@ test('the panel and the in-page list share one span, and the link names it', asy
   await days(list).fill('10');
   await days(list).press('Enter');
   await expect(listTitle).toHaveText(/October 27 to November 5/);
-  await expect(link(/^Rest of these 10 days \(\d+\)$/)).toBeVisible();
   await panel.bringToFront();
   await expect(title(panel, 'October 27 to November 5')).toBeVisible();
   await expect(days(panel)).toHaveValue('10');

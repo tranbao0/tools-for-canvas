@@ -31,7 +31,7 @@ async function shownGroups(page: Page): Promise<ShownGroup[]> {
       name: section.querySelector('.wr-group-name')?.textContent ?? '',
       date: section.querySelector('.wr-group-date')?.textContent ?? '',
       titles: Array.from(
-        section.querySelectorAll(':scope > div > div > ul > li [data-part="title"]'),
+        section.querySelectorAll(':scope > div > ul > li [data-part="title"]'),
         (title) => title.textContent ?? '',
       ),
     })),

@@ -214,10 +214,7 @@ test.describe('undo', () => {
 });
 
 test.describe('in-page list', () => {
-  test('lives in a shadow root and shows the first 3 rows of a long group', async ({
-    context,
-    page,
-  }) => {
+  test('lives in a shadow root and shows every row of a long group', async ({ context, page }) => {
     const scenario = buildScenario(SCENARIO_NOW);
     const canvas = await serveFakeCanvas(context, [
       { path: '/', page: 'dashboard-card-view' },
@@ -229,22 +226,13 @@ test.describe('in-page list', () => {
     const host = page.locator('#weekrow-inpage > weekrow-list');
     await expect(host).toHaveAttribute('data-theme', 'light');
     expect(await host.evaluate((element) => element.shadowRoot?.mode)).toBe('open');
-    // Past due is one summary line until the student opens it.
+    // Past due and Tomorrow show every row, with no summary line and no "Show more" link.
     const pastDue = host.locator('section[data-group="past_due"]');
-    const summary = pastDue.getByRole('button', { name: /\d+ past due/ });
-    await expect(summary).toHaveAttribute('aria-expanded', 'false');
-    await expect(pastDue.locator('li')).toHaveCount(0);
+    await expect(pastDue.getByRole('button', { name: /\d+ past due/ })).toHaveCount(0);
+    await expect(pastDue.locator(':scope > div > ul > li').first()).toBeVisible();
     const tomorrow = host.locator('section[data-group="tomorrow"]');
-    const rows = tomorrow.locator(':scope > div > div > ul > li');
-    await expect(rows).toHaveCount(3);
-    const more = tomorrow.getByRole('button', { name: /^Show \d+ more$/ });
-    const hidden = Number((await more.textContent())?.match(/\d+/)?.[0]);
-
-    await more.click();
-
-    await expect(rows).toHaveCount(3 + hidden);
-    await expect(more).toHaveCount(0);
-    await expect(rows.nth(3).locator('[data-part="title"]')).toBeFocused();
+    await expect(tomorrow.locator(':scope > div > ul > li')).toHaveCount(6);
+    await expect(tomorrow.getByRole('button', { name: /^Show \d+ more$/ })).toHaveCount(0);
   });
 
   test('leaves the course name out of the rows on a course home page', async ({

@@ -87,7 +87,7 @@ test('the in-page list works with storage locked, and follows a change of the se
   const world = await contentScriptWorld(page);
   expect(await world.evaluate('chrome.storage.local.get(null)')).toMatch(REFUSED);
 
-  // The student turns the list off in the settings: the page hears it from the background.
+  // The student minimizes the list in another tab: the page hears it from the background.
   await background.evaluate(async () => {
     const api = (
       globalThis as unknown as {
@@ -102,9 +102,9 @@ test('the in-page list works with storage locked, and follows a change of the se
       }
     ).chrome;
     const settings = ((await api.storage.local.get('settings'))['settings'] ?? {}) as object;
-    await api.storage.local.set({ settings: { ...settings, showOnCanvasPages: false } });
+    await api.storage.local.set({ settings: { ...settings, minimized: true } });
   });
-  await expect(page.locator('#weekrow-inpage')).toHaveCount(0);
+  await expect(list.getByRole('button', { name: /^Weekly list/ })).toBeVisible();
 });
 
 test('the page sees neither a message nor an event from the extension, with the detector or the list', async ({

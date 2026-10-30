@@ -128,11 +128,91 @@
     0 0.1875rem 0.375rem rgba(0, 0, 0, 0.15);
 }
 
-:host(:is([data-panel='float'], [data-panel='dock'])) .wr[data-surface='inpage'] {
+/*
+ * The card has a height limit: the window height minus 48px, at most 760px and at least 420px. A
+ * card with less content is as tall as its content. The header and the rings stay at the top, and
+ * the groups scroll in .wr-scroll. A view without that region, such as the settings, scrolls the
+ * whole card.
+ */
+:host([data-panel]) .wr[data-surface='inpage'] {
+  display: flex;
+  flex-direction: column;
+  max-height: max(420px, min(100vh - 48px, 760px));
   overflow: hidden auto;
+}
+
+:host([data-panel]) .wr[data-surface='inpage'] > * {
+  flex: none;
+}
+
+:host([data-panel]) .wr[data-surface='inpage'] > .wr-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.wr-scroll:focus-visible {
+  outline-offset: -2px;
+}
+
+:host(:is([data-panel='float'], [data-panel='dock'])) .wr[data-surface='inpage'] {
   position: sticky;
   top: var(--wr-panel-top, 24px);
-  max-height: var(--wr-panel-max-height, none);
+}
+
+/* The minimized list: one header row high, with the look of a widget card. */
+:host([data-panel]) .wr[data-surface='inpage'][data-minimized] {
+  padding: 0;
+  overflow: hidden;
+}
+
+.wr .wr-minbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 var(--wr-pad-x, 24px);
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--wr-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.wr .wr-minbar:hover {
+  background: var(--wr-hover);
+}
+
+.wr-minbar:focus-visible {
+  outline-offset: -2px;
+}
+
+.wr-minbar-title {
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.wr-minbar-status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wr-text-2);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* In the bar the chevron points up: it opens the list above the bar's place. */
+.wr-minbar > .wr-chevron {
+  flex: none;
+  margin-inline-start: auto;
+  transform: rotate(180deg);
 }
 
 :host([data-panel]) .wr-header {

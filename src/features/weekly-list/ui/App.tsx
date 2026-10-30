@@ -28,14 +28,89 @@ import {
   type OneTimeNote,
 } from './Notices';
 import { Bar, newId, type HeadingLevel } from '../../../shared/ui/parts';
+import { ChevronDownIcon } from '../../../shared/ui/icons';
 import { Rings } from './Rings';
 import { SettingsPanel } from './Settings';
 import { Spinner, StateBody } from './States';
 import { TaskForm, type TaskFormMode } from './TaskForm';
-import { useGlance, WeekList, type Glance, type ListHandlers } from './WeekList';
+import { groupCount, WeekList, type ListHandlers } from './WeekList';
 import { captureFocus, firstRowControl, restoreFocus, usable, type FocusSnapshot } from './focus';
 
 type ReadyState = Extract<SurfaceState, { kind: 'ready' }>;
+
+/** Where the groups of the in-page list were scrolled to, kept while the list is on the page. */
+interface ScrollMemory {
+  top: number;
+  /** The span that the position belongs to. Another span starts at the top. */
+  key: string;
+}
+
+/**
+ * The groups of the in-page list, in the one element that scrolls inside the fixed card. The
+ * header and the rings stay above it. The element is a region that a keyboard reaches and scrolls.
+ */
+function ScrollRegion(props: {
+  memory: ScrollMemory;
+  resetKey: string;
+  children: ComponentChildren;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { memory } = props;
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (element === null) return;
+    if (memory.key !== props.resetKey) {
+      memory.key = props.resetKey;
+      memory.top = 0;
+    }
+    if (element.scrollTop !== memory.top) element.scrollTop = memory.top;
+  });
+  return (
+    <div
+      ref={ref}
+      class="wr-scroll"
+      role="region"
+      tabIndex={0}
+      aria-label={t('scrollRegionLabel')}
+      onScroll={(event) => {
+        memory.top = event.currentTarget.scrollTop;
+      }}
+    >
+      {props.children}
+    </div>
+  );
+}
+
+/** The counts that the minimized bar shows: "3 due today · 11 past due", with no zero part. */
+function barStatus(state: SurfaceState): string {
+  if (state.kind !== 'ready') return '';
+  const count = (kind: string) => {
+    const group = state.view.groups.find((g) => g.kind === kind);
+    return group ? groupCount(group) : 0;
+  };
+  const parts: string[] = [];
+  if (count('today') > 0) parts.push(tp('dueTodayCount', count('today')));
+  if (count('past_due') > 0) parts.push(tp('pastDueCount', count('past_due')));
+  return parts.join(' \u00b7 ');
+}
+
+/** The slim bar that the minimized in-page list shows. A click anywhere on it expands the list. */
+function MinimizedBar(props: { status: string; onExpand(): void }) {
+  return (
+    <button
+      type="button"
+      class="wr-minbar"
+      data-part="expand"
+      aria-expanded="false"
+      onClick={props.onExpand}
+    >
+      <span class="wr-minbar-title">{t('listTitle')}</span>
+      {props.status !== '' && <span class="wr-minbar-status">{props.status}</span>}
+      <span class="wr-sr">{t('expandList')}</span>
+      <ChevronDownIcon />
+    </button>
+  );
+}
 
 /** The panel is its own page, so its top heading is level 1. In a Canvas page it is level 2. */
 function baseLevel(surface: SurfaceKind): HeadingLevel {
@@ -53,7 +128,31 @@ export function App(props: AppProps) {
   const { surface, state, actions } = props;
   const rootRef = useRef<HTMLDivElement>(null);
   const [settingsFrom, setSettingsFrom] = useState<string | null>(null);
-  const glance = useGlance();
+  /** The scroll position of the groups, which a redraw, a refresh or the settings keep. */
+  const scrollMemory = useRef<ScrollMemory>({ top: 0, key: '' });
+  const saved = props.settings?.value;
+  const minimized = surface === 'inpage' && saved?.minimized === true;
+  /** The state that the student asked for and that has not shown yet. Focus follows it. */
+  const pendingFocus = useRef<boolean | null>(null);
+  const setMinimized = (value: boolean) => {
+    // An expanded list starts at the top, and so does a list that goes to the bar.
+    scrollMemory.current.top = 0;
+    pendingFocus.current = value;
+    if (saved) actions.saveSettings({ ...saved, minimized: value });
+  };
+  const onMinimize = surface === 'inpage' && saved ? () => setMinimized(true) : undefined;
+  /**
+   * Focus follows the student's change: the bar takes it on a minimize, and the minimize button on
+   * an expand. A change that comes from another tab, or from the saved settings at the start,
+   * leaves focus alone.
+   */
+  useLayoutEffect(() => {
+    if (pendingFocus.current !== minimized) return;
+    pendingFocus.current = null;
+    rootRef.current
+      ?.querySelector<HTMLElement>(minimized ? '[data-part="expand"]' : '[data-part="minimize"]')
+      ?.focus();
+  });
   /** The opener to focus once the view is back. */
   const returnTo = useRef<string | null>(null);
 
@@ -72,7 +171,9 @@ export function App(props: AppProps) {
   const level = baseLevel(surface);
 
   let body: ComponentChildren;
-  if (settingsFrom !== null) {
+  if (minimized) {
+    body = <MinimizedBar status={barStatus(state)} onExpand={() => setMinimized(false)} />;
+  } else if (settingsFrom !== null) {
     body = (
       <SettingsPanel
         data={props.settings}
@@ -102,9 +203,10 @@ export function App(props: AppProps) {
         state={state}
         actions={actions}
         rootRef={rootRef}
-        glance={surface === 'inpage' ? glance : undefined}
+        scrollMemory={surface === 'inpage' ? scrollMemory.current : null}
         settings={props.settings?.value}
         onSettings={openSettings}
+        onMinimize={onMinimize}
       />
     );
   } else if (state.kind === 'loading') {
@@ -115,6 +217,7 @@ export function App(props: AppProps) {
         settings={props.settings?.value}
         actions={actions}
         onSettings={openSettings}
+        onMinimize={onMinimize}
       />
     );
   } else if (state.kind === 'cant_load') {
@@ -126,6 +229,7 @@ export function App(props: AppProps) {
         settings={props.settings?.value}
         actions={actions}
         onSettings={openSettings}
+        onMinimize={onMinimize}
         failed={
           <StateBody
             state={state}
@@ -140,7 +244,7 @@ export function App(props: AppProps) {
   } else {
     body = (
       <>
-        <Bar level={level} onSettings={() => openSettings('gear')} />
+        <Bar level={level} onSettings={() => openSettings('gear')} onMinimize={onMinimize} />
         <StateBody
           state={state}
           actions={actions}
@@ -155,6 +259,7 @@ export function App(props: AppProps) {
     <div
       class="wr"
       data-surface={surface}
+      data-minimized={minimized ? '' : undefined}
       aria-busy={settingsFrom === null && state.kind === 'loading' ? true : undefined}
       ref={rootRef}
     >
@@ -175,6 +280,7 @@ function LoadingView(props: {
   settings: Settings | undefined;
   actions: Actions;
   onSettings: OpenSettings;
+  onMinimize?: () => void;
   failed?: ComponentChildren;
 }) {
   const { settings, actions } = props;
@@ -192,6 +298,7 @@ function LoadingView(props: {
         onToday={() => actions.goToSpan(0)}
         onAdd={() => undefined}
         onSettings={() => props.onSettings('gear')}
+        onMinimize={props.onMinimize}
       />
       {props.failed ?? (
         <div class="wr-state">
@@ -264,10 +371,12 @@ function ReadyView(props: {
   state: ReadyState;
   actions: Actions;
   rootRef: RefObject<HTMLDivElement | null>;
-  glance: Glance | undefined;
+  /** The scroll position of the groups, for the in-page list. The side panel scrolls as a page. */
+  scrollMemory: ScrollMemory | null;
   /** The saved settings, or `undefined` until they load. */
   settings: Settings | undefined;
   onSettings: OpenSettings;
+  onMinimize?: () => void;
 }) {
   const { surface, state, actions, rootRef } = props;
   const { view } = state;
@@ -418,6 +527,33 @@ function ReadyView(props: {
   if (view.limited)
     notices.push(<NoticeLine key="limited" id={limitedId} text={t('limitedLine')} />);
   const filter = filterText(view, state.taskCourses);
+  const groups = (
+    <>
+      <div aria-busy={state.refreshing}>
+        <WeekList view={view} level={subLevel(level)} handlers={handlers} />
+      </div>
+      {view.hiddenCourseCount > 0 && (
+        <div class="wr-foot">
+          <NoticeLine
+            text={tp('hiddenCourses', view.hiddenCourseCount)}
+            action={t('settings')}
+            opener="hidden"
+            onAction={() => props.onSettings('hidden')}
+          />
+        </div>
+      )}
+    </>
+  );
+  const scrolling = props.scrollMemory ? (
+    <ScrollRegion
+      memory={props.scrollMemory}
+      resetKey={`${view.span.kind}:${view.span.days}:${view.spanStart}`}
+    >
+      {groups}
+    </ScrollRegion>
+  ) : (
+    groups
+  );
 
   if (form !== null) {
     return (
@@ -459,6 +595,7 @@ function ReadyView(props: {
         onToday={() => actions.goToSpan(0)}
         onAdd={() => openForm({ kind: 'new' })}
         onSettings={() => props.onSettings('gear')}
+        onMinimize={props.onMinimize}
       />
       <NoticeQueue notices={notices} />
       {/* The Add button names the limited line as its reason, also while that line waits. */}
@@ -483,19 +620,7 @@ function ReadyView(props: {
           />
         </div>
       )}
-      <div aria-busy={state.refreshing}>
-        <WeekList view={view} level={subLevel(level)} handlers={handlers} glance={props.glance} />
-      </div>
-      {view.hiddenCourseCount > 0 && (
-        <div class="wr-foot">
-          <NoticeLine
-            text={tp('hiddenCourses', view.hiddenCourseCount)}
-            action={t('settings')}
-            opener="hidden"
-            onAction={() => props.onSettings('hidden')}
-          />
-        </div>
-      )}
+      {scrolling}
       <Dock undo={state.undo} onUndo={() => actions.undo()} onClose={() => actions.dismissUndo()} />
     </>
   );

@@ -9,8 +9,8 @@
  *   on the old dashboard. It is out of the flow, a sibling of `#content`, so it changes no size
  *   in the grid and React cannot remove it. Its top lines up with the first widget row, and it
  *   scrolls with the page.
- * - `column`: first in the last Canvas column, at the width of that column, when the free area
- *   is too small.
+ * - `column`: first in the last Canvas column (first in the first column when the grid is one
+ *   stack), at the width of that column, when the free area is too small.
  * - `float`: a card in the free area beside the content, sticky, in List View. Where the free
  *   area is too small, the content gets just enough right padding.
  * - `stack`: the card above the content, at the width of the content, when the content would be
@@ -163,11 +163,12 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
     if (card) card.scrollTop = scrollTop;
   }
 
-  /** Puts the list in the free area beside the grid, or first in the last Canvas column. */
+  /** Puts the list in the free area beside the grid, or first in a Canvas column. */
   function arrangeInGrid(grid: WidgetGrid, viewportWidth: number, editing: boolean): void {
     const { columns, canvasColumns, firstCards } = grid;
     const columnStyle = view.getComputedStyle(columns);
-    const isRow = columnStyle.display.includes('flex') && columnStyle.flexDirection.startsWith('row');
+    const isRow =
+      columnStyle.display.includes('flex') && columnStyle.flexDirection.startsWith('row');
     const cards = firstCards.map((card) => card.getBoundingClientRect());
     const sample = firstCards[0];
     const cardMargin = sample ? pixels(view.getComputedStyle(sample).marginLeft, 0) : 0;
@@ -182,9 +183,13 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
     const wrapperBox = wrapper?.getBoundingClientRect();
     const boxRight = Math.min(wrapperBox?.right ?? viewportWidth, viewportWidth);
     // The card keeps the margin of the page at its right, as the widgets keep it at their left.
-    const leftMargin = first !== undefined && wrapperBox ? Math.max(0, first.left - wrapperBox.left) : 0;
+    const leftMargin =
+      first !== undefined && wrapperBox ? Math.max(0, first.left - wrapperBox.left) : 0;
     const limit = boxRight - Math.max(leftMargin, gutter);
-    const gridRight = cards.reduce((right, box) => Math.max(right, box.right), Number.NEGATIVE_INFINITY);
+    const gridRight = cards.reduce(
+      (right, box) => Math.max(right, box.right),
+      Number.NEGATIVE_INFINITY,
+    );
     const top = cards.reduce((least, box) => Math.min(least, box.top), Number.POSITIVE_INFINITY);
     const free = limit - gridRight;
     const slack = mode === 'area' ? HYSTERESIS_PX : 0;
@@ -204,10 +209,12 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
       hide();
       return;
     }
-    const last = canvasColumns[canvasColumns.length - 1];
-    if (last === undefined) return;
-    const next = last.firstChild === container ? container.nextSibling : last.firstChild;
-    moveContainer(container, last, next);
+    // Beside each other, the card goes first in the last column, where the old dashboard has its
+    // right column. In one stack it goes first in the first column, above all the widgets.
+    const target = isRow ? canvasColumns[canvasColumns.length - 1] : canvasColumns[0];
+    if (target === undefined) return;
+    const next = target.firstChild === container ? container.nextSibling : target.firstChild;
+    moveContainer(container, target, next);
     setContainerStyle(container, `margin:${cardMargin}px`);
     setPanelMode(container, 'column');
     mode = 'column';
@@ -393,8 +400,15 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
     wasConnected = container.isConnected;
     place(force || !container.isConnected);
     wasConnected = container.isConnected;
-    const content = doc.getElementById('content');
-    if (content) sizeObserver?.observe(content);
+    // The card places itself by the size of the content box and of the grid, so a change in
+    // either one, such as a window or zoom change that the grid answers, places it again.
+    for (const element of [
+      doc.getElementById('content'),
+      doc.getElementById('content-wrapper'),
+      findWidgetGrid(doc)?.columns,
+    ]) {
+      if (element) sizeObserver?.observe(element);
+    }
   }
 
   body.setAttribute(LAYOUT_ATTRIBUTE, '');

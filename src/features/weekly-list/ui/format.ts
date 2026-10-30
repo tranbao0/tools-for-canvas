@@ -69,7 +69,7 @@ export function formatSpanRangeLong(span: Span, start: string, end: string): str
   return spanRangeText(span, start, end, true);
 }
 
-type SpanTextPrefix = 'spanUnit' | 'spanThis' | 'restOf' | 'restOfShown';
+type SpanTextPrefix = 'spanUnit' | 'spanThis';
 
 /** The text `prefix_kind`, with the count first and the days of a custom span second. */
 function spanText(prefix: SpanTextPrefix, span: Span, count = ''): string {
@@ -84,14 +84,6 @@ export function spanUnit(span: Span): string {
 /** "in these 7 days", "in this month": the span in a sentence about its work, at any offset. */
 export function spanPhrase(span: Span): string {
   return spanText('spanThis', span);
-}
-
-/**
- * The text of the glance link that opens the rest of the span: "Next 7 days (9)" in the span that
- * starts today, "Rest of these 7 days (9)" in any other.
- */
-export function restOfSpanLabel(span: Span, count: number, startsToday: boolean): string {
-  return spanText(startsToday ? 'restOf' : 'restOfShown', span, String(count));
 }
 
 /** The calendar day of `instant` in `timeZone`, as `YYYY-MM-DD`. */

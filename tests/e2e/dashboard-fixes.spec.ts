@@ -12,12 +12,10 @@ import {
   DEFAULT_TOOLS_SETTINGS,
   type DashboardFixesSettings,
 } from '../../src/shared/settings/tools';
-import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import {
   addCsrfCookie,
   expect,
   openCanvasPage,
-  saveSettings,
   saveTools,
   serveScenario,
   test,
@@ -465,27 +463,6 @@ test.describe('course grades', () => {
   });
 });
 
-test.describe('a cold start with the weekly list off', () => {
-  for (const span of [
-    { kind: 'week', days: 7 },
-    { kind: 'day', days: 1 },
-  ] as const) {
-    test(`fills Also due with a ${span.kind} span, before any list has loaded the planner`, async ({
-      context,
-      page,
-      background,
-    }) => {
-      await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false, span });
-      await open(context, page);
-      const extra = page.locator('[data-wr-extra]');
-      await expect(extra).toContainText('Extra credit: Science news summary');
-      await extra.getByRole('button', { name: 'Show all' }).click();
-      await expect(extra).toContainText('Read: Chapter 7 - Cellular respiration');
-      await expect(page.locator('#weekrow-inpage')).toHaveCount(0);
-    });
-  }
-});
-
 test.describe('the switches', () => {
   for (const key of DASHBOARD_FIX_KEYS) {
     test(`turning ${key} off removes that fix and keeps the others`, async ({
@@ -560,7 +537,7 @@ test.describe('the switches', () => {
     expect(canvas.unmatched).toEqual([]);
   });
 
-  test('the fixes run with the weekly list turned off', async ({ context, page, background }) => {
+  test('the fixes run with the weekly list minimized', async ({ context, page, background }) => {
     await open(context, page, { background, fixes: {} });
     await background.evaluate(async () => {
       const api = (
@@ -576,9 +553,9 @@ test.describe('the switches', () => {
         }
       ).chrome;
       const stored = ((await api.storage.local.get('settings'))['settings'] ?? {}) as object;
-      await api.storage.local.set({ settings: { ...stored, showOnCanvasPages: false } });
+      await api.storage.local.set({ settings: { ...stored, minimized: true } });
     });
-    await expect(page.locator('#weekrow-inpage')).toHaveCount(0);
+    await expect(page.locator('#weekrow-inpage .wr-minbar')).toBeVisible();
     await expect(page.locator('[data-wr-cc]')).toHaveCount(6);
     await expect(page.locator('[data-wr-extra]')).toBeVisible();
   });

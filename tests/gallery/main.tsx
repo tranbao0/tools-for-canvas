@@ -95,7 +95,7 @@ function app(
   );
 }
 
-/** A busy week for the in-page list: groups longer than its row limit. */
+/** A busy week for the in-page list: groups with many rows. */
 function busyWeekView() {
   const base = currentWeekGroups();
   const pastDue = base.find((group) => group.kind === 'past_due');
@@ -139,7 +139,7 @@ const settings: Settings = {
   span: { kind: 'week', days: 7 },
   hiddenCourseIds: [COURSES.psyc.id],
   showRings: true,
-  showOnCanvasPages: true,
+  minimized: false,
   theme: 'auto',
 };
 
@@ -493,27 +493,17 @@ const scenes: Scene[] = [
   },
   {
     name: 'inpage-busy',
-    widths: [240],
-    shadow: true,
-    render: app('inpage', readyState({ view: busyWeekView() })),
-  },
-  {
-    name: 'inpage-glance',
     widths: [170, 240],
     shadow: true,
     render: app('inpage', readyState({ view: busyWeekView() })),
   },
   {
-    // Past due and the rest of the week open in place.
-    name: 'inpage-glance-open',
-    widths: [170, 240],
+    name: 'inpage-minimized',
+    widths: [240, 340],
     shadow: true,
-    render: app('inpage', readyState({ view: busyWeekView() })),
-    async setup(root) {
-      root.querySelector<HTMLElement>('[data-group="past_due"] .wr-group-toggle')?.click();
-      root.querySelector<HTMLElement>('.wr-list > .wr-subline .wr-sub-toggle')?.click();
-      await tick();
-    },
+    render: app('inpage', readyState({ view: busyWeekView() }), {
+      settings: { value: { ...settings, minimized: true }, courses: [] },
+    }),
   },
   {
     name: 'inpage-eight-courses',
@@ -532,16 +522,6 @@ const scenes: Scene[] = [
     widths: [170, 240],
     shadow: true,
     render: app('inpage', readyState({ view: allDoneView() })),
-  },
-  {
-    name: 'inpage-busy-expanded',
-    widths: [240],
-    shadow: true,
-    render: app('inpage', readyState({ view: busyWeekView() })),
-    async setup(root) {
-      root.querySelector<HTMLElement>('.wr-more')?.click();
-      await tick();
-    },
   },
   {
     name: 'inpage-course-home',

@@ -225,16 +225,29 @@ describe('dashboard without a right column', () => {
     expect(document.getElementById('right-side-wrapper')?.style.display).toBe('none');
   });
 
-  it('mounts first in the last widget column on the widget dashboard, without room in the grid', async () => {
+  it('mounts first in the first widget column when the grid is one stack, without room beside it', async () => {
     loadPage(document, WIDGET_DASHBOARD);
 
     const outcome = await mountWhenReady(onMount, { pathname: '/' });
 
     expect(outcome.kind).toBe('mounted');
+    // A page without layout (happy-dom) has no flex row, so the grid counts as one stack.
+    const first = document.querySelector('[data-testid="widget-column-1"]');
+    expect(panelContainer()?.parentElement).toBe(first);
+    expect(first?.firstElementChild).toBe(panelContainer());
+    expect(document.body.hasAttribute('data-weekrow-column')).toBe(true);
+  });
+
+  it('mounts first in the last widget column when the columns stand side by side', async () => {
+    loadPage(document, WIDGET_DASHBOARD);
+    const grid = document.querySelector<HTMLElement>('[data-testid="widget-columns"]');
+    grid?.setAttribute('style', 'display:flex;flex-direction:row');
+
+    await mountWhenReady(onMount, { pathname: '/' });
+
     const last = document.querySelector('[data-testid="widget-column-2"]');
     expect(panelContainer()?.parentElement).toBe(last);
     expect(last?.firstElementChild).toBe(panelContainer());
-    expect(document.body.hasAttribute('data-weekrow-column')).toBe(true);
   });
 
   it('waits for #content before it mounts', async () => {
@@ -274,7 +287,7 @@ describe('dashboard without a right column', () => {
     await flushObserver();
 
     expect(container()).toBe(first);
-    expect(first?.parentElement?.getAttribute('data-testid')).toBe('widget-column-2');
+    expect(first?.parentElement?.getAttribute('data-testid')).toBe('widget-column-1');
   });
 
   it('leaves the grid for the rest of the page view after the page removes the container four times', async () => {
@@ -287,7 +300,7 @@ describe('dashboard without a right column', () => {
 
     // The last column would hold the container, but the layout puts it beside the content now.
     expect(container()?.parentElement?.id).toBe('content-wrapper');
-    document.querySelector('[data-testid="widget-column-2"]')?.append(document.createElement('i'));
+    document.querySelector('[data-testid="widget-column-1"]')?.append(document.createElement('i'));
     await flushObserver();
     expect(container()?.parentElement?.id).toBe('content-wrapper');
   });
@@ -295,7 +308,7 @@ describe('dashboard without a right column', () => {
   it('hides while the student edits the dashboard and the free area has no room, and returns after', async () => {
     loadPage(document, WIDGET_DASHBOARD);
     await mountWhenReady(onMount, { pathname: '/' });
-    const column = document.querySelector('[data-testid="widget-column-2"]');
+    const column = document.querySelector('[data-testid="widget-column-1"]');
 
     const save = document.createElement('button');
     save.dataset['testid'] = 'save-customize-button';

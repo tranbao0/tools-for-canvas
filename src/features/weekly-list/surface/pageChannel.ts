@@ -159,7 +159,6 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
         getValue: async () => (await refresh()).origin,
         watch: (listener) => subscribe(originListeners, listener),
       },
-      settings,
     },
     settings,
     watchChanges: (listener) => subscribe(changeListeners, listener),

@@ -2,12 +2,11 @@
  * Keeps keyboard focus in the surface when an update removes the focused control.
  *
  * - A row, for example after a done mark moves an item into the collapsed Done group:
- *   focus moves to the same control of the row that takes its place in the same list, which in
- *   the glance can be a row that "Show N more" had hidden, or else of the next row, or of the
- *   previous row. With no row left, it moves to the heading of the row's group, if the group
- *   stays, then to the first button that opens a part of the list and comes after the place of
- *   the row, such as "Next 7 days", or to the last such button before it when none comes
- *   after, and last to the caller's fallback.
+ *   focus moves to the same control of the row that takes its place in the same list, or else of
+ *   the next row, or of the previous row. With no row left, it moves to the heading of the row's
+ *   group, if the group stays, then to the first button that opens a part of the list and comes
+ *   after the place of the row, such as "12 older", or to the last such button before it when
+ *   none comes after, and last to the caller's fallback.
  * - "Skip all older", which goes away when the older list empties: focus moves to the Past due
  *   heading, or to the first row.
  * - Any other control, such as a button of the Undo notice: focus moves to the control that the
