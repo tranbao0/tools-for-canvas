@@ -206,14 +206,15 @@ export interface DataOwner {
   acceptOffer(origin: string): Promise<boolean>;
   act(action: DataAction): Promise<ActionReply>;
   /**
-   * Reads dashboard data from the cache and checks the student with GET /users/self.
-   * A different student calls dropUserData(), persists the cleared cache, sends a change
+   * Reads dashboard data from the cache. It starts with GET /users/self to check the student,
+   * unless the last check is under 30 seconds old or no student is signed in.
+   * A different student calls dropUserData(): it persists the cleared cache, sends a change
    * notice and schedules a full refresh round.
-   * That round requests the profile, courses, groups, colors, dashboard positions,
-   * planner items, planner overrides, assignment details, undated assignments and custom
-   * grade statuses, plus all assignments when the planner is limited.
+   * That round requests the profile, courses, groups, colors, dashboard positions, planner
+   * items, planner overrides, assignment details, undated assignments and custom grade statuses.
+   * It also requests all assignments and GET /users/self when the planner answers 403.
    * It writes the refreshed cache and sends change notices.
-   * A 401 calls signOut() and clears the session.
+   * A 401 calls signOut(), which clears the session and sends a change notice.
    */
   dashboardData(): Promise<DashboardData>;
   dashboardGradeVisibility(): Promise<DashboardData>;
@@ -1958,6 +1959,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     };
   }
 
+  /** The id of the newest grade visibility read, so an older read never publishes late. */
+  let visibilityRead = 0;
   let lateVisibility:
     | {
         origin: string;
@@ -1973,6 +1976,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const base: DashboardData = { origin: origin ?? '', ready: false, courses: [], extras: [] };
     const userId = cache?.session?.profile.id;
     const readGeneration = generation;
+    const readId = ++visibilityRead;
     lateVisibility = undefined;
     let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1985,6 +1989,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
               read(userId).then(async (value) => {
                 if (
                   timedOut &&
+                  readId === visibilityRead &&
                   origin &&
                   generation === readGeneration &&
                   cache?.session?.profile.id === userId &&

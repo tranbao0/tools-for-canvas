@@ -1745,9 +1745,11 @@ I read each of them in the package source.
    Removing the fix removes its DOM only.
    Only a different confirmed user clears the store.
    A reply with no user id leaves the store and the read state unchanged.
+   The first confirmed user id starts a new read when the earlier read found no preferences.
    The five-second timer starts when the request starts and covers every retry.
    An overall twelve-second cap starts when the read is created.
    A late result updates copies through the normal dashboard data path.
+   A newer read replaces the late result of an older read.
    Normal data change notices do not read them again.
    Cached dashboard data never waits for this read.
    Copies hide their grades while preferences are unknown.

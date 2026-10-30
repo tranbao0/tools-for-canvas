@@ -12,7 +12,9 @@ let engine: FixesEngine;
 const settle = async (ms = 120) => {
   await vi.advanceTimersByTimeAsync(ms);
 };
-const grade103 = () => document.querySelector('[data-testid="course-103-grade"]')?.textContent;
+const grade = (id: string) =>
+  document.querySelector(`[data-testid="course-${id}-grade"]`)?.textContent;
+const grade103 = () => grade('103');
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -105,4 +107,62 @@ it('E: the first confirmed student does not force a read', async () => {
       ([message]) => message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility,
     ),
   ).toHaveLength(1);
+});
+
+it('F: a read that began before any student was confirmed runs again once one is', async () => {
+  const reads = () =>
+    send.mock.calls.filter(
+      ([message]) => message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility,
+    ).length;
+  const nothing = { origin: ORIGIN, ready: false, courses: [], extras: [] };
+  send.mockImplementation(async (message) =>
+    message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility
+      ? { ...nothing, gradeVisibilities: reads() > 1 ? {} : null }
+      : nothing,
+  );
+  engine.setSettings(ON);
+  engine.setActive(true);
+  await settle();
+  expect(reads()).toBe(1);
+  send.mockImplementation(async (message) =>
+    message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility
+      ? { ...nothing, gradeVisibilities: {} }
+      : DATA,
+  );
+  engine.reload();
+  await settle();
+  expect(reads()).toBe(2);
+  expect(grade('107')).toBe('95%');
+});
+
+it('G: a read that ends empty after the first student is confirmed runs again', async () => {
+  const reads = () =>
+    send.mock.calls.filter(
+      ([message]) => message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility,
+    ).length;
+  let finishRead!: (reply: unknown) => void;
+  let finishData!: (reply: unknown) => void;
+  send.mockImplementation(async (message) => {
+    if (message.type !== 'weekrow:dashboard-data') return DATA;
+    if (!message.includeGradeVisibility) {
+      return new Promise((resolve) => {
+        finishData = resolve;
+      });
+    }
+    return reads() === 1
+      ? new Promise((resolve) => {
+          finishRead = resolve;
+        })
+      : { ...DATA, gradeVisibilities: {} };
+  });
+  engine.setSettings(ON);
+  engine.setActive(true);
+  await settle();
+  expect(reads()).toBe(1);
+  finishData(DATA);
+  await settle();
+  finishRead({ origin: ORIGIN, ready: false, courses: [], extras: [], gradeVisibilities: null });
+  await settle();
+  expect(reads()).toBe(2);
+  expect(grade('107')).toBe('95%');
 });

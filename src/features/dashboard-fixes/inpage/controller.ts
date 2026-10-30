@@ -76,6 +76,9 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   let requestedVisibility = false;
   let visibility: DashboardData['gradeVisibilities'];
   let visibilitySeq = 0;
+  let reading = false;
+  /** The student that was confirmed when the running read began. */
+  let readUser: string | undefined;
   let toggleState = '';
   let nativeVisibility = new Map<string, boolean>();
   const blocks = new Map<string, string>();
@@ -198,6 +201,8 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
 
   function loadVisibility(): void {
     requestedVisibility = true;
+    reading = true;
+    readUser = gradeStore.userId;
     const seq = ++visibilitySeq;
     visibility = null;
     if (data) data = { ...data, gradeVisibilities: null };
@@ -205,11 +210,19 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
       .send({ type: 'weekrow:dashboard-data', includeGradeVisibility: true })
       .then((reply) => {
         if (stopped || seq !== visibilitySeq) return;
+        reading = false;
         visibility = (reply as DashboardData | undefined)?.gradeVisibilities ?? null;
+        // A read that began before any student was confirmed has no session to read for.
+        if (visibility === null && readUser === undefined && gradeStore.userId !== undefined) {
+          requestedVisibility = false;
+        }
         if (data) data = { ...data, gradeVisibilities: visibility };
         schedule(0);
       })
-      .catch((error: unknown) => logFailure('grade preferences', error));
+      .catch((error: unknown) => {
+        if (seq === visibilitySeq) reading = false;
+        logFailure('grade preferences', error);
+      });
   }
 
   function load(): void {
@@ -228,16 +241,18 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         if (next.userId !== undefined && next.userId !== gradeStore.userId) {
           const changed = gradeStore.userId !== undefined;
           gradeStore.userId = next.userId;
+          if (!changed && !reading && visibility === null) requestedVisibility = false;
           if (changed) {
             gradeStore.observed.clear();
             gradeStore.serverStates.clear();
             fixes.allCourseGrades.remove();
             visibility = null;
             visibilitySeq += 1;
+            reading = false;
             requestedVisibility = false;
           }
         }
-        if (next.gradeVisibilities != null) visibility = next.gradeVisibilities;
+        if (next.gradeVisibilities != null && !reading) visibility = next.gradeVisibilities;
         data = { ...next, gradeVisibilities: visibility };
         schedule(0);
       })

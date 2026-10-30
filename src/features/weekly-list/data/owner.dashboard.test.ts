@@ -360,3 +360,23 @@ it('publishes a visibility result after the owner wait ends', async () => {
   await vi.advanceTimersByTimeAsync(0);
   expect((await h.owner.dashboardData()).gradeVisibilities).toEqual(value);
 });
+
+it('does not publish the late result of a read that a newer read replaced', async () => {
+  const h = await loaded();
+  const finishes: Array<(value: Record<string, Record<string, boolean>>) => void> = [];
+  vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+  h.canvas.getWidgetGradeVisibility = () =>
+    new Promise((resolve) => {
+      finishes.push(resolve);
+    });
+  const first = h.owner.dashboardGradeVisibility();
+  await vi.advanceTimersByTimeAsync(5000);
+  expect((await first).gradeVisibilities).toBeNull();
+  const second = h.owner.dashboardGradeVisibility();
+  await vi.advanceTimersByTimeAsync(0);
+  finishes[0]!({ 'course-grades-widget': { '107': false } });
+  await vi.advanceTimersByTimeAsync(0);
+  expect((await h.owner.dashboardData()).gradeVisibilities).toBeUndefined();
+  finishes[1]!({ 'course-grades-widget': { '107': true } });
+  expect((await second).gradeVisibilities).toEqual({ 'course-grades-widget': { '107': true } });
+});
