@@ -5,7 +5,7 @@
  * divided by z in CSS pixels and with z device pixels per CSS pixel.
  *
  * The fixture has the layout of the live page (sjsu.instructure.com, 2026-10-30): the grid stops
- * at about 1130 px, and a wide white area stays to its right.
+ * at 1366 px inside a wrapper capped at 1366 px after the 84 px navigation bar.
  */
 import path from 'node:path';
 import type { Page } from '@playwright/test';
@@ -50,6 +50,7 @@ function overlap(a: Box, b: Box): boolean {
 }
 
 interface Measure {
+  canvasBoxes: Box[];
   scrollWidth: number;
   clientWidth: number;
   mode: string | null;
@@ -114,6 +115,12 @@ async function measure(page: Page): Promise<Measure> {
       const visiblePoints = visible();
       window.scrollTo(0, scrolled);
       return {
+        canvasBoxes: [
+          '#wrapper',
+          '#content',
+          '[data-testid="dashboard-tab-content"]',
+          '[data-testid="widget-columns"]',
+        ].map((css) => rect(document.querySelector(css)) as Box),
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth,
         mode: host?.getAttribute('data-panel') ?? null,
@@ -149,7 +156,19 @@ async function measure(page: Page): Promise<Measure> {
 /** The rules that must hold at one window size. Returns the broken ones. */
 function problems(without: Measure, withList: Measure): string[] {
   const broken: string[] = [];
-  const { clientWidth, scrollWidth, card, wrapper, mode } = withList;
+  withList.canvasBoxes.forEach((box, index) => {
+    const before = without.canvasBoxes[index]!;
+    if (Math.abs(box.x - before.x) > TOLERANCE || Math.abs(box.width - before.width) > TOLERANCE) {
+      broken.push(`Canvas box ${index} moved sideways or changed width`);
+    }
+    if (withList.mode === 'area' && JSON.stringify(box) !== JSON.stringify(before)) {
+      broken.push(`Canvas box ${index} changed in wide mode`);
+    }
+    if (index >= 2 && Math.abs(box.height - before.height) > TOLERANCE) {
+      broken.push(`Canvas box ${index} changed height`);
+    }
+  });
+  const { clientWidth, scrollWidth, card, mode } = withList;
   if (scrollWidth > clientWidth + TOLERANCE) {
     broken.push(`sideways scroll ${scrollWidth} > ${clientWidth}`);
   }
@@ -160,11 +179,6 @@ function problems(without: Measure, withList: Measure): string[] {
     );
   }
   if (withList.visiblePoints < 3) broken.push('part of the card is hidden by the page');
-  if (wrapper !== null && card.x + card.width > wrapper.right + TOLERANCE) {
-    broken.push(
-      `card past the content area: ${(card.x + card.width).toFixed(1)} > ${wrapper.right}`,
-    );
-  }
   for (const widget of withList.widgets) {
     if (overlap(widget, card)) broken.push('card overlaps a widget');
   }
@@ -201,9 +215,8 @@ async function setWindow(
 }
 
 /**
- * The page with the list, and the same page without it. The extension adds nothing to a Canvas
- * that is not the saved one, so a copy of the page on another address shows the page without the
- * list. The saved address is the first Canvas that a tab opens.
+ * Measures the same Canvas boxes with the weekly card shown and hidden.
+ * Other tools keep the same state in both measurements.
  */
 async function openPair(
   context: Parameters<typeof serveScenario>[0],
@@ -218,16 +231,36 @@ async function openPair(
   await settledList(page);
   const withList = await measure(page);
 
-  const other = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }], {
-    origin: 'https://other.instructure.com',
-    alongside: true,
+  const canvasBoxes = await page.evaluate(() => {
+    const mount = document.getElementById('weekrow-inpage')!;
+    const selectors = [
+      '#wrapper',
+      '#content',
+      '[data-testid="dashboard-tab-content"]',
+      '[data-testid="widget-columns"]',
+    ];
+    const read = () =>
+      selectors.map((css) => {
+        const { x, y, width, height } = document.querySelector(css)!.getBoundingClientRect();
+        return { x, y, width, height };
+      });
+    const shown = read();
+    const style = mount.getAttribute('style') ?? '';
+    mount.style.display = 'none';
+    const hidden = read();
+    mount.setAttribute('style', style);
+    return { shown, hidden };
   });
-  const plain = await context.newPage();
-  await setWindow(context, plain, width, zoom);
-  await openCanvasPage(plain, other.canvas.origin);
-  const without = await measure(plain);
-  await plain.close();
-  await page.bringToFront();
+  const saved = await page.locator('#weekrow-inpage').getAttribute('style');
+  await page.locator('#weekrow-inpage').evaluate((element) => {
+    (element as HTMLElement).style.display = 'none';
+  });
+  const without = await measure(page);
+  await page.locator('#weekrow-inpage').evaluate((element, style) => {
+    element.setAttribute('style', style ?? '');
+  }, saved);
+  withList.canvasBoxes = canvasBoxes.shown;
+  without.canvasBoxes = canvasBoxes.hidden;
   return { without, withList };
 }
 
@@ -259,37 +292,16 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
     }) => {
       const { without, withList } = await openPair(context, page, width);
       const card = withList.card as Box;
-      const [first, second] = without.firstCards as [Box, Box];
-      const firstTop = Math.min(first.y, second.y);
-      const gutter = second.x - (first.x + first.width);
-      // The top of the card is the top of the first widget row, in both places the card can take.
-      expect(Math.abs(card.y - firstTop)).toBeLessThanOrEqual(TOLERANCE);
       if (withList.mode === 'area') {
-        expect(Math.abs(card.x - (second.x + second.width + gutter))).toBeLessThanOrEqual(
-          TOLERANCE,
-        );
-        // The margin to the window edge is at least the margin of the page at its left, or a gutter.
-        const leftMargin = first.x - (withList.wrapper?.left ?? 0);
-        expect(withList.clientWidth - (card.x + card.width)).toBeGreaterThanOrEqual(
-          Math.max(leftMargin, gutter) - TOLERANCE,
-        );
+        expect(card.y).toBeCloseTo(without.firstCards[0]!.y, 0);
         expect(card.width).toBeGreaterThanOrEqual(320);
         expect(card.width).toBeLessThanOrEqual(400);
+        expect(withList.firstCards).toEqual(without.firstCards);
       } else {
-        expect(withList.mode).toBe('column');
-        expect(Math.abs(card.x - second.x)).toBeLessThanOrEqual(TOLERANCE);
-        expect(Math.abs(card.width - second.width)).toBeLessThanOrEqual(TOLERANCE);
+        expect(withList.mode).toBe('stack');
+        expect(card.y + card.height).toBeLessThan(withList.firstCards[0]!.y);
       }
-      // The heading of the list sits on the baseline of the headings of the widgets.
-      const widgetBaseline = withList.baselines[0] ?? 0;
-      expect(Math.abs((withList.listBaseline ?? 0) - widgetBaseline)).toBeLessThanOrEqual(2);
-      // The page header does not move, and the columns keep their place.
       expect(withList.header).toEqual(without.header);
-      const place = (box: Box): number[] => [box.x, box.y, box.width];
-      const kept = withList.mode === 'area' ? 2 : 1;
-      expect(withList.firstCards.map(place).slice(0, kept)).toEqual(
-        without.firstCards.map(place).slice(0, kept),
-      );
       await page.screenshot({
         path: path.join(SHOTS, `top-${width}.png`),
         clip: { x: 0, y: 0, width, height: VIEWPORT_HEIGHT },

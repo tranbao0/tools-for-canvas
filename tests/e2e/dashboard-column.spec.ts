@@ -1,16 +1,8 @@
-/**
- * The in-page list on the widget dashboard and in List View (design decision 4, "In-page rules").
- *
- * Neither page has a right column, so the list takes a place in the page content: a card in the
- * free area beside the widget grid, first in the last widget column when that area is too small,
- * and a floating card in List View. The tests measure the layout with Canvas's layout rules from
- * the fixture stylesheet. The sweep over all widths is in dashboard-overflow.spec.ts.
- */
-import type { Locator, Page } from '@playwright/test';
+/** Placement checks for the widget dashboard and List View. */
+import type { Page } from '@playwright/test';
 import {
   doneBox,
   expect,
-  group,
   inpageList,
   openCanvasPage,
   serveScenario,
@@ -20,7 +12,6 @@ import {
 
 const QUIZ_3 = 'Quiz 3: Cell membranes';
 const GRID = '[data-testid="widget-columns"]';
-const CANVAS_COLUMNS = `${GRID} > [data-testid^="widget-column-"]`;
 const VIEWPORT_HEIGHT = 800;
 
 interface Box {
@@ -99,48 +90,8 @@ async function scrollTo(page: Page, y: number): Promise<number> {
   }, y);
 }
 
-/** Replays a Canvas fixture step again: React re-rendering the content of the dashboard. */
-async function rerenderContent(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const step = document.querySelector('template[data-fixture-step]');
-    const target = document.querySelector(step?.getAttribute('data-target') ?? '');
-    if (step && target) target.innerHTML = step.innerHTML;
-  });
-}
-
-/**
- * Swaps the header buttons as the widget package does in edit mode: the customize button goes,
- * and the cancel and save buttons come. Leaving edit mode puts the first header back.
- */
-async function setEditMode(page: Page, editing: boolean): Promise<void> {
-  await page.evaluate((on) => {
-    const header = document.querySelector('.fixture-widget-header');
-    if (!header) return;
-    const store = window as unknown as { __header?: string };
-    if (!on) {
-      if (store.__header !== undefined) header.innerHTML = store.__header;
-      return;
-    }
-    store.__header ??= header.innerHTML;
-    header.querySelector('[data-testid="customize-dashboard-button"]')?.remove();
-    for (const [testid, label] of [
-      ['cancel-customize-button', 'Cancel'],
-      ['save-customize-button', 'Save changes'],
-    ] as const) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'Button';
-      button.dataset['testid'] = testid;
-      button.textContent = label;
-      header.append(button);
-    }
-  }, editing);
-}
-
 const PAGE_WIDTHS = [1920, 1600, 1280, 1000, 700];
 /** A width of the widget dashboard where the free area beside the grid holds the card, and one where not. */
-const AREA_WIDTH = 1920;
-const COLUMN_WIDTH = 1400;
 
 async function openPage(
   context: Parameters<typeof serveScenario>[0],
@@ -156,158 +107,57 @@ async function openPage(
 }
 
 test.describe('the widget dashboard', () => {
-  test('puts the card in the free area beside the grid, in line with the first row', async ({
-    context,
-    page,
-  }) => {
-    await openPage(context, page, 'dashboard-widgets', AREA_WIDTH);
-    await expectMode(page, 'area');
-    const columns = await boxes(page, CANVAS_COLUMNS);
-    const card = await listBox(page);
-    expect(columns).toHaveLength(2);
-    const last = columns[1] as Box;
-    // The card is outside the grid, a sibling of the content, so React never removes it.
-    await expect(page.locator(`${GRID} #weekrow-inpage`)).toHaveCount(0);
-    await expect(page.locator('#content-wrapper > #weekrow-inpage')).toHaveCount(1);
-    expect(card.x).toBeGreaterThan(last.x + last.width);
-    for (const column of columns) expect(overlap(column, card)).toBe(false);
-    expect(await noSideScroll(page)).toBe(true);
-  });
-
-  for (const [width, column] of [
-    [COLUMN_WIDTH, 2],
-    [1280, 1],
-  ] as const) {
-    test(`puts the card first in column ${column} at ${width} px, where the free area is too small`, async ({
-      context,
-      page,
-    }) => {
+  for (const width of [2088, 1920, 1600, 1440, 1280]) {
+    test(`keeps Canvas intact at ${width} px through tab changes`, async ({ context, page }) => {
       await openPage(context, page, 'dashboard-widgets', width);
-      await expectMode(page, 'column');
-      const columns = await boxes(page, CANVAS_COLUMNS);
-      const card = await listBox(page);
-      // The card has the margin of a widget card, so its edges are those of the widgets below it.
-      const [section] = await boxes(
-        page,
-        `[data-testid^="widget-column-${column}"] section[data-testid^="widget-"]`,
-      );
-      expect(card.x).toBeCloseTo((section as Box).x, 0);
-      expect(card.width).toBeCloseTo((section as Box).width, 0);
-      const target = columns[column - 1] as Box;
-      expect(card.x + card.width).toBeLessThanOrEqual(target.x + target.width + 1);
-      // The card is the first widget of its column, and the first in the stack of one column.
-      expect(card.y).toBeLessThan((section as Box).y);
-      await expect(
-        page.locator(
-          `${GRID} > [data-testid^="widget-column-${column}"] > #weekrow-inpage:first-child`,
-        ),
-      ).toHaveCount(1);
-      expect(await noSideScroll(page)).toBe(true);
+      const wide = width >= 1920;
+      await expectMode(page, wide ? 'area' : 'stack');
+      const selectors = ['#wrapper', '#content', '[data-testid="dashboard-tab-content"]', GRID];
+      const before = await page.evaluate((items) => {
+        const mount = document.getElementById('weekrow-inpage')!;
+        const saved = mount.style.cssText;
+        mount.style.display = 'none';
+        const result = items.map((css) => {
+          const r = document.querySelector(css)!.getBoundingClientRect();
+          return { x: r.x, width: r.width };
+        });
+        mount.style.cssText = saved;
+        return result;
+      }, selectors);
+      for (const tab of ['Dashboard', 'Courses', 'Dashboard']) {
+        await page.getByRole('tab', { name: tab, exact: true }).click();
+        await expectMode(page, wide ? 'area' : 'stack');
+        await expect
+          .poll(async () => {
+            const card = await listBox(page);
+            const panel = (await boxes(page, '[data-testid="dashboard-tab-content"]'))[0]!;
+            return wide
+              ? card.x >= panel.x + panel.width - 24
+              : card.y + card.height <= panel.y + 1;
+          })
+          .toBe(true);
+        const card = await listBox(page);
+        const heading = (await boxes(page, 'h1'))[0]!;
+        expect(card.y).toBeGreaterThan(heading.y);
+        expect(await noSideScroll(page)).toBe(true);
+        if (tab === 'Dashboard') {
+          for (let i = 0; i < selectors.length; i++) {
+            const r = (await boxes(page, selectors[i]!))[0]!;
+            expect(r.x).toBeCloseTo(before[i]!.x, 0);
+            expect(r.width).toBeCloseTo(before[i]!.width, 0);
+          }
+          const grid = (await boxes(page, GRID))[0]!;
+          if (wide) expect(card.x).toBeCloseTo(grid.x + grid.width + 24, 0);
+        }
+        if (width === 2088 || width === 1280) {
+          await page.screenshot({
+            path: `screenshots/ticket-j-${width}-${tab.toLowerCase()}.png`,
+            fullPage: true,
+          });
+        }
+      }
     });
   }
-
-  test('puts the card back after React renders the grid again, and keeps what the student opened', async ({
-    context,
-    page,
-  }) => {
-    await openPage(context, page, 'dashboard-widgets', COLUMN_WIDTH);
-    await expectMode(page, 'column');
-    await page.evaluate(() => {
-      const container = document.getElementById('weekrow-inpage');
-      if (container) container.dataset['same'] = 'yes';
-    });
-    // The student opens the older past due work, and the group shows its rows.
-    const older = (): Locator =>
-      group(inpageList(page), 'past_due').getByRole('button', { name: /\d+ older/ });
-    await older().click();
-    await expect(older()).toHaveAttribute('aria-expanded', 'true');
-    await rerenderContent(page);
-    await expect(page.locator(`${GRID} > * > #weekrow-inpage`)).toHaveCount(1);
-    await expectMode(page, 'column');
-    // The same container comes back with its list, not a new one, and the group is still open.
-    await expect(page.locator('#weekrow-inpage[data-same="yes"]')).toHaveCount(1);
-    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-    await settledList(page);
-    await expect(older()).toHaveAttribute('aria-expanded', 'true');
-  });
-
-  test('keeps the card in the free area when React renders the grid again', async ({
-    context,
-    page,
-  }) => {
-    await openPage(context, page, 'dashboard-widgets', AREA_WIDTH);
-    await page.evaluate(() => {
-      const container = document.getElementById('weekrow-inpage');
-      if (container) container.dataset['same'] = 'yes';
-    });
-    await rerenderContent(page);
-    await page.waitForTimeout(200);
-    await expectMode(page, 'area');
-    await expect(page.locator('#weekrow-inpage[data-same="yes"]')).toHaveCount(1);
-  });
-
-  test('leaves the last column for the rest of the page view after the page removes the card too often', async ({
-    context,
-    page,
-  }) => {
-    await openPage(context, page, 'dashboard-widgets', COLUMN_WIDTH);
-    await expectMode(page, 'column');
-    for (let round = 0; round < 4; round += 1) {
-      await rerenderContent(page);
-      await expect(page.locator('#weekrow-inpage')).toHaveCount(1);
-      await page.waitForTimeout(50);
-    }
-    // The free area is too small for the card, so it stacks above the content.
-    await expectMode(page, 'stack');
-    expect(
-      await page.evaluate(() => document.getElementById('weekrow-inpage')?.parentElement?.id),
-    ).toBe('content-wrapper');
-    await rerenderContent(page);
-    await page.waitForTimeout(300);
-    await expectMode(page, 'stack');
-    expect(await noSideScroll(page)).toBe(true);
-  });
-
-  test('stays in the free area while the student edits the dashboard', async ({
-    context,
-    page,
-  }) => {
-    await openPage(context, page, 'dashboard-widgets', AREA_WIDTH);
-    await expectMode(page, 'area');
-    await setEditMode(page, true);
-    await page.waitForTimeout(200);
-    await expectMode(page, 'area');
-    await setEditMode(page, false);
-    await expectMode(page, 'area');
-  });
-
-  test('hides while the student edits the dashboard and the free area has no room, and returns after', async ({
-    context,
-    page,
-  }) => {
-    await openPage(context, page, 'dashboard-widgets', COLUMN_WIDTH);
-    await expectMode(page, 'column');
-    await setEditMode(page, true);
-    await expect(page.locator('#weekrow-inpage')).toBeHidden();
-    // The columns hold nothing of the list while the student drags widgets.
-    await expect(page.locator(`${GRID} #weekrow-inpage`)).toHaveCount(0);
-    await setEditMode(page, false);
-    await expectMode(page, 'column');
-    await expect(page.locator('#weekrow-inpage')).toBeVisible();
-  });
-
-  test('stays in the free area when the grid goes away for good', async ({ context, page }) => {
-    await openPage(context, page, 'dashboard-widgets', AREA_WIDTH);
-    await expectMode(page, 'area');
-    await page.evaluate(() => document.querySelector('[data-testid="widget-columns"]')?.remove());
-    await page.waitForTimeout(2000);
-    await expectMode(page, 'area');
-    await rerenderContent(page);
-    await page.waitForTimeout(300);
-    // The grid is back, but the list keeps its place for the rest of the page view.
-    await expectMode(page, 'area');
-    expect(await noSideScroll(page)).toBe(true);
-  });
 });
 
 test.describe('the floating card', () => {

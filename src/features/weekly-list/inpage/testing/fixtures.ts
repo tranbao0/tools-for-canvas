@@ -127,7 +127,7 @@ export const LIST_VIEW: PageFixture = {
 export const WIDGET_DASHBOARD: PageFixture = {
   bodyClass: 'dashboard primary-nav-expanded',
   content: `
-    <div data-testid="widget-dashboard">
+    <div data-testid="dashboard-tab-content">
       <div data-testid="widget-columns">
         <div data-testid="widget-column-1"><div data-testid="widget-container-course_work_combined"></div></div>
         <div data-testid="widget-column-2"></div>

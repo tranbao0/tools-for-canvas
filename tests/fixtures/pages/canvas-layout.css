@@ -232,20 +232,12 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
 .fixture-widget-tabs { display: flex; gap: 24px; margin-bottom: 24px; border-bottom: 1px solid #c7cdd1; }
 .fixture-widget-tabs span { padding: 8px 0; }
 .fixture-widget-tabs span[aria-selected="true"] { border-bottom: 3px solid #2b7abc; font-weight: 700; }
-/* The package lays the grid out as an InstUI Flex: a View with 24px of padding around a row with
-   a 24px gap ("medium"), and columns of 66% and 33% that grow and shrink. Below the tablet width it
-   is one stacked column. On the live page (sjsu.instructure.com, 2026-10-30, a 1770 px window)
-   the dashboard stops at about 1180 px and clips what leaves it, the grid ends at about 1130 px,
-   and the page area goes on to the window edge, so a wide white area stays to the right of the
-   dashboard. The cap and the clip on the app stand for the elements that limit it there, and the
-   body class full-width lets the page area reach the window edge. */
-.fixture-widget-app { max-width: 1048px; overflow: hidden; }
-.fixture-widget-grid { padding: 24px 50px 24px 24px; }
+.fixture-widget-app { margin-left: 12px; margin-right: 12px; }
+.fixture-widget-grid { padding: 24px; }
 [data-testid="widget-columns"] { display: flex; align-items: flex-start; gap: 24px; }
 [data-testid="widget-column-1"] { flex: 1 1 auto; width: 66%; min-width: 0; }
 [data-testid="widget-column-2"] { flex: 1 1 auto; width: 33%; min-width: 0; }
 @media (max-width: 1379px) {
-  .fixture-widget-grid { padding: 0; }
   [data-testid="widget-columns"] { flex-direction: column; align-items: stretch; }
   [data-testid="widget-column-1"], [data-testid="widget-column-2"] { width: 100%; }
 }
