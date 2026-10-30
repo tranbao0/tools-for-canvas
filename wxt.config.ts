@@ -39,6 +39,10 @@ function pagesShareOneChunk(): Plugin {
   };
 }
 
+/** Set only by the Firefox test channel workflow. */
+const TEST_VERSION = process.env.FIREFOX_TEST_VERSION;
+const TEST_UPDATE_URL = process.env.FIREFOX_TEST_UPDATE_URL;
+
 export default defineConfig({
   srcDir: 'src',
   publicDir: 'src/public',
@@ -76,6 +80,9 @@ export default defineConfig({
     ],
   },
   manifest: ({ browser }) => ({
+    // The Firefox test channel (.github/workflows/firefox-test.yml) sets a higher version for
+    // each build, so a signed test build replaces the one before it.
+    ...(TEST_VERSION ? { version: TEST_VERSION } : {}),
     name: '__MSG_extName__',
     description: '__MSG_extDescription__',
     default_locale: 'en',
@@ -97,6 +104,8 @@ export default defineConfig({
               id: 'tools-for-canvas@tranbao0.github.io',
               strict_min_version: '140.0',
               data_collection_permissions: { required: ['none'] },
+              // Only test channel builds name an update address. A listed store build must not.
+              ...(TEST_UPDATE_URL ? { update_url: TEST_UPDATE_URL } : {}),
             },
             // The extension is desktop only (decision 14). This only states the minimum version on
             // Android, where the data collection setting needs Firefox 142.

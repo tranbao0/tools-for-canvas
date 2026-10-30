@@ -1,0 +1,96 @@
+name: Firefox test channel
+
+# Each push to the development branch builds a Firefox test version, has Mozilla sign it for
+# self-distribution, and publishes it with an update manifest on GitHub Pages. An installed test
+# build then updates itself.
+
+on:
+  push:
+    branches: [feat/v1]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firefox-test
+  cancel-in-progress: true
+
+env:
+  SITE: https://tranbao0.github.io/tools-for-canvas
+  ADDON_ID: tools-for-canvas@tranbao0.github.io
+
+jobs:
+  sign:
+    name: Build and sign
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js from .nvmrc
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pick the test version
+        id: version
+        run: |
+          base=$(node -p "require('./package.json').version")
+          echo "version=${base}.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Build the Firefox zip and the source zip
+        env:
+          FIREFOX_TEST_VERSION: ${{ steps.version.outputs.version }}
+          FIREFOX_TEST_UPDATE_URL: ${{ env.SITE }}/firefox/updates.json
+        run: npx wxt zip -b firefox
+
+      - name: Sign for self-distribution
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: >-
+          npx web-ext sign
+          --channel=unlisted
+          --source-dir .output/firefox-mv3
+          --upload-source-code "$(ls .output/*-sources.zip)"
+          --artifacts-dir signed
+          --approval-timeout 1500000
+
+      - name: Lay out the update site
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p site/firefox
+          xpi="tools-for-canvas-${VERSION}.xpi"
+          cp signed/*.xpi "site/firefox/${xpi}"
+          cp signed/*.xpi site/firefox/tools-for-canvas-latest.xpi
+          cat > site/firefox/updates.json <<EOF
+          {"addons":{"${ADDON_ID}":{"updates":[{"version":"${VERSION}","update_link":"${SITE}/firefox/${xpi}"}]}}}
+          EOF
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+  publish:
+    name: Publish to GitHub Pages
+    needs: sign
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ env.SITE }}/firefox/tools-for-canvas-latest.xpi
+    steps:
+      - name: Deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
