@@ -294,8 +294,13 @@ const scenes: Scene[] = [
   },
   {
     name: 'announcements',
-    widths: [170, 200, 240, 360],
+    widths: [170, 200, 240, 360, 480],
     render: app('panel', readyState(), { announcements: announcementsProps() }),
+  },
+  {
+    name: 'announcements-many-unread',
+    widths: [170, 240],
+    render: app('panel', readyState(), { announcements: feedWith({ unread: 150 }) }),
   },
   {
     name: 'announcements-open',

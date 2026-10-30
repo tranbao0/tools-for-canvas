@@ -4,6 +4,7 @@
  * bar in the brand color. The arrow keys move between the tabs and choose the tab at once.
  */
 import type { TargetedKeyboardEvent } from 'preact';
+import { AnnouncementIcon } from '../../../shared/ui/icons';
 import { t } from '../../../shared/ui/i18n';
 import type { ListTab } from '../data/announcements';
 
@@ -75,7 +76,7 @@ export function ListTabs(props: {
             </span>
             {id === 'announcements' && (
               <span class="wr-tab-compact" aria-hidden="true">
-                {t('tabAnnouncementsCompact')}
+                <AnnouncementIcon />
               </span>
             )}
             {id === 'announcements' && badge !== null && (

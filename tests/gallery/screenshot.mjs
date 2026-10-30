@@ -74,7 +74,7 @@ try {
       const scene = page.locator(`[data-scene="${name}"][data-done]`);
       await scene.waitFor();
       await page.evaluate('document.fonts.ready.then(() => true)');
-      if (name === 'announcements') {
+      if (name === 'announcements' || name === 'announcements-many-unread') {
         for (const frame of await scene.locator('.frame').all()) {
           const tabs = frame.getByRole('tab');
           const strip = await frame.getByRole('tablist').boundingBox();

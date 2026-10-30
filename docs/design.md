@@ -2009,7 +2009,8 @@ Announcements are still not tasks (decision 3), so they stay out of the groups, 
 **Widths.**
 
 The tabs and the rows work from 170 px up.
-Below 240 px the tab strip uses "News" for Announcements and stays on one row.
+Below 240 px the Announcements tab shows the InstUI announcement icon in place of its word, so the strip stays on one row.
+The tab keeps its full accessible name, "Announcements" with the unread count, and an icon has no visible text that the name must contain.
 The accessible names stay "Tasks" and "Announcements, N unread".
 The message of a row is part of the same column, so wide content scrolls inside it.
 
