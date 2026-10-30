@@ -198,28 +198,44 @@ Use a new, empty profile, and the student account.
     Expect: the weekly list replaces the Canvas To Do list, and on the course home page it shows only that course.
     On the Recent Activity dashboard, scroll down until the whole right column (the list, Coming Up and Recent Feedback) is above the top of the window.
     Expect: the list shows again as a card at the top of the empty space under the column, at the width of the column, with a 24 px gap above it.
-    Expect: the card never covers an item of the column, and it scrolls inside when it is taller than the window.
+    Expect: the card never covers an item of the column, and it has the same height limit and the same scroll region as the card on the other pages.
     Check an item off in the card, then scroll back up until the end of the column shows.
     Expect: the card goes away as soon as the end of the column comes into view, the list is back in its place, and the check mark shows in it.
     Expect: the same on a course home page when the page is longer than the right column.
 16. Open the new Canvas dashboard (if your school has it) and the List View dashboard.
     Expect: Canvas does not show its right column, and the widgets keep their width.
-    Expect: on the new dashboard in a wide window (about 1,800 px and wider), the list is a widget card of its own, after the last widget column, and its top lines up with the first row of widgets.
-    Expect: the card is at least 340 px wide, has the look of the widget cards, and scrolls with the page, as the other widgets do.
-    Write down the window width at which the card moves into the last widget column (first in that column, at its width) because the grid has no room.
+    Expect: on the new dashboard in a wide window (about 1,770 px), the list is a card in the white area to the right of the widgets, as on the old dashboard.
+    Expect: the top of the card lines up with the top of Course work and Announcements, the gap between the last widget and the card equals the gap between two widgets, and the heading of the list sits on the same line as the headings of the widgets.
+    Expect: the card is 360 px wide (up to 400 px when there is room, never less than 320 px), it has no border, the shadow and the corners of the widget cards, and it scrolls with the page, as the other widgets do.
+    Expect: the page header (the greeting, the tabs and the buttons) does not move, and nothing overlaps.
+    Make the window narrower in small steps, and zoom the page to 80, 90, 110 and 133 percent.
+    Expect: the page never scrolls sideways, and no part of the card is cut off by the window or by the dashboard.
+    Write down the window width at which the card moves into the last widget column (first in that column, at its width) because the white area has no room, and the width at which it moves back.
+    Expect: the card does not switch between the two places while you change the width by a few pixels.
     Expect: the widget columns have the same width with and without the list, in both places.
+    Expect: when the grid is one stack (a narrow window), the card is first in the stack, above all the widgets.
     Click "Customize dashboard".
-    Expect: while you edit the layout, the list floats in the free area on the right (or above the content on a narrow window), and it does not cover a widget or a drop zone.
-    Click "Save changes" or "Cancel".
-    Expect: the list returns to its place in the grid.
+    Expect: while you edit the layout, the card stays in the white area, and it does not cover a widget or a drop zone.
+    On a window where the card sits in a column, expect: the card hides while you edit the layout, and it returns when you click "Save changes" or "Cancel".
     Expect: on List View, the list floats in the free area on the right, with its top at the top of the content, and it stays in view with a 24 px gap while the page scrolls.
-    Expect: the floating card is at least 360 px wide and has its own scroll when it is taller than the window, with the header and the span controls in view.
+    Expect: the floating card is at least 360 px wide and has its own scroll region when it is taller than the window, with the header and the span controls in view.
     Expect: when the content would be narrower than about 720 px, the list is a card above the content, at the width of the content.
     Expect: the list follows the page theme, also with the widget dashboard dark mode.
     Reload the dashboard five times, and edit and save the layout twice.
     Expect: the list is in its place each time, and it does not jump between places.
-    Turn off "Show the weekly list on Canvas pages".
-    Expect: the list leaves, and the page looks as it did before, with no empty space.
+    Click "Minimize list" next to the gear.
+    Expect: the card turns into a slim bar in the same place, with the name "Weekly list", a status such as "3 due today · 11 past due" (no part with a zero count), and a chevron, and focus is on the bar.
+    Reload the page, and open the dashboard in a second tab.
+    Expect: the bar shows in both, and it takes the same place as the card did, on every window width, with no sideways scroll.
+    Click the bar, then minimize again and press Enter and Space on it.
+    Expect: each one expands the card, the card is at the top of its list, and focus is on the minimize button.
+    Open the side panel.
+    Expect: the panel has no minimize button.
+    Expect: the in-page list is the full list, as the side panel is, with no "N past due" summary line, no "Show N more" link and no link for the rest of the span.
+    Expect: the card is as tall as its content, at most 760 px, and in a window that is less tall it is the window height minus 48 px, but not less than 420 px.
+    Expect: the header, the notices and the rings stay at the top while the groups scroll, the scroll bar is thin, a scroll at the end of the groups does not scroll the page, and the keyboard scrolls the groups after you press Tab to reach them.
+    Open the settings with the gear, and go back.
+    Expect: the groups are at the same scroll position, and a new span starts at the top.
     Switch the dashboard from Card View to List View with the menu.
     Expect: after a reload, the list shows as a card.
     Write down whether the list also shows without the reload.
@@ -233,9 +249,9 @@ Use a new, empty profile, and the student account.
     Expect: only one slim notice shows at the top of the list, with a quiet count such as "1 more notice" when another one waits.
     Check an item off, while the "Couldn't refresh" line shows.
     Expect: the one-time note shows first, and the line returns after you press "Got it".
-20. Click the gear in the panel and change each of the five settings, then do the same with the gear in the in-page list.
+20. Click the gear in the panel and change each of the four settings, then do the same with the gear in the in-page list.
     Expect: the settings open in place, Back returns to the list, and each change shows at once in the panel, in the in-page list and on the settings page.
-    Expect: the shown span, the courses that show in the list (every switch is on at first, and a course that you turn off leaves the list), the rings, the in-page list and the theme follow the settings, and a hidden course adds a line such as "1 course hidden".
+    Expect: the shown span, the courses that show in the list (every switch is on at first, and a course that you turn off leaves the list), the rings and the theme follow the settings, and a hidden course adds a line such as "1 course hidden".
 21. In the panel, pick each span in the control next to the arrows: Day, Week, 2 weeks, Month and Custom with 10 days.
     Expect: on Tuesday Oct 27, the header shows "Tue, Oct 27" for Day, "Oct 27 - Nov 2" for Week, "Oct 27 - Nov 9" for 2 weeks, "Oct 27 - Nov 26" for Month and "Oct 27 - Nov 5" for Custom, with the dates in your Canvas time zone.
     Expect: every span starts today, and Month ends on the day before the same date next month.
@@ -253,7 +269,7 @@ Use a new, empty profile, and the student account.
 23. Pick a span in the panel, then open the Canvas dashboard and pick another span in the in-page list, then close the browser and open it again.
     Expect: the panel and the in-page list always show the same span, and "Shown span" on the settings page shows it too.
     Expect: the span is still the same after the browser opens again, and the span starts at today.
-    Expect: the link in the in-page list names the span: "Next 7 days (9)", "Rest of this month (40)", "Next 14 days (15)" or "Rest of these 10 days (12)", and in a span that does not start today it reads "Rest of these 7 days (9)", and for Day it is "No due date and done (2)" when the student has such items, or "Done (2)" in a Day span that does not start today.
+    Expect: the in-page list shows every group of the span in its scroll region, with no link for the rest of the span.
     Expect: the chart, the legend and the list agree with the shown span, with and without the panel open.
 24. Set Theme to Light, then Dark.
     Expect: the panel, the settings page, the welcome page and the in-page list all use that theme.
@@ -336,7 +352,7 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
     Expect: the colors, the section, the filter and the added cards come back each time, and an open announcement stays open.
 38. In the settings of the extension, turn off each switch of "New dashboard fixes" in turn, with the dashboard open.
     Expect: the matching fix goes away at once, the page shows what Canvas draws, and the other fixes stay.
-    Turn off "Show the weekly list on Canvas pages".
+    Minimize the weekly list.
     Expect: the fixes keep working.
 39. Open a course home page and the Courses tab.
     Expect: no fix shows, and nothing changes.

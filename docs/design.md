@@ -31,7 +31,7 @@ This extension has no account, no server of its own and no telemetry.
 | 1 | Version 1 scope | The core of the original, plus work Canvas hides |
 | 2 | Where done marks and custom tasks live | In Canvas, as planner overrides and planner notes |
 | 3 | What counts as a task | All work the student must do; no calendar events or announcements |
-| 4 | Where the list appears | In the Canvas page, in the right column of every dashboard view and of course home pages; an optional side panel for other pages |
+| 4 | Where the list appears | In the Canvas page: the right column of the classic dashboard and of course home pages, and a card beside the grid on the widget dashboard; an optional side panel for other pages |
 | 5 | Site access and onboarding | Access to all sites, a tiny Canvas detector, and no setup step |
 | 6 | List layout and item placement | Items are placed by date and done state only, each in one group |
 | 7 | Item status | One set of status chips, the same on every item in every view |
@@ -45,7 +45,7 @@ This extension has no account, no server of its own and no telemetry.
 | 15 | Publishing and privacy | Three stores, one privacy policy, no data collection |
 | 16 | License | GPL-3.0-only, with DCO sign-off for contributions |
 | 17 | Name | Tools for Canvas |
-| 18 | Settings | Five settings, also shown inside the panel and the in-page list |
+| 18 | Settings | Four settings, also shown inside the panel and the in-page list, and a minimize button on the in-page list |
 | 19 | Accessibility, language and theme | WCAG 2.2 AA, English text, a Theme setting with Automatic, Light and Dark |
 | 20 | No-telemetry guarantee | One fetch wrapper that only reaches the student's Canvas |
 | 21 | Visual design | Looks like a native part of Canvas, not an add-on sidebar |
@@ -189,7 +189,18 @@ On 2026-10-30 the owner tested that build on the live page (sjsu.instructure.com
 Canvas's right column squeezed the widget grid into narrow columns, and the list got only about 170 px of content width.
 The owner asked for a card like the original Tasks for Canvas, larger, with the look of the widgets, and with the widgets at their own width.
 The owner then chose a card inside the widget grid as the main mode on the widget dashboard, and a floating panel as the backup.
-The owner accepts that the in-grid card needs an update when Canvas changes the markup of its widget grid.
+The owner accepts that the card needs an update when Canvas changes the markup of its widget grid.
+The owner tested that build on the live page on 2026-10-30 (sjsu.instructure.com, Firefox).
+In a wide window the grid ended at about 1,130 px, and the dashboard clipped what left it.
+The card, a column of its own at the end of the grid, showed only as a thin sliver at the edge of the dashboard.
+At smaller sizes it left the grid, and the page needed a sideways scroll to reach it.
+The owner chose a new place after that test, to match the old dashboard: the card sits in the wide white area to the right of the grid, where the old dashboard has its right column.
+This replaces the own grid column and the sticky floating card on the widget dashboard.
+The card has the look of a widget card: no border, the shadow of a widget, and 12 px corners.
+On the same day the owner asked for three more changes.
+The in-page list shows the full list, as the side panel does, with no short glance.
+The card has a fixed height, and the groups scroll inside it.
+A minimize button replaces the setting "Show the weekly list on Canvas pages" (decision 18).
 The owner also asked for relief on a long classic dashboard: after a long scroll, the list must not stay at the top of a column that is far out of view.
 
 The Canvas page is the main home.
@@ -220,8 +231,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - The widget dashboard's own markup has only test ids, and its package had 16 major versions in 2026 [13].
   The mount does not use them.
   It uses the classic anchors that every Canvas page has: `#right-side-wrapper`, `#right-side`, `#content`, the body classes and the route.
-  Only the in-grid card reads the widget test ids, and it reads them in one small file (`src/shared/canvas/widgetDashboard.ts`).
-  Without them, the list floats beside the content.
+  Only the placement beside the grid reads the widget test ids, and it reads them in one small file (`src/shared/canvas/widgetDashboard.ts`).
+  Without them, the list takes the free area beside the content, or stacks above it.
 - List View hides the right column, and the original forced it visible [9].
   The first build did the same, in the way that Canvas's own layout expects.
   On the live widget dashboard that squeezed the widgets, so the list now stays out of Canvas's right column on these two views.
@@ -237,19 +248,19 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - The extension reads the dashboard view once, when the list mounts.
   If Canvas switches between Card View and List View without a page load, the list can sit in the wrong layout until the next load.
   The live checklist tells the tester to note whether this happens.
-- The in-grid card depends on the test ids `widget-columns`, `widget-column-*`, `save-customize-button`, `cancel-customize-button` and `add-widget-placeholder-*` of package version 16.1.0.
+- The card beside the grid depends on the test ids `widget-columns`, `widget-column-*`, `widget-<id>` sections, `save-customize-button`, `cancel-customize-button` and `add-widget-placeholder-*` of package version 16.2.0.
   A Canvas release can rename them.
-  The layout then finds no grid, and the list floats beside the content.
+  The layout then finds no grid, and the list takes the free area beside the content, or stacks above it.
   The one file `src/shared/canvas/widgetDashboard.ts` holds every one of these selectors.
-- The grid grows into the free space on the right by the width of the card and one gutter, with a negative right margin.
-  The Canvas columns get their measured width as an inline style, so they do not change.
-  An ancestor of the grid with `overflow: hidden` would cut the card off.
+- The widget dashboard can clip what leaves it: an ancestor of the grid with an `overflow` other than visible hides any part of a card that sits inside it.
+  The card therefore sits outside the dashboard, in the page area, as a sibling of `#content`, where no such ancestor reaches it.
   The live checklist asks the tester to check this at wide windows.
-- The floating card sticks inside a tall container with `position: sticky`.
+- The floating card of List View sticks inside a tall container with `position: sticky`.
   This needs a positioned ancestor of the content that spans the page, which Canvas has (`.ic-Layout-columns`), and no ancestor with `overflow` other than visible between the card and the viewport.
 - The edit mode is found from the buttons that the widget package shows only then.
-  If a release changes them, the card stays in the grid while the student drags widgets.
-  The removal count then sends the list to the floating panel when React removes the card too often.
+  If a release changes them, the card stays in its place while the student drags widgets.
+  A card in the last column then hides in edit mode only when the buttons are found.
+  The removal count sends the list out of the column when React removes the card too often.
 - The dock under the right column needs a column that is as tall as the page, as Canvas's flex layout makes it.
   With less than 240 px of free space under the column items, the list does not dock.
 
@@ -290,37 +301,51 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - On the dashboard, when the body has no `with-right-side` (the widget dashboard and List View [13]), mount at once, when the page has `#content`.
   The list does not add `with-right-side` and does not show `#right-side-wrapper`.
   It takes one of these places in the page content, and `layout.ts` decides which.
-  - **In the grid** (widget dashboard only).
-    When `[data-testid="widget-columns"]` and its `[data-testid^="widget-column-"]` children exist, and the grid is a row, the list is a widget column of its own after the last Canvas column.
-    - The grid grows into the free space on the right by the width of the card plus one gutter (the measured `column-gap` of the grid), with a negative right margin.
-    - Each Canvas column gets its measured width as an inline style, so the Canvas columns keep their width.
-    - The card is 372 px wide, at least 340 px.
-      It starts at the top of the grid, which is the first widget row.
-      It scrolls with the page, as the other widgets do, and it is not sticky.
-    - The grid has room when the free space between the right edge of the grid and the viewport holds the card, the gutter and a 24 px gap to the viewport.
-  - **First in the last Canvas column**, at the width of that column, when the grid has no room or is a stack.
+  - **In the free area beside the grid** (widget dashboard only).
+    When `[data-testid="widget-columns"]` and its `[data-testid^="widget-column-"]` children exist, and the area to the right of the grid is wide enough, the list is a card in that area, as the old dashboard has its list in the right column.
+    - The card is out of the flow, a sibling of `#content` inside `#content-wrapper`.
+      It changes no size in the grid, and React cannot remove it.
+    - The card is 360 px wide, grows to 400 px when there is room, and is never narrower than 320 px.
+    - Its top is the top of the first widget row, within 1 px.
+      Its left edge is one gutter right of the right edge of the widgets.
+      The gutter is the gap between the first cards of two columns, as the student sees it (the column gap and the margins of the widget cards).
+    - The card scrolls with the page, as the other widgets do.
+      It is not sticky and it does not float.
+    - The area is wide enough when its width holds one gutter and the minimum card width of 320 px.
+      The width is measured from the right edge of the widgets to the right edge of `#content-wrapper`, clamped to the width of the document (`clientWidth`), and then reduced by the margin that the page keeps at its left or one gutter, whichever is larger.
+      The window is never the reference.
+    - A hysteresis of 20 px stops the card from switching between this place and the column while a scroll bar comes and goes.
+    - The check runs again on every resize and zoom (both fire `resize`), and with a `ResizeObserver` on the grid, on `#content` and on `#content-wrapper`.
+    - The Canvas columns keep their width, and the card changes nothing in the grid.
+  - **First in the last Canvas column**, at the width of that column, when the free area is too small.
+    The card takes the margin of a widget card, so its edges are those of the widgets below it.
+    When the grid is one stack (a tablet or phone), the card goes first in the first column, above all the widgets.
     The Canvas columns never shrink.
-  - **Floating** (List View, edit mode and the backup).
+  - **Floating** (List View).
     The list is a card of 372 px, at least 360 px, in the free area to the right of the content, one gutter away from the right edge of the widgets.
     The right edge of the widgets is the right edge of the children of `#content`, measured with a `ResizeObserver` and never with a widget test id.
-    - The top of the card lines up with the first widget row, or with the top of the content in List View.
+    - The top of the card lines up with the top of the content.
     - The card is sticky, with a 24 px gap to the top of the viewport.
-      Its height is at most the viewport height minus 48 px.
-      The content of the card scrolls inside, and the header with the span controls stays in view.
     - When the free area is too small, the content gets just enough right padding for the card, the gutter and a 24 px gap, so the widgets reflow by the smallest amount.
     - When the content would be narrower than 720 px, the list is **stacked** instead: a card above the content, at the width of the content, not floating.
+  - On the widget dashboard, when the grid anchors are gone, the card takes the free area beside the children of `#content`, or the stack when that area is too small.
+    It never floats and never pads the content there.
   - Every style that the list sets on a page element is an inline style that the code records in the `data-weekrow-styled` attribute, so the removal undoes all of them from the DOM alone.
   - Mark the body with `data-weekrow-column`.
     An observer of an older copy of the script stops at once when the marker is gone.
   - A `MutationObserver` puts the container back if the page removes it, in the same place, with the same state: the container is moved and not created again, so the open groups and the scroll position stay.
-  - The list floats for the rest of the page view when the card is removed more than 3 times in 10 seconds, and when the grid anchors are missing for more than 1.5 seconds after they were there.
-  - The list floats while "Customize dashboard" edit mode is on, and returns to its place when edit mode ends.
+  - The list leaves the last column for the rest of the page view when the card is removed more than 3 times in 10 seconds, and when the grid anchors are missing for more than 1.5 seconds after they were there.
+  - While "Customize dashboard" edit mode is on, the card stays in the free area beside the grid, because it is outside the grid.
+    A card that would sit in a column hides while edit mode is on, because the columns take drops, and it returns to its place when edit mode ends.
+    A hidden card does not count as a removed card.
     The edit mode shows in the page as the `cancel-customize-button` and `save-customize-button` buttons, and as `add-widget-placeholder-*` drop zones.
   - List View has no widget grid, so it uses the floating card only.
   - All grid anchors are in `src/shared/canvas/widgetDashboard.ts`, which says what each one is.
     A change of the Canvas markup needs an edit in that one file.
-  - When the list unmounts or the setting "Show the weekly list on Canvas pages" is off, remove the inline styles and the marker.
+  - When the list unmounts, for example when the student switches to another Canvas address, remove the inline styles and the marker.
     A list that fails to mount does the same.
+    The student cannot turn the list off.
+    A minimized list is a slim bar in the same place, and it keeps the same placement rules.
   - The K-5 dashboard (`#dashboard-app-container`) gets nothing.
 - On the classic dashboard and on course home pages, when the whole right column has scrolled above the viewport, the list docks.
   Recent Activity is a very long page, and the list sits at the top of the column.
@@ -347,31 +372,31 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - Each page layout has its own small adapter.
   An adapter that finds no anchor does nothing.
 - K-5 course home pages have no right column, so the adapter does nothing there [13].
-- The in-page list is a glance, not the full list.
-  The owner chose this shape after a design review on 2026-10-28 measured the list at about 1,380 px, which pushed Recent Feedback below 1,700 px.
-  - Past due shows as one summary line, such as "11 past due", with the count of Missing items when there are any.
-    A click opens the group in place, with the same rows, "N older" and "Skip all older" as in the side panel.
-  - Today and Tomorrow show in full.
-    A group with more than 4 items shows its first 3, and a "Show N more" link opens the rest in place.
-    A link that would hide only one item takes the same space as that item, so smaller groups show in full.
-  - The later days of the shown span, No due date and Done sit behind one link that names the span, such as "Next 7 days (9)" or "Rest of this month (40)", and opens them in place.
-    With a custom span the link reads "Rest of these 10 days (12)", and with 2 weeks it reads "Next 14 days (15)".
-    The link never has the same name as an arrow, such as "Next month", so a screen reader user can tell them apart.
-    In a span that does not start today, the link reads "Rest of these 7 days (9)".
-    With Day, the link holds only No due date and Done, and reads "No due date and done (2)".
-    In a Day span that does not start today, No due date does not show, so the link holds only Done and reads "Done (2)".
-  - A span with nothing due today or tomorrow shows the next day that has work, so the glance is never empty while work is due.
-  - What the student opened stays open while the page stays open.
-  - Each of these links is a button with `aria-expanded` and `aria-controls`, and `aria-controls` names the region that the link opens.
-    The region stays in the page while it is closed, so the reference always resolves.
-  - The side panel shows every item, with no summary line.
+- The in-page list shows the full list, as the side panel does.
+  The owner chose a short glance after a design review on 2026-10-28 measured the list at about 1,380 px.
+  On 2026-10-30 the owner replaced it: the card has a fixed height, so a long list no longer pushes the page.
+  - Every group and every item shows: Past due in full, Today, Tomorrow, the later days, No due date and Done.
+    "N older", "N skipped" and "Skip all older" work as in the side panel.
+  - The glance had a "N past due" summary line, "Show N more" links and a link for the rest of the span.
+    These are gone.
+  - The card is as tall as its content, up to a limit: the window height minus 48 px, at most 760 px and at least 420 px.
+  - The header (the dates, Add task, the gear, the minimize button, the arrows, Today and the span picker), the notices and the rings stay at the top of the card.
+    The groups scroll below them in one element.
+    The element has a thin native scroll bar and `overscroll-behavior: contain`.
+    It is a region with the label "Tasks by day" and `tabindex="0"`, so the keyboard reaches it and scrolls it, and it shows a focus ring.
+  - The scroll position stays over a redraw, a data refresh, the settings and the task form, while the page stays open.
+    A new span starts at the top.
+  - The card scrolls with the page, and it is not sticky.
+    The card of List View and the docked card of the classic dashboard keep their sticky 24 px gap, and they have the same height limit and the same scroll region.
+  - The side panel scrolls as one page, and it has no such region and no minimize button.
 - On a course home page, the rows do not repeat the course name, because the whole list is that course.
 
 **Widths:**
 
 - The in-page column on the classic dashboard gives about 240 px of content width [13].
-- The card on the widget dashboard and in List View is 372 px wide.
-  With the 1 px border and 24 px of padding on each side, the list content is at least 320 px wide.
+- The card beside the widget grid is 320 to 400 px wide, and 360 px when there is room for no more.
+  The card of List View is 372 px wide.
+  With 24 px of padding on each side, the list content is at least 272 px wide.
 - The Chrome and Edge panel opens at 360 px, which is the Chromium minimum [11].
 - The Firefox sidebar opens at 18em and can shrink to 14em [12].
   Inferred from common system font sizes, that is about 170 to 230 px.
@@ -1213,9 +1238,13 @@ These sizes come from one test build of the same small app [19].
    - One test opens the real side panel with `PW_CHROMIUM_ATTACH_TO_OTHER=1` [19].
      Playwright cannot click the toolbar, so this test uses a test-only button on the panel page that calls `sidePanel.open`.
      Release builds do not include it.
-   - The widget dashboard and List View fixtures must get the list as a card that overlaps no widget, at 1,920, 1,600, 1,280, 1,000 and 700 px.
+   - The widget dashboard fixture has the layout of the live page: the dashboard stops short of the window edge and clips what leaves it, and the page area goes on to the window edge.
+     A sweep from 1,000 to 2,400 px in 20 px steps, and the browser zoom levels 80, 90, 110 and 133 percent, must show the list as a card that is fully visible, inside the window and the content area, and that overlaps no widget and causes no sideways scroll.
      The Canvas widget columns must have the same width with and without the list.
-     The page must return to its first state when the setting is off, with the same computed styles and boxes.
+     At the top of the page the card lines up with the first widget row, and the heading of the list sits on the baseline of the widget headings.
+     The card must have no border, and the same shadow and corners as a widget card.
+   - The list must show every item of a Month span inside one scroll region, with the header and the rings in place, and the card height limit must hold in windows 700 and 1,000 px tall.
+   - The minimized bar must keep the same placement as the card, and the choice must stay after a reload.
    - A long classic dashboard must dock the list under the right column after the column has scrolled out of view, without covering a column item, and take it back on the scroll up.
    - Screenshot tests run at 200 px, 240 px and 360 px.
    - One test serves a slow Canvas: each answer waits 700 ms, and the planner answers only the requested range, 100 items a page with `Link: rel="next"`, over a full term of work.
@@ -1372,7 +1401,7 @@ The owner chose it on 2026-10-27.
 - Keep the form "<Name> for Canvas", and do not start with "Canvas", because Instructure enforces its CANVAS trademark [20].
 - Do not use a name that contains "Tasks for Canvas" [20].
 - Setting and UI texts name the feature, not the product, so they stay correct as more fixes arrive.
-  For example, "Show the weekly list on Canvas pages", not "Show Tools for Canvas on Canvas pages".
+  For example, "Show progress rings", not "Show Tools for Canvas rings".
 
 **Follow-up actions:**
 
@@ -1386,15 +1415,17 @@ The owner chose it on 2026-10-27.
 
 **Question:** Which settings does version 1 have?
 
-**Decision:** Five settings.
+**Decision:** Four settings.
 
 | Setting | Default |
 |---|---|
 | Shown span (decision 9) | Week |
 | Show in my list | On for every course, so all active student courses show |
 | Show progress rings | On |
-| Show the weekly list on Canvas pages | On |
 | Theme | Automatic (see decision 19) |
+
+The list on the Canvas page has no switch.
+It has a minimize button instead (see below).
 
 - The settings show in three places with the same view: inside the side panel, inside the in-page list, and on the extension's own settings page.
   The gear in the panel and in the in-page list opens the settings in place, and a Back button returns to the list.
@@ -1406,11 +1437,25 @@ The owner chose it on 2026-10-27.
   - Each switch has the accessible name "Show <course> in my list".
   - When any course is hidden, the list ends with one quiet line, such as "1 course hidden", with a link to the settings.
   - So the student always knows that the list is filtered.
-- "Show the weekly list on Canvas pages" has one help line: "Shows on your Canvas dashboard and on course home pages. On other pages, use the side panel."
+- The in-page list has a minimize button next to the gear.
+  - The button is labeled "Minimize list".
+    A click shrinks the card to a slim bar in the same place, one header row high, with the look of a widget card.
+  - The bar shows the name "Weekly list", a short status such as "3 due today · 11 past due" (a part with a zero count is left out), and a chevron.
+    A click anywhere on the bar, or Enter or Space on it, expands the card again.
+  - The toggle has `aria-expanded`, and focus moves to the bar after a minimize and to the minimize button after an expand.
+    A change that comes from another tab leaves focus alone.
+  - The state is saved as the field `minimized` of the stored settings (a boolean, false by default).
+    It holds on every Canvas page and in every tab, and it stays after a reload.
+    An expanded card starts at the top.
+  - The side panel has no minimize button and ignores the field.
+  - The page channel accepts `minimized` in `weekrow:save-settings`, and it rejects any other shape.
+    Stored settings from an earlier version that hold `showOnCanvasPages` read without it, and the field is dropped.
 - The settings page also shows the Canvas address, with a way to change it.
 
 **Why:**
 
+- The owner said on 2026-10-30 that the list on the Canvas page is the point of the extension, and that the setting "Show the weekly list on Canvas pages" made it hard to get the list back.
+  A student who wants the page quiet minimizes the list, and the bar shows how to get it back.
 - The default shows every active course, because the Canvas planner itself returns work from every course.
   An earlier draft used dashboard favorites, but students often leave favorites out of date, and the list would then drop a course with no sign.
 - The setting names describe what the student gets, not how the extension works.
@@ -1418,7 +1463,7 @@ The owner chose it on 2026-10-27.
   The No due date group starts collapsed, and Skip clears single items.
 
 The small tools have their own switches, one group for each tool (decision 22).
-They show in the same three places, below Theme, and they are stored apart from these five settings.
+They show in the same three places, below Theme, and they are stored apart from these four settings.
 
 **Left out from the original:** the three-day view, list length, theme color, confetti, streaks, the Announcements tab, repeat-weekly custom tasks, Gradescope data, teacher mode and the 12-hour or 24-hour setting [9].
 
@@ -1431,11 +1476,10 @@ They show in the same three places, below Theme, and they are stored apart from 
 - Each ring has a text label, such as "3 of 5 done".
 - Done marks are real checkboxes.
 - When a done mark or a skip removes the focused row, focus moves to the same control of the row that takes its place in the same list.
-  In the in-page list that can be a row that "Show N more" had hidden.
   With no such row, focus moves to the same control of the next row, or of the previous row.
   When no row is left, focus moves to the heading of the group if the group stays.
-  Then it moves to the first link that opens a part of the list and comes after the place of the row, such as "Next 7 days", or to the last such link before that place when none comes after.
-  It never jumps to the Add button while the list has such a link.
+  Then it moves to the first button that opens a part of the list and comes after the place of the row, such as "12 older", or to the last such button before that place when none comes after.
+  It never jumps to the Add button while the list has such a button.
 - Animation stops when the system asks for reduced motion.
 - No control ever hides under the sticky header or the bottom notice (WCAG 2.4.11).
   Notices show inline at the top of the list, so only the short Undo notice is sticky.
