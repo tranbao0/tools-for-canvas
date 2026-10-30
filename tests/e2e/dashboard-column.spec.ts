@@ -100,24 +100,28 @@ for (const layout of LAYOUTS) {
       for (const width of [1920, 1280, 1000]) {
         await page.setViewportSize({ width, height: 1000 });
         const listBox = await list.boundingBox();
-        const content = await page.locator('#content').boundingBox();
         const blocks = await boxes(page.locator(layout.blocks));
         expect(blocks.length, `${width}px: blocks`).toBeGreaterThan(0);
         expect(listBox, `${width}px: list`).not.toBeNull();
-        if (listBox === null || content === null) return;
-        // The column sits beside the content, to the right of it.
-        expect(listBox.x, `${width}px: column left edge`).toBeGreaterThanOrEqual(
-          content.x + content.width - 1,
-        );
+        if (listBox === null) return;
+        // The column sits beside the content, to the right of it, one widget gutter away.
+        const contentRight = Math.max(...blocks.map((block) => block.x + block.width));
+        expect(listBox.x - contentRight, `${width}px: gap to the content`).toBeCloseTo(12, 0);
+        if (layout.page === 'dashboard-widgets' && width >= 1380) {
+          // The widgets sit in two columns. The gap to the list is the gap between those columns.
+          const [first] = await boxes(page.locator('[data-testid="widget-column-1"]'));
+          const [second] = await boxes(page.locator('[data-testid="widget-column-2"]'));
+          const gutter = (second?.x ?? 0) - ((first?.x ?? 0) + (first?.width ?? 0));
+          expect(gutter, `${width}px: gutter between widget columns`).toBeCloseTo(12, 0);
+          expect(listBox.x - contentRight, `${width}px: gap equals the gutter`).toBeCloseTo(
+            gutter,
+            0,
+          );
+        }
         expect(listBox.x + listBox.width, `${width}px: column right edge`).toBeLessThanOrEqual(
           width + 1,
         );
         expectNoOverlap([...blocks, listBox]);
-        for (const block of blocks) {
-          expect(block.x + block.width, `${width}px: content right edge`).toBeLessThanOrEqual(
-            listBox.x + 1,
-          );
-        }
         expect(await noSideScroll(page), `${width}px: no side scroll`).toBe(true);
         // The list starts on the line of the first widget row, from 1200 px, on the widget
         // dashboard only. The exact line depends on Canvas's fonts, so the screenshots check it.

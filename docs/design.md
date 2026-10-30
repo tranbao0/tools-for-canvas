@@ -224,6 +224,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - The extension reads the dashboard view once, when the list mounts.
   If Canvas switches between Card View and List View without a page load, the list can sit in the wrong layout until the next load.
   The live checklist tells the tester to note whether this happens.
+- The 12 px gap assumes that Canvas leaves 72 px between the content and the column card (48 px of content padding and 24 px of column padding).
+  If Canvas changes those paddings, the gap changes by the same amount.
 - The first widget row sits at a fixed offset below the top of the column.
   The list lines up with it at 1,200 px and wider, with the offset that the test fixture has.
   A live check on a real page can show a different offset.
@@ -265,7 +267,10 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - On the dashboard, when the body has no `with-right-side` (the widget dashboard and List View [13]), turn Canvas's right column on and mount at once.
   - Add the `with-right-side` body class.
     Canvas's own layout CSS then shows `#right-side-wrapper`, puts it beside the content at its usual width, and stacks it under the content on narrow windows.
-  - Add one style that shows the wrapper also where Canvas hides it with an inline style, and, from 1,200 px, lines the list up with the first widget row.
+  - Add one style that does three things.
+    It shows the wrapper also where Canvas hides it with an inline style.
+    From 992 px it pulls the list toward the content, so that the gap between the content and the list is 12 px, the gutter between two widget cards.
+    From 1,200 px it lines the list up with the first widget row.
   - Mark the body with `data-weekrow-column`, so that the removal knows that the extension added the class.
     An observer of an older copy of the script stops at once when the marker is gone.
   - A `MutationObserver` puts the class, the style and the container back if the page removes them.

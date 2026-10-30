@@ -17,14 +17,25 @@ const COLUMN_ATTRIBUTE = 'data-weekrow-column';
 const COLUMN_CLASS = 'with-right-side';
 /** Where the first widget row starts, below the top of the right column. */
 const WIDGET_ROW_OFFSET_PX = 158;
+/** The space between two widget cards. */
+const WIDGET_GUTTER_PX = 12;
+/**
+ * The space that Canvas's layout leaves between the content and the column card: the right
+ * padding of `.ic-Layout-contentMain` (48 px) and the left padding of the column (24 px).
+ */
+const CANVAS_COLUMN_GAP_PX = 72;
 /*
- * The first rule shows the wrapper where Canvas hides it with an inline style. The second lines
- * the list up with the first widget row, below the greeting and the tabs. List View has no such
- * rows. The greeting wraps onto more lines in a narrow content area, so the rule starts at the
- * width where it still fits on one line. A narrow window stacks the column under the content.
+ * The first rule shows the wrapper where Canvas hides it with an inline style. The second pulls
+ * the list toward the content, so that the space between the last widget column and the list is
+ * the space between two widgets. It applies where Canvas puts the column beside the content, from
+ * 992 px. The third lines the list up with the first widget row, below the greeting and the
+ * tabs. List View has no such rows. The greeting wraps onto more lines in a narrow content area,
+ * so that rule starts at the width where it still fits on one line. A narrow window stacks the
+ * column under the content.
  */
 export const COLUMN_CSS =
   `body[${COLUMN_ATTRIBUTE}] #right-side-wrapper{display:block !important}` +
+  `@media (min-width:992px){body[${COLUMN_ATTRIBUTE}] #${MOUNT_CONTAINER_ID}{margin-left:${WIDGET_GUTTER_PX - CANVAS_COLUMN_GAP_PX}px}}` +
   `@media (min-width:1200px){body[${COLUMN_ATTRIBUTE}]:not(.dashboard-is-planner) #${MOUNT_CONTAINER_ID}{margin-top:${WIDGET_ROW_OFFSET_PX}px}}`;
 
 /**
