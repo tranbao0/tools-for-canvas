@@ -123,7 +123,7 @@ export const IDS = {
     mathProblemSet5LockedMissing: '2011',
     /** Missing and skipped. */
     mathProblemSet4Skipped: '2012',
-    /** Due at 00:00 on the first day of the next week. */
+    /** Due at 00:00 on Nov 1, the day the clocks go back. */
     mathProblemSet7Midnight: '2013',
     mathFinalExam: '2014',
     mathPracticeExamUndated: '2015',

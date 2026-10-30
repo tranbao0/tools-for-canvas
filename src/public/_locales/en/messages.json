@@ -195,7 +195,7 @@
     "message": "Rest of these $2 days ($1)"
   },
   "restOfShown_day": {
-    "message": "No due date and done ($1)"
+    "message": "Done ($1)"
   },
   "restOfShown_week": {
     "message": "Rest of these 7 days ($1)"

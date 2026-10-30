@@ -16,7 +16,7 @@ import {
 } from './scenario';
 import type { WireAssignment } from './wire-types';
 
-/** A Tuesday afternoon, a Saturday (tomorrow is in the next week), the night the clocks change, and winter. */
+/** A Tuesday afternoon, a Saturday, the night the clocks change, and winter. */
 const NOWS = [SCENARIO_NOW, '2026-10-31T16:00:00Z', '2026-11-01T06:30:00Z', '2027-01-15T14:00:00Z'];
 
 const CANVAS_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;

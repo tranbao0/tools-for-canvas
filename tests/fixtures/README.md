@@ -29,7 +29,7 @@ Call `buildScenario(now)` for a fresh copy that a test may change.
 - An extension, a teacher status, a redo request after a done mark on Canvas and on Gradescope, and a teacher-set Missing on Gradescope.
 - A locked item, a locked missing item, a Gradescope item past its lock date and an excused item.
 - A skipped past-due item, a skipped undated item and a module "Mark as done" override with both flags true.
-- An item due at 00:00 on the first day of the next week, and an item before the orientation course's 16-week horizon.
+- An item due at 00:00 on the day the clocks go back, and an item before the orientation course's 16-week horizon.
 
 ## plannerItemsInRange and the planner range
 

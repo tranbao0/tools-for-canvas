@@ -730,7 +730,7 @@ describe('in-page list', () => {
     });
   });
 
-  describe('rest of the week', () => {
+  describe('the link to the rest of the span', () => {
     const week = () =>
       stateOf(
         today(dueItems(['Today one'])),

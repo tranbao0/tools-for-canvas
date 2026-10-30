@@ -253,7 +253,7 @@ Use a new, empty profile, and the student account.
 23. Pick a span in the panel, then open the Canvas dashboard and pick another span in the in-page list, then close the browser and open it again.
     Expect: the panel and the in-page list always show the same span, and "Shown span" on the settings page shows it too.
     Expect: the span is still the same after the browser opens again, and the span starts at today.
-    Expect: the link in the in-page list names the span: "Next 7 days (9)", "Rest of this month (40)", "Next 14 days (15)" or "Rest of these 10 days (12)", and in a span that does not start today it reads "Rest of these 7 days (9)", and for Day it is "No due date and done (2)" when the student has such items.
+    Expect: the link in the in-page list names the span: "Next 7 days (9)", "Rest of this month (40)", "Next 14 days (15)" or "Rest of these 10 days (12)", and in a span that does not start today it reads "Rest of these 7 days (9)", and for Day it is "No due date and done (2)" when the student has such items, or "Done (2)" in a Day span that does not start today.
     Expect: the chart, the legend and the list agree with the shown span, with and without the panel open.
 24. Set Theme to Light, then Dark.
     Expect: the panel, the settings page, the welcome page and the in-page list all use that theme.

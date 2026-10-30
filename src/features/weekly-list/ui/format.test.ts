@@ -98,7 +98,7 @@ describe('spans', () => {
     ]);
     expect(spans.map((span) => restOfSpanLabel(span, 9, false))).toEqual([
       'Rest of these 7 days (9)',
-      'No due date and done (9)',
+      'Done (9)',
       'Rest of these 14 days (9)',
       'Rest of this month (9)',
       'Rest of these 10 days (9)',

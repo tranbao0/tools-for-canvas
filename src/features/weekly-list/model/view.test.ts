@@ -138,10 +138,8 @@ describe('the Tomorrow look-ahead', () => {
     expect(view.rings[0]).toMatchObject({ total: 1 });
   });
 
-  it('is a normal day on the last day of a Week span, where tomorrow is in the next span', () => {
-    const view = buildWeekView(
-      input({ plannerItems: [task('1', '2026-11-03T16:00:00Z')], spanOffset: 0 }),
-    );
+  it('leaves out the work after a Week span, with no look-ahead', () => {
+    const view = buildWeekView(input({ plannerItems: [task('1', '2026-11-03T16:00:00Z')] }));
     expect(view.spanEnd).toBe('2026-11-02');
     expect(placesOf(view)).toEqual({});
   });
@@ -584,11 +582,17 @@ describe('checked but missing', () => {
   it('leaves reminders on their own day', () => {
     const view = buildWeekView(
       input({
-        plannerItems: [task('reminder', '2026-10-26T16:00:00Z', missingChecked)],
-        assignmentDetails: detailsById([upload('reminder', { types: ['not_graded'] })]),
+        plannerItems: [
+          task('reminder', '2026-10-28T16:00:00Z', missingChecked),
+          task('yesterday', '2026-10-26T16:00:00Z', missingChecked),
+        ],
+        assignmentDetails: detailsById([
+          upload('reminder', { types: ['not_graded'] }),
+          upload('yesterday', { types: ['not_graded'] }),
+        ]),
       }),
     );
-    expect(placesOf(view)).toEqual({});
+    expect(placesOf(view)).toEqual({ 'assignment:reminder': 'tomorrow@2026-10-28.items' });
   });
 });
 
@@ -830,7 +834,7 @@ describe('nothing due', () => {
     expect(view.groups.map((group) => group.kind)).toEqual(['tomorrow']);
   });
 
-  it('is true when the reminders of the span are on earlier days, which do not show', () => {
+  it('is true when the only reminders are dated before the span, which do not show', () => {
     const view = buildWeekView(
       input({
         plannerItems: [task('r', '2026-10-26T16:00:00Z')],

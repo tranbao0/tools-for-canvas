@@ -369,7 +369,7 @@ describe('horizons', () => {
     expect(earliestHorizon({ ...params, courses: [] })).toBe('2026-07-07T04:00:00.000Z');
   });
 
-  it('caps at the start of today for every span, so the work due earlier today always shows', () => {
+  it('caps at the start of today, so the work due earlier today always shows', () => {
     const futureTerm = { ...params, courses: [course('1', 'Future', '2027-01-04T05:00:00Z')] };
     expect(earliestHorizon(futureTerm)).toBe('2026-10-27T04:00:00.000Z');
     expect(earliestHorizon({ ...futureTerm, now: '2026-11-01T17:00:00Z' })).toBe(

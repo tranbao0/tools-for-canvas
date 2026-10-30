@@ -90,7 +90,7 @@ This also covers work with no due date and work handed in outside Canvas, such a
 - Simple Canvas Tasks already shows past-due planner items from the last 21 days [9].
   The real edges over it are these:
   - undated work in the same list;
-  - a calendar week with arrows and course rings;
+  - a span with arrows and course rings;
   - a Done list;
   - done marks that sync through Canvas;
   - Firefox and Edge builds;
@@ -357,6 +357,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The link never has the same name as an arrow, such as "Next month", so a screen reader user can tell them apart.
     In a span that does not start today, the link reads "Rest of these 7 days (9)".
     With Day, the link holds only No due date and Done, and reads "No due date and done (2)".
+    In a Day span that does not start today, No due date does not show, so the link holds only Done and reads "Done (2)".
   - A span with nothing due today or tomorrow shows the next day that has work, so the glance is never empty while work is due.
   - What the student opened stays open while the page stays open.
   - Each of these links is a button with `aria-expanded` and `aria-controls`, and `aria-controls` names the region that the link opens.
@@ -1174,8 +1175,8 @@ These sizes come from one test build of the same small app [19].
      The fixtures hold the fields that the extension reads.
      One full Canvas reply for each request holds every field that Canvas sends, as the canvas-lms serializers write them.
      A unit test runs each full reply through the production code and checks that the extra fields change nothing.
-   - Fixtures include a checkpoint course, Gradescope and on-paper work, a no-submission column, an extension, a teacher-set status, a redo request after a done mark, a locked item, a locked missing item, a Gradescope item past its lock date, a peer review due in a later week, a module "Mark as done" override with both flags true, a long-running course for the horizon cap, a mixed-role layout, the Limited Access 403, the rate-limit 403 and 429, and every UI state.
-   - Tests cover week math across time zones and daylight saving changes, the Saturday and Sunday week edges, the done rule, the placement rules in the current week and in past weeks, every status chip and availability marker, reminders, the undated-work rules, peer reviews placed on their real date, the term horizon and its 16-week cap, the Tomorrow look-ahead, the chart center check mark and the legend past-due count, the planner-off list, paging, the override sequence including the 400 recovery, Skip, and the CSRF header.
+   - Fixtures include a checkpoint course, Gradescope and on-paper work, a no-submission column, an extension, a teacher-set status, a redo request after a done mark, a locked item, a locked missing item, a Gradescope item past its lock date, a peer review due in a later span, a module "Mark as done" override with both flags true, a long-running course for the horizon cap, a mixed-role layout, the Limited Access 403, the rate-limit 403 and 429, and every UI state.
+   - Tests cover week math across time zones and daylight saving changes, the month clamping at the end of a short month, the done rule, the placement rules in the span that starts today, in later spans and in past spans, every status chip and availability marker, reminders, the undated-work rules, peer reviews placed on their real date, the term horizon and its 16-week cap, the Tomorrow look-ahead, the chart center check mark and the legend past-due count, the planner-off list, paging, the override sequence including the 400 recovery, Skip, and the CSRF header.
    - Tests also cover a background restart while a panel is open, ten page-loaded messages in ten seconds (one refresh round), and the content script sync for both kinds of address.
 3. **Chromium end-to-end tests:** Playwright with the `chromium` channel, in headless mode [19].
    - `context.route` serves a fake `https://school.instructure.com` with saved copies of the classic dashboard, the widget dashboard, a course home page and a mixed-role dashboard, plus the API [19].
