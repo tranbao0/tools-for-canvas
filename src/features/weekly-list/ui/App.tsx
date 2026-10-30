@@ -71,7 +71,7 @@ function ScrollRegion(props: {
       memory.top = 0;
     }
     if (element.scrollTop !== memory.top) element.scrollTop = memory.top;
-  });
+  }, [memory, props.resetKey]);
   return (
     <div
       ref={ref}

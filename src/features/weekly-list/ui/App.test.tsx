@@ -621,6 +621,20 @@ describe('in-page list', () => {
       expect(screen.queryByRole('region', { name: 'Tasks by day' })).toBeNull();
     });
 
+    it('keeps a scroll over a redraw before the browser sends its scroll event', () => {
+      const actions = spyActions();
+      const view = (state: SurfaceState) => (
+        <App surface="inpage" state={state} actions={actions} />
+      );
+      const result = render(view(stateOf(today(dueItems(titles)))));
+      const region = screen.getByRole('region', { name: 'Tasks by day' });
+      region.scrollTop = 120;
+
+      result.rerender(view(stateOf(today(dueItems(titles)))));
+
+      expect(region.scrollTop).toBe(120);
+    });
+
     it('keeps the position over a redraw and the settings, and starts a new span at the top', () => {
       const data = { value: DEFAULT_SETTINGS, courses: [] };
       const actions = spyActions();
