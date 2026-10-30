@@ -86,7 +86,11 @@ describe('courseWorkFix', () => {
     expect(list?.nextElementSibling).toBe(section);
     expect(section?.querySelectorAll('.wr-x-row')).toHaveLength(4);
     expect(section?.textContent).toContain('Also due');
-    expect(section?.querySelector('.wr-x-note')?.textContent).toContain('90 days');
+    // One short line with the numbers, and the explanation of the 90 days in a tooltip.
+    expect(section?.querySelector('.wr-x-note')?.textContent).toBe(
+      '1 with no due date \u00b7 2 overdue \u00b7 3 to-do in the next 14 days' + 'i',
+    );
+    expect(section?.querySelector('.wr-x-info')?.getAttribute('title')).toContain('90 days');
     expect(section?.querySelector('a.wr-x-title')?.getAttribute('href')).toContain('/courses/101/');
     // A task has no page, so its title is plain text.
     expect(section?.textContent).toContain('Task');

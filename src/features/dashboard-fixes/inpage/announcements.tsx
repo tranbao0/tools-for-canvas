@@ -40,6 +40,8 @@ const ATTRIBUTES = [
   'open',
   'gone',
   'filtered',
+  'read',
+  'dark',
 ].map((name) => `data-wr-${name}`);
 
 export function announcementsFix(): Fix {
@@ -177,6 +179,16 @@ export function announcementsFix(): Fix {
     context.again();
   }
 
+  /** The message takes the type size and the line height of the snippet that it replaces. */
+  function matchBodyType(host: HTMLElement, found: AnnouncementItem): void {
+    let leaf: Element | null | undefined = found.snippet;
+    while (leaf?.firstElementChild) leaf = leaf.firstElementChild;
+    const style = leaf?.ownerDocument.defaultView?.getComputedStyle(leaf);
+    if (style === undefined) return;
+    host.style.setProperty('--wr-fs', style.fontSize);
+    host.style.setProperty('--wr-lh', style.lineHeight);
+  }
+
   /** Shows or removes the message of a native item, as the open set says. */
   function expandNative(context: FixContext, found: AnnouncementItem): void {
     const key = keyOf(found.courseId, found.topicId);
@@ -191,6 +203,7 @@ export function announcementsFix(): Fix {
       }
     } else if (hosted === null) {
       const { host, root } = shadowHost(context.doc);
+      matchBodyType(host, found);
       found.item.append(host);
       render(
         <Message
@@ -231,19 +244,22 @@ export function announcementsFix(): Fix {
         <label class="wr-filter-label" for={props.id}>
           {t('annCourseFilter')}
         </label>
-        <select
-          id={props.id}
-          class="wr-filter-select"
-          value={courseId}
-          onChange={(event) => props.onChange(event.currentTarget.value)}
-        >
-          <option value="">{t('annAllCourses')}</option>
-          {props.courses.map((course) => (
-            <option key={course.id} value={course.id}>
-              {course.name}
-            </option>
-          ))}
-        </select>
+        <div class="wr-select">
+          <select
+            id={props.id}
+            class="wr-filter-select"
+            value={courseId}
+            onChange={(event) => props.onChange(event.currentTarget.value)}
+          >
+            <option value="">{t('annAllCourses')}</option>
+            {props.courses.map((course) => (
+              <option key={course.id} value={course.id}>
+                {course.name}
+              </option>
+            ))}
+          </select>
+          <span class="wr-caret" aria-hidden="true" />
+        </div>
       </>
     );
   }
@@ -338,6 +354,52 @@ export function announcementsFix(): Fix {
     return bay;
   }
 
+  /**
+   * Gives the course filter the look of the read filter next to it, from the computed style of
+   * the read filter: its box, its type and its colors, in any theme. The widget's own select is
+   * the reference, so a change of the package follows.
+   */
+  function matchNative(field: HTMLElement, widget: AnnouncementsWidget): void {
+    const input = widget.filterBlock.querySelector('input');
+    const label = widget.filterBlock.querySelector('label');
+    const select = field.querySelector('select');
+    const view = field.ownerDocument.defaultView;
+    if (input === null || select === null || view === null) return;
+    const native = view.getComputedStyle(input);
+    for (const name of [
+      'height',
+      'font-family',
+      'font-size',
+      'font-weight',
+      'line-height',
+      'color',
+      'background-color',
+      'border-top-width',
+      'border-top-style',
+      'border-top-color',
+      'border-radius',
+      'padding-left',
+      'padding-right',
+    ]) {
+      select.style.setProperty(name, native.getPropertyValue(name));
+    }
+    const text = field.querySelector('label');
+    if (label !== null && text !== null) {
+      const own = view.getComputedStyle(label);
+      for (const name of ['font-family', 'font-size', 'font-weight', 'line-height', 'color']) {
+        text.style.setProperty(name, own.getPropertyValue(name));
+      }
+    }
+    // The arrow takes the color of the arrow that the widget draws, when it can be told.
+    const arrow = input.nextElementSibling;
+    const caret = field.querySelector<HTMLElement>('.wr-caret');
+    if (arrow !== null && caret !== null) {
+      const style = view.getComputedStyle(arrow);
+      const bordered = style.getPropertyValue('border-right-width') !== '0px';
+      caret.style.color = bordered ? style.getPropertyValue('border-right-color') : style.color;
+    }
+  }
+
   function drawFilter(
     context: FixContext,
     widget: AnnouncementsWidget,
@@ -356,6 +418,7 @@ export function announcementsFix(): Fix {
       />,
       field,
     );
+    matchNative(field, widget);
   }
 
   function drawList(context: FixContext, widget: AnnouncementsWidget): void {
@@ -395,6 +458,10 @@ export function announcementsFix(): Fix {
           found.linkRow?.setAttribute('data-wr-more', '');
           found.title?.setAttribute('data-wr-title', '');
           expandNative(context, found);
+          found.item.toggleAttribute(
+            'data-wr-read',
+            read.has(keyOf(found.courseId, found.topicId)),
+          );
           // A read announcement leaves the unread list when its message is closed.
           const key = keyOf(found.courseId, found.topicId);
           found.item.toggleAttribute(
@@ -409,6 +476,7 @@ export function announcementsFix(): Fix {
         if (courseId !== '') drawList(context, widget);
         // The hosts take the theme of the widget, which their shadow roots cannot see.
         const dark = isDarkWidget(widget.widget);
+        widget.widget.toggleAttribute('data-wr-dark', dark);
         widget.widget
           .querySelectorAll(MINE)
           .forEach((host) => host.toggleAttribute('data-wr-dark', dark));

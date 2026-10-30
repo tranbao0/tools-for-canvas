@@ -120,20 +120,38 @@ function Row(props: { item: ExtraItem; course: DashboardCourse | undefined } & S
   );
 }
 
+/** The numbers of the work that the list leaves out, as one short line. Zero counts stay out. */
+function counts(all: readonly ExtraItem[]): string {
+  const of = (group: ExtraGroup): number => all.filter((item) => item.group === group).length;
+  return (
+    [
+      ['alsoDueCountUndated', of('undated')],
+      ['alsoDueCountOverdue', of('overdue')],
+      ['alsoDueCountTodo', of('todo')],
+    ] as const
+  )
+    .filter(([, count]) => count > 0)
+    .map(([key, count]) => t(key, String(count)))
+    .join(' \u00b7 ');
+}
+
 function Section(props: SectionProps) {
   return (
     <>
       <h3>{t('alsoDue')}</h3>
-      {props.note && (
-        <p class="wr-x-note">
-          {t(
-            'alsoDueNote',
-            String(props.all.filter((item) => item.group === 'undated').length),
-            String(props.all.filter((item) => item.group === 'overdue').length),
-            String(props.all.filter((item) => item.group === 'todo').length),
-          )}
-        </p>
-      )}
+      <p class="wr-x-note">
+        {counts(props.all)}
+        {props.note && (
+          <button
+            type="button"
+            class="wr-x-info"
+            title={t('alsoDueInfo')}
+            aria-label={t('alsoDueInfo')}
+          >
+            i
+          </button>
+        )}
+      </p>
       <ul aria-label={props.expanded ? t('alsoDueAria') : t('alsoDue')}>
         {props.items.map((item) => (
           <Row

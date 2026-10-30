@@ -177,6 +177,13 @@ test.describe('announcements in place', () => {
     );
     expect(state.readAnnouncements.has('101:31901')).toBe(true);
     await expect(page.locator(`${ANNOUNCEMENT} [data-wr-own]`)).toContainText('Marked as read.');
+    // The circle of the card shows the read state as well.
+    await expect(page.locator(ANNOUNCEMENT)).toHaveAttribute('data-wr-read', '');
+    expect(
+      await page
+        .locator(`${ANNOUNCEMENT} [data-testid^="mark-read-"] svg`)
+        .evaluate((svg) => getComputedStyle(svg).display),
+    ).toBe('none');
     // No navigation and no reload.
     expect(page.url()).toBe(`${canvas.origin}/?fixture_delay_ms=0`);
     expect(navigations).toEqual([]);
@@ -310,10 +317,11 @@ test.describe('course work extras', () => {
     await expect(extra).toContainText('Extra credit: Science news summary');
     await expect(extra).toContainText('No due date');
     await expect(extra).toContainText('Overdue');
-    // The note gives the numbers of the work that the list above leaves out.
+    // One short line gives the numbers, and a tooltip explains the 90 days of the Due card.
     await expect(extra.locator('.wr-x-note')).toContainText(
-      /adds \d+ with no due date, \d+ overdue and \d+ with a to-do date/,
+      /\d+ with no due date \u00b7 \d+ overdue \u00b7 \d+ to-do in the next 14 days/,
     );
+    await expect(extra.locator('.wr-x-info')).toHaveAttribute('title', /90 days/);
     // Four rows first, and a link to the longer list.
     await expect(extra.locator('.wr-x-row')).toHaveCount(4);
     await extra.getByRole('button', { name: 'Show all' }).click();

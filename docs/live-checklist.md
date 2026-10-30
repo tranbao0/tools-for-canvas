@@ -304,7 +304,7 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
     Expect: in the dark theme of the dashboard, the colors stay.
 33. In the Announcements widget, click "Read more" of an unread announcement.
     Expect: the whole message shows in the card, with its links, images and lists, and the page does not change.
-    Expect: the announcement shows "Marked as read." and, in Canvas, it is read (check the Canvas page of the announcement and the unread count).
+    Expect: the announcement shows "Marked as read.", the circle of the card shows a check mark, and, in Canvas, it is read (check the Canvas page of the announcement and the unread count).
     Click "Show less".
     Expect: with the Unread filter, the announcement leaves the list.
     Click the title of another announcement.
@@ -324,7 +324,7 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
     Change the course filter to one course.
     Expect: the section shows the work of that course only.
     Compare the three cards with the list.
-    Expect: the note under "Also due" says how they count.
+    Expect: one short line under "Also due" gives the numbers, and the info mark beside it explains how the cards count.
 36. In the Course grades widget, with more than six courses:
     Expect: the pager is gone, and a card shows for every active course.
     Expect: a course that hides its totals shows "N/A", and the letter or percent of the other cards matches the Canvas grades page.

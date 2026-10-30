@@ -692,9 +692,6 @@
   "alsoDue": {
     "message": "Also due"
   },
-  "alsoDueNote": {
-    "message": "The Due card counts the next 90 days, and Missing and Submitted count every date. This list adds $1 with no due date, $2 overdue and $3 with a to-do date in the next 14 days."
-  },
   "alsoDueShowAll": {
     "message": "Show all"
   },
@@ -730,5 +727,17 @@
   },
   "gradeNA": {
     "message": "N/A"
+  },
+  "alsoDueCountUndated": {
+    "message": "$1 with no due date"
+  },
+  "alsoDueCountOverdue": {
+    "message": "$1 overdue"
+  },
+  "alsoDueCountTodo": {
+    "message": "$1 to-do in the next 14 days"
+  },
+  "alsoDueInfo": {
+    "message": "The Due card counts the next 90 days. Missing and Submitted count every date. This list adds the work that the list above leaves out."
   }
 }

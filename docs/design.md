@@ -1611,6 +1611,9 @@ I read each of them in the package source.
    A click listener on the window, in the capture phase, takes a plain primary click on "Read more" or on the title, and stops it before React sees it.
    A click with a modifier key, or with another button, keeps its native meaning.
    The message comes from `GET /api/v1/courses/:id/discussion_topics/:id` through the background.
+   The course filter copies the box, border, radius, padding and type of the read filter from its computed style, so it looks the same in every theme.
+   The message takes the type size and line height of the snippet that it replaces.
+   After the read mark, the circle of the card shows the read state (a check mark), as Canvas shows it after a reload.
    Opening it sends `PUT .../read` through the background, once for each announcement.
    The background treats the PUT as a write: it waits behind the writes before it, it asks Canvas who is signed in first (the student check of every write), it drops the write when the generation, the address or the student changed, and it sends the CSRF token.
    The ids are checked as Canvas ids at the message boundary and again before they enter a path.
@@ -1631,8 +1634,9 @@ I read each of them in the package source.
    A recompute would have to replace numbers that React draws, so every render would fight the extension.
    The planner cache covers two weeks, and the Due card covers 90 days, so the extension could not compute the right number without more requests.
    So the section says, in one line under its heading, how the three cards count, and it adds the work that the list leaves out.
-   The note gives the numbers of the list that the filters let through: how much work has no due date, how much is overdue, and how much has a to-do date in the next 14 days.
-   It shows only when the widget has the cards.
+   One short line under the heading gives the numbers of the list that the filters let through, such as "3 with no due date · 10 overdue · 8 to-do in the next 14 days".
+   A small info mark beside it, with a tooltip, explains the 90 days of the Due card and says that Missing and Submitted count every date.
+   The info mark shows only when the widget has the cards.
 4. **All course grades.**
    The fix hides the pager and adds a card for each course that has no card on the page.
    A card is a copy of a card that the widget drew, so it has the same markup, classes and theme.
