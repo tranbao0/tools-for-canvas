@@ -2,7 +2,8 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { DEFAULT_SETTINGS } from '../model/types';
-import { changeMarkerItem, offerItem, seenNotesItem } from '../../../shared/platform/storage';
+import { changeMarkerItem, offerItem } from '../../../shared/platform/storage';
+import { seenNotesItem } from '../data/storage';
 import { actionShortcut, extensionPageHost, openInCanvasTab, pageLeave } from './hosts';
 import { inpageHost, sendFromContentScript, type ScriptContext } from './inpageHost';
 import type { PageChannel } from './pageChannel';

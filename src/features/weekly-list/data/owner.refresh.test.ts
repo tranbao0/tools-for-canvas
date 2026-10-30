@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { changeMarkerItem, settingsItem } from '../../../shared/platform/storage';
+import { changeMarkerItem } from '../../../shared/platform/storage';
+import { settingsItem } from './storage';
 import { IDS } from '../../../../tests/fixtures/scenario';
 import { sessionCacheItem, type SessionCache } from './cache';
 import { toRange } from './coverage';

@@ -31,7 +31,7 @@ import {
 import { sameSpan } from '../model/settings';
 import { nextDayStart } from '../model/time';
 import type { ItemView, Settings, SurfaceState, UndoInfo, WeekView } from '../model/types';
-import type { SeenNotes } from '../../../shared/platform/storage';
+import type { SeenNotes } from '../data/storage';
 import type { Actions, AppProps, TaskInput } from '../ui/contract';
 
 /** The full refresh timer of decision 11. */

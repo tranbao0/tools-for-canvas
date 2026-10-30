@@ -12,13 +12,8 @@ import {
   type SurfaceState,
   type WeekView,
 } from '../../model/types';
-import {
-  canvasOriginItem,
-  changeMarkerItem,
-  offerItem,
-  seenNotesItem,
-  settingsItem,
-} from '../../../../shared/platform/storage';
+import { canvasOriginItem, changeMarkerItem, offerItem } from '../../../../shared/platform/storage';
+import { seenNotesItem, settingsItem } from '../storage';
 import {
   IDS,
   SCENARIO_NOW,

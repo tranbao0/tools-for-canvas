@@ -10,13 +10,8 @@ import { browser } from 'wxt/browser';
 import type { PageChangedMessage } from './protocol';
 import { isUsableOrigin, originMatchPattern, parseUrl } from '../../../shared/platform/address';
 import { logFailure } from '../../../shared/platform/log';
-import {
-  canvasOriginItem,
-  changeMarkerItem,
-  seenNotesItem,
-  settingsItem,
-  watchItems,
-} from '../../../shared/platform/storage';
+import { canvasOriginItem, changeMarkerItem, watchItems } from '../../../shared/platform/storage';
+import { seenNotesItem, settingsItem } from './storage';
 
 /** How long a change waits for the next one, so one round of changes sends one message. */
 const COALESCE_MS = 50;

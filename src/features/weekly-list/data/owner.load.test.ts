@@ -500,7 +500,7 @@ describe('the shown span', () => {
   it('shows a span that the student switched to, after the settings change', async () => {
     const h = await createHarness();
     await loadReady(h);
-    const { settingsItem } = await import('../../../shared/platform/storage');
+    const { settingsItem } = await import('./storage');
     await settingsItem.setValue({ ...(await settingsItem.getValue()), span: MONTH.span });
     await h.owner.refresh('settings');
     h.canvas.resetCalls();

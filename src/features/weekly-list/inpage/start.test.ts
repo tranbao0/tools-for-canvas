@@ -2,7 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { DEFAULT_SETTINGS } from '../model/types';
-import { canvasOriginItem, settingsItem } from '../../../shared/platform/storage';
+import { canvasOriginItem } from '../../../shared/platform/storage';
+import { settingsItem } from '../data/storage';
 import { MOUNT_CONTAINER_ID } from './adapters';
 import { DEFAULT_MOUNT_TIMEOUT_MS, type InpageMount } from './mount';
 import { HIDE_NATIVE_TODO_STYLE_ID } from './nativeTodo';

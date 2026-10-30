@@ -15,7 +15,8 @@ import type { Settings } from '../model/types';
 import { injectInpage, injectInpageIntoOrigin } from '../../../shared/platform/inject';
 import { openWelcomePrompt } from '../../../shared/platform/install';
 import { logFailure } from '../../../shared/platform/log';
-import { canvasOriginItem, seenNotesItem, settingsItem } from '../../../shared/platform/storage';
+import { canvasOriginItem } from '../../../shared/platform/storage';
+import { seenNotesItem, settingsItem } from './storage';
 import type { DataOwner } from './owner';
 import {
   OK_REPLY,

@@ -8,13 +8,8 @@ import { csrfFromCookiesApi } from '../../../shared/canvas/csrf';
 import { BROWSER_KIND } from '../../../shared/platform/browserKind';
 import { logFailure } from '../../../shared/platform/log';
 import { hasAccess, onAccessChanged } from '../../../shared/platform/permissions';
-import {
-  canvasOriginItem,
-  changeMarkerItem,
-  offerItem,
-  seenNotesItem,
-  settingsItem,
-} from '../../../shared/platform/storage';
+import { canvasOriginItem, changeMarkerItem, offerItem } from '../../../shared/platform/storage';
+import { seenNotesItem, settingsItem } from './storage';
 import { sessionCacheItem } from './cache';
 import { createDataOwner, type DataOwner, type DataOwnerDeps } from './owner';
 

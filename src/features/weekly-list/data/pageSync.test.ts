@@ -2,12 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { DEFAULT_SETTINGS } from '../model/types';
 import { wirePageSync } from './pageSync';
-import {
-  canvasOriginItem,
-  changeMarkerItem,
-  seenNotesItem,
-  settingsItem,
-} from '../../../shared/platform/storage';
+import { canvasOriginItem, changeMarkerItem } from '../../../shared/platform/storage';
+import { seenNotesItem, settingsItem } from './storage';
 
 const SCHOOL = 'https://school.instructure.com';
 const OTHER = 'https://other.instructure.com';

@@ -8,14 +8,8 @@ import { render, type VNode } from 'preact';
 import type { SurfaceState } from '../model/types';
 import { logFailure } from '../../../shared/platform/log';
 import { requestAccess } from '../../../shared/platform/permissions';
-import {
-  changeMarkerItem,
-  offerItem,
-  seenNotesItem,
-  settingsItem,
-  watchItems,
-  type SeenNotes,
-} from '../../../shared/platform/storage';
+import { changeMarkerItem, offerItem, watchItems } from '../../../shared/platform/storage';
+import { seenNotesItem, settingsItem, type SeenNotes } from '../data/storage';
 import {
   browserTimers,
   documentVisibility,

@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { DEFAULT_SETTINGS, type Settings } from '../../features/weekly-list/model/types';
-import { normalizeSettings } from '../../features/weekly-list/model/settings';
-import { canvasOriginItem, settingsItem } from './storage';
+import { canvasOriginItem } from './storage';
 import {
   createTrustedItem,
   restrictStorageToTrustedContexts,
@@ -26,10 +24,31 @@ function memoryVault(): Vault & { values: Map<string, unknown> } {
 }
 
 const ORIGIN: TrustedItemOptions<string | null> = { key: 'canvasOrigin', fallback: () => null };
-const SETTINGS: TrustedItemOptions<Settings> = {
-  key: 'settings',
-  fallback: () => structuredClone(DEFAULT_SETTINGS),
-  normalize: normalizeSettings,
+/** An object item with a checked shape, like the item types that the extension stores. */
+interface Sample {
+  mode: 'auto' | 'dark';
+  tags: string[];
+  flag: boolean;
+}
+
+const SAMPLE_DEFAULT: Sample = { mode: 'auto', tags: [], flag: true };
+
+/** Complete, valid `Sample` from a stored value; a bad field takes its default. */
+function normalizeSample(stored: unknown): Sample {
+  const input =
+    typeof stored === 'object' && stored !== null ? (stored as Record<string, unknown>) : {};
+  const tags = input['tags'];
+  return {
+    mode: input['mode'] === 'dark' ? 'dark' : 'auto',
+    tags: Array.isArray(tags) && tags.every((tag) => typeof tag === 'string') ? [...tags] : [],
+    flag: typeof input['flag'] === 'boolean' ? input['flag'] : true,
+  };
+}
+
+const SAMPLE: TrustedItemOptions<Sample> = {
+  key: 'sample',
+  fallback: () => structuredClone(SAMPLE_DEFAULT),
+  normalize: normalizeSample,
 };
 
 /** Waits for the work that a storage event starts. */
@@ -42,11 +61,11 @@ beforeEach(() => fakeBrowser.reset());
 describe('on Chrome and Edge', () => {
   it('keeps the trusted items in storage.local', async () => {
     await canvasOriginItem.setValue(SCHOOL);
-    await settingsItem.setValue({ ...DEFAULT_SETTINGS, showRings: false });
+    await createTrustedItem(SAMPLE).setValue({ ...SAMPLE_DEFAULT, flag: false });
 
     expect(await fakeBrowser.storage.local.get(null)).toEqual({
       canvasOrigin: SCHOOL,
-      settings: { ...DEFAULT_SETTINGS, showRings: false },
+      sample: { ...SAMPLE_DEFAULT, flag: false },
     });
     expect(await canvasOriginItem.getValue()).toBe(SCHOOL);
   });
@@ -84,10 +103,10 @@ describe('with a vault, as on Firefox', () => {
 
   it('cleans a bad value in the vault, so no read ever throws', async () => {
     const vault = memoryVault();
-    vault.values.set('settings', { ...DEFAULT_SETTINGS, hiddenCourseIds: 5, theme: 'neon' });
-    const item = createTrustedItem(SETTINGS, vault);
+    vault.values.set('sample', { ...SAMPLE_DEFAULT, tags: 5, mode: 'neon' });
+    const item = createTrustedItem(SAMPLE, vault);
 
-    expect(await item.getValue()).toEqual(DEFAULT_SETTINGS);
+    expect(await item.getValue()).toEqual(SAMPLE_DEFAULT);
   });
 
   it('writes the vault, and mirrors the value to storage.local', async () => {
@@ -104,16 +123,16 @@ describe('with a vault, as on Firefox', () => {
     expect(await fakeBrowser.storage.local.get(null)).toEqual({});
   });
 
-  it('keeps an object item, such as the settings, in the vault', async () => {
+  it('keeps an object item in the vault', async () => {
     const vault = memoryVault();
-    const item = createTrustedItem(SETTINGS, vault);
-    const settings: Settings = { ...DEFAULT_SETTINGS, theme: 'dark', hiddenCourseIds: ['7'] };
+    const item = createTrustedItem(SAMPLE, vault);
+    const sample: Sample = { mode: 'dark', tags: ['7'], flag: true };
 
-    await item.setValue(settings);
+    await item.setValue(sample);
 
-    expect(vault.values.get('settings')).toEqual(settings);
-    expect(await item.getValue()).toEqual(settings);
-    expect(await fakeBrowser.storage.local.get('settings')).toEqual({ settings });
+    expect(vault.values.get('sample')).toEqual(sample);
+    expect(await item.getValue()).toEqual(sample);
+    expect(await fakeBrowser.storage.local.get('sample')).toEqual({ sample });
   });
 
   it('tells the watcher of a real change, with the earlier value', async () => {
@@ -134,20 +153,17 @@ describe('with a vault, as on Firefox', () => {
   });
 
   it('tells the watcher of a change of an object item, and not of a write of the same value', async () => {
-    const item = createTrustedItem(SETTINGS, memoryVault());
+    const item = createTrustedItem(SAMPLE, memoryVault());
     const listener = vi.fn();
     item.watch(listener);
 
-    await item.setValue({ ...DEFAULT_SETTINGS, showRings: false });
+    await item.setValue({ ...SAMPLE_DEFAULT, flag: false });
     await settle();
-    await item.setValue({ ...DEFAULT_SETTINGS, showRings: false });
+    await item.setValue({ ...SAMPLE_DEFAULT, flag: false });
     await settle();
 
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener).toHaveBeenCalledWith(
-      { ...DEFAULT_SETTINGS, showRings: false },
-      DEFAULT_SETTINGS,
-    );
+    expect(listener).toHaveBeenCalledWith({ ...SAMPLE_DEFAULT, flag: false }, SAMPLE_DEFAULT);
   });
 
   it('repairs a mirror that a page wrote, and tells the watcher nothing', async () => {
@@ -169,25 +185,25 @@ describe('with a vault, as on Firefox', () => {
   });
 
   it.each([
-    ['hiddenCourseIds that is not a list', { ...DEFAULT_SETTINGS, hiddenCourseIds: 5 }],
-    ['a week start that does not exist', { ...DEFAULT_SETTINGS, weekStart: 99 }],
-    ['settings that are not an object', 'settings'],
-    ['an unwanted value', { ...DEFAULT_SETTINGS, showOnCanvasPages: false }],
-  ])('repairs a settings mirror with %s that a page wrote', async (_name, written) => {
+    ['tags that are not a list', { ...SAMPLE_DEFAULT, tags: 5 }],
+    ['a mode that does not exist', { ...SAMPLE_DEFAULT, mode: 'neon' }],
+    ['a value that is not an object', 'sample'],
+    ['an unwanted value', { ...SAMPLE_DEFAULT, flag: false }],
+  ])('repairs an object mirror with %s that a page wrote', async (_name, written) => {
     const vault = memoryVault();
-    const item = createTrustedItem(SETTINGS, vault);
-    await item.setValue({ ...DEFAULT_SETTINGS, theme: 'dark' });
+    const item = createTrustedItem(SAMPLE, vault);
+    await item.setValue({ ...SAMPLE_DEFAULT, mode: 'dark' });
     await settle();
     const listener = vi.fn();
     item.watch(listener);
 
-    await fakeBrowser.storage.local.set({ settings: written });
+    await fakeBrowser.storage.local.set({ sample: written });
     await settle();
     await settle();
 
-    expect(await item.getValue()).toEqual({ ...DEFAULT_SETTINGS, theme: 'dark' });
-    expect(await fakeBrowser.storage.local.get('settings')).toEqual({
-      settings: { ...DEFAULT_SETTINGS, theme: 'dark' },
+    expect(await item.getValue()).toEqual({ ...SAMPLE_DEFAULT, mode: 'dark' });
+    expect(await fakeBrowser.storage.local.get('sample')).toEqual({
+      sample: { ...SAMPLE_DEFAULT, mode: 'dark' },
     });
     expect(listener).not.toHaveBeenCalled();
   });

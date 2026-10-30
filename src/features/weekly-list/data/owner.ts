@@ -20,7 +20,7 @@ import { isCheckedButMissing, itemState, redoBlocksDone } from '../model/rules';
 import { moveToTodayTodoDate, todoDateFor } from '../model/tasks';
 import type { Item, Offer, Settings } from '../model/types';
 import { canAutoSaveOrigin, isUsableOrigin } from '../../../shared/platform/address';
-import type { SeenNotes } from '../../../shared/platform/storage';
+import type { SeenNotes } from './storage';
 import type { TaskInput } from '../ui/contract';
 import {
   emptyCache,

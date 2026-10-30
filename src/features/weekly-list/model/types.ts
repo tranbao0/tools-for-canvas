@@ -18,6 +18,7 @@ import type {
   Profile,
   Submission,
 } from '../../../shared/canvas/types';
+import type { Offer } from '../../../shared/platform/storage';
 
 /** The submission fields of an assignment that the model reads. */
 export type SubmissionData = Pick<
@@ -309,13 +310,7 @@ export interface ModelInput {
   allAssignments: AssignmentData[];
 }
 
-/**
- * A Canvas that the detector found and that the student answers in an extension page: "Use it"
- * when no address is saved, and "Switch" when another address is saved.
- */
-export interface Offer {
-  origin: string;
-}
+export type { Offer };
 
 /**
  * The Undo notice. It stays until the student acts again, closes it, or the surface goes away.

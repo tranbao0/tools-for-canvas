@@ -1,19 +1,14 @@
 /**
- * The items that the extension stores. See docs/design.md, decisions 11, 12 and 18.
+ * The items that the extension stores, other than those of the weekly list. See docs/design.md,
+ * decisions 11, 12 and 18.
  *
  * `storage.local` holds only the settings, the Canvas address, the change marker and the
  * one-time notes the student has seen. `storage.session` holds the pending offer, whether a
- * Canvas prompted the student, and the data owner's memory-only cache.
+ * Canvas prompted the student, and the data owner's memory-only cache. The settings and the
+ * notes are items of the weekly list feature.
  *
- * The settings, the address and the notes are trusted items (trustedStorage.ts): no web page can
- * change them, in any browser.
+ * The address is a trusted item (trustedStorage.ts): no web page can change it, in any browser.
  */
-import {
-  DEFAULT_SETTINGS,
-  type Offer,
-  type Settings,
-} from '../../features/weekly-list/model/types';
-import { normalizeSettings } from '../../features/weekly-list/model/settings';
 import { defineItem, type StorageItem } from './storageItem';
 import { createTrustedItem } from './trustedStorage';
 
@@ -24,43 +19,19 @@ export {
   type StorageAreaName,
   type StorageItem,
 } from './storageItem';
-export { normalizeSettings };
 
-export interface SeenNotes {
-  firstDone: boolean;
-  firstSkip: boolean;
+/**
+ * A Canvas that the detector found and that the student answers in an extension page: "Use it"
+ * when no address is saved, and "Switch" when another address is saved.
+ */
+export interface Offer {
+  origin: string;
 }
-
-export const DEFAULT_SEEN_NOTES: SeenNotes = { firstDone: false, firstSkip: false };
-
-/** Seen notes from a stored value. A field that is not a boolean reads as not seen. */
-export function normalizeSeenNotes(stored: unknown): SeenNotes {
-  const input =
-    typeof stored === 'object' && stored !== null ? (stored as Record<string, unknown>) : {};
-  return {
-    firstDone: input['firstDone'] === true,
-    firstSkip: input['firstSkip'] === true,
-  };
-}
-
-/** The student's settings (decision 18). The theme defaults to `auto` (decision 19). */
-export const settingsItem: StorageItem<Settings> = /* @__PURE__ */ createTrustedItem({
-  key: 'settings',
-  fallback: () => structuredClone(DEFAULT_SETTINGS),
-  normalize: normalizeSettings,
-});
 
 /** The saved Canvas origin, such as `https://school.instructure.com`, or `null` before setup. */
 export const canvasOriginItem: StorageItem<string | null> = /* @__PURE__ */ createTrustedItem({
   key: 'canvasOrigin',
   fallback: () => null,
-});
-
-/** The one-time notes the student has already seen. */
-export const seenNotesItem: StorageItem<SeenNotes> = /* @__PURE__ */ createTrustedItem({
-  key: 'seenNotes',
-  fallback: () => ({ ...DEFAULT_SEEN_NOTES }),
-  normalize: normalizeSeenNotes,
 });
 
 /**

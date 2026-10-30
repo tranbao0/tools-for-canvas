@@ -4,7 +4,7 @@
 import { browser } from 'wxt/browser';
 import { logFailure } from '../../../shared/platform/log';
 import { connectPanelPort } from '../../../shared/platform/panelPort';
-import { settingsItem } from '../../../shared/platform/storage';
+import { settingsItem } from '../data/storage';
 import { App } from '../ui/App';
 import { installStyles } from '../../../shared/ui/styles';
 import { extensionPageHost, mountRuntime } from './hosts';

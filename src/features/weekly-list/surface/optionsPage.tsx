@@ -5,12 +5,8 @@ import { render } from 'preact';
 import type { CourseChoice, StateReply } from '../data/protocol';
 import type { Settings } from '../model/types';
 import { logFailure } from '../../../shared/platform/log';
-import {
-  canvasOriginItem,
-  changeMarkerItem,
-  settingsItem,
-  watchItems,
-} from '../../../shared/platform/storage';
+import { canvasOriginItem, changeMarkerItem, watchItems } from '../../../shared/platform/storage';
+import { settingsItem } from '../data/storage';
 import { SettingsView } from '../ui/SettingsView';
 import { PAGE_LAYOUT_CSS, installStyles } from '../../../shared/ui/styles';
 import { sendToBackground } from './hosts';

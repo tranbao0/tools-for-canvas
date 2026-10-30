@@ -3,7 +3,7 @@
  */
 import { BROWSER_KIND } from '../../../shared/platform/browserKind';
 import { logFailure } from '../../../shared/platform/log';
-import { settingsItem } from '../../../shared/platform/storage';
+import { settingsItem } from '../data/storage';
 import { PAGE_LAYOUT_CSS, installStyles } from '../../../shared/ui/styles';
 import { WelcomeView } from '../ui/WelcomeView';
 import { actionShortcut, extensionPageHost, mountRuntime } from './hosts';
