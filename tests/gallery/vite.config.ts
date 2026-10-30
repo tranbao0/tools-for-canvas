@@ -17,7 +17,8 @@ export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
   plugins: [preact()],
   logLevel: 'warn',
-  define: { __CANVAS_FONTS__: JSON.stringify(hasFonts ? fontsDir : '') },
+  // The gallery shows store-build views, so the test-channel file check stays out.
+  define: { __CANVAS_FONTS__: JSON.stringify(hasFonts ? fontsDir : ''), __FILE_CHECK__: 'false' },
   server: {
     host: '127.0.0.1',
     port: 5199,
