@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MOUNT_CONTAINER_ID, isAdapterPath } from './adapters';
-import { ANCHOR_GRACE_MS, REMOVAL_LIMIT } from './layout';
 import {
   DEFAULT_MOUNT_TIMEOUT_MS,
   mountWhenReady,
@@ -37,7 +36,7 @@ const onMount = (mount: InpageMount): void => {
 
 /** Delivers pending MutationObserver records. */
 async function flushObserver(): Promise<void> {
-  await vi.advanceTimersByTimeAsync(0);
+  await vi.advanceTimersByTimeAsync(20);
 }
 
 function container(): HTMLElement | null {
@@ -237,38 +236,15 @@ describe('dashboard without a right column', () => {
     expect(document.getElementById('right-side-wrapper')?.style.display).toBe('none');
   });
 
-  it('mounts first in the first widget column when the grid is one stack, without room beside it', async () => {
+  it('mounts above the tab content without entering a widget column', async () => {
     loadPage(document, WIDGET_DASHBOARD);
-
     const outcome = await mountWhenReady(onMount, { pathname: '/' });
-
     expect(outcome.kind).toBe('mounted');
-    // The widget dashboard has its own Announcements widget, so the list gets no tabs there.
-    expect(mounts).toEqual([
-      {
-        courseId: null,
-        announcements: false,
-        container: container(),
-        release: expect.any(Function),
-      },
-    ]);
-    // A page without layout (happy-dom) has no flex row, so the grid counts as one stack.
-    const first = document.querySelector('[data-testid="widget-column-1"]');
-    expect(panelContainer()?.parentElement).toBe(first);
-    expect(first?.firstElementChild).toBe(panelContainer());
+    expect(mounts[0]?.announcements).toBe(false);
+    expect(panelContainer()?.nextElementSibling?.getAttribute('data-testid')).toBe(
+      'dashboard-tab-content',
+    );
     expect(document.body.hasAttribute('data-weekrow-column')).toBe(true);
-  });
-
-  it('mounts first in the last widget column when the columns stand side by side', async () => {
-    loadPage(document, WIDGET_DASHBOARD);
-    const grid = document.querySelector<HTMLElement>('[data-testid="widget-columns"]');
-    grid?.setAttribute('style', 'display:flex;flex-direction:row');
-
-    await mountWhenReady(onMount, { pathname: '/' });
-
-    const last = document.querySelector('[data-testid="widget-column-2"]');
-    expect(panelContainer()?.parentElement).toBe(last);
-    expect(last?.firstElementChild).toBe(panelContainer());
   });
 
   it('waits for #content before it mounts', async () => {
@@ -308,50 +284,17 @@ describe('dashboard without a right column', () => {
     await flushObserver();
 
     expect(container()).toBe(first);
-    expect(first?.parentElement?.getAttribute('data-testid')).toBe('widget-column-1');
+    expect(first?.nextElementSibling?.getAttribute('data-testid')).toBe('dashboard-tab-content');
   });
 
-  it('leaves the grid for the rest of the page view after the page removes the container four times', async () => {
+  it('keeps the same container above the tab content after a redraw', async () => {
     loadPage(document, WIDGET_DASHBOARD);
     await mountWhenReady(onMount, { pathname: '/' });
-    for (let round = 0; round < REMOVAL_LIMIT + 1; round += 1) {
-      container()?.remove();
-      await flushObserver();
-    }
-
-    // The last column would hold the container, but the layout puts it beside the content now.
-    expect(container()?.parentElement?.id).toBe('content-wrapper');
-    document.querySelector('[data-testid="widget-column-1"]')?.append(document.createElement('i'));
+    const first = container();
+    document.querySelector('[data-testid="dashboard-tab-content"]')!.innerHTML = '<p>Courses</p>';
     await flushObserver();
-    expect(container()?.parentElement?.id).toBe('content-wrapper');
-  });
-
-  it('hides while the student edits the dashboard and the free area has no room, and returns after', async () => {
-    loadPage(document, WIDGET_DASHBOARD);
-    await mountWhenReady(onMount, { pathname: '/' });
-    const column = document.querySelector('[data-testid="widget-column-1"]');
-
-    const save = document.createElement('button');
-    save.dataset['testid'] = 'save-customize-button';
-    document.getElementById('content')?.append(save);
-    await flushObserver();
-    // A page without layout (happy-dom) has no free area. The columns take drops in edit mode.
-    expect(container()?.style.display).toBe('none');
-    expect(container()?.parentElement).not.toBe(column);
-
-    save.remove();
-    await flushObserver();
-    expect(container()?.parentElement).toBe(column);
-  });
-
-  it('leaves the grid for good when the grid is gone for longer than the grace period', async () => {
-    loadPage(document, WIDGET_DASHBOARD);
-    await mountWhenReady(onMount, { pathname: '/' });
-
-    document.querySelector('[data-testid="widget-columns"]')?.remove();
-    await flushObserver();
-    await vi.advanceTimersByTimeAsync(ANCHOR_GRACE_MS + 100);
-    expect(container()?.parentElement?.id).toBe('content-wrapper');
+    expect(container()).toBe(first);
+    expect(first?.nextElementSibling?.getAttribute('data-testid')).toBe('dashboard-tab-content');
   });
 
   it('stops putting things back once a release took the marker away', async () => {

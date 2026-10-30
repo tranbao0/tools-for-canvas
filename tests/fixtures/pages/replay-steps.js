@@ -19,3 +19,17 @@
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
       else start();
     })();
+
+document.addEventListener('click', (event) => {
+  const tab = event.target.closest('[role="tab"]');
+  if (!tab || !tab.dataset.testid?.startsWith('tab-')) return;
+  const panel = document.querySelector('[data-testid="dashboard-tab-content"]');
+  if (!panel) return;
+  window.fixtureDashboardHTML ??= panel.innerHTML;
+  panel.innerHTML = tab.dataset.testid === 'tab-courses'
+    ? document.getElementById('fixture-courses-panel').innerHTML
+    : window.fixtureDashboardHTML;
+  for (const item of document.querySelectorAll('.fixture-widget-tabs [role="tab"]')) {
+    item.setAttribute('aria-selected', String(item === tab));
+  }
+});

@@ -264,7 +264,7 @@ test.describe('the list in other places', () => {
     });
   }
 
-  test('keeps the scroll position when the card moves from the free area to a column', async ({
+  test('keeps the scroll position when the card moves from the free area above the tab content', async ({
     context,
     page,
     background,
@@ -281,7 +281,7 @@ test.describe('the list in other places', () => {
           document.querySelector('#weekrow-inpage > weekrow-list')?.getAttribute('data-panel'),
         ),
       )
-      .toBe('column');
+      .toBe('stack');
     await expect.poll(async () => (await cardBox(page)).scroll.top).toBe(300);
   });
 

@@ -260,19 +260,21 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - The extension reads the dashboard view once, when the list mounts.
   If Canvas switches between Card View and List View without a page load, the list can sit in the wrong layout until the next load.
   The live checklist tells the tester to note whether this happens.
-- The card beside the grid depends on the test ids `widget-columns`, `widget-column-*`, `widget-<id>` sections, `save-customize-button`, `cancel-customize-button` and `add-widget-placeholder-*` of package version 16.2.0.
-  A Canvas release can rename them.
-  The layout then finds no grid, and the list takes the free area beside the content, or stacks above it.
-  The one file `src/shared/canvas/widgetDashboard.ts` holds every one of these selectors.
-- The widget dashboard can clip what leaves it: an ancestor of the grid with an `overflow` other than visible hides any part of a card that sits inside it.
-  The card therefore sits outside the dashboard, in the page area, as a sibling of `#content`, where no such ancestor reaches it.
-  The live checklist asks the tester to check this at wide windows.
+- The widget card uses the real `widget-columns` box and its gutter.
+  The card sits in a container under `body`, outside the capped `#wrapper`.
+  It uses document coordinates and scrolls with the page.
+  Its left edge is one grid gutter past the right edge of the columns.
+  Its width is 320 to 400 px.
+  The viewport must also have room for a 24 px right margin.
+  On Dashboard, its top matches the first widget row.
+  On Courses, its top matches `dashboard-tab-content`.
+  When the viewport has too little room, the card sits in normal flow above the tab content and below the tabs.
+  Canvas keeps its own widths, padding, margins and maximum widths.
+  The card never enters a widget column.
+  Mutation and size observers measure the placement again after tab changes and redraws.
+  The Courses view uses the last measured grid inset when it has no grid.
 - The floating card of List View sticks inside a tall container with `position: sticky`.
   This needs a positioned ancestor of the content that spans the page, which Canvas has (`.ic-Layout-columns`), and no ancestor with `overflow` other than visible between the card and the viewport.
-- The edit mode is found from the buttons that the widget package shows only then.
-  If a release changes them, the card stays in its place while the student drags widgets.
-  A card in the last column then hides in edit mode only when the buttons are found.
-  The removal count sends the list out of the column when React removes the card too often.
 - The dock under the right column needs a column that is as tall as the page, as Canvas's flex layout makes it.
   With less than 240 px of free space under the column items, the list does not dock.
 
@@ -313,26 +315,16 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - On the dashboard, when the body has no `with-right-side` (the widget dashboard and List View [13]), mount at once, when the page has `#content`.
   The list does not add `with-right-side` and does not show `#right-side-wrapper`.
   It takes one of these places in the page content, and `layout.ts` decides which.
-  - **In the free area beside the grid** (widget dashboard only).
-    When `[data-testid="widget-columns"]` and its `[data-testid^="widget-column-"]` children exist, and the area to the right of the grid is wide enough, the list is a card in that area, as the old dashboard has its list in the right column.
-    - The card is out of the flow, a sibling of `#content` inside `#content-wrapper`.
-      It changes no size in the grid, and React cannot remove it.
-    - The card is 360 px wide, grows to 400 px when there is room, and is never narrower than 320 px.
-    - Its top is the top of the first widget row, within 1 px.
-      Its left edge is one gutter right of the right edge of the widgets.
-      The gutter is the gap between the first cards of two columns, as the student sees it (the column gap and the margins of the widget cards).
-    - The card scrolls with the page, as the other widgets do.
-      It is not sticky and it does not float.
-    - The area is wide enough when its width holds one gutter and the minimum card width of 320 px.
-      The width is measured from the right edge of the widgets to the right edge of `#content-wrapper`, clamped to the width of the document (`clientWidth`), and then reduced by the margin that the page keeps at its left or one gutter, whichever is larger.
-      The window is never the reference.
-    - A hysteresis of 20 px stops the card from switching between this place and the column while a scroll bar comes and goes.
-    - The check runs again on every resize and zoom (both fire `resize`), and with a `ResizeObserver` on the grid, on `#content` and on `#content-wrapper`.
-    - The Canvas columns keep their width, and the card changes nothing in the grid.
-  - **First in the last Canvas column**, at the width of that column, when the free area is too small.
-    The card takes the margin of a widget card, so its edges are those of the widgets below it.
-    When the grid is one stack (a tablet or phone), the card goes first in the first column, above all the widgets.
-    The Canvas columns never shrink.
+  - **Beside the widget grid**, outside `#wrapper`, when the viewport has room for a gutter, a card of at least 320 px and a 24 px right margin.
+    The card is under `body` and uses document coordinates.
+    It grows to 400 px.
+    Its left edge is one column gap past the real `widget-columns` box.
+    Its top matches the first widget row on Dashboard and the tab content on Courses.
+    It scrolls with the page.
+  - **Above the tab content**, below the tabs, when the viewport has too little room.
+    The card fills the tab content width in normal flow.
+    The widgets move down and keep their width.
+    The extension changes no width, maximum width, padding or margin on Canvas boxes.
   - **Floating** (List View).
     The list is a card of 372 px, at least 360 px, in the free area to the right of the content, one gutter away from the right edge of the widgets.
     The right edge of the widgets is the right edge of the children of `#content`, measured with a `ResizeObserver` and never with a widget test id.
@@ -340,17 +332,11 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     - The card is sticky, with a 24 px gap to the top of the viewport.
     - When the free area is too small, the content gets just enough right padding for the card, the gutter and a 24 px gap, so the widgets reflow by the smallest amount.
     - When the content would be narrower than 720 px, the list is **stacked** instead: a card above the content, at the width of the content, not floating.
-  - On the widget dashboard, when the grid anchors are gone, the card takes the free area beside the children of `#content`, or the stack when that area is too small.
-    It never floats and never pads the content there.
   - Every style that the list sets on a page element is an inline style that the code records in the `data-weekrow-styled` attribute, so the removal undoes all of them from the DOM alone.
   - Mark the body with `data-weekrow-column`.
     An observer of an older copy of the script stops at once when the marker is gone.
   - A `MutationObserver` puts the container back if the page removes it, in the same place, with the same state: the container is moved and not created again, so the open groups and the scroll position stay.
-  - The list leaves the last column for the rest of the page view when the card is removed more than 3 times in 10 seconds, and when the grid anchors are missing for more than 1.5 seconds after they were there.
-  - While "Customize dashboard" edit mode is on, the card stays in the free area beside the grid, because it is outside the grid.
-    A card that would sit in a column hides while edit mode is on, because the columns take drops, and it returns to its place when edit mode ends.
-    A hidden card does not count as a removed card.
-    The edit mode shows in the page as the `cancel-customize-button` and `save-customize-button` buttons, and as `add-widget-placeholder-*` drop zones.
+  - Mutation and size observers watch the tab content and measure again after tab switches, redraws, resizing and zoom.
   - List View has no widget grid, so it uses the floating card only.
   - All grid anchors are in `src/shared/canvas/widgetDashboard.ts`, which says what each one is.
     A change of the Canvas markup needs an edit in that one file.
