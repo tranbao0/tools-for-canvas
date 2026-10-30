@@ -8,6 +8,7 @@
  */
 import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
+import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import {
   doneBox,
   expect,
@@ -15,6 +16,7 @@ import {
   inpageList,
   openCanvasPage,
   saveSettings,
+  saveTools,
   serveScenario,
   test,
   settledList,
@@ -191,6 +193,13 @@ async function setEditMode(page: Page, editing: boolean): Promise<void> {
   }, editing);
 }
 
+/** The dashboard fixes add their own height after the data arrives, which these layout checks do not measure. */
+const NO_FIXES = {
+  dashboardFixes: Object.fromEntries(
+    Object.keys(DEFAULT_TOOLS_SETTINGS.dashboardFixes).map((key) => [key, false]),
+  ) as unknown as typeof DEFAULT_TOOLS_SETTINGS.dashboardFixes,
+};
+
 const PAGE_WIDTHS = [1920, 1600, 1280, 1000, 700];
 
 test.describe('the widget dashboard', () => {
@@ -283,6 +292,7 @@ test.describe('the widget dashboard', () => {
       background,
     }) => {
       await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
+      await saveTools(background, NO_FIXES);
       const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
       await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
       await openCanvasPage(page, canvas.origin);
@@ -432,6 +442,7 @@ test.describe('the widget dashboard', () => {
       background,
     }) => {
       await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
+      await saveTools(background, NO_FIXES);
       const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
       await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
       await openCanvasPage(page, canvas.origin);
@@ -457,6 +468,7 @@ test.describe('the widget dashboard', () => {
     background,
   }) => {
     await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
+    await saveTools(background, NO_FIXES);
     const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
     await page.setViewportSize({ width: 1280, height: VIEWPORT_HEIGHT });
     await openCanvasPage(page, canvas.origin);
