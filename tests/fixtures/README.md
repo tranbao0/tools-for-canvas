@@ -52,7 +52,7 @@ The kinds are planner items, planner overrides, planner notes, assignments by id
 A list has one element, and a second one only where the extension treats the variant differently, such as a planner quiz row next to an assignment row.
 Each reply has every field that Canvas sends, as the canvas-lms serializers at commit 1c9f0bb write them.
 Its items are the items of `SCENARIO` with the same ids, so each has a trimmed counterpart.
-`tests/unit/full-replies.test.ts` runs each reply through the production decoders, which are the model functions and the GraphQL reader.
+`tests/fixtures/full-replies.test.ts` runs each reply through the production decoders, which are the model functions and the GraphQL reader.
 It checks that the result equals the result for the trimmed item, so a field that the extension ignores changes nothing.
 Update a reply when the matching item of `SCENARIO` changes.
 

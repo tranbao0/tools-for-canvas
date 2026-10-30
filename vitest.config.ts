@@ -11,8 +11,8 @@ export default defineConfig({
     include: [
       'src/**/*.test.ts',
       'src/**/*.test.tsx',
-      'tests/unit/**/*.test.ts',
-      'tests/unit/**/*.test.tsx',
+      'tests/fixtures/**/*.test.ts',
+      'tests/fixtures/**/*.test.tsx',
     ],
     restoreMocks: true,
   },

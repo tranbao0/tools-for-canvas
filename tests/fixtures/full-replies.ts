@@ -7,7 +7,7 @@
  * app/graphql/types/{course_type,custom_grade_status_type}.rb).
  * A list has one element, and a second one only where the extension treats the variant differently.
  * The values belong to the frozen `SCENARIO`, so each element has a trimmed counterpart with the
- * same id in `scenario.ts`. `tests/unit/full-replies.test.ts` checks that the extra fields
+ * same id in `scenario.ts`. `tests/fixtures/full-replies.test.ts` checks that the extra fields
  * change nothing. Ids are strings, and lists keyed by course use the course id. The layout is by
  * hand, with several fields on a line, to keep the file short.
  */
