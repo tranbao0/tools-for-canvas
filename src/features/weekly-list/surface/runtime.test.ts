@@ -1394,3 +1394,259 @@ describe('timers', () => {
     expect(fake.sent).toEqual([]);
   });
 });
+
+describe('the Announcements tab', () => {
+  const FEED = (tab: 'tasks' | 'announcements', unread = 2) => ({
+    status: 'ready' as const,
+    origin: ORIGIN,
+    userId: USER,
+    tab,
+    rows: [],
+    unread,
+    loading: false,
+    failed: false,
+  });
+
+  /** A host whose background also answers the feed and the read mark. */
+  function feedHost(tab: 'tasks' | 'announcements' = 'tasks'): FakeHost {
+    const fake = fakeHost();
+    fake.reply = (message) => {
+      switch (message.type) {
+        case 'weekrow:get-state':
+          return readyFor(fake.user, { origin: fake.origin });
+        case 'weekrow:refresh':
+          return { ok: true, retryAt: null };
+        case 'weekrow:announcement-feed':
+          return FEED(message.request.tab ?? tab);
+        case 'weekrow:announcement':
+          return { title: 'T', message: '<p>Full</p>' };
+        case 'weekrow:action':
+          return message.action.kind === 'markAnnouncement'
+            ? {
+                undo: {
+                  kind: 'announcement',
+                  userId: fake.user,
+                  origin: fake.origin,
+                  courseId: message.action.courseId,
+                  topicId: message.action.topicId,
+                },
+              }
+            : { undo: null };
+        default:
+          return { ok: true };
+      }
+    };
+    return fake;
+  }
+
+  async function started(
+    fake: FakeHost,
+    options: Partial<Parameters<typeof createSurfaceRuntime>[1]> = {},
+  ) {
+    const runtime = createSurfaceRuntime(fake.host, {
+      surface: 'inpage',
+      scopeCourseId: null,
+      announcementTabs: true,
+      ...options,
+    });
+    runtime.start();
+    await settle();
+    return runtime;
+  }
+
+  const feedRequests = (fake: FakeHost) =>
+    fake.sent.flatMap((message) =>
+      message.type === 'weekrow:announcement-feed' ? [message.request] : [],
+    );
+
+  it('asks for the feed once the state is ready, and shows the reply and the stored tab', async () => {
+    const fake = feedHost('announcements');
+    const runtime = await started(fake, { scopeCourseId: '101' });
+
+    expect(feedRequests(fake)[0]).toEqual({
+      surface: 'inpage',
+      scopeCourseId: '101',
+      force: false,
+      tab: null,
+    });
+    expect(runtime.announcements()).toEqual({
+      tab: 'announcements',
+      feed: FEED('announcements'),
+      showRead: false,
+    });
+  });
+
+  it('sends no announcement message and gives no tab without the tabs', async () => {
+    const fake = feedHost();
+    const runtime = await started(fake, { announcementTabs: false });
+    runtime.actions.setListTab('announcements');
+    await settle();
+
+    expect(runtime.announcements()).toBeUndefined();
+    expect(types(fake.sent)).not.toContain('weekrow:announcement-feed');
+  });
+
+  it('never gives the tabs to the welcome page', async () => {
+    const fake = feedHost();
+    const runtime = await started(fake, { surface: 'page' });
+
+    expect(runtime.announcements()).toBeUndefined();
+    expect(types(fake.sent)).not.toContain('weekrow:announcement-feed');
+  });
+
+  it('asks again each time, so a page that turns out to be the widget dashboard stops', async () => {
+    const fake = feedHost();
+    let tabs = true;
+    const runtime = await started(fake, { announcementTabs: () => tabs });
+    expect(runtime.announcements()).toBeDefined();
+
+    tabs = false;
+    fake.sent.length = 0;
+    fake.changed();
+    await settle();
+
+    expect(runtime.announcements()).toBeUndefined();
+    expect(types(fake.sent)).not.toContain('weekrow:announcement-feed');
+  });
+
+  it('shows the chosen tab at once, and sends it with the next feed request', async () => {
+    const fake = feedHost();
+    const runtime = await started(fake);
+
+    runtime.actions.setListTab('announcements');
+    expect(runtime.announcements()?.tab).toBe('announcements');
+    await settle();
+
+    expect(feedRequests(fake).at(-1)).toMatchObject({ tab: 'announcements', force: false });
+    expect(runtime.announcements()?.tab).toBe('announcements');
+  });
+
+  it('keeps the tab that the student chose when an older reply names the old tab', async () => {
+    const fake = feedHost();
+    const replies: ((value: unknown) => void)[] = [];
+    const runtime = await started(fake);
+    // The next feed request waits, as a slow background does.
+    fake.reply = (message) =>
+      message.type === 'weekrow:announcement-feed'
+        ? new Promise((resolve) => replies.push(resolve))
+        : message.type === 'weekrow:get-state'
+          ? readyFor(fake.user, { origin: fake.origin })
+          : { ok: true, retryAt: null };
+
+    fake.changed();
+    await settle();
+    runtime.actions.setListTab('announcements');
+    await settle();
+    expect(replies).toHaveLength(2);
+
+    // The answer to the first request (made before the choice) comes last.
+    replies[1]?.(FEED('announcements', 5));
+    await settle();
+    replies[0]?.(FEED('tasks', 1));
+    await settle();
+
+    expect(runtime.announcements()?.tab).toBe('announcements');
+    expect(runtime.announcements()?.feed).toMatchObject({ unread: 5 });
+  });
+
+  it('asks again with force when the student presses Retry', async () => {
+    const fake = feedHost();
+    const runtime = await started(fake);
+
+    runtime.actions.retryAnnouncements();
+    await settle();
+
+    expect(feedRequests(fake).at(-1)).toMatchObject({ force: true, tab: null });
+  });
+
+  it('keeps Show read for the surface', async () => {
+    const runtime = await started(feedHost());
+
+    runtime.actions.setShowRead(true);
+
+    expect(runtime.announcements()?.showRead).toBe(true);
+  });
+
+  it('marks an announcement as read with one action, and keeps the Undo notice for its row', async () => {
+    const fake = feedHost();
+    const runtime = await started(fake);
+    fake.sent.length = 0;
+
+    runtime.actions.markAnnouncementRead('101', '31901');
+    await settle();
+
+    expect(sentActions(fake.sent)).toEqual([
+      { kind: 'markAnnouncement', courseId: '101', topicId: '31901' },
+    ]);
+    expect(runtime.state()).toMatchObject({
+      undo: { kind: 'announcement_read', count: 1, target: '101:31901' },
+    });
+    // The feed is asked again, so the row leaves the list.
+    expect(feedRequests(fake).length).toBeGreaterThan(0);
+  });
+
+  it('sends Undo of a read mark with the user and the Canvas, once', async () => {
+    const fake = feedHost();
+    const runtime = await started(fake);
+    runtime.actions.markAnnouncementRead('101', '31901');
+    await settle();
+
+    runtime.actions.undo();
+    runtime.actions.undo();
+    await settle();
+
+    expect(sentActions(fake.sent).slice(1)).toEqual([
+      {
+        kind: 'restoreAnnouncement',
+        userId: USER,
+        origin: ORIGIN,
+        courseId: '101',
+        topicId: '31901',
+      },
+    ]);
+    expect(runtime.state()).toMatchObject({ undo: null });
+  });
+
+  it('ends the read notice when another student signs in', async () => {
+    const fake = feedHost();
+    const runtime = await started(fake);
+    runtime.actions.markAnnouncementRead('101', '31901');
+    await settle();
+    expect(runtime.state()).toMatchObject({ undo: { kind: 'announcement_read' } });
+
+    fake.user = 'user-2';
+    fake.changed();
+    await settle();
+
+    expect(runtime.state()).toMatchObject({ undo: null });
+  });
+
+  it('loads the full message, and gives null when it did not load', async () => {
+    const fake = feedHost();
+    const runtime = await started(fake);
+
+    expect(await runtime.actions.loadAnnouncementMessage('101', '31901')).toBe('<p>Full</p>');
+    expect(fake.sent.at(-1)).toEqual({
+      type: 'weekrow:announcement',
+      courseId: '101',
+      topicId: '31901',
+    });
+
+    fake.reply = () => undefined;
+    expect(await runtime.actions.loadAnnouncementMessage('101', '31901')).toBeNull();
+  });
+
+  it('opens the announcement page of the saved Canvas, and sends no write', async () => {
+    const fake = feedHost();
+    const runtime = await started(fake);
+    fake.sent.length = 0;
+
+    runtime.actions.openAnnouncement('101', '31901');
+
+    expect(fake.host.openUrl).toHaveBeenCalledWith(
+      `${ORIGIN}/courses/101/discussion_topics/31901`,
+      ORIGIN,
+    );
+    expect(fake.sent).toEqual([]);
+  });
+});
