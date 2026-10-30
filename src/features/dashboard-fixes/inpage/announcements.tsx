@@ -342,15 +342,17 @@ export function announcementsFix(): Fix {
       'line-height',
       'color',
       'background-color',
-      'border-top-width',
-      'border-top-style',
-      'border-top-color',
+      'border-width',
+      'border-style',
+      'border-color',
       'border-radius',
       'padding-left',
       'padding-right',
     ]) {
       select.style.setProperty(name, native.getPropertyValue(name));
     }
+    select.style.setProperty('--wr-option-ink', native.color);
+    select.style.setProperty('--wr-option-background', native.backgroundColor);
     const text = field.querySelector('label');
     if (label !== null && text !== null) {
       const own = view.getComputedStyle(label);

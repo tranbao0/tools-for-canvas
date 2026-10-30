@@ -59,6 +59,9 @@ async function open(
   }
   await page.setViewportSize({ width: options.width ?? 1920, height: 1000 });
   await openCanvasPage(page, served.canvas.origin);
+  if (options.fixes?.announcementsInPlace !== false) {
+    await expect(page.locator(`${ANNOUNCEMENT} [data-wr-title]`)).toBeAttached();
+  }
   return served;
 }
 
@@ -323,6 +326,53 @@ test.describe('announcements in place', () => {
     await expect(page.locator('[data-wr-list]')).toHaveCount(0);
     await expect(widget.locator('[data-wr-content]')).toBeVisible();
   });
+});
+
+test('match the dark read filter colors', async ({ context, page }, testInfo) => {
+  await open(context, page);
+  await expect(page.locator('[data-wr-filter]')).toBeVisible();
+  await page
+    .locator('.fixture-widget-app')
+    .evaluate((app) => app.setAttribute('data-fixture-dark', ''));
+  const widget = page.getByTestId('widget-announcements-widget');
+  const read = widget.getByTestId('announcement-filter-select');
+  const course = widget.getByLabel('Course filter:');
+  // Signal the theme render through an attribute that the widget observer watches.
+  await read.evaluate((el) => el.setAttribute('value', 'Unread'));
+  const colors = (element: Element) => {
+    const style = getComputedStyle(element);
+    return { color: style.color, background: style.backgroundColor, border: style.borderColor };
+  };
+  await expect.poll(() => course.evaluate(colors)).toEqual(await read.evaluate(colors));
+  const expected = await read.evaluate(colors);
+  expect(await course.locator('option').first().evaluate(colors)).toMatchObject({
+    color: expected.color,
+    background: expected.background,
+  });
+  expect(await widget.locator('.wr-caret').evaluate((el) => getComputedStyle(el).color)).toBe(
+    await read.evaluate((el) => getComputedStyle(el.nextElementSibling!).borderRightColor),
+  );
+  const outline = (el: Element) => {
+    const css = getComputedStyle(el);
+    return [css.outlineColor, css.outlineStyle, css.outlineWidth, css.outlineOffset];
+  };
+  await read.focus();
+  const nativeFocus = await read.evaluate(outline);
+  await course.focus();
+  expect(await course.evaluate(outline)).toEqual(nativeFocus);
+  const luminance = (rgb: string) => {
+    const channels = rgb
+      .match(/\d+/g)!
+      .map(Number)
+      .map((n) => {
+        const c = n / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+    return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+  };
+  const contrast = (luminance(expected.color) + 0.05) / (luminance(expected.background) + 0.05);
+  expect(contrast).toBeGreaterThanOrEqual(4.5);
+  await page.screenshot({ path: testInfo.outputPath('announcements-dark.png'), fullPage: true });
 });
 
 test.describe('course work extras', () => {

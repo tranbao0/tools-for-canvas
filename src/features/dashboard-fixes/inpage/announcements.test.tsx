@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act } from '@testing-library/preact';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { announcementsFix } from './announcements';
 import {
   COURSES,
@@ -12,10 +12,11 @@ import {
 import type { AnnouncementEntry } from '../protocol';
 
 const ITEM = '[data-testid="announcement-item-31901"]';
-const flush = () =>
-  act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 40));
+async function flush(): Promise<void> {
+  await act(async () => {
+    await vi.runAllTimersAsync();
   });
+}
 
 function replies(
   context: FakeContext,
@@ -62,13 +63,17 @@ let fix: ReturnType<typeof announcementsFix>;
 let context: FakeContext;
 
 beforeEach(() => {
+  vi.useFakeTimers();
   drawDashboard();
   fix = announcementsFix();
   context = fakeContext();
   replies(context);
   fix.apply(context);
 });
-afterEach(() => fix.remove());
+afterEach(() => {
+  fix.remove();
+  vi.useRealTimers();
+});
 
 function readMore(): HTMLAnchorElement {
   return document.querySelector(`${ITEM} a[href*="discussion_topics"]`) as HTMLAnchorElement;
