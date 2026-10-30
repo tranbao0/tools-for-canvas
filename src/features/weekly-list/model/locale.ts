@@ -1,21 +1,8 @@
 /**
- * Locale rules that Canvas itself uses: the first day of the week and the 12-hour or 24-hour
- * clock. Both sets list the locales of canvas-lms `config/locales/locales.yml` that differ from
- * the default. A tag with a region or script is matched by its most specific listed prefix.
- * A language that Canvas does not list starts the week on Sunday and uses the browser's clock.
+ * Locale rules that Canvas itself uses for the 12-hour or 24-hour clock. The sets list the locales
+ * of canvas-lms `config/locales/locales.yml`. A tag with a region or script is matched by its most
+ * specific listed prefix. A language that Canvas does not list uses the browser's clock.
  */
-import type { IsoDayOfWeek, Settings } from './types';
-
-const SATURDAY_START = new Set(['ar', 'fa']);
-
-const MONDAY_START = new Set(
-  'ca cy da de el en-au en-gb es fi fr ga hu hy id is it ms nb nl nn pl pt ru sv th tr uk vi zh-hans zh-hant'.split(
-    ' ',
-  ),
-);
-
-/** Locales whose language starts the week on Monday but which Canvas starts on Sunday. */
-const SUNDAY_START = new Set(['fr-ca', 'pt-br']);
 
 /** The languages of canvas-lms `locales.yml`, whose clock Canvas sets. */
 const CANVAS_LANGUAGES = new Set(
@@ -45,17 +32,6 @@ export function localeCandidates(locale: string): string[] {
 /** The most specific prefix of the locale tag that one of the sets lists, or `undefined`. */
 function listedTag(locale: string, ...sets: ReadonlySet<string>[]): string | undefined {
   return localeCandidates(locale).find((tag) => sets.some((set) => set.has(tag)));
-}
-
-/** The first day of the week. `auto` uses the Canvas rule for the locale: Sunday unless listed. */
-export function resolveWeekStartDay(
-  setting: Settings['weekStart'],
-  effectiveLocale: string,
-): IsoDayOfWeek {
-  if (setting !== 'auto') return setting;
-  const tag = listedTag(effectiveLocale, SATURDAY_START, MONDAY_START, SUNDAY_START);
-  if (tag === undefined || SUNDAY_START.has(tag)) return 7;
-  return SATURDAY_START.has(tag) ? 6 : 1;
 }
 
 function intlHourCycle(locale: string): 'h12' | 'h23' {

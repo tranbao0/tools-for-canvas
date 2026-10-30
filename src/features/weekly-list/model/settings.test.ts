@@ -9,7 +9,6 @@ import { DEFAULT_SETTINGS, type Settings } from './types';
 
 const STORED: Settings = {
   span: { kind: 'custom', days: 10 },
-  weekStart: 2,
   hiddenCourseIds: ['7', '1~2'],
   showRings: false,
   showOnCanvasPages: false,
@@ -54,10 +53,6 @@ describe('normalizeSettings', () => {
     ['span', { kind: 'custom', days: '5' }],
     ['span', { kind: 'week' }],
     ['span', { kind: 'week', days: 7, extra: true }],
-    ['weekStart', 99],
-    ['weekStart', 0],
-    ['weekStart', '1'],
-    ['weekStart', null],
     ['hiddenCourseIds', 5],
     ['hiddenCourseIds', 'all'],
     ['hiddenCourseIds', { length: 1 }],
@@ -94,12 +89,15 @@ describe('normalizeSettings', () => {
     expect(result).toEqual({ ...DEFAULT_SETTINGS, showOnCanvasPages: false, theme: 'light' });
   });
 
-  it('keeps ids of the longest length that counts, and every week start', () => {
+  it('keeps ids of the longest length that counts', () => {
     const longest = '1'.repeat(MAX_COURSE_ID_LENGTH);
     expect(normalizeSettings({ hiddenCourseIds: [longest] }).hiddenCourseIds).toEqual([longest]);
-    for (const weekStart of ['auto', 1, 2, 3, 4, 5, 6, 7] as const) {
-      expect(normalizeSettings({ weekStart }).weekStart).toBe(weekStart);
-    }
+  });
+
+  it('drops a first day of the week that an earlier version stored', () => {
+    expect(normalizeSettings({ ...STORED, weekStart: 'auto' })).toEqual(STORED);
+    expect(normalizeSettings({ ...STORED, weekStart: 1 })).toEqual(STORED);
+    expect(isSettings({ ...STORED, weekStart: 1 })).toBe(false);
   });
 
   it('keeps every kind of span and the limits of a custom span', () => {

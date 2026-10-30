@@ -56,9 +56,6 @@ export type AssignmentData = Pick<
   submission?: SubmissionData;
 };
 
-/** ISO day of week: 1 is Monday, 7 is Sunday. */
-export type IsoDayOfWeek = 1 | 2 | 3 | 4 | 5 | 6 | 7;
-
 /** The kinds of span the list can show (design decision 9, "The shown span"). */
 export const SPAN_KINDS = ['day', 'week', 'fortnight', 'month', 'custom'] as const;
 export type SpanKind = (typeof SPAN_KINDS)[number];
@@ -78,8 +75,6 @@ export const DEFAULT_SPAN: Span = { kind: 'week', days: 7 };
 export interface Settings {
   /** The span the list shows. */
   span: Span;
-  /** `auto` takes the first day of the week from the Canvas language. */
-  weekStart: 'auto' | IsoDayOfWeek;
   hiddenCourseIds: string[];
   showRings: boolean;
   showOnCanvasPages: boolean;
@@ -92,7 +87,6 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   span: DEFAULT_SPAN,
-  weekStart: 'auto',
   hiddenCourseIds: [],
   showRings: true,
   showOnCanvasPages: true,
@@ -208,7 +202,7 @@ export interface ItemView extends Item {
   canSkip: boolean;
   /** A custom task with a past date. */
   canMoveToToday: boolean;
-  /** Shown in Tomorrow from the next week. Not counted in this week's rings. */
+  /** Shown in Tomorrow after a one-day span. Not counted in the rings. */
   isLookAhead: boolean;
 }
 

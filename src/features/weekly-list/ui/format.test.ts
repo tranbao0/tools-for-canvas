@@ -13,7 +13,6 @@ import {
   spanPhrase,
   spanUnit,
   timeZoneLabel,
-  weekdayName,
   zonedDate,
   zonedTime,
 } from './format';
@@ -25,19 +24,15 @@ describe('dates', () => {
   it('formats plain dates in English without a time zone shift', () => {
     expect(formatMonthDay('2026-11-01')).toBe('Nov 1');
     expect(formatWeekday('2026-10-28')).toBe('Wednesday');
-    expect(weekdayName(1)).toBe('Monday');
-    expect(weekdayName(7)).toBe('Sunday');
   });
 
   it('formats the week range within a month, across months and across years', () => {
     const week = { kind: 'week', days: 7 } as const;
-    expect(plain(formatSpanRange(week, '2026-10-25', '2026-10-31'))).toBe('Oct 25 - 31');
-    expect(plain(formatSpanRange(week, '2026-10-26', '2026-11-01'))).toBe('Oct 26 - Nov 1');
-    expect(plain(formatSpanRange(week, '2026-12-28', '2027-01-03'))).toBe('Dec 28 - Jan 3');
-    expect(formatSpanRangeLong(week, '2026-10-25', '2026-10-31')).toBe('Week of October 25 to 31');
-    expect(formatSpanRangeLong(week, '2026-10-26', '2026-11-01')).toBe(
-      'Week of October 26 to November 1',
-    );
+    expect(plain(formatSpanRange(week, '2026-10-22', '2026-10-28'))).toBe('Oct 22 - 28');
+    expect(plain(formatSpanRange(week, '2026-10-29', '2026-11-04'))).toBe('Oct 29 - Nov 4');
+    expect(plain(formatSpanRange(week, '2026-12-29', '2027-01-04'))).toBe('Dec 29 - Jan 4');
+    expect(formatSpanRangeLong(week, '2026-10-22', '2026-10-28')).toBe('October 22 to 28');
+    expect(formatSpanRangeLong(week, '2026-10-29', '2026-11-04')).toBe('October 29 to November 4');
   });
 });
 
@@ -52,7 +47,7 @@ describe('spans', () => {
     expect(plain(formatSpanRange(week, '2026-11-01', '2026-11-07'))).toBe('Nov 1 - 7');
     expect(plain(formatSpanRange(day, '2026-10-27', '2026-10-27'))).toBe('Tue, Oct 27');
     expect(plain(formatSpanRange(fortnight, '2026-11-02', '2026-11-15'))).toBe('Nov 2 - Nov 15');
-    expect(plain(formatSpanRange(month, '2026-11-01', '2026-11-30'))).toBe('November 2026');
+    expect(plain(formatSpanRange(month, '2026-10-29', '2026-11-28'))).toBe('Oct 29 - Nov 28');
     expect(plain(formatSpanRange(custom, '2026-12-28', '2027-01-06'))).toBe('Dec 28 - Jan 6');
   });
 
@@ -62,12 +57,14 @@ describe('spans', () => {
   });
 
   it('says each span in full for a screen reader', () => {
-    expect(formatSpanRangeLong(week, '2026-11-01', '2026-11-07')).toBe('Week of November 1 to 7');
+    expect(formatSpanRangeLong(week, '2026-11-01', '2026-11-07')).toBe('November 1 to 7');
     expect(formatSpanRangeLong(day, '2026-10-27', '2026-10-27')).toBe('Tuesday, October 27');
     expect(formatSpanRangeLong(fortnight, '2026-11-02', '2026-11-15')).toBe(
       'November 2 to November 15',
     );
-    expect(formatSpanRangeLong(month, '2026-11-01', '2026-11-30')).toBe('November 2026');
+    expect(formatSpanRangeLong(month, '2026-10-29', '2026-11-28')).toBe(
+      'October 29 to November 28',
+    );
     expect(formatSpanRangeLong(custom, '2026-12-28', '2027-01-06')).toBe(
       'December 28 to January 6',
     );
@@ -82,20 +79,28 @@ describe('spans', () => {
       '10 days',
     ]);
     expect([week, day, fortnight, month, custom].map(spanPhrase)).toEqual([
-      'this week',
-      'this day',
-      'in these 2 weeks',
-      'this month',
+      'in these 7 days',
+      'on this day',
+      'in these 14 days',
+      'in this month',
       'in these 10 days',
     ]);
   });
 
   it('names the span in the link that opens the rest', () => {
-    expect([week, day, fortnight, month, custom].map((span) => restOfSpanLabel(span, 9))).toEqual([
-      'Rest of the week (9)',
+    const spans = [week, day, fortnight, month, custom];
+    expect(spans.map((span) => restOfSpanLabel(span, 9, true))).toEqual([
+      'Next 7 days (9)',
       'No due date and done (9)',
-      'Rest of these 2 weeks (9)',
-      'Rest of the month (9)',
+      'Next 14 days (9)',
+      'Next month (9)',
+      'Next 10 days (9)',
+    ]);
+    expect(spans.map((span) => restOfSpanLabel(span, 9, false))).toEqual([
+      'Rest of these 7 days (9)',
+      'No due date and done (9)',
+      'Rest of these 14 days (9)',
+      'Rest of this month (9)',
       'Rest of these 10 days (9)',
     ]);
   });

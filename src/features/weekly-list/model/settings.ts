@@ -13,7 +13,6 @@ import {
   type Span,
 } from './types';
 
-const WEEK_STARTS: readonly unknown[] = ['auto', 1, 2, 3, 4, 5, 6, 7];
 const THEMES: readonly unknown[] = ['auto', 'light', 'dark'];
 
 /** The most courses a student can hide. A student has far fewer. */
@@ -23,10 +22,6 @@ export const MAX_COURSE_ID_LENGTH = 40;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
-}
-
-function isWeekStart(value: unknown): value is Settings['weekStart'] {
-  return WEEK_STARTS.includes(value);
 }
 
 /** Whether the value is a whole number of days that a custom span may hold. */
@@ -68,9 +63,8 @@ function isCourseIdList(value: unknown): value is string[] {
 export function isSettings(value: unknown): value is Settings {
   return (
     isRecord(value) &&
-    Object.keys(value).length === 6 &&
+    Object.keys(value).length === 5 &&
     isSpan(value['span']) &&
-    isWeekStart(value['weekStart']) &&
     isCourseIdList(value['hiddenCourseIds']) &&
     typeof value['showRings'] === 'boolean' &&
     typeof value['showOnCanvasPages'] === 'boolean' &&
@@ -88,7 +82,6 @@ export function normalizeSettings(stored: unknown): Settings {
   const fallback = structuredClone(DEFAULT_SETTINGS);
   return {
     span: isSpan(input['span']) ? { ...input['span'] } : fallback.span,
-    weekStart: isWeekStart(input['weekStart']) ? input['weekStart'] : fallback.weekStart,
     hiddenCourseIds: isCourseIdList(input['hiddenCourseIds'])
       ? [...input['hiddenCourseIds']]
       : fallback.hiddenCourseIds,

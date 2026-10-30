@@ -67,13 +67,13 @@ function placesOf(view: WeekView): Record<string, string> {
 
 const assignment = (id: string): string => `assignment:${id}`;
 
-describe('the fixture scenario: current week', () => {
+describe('the fixture scenario: the span that starts today', () => {
   const view = buildWeekView(scenarioInput());
 
-  it('asks the planner from the 16-week horizon to the end of the week', () => {
+  it('asks the planner from the 16-week horizon to the end of the span', () => {
     expect(plannerRangeFor(scenarioInput())).toEqual({
       start: '2026-07-07T04:00:00.000Z',
-      end: '2026-11-01T03:59:59.999Z',
+      end: '2026-11-03T04:59:59.999Z',
     });
   });
 
@@ -111,6 +111,8 @@ describe('the fixture scenario: current week', () => {
       [assignment(A.mathHomework8)]: 'day@2026-10-30.items',
       [assignment(A.chemGreenChemistryDiscussion)]: 'day@2026-10-30.items',
       [assignment(A.chemLab8PreLabLocked)]: 'day@2026-10-30.items',
+      // Due at 00:00 on the day the clocks go back.
+      [assignment(A.mathProblemSet7Midnight)]: 'day@2026-11-01.items',
       [assignment(A.bioExtraCreditUndated)]: 'no_due_date.items',
       [assignment(A.mathPracticeExamUndated)]: 'no_due_date.items',
       [assignment(A.chemSafetyContractUndated)]: 'no_due_date.items',
@@ -215,7 +217,7 @@ describe('the fixture scenario: current week', () => {
         label: 'MATH 221: Calculus II',
         shortLabel: 'MATH 221',
         done: 0,
-        total: 4,
+        total: 3,
         // Homework 3 is checked, but Canvas still counts it as missing.
         pastDue: 5,
       },
@@ -248,7 +250,7 @@ describe('the fixture scenario: current week', () => {
         label: 'Personal',
         shortLabel: 'Personal',
         done: 0,
-        total: 2,
+        total: 1,
         pastDue: 1,
       },
     ]);
@@ -267,11 +269,10 @@ describe('the fixture scenario: current week', () => {
   });
 });
 
-describe('the fixture scenario: other weeks and scopes', () => {
-  it('places next-week work, the peer review and the midnight item with their own range', () => {
+describe('the fixture scenario: other spans and scopes', () => {
+  it('places next-span work, the peer review and the midnight item with their own range', () => {
     const view = buildWeekView(scenarioInput({ spanOffset: 1 }));
     expect(placesOf(view)).toEqual({
-      [assignment(A.mathProblemSet7Midnight)]: 'day@2026-11-01.items',
       [assignment(A.historyParticipationWeek10)]: 'day@2026-11-03.items',
       [`planner_note:${IDS.notes.springRegistration}`]: 'day@2026-11-03.items',
       [`assessment_request:${IDS.assessmentRequests.bioLabReport3Review}`]: 'day@2026-11-04.items',

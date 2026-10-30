@@ -37,7 +37,7 @@ import {
   nothingDueView,
   ORIGIN,
   OTHER_OFFER,
-  pastWeekView,
+  pastSpanView,
   readyState,
 } from '../../src/features/weekly-list/ui/testing/mocks';
 import type { Settings } from '../../src/features/weekly-list/model/types';
@@ -134,7 +134,6 @@ function busyWeekView() {
 
 const settings: Settings = {
   span: { kind: 'week', days: 7 },
-  weekStart: 'auto',
   hiddenCourseIds: [COURSES.psyc.id],
   showRings: true,
   showOnCanvasPages: true,
@@ -228,7 +227,7 @@ const scenes: Scene[] = [
   {
     name: 'ready-past-week',
     widths: PANEL_WIDTHS,
-    render: app('panel', readyState({ view: pastWeekView() })),
+    render: app('panel', readyState({ view: pastSpanView() })),
   },
   {
     name: 'ready-span-day',

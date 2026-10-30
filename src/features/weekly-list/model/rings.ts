@@ -10,7 +10,7 @@ export interface RingEntry {
   courseId: string | null;
   /** Label from the item, used when the course is unknown. */
   contextLabel: string;
-  /** Dated in the viewed week, not skipped and not a reminder. */
+  /** Dated in the shown span, not skipped and not a reminder. */
   counted: boolean;
   done: boolean;
   /** Shown in the Past due group and not skipped. */
@@ -97,7 +97,7 @@ function emptyRing(
 
 /**
  * One ring per course with counted items or past-due items, in dashboard order.
- * A ring counts items: `done` of `total` items dated in the viewed week.
+ * A ring counts items: `done` of `total` items dated in the shown span.
  */
 export function buildRings(entries: readonly RingEntry[], params: RingParams): Ring[] {
   const courses = new Map(params.courses.map((course) => [course.id, course]));

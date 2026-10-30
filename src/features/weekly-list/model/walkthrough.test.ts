@@ -1,6 +1,6 @@
 /**
- * A full week in America/New_York: Sunday 2026-10-25 to Saturday 2026-10-31, with now on
- * Tuesday 2026-10-27 at 2:00 pm. Every item must land in exactly one place with the right chips.
+ * A full span in America/New_York: the week from Tuesday 2026-10-27 to Monday 2026-11-02, with now
+ * on Tuesday 2026-10-27 at 2:00 pm. Every item must land in exactly one place with the right chips.
  */
 import { describe, expect, it } from 'vitest';
 import type { Assignment, Group, PlannerItem } from '../../../shared/canvas/types';
@@ -132,7 +132,7 @@ const plannerItems: PlannerItem[] = [
     id: '6001',
     courseId: '303',
     title: 'Safety rules',
-    date: '2026-10-26T13:00:00Z',
+    date: '2026-10-27T13:00:00Z',
     override: override(
       'o6001',
       { markedComplete: true, dismissed: true },
@@ -370,13 +370,13 @@ const EXPECTED_PLACES: Record<string, string> = {
   'assignment:1010': 'done.items',
 };
 
-describe('walk-through: current week', () => {
+describe('walk-through: the span that starts today', () => {
   const view: WeekView = buildWeekView(walkthroughInput());
 
-  it('describes the week', () => {
+  it('describes the span', () => {
     expect(view).toMatchObject({
-      spanStart: '2026-10-25',
-      spanEnd: '2026-10-31',
+      spanStart: '2026-10-27',
+      spanEnd: '2026-11-02',
       spanOffset: 0,
       isCurrentSpan: true,
       today: '2026-10-27',
@@ -600,20 +600,20 @@ describe('walk-through: current week', () => {
         pastDue,
       })),
     ).toEqual([
-      { courseId: '101', label: 'Biology', done: 1, total: 5, pastDue: 3 },
-      { courseId: '202', label: 'History', done: 1, total: 3, pastDue: 2 },
+      { courseId: '101', label: 'Biology', done: 1, total: 4, pastDue: 3 },
+      { courseId: '202', label: 'History', done: 0, total: 2, pastDue: 2 },
       // The checked indicator lab that Canvas marks missing counts as past due.
       { courseId: '303', label: 'Chemistry', done: 1, total: 3, pastDue: 1 },
       { courseId: '505', label: 'Orientation', done: 0, total: 0, pastDue: 1 },
-      { courseId: null, label: 'Personal', done: 0, total: 2, pastDue: 1 },
+      { courseId: null, label: 'Personal', done: 0, total: 1, pastDue: 1 },
     ]);
     expect(view.rings[0]?.color).toBe('#FF0000');
   });
 
-  it('asks the planner for the earliest horizon to the end of the week', () => {
+  it('asks the planner for the earliest horizon to the end of the span', () => {
     expect(plannerRangeFor(walkthroughInput())).toEqual({
       start: '2026-07-07T04:00:00.000Z',
-      end: '2026-11-01T03:59:59.999Z',
+      end: '2026-11-03T04:59:59.999Z',
     });
   });
 
@@ -679,12 +679,12 @@ describe('walk-through: filters and scope', () => {
   });
 });
 
-describe('walk-through: other weeks', () => {
-  it('places the next-week peer review on its real date', () => {
+describe('walk-through: other spans', () => {
+  it('places the next-span peer review on its real date', () => {
     const view = buildWeekView(walkthroughInput({ spanOffset: 1 }));
     expect(view).toMatchObject({
-      spanStart: '2026-11-01',
-      spanEnd: '2026-11-07',
+      spanStart: '2026-11-03',
+      spanEnd: '2026-11-09',
       isCurrentSpan: false,
       nothingDue: false,
     });
@@ -703,19 +703,17 @@ describe('walk-through: other weeks', () => {
     ).toEqual([{ courseId: '101', done: 0, total: 1, pastDue: 0 }]);
   });
 
-  it('keeps open work on its day with a chip in a past week', () => {
+  it('keeps open work on its day with a chip in a past span', () => {
     const view = buildWeekView(walkthroughInput({ spanOffset: -1 }));
     expect(
       Object.fromEntries([...placements(view)].map(([key, places]) => [key, places.join(' + ')])),
     ).toEqual({
-      'assignment:1008': 'day@2026-10-19.items',
+      'assignment:1007': 'day@2026-10-26.items',
       'assignment:1011': 'day@2026-10-21.items',
       'assignment:1009': 'done.items',
+      'assignment:2002': 'done.items',
       'assignment:2004': 'day@2026-10-23.items',
-    });
-    expect(findItem(view, 'assignment:1008')).toMatchObject({
-      chip: { kind: 'skipped' },
-      canSkip: false,
+      'planner_note:8002': 'day@2026-10-26.items',
     });
     expect(findItem(view, 'assignment:1011').chip).toEqual({
       kind: 'teacher_status',
@@ -725,11 +723,25 @@ describe('walk-through: other weeks', () => {
       chip: { kind: 'past_due' },
       canSkip: false,
     });
+    expect(findItem(view, 'assignment:1007')).toMatchObject({
+      chip: { kind: 'redo_requested' },
+      canSkip: false,
+    });
     expect(
       view.rings.map(({ courseId, done, total, pastDue }) => ({ courseId, done, total, pastDue })),
     ).toEqual([
-      { courseId: '101', done: 1, total: 2, pastDue: 0 },
-      { courseId: '202', done: 0, total: 1, pastDue: 0 },
+      { courseId: '101', done: 1, total: 3, pastDue: 0 },
+      { courseId: '202', done: 1, total: 2, pastDue: 0 },
+      { courseId: null, done: 0, total: 1, pastDue: 0 },
     ]);
+  });
+
+  it('shows a skipped item on its day with the Skipped chip', () => {
+    const view = buildWeekView(walkthroughInput({ spanOffset: -2 }));
+    expect(findItem(view, 'assignment:1008')).toMatchObject({
+      chip: { kind: 'skipped' },
+      canSkip: false,
+    });
+    expect(placeOf(view, 'assignment:1008')).toBe('day@2026-10-19.items');
   });
 });

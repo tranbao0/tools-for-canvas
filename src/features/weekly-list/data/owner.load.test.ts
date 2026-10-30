@@ -110,6 +110,7 @@ describe('first load', () => {
       'tomorrow',
       'day',
       'day',
+      'day',
       'no_due_date',
       'done',
     ]);
@@ -283,7 +284,7 @@ describe('first load', () => {
     h.canvas.resetCalls();
 
     const next = expectReady(await h.owner.getState({ ...PANEL, spanOffset: 1 }));
-    expect(next.view.spanStart).toBe('2026-11-01');
+    expect(next.view.spanStart).toBe('2026-11-03');
     expect(next.refreshing).toBe(false);
     // The peer review that Canvas files under last week's due date shows on its own day.
     expect(
@@ -308,7 +309,7 @@ describe('first load', () => {
     const state = expectReady(await h.owner.getState(later));
     await h.owner.settled();
 
-    expect(state.view.spanStart).toBe('2026-11-08');
+    expect(state.view.spanStart).toBe('2026-11-10');
     expect(h.canvas.callsOf('getProfile')).toHaveLength(0);
     // The week after it loads ahead, and nothing reaches back to the horizon.
     expect(h.canvas.plannerRanges()).toEqual([await spanOf(h, 2), await spanOf(h, 3)]);
@@ -343,7 +344,7 @@ describe('first load', () => {
     const previous = expectReady(await h.owner.getState({ ...PANEL, spanOffset: -1 }));
     await h.owner.settled();
 
-    expect(previous.view.spanStart).toBe('2026-10-18');
+    expect(previous.view.spanStart).toBe('2026-10-20');
     expect(previous.refreshing).toBe(false);
     expect(h.canvas.calls).toEqual([]);
   });
@@ -474,14 +475,14 @@ describe('the shown span', () => {
 
     expect(state.view).toMatchObject({
       span: { kind: 'month', days: 7 },
-      spanStart: '2026-10-01',
-      spanEnd: '2026-10-31',
+      spanStart: '2026-10-27',
+      spanEnd: '2026-11-26',
     });
     // The first views load the month and the month after it, which loads ahead.
     expect(joinRanges(h.canvas.plannerRanges())).toEqual([
       { start: (await rangeOf(h, 0)).start, end: (await rangeOf(h, 1)).end },
     ]);
-    expect((await rangeOf(h, 0)).end).toBe('2026-11-01T03:59:59.999Z');
+    expect((await rangeOf(h, 0)).end).toBe('2026-11-27T04:59:59.999Z');
   });
 
   it('loads the neighbor span ahead, and only what the cache lacks', async () => {
@@ -492,7 +493,7 @@ describe('the shown span', () => {
     const next = expectReady(await h.owner.getState({ ...PANEL, spanOffset: 1 }));
     await h.owner.settled();
 
-    expect(next.view).toMatchObject({ spanStart: '2026-11-01', spanEnd: '2026-11-30' });
+    expect(next.view).toMatchObject({ spanStart: '2026-11-27', spanEnd: '2026-12-26' });
     // The month after the shown month was loaded ahead, so the arrow shows it at once.
     expect(joinRanges(h.canvas.plannerRanges())).toEqual([await spanOf(h, 2)]);
   });
@@ -505,13 +506,15 @@ describe('the shown span', () => {
     await h.owner.refresh('settings');
     h.canvas.resetCalls();
 
-    const state = expectReady(await h.owner.getState(PANEL));
+    // The cache holds the week and its neighbor, so the month waits for the rest of its days.
+    expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
     await h.owner.settled();
+    const state = expectReady(await h.owner.getState(PANEL));
 
-    expect(state.view).toMatchObject({ spanStart: '2026-10-01', spanEnd: '2026-10-31' });
-    // The cache held the week and its neighbor, so only the rest of the month is requested.
+    expect(state.view).toMatchObject({ spanStart: '2026-10-27', spanEnd: '2026-11-26' });
+    // Only the days after the cached range are requested.
     for (const range of h.canvas.plannerRanges()) {
-      expect(Date.parse(range.end)).toBeGreaterThan(Date.parse('2026-11-01T04:00:00Z'));
+      expect(Date.parse(range.start)).toBeGreaterThan(Date.parse('2026-11-01T04:00:00Z'));
     }
   });
 

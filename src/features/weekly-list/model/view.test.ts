@@ -44,37 +44,42 @@ function placesOf(view: ReturnType<typeof buildWeekView>): Record<string, string
 describe('plannerRangeFor', () => {
   const range = (partial: Partial<ModelInput> = {}) => plannerRangeFor(input(partial));
 
-  it('starts at the earliest horizon and ends one millisecond before the week ends', () => {
+  it('starts at the earliest horizon and ends one millisecond before the span ends', () => {
     expect(range()).toEqual({
       start: '2026-08-24T04:00:00.000Z',
-      end: '2026-11-01T03:59:59.999Z',
+      end: '2026-11-03T04:59:59.999Z',
     });
   });
 
-  it('ends at the end of tomorrow on the last day of the week, after the daylight saving change', () => {
-    expect(range({ now: '2026-10-31T18:00:00Z' }).end).toBe('2026-11-02T04:59:59.999Z');
+  it('ends at the end of tomorrow when a Day span ends before it, after the daylight saving change', () => {
+    expect(
+      range({
+        now: '2026-10-31T18:00:00Z',
+        settings: { ...DEFAULT_SETTINGS, span: { kind: 'day', days: 7 } },
+      }).end,
+    ).toBe('2026-11-02T04:59:59.999Z');
   });
 
-  it('starts at the viewed week when the week is older than every horizon, and still ends after tomorrow', () => {
+  it('starts at the viewed span when the span is older than every horizon, and still ends after tomorrow', () => {
     expect(range({ spanOffset: -12 })).toEqual({
-      start: '2026-08-02T04:00:00.000Z',
+      start: '2026-08-04T04:00:00.000Z',
       end: '2026-10-29T03:59:59.999Z',
     });
   });
 
-  it('starts no later than the current week when every term starts in the future', () => {
+  it('starts no later than today when every term starts in the future', () => {
     const futureTerm = [course('101', 'Biology', '2026-11-02T05:00:00Z')];
     expect(range({ courses: futureTerm })).toEqual({
-      start: '2026-10-25T04:00:00.000Z',
-      end: '2026-11-01T03:59:59.999Z',
+      start: '2026-10-27T04:00:00.000Z',
+      end: '2026-11-03T04:59:59.999Z',
     });
-    expect(range({ courses: futureTerm, spanOffset: 1 }).start).toBe('2026-10-25T04:00:00.000Z');
+    expect(range({ courses: futureTerm, spanOffset: 1 }).start).toBe('2026-10-27T04:00:00.000Z');
   });
 
   it('ignores hidden courses and uses 16 weeks when no course is visible', () => {
     expect(
       range({ spanOffset: 1, settings: { ...DEFAULT_SETTINGS, hiddenCourseIds: ['101'] } }),
-    ).toEqual({ start: '2026-07-07T04:00:00.000Z', end: '2026-11-08T04:59:59.999Z' });
+    ).toEqual({ start: '2026-07-07T04:00:00.000Z', end: '2026-11-10T04:59:59.999Z' });
   });
 
   it('has plain UTC instants with no bracketed zone', () => {
@@ -82,7 +87,6 @@ describe('plannerRangeFor', () => {
     const result = range({
       browserTimeZone: 'Asia/Tokyo',
       profile: { ...tokyo, time_zone: 'Asia/Tokyo' },
-      settings: { ...DEFAULT_SETTINGS, weekStart: 1 },
     });
     expect(result.start).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     expect(result.end).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.999Z$/);
@@ -90,10 +94,13 @@ describe('plannerRangeFor', () => {
 });
 
 describe('the Tomorrow look-ahead', () => {
-  it('shows tomorrow from the next week on the last day of a Sunday week, outside the rings', () => {
+  const day = { ...DEFAULT_SETTINGS, span: { kind: 'day', days: 7 } } as const;
+
+  it('shows tomorrow after a Day span, outside the rings', () => {
     const view = buildWeekView(
       input({
         now: SATURDAY_2PM,
+        settings: day,
         plannerItems: [
           task('1', '2026-11-01T15:00:00Z'),
           task('2', '2026-11-01T16:00:00Z', { submissions: { submitted: true } }),
@@ -125,104 +132,62 @@ describe('the Tomorrow look-ahead', () => {
     ]);
   });
 
-  it('works with a Monday week, where Sunday is the last day', () => {
-    const view = buildWeekView(
-      input({
-        now: '2026-11-01T19:00:00Z',
-        settings: { ...DEFAULT_SETTINGS, weekStart: 1 },
-        plannerItems: [task('1', '2026-11-02T16:00:00Z'), task('2', '2026-11-03T16:00:00Z')],
-      }),
-    );
-    expect(view).toMatchObject({
-      spanStart: '2026-10-26',
-      spanEnd: '2026-11-01',
-      today: '2026-11-01',
-    });
-    expect(placesOf(view)).toEqual({ 'assignment:1': 'tomorrow@2026-11-02.items' });
-    expect(findItem(view, 'assignment:1').isLookAhead).toBe(true);
-  });
-
-  it('is a normal day in the middle of the week', () => {
+  it('is a normal day inside a Week span', () => {
     const view = buildWeekView(input({ plannerItems: [task('1', '2026-10-28T16:00:00Z')] }));
     expect(findItem(view, 'assignment:1')).toMatchObject({ isLookAhead: false });
     expect(view.rings[0]).toMatchObject({ total: 1 });
   });
+
+  it('is a normal day on the last day of a Week span, where tomorrow is in the next span', () => {
+    const view = buildWeekView(
+      input({ plannerItems: [task('1', '2026-11-03T16:00:00Z')], spanOffset: 0 }),
+    );
+    expect(view.spanEnd).toBe('2026-11-02');
+    expect(placesOf(view)).toEqual({});
+  });
 });
 
-describe('week starts', () => {
-  it('uses a Saturday week from the Canvas language', () => {
-    const view = buildWeekView(
-      input({
-        profile: {
-          id: '1',
-          name: 'Sam',
-          time_zone: 'America/New_York',
-          locale: null,
-          effective_locale: 'ar',
-        },
-        plannerItems: [
-          task('1', '2026-10-24T16:00:00Z'),
-          task('2', '2026-10-30T16:00:00Z'),
-          task('3', '2026-10-31T16:00:00Z'),
-        ],
-      }),
-    );
-    expect(view).toMatchObject({
-      spanStart: '2026-10-24',
-      spanEnd: '2026-10-30',
-      hourCycle: 'h23',
-    });
-    expect(placesOf(view)).toEqual({
-      'assignment:1': 'past_due.items',
-      'assignment:2': 'day@2026-10-30.items',
-    });
-  });
+describe('the Canvas language', () => {
+  const noLanguage = { ...input().profile, locale: null, effective_locale: '' };
 
-  it('uses the Monday setting over the Canvas language', () => {
-    const view = buildWeekView(input({ settings: { ...DEFAULT_SETTINGS, weekStart: 1 } }));
-    expect(view).toMatchObject({ spanStart: '2026-10-26', spanEnd: '2026-11-01' });
+  it('sets the clock from effective_locale', () => {
+    const arabic = { ...input().profile, effective_locale: 'ar' };
+    expect(buildWeekView(input({ profile: arabic })).hourCycle).toBe('h23');
+    expect(buildWeekView(input()).hourCycle).toBe('h12');
   });
 
   it('falls back to the browser language when Canvas sends no language', () => {
-    const noLanguage = { ...input().profile, locale: null, effective_locale: '' };
-    const view = buildWeekView(input({ profile: noLanguage, browserLanguage: 'en-GB' }));
-    expect(view).toMatchObject({
-      spanStart: '2026-10-26',
-      spanEnd: '2026-11-01',
-      hourCycle: 'h23',
-    });
-    expect(
-      plannerRangeFor(input({ profile: noLanguage, browserLanguage: 'en-GB', courses: [] })),
-    ).toEqual({ start: '2026-07-07T04:00:00.000Z', end: '2026-11-02T04:59:59.999Z' });
-    expect(buildWeekView(input({ profile: noLanguage })).spanStart).toBe('2026-10-25');
+    expect(buildWeekView(input({ profile: noLanguage, browserLanguage: 'en-GB' })).hourCycle).toBe(
+      'h23',
+    );
+    expect(buildWeekView(input({ profile: noLanguage })).hourCycle).toBe('h12');
   });
 
   it('prefers the Canvas language over the browser language', () => {
-    const view = buildWeekView(input({ browserLanguage: 'de' }));
-    expect(view).toMatchObject({ spanStart: '2026-10-25' });
+    expect(buildWeekView(input({ browserLanguage: 'de' })).hourCycle).toBe('h12');
   });
 });
 
-describe('items at the week boundaries', () => {
-  it('puts an item at exactly 00:00 in its new week, and one at 23:59:59.999 in the old one', () => {
+describe('items at the span boundaries', () => {
+  it('puts an item at exactly 00:00 in its new span, and one at 23:59:59.999 in the old one', () => {
     const items = [
-      task('a', '2026-11-01T03:59:59.999Z'),
-      task('b', '2026-11-01T04:00:00Z'),
-      task('c', '2026-11-08T04:59:59.999Z'),
-      task('d', '2026-11-08T05:00:00Z'),
-      task('e', '2026-11-01T05:30:00Z'),
-      task('f', '2026-11-01T06:30:00Z'),
+      task('a', '2026-11-03T04:59:59.999Z'),
+      task('b', '2026-11-03T05:00:00Z'),
+      task('c', '2026-11-10T04:59:59.999Z'),
+      task('d', '2026-11-10T05:00:00Z'),
+      task('e', '2026-11-03T05:30:00Z'),
+      task('f', '2026-11-03T06:30:00Z'),
     ];
-    const nextWeek = buildWeekView(input({ spanOffset: 1, plannerItems: items }));
-    expect(nextWeek).toMatchObject({ spanStart: '2026-11-01', spanEnd: '2026-11-07' });
-    expect(placesOf(nextWeek)).toEqual({
-      'assignment:b': 'day@2026-11-01.items',
-      'assignment:e': 'day@2026-11-01.items',
-      'assignment:f': 'day@2026-11-01.items',
-      'assignment:c': 'day@2026-11-07.items',
+    const nextSpan = buildWeekView(input({ spanOffset: 1, plannerItems: items }));
+    expect(nextSpan).toMatchObject({ spanStart: '2026-11-03', spanEnd: '2026-11-09' });
+    expect(placesOf(nextSpan)).toEqual({
+      'assignment:b': 'day@2026-11-03.items',
+      'assignment:e': 'day@2026-11-03.items',
+      'assignment:f': 'day@2026-11-03.items',
+      'assignment:c': 'day@2026-11-09.items',
     });
-    const thisWeek = buildWeekView(input({ plannerItems: items }));
-    expect(placesOf(thisWeek)).toEqual({ 'assignment:a': 'day@2026-10-31.items' });
+    const thisSpan = buildWeekView(input({ plannerItems: items }));
+    expect(placesOf(thisSpan)).toEqual({ 'assignment:a': 'day@2026-11-02.items' });
   });
 });
 
@@ -269,8 +234,8 @@ describe('time zones', () => {
     );
     expect(view).toMatchObject({
       today: '2026-10-28',
-      spanStart: '2026-10-26',
-      spanEnd: '2026-11-01',
+      spanStart: '2026-10-28',
+      spanEnd: '2026-11-03',
       browserTimeZoneDiffers: false,
     });
     expect(placesOf(view)).toEqual({
@@ -344,20 +309,20 @@ describe('the Past due group', () => {
     });
   });
 
-  it("shows this week's past-due work and counts it in the ring while the term starts later", () => {
+  it('shows work due earlier today and counts it in the ring while the term starts later', () => {
     const futureTerm = course('101', 'Biology', '2026-11-02T05:00:00Z');
     const view = buildWeekView(
       input({
         courses: [futureTerm],
         plannerItems: [
-          task('this-week', '2026-10-26T16:00:00Z'),
-          task('last-week', '2026-10-24T16:00:00Z'),
+          task('earlier-today', '2026-10-27T14:00:00Z'),
+          task('yesterday', '2026-10-26T16:00:00Z'),
           task('friday', '2026-10-30T16:00:00Z'),
         ],
       }),
     );
     expect(placesOf(view)).toEqual({
-      'assignment:this-week': 'past_due.items',
+      'assignment:earlier-today': 'past_due.items',
       'assignment:friday': 'day@2026-10-30.items',
     });
     expect(view.rings[0]).toMatchObject({ done: 0, total: 2, pastDue: 1 });
@@ -381,7 +346,7 @@ describe('the Past due group', () => {
     expect(placesOf(view)).toEqual({ 'assignment:before-term': 'past_due.older' });
   });
 
-  it('holds past-due items from earlier in the week and today, not their day', () => {
+  it('holds past-due items from before today and from earlier today, not their day', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
@@ -404,12 +369,13 @@ describe('the Past due group', () => {
 });
 
 describe('Done', () => {
-  it('holds done items of the week and earlier done items with a warning only', () => {
+  it('holds done items of the span and earlier done items with a warning only', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
-          task('this-week', '2026-10-26T16:00:00Z', { submissions: { submitted: true } }),
-          task('later-this-week', '2026-10-30T16:00:00Z', { submissions: { graded: true } }),
+          task('in-span', '2026-10-27T16:00:00Z', { submissions: { submitted: true } }),
+          task('yesterday', '2026-10-26T16:00:00Z', { submissions: { submitted: true } }),
+          task('later-in-span', '2026-10-30T16:00:00Z', { submissions: { graded: true } }),
           task('earlier-plain', '2026-10-14T16:00:00Z', { submissions: { submitted: true } }),
           task('earlier-redo', '2026-10-14T17:00:00Z', {
             submissions: { redo_request: true },
@@ -428,8 +394,8 @@ describe('Done', () => {
     );
     expect(placesOf(view)).toEqual({
       'assignment:earlier-redo': 'done.items',
-      'assignment:this-week': 'done.items',
-      'assignment:later-this-week': 'done.items',
+      'assignment:in-span': 'done.items',
+      'assignment:later-in-span': 'done.items',
     });
     expect(view.groups.find((group) => group.kind === 'done')?.warningCount).toBe(1);
     expect(view.rings[0]).toMatchObject({ done: 2, total: 2, pastDue: 0 });
@@ -448,7 +414,7 @@ describe('Done', () => {
           }),
         ],
         plannerItems: [
-          task('this-week', '2026-10-26T16:00:00Z', { submissions: { submitted: true } }),
+          task('in-span', '2026-10-27T16:00:00Z', { submissions: { submitted: true } }),
         ],
         overrides: [
           override('o2', { markedComplete: true, dismissed: false }, { assignmentId: 'u-redo' }),
@@ -456,13 +422,13 @@ describe('Done', () => {
       }),
     );
     expect(placesOf(view)).toEqual({
-      'assignment:this-week': 'done.items',
+      'assignment:in-span': 'done.items',
       'assignment:u-redo': 'done.items',
       'assignment:u-plain': 'no_due_date.doneUndated',
     });
     const done = view.groups.find((group) => group.kind === 'done');
     expect(done?.items.map((item) => item.key)).toEqual([
-      'assignment:this-week',
+      'assignment:in-span',
       'assignment:u-redo',
     ]);
     expect(done?.warningCount).toBe(1);
@@ -474,7 +440,7 @@ describe('Done', () => {
     expect(view.rings[0]).toMatchObject({ done: 1, total: 1 });
   });
 
-  it('does not hold earlier warnings in other weeks', () => {
+  it('does not hold earlier warnings in other spans', () => {
     const view = buildWeekView(
       input({
         spanOffset: 1,
@@ -498,7 +464,7 @@ describe('checked but missing', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
-          task('recent', '2026-10-26T16:00:00Z', {
+          task('recent', '2026-10-27T14:00:00Z', {
             submissions: { missing: true },
             override: checked,
           }),
@@ -506,7 +472,7 @@ describe('checked but missing', () => {
             submissions: { missing: true },
             override: override('o2', { markedComplete: true, dismissed: false }),
           }),
-          task('plain', '2026-10-26T17:00:00Z', {
+          task('plain', '2026-10-27T17:00:00Z', {
             override: override('o3', { markedComplete: true, dismissed: false }),
           }),
           task('before-horizon', '2026-08-01T17:00:00Z', {
@@ -584,7 +550,7 @@ describe('checked but missing', () => {
         buildWeekView(
           input({
             plannerItems: [
-              task('work', '2026-10-26T16:00:00Z', {
+              task('work', '2026-10-27T16:00:00Z', {
                 submissions: { missing },
                 override: override('o1', flags),
               }),
@@ -794,7 +760,7 @@ describe('No due date', () => {
 });
 
 describe('nothing due', () => {
-  it('is false when the week has items, even when none of them is in a day group', () => {
+  it('is false when the span has items, even when none of them is in a day group', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
@@ -805,10 +771,10 @@ describe('nothing due', () => {
     );
     expect(view.nothingDue).toBe(false);
     expect(view.groups.map((group) => group.kind)).toEqual(['past_due', 'done']);
-    expect(view.rings[0]).toMatchObject({ done: 1, total: 2, pastDue: 1 });
+    expect(view.rings[0]).toMatchObject({ done: 1, total: 1, pastDue: 1 });
   });
 
-  it('is false in another week whose items are all done', () => {
+  it('is false in another span whose items are all done', () => {
     const view = buildWeekView(
       input({
         spanOffset: -1,
@@ -823,7 +789,7 @@ describe('nothing due', () => {
     expect(view.rings[0]).toMatchObject({ done: 2, total: 2 });
   });
 
-  it('is true when only earlier weeks fill Past due, and No due date and Done still show', () => {
+  it('is true when only earlier days fill Past due, and No due date and Done still show', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
@@ -844,15 +810,19 @@ describe('nothing due', () => {
     expect(view.groups.map((group) => group.kind)).toEqual(['past_due', 'no_due_date', 'done']);
   });
 
-  it('is true when only the Tomorrow look-ahead from the next week has items', () => {
+  it('is true when only the Tomorrow look-ahead after a Day span has items', () => {
     const view = buildWeekView(
-      input({ now: SATURDAY_2PM, plannerItems: [task('1', '2026-11-01T15:00:00Z')] }),
+      input({
+        now: SATURDAY_2PM,
+        settings: { ...DEFAULT_SETTINGS, span: { kind: 'day', days: 7 } },
+        plannerItems: [task('1', '2026-11-01T15:00:00Z')],
+      }),
     );
     expect(view.nothingDue).toBe(true);
     expect(view.groups.map((group) => group.kind)).toEqual(['tomorrow']);
   });
 
-  it('is true when the reminders of the week are on earlier days, which do not show', () => {
+  it('is true when the reminders of the span are on earlier days, which do not show', () => {
     const view = buildWeekView(
       input({
         plannerItems: [task('r', '2026-10-26T16:00:00Z')],
@@ -1042,11 +1012,11 @@ describe('item actions', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
-          task('redo', '2026-10-26T16:00:00Z', {
+          task('redo', '2026-10-27T14:00:00Z', {
             submissions: { submitted: true, redo_request: true },
             override: override('o', { markedComplete: true, dismissed: true }),
           }),
-          task('skipped-redo', '2026-10-26T17:00:00Z', {
+          task('skipped-redo', '2026-10-27T15:00:00Z', {
             submissions: { submitted: true, redo_request: true },
             override: override('p', { markedComplete: false, dismissed: true }),
           }),
@@ -1121,6 +1091,7 @@ describe('the shown span', () => {
     task('nov3', '2026-11-03T15:00:00Z'),
     task('nov6', '2026-11-06T15:00:00Z'),
     task('nov20', '2026-11-20T15:00:00Z'),
+    task('dec1', '2026-12-01T15:00:00Z'),
   ];
   const details = detailsById(items.map((item) => upload(item.plannable_id)));
   const view = (partial: Partial<ModelInput>) =>
@@ -1129,8 +1100,8 @@ describe('the shown span', () => {
   it('carries the span and its days in the view', () => {
     expect(view(span('fortnight'))).toMatchObject({
       span: { kind: 'fortnight', days: 7 },
-      spanStart: '2026-10-25',
-      spanEnd: '2026-11-07',
+      spanStart: '2026-10-27',
+      spanEnd: '2026-11-09',
       isCurrentSpan: true,
       spanOffset: 0,
     });
@@ -1142,7 +1113,7 @@ describe('the shown span', () => {
     });
   });
 
-  it('Week puts only the earlier work of this week in Past due', () => {
+  it('Week starts today, and puts the work before today in Past due', () => {
     expect(placesOf(view(span('week')))).toEqual({
       'assignment:mon': 'past_due.items',
       'assignment:oct5': 'past_due.older',
@@ -1151,29 +1122,29 @@ describe('the shown span', () => {
     });
   });
 
-  it('Month shows the whole month, with earlier work in Past due and the rest on its day', () => {
+  it('Month runs from today, with earlier work in Past due and the rest on its day', () => {
     const month = view(span('month'));
+    expect(month).toMatchObject({ spanStart: '2026-10-27', spanEnd: '2026-11-26' });
     expect(placesOf(month)).toEqual({
       'assignment:mon': 'past_due.items',
       'assignment:oct5': 'past_due.older',
       'assignment:today': 'today@2026-10-27.items',
       'assignment:tomorrow': 'tomorrow@2026-10-28.items',
-    });
-    expect(month.rings[0]).toMatchObject({ total: 4, done: 0, pastDue: 2 });
-  });
-
-  it('Month, a month ahead, shows that month on its days and nothing in Past due', () => {
-    const next = view({ ...span('month'), spanOffset: 1 });
-    expect(next).toMatchObject({ spanStart: '2026-11-01', spanEnd: '2026-11-30' });
-    expect(placesOf(next)).toEqual({
       'assignment:nov3': 'day@2026-11-03.items',
       'assignment:nov6': 'day@2026-11-06.items',
       'assignment:nov20': 'day@2026-11-20.items',
     });
-    expect(next.rings[0]).toMatchObject({ total: 3, done: 0, pastDue: 0 });
+    expect(month.rings[0]).toMatchObject({ total: 5, done: 0, pastDue: 2 });
   });
 
-  it('2 weeks shows both weeks, and counts both in the rings', () => {
+  it('Month, a month ahead, shows that month on its days and nothing in Past due', () => {
+    const next = view({ ...span('month'), spanOffset: 1 });
+    expect(next).toMatchObject({ spanStart: '2026-11-27', spanEnd: '2026-12-26' });
+    expect(placesOf(next)).toEqual({ 'assignment:dec1': 'day@2026-12-01.items' });
+    expect(next.rings[0]).toMatchObject({ total: 1, done: 0, pastDue: 0 });
+  });
+
+  it('2 weeks shows 14 days from today, and counts them in the rings', () => {
     const fortnight = view(span('fortnight'));
     expect(placesOf(fortnight)).toEqual({
       'assignment:mon': 'past_due.items',
@@ -1184,7 +1155,7 @@ describe('the shown span', () => {
       'assignment:nov6': 'day@2026-11-06.items',
     });
     // Work from before the span is in Past due but not in the total.
-    expect(fortnight.rings[0]).toMatchObject({ total: 5, pastDue: 2 });
+    expect(fortnight.rings[0]).toMatchObject({ total: 4, pastDue: 2 });
   });
 
   it('a custom span starts today, so work before today is Past due', () => {
@@ -1224,16 +1195,16 @@ describe('the shown span', () => {
     expect(view(span('month')).nothingDue).toBe(false);
   });
 
-  it('shows unsubmitted work from earlier this week in Past due for any span, in a course that starts next week', () => {
+  it('shows unsubmitted work from earlier today in Past due for any span, in a course that starts next week', () => {
     const futureCourse = [course('101', 'Biology', '2026-11-02T05:00:00Z')];
-    const monday = [task('mon', '2026-10-26T15:00:00Z')];
+    const earlierToday = [task('mon', '2026-10-27T13:00:00Z')];
     const monDetails = detailsById([upload('mon')]);
     for (const kind of ['day', 'week', 'fortnight', 'month', 'custom'] as const) {
       const shown = buildWeekView(
         input({
           ...span(kind, 5),
           courses: futureCourse,
-          plannerItems: monday,
+          plannerItems: earlierToday,
           assignmentDetails: monDetails,
         }),
       );
@@ -1245,10 +1216,10 @@ describe('the shown span', () => {
     const range = (partial: Partial<ModelInput>) => plannerRangeFor(input(partial));
 
     it('ends one millisecond before the span ends', () => {
-      expect(range(span('month')).end).toBe('2026-11-01T03:59:59.999Z');
-      expect(range(span('fortnight')).end).toBe('2026-11-08T04:59:59.999Z');
+      expect(range(span('month')).end).toBe('2026-11-27T04:59:59.999Z');
+      expect(range(span('fortnight')).end).toBe('2026-11-10T04:59:59.999Z');
       expect(range(span('custom', 90)).end).toBe('2027-01-25T04:59:59.999Z');
-      expect(range({ ...span('month'), spanOffset: 1 }).end).toBe('2026-12-01T04:59:59.999Z');
+      expect(range({ ...span('month'), spanOffset: 1 }).end).toBe('2026-12-27T04:59:59.999Z');
     });
 
     it('ends after tomorrow for a Day, and starts at the horizon', () => {
@@ -1259,7 +1230,7 @@ describe('the shown span', () => {
     });
 
     it('starts at the span when it is older than the horizon', () => {
-      expect(range({ ...span('month'), spanOffset: -4 }).start).toBe('2026-06-01T04:00:00.000Z');
+      expect(range({ ...span('month'), spanOffset: -4 }).start).toBe('2026-06-27T04:00:00.000Z');
     });
   });
 });

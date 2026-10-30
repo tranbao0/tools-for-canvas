@@ -27,7 +27,7 @@ import {
   mkNote,
   mkView,
   nothingDueView,
-  pastWeekView,
+  pastSpanView,
   readyState,
 } from './testing/mocks';
 
@@ -88,8 +88,8 @@ function row(title: string): HTMLElement {
 describe('header', () => {
   it('shows the week range and the time zone label', () => {
     setup();
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Oct 25\u00a0- 31');
-    expect(screen.getByText('Week of October 25 to 31')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Oct 27\u00a0- Nov 2');
+    expect(screen.getByText('October 27 to November 2')).toBeTruthy();
     expect(screen.getByText('Times in ET')).toBeTruthy();
   });
 
@@ -99,7 +99,7 @@ describe('header', () => {
   });
 
   it('steps from the week the student last asked for, and goes back to today', () => {
-    const { actions } = setup(readyState({ view: pastWeekView() }));
+    const { actions } = setup(readyState({ view: pastSpanView() }));
     fireEvent.click(screen.getByRole('button', { name: 'Previous week' }));
     fireEvent.click(screen.getByRole('button', { name: 'Next week' }));
     fireEvent.click(screen.getByRole('button', { name: 'Next week' }));
@@ -118,7 +118,7 @@ describe('header', () => {
   });
 
   it('keeps focus on "Today" when it takes the student back to the current week', () => {
-    const { actions, rerender } = setup(readyState({ view: pastWeekView() }));
+    const { actions, rerender } = setup(readyState({ view: pastSpanView() }));
     const button = screen.getByRole('button', { name: 'Today' });
     expect(button.getAttribute('aria-disabled')).toBe('false');
     button.focus();
@@ -147,19 +147,21 @@ describe('rings', () => {
     setup();
     expect(
       screen.getByRole('button', {
-        name: 'BIO 201 Cell Biology: 1 of 3 done this week, 1 past due',
+        name: 'BIO 201 Cell Biology: 1 of 3 done in these 7 days, 1 past due',
       }),
     ).toBeTruthy();
     expect(
       screen.getByRole('button', {
-        name: 'CHEM 210 Organic Chemistry I: 0 of 3 done this week, 1 past due',
+        name: 'CHEM 210 Organic Chemistry I: 0 of 3 done in these 7 days, 1 past due',
       }),
     ).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'ENGL 112 Academic Writing: 1 of 4 done this week' }),
+      screen.getByRole('button', {
+        name: 'ENGL 112 Academic Writing: 1 of 4 done in these 7 days',
+      }),
     ).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Personal: 0 of 1 done this week, 1 past due' }),
+      screen.getByRole('button', { name: 'Personal: 0 of 1 done in these 7 days, 1 past due' }),
     ).toBeTruthy();
   });
 
@@ -209,11 +211,11 @@ describe('rings', () => {
     const { rerender } = setup();
     expect(document.querySelector('.wr-chart-center')?.getAttribute('aria-hidden')).toBe('true');
     expect(document.querySelector('.wr-chart .wr-sr')?.textContent).toBe(
-      'Progress this week: 4 of 18 done, 22 percent',
+      'Progress in these 7 days: 4 of 18 done, 22 percent',
     );
     rerender(readyState({ view: mkView({ rings: [ringOf({ done: 3, total: 3 })] }) }));
     expect(document.querySelector('.wr-chart .wr-sr')?.textContent).toBe(
-      'Progress this week: all 3 done',
+      'Progress in these 7 days: all 3 done',
     );
   });
 
@@ -231,7 +233,7 @@ describe('rings', () => {
     expect(document.querySelector('.wr-chart svg')?.getAttribute('aria-hidden')).toBe('true');
   });
 
-  it('keeps classes with no work this week out of the chart and in the legend', () => {
+  it('keeps classes with no work in the span out of the chart and in the legend', () => {
     setup(
       readyState({
         view: mkView({
@@ -294,16 +296,16 @@ describe('rings', () => {
     });
   });
 
-  it('shows "Nothing due this week" in place of the chart when no class has work', () => {
+  it('shows "Nothing due in these 7 days" in place of the chart when no class has work', () => {
     setup(readyState({ view: nothingDueView() }));
     expect(document.querySelector('.wr-chart')).toBeNull();
     expect(document.querySelectorAll('.wr-ring')).toHaveLength(0);
     expect(
       within(screen.getByRole('region', { name: 'Progress by course' })).getByText(
-        'Nothing due this week',
+        'Nothing due in these 7 days',
       ),
     ).toBeTruthy();
-    expect(screen.getAllByText('Nothing due this week')).toHaveLength(1);
+    expect(screen.getAllByText('Nothing due in these 7 days')).toHaveLength(1);
     const bio = screen.getByRole('button', { name: /^BIO 201/ });
     expect(bio.textContent).toBe('BIO 2011 late');
   });
@@ -318,7 +320,7 @@ describe('rings', () => {
   it('labels the past-due count as a neutral badge, with the full text for screen readers', () => {
     setup();
     const bio = screen.getByRole('button', {
-      name: 'BIO 201 Cell Biology: 1 of 3 done this week, 1 past due',
+      name: 'BIO 201 Cell Biology: 1 of 3 done in these 7 days, 1 past due',
     });
     expect(bio.querySelector('em')?.textContent).toBe('1 late');
     expect(bio.querySelector('em')?.className).not.toContain('missing');
@@ -423,10 +425,12 @@ describe('rings', () => {
     const labels = [...document.querySelectorAll('.wr-legend-code')].map((el) => el.textContent);
     expect(labels).toEqual(['BIOL-201-F26', 'Robotics club', 'Personal']);
     expect(
-      screen.getByRole('button', { name: 'BIOL-201-F26, Cell Biology: 0 of 1 done this week' }),
+      screen.getByRole('button', {
+        name: 'BIOL-201-F26, Cell Biology: 0 of 1 done in these 7 days',
+      }),
     ).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Robotics club: 0 of 1 done this week' }),
+      screen.getByRole('button', { name: 'Robotics club: 0 of 1 done in these 7 days' }),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Personal: 0 of 1/ })).toBeTruthy();
   });
@@ -451,7 +455,7 @@ describe('rings', () => {
     check();
     expect(
       screen.getByRole('button', {
-        name: 'BIO 201-F26, BIO 201 Cell Biology: 1 of 3 done this week, 1 past due',
+        name: 'BIO 201-F26, BIO 201 Cell Biology: 1 of 3 done in these 7 days, 1 past due',
       }),
     ).toBeTruthy();
   });
@@ -516,19 +520,19 @@ describe('groups', () => {
     expect(actions.skipAllOlder).toHaveBeenCalledTimes(1);
   });
 
-  it('puts "Nothing due this week" after Past due and before No due date', () => {
+  it('puts "Nothing due in these 7 days" after Past due and before No due date', () => {
     const view = nothingDueView();
     setup(readyState({ view: { ...view, rings: [] } }));
     const list = document.querySelector('.wr-list');
     const order = Array.from(list?.children ?? []).map(
       (el) => (el as HTMLElement).dataset.group ?? el.textContent,
     );
-    expect(order).toEqual(['past_due', 'Nothing due this week', 'no_due_date']);
+    expect(order).toEqual(['past_due', 'Nothing due in these 7 days', 'no_due_date']);
   });
 
-  it('shows "Nothing due this week" first when nothing is past due', () => {
+  it('shows "Nothing due in these 7 days" first when nothing is past due', () => {
     setup(readyState({ view: mkView({ rings: [], groups: [], nothingDue: true }) }));
-    expect(screen.getByText('Nothing due this week')).toBeTruthy();
+    expect(screen.getByText('Nothing due in these 7 days')).toBeTruthy();
   });
 
   it('shows the line in the list when the chart does not say it', () => {
@@ -539,12 +543,12 @@ describe('groups', () => {
       }),
     );
     expect(document.querySelector('.wr-chart svg')).toBeTruthy();
-    expect(screen.getAllByText('Nothing due this week')).toHaveLength(1);
-    expect(document.querySelector('.wr-list')?.textContent).toBe('Nothing due this week');
+    expect(screen.getAllByText('Nothing due in these 7 days')).toHaveLength(1);
+    expect(document.querySelector('.wr-list')?.textContent).toBe('Nothing due in these 7 days');
   });
 
   it('shows the status chip on items in other weeks', () => {
-    setup(readyState({ view: pastWeekView() }));
+    setup(readyState({ view: pastSpanView() }));
     expect(within(row('Lab 5 notebook check')).getByText('Past due')).toBeTruthy();
     const skipped = row('Reading response 4');
     expect(within(skipped).getByText('Skipped')).toBeTruthy();
@@ -610,7 +614,7 @@ describe('in-page list', () => {
       const links = [
         screen.getByRole('button', { name: /3 past due/ }),
         screen.getByRole('button', { name: 'Show 2 more' }),
-        screen.getByRole('button', { name: /^Rest of the week/ }),
+        screen.getByRole('button', { name: /^Next 7 days/ }),
       ];
       for (const link of links) {
         expect(link.getAttribute('aria-expanded')).toBe('false');
@@ -689,11 +693,11 @@ describe('in-page list', () => {
       );
     });
 
-    it('waits behind "Rest of the week" when only skipped rows are left', () => {
+    it('waits behind "Next 7 days" when only skipped rows are left', () => {
       const skipped = mkItem({ title: 'Skipped one', state: 'skipped', chip: { kind: 'skipped' } });
       setup(stateOf(mkGroup({ kind: 'past_due', skipped: [skipped] })), 'inpage');
       expect(screen.queryByText(/^0 past due/)).toBeNull();
-      expect(screen.getByRole('button', { name: /^Rest of the week/ })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^Next 7 days/ })).toBeTruthy();
     });
 
     it('stays open after the settings or the task form closed', () => {
@@ -734,14 +738,14 @@ describe('in-page list', () => {
     it('puts later days, No due date and Done behind one link with their row count', () => {
       setup(week(), 'inpage');
       expect(shown()).toEqual(['Today one', 'Tomorrow one']);
-      const link = screen.getByRole('button', { name: 'Rest of the week (3)' });
+      const link = screen.getByRole('button', { name: 'Next 7 days (3)' });
       expect(link.getAttribute('aria-expanded')).toBe('false');
       expect(document.querySelector('[data-group="day"]')).toBeNull();
     });
 
     it('opens them in place and keeps them open when the view updates', () => {
       const { rerender } = setup(week(), 'inpage');
-      fireEvent.click(screen.getByRole('button', { name: 'Rest of the week (3)' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Next 7 days (3)' }));
       expect(shown()).toEqual(['Today one', 'Tomorrow one', 'Thursday one']);
       expect(screen.getByRole('button', { name: /^No due date/ })).toBeTruthy();
       expect(screen.getByRole('button', { name: /^Done/ })).toBeTruthy();
@@ -751,19 +755,19 @@ describe('in-page list', () => {
 
     it('has no link when nothing is behind it', () => {
       setup(stateOf(today(dueItems(['Today one']))), 'inpage');
-      expect(screen.queryByRole('button', { name: /^Rest of the week/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Next 7 days/ })).toBeNull();
     });
 
     it('is not in the side panel, which shows every group', () => {
       setup(week(), 'panel');
-      expect(screen.queryByRole('button', { name: /^Rest of the week/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Next 7 days/ })).toBeNull();
       expect(shown()).toEqual(['Today one', 'Tomorrow one', 'Thursday one']);
     });
 
     it('limits a group once it is opened', () => {
       const items = dueItems(titles, { state: 'done' });
       setup(stateOf(today(dueItems(['Today one'])), mkGroup({ kind: 'done', items })), 'inpage');
-      fireEvent.click(screen.getByRole('button', { name: 'Rest of the week (5)' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Next 7 days (5)' }));
       fireEvent.click(screen.getByRole('button', { name: /^Done/ }));
       expect(shown()).toEqual(['Today one', 'One', 'Two', 'Three']);
       expect(screen.getByRole('button', { name: 'Show 2 more' })).toBeTruthy();
@@ -780,7 +784,7 @@ describe('in-page list', () => {
         'inpage',
       );
       expect(shown()).toEqual(['Thursday one']);
-      expect(screen.getByRole('button', { name: 'Rest of the week (1)' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Next 7 days (1)' })).toBeTruthy();
     });
 
     it('applies the row limit to that day', () => {
@@ -801,7 +805,7 @@ describe('in-page list', () => {
     });
   });
 
-  it('puts "Nothing due this week" before the link when the chart is off', () => {
+  it('puts "Nothing due in these 7 days" before the link when the chart is off', () => {
     const view = nothingDueView();
     setup(readyState({ view: { ...view, rings: [] } }), 'inpage');
     const list = document.querySelector('.wr-list');
@@ -809,8 +813,8 @@ describe('in-page list', () => {
       (el) => (el as HTMLElement).dataset.group ?? el.textContent,
     );
     expect(order[0]).toBe('past_due');
-    expect(order[1]).toBe('Nothing due this week');
-    expect(order[2]).toMatch(/^Rest of the week/);
+    expect(order[1]).toBe('Nothing due in these 7 days');
+    expect(order[2]).toMatch(/^Next 7 days/);
   });
 });
 
@@ -827,7 +831,7 @@ describe('one-course view', () => {
 
   it('shows no empty info line on a row with nothing to say', () => {
     setup(readyState({ view: mkView({ scopeCourseId: COURSES.bio.id }) }), 'inpage');
-    fireEvent.click(screen.getByRole('button', { name: /^Rest of the week/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Next 7 days/ }));
     fireEvent.click(screen.getByRole('button', { name: /No due date/ }));
     expect(row('Course survey').querySelector('.wr-info')).toBeNull();
     expect(row('Course survey').querySelector('.wr-course')).toBeNull();
@@ -1136,9 +1140,9 @@ describe('settings in place', () => {
     });
 
     // A value from the runtime, such as a change on another surface, replaces the local one.
-    rerender({ ...data, value: { ...data.value, showRings: true, weekStart: 1 } });
+    rerender({ ...data, value: { ...data.value, showRings: true, theme: 'dark' } });
     expect(rings.checked).toBe(true);
-    expect((screen.getByLabelText('First day of the week') as HTMLSelectElement).value).toBe('1');
+    expect((screen.getByLabelText('Theme') as HTMLSelectElement).value).toBe('dark');
   });
 
   it('offers the theme: Automatic, Light and Dark, with a help line', () => {
@@ -1523,11 +1527,11 @@ describe('task form', () => {
     expect(actions.createTask).not.toHaveBeenCalled();
   });
 
-  it('uses the first day of another week, and a time and course when given', () => {
-    const { actions } = setup(readyState({ view: pastWeekView() }));
+  it('uses the first day of another span, and a time and course when given', () => {
+    const { actions } = setup(readyState({ view: pastSpanView() }));
     fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
     const form = screen.getByRole('form', { name: 'New task' });
-    expect((within(form).getByLabelText('Do on') as HTMLInputElement).value).toBe('2026-10-18');
+    expect((within(form).getByLabelText('Do on') as HTMLInputElement).value).toBe('2026-10-20');
     fireEvent.input(within(form).getByLabelText('Title'), { target: { value: 'Office hours' } });
     fireEvent.input(within(form).getByLabelText(/^Time/), { target: { value: '14:30' } });
     fireEvent.change(within(form).getByLabelText(/^Course/), {
@@ -1536,7 +1540,7 @@ describe('task form', () => {
     fireEvent.submit(form);
     expect(actions.createTask).toHaveBeenCalledWith({
       title: 'Office hours',
-      date: '2026-10-18',
+      date: '2026-10-20',
       time: '14:30',
       courseId: COURSES.chem.id,
       details: null,
@@ -1657,14 +1661,14 @@ describe('focus when the last visible row leaves the glance', () => {
     view: { ...state.view, groups },
   });
 
-  it('goes to the "Rest of the week" link when no row or heading is left', () => {
+  it('goes to the "Next 7 days" link when no row or heading is left', () => {
     const state = readyState({ view: mkView({ groups: [today('Only one'), done('Old one')] }) });
     const { rerender } = setup(state, 'inpage');
     screen.getByRole('checkbox', { name: 'Done: Only one' }).focus();
 
     rerender(withGroups(state, done('Old one', 'Only one')));
 
-    const link = screen.getByRole('button', { name: /^Rest of the week/ });
+    const link = screen.getByRole('button', { name: /^Next 7 days/ });
     expect(document.activeElement).toBe(link);
     expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Add task' }));
   });
@@ -1971,13 +1975,13 @@ describe('sticky header and dock', () => {
 describe('shown span', () => {
   const FORTNIGHT = {
     span: { kind: 'fortnight', days: 7 },
-    spanStart: '2026-10-25',
-    spanEnd: '2026-11-07',
+    spanStart: '2026-10-27',
+    spanEnd: '2026-11-09',
   } as const;
   const MONTH = {
     span: { kind: 'month', days: 7 },
-    spanStart: '2026-11-01',
-    spanEnd: '2026-11-30',
+    spanStart: '2026-11-27',
+    spanEnd: '2026-12-26',
     spanOffset: 1,
     isCurrentSpan: false,
   } as const;
@@ -2284,10 +2288,10 @@ describe('shown span', () => {
   });
 
   it.each([
-    ['Week', {}, 'Oct 25 - 31', 'Week of October 25 to 31', 'week'],
+    ['Week', {}, 'Oct 27 - Nov 2', 'October 27 to November 2', 'week'],
     ['Day', DAY, 'Tue, Oct 27', 'Tuesday, October 27', 'day'],
-    ['2 weeks', FORTNIGHT, 'Oct 25 - Nov 7', 'October 25 to November 7', '2 weeks'],
-    ['Month', MONTH, 'November 2026', 'November 2026', 'month'],
+    ['2 weeks', FORTNIGHT, 'Oct 27 - Nov 9', 'October 27 to November 9', '2 weeks'],
+    ['Month', MONTH, 'Nov 27 - Dec 26', 'November 27 to December 26', 'month'],
     ['Custom', CUSTOM, 'Oct 27 - Nov 5', 'October 27 to November 5', '10 days'],
   ] as const)(
     '%s: the header, and the arrows named by the span',
@@ -2327,7 +2331,7 @@ describe('shown span', () => {
 
   it('names the span in the rings and in the empty text', () => {
     setup(stateOf({ ...MONTH, ...{ nothingDue: true, rings: [] } }));
-    expect(screen.getByText('Nothing due this month')).toBeTruthy();
+    expect(screen.getByText('Nothing due in this month')).toBeTruthy();
     cleanup();
     setup(stateOf({ ...CUSTOM, nothingDue: true, rings: [] }));
     expect(screen.getByText('Nothing due in these 10 days')).toBeTruthy();
@@ -2335,11 +2339,11 @@ describe('shown span', () => {
     setup(stateOf(FORTNIGHT));
     expect(
       screen.getByRole('button', {
-        name: 'BIO 201 Cell Biology: 1 of 3 done in these 2 weeks, 1 past due',
+        name: 'BIO 201 Cell Biology: 1 of 3 done in these 14 days, 1 past due',
       }),
     ).toBeTruthy();
     expect(document.querySelector('.wr-chart .wr-sr')?.textContent).toMatch(
-      /^Progress in these 2 weeks: \d+ of \d+ done, \d+ percent$/,
+      /^Progress in these 14 days: \d+ of \d+ done, \d+ percent$/,
     );
   });
 
@@ -2356,10 +2360,12 @@ describe('shown span', () => {
       ]);
 
     it.each([
-      ['week', {}, 'Rest of the week (3)'],
-      ['month', { span: { kind: 'month', days: 7 } }, 'Rest of the month (3)'],
-      ['2 weeks', FORTNIGHT, 'Rest of these 2 weeks (3)'],
-      ['custom', CUSTOM, 'Rest of these 10 days (3)'],
+      ['week', {}, 'Next 7 days (3)'],
+      ['month', { span: { kind: 'month', days: 7 } }, 'Next month (3)'],
+      ['2 weeks', FORTNIGHT, 'Next 14 days (3)'],
+      ['custom', CUSTOM, 'Next 10 days (3)'],
+      ['week later', { spanOffset: 1, isCurrentSpan: false }, 'Rest of these 7 days (3)'],
+      ['month later', MONTH, 'Rest of this month (3)'],
     ] as const)('names the %s span', (_, patch, label) => {
       setup(rest(patch), 'inpage');
       expect(screen.getByRole('button', { name: label })).toBeTruthy();

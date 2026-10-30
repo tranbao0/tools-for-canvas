@@ -40,7 +40,7 @@ export function taskDateParts(
   return { date: zoned.toPlainDate().toString(), time: time === DEFAULT_TASK_TIME ? null : time };
 }
 
-/** The default "Do on" date: today when today is in the viewed week, otherwise its first day. */
+/** The default "Do on" date: today when today is in the shown span, otherwise its first day. */
 export function defaultTaskDate(view: {
   today: string;
   spanStart: string;

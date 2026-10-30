@@ -9,7 +9,7 @@ export type NoDueDateList = 'items' | 'skipped' | 'doneUndated';
 
 export type Slot =
   | { group: 'past_due'; list: PastDueList }
-  /** `lookAhead`: the item is tomorrow and tomorrow is in the next week. */
+  /** `lookAhead`: the item is tomorrow and the shown span ends today. */
   | { group: 'day'; date: string; lookAhead: boolean }
   | { group: 'no_due_date'; list: NoDueDateList }
   | { group: 'done'; lookAhead: boolean };
@@ -35,7 +35,7 @@ export function isInSpan(date: Temporal.PlainDate, context: PlacementContext): b
   return compareDates(date, context.spanStart) >= 0 && compareDates(date, context.spanEnd) <= 0;
 }
 
-/** Tomorrow in the current-week view, when tomorrow falls in the next week. */
+/** Tomorrow in the span that starts today, when that span ends today. */
 export function isLookAheadDate(date: Temporal.PlainDate, context: PlacementContext): boolean {
   return (
     context.isCurrentSpan &&
@@ -45,7 +45,7 @@ export function isLookAheadDate(date: Temporal.PlainDate, context: PlacementCont
 }
 
 /**
- * No due date, in the current-week view only. A done item goes under "N done", except one with a
+ * No due date, in the span that starts today only. A done item goes under "N done", except one with a
  * warning chip: it goes to Done, so the warning count on the Done header covers it.
  */
 function undatedSlot(
@@ -67,12 +67,12 @@ function undatedSlot(
   }
 }
 
-/** A reminder shows only on its day, in any state, and never on a day before today in the current week. */
+/** A reminder shows only on its day, in any state, and never in Past due. */
 function reminderSlot(date: Temporal.PlainDate, context: PlacementContext): Slot | null {
   const lookAhead = isLookAheadDate(date, context);
-  const visibleDay =
-    isInSpan(date, context) && (!context.isCurrentSpan || compareDates(date, context.today) >= 0);
-  return visibleDay || lookAhead ? { group: 'day', date: date.toString(), lookAhead } : null;
+  return isInSpan(date, context) || lookAhead
+    ? { group: 'day', date: date.toString(), lookAhead }
+    : null;
 }
 
 function doneSlot(

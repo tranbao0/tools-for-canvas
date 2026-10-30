@@ -41,7 +41,7 @@ test('the real side panel opens and shows the list', async ({
   if (panel === undefined) throw new Error('The real side panel page is missing');
   await expect(doneBox(panel, 'Quiz 3: Cell membranes')).toBeVisible();
   await expect(
-    panel.getByRole('heading', { level: 1, name: 'Week of October 25 to 31' }),
+    panel.getByRole('heading', { level: 1, name: 'October 27 to November 2' }),
   ).toBeVisible();
   expect(canvas.unmatched).toEqual([]);
 });

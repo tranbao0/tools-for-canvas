@@ -1063,13 +1063,13 @@ describe('settings in place', () => {
     await settle();
     listener.mockClear();
 
-    fake.storeSettings({ ...DEFAULT_SETTINGS, weekStart: 1 });
+    fake.storeSettings({ ...DEFAULT_SETTINGS, showRings: false });
 
-    expect(runtime.settings()?.value.weekStart).toBe(1);
+    expect(runtime.settings()?.value.showRings).toBe(false);
     expect(listener).toHaveBeenCalled();
     runtime.stop();
-    fake.storeSettings({ ...DEFAULT_SETTINGS, weekStart: 3 });
-    expect(runtime.settings()?.value.weekStart).toBe(1);
+    fake.storeSettings({ ...DEFAULT_SETTINGS, showRings: true });
+    expect(runtime.settings()?.value.showRings).toBe(false);
   });
 
   it('keeps a change that comes while the first read runs', async () => {

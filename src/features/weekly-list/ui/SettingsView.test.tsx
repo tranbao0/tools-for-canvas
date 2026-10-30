@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS, type Settings } from '../model/types';
 import { parseTheme } from './Settings';
-import { parseWeekStart, toggleHidden } from './Settings';
+import { toggleHidden } from './Settings';
 import { SettingsView } from './SettingsView';
 
 afterEach(cleanup);
@@ -25,9 +25,10 @@ function setup(
 }
 
 describe('SettingsView', () => {
-  it('shows the six settings and the address', () => {
+  it('shows the five settings and the address', () => {
     setup();
-    expect(screen.getByLabelText('First day of the week')).toBeTruthy();
+    expect(screen.getByLabelText('Shown span')).toBeTruthy();
+    expect(screen.queryByLabelText('First day of the week')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Show in my list' })).toBeTruthy();
     expect(screen.getByRole('switch', { name: 'Show progress rings' })).toBeTruthy();
     expect(
@@ -40,26 +41,6 @@ describe('SettingsView', () => {
     ).toBeTruthy();
     expect(screen.getByLabelText('Theme')).toBeTruthy();
     expect(screen.getByText('school.instructure.com')).toBeTruthy();
-  });
-
-  it('changes the first day of the week', () => {
-    const { onChange } = setup();
-    const select = screen.getByLabelText('First day of the week') as HTMLSelectElement;
-    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
-      'Automatic',
-      'Sunday',
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-    ]);
-    expect(
-      document.getElementById(select.getAttribute('aria-describedby') ?? '')?.textContent,
-    ).toBe('Automatic takes the first day from your Canvas language.');
-    fireEvent.change(select, { target: { value: '1' } });
-    expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, weekStart: 1 });
   });
 
   it('changes the theme', () => {
@@ -120,12 +101,6 @@ describe('SettingsView', () => {
 });
 
 describe('helpers', () => {
-  it('parses the week start', () => {
-    expect(parseWeekStart('auto')).toBe('auto');
-    expect(parseWeekStart('7')).toBe(7);
-    expect(parseWeekStart('8')).toBe('auto');
-  });
-
   it('parses the theme', () => {
     expect(parseTheme('light')).toBe('light');
     expect(parseTheme('dark')).toBe('dark');

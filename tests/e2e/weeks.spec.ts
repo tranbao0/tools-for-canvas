@@ -1,7 +1,7 @@
 /**
- * The week arrows and "Today" (design decisions 6 and 9). The background clock is Tuesday
- * 2026-10-27 at 2:00 pm in New York, so the current week runs from Sunday Oct 25 to Saturday
- * Oct 31, and daylight saving time ends on Sunday Nov 1.
+ * The arrows and "Today" (design decisions 6 and 9). The background clock is Tuesday
+ * 2026-10-27 at 2:00 pm in New York, so the Week span runs from Tuesday Oct 27 to Monday Nov 2,
+ * and daylight saving time ends on Sunday Nov 1.
  */
 import type { Page } from '@playwright/test';
 import { saveAddress } from './support/scenario-api';
@@ -42,7 +42,7 @@ function weekHeading(page: Page, name: string) {
   return page.getByRole('heading', { level: 1, name });
 }
 
-test('the week arrows show the next and previous weeks, and "Today" comes back', async ({
+test('the arrows show the next and previous spans, and "Today" comes back', async ({
   context,
   page,
   background,
@@ -54,31 +54,28 @@ test('the week arrows show the next and previous weeks, and "Today" comes back',
   await saveAddress(background, canvas.origin);
   await openExtensionPage(page, extensionUrl('sidepanel.html'));
   const today = page.getByRole('button', { name: 'Today', exact: true });
-  await expect(weekHeading(page, 'Week of October 25 to 31')).toBeVisible();
-  await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('Oct 25 - 31');
-  await expect(today).toBeDisabled();
+  await expect(weekHeading(page, 'October 27 to November 2')).toBeVisible();
+  await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('Oct 27 - Nov 2');
+  await expect(today).toHaveAttribute('aria-disabled', 'true');
   await expect(doneBox(page, 'Quiz 3: Cell membranes')).toBeVisible();
   await settledList(page);
 
   await page.getByRole('button', { name: 'Next week' }).click();
 
-  await expect(weekHeading(page, 'Week of November 1 to 7')).toBeVisible();
-  await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('Nov 1 - 7');
-  await expect(today).toBeEnabled();
-  await expect(doneBox(page, 'Problem set 7')).toBeVisible();
+  await expect(weekHeading(page, 'November 3 to 9')).toBeVisible();
+  await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('Nov 3 - 9');
+  await expect(today).toHaveAttribute('aria-disabled', 'false');
+  await expect(doneBox(page, 'Participation: Week 10')).toBeVisible();
   await settledList(page);
   const next = await shownGroups(page);
-  // Each day of the week with items, and no Past due, Today, Tomorrow or No due date.
+  // Each day of the span with items, and no Past due, Today, Tomorrow or No due date.
   expect(next.map(({ kind, name, date }) => ({ kind, name, date }))).toEqual([
-    { kind: 'day', name: 'Sunday', date: 'Nov 1' },
     { kind: 'day', name: 'Tuesday', date: 'Nov 3' },
     { kind: 'day', name: 'Wednesday', date: 'Nov 4' },
     { kind: 'day', name: 'Thursday', date: 'Nov 5' },
     { kind: 'day', name: 'Friday', date: 'Nov 6' },
   ]);
   expect(next.map((shown) => [...shown.titles].sort())).toEqual([
-    // Due at 00:00 on the first day of the week, after the clocks go back.
-    ['Problem set 7'],
     ['Participation: Week 10', 'Register for spring classes'],
     // The peer review shows on its own date, though Canvas files it under Lab report 3's due date.
     ['Lab report 3: Photosynthesis'],
@@ -87,19 +84,19 @@ test('the week arrows show the next and previous weeks, and "Today" comes back',
   ]);
 
   await page.getByRole('button', { name: 'Previous week' }).click();
-  await expect(weekHeading(page, 'Week of October 25 to 31')).toBeVisible();
-  await expect(today).toBeDisabled();
+  await expect(weekHeading(page, 'October 27 to November 2')).toBeVisible();
+  await expect(today).toHaveAttribute('aria-disabled', 'true');
   await page.getByRole('button', { name: 'Previous week' }).click();
 
-  await expect(weekHeading(page, 'Week of October 18 to 24')).toBeVisible();
-  await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('Oct 18 - 24');
-  await expect(today).toBeEnabled();
+  await expect(weekHeading(page, 'October 20 to 26')).toBeVisible();
+  await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('Oct 20 - 26');
+  await expect(today).toHaveAttribute('aria-disabled', 'false');
   await settledList(page);
   const previous = await shownGroups(page);
   expect(previous.map((shown) => shown.kind)).not.toContain('past_due');
   expect(previous.map((shown) => shown.kind)).not.toContain('today');
   expect(previous.map((shown) => shown.kind)).not.toContain('no_due_date');
-  // Open work from that week stays on its day with its status chip.
+  // Open work from that span stays on its day with its status chip.
   const days = page.locator('section[data-group="day"]');
   const row = (day: string, title: string) =>
     days.filter({ hasText: day }).locator('li', { hasText: title });
@@ -110,8 +107,8 @@ test('the week arrows show the next and previous weeks, and "Today" comes back',
 
   await today.click();
 
-  await expect(weekHeading(page, 'Week of October 25 to 31')).toBeVisible();
-  await expect(today).toBeDisabled();
+  await expect(weekHeading(page, 'October 27 to November 2')).toBeVisible();
+  await expect(today).toHaveAttribute('aria-disabled', 'true');
   await expect(group(page, 'past_due')).toBeVisible();
   await expect(doneBox(group(page, 'today'), 'Quiz 3: Cell membranes')).toBeVisible();
   expect(canvas.unmatched).toEqual([]);
@@ -132,16 +129,16 @@ test('a peer review row says "Peer review" under its title, for both kinds of pe
   const row = (title: string) =>
     page.locator('li', { has: page.getByRole('link', { name: title, exact: true }) });
 
-  // A new-style peer review on Thursday of this week. Its title already names the review.
+  // A new-style peer review on Thursday of this span. Its title already names the review.
   const newStyle = row('Lab report draft: Kinetics Peer Review (2)');
   await expect(newStyle.locator('.wr-subtitle')).toHaveText('Peer review');
   // Other work has no such subtitle.
   await expect(row('Lab 7: Titration notebook').locator('.wr-subtitle')).toHaveCount(0);
 
-  // An older-style peer review on Wednesday of next week. Its title is the title of the
+  // An older-style peer review on Wednesday of the next span. Its title is the title of the
   // assignment under review, so only the subtitle tells the two apart.
   await page.getByRole('button', { name: 'Next week' }).click();
-  await expect(weekHeading(page, 'Week of November 1 to 7')).toBeVisible();
+  await expect(weekHeading(page, 'November 3 to 9')).toBeVisible();
   await settledList(page);
   const wednesday = page.locator('section[data-group="day"]').filter({ hasText: 'Wednesday' });
   const review = wednesday.locator('li', { hasText: 'Lab report 3: Photosynthesis' });
@@ -149,7 +146,7 @@ test('a peer review row says "Peer review" under its title, for both kinds of pe
   await expect(review).toContainText('BIO 110: Principles of Biology');
 });
 
-test('three quick clicks on Next week land three weeks ahead on a slow Canvas', async ({
+test('three quick clicks on Next week land three spans ahead on a slow Canvas', async ({
   context,
   page,
   background,
@@ -161,7 +158,7 @@ test('three quick clicks on Next week land three weeks ahead on a slow Canvas', 
   await addCsrfCookie(context, canvas.origin);
   await saveAddress(background, canvas.origin);
   await openExtensionPage(page, extensionUrl('sidepanel.html'));
-  await expect(weekHeading(page, 'Week of October 25 to 31')).toBeVisible({ timeout: 60_000 });
+  await expect(weekHeading(page, 'October 27 to November 2')).toBeVisible({ timeout: 60_000 });
   await settledList(page);
   const next = page.getByRole('button', { name: 'Next week' });
 
@@ -171,13 +168,13 @@ test('three quick clicks on Next week land three weeks ahead on a slow Canvas', 
     for (let click = 0; click < 3; click += 1) button?.click();
   });
 
-  await expect(weekHeading(page, 'Week of November 15 to 21')).toBeVisible({ timeout: 15_000 });
+  await expect(weekHeading(page, 'November 17 to 23')).toBeVisible({ timeout: 15_000 });
   await settledList(page);
-  await expect(weekHeading(page, 'Week of November 15 to 21')).toBeVisible();
+  await expect(weekHeading(page, 'November 17 to 23')).toBeVisible();
   // One more step goes on from there.
   await next.click();
-  await expect(weekHeading(page, 'Week of November 22 to 28')).toBeVisible({ timeout: 15_000 });
+  await expect(weekHeading(page, 'November 24 to 30')).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Today', exact: true }).click();
-  await expect(weekHeading(page, 'Week of October 25 to 31')).toBeVisible();
+  await expect(weekHeading(page, 'October 27 to November 2')).toBeVisible();
   expect(canvas.unmatched).toEqual([]);
 });

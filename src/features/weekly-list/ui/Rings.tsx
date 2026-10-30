@@ -1,5 +1,5 @@
 /**
- * The week's progress chart (design decision 8): concentric rings, one per class, over a legend.
+ * The progress chart of the shown span (design decision 8): concentric rings, one per class, over a legend.
  * A click on a ring or a legend row filters the list; a second click clears it.
  */
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
@@ -15,7 +15,7 @@ const OUTER = 58;
 const HOLE = 22;
 const GAP = 1;
 
-/** "Nothing due this week", in the chart place of the rings or in the list. */
+/** "Nothing due in these 7 days", in the chart place of the rings or in the list. */
 export function NothingDue(props: { span: Span }) {
   return (
     <p class="wr-empty">
@@ -47,7 +47,7 @@ export function ringSpokenName(ring: Ring): string {
   return t('ringCourseName', visible, name);
 }
 
-/** "BIO 101, Cell Biology: 3 of 5 done this week, 1 past due" */
+/** "BIO 101, Cell Biology: 3 of 5 done in these 7 days, 1 past due" */
 export function ringAriaLabel(ring: Ring, phrase: string): string {
   const name = ringSpokenName(ring);
   const done = String(ring.done);
@@ -82,7 +82,7 @@ export function Rings(props: {
     return () => observer.disconnect();
   }, [rings.length > 0]);
   if (rings.length === 0) return null;
-  // The classes with the most work this week, in dashboard order. A class with no work stays in
+  // The classes with the most work in the span, in dashboard order. A class with no work stays in
   // the legend only.
   const worked = rings.filter((ring) => ring.total > 0);
   const top = new Set([...worked].sort((a, b) => b.total - a.total).slice(0, wide ? 6 : 4));
@@ -95,7 +95,7 @@ export function Rings(props: {
     pastDue += ring.pastDue;
   }
   const finished = done >= total && pastDue === 0;
-  // 1 to 99 until every item is done, so a nearly empty or nearly full week never reads 0 or 100.
+  // 1 to 99 until every item is done, so a nearly empty or nearly full span never reads 0 or 100.
   const percent = Math.min(
     done >= total ? 100 : 99,
     Math.max(done && 1, Math.round((done * 100) / total)),

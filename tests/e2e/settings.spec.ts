@@ -191,7 +191,7 @@ test.describe('settings help text', () => {
       await openSettingsInPlace(panel);
 
       const lines = await lastLines(panel);
-      expect(lines.length).toBeGreaterThanOrEqual(4);
+      expect(lines.length).toBeGreaterThanOrEqual(3);
       for (const line of lines) {
         if (line.lines > 1) expect(line.lastWords, line.text).toBeGreaterThanOrEqual(2);
       }
@@ -283,10 +283,12 @@ test('the Shown span setting saves from the in-page settings, and the panel and 
       span: { kind: 'month', days: 7 },
     });
   await list.getByRole('button', { name: 'Back' }).click();
-  await expect(list.getByRole('heading', { level: 2 })).toHaveText(/October 2026/);
+  await expect(list.getByRole('heading', { level: 2 })).toHaveText(/October 27 to November 26/);
 
   await panel.bringToFront();
-  await expect(panel.getByRole('heading', { level: 1, name: 'October 2026' })).toBeVisible();
+  await expect(
+    panel.getByRole('heading', { level: 1, name: 'October 27 to November 26' }),
+  ).toBeVisible();
 
   const options = await context.newPage();
   await openExtensionPage(options, extensionUrl('options.html'));

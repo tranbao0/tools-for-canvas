@@ -295,9 +295,9 @@ function GroupSection(props: {
 }
 
 /**
- * Renders the groups in order. "Nothing due this week" takes the place of the day groups: before
- * No due date and Done, and in the glance before the link that opens the rest of the span, such as
- * "Rest of the week". The glance (in-page list)
+ * Renders the groups in order. "Nothing due in these 7 days" takes the place of the day groups:
+ * before No due date and Done, and in the glance before the link that opens the rest of the span,
+ * such as "Next 7 days". The glance (in-page list)
  * shows Past due as one line and puts the later days, No due date and Done behind one link.
  */
 export function WeekList(props: {
@@ -333,7 +333,7 @@ export function WeekList(props: {
     );
   };
   const nodes: ComponentChildren[] = head.map(section);
-  // The chart says "Nothing due this week" itself when no class has work.
+  // The chart says "Nothing due in these 7 days" itself when no class has work.
   if (view.nothingDue && (!view.rings.length || view.rings.some((ring) => ring.total)))
     nodes.splice(head[0]?.kind === 'past_due' ? 1 : 0, 0, <NothingDue span={view.span} />);
   if (glance && rest.length > 0)
@@ -342,6 +342,7 @@ export function WeekList(props: {
         label={restOfSpanLabel(
           view.span,
           rest.reduce((sum, g) => sum + groupCount(g), 0),
+          view.isCurrentSpan,
         )}
         open={glance.rest}
         onToggle={() => glance.toggle('rest')}

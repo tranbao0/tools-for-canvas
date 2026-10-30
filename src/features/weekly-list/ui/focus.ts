@@ -6,7 +6,7 @@
  *   the glance can be a row that "Show N more" had hidden, or else of the next row, or of the
  *   previous row. With no row left, it moves to the heading of the row's group, if the group
  *   stays, then to the first button that opens a part of the list and comes after the place of
- *   the row, such as "Rest of the week", or to the last such button before it when none comes
+ *   the row, such as "Next 7 days", or to the last such button before it when none comes
  *   after, and last to the caller's fallback.
  * - "Skip all older", which goes away when the older list empties: focus moves to the Past due
  *   heading, or to the first row.

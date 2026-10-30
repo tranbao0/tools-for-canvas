@@ -208,7 +208,6 @@ async function checkBadSettings(driver) {
       await browser.storage.local.set({
         settings: {
           span: { kind: 'custom', days: 500 },
-          weekStart: 'auto',
           hiddenCourseIds: 5,
           showRings: true,
           showOnCanvasPages: false,

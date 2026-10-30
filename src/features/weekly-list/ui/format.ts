@@ -4,7 +4,7 @@
  * Plain dates (`YYYY-MM-DD`) are calendar days; instants are ISO strings shown in the Canvas time zone.
  */
 import { t } from '../../../shared/ui/i18n';
-import type { IsoDayOfWeek, Span } from '../model/types';
+import type { Span } from '../model/types';
 
 const LOCALE = 'en-US';
 const formatters = new Map<string, Intl.DateTimeFormat>();
@@ -39,27 +39,19 @@ export function formatWeekday(date: string): string {
   return formatPlain(date, { weekday: 'long' });
 }
 
-/** "Wednesday" for an ISO day of the week. */
-export function weekdayName(day: IsoDayOfWeek): string {
-  // 2024-01-01 is a Monday, so day N of ISO week 1 is 2024-01-0N.
-  return formatWeekday(`2024-01-0${day}`);
-}
-
 function sameMonth(a: string, b: string): boolean {
   return a.slice(0, 7) === b.slice(0, 7);
 }
 
-const MONTH_YEAR = { month: 'long', year: 'numeric' } as const;
 const MONTH_DAY = { month: 'short', day: 'numeric' } as const;
 const MONTH_DAY_LONG = { month: 'long', day: 'numeric' } as const;
 
 /** The text of a span, short for the header or long for a screen reader. */
 function spanRangeText(span: Span, start: string, end: string, long: boolean): string {
   const { kind } = span;
-  if (kind === 'month') return formatPlain(start, MONTH_YEAR);
   const format = long ? MONTH_DAY_LONG : MONTH_DAY;
   if (kind === 'day') return formatPlain(start, { weekday: long ? 'long' : 'short', ...format });
-  // A week inside one month shows its last day alone: "Oct 25 - 31".
+  // A week inside one month shows its last day alone: "Oct 29 - 31".
   const endText =
     kind === 'week' && sameMonth(start, end)
       ? formatPlain(end, { day: 'numeric' })
@@ -67,20 +59,17 @@ function spanRangeText(span: Span, start: string, end: string, long: boolean): s
   return t(long ? `spanRangeLong_${kind}` : 'weekRange', formatPlain(start, format), endText);
 }
 
-/**
- * The header text of a span: "Tue, Oct 27", "Oct 25 - 31", "Oct 25 - Nov 7" or "November 2026".
- * The month shows the year, because no other span is as long.
- */
+/** The header text of a span: "Tue, Oct 27", "Oct 22 - 28", "Oct 29 - Nov 11" or "Oct 29 - Nov 28". */
 export function formatSpanRange(span: Span, start: string, end: string): string {
   return spanRangeText(span, start, end, false);
 }
 
-/** The span as a screen reader says it: "Tuesday, October 27" or "Week of October 25 to 31". */
+/** The span as a screen reader says it: "Tuesday, October 27" or "October 29 to November 4". */
 export function formatSpanRangeLong(span: Span, start: string, end: string): string {
   return spanRangeText(span, start, end, true);
 }
 
-type SpanTextPrefix = 'spanUnit' | 'spanThis' | 'restOf';
+type SpanTextPrefix = 'spanUnit' | 'spanThis' | 'restOf' | 'restOfShown';
 
 /** The text `prefix_kind`, with the count first and the days of a custom span second. */
 function spanText(prefix: SpanTextPrefix, span: Span, count = ''): string {
@@ -92,14 +81,17 @@ export function spanUnit(span: Span): string {
   return spanText('spanUnit', span);
 }
 
-/** "this week", "in these 2 weeks": the span in a sentence about its work. */
+/** "in these 7 days", "in this month": the span in a sentence about its work, at any offset. */
 export function spanPhrase(span: Span): string {
   return spanText('spanThis', span);
 }
 
-/** The text of the glance link that opens the rest of the span: "Rest of the week (9)". */
-export function restOfSpanLabel(span: Span, count: number): string {
-  return spanText('restOf', span, String(count));
+/**
+ * The text of the glance link that opens the rest of the span: "Next 7 days (9)" in the span that
+ * starts today, "Rest of these 7 days (9)" in any other.
+ */
+export function restOfSpanLabel(span: Span, count: number, startsToday: boolean): string {
+  return spanText(startsToday ? 'restOf' : 'restOfShown', span, String(count));
 }
 
 /** The calendar day of `instant` in `timeZone`, as `YYYY-MM-DD`. */

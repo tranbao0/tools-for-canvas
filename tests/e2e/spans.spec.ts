@@ -63,7 +63,7 @@ test('the panel shows each span, and the arrows and Today move by it', async ({
   const canvas = await openPanel(context, page, background, extensionUrl);
   const today = page.getByRole('button', { name: 'Today', exact: true });
   await expect(picker(page)).toHaveValue('week');
-  await expect(title(page, 'Week of October 25 to 31')).toBeVisible();
+  await expect(title(page, 'October 27 to November 2')).toBeVisible();
 
   // Day: one day, with the look-ahead of tomorrow, and the arrows move one day.
   await picker(page).selectOption('day');
@@ -85,37 +85,37 @@ test('the panel shows each span, and the arrows and Today move by it', async ({
   await expect(title(page, 'Tuesday, October 27')).toBeVisible();
   await expect(today).toHaveAttribute('aria-disabled', 'true');
 
-  // 2 weeks: the week that holds today and the next, and the arrows move two weeks.
+  // 2 weeks: 14 days from today, and the arrows move 14 days.
   await picker(page).selectOption('fortnight');
-  await expect(title(page, 'October 25 to November 7')).toBeVisible();
-  await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('Oct 25 - Nov 7');
+  await expect(title(page, 'October 27 to November 9')).toBeVisible();
+  await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('Oct 27 - Nov 9');
   await expect(doneBox(page, 'Problem set 7')).toBeVisible();
   await expect(group(page, 'past_due')).toBeVisible();
-  await expect(page.getByRole('button', { name: /done in these 2 weeks/ }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /done in these 14 days/ }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Next 2 weeks', exact: true }).click();
-  await expect(title(page, 'November 8 to November 21')).toBeVisible();
+  await expect(title(page, 'November 10 to November 23')).toBeVisible();
   await expect(group(page, 'past_due')).toHaveCount(0);
   await expect(doneBox(page, 'Problem set 7')).toHaveCount(0);
   await page.getByRole('button', { name: 'Previous 2 weeks', exact: true }).click();
-  await expect(title(page, 'October 25 to November 7')).toBeVisible();
+  await expect(title(page, 'October 27 to November 9')).toBeVisible();
 
-  // Month: the calendar month, with the work of the earlier weeks in Past due.
+  // Month: from today through the day before the same date next month.
   await picker(page).selectOption('month');
-  await expect(title(page, 'October 2026')).toBeVisible();
-  await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('October 2026');
+  await expect(title(page, 'October 27 to November 26')).toBeVisible();
+  await expect(page.locator('.wr-range [aria-hidden="true"]')).toHaveText('Oct 27 - Nov 26');
   await expect(group(page, 'past_due')).toBeVisible();
-  await expect(doneBox(page, 'Problem set 7')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Next month', exact: true }).click();
-  await expect(title(page, 'November 2026')).toBeVisible();
   await expect(doneBox(page, 'Problem set 7')).toBeVisible();
   await expect(doneBox(page, 'Homework 9')).toBeVisible();
+  await page.getByRole('button', { name: 'Next month', exact: true }).click();
+  await expect(title(page, 'November 27 to December 26')).toBeVisible();
+  await expect(doneBox(page, 'Problem set 7')).toHaveCount(0);
   await expect(today).toHaveAttribute('aria-disabled', 'false');
   expect(await groupKinds(page)).not.toContain('past_due');
   await settledList(page);
   await page.getByRole('button', { name: 'Next month', exact: true }).click();
-  await expect(title(page, 'December 2026')).toBeVisible();
+  await expect(title(page, 'December 27 to January 26')).toBeVisible();
   await today.click();
-  await expect(title(page, 'October 2026')).toBeVisible();
+  await expect(title(page, 'October 27 to November 26')).toBeVisible();
 
   // Custom: starts today, N days, and the arrows move N days.
   await picker(page).selectOption('custom');
@@ -136,7 +136,7 @@ test('the panel shows each span, and the arrows and Today move by it', async ({
 
   // Week again, and the work of the whole session asked Canvas for nothing it lacks.
   await picker(page).selectOption('week');
-  await expect(title(page, 'Week of October 25 to 31')).toBeVisible();
+  await expect(title(page, 'October 27 to November 2')).toBeVisible();
   await expect(days(page)).toHaveCount(0);
   expect(canvas.unmatched).toEqual([]);
 });
@@ -195,7 +195,7 @@ test('the span stays after the panel closes and opens again', async ({
   await expect(setting).toHaveValue('custom');
   await setting.selectOption('month');
   await page.getByRole('button', { name: 'Back' }).click();
-  await expect(title(page, 'October 2026')).toBeVisible();
+  await expect(title(page, 'October 27 to November 26')).toBeVisible();
   await expect(picker(page)).toHaveValue('month');
 });
 
@@ -211,7 +211,7 @@ test('the control works with the keyboard alone', async ({
 
   await page.keyboard.press('ArrowDown');
   await expect(picker(page)).toHaveValue('fortnight');
-  await expect(title(page, 'October 25 to November 7')).toBeVisible();
+  await expect(title(page, 'October 27 to November 9')).toBeVisible();
   // The control keeps focus while the new span loads.
   await expect(picker(page)).toBeFocused();
   await page.keyboard.press('ArrowDown');
@@ -249,26 +249,26 @@ test('the panel and the in-page list share one span, and the link names it', asy
   const link = (name: RegExp) => list.getByRole('button', { name });
 
   await expect(picker(list)).toHaveValue('week');
-  await expect(link(/^Rest of the week \(\d+\)$/)).toBeVisible();
+  await expect(link(/^Next 7 days \(\d+\)$/)).toBeVisible();
 
   // The control in the list changes the span.
   await picker(list).selectOption('month');
-  await expect(listTitle).toHaveText(/October 2026/);
-  await expect(link(/^Rest of the month \(\d+\)$/)).toBeVisible();
-  await expect(list.getByRole('button', { name: /done this month/ }).first()).toBeVisible();
+  await expect(listTitle).toHaveText(/October 27 to November 26/);
+  await expect(link(/^Next month \(\d+\)$/)).toBeVisible();
+  await expect(list.getByRole('button', { name: /done in this month/ }).first()).toBeVisible();
 
   // The panel opens on the same span.
   const panel = await context.newPage();
   await openExtensionPage(panel, extensionUrl('sidepanel.html'));
-  await expect(title(panel, 'October 2026')).toBeVisible();
+  await expect(title(panel, 'October 27 to November 26')).toBeVisible();
   await expect(picker(panel)).toHaveValue('month');
 
   // A change in the panel reaches the list on the page.
   await picker(panel).selectOption('fortnight');
-  await expect(title(panel, 'October 25 to November 7')).toBeVisible();
+  await expect(title(panel, 'October 27 to November 9')).toBeVisible();
   await page.bringToFront();
   await expect(picker(list)).toHaveValue('fortnight');
-  await expect(link(/^Rest of these 2 weeks \(\d+\)$/)).toBeVisible();
+  await expect(link(/^Next 14 days \(\d+\)$/)).toBeVisible();
 
   await picker(list).selectOption('day');
   await expect(listTitle).toHaveText(/Tuesday, October 27/);
@@ -282,7 +282,7 @@ test('the panel and the in-page list share one span, and the link names it', asy
   await days(list).fill('10');
   await days(list).press('Enter');
   await expect(listTitle).toHaveText(/October 27 to November 5/);
-  await expect(link(/^Rest of these 10 days \(\d+\)$/)).toBeVisible();
+  await expect(link(/^Next 10 days \(\d+\)$/)).toBeVisible();
   await panel.bringToFront();
   await expect(title(panel, 'October 27 to November 5')).toBeVisible();
   await expect(days(panel)).toHaveValue('10');
@@ -396,7 +396,7 @@ for (const scheme of ['light', 'dark'] as const) {
       await shot('span-week');
 
       await picker(page).selectOption('month');
-      await expect(title(page, 'October 2026')).toBeVisible();
+      await expect(title(page, 'October 27 to November 26')).toBeVisible();
       await expect(picker(page)).toHaveValue('month');
       await checkFit('Month');
       await shot('span-month');
@@ -424,7 +424,7 @@ for (const scheme of ['light', 'dark'] as const) {
       // The student picks the next span with the select, which then holds focus.
       await picker(page).focus();
       await picker(page).selectOption('fortnight');
-      await expect(title(page, 'October 25 to November 7')).toBeVisible();
+      await expect(title(page, 'October 27 to November 9')).toBeVisible();
       await expect(picker(page)).toBeFocused();
       await checkFit('2 weeks');
       await shot('span-fortnight');
@@ -463,11 +463,11 @@ test('arrow keys in the closed select show each span at once and save only the o
 
   // The select shows the pick at once with the refresh marker, and nothing is saved yet.
   await expect(picker(page)).toHaveValue('month');
-  await expect(title(page, 'Week of October 25 to 31')).toBeVisible();
+  await expect(title(page, 'October 27 to November 2')).toBeVisible();
   await expect(page.getByRole('progressbar', { name: 'Refreshing' })).toBeVisible();
   expect(await saves()).toBe(0);
   // After the pause the one span that stayed is saved, once.
-  await expect(title(page, 'October 2026')).toBeVisible();
+  await expect(title(page, 'October 27 to November 26')).toBeVisible();
   await settledList(page);
   expect(await saves()).toBe(1);
 
@@ -475,7 +475,7 @@ test('arrow keys in the closed select show each span at once and save only the o
   await page.keyboard.press('ArrowUp');
   await expect(picker(page)).toHaveValue('fortnight');
   await page.keyboard.press('Tab');
-  await expect(title(page, 'October 25 to November 7')).toBeVisible();
+  await expect(title(page, 'October 27 to November 9')).toBeVisible();
   expect(await saves()).toBe(2);
 });
 
@@ -608,11 +608,11 @@ test('a pick saved in one panel replaces what another panel shows, and its blur 
   await expect(title(second, 'Tuesday, October 27')).toBeVisible();
   await second.bringToFront();
   await picker(second).selectOption('week');
-  await expect(title(second, 'Week of October 25 to 31')).toBeVisible();
+  await expect(title(second, 'October 27 to November 2')).toBeVisible();
 
   // A follows: its select and its heading both say Week.
   await page.bringToFront();
-  await expect(title(page, 'Week of October 25 to 31')).toBeVisible();
+  await expect(title(page, 'October 27 to November 2')).toBeVisible();
   await expect(picker(page)).toHaveValue('week');
   const before = await saves();
 
@@ -623,5 +623,5 @@ test('a pick saved in one panel replaces what another panel shows, and its blur 
   expect(await saves()).toBe(before);
   await expect(picker(page)).toHaveValue('week');
   await expect(picker(second)).toHaveValue('week');
-  await expect(title(page, 'Week of October 25 to 31')).toBeVisible();
+  await expect(title(page, 'October 27 to November 2')).toBeVisible();
 });

@@ -1,31 +1,22 @@
 /**
- * The settings (design decision 18). The same six settings show in three places: in the side
+ * The settings (design decision 18). The same five settings show in three places: in the side
  * panel and in the in-page list, where the gear opens them in place with a Back button, and on
  * the extension's own settings page (SettingsView), which also shows the Canvas address.
  */
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { t, type MessageKey } from '../../../shared/ui/i18n';
-import type { IsoDayOfWeek, Settings } from '../model/types';
+import type { Settings } from '../model/types';
 import type { AppProps } from './contract';
-import { weekdayName } from './format';
 import { ChevronLeftIcon } from '../../../shared/ui/icons';
 import { Heading, newIds, Switch, type HeadingLevel } from '../../../shared/ui/parts';
 import { SpanPicker } from './SpanPicker';
 import { Spinner } from './States';
-
-/** Sunday first, as Canvas shows the week for English (US). */
-const WEEK_DAYS: IsoDayOfWeek[] = [7, 1, 2, 3, 4, 5, 6];
 
 const THEMES: [Settings['theme'], MessageKey][] = [
   ['auto', 'themeAuto'],
   ['light', 'themeLight'],
   ['dark', 'themeDark'],
 ];
-
-export function parseWeekStart(value: string): Settings['weekStart'] {
-  const day = Number(value);
-  return WEEK_DAYS.includes(day as IsoDayOfWeek) ? (day as IsoDayOfWeek) : 'auto';
-}
 
 export function parseTheme(value: string): Settings['theme'] {
   return value === 'light' || value === 'dark' ? value : 'auto';
@@ -37,7 +28,7 @@ export function toggleHidden(hidden: string[], courseId: string, hide: boolean):
   return hide ? [...without, courseId] : without;
 }
 
-/** The six settings. `level` is the heading level of the settings that have a heading. */
+/** The five settings. `level` is the heading level of the settings that have a heading. */
 export function SettingsFields(props: {
   settings: Settings;
   courses: { id: string; name: string }[];
@@ -46,17 +37,7 @@ export function SettingsFields(props: {
 }) {
   const { settings, courses } = props;
   const [ids] = useState(() =>
-    newIds('set', [
-      'span',
-      'weekStart',
-      'weekStartHelp',
-      'courses',
-      'rings',
-      'canvas',
-      'canvasHelp',
-      'theme',
-      'themeHelp',
-    ]),
+    newIds('set', ['span', 'courses', 'rings', 'canvas', 'canvasHelp', 'theme', 'themeHelp']),
   );
   const update = (patch: Partial<Settings>) => props.onChange({ ...settings, ...patch });
 
@@ -71,29 +52,6 @@ export function SettingsFields(props: {
           selectId={ids.span}
           onChange={(span) => update({ span })}
         />
-      </div>
-
-      <div class="wr-setting">
-        <label class="wr-setting-name" for={ids.weekStart}>
-          {t('settingWeekStart')}
-        </label>
-        <select
-          id={ids.weekStart}
-          class="wr-input"
-          aria-describedby={ids.weekStartHelp}
-          value={String(settings.weekStart)}
-          onChange={(event) => update({ weekStart: parseWeekStart(event.currentTarget.value) })}
-        >
-          <option value="auto">{t('weekStartAuto')}</option>
-          {WEEK_DAYS.map((day) => (
-            <option key={day} value={String(day)}>
-              {weekdayName(day)}
-            </option>
-          ))}
-        </select>
-        <p class="wr-setting-help" id={ids.weekStartHelp}>
-          {t('weekStartHelp')}
-        </p>
       </div>
 
       <section class="wr-setting" aria-labelledby={ids.courses}>

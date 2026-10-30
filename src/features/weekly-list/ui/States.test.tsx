@@ -254,7 +254,7 @@ describe('in-page surface', () => {
     setup(readyState(), 'inpage');
     expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
     expect(screen.getAllByRole('heading', { level: 2 })[0]?.textContent).toContain(
-      'Oct 25\u00a0- 31',
+      'Oct 27\u00a0- Nov 2',
     );
   });
 

@@ -2,7 +2,7 @@
  * Builds the week view from Canvas data. Pure: the current time comes in as `ModelInput.now`.
  * See docs/design.md, decisions 3 and 6 to 9.
  */
-import { resolveLocale, resolveWeekStartDay, hourCycleFor } from './locale';
+import { resolveLocale, hourCycleFor } from './locale';
 import { collectItems } from './normalize';
 import {
   type PlacementContext,
@@ -40,7 +40,6 @@ import {
 } from './time';
 import type {
   GroupKind,
-  IsoDayOfWeek,
   Item,
   ItemState,
   ItemView,
@@ -52,7 +51,7 @@ import type {
 interface Placed {
   view: ItemView;
   slot: Slot;
-  /** Dated in the viewed week. */
+  /** Dated in the shown span. */
   datedInSpan: boolean;
   /** Counts as done in the rings. A checked item that Canvas marks missing does not. */
   countsDone: boolean;
@@ -60,16 +59,13 @@ interface Placed {
 
 function placementContext(
   input: ModelInput,
-  basics: Pick<ViewBasics, 'timeZone' | 'weekStartDay'>,
+  timeZone: string,
   bounds: ReturnType<typeof spanBounds>,
 ): PlacementContext {
-  const { timeZone, weekStartDay } = basics;
   const now = Temporal.Instant.from(input.now);
   const { byCourse, earliest } = horizons({
     now: input.now,
     timeZone,
-    weekStartDay,
-    span: input.settings.span,
     courses: input.courses,
     hiddenCourseIds: input.settings.hiddenCourseIds,
   });
@@ -265,19 +261,18 @@ export interface ViewBasics {
   timeZone: string;
   /** The Canvas language. */
   locale: string;
-  weekStartDay: IsoDayOfWeek;
 }
 
 /**
- * The time zone, language and first day of the week, resolved the same way for every caller.
+ * The time zone and the language, resolved the same way for every caller.
  * The language is `effective_locale`, then `locale`, then the browser language, then `en`.
  */
 export function resolveViewBasics(
-  input: Pick<ModelInput, 'profile' | 'settings' | 'browserTimeZone' | 'browserLanguage'>,
+  input: Pick<ModelInput, 'profile' | 'browserTimeZone' | 'browserLanguage'>,
 ): ViewBasics {
   const timeZone = resolveTimeZone(input.profile.time_zone, input.browserTimeZone);
   const locale = resolveLocale(input.profile, input.browserLanguage);
-  return { timeZone, locale, weekStartDay: resolveWeekStartDay(input.settings.weekStart, locale) };
+  return { timeZone, locale };
 }
 
 /**
@@ -300,19 +295,16 @@ export function plannerRangeFor(
     | 'courses'
   >,
 ): TimeRange {
-  const { timeZone, weekStartDay } = resolveViewBasics(input);
+  const { timeZone } = resolveViewBasics(input);
   const bounds = spanBounds({
     now: input.now,
     timeZone,
-    weekStartDay,
     span: input.settings.span,
     spanOffset: input.spanOffset,
   });
   const { earliest } = horizons({
     now: input.now,
     timeZone,
-    weekStartDay,
-    span: input.settings.span,
     courses: input.courses,
     hiddenCourseIds: input.settings.hiddenCourseIds,
   });
@@ -329,19 +321,18 @@ export function plannerRangeFor(
 }
 
 /**
- * Builds the list, the rings and the header facts for one week.
+ * Builds the list, the rings and the header facts for one span.
  * When the scoped course is hidden, the groups and rings are empty and `scopeCourseHidden` is set.
  */
 export function buildWeekView(input: ModelInput): WeekView {
-  const { timeZone, locale, weekStartDay } = resolveViewBasics(input);
+  const { timeZone, locale } = resolveViewBasics(input);
   const bounds = spanBounds({
     now: input.now,
     timeZone,
-    weekStartDay,
     span: input.settings.span,
     spanOffset: input.spanOffset,
   });
-  const context = placementContext(input, { timeZone, weekStartDay }, bounds);
+  const context = placementContext(input, timeZone, bounds);
   const hidden = new Set(input.settings.hiddenCourseIds);
   const scopeCourseId = input.scopeCourseId ?? null;
   const scopeCourseHidden = scopeCourseId !== null && hidden.has(scopeCourseId);

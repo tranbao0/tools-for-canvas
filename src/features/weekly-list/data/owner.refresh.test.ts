@@ -132,7 +132,7 @@ describe('light and full rounds', () => {
 
     // A shown week shows at once and loads its own week again after the round.
     const shown = expectReady(await h.owner.getState({ ...PANEL, spanOffset: 2 }));
-    expect(shown.view.spanStart).toBe('2026-11-08');
+    expect(shown.view.spanStart).toBe('2026-11-10');
     expect(shown.refreshing).toBe(true);
     await h.owner.settled();
     expect(h.canvas.plannerRanges()).toEqual([await spanOf(h, 2)]);
@@ -326,25 +326,30 @@ describe('the 60-second limit', () => {
 });
 
 describe('midnight, settings and address changes', () => {
-  /** Saturday 00:00:01 in New York: the Tomorrow look-ahead now reaches into the next week. */
+  /** Saturday 00:00:01 in New York: the span moves four days on. */
   const SATURDAY = Date.parse('2026-10-31T04:00:01Z');
 
   it('loads the day that a range grew by at high priority, beside the light round of the midnight', async () => {
     const h = await firstLoadOnly();
     expect(h.canvas.scenario.now).toBe('2026-10-27T18:00:00.000Z');
 
+    const cachedEnd = (await rangeOf(h, 0)).end;
     vi.setSystemTime(SATURDAY);
     await h.owner.refresh('midnight');
-    const state = expectReady(await h.owner.getState(PANEL));
+    // The new days are not cached yet, so the list waits for them.
+    expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
     await h.owner.settled();
+    const state = expectReady(await h.owner.getState(PANEL));
 
     expect(state.view.today).toBe('2026-10-31');
-    // Tomorrow is the first day of the next week, and that day was missing.
+    // The span now ends four days later, and those days were missing.
+    const dayStart = Temporal.Instant.from(cachedEnd)
+      .add({ milliseconds: 1 })
+      .toString({ fractionalSecondDigits: 3 });
     expect(h.canvas.plannerRanges()).toContainEqual({
-      start: (await spanOf(h, 1)).start,
+      start: dayStart,
       end: (await rangeOf(h, 0)).end,
     });
-    const dayStart = (await spanOf(h, 1)).start;
     const day = h.canvas.calls.find(
       (call) =>
         call.method === 'listPlannerItems' &&
@@ -367,7 +372,8 @@ describe('midnight, settings and address changes', () => {
 
     expect(state.view.today).toBe('2026-10-31');
     expect(state.refreshing).toBe(false);
-    expect(methods(h)).toEqual(new Set(LIGHT));
+    // The light round, and the details of the span that loads ahead of the new one.
+    expect(methods(h)).toEqual(new Set([...LIGHT, 'listAssignmentsByIds']));
     expect(h.canvas.calls.every((call) => call.priority !== 'high')).toBe(true);
   });
 
@@ -394,16 +400,18 @@ describe('midnight, settings and address changes', () => {
     expect(h.canvas.calls).toEqual([]);
   });
 
-  it('shows the list from the old range while the new range loads', async () => {
-    const h = await firstLoadOnly();
+  it('shows the cached list with the refresh marker while the round of a midnight runs', async () => {
+    const h = await loaded();
     vi.setSystemTime(SATURDAY);
     const release = h.canvas.hold('listPlannerItems');
+    const round = h.owner.refresh('midnight');
 
     const state = expectReady(await h.owner.getState(PANEL));
 
     expect(state.refreshing).toBe(true);
     expect(state.view.today).toBe('2026-10-31');
     release();
+    await round;
     await h.owner.settled();
     expect(expectReady(await h.owner.getState(PANEL)).refreshing).toBe(false);
   });

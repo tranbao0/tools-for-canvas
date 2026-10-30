@@ -339,10 +339,7 @@ test.describe('compact in-page list', () => {
     await expect(more).toHaveCount(0);
   });
 
-  test('later days, No due date and Done sit behind "Rest of the week"', async ({
-    context,
-    page,
-  }) => {
+  test('later days, No due date and Done sit behind "Next 7 days"', async ({ context, page }) => {
     const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }]);
     await openCanvasPage(page, canvas.origin);
     const list = inpageList(page);
@@ -351,7 +348,7 @@ test.describe('compact in-page list', () => {
     await expect(group(list, 'day')).toHaveCount(0);
     await expect(group(list, 'no_due_date')).toHaveCount(0);
     await expect(group(list, 'done')).toHaveCount(0);
-    const link = list.getByRole('button', { name: /^Rest of the week \(\d+\)$/ });
+    const link = list.getByRole('button', { name: /^Next 7 days \(\d+\)$/ });
     await expect(link).toHaveAttribute('aria-expanded', 'false');
 
     await link.click();
@@ -373,7 +370,7 @@ test.describe('compact in-page list', () => {
     const drawn = await list.locator('.wr-ring').count();
     expect(drawn).toBeLessThanOrEqual(4);
     if (legend > 4) {
-      // Classes with no work this week stay out of the chart and out of the +N count.
+      // Classes with no work in the span stay out of the chart and out of the +N count.
       await expect(list.locator('.wr-chart-more')).toHaveText(/^\+[1-9]\d*$/);
     }
   });
@@ -404,7 +401,7 @@ test.describe('glance disclosure links and focus', () => {
     const summary = group(list, 'past_due').getByRole('button', { name: /\d+ past due/ });
     const links = [
       summary,
-      list.getByRole('button', { name: /^Rest of the week \(\d+\)$/ }),
+      list.getByRole('button', { name: /^Next 7 days \(\d+\)$/ }),
       group(list, 'tomorrow').getByRole('button', { name: 'Show 3 more' }),
     ];
     for (const link of links) {
@@ -462,7 +459,7 @@ test.describe('glance disclosure links and focus', () => {
     // The last visible row has none: focus goes to the next link of the list.
     await page.keyboard.press('Space');
     await expect(doneBox(list, 'Return library books')).toHaveCount(0);
-    await expect.poll(async () => (await focused()).text).toMatch(/^Rest of the week \(\d+\)$/);
+    await expect.poll(async () => (await focused()).text).toMatch(/^Next 7 days \(\d+\)$/);
     const last = await focused();
     expect(last.add).toBe(false);
     expect(last.expanded).toBe('false');

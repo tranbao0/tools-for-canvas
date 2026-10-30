@@ -36,7 +36,7 @@ This extension has no account, no server of its own and no telemetry.
 | 6 | List layout and item placement | Items are placed by date and done state only, each in one group |
 | 7 | Item status | One set of status chips, the same on every item in every view |
 | 8 | What counts as done, and the rings | The Canvas planner rule, plus excused and graded work; rings count items |
-| 9 | Week, time zone and past-due work | A span the student picks (Day, Week, 2 weeks, Month or 2 to 90 days), on the calendar in the Canvas time zone, a Past due group back to the term start (at most 16 weeks), and a look-ahead for tomorrow |
+| 9 | The shown span, time zone and past-due work | A span the student picks (Day, Week, 2 weeks, Month or 2 to 90 days) that starts today in the Canvas time zone, a Past due group back to the term start (at most 16 weeks), and a look-ahead for tomorrow |
 | 10 | Custom tasks | Create, edit and delete Canvas planner notes |
 | 11 | Data loading, refresh and errors | One data owner in the background, with a memory-only cache |
 | 12 | Build tools and UI framework | WXT, TypeScript and Preact |
@@ -45,7 +45,7 @@ This extension has no account, no server of its own and no telemetry.
 | 15 | Publishing and privacy | Three stores, one privacy policy, no data collection |
 | 16 | License | GPL-3.0-only, with DCO sign-off for contributions |
 | 17 | Name | Tools for Canvas |
-| 18 | Settings | Six settings, also shown inside the panel and the in-page list |
+| 18 | Settings | Five settings, also shown inside the panel and the in-page list |
 | 19 | Accessibility, language and theme | WCAG 2.2 AA, English text, a Theme setting with Automatic, Light and Dark |
 | 20 | No-telemetry guarantee | One fetch wrapper that only reaches the student's Canvas |
 | 21 | Visual design | Looks like a native part of Canvas, not an add-on sidebar |
@@ -298,10 +298,11 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - Today and Tomorrow show in full.
     A group with more than 4 items shows its first 3, and a "Show N more" link opens the rest in place.
     A link that would hide only one item takes the same space as that item, so smaller groups show in full.
-  - The later days of the shown span, No due date and Done sit behind one link that names the span, such as "Rest of the week (9)" or "Rest of the month (40)", and opens them in place.
-    With a custom span the link reads "Rest of these 10 days (12)", and with 2 weeks it reads "Rest of these 2 weeks (15)".
+  - The later days of the shown span, No due date and Done sit behind one link that names the span, such as "Next 7 days (9)" or "Next month (40)", and opens them in place.
+    With a custom span the link reads "Next 10 days (12)", and with 2 weeks it reads "Next 14 days (15)".
+    In a span that does not start today, the link reads "Rest of these 7 days (9)".
     With Day, the link holds only No due date and Done, and reads "No due date and done (2)".
-  - A week with nothing due today or tomorrow shows the next day that has work, so the glance is never empty while work is due.
+  - A span with nothing due today or tomorrow shows the next day that has work, so the glance is never empty while work is due.
   - What the student opened stays open while the page stays open.
   - Each of these links is a button with `aria-expanded` and `aria-controls`, and `aria-controls` names the region that the link opens.
     The region stays in the page while it is closed, so the reference always resolves.
@@ -696,55 +697,56 @@ Availability is a separate small marker next to the status chip, because it answ
   - A course with no saved color gets one of Canvas's 12 default dashboard colors, picked by a hash of the course id [10].
   - The extension never writes a color back to Canvas.
 
-### 9. Week, time zone and past-due work
+### 9. The shown span, time zone and past-due work
 
-**Question:** How is a week defined, and how does past-due work show?
+**Question:** Which days does the list show, and how does past-due work show?
 
 **Options:**
 
 - A. A calendar week in the student's Canvas time zone, with the start day taken from the Canvas language.
 - B. The original's default: Monday 3:00 pm to Monday 3:00 pm in the browser's time zone.
-- C. A rolling seven days from now.
+- C. A span of days that starts today, in the student's Canvas time zone.
 
-**Decision:** A.
-
-**The week:**
-
-- The week starts at 00:00 on its start day, in the Canvas time zone [10].
-  The time zone is the IANA name in `time_zone` from `GET /api/v1/users/self/profile` [10].
-- The start day comes from the Canvas language in `effective_locale` from the same call [10].
-  `locale` is null for most students, so it is only a fallback, and the browser language comes after it.
-- The start day is Sunday for English (US), Monday for English (UK), English (Australia) and most European languages, and Saturday for Arabic and Persian [10].
-- Canvas has no setting for the first day of the week [10], so the extension has its own setting.
-- The arrows move by the shown span.
-  A "Today" button returns to the span that holds today.
+**Decision:** C.
+The owner chose it on 2026-10-29, after testing on a real Canvas.
+Option A was the first decision, and it put the first days of a long span in the past.
 
 **The shown span:**
 
-The owner asked on 2026-10-29 that students pick the span the list shows, not only one week.
-
+- Every span starts at 00:00 today, in the Canvas time zone [10].
+  The time zone is the IANA name in `time_zone` from `GET /api/v1/users/self/profile` [10].
 - The student picks a span with a small control next to the arrows: Day, Week, 2 weeks, Month, or "Custom: N days".
-- Spans follow the calendar:
-  - Day shows one day.
-  - Week starts on the week start day.
-  - 2 weeks shows the week that holds today and the next week, and the arrows move two weeks.
-  - Month shows the calendar month.
-  - A custom span holds 2 to 90 days, starts today, and the arrows move by N days.
+- The spans are:
+  - Day is today.
+  - Week is today and the next 6 days.
+  - 2 weeks is 14 days from today.
+  - Month runs from today through the day before the same date next month.
+    A month that lacks the date ends on its last day, so from Jan 31 the span runs through Feb 28, or Feb 29 in a leap year.
+  - A custom span holds 2 to 90 days and starts today.
+- The arrows move by one span.
+  The span after a Month starts on the day after the Month ends, so two spans never overlap and never leave a gap.
+  A "Today" button returns to the span that starts today.
+- The list moves on at 00:00 in the Canvas time zone, so the span always starts on the day it is shown.
+- The extension has no setting for the first day of the week, because no span depends on it.
 - The choice is one saved setting (decision 18).
   It stays after the browser closes, and the side panel and the in-page list use the same span.
 - The rings, Past due and the look-ahead follow the shown span.
-  Where this document says "the viewed week" or "this week", read "the shown span" and "the span that holds today".
+  Where this document says "the viewed week" or "this week", read "the shown span" and "the span that starts today".
 - A long span loads in several planner requests on the first view.
   The cache keeps them, so the arrows and later views reuse what it holds (decision 11).
 - Date math uses the Temporal API.
   Chrome and Edge ship it from version 144, and Firefox from version 139 [18].
+- The Canvas language in `effective_locale` from the same call [10] only sets the 12-hour or 24-hour clock (decision 19).
+  `locale` is null for most students, so it is only a fallback, and the browser language comes after it.
 
 **The past-due horizon:**
 
-- Each course has its own horizon: the later of its start and 16 weeks ago, but never later than the start of the current week.
+- Each course has its own horizon: the later of its start and 16 weeks ago, but never later than 00:00 today.
   - The start is the course's own `start_at` when `restrict_enrollments_to_course_dates` is true, otherwise `term.start_at` from the courses request with `include[]=term` [10].
   - A course with no start uses 16 weeks ago.
-  - The cap at the start of the current week keeps this week's work in Past due and the rings, even when a term starts in the future.
+  - Every span that holds today starts today, so the cap at 00:00 today is the start of that span.
+    It keeps the work that is due earlier today in Past due and in the rings, even when a term starts in the future.
+    Work from an earlier day of a course that has not started stays out.
 - Hidden courses (decision 18) do not count.
 - Past due shows an item only when its date is after the horizon of its course.
 - Why: a student sees one list of what they still owe, so every kind of item uses the same horizon.
@@ -753,25 +755,25 @@ The owner asked on 2026-10-29 that students pick the span the list shows, not on
 **The planner range of a view:**
 
 - Each view needs the planner items of one range.
-  The range starts at the earliest horizon of the visible courses, or at the start of the viewed week if that is earlier.
+  The range starts at the earliest horizon of the visible courses, or at the start of the shown span if that is earlier.
   Older-style peer reviews come back only when the range covers the reviewer's own assignment due date [10].
-  This start brings them back in the week of their real date.
-- The range ends at the end of the viewed week, or at the end of tomorrow if that is later, for the look-ahead.
+  This start brings them back in the span of their real date.
+- The range ends at the end of the shown span, or at the end of tomorrow if that is later, for the look-ahead.
 - `start_date` and `end_date` are plain UTC instants, such as `2026-11-02T04:59:59.999Z`.
   Canvas rejects a date string that has a time zone name in brackets [10].
-- `end_date` is one millisecond before the next day or week starts.
+- `end_date` is one millisecond before the next day starts.
   Most Canvas planner ranges include both ends [10].
 - The planner range covers every kind of item, including work that Canvas marks missing [10].
   So the extension needs no separate request for missing work.
 - The extension does not request the whole range for each view.
   The cache keeps the items of every request together, and a view requests only the parts of its range that the cache does not hold (decision 11, "The planner cache").
-  - One step forward from the current week requests one week.
-  - A week before the current one, back to the horizon, needs no request.
+  - One step forward from the span that starts today requests one span.
+  - A span before today, back to the horizon, needs no request.
 - Every view reads all cached items, and the client places each item by its own date, peer reviews included.
-  Items outside the viewed week, outside Past due and outside the Tomorrow look-ahead are dropped.
-  So a peer review that the request for a later week brought back also shows in its real week.
+  Items outside the shown span, outside Past due and outside the Tomorrow look-ahead are dropped.
+  So a peer review that the request for a later span brought back also shows in its real span.
 - Known limits:
-  - A peer review whose reviewer's own due date falls after every week in the cache shows only once a view covers that date.
+  - A peer review whose reviewer's own due date falls after every span in the cache shows only once a view covers that date.
     This happens when the reviewer has an extension.
   - Canvas never returns an older-style peer review on an undated assignment [10].
 
@@ -783,8 +785,8 @@ The owner asked on 2026-10-29 that students pick the span the list shows, not on
 
 **Look-ahead:**
 
-- When tomorrow falls in the next week, the Tomorrow group still shows tomorrow's items.
-- These items show their date, and they do not count in this week's rings.
+- When the shown span ends today, which only a Day span does, the Tomorrow group still shows tomorrow's items.
+- These items show their date, and they do not count in the rings.
 
 **Times:**
 
@@ -795,8 +797,9 @@ The owner asked on 2026-10-29 that students pick the span the list shows, not on
 
 - The original's 3:00 pm start puts work due on Monday morning into the previous week [9].
 - The original uses the browser's time zone with no label, so a student who travels sees wrong days [9].
-- A rolling window does not match how courses plan work.
-- The look-ahead keeps deadlines that are hours away in view on the last day of the week.
+- A student asks what is due from now on.
+  A span that starts today answers it, and the first days of a calendar week that are already over do not.
+- The look-ahead keeps deadlines that are hours away in view when the span is one day.
 
 ### 10. Custom tasks
 
@@ -818,8 +821,8 @@ The owner asked on 2026-10-29 that students pick the span the list shows, not on
 - Delete shows the "Undo" notice.
   The DELETE is sent when the notice ends: the student acts again, closes the notice or closes the surface.
   The background sends it after 2 minutes at the latest, so a closed panel cannot keep a task alive.
-- The default date is today when today is in the viewed week.
-  Otherwise, it is the first day of the viewed week.
+- The default date is today when today is in the shown span.
+  Otherwise, it is the first day of the shown span.
   So a new task never vanishes from the view.
 - The course picker shows the student's active courses, except hidden courses (decision 18).
 - A click on a custom task opens its edit form, because planner notes have no Canvas page [10].
@@ -900,7 +903,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
   So a week that a surface shows stays as current as the current week, and weeks that no surface shows cost no requests.
 - A write, or the change marker in `storage.local`, refreshes everything.
 - A change of the saved address refreshes everything.
-- At midnight in the Canvas time zone, the surfaces recompute the current week and the day groups.
+- At midnight in the Canvas time zone, the surfaces recompute the span that starts today and the day groups.
   If the planner range changes, they also refresh the planner items.
 - At most one refresh round runs per 60 seconds.
   Loading a week that a surface shows is not a refresh round, so it never waits for this limit or for a running round.
@@ -989,7 +992,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | Signed out | Any 401, then `GET /api/v1/users/self` returns 401 | An "Open Canvas to sign in" button and the saved address |
 | Planner turned off | `users/self` returns 200, and the planner returns 403 with JSON `status` `unauthorized` | The same list and chips, built from the "All assignments" request and the override list. One line says: "Your school limits the Canvas planner. Pages, ungraded discussions, ungraded quizzes, peer reviews, discussions with reply due dates and your own tasks can't show." The add-task button is disabled, with that reason. |
 | No active courses | The courses list is empty | "No active courses" |
-| Nothing due | The week has no items | "Nothing due this week" |
+| Nothing due | The span has no items | "Nothing due in these 7 days" |
 | Can't refresh | HTTP 429, 403 with "Rate Limit Exceeded", HTTP 5xx, or a network error | The last data, with one line: "Couldn't refresh. Showing your list from 3:05 pm." and a Retry button. On a network error while the browser reports no connection, the line also says "You're offline." |
 
 Notes on these states:
@@ -1282,12 +1285,11 @@ The owner chose it on 2026-10-27.
 
 **Question:** Which settings does version 1 have?
 
-**Decision:** Six settings.
+**Decision:** Five settings.
 
 | Setting | Default |
 |---|---|
 | Shown span (decision 9) | Week |
-| First day of the week | Automatic, from the Canvas language |
 | Show in my list | On for every course, so all active student courses show |
 | Show progress rings | On |
 | Show the weekly list on Canvas pages | On |
@@ -1314,7 +1316,7 @@ The owner chose it on 2026-10-27.
 - There is no switch for undated work.
   The No due date group starts collapsed, and Skip clears single items.
 
-**Left out from the original:** the three-day view, the rolling view, list length, theme color, confetti, streaks, the Announcements tab, repeat-weekly custom tasks, Gradescope data, teacher mode and the 12-hour or 24-hour setting [9].
+**Left out from the original:** the three-day view, list length, theme color, confetti, streaks, the Announcements tab, repeat-weekly custom tasks, Gradescope data, teacher mode and the 12-hour or 24-hour setting [9].
 
 ### 19. Accessibility, language and theme
 
@@ -1328,7 +1330,7 @@ The owner chose it on 2026-10-27.
   In the in-page list that can be a row that "Show N more" had hidden.
   With no such row, focus moves to the same control of the next row, or of the previous row.
   When no row is left, focus moves to the heading of the group if the group stays.
-  Then it moves to the first link that opens a part of the list and comes after the place of the row, such as "Rest of the week", or to the last such link before that place when none comes after.
+  Then it moves to the first link that opens a part of the list and comes after the place of the row, such as "Next 7 days", or to the last such link before that place when none comes after.
   It never jumps to the Add button while the list has such a link.
 - Animation stops when the system asks for reduced motion.
 - No control ever hides under the sticky header or the bottom notice (WCAG 2.4.11).
@@ -1350,7 +1352,7 @@ The owner chose it on 2026-10-27.
 - All UI text lives in `_locales/en/messages.json` from the start.
   Version 1 ships in English only.
 - Dates and weekday names also show in English, so that one view never mixes two languages.
-  The Canvas language still sets the first day of the week and the 12-hour or 24-hour clock.
+  The Canvas language still sets the 12-hour or 24-hour clock.
 - A Theme setting has three choices: Automatic, Light and Dark.
   - Light and Dark apply to every surface: the side panel, the settings and welcome pages, and the in-page list.
   - Automatic uses the color scheme that the browser reports to extension pages (`prefers-color-scheme`).

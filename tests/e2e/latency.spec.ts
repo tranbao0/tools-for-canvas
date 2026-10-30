@@ -21,10 +21,10 @@ const ONE_ROUND_TRIP_MS = LATENCY_MS + 500;
 /** The background counts as idle after this long with no request in flight. */
 const QUIET_MS = 1_500;
 
-/** 00:00 on Sunday Nov 1 in New York: the first day of the next week. */
-const NEXT_WEEK_START = '2026-11-01T04:00:00.000Z';
-/** 00:00 on Sunday Nov 8 in New York: the first day of the week after next. */
-const WEEK_AFTER_NEXT_START = '2026-11-08T05:00:00.000Z';
+/** 00:00 on Tuesday Nov 3 in New York: the first day of the next span. */
+const NEXT_SPAN_START = '2026-11-03T05:00:00.000Z';
+/** 00:00 on Tuesday Nov 10 in New York: the first day of the span after next. */
+const SPAN_AFTER_NEXT_START = '2026-11-10T05:00:00.000Z';
 
 interface PlannerRequest {
   start: string;
@@ -206,7 +206,7 @@ async function openSlowCanvas(
   const opened = Date.now();
   await openExtensionPage(page, panelUrl);
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Week of October 25 to 31' }),
+    page.getByRole('heading', { level: 1, name: 'October 27 to November 2' }),
   ).toBeVisible({ timeout: 60_000 });
   await recordClicks(page);
   return { canvas, firstLoad: Date.now() - opened };
@@ -235,7 +235,7 @@ test('a new week shows within one round trip on a slow Canvas with a full term o
   expect(firstPlanner.some((request) => request.page > 1)).toBe(true);
 
   const steps: Step[] = [];
-  const next = await measure(page, canvas, 'Next week', 'Next week', 'Week of November 1 to 7');
+  const next = await measure(page, canvas, 'Next week', 'Next week', 'November 3 to 9');
   steps.push(next);
   // Canvas returns the older-style peer review only for a range with Lab report 3's due date,
   // last week. It still shows on its own day, next Wednesday.
@@ -243,23 +243,23 @@ test('a new week shows within one round trip on a slow Canvas with a full term o
   await expect(
     wednesday.locator('li', { hasText: 'Lab report 3: Photosynthesis' }).locator('.wr-subtitle'),
   ).toHaveText('Peer review');
-  const back = await measure(page, canvas, 'Today', 'Today', 'Week of October 25 to 31');
+  const back = await measure(page, canvas, 'Today', 'Today', 'October 27 to November 2');
   steps.push(back);
   const previous = await measure(
     page,
     canvas,
     'Previous week',
     'Previous week',
-    'Week of October 18 to 24',
+    'October 20 to 26',
   );
   steps.push(previous);
-  steps.push(await measure(page, canvas, 'Today', 'Today', 'Week of October 25 to 31'));
+  steps.push(await measure(page, canvas, 'Today', 'Today', 'October 27 to November 2'));
 
   // A jump of three weeks: Next week three times, each click as soon as the week shows.
   const jump = [
-    await timeJumpStep(page, canvas, 'Week of November 1 to 7'),
-    await timeJumpStep(page, canvas, 'Week of November 8 to 14'),
-    await timeJumpStep(page, canvas, 'Week of November 15 to 21'),
+    await timeJumpStep(page, canvas, 'November 3 to 9'),
+    await timeJumpStep(page, canvas, 'November 10 to 16'),
+    await timeJumpStep(page, canvas, 'November 17 to 23'),
   ];
   const jumpStart = jump[0]?.from ?? canvas.requests.length;
   const jumpShownAt = jump.at(-1)?.shownAt ?? Date.now();
@@ -282,12 +282,12 @@ test('a new week shows within one round trip on a slow Canvas with a full term o
   // The next week loaded in the background after the current week showed, so the click needs
   // no request for it.
   expect
-    .soft(firstPlanner.some((request) => asksFor(request, NEXT_WEEK_START, WEEK_AFTER_NEXT_START)))
+    .soft(firstPlanner.some((request) => asksFor(request, NEXT_SPAN_START, SPAN_AFTER_NEXT_START)))
     .toBe(true);
   expect.soft(next.ms).toBeLessThan(CACHED_MS);
   expect
     .soft(
-      next.planner.filter((request) => asksFor(request, NEXT_WEEK_START, WEEK_AFTER_NEXT_START)),
+      next.planner.filter((request) => asksFor(request, NEXT_SPAN_START, SPAN_AFTER_NEXT_START)),
     )
     .toEqual([]);
   // The current week and a week within the past-due horizon need no request at all.
@@ -300,7 +300,7 @@ test('a new week shows within one round trip on a slow Canvas with a full term o
   for (const request of steps.at(-1)?.planner ?? []) {
     expect
       .soft(Date.parse(request.start))
-      .toBeGreaterThanOrEqual(Date.parse(WEEK_AFTER_NEXT_START));
+      .toBeGreaterThanOrEqual(Date.parse(SPAN_AFTER_NEXT_START));
   }
   // One copy of each planner item, however many weeks were shown.
   const sizes = await sessionSizes(background);
@@ -328,7 +328,7 @@ test('the next week shows within one round trip when it is clicked before it loa
   const from = canvas.requests.length;
 
   // The click comes while the next week still loads ahead.
-  const { ms } = await timeWeekChange(page, 'Next week', 'Week of November 1 to 7');
+  const { ms } = await timeWeekChange(page, 'Next week', 'November 3 to 9');
   await waitForQuiet(canvas);
   const planner = canvas.requests.slice(from).flatMap((r) => plannerRequest(r) ?? []);
   console.log(`Next week before it loaded ahead: shown ${Math.round(ms)} ms after the click`);
@@ -337,9 +337,9 @@ test('the next week shows within one round trip when it is clicked before it loa
   // The click joins the load that runs, so the week is asked for once.
   const all = canvas.requests.flatMap((r) => plannerRequest(r) ?? []);
   expect(
-    all.filter((request) => asksFor(request, NEXT_WEEK_START, WEEK_AFTER_NEXT_START)),
+    all.filter((request) => asksFor(request, NEXT_SPAN_START, SPAN_AFTER_NEXT_START)),
   ).toHaveLength(1);
-  expect(planner.every((request) => Date.parse(request.start) >= Date.parse(NEXT_WEEK_START))).toBe(
+  expect(planner.every((request) => Date.parse(request.start) >= Date.parse(NEXT_SPAN_START))).toBe(
     true,
   );
 });

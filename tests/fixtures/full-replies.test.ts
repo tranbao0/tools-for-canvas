@@ -13,7 +13,6 @@ import { ringColor } from '../../src/features/weekly-list/model/colors';
 import { classifyHandIn } from '../../src/features/weekly-list/model/handin';
 import * as model from '../../src/features/weekly-list/model/normalize';
 import { horizons } from '../../src/features/weekly-list/model/time';
-import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import { resolveViewBasics } from '../../src/features/weekly-list/model/view';
 import { FULL_REPLIES as R } from './full-replies';
 import { customGradeStatusesAnswer } from './graphql';
@@ -102,8 +101,7 @@ const checks: Record<string, () => void> = {
     R.courses,
     trimIn<Canvas.Course>(() => S.courses),
     (courses) => {
-      const span = DEFAULT_SETTINGS.span;
-      const horizon = horizons({ ...S, weekStartDay: 7, span, courses, hiddenCourseIds: [] });
+      const horizon = horizons({ ...S, courses, hiddenCourseIds: [] });
       return [[...horizon.byCourse], courseChoices(courses, S.dashboardPositions)];
     },
   ),
@@ -133,8 +131,7 @@ const checks: Record<string, () => void> = {
   'the profile': check(
     R.profile,
     () => S.profile,
-    (profile: Canvas.Profile) =>
-      resolveViewBasics({ profile, settings: DEFAULT_SETTINGS, browserTimeZone: 'UTC' }),
+    (profile: Canvas.Profile) => resolveViewBasics({ profile, browserTimeZone: 'UTC' }),
   ),
   'the teacher statuses': check(
     R.customGradeStatuses,

@@ -93,8 +93,8 @@ async function expectRendered(
   ).toEqual([]);
 }
 
-/** The heading of the list, such as "Week of October 25 to 31". */
-const WEEK = /^Week of /;
+/** The heading of the list: the Week span that starts on Tuesday Oct 27. */
+const WEEK = /^October 27 to November 2$/;
 
 async function settle(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle');

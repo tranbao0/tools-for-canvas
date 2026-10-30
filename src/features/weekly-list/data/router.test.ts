@@ -141,7 +141,7 @@ describe('routeDataMessage', () => {
       const bad = [
         { type: 'weekrow:save-settings', settings: { ...DEFAULT_SETTINGS, extra: 1 } },
         { type: 'weekrow:save-settings', settings: { ...DEFAULT_SETTINGS, theme: 'neon' } },
-        { type: 'weekrow:save-settings', settings: { ...DEFAULT_SETTINGS, weekStart: 8 } },
+        { type: 'weekrow:save-settings', settings: { ...DEFAULT_SETTINGS, weekStart: 'auto' } },
         { type: 'weekrow:save-settings', settings: { ...DEFAULT_SETTINGS, hiddenCourseIds: [1] } },
         { type: 'weekrow:save-settings', settings: { ...DEFAULT_SETTINGS, showRings: 'yes' } },
         { type: 'weekrow:save-settings' },

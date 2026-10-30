@@ -1,42 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hourCycleFor, localeCandidates, resolveLocale, resolveWeekStartDay } from './locale';
-
-describe('resolveWeekStartDay', () => {
-  it.each([
-    ['en', 7],
-    ['en-US', 7],
-    ['en-CA', 7],
-    ['en-GB', 1],
-    ['en-AU', 1],
-    ['en-GB-x-ukhe', 1],
-    ['de', 1],
-    ['de_AT', 1],
-    ['fr', 1],
-    ['fr-CA', 7],
-    ['pt', 1],
-    ['pt-BR', 7],
-    ['es-ES', 1],
-    ['sv-x-k12', 1],
-    ['zh-Hans', 1],
-    ['zh-Hant', 1],
-    ['zh-TW', 7],
-    ['zh-CN', 7],
-    ['ja', 7],
-    ['ko', 7],
-    ['ar', 6],
-    ['fa', 6],
-    ['xx', 7],
-    ['', 7],
-  ] as const)('maps the Canvas locale %s to ISO day %i', (locale, expected) => {
-    expect(resolveWeekStartDay('auto', locale)).toBe(expected);
-  });
-
-  it('uses the setting when it is not automatic', () => {
-    expect(resolveWeekStartDay(1, 'en')).toBe(1);
-    expect(resolveWeekStartDay(6, 'en-GB')).toBe(6);
-    expect(resolveWeekStartDay(7, 'ar')).toBe(7);
-  });
-});
+import { hourCycleFor, localeCandidates, resolveLocale } from './locale';
 
 describe('hourCycleFor', () => {
   it.each([

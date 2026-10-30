@@ -164,15 +164,15 @@ Use a new, empty profile, and the student account.
    Expect: the weekly list appears in the Canvas tab with no reload, on the dashboard and on course home pages.
    Expect: with List View or the new widget dashboard, the Canvas page shows the list in a right column, and the side panel shows the list too.
    Open the panel.
-   Expect: the list loads for the current week.
+   Expect: the list loads for the span that starts today.
 7. Click the toolbar button again, then press Alt+Shift+W twice.
    Expect: each action closes or opens the panel.
 8. Check the list against Canvas.
-   Expect: every assignment, quiz, discussion, page with a to-do date and peer review of the week is in the right group, and no calendar event or announcement shows.
+   Expect: every assignment, quiz, discussion, page with a to-do date and peer review of the shown span is in the right group, and no calendar event or announcement shows.
    Expect: in each row the title is the main line, the course name under it is quiet gray text, and the due line shows the due text with the row actions at its right.
    Expect: past-due work handed in on Gradescope, another tool or paper has one chip, such as "Can't confirm: Gradescope", and no second chip for the same hand-in.
-9. Move one week forward and one week back with the arrows, then click "This week".
-   Expect: the list changes week by week, and "This week" returns to the current week.
+9. Move one span forward and one span back with the arrows, then click "Today".
+   Expect: the list changes span by span, and "Today" returns to the span that starts today.
 10. Check an item off.
     Expect: the one-time note says "Done marks sync to Canvas and its apps. On a module item, this can count as 'Mark as done'.", and an Undo notice shows.
     Expect: the Undo notice stays until you act again or close it, and Ctrl+Z (Cmd+Z on a Mac) undoes while it shows.
@@ -187,7 +187,7 @@ Use a new, empty profile, and the student account.
     Expect: each change shows in the Canvas planner, and Delete shows an Undo notice.
     Expect: the task leaves the Canvas planner only when the notice closes, and at the latest 2 minutes after the delete.
 14. Check the rings.
-    Expect: each ring shows "done/total" for the week, a ring at 100 percent with no past-due work shows a check mark, and a click on a ring shows only that course.
+    Expect: each ring shows "done/total" for the shown span, a ring at 100 percent with no past-due work shows a check mark, and a click on a ring shows only that course.
 15. Open the Canvas Card View dashboard, then the Recent Activity dashboard, then a course home page.
     Expect: the weekly list replaces the Canvas To Do list, and on the course home page it shows only that course.
 16. Open the new Canvas dashboard (if your school has it) and the List View dashboard.
@@ -210,16 +210,17 @@ Use a new, empty profile, and the student account.
     Expect: only one slim notice shows at the top of the list, with a quiet count such as "1 more notice" when another one waits.
     Check an item off, while the "Couldn't refresh" line shows.
     Expect: the one-time note shows first, and the line returns after you press "Got it".
-20. Click the gear in the panel and change each of the six settings, then do the same with the gear in the in-page list.
+20. Click the gear in the panel and change each of the five settings, then do the same with the gear in the in-page list.
     Expect: the settings open in place, Back returns to the list, and each change shows at once in the panel, in the in-page list and on the settings page.
-    Expect: the shown span, the first day of the week, the courses that show in the list (every switch is on at first, and a course that you turn off leaves the list), the rings, the in-page list and the theme follow the settings, and a hidden course adds a line such as "1 course hidden".
+    Expect: the shown span, the courses that show in the list (every switch is on at first, and a course that you turn off leaves the list), the rings, the in-page list and the theme follow the settings, and a hidden course adds a line such as "1 course hidden".
 21. In the panel, pick each span in the control next to the arrows: Day, Week, 2 weeks, Month and Custom with 10 days.
-    Expect: the header shows "Tue, Oct 27" for Day, "Oct 25 - 31" for Week, "Oct 25 - Nov 7" for 2 weeks, "October 2026" for Month and "Oct 27 - Nov 5" for Custom, with the dates in your Canvas time zone.
-    Expect: Week and 2 weeks start on the first day of the week from the settings, Month is the calendar month, and Custom starts today.
+    Expect: on Tuesday Oct 27, the header shows "Tue, Oct 27" for Day, "Oct 27 - Nov 2" for Week, "Oct 27 - Nov 9" for 2 weeks, "Oct 27 - Nov 26" for Month and "Oct 27 - Nov 5" for Custom, with the dates in your Canvas time zone.
+    Expect: every span starts today, and Month ends on the day before the same date next month.
+    On the 31st of a month, expect: Month ends on the last day of the next month when that month is shorter, such as Feb 28.
     Expect: the arrows are named by the span, such as "Next month" and "Next 10 days", and each step moves by one span.
-    Expect: Today is dim in the span that holds today, and it returns to that span from any other span.
+    Expect: Today is dim in the span that starts today, and it returns to that span from any other span.
     Expect: with the arrow keys in the closed select, each pick shows at once, and the list changes only after a short pause or when the select loses focus.
-    Expect: Past due shows only in the span that holds today, and the rings and the empty text name the span, such as "3 of 5 done this month" and "Nothing due in these 10 days".
+    Expect: Past due shows only in the span that holds today, and the rings and the empty text name the span, such as "3 of 5 done in this month" and "Nothing due in these 10 days".
     Expect: with Day, tomorrow still shows as the look-ahead, outside the rings.
 22. Type 1, 91 and 2.5 in the Custom days field, and press Enter or leave the field.
     Expect: the browser says the number must be a whole number from 2 to 90, and the list keeps its last span.
@@ -227,15 +228,15 @@ Use a new, empty profile, and the student account.
     Expect: the list shows 2 days, then 90 days, and the first view of 90 days loads in several requests.
 23. Pick a span in the panel, then open the Canvas dashboard and pick another span in the in-page list, then close the browser and open it again.
     Expect: the panel and the in-page list always show the same span, and "Shown span" on the settings page shows it too.
-    Expect: the span is still the same after the browser opens again, and a new span starts at the span that holds today.
-    Expect: the link in the in-page list names the span: "Rest of the week (9)", "Rest of the month (40)", "Rest of these 2 weeks (15)" or "Rest of these 10 days (12)", and for Day it is "No due date and done (2)" when the student has such items.
+    Expect: the span is still the same after the browser opens again, and the span starts at today.
+    Expect: the link in the in-page list names the span: "Next 7 days (9)", "Next month (40)", "Next 14 days (15)" or "Next 10 days (12)", and in a span that does not start today it reads "Rest of these 7 days (9)", and for Day it is "No due date and done (2)" when the student has such items.
     Expect: the chart, the legend and the list agree with the shown span, with and without the panel open.
 24. Set Theme to Light, then Dark.
     Expect: the panel, the settings page, the welcome page and the in-page list all use that theme.
     Set Theme to Automatic, then switch the system between light and dark mode.
     Expect: the panel follows the browser or the system, and the in-page list follows the Canvas page.
 25. Use the panel with the keyboard only, then with a screen reader.
-    Expect: every action works with the keyboard, including the span control and the Custom days field, and each ring has a label such as "3 of 5 done this week".
+    Expect: every action works with the keyboard, including the span control and the Custom days field, and each ring has a label such as "3 of 5 done in these 7 days".
 26. Make the panel as narrow as the browser allows (360 px on Chrome and Edge, 14em on Firefox).
     Expect: the compact layout shows, and no text or button is cut off, including the span control and the Custom days field with each span.
 27. Open a second Canvas site, such as `https://canvas.example.edu`, sign in, and click the toolbar button.

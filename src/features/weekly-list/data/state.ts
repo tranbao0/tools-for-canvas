@@ -69,11 +69,10 @@ export function spanRange(
   context: ViewContext,
 ): TimeRange {
   const input = basicsInput(session, spanOffset, context);
-  const { timeZone, weekStartDay } = resolveViewBasics(input);
+  const { timeZone } = resolveViewBasics(input);
   const bounds = spanBounds({
     now: input.now,
     timeZone,
-    weekStartDay,
     span: input.settings.span,
     spanOffset,
   });
@@ -84,7 +83,7 @@ interface PlannerFit {
   /** The cache holds every item of the view's planner range, from the horizon on. */
   exact: boolean;
   /**
-   * The cache holds every item of the viewed week, so the view can show. Without `exact`, the
+   * The cache holds every item of the shown span, so the view can show. Without `exact`, the
    * Past due group may lack older items, such as after midnight or after a settings change.
    */
   showable: boolean;

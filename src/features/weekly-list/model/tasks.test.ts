@@ -67,13 +67,10 @@ describe('nextDayStart', () => {
 describe('resolveViewBasics and plannerRangeFor', () => {
   const profile = { id: '1', name: 'Sam', time_zone: NY, locale: null, effective_locale: 'en-GB' };
 
-  it('resolves the zone, language and week start like buildWeekView', () => {
-    expect(
-      resolveViewBasics({ profile, settings: DEFAULT_SETTINGS, browserTimeZone: 'UTC' }),
-    ).toEqual({
+  it('resolves the zone and the language like buildWeekView', () => {
+    expect(resolveViewBasics({ profile, browserTimeZone: 'UTC' })).toEqual({
       timeZone: NY,
       locale: 'en-GB',
-      weekStartDay: 1,
     });
   });
 
@@ -87,6 +84,6 @@ describe('resolveViewBasics and plannerRangeFor', () => {
         spanOffset: 0,
         courses: [course('1', 'Biology', '2026-08-24T04:00:00Z')],
       }),
-    ).toEqual({ start: '2026-08-24T04:00:00.000Z', end: '2026-11-02T04:59:59.999Z' });
+    ).toEqual({ start: '2026-08-24T04:00:00.000Z', end: '2026-11-03T04:59:59.999Z' });
   });
 });

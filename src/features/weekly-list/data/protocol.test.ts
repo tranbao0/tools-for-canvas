@@ -152,7 +152,6 @@ describe('messages', () => {
 describe('the messages of the in-page script', () => {
   const SETTINGS = {
     span: { kind: 'month', days: 7 },
-    weekStart: 'auto',
     hiddenCourseIds: ['7'],
     showRings: true,
     showOnCanvasPages: false,
@@ -161,7 +160,6 @@ describe('the messages of the in-page script', () => {
 
   it('accept settings of exactly the right shape', () => {
     expect(isSettings(SETTINGS)).toBe(true);
-    expect(isSettings({ ...SETTINGS, weekStart: 7 })).toBe(true);
     expect(isSaveSettingsMessage({ type: 'weekrow:save-settings', settings: SETTINGS })).toBe(true);
     expect(isDataMessage({ type: 'weekrow:save-settings', settings: SETTINGS })).toBe(true);
   });
@@ -175,8 +173,7 @@ describe('the messages of the in-page script', () => {
     [{ ...SETTINGS, span: { kind: 'custom', days: 2.5 } }],
     [{ ...SETTINGS, span: { kind: 'custom' } }],
     [{ ...SETTINGS, span: { kind: 'week', days: 7, extra: 1 } }],
-    [{ ...SETTINGS, weekStart: 0 }],
-    [{ ...SETTINGS, weekStart: '1' }],
+    [{ ...SETTINGS, weekStart: 'auto' }],
     [{ ...SETTINGS, theme: 'sepia' }],
     [{ ...SETTINGS, hiddenCourseIds: 'all' }],
     [{ ...SETTINGS, hiddenCourseIds: [7] }],
@@ -184,7 +181,7 @@ describe('the messages of the in-page script', () => {
     [{ ...SETTINGS, hiddenCourseIds: ['1'.repeat(41)] }],
     [{ ...SETTINGS, hiddenCourseIds: Array.from({ length: 1001 }, (_, i) => `${i + 1}`) }],
     [{ ...SETTINGS, showRings: 1 }],
-    [{ weekStart: 'auto' }],
+    [{ theme: 'dark' }],
     [null],
     ['settings'],
   ])('refuse settings of the wrong shape: %j', (value) => {

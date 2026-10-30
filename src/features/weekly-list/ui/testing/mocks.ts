@@ -1,6 +1,6 @@
 /**
  * Hand-written view data for component tests and the gallery.
- * The current week is Sunday Oct 25 to Saturday Oct 31, 2026, in America/New_York,
+ * The span that holds today is Tuesday Oct 27 to Monday Nov 2, 2026, in America/New_York,
  * and today is Tuesday Oct 27.
  */
 import type {
@@ -413,8 +413,8 @@ export function currentRings(): Ring[] {
 export function mkView(patch: Partial<WeekView> = {}): WeekView {
   return {
     span: { kind: 'week', days: 7 },
-    spanStart: '2026-10-25',
-    spanEnd: '2026-10-31',
+    spanStart: '2026-10-27',
+    spanEnd: '2026-11-02',
     spanOffset: 0,
     isCurrentSpan: true,
     today: '2026-10-27',
@@ -433,11 +433,11 @@ export function mkView(patch: Partial<WeekView> = {}): WeekView {
   };
 }
 
-/** The view of the previous week: day groups with status chips, then Done. */
-export function pastWeekView(): WeekView {
+/** The view of the previous span: day groups with status chips, then Done. */
+export function pastSpanView(): WeekView {
   return mkView({
-    spanStart: '2026-10-18',
-    spanEnd: '2026-10-24',
+    spanStart: '2026-10-20',
+    spanEnd: '2026-10-26',
     spanOffset: -1,
     isCurrentSpan: false,
     browserTimeZoneDiffers: false,
@@ -484,7 +484,7 @@ export function pastWeekView(): WeekView {
             title: 'Quiz 5',
             course: 'math',
             kind: 'quiz',
-            due: et('2026-10-19', '09:00'),
+            due: et('2026-10-21', '09:00'),
             state: 'done',
           }),
           mkItem({
@@ -499,7 +499,7 @@ export function pastWeekView(): WeekView {
   });
 }
 
-/** The current week with nothing due: Past due, "Nothing due this week", No due date and Done. */
+/** The current span with nothing due: Past due, "Nothing due in these 7 days", No due date and Done. */
 export function nothingDueView(): WeekView {
   const groups = currentWeekGroups().filter(
     (g) => g.kind === 'past_due' || g.kind === 'no_due_date',
@@ -512,7 +512,7 @@ export function nothingDueView(): WeekView {
   });
 }
 
-/** Eight classes with work this week, so the chart has more classes than it can draw. */
+/** Eight classes with work in the span, so the chart has more classes than it can draw. */
 export function eightCoursesView(): WeekView {
   const art: Ring = {
     ...ring('bio', 1, 2, 0),
@@ -524,7 +524,7 @@ export function eightCoursesView(): WeekView {
   return mkView({ rings: [...currentRings(), art] });
 }
 
-/** The current week with every item done and nothing past due, in six classes. */
+/** The current span with every item done and nothing past due, in six classes. */
 export function allDoneView(): WeekView {
   const done = ['Quiz 7', 'Problem Set 7', 'Essay 2 final draft'].map((title, index) =>
     mkItem({

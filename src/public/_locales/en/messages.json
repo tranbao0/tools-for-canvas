@@ -15,9 +15,12 @@
     "message": "$1 - $2"
   },
   "spanRangeLong_week": {
-    "message": "Week of $1 to $2"
+    "message": "$1 to $2"
   },
   "spanRangeLong_fortnight": {
+    "message": "$1 to $2"
+  },
+  "spanRangeLong_month": {
     "message": "$1 to $2"
   },
   "spanRangeLong_custom": {
@@ -69,16 +72,16 @@
     "message": "$2 days"
   },
   "spanThis_day": {
-    "message": "this day"
+    "message": "on this day"
   },
   "spanThis_week": {
-    "message": "this week"
+    "message": "in these 7 days"
   },
   "spanThis_fortnight": {
-    "message": "in these 2 weeks"
+    "message": "in these 14 days"
   },
   "spanThis_month": {
-    "message": "this month"
+    "message": "in this month"
   },
   "spanThis_custom": {
     "message": "in these $2 days"
@@ -180,15 +183,30 @@
     "message": "No due date and done ($1)"
   },
   "restOf_week": {
-    "message": "Rest of the week ($1)"
+    "message": "Next 7 days ($1)"
   },
   "restOf_fortnight": {
-    "message": "Rest of these 2 weeks ($1)"
+    "message": "Next 14 days ($1)"
   },
   "restOf_month": {
-    "message": "Rest of the month ($1)"
+    "message": "Next month ($1)"
   },
   "restOf_custom": {
+    "message": "Next $2 days ($1)"
+  },
+  "restOfShown_day": {
+    "message": "No due date and done ($1)"
+  },
+  "restOfShown_week": {
+    "message": "Rest of these 7 days ($1)"
+  },
+  "restOfShown_fortnight": {
+    "message": "Rest of these 14 days ($1)"
+  },
+  "restOfShown_month": {
+    "message": "Rest of this month ($1)"
+  },
+  "restOfShown_custom": {
     "message": "Rest of these $2 days ($1)"
   },
   "itemCount_one": {
@@ -514,15 +532,6 @@
   },
   "settingSpan": {
     "message": "Shown span"
-  },
-  "settingWeekStart": {
-    "message": "First day of the week"
-  },
-  "weekStartAuto": {
-    "message": "Automatic"
-  },
-  "weekStartHelp": {
-    "message": "Automatic takes the first day from your Canvas language."
   },
   "settingCourses": {
     "message": "Show in my list"

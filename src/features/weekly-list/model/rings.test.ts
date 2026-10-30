@@ -176,12 +176,12 @@ describe('rings in the week view', () => {
         now: '2026-10-27T18:00:00Z',
         courses: [course('1', 'Algebra')],
         plannerItems: [
-          plannerItem({ type: 'assignment', id: 'a', courseId: '1', date: '2026-10-26T16:00:00Z' }),
+          plannerItem({ type: 'assignment', id: 'a', courseId: '1', date: '2026-10-27T14:00:00Z' }),
           plannerItem({
             type: 'assignment',
             id: 'b',
             courseId: '1',
-            date: '2026-10-26T17:00:00Z',
+            date: '2026-10-27T15:00:00Z',
             override: override('o', { markedComplete: false, dismissed: true }),
           }),
         ],
