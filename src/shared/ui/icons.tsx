@@ -8,8 +8,6 @@
  * small and changes no visible pixel at icon sizes. A coarser grid (48 or 60) changes the coverage of
  * edge pixels by up to a third at 16 to 20 px, and a finer one (24, with decimals) is larger.
  */
-import type { ItemKind } from '../../features/weekly-list/model/types';
-
 function Icon({ d, class: extra }: { d: string | string[]; class?: string }) {
   return (
     <svg
@@ -33,7 +31,7 @@ const DISCUSSION =
   'm42 1v21h7V8h64v49H99v17L83 57h-5V29H0v64h21v26l26-26h31V65h2l26 26V65h14V1H42zM21 57h35v-7H21v7zm0 15h21v-7H21v7zM7 36h64v50H44l-16 16V86H7V36z';
 
 /** The type icon paths by item kind, as in Canvas's To Do list and planner. */
-const TYPE_ICONS: Record<ItemKind, string | string[]> = {
+const TYPE_ICONS = {
   assignment:
     'm92 0v35h-7V7H7v106h78V99h7v21H0V0h92zm8 36c1-1 3-1 5 0l14 14c1 2 1 4 0 5L77 98c-1 0-2 1-3 1H60c-2 0-4-2-4-4V81c0-1 1-2 2-2zM90 56 64 83v9h9l26-27-9-9zM42 78v7H21v-7h21zm14-14v7H21v-7h35zm46-20-7 7 9 9 7-7-9-9zM71 21v28H21V21h50zm-7 7H28v14h36V28z',
   quiz: [
@@ -46,9 +44,11 @@ const TYPE_ICONS: Record<ItemKind, string | string[]> = {
   peer_review:
     'm80 92c-7 5-21 12-40 11-14 0-26-6-33-11V82c0-8 5-15 12-16 7-2 14-3 21-3 10 0 19 1 28 3 7 1 12 8 12 16v10zM27 40v-1c3 0 4-2 6-3 1-2 3-3 5-3 2 0 3 1 5 3 2 1 4 4 9 4 4 0 6-1 8-3v3c0 9-7 17-17 17-9 0-16-8-16-17zm16-23c8 0 15 5 16 12 0 1-1 1-2 2-1 1-2 2-5 2-2 0-3-1-5-2-2-2-4-4-9-4-5 0-8 2-10 4 0 0-1 1-1 1 0-9 8-15 16-15zm26 42c-3 0-7-1-10-1 5-5 8-11 8-18v-7c0-13-11-23-24-23-12 0-23 10-23 23v7c0 7 3 13 8 18-3 0-7 1-11 1C7 61 0 71 0 82v13l1 1c8 6 22 13 39 14 1 0 2 0 3 0 20 0 35-9 42-14l2-1V82c0-11-8-21-18-23zm25-16h-7v-7l14-14 7 7-14 14zm25-21-11-11c-2-1-5-1-6 0L81 32c0 0-1 2-1 3v15h15c1 0 3-1 3-1l21-21c1-1 1-4 0-6z',
   note: 'm111 92-19 19V92h19zM78 71v7H21v-7h57zm21-22v7H21v-7h78zM39 0c6 0 10 5 10 11 0 1 0 3-1 4l14 14-4 5-15-14c-1 1-3 1-4 1-6 0-11-5-11-10 0-6 5-11 11-11zm25 14v7h49v64H85v28H7V21h14v-7H0v106h89c3 0 5-1 7-3l21-21c2-2 3-4 3-7V14H64z',
-};
+} satisfies Record<string, string | string[]>;
 
-export const TypeIcon = ({ kind }: { kind: ItemKind }) => (
+/** The item kinds that have a type icon. */
+export type TypeIconKind = keyof typeof TYPE_ICONS;
+export const TypeIcon = ({ kind }: { kind: TypeIconKind }) => (
   <Icon d={TYPE_ICONS[kind]} class="wr-type" />
 );
 

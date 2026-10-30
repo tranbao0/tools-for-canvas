@@ -10,9 +10,14 @@
  *   the theme of the Canvas page, because the list is part of that page.
  */
 import type { PageTheme } from './pageTheme';
-import type { Settings } from '../../features/weekly-list/model/types';
 
-type ThemeChoice = Settings['theme'];
+/** The Theme setting: a fixed theme, or `auto` to follow the page or the browser. */
+export type ThemeChoice = 'auto' | 'light' | 'dark';
+
+/** The part of the stored settings that the theme reads. */
+export interface ThemeSettings {
+  theme: ThemeChoice;
+}
 
 /** The `data-theme` of an extension page, or `null` to follow `prefers-color-scheme`. */
 export function extensionPageTheme(theme: ThemeChoice): PageTheme | null {
@@ -34,8 +39,8 @@ export function setThemeAttribute(elements: readonly Element[], value: PageTheme
 
 /** The stored settings, such as `settingsItem` from src/shared/platform/storage.ts. */
 export interface ThemeSource {
-  getValue(): Promise<Settings>;
-  watch(listener: (settings: Settings) => void): () => void;
+  getValue(): Promise<ThemeSettings>;
+  watch(listener: (settings: ThemeSettings) => void): () => void;
 }
 
 /**

@@ -1,24 +1,25 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SETTINGS, type Settings } from '../../features/weekly-list/model/types';
 import {
   extensionPageTheme,
   followExtensionPageTheme,
   followTheme,
   inpageTheme,
   setThemeAttribute,
+  type ThemeChoice,
+  type ThemeSettings,
   type ThemeSource,
 } from './theme';
 
-function source(initial: Settings['theme']) {
-  let value: Settings = { ...DEFAULT_SETTINGS, theme: initial };
+function source(initial: ThemeChoice) {
+  let value: ThemeSettings = { theme: initial };
   let finish: (() => void) | null = null;
-  const listeners = new Set<(settings: Settings) => void>();
+  const listeners = new Set<(settings: ThemeSettings) => void>();
   const store: ThemeSource & {
-    set(theme: Settings['theme']): void;
+    set(theme: ThemeChoice): void;
     hold(): void;
     release(): void;
-    listeners: Set<(settings: Settings) => void>;
+    listeners: Set<(settings: ThemeSettings) => void>;
   } = {
     listeners,
     getValue() {
