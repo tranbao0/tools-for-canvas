@@ -197,11 +197,16 @@ The card, a column of its own at the end of the grid, showed only as a thin sliv
 At smaller sizes it left the grid, and the page needed a sideways scroll to reach it.
 The owner chose a new place after that test, to match the old dashboard: the card sits in the wide white area to the right of the grid, where the old dashboard has its right column.
 This replaces the own grid column and the sticky floating card on the widget dashboard.
-The card has the look of a widget card: no border, the shadow of a widget, 8 px corners in light mode and 12 px corners in dark mode.
+The card has the look of a widget card: no border, the shadow of a widget, 8 px corners in both themes.
 Source check on 2026-10-30: `@instructure/platform-widget-dashboard@16.2.0`, `dist/index.js` (`TemplateWidget`), uses an InstUI View with `shadow="above"`, `borderRadius="large"`, `background="primary"` and `padding="medium"`.
 `@instructure/ui-view@11.7.4`, `src/View/v1/theme.ts` and `src/View/v1/styles.ts`, maps those properties to the theme tokens.
 `@instructure/ui-theme-tokens@11.7.4`, `tokens/canvas/scss/_variables.scss`, gives large radius `0.5rem` (8 px), medium spacing `1.5rem` (24 px), white background `#FFFFFF` and shadow `0 0.1875rem 0.375rem rgba(0,0,0,0.1), 0 0.1875rem 0.375rem rgba(0,0,0,0.15)`.
-The widget package's `dist/index.js` dark component overrides set View large and medium radii to `12px` and primary background to `#1F2D3D`, and keep the padding and shadow.
+The widget package's `dist/index.js` student theme `ad` (lines 761-775) sets View colors without a radius override.
+The student wrapper selects this theme at line 27553.
+The exported educator theme (line 27751) does not apply to the student dashboard.
+The View large radius stays at `0.5rem` (8 px) in both themes.
+The token is at `@instructure/ui-theme-tokens@11.7.4/tokens/canvas/scss/_variables.scss:308`.
+Canvas also sets only View colors in [`buildDarkThemeOverride`, lines 45-56](https://github.com/instructure/canvas-lms/blob/master/ui/features/widget_dashboard/index.tsx#L45-L56).
 Canvas at `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`, `ui/features/widget_dashboard/react/components/widgets/CourseGradesWidget/CourseGradesWidget.tsx`, imports `TemplateWidget` from the package.
 On the same day the owner asked for three more changes.
 The in-page list shows the full list, as the side panel does, with no short glance.
@@ -1730,7 +1735,12 @@ I read each of them in the package source.
    Its header takes the course color, and it shows the letter grade when Canvas sends one, else the whole percent, else "N/A".
    Canvas sends no total for a course that hides its totals, which gives "N/A", as in the widget.
    While the toggle "Show all grades" is off, the copies show dots, as the widget does.
-   The courses come from the courses request that the extension already makes, with `include[]=total_scores` added, so there is no new request.
+   The courses come from the courses request that the extension already makes, with `include[]=total_scores` added, so the course totals need no new request.
+   Grade visibility preferences load separately with a five-second timeout.
+   The page keeps these preferences until the widget toggle or configuration changes, or an explicit reload occurs.
+   Normal data change notices do not read them again.
+   Cached dashboard data never waits for this read.
+   Copies hide their grades while preferences are unknown.
 
 **Settings.**
 The switches are the tools settings, a trusted item (`toolsSettings`) under decision 5: the storage lock on Chrome and Edge, the vault on Firefox, and a check of each field when it is read.

@@ -72,6 +72,7 @@ export interface ExtraItem {
 }
 
 export interface DashboardData {
+  userId?: string;
   /** The Canvas address, so the in-page script can check the links it builds. */
   origin: string;
   /** The planner data is in. Until then `extras` can lack items. */

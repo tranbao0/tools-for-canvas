@@ -36,7 +36,7 @@ export interface FixesEngine {
   /** The switches of the fixes. A fix that is off is removed. */
   setSettings(settings: DashboardFixesSettings): void;
   /** Loads the data again, for example after the background says that it changed. */
-  reload(): void;
+  reload(refreshVisibility?: boolean): void;
   /** Removes everything and stops. */
   stop(): void;
 }
@@ -73,6 +73,10 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   let style: HTMLStyleElement | null = null;
   let loadSeq = 0;
   let requestedVisibility = false;
+  let visibility: DashboardData['gradeVisibilities'];
+  let visibilitySeq = 0;
+  let toggleState = '';
+  let nativeVisibility = new Map<string, boolean>();
   const blocks = new Map<string, string>();
   /** The fixes that have drawn something, so a switch-off knows which ones to undo. */
   const applied = new Set<FixKey>();
@@ -126,7 +130,28 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   function run(): void {
     timer = null;
     if (enabled('allCourseGrades') && !requestedVisibility && findGradeWidgets(doc).length > 0)
-      load();
+      loadVisibility();
+    const widgets = findGradeWidgets(doc);
+    const toggles = widgets
+      .map((found) => `${found.widget.getAttribute('data-testid')}:${found.gradesHidden}`)
+      .join(',');
+    const nextNative = new Map<string, boolean>();
+    for (const found of widgets) {
+      for (const card of found.cards.filter((node) => !node.hasAttribute('data-wr-card'))) {
+        const id = card.getAttribute('data-testid') ?? '';
+        const grade = card.querySelector('[data-testid$="-grade"]');
+        if (grade) nextNative.set(id, grade.textContent !== '•••');
+      }
+    }
+    const configChanged =
+      toggles === toggleState &&
+      [...nextNative].some(
+        ([id, visible]) => nativeVisibility.has(id) && nativeVisibility.get(id) !== visible,
+      );
+    if (enabled('allCourseGrades') && toggleState && (toggles !== toggleState || configChanged))
+      loadVisibility();
+    toggleState = toggles;
+    nativeVisibility = nextNative;
     for (const key of keys) {
       if (enabled(key)) {
         applied.add(key);
@@ -170,22 +195,39 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     schedule(0);
   }
 
+  function loadVisibility(): void {
+    requestedVisibility = true;
+    const seq = ++visibilitySeq;
+    visibility = null;
+    if (data) data = { ...data, gradeVisibilities: null };
+    options
+      .send({ type: 'weekrow:dashboard-data', includeGradeVisibility: true })
+      .then((reply) => {
+        if (stopped || seq !== visibilitySeq) return;
+        visibility = (reply as DashboardData | undefined)?.gradeVisibilities ?? null;
+        if (data) data = { ...data, gradeVisibilities: visibility };
+        fixes.allCourseGrades.reload?.();
+        schedule(0);
+      })
+      .catch((error: unknown) => logFailure('grade preferences', error));
+  }
+
   function load(): void {
     for (const key of applied) fixes[key].reload?.();
     const seq = (loadSeq += 1);
     if (!anyEnabled()) return;
-    const includeGradeVisibility = enabled('allCourseGrades') && findGradeWidgets(doc).length > 0;
-    requestedVisibility = includeGradeVisibility;
     options
-      .send({
-        type: 'weekrow:dashboard-data',
-        ...(includeGradeVisibility ? { includeGradeVisibility: true } : {}),
-      })
+      .send({ type: 'weekrow:dashboard-data' })
       .then((reply) => {
         if (seq !== loadSeq) return;
         const next = reply as DashboardData | undefined;
         if (typeof next?.origin !== 'string' || !Array.isArray(next.courses)) return;
-        data = next;
+        if (data !== null && data.userId !== next.userId) {
+          visibility = null;
+          visibilitySeq += 1;
+          requestedVisibility = false;
+        }
+        data = { ...next, gradeVisibilities: visibility };
         fixes.allCourseGrades.reload?.();
         schedule(0);
       })
@@ -206,7 +248,10 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
       update();
       if (!before && anyEnabled()) load();
     },
-    reload: load,
+    reload(refreshVisibility = true) {
+      if (refreshVisibility && requestedVisibility) loadVisibility();
+      load();
+    },
     stop() {
       stopped = true;
       active = false;

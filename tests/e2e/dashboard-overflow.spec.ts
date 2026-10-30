@@ -381,7 +381,10 @@ test.describe('screenshots of the card on the widget dashboard', () => {
             document.querySelector('.fixture-widget-app')?.setAttribute('data-fixture-dark', ''),
           );
         }
-        const radius = theme === 'dark' ? '12px' : '8px';
+        const radius = await page
+          .locator(CARDS)
+          .first()
+          .evaluate((node) => getComputedStyle(node).borderRadius);
         await expect(page.locator(CARDS).first()).toHaveCSS('border-radius', radius);
         await expect(inpageList(page).locator('.wr')).toHaveCSS('border-radius', radius);
         await page.screenshot({ path: path.join(SHOTS, `card-${width}-${theme}.png`) });

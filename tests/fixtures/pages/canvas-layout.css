@@ -353,5 +353,7 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
 
 .mobile-header-hamburger { border: 0; background: transparent; color: #fff; font-size: 22px; }
 
+/* Student View large radius: ui-theme-tokens 11.7.4, canvas/scss/_variables.scss:308.
+   platform-widget-dashboard 16.2.0, dist/index.js:761-775 keeps this radius in dark mode. */
 .fixture-widget-app[data-fixture-dark] .fx-section,
-.fixture-widget-app[data-fixture-dark] .fixture-widget:not(:has(> .fx-section)) { border-radius: 12px; }
+.fixture-widget-app[data-fixture-dark] .fixture-widget:not(:has(> .fx-section)) { border-radius: 8px; }

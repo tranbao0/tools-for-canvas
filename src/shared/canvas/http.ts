@@ -125,6 +125,7 @@ export interface CanvasRequest {
   readonly url: string;
   /** Sent as a JSON body. */
   readonly body?: unknown;
+  readonly signal?: AbortSignal;
 }
 
 export interface CanvasResponse {
@@ -168,7 +169,12 @@ export function createCanvasTransport(options: CanvasTransportOptions): CanvasTr
     const response = await canvasFetch(
       origin,
       request.url,
-      { method: request.method, headers, body },
+      {
+        method: request.method,
+        headers,
+        body,
+        ...(request.signal ? { signal: request.signal } : {}),
+      },
       options.fetchImpl,
     );
     const text = await readBodyText(response);

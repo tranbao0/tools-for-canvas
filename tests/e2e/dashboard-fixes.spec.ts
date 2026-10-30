@@ -534,10 +534,19 @@ test.describe('course grades', () => {
     await addCsrfCookie(context, served.canvas.origin);
     await openCanvasPage(page, served.canvas.origin);
     await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
-    await expect(page.getByTestId('course-107-grade')).toHaveAttribute(
-      'aria-label',
+    await expect(page.getByTestId('course-108-grade')).toHaveText('N/A');
+    await expect(page.getByTestId('course-grade-card-107').getByRole('link').first()).toBeVisible();
+    expect(await page.getByTestId('course-grade-card-107').ariaSnapshot()).toContain(
       'Grade hidden for PSYC 100: Intro to Psychology',
     );
+    await page
+      .getByTestId('hide-all-grades-checkbox')
+      .evaluate((node) => node.setAttribute('data-testid', 'show-all-grades-checkbox'));
+    await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
+    await page
+      .getByTestId('show-all-grades-checkbox')
+      .evaluate((node) => node.setAttribute('data-testid', 'hide-all-grades-checkbox'));
+    await expect(page.getByTestId('course-108-grade')).toHaveText('N/A');
     await rerender(page);
     await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
   });

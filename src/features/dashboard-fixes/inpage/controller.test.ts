@@ -58,6 +58,50 @@ describe('createFixesEngine', () => {
     );
   });
 
+  it('reads preferences when the grade widget appears after the first load', async () => {
+    document.body.innerHTML = '';
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    expect(send).not.toHaveBeenCalledWith({
+      type: 'weekrow:dashboard-data',
+      includeGradeVisibility: true,
+    });
+    drawDashboard();
+    await settle();
+    expect(send).toHaveBeenCalledWith({
+      type: 'weekrow:dashboard-data',
+      includeGradeVisibility: true,
+    });
+    send.mockClear();
+    engine.reload(false);
+    await settle();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith({ type: 'weekrow:dashboard-data' });
+  });
+
+  it('draws cached fixes while the preference request stays pending', async () => {
+    send.mockImplementation(async (message) => {
+      if (message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility) {
+        return new Promise(() => {});
+      }
+      return DATA;
+    });
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    expect(document.querySelector('[data-wr-cc]')).not.toBeNull();
+    expect(document.querySelector('[data-wr-extra]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
+    engine.reload(false);
+    await settle();
+    expect(
+      send.mock.calls.filter(
+        ([message]) => message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility,
+      ),
+    ).toHaveLength(1);
+  });
+
   it('asks for the data only when a fix is on', async () => {
     engine.setActive(true);
     engine.setSettings(OFF);

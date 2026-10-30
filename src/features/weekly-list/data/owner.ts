@@ -206,7 +206,8 @@ export interface DataOwner {
   acceptOffer(origin: string): Promise<boolean>;
   act(action: DataAction): Promise<ActionReply>;
   /** The data of the dashboard fixes, from the cache. It makes no request (decision 22). */
-  dashboardData(includeGradeVisibility?: boolean): Promise<DashboardData>;
+  dashboardData(): Promise<DashboardData>;
+  dashboardGradeVisibility(): Promise<DashboardData>;
   /** One announcement of the saved Canvas with its full message. */
   announcement(courseId: string, topicId: string): Promise<AnnouncementBody>;
   /** The recent announcements of one course. */
@@ -1905,7 +1906,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return false;
   }
 
-  async function dashboardData(includeGradeVisibility = false): Promise<DashboardData> {
+  async function dashboardData(): Promise<DashboardData> {
     await ready();
     const origin = await savedOrigin();
     if (
@@ -1937,16 +1938,33 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return {
       origin,
       ready: result.exact && !blocksLoads(cache.failure),
+      userId: session.profile.id,
       courses: dashboardCourses(session.courses, session.colors, session.profile.id),
       extras: extrasFromView(result.view),
-      ...(includeGradeVisibility && apiFor(origin).getWidgetGradeVisibility
-        ? {
-            gradeVisibilities: await apiFor(origin).getWidgetGradeVisibility!(
-              session.profile.id,
-            ).catch(() => null),
-          }
-        : {}),
     };
+  }
+
+  async function dashboardGradeVisibility(): Promise<DashboardData> {
+    const base = await dashboardData();
+    const userId = cache?.session?.profile.id;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const read = apiFor(base.origin).getWidgetGradeVisibility;
+      const gradeVisibilities =
+        userId && read
+          ? await Promise.race([
+              read(userId),
+              new Promise<null>((resolve) => {
+                timer = setTimeout(() => resolve(null), 5000);
+              }),
+            ])
+          : null;
+      return { ...base, gradeVisibilities };
+    } catch {
+      return { ...base, gradeVisibilities: null };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async function announcementApi(): Promise<CanvasApi> {
@@ -2363,6 +2381,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     },
 
     dashboardData,
+    dashboardGradeVisibility,
     announcement,
     announcements,
     announcementFeed,

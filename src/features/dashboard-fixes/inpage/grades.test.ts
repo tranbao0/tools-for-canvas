@@ -159,3 +159,32 @@ describe('gradesFix', () => {
     ).toBeNull();
   });
 });
+
+const grade = (id: string) =>
+  document.querySelector(`[data-testid="course-${id}-grade"]`)?.textContent;
+const setToggle = (on: boolean) =>
+  document
+    .querySelector('[data-testid$="-all-grades-checkbox"]')
+    ?.setAttribute('data-testid', on ? 'hide-all-grades-checkbox' : 'show-all-grades-checkbox');
+
+it('saved override {103:false} survives toggle off, card leaves page, toggle on', () => {
+  drawDashboard();
+  const fix = gradesFix();
+  const ctx = fakeContext({
+    ...dashboardData(),
+    gradeVisibilities: { 'course-grades-widget': { '103': false } },
+  });
+  // Canvas state: showGrades=true, override 103=false -> native 103 shows dots.
+  document.querySelector('[data-testid="course-103-grade"]')!.textContent = '•••';
+  fix.apply(ctx);
+  // Student turns Show all grades off. Canvas keeps the override; 103 still dots.
+  setToggle(false);
+  fix.apply(ctx);
+  // Native card 103 leaves the page (it is now a copy).
+  document.querySelector('[data-testid="course-grade-card-103"]')!.remove();
+  fix.apply(ctx);
+  // Student turns Show all grades on. Canvas: gradeVisibilities[103]=false ?? true -> hidden.
+  setToggle(true);
+  fix.apply(ctx);
+  expect(grade('103')).toBe('•••');
+});

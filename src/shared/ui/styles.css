@@ -128,10 +128,6 @@
     0 0.1875rem 0.375rem rgba(0, 0, 0, 0.15);
 }
 
-:host([data-panel][data-theme='dark']) .wr[data-surface='inpage'] {
-  border-radius: 12px;
-}
-
 /*
  * The list has a height limit, in a card and in the right column of the classic dashboard: the
  * window height minus 48px, at most 760px and at least 420px. A list with less content is as tall

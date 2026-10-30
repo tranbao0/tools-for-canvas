@@ -192,7 +192,11 @@ export function routeDataMessage(
     case 'weekrow:save-tools':
       return allowed.then(() => host.saveTools(message.tools)).then(ok);
     case 'weekrow:dashboard-data':
-      return allowed.then(() => owner.dashboardData(message.includeGradeVisibility === true));
+      return allowed.then(() =>
+        message.includeGradeVisibility === true
+          ? owner.dashboardGradeVisibility()
+          : owner.dashboardData(),
+      );
     case 'weekrow:announcement':
       return allowed.then(() => owner.announcement(message.courseId, message.topicId));
     case 'weekrow:announcement-list':

@@ -33,6 +33,7 @@ export function gradesFix(): Fix {
   let doc: Document | null = null;
   /** What each grid shows. It stays out of the page, where a script could read the grades. */
   const signatures = new WeakMap<Element, string>();
+  const nativeStates = new WeakMap<Element, { hidden: boolean; values: Map<string, boolean> }>();
   let observed = new WeakMap<Element, Map<string, boolean>>();
 
   /** Sets the text of the element with `suffix`, and removes it when there is no text. */
@@ -68,7 +69,15 @@ export function gradesFix(): Fix {
       if (grade.getAttribute('aria-hidden') === 'true') grade.nextElementSibling?.remove();
       grade.textContent = hidden ? HIDDEN_GRADE : gradeText(course);
       grade.removeAttribute('aria-hidden');
-      if (hidden) grade.setAttribute('aria-label', `Grade hidden for ${course.name}`);
+      grade.removeAttribute('aria-label');
+      if (hidden) {
+        grade.setAttribute('aria-hidden', 'true');
+        const label = grade.ownerDocument.createElement('span');
+        label.textContent = `Grade hidden for ${course.name}`;
+        label.style.cssText =
+          'position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)';
+        grade.after(label);
+      }
       if (HEX.test(course.color) && HEX.test(course.ink)) {
         const ink = course.ink;
         grade.style.color = ink;
@@ -116,15 +125,25 @@ export function gradesFix(): Fix {
       overrides = new Map(Object.entries(visibility?.[widgetId] ?? {}));
       observed.set(found.widget, overrides);
     }
+    const previous = nativeStates.get(found.widget);
+    const values = new Map<string, boolean>();
     for (const card of native) {
       const id = cardCourseId(card);
       const grade = card.querySelector(`[data-testid="course-${id}-grade"]`);
       if (grade) {
         const visible = grade.textContent !== HIDDEN_GRADE;
-        if (visible === !found.gradesHidden) overrides.delete(id);
-        else overrides.set(id, visible);
+        values.set(id, visible);
+        if (
+          visible !== !found.gradesHidden ||
+          (previous?.hidden === found.gradesHidden &&
+            previous.values.has(id) &&
+            previous.values.get(id) !== visible)
+        ) {
+          overrides.set(id, visible);
+        }
       }
     }
+    nativeStates.set(found.widget, { hidden: found.gradesHidden, values });
     const hidden = (id: string): boolean =>
       visibility == null || !(overrides?.get(id) ?? !found.gradesHidden);
     const signature = JSON.stringify([

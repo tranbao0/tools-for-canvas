@@ -183,6 +183,7 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
         const response = await send({
           method: 'POST',
           url: GRAPHQL_PATH,
+          signal: AbortSignal.timeout(5000),
           body: {
             query:
               'query WidgetGradeVisibility($id: ID!) { legacyNode(_id: $id, type: User) { ... on User { widgetDashboardConfig } } }',
