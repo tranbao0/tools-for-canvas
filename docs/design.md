@@ -1714,7 +1714,7 @@ The group shows in the three places of decision 18.
 **Sanitizer rules.**
 The message of an announcement is HTML that a teacher wrote, so it is hostile input.
 The background cannot sanitize it, because a service worker has no `DOMParser`, so it passes the message on as text.
-The page script does the work in `src/features/dashboard-fixes/inpage/sanitize.ts`:
+The page script does the work in `src/shared/ui/sanitize.ts`:
 
 - It parses the message with `DOMParser`, which makes an inert document.
   It then builds new nodes in the page with `createElement`, for the tags and attributes on the list below.

@@ -5,7 +5,7 @@
  * The in-page script never fetches Canvas. It asks the background, which answers only the page
  * of the saved Canvas. The message of an announcement is HTML that a teacher wrote: the
  * background passes it on as plain text, and only the in-page sanitizer turns it into elements
- * (sanitize.ts). A service worker has no `DOMParser`, so it could not sanitize it anyway.
+ * (src/shared/ui/sanitize.ts). A service worker has no `DOMParser`, so it could not sanitize it anyway.
  */
 import { isCanvasId } from '../../shared/canvas/ids';
 import { isToolsSettings, type ToolsSettings } from '../../shared/settings/tools';

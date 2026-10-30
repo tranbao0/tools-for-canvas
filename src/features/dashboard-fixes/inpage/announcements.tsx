@@ -4,7 +4,7 @@
  * The widget cuts a title at 75 characters and the message at 120, and "Read more" leaves the
  * dashboard. This fix makes "Read more" and a click on the title open the whole message inside
  * the card, with "Show less". The message comes from the background as the HTML a teacher wrote.
- * It goes through the sanitizer (sanitize.ts) into the shadow root of a host element that the fix
+ * It goes through the sanitizer (src/shared/ui/sanitize.ts) into the shadow root of a host element that the fix
  * adds to the item, so the page styles do not reach it and it cannot reach the page.
  *
  * Opening or closing a message changes no read state and sends no write. Only the read circle of
@@ -26,7 +26,7 @@ import {
 import { t } from '../../../shared/ui/i18n';
 import type { AnnouncementBody, AnnouncementEntry, DashboardCourse } from '../protocol';
 import type { Fix, FixContext } from './context';
-import { sanitizeHtml } from './sanitize';
+import { sanitizeHtml } from '../../../shared/ui/sanitize';
 import { FIXES_CSS } from './styles';
 
 const OWN = 'data-wr-own';
