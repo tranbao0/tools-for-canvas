@@ -20,9 +20,10 @@ import {
   filterText,
   isUndoShortcut,
   joinNames,
+  noteText,
   NoticeLine,
+  NoticeQueue,
   OfferBanner,
-  OneTimeNotes,
   staleText,
   type OneTimeNote,
 } from './Notices';
@@ -240,7 +241,7 @@ function ReadyView(props: {
   const [limitedId] = useState(() => newId('limited'));
   /** Where focus goes when the form closes. The list is re-created, so this is a selector. */
   const returnFocus = useRef<string | null>(null);
-  /** The last focused control outside the Undo notice. Focus goes back there when it closes. */
+  /** The last focused control outside the notices. Focus goes back there when a notice closes. */
   const lastFocus = useRef<HTMLElement | null>(null);
 
   // Reading focus during render is safe: it only records which control had focus before this update.
@@ -272,7 +273,7 @@ function ReadyView(props: {
     if (!root) return;
     const onFocusIn = (event: FocusEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target && !target.closest('.wr-dock')) lastFocus.current = target;
+      if (target && !target.closest('.wr-dock, .wr-notices')) lastFocus.current = target;
     };
     root.addEventListener('focusin', onFocusIn);
     return () => root.removeEventListener('focusin', onFocusIn);
@@ -327,7 +328,55 @@ function ReadyView(props: {
     },
   };
 
-  const visibleNotes = notes.filter((note) => !state.seenNotes[note]);
+  /**
+   * The notices in priority order (design decision 19). A notice the student can close comes
+   * before the lines that stay until the cause goes away, so none of them waits for ever.
+   */
+  const notices: ComponentChildren[] = [];
+  // The offer is for the side panel only (design decision 4).
+  if (surface === 'panel' && state.offer)
+    notices.push(
+      <OfferBanner
+        key="offer"
+        offer={state.offer}
+        mode="switch"
+        onAccept={(origin) => actions.acceptOffer(origin)}
+        onDismiss={() => actions.dismissOffer()}
+      />,
+    );
+  for (const note of notes.filter((n) => !state.seenNotes[n]))
+    notices.push(
+      <NoticeLine
+        key={note}
+        text={noteText(note)}
+        action={t('gotIt')}
+        onAction={() => {
+          actions.markNoteSeen(note);
+          setNotes((current) => current.filter((n) => n !== note));
+        }}
+      />,
+    );
+  if (state.stale)
+    notices.push(
+      <NoticeLine
+        key="stale"
+        text={staleText(state.stale.since, state.stale.offline, view)}
+        action={t('retry')}
+        onAction={() => actions.retry()}
+      />,
+    );
+  if (state.skippedCourses.length > 0)
+    notices.push(
+      <NoticeLine
+        key="skipped"
+        text={t('skippedCourses', joinNames(state.skippedCourses.map((course) => course.name)))}
+        // Retry shows only when the stale line does not already offer it.
+        action={state.stale === null ? t('retry') : undefined}
+        onAction={() => actions.retry()}
+      />,
+    );
+  if (view.limited)
+    notices.push(<NoticeLine key="limited" id={limitedId} text={t('limitedLine')} />);
   const filter = filterText(view, state.taskCourses);
 
   if (form !== null) {
@@ -371,42 +420,13 @@ function ReadyView(props: {
         onAdd={() => openForm({ kind: 'new' })}
         onSettings={() => props.onSettings('gear')}
       />
-      <div class="wr-notices">
-        {/* The offer is for the side panel only (design decision 4). */}
-        {surface === 'panel' && state.offer && (
-          <OfferBanner
-            offer={state.offer}
-            mode="switch"
-            onAccept={(origin) => actions.acceptOffer(origin)}
-            onDismiss={() => actions.dismissOffer()}
-          />
-        )}
-        {state.stale && (
-          <NoticeLine
-            role="status"
-            text={staleText(state.stale.since, state.stale.offline, view)}
-            action={t('retry')}
-            onAction={() => actions.retry()}
-          />
-        )}
-        {state.skippedCourses.length > 0 && (
-          <NoticeLine
-            role="status"
-            text={t('skippedCourses', joinNames(state.skippedCourses.map((course) => course.name)))}
-            // Retry shows only when the stale line does not already offer it.
-            action={state.stale === null ? t('retry') : undefined}
-            onAction={() => actions.retry()}
-          />
-        )}
-        {view.limited && <NoticeLine id={limitedId} text={t('limitedLine')} />}
-      </div>
-      <OneTimeNotes
-        notes={visibleNotes}
-        onSeen={(note) => {
-          actions.markNoteSeen(note);
-          setNotes((current) => current.filter((n) => n !== note));
-        }}
-      />
+      <NoticeQueue notices={notices} />
+      {/* The Add button names the limited line as its reason, also while that line waits. */}
+      {view.limited && notices.length > 1 && (
+        <span id={limitedId} hidden>
+          {t('limitedLine')}
+        </span>
+      )}
       <Rings
         rings={view.rings}
         span={view.span}

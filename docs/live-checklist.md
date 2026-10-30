@@ -199,6 +199,9 @@ Use a new, empty profile, and the student account.
     On Firefox, expect also the note about private windows and container tabs.
 19. Sign in again, turn off the network, and click Retry in the panel.
     Expect: "Couldn't refresh. Showing your list from <time>." and "You're offline."
+    Expect: only one slim notice shows at the top of the list, with a quiet count such as "1 more notice" when another one waits.
+    Check an item off, while the "Couldn't refresh" line shows.
+    Expect: the one-time note shows first, and the line returns after you press "Got it".
 20. Click the gear in the panel and change each of the six settings, then do the same with the gear in the in-page list.
     Expect: the settings open in place, Back returns to the list, and each change shows at once in the panel, in the in-page list and on the settings page.
     Expect: the shown span, the first day of the week, the courses that show in the list (every switch is on at first, and a course that you turn off leaves the list), the rings, the in-page list and the theme follow the settings, and a hidden course adds a line such as "1 course hidden".
@@ -241,7 +244,7 @@ Use a new, empty profile, and the student account.
     Open several pages that are not your school, and close the welcome page first.
     Expect: no second welcome page opens in the same browser session.
     With the offer open in the welcome page or the side panel, open another Canvas on its own domain in a tab.
-    Expect: the offer shows the new host in a new box, and its "Use it" or "Switch" button is dim and does nothing for one second.
+    Expect: the offer is replaced by one for the new host, and its "Use it" or "Switch" button is dim and does nothing for one second.
     Expect: in Chrome and Edge, a page cannot read or write the extension storage from its own console world, and in Firefox a changed `canvasOrigin`, `settings` or `seenNotes` in `storage.local` is put back from the extension's own database.
 28. In Firefox, mark an item done so that the Undo notice shows, then press Tab and Shift+Tab through the whole panel.
     Expect: no focused control is hidden under the sticky header or the Undo notice.

@@ -1214,11 +1214,11 @@ describe('one-time notes', () => {
 
   it('shows the note inline above the rings, not in the sticky dock', () => {
     setup(readyState({ seenNotes: { firstDone: false, firstSkip: true } }));
-    const notes = document.querySelector('.wr-notes');
+    const notes = document.querySelector('.wr-notices');
     expect(notes?.getAttribute('role')).toBe('status');
     expect(notes?.children).toHaveLength(0);
     fireEvent.click(screen.getByRole('checkbox', { name: 'Done: Quiz 7: Integration techniques' }));
-    const note = screen.getByText(/^Done marks sync/).closest('.wr-box');
+    const note = screen.getByText(/^Done marks sync/).closest('p');
     expect(note?.parentElement).toBe(notes);
     expect(note?.closest('.wr-dock')).toBeNull();
     const rings = screen.getByRole('region', { name: 'Progress by course' });
@@ -1230,6 +1230,77 @@ describe('one-time notes', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Done: Quiz 7: Integration techniques' }));
     fireEvent.click(screen.getByRole('button', { name: 'Skip Problem Set 6' }));
     expect(screen.queryByRole('button', { name: 'Got it' })).toBeNull();
+  });
+});
+
+describe('notice queue', () => {
+  const visible = () => Array.from(document.querySelectorAll('.wr-notices > p.wr-notice'));
+  const busy = () =>
+    readyState({
+      offer: { origin: 'https://canvas.state.edu' },
+      stale: { since: '2026-10-27T19:05:00Z', offline: false },
+      skippedCourses: [{ id: '101', name: 'BIO 110' }],
+      view: limitedFilteredView(),
+      seenNotes: { firstDone: false, firstSkip: true },
+    });
+
+  it('shows one notice at a time, the offer first, and counts the others', () => {
+    const state = busy();
+    setup(state, 'panel');
+    const queue = document.querySelector('.wr-notices')?.textContent ?? '';
+    expect(queue).toContain('Switch to this Canvas?');
+    expect(visible()).toHaveLength(0);
+    expect(queue).not.toContain("Couldn't refresh");
+    expect(queue).not.toContain("Couldn't load BIO 110");
+    expect(queue).not.toContain('Your school limits');
+    expect(document.querySelector('.wr-notices-more')?.textContent).toBe('3 more notices');
+  });
+
+  it('shows the next notice by priority when the first one goes away', () => {
+    const state = busy();
+    const { rerender } = setup(state, 'panel');
+    const next = { ...state, offer: null };
+    rerender(next);
+    expect(visible()).toHaveLength(1);
+    expect(visible()[0]?.textContent).toMatch(
+      /^Couldn't refresh\. Showing your list from .*Retry$/,
+    );
+    expect(document.querySelector('.wr-notices-more')?.textContent).toBe('2 more notices');
+    rerender({ ...next, stale: null });
+    expect(visible()[0]?.textContent).toBe("Couldn't load BIO 110.Retry");
+    expect(document.querySelector('.wr-notices-more')?.textContent).toBe('1 more notice');
+    rerender({ ...next, stale: null, skippedCourses: [] });
+    expect(visible()[0]?.textContent).toMatch(/^Your school limits/);
+    expect(document.querySelector('.wr-notices-more')).toBeNull();
+  });
+
+  it('shows a one-time note before the lines that stay, so the note is never stuck behind them', () => {
+    const state = readyState({
+      stale: { since: '2026-10-27T19:05:00Z', offline: false },
+      seenNotes: { firstDone: false, firstSkip: true },
+    });
+    setup(state);
+    expect(visible()[0]?.textContent).toMatch(/^Couldn't refresh/);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Done: Quiz 7: Integration techniques' }));
+    expect(visible()[0]?.textContent).toMatch(/^Done marks sync/);
+    expect(document.querySelector('.wr-notices-more')?.textContent).toBe('1 more notice');
+    fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+    expect(visible()[0]?.textContent).toMatch(/^Couldn't refresh/);
+    expect(document.querySelector('.wr-notices-more')).toBeNull();
+  });
+
+  it('keeps one live region, with no region inside it', () => {
+    setup(busy(), 'panel');
+    const live = document.querySelectorAll('.wr-notices');
+    expect(live).toHaveLength(1);
+    expect(live[0]?.getAttribute('role')).toBe('status');
+    expect(live[0]?.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it('draws no box around a notice or an offer', () => {
+    setup(busy(), 'panel');
+    expect(document.querySelector('.wr-box')).toBeNull();
+    expect(document.querySelector('.wr-offer')).toBeTruthy();
   });
 });
 
@@ -1303,16 +1374,19 @@ describe('notices', () => {
     expect(screen.getByText("Couldn't load BIO 110, CHEM 120 and HIST 205.")).toBeTruthy();
   });
 
-  it('offers one Retry when the list is also stale', () => {
-    setup(
-      readyState({
-        skippedCourses: [
-          { id: '101', name: 'BIO 110' },
-          { id: '102', name: 'CHEM 120' },
-        ],
-        stale: { since: '2026-10-27T19:05:00Z', offline: false },
-      }),
-    );
+  it('offers one Retry when the list is also stale, and names the courses after it', () => {
+    const state = readyState({
+      skippedCourses: [
+        { id: '101', name: 'BIO 110' },
+        { id: '102', name: 'CHEM 120' },
+      ],
+      stale: { since: '2026-10-27T19:05:00Z', offline: false },
+    });
+    const { rerender } = setup(state);
+    expect(screen.getByText(/^Couldn't refresh/)).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+    expect(document.querySelector('.wr-notices-more')?.textContent).toBe('1 more notice');
+    rerender({ ...state, stale: null });
     expect(screen.getByText("Couldn't load BIO 110 and CHEM 120.")).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
   });
@@ -1332,13 +1406,17 @@ describe('notices', () => {
 
   it('explains the limited planner and disables adding tasks', () => {
     setup(readyState({ view: limitedFilteredView() }));
-    const line = screen.getByText(/Your school limits the Canvas planner\./);
+    const line = within(document.querySelector('.wr-notices') as HTMLElement).getByText(
+      /Your school limits the Canvas planner\./,
+    );
     expect(line.textContent).toBe(
       "Your school limits the Canvas planner. Pages, ungraded discussions, ungraded quizzes, peer reviews, discussions with reply due dates and your own tasks can't show.",
     );
     const add = screen.getByRole('button', { name: 'Add task' });
     expect(add.getAttribute('aria-disabled')).toBe('true');
-    expect(add.getAttribute('aria-describedby')).toBe(line.closest('p')?.id);
+    // The Add button names the limited line, wherever the line shows in the notice queue.
+    const reason = document.getElementById(add.getAttribute('aria-describedby') ?? '');
+    expect(reason?.textContent).toBe(line.textContent);
     fireEvent.click(add);
     expect(screen.queryByRole('form')).toBeNull();
   });

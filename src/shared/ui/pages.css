@@ -60,7 +60,7 @@ body {
   padding-top: 12px;
 }
 
-/* The offer of a Canvas shows in extension pages only (design decision 5). It is a .wr-box. */
+/* The offer of a Canvas shows in extension pages only (design decision 5). It is a .wr-offer. */
 
 .wr-offer-title {
   font-weight: 700;

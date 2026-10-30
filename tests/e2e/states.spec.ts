@@ -9,6 +9,7 @@ import { advanceBackgroundClock } from './support/clock';
 import { serveFakeCanvas } from './support/fake-canvas';
 import { saveAddress } from './support/scenario-api';
 import {
+  addCsrfCookie,
   doneBox,
   expect,
   inpageList,
@@ -101,6 +102,41 @@ test.describe('planner turned off', () => {
       );
     }
     expect(paths.filter((path) => path.startsWith('/api/v1/planner_notes'))).toEqual([]);
+  });
+
+  test('shows one notice at a time: the one-time note first, then the limited line', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const { canvas, state } = await serveScenario(context);
+    state.limited = true;
+    await addCsrfCookie(context, canvas.origin);
+    await saveAddress(background, canvas.origin);
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    const queue = page.locator('.wr-notices');
+    await expect(queue).toContainText(LIMITED_LINE);
+    await expect(page.locator('.wr-notices-more')).toHaveCount(0);
+    await settledList(page);
+
+    await doneBox(page, QUIZ_3).click();
+
+    // The note, which the student can close, comes before the line that stays.
+    await expect(queue).toContainText('Done marks sync to Canvas');
+    await expect(queue).not.toContainText(LIMITED_LINE);
+    await expect(queue.locator('.wr-notices-more')).toHaveText('1 more notice');
+    await expect(queue).toHaveAttribute('role', 'status');
+    await expect(queue.locator('[role="status"]')).toHaveCount(0);
+    // The Add button still names its reason while the line waits.
+    await expect(page.getByRole('button', { name: 'Add task' })).toHaveAccessibleDescription(
+      LIMITED_LINE,
+    );
+
+    await page.getByRole('button', { name: 'Got it' }).click();
+
+    await expect(queue).toContainText(LIMITED_LINE);
+    await expect(queue.locator('.wr-notices-more')).toHaveCount(0);
   });
 });
 

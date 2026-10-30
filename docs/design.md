@@ -1290,7 +1290,18 @@ The owner chose it on 2026-10-27.
   It never jumps to the Add button while the list has such a link.
 - Animation stops when the system asks for reduced motion.
 - No control ever hides under the sticky header or the bottom notice (WCAG 2.4.11).
-  One-time notes show inline at the top of the list, so only the short Undo notice is sticky.
+  Notices show inline at the top of the list, so only the short Undo notice is sticky.
+- Notices at the top of the list form a queue, and the list shows one slim notice at a time.
+  - The queue holds the offer to switch Canvas (side panel only), the one-time notes, the "Couldn't refresh" line, the "Couldn't load <courses>" line and the "limits the Canvas planner" line.
+  - The order is the order of that list.
+    The offer and the one-time notes come first, because the student can close them.
+    The three lines come after them, because they stay until their cause goes away, and so they cannot hold back a notice that the student can close.
+  - A quiet line under the notice counts the ones that wait, such as "2 more notices".
+    The next notice shows when the first one is closed or its cause is gone.
+  - A notice has a brand bar on its left and no box, like a Canvas alert.
+  - The queue is the one live region for these notices, and it stays in the page while it is empty.
+    The text of the "limits the Canvas planner" line stays in the page as the reason of the disabled Add button, also while it waits.
+  - The Undo notice, the filter line and the "N courses hidden" line are not in the queue.
 - The in-page shadow host sets `lang="en"` and `dir="ltr"`, because the list is English even on a Canvas page in another language.
 - All UI text lives in `_locales/en/messages.json` from the start.
   Version 1 ships in English only.

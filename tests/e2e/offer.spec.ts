@@ -114,3 +114,30 @@ test('a content script on the saved Canvas gets the in-page view of the state, n
     expect(state, surface).toMatchObject({ kind: 'ready', offer: null });
   }
 });
+
+test('the offer in the welcome page draws no box, so it is not a card inside the step', async ({
+  context,
+}) => {
+  await serveScenario(context, [...DASHBOARD], { origin: CUSTOM });
+  const welcome = await openedWelcome(context);
+  const canvasTab = await context.newPage();
+  await openCanvasPage(canvasTab, CUSTOM);
+  await welcome.bringToFront();
+  const offer = useOffer(welcome, 'canvas.school.edu');
+  await expect(offer).toBeVisible();
+
+  // Only the brand bar on the left: the other three borders are off, and the ancestors have none.
+  const borders = await offer.evaluate((element) => {
+    const widths = (el: Element) => {
+      const css = getComputedStyle(el);
+      return [css.borderTopWidth, css.borderRightWidth, css.borderBottomWidth, css.borderLeftWidth];
+    };
+    const ancestors: string[][] = [];
+    for (let el = element.parentElement; el && el.tagName !== 'BODY'; el = el.parentElement) {
+      ancestors.push(widths(el));
+    }
+    return { own: widths(element), ancestors };
+  });
+  expect(borders.own).toEqual(['0px', '0px', '0px', '3px']);
+  for (const ancestor of borders.ancestors) expect(ancestor).toEqual(['0px', '0px', '0px', '0px']);
+});

@@ -1,4 +1,4 @@
-/** Lines and banners around the list: offer, notice lines, one-time notes and the Undo dock. */
+/** Lines and banners around the list: offer, notice lines, one-time notes, the notice queue and the Undo dock. */
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { t, tp, type MessageKey, type PluralKey } from '../../../shared/ui/i18n';
@@ -47,7 +47,7 @@ function OfferBox(props: OfferProps) {
   const host = hostOf(offer.origin);
   const use = props.mode === 'use';
   return (
-    <div class="wr-box" role="region" aria-label={use ? t('offerUse', host) : t('offerSwitch')}>
+    <div class="wr-offer" role="region" aria-label={use ? t('offerUse', host) : t('offerSwitch')}>
       <div>
         {use ? (
           <p class="wr-offer-title">
@@ -97,11 +97,10 @@ export function NoticeLine(props: {
   action?: string;
   onAction?(): void;
   opener?: string;
-  role?: 'status';
   id?: string;
 }) {
   return (
-    <p class="wr-notice" role={props.role} id={props.id}>
+    <p class="wr-notice" id={props.id}>
       <span>{props.text}</span>
       {props.action !== undefined && (
         <button
@@ -177,27 +176,24 @@ const NOTE_TEXT = {
 } as const satisfies Record<OneTimeNote, MessageKey>;
 
 /**
- * One-time notes, inline at the top of the list (design decision 19), until the student confirms
- * them. The container stays in the page while it is empty, so screen readers announce a new note.
+ * The notice queue at the top of the list (design decision 19): one slim notice at a time, the
+ * first of `notices`, which the caller sorts by priority. The others wait behind it, and a quiet
+ * line counts them. The container stays in the page while it is empty, and it is the only live
+ * region of the queue, so screen readers announce each notice that comes up.
  */
-export function OneTimeNotes(props: { notes: OneTimeNote[]; onSeen(note: OneTimeNote): void }) {
+export function NoticeQueue(props: { notices: ComponentChildren[] }) {
+  const [first, ...waiting] = props.notices;
   return (
-    <div class="wr-notes" role="status">
-      {props.notes.map((note) => (
-        <div key={note} class="wr-box">
-          <p>{t(NOTE_TEXT[note])}</p>
-          <button
-            type="button"
-            class="wr-btn wr-btn-small"
-            data-note={note}
-            onClick={() => props.onSeen(note)}
-          >
-            {t('gotIt')}
-          </button>
-        </div>
-      ))}
+    <div class="wr-notices" role="status">
+      {first}
+      {waiting.length > 0 && <p class="wr-notices-more">{tp('moreNotices', waiting.length)}</p>}
     </div>
   );
+}
+
+/** The text of a one-time note, for the notice queue. */
+export function noteText(note: OneTimeNote): string {
+  return t(NOTE_TEXT[note]);
 }
 
 /**

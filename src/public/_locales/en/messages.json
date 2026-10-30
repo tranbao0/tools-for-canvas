@@ -410,6 +410,12 @@
   "noteFirstSkip": {
     "message": "Skipping also hides this item in Canvas's list of missing work."
   },
+  "moreNotices_one": {
+    "message": "$1 more notice"
+  },
+  "moreNotices_other": {
+    "message": "$1 more notices"
+  },
   "gotIt": {
     "message": "Got it"
   },

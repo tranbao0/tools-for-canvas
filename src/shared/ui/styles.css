@@ -388,12 +388,11 @@
   color: var(--wr-link);
 }
 
-/* Notices and notes */
+/* Notices */
 
+/* The notice queue shows one slim notice, with a quiet count of the ones that wait. */
 .wr-notices {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 6px;
+  margin-block: 6px;
 }
 
 .wr-notices:empty {
@@ -408,19 +407,24 @@
   color: var(--wr-text-2);
 }
 
-.wr-notes:not(:empty) {
-  display: grid;
-  gap: 6px;
-  margin-bottom: 8px;
+/* A notice and an offer carry a brand bar, like an InstUI alert, and have no box. */
+.wr-notices > :first-child,
+.wr-offer {
+  padding-left: 9px;
+  border-left: 3px solid var(--wr-brand);
 }
 
-.wr-box {
+.wr-notices-more {
+  margin-top: 2px;
+  padding-left: 12px;
+  color: var(--wr-text-2);
+  font-size: 12px;
+}
+
+.wr-offer {
   display: grid;
   justify-items: start;
-  gap: 8px;
-  padding: 8px 12px;
-  border: 1px solid var(--wr-brand);
-  border-radius: 4px;
+  gap: 6px;
 }
 
 /* Progress chart */
