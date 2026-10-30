@@ -7,7 +7,7 @@
  * layout and loses its buttons, because they belong to React. The color of the header is the
  * course color, the grade is the total that Canvas sends for the course, and `N/A` shows when
  * Canvas sends none (a course that hides its totals, or one with no score yet). While the
- * saved main toggle is off, the copies without a course override show dots.
+ * native main toggle is off, every copy shows dots.
  */
 import { findGradeWidgets, type GradeCards } from '../../../shared/canvas/widgetDashboard';
 import { t } from '../../../shared/ui/i18n';
@@ -42,7 +42,7 @@ export function gradesFix(
   /** What each grid shows. It stays out of the page, where a script could read the grades. */
   const signatures = new WeakMap<Element, string>();
   const nativeStates = new WeakMap<Element, { hidden: boolean; values: Map<string, boolean> }>();
-  const { serverStates, observed } = store;
+  const { observed } = store;
 
   /** Sets the text of the element with `suffix`, and removes it when there is no text. */
   function fill(card: HTMLElement, id: string, suffix: string, text: string | null): void {
@@ -133,14 +133,6 @@ export function gradesFix(
       overrides = new Map();
       observed.set(widgetId, overrides);
     }
-    if (visibility != null) {
-      const server = visibility[widgetId] ?? {};
-      const before = serverStates.get(widgetId);
-      for (const [id, value] of Object.entries(server)) {
-        if (overrides.get(id) === value || (before && before[id] !== value)) overrides.delete(id);
-      }
-      serverStates.set(widgetId, server);
-    }
     const previous = nativeStates.get(found.widget);
     const values = new Map<string, boolean>();
     for (const card of native) {
@@ -160,14 +152,12 @@ export function gradesFix(
       }
     }
     nativeStates.set(found.widget, { hidden: found.gradesHidden, values });
-    const serverMain = context.data.showGrades?.[widgetId] ?? true;
-    const showGrades = context.data.mainTogglePending
-      ? serverMain && !found.gradesHidden
-      : context.data.showGrades === undefined
-        ? !found.gradesHidden
-        : serverMain;
     const hidden = (id: string): boolean =>
-      visibility == null || !(overrides?.get(id) ?? visibility?.[widgetId]?.[id] ?? showGrades);
+      visibility == null ||
+      found.gradesHidden ||
+      context.data?.showGrades?.[widgetId] === false ||
+      overrides?.get(id) === false ||
+      visibility[widgetId]?.[id] === false;
     const signature = JSON.stringify([
       missing.map((course) => [course.id, course.name, course.color, course.score, course.grade]),
       missing.map((course) => hidden(course.id)),

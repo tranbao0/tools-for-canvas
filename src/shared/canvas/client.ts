@@ -220,11 +220,13 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
           return [id, visibility] as const;
         });
         const showGrades = Object.fromEntries(
-          Object.entries(config.filters ?? {}).map(([id, value]) => {
-            if (value.showGrades !== undefined && typeof value.showGrades !== 'boolean')
-              throw new Error('Invalid main grade visibility');
-            return [id, value.showGrades ?? true];
-          }),
+          Object.entries(config.filters ?? {})
+            .filter(([, value]) => value.showGrades !== undefined)
+            .map(([id, value]) => {
+              if (value.showGrades !== undefined && typeof value.showGrades !== 'boolean')
+                throw new Error('Invalid main grade visibility');
+              return [id, value.showGrades as boolean];
+            }),
         );
         return { gradeVisibilities: Object.fromEntries(entries), showGrades };
       },

@@ -588,7 +588,7 @@ test.describe('course grades', () => {
     await openCanvasPage(page, served.canvas.origin);
     const widget = page.getByTestId('widget-course-grades-widget');
     await expect(page.locator('[data-wr-card]')).toHaveCount(2);
-    await expect(widget.getByTestId('course-108-grade')).toHaveText('N/A');
+    await expect(widget.getByTestId('course-108-grade')).toHaveText('•••');
     await expect(widget.getByTestId('course-107-grade')).toHaveText('•••');
     await widget.screenshot({ path: testInfo.outputPath('grade-cards.png') });
   });

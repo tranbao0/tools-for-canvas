@@ -958,7 +958,7 @@ describe('widget grade visibility', () => {
     }));
     await expect(testClient().getWidgetGradeVisibility!('5')).resolves.toEqual({
       gradeVisibilities: { 'course-grades-widget': { '107': false, '108': true } },
-      showGrades: { 'course-grades-widget': true },
+      showGrades: {},
     });
   });
 

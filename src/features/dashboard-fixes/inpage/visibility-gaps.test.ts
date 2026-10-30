@@ -170,11 +170,12 @@ it('a read that began before the fix came back never counts', async () => {
   stored = { '107': false };
   engine.setActive(true);
   await settle();
-  expect(reads()).toBe(2);
+  expect(reads()).toBe(1);
   // The first read answers now. It began before the fix came back on.
   stored = {};
   held.shift()!();
   await settle();
+  expect(reads()).toBe(2);
   expect(grade('107')).toBe('•••');
   stored = { '107': false };
   held.shift()!();

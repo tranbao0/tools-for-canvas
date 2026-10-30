@@ -27,7 +27,7 @@ import { FIXES_CSS } from './styles';
 
 /** How long a batch of page changes waits for the next one. */
 const BATCH_MS = 50;
-const VISIBILITY_REFRESH_MS = 30_000;
+const VISIBILITY_REFRESH_MS = 5_000;
 const STYLE_ID = 'wr-dashboard-fixes';
 
 export interface FixesEngineOptions {
@@ -83,7 +83,8 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   /** What the server confirmed for the confirmed student, or `null` while nothing is confirmed. */
   let visibility: DashboardData['gradeVisibilities'] = null;
   let showGrades: DashboardData['showGrades'];
-  let mainTogglePending = false;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let retryAttempt = 0;
   /** A read must begin: nothing is confirmed, or the page changed what a confirmation covers. */
   let wantRead = true;
   let reading = false;
@@ -92,6 +93,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   /** Names the running or last read, so a late result can only go back to that read. */
   let readToken = '';
   let readCount = 0;
+  let readObservations = new Map<string, Map<string, boolean>>();
   let lastVisibilityRefresh = -Infinity;
   const engineId = Math.random().toString(36).slice(2);
   let toggleState = '';
@@ -166,20 +168,15 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         ([id, visible]) => nativeVisibility.has(id) && nativeVisibility.get(id) !== visible,
       );
     if (enabled('allCourseGrades') && toggleState && (toggles !== toggleState || configChanged)) {
+      if (reading) {
+        visibilitySeq += 1;
+        readToken = '';
+      }
       wantRead = true;
-      if (toggles !== toggleState) mainTogglePending = true;
+      resetRetry();
     }
     toggleState = toggles;
     nativeVisibility = nextNative;
-    // Before the apply loop, so the first draw of the copies already shows dots.
-    if (
-      enabled('allCourseGrades') &&
-      wantRead &&
-      gradeStore.userId !== undefined &&
-      widgets.length > 0
-    ) {
-      startRead();
-    }
     for (const key of keys) {
       if (enabled(key)) {
         applied.add(key);
@@ -188,6 +185,16 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         guard(key, () => fixes[key].remove());
       }
     }
+    // Capture native observations before the read begins.
+    if (
+      enabled('allCourseGrades') &&
+      wantRead &&
+      gradeStore.userId !== undefined &&
+      widgets.length > 0
+    ) {
+      startRead();
+    }
+    retryIfNeeded();
     // The observer sees the changes of this pass as its own, so it does not ask for another.
     renderCss();
     observer?.takeRecords();
@@ -230,13 +237,11 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   function markBlind(): void {
     visibilitySeq += 1;
     readToken = '';
-    reading = false;
+    resetRetry();
     wantRead = true;
     visibility = null;
     showGrades = undefined;
-    mainTogglePending = false;
-    gradeStore.observed.clear();
-    gradeStore.serverStates.clear();
+
     toggleState = '';
     nativeVisibility = new Map();
     if (data) data = { ...data, gradeVisibilities: null };
@@ -249,37 +254,79 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     if (before !== enabled('allCourseGrades')) markBlind();
   }
 
-  function confirmMainToggle(): void {
-    if (!mainTogglePending) return;
-    mainTogglePending = !findGradeWidgets(doc).every((found) => {
+  function resetRetry(): void {
+    if (retryTimer !== null) clearTimeout(retryTimer);
+    retryTimer = null;
+    retryAttempt = 0;
+  }
+
+  function retryIfNeeded(): void {
+    if (!enabled('allCourseGrades') || reading || retryTimer !== null || retryAttempt >= 3) return;
+    const disagrees = findGradeWidgets(doc).some((found) => {
       const id = (found.widget.getAttribute('data-testid') ?? '').replace(/^widget-/, '');
-      return (showGrades?.[id] ?? true) === !found.gradesHidden;
+      return (
+        !found.gradesHidden &&
+        data?.courses.some(
+          (course) =>
+            gradeStore.observed.get(id)?.get(course.id) !== false &&
+            (showGrades?.[id] === false || visibility?.[id]?.[course.id] === false),
+        )
+      );
     });
+    if (!disagrees) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      retryAttempt += 1;
+      wantRead = true;
+      schedule(0);
+    }, [2000, 5000, 15000][retryAttempt]);
+  }
+
+  function confirmObservations(): void {
+    if (visibility == null) return;
+    for (const [widget, values] of readObservations) {
+      for (const [id, value] of values) {
+        if (visibility[widget]?.[id] === true && gradeStore.observed.get(widget)?.get(id) === value)
+          gradeStore.observed.get(widget)?.delete(id);
+      }
+    }
   }
 
   function startRead(): void {
+    if (reading) {
+      wantRead = true;
+      return;
+    }
     wantRead = false;
     reading = true;
-    const seq = ++visibilitySeq;
+    const seq = visibilitySeq;
+    readObservations = new Map(
+      [...gradeStore.observed].map(([id, values]) => [id, new Map(values)]),
+    );
     readToken = `${engineId}-${++readCount}`;
     visibility = null;
     if (data) data = { ...data, gradeVisibilities: null };
     options
       .send({ type: 'weekrow:dashboard-data', includeGradeVisibility: true, readToken })
       .then((reply) => {
-        if (stopped || seq !== visibilitySeq) return;
         reading = false;
+        if (stopped) return;
+        if (seq !== visibilitySeq) {
+          schedule(0);
+          return;
+        }
         const result = reply as DashboardData | undefined;
         // A result counts only for the student that is confirmed now.
         const confirmed = result?.userId !== undefined && result.userId === gradeStore.userId;
         visibility = confirmed ? (result?.gradeVisibilities ?? null) : null;
         showGrades = confirmed ? result?.showGrades : undefined;
-        if (confirmed && visibility !== null) confirmMainToggle();
-        if (data) data = { ...data, gradeVisibilities: visibility, showGrades, mainTogglePending };
+        if (confirmed) confirmObservations();
+        if (data) data = { ...data, gradeVisibilities: visibility, showGrades };
         schedule(0);
       })
       .catch((error: unknown) => {
-        if (seq === visibilitySeq) reading = false;
+        reading = false;
+        if (wantRead) schedule(0);
         logFailure('grade preferences', error);
       });
   }
@@ -295,11 +342,13 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     )
       return;
     lastVisibilityRefresh = performance.now();
+    resetRetry();
     startRead();
     schedule(0);
   }
 
   doc.addEventListener('visibilitychange', onVisibilityChange);
+  doc.defaultView?.addEventListener('focus', onVisibilityChange);
 
   function load(): void {
     for (const key of applied) {
@@ -318,7 +367,10 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
           const changed = gradeStore.userId !== undefined;
           gradeStore.userId = next.userId;
           // What the page showed before a student was confirmed belongs to no confirmed student.
-          if (changed) fixes.allCourseGrades.remove();
+          if (changed) {
+            fixes.allCourseGrades.remove();
+            gradeStore.observed.clear();
+          }
           markBlind();
         }
         // The result of a read that ended late counts only for the read that is the last one since
@@ -332,11 +384,11 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         ) {
           visibility = next.gradeVisibilities;
           showGrades = next.showGrades;
-          confirmMainToggle();
+          confirmObservations();
         }
         // A read that ended with no result runs again when the data changes.
         if (visibility === null && !reading) wantRead = true;
-        data = { ...next, gradeVisibilities: visibility, showGrades, mainTogglePending };
+        data = { ...next, gradeVisibilities: visibility, showGrades };
         schedule(0);
       })
       .catch((error: unknown) => logFailure('dashboard data', error));
@@ -366,6 +418,8 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     stop() {
       stopped = true;
       doc.removeEventListener('visibilitychange', onVisibilityChange);
+      doc.defaultView?.removeEventListener('focus', onVisibilityChange);
+      resetRetry();
       active = false;
       loadSeq += 1;
       if (timer !== null) clearTimeout(timer);

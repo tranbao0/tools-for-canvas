@@ -1642,13 +1642,18 @@ I read each of them in the package source.
   `ui/features/widget_dashboard/react/hooks/useWidgetConfig.ts` saves the settings through `updateWidgetDashboardConfig`.
   `app/graphql/mutations/update_widget_dashboard_config.rb` stores them in the user's `widget_dashboard_config` preference under `filters[widgetId]`.
   `app/graphql/types/user_type.rb` exposes that preference as the JSON string `widgetDashboardConfig`.
-  The copied cards read that preference through GraphQL only when a Course grades widget is present, and use `gradeVisibilities[id] ?? showGrades`.
-  The package saves `showGrades` beside `gradeVisibilities`, with a default of `true`.
-  After a local toggle change, the main value is false if either the server or the local toggle says hidden.
-  This guard lasts until a read that began after the change agrees with the local toggle.
-  After agreement, a server value from another tab controls the copies even if this tab still shows its earlier toggle.
-  A return to a visible tab starts a fresh read at most once per 30 seconds, measured with `performance.now()`.
-  Unit tests cover the return event and the cross-tab main value.
+  A copied card shows a grade only when every source allows it.
+  It reads this tab's native main toggle from the DOM on each render.
+  A hidden native main toggle hides every copy.
+  A per-course native hide stays in the page store until a confirmed read that starts after the observation says visible.
+  A server per-course value or main value constrains a copy only when it is present and false.
+  A missing server key adds no constraint.
+  A confirmed read must start after the last blind moment and name the confirmed student.
+  Otherwise the copies show dots.
+  When local state allows a grade but the server hides it, the fix retries after 2 seconds, 5 seconds and 15 seconds, then stops.
+  The retries use the same read path and token rules, with at most one read in flight.
+  A return to a visible tab or a window focus starts a fresh read at most once per 5 seconds, measured with `performance.now()`.
+  A blind moment preserves local hides.
   The headless E2E test covers the saved main value but does not claim to test a tab return.
   The copied cards also keep visibility changes from native cards when those cards leave the current page.
   A failed preference read keeps copied grades hidden.
@@ -1761,12 +1766,12 @@ I read each of them in the package source.
    Grade visibility preferences load separately at high priority with a five-second timeout.
    The read uses the current session cookies and does not wait for the cache ownership check.
    The page reads these preferences when the widget toggle or configuration changes.
-   When the page becomes visible, it starts a fresh read at most once per 30 seconds while the fix is active and the student is confirmed.
+   When the page becomes visible or the window gets focus, it starts a fresh read at most once per 5 seconds while the fix is active and the student is confirmed.
    This read uses the same read token and confirmed-student checks as other preference reads.
    Copies show dots until the read confirms preferences, so a hidden grade stays hidden.
-   Values observed on native cards take precedence over stale server preferences for this page view.
-   A later server value clears an observation when it confirms it or changes the previous server value.
-   The visibility store belongs to the page view and keeps observations and server states by confirmed user and widget.
+   A hidden value observed on a native card constrains its copy for this page view.
+   A confirmed server read that starts after the observation clears the hide only when it says visible.
+   The visibility store belongs to the page view and keeps observations by confirmed user and widget.
    Removing the fix removes its DOM only.
    Only a different confirmed user clears the store.
    A reply with no user id leaves the store and the read state unchanged.

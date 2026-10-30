@@ -73,11 +73,11 @@ describe('gradesFix', () => {
   it.each([
     [false, false, false, '•••'],
     [true, true, false, '•••'],
-    [true, true, true, '95%'],
-    [true, false, false, '95%'],
+    [true, true, true, '•••'],
+    [true, false, false, '•••'],
   ])(
     'combines server and local main toggles (%s, %s, %s)',
-    (server, pending, override, expected) => {
+    (server, _pending, override, expected) => {
       document
         .querySelector('[data-testid="hide-all-grades-checkbox"]')
         ?.setAttribute('data-testid', 'show-all-grades-checkbox');
@@ -85,12 +85,26 @@ describe('gradesFix', () => {
         fakeContext({
           ...dashboardData(),
           showGrades: { 'course-grades-widget': server },
-          mainTogglePending: pending,
+
           gradeVisibilities: { 'course-grades-widget': override ? { '107': true } : {} },
         }),
       );
       expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe(
         expected,
+      );
+    },
+  );
+
+  it.each([true, false])(
+    'keeps missing server main visibility unconstrained with local visible %s',
+    (visible) => {
+      if (!visible)
+        document
+          .querySelector('[data-testid="hide-all-grades-checkbox"]')
+          ?.setAttribute('data-testid', 'show-all-grades-checkbox');
+      gradesFix().apply(fakeContext({ ...dashboardData(), showGrades: {} }));
+      expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe(
+        visible ? '95%' : '•••',
       );
     },
   );
@@ -104,7 +118,7 @@ describe('gradesFix', () => {
     expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
   });
 
-  it('uses a saved visible override while the main toggle is off', () => {
+  it('keeps a saved visible override hidden while the main toggle is off', () => {
     document
       .querySelector('[data-testid="hide-all-grades-checkbox"]')
       ?.setAttribute('data-testid', 'show-all-grades-checkbox');
@@ -114,7 +128,7 @@ describe('gradesFix', () => {
         gradeVisibilities: { 'course-grades-widget': { '107': true } },
       }),
     );
-    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('95%');
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
   });
 
   it('keeps a course hidden after its native card leaves the page', () => {
@@ -214,7 +228,7 @@ it('saved override {103:false} survives toggle off, card leaves page, toggle on'
   expect(grade('103')).toBe('•••');
 });
 
-it('clears an observation when the server confirms it', () => {
+it('keeps an observation until the read path confirms it', () => {
   drawDashboard();
   const store = {
     observed: new Map([['course-grades-widget', new Map([['107', false]])]]),
@@ -227,5 +241,5 @@ it('clears an observation when the server confirms it', () => {
       gradeVisibilities: { 'course-grades-widget': { '107': false } },
     }),
   );
-  expect(store.observed.get('course-grades-widget')?.has('107')).toBe(false);
+  expect(store.observed.get('course-grades-widget')?.has('107')).toBe(true);
 });

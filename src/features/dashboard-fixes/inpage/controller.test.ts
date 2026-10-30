@@ -121,46 +121,95 @@ describe('createFixesEngine', () => {
     });
   });
 
-  it('refreshes on return at most once per 30 seconds and keeps hidden copies hidden', async () => {
+  it('refreshes per-course overrides on a return after ten seconds and on focus', async () => {
+    const state = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    document.dispatchEvent(new Event('visibilitychange'));
+    await settle();
+    await settle(10_000);
+    send.mockResolvedValue({
+      ...DATA,
+      gradeVisibilities: { 'course-grades-widget': { '107': false } },
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await settle();
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
+    send.mockResolvedValue(DATA);
+    await settle(5000);
+    window.dispatchEvent(new Event('focus'));
+    await settle();
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('95%');
+    state.mockRestore();
+  });
+
+  it('recovers from a stale server main hide within the retry schedule', async () => {
+    send.mockResolvedValue({ ...DATA, showGrades: { 'course-grades-widget': false } });
+    document
+      .querySelector('[data-testid="hide-all-grades-checkbox"]')
+      ?.setAttribute('data-testid', 'show-all-grades-checkbox');
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
+    document
+      .querySelector('[data-testid="show-all-grades-checkbox"]')
+      ?.setAttribute('data-testid', 'hide-all-grades-checkbox');
+    await settle();
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
+    send.mockResolvedValue({ ...DATA, showGrades: { 'course-grades-widget': true } });
+    await settle(2000);
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('95%');
+  });
+
+  it('stops after three retries and never overlaps reads', async () => {
+    let release: (value: unknown) => void = () => undefined;
+    send.mockImplementation(async (message) => {
+      if (message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility)
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      return DATA;
+    });
     engine.setSettings(ON);
     engine.setActive(true);
     await settle();
     const reads = () =>
       send.mock.calls.filter(
         ([m]) => m.type === 'weekrow:dashboard-data' && m.includeGradeVisibility,
-      );
-    const state = vi.spyOn(document, 'visibilityState', 'get');
-    const change = (value: DocumentVisibilityState) => {
-      state.mockReturnValue(value);
-      document.dispatchEvent(new Event('visibilitychange'));
-    };
-    let release: (value: unknown) => void = () => undefined;
-    send.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          release = resolve;
-        }),
-    );
-    const before = reads().length;
-    change('hidden');
-    expect(reads()).toHaveLength(before);
-    change('visible');
+      ).length;
+    expect(reads()).toBe(1);
+    await settle(30000);
+    expect(reads()).toBe(1);
+    release({ ...DATA, showGrades: { 'course-grades-widget': false } });
     await settle();
-    expect(reads()).toHaveLength(before + 1);
-    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
-    release({ ...DATA, gradeVisibilities: {}, showGrades: { 'course-grades-widget': false } });
+    for (const delay of [2000, 5000, 15000]) {
+      const before = reads();
+      await settle(delay);
+      expect(reads()).toBe(before + 1);
+      await settle(30000);
+      expect(reads()).toBe(before + 1);
+      release({ ...DATA, showGrades: { 'course-grades-widget': false } });
+      await settle();
+    }
+    await settle(60000);
+    expect(reads()).toBe(4);
+  });
+
+  it('keeps a local main hide across a blind moment with a visible server', async () => {
+    send.mockResolvedValue({ ...DATA, showGrades: { 'course-grades-widget': true } });
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    document
+      .querySelector('[data-testid="hide-all-grades-checkbox"]')
+      ?.setAttribute('data-testid', 'show-all-grades-checkbox');
+    await settle();
+    engine.setActive(false);
+    engine.setActive(true);
     await settle();
     expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
-    change('visible');
-    expect(reads()).toHaveLength(before + 1);
-    await settle(30_000);
-    change('visible');
-    expect(reads()).toHaveLength(before + 2);
-    engine.stop();
-    await settle(30_000);
-    change('visible');
-    expect(reads()).toHaveLength(before + 2);
-    state.mockRestore();
   });
 
   it('keeps a local hide through a stale main value until a later read agrees', async () => {
@@ -185,10 +234,10 @@ describe('createFixesEngine', () => {
     await settle();
     expect(text()).toBe('•••');
     server = true;
-    await settle(30_000);
+    await settle(10_000);
     document.dispatchEvent(new Event('visibilitychange'));
     await settle();
-    expect(text()).toBe('95%');
+    expect(text()).toBe('•••');
     state.mockRestore();
   });
 
