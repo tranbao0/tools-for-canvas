@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { isCanvasDocument } from './detectCanvas';
 import {
+  DASHBOARD_FILE,
   DETECTOR_FILE,
   INPAGE_FILE,
   anyAutoSavedCanvasTab,
@@ -37,6 +38,7 @@ describe('the built files', () => {
   it('are the paths WXT gives the detector and the in-page script', () => {
     expect(DETECTOR_FILE).toBe('/detector.js');
     expect(INPAGE_FILE).toBe('/inpage.js');
+    expect(DASHBOARD_FILE).toBe('/dashboard.js');
   });
 });
 
@@ -51,6 +53,34 @@ describe('injectInpage', () => {
       files: [INPAGE_FILE],
     });
   });
+
+  it.each(['/', '/dashboard', '/dashboard/'])(
+    'adds the dashboard fixes script on the dashboard path %s',
+    async (path) => {
+      tabUrls.set(7, `${ORIGIN}${path}?x=1`);
+
+      await injectInpage(7, ORIGIN);
+
+      expect(scripting.executeScript).toHaveBeenCalledWith({
+        target: { tabId: 7, frameIds: [0] },
+        files: [INPAGE_FILE, DASHBOARD_FILE],
+      });
+    },
+  );
+
+  it.each(['/courses/5', '/courses/5/assignments', '/calendar', '/dashboards'])(
+    'adds no dashboard fixes script on %s',
+    async (path) => {
+      tabUrls.set(7, `${ORIGIN}${path}`);
+
+      await injectInpage(7, ORIGIN);
+
+      expect(scripting.executeScript).toHaveBeenCalledWith({
+        target: { tabId: 7, frameIds: [0] },
+        files: [INPAGE_FILE],
+      });
+    },
+  );
 
   it('targets the document that sent the report, so a tab that moved on gets nothing', async () => {
     await injectInpage(7, ORIGIN, 'doc-1');

@@ -12,16 +12,27 @@ import { logFailure } from './log';
 
 type Tab = Browser.tabs.Tab;
 
-/** The built detector and in-page scripts, as extension paths. */
+/** The built detector and page scripts, as extension paths. */
 export const DETECTOR_FILE = '/detector.js';
 export const INPAGE_FILE = '/inpage.js';
+/** The fixes for the widget dashboard, which only a dashboard page needs (decision 22). */
+export const DASHBOARD_FILE = '/dashboard.js';
+
+/** The dashboard is the root path of Canvas. `/dashboard` serves the same page. */
+const DASHBOARD_PATH = /^\/(?:dashboard\/?)?$/;
+
+/** The page scripts for a tab: the list script, and the fixes script on the dashboard. */
+function pageScripts(url: string): (typeof INPAGE_FILE | typeof DASHBOARD_FILE)[] {
+  const dashboard = DASHBOARD_PATH.test(parseUrl(url)?.pathname ?? '');
+  return dashboard ? [INPAGE_FILE, DASHBOARD_FILE] : [INPAGE_FILE];
+}
 
 /** The tabs the detector runs in. The host permission lets `tabs.query` see their URLs. */
 const HTTPS_TABS = 'https://*/*';
 
 /**
- * Runs the in-page list script in the top frame of the tab, when the tab still shows a page of
- * `origin`. Rejects when it does not, or when the browser refuses.
+ * Runs the in-page list script, and on the dashboard also the fixes script, in the top frame of
+ * the tab, when the tab still shows a page of `origin`. Rejects when it does not, or when the browser refuses.
  *
  * `documentId` is the document that sent the report, where the browser has it. The browser then
  * refuses the injection when the tab moved to another page since the report. Firefox before 153
@@ -41,7 +52,7 @@ export async function injectInpage(
   await browser.scripting.executeScript({
     target:
       documentId === undefined ? { tabId, frameIds: [0] } : { tabId, documentIds: [documentId] },
-    files: [INPAGE_FILE],
+    files: pageScripts(tab.url),
   });
 }
 

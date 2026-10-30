@@ -249,8 +249,80 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
   border: 1px solid #d7dade; border-radius: 12px; background: #fff;
 }
 .fixture-widget h2 { margin: 0 0 12px; font-size: 18px; font-weight: 700; line-height: 1.25; }
-.fixture-widget ul { list-style: none; }
-.fixture-widget li { padding: 8px 0; border-top: 1px solid #eef0f2; font-size: 14px; }
+.fixture-widget > ul { list-style: none; }
+.fixture-widget > ul > li { padding: 8px 0; border-top: 1px solid #eef0f2; font-size: 14px; }
+
+/* The inside of the widgets that the dashboard fixes read, laid out like the InstUI components of
+   the package: a Flex is a flex box, a View has the spacing of its props, a SimpleSelect is a label
+   above a read-only input. The dark theme of the package is the data-fixture-dark attribute of the
+   app, with the colors of the package's darkColors. */
+.fixture-widget-app { --fx-ink: #273540; --fx-secondary: #586874; --fx-link: #0e68b3; --fx-line: #d7dade; --fx-input-bg: #fff; --fx-input-line: #8d959f; --fx-card: #fff; --fx-card-2: #f5f5f5; --fx-stat-blue: #1a5a8e; --fx-stat-red: #e62429; --fx-stat-green: #03893d; }
+.fixture-widget-app[data-fixture-dark] { --fx-ink: #fff; --fx-secondary: #9ea6ad; --fx-link: #5a9fd4; --fx-line: #2e3e4e; --fx-input-bg: #253443; --fx-input-line: #4a5b68; --fx-card: #1f2d3d; --fx-card-2: #253443; --fx-stat-blue: #5a9fd4; --fx-stat-red: #f08a8d; --fx-stat-green: #6fcf8a; }
+.fixture-widget-app[data-fixture-dark] .fixture-widget { background: var(--fx-card); border-color: var(--fx-line); color: var(--fx-ink); }
+.fixture-widget-app[data-fixture-dark] { background: #1b2330; color: var(--fx-ink); }
+.fx-section { display: block; color: var(--fx-ink); background: var(--fx-card); }
+.fx-col { display: flex; flex-direction: column; }
+.fx-row { display: flex; flex-direction: row; align-items: center; }
+.fx-wrap { flex-wrap: wrap; }
+.fx-between { justify-content: space-between; }
+.fx-grow { flex: 1 1 auto; min-width: 0; }
+.fx-min0 { min-width: 0; }
+.fx-rel { position: relative; }
+.fx-gap-s { gap: 0.75rem; }
+.fx-gap-xs { gap: 0.5rem; }
+.fx-gap-xxx { gap: 0.125rem; }
+.fx-unstyled { list-style: none; margin: 0; padding: 0; }
+.fx-li { margin: 0; }
+.fx-h2 { margin: 0; font-size: 1.25rem; font-weight: 700; line-height: 1.25; }
+.fx-small { font-size: 0.875rem; }
+.fx-xsmall { font-size: 0.75rem; }
+.fx-bold { font-weight: 700; }
+.fx-secondary { color: var(--fx-secondary); }
+.fx-link { color: var(--fx-link); text-decoration: none; }
+.fx-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.fx-field label { display: block; margin-bottom: 0.25rem; font-size: 1rem; }
+.fx-select { position: relative; }
+.fx-input { box-sizing: border-box; width: 100%; height: 2.375rem; padding: 0 2.25rem 0 0.75rem; font: inherit; font-size: 1rem; color: var(--fx-ink); background: var(--fx-input-bg); border: 0.0625rem solid var(--fx-input-line); border-radius: 0.25rem; cursor: pointer; }
+[style*="7rem"] .fx-input { height: 1.75rem; font-size: 0.875rem; }
+.fx-caret { position: absolute; right: 0.75rem; top: 50%; width: 0.5rem; height: 0.5rem; margin-top: -0.375rem; border: solid var(--fx-secondary); border-width: 0 0.125rem 0.125rem 0; transform: rotate(45deg); pointer-events: none; }
+.fx-stats { margin: 0.75rem 0; }
+.fx-stat { flex: 1 1 0; padding: 0.75rem; text-align: center; background: var(--fx-card-2); border-radius: 0.375rem; }
+.fx-stat-n { display: block; font-size: 1.75rem; font-weight: 700; line-height: 1.2; }
+.fx-item-wrap { margin: 0.75rem 0; }
+.fx-item { display: flex; align-items: center; gap: 0.75rem; }
+.fx-ib { display: inline-flex; padding: 1.5rem; border-radius: 0.375rem; }
+.fx-ic { display: inline-flex; }
+.fx-pill { padding: 0.5rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+.fx-b-blue { background: #e0ebf5; } .fx-c-blue { color: #1a5a8e; }
+.fx-b-red { background: #fce4e5; } .fx-c-red { color: #e62429; }
+.fx-b-orange { background: #fce5d9; } .fx-c-orange { color: #cf4a00; }
+.fx-b-green { background: #dceee4; } .fx-c-green { color: #03893d; }
+.fx-b-grey { background: #e8eaec; } .fx-c-grey { color: #6a7883; }
+.fixture-widget-app[data-fixture-dark] .fx-ib, .fixture-widget-app[data-fixture-dark] .fx-pill { background: #253443; }
+.fixture-widget-app[data-fixture-dark] .fx-c-blue { color: #5a9fd4; }
+.fixture-widget-app[data-fixture-dark] .fx-c-red { color: #f08a8d; }
+.fixture-widget-app[data-fixture-dark] .fx-c-orange { color: #f0a87a; }
+.fixture-widget-app[data-fixture-dark] .fx-c-green { color: #6fcf8a; }
+.fixture-widget-app[data-fixture-dark] .fx-c-grey { color: #9ea6ad; }
+.fx-pager { padding: 0.25rem 0; text-align: center; }
+.fx-page { display: inline-block; min-width: 2rem; padding: 0.25rem; font-size: 0.875rem; color: var(--fx-link); }
+.fx-page-on { font-weight: 700; color: var(--fx-ink); }
+.fx-ann { padding: 0.25rem 0; border-bottom: 0.0625rem solid var(--fx-line); width: 100%; }
+.fx-avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: 50%; background: var(--fx-card-2); font-size: 0.8125rem; font-weight: 700; }
+.fx-iconbtn { flex: none; width: 2rem; height: 2rem; padding: 0; color: var(--fx-secondary); background: transparent; border: 0; border-radius: 0.25rem; cursor: pointer; }
+.fx-toggle { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
+.fx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(262px, 262px)); grid-auto-rows: 1fr; gap: 1rem; padding: 0.75rem; justify-content: center; }
+.fx-card { display: flex; flex-direction: column; width: 100%; height: 100%; background: var(--fx-card-2); border-radius: 0.5rem; box-shadow: 0 0.0625rem 0.1875rem rgba(0,0,0,0.2), 0 0.0625rem 0.125rem rgba(0,0,0,0.2); }
+.fx-card-head { position: relative; flex: none; height: 146px; width: 100%; border-radius: 0.5rem 0.5rem 0 0; }
+.fx-card-grade { position: absolute; top: 0.75rem; left: 0.75rem; z-index: 100; }
+.fx-grade-pill { display: flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.75rem; border-radius: 1rem; background: rgba(0,0,0,0.6); color: #fff; }
+.fx-grade { font-size: 1.75rem; font-weight: 700; line-height: 1.2; }
+.fx-grade-pill .fx-iconbtn { color: #fff; }
+.fx-card-menu { position: absolute; top: 0.75rem; right: 0.75rem; z-index: 100; }
+.fx-card-menu .fx-iconbtn { color: #fff; }
+.fx-card-body { flex: 1 1 auto; display: flex; flex-direction: column; gap: 0.25rem; padding: 0.75rem; }
+.fx-card-name { font-size: 1rem; font-weight: 700; overflow-wrap: anywhere; }
+.fx-card-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; padding: 0 0.75rem 0.75rem; }
 
 /* Course home */
 .context_module {

@@ -99,28 +99,211 @@
     <div data-testid="widget-columns">
       <div data-testid="widget-column-1">
         <div data-testid="widget-container-course-work-combined-widget" class="fixture-widget">
-          <h2>Course work</h2>
-          <p>Due soon: 8 &bull; Missing: 4 &bull; Submitted: 9</p>
-          <ul>
-            <li><a href="/courses/101/assignments/1012">Quiz 3: Cell membranes</a> &bull; BIO 110 &bull; Due today at 11:59pm</li>
-            <li><a href="/courses/101/assignments/1004">Lab report 4: Cellular respiration</a> &bull; BIO 110 &bull; Due Oct 28</li>
-            <li><a href="/courses/102/assignments/2009">Quiz: Integration by parts</a> &bull; MATH 221 &bull; Due Oct 29</li>
-            <li><a href="/courses/103/assignments/3010">Debate 2: Was the Atlantic world one system?</a> &bull; History &bull; Due Oct 29</li>
-            <li><a href="/courses/104/assignments/4003">Lab 7: Titration notebook</a> &bull; CHEM 120 &bull; Due Oct 30</li>
-            <li><a href="/courses/103/assignments/3050">Participation: Week 9</a> &bull; History &bull; Due Oct 31</li>
-            <li><a href="/courses/102/assignments/2011">Problem set 8</a> &bull; MATH 221 &bull; Due Nov 2</li>
-            <li><a href="/courses/101/assignments/1005">Lab report 5: Photosynthesis</a> &bull; BIO 110 &bull; Due Nov 4</li>
-          </ul>
+          <section class="fx-section" data-testid="widget-course-work-combined-widget" role="region" aria-labelledby="course-work-combined-widget-heading">
+            <div class="fx-col fx-gap-s">
+              <div class="fx-row fx-between"><h2 id="course-work-combined-widget-heading" class="fx-h2">Course work</h2></div>
+              <div class="fx-rel">
+                <div class="fx-col fx-gap-s">
+                  <div class="fx-row fx-wrap fx-gap-s">
+                    <div class="fx-grow">
+                  <div class="fx-field">
+                    <label for="cw-course">Course filter:</label>
+                    <div class="fx-select"><input id="cw-course" class="fx-input" type="text" role="combobox" aria-autocomplete="none" aria-expanded="false" readonly value="All Courses" data-testid="course-filter-select"><span class="fx-caret" aria-hidden="true"></span></div>
+                  </div>
+                    </div>
+                    <div class="fx-grow">
+                  <div class="fx-field">
+                    <label for="cw-status">Submission status:</label>
+                    <div class="fx-select"><input id="cw-status" class="fx-input" type="text" role="combobox" aria-autocomplete="none" aria-expanded="false" readonly value="Not submitted" data-testid="submission-status-filter-select"><span class="fx-caret" aria-hidden="true"></span></div>
+                  </div>
+                    </div>
+                  </div>
+                  <div class="fx-row fx-gap-xs fx-stats">
+                    <div class="fx-stat" data-testid="statistics-card-Due"><span class="fx-stat-n" style="color:var(--fx-stat-blue)">8</span><div class="fx-small">Due</div></div>
+                    <div class="fx-stat" data-testid="statistics-card-Missing"><span class="fx-stat-n" style="color:var(--fx-stat-red)">4</span><div class="fx-small">Missing</div></div>
+                    <div class="fx-stat" data-testid="statistics-card-Submitted"><span class="fx-stat-n" style="color:var(--fx-stat-green)">9</span><div class="fx-small">Submitted</div></div>
+                  </div>
+                  <div>
+                    <ul class="fx-unstyled">
+              <li class="fx-li">
+                <div class="fx-item-wrap" role="group" aria-label="Quiz 3: Cell membranes" data-testid="listed-course-work-item-1012">
+                  <div class="fx-item">
+                    <div class="fx-ib fx-b-blue"><span class="fx-ic fx-c-blue"><svg data-testid="quiz-icon" viewBox="0 0 1920 1920" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false" role="presentation"><path d="M960 0c530.4 0 960 429.6 960 960s-429.6 960-960 960S0 1490.4 0 960 429.6 0 960 0Zm0 120C496 120 120 496 120 960s376 840 840 840 840-376 840-840S1424 120 960 120Zm0 1140a90 90 0 1 1 0 180 90 90 0 0 1 0-180Zm0-780c200 0 360 130 360 300 0 140-90 210-190 270-60 40-110 70-110 150H850c0-130 80-180 150-230 70-40 130-80 130-190 0-80-80-180-170-180s-170 100-170 180H640c0-170 120-300 320-300Z" fill-rule="evenodd"/></svg></span></div>
+                    <div class="fx-grow fx-min0">
+                      <a class="fx-link fx-bold" href="/courses/101/assignments/1012" data-testid="course-work-item-link-1012"><span class="fx-small">Quiz 3: Cell membranes</span></a>
+                      <div class="fx-row fx-gap-xs fx-xsmall fx-secondary"><span>BIO 110: Principles of Biology</span><span>|</span><a class="fx-link" href="/courses/101" aria-label="Go to BIO 110: Principles of Biology" data-testid="course-work-item-course-link-1012"><span>Go to course</span></a></div>
+                      <div class="fx-xsmall fx-secondary">20 pts</div>
+                    </div>
+                    <span class="fx-pill fx-b-blue fx-c-blue" data-testid="due_soon-status-pill-1012">Today 11:59 PM</span>
+                  </div>
+                </div>
+              </li>
+              <li class="fx-li">
+                <div class="fx-item-wrap" role="group" aria-label="Lab report 4: Cellular respiration" data-testid="listed-course-work-item-1004">
+                  <div class="fx-item">
+                    <div class="fx-ib fx-b-blue"><span class="fx-ic fx-c-blue"><svg data-testid="assignment-icon" viewBox="0 0 1920 1920" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false" role="presentation"><path d="M1468 0v520h-120V120H120v1680h1228v-400h120v520H0V0h1468Zm333 700 85 85-691 692-452-452 85-85 367 367 606-607Z" fill-rule="evenodd"/></svg></span></div>
+                    <div class="fx-grow fx-min0">
+                      <a class="fx-link fx-bold" href="/courses/101/assignments/1004" data-testid="course-work-item-link-1004"><span class="fx-small">Lab report 4: Cellular respiration</span></a>
+                      <div class="fx-row fx-gap-xs fx-xsmall fx-secondary"><span>BIO 110: Principles of Biology</span><span>|</span><a class="fx-link" href="/courses/101" aria-label="Go to BIO 110: Principles of Biology" data-testid="course-work-item-course-link-1004"><span>Go to course</span></a></div>
+                      <div class="fx-xsmall fx-secondary">50 pts</div>
+                    </div>
+                    <span class="fx-pill fx-b-blue fx-c-blue" data-testid="due_soon-status-pill-1004">10/28/2026 11:59 PM</span>
+                  </div>
+                </div>
+              </li>
+              <li class="fx-li">
+                <div class="fx-item-wrap" role="group" aria-label="Quiz: Integration by parts" data-testid="listed-course-work-item-2009">
+                  <div class="fx-item">
+                    <div class="fx-ib fx-b-blue"><span class="fx-ic fx-c-blue"><svg data-testid="quiz-icon" viewBox="0 0 1920 1920" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false" role="presentation"><path d="M960 0c530.4 0 960 429.6 960 960s-429.6 960-960 960S0 1490.4 0 960 429.6 0 960 0Zm0 120C496 120 120 496 120 960s376 840 840 840 840-376 840-840S1424 120 960 120Zm0 1140a90 90 0 1 1 0 180 90 90 0 0 1 0-180Zm0-780c200 0 360 130 360 300 0 140-90 210-190 270-60 40-110 70-110 150H850c0-130 80-180 150-230 70-40 130-80 130-190 0-80-80-180-170-180s-170 100-170 180H640c0-170 120-300 320-300Z" fill-rule="evenodd"/></svg></span></div>
+                    <div class="fx-grow fx-min0">
+                      <a class="fx-link fx-bold" href="/courses/102/assignments/2009" data-testid="course-work-item-link-2009"><span class="fx-small">Quiz: Integration by parts</span></a>
+                      <div class="fx-row fx-gap-xs fx-xsmall fx-secondary"><span>MATH 221: Calculus II</span><span>|</span><a class="fx-link" href="/courses/102" aria-label="Go to MATH 221: Calculus II" data-testid="course-work-item-course-link-2009"><span>Go to course</span></a></div>
+                      <div class="fx-xsmall fx-secondary">25 pts</div>
+                    </div>
+                    <span class="fx-pill fx-b-blue fx-c-blue" data-testid="due_soon-status-pill-2009">10/29/2026 11:59 PM</span>
+                  </div>
+                </div>
+              </li>
+              <li class="fx-li">
+                <div class="fx-item-wrap" role="group" aria-label="Debate 2: Was the Atlantic world one system?" data-testid="listed-course-work-item-3010">
+                  <div class="fx-item">
+                    <div class="fx-ib fx-b-blue"><span class="fx-ic fx-c-blue"><svg data-testid="discussion-icon" viewBox="0 0 1920 1920" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false" role="presentation"><path d="M1920 0v1440h-571l-389 389-389-389H0V0h1920Zm-120 120H120v1200h679l161 161 161-161h679V120ZM1500 480v120H420V480h1080Zm0 360v120H420V840h1080Z" fill-rule="evenodd"/></svg></span></div>
+                    <div class="fx-grow fx-min0">
+                      <a class="fx-link fx-bold" href="/courses/103/assignments/3010" data-testid="course-work-item-link-3010"><span class="fx-small">Debate 2: Was the Atlantic world one system?</span></a>
+                      <div class="fx-row fx-gap-xs fx-xsmall fx-secondary"><span>History</span><span>|</span><a class="fx-link" href="/courses/103" aria-label="Go to History" data-testid="course-work-item-course-link-3010"><span>Go to course</span></a></div>
+                      <div class="fx-xsmall fx-secondary">30 pts</div>
+                    </div>
+                    <span class="fx-pill fx-b-blue fx-c-blue" data-testid="due_soon-status-pill-3010">10/29/2026 11:59 PM</span>
+                  </div>
+                </div>
+              </li>
+              <li class="fx-li">
+                <div class="fx-item-wrap" role="group" aria-label="Lab 7: Titration notebook" data-testid="listed-course-work-item-4003">
+                  <div class="fx-item">
+                    <div class="fx-ib fx-b-blue"><span class="fx-ic fx-c-blue"><svg data-testid="assignment-icon" viewBox="0 0 1920 1920" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false" role="presentation"><path d="M1468 0v520h-120V120H120v1680h1228v-400h120v520H0V0h1468Zm333 700 85 85-691 692-452-452 85-85 367 367 606-607Z" fill-rule="evenodd"/></svg></span></div>
+                    <div class="fx-grow fx-min0">
+                      <a class="fx-link fx-bold" href="/courses/104/assignments/4003" data-testid="course-work-item-link-4003"><span class="fx-small">Lab 7: Titration notebook</span></a>
+                      <div class="fx-row fx-gap-xs fx-xsmall fx-secondary"><span>CHEM 120: General Chemistry</span><span>|</span><a class="fx-link" href="/courses/104" aria-label="Go to CHEM 120: General Chemistry" data-testid="course-work-item-course-link-4003"><span>Go to course</span></a></div>
+                      <div class="fx-xsmall fx-secondary">40 pts</div>
+                    </div>
+                    <span class="fx-pill fx-b-blue fx-c-blue" data-testid="due_soon-status-pill-4003">10/30/2026 11:59 PM</span>
+                  </div>
+                </div>
+              </li>
+              <li class="fx-li">
+                <div class="fx-item-wrap" role="group" aria-label="Participation: Week 9" data-testid="listed-course-work-item-3050">
+                  <div class="fx-item">
+                    <div class="fx-ib fx-b-blue"><span class="fx-ic fx-c-blue"><svg data-testid="assignment-icon" viewBox="0 0 1920 1920" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false" role="presentation"><path d="M1468 0v520h-120V120H120v1680h1228v-400h120v520H0V0h1468Zm333 700 85 85-691 692-452-452 85-85 367 367 606-607Z" fill-rule="evenodd"/></svg></span></div>
+                    <div class="fx-grow fx-min0">
+                      <a class="fx-link fx-bold" href="/courses/103/assignments/3050" data-testid="course-work-item-link-3050"><span class="fx-small">Participation: Week 9</span></a>
+                      <div class="fx-row fx-gap-xs fx-xsmall fx-secondary"><span>History</span><span>|</span><a class="fx-link" href="/courses/103" aria-label="Go to History" data-testid="course-work-item-course-link-3050"><span>Go to course</span></a></div>
+                      <div class="fx-xsmall fx-secondary">10 pts</div>
+                    </div>
+                    <span class="fx-pill fx-b-blue fx-c-blue" data-testid="due_soon-status-pill-3050">10/31/2026 11:59 PM</span>
+                  </div>
+                </div>
+              </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              <div class="fx-pager" data-testid="pagination-container">
+                <nav aria-label="Course work pagination"><span class="fx-page fx-page-on">1</span><span class="fx-page">2</span><span class="fx-page">3</span><span class="fx-page">…</span><span class="fx-page">8</span></nav>
+              </div>
+            </div>
+          </section>
         </div>
         <div data-testid="widget-container-course-grades-widget" class="fixture-widget">
-          <h2>Course grades</h2>
-          <ul>
-            <li>History &bull; 91%</li>
-            <li>BIO 110 &bull; 84%</li>
-            <li>MATH 221 &bull; 78%</li>
-            <li>CHEM 120 &bull; 88%</li>
-            <li>Orientation &bull; 100%</li>
-          </ul>
+          <section class="fx-section" data-testid="widget-course-grades-widget" role="region" aria-labelledby="course-grades-widget-heading">
+            <div class="fx-col fx-gap-s">
+              <div class="fx-row fx-between fx-wrap"><h2 id="course-grades-widget-heading" class="fx-h2">Course grades</h2><label class="fx-toggle"><input type="checkbox" checked data-testid="hide-all-grades-checkbox"><span>Show all grades</span></label></div>
+              <div class="fx-rel">
+          <div role="list" aria-label="Course grades" class="fx-grid">
+            <div class="fx-card" role="listitem" aria-label="History" data-testid="course-grade-card-103">
+              <div class="fx-card-head" style="background-color:#8F3E97">
+                <div class="fx-card-grade"><div class="fx-grade-pill"><span class="fx-grade" data-testid="course-103-grade">91%</span><button type="button" class="fx-iconbtn" data-testid="hide-single-grade-button-103"><span class="fx-sr">Hide grade for History</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M960 400c400 0 740 250 880 560-140 310-480 560-880 560S220 1270 80 960c140-310 480-560 880-560Zm0 120c-300 0-560 170-700 440 140 270 400 440 700 440s560-170 700-440c-140-270-400-440-700-440Zm0 150a290 290 0 1 1 0 580 290 290 0 0 1 0-580Z" fill-rule="evenodd"/></svg></button></div></div>
+                <div class="fx-card-menu"><button type="button" class="fx-iconbtn"><span class="fx-sr">Course settings for History</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="300" cy="960" r="150"/><circle cx="960" cy="960" r="150"/><circle cx="1620" cy="960" r="150"/></svg></button></div>
+              </div>
+              <div class="fx-card-body">
+                <div class="fx-card-name" data-testid="course-103-name">History</div>
+                <div class="fx-small fx-secondary" data-testid="course-103-code">HIST 205</div>
+                <div class="fx-small fx-secondary"><span data-testid="course-103-term">Fall 2026</span></div>
+                <div class="fx-small fx-secondary"><span data-testid="course-103-last-updated">Updated Oct 26</span></div>
+              </div>
+              <div class="fx-card-foot"><a class="fx-link fx-small" href="/courses/103/grades" aria-label="View History gradebook" data-testid="course-103-gradebook-link"><span>View Gradebook</span></a><span class="fx-small fx-secondary">|</span><a class="fx-link fx-small" href="/courses/103" aria-label="Go to History" data-testid="course-103-link"><span>Go to Course</span></a></div>
+            </div>
+            <div class="fx-card" role="listitem" aria-label="BIO 110: Principles of Biology" data-testid="course-grade-card-101">
+              <div class="fx-card-head" style="background-color:#0B874B">
+                <div class="fx-card-grade"><div class="fx-grade-pill"><span class="fx-grade" data-testid="course-101-grade">84%</span><button type="button" class="fx-iconbtn" data-testid="hide-single-grade-button-101"><span class="fx-sr">Hide grade for BIO 110: Principles of Biology</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M960 400c400 0 740 250 880 560-140 310-480 560-880 560S220 1270 80 960c140-310 480-560 880-560Zm0 120c-300 0-560 170-700 440 140 270 400 440 700 440s560-170 700-440c-140-270-400-440-700-440Zm0 150a290 290 0 1 1 0 580 290 290 0 0 1 0-580Z" fill-rule="evenodd"/></svg></button></div></div>
+                <div class="fx-card-menu"><button type="button" class="fx-iconbtn"><span class="fx-sr">Course settings for BIO 110: Principles of Biology</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="300" cy="960" r="150"/><circle cx="960" cy="960" r="150"/><circle cx="1620" cy="960" r="150"/></svg></button></div>
+              </div>
+              <div class="fx-card-body">
+                <div class="fx-card-name" data-testid="course-101-name">BIO 110: Principles of Biology</div>
+                <div class="fx-small fx-secondary" data-testid="course-101-code">BIO 110</div>
+                <div class="fx-small fx-secondary"><span data-testid="course-101-term">Fall 2026</span></div>
+                <div class="fx-small fx-secondary"><span data-testid="course-101-last-updated">Updated Oct 26</span></div>
+              </div>
+              <div class="fx-card-foot"><a class="fx-link fx-small" href="/courses/101/grades" aria-label="View BIO 110: Principles of Biology gradebook" data-testid="course-101-gradebook-link"><span>View Gradebook</span></a><span class="fx-small fx-secondary">|</span><a class="fx-link fx-small" href="/courses/101" aria-label="Go to BIO 110: Principles of Biology" data-testid="course-101-link"><span>Go to Course</span></a></div>
+            </div>
+            <div class="fx-card" role="listitem" aria-label="MATH 221: Calculus II" data-testid="course-grade-card-102">
+              <div class="fx-card-head" style="background-color:#E71F63">
+                <div class="fx-card-grade"><div class="fx-grade-pill"><span class="fx-grade" data-testid="course-102-grade">78%</span><button type="button" class="fx-iconbtn" data-testid="hide-single-grade-button-102"><span class="fx-sr">Hide grade for MATH 221: Calculus II</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M960 400c400 0 740 250 880 560-140 310-480 560-880 560S220 1270 80 960c140-310 480-560 880-560Zm0 120c-300 0-560 170-700 440 140 270 400 440 700 440s560-170 700-440c-140-270-400-440-700-440Zm0 150a290 290 0 1 1 0 580 290 290 0 0 1 0-580Z" fill-rule="evenodd"/></svg></button></div></div>
+                <div class="fx-card-menu"><button type="button" class="fx-iconbtn"><span class="fx-sr">Course settings for MATH 221: Calculus II</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="300" cy="960" r="150"/><circle cx="960" cy="960" r="150"/><circle cx="1620" cy="960" r="150"/></svg></button></div>
+              </div>
+              <div class="fx-card-body">
+                <div class="fx-card-name" data-testid="course-102-name">MATH 221: Calculus II</div>
+                <div class="fx-small fx-secondary" data-testid="course-102-code">MATH 221</div>
+                <div class="fx-small fx-secondary"><span data-testid="course-102-term">Fall 2026</span></div>
+                <div class="fx-small fx-secondary"><span data-testid="course-102-last-updated">Updated Oct 25</span></div>
+              </div>
+              <div class="fx-card-foot"><a class="fx-link fx-small" href="/courses/102/grades" aria-label="View MATH 221: Calculus II gradebook" data-testid="course-102-gradebook-link"><span>View Gradebook</span></a><span class="fx-small fx-secondary">|</span><a class="fx-link fx-small" href="/courses/102" aria-label="Go to MATH 221: Calculus II" data-testid="course-102-link"><span>Go to Course</span></a></div>
+            </div>
+            <div class="fx-card" role="listitem" aria-label="CHEM 120: General Chemistry" data-testid="course-grade-card-104">
+              <div class="fx-card-head" style="background-color:#FFD500">
+                <div class="fx-card-grade"><div class="fx-grade-pill"><span class="fx-grade" data-testid="course-104-grade">88%</span><button type="button" class="fx-iconbtn" data-testid="hide-single-grade-button-104"><span class="fx-sr">Hide grade for CHEM 120: General Chemistry</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M960 400c400 0 740 250 880 560-140 310-480 560-880 560S220 1270 80 960c140-310 480-560 880-560Zm0 120c-300 0-560 170-700 440 140 270 400 440 700 440s560-170 700-440c-140-270-400-440-700-440Zm0 150a290 290 0 1 1 0 580 290 290 0 0 1 0-580Z" fill-rule="evenodd"/></svg></button></div></div>
+                <div class="fx-card-menu"><button type="button" class="fx-iconbtn"><span class="fx-sr">Course settings for CHEM 120: General Chemistry</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="300" cy="960" r="150"/><circle cx="960" cy="960" r="150"/><circle cx="1620" cy="960" r="150"/></svg></button></div>
+              </div>
+              <div class="fx-card-body">
+                <div class="fx-card-name" data-testid="course-104-name">CHEM 120: General Chemistry</div>
+                <div class="fx-small fx-secondary" data-testid="course-104-code">CHEM 120</div>
+                <div class="fx-small fx-secondary"><span data-testid="course-104-term">Fall 2026</span></div>
+                <div class="fx-small fx-secondary"><span data-testid="course-104-last-updated">Updated Oct 25</span></div>
+              </div>
+              <div class="fx-card-foot"><a class="fx-link fx-small" href="/courses/104/grades" aria-label="View CHEM 120: General Chemistry gradebook" data-testid="course-104-gradebook-link"><span>View Gradebook</span></a><span class="fx-small fx-secondary">|</span><a class="fx-link fx-small" href="/courses/104" aria-label="Go to CHEM 120: General Chemistry" data-testid="course-104-link"><span>Go to Course</span></a></div>
+            </div>
+            <div class="fx-card" role="listitem" aria-label="Student Success Orientation" data-testid="course-grade-card-105">
+              <div class="fx-card-head" style="background-color:#65499D">
+                <div class="fx-card-grade"><div class="fx-grade-pill"><span class="fx-grade" data-testid="course-105-grade">N/A</span><button type="button" class="fx-iconbtn" data-testid="hide-single-grade-button-105"><span class="fx-sr">Hide grade for Student Success Orientation</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M960 400c400 0 740 250 880 560-140 310-480 560-880 560S220 1270 80 960c140-310 480-560 880-560Zm0 120c-300 0-560 170-700 440 140 270 400 440 700 440s560-170 700-440c-140-270-400-440-700-440Zm0 150a290 290 0 1 1 0 580 290 290 0 0 1 0-580Z" fill-rule="evenodd"/></svg></button></div></div>
+                <div class="fx-card-menu"><button type="button" class="fx-iconbtn"><span class="fx-sr">Course settings for Student Success Orientation</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="300" cy="960" r="150"/><circle cx="960" cy="960" r="150"/><circle cx="1620" cy="960" r="150"/></svg></button></div>
+              </div>
+              <div class="fx-card-body">
+                <div class="fx-card-name" data-testid="course-105-name">Student Success Orientation</div>
+                <div class="fx-small fx-secondary" data-testid="course-105-code">SSO 100</div>
+                <div class="fx-small fx-secondary"><span data-testid="course-105-term">Orientation 2023</span></div>
+                <div class="fx-small fx-secondary"><span data-testid="course-105-last-updated">Updated Oct 20</span></div>
+              </div>
+              <div class="fx-card-foot"><a class="fx-link fx-small" href="/courses/105/grades" aria-label="View Student Success Orientation gradebook" data-testid="course-105-gradebook-link"><span>View Gradebook</span></a><span class="fx-small fx-secondary">|</span><a class="fx-link fx-small" href="/courses/105" aria-label="Go to Student Success Orientation" data-testid="course-105-link"><span>Go to Course</span></a></div>
+            </div>
+            <div class="fx-card" role="listitem" aria-label="Intramural Ultimate Frisbee Club" data-testid="course-grade-card-106">
+              <div class="fx-card-head" style="background-color:#FC5E13">
+                <div class="fx-card-grade"><div class="fx-grade-pill"><span class="fx-grade" data-testid="course-106-grade">N/A</span><button type="button" class="fx-iconbtn" data-testid="hide-single-grade-button-106"><span class="fx-sr">Hide grade for Intramural Ultimate Frisbee Club</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M960 400c400 0 740 250 880 560-140 310-480 560-880 560S220 1270 80 960c140-310 480-560 880-560Zm0 120c-300 0-560 170-700 440 140 270 400 440 700 440s560-170 700-440c-140-270-400-440-700-440Zm0 150a290 290 0 1 1 0 580 290 290 0 0 1 0-580Z" fill-rule="evenodd"/></svg></button></div></div>
+                <div class="fx-card-menu"><button type="button" class="fx-iconbtn"><span class="fx-sr">Course settings for Intramural Ultimate Frisbee Club</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="300" cy="960" r="150"/><circle cx="960" cy="960" r="150"/><circle cx="1620" cy="960" r="150"/></svg></button></div>
+              </div>
+              <div class="fx-card-body">
+                <div class="fx-card-name" data-testid="course-106-name">Intramural Ultimate Frisbee Club</div>
+                <div class="fx-small fx-secondary" data-testid="course-106-code">ULTIMATE</div>
+                <div class="fx-small fx-secondary"><span data-testid="course-106-term">Default Term</span></div>
+                <div class="fx-small fx-secondary"><span data-testid="course-106-last-updated">Updated Oct 20</span></div>
+              </div>
+              <div class="fx-card-foot"><a class="fx-link fx-small" href="/courses/106/grades" aria-label="View Intramural Ultimate Frisbee Club gradebook" data-testid="course-106-gradebook-link"><span>View Gradebook</span></a><span class="fx-small fx-secondary">|</span><a class="fx-link fx-small" href="/courses/106" aria-label="Go to Intramural Ultimate Frisbee Club" data-testid="course-106-link"><span>Go to Course</span></a></div>
+            </div>
+          </div>
+              </div>
+              <div class="fx-pager" data-testid="pagination-container">
+                <nav aria-label="Course grades pagination"><span class="fx-page fx-page-on">1</span><span class="fx-page">2</span></nav>
+              </div>
+            </div>
+          </section>
         </div>
         <div data-testid="widget-container-course-progress-widget" class="fixture-widget">
           <h2>Course progress</h2>
@@ -182,13 +365,87 @@
       </div>
       <div data-testid="widget-column-2">
         <div data-testid="widget-container-announcements-widget" class="fixture-widget">
-          <h2>Announcements</h2>
-          <ul>
-            <li><a href="/courses/101/discussion_topics/31901">Lab room change for Thursday</a> &bull; BIO 110</li>
-            <li><a href="/courses/102/discussion_topics/32901">Office hours move to Thursday this week</a> &bull; MATH 221</li>
-            <li><a href="/courses/104/discussion_topics/34901">Safety goggles are required</a> &bull; CHEM 120</li>
-            <li><a href="/courses/103/discussion_topics/33901">Library hours for the debate</a> &bull; History</li>
-          </ul>
+          <section class="fx-section" data-testid="widget-announcements-widget" role="region" aria-labelledby="announcements-widget-heading">
+            <div class="fx-col fx-gap-s">
+              <div class="fx-row fx-between"><h2 id="announcements-widget-heading" class="fx-h2">Announcements</h2></div>
+              <div class="fx-rel">
+                <div class="fx-col fx-gap-s">
+                  <div class="fx-fi">
+                  <div class="fx-field" style="width:7rem">
+                    <label for="ann-read">Read filter:</label>
+                    <div class="fx-select"><input id="ann-read" class="fx-input" type="text" role="combobox" aria-autocomplete="none" aria-expanded="false" readonly value="Unread" data-testid="announcement-filter-select"><span class="fx-caret" aria-hidden="true"></span></div>
+                  </div>
+                  </div>
+                  <div class="fx-fi">
+                    <div>
+                      <ul class="fx-unstyled">
+              <li class="fx-li">
+                <div class="fx-ann" role="group" aria-label="Lab room change for Thursday" data-testid="announcement-item-31901">
+                  <div class="fx-col fx-gap-xxx">
+                    <div class="fx-row fx-gap-xs">
+                      <span class="fx-avatar" aria-hidden="true">MO</span>
+                      <div class="fx-grow fx-min0 fx-col fx-gap-xxx">
+                        <div class="fx-row fx-between fx-gap-s">
+                          <span class="fx-bold fx-small"><span class="fx-xsmall">Lab room change for Thursday</span></span>
+                          <button type="button" class="fx-iconbtn" aria-pressed="false" data-testid="mark-read-31901"><span class="fx-sr">Mark Lab room change for Thursday as read</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M960 0c530.4 0 960 429.6 960 960s-429.6 960-960 960S0 1490.4 0 960 429.6 0 960 0Zm0 120C496 120 120 496 120 960s376 840 840 840 840-376 840-840S1424 120 960 120Z" fill-rule="evenodd"/></svg></button>
+                        </div>
+                        <span class="fx-xsmall fx-secondary">Sent by Dr. Maya Okafor | Oct 27, 2026</span>
+                        <span class="fx-xsmall fx-secondary" data-testid="course-name-31901">BIO 110: Principles of Biology</span>
+                      </div>
+                    </div>
+                    <div><span class="fx-xsmall"><span class="fx-xsmall">This Thursday the lab section moves to Science Hall 214 because the usual room is closed for repairs. Bring your goggles and your lab notebook and arrive...</span> </span></div>
+                    <div><a class="fx-link" href="/courses/101/discussion_topics/31901"><span class="fx-small">Read more</span></a></div>
+                  </div>
+                </div>
+              </li>
+              <li class="fx-li">
+                <div class="fx-ann" role="group" aria-label="Office hours move to Thursday this week" data-testid="announcement-item-32901">
+                  <div class="fx-col fx-gap-xxx">
+                    <div class="fx-row fx-gap-xs">
+                      <span class="fx-avatar" aria-hidden="true">ID</span>
+                      <div class="fx-grow fx-min0 fx-col fx-gap-xxx">
+                        <div class="fx-row fx-between fx-gap-s">
+                          <span class="fx-bold fx-small"><span class="fx-xsmall">Office hours move to Thursday this week</span></span>
+                          <button type="button" class="fx-iconbtn" aria-pressed="false" data-testid="mark-read-32901"><span class="fx-sr">Mark Office hours move to Thursday this week as read</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M960 0c530.4 0 960 429.6 960 960s-429.6 960-960 960S0 1490.4 0 960 429.6 0 960 0Zm0 120C496 120 120 496 120 960s376 840 840 840 840-376 840-840S1424 120 960 120Z" fill-rule="evenodd"/></svg></button>
+                        </div>
+                        <span class="fx-xsmall fx-secondary">Sent by Prof. Ines Duarte | Oct 27, 2026</span>
+                        <span class="fx-xsmall fx-secondary" data-testid="course-name-32901">MATH 221: Calculus II</span>
+                      </div>
+                    </div>
+                    <div><span class="fx-xsmall"><span class="fx-xsmall">Because of the faculty meeting, office hours move from Wednesday to Thursday, 3pm to 4pm, in the same room. Problem set 8 questions are welcome.</span> </span></div>
+                    <div><a class="fx-link" href="/courses/102/discussion_topics/32901"><span class="fx-small">Read more</span></a></div>
+                  </div>
+                </div>
+              </li>
+              <li class="fx-li">
+                <div class="fx-ann" role="group" aria-label="Safety goggles are required" data-testid="announcement-item-34901">
+                  <div class="fx-col fx-gap-xxx">
+                    <div class="fx-row fx-gap-xs">
+                      <span class="fx-avatar" aria-hidden="true">SW</span>
+                      <div class="fx-grow fx-min0 fx-col fx-gap-xxx">
+                        <div class="fx-row fx-between fx-gap-s">
+                          <span class="fx-bold fx-small"><span class="fx-xsmall">Safety goggles are required</span></span>
+                          <button type="button" class="fx-iconbtn" aria-pressed="false" data-testid="mark-read-34901"><span class="fx-sr">Mark Safety goggles are required as read</span><svg viewBox="0 0 1920 1920" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M960 0c530.4 0 960 429.6 960 960s-429.6 960-960 960S0 1490.4 0 960 429.6 0 960 0Zm0 120C496 120 120 496 120 960s376 840 840 840 840-376 840-840S1424 120 960 120Z" fill-rule="evenodd"/></svg></button>
+                        </div>
+                        <span class="fx-xsmall fx-secondary">Sent by Sam Whitaker | Oct 26, 2026</span>
+                        <span class="fx-xsmall fx-secondary" data-testid="course-name-34901">CHEM 120: General Chemistry</span>
+                      </div>
+                    </div>
+                    <div><span class="fx-xsmall"><span class="fx-xsmall">Everyone needs splash goggles for Lab 7. The stockroom lends them for the session if you forget yours, but it has only twenty pairs.</span> </span></div>
+                    <div><a class="fx-link" href="/courses/104/discussion_topics/34901"><span class="fx-small">Read more</span></a></div>
+                  </div>
+                </div>
+              </li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="fx-pager" data-testid="pagination-container">
+                <nav aria-label="Announcements pagination"><span class="fx-page fx-page-on">1</span><span class="fx-page">2</span></nav>
+              </div>
+            </div>
+          </section>
         </div>
         <div data-testid="widget-container-people-widget" class="fixture-widget">
           <h2>People</h2>

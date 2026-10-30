@@ -66,6 +66,7 @@ describe('check-storage', () => {
     const dir = await writeTree({
       'chrome-mv3/detector.js': 'chrome.runtime.sendMessage(m)',
       'chrome-mv3/inpage.js': 'localStorage.getItem(k);chrome.runtime.sendMessage(m)',
+      'chrome-mv3/dashboard.js': 'chrome.runtime.sendMessage(m)',
     });
     const result = await runCheck(['--out-dir', dir, 'chrome-mv3']);
     assert.equal(result.code, 0, result.output);
@@ -76,11 +77,13 @@ describe('check-storage', () => {
     const dir = await writeTree({
       'firefox-mv3/detector.js': 'chrome.runtime.sendMessage(m)',
       'firefox-mv3/inpage.js': 'z.storage.onChanged.addListener(t)',
+      'firefox-mv3/dashboard.js': 'indexedDB.open("x")',
       'firefox-mv3/background.js': 'browser.storage.local.get(null)',
     });
     const result = await runCheck(['--out-dir', dir, 'firefox-mv3']);
     assert.equal(result.code, 1);
     assert.match(result.output, /inpage\.js uses the extension storage/);
+    assert.match(result.output, /dashboard\.js uses the extension storage/);
     assert.doesNotMatch(result.output, /background\.js/);
   });
 
@@ -89,6 +92,7 @@ describe('check-storage', () => {
     const result = await runCheck(['--out-dir', dir, 'chrome-mv3']);
     assert.equal(result.code, 1);
     assert.match(result.output, /inpage\.js is missing/);
+    assert.match(result.output, /dashboard\.js is missing/);
   });
 
   test('reports a missing build', async () => {

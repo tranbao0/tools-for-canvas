@@ -1,4 +1,5 @@
 import type { PlannerItem, PlannerNote, PlannerOverride } from '../../../src/shared/canvas/types';
+import { ANNOUNCEMENTS } from '../../fixtures/announcements';
 import { notePlannerItem, type FixtureContext } from '../../fixtures/canvas-json';
 import { CANVAS_ERRORS, type CanvasErrorFixture } from '../../fixtures/errors';
 import {
@@ -23,6 +24,12 @@ export function errorReply(error: CanvasErrorFixture, extraHeaders: Record<strin
 
 function jsonBody(request: RecordedRequest): Record<string, unknown> {
   return request.postData === null ? {} : (JSON.parse(request.postData) as Record<string, unknown>);
+}
+
+/** The course id and the topic id of a `/api/v1/courses/:id/discussion_topics/:id...` request. */
+function topicIds(request: RecordedRequest): [string, string] {
+  const parts = new URL(request.url).pathname.split('/');
+  return [parts[4] ?? '', parts[6] ?? ''];
 }
 
 function lastPathPart(request: RecordedRequest): string {
@@ -87,6 +94,10 @@ export class CanvasState {
    * answer back, for example to keep the later days of a long span loading.
    */
   plannerGate: ((request: RecordedRequest) => Promise<void> | undefined) | null = null;
+  /** The announcements the student has read, as `courseId:topicId`. */
+  readonly readAnnouncements = new Set<string>(
+    ANNOUNCEMENTS.filter((topic) => topic.read).map((topic) => `${topic.courseId}:${topic.id}`),
+  );
   private readonly overrides = new Map<string, PlannerOverride>();
   private readonly notes = new Map<string, NoteRecord>();
   private nextOverrideId = 99001;
@@ -180,6 +191,34 @@ export class CanvasState {
         path: /^\/api\/v1\/planner_notes\/\d+$/,
         respond: (request) => this.deleteNote(lastPathPart(request)),
       },
+      {
+        path: '/api/v1/announcements',
+        respond: (request) => {
+          const codes = new URL(request.url).searchParams.getAll('context_codes[]');
+          const list = ANNOUNCEMENTS.filter((topic) => codes.includes(`course_${topic.courseId}`));
+          return { body: json(list.map((topic) => this.topicJson(topic))) };
+        },
+      },
+      {
+        path: /^\/api\/v1\/courses\/\d+\/discussion_topics\/\d+$/,
+        respond: (request) => {
+          const [courseId, topicId] = topicIds(request);
+          const topic = ANNOUNCEMENTS.find((t) => t.courseId === courseId && t.id === topicId);
+          return topic === undefined
+            ? errorReply(CANVAS_ERRORS.notFound)
+            : { body: json(this.topicJson(topic)) };
+        },
+      },
+      {
+        method: 'PUT',
+        path: /^\/api\/v1\/courses\/\d+\/discussion_topics\/\d+\/read$/,
+        respond: (request) => {
+          const [courseId, topicId] = topicIds(request);
+          this.readAnnouncements.add(`${courseId}:${topicId}`);
+          // Canvas answers 204 with no body.
+          return { status: 204 };
+        },
+      },
       ...courseIds.map((id): FakeCanvasRoute => ({
         // The all-assignments request of the planner-off list: no ids and no bucket.
         path: new RegExp(`^/api/v1/courses/${id}/assignments\\?(?!.*assignment_ids)(?!.*bucket=)`),
@@ -196,6 +235,18 @@ export class CanvasState {
       })),
       ...apiRoutes(this.scenario),
     ];
+  }
+
+  private topicJson(topic: (typeof ANNOUNCEMENTS)[number]): unknown {
+    return {
+      id: topic.id,
+      title: topic.title,
+      message: topic.message,
+      posted_at: topic.posted_at,
+      user_name: topic.user_name,
+      context_code: `course_${topic.courseId}`,
+      read_state: this.readAnnouncements.has(`${topic.courseId}:${topic.id}`) ? 'read' : 'unread',
+    };
   }
 
   /**

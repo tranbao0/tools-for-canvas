@@ -1,4 +1,5 @@
 import type { BrowserContext, Locator, Page, Worker } from '@playwright/test';
+import type { ToolsSettings } from '../../../src/shared/settings/tools';
 import type { Settings } from '../../../src/features/weekly-list/model/types';
 import { FIXTURE_READY_SELECTOR } from '../../fixtures/pages';
 import { SCENARIO_NOW, buildScenario, type Scenario } from '../../fixtures/scenario';
@@ -120,6 +121,14 @@ export async function saveSettings(worker: Worker, settings: Settings): Promise<
     const api = (globalThis as unknown as { chrome: { storage: { local: StorageArea } } }).chrome;
     await api.storage.local.set({ settings: value });
   }, settings);
+}
+
+/** Saves the switches of the small tools as the settings page does. */
+export async function saveTools(worker: Worker, tools: ToolsSettings): Promise<void> {
+  await worker.evaluate(async (value) => {
+    const api = (globalThis as unknown as { chrome: { storage: { local: StorageArea } } }).chrome;
+    await api.storage.local.set({ toolsSettings: value });
+  }, tools);
 }
 
 /** The in-page list container that the extension adds to the page. */

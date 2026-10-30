@@ -33,6 +33,11 @@ const COURSE_HOME_PATH = /^\/courses\/(\d+(?:~\d+)?)\/?$/;
 const RIGHT_SIDE_CLASS = 'with-right-side';
 const DASHBOARD_SIDEBAR_CONTENT = '.Sidebar__TodoListContainer, .todo-list-header, .coming_up';
 
+/** Whether the path is the dashboard, whichever of its views the student chose. */
+export function isDashboardPath(pathname: string): boolean {
+  return DASHBOARD_PATH.test(pathname);
+}
+
 /** Whether an adapter applies to the page path. */
 export function isAdapterPath(pathname: string): boolean {
   return DASHBOARD_PATH.test(pathname) || COURSE_HOME_PATH.test(pathname);

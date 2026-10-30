@@ -2,7 +2,7 @@
 // Fails when a script that runs in web pages uses the storage of the extension (design
 // decisions 5 and 20).
 //
-// The detector runs in every https page and the in-page script runs in the saved Canvas. A page
+// The detector runs in every https page and the page scripts run in the saved Canvas. A page
 // process that someone controls can use the world of a content script, so the background locks
 // `storage.local` against content scripts and answers them through checked messages. A storage
 // call in one of these scripts would work against that design, so it must not be there.
@@ -13,7 +13,7 @@ import path from 'node:path';
 import { runForTargets } from './lib/build-output.mjs';
 
 /** The built scripts that run in web pages. */
-export const PAGE_SCRIPTS = Object.freeze(['detector.js', 'inpage.js']);
+export const PAGE_SCRIPTS = Object.freeze(['detector.js', 'inpage.js', 'dashboard.js']);
 
 /**
  * The storage API of the extension and the IndexedDB that holds the saved address on Firefox:

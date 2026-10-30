@@ -12,6 +12,8 @@ export const ALL_HTTPS = 'https://*/*';
 export const DETECTOR_SCRIPT = 'detector.js';
 /** The in-page list script. The background injects it, so the manifest must not list it. */
 export const INPAGE_SCRIPT = 'inpage.js';
+/** The script of the dashboard fixes. The background injects it into a dashboard page only. */
+export const DASHBOARD_SCRIPT = 'dashboard.js';
 const CHROMIUM_PERMISSIONS = ['storage', 'cookies', 'scripting', 'sidePanel'];
 const FIREFOX_PERMISSIONS = ['storage', 'cookies', 'scripting'];
 const GECKO_ID = /^(?:[^@\s]+@[^@\s]+|\{[0-9a-f-]{36}\})$/i;
@@ -150,8 +152,10 @@ function checkContentScripts(manifest, fileExists) {
       if (!fileExists(file)) problems.push(`content script file ${file} is missing`);
     }
   }
-  if (!fileExists(INPAGE_SCRIPT)) {
-    problems.push(`${INPAGE_SCRIPT} is missing from the build, but the background injects it`);
+  for (const script of [INPAGE_SCRIPT, DASHBOARD_SCRIPT]) {
+    if (!fileExists(script)) {
+      problems.push(`${script} is missing from the build, but the background injects it`);
+    }
   }
   return problems;
 }

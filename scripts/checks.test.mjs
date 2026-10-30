@@ -115,6 +115,7 @@ const BUILT_FILES = new Set([
   'sidepanel.html',
   'detector.js',
   'inpage.js',
+  'dashboard.js',
   '_locales/en/messages.json',
 ]);
 const exists = (/** @type {string} */ file) => BUILT_FILES.has(file);
