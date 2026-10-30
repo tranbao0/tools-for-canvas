@@ -1,12 +1,14 @@
 name: Firefox test channel
 
-# Each push to the development branch builds a Firefox test version, has Mozilla sign it for
+# A manual run builds a Firefox test version of the development branch, has Mozilla sign it for
 # self-distribution, and publishes it with an update manifest on GitHub Pages. An installed test
 # build then updates itself.
+#
+# Runs are manual because Mozilla throttles signing to a small number of versions per day, so a
+# build per push uses up the day's signings. Start a run for a batch of pushed changes:
+#   gh workflow run firefox-test.yml --ref feat/v1
 
 on:
-  push:
-    branches: [feat/v1]
   workflow_dispatch:
 
 permissions:
