@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { StatusChip } from '../model/types';
+import type { ItemView, StatusChip } from '../model/types';
 import { availabilityTag, doneTag, handInTag, itemTags, statusTag } from './tags';
 import { et, mkItem } from './testing/mocks';
 
@@ -24,7 +24,7 @@ describe('status chips', () => {
       'Incomplete',
       'Teacher status',
       'Extended',
-      "Can't confirm",
+      "Can't confirm: Gradescope",
       'Past due',
     ]);
     expect(tags.filter((tag) => tag.tone === 'missing').map((tag) => tag.label)).toEqual([
@@ -37,6 +37,15 @@ describe('status chips', () => {
       'Resubmit in Canvas to finish this.',
     );
     expect(statusTag({ kind: 'redo_requested' }, false).tip).toBeNull();
+  });
+
+  it("names the tool, paper or an unnamed external tool in the Can't confirm chip", () => {
+    const label = (tool: string | null, onPaper: boolean) =>
+      statusTag({ kind: 'cant_confirm', tool, onPaper }, false).label;
+    expect(label('Gradescope', false)).toBe("Can't confirm: Gradescope");
+    expect(label(null, false)).toBe("Can't confirm: External tool");
+    expect(label(null, true)).toBe("Can't confirm: On paper");
+    expect(label('Gradescope', true)).toBe("Can't confirm: On paper");
   });
 
   it('explains work Canvas cannot confirm', () => {
@@ -92,6 +101,36 @@ describe('done chips', () => {
 });
 
 describe('itemTags', () => {
+  it("merges Can't confirm and the outside hand-in into one chip", () => {
+    const outside = (handInChip: ItemView['handInChip']) =>
+      mkItem({
+        title: 'Homework',
+        due: et('2026-10-23', '17:00'),
+        chip: { kind: 'cant_confirm', tool: 'Gradescope', onPaper: false },
+        handInChip,
+      });
+    const tags = itemTags(outside({ kind: 'tool', name: 'Gradescope' }), 'America/New_York');
+    expect(tags.map((tag) => tag.label)).toEqual(["Can't confirm: Gradescope"]);
+    expect(tags[0]?.tip).toBe("Canvas can't see this hand-in. If you handed it in, check it off.");
+  });
+
+  it('keeps the hand-in chip of outside work that is not past due', () => {
+    const item = mkItem({ title: 'Homework', handInChip: { kind: 'tool', name: 'Gradescope' } });
+    expect(itemTags(item, 'America/New_York').map((tag) => tag.label)).toEqual(['Gradescope']);
+  });
+
+  it('keeps the Missing chip apart from the outside hand-in chip', () => {
+    const item = mkItem({
+      title: 'Lab',
+      chip: { kind: 'missing' },
+      handInChip: { kind: 'on_paper' },
+    });
+    expect(itemTags(item, 'America/New_York').map((tag) => tag.label)).toEqual([
+      'Missing',
+      'On paper',
+    ]);
+  });
+
   it('orders status, hand-in, availability, then done chips', () => {
     const item = mkItem({
       title: 'Lab',

@@ -285,7 +285,7 @@
     "message": "Extended"
   },
   "chipCantConfirm": {
-    "message": "Can't confirm"
+    "message": "Can't confirm: $1"
   },
   "chipPastDue": {
     "message": "Past due"

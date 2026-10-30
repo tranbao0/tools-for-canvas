@@ -840,10 +840,33 @@ describe('items', () => {
     const item = row('Problem Set 6');
     expect(item.textContent).toContain('MATH 241 Calculus III');
     expect(item.textContent).toContain('Oct 26, 11:59 pm');
-    expect(within(item).getByRole('button', { name: /Can't confirm/ })).toBeTruthy();
-    expect(within(item).getByRole('button', { name: /Gradescope/ })).toBeTruthy();
+    // One chip says both facts: Canvas can't confirm it, and the tool it is handed in with.
+    expect(within(item).getAllByRole('button', { name: /Gradescope/ })).toHaveLength(1);
+    expect(within(item).getByRole('button', { name: "Can't confirm: Gradescope" })).toBeTruthy();
+    expect(item.querySelectorAll('.wr-chip')).toHaveLength(1);
     expect(row('Quiz 7: Integration techniques').textContent).toContain('11:59 pm');
     expect(row('Quiz 7: Integration techniques').textContent).not.toContain('Oct 27');
+  });
+
+  it('puts the row actions on the due line, after the due text', () => {
+    setup();
+    const item = row('Buy lab goggles');
+    const due = item.querySelector('.wr-due');
+    expect(due?.querySelector('.wr-when')?.textContent).toBe('Oct 25, 11:59 pm');
+    const buttons = Array.from(due?.querySelectorAll('button') ?? []).map((b) => b.textContent);
+    expect(buttons).toEqual(['Skip', 'Move to today']);
+    expect(item.querySelector('.wr-item-tags')).toBeNull();
+  });
+
+  it('keeps the actions of a row with no due line on a line of their own', () => {
+    const item = mkItem({ title: 'Undated one', canSkip: true });
+    setup(
+      readyState({ view: mkView({ groups: [mkGroup({ kind: 'no_due_date', items: [item] })] }) }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^No due date/ }));
+    const due = row('Undated one').querySelector('.wr-due');
+    expect(due?.querySelector('.wr-info')).toBeNull();
+    expect(due?.querySelector('button')?.textContent).toBe('Skip');
   });
 
   it('colors the type icon from the item, also with the rings off', () => {

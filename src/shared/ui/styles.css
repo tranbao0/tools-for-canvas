@@ -656,6 +656,10 @@
 }
 
 .wr-title {
+  /* The padding makes the hit area 24 px high, and the margin keeps the row height. */
+  display: inline-block;
+  margin-block: -3px;
+  padding-block: 3px;
   color: var(--wr-link);
   line-height: 18px;
   text-decoration: none;
@@ -666,19 +670,25 @@
   color: var(--wr-text-2);
 }
 
-.wr-course,
-.wr-info {
+.wr-course {
   display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--wr-text-2);
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The due line: the due text on the left, the row actions on the right. */
+.wr-due {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
   margin-top: 2px;
   color: var(--wr-text-2);
   line-height: 16px;
-}
-
-.wr-course {
-  overflow: hidden;
-  font-weight: 700;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 /* Parts of the info line, such as "Reply to topic | 11:59 pm". Each pipe sits in the gap before
@@ -688,6 +698,7 @@
   display: flex;
   flex-wrap: wrap;
   column-gap: 19px;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -712,7 +723,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .wr-item-actions {
@@ -791,20 +802,23 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 24px;
+  min-height: 24px;
   max-width: 100%;
-  padding: 0 8px;
+  padding: 2px 8px;
   border: 1px solid var(--wr-pill);
-  border-radius: 999px;
+  border-radius: 12px;
   background: var(--wr-bg);
   color: var(--wr-pill);
-  line-height: 22px;
+  line-height: 18px;
+  text-align: left;
   white-space: nowrap;
 }
 
+/* A long chip, such as "Can't confirm: Gradescope" in a narrow panel, wraps instead of cutting
+   its text. */
 .wr-tag-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .wr-chip-missing {

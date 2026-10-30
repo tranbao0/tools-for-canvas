@@ -458,7 +458,9 @@ The owner chose this rule after testing: one stray click, or an untick and a ret
 
 **Skip:**
 
-- Every open item in Past due or No due date has a "Skip" action next to its checkbox.
+- Every open item in Past due or No due date has a "Skip" action on its due line, at the right of the due text.
+  A row with no due text, such as an undated item, shows its actions on a line of their own.
+  The actions of a row, such as "Skip" and "Move to today", always share that one line, so a past-due row has no separate row of action targets.
 - Skip means "I will not do this".
   Done means "I finished this".
   They stay separate, because a skipped item is not finished, and a done mark can complete a module requirement (decision 2).
@@ -498,7 +500,7 @@ Planner items do not include it, so the extension looks it up (decision 11).
 | Hand-in method | Submission types | What the student sees |
 |---|---|---|
 | On Canvas | `online_upload`, `online_text_entry`, `online_url`, `media_recording`, `student_annotation`, `online_quiz`, `discussion_topic`, and New Quizzes | No hand-in chip. Canvas checks the item off when the student submits [10]. |
-| Outside Canvas | `external_tool` (not a New Quiz) and `on_paper` | A chip with the tool name, such as "Gradescope", or "On paper". Its tip says: "Canvas can't see this hand-in. Check it off when you hand it in." |
+| Outside Canvas | `external_tool` (not a New Quiz) and `on_paper` | A chip with the tool name, such as "Gradescope", or "On paper". Its tip says: "Canvas can't see this hand-in. Check it off when you hand it in." Once the work is past due, this chip and the "Can't confirm" status chip are one chip (see "Status chip"). |
 | Nothing to hand in | `none`, `not_graded`, `attendance` and `wiki_page` | A reminder (see below). |
 
 - A New Quiz has the type `external_tool`, but `is_quiz_lti_assignment` is true, and Canvas tracks it like any Canvas quiz [10].
@@ -529,6 +531,8 @@ The first rule that matches wins.
 4. **Teacher status:** the name of a custom grade status that the teacher set, such as "Incomplete" [10].
 5. **Extended:** the teacher gave an extension (`late_policy_status` is `extended`) [10].
 6. **Can't confirm:** the work is past due, and it is handed in outside Canvas.
+   The chip reads "Can't confirm: Gradescope", "Can't confirm: On paper" or "Can't confirm: External tool".
+   It takes the place of the hand-in chip, because both chips would state one fact about the same hand-in.
    Its tip says: "Canvas can't see this hand-in. If you handed it in, check it off."
 7. **Past due:** any other open item with a date before now, in a view that has no Past due group.
    In the current-week view, the Past due group already says this, so the chip does not show there.
@@ -1347,6 +1351,12 @@ The owner asked for it after testing an early build: the list should feel like p
   A student's right column shows To Do and Recent Feedback; Coming Up shows only for teachers [13].
 - Item rows follow Canvas's To Do and planner rows: a type icon in the course color as in Canvas's planner list view (assignment, quiz, discussion, page, peer review, custom task), the title in the link color, and the course name and due text in Canvas's secondary text style.
   Canvas's own To Do sidebar draws these icons in the dark text color; the course color helps scanning a full week.
+  - The title is the main line of the row.
+    The course name sits under it in regular weight and the secondary text color, never in bold, so it does not outweigh the title.
+  - The due line holds the due text and the row actions, such as "Skip".
+    The chips come after it.
+  - A chip that is too long for the column wraps onto a second line instead of cutting its text.
+  - Every target is at least 24 px high, as WCAG 2.2 AA asks.
 - Chips use Canvas's pill style.
   "Missing" looks like the red Missing pill in Canvas's planner.
 - The rings keep the Canvas course colors and use Canvas's type and spacing.

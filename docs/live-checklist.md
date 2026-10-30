@@ -169,6 +169,8 @@ Use a new, empty profile, and the student account.
    Expect: each action closes or opens the panel.
 8. Check the list against Canvas.
    Expect: every assignment, quiz, discussion, page with a to-do date and peer review of the week is in the right group, and no calendar event or announcement shows.
+   Expect: in each row the title is the main line, the course name under it is quiet gray text, and the due line shows the due text with the row actions at its right.
+   Expect: past-due work handed in on Gradescope, another tool or paper has one chip, such as "Can't confirm: Gradescope", and no second chip for the same hand-in.
 9. Move one week forward and one week back with the arrows, then click "This week".
    Expect: the list changes week by week, and "This week" returns to the current week.
 10. Check an item off.
@@ -177,7 +179,7 @@ Use a new, empty profile, and the student account.
     Expect: the Canvas To Do list and the Canvas mobile app show the item as done.
 11. Uncheck the same item.
     Expect: the item is open again, not skipped.
-12. Skip a past-due item.
+12. Skip a past-due item with the Skip link on its due line.
     Expect: the one-time note says "Skipping also hides this item in Canvas's list of missing work.", and the item moves to the "N skipped" line.
     Unskip it.
     Expect: the item returns to its group.

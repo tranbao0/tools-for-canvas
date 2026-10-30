@@ -1,6 +1,7 @@
 /**
  * One item in the list, as a row of Canvas's planner: check box, type icon in the course color,
- * title in the link color, course and due text, then pills and actions.
+ * title in the link color, the course name as quiet text, the due line with the row actions, then
+ * pills.
  */
 import { useState } from 'preact/hooks';
 import type { TargetedMouseEvent } from 'preact';
@@ -177,13 +178,18 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
           </a>
         )}
         {showCourse && <span class="wr-course">{courseLabel(item)}</span>}
-        {hasInfo && (
-          <span class="wr-info">
-            {subtitle && <span class="wr-subtitle">{subtitle}</span>}
-            {whenLabel && <span class="wr-when">{whenLabel}</span>}
-          </span>
+        {(hasInfo || hasActions(item)) && (
+          <div class="wr-due">
+            {hasInfo && (
+              <span class="wr-info">
+                {subtitle && <span class="wr-subtitle">{subtitle}</span>}
+                {whenLabel && <span class="wr-when">{whenLabel}</span>}
+              </span>
+            )}
+            <ItemActions item={item} handlers={handlers} />
+          </div>
         )}
-        {(tags.length > 0 || hasActions(item)) && (
+        {tags.length > 0 && (
           <div class="wr-item-tags">
             {tags.map((tag) => (
               <TagView
@@ -194,7 +200,6 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
                 onToggle={() => setOpenTip(openTip === tag.id ? null : tag.id)}
               />
             ))}
-            <ItemActions item={item} handlers={handlers} />
           </div>
         )}
         {shownTip && (

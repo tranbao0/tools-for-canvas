@@ -1,6 +1,8 @@
 /**
  * The chips and markers on an item row (design decision 7), as plain data.
  * The order is: status chip, hand-in chip, availability marker, then the chips on done items.
+ * Work that is past due and handed in outside Canvas has one chip, "Can't confirm: <tool>", in
+ * place of the status chip and the hand-in chip.
  */
 import { t } from '../../../shared/ui/i18n';
 import type { Availability, DoneChip, HandInChip, ItemView, StatusChip } from '../model/types';
@@ -45,8 +47,11 @@ export function statusTag(status: StatusChip, checkboxDisabled: boolean): Tag {
       return chip('status', status.name ?? t('chipTeacherStatus'));
     case 'extended':
       return chip('status', t('chipExtended'));
-    case 'cant_confirm':
-      return chip('status', t('chipCantConfirm'), 'neutral', t('tipCantConfirm'));
+    case 'cant_confirm': {
+      // The same name the hand-in chip would show for this work.
+      const where = status.onPaper ? t('chipOnPaper') : (status.tool ?? t('chipExternalTool'));
+      return chip('status', t('chipCantConfirm', where), 'neutral', t('tipCantConfirm'));
+    }
     case 'past_due':
       return chip('status', t('chipPastDue'));
   }
@@ -104,7 +109,8 @@ export function doneTag(done: DoneChip): Tag {
 export function itemTags(item: ItemView, timeZone: string): Tag[] {
   const tags: Tag[] = [];
   if (item.chip) tags.push(statusTag(item.chip, item.checkboxDisabled));
-  if (item.handInChip) tags.push(handInTag(item.handInChip));
+  // "Can't confirm" already names the tool or paper, so the hand-in chip would say it twice.
+  if (item.handInChip && item.chip?.kind !== 'cant_confirm') tags.push(handInTag(item.handInChip));
   if (item.availability) tags.push(availabilityTag(item.availability, timeZone));
   for (const done of item.doneChips) tags.push(doneTag(done));
   return tags;
