@@ -34,9 +34,11 @@ Each tool gets its own design decision in `docs/design.md` before it is built.
 
 ## 4. One assignment view
 
-- The assignment instructions, the rubric and the turn-in area show on one page.
-- Today the rubric and the turn-in area can sit on different pages, so a student must switch pages to check the rubric while submitting.
-- A check of the student's real pages comes first, because Canvas has several assignment page versions.
+- Canvas lists the same assignments on two tabs: Grades shows the score, the rubric and the feedback, and Assignments is where a student turns work in.
+- From Grades a student cannot turn anything in, and the submission details page holds only files and comments.
+- On both the Grades page and the Assignments list, each assignment row expands in place to show the instructions, the score, the rubric, the teacher's feedback and the student's own submitted files.
+- A "Submit" or "Re-submit" button opens Canvas's own turn-in page in the docked pane of the file viewer, so the student turns work in without leaving the list.
+- The tool reuses the docked pane of the file viewer, so it comes after it.
 
 ## 5. Dark mode
 
