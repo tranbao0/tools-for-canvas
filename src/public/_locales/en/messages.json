@@ -509,6 +509,12 @@
   "settingsTitle": {
     "message": "Settings"
   },
+  "supportLead": {
+    "message": "Like these tools?"
+  },
+  "supportLink": {
+    "message": "Support on Ko-fi"
+  },
   "settingSpan": {
     "message": "Shown span"
   },

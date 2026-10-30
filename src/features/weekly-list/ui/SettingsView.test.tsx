@@ -43,6 +43,14 @@ describe('SettingsView', () => {
     expect(screen.getByText('school.instructure.com')).toBeTruthy();
   });
 
+  it('ends with a quiet support link that opens in a new tab', () => {
+    setup();
+    const link = screen.getByRole('link', { name: 'Support on Ko-fi' }) as HTMLAnchorElement;
+    expect(link.href).toBe('https://ko-fi.com/baowows');
+    expect(link.target).toBe('_blank');
+    expect(link.rel).toBe('noopener noreferrer');
+  });
+
   it('changes the theme', () => {
     const { onChange } = setup({ ...DEFAULT_SETTINGS, theme: 'light' });
     const select = screen.getByLabelText('Theme') as HTMLSelectElement;

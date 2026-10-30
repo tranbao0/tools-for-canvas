@@ -1221,6 +1221,21 @@ textarea.wr-input {
   color: var(--wr-text-2);
 }
 
+/* The support line sits last and stays quiet. */
+.wr-support {
+  margin-top: 24px;
+  color: var(--wr-text-2);
+  font-size: 0.875em;
+}
+
+.wr-support a {
+  color: var(--wr-link);
+}
+
+.wr-support a:hover {
+  color: var(--wr-link-hover);
+}
+
 /* Short help lines break into even lines, so no line ends with one word alone. */
 .wr-setting-help {
   text-wrap: balance;

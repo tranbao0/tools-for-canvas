@@ -6,6 +6,7 @@ import { hostOf } from './format';
 import { AppMark } from '../../../shared/ui/icons';
 import { HostText, newId } from '../../../shared/ui/parts';
 import { SettingsFields } from './Settings';
+import { SupportLine } from '../../../shared/ui/support';
 
 export function SettingsView({
   settings,
@@ -42,6 +43,7 @@ export function SettingsView({
           )}
           <p class="wr-setting-help">{t('addressHelp')}</p>
         </section>
+        <SupportLine />
       </main>
     </div>
   );

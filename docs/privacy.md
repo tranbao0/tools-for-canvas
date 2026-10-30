@@ -150,5 +150,9 @@ The project's change history shows every earlier version.
 
 Open an issue in the [project repository](https://github.com/tranbao0/tools-for-canvas).
 
+The settings and the welcome page end with a link to the owner's Ko-fi page (https://ko-fi.com/baowows).
+It is a plain link that opens in a new tab only when you click it.
+The extension sends no request to Ko-fi and shares no data with it.
+
 Canvas is a trademark of Instructure, Inc.
 This independent project is not affiliated with or endorsed by Instructure.

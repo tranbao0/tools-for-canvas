@@ -5,6 +5,7 @@
  */
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { t, type MessageKey } from '../../../shared/ui/i18n';
+import { SupportLine } from '../../../shared/ui/support';
 import { FixesSettings } from '../../dashboard-fixes/ui/FixesSettings';
 import { DeveloperSection } from '../../file-check/ui/DeveloperSection';
 import type { ToolsSettings } from '../../../shared/settings/tools';
@@ -196,6 +197,7 @@ export function SettingsPanel(props: {
           <Spinner text={t('settingsLoading')} />
         </div>
       )}
+      <SupportLine />
     </section>
   );
 }

@@ -1,5 +1,6 @@
 /** The welcome page that opens on install (design decision 5, "First run"). */
 import { t, type MessageKey } from '../../../shared/ui/i18n';
+import { SupportLine } from '../../../shared/ui/support';
 import type { WelcomeProps } from './contract';
 import { hostOf } from './format';
 import { AppMark } from '../../../shared/ui/icons';
@@ -73,6 +74,7 @@ export function WelcomeView({ browser, shortcut, state, actions }: WelcomeProps)
             </p>
           </li>
         </ol>
+        <SupportLine />
       </main>
     </div>
   );
