@@ -234,8 +234,13 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
 .fixture-widget-tabs span[aria-selected="true"] { border-bottom: 3px solid #2b7abc; font-weight: 700; }
 /* The package lays the grid out as an InstUI Flex: a View with 24px of padding around a row with
    a 24px gap ("medium"), and columns of 66% and 33% that grow and shrink. Below the tablet width it
-   is one stacked column. */
-.fixture-widget-grid { padding: 24px; }
+   is one stacked column. On the live page (sjsu.instructure.com, 2026-10-30, a 1770 px window)
+   the dashboard stops at about 1180 px and clips what leaves it, the grid ends at about 1130 px,
+   and the page area goes on to the window edge, so a wide white area stays to the right of the
+   dashboard. The cap and the clip on the app stand for the elements that limit it there, and the
+   body class full-width lets the page area reach the window edge. */
+.fixture-widget-app { max-width: 1048px; overflow: hidden; }
+.fixture-widget-grid { padding: 24px 50px 24px 24px; }
 [data-testid="widget-columns"] { display: flex; align-items: flex-start; gap: 24px; }
 [data-testid="widget-column-1"] { flex: 1 1 auto; width: 66%; min-width: 0; }
 [data-testid="widget-column-2"] { flex: 1 1 auto; width: 33%; min-width: 0; }
@@ -244,11 +249,16 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
   [data-testid="widget-columns"] { flex-direction: column; align-items: stretch; }
   [data-testid="widget-column-1"], [data-testid="widget-column-2"] { width: 100%; }
 }
-.fixture-widget {
-  margin-bottom: 24px; padding: 20px 24px;
-  border: 1px solid #d7dade; border-radius: 12px; background: #fff;
+/* The visible card of a widget is the section of TemplateWidget, an InstUI View with
+   margin="x-small" (8px), padding="medium" (24px), shadow="above", borderRadius="large" and
+   background="primary": no border. The shadow is shadows.above of the Canvas theme of
+   @instructure/ui-themes. The widgets without a section take the same values. */
+.fx-section, .fixture-widget:not(:has(> .fx-section)) {
+  box-sizing: border-box; margin: 0.5rem; padding: 1.5rem;
+  border: 0; border-radius: 12px; background: var(--fx-card, #fff);
+  box-shadow: 0 0.1875rem 0.375rem rgba(0, 0, 0, 0.1), 0 0.1875rem 0.375rem rgba(0, 0, 0, 0.15);
 }
-.fixture-widget h2 { margin: 0 0 12px; font-size: 18px; font-weight: 700; line-height: 1.25; }
+.fixture-widget h2 { margin: 0 0 12px; font-size: 1.25rem; font-weight: 700; line-height: 1.25; }
 .fixture-widget > ul { list-style: none; }
 .fixture-widget > ul > li { padding: 8px 0; border-top: 1px solid #eef0f2; font-size: 14px; }
 
@@ -258,7 +268,7 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
    app, with the colors of the package's darkColors. */
 .fixture-widget-app { --fx-ink: #273540; --fx-secondary: #586874; --fx-link: #0e68b3; --fx-line: #d7dade; --fx-input-bg: #fff; --fx-input-line: #8d959f; --fx-card: #fff; --fx-card-2: #f5f5f5; --fx-stat-blue: #1a5a8e; --fx-stat-red: #e62429; --fx-stat-green: #03893d; }
 .fixture-widget-app[data-fixture-dark] { --fx-ink: #fff; --fx-secondary: #9ea6ad; --fx-link: #5a9fd4; --fx-line: #2e3e4e; --fx-input-bg: #253443; --fx-input-line: #4a5b68; --fx-card: #1f2d3d; --fx-card-2: #253443; --fx-stat-blue: #5a9fd4; --fx-stat-red: #f08a8d; --fx-stat-green: #6fcf8a; }
-.fixture-widget-app[data-fixture-dark] .fixture-widget { background: var(--fx-card); border-color: var(--fx-line); color: var(--fx-ink); }
+.fixture-widget-app[data-fixture-dark] .fixture-widget { color: var(--fx-ink); }
 .fixture-widget-app[data-fixture-dark] { background: #1b2330; color: var(--fx-ink); }
 .fx-section { display: block; color: var(--fx-ink); background: var(--fx-card); }
 .fx-col { display: flex; flex-direction: column; }

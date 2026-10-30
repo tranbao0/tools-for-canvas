@@ -73,7 +73,7 @@ export const FIXTURE_PAGES = {
     file: 'dashboard-widgets.html',
     kind: 'canvas',
     title: 'Dashboard',
-    bodyClass: 'primary-nav-expanded',
+    bodyClass: 'primary-nav-expanded full-width',
     url: `${FIXTURE_ORIGIN}/`,
     expectedMount: 'dashboard_column',
     courseId: null,
