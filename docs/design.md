@@ -218,7 +218,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - The widget dashboard's own markup has only test ids, and its package had 16 major versions in 2026 [13].
   The mount does not use them.
   It uses the classic anchors that every Canvas page has: `#right-side-wrapper`, `#right-side`, `#content`, the body classes and the route.
-  Only the in-grid card reads the widget test ids, and it reads them in one small file (`widgetGrid.ts`).
+  Only the in-grid card reads the widget test ids, and it reads them in one small file (`src/shared/canvas/widgetDashboard.ts`).
   Without them, the list floats beside the content.
 - List View hides the right column, and the original forced it visible [9].
   The first build did the same, in the way that Canvas's own layout expects.
@@ -238,7 +238,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - The in-grid card depends on the test ids `widget-columns`, `widget-column-*`, `save-customize-button`, `cancel-customize-button` and `add-widget-placeholder-*` of package version 16.1.0.
   A Canvas release can rename them.
   The layout then finds no grid, and the list floats beside the content.
-  The one file `widgetGrid.ts` holds every one of these selectors.
+  The one file `src/shared/canvas/widgetDashboard.ts` holds every one of these selectors.
 - The grid grows into the free space on the right by the width of the card and one gutter, with a negative right margin.
   The Canvas columns get their measured width as an inline style, so they do not change.
   An ancestor of the grid with `overflow: hidden` would cut the card off.
@@ -315,7 +315,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - The list floats while "Customize dashboard" edit mode is on, and returns to its place when edit mode ends.
     The edit mode shows in the page as the `cancel-customize-button` and `save-customize-button` buttons, and as `add-widget-placeholder-*` drop zones.
   - List View has no widget grid, so it uses the floating card only.
-  - All grid anchors are in `widgetGrid.ts`, which says what each one is.
+  - All grid anchors are in `src/shared/canvas/widgetDashboard.ts`, which says what each one is.
     A change of the Canvas markup needs an edit in that one file.
   - When the list unmounts or the setting "Show the weekly list on Canvas pages" is off, remove the inline styles and the marker.
     A list that fails to mount does the same.

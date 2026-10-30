@@ -15,7 +15,7 @@
  * - `stack`: the card above the content, at the width of the content, when the content would be
  *   narrower than `MIN_CONTENT_PX` beside a floating card.
  *
- * The grid anchors are in widgetGrid.ts. The list falls back to `float` for the rest of the page
+ * The grid anchors are in src/shared/canvas/widgetDashboard.ts. The list falls back to `float` for the rest of the page
  * view when the card is removed too often, when the anchors go away, and while the student edits
  * the dashboard.
  *
@@ -37,7 +37,11 @@ import {
   setPanelMode,
   type PanelMode,
 } from './placement';
-import { findWidgetGrid, inEditMode, type WidgetGrid } from './widgetGrid';
+import {
+  findWidgetGrid,
+  inEditMode,
+  type WidgetGrid,
+} from '../../../shared/canvas/widgetDashboard';
 
 /** Set on the body while a list owns the layout. Every release removes it. */
 const LAYOUT_ATTRIBUTE = 'data-weekrow-column';
