@@ -49,10 +49,10 @@ History's undated list still holds its two checkpoint parents, as a server that 
 
 `FULL_REPLIES` holds one complete Canvas reply for each kind of request that the extension makes.
 The kinds are planner items, planner overrides, planner notes, assignments by id, the undated bucket, the planner-off assignment list, courses, groups, colors, dashboard positions, the profile, `users/self` and the GraphQL custom grade statuses.
-A list holds some items of the scenario, not all of them.
+A list has one element, and a second one only where the extension treats the variant differently, such as a planner quiz row next to an assignment row.
 Each reply has every field that Canvas sends, as the canvas-lms serializers at commit 1c9f0bb write them.
 Its items are the items of `SCENARIO` with the same ids, so each has a trimmed counterpart.
-`tests/unit/full-replies.test.ts` serves each reply to the production client and model.
+`tests/unit/full-replies.test.ts` runs each reply through the production decoders, which are the model functions and the GraphQL reader.
 It checks that the result equals the result for the trimmed item, so a field that the extension ignores changes nothing.
 Update a reply when the matching item of `SCENARIO` changes.
 

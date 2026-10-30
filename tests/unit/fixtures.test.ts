@@ -21,8 +21,6 @@ const NOWS = [SCENARIO_NOW, '2026-10-31T16:00:00Z', '2026-11-01T06:30:00Z', '202
 
 const CANVAS_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const NUMERIC_ID = /^\d+$/;
-/** Id-named fields that Canvas fills with opaque strings, not record ids. */
-const OPAQUE_ID_KEYS = new Set(['resource_link_id', 'lti_context_id', 'anonymous_id', 'login_id']);
 
 type Visit = (key: string, value: unknown, path: string) => void;
 
@@ -71,16 +69,12 @@ function backingAssignmentId(item: PlannerItem): string | null {
   }
 }
 
+/** The contract types make every id a string. This checks that each one is a Canvas record id. */
 function idProblems(s: Scenario): string[] {
   const problems: string[] = [];
   walk(s, (key, value, path) => {
-    if (/(^|_)id$/.test(key)) {
-      if (value !== null && typeof value !== 'string') problems.push(`${path} is ${typeof value}`);
-      if (typeof value === 'string' && !OPAQUE_ID_KEYS.has(key) && !NUMERIC_ID.test(value))
-        problems.push(`${path} is "${value}"`);
-    }
-    if (/_ids$/.test(key) && (!Array.isArray(value) || value.some((v) => typeof v !== 'string')))
-      problems.push(`${path} is not a string list`);
+    if (/(^|_)id$/.test(key) && typeof value === 'string' && !NUMERIC_ID.test(value))
+      problems.push(`${path} is "${value}"`);
   });
   return problems;
 }
@@ -105,7 +99,7 @@ function dateProblems(s: Scenario): string[] {
 describe.each(NOWS)('buildScenario(%s)', (now) => {
   const s = buildScenario(now);
 
-  it('uses string ids everywhere', () => {
+  it('uses numeric record ids', () => {
     expect(idProblems(s)).toEqual([]);
   });
 
