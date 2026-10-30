@@ -20,6 +20,8 @@ export interface SaveToolsMessage {
 export interface DashboardDataMessage {
   type: 'weekrow:dashboard-data';
   includeGradeVisibility?: boolean;
+  /** Names the grade visibility read, so a late result can only go back to the read it belongs to. */
+  readToken?: string;
 }
 
 /** In-page script to background: asks for one announcement. The reply is an `AnnouncementBody`. */
@@ -79,7 +81,13 @@ export interface DashboardData {
   ready: boolean;
   courses: DashboardCourse[];
   extras: ExtraItem[];
+  /**
+   * The grade visibilities of the signed-in student, or `null` when they are unknown. A reply to
+   * a read names the student in `userId`. A data reply carries the result of a read that ended
+   * late, and `visibilityToken` names that read.
+   */
   gradeVisibilities?: Record<string, Record<string, boolean>> | null;
+  visibilityToken?: string;
 }
 
 /** The full message of an announcement. `message` is HTML, so it is never inserted as it is. */

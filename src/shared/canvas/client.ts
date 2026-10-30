@@ -200,7 +200,11 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
           data?: { legacyNode?: { widgetDashboardConfig?: string | null } };
         };
         if (!body.data?.legacyNode) throw new Error('No widget preferences');
-        const config = JSON.parse(body.data.legacyNode.widgetDashboardConfig ?? '{}') as {
+        // A student who never changed the widgets has no saved preference. The reply cannot say
+        // whose record that is, so the caller decides what a missing preference means.
+        const saved = body.data.legacyNode.widgetDashboardConfig;
+        if (saved === null || saved === undefined) return null;
+        const config = JSON.parse(saved) as {
           filters?: Record<string, { gradeVisibilities?: Record<string, boolean> }>;
         };
         const entries = Object.entries(config.filters ?? {}).map(([id, value]) => {

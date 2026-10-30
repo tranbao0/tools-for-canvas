@@ -6,20 +6,39 @@ import { createFixesEngine, type FixesEngine } from './controller';
 import { dashboardData, drawDashboard, ORIGIN } from './testing/dashboard';
 
 const ON = DEFAULT_TOOLS_SETTINGS.dashboardFixes;
-const DATA = { ...dashboardData(), userId: '5' };
+const WIDGET = 'course-grades-widget';
 let send: Mock<(message: DataMessage) => Promise<unknown>>;
 let engine: FixesEngine;
+/** What the server holds for the course grades widget, as course id to visible. */
+let stored: Record<string, boolean>;
+let student: string;
 const settle = async (ms = 120) => {
   await vi.advanceTimersByTimeAsync(ms);
 };
 const grade = (id: string) =>
   document.querySelector(`[data-testid="course-${id}-grade"]`)?.textContent;
 const grade103 = () => grade('103');
+const isRead = (message: DataMessage) =>
+  message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility === true;
+const reads = () => send.mock.calls.filter(([message]) => isRead(message)).length;
 
 beforeEach(() => {
   vi.useFakeTimers();
   drawDashboard();
-  send = vi.fn(async () => DATA);
+  stored = {};
+  student = '5';
+  send = vi.fn(async (message: DataMessage) =>
+    isRead(message)
+      ? {
+          origin: ORIGIN,
+          ready: false,
+          courses: [],
+          extras: [],
+          userId: student,
+          gradeVisibilities: { [WIDGET]: { ...stored } },
+        }
+      : { ...dashboardData(), userId: student },
+  );
   engine = createFixesEngine({ doc: document, origin: ORIGIN, send });
 });
 afterEach(() => {
@@ -33,6 +52,7 @@ async function hide103AndLeave() {
   engine.setActive(true);
   await settle();
   document.querySelector('[data-testid="course-103-grade"]')!.textContent = '•••';
+  stored = { '103': false };
   await settle();
   document.querySelector('[data-testid="course-grade-card-103"]')!.remove();
   await settle();
@@ -49,16 +69,10 @@ it('A: fallback reply without userId (failed user check) then normal reply', asy
   }));
   engine.reload();
   await settle();
-  const reads = send.mock.calls.filter(
-    ([message]) => message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility,
-  ).length;
+  const before = reads();
   engine.reload();
   await settle();
-  expect(
-    send.mock.calls.filter(
-      ([message]) => message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility,
-    ),
-  ).toHaveLength(reads);
+  expect(reads()).toBe(before);
   expect(grade103()).toBe('•••');
 });
 
@@ -82,86 +96,47 @@ it('C: setActive off then on', async () => {
 
 it('D: the same confirmed student keeps the observation, a new student clears it', async () => {
   await hide103AndLeave();
-  const reads = () =>
-    send.mock.calls.filter(
-      ([message]) => message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility,
-    ).length;
   const before = reads();
   engine.reload();
   await settle();
   expect(reads()).toBe(before);
   expect(grade103()).toBe('•••');
-  send.mockImplementationOnce(async () => ({ ...DATA, userId: '6' }));
+  student = '6';
+  stored = {};
   engine.reload();
   await settle();
   expect(reads()).toBe(before + 1);
   expect(grade103()).not.toBe('•••');
 });
 
-it('E: the first confirmed student does not force a read', async () => {
+it('E: the first confirmed student starts one read', async () => {
   engine.setSettings(ON);
   engine.setActive(true);
   await settle();
-  expect(
-    send.mock.calls.filter(
-      ([message]) => message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility,
-    ),
-  ).toHaveLength(1);
+  expect(reads()).toBe(1);
 });
 
-it('F: a read that began before any student was confirmed runs again once one is', async () => {
-  const reads = () =>
-    send.mock.calls.filter(
-      ([message]) => message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility,
-    ).length;
-  const nothing = { origin: ORIGIN, ready: false, courses: [], extras: [] };
-  send.mockImplementation(async (message) =>
-    message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility
-      ? { ...nothing, gradeVisibilities: reads() > 1 ? {} : null }
-      : nothing,
+it('F: a read that ends with no result runs again when the data changes', async () => {
+  let failing = true;
+  send.mockImplementation(async (message: DataMessage) =>
+    isRead(message)
+      ? {
+          origin: ORIGIN,
+          ready: false,
+          courses: [],
+          extras: [],
+          userId: '5',
+          gradeVisibilities: failing ? null : { [WIDGET]: {} },
+        }
+      : { ...dashboardData(), userId: '5' },
   );
   engine.setSettings(ON);
   engine.setActive(true);
   await settle();
   expect(reads()).toBe(1);
-  send.mockImplementation(async (message) =>
-    message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility
-      ? { ...nothing, gradeVisibilities: {} }
-      : DATA,
-  );
+  expect(grade('107')).toBe('•••');
+  failing = false;
   engine.reload();
-  await settle();
-  expect(reads()).toBe(2);
-  expect(grade('107')).toBe('95%');
-});
-
-it('G: a read that ends empty after the first student is confirmed runs again', async () => {
-  const reads = () =>
-    send.mock.calls.filter(
-      ([message]) => message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility,
-    ).length;
-  let finishRead!: (reply: unknown) => void;
-  let finishData!: (reply: unknown) => void;
-  send.mockImplementation(async (message) => {
-    if (message.type !== 'weekrow:dashboard-data') return DATA;
-    if (!message.includeGradeVisibility) {
-      return new Promise((resolve) => {
-        finishData = resolve;
-      });
-    }
-    return reads() === 1
-      ? new Promise((resolve) => {
-          finishRead = resolve;
-        })
-      : { ...DATA, gradeVisibilities: {} };
-  });
-  engine.setSettings(ON);
-  engine.setActive(true);
-  await settle();
-  expect(reads()).toBe(1);
-  finishData(DATA);
-  await settle();
-  finishRead({ origin: ORIGIN, ready: false, courses: [], extras: [], gradeVisibilities: null });
   await settle();
   expect(reads()).toBe(2);
   expect(grade('107')).toBe('95%');

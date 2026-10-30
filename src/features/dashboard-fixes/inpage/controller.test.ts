@@ -15,7 +15,7 @@ const OFF: DashboardFixesSettings = {
   courseWorkExtras: false,
   allCourseGrades: false,
 };
-const DATA = dashboardData([extra({ key: 'u', title: 'Undated work' })]);
+const DATA = { ...dashboardData([extra({ key: 'u', title: 'Undated work' })]), userId: '5' };
 
 let send: Mock<(message: DataMessage) => Promise<unknown>>;
 let engine: FixesEngine;
@@ -49,6 +49,7 @@ describe('createFixesEngine', () => {
     expect(send).toHaveBeenCalledWith({
       type: 'weekrow:dashboard-data',
       includeGradeVisibility: true,
+      readToken: expect.any(String),
     });
     expect(document.querySelector('[data-wr-cc]')).not.toBeNull();
     expect(document.querySelector('[data-wr-extra]')).not.toBeNull();
@@ -66,12 +67,14 @@ describe('createFixesEngine', () => {
     expect(send).not.toHaveBeenCalledWith({
       type: 'weekrow:dashboard-data',
       includeGradeVisibility: true,
+      readToken: expect.any(String),
     });
     drawDashboard();
     await settle();
     expect(send).toHaveBeenCalledWith({
       type: 'weekrow:dashboard-data',
       includeGradeVisibility: true,
+      readToken: expect.any(String),
     });
     send.mockClear();
     engine.reload();
@@ -114,6 +117,7 @@ describe('createFixesEngine', () => {
     expect(send).toHaveBeenCalledWith({
       type: 'weekrow:dashboard-data',
       includeGradeVisibility: true,
+      readToken: expect.any(String),
     });
   });
 

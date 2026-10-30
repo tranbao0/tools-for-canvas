@@ -217,7 +217,11 @@ export interface DataOwner {
    * A 401 calls signOut(), which clears the session and sends a change notice.
    */
   dashboardData(): Promise<DashboardData>;
-  dashboardGradeVisibility(): Promise<DashboardData>;
+  /**
+   * The grade visibilities of the signed-in student, read live. The sign-in check confirms the
+   * student first, and the reply names that student. `token` names the read for a late result.
+   */
+  dashboardGradeVisibility(token?: string): Promise<DashboardData>;
   /** One announcement of the saved Canvas with its full message. */
   announcement(courseId: string, topicId: string): Promise<AnnouncementBody>;
   /** The recent announcements of one course. */
@@ -1952,7 +1956,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       ...(lateVisibility?.origin === origin &&
       lateVisibility.userId === session.profile.id &&
       lateVisibility.generation === generation
-        ? { gradeVisibilities: lateVisibility.value }
+        ? {
+            gradeVisibilities: lateVisibility.value,
+            ...(lateVisibility.token === undefined
+              ? {}
+              : { visibilityToken: lateVisibility.token }),
+          }
         : {}),
       courses: dashboardCourses(session.courses, session.colors, session.profile.id),
       extras: extrasFromView(result.view),
@@ -1966,49 +1975,78 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         origin: string;
         userId: string;
         generation: number;
+        token: string | undefined;
         value: DashboardData['gradeVisibilities'];
       }
     | undefined;
 
-  async function dashboardGradeVisibility(): Promise<DashboardData> {
+  /**
+   * The preferences of the student that the stamp names, or `null` when they are unknown. A
+   * missing preference means that nothing is hidden, but only for the record of the signed-in
+   * student: a fresh sign-in check must still name the student of the stamp.
+   */
+  async function confirmedPreferences(
+    origin: string,
+    stamp: WriteStamp,
+    value: Record<string, Record<string, boolean>> | null,
+  ): Promise<Record<string, Record<string, boolean>> | null> {
+    if (!isCurrent(stamp)) return null;
+    if (value !== null) return value;
+    try {
+      const self = await apiFor(origin).getSelf();
+      return isCurrent(stamp) && self.id === stamp.userId ? {} : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function dashboardGradeVisibility(token?: string): Promise<DashboardData> {
     await ready();
     const origin = await savedOrigin();
     const base: DashboardData = { origin: origin ?? '', ready: false, courses: [], extras: [] };
-    const userId = cache?.session?.profile.id;
-    const readGeneration = generation;
     const readId = ++visibilityRead;
     lateVisibility = undefined;
     let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const read = (origin ? apiFor(origin).withPriority(() => 'high') : null)
-        ?.getWidgetGradeVisibility;
-      const gradeVisibilities =
-        userId && read
-          ? await Promise.race([
-              read(userId).then(async (value) => {
-                if (
-                  timedOut &&
-                  readId === visibilityRead &&
-                  origin &&
-                  generation === readGeneration &&
-                  cache?.session?.profile.id === userId &&
-                  (await savedOrigin()) === origin
-                ) {
-                  lateVisibility = { origin, userId, generation: readGeneration, value };
-                  await bump();
-                }
-                return value;
-              }),
-              new Promise<null>((resolve) => {
-                timer = setTimeout(() => {
-                  timedOut = true;
-                  resolve(null);
-                }, 5000);
-              }),
-            ])
+      // The read is for the student whom the sign-in check confirms now, never for the student
+      // of an older cache.
+      const confirmed =
+        origin !== null && cache?.session != null && (await signedInStudentOwnsCache());
+      const stamp = writeStamp();
+      const userId = stamp.userId;
+      const read =
+        confirmed && origin !== null
+          ? apiFor(origin).withPriority(() => 'high').getWidgetGradeVisibility
           : null;
-      return { ...base, gradeVisibilities };
+      if (!confirmed || origin === null || userId === null || !read) {
+        return { ...base, gradeVisibilities: null };
+      }
+      const gradeVisibilities = await Promise.race([
+        read(userId).then(async (raw) => {
+          const value = await confirmedPreferences(origin, stamp, raw);
+          if (
+            value !== null &&
+            timedOut &&
+            readId === visibilityRead &&
+            isCurrent(stamp) &&
+            (await savedOrigin()) === origin
+          ) {
+            lateVisibility = { origin, userId, generation: stamp.gen, token, value };
+            await bump();
+          }
+          return value;
+        }),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            resolve(null);
+          }, 5000);
+        }),
+      ]);
+      return gradeVisibilities === null
+        ? { ...base, gradeVisibilities: null }
+        : { ...base, userId, gradeVisibilities };
     } catch {
       return { ...base, gradeVisibilities: null };
     } finally {

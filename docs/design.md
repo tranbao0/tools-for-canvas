@@ -1645,6 +1645,21 @@ I read each of them in the package source.
   The copied cards read that preference through GraphQL only when a Course grades widget is present, and follow the visible main toggle when no course override exists.
   They also keep visibility changes from native cards when those cards leave the current page.
   A failed preference read keeps copied grades hidden.
+  A copy may show a grade only when a server read confirms it, and that read began after the last moment the fix could have missed a change.
+  The fix can miss a change in four moments.
+  The first is any time the "All course grades" switch was off.
+  The second is any time the fix was inactive (`setActive(false)`).
+  The third is the time before the first data reply.
+  The fourth is any time the observer was disconnected.
+  At each of these moments every confirmation turns stale, the copies show dots, and a fresh read begins.
+  A read that began before the fix last came back on never counts.
+  The same holds for the result of a read that ended late: it counts only when it names the last read of the fix since its last blind moment.
+  A read starts only after the first data reply has confirmed the student.
+  The background reads the preference only for a student whom the sign-in check has just confirmed, and the reply names that student.
+  The in-page script drops any result whose student is not the one it has confirmed now.
+  Canvas sends `null` for `widgetDashboardConfig` of a student who never changed the widgets.
+  The client reads that as unknown, not as "nothing hidden".
+  The background turns it into "nothing hidden" only after a new sign-in check names the same student, and otherwise the copies show dots.
 - The Course grades widget shows 6 cards a page (`MAX_GRID_ITEMS`) and a pager under them.
   The widget reads all courses from `ENV`, so nothing is missing from its data.
 - `GET /api/v1/courses` with `include[]=total_scores` adds `computed_current_score` and `computed_current_grade` to the student enrollment.

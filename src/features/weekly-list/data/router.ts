@@ -194,7 +194,9 @@ export function routeDataMessage(
     case 'weekrow:dashboard-data':
       return allowed.then(() =>
         message.includeGradeVisibility === true
-          ? owner.dashboardGradeVisibility()
+          ? owner.dashboardGradeVisibility(
+              typeof message.readToken === 'string' ? message.readToken.slice(0, 64) : undefined,
+            )
           : owner.dashboardData(),
       );
     case 'weekrow:announcement':

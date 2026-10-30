@@ -6,6 +6,12 @@
  * changes, one pass runs every enabled fix, and each fix draws again only what is missing. The
  * observer ignores the changes that the fixes make themselves, so a pass does not start another.
  * A fix that is switched off removes what it added, and the page is as Canvas draws it.
+ *
+ * A grade card that the fix copied shows a grade only when a server read confirms it, and that
+ * read must begin after the last moment the fix could have missed a change. The fix misses a
+ * change while it is off or inactive, before the first data reply, and while the observer is
+ * disconnected. At each of these moments every confirmation turns stale: the copies show dots,
+ * and a fresh read begins. A read that began earlier never counts.
  */
 import { logFailure } from '../../../shared/platform/log';
 import type { DashboardFixesSettings } from '../../../shared/settings/tools';
@@ -73,12 +79,17 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let style: HTMLStyleElement | null = null;
   let loadSeq = 0;
-  let requestedVisibility = false;
-  let visibility: DashboardData['gradeVisibilities'];
-  let visibilitySeq = 0;
+  /** What the server confirmed for the confirmed student, or `null` while nothing is confirmed. */
+  let visibility: DashboardData['gradeVisibilities'] = null;
+  /** A read must begin: nothing is confirmed, or the page changed what a confirmation covers. */
+  let wantRead = true;
   let reading = false;
-  /** The student that was confirmed when the running read began. */
-  let readUser: string | undefined;
+  /** Counts the reads and the blind moments, so a read that began before one never counts. */
+  let visibilitySeq = 0;
+  /** Names the running or last read, so a late result can only go back to that read. */
+  let readToken = '';
+  let readCount = 0;
+  const engineId = Math.random().toString(36).slice(2);
   let toggleState = '';
   let nativeVisibility = new Map<string, boolean>();
   const blocks = new Map<string, string>();
@@ -133,8 +144,6 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
 
   function run(): void {
     timer = null;
-    if (enabled('allCourseGrades') && !requestedVisibility && findGradeWidgets(doc).length > 0)
-      loadVisibility();
     const widgets = findGradeWidgets(doc);
     const toggles = widgets
       .map((found) => `${found.widget.getAttribute('data-testid')}:${found.gradesHidden}`)
@@ -152,10 +161,20 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
       [...nextNative].some(
         ([id, visible]) => nativeVisibility.has(id) && nativeVisibility.get(id) !== visible,
       );
-    if (enabled('allCourseGrades') && toggleState && (toggles !== toggleState || configChanged))
-      loadVisibility();
+    if (enabled('allCourseGrades') && toggleState && (toggles !== toggleState || configChanged)) {
+      wantRead = true;
+    }
     toggleState = toggles;
     nativeVisibility = nextNative;
+    // Before the apply loop, so the first draw of the copies already shows dots.
+    if (
+      enabled('allCourseGrades') &&
+      wantRead &&
+      gradeStore.userId !== undefined &&
+      widgets.length > 0
+    ) {
+      startRead();
+    }
     for (const key of keys) {
       if (enabled(key)) {
         applied.add(key);
@@ -199,23 +218,46 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     schedule(0);
   }
 
-  function loadVisibility(): void {
-    requestedVisibility = true;
+  /**
+   * The fix could have missed a change: no confirmation holds any more. The copies show dots, the
+   * running read stops counting, and a fresh read is wanted.
+   */
+  function markBlind(): void {
+    visibilitySeq += 1;
+    readToken = '';
+    reading = false;
+    wantRead = true;
+    visibility = null;
+    gradeStore.observed.clear();
+    gradeStore.serverStates.clear();
+    toggleState = '';
+    nativeVisibility = new Map();
+    if (data) data = { ...data, gradeVisibilities: null };
+  }
+
+  /** Runs a change of the state and marks the fix blind when the grades fix switched on or off. */
+  function changing(change: () => void): void {
+    const before = enabled('allCourseGrades');
+    change();
+    if (before !== enabled('allCourseGrades')) markBlind();
+  }
+
+  function startRead(): void {
+    wantRead = false;
     reading = true;
-    readUser = gradeStore.userId;
     const seq = ++visibilitySeq;
+    readToken = `${engineId}-${++readCount}`;
     visibility = null;
     if (data) data = { ...data, gradeVisibilities: null };
     options
-      .send({ type: 'weekrow:dashboard-data', includeGradeVisibility: true })
+      .send({ type: 'weekrow:dashboard-data', includeGradeVisibility: true, readToken })
       .then((reply) => {
         if (stopped || seq !== visibilitySeq) return;
         reading = false;
-        visibility = (reply as DashboardData | undefined)?.gradeVisibilities ?? null;
-        // A read that began before any student was confirmed has no session to read for.
-        if (visibility === null && readUser === undefined && gradeStore.userId !== undefined) {
-          requestedVisibility = false;
-        }
+        const result = reply as DashboardData | undefined;
+        // A result counts only for the student that is confirmed now.
+        const confirmed = result?.userId !== undefined && result.userId === gradeStore.userId;
+        visibility = confirmed ? (result?.gradeVisibilities ?? null) : null;
         if (data) data = { ...data, gradeVisibilities: visibility };
         schedule(0);
       })
@@ -241,18 +283,24 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         if (next.userId !== undefined && next.userId !== gradeStore.userId) {
           const changed = gradeStore.userId !== undefined;
           gradeStore.userId = next.userId;
-          if (!changed && !reading && visibility === null) requestedVisibility = false;
           if (changed) {
-            gradeStore.observed.clear();
-            gradeStore.serverStates.clear();
             fixes.allCourseGrades.remove();
-            visibility = null;
-            visibilitySeq += 1;
-            reading = false;
-            requestedVisibility = false;
+            markBlind();
           }
         }
-        if (next.gradeVisibilities != null && !reading) visibility = next.gradeVisibilities;
+        // The result of a read that ended late counts only for the read that is the last one since
+        // the last blind moment, and only for the confirmed student.
+        if (
+          next.gradeVisibilities != null &&
+          !reading &&
+          readToken !== '' &&
+          next.visibilityToken === readToken &&
+          next.userId === gradeStore.userId
+        ) {
+          visibility = next.gradeVisibilities;
+        }
+        // A read that ended with no result runs again when the data changes.
+        if (visibility === null && !reading) wantRead = true;
         data = { ...next, gradeVisibilities: visibility };
         schedule(0);
       })
@@ -262,14 +310,18 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   return {
     setActive(next) {
       if (stopped || active === next) return;
-      active = next;
+      changing(() => {
+        active = next;
+      });
       update();
       if (active) load();
     },
     setSettings(next) {
       if (stopped) return;
       const before = anyEnabled();
-      settings = { ...next };
+      changing(() => {
+        settings = { ...next };
+      });
       update();
       if (!before && anyEnabled()) load();
     },

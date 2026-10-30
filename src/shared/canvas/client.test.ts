@@ -961,6 +961,16 @@ describe('widget grade visibility', () => {
     });
   });
 
+  it('reads a preference that does not exist as unknown, not as nothing hidden', async () => {
+    recordAll(() => ({ data: { legacyNode: { widgetDashboardConfig: null } } }));
+    await expect(testClient().getWidgetGradeVisibility!('5')).resolves.toBeNull();
+  });
+
+  it('reads a preference with no course overrides as nothing hidden', async () => {
+    recordAll(() => ({ data: { legacyNode: { widgetDashboardConfig: '{}' } } }));
+    await expect(testClient().getWidgetGradeVisibility!('5')).resolves.toEqual({});
+  });
+
   it('rejects an unreadable preference so callers can keep grades hidden', async () => {
     recordAll(() => ({ errors: [{ message: 'Unavailable' }] }));
     await expect(testClient().getWidgetGradeVisibility!('5')).rejects.toThrow(

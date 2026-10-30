@@ -320,16 +320,74 @@ describe('announcements', () => {
 });
 
 describe('dashboardGradeVisibility', () => {
-  it('reads live preferences without the cache ownership check', async () => {
+  it('reads the preferences of the confirmed student and names that student', async () => {
     const h = await loaded();
     const read = vi.fn(async () => ({ 'course-grades-widget': { '107': false } }));
     const priority = vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
     h.canvas.getWidgetGradeVisibility = read;
     const result = await h.owner.dashboardGradeVisibility();
     expect(result.gradeVisibilities).toEqual({ 'course-grades-widget': { '107': false } });
+    expect(result.userId).toBe(IDS.user);
+    expect(read).toHaveBeenCalledWith(IDS.user);
     expect(priority.mock.calls.at(-1)?.[0]()).toBe('high');
     expect(read).toHaveBeenCalledTimes(1);
-    expect(h.canvas.calls).toEqual([]);
+  });
+
+  it('does not read for the previous student when another one signed in', async () => {
+    const h = await loaded();
+    const read = vi.fn(async () => ({ 'course-grades-widget': { '107': false } }));
+    vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+    h.canvas.getWidgetGradeVisibility = read;
+    await vi.advanceTimersByTimeAsync(31_000);
+    signInOtherUser(h);
+    const result = await h.owner.dashboardGradeVisibility();
+    expect(read).not.toHaveBeenCalled();
+    expect(result.gradeVisibilities).toBeNull();
+    expect(result.userId).toBeUndefined();
+  });
+
+  it('does not read when the sign-in check fails', async () => {
+    const h = await loaded();
+    const read = vi.fn(async () => ({}));
+    vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+    h.canvas.getWidgetGradeVisibility = read;
+    await vi.advanceTimersByTimeAsync(31_000);
+    h.canvas.fail('getSelf', canvasError('unauthorized', 401), { times: 1 });
+    expect((await h.owner.dashboardGradeVisibility()).gradeVisibilities).toBeNull();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('reads a missing preference of the signed-in student as nothing hidden', async () => {
+    const h = await loaded();
+    vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+    h.canvas.getWidgetGradeVisibility = async () => null;
+    const result = await h.owner.dashboardGradeVisibility();
+    expect(result.gradeVisibilities).toEqual({});
+    expect(result.userId).toBe(IDS.user);
+  });
+
+  it('keeps a missing preference unknown when the signed-in student changed during the read', async () => {
+    const h = await loaded();
+    vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+    h.canvas.getWidgetGradeVisibility = async () => {
+      signInOtherUser(h);
+      return null;
+    };
+    const result = await h.owner.dashboardGradeVisibility();
+    expect(result.gradeVisibilities).toBeNull();
+    expect(result.userId).toBeUndefined();
+  });
+
+  it('gives no result when the cache changed during a read that found preferences', async () => {
+    const h = await loaded();
+    vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+    h.canvas.getWidgetGradeVisibility = async () => {
+      await h.owner.originChanged('https://other.instructure.com');
+      return { 'course-grades-widget': { '107': false } };
+    };
+    const result = await h.owner.dashboardGradeVisibility();
+    expect(result.userId).toBeUndefined();
+    expect(result.gradeVisibilities).toBeNull();
   });
 
   it('returns unknown preferences after five seconds', async () => {

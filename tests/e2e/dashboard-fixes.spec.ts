@@ -555,6 +555,63 @@ test.describe('course grades', () => {
     await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
   });
 
+  test('show dots for a grade that the student hid while the fix was off', async ({
+    context,
+    page,
+    background,
+  }) => {
+    let hidden: Record<string, boolean> = {};
+    const served = await serveScenario(
+      context,
+      [
+        ...PAGE,
+        {
+          method: 'POST',
+          path: '/api/graphql',
+          respond: () => ({
+            body: {
+              data: {
+                legacyNode: {
+                  widgetDashboardConfig: JSON.stringify({
+                    filters: { 'course-grades-widget': { gradeVisibilities: hidden } },
+                  }),
+                },
+              },
+            },
+          }),
+        },
+      ],
+      EIGHT_COURSES,
+    );
+    await addCsrfCookie(context, served.canvas.origin);
+    await openCanvasPage(page, served.canvas.origin);
+    const widget = page.getByTestId('widget-course-grades-widget');
+    await expect(widget.getByTestId('course-107-grade')).toHaveText('95%');
+    await saveTools(background, tools({ allCourseGrades: false }));
+    await expect(page.locator('[data-wr-card]')).toHaveCount(0);
+    await expect(widget.getByTestId('pagination-container')).toBeVisible();
+    // The pager of Canvas turns the card of History into the card of Psychology, which the
+    // student hides with its eye button. The pager turns back.
+    await page.evaluate(() => {
+      const card = document.querySelector('[data-testid="course-grade-card-103"]') as HTMLElement;
+      const swap = (from: string, to: string, text: string) => {
+        for (const node of [card, ...card.querySelectorAll('[data-testid]')]) {
+          const id = node.getAttribute('data-testid') ?? '';
+          node.setAttribute('data-testid', id.replaceAll(from, to));
+        }
+        (document.querySelector(`[data-testid="course-${to}-grade"]`) as HTMLElement).textContent =
+          text;
+      };
+      swap('103', '107', '•••');
+      swap('107', '103', '91%');
+    });
+    hidden = { '107': false };
+    await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+    await expect(page.locator('[data-wr-card]')).toHaveCount(2);
+    await expect(widget.getByTestId('course-107-grade')).toHaveText('•••');
+    await expect(widget.getByTestId('course-108-grade')).toHaveText('N/A');
+  });
+
   test('show dots while the toggle hides every grade, and survive a new draw', async ({
     context,
     page,
