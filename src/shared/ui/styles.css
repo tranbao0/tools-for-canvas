@@ -118,21 +118,25 @@
   padding: 0 var(--wr-pad-x) var(--wr-pad-y);
   border: 1px solid var(--wr-btn-line);
   border-radius: 12px;
-  overflow: hidden auto;
 }
 
 :host(:is([data-panel='float'], [data-panel='dock'])) .wr[data-surface='inpage'] {
+  overflow: hidden auto;
   position: sticky;
   top: var(--wr-panel-top, 24px);
   max-height: var(--wr-panel-max-height, none);
 }
 
 :host([data-panel]) .wr-header {
+  padding-top: var(--wr-pad-y);
+  background: var(--wr-bg);
+}
+
+/* In a card that scrolls inside, the header and the Undo notice stay in view. */
+:host(:is([data-panel='float'], [data-panel='dock'])) .wr-header {
   position: sticky;
   top: 0;
   z-index: 3;
-  padding-top: var(--wr-pad-y);
-  background: var(--wr-bg);
 }
 
 :host([data-panel]) .wr-head {

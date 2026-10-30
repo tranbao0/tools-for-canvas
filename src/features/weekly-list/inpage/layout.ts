@@ -30,6 +30,7 @@ import {
   SENTINEL_ID,
   SPACER_ID,
   clearAllInlineStyles,
+  keepCardScroll,
   moveContainer,
   setContainerStyle,
   setInlineStyles,
@@ -105,6 +106,7 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
   let scrollTop = 0;
   let scrollRoot: ShadowRoot | null = null;
   let detached = false;
+  let wasConnected = true;
 
   const sameKey = (a: unknown[], b: unknown[]): boolean =>
     a.length === b.length && a.every((value, index) => value === b[index]);
@@ -222,7 +224,8 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
       ? pixels(view.getComputedStyle(grid.columns).columnGap, FALLBACK_GUTTER_PX)
       : FALLBACK_GUTTER_PX;
     const need = PANEL_EDGE_GAP_PX + PANEL_WIDTH_PX + gutter;
-    const extra = Math.max(0, need - (viewportWidth - right));
+    // The padding moves the edge of the content box, so the space is measured from the box.
+    const extra = Math.max(0, need - (viewportWidth - boxRight));
 
     if (boxRight - boxLeft - extra < MIN_CONTENT_PX) {
       moveContainer(container, parent, content);
@@ -255,12 +258,14 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
 
   /** Puts the page in its natural state, measures it, and places the list. */
   function arrange(grid: WidgetGrid | null, editing: boolean): void {
-    clearAllInlineStyles(doc);
-    // Out of the flow while the page is measured, so that the list changes no size.
-    setContainerStyle(container, 'position:absolute');
-    const viewportWidth = doc.documentElement.clientWidth;
-    if (grid !== null && !floatsForGood && !editing) arrangeInGrid(grid, viewportWidth);
-    else arrangeFloating(grid, viewportWidth);
+    keepCardScroll(container, () => {
+      clearAllInlineStyles(doc);
+      // Out of the flow while the page is measured, so that the list changes no size.
+      setContainerStyle(container, 'position:absolute');
+      const viewportWidth = doc.documentElement.clientWidth;
+      if (grid !== null && !floatsForGood && !editing) arrangeInGrid(grid, viewportWidth);
+      else arrangeFloating(grid, viewportWidth);
+    });
     trackScroll();
     restoreScroll();
   }
@@ -277,7 +282,7 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
         graceTimer = undefined;
         if (findWidgetGrid(doc) !== null) return;
         floatsForGood = true;
-        place(true);
+        keep(true);
       }, ANCHOR_GRACE_MS);
     }
     if (!force && sameKey(keyOf(grid, editing), applied)) return;
@@ -315,10 +320,13 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
     const other = doc.getElementById(MOUNT_CONTAINER_ID);
     if (other !== null && other !== container) return;
     if (!container.isConnected) {
-      noteRemoval();
+      // One removal counts once, however many page changes follow before the list is back.
+      if (wasConnected) noteRemoval();
       detached = true;
     }
+    wasConnected = container.isConnected;
     place(force || !container.isConnected);
+    wasConnected = container.isConnected;
     const content = doc.getElementById('content');
     if (content) sizeObserver?.observe(content);
   }

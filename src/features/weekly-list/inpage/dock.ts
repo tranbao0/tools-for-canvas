@@ -19,6 +19,7 @@ import {
   SENTINEL_ID,
   SPACER_ID,
   clearInlineStyles,
+  keepCardScroll,
   setContainerStyle,
   setInlineStyles,
   setPanelMode,
@@ -106,8 +107,10 @@ export function dockWhenColumnScrolledPast(
     const wanted = above && container.parentNode === wrapper && hasRoom();
     if (wanted && docked) {
       // The size of the window or of the page changed: measure again.
-      undock();
-      dock();
+      keepCardScroll(container, () => {
+        undock();
+        dock();
+      });
     } else if (wanted) dock();
     else if (docked) undock();
   }

@@ -33,20 +33,40 @@ export const PANEL_EDGE_GAP_PX = 24;
 /** The width of the panel in the free area and of the in-grid column. */
 export const PANEL_WIDTH_PX = 372;
 
-/** Sets inline styles with `!important` and records them, so `clearInlineStyles` finds them. */
-export function setInlineStyles(element: HTMLElement, styles: Record<string, string>): void {
-  const names = new Set(element.getAttribute(STYLED_ATTRIBUTE)?.split(' ').filter(Boolean));
-  for (const [name, value] of Object.entries(styles)) {
-    element.style.setProperty(name, value, 'important');
-    names.add(name);
+/** What an element had in an inline property before the list set it: the value and the priority. */
+type StyleRecord = Record<string, [value: string, priority: string]>;
+
+function readRecord(element: HTMLElement): StyleRecord {
+  try {
+    const parsed: unknown = JSON.parse(element.getAttribute(STYLED_ATTRIBUTE) ?? '{}');
+    return typeof parsed === 'object' && parsed !== null ? (parsed as StyleRecord) : {};
+  } catch {
+    return {};
   }
-  element.setAttribute(STYLED_ATTRIBUTE, [...names].join(' '));
 }
 
-/** Removes the inline styles that `setInlineStyles` set, and the attributes it left. */
+/**
+ * Sets inline styles with `!important`. The attribute records what each property held before,
+ * so `clearInlineStyles` gives the page its own inline values back.
+ */
+export function setInlineStyles(element: HTMLElement, styles: Record<string, string>): void {
+  const record = readRecord(element);
+  for (const [name, value] of Object.entries(styles)) {
+    record[name] ??= [
+      element.style.getPropertyValue(name),
+      element.style.getPropertyPriority(name),
+    ];
+    element.style.setProperty(name, value, 'important');
+  }
+  element.setAttribute(STYLED_ATTRIBUTE, JSON.stringify(record));
+}
+
+/** Gives back the inline styles that `setInlineStyles` replaced, and removes the record. */
 export function clearInlineStyles(element: HTMLElement): void {
-  const names = element.getAttribute(STYLED_ATTRIBUTE)?.split(' ') ?? [];
-  for (const name of names) if (name !== '') element.style.removeProperty(name);
+  for (const [name, [value, priority]] of Object.entries(readRecord(element))) {
+    if (value === '') element.style.removeProperty(name);
+    else element.style.setProperty(name, value, priority);
+  }
   element.removeAttribute(STYLED_ATTRIBUTE);
   if (element.getAttribute('style') === '') element.removeAttribute('style');
 }
@@ -91,4 +111,20 @@ export function moveContainer(container: HTMLElement, parent: Node, before: Node
   const active = hostOf(container)?.shadowRoot?.activeElement ?? null;
   parent.insertBefore(container, before);
   if (active !== null && active.isConnected) (active as HTMLElement).focus({ preventScroll: true });
+}
+
+/** The scrolling card inside the container, when the list has rendered. */
+function cardOf(container: HTMLElement): HTMLElement | null {
+  return hostOf(container)?.shadowRoot?.querySelector<HTMLElement>('.wr') ?? null;
+}
+
+/**
+ * Runs a change of placement and keeps the scroll position of the card. A forced layout while the
+ * card has no height limit resets its scroll position to the top, so the position comes back after.
+ */
+export function keepCardScroll(container: HTMLElement, change: () => void): void {
+  const top = cardOf(container)?.scrollTop ?? 0;
+  change();
+  const card = cardOf(container);
+  if (card !== null && top > 0 && card.scrollTop !== top) card.scrollTop = top;
 }

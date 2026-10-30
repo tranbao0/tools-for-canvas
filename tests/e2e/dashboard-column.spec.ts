@@ -544,6 +544,57 @@ test.describe('the floating card', () => {
     }
   }
 
+  test('keeps the scroll position of the floating card when the window changes size', async ({
+    context,
+    page,
+  }) => {
+    await openFloating(context, page, 'dashboard-list-view', 1920);
+    await addHeight(page);
+    await scrollTo(page, 300);
+    await page.evaluate(async () => {
+      const card = document
+        .querySelector('#weekrow-inpage > weekrow-list')
+        ?.shadowRoot?.querySelector<HTMLElement>('.wr');
+      if (!card) return;
+      const filler = document.createElement('div');
+      filler.style.height = '2000px';
+      card.append(filler);
+      card.scrollTop = 500;
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    await page.setViewportSize({ width: 1880, height: VIEWPORT_HEIGHT });
+    await page.waitForTimeout(300);
+    const top = await page.evaluate(
+      () =>
+        document
+          .querySelector('#weekrow-inpage > weekrow-list')
+          ?.shadowRoot?.querySelector<HTMLElement>('.wr')?.scrollTop,
+    );
+    expect(top).toBe(500);
+  });
+
+  test('scrolls the card inside only where it floats, so the Undo notice stays at the window', async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
+    await page.setViewportSize({ width: 1920, height: VIEWPORT_HEIGHT });
+    await openCanvasPage(page, canvas.origin);
+    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    const overflow = (): Promise<string | undefined> =>
+      page.evaluate(() => {
+        const card = document
+          .querySelector('#weekrow-inpage > weekrow-list')
+          ?.shadowRoot?.querySelector('.wr');
+        return card ? getComputedStyle(card).overflowY : undefined;
+      });
+    await expectMode(page, 'grid');
+    expect(await overflow()).toBe('visible');
+    await setEditMode(page, true);
+    await expectMode(page, 'float');
+    expect(await overflow()).toBe('auto');
+  });
+
   test('lets clicks through the host below the card', async ({ context, page }) => {
     await openFloating(context, page, 'dashboard-list-view', 1920);
     await addHeight(page);
