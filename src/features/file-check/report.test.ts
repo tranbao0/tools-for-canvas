@@ -167,7 +167,7 @@ describe('buildReport', () => {
   });
 
   it('writes no em dash', () => {
-    expect(buildReport(hostile(), ENV)).not.toContain('—');
+    expect(buildReport(hostile(), ENV)).not.toContain('\u2014');
   });
 });
 
