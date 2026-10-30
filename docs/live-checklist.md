@@ -304,9 +304,11 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
     Expect: in the dark theme of the dashboard, the colors stay.
 33. In the Announcements widget, click "Read more" of an unread announcement.
     Expect: the whole message shows in the card, with its links, images and lists, and the page does not change.
-    Expect: the announcement shows "Marked as read.", the circle of the card shows a check mark, and, in Canvas, it is read (check the Canvas page of the announcement and the unread count).
+    Expect: the announcement does not show "Marked as read.", and the circle of the card does not change.
     Click "Show less".
-    Expect: with the Unread filter, the announcement leaves the list.
+    Expect: with the Unread filter, the announcement stays in the list, and in Canvas it is still unread (check the unread count and the Canvas page of the announcement without opening it).
+    Click the read circle of the card.
+    Expect: the widget marks the announcement as read in its own way, and it leaves the Unread list.
     Click the title of another announcement.
     Expect: the same as "Read more".
     Hold Ctrl (Cmd on a Mac) and click "Read more".

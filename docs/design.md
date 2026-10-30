@@ -1577,6 +1577,12 @@ I read each of them in the package source.
 - `GET /api/v1/announcements` takes `context_codes[]`, `start_date` and `end_date`.
   Without dates it returns the 14 days before today and the 28 days after the start.
   `PUT /api/v1/courses/:id/discussion_topics/:id/read` marks a topic as read and answers 204.
+- Two requests do not mark a topic as read.
+  `GET /api/v1/courses/:id/discussion_topics/:id` (the `show` action of `DiscussionTopicsApiController`) only logs the access of the asset and renders the topic with its read state.
+  `GET /api/v1/announcements` (`AnnouncementsApiController#index`) only lists the announcements.
+  `GET /api/v1/courses/:id/discussion_topics/:id/view` (the `view` action) logs the access and renders the materialized view of the entries, and it does not change the read state of the topic.
+  The topic HTML page does mark it: `DiscussionTopicsController#show` calls `change_read_state("read")` for the signed-in user when the student can read the topic.
+  So the extension never opens the topic page for the student, and it uses only the first two requests.
 
 **Where the code lives.**
 
@@ -1614,11 +1620,16 @@ I read each of them in the package source.
    The message comes from `GET /api/v1/courses/:id/discussion_topics/:id` through the background.
    The course filter copies the box, border, radius, padding and type of the read filter from its computed style, so it looks the same in every theme.
    The message takes the type size and line height of the snippet that it replaces.
-   After the read mark, the circle of the card shows the read state (a check mark), as Canvas shows it after a reload.
-   Opening it sends `PUT .../read` through the background, once for each announcement.
-   The background treats the PUT as a write: it waits behind the writes before it, it asks Canvas who is signed in first (the student check of every write), it drops the write when the generation, the address or the student changed, and it sends the CSRF token.
+   Opening or closing the message does not mark the announcement as read.
+   It sends no write, it does not change the read state, and it does not refresh the widget.
+   The extension shows no "Marked as read." line, and it does not change the circle of the card.
+   The owner chose on 2026-10-30 that only an explicit student action marks an announcement as read.
+   The read circle of the widget is the only way to mark one, and the fix leaves its native behavior alone.
+   The owner found the first design on a live Canvas on 2026-10-30.
+   With the Unread filter, the student opened and closed a message, and the extension had marked it as read, so it left the list.
+   The extension has no request that writes to an announcement.
    The ids are checked as Canvas ids at the message boundary and again before they enter a path.
-   With the Unread filter, a read announcement leaves the list when its message closes.
+   With the Unread filter, an announcement that the student opens stays in the list after the message closes, until the student marks it as read.
    The course filter hides the list of the widget and its pager when a course is chosen.
    It then shows the recent announcements of the course, at most 10 from the last 180 days, loaded by the background, with the read filter applied.
    The match of the read filter uses the English labels of the widget.
@@ -1693,7 +1704,6 @@ The page script does the work in `src/features/dashboard-fixes/inpage/sanitize.t
   The weekly list keeps the 60-second limit of decision 11 for its own data.
 - The copies of the grade cards and the course list of the announcement filter keep the data of the session: a grade that Canvas posts later shows in the cards of the widget and in the copies after the next refresh of the courses.
 - An image in an announcement loads from the address that the teacher chose, as it does on the Canvas page, with no referrer for another origin.
-- The extension cannot mark an announcement as unread again, and the read button of the widget keeps its old look until React loads the list again.
 - The "Also due" section covers two weeks of pages and tasks, because the planner cache does.
 - A grade card copy has no color menu, no hide button and no update date, because those belong to React or to data that the extension does not have.
 - A hostile message that a future browser parses in a new way would still go through the same allowlist, because the output is built node by node.

@@ -7,7 +7,7 @@ Last updated: 2026-10-30.
 
 Tools for Canvas has no account, no server of its own and no telemetry.
 It reads your Canvas data in your browser and shows it to you.
-It writes only done marks, skip marks, custom tasks and announcement read marks, and only to your own Canvas.
+It writes only done marks, skip marks and custom tasks, and only to your own Canvas.
 Nothing goes anywhere else, except the images that a teacher put into an announcement (see "What the extension sends elsewhere").
 
 ## What the extension reads
@@ -58,10 +58,12 @@ The extension writes only to your own Canvas, and only when you ask it to:
 
 - a done mark when you check an item off, or remove it when you uncheck the item;
 - a skip mark when you skip an item, or remove it when you unskip the item;
-- a custom task when you create, edit or delete one;
-- a read mark when you open an announcement in place, as when you open it on the Canvas page.
+- a custom task when you create, edit or delete one.
 
-The read mark is the same mark that Canvas sets when you open an announcement.
+The extension does not mark an announcement as read.
+When you open an announcement in place, it only reads the announcement.
+Only you mark an announcement as read, with the read circle that Canvas shows.
+
 Done marks and skip marks are Canvas planner overrides.
 Custom tasks are Canvas planner notes.
 Canvas, its To Do list and its mobile apps show the same data.
