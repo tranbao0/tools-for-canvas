@@ -29,31 +29,38 @@ Each tool gets its own design decision in `docs/design.md` before it is built.
 - Images, text, audio and video use the browser's own players in the pane.
 - Word, PowerPoint and other documents use Canvas's own document viewer inside the pane.
 - "Open in new tab" is the fallback when a file cannot load in the pane.
+- Files the student submitted open in the pane from the assignment page and the submission details, with a download button, instead of only downloading.
 - A test on a live Canvas comes first, to confirm that the extension can fetch file data on real schools.
 
-## 4. Dark mode
+## 4. One assignment view
+
+- The assignment instructions, the rubric and the turn-in area show on one page.
+- Today the rubric and the turn-in area can sit on different pages, so a student must switch pages to check the rubric while submitting.
+- A check of the student's real pages comes first, because Canvas has several assignment page versions.
+
+## 5. Dark mode
 
 - A dark theme for all of Canvas, which follows the extension's Theme setting.
 
-## 5. Modules and due times
+## 6. Modules and due times
 
 - Collapsed module sections stay collapsed, with "Collapse all".
 - A "Next unfinished item" button and a "Back to module" bar on module item pages.
 - Each due date also shows the time left, such as "in 2 days, 3 h", and a note when the Canvas time zone differs from the computer's.
 
-## 6. Search and quick jump
+## 7. Search and quick jump
 
 - A keyboard shortcut opens a palette that jumps to any course, assignment, page or file.
 - Search across all courses by the titles of assignments, pages, files and announcements.
 - Both use one local index that the extension builds from the Canvas API.
 
-## 7. Grades
+## 8. Grades
 
 - What-if grades for every course.
 - An estimate of the total when the teacher hides it.
 - A GPA calculator for the term and overall.
 
-## 8. Notifications and calendar
+## 9. Notifications and calendar
 
 - A digest of recent activity, with its own read state.
 - A link to the Canvas calendar feed (ICS) for other calendar apps.
