@@ -121,6 +121,48 @@ describe('createFixesEngine', () => {
     });
   });
 
+  it('refreshes on return at most once per 30 seconds and keeps hidden copies hidden', async () => {
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    const reads = () =>
+      send.mock.calls.filter(
+        ([m]) => m.type === 'weekrow:dashboard-data' && m.includeGradeVisibility,
+      );
+    const state = vi.spyOn(document, 'visibilityState', 'get');
+    const change = (value: DocumentVisibilityState) => {
+      state.mockReturnValue(value);
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    let release: (value: unknown) => void = () => undefined;
+    send.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const before = reads().length;
+    change('hidden');
+    expect(reads()).toHaveLength(before);
+    change('visible');
+    await settle();
+    expect(reads()).toHaveLength(before + 1);
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
+    release({ ...DATA, gradeVisibilities: { 'course-grades-widget': { '107': false } } });
+    await settle();
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
+    change('visible');
+    expect(reads()).toHaveLength(before + 1);
+    await settle(30_000);
+    change('visible');
+    expect(reads()).toHaveLength(before + 2);
+    engine.stop();
+    await settle(30_000);
+    change('visible');
+    expect(reads()).toHaveLength(before + 2);
+    state.mockRestore();
+  });
+
   it('keeps a native hidden grade through a stale read and a data notice', async () => {
     engine.setSettings(ON);
     engine.setActive(true);

@@ -555,6 +555,47 @@ test.describe('course grades', () => {
     await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
   });
 
+  test('refresh a copied grade when the tab returns', async ({ context, page }) => {
+    let hidden: Record<string, boolean> = {};
+    const served = await serveScenario(
+      context,
+      [
+        ...PAGE,
+        {
+          method: 'POST',
+          path: '/api/graphql',
+          respond: () => ({
+            body: {
+              data: {
+                legacyNode: {
+                  widgetDashboardConfig: JSON.stringify({
+                    filters: { 'course-grades-widget': { gradeVisibilities: hidden } },
+                  }),
+                },
+              },
+            },
+          }),
+        },
+      ],
+      EIGHT_COURSES,
+    );
+    await addCsrfCookie(context, served.canvas.origin);
+    await openCanvasPage(page, served.canvas.origin);
+    const widget = page.getByTestId('widget-course-grades-widget');
+    await expect(widget.getByTestId('course-107-grade')).toHaveText('95%');
+    hidden = { '107': false };
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+      document.dispatchEvent(new Event('visibilitychange'));
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await expect(page.locator('[data-wr-card]')).toHaveCount(2);
+    await expect(widget.getByTestId('course-107-grade')).toHaveText('•••');
+    await expect(widget.getByTestId('course-108-grade')).toHaveText('N/A');
+    await widget.screenshot({ path: '/tmp/ticket-i-grade-cards.png' });
+  });
+
   test('show dots for a grade that the student hid while the fix was off', async ({
     context,
     page,

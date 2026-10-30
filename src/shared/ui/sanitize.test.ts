@@ -18,6 +18,58 @@ function parsed(html: string): HTMLElement {
   return box;
 }
 
+// Count source reads, including repeated iteration over the same children.
+// The parser is outside this check so its nesting limits cannot hide unbounded traversal.
+function countedSource(maxReads: number) {
+  let reads = 0;
+  function read() {
+    if (++reads > maxReads) throw new Error('Source traversal exceeds its work bound');
+  }
+  function node(children: Node[], text?: string): Node {
+    return {
+      get nodeType() {
+        read();
+        return text === undefined ? 1 : 3;
+      },
+      localName: 'span',
+      namespaceURI: 'http://www.w3.org/1999/xhtml',
+      data: text,
+      get childNodes() {
+        read();
+        return {
+          *[Symbol.iterator]() {
+            for (const child of children) {
+              read();
+              yield child;
+            }
+          },
+        };
+      },
+    } as unknown as Node;
+  }
+  function sanitize(body: Node) {
+    const parser = vi
+      .spyOn(DOMParser.prototype, 'parseFromString')
+      .mockReturnValue({ body } as unknown as Document);
+    try {
+      return sanitizeHtml('', { origin: ORIGIN, doc: document });
+    } finally {
+      parser.mockRestore();
+    }
+  }
+  function text(body: Node) {
+    const parser = vi
+      .spyOn(DOMParser.prototype, 'parseFromString')
+      .mockReturnValue({ body } as unknown as Document);
+    try {
+      return htmlToText('', 100000);
+    } finally {
+      parser.mockRestore();
+    }
+  }
+  return { node, sanitize, text, reads: () => reads };
+}
+
 describe('sanitizeHtml: what stays', () => {
   it('keeps the allowed tags and the text', () => {
     expect(clean('<p>One <strong>two</strong> <em>three</em> <b>b</b> <i>i</i> <u>u</u></p>')).toBe(
@@ -257,48 +309,6 @@ describe('sanitizeHtml: the hostile corpus', () => {
     ).toBe('<table><tbody><tr><td>a</td><td>b</td></tr></tbody></table>');
   });
 
-  // Count source reads, including repeated iteration over the same children.
-  // The parser is outside this check so its nesting limits cannot hide unbounded traversal.
-  function countedSource(maxReads: number) {
-    let reads = 0;
-    function read() {
-      if (++reads > maxReads) throw new Error('Source traversal exceeds its work bound');
-    }
-    function node(children: Node[], text?: string): Node {
-      return {
-        get nodeType() {
-          read();
-          return text === undefined ? 1 : 3;
-        },
-        localName: 'span',
-        namespaceURI: 'http://www.w3.org/1999/xhtml',
-        data: text,
-        get childNodes() {
-          read();
-          return {
-            *[Symbol.iterator]() {
-              for (const child of children) {
-                read();
-                yield child;
-              }
-            },
-          };
-        },
-      } as unknown as Node;
-    }
-    function sanitize(body: Node) {
-      const parser = vi
-        .spyOn(DOMParser.prototype, 'parseFromString')
-        .mockReturnValue({ body } as unknown as Document);
-      try {
-        return sanitizeHtml('', { origin: ORIGIN, doc: document });
-      } finally {
-        parser.mockRestore();
-      }
-    }
-    return { node, sanitize, reads: () => reads };
-  }
-
   it('bounds traversal on very deep input and limits output nesting', () => {
     const source = countedSource(1000);
     let tree = source.node([], 'too deep');
@@ -379,9 +389,18 @@ describe('htmlToText', () => {
     expect(htmlToText('<p>' + 'word '.repeat(5000) + '</p>', 50).length).toBeLessThanOrEqual(51);
   });
 
-  it('stays flat on deep and large input', () => {
-    expect(htmlToText(`${'<div>'.repeat(5000)}x${'</div>'.repeat(5000)}`, 10)).toBeTypeOf('string');
-    expect(htmlToText('<span>a</span>'.repeat(20000), 100000).length).toBeLessThanOrEqual(5000);
-    expect(htmlToText('', 10)).toBe('');
+  it('bounds text traversal on deep input', () => {
+    const source = countedSource(1000);
+    let tree = source.node([], 'too deep');
+    for (let i = 0; i < 20000; i++) tree = source.node([tree]);
+    expect(source.text(source.node([tree]))).toBe('');
+    expect(source.reads()).toBeLessThanOrEqual(1000);
+  });
+
+  it.each([100, 1000, 20000])('bounds text source work linearly for %i siblings', (size) => {
+    const source = countedSource(8 * size + 10);
+    const children = Array.from({ length: size }, () => source.node([source.node([], 'a')]));
+    expect(source.text(source.node(children))).toBe('a'.repeat(Math.min(size, 2500)));
+    expect(source.reads()).toBeLessThanOrEqual(8 * size + 10);
   });
 });

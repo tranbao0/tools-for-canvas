@@ -1754,6 +1754,9 @@ I read each of them in the package source.
    Grade visibility preferences load separately at high priority with a five-second timeout.
    The read uses the current session cookies and does not wait for the cache ownership check.
    The page reads these preferences when the widget toggle or configuration changes.
+   When the page becomes visible, it starts a fresh read at most once per 30 seconds while the fix is active and the student is confirmed.
+   This read uses the same read token and confirmed-student checks as other preference reads.
+   Copies show dots until the read confirms preferences, so a hidden grade stays hidden.
    Values observed on native cards take precedence over stale server preferences for this page view.
    A later server value clears an observation when it confirms it or changes the previous server value.
    The visibility store belongs to the page view and keeps observations and server states by confirmed user and widget.

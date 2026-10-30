@@ -27,6 +27,7 @@ import { FIXES_CSS } from './styles';
 
 /** How long a batch of page changes waits for the next one. */
 const BATCH_MS = 50;
+const VISIBILITY_REFRESH_MS = 30_000;
 const STYLE_ID = 'wr-dashboard-fixes';
 
 export interface FixesEngineOptions {
@@ -89,6 +90,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   /** Names the running or last read, so a late result can only go back to that read. */
   let readToken = '';
   let readCount = 0;
+  let lastVisibilityRefresh = -Infinity;
   const engineId = Math.random().toString(36).slice(2);
   let toggleState = '';
   let nativeVisibility = new Map<string, boolean>();
@@ -267,6 +269,23 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
       });
   }
 
+  function onVisibilityChange(): void {
+    if (
+      stopped ||
+      doc.visibilityState !== 'visible' ||
+      !enabled('allCourseGrades') ||
+      gradeStore.userId === undefined ||
+      findGradeWidgets(doc).length === 0 ||
+      Date.now() - lastVisibilityRefresh < VISIBILITY_REFRESH_MS
+    )
+      return;
+    lastVisibilityRefresh = Date.now();
+    startRead();
+    schedule(0);
+  }
+
+  doc.addEventListener('visibilitychange', onVisibilityChange);
+
   function load(): void {
     for (const key of applied) {
       if (key !== 'allCourseGrades') fixes[key].reload?.();
@@ -329,6 +348,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     },
     stop() {
       stopped = true;
+      doc.removeEventListener('visibilitychange', onVisibilityChange);
       active = false;
       loadSeq += 1;
       if (timer !== null) clearTimeout(timer);
