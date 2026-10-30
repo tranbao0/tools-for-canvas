@@ -466,37 +466,40 @@ A span that ended before today has one exception: open work dated inside it stay
 
 - Each item has one key: the assignment id for assignment-backed items, otherwise the planner type plus the planner id.
 - Each item goes to exactly one group, chosen by its date and its state:
-  - checked, but Canvas still marks it missing: where an open item would go (see "Checked but missing" below);
-  - done and dated in the shown span: Done;
+  - done, even when Canvas still marks it missing (see "Checked but missing" below), and dated in the shown span: Done;
   - open and past due, in every span: Past due, except open work dated inside a span that ended before today, which stays on its day;
   - open and due later: its day;
   - open with no due date: No due date;
   - skipped: the "N skipped" line of its group (see Skip).
 - In the span that starts today, Done also holds done items from before today that still have a warning chip (decision 7).
   So the warning count on the Done header covers them.
-
-**Checked but missing:**
-
-The owner chose this rule after testing: one stray click, or an untick and a retick, must never hide work that Canvas counts as missing.
-
-- When the student checks an item that Canvas marks missing, the item stays where an open item goes: in Past due, on its day in other weeks, or in No due date.
-- It shows as checked, with the red "Missing in Canvas" chip.
-- It leaves that place only when Canvas stops marking it missing (the student hands it in, it gets a grade, or the teacher changes it), or when the student skips it.
-- It counts as not done in the rings and in the past-due badge, because Canvas still counts it as missing.
-- The done mark is still saved to Canvas as usual, so unchecking and checking again only changes the checkbox, never the place.
-- Plain past-due work without the Canvas missing flag keeps the normal rule: a check moves it to Done, with Undo.
-  This covers custom tasks, pages, and outside-Canvas work with "Can't confirm".
 - Reminders (decision 7) follow their own rule: they show only on their day.
 - A status never moves an item.
   So the list renders as soon as the planner items arrive, and the chips fill in later without any item moving.
 - Done items with no due date show at the end of the No due date group, under a small "N done" line.
   So the student can undo a wrong mark at any time.
-  A done undated item with another warning chip, such as Redo requested, goes to Done instead, so the Done header counts the warning.
-  A checked undated item that Canvas marks missing stays open in the group (see "Checked but missing").
+  A done undated item with a warning chip, such as Redo requested or Missing in Canvas, goes to Done instead, so the Done header counts the warning.
 - When the student marks an item done, skips it or deletes a task, an "Undo" notice shows.
   The notice has no timer: it stays until the student acts again or closes it.
   Ctrl+Z (Cmd+Z on a Mac) also undoes while the notice shows.
   A fixed time limit would fail keyboard and screen reader users, who need time to reach the notice.
+
+**Checked but missing:**
+
+The owner reversed the first rule on 2026-10-29, after testing on a real Canvas.
+A checked item never counts as late.
+
+- When the student checks an item that Canvas marks missing, the item is done.
+- It goes to Done like any other done item.
+- It counts as done in the rings.
+  It adds nothing to Past due or to any "N late" badge.
+- It keeps the red "Missing in Canvas" chip, because Canvas still counts the work as missing (decision 7).
+  The Done header counts that chip as a warning, so the student sees it without opening the group.
+- A done item has no Skip action.
+  When the student unchecks it, it is open again: it goes back to Past due with the red "Missing" chip, and Skip is offered there.
+- Why: a student who checked an item has decided that it is finished.
+  A list that keeps calling that item late hides the student's own progress.
+  The red chip still tells the student what Canvas thinks.
 
 **Skip:**
 
@@ -508,7 +511,6 @@ The owner chose this rule after testing: one stray click, or an untick and a ret
   They stay separate, because a skipped item is not finished, and a done mark can complete a module requirement (decision 2).
 - Skip sends the override with `dismissed` set to true and the current `marked_complete` value [10].
   For work handed in on Canvas with a redo request, Skip sends `marked_complete` false, because the done mark no longer applies.
-  The same holds for checked work that Canvas still marks missing.
 - Canvas uses the same flag for its own list of missing work [10].
   The first Skip shows a one-time note: "Skipping also hides this item in Canvas's list of missing work."
 - In Past due and No due date, skipped items leave the group.
@@ -594,7 +596,7 @@ Availability is a separate small marker next to the status chip, because it answ
 **Chips on done items:**
 
 - **Missing in Canvas:** the student checked the item off, but Canvas still marks it missing.
-  This warning shows for every hand-in method, on the checked item in its open place (decision 6, "Checked but missing").
+  This warning shows for every hand-in method, on the checked item in Done (decision 6, "Checked but missing").
   For work handed in outside Canvas, Canvas reports missing only when the teacher set it [10], and the tip says so.
 - **Redo requested:** the student checked off work handed in outside Canvas, but the teacher asked for a redo.
   This is a warning chip (see decision 8).
@@ -672,7 +674,7 @@ Availability is a separate small marker next to the status chip, because it answ
   In every span, every course with items in Past due also has a ring.
 - A ring counts items, not points, as in the original [9].
   Skipped items and reminders do not count.
-  A checked item that Canvas still marks missing counts as not done.
+  A checked item that Canvas still marks missing counts as done.
 - A course with no items in the span shows an empty ring.
 - The chart center shows a check mark at 100 percent only when no course has an item in Past due.
   Otherwise, the legend row of a course shows the number of its past-due items.

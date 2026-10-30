@@ -86,8 +86,8 @@ describe('the fixture scenario: the span that starts today', () => {
       [assignment(A.historyEssayDraft)]: 'past_due.items',
       [assignment(A.chemLab6PastDue)]: 'past_due.items',
       [assignment(A.mathProblemSet5LockedMissing)]: 'past_due.older',
-      // Checked, but the teacher marked it missing: it stays in Past due (decision 6).
-      [assignment(A.mathHomework3)]: 'past_due.older',
+      // Checked, but the teacher marked it missing: it is done, with a warning (decision 6).
+      [assignment(A.mathHomework3)]: 'done.items',
       [assignment(A.mathHomework5)]: 'past_due.older',
       [assignment(A.bioLabReport2)]: 'past_due.older',
       [assignment(A.orientationModule3Missing)]: 'past_due.older',
@@ -170,19 +170,19 @@ describe('the fixture scenario: the span that starts today', () => {
       isReminder: true,
       handInChip: { kind: 'no_hand_in' },
     });
-    // Checked but missing: it shows checked, with the red chip, and Skip in Past due.
+    // Checked but missing: it is done, with the red chip, and offers no Skip.
     expect(findItem(view, assignment(A.mathHomework3))).toMatchObject({
       state: 'done',
       chip: null,
       doneChips: [{ kind: 'missing_in_canvas', teacherSet: true }],
       hasWarning: true,
-      canSkip: true,
+      canSkip: false,
     });
     expect(findItem(view, assignment(A.mathHomework4)).doneChips).toEqual([
       { kind: 'redo_requested' },
     ]);
-    // Done counts only its own warnings: Homework 4's redo request.
-    expect(view.groups.find((group) => group.kind === 'done')?.warningCount).toBe(1);
+    // Done counts its warnings: Homework 3 is missing in Canvas, and Homework 4 has a redo request.
+    expect(view.groups.find((group) => group.kind === 'done')?.warningCount).toBe(2);
   });
 
   it('builds the rings in dashboard order with course codes and colors', () => {
@@ -218,8 +218,8 @@ describe('the fixture scenario: the span that starts today', () => {
         shortLabel: 'MATH 221',
         done: 0,
         total: 3,
-        // Homework 3 is checked, but Canvas still counts it as missing.
-        pastDue: 5,
+        // Homework 3 is checked, so it is done and never late.
+        pastDue: 4,
       },
       {
         courseId: C.chemistry,

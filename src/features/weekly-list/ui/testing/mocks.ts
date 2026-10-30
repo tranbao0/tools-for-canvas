@@ -150,8 +150,8 @@ export function et(date: string, time: string): string {
 }
 
 /**
- * Paper work the student checked off that the teacher still marks missing in Canvas: it stays in
- * Past due, checked, with the "Missing in Canvas" chip and Skip (decision 6, "Checked but missing").
+ * Paper work the student checked off that the teacher still marks missing in Canvas: it is done,
+ * in Done, with the "Missing in Canvas" chip and no Skip (decision 6, "Checked but missing").
  */
 export function checkedButMissing(patch: Partial<ItemView> = {}): ItemView {
   return mkItem({
@@ -165,7 +165,7 @@ export function checkedButMissing(patch: Partial<ItemView> = {}): ItemView {
     facts: { ...NO_FACTS, missing: true, latePolicyStatus: 'missing' },
     doneChips: [{ kind: 'missing_in_canvas', teacherSet: true }],
     hasWarning: true,
-    canSkip: true,
+    canSkip: false,
     ...patch,
   });
 }
@@ -191,7 +191,6 @@ export function currentWeekGroups(): ListGroup[] {
           canSkip: true,
           canMoveToToday: true,
         }),
-        checkedButMissing(),
         mkItem({
           title: 'Lab 5 report: Enzyme kinetics and the Michaelis-Menten model',
           course: 'bio',
@@ -358,8 +357,9 @@ export function currentWeekGroups(): ListGroup[] {
     }),
     mkGroup({
       kind: 'done',
-      warningCount: 1,
+      warningCount: 2,
       items: [
+        checkedButMissing(),
         mkItem({
           title: 'Read chapter 7',
           course: 'psyc',
@@ -400,8 +400,8 @@ export function currentWeekGroups(): ListGroup[] {
 export function currentRings(): Ring[] {
   return [
     ring('bio', 1, 3, 1),
-    // Worksheet 4 is checked but still missing in Canvas, so it counts as past due, not done.
-    ring('chem', 0, 3, 1),
+    // Worksheet 4 is checked but still missing in Canvas, and it counts as done.
+    ring('chem', 1, 3, 1),
     ring('engl', 1, 4, 0),
     ring('math', 1, 4, 1),
     ring('hist', 0, 2, 0),
@@ -431,6 +431,53 @@ export function mkView(patch: Partial<WeekView> = {}): WeekView {
     scopeCourseHidden: false,
     ...patch,
   };
+}
+
+/**
+ * The view of the next span: Past due with the same overdue work as the span that starts today,
+ * then the days of the span. The rings count the work of the span, and the badges count Past due.
+ */
+export function laterSpanView(): WeekView {
+  const pastDue = currentWeekGroups().find((group) => group.kind === 'past_due');
+  if (!pastDue) throw new Error('The current span has no Past due group.');
+  return mkView({
+    spanStart: '2026-11-03',
+    spanEnd: '2026-11-09',
+    spanOffset: 1,
+    isCurrentSpan: false,
+    hiddenCourseCount: 0,
+    rings: [
+      ring('bio', 0, 1, 1),
+      ring('chem', 0, 0, 1),
+      ring('math', 0, 2, 1),
+      ring(null, 0, 0, 1),
+    ],
+    groups: [
+      pastDue,
+      mkGroup({
+        kind: 'day',
+        date: '2026-11-03',
+        items: [
+          mkItem({
+            title: 'Lab report 3',
+            course: 'bio',
+            due: et('2026-11-03', '23:59'),
+          }),
+          mkItem({
+            title: 'Quiz 8',
+            course: 'math',
+            kind: 'quiz',
+            due: et('2026-11-03', '10:00'),
+          }),
+        ],
+      }),
+      mkGroup({
+        kind: 'day',
+        date: '2026-11-05',
+        items: [mkItem({ title: 'Problem Set 8', course: 'math', due: et('2026-11-05', '23:59') })],
+      }),
+    ],
+  });
 }
 
 /** The view of the previous span: day groups with status chips, then Done. */

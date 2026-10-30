@@ -179,6 +179,12 @@ Use a new, empty profile, and the student account.
     Expect: the Canvas To Do list and the Canvas mobile app show the item as done.
 11. Uncheck the same item.
     Expect: the item is open again, not skipped.
+    Check off a past-due item that Canvas marks missing, such as a paper worksheet that the teacher marked missing.
+    Expect: the item leaves Past due and goes to Done, with the red "Missing in Canvas" chip and no Skip link.
+    Expect: the ring of its course counts the item as done, and no "N late" badge counts it.
+    Expect: the Done header shows a warning count that includes the item.
+    Uncheck it.
+    Expect: the item is in Past due again, with the red "Missing" chip.
 12. Skip a past-due item with the Skip link on its due line.
     Expect: the one-time note says "Skipping also hides this item in Canvas's list of missing work.", and the item moves to the "N skipped" line.
     Unskip it.

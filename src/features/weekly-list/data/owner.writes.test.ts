@@ -372,9 +372,10 @@ describe('skip', () => {
     const h = await loaded();
     const before = expectReady(await h.owner.getState(PANEL));
     const older = before.view.groups.find((group) => group.kind === 'past_due')?.older ?? [];
-    expect(older.length).toBe(5);
+    expect(older.length).toBe(4);
     const states = new Map(older.map((entry) => [entry.key, entry.state]));
-    expect(states.get(HOMEWORK_3)).toBe('done');
+    // Homework 3 is checked, and Canvas marks it missing: it is done, so it is not in the list.
+    expect(states.has(HOMEWORK_3)).toBe(false);
 
     const keys = older.map((entry) => entry.key);
     const reply = await h.owner.act({ kind: 'skip', keys });
@@ -389,11 +390,6 @@ describe('skip', () => {
     // the done flag goes false: a resubmission then sets it again and clears the skip.
     expect(h.canvas.callsOf('updateOverride')).toContainEqual([
       IDS.overrides.bioLabReport2,
-      { markedComplete: false, dismissed: true },
-    ]);
-    // Homework 3 is checked, but Canvas marks it missing, so its done flag goes false too.
-    expect(h.canvas.callsOf('updateOverride')).toContainEqual([
-      IDS.overrides.mathHomework3,
       { markedComplete: false, dismissed: true },
     ]);
     expect(h.canvas.callsOf('createOverride')).toHaveLength(3);
@@ -412,7 +408,7 @@ describe('skip', () => {
 });
 
 describe('checked but missing', () => {
-  /** Where an item shows in the current week, such as `past_due.older`. */
+  /** Where an item shows in the span, such as `past_due.older` or `done.items`. */
   async function placeOf(h: Harness, key: string): Promise<string | null> {
     const state = expectReady(await h.owner.getState(PANEL));
     for (const group of state.view.groups) {
@@ -423,31 +419,33 @@ describe('checked but missing', () => {
     return null;
   }
 
-  it('stays in Past due across an untick and a retick, and counts as past due', async () => {
+  it('is done and never late: an untick makes it late, and a retick takes it out of Past due', async () => {
     const h = await loaded();
     const calculus = async () =>
       expectReady(await h.owner.getState(PANEL)).view.rings.find(
         (ring) => ring.courseId === IDS.courses.calculus,
       );
-    expect(await placeOf(h, HOMEWORK_3)).toBe('past_due.older');
-    expect(await item(h, HOMEWORK_3)).toMatchObject({ state: 'done', canSkip: true });
-    const pastDue = (await calculus())?.pastDue;
+    expect(await placeOf(h, HOMEWORK_3)).toBe('done.items');
+    expect(await item(h, HOMEWORK_3)).toMatchObject({
+      state: 'done',
+      canSkip: false,
+      doneChips: [{ kind: 'missing_in_canvas', teacherSet: true }],
+    });
+    const pastDue = (await calculus())?.pastDue ?? 0;
 
     await h.owner.act({ kind: 'setDone', key: HOMEWORK_3, done: false });
     expect(await placeOf(h, HOMEWORK_3)).toBe('past_due.older');
     expect(await item(h, HOMEWORK_3)).toMatchObject({ state: 'open', chip: { kind: 'missing' } });
+    expect((await calculus())?.pastDue).toBe(pastDue + 1);
     await h.owner.settled();
 
     const reply = await h.owner.act({ kind: 'setDone', key: HOMEWORK_3, done: true });
     expect(reply.undo?.kind).toBe('overrides');
-    expect(await placeOf(h, HOMEWORK_3)).toBe('past_due.older');
+    expect(await placeOf(h, HOMEWORK_3)).toBe('done.items');
     await h.owner.settled();
 
-    expect(await item(h, HOMEWORK_3)).toMatchObject({
-      state: 'done',
-      doneChips: [{ kind: 'missing_in_canvas', teacherSet: true }],
-    });
-    expect(await placeOf(h, HOMEWORK_3)).toBe('past_due.older');
+    expect(await item(h, HOMEWORK_3)).toMatchObject({ state: 'done', canSkip: false });
+    expect(await placeOf(h, HOMEWORK_3)).toBe('done.items');
     expect((await calculus())?.pastDue).toBe(pastDue);
     expect(h.canvas.callsOf('updateOverride')).toEqual([
       [IDS.overrides.mathHomework3, { markedComplete: false, dismissed: false }],
@@ -455,20 +453,23 @@ describe('checked but missing', () => {
     ]);
   });
 
-  it('leaves Past due when skipped, with marked_complete false, and comes back on Undo', async () => {
+  it('can be skipped once it is unchecked, and comes back on Undo', async () => {
     const h = await loaded();
+    await h.owner.act({ kind: 'setDone', key: HOMEWORK_3, done: false });
+    await h.owner.settled();
 
     const reply = await h.owner.act({ kind: 'skip', keys: [HOMEWORK_3] });
     expect(await placeOf(h, HOMEWORK_3)).toBe('past_due.skipped');
     await h.owner.settled();
     expect(h.canvas.callsOf('updateOverride')).toEqual([
+      [IDS.overrides.mathHomework3, { markedComplete: false, dismissed: false }],
       [IDS.overrides.mathHomework3, { markedComplete: false, dismissed: true }],
     ]);
 
     await h.owner.act(restoreOf(reply));
     await h.owner.settled();
     expect(await placeOf(h, HOMEWORK_3)).toBe('past_due.older');
-    expect((await item(h, HOMEWORK_3))?.state).toBe('done');
+    expect((await item(h, HOMEWORK_3))?.state).toBe('open');
   });
 });
 

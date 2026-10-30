@@ -113,8 +113,7 @@ function pastDueSlot(
 
 /**
  * The one place of an item, or `null` when it does not show in this view.
- * `state` is the placement state from `placementState`, so a checked item that Canvas marks
- * missing comes in as open. `hasWarning` is true for a done item with a warning chip.
+ * `hasWarning` is true for a done item with a warning chip.
  */
 export function slotFor(
   item: Item,

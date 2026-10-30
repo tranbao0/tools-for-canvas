@@ -28,6 +28,7 @@ import {
   eightCoursesView,
   et,
   hiddenCourseView,
+  laterSpanView,
   limitedFilteredView,
   mkGroup,
   mkItem,
@@ -151,14 +152,13 @@ async function openGear(root: ParentNode): Promise<void> {
   await tick();
 }
 
-/** A week with one checked item that Canvas still marks missing, in Past due and on a day. */
+/** A span with one checked item that Canvas still marks missing, in Done beside late work. */
 function checkedMissingView() {
   return mkView({
     groups: [
       mkGroup({
         kind: 'past_due',
         items: [
-          checkedButMissing(),
           mkItem({
             title: 'Lab 5 report',
             course: 'bio',
@@ -176,10 +176,12 @@ function checkedMissingView() {
           mkItem({ title: 'Quiz 7', course: 'math', kind: 'quiz', due: et('2026-10-27', '23:59') }),
         ],
       }),
+      mkGroup({ kind: 'done', warningCount: 1, items: [checkedButMissing()] }),
     ],
-    rings: mkView().rings.filter(
-      (r) => r.courseId === COURSES.chem.id || r.courseId === COURSES.bio.id,
-    ),
+    // The checked worksheet of Chemistry counts as done, so Chemistry has nothing late.
+    rings: mkView()
+      .rings.filter((r) => r.courseId === COURSES.chem.id || r.courseId === COURSES.bio.id)
+      .map((r) => (r.courseId === COURSES.chem.id ? { ...r, pastDue: 0 } : r)),
     hiddenCourseCount: 0,
   });
 }
@@ -230,6 +232,17 @@ const scenes: Scene[] = [
     render: app('panel', readyState({ view: pastSpanView() })),
   },
   {
+    name: 'ready-later-span',
+    widths: PANEL_WIDTHS,
+    render: app('panel', readyState({ view: laterSpanView() })),
+  },
+  {
+    name: 'inpage-later-span',
+    widths: [240],
+    shadow: true,
+    render: app('inpage', readyState({ view: laterSpanView() })),
+  },
+  {
     name: 'ready-span-day',
     widths: PANEL_WIDTHS,
     render: app(
@@ -251,8 +264,8 @@ const scenes: Scene[] = [
       readyState({
         view: mkView({
           span: { kind: 'month', days: 7 },
-          spanStart: '2026-10-01',
-          spanEnd: '2026-10-31',
+          spanStart: '2026-10-27',
+          spanEnd: '2026-11-26',
         }),
       }),
     ),
@@ -281,8 +294,8 @@ const scenes: Scene[] = [
         view: {
           ...busyWeekView(),
           span: { kind: 'fortnight', days: 7 },
-          spanStart: '2026-10-25',
-          spanEnd: '2026-11-07',
+          spanStart: '2026-10-27',
+          spanEnd: '2026-11-09',
         },
       }),
     ),

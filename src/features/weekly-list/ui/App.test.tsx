@@ -152,7 +152,7 @@ describe('rings', () => {
     ).toBeTruthy();
     expect(
       screen.getByRole('button', {
-        name: 'CHEM 210 Organic Chemistry I: 0 of 3 done in these 7 days, 1 past due',
+        name: 'CHEM 210 Organic Chemistry I: 1 of 3 done in these 7 days, 1 past due',
       }),
     ).toBeTruthy();
     expect(
@@ -165,11 +165,11 @@ describe('rings', () => {
     ).toBeTruthy();
   });
 
-  it('shows the week total in the center', () => {
+  it('shows the total of the span in the center', () => {
     setup();
     const center = document.querySelector('.wr-chart-center');
-    expect(center?.querySelector('b')?.textContent).toBe('22%');
-    expect(center?.querySelector('span')?.textContent).toBe('4/18');
+    expect(center?.querySelector('b')?.textContent).toBe('28%');
+    expect(center?.querySelector('span')?.textContent).toBe('5/18');
     expect(center?.querySelector('svg')).toBeNull();
   });
 
@@ -211,7 +211,7 @@ describe('rings', () => {
     const { rerender } = setup();
     expect(document.querySelector('.wr-chart-center')?.getAttribute('aria-hidden')).toBe('true');
     expect(document.querySelector('.wr-chart .wr-sr')?.textContent).toBe(
-      'Progress in these 7 days: 4 of 18 done, 22 percent',
+      'Progress in these 7 days: 5 of 18 done, 28 percent',
     );
     rerender(readyState({ view: mkView({ rings: [ringOf({ done: 3, total: 3 })] }) }));
     expect(document.querySelector('.wr-chart .wr-sr')?.textContent).toBe(
@@ -476,13 +476,13 @@ describe('groups', () => {
           .join('|'),
       );
     expect(headings).toEqual([
-      'Past due||7 items',
+      'Past due||6 items',
       'Today|Oct 27|3 items',
       'Tomorrow|Oct 28|2 items',
       'Thursday|Oct 29|3 items',
       'Friday|Oct 30|3 items',
       'No due date||2 items',
-      'Done||4 items',
+      'Done||5 items',
     ]);
   });
 
@@ -506,7 +506,7 @@ describe('groups', () => {
   it('shows the Done warning count on the collapsed header', () => {
     setup();
     const toggle = screen.getByRole('button', { name: /^Done/ });
-    expect(toggle.textContent).toContain('1 warning');
+    expect(toggle.textContent).toContain('2 warnings');
     fireEvent.click(toggle);
     expect(within(row('Essay 1 revision')).getByText('Redo requested')).toBeTruthy();
   });
@@ -685,8 +685,13 @@ describe('in-page list', () => {
       expect(shown()).toEqual(['Late one', 'Late two']);
     });
 
-    it('counts a checked item that Canvas still marks missing', () => {
-      const group = mkGroup({ kind: 'past_due', items: [checkedButMissing()] });
+    it('counts the items that Canvas marks missing', () => {
+      const missing = mkItem({
+        title: 'Worksheet 5',
+        chip: { kind: 'missing' },
+        facts: { ...checkedButMissing().facts },
+      });
+      const group = mkGroup({ kind: 'past_due', items: [missing] });
       setup(stateOf(group), 'inpage');
       expect(screen.getByRole('button', { name: /^1 past due/ }).textContent).toBe(
         '1 past due1 missing',
@@ -1027,21 +1032,21 @@ describe('items', () => {
 });
 
 describe('checked but missing', () => {
-  it('keeps a checked item that Canvas marks missing in Past due, checked, with its chip and Skip', () => {
+  it('is a done item in Done, checked, with its chip and no Skip', () => {
     const { actions } = setup();
-    const past = document.querySelector<HTMLElement>('section[data-group="past_due"]');
-    if (!past) throw new Error('no Past due');
+    fireEvent.click(screen.getByRole('button', { name: /^Done/ }));
+    const done = document.querySelector<HTMLElement>('section[data-group="done"]');
+    if (!done) throw new Error('no Done');
     const item = row('Worksheet 4');
-    expect(past.contains(item)).toBe(true);
+    expect(done.contains(item)).toBe(true);
     const box = within(item).getByRole('checkbox', {
       name: 'Done: Worksheet 4',
     }) as HTMLInputElement;
     expect(box.checked).toBe(true);
     expect(within(item).getByRole('button', { name: /Missing in Canvas/ })).toBeTruthy();
-    // It reads as open work: the title keeps the link color.
-    expect(item.classList.contains('is-done')).toBe(false);
-    fireEvent.click(within(item).getByRole('button', { name: 'Skip Worksheet 4' }));
-    expect(actions.skip).toHaveBeenCalledWith(item.dataset.rowKey);
+    expect(within(item).queryByRole('button', { name: /^Skip/ })).toBeNull();
+    expect(item.classList.contains('is-done')).toBe(true);
+    // Unchecking sends the done mark away, and the item is late again.
     fireEvent.click(box);
     expect(actions.setDone).toHaveBeenCalledWith(item.dataset.rowKey, false);
   });

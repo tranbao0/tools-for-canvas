@@ -20,7 +20,6 @@ import {
   handInChipFor,
   hasWarningChip,
   itemState,
-  placementState,
   redoBlocksDone,
   statusChip,
 } from './rules';
@@ -53,8 +52,6 @@ interface Placed {
   slot: Slot;
   /** Dated in the shown span. */
   datedInSpan: boolean;
-  /** Counts as done in the rings. A checked item that Canvas marks missing does not. */
-  countsDone: boolean;
 }
 
 function placementContext(
@@ -105,9 +102,7 @@ function placeItem(item: Item, input: ModelInput, context: PlacementContext): Pl
   const state = itemState(item);
   const doneChips = doneChipsFor(item, state);
   const hasWarning = hasWarningChip(doneChips);
-  // A checked item that Canvas marks missing keeps the place of open work (decision 6).
-  const placeAs = placementState(item, state);
-  const slot = slotFor(item, placeAs, hasWarning, context);
+  const slot = slotFor(item, state, hasWarning, context);
   if (slot === null) return null;
   const gradeStatuses =
     item.courseId !== null ? input.customGradeStatuses[item.courseId] : undefined;
@@ -119,12 +114,12 @@ function placeItem(item: Item, input: ModelInput, context: PlacementContext): Pl
       showPastDueChip: slot.group !== 'past_due',
       gradeStatuses,
     }),
-    availability: availabilityFor(item, placeAs, context.now),
+    availability: availabilityFor(item, state, context.now),
     handInChip: handInChipFor(item),
     doneChips,
     hasWarning,
     checkboxDisabled: redoBlocksDone(item),
-    canSkip: placeAs === 'open' && slotOffersSkip(slot),
+    canSkip: state === 'open' && slotOffersSkip(slot),
     canMoveToToday: canMoveToToday(item, state, context),
     isLookAhead: isLookAheadSlot(slot),
   };
@@ -132,7 +127,6 @@ function placeItem(item: Item, input: ModelInput, context: PlacementContext): Pl
     view,
     slot,
     datedInSpan: isDatedInSpan(item, context),
-    countsDone: placeAs === 'done',
   };
 }
 
@@ -142,7 +136,7 @@ function ringEntry(placed: Placed): RingEntry {
     courseId: view.courseId,
     contextLabel: view.contextLabel,
     counted: placed.datedInSpan && view.state !== 'skipped' && !view.isReminder,
-    done: placed.countsDone,
+    done: view.state === 'done',
     pastDue: isCountedPastDue(placed.slot),
   };
 }

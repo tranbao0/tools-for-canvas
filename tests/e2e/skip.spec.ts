@@ -110,22 +110,23 @@ test.describe('skip', () => {
     await saveAddress(background, canvas.origin);
     await openExtensionPage(page, extensionUrl('sidepanel.html'));
     const pastDue = group(page, 'past_due');
-    const older = pastDue.getByRole('button', { name: '5 older' });
+    const older = pastDue.getByRole('button', { name: '4 older' });
     await expect(older).toBeVisible();
     await settledList(page);
     // Lab report 2 is checked off, but the teacher asked for a redo, so it is open and past due.
     const labReport2 = state.overrideFor('assignment', A.bioLabReport2);
     expect(labReport2).toMatchObject({ id: IDS.overrides.bioLabReport2, marked_complete: true });
-    // Homework 3 is checked off, but the teacher marked it missing, so it stays in Past due.
+    // Homework 3 is checked off, and the teacher marked it missing: it is done, so it is not in
+    // the list and Skip all older leaves it alone.
     const homework3 = state.overrideFor('assignment', A.mathHomework3);
     expect(homework3).toMatchObject({ id: IDS.overrides.mathHomework3, marked_complete: true });
 
     await pastDue.getByRole('button', { name: 'Skip all older' }).click();
 
     await expect(older).toHaveCount(0);
-    await expect(pastDue.getByRole('button', { name: '6 skipped' })).toBeVisible();
-    await expect(page.locator('.wr-toast')).toContainText('Skipped 5 older items');
-    await expect.poll(() => overrideWrites(canvas).length).toBe(5);
+    await expect(pastDue.getByRole('button', { name: '5 skipped' })).toBeVisible();
+    await expect(page.locator('.wr-toast')).toContainText('Skipped 4 older items');
+    await expect.poll(() => overrideWrites(canvas).length).toBe(4);
     const skips = overrideWrites(canvas);
     expect(skips.map((write) => `${write.method} ${write.path}`).sort()).toEqual(
       [
@@ -133,7 +134,6 @@ test.describe('skip', () => {
         'POST /api/v1/planner/overrides',
         'POST /api/v1/planner/overrides',
         `PUT /api/v1/planner/overrides/${IDS.overrides.bioLabReport2}`,
-        `PUT /api/v1/planner/overrides/${IDS.overrides.mathHomework3}`,
       ].sort(),
     );
     expect(skips.filter((write) => write.method === 'POST').map((write) => write.body)).toEqual(
@@ -149,8 +149,7 @@ test.describe('skip', () => {
       ),
     );
     // A skip keeps the current done flag, except where the done flag does not count: on work
-    // whose redo request blocks done, so a resubmission marks it done again and clears the skip,
-    // and on checked work that Canvas still marks missing.
+    // whose redo request blocks done, so a resubmission marks it done again and clears the skip.
     for (const write of skips.filter((entry) => entry.method === 'PUT')) {
       expect(write.body).toEqual({ marked_complete: false, dismissed: true });
     }
@@ -160,13 +159,12 @@ test.describe('skip', () => {
 
     await expect(older).toBeVisible();
     await expect(pastDue.getByRole('button', { name: '1 skipped' })).toBeVisible();
-    await expect.poll(() => overrideWrites(canvas).length).toBe(10);
-    const restores = overrideWrites(canvas).slice(5);
+    await expect.poll(() => overrideWrites(canvas).length).toBe(8);
+    const restores = overrideWrites(canvas).slice(4);
     const expected = new Map([
       [A.mathProblemSet5LockedMissing, { marked_complete: false, dismissed: false }],
       [A.mathHomework5, { marked_complete: false, dismissed: false }],
       [A.bioLabReport2, { marked_complete: true, dismissed: false }],
-      [A.mathHomework3, { marked_complete: true, dismissed: false }],
       [A.orientationModule3Missing, { marked_complete: false, dismissed: false }],
     ]);
     for (const [assignmentId, flags] of expected) {
@@ -182,10 +180,9 @@ test.describe('skip', () => {
     }
     await refreshedSince(page, canvas, from);
     await page.getByRole('button', { name: 'Got it' }).click();
-    await pastDue.getByRole('button', { name: '5 older' }).click();
+    await pastDue.getByRole('button', { name: '4 older' }).click();
     await expect(doneBox(pastDue, 'Lab report 2: Enzymes')).toBeVisible();
-    await expect(doneBox(pastDue, 'Homework 3')).toBeChecked();
-    expect(overrideWrites(canvas)).toHaveLength(10);
+    expect(overrideWrites(canvas)).toHaveLength(8);
     expect(canvas.unmatched).toEqual([]);
   });
 });

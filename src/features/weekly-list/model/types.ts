@@ -183,9 +183,8 @@ export type DoneChip =
 export interface ItemView extends Item {
   /**
    * `done` is a checked item. A checked item that Canvas still marks missing is `done` too, with a
-   * `missing_in_canvas` done chip: it shows checked where open work goes (Past due, its day or
-   * No due date), offers Skip there, and counts as not done in the rings and the past-due badge
-   * (decision 6, "Checked but missing"). `isCheckedButMissing(item, item.state)` tells it apart.
+   * `missing_in_canvas` done chip: it is in Done, counts as done in the rings, and adds nothing to
+   * Past due or to a late badge (decision 6, "Checked but missing").
    */
   state: ItemState;
   chip: StatusChip | null;
@@ -195,10 +194,7 @@ export interface ItemView extends Item {
   hasWarning: boolean;
   /** Work handed in on Canvas with a redo request. */
   checkboxDisabled: boolean;
-  /**
-   * Skip shows next to the checkbox: open work in Past due or No due date, and checked work there
-   * that Canvas marks missing. Read it on its own, not together with `state`.
-   */
+  /** Skip shows next to the checkbox: open work in Past due or No due date. */
   canSkip: boolean;
   /** A custom task with a past date. */
   canMoveToToday: boolean;
@@ -220,7 +216,7 @@ export interface ListGroup {
   skipped: ItemView[];
   /** `no_due_date` only: done undated items, behind "N done". */
   doneUndated: ItemView[];
-  /** `done` only: done items with a warning chip. Checked work that Canvas marks missing is never in Done. */
+  /** `done` only: done items with a warning chip. */
   warningCount: number;
 }
 

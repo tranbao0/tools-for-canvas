@@ -1,7 +1,8 @@
 /**
- * "Checked but missing" (design decisions 6, 7 and 8). A check on work that Canvas marks missing
- * never hides it: the item stays in Past due, checked, with the red "Missing in Canvas" chip,
- * counts as not done in the rings and the past-due badge, and leaves only when it is skipped.
+ * "Checked but missing" (design decisions 6, 7 and 8). A checked item never counts as late: the
+ * item that Canvas marks missing goes to Done with the red "Missing in Canvas" chip, counts as
+ * done in the rings, and adds nothing to Past due or to a late badge, in any span. An uncheck
+ * puts it back in Past due.
  */
 import type { Locator, Page } from '@playwright/test';
 import { IDS } from '../fixtures/scenario';
@@ -27,25 +28,16 @@ function biologyRing(page: Page): Promise<string | null> {
   return page.getByRole('button', { name: /^BIO 110/ }).getAttribute('aria-label');
 }
 
-async function expectInPastDue(pastDue: Locator, checked: boolean): Promise<Locator> {
-  const row = mainRows(pastDue).filter({ hasText: PRE_LAB_7 });
-  await expect(row).toHaveCount(1);
-  const box = doneBox(row, PRE_LAB_7);
-  if (checked) {
-    await expect(box).toBeChecked();
-    await expect(row.getByText('Missing in Canvas', { exact: true })).toBeVisible();
-    await expect(row.getByText('Missing', { exact: true })).toHaveCount(0);
-  } else {
-    await expect(box).not.toBeChecked();
-    await expect(row.getByText('Missing', { exact: true })).toBeVisible();
-    await expect(row.getByText('Missing in Canvas', { exact: true })).toHaveCount(0);
-  }
-  // Skip stays next to the checkbox, checked or not.
-  await expect(row.getByRole('button', { name: `Skip ${PRE_LAB_7}` })).toBeVisible();
-  return box;
+/** The late count in the name of the Biology ring, or 0 when the name has none. */
+async function lateCount(page: Page): Promise<number> {
+  return Number(/(\d+) past due/.exec((await biologyRing(page)) ?? '')?.[1] ?? '0');
 }
 
-test('checked work that Canvas marks missing stays in Past due across an untick and a retick', async ({
+function row(section: Locator): Locator {
+  return mainRows(section).filter({ hasText: PRE_LAB_7 });
+}
+
+test('checked work that Canvas marks missing is done, never late, and late again when unchecked', async ({
   context,
   page,
   background,
@@ -58,15 +50,19 @@ test('checked work that Canvas marks missing stays in Past due across an untick 
   const pastDue = group(page, 'past_due');
   await expect(doneBox(pastDue, PRE_LAB_7)).toBeVisible();
   await settledList(page);
+  const late = await lateCount(page);
+  expect(late).toBeGreaterThan(0);
   const rows = await mainRows(pastDue).count();
-  const ring = await biologyRing(page);
-  expect(ring).toMatch(/past due/);
+  const open = row(pastDue);
+  await expect(open.getByText('Missing', { exact: true })).toBeVisible();
+  await expect(open.getByRole('button', { name: `Skip ${PRE_LAB_7}` })).toBeVisible();
 
-  // Check: the item stays, checked, with the red chip, and the ring does not change.
+  // Check: it leaves Past due and the late count, and goes to Done with the red chip.
   let from = canvas.requests.length;
-  await (await expectInPastDue(pastDue, false)).click();
-  await expectInPastDue(pastDue, true);
-  await expect(mainRows(pastDue)).toHaveCount(rows);
+  await doneBox(open, PRE_LAB_7).click();
+  await expect(open).toHaveCount(0);
+  await expect(mainRows(pastDue)).toHaveCount(rows - 1);
+  await expect.poll(() => lateCount(page)).toBe(late - 1);
   await expect.poll(() => overrideWrites(canvas).length).toBe(1);
   expect(overrideWrites(canvas)[0]).toMatchObject({
     method: 'POST',
@@ -77,49 +73,50 @@ test('checked work that Canvas marks missing stays in Past due across an untick 
     },
   });
   await refreshedSince(page, canvas, from);
-  await expectInPastDue(pastDue, true);
-  expect(await biologyRing(page)).toBe(ring);
-  // Done never holds it.
   const done = group(page, 'done');
+  await expect(done.getByText(/\d+ warnings?/)).toBeVisible();
   await done.getByRole('button').first().click();
-  await expect(done.getByText(PRE_LAB_7)).toHaveCount(0);
+  const doneRow = done.locator('li').filter({ hasText: PRE_LAB_7 });
+  await expect(doneBox(doneRow, PRE_LAB_7)).toBeChecked();
+  await expect(doneRow.getByText('Missing in Canvas', { exact: true })).toBeVisible();
+  await expect(doneRow.getByRole('button', { name: `Skip ${PRE_LAB_7}` })).toHaveCount(0);
+  expect(await lateCount(page)).toBe(late - 1);
 
-  // Untick: the checkbox changes, the place does not.
+  // It is no part of Past due or of a late badge in the next span either.
+  await page.getByRole('button', { name: 'Next week', exact: true }).click();
+  await settledList(page);
+  await expect(row(group(page, 'past_due'))).toHaveCount(0);
+  expect(await lateCount(page)).toBe(late - 1);
+  await page.getByRole('button', { name: 'Today', exact: true }).click();
+  await settledList(page);
+
+  // Uncheck: it is late again, with the red Missing chip and Skip.
   from = canvas.requests.length;
-  await (await expectInPastDue(pastDue, true)).click();
-  await expectInPastDue(pastDue, false);
+  await group(page, 'done').getByRole('button').first().click();
+  await doneBox(
+    group(page, 'done').locator('li').filter({ hasText: PRE_LAB_7 }),
+    PRE_LAB_7,
+  ).click();
+  await expect(row(pastDue)).toHaveCount(1);
+  await expect(row(pastDue).getByText('Missing', { exact: true })).toBeVisible();
+  await expect(row(pastDue).getByRole('button', { name: `Skip ${PRE_LAB_7}` })).toBeVisible();
+  await expect.poll(() => lateCount(page)).toBe(late);
   await expect.poll(() => overrideWrites(canvas).length).toBe(2);
   expect(overrideWrites(canvas)[1]).toMatchObject({
     method: 'PUT',
     body: { marked_complete: false, dismissed: false },
   });
   await refreshedSince(page, canvas, from);
-  await expectInPastDue(pastDue, false);
+  await expect(row(pastDue)).toHaveCount(1);
 
-  // Retick: the same.
-  from = canvas.requests.length;
-  await (await expectInPastDue(pastDue, false)).click();
-  await expectInPastDue(pastDue, true);
-  await expect.poll(() => overrideWrites(canvas).length).toBe(3);
-  expect(overrideWrites(canvas)[2]).toMatchObject({
-    method: 'PUT',
-    body: { marked_complete: true, dismissed: false },
-  });
-  await refreshedSince(page, canvas, from);
-  await expectInPastDue(pastDue, true);
-  await expect(mainRows(pastDue)).toHaveCount(rows);
-  expect(await biologyRing(page)).toBe(ring);
-  await expect(done.getByText(PRE_LAB_7)).toHaveCount(0);
-
-  // Skip is the way out, and it drops the done mark that Canvas does not count.
-  await mainRows(pastDue)
-    .filter({ hasText: PRE_LAB_7 })
+  // Skip is the way out from there.
+  await row(pastDue)
     .getByRole('button', { name: `Skip ${PRE_LAB_7}` })
     .click();
-  await expect(mainRows(pastDue).filter({ hasText: PRE_LAB_7 })).toHaveCount(0);
+  await expect(row(pastDue)).toHaveCount(0);
   await expect(pastDue.getByRole('button', { name: '2 skipped' })).toBeVisible();
-  await expect.poll(() => overrideWrites(canvas).length).toBe(4);
-  expect(overrideWrites(canvas)[3]).toMatchObject({
+  await expect.poll(() => overrideWrites(canvas).length).toBe(3);
+  expect(overrideWrites(canvas)[2]).toMatchObject({
     method: 'PUT',
     body: { marked_complete: false, dismissed: true },
   });

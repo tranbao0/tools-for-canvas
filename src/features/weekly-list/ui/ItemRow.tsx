@@ -6,7 +6,6 @@
 import { useState } from 'preact/hooks';
 import type { TargetedMouseEvent } from 'preact';
 import { t } from '../../../shared/ui/i18n';
-import { isCheckedButMissing } from '../model/rules';
 import type { ItemView, WeekView } from '../model/types';
 import { formatDateTime, formatTime } from './format';
 import { CheckIcon, ChevronDownIcon, TypeIcon } from '../../../shared/ui/icons';
@@ -99,8 +98,6 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
   const tags = itemTags(item, view.timeZone);
   const shownTip = tags.find((tag) => tag.id === openTip && tag.tip !== null) ?? null;
   const done = item.state === 'done';
-  // Checked, but Canvas still marks it missing: it stays with open work and reads as open.
-  const flagged = isCheckedButMissing(item, item.state);
   const whenLabel = whenText(item, view, when);
   const subtitle = subtitleText(item);
   const isNote = item.kind === 'note';
@@ -118,11 +115,7 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
     handlers.onOpen(item);
   };
 
-  const rowClass = [
-    'wr-item',
-    done && !flagged ? 'is-done' : '',
-    item.state === 'skipped' ? 'is-skipped' : '',
-  ]
+  const rowClass = ['wr-item', done ? 'is-done' : '', item.state === 'skipped' ? 'is-skipped' : '']
     .filter(Boolean)
     .join(' ');
 

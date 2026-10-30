@@ -4,10 +4,8 @@ import {
   doneChipsFor,
   handInChipFor,
   hasWarningChip,
-  isCheckedButMissing,
   isDone,
   itemState,
-  placementState,
   redoBlocksDone,
   statusChip,
   type ChipContext,
@@ -154,29 +152,31 @@ describe('itemState', () => {
 });
 
 describe('checked but missing', () => {
-  it('is a done item that Canvas still marks missing, placed as open work', () => {
+  it('is a done item that Canvas still marks missing, with the warning chip and no marker', () => {
     const checked = item({ override: marked, facts: { missing: true } });
     expect(itemState(checked)).toBe('done');
-    expect(isCheckedButMissing(checked, 'done')).toBe(true);
-    expect(placementState(checked, 'done')).toBe('open');
     expect(doneChipsFor(checked, 'done')).toEqual([
       { kind: 'missing_in_canvas', teacherSet: false },
     ]);
+    expect(hasWarningChip(doneChipsFor(checked, 'done'))).toBe(true);
+    expect(availabilityFor(checked, 'done', NOW)).toBeNull();
   });
 
-  it('covers work that is done by its submission too, and nothing that is not done', () => {
+  it('covers work that is done by its submission too, and shows no chip on it', () => {
     const submitted = item({ facts: { submitted: true, missing: true } });
-    expect(isCheckedButMissing(submitted, itemState(submitted))).toBe(true);
+    expect(itemState(submitted)).toBe('done');
+    expect(doneChipsFor(submitted, 'done')).toEqual([
+      { kind: 'missing_in_canvas', teacherSet: false },
+    ]);
+    expect(
+      statusChip(submitted, 'done', { now: NOW, showPastDueChip: true, gradeStatuses: [] }),
+    ).toBe(null);
+  });
 
-    const open = item({ facts: { missing: true } });
-    expect(isCheckedButMissing(open, itemState(open))).toBe(false);
-    expect(placementState(open, 'open')).toBe('open');
-
-    const skippedMissing = item({ override: skipped, facts: { missing: true } });
-    expect(placementState(skippedMissing, itemState(skippedMissing))).toBe('skipped');
-
-    const done = item({ override: marked });
-    expect(placementState(done, itemState(done))).toBe('done');
+  it('is open again, with the Missing chip, once the check is gone', () => {
+    const unchecked = item({ facts: { missing: true } });
+    expect(itemState(unchecked)).toBe('open');
+    expect(doneChipsFor(unchecked, 'open')).toEqual([]);
   });
 });
 

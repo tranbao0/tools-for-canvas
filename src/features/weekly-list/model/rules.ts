@@ -15,7 +15,10 @@ export function redoBlocksDone(item: Item): boolean {
   return item.facts.redoRequest && (item.handIn === 'canvas' || item.handIn === null);
 }
 
-/** The done rule in decision 8. */
+/**
+ * The done rule in decision 8. A checked item is done even when Canvas still marks the work
+ * missing: it then shows the "Missing in Canvas" warning chip, and it is never late.
+ */
 export function isDone(item: Item): boolean {
   if (redoBlocksDone(item)) return false;
   if (item.override !== null) return item.override.markedComplete;
@@ -40,23 +43,6 @@ export function itemState(item: Item): ItemState {
   if (isDone(item)) return 'done';
   if (item.override?.dismissed === true && !isDismissReplacedByRedo(item)) return 'skipped';
   return 'open';
-}
-
-/**
- * Checked, but Canvas still marks the work missing (decision 6, "Checked but missing"). Such an
- * item is done by the done rule, so it shows as checked with the "Missing in Canvas" chip, but it
- * stays where open work goes and counts as not done in the rings and the past-due badge.
- */
-export function isCheckedButMissing(item: Pick<Item, 'facts'>, state: ItemState): boolean {
-  return state === 'done' && item.facts.missing;
-}
-
-/**
- * The state that decides where an item goes and whether it counts as done: a checked item that
- * Canvas marks missing goes where open work goes.
- */
-export function placementState(item: Pick<Item, 'facts'>, state: ItemState): ItemState {
-  return isCheckedButMissing(item, state) ? 'open' : state;
 }
 
 export interface ChipContext {
@@ -91,8 +77,7 @@ export function statusChip(item: Item, state: ItemState, context: ChipContext): 
 
 /**
  * "Opens <date>" while the item is locked until a later date. "Closed" after the lock date, only
- * for work handed in on Canvas. Done items show no marker. Pass the placement state, so a
- * checked item that Canvas marks missing shows "Closed" like open work: Skip is then the action.
+ * for work handed in on Canvas. Done items show no marker.
  */
 export function availabilityFor(item: Item, state: ItemState, now: Temporal.Instant): Availability {
   if (state === 'done') return null;

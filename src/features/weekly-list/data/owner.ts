@@ -16,7 +16,7 @@ import type {
   TimeRange,
 } from '../../../shared/canvas/types';
 import { assignmentIdsToLookup } from '../model/normalize';
-import { isCheckedButMissing, itemState, redoBlocksDone } from '../model/rules';
+import { redoBlocksDone } from '../model/rules';
 import { moveToTodayTodoDate, todoDateFor } from '../model/tasks';
 import type { Item, Offer, Settings } from '../model/types';
 import { canAutoSaveOrigin, isUsableOrigin } from '../../../shared/platform/address';
@@ -248,15 +248,12 @@ function previousFlags(item: Item): OverrideFlags {
 }
 
 /**
- * The flags of a Skip: dismissed, with the current done flag. The done flag goes false where it
- * does not count: on work whose redo request blocks done, so a later submission that marks it
- * done clears the skip, and on checked work that Canvas still marks missing, which a done flag
- * would keep in place as checked (decision 6, "Checked but missing").
+ * The flags of a Skip: dismissed, with the current done flag. The done flag goes false on work
+ * whose redo request blocks done, so a later submission that marks it done clears the skip.
  */
 function skipFlags(item: Item): OverrideFlags {
-  const doneCounts = !redoBlocksDone(item) && !isCheckedButMissing(item, itemState(item));
   return {
-    markedComplete: doneCounts ? (item.override?.markedComplete ?? false) : false,
+    markedComplete: redoBlocksDone(item) ? false : (item.override?.markedComplete ?? false),
     dismissed: true,
   };
 }
