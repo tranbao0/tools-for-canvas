@@ -71,8 +71,13 @@ try {
     const text = await driver.findElement(By.css('[data-part="report"]')).getText();
     return text.includes('handshake') ? text : false;
   }, 20_000);
-  for (const title of ['From the background:', 'From an extension page:']) {
-    const section = report.slice(report.indexOf(title), report.indexOf(title) + 700);
+  // Each section ends where the next one starts, so one section cannot pass for another.
+  const titles = ['From the background:', 'From an extension page:', 'Note:'];
+  for (const [index, title] of titles.slice(0, 2).entries()) {
+    const start = report.indexOf(title);
+    assert.notEqual(start, -1, `missing section ${title}`);
+    const next = report.indexOf(titles[index + 1], start + title.length);
+    const section = report.slice(start, next === -1 ? undefined : next);
     assert.match(section, /hop 1 \(redirect\)/);
     assert.match(section, /hop 2 \(final\)/);
     assert.match(section, /first 5 bytes: %PDF-/);
@@ -86,4 +91,9 @@ try {
 } finally {
   await driver?.quit();
   await server.close();
+  // Put a store build back in the release folder, so later commands never use the test build.
+  execFileSync('npx', ['wxt', 'build', '-b', 'firefox'], {
+    stdio: 'inherit',
+    env: { ...process.env, WXT_E2E: '', FIREFOX_TEST_VERSION: '' },
+  });
 }

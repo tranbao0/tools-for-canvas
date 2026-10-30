@@ -11,7 +11,7 @@
 // geckodriver: $GECKODRIVER_BIN, else ~/.cache/weekrow-test/geckodriver,
 //              else $GECKOWEBDRIVER/geckodriver (GitHub runner images), else `geckodriver` on PATH.
 // Run `npm run setup:firefox` to download both into ~/.cache/weekrow-test.
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -302,7 +302,11 @@ async function main() {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Compare real paths, so a run through a symlinked folder still starts the test.
+if (
+  process.argv[1] &&
+  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+) {
   try {
     process.exitCode = await main();
   } catch (error) {
