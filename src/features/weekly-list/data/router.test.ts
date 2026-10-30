@@ -26,7 +26,6 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
     dashboardData: vi.fn(async () => ({ origin: SAVED, ready: true, courses: [], extras: [] })),
     announcement: vi.fn(async () => ({ title: 'Hello', message: '<p>Hi</p>' })),
     announcements: vi.fn(async () => []),
-    markAnnouncementRead: vi.fn(async () => true),
     dispose: vi.fn(),
   } as unknown as DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi.fn> };
 }
@@ -210,18 +209,6 @@ describe('routeDataMessage', () => {
       expect(owner.announcements).toHaveBeenCalledWith('101');
     });
 
-    it('send the read mark to the owner, which writes it with the write safety', async () => {
-      await expect(
-        routeDataMessage(
-          owner,
-          { type: 'weekrow:announcement-read', ...ANNOUNCEMENT },
-          CONTENT_SCRIPT,
-          host,
-        ),
-      ).resolves.toEqual({ read: true });
-      expect(owner.markAnnouncementRead).toHaveBeenCalledWith('101', '31901');
-    });
-
     it.each([
       ['another Canvas host', OTHER_CANVAS],
       ['a frame inside the saved Canvas', { ...CONTENT_SCRIPT, frameId: 5 }],
@@ -231,7 +218,6 @@ describe('routeDataMessage', () => {
         { type: 'weekrow:dashboard-data' },
         { type: 'weekrow:announcement', ...ANNOUNCEMENT },
         { type: 'weekrow:announcement-list', courseId: '101' },
-        { type: 'weekrow:announcement-read', ...ANNOUNCEMENT },
         { type: 'weekrow:save-tools', tools: DEFAULT_TOOLS_SETTINGS },
       ];
       for (const message of messages) {
@@ -240,7 +226,6 @@ describe('routeDataMessage', () => {
       expect(owner.dashboardData).not.toHaveBeenCalled();
       expect(owner.announcement).not.toHaveBeenCalled();
       expect(owner.announcements).not.toHaveBeenCalled();
-      expect(owner.markAnnouncementRead).not.toHaveBeenCalled();
       expect(host.saveTools).not.toHaveBeenCalled();
     });
 
@@ -248,8 +233,8 @@ describe('routeDataMessage', () => {
       const bad = [
         { type: 'weekrow:announcement', courseId: '../users/self', topicId: '1' },
         { type: 'weekrow:announcement', courseId: '1', topicId: '1/read' },
-        { type: 'weekrow:announcement-read', courseId: '1', topicId: '' },
-        { type: 'weekrow:announcement-read', courseId: 1, topicId: '2' },
+        // The extension has no read mark, so the old message is no message of the protocol.
+        { type: 'weekrow:announcement-read', courseId: '1', topicId: '2' },
         { type: 'weekrow:announcement-list', courseId: '1?x=2' },
         { type: 'weekrow:announcement-list' },
       ];
@@ -260,7 +245,6 @@ describe('routeDataMessage', () => {
         ).toBeNull();
       }
       expect(owner.announcement).not.toHaveBeenCalled();
-      expect(owner.markAnnouncementRead).not.toHaveBeenCalled();
     });
   });
 

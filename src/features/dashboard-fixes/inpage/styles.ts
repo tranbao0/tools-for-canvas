@@ -12,7 +12,7 @@ export const FIXES_CSS = `
 [data-wr-cc] svg,[data-wr-cc] span{color:var(--wr-cc-fg)!important}
 [data-wr-title]{cursor:pointer}
 [data-wr-title]:hover{text-decoration:underline}
-[data-wr-open] [data-wr-snippet],[data-wr-open] [data-wr-more],[data-wr-gone],[data-wr-grades] [data-testid=pagination-container],[data-wr-filtered] [data-wr-content],[data-wr-filtered] [data-testid=pagination-container]{display:none!important}
+[data-wr-open] [data-wr-snippet],[data-wr-open] [data-wr-more],[data-wr-grades] [data-testid=pagination-container],[data-wr-filtered] [data-wr-content],[data-wr-filtered] [data-testid=pagination-container]{display:none!important}
 [data-wr-bar]{flex-flow:row wrap!important;align-items:flex-end!important;column-gap:.75rem}
 [data-wr-bar]>[data-wr-content],[data-wr-bar]>[data-wr-list]{flex:1 1 100%!important;min-width:0}
 .wr-filter-label{display:block;margin-bottom:.25rem}
@@ -20,10 +20,6 @@ export const FIXES_CSS = `
 .wr-filter-select{box-sizing:border-box;width:100%;height:1.75rem;margin:0;padding:0 2.25rem 0 .75rem;font:inherit;font-size:.875rem;color:inherit;background:transparent;border:.0625rem solid #8d959f;border-radius:.25rem;appearance:none;cursor:pointer}
 .wr-caret{position:absolute;right:.75rem;top:50%;width:.5rem;height:.5rem;margin-top:-.375rem;border:solid;border-width:0 .125rem .125rem 0;color:#586874;transform:rotate(45deg);pointer-events:none}
 [data-wr-dark] .wr-caret{color:#9ea6ad}
-[data-wr-read] [data-testid^=mark-read-] svg{display:none}
-[data-wr-read] [data-testid^=mark-read-]{display:inline-flex;align-items:center;justify-content:center}
-[data-wr-read] [data-testid^=mark-read-]::after{content:"";width:.3rem;height:.6rem;margin-top:-.15rem;border:solid #03893d;border-width:0 .15rem .15rem 0;transform:rotate(45deg)}
-[data-wr-dark] [data-wr-read] [data-testid^=mark-read-]::after{border-color:#6fcf8a}
 .wr-filter-select option{color:#2d3b45}
 .wr-x{margin-top:1rem;padding-top:.75rem;border-top:.0625rem solid color-mix(in srgb,currentColor 20%,transparent)}
 .wr-x h3{margin:0 0 .25rem;font-size:1rem;font-weight:700}

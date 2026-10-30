@@ -26,7 +26,6 @@ import {
   isDataMessage,
   type OkReply,
   type PageContextReply,
-  type ReadReply,
   type OpenPageMessage,
   type RefreshReply,
   type SeenNote,
@@ -191,10 +190,6 @@ export function routeDataMessage(
       return allowed.then(() => owner.announcement(message.courseId, message.topicId));
     case 'weekrow:announcement-list':
       return allowed.then(() => owner.announcements(message.courseId));
-    case 'weekrow:announcement-read':
-      return allowed
-        .then(() => owner.markAnnouncementRead(message.courseId, message.topicId))
-        .then((read): ReadReply => ({ read }));
     case 'weekrow:mark-note-seen':
       return allowed.then(() => host.markNoteSeen(message.note)).then(ok);
     case 'weekrow:refresh':

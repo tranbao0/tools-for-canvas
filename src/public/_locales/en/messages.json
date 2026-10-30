@@ -656,9 +656,6 @@
   "annOpenOnCanvas": {
     "message": "Open it on Canvas"
   },
-  "annMarkedRead": {
-    "message": "Marked as read."
-  },
   "annCourseFilter": {
     "message": "Course filter:"
   },

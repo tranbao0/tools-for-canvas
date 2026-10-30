@@ -209,8 +209,6 @@ export function createFakeCanvas(scenario: Scenario): FakeCanvas {
           () => announcements.get(courseId) ?? [],
           priority,
         ),
-      markAnnouncementRead: (courseId, topicId) =>
-        call('markAnnouncementRead', [courseId, topicId], () => undefined, priority),
       listGroups: () => call('listGroups', [], () => scenario.groups, priority),
       getColors: () => call('getColors', [], () => scenario.colors, priority),
       getDashboardPositions: () =>

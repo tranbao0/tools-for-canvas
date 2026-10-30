@@ -489,30 +489,9 @@ describe('writes', () => {
     ]);
   });
 
-  it('markAnnouncementRead sends PUT with the token, no body, and accepts an empty answer', async () => {
-    const seen: SeenRequest[] = [];
-    server.use(
-      http.put(api('/api/v1/courses/77/discussion_topics/9/read'), async ({ request }) => {
-        seen.push(await describeRequest(request));
-        return new HttpResponse(null, { status: 204 });
-      }),
-    );
-    await expect(testClient().markAnnouncementRead('77', '9')).resolves.toBeUndefined();
-    expect(seen).toEqual([
-      {
-        method: 'PUT',
-        path: '/api/v1/courses/77/discussion_topics/9/read',
-        params: [],
-        csrf: CSRF_TOKEN,
-        contentType: null,
-        body: undefined,
-      },
-    ]);
-  });
-
   it('refuses an announcement id that is not a Canvas id, without a request', async () => {
     const seen = recordAll();
-    await expect(testClient().markAnnouncementRead('77', '9/../x')).rejects.toMatchObject({
+    await expect(testClient().getAnnouncement('77', '9/../x')).rejects.toMatchObject({
       kind: 'bad_request',
     });
     await expect(testClient().getAnnouncement('7 7', '9')).rejects.toMatchObject({

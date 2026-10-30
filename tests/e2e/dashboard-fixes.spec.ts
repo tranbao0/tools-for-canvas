@@ -141,11 +141,8 @@ test.describe('course colors', () => {
 });
 
 test.describe('announcements in place', () => {
-  test('open the whole message in the card, mark it read and never leave the page', async ({
-    context,
-    page,
-  }) => {
-    const { canvas, state } = await open(context, page);
+  test('open the whole message in the card and never leave the page', async ({ context, page }) => {
+    const { canvas } = await open(context, page);
     const navigations: string[] = [];
     page.on('framenavigated', (frame) => navigations.push(frame.url()));
     await page.evaluate(() => {
@@ -165,25 +162,6 @@ test.describe('announcements in place', () => {
     );
     // The widget's snippet and "Read more" give way to the message.
     await expect(page.locator(`${ANNOUNCEMENT} [data-wr-snippet]`)).toBeHidden();
-    // The read mark goes out as a PUT, once.
-    await expect
-      .poll(() => canvas.requests.filter((r) => r.method === 'PUT' && r.path.endsWith('/read')))
-      .toHaveLength(1);
-    expect(canvas.requests.find((r) => r.method === 'PUT')?.path).toBe(
-      '/api/v1/courses/101/discussion_topics/31901/read',
-    );
-    expect(canvas.requests.find((r) => r.method === 'PUT')?.headers['x-csrf-token']).toBe(
-      'tok+en/==',
-    );
-    expect(state.readAnnouncements.has('101:31901')).toBe(true);
-    await expect(page.locator(`${ANNOUNCEMENT} [data-wr-own]`)).toContainText('Marked as read.');
-    // The circle of the card shows the read state as well.
-    await expect(page.locator(ANNOUNCEMENT)).toHaveAttribute('data-wr-read', '');
-    expect(
-      await page
-        .locator(`${ANNOUNCEMENT} [data-testid^="mark-read-"] svg`)
-        .evaluate((svg) => getComputedStyle(svg).display),
-    ).toBe('none');
     // No navigation and no reload.
     expect(page.url()).toBe(`${canvas.origin}/?fixture_delay_ms=0`);
     expect(navigations).toEqual([]);
@@ -191,12 +169,48 @@ test.describe('announcements in place', () => {
       1,
     );
 
-    // Show less closes it, and the read announcement leaves the unread list.
+    // Show less closes it.
     await page
       .locator(`${ANNOUNCEMENT} [data-wr-own]`)
       .getByRole('button', { name: 'Show less' })
       .click();
-    await expect(page.locator(ANNOUNCEMENT)).toBeHidden();
+    await expect(message(page)).toHaveCount(0);
+    expect(canvas.unmatched).toEqual([]);
+  });
+
+  test('leave the announcement unread when the student opens and closes the message', async ({
+    context,
+    page,
+  }) => {
+    const { canvas, state } = await open(context, page);
+    const circle = page.locator(`${ANNOUNCEMENT} [data-testid^="mark-read-"]`);
+    await expect(circle).toHaveAttribute('aria-pressed', 'false');
+
+    await page.locator(`${ANNOUNCEMENT} a[href*="discussion_topics"]`).click();
+    await expect(message(page)).toContainText('Science Hall 214');
+    // No mark and no line about a mark, while the message is open.
+    await expect(message(page)).not.toContainText('Marked as read.');
+    await expect(page.locator(ANNOUNCEMENT)).not.toHaveAttribute('data-wr-read', '');
+    await expect(circle).toHaveAttribute('aria-pressed', 'false');
+
+    await page
+      .locator(`${ANNOUNCEMENT} [data-wr-own]`)
+      .getByRole('button', { name: 'Show less' })
+      .click();
+    await expect(message(page)).toHaveCount(0);
+    // The unread list still has the item, and its circle is as it was.
+    await expect(page.locator(ANNOUNCEMENT)).toBeVisible();
+    await expect(page.locator(ANNOUNCEMENT)).not.toHaveAttribute('data-wr-gone', '');
+    await expect(circle).toHaveAttribute('aria-pressed', 'false');
+    expect(await circle.locator('svg').evaluate((svg) => getComputedStyle(svg).display)).not.toBe(
+      'none',
+    );
+
+    // Wait for any late write, then check that none went out.
+    await page.waitForTimeout(500);
+    expect(canvas.requests.filter((r) => r.method === 'PUT')).toEqual([]);
+    expect(canvas.requests.filter((r) => r.path.endsWith('/read'))).toEqual([]);
+    expect(state.readAnnouncements.has('101:31901')).toBe(false);
     expect(canvas.unmatched).toEqual([]);
   });
 

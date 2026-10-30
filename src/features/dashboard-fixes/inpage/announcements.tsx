@@ -7,8 +7,9 @@
  * It goes through the sanitizer (sanitize.ts) into the shadow root of a host element that the fix
  * adds to the item, so the page styles do not reach it and it cannot reach the page.
  *
- * Opening an announcement marks it as read, as the Canvas page does. The fix also adds a course
- * filter beside the read filter. The widget loads three announcements of all courses a page, so a
+ * Opening or closing a message changes no read state and sends no write. Only the read circle of
+ * the widget, which the fix leaves alone, marks an announcement as read. The fix also adds a
+ * course filter beside the read filter. The widget loads three announcements of all courses a page, so a
  * course filter cannot be applied to its list. With a course chosen, the fix hides that list and
  * its pager and shows the recent announcements of the course, which the background loads.
  */
@@ -38,9 +39,7 @@ const ATTRIBUTES = [
   'more',
   'title',
   'open',
-  'gone',
   'filtered',
-  'read',
   'dark',
 ].map((name) => `data-wr-${name}`);
 
@@ -48,8 +47,6 @@ export function announcementsFix(): Fix {
   /** The announcements the student opened, which stay open while React draws the item again. */
   const open = new Set<string>();
   const bodies = new Map<string, AnnouncementBody>();
-  const read = new Set<string>();
-  const readSent = new Set<string>();
   const lists = new Map<string, AnnouncementEntry[] | 'loading' | 'failed'>();
   let courseId = '';
   /** The announcement whose message should take the focus once it shows. */
@@ -61,17 +58,13 @@ export function announcementsFix(): Fix {
 
   const keyOf = (course: string, topic: string): string => `${course}:${topic}`;
 
-  /**
-   * The message of one announcement, with "Show less". It marks the announcement as read once the
-   * message is on screen. `known` tells that the announcement is read already.
-   */
-  function Message(props: { course: string; topic: string; known: boolean; onClose(): void }) {
+  /** The message of one announcement, with "Show less". */
+  function Message(props: { course: string; topic: string; onClose(): void }) {
     const { course, topic } = props;
     const key = keyOf(course, topic);
     const context = current as FixContext;
     const [message, setMessage] = useState(bodies.get(key));
     const [failed, setFailed] = useState(false);
-    const [marked, setMarked] = useState(read.has(key));
     const less = useRef<HTMLButtonElement>(null);
     // The sanitized nodes are made once for a message, so a new pass keeps the selection.
     const body = useMemo(() => {
@@ -101,21 +94,6 @@ export function announcementsFix(): Fix {
         })
         .catch(() => setFailed(true));
     }, [key]);
-    useEffect(() => {
-      // Only a message that the student can read counts as opened.
-      if (message === undefined || props.known || read.has(key) || readSent.has(key)) return;
-      readSent.add(key);
-      context
-        .send({ type: 'weekrow:announcement-read', courseId: course, topicId: topic })
-        .then((reply) => {
-          if ((reply as { read?: boolean } | undefined)?.read !== true) throw new Error('Not read');
-          read.add(key);
-          setMarked(true);
-          context.again();
-        })
-        // A mark that failed is tried again the next time the student opens the announcement.
-        .catch(() => readSent.delete(key));
-    }, [key, message !== undefined]);
     return (
       <>
         <div
@@ -137,8 +115,6 @@ export function announcementsFix(): Fix {
             </>
           ) : message === undefined ? (
             t('annLoading')
-          ) : marked || props.known ? (
-            t('annMarkedRead')
           ) : (
             ''
           )}
@@ -209,7 +185,6 @@ export function announcementsFix(): Fix {
         <Message
           course={found.courseId}
           topic={found.topicId}
-          known={found.item.querySelector(`[data-testid="mark-unread-${found.topicId}"]`) !== null}
           onClose={() => setOpen(context, key, false)}
         />,
         root,
@@ -299,12 +274,7 @@ export function announcementsFix(): Fix {
         <div class="wr-x-title">{entry.title}</div>
         <div class="wr-x-meta">{meta.join(' | ')}</div>
         {on ? (
-          <Message
-            course={entry.courseId}
-            topic={entry.id}
-            known={entry.read}
-            onClose={() => show(false)}
-          />
+          <Message course={entry.courseId} topic={entry.id} onClose={() => show(false)} />
         ) : (
           <button type="button" class="wr-x-link" ref={more} onClick={() => show(true)}>
             {t('annReadMore')}
@@ -327,9 +297,7 @@ export function announcementsFix(): Fix {
     const shown = entries.filter((entry) => {
       const key = keyOf(entry.courseId, entry.id);
       // An announcement the student has open stays in the list until they close it.
-      return (
-        filter === 'all' || (filter === 'read') === (read.has(key) || entry.read) || open.has(key)
-      );
+      return filter === 'all' || (filter === 'read') === entry.read || open.has(key);
     });
     const empty = { unread: 'annEmptyUnread', read: 'annEmptyRead', all: 'annEmptyAll' } as const;
     return shown.length === 0 ? (
@@ -458,16 +426,6 @@ export function announcementsFix(): Fix {
           found.linkRow?.setAttribute('data-wr-more', '');
           found.title?.setAttribute('data-wr-title', '');
           expandNative(context, found);
-          found.item.toggleAttribute(
-            'data-wr-read',
-            read.has(keyOf(found.courseId, found.topicId)),
-          );
-          // A read announcement leaves the unread list when its message is closed.
-          const key = keyOf(found.courseId, found.topicId);
-          found.item.toggleAttribute(
-            'data-wr-gone',
-            widget.read === 'unread' && read.has(key) && !open.has(key),
-          );
         }
         if (context.data !== null) drawFilter(context, widget, context.data.courses);
         widget.widget.toggleAttribute('data-wr-filtered', courseId !== '');

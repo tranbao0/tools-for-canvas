@@ -70,9 +70,6 @@ for (const width of [1920, 1280]) {
       await expect(
         page.locator('[data-testid="announcement-item-31901"] [data-wr-own]'),
       ).toContainText('Science Hall 214');
-      await expect(
-        page.locator('[data-testid="announcement-item-31901"] [data-wr-own]'),
-      ).toContainText('Marked as read');
       await shoot(page, `announcement-open-${tag}`, widget(WIDGETS.announcements));
       await page
         .locator('[data-testid="announcement-item-31901"] [data-wr-own]')

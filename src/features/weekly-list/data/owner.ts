@@ -198,12 +198,6 @@ export interface DataOwner {
   announcement(courseId: string, topicId: string): Promise<AnnouncementBody>;
   /** The recent announcements of one course. */
   announcements(courseId: string): Promise<AnnouncementEntry[]>;
-  /**
-   * Marks an announcement as read, as a write of the student: it waits behind the writes before
-   * it, and it goes out only when Canvas confirms the signed-in student. Resolves with whether
-   * Canvas marked it.
-   */
-  markAnnouncementRead(courseId: string, topicId: string): Promise<boolean>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
@@ -1943,25 +1937,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }));
   }
 
-  async function markAnnouncementRead(courseId: string, topicId: string): Promise<boolean> {
-    await ready();
-    if (cache === null || cache.session === null) return false;
-    let marked = false;
-    await enqueueWrite(async (stamp) => {
-      // The student is confirmed first, as for every write.
-      if (stamp.origin === null || !(await verifyUser(stamp))) return false;
-      try {
-        await apiFor(stamp.origin).markAnnouncementRead(courseId, topicId);
-        marked = isCurrent(stamp);
-      } catch (error) {
-        deps.log('announcement read', error);
-      }
-      // The planner cache does not depend on the read state, so no round has to follow.
-      return false;
-    });
-    return marked;
-  }
-
   // ---------------------------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------------------------
@@ -2120,7 +2095,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     dashboardData,
     announcement,
     announcements,
-    markAnnouncementRead,
 
     async originChanged(origin) {
       await ready();

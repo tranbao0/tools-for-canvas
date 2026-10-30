@@ -287,11 +287,6 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
             ['per_page', PER_PAGE],
           ]),
         ),
-
-      // Canvas answers 204 with no body, so this does not read an object.
-      markAnnouncementRead: async (courseId, topicId) => {
-        await send({ method: 'PUT', url: `${topicPath(courseId, topicId)}/read` });
-      },
     };
   }
 

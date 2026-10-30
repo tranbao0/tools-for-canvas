@@ -24,7 +24,6 @@ function replies(
   context.answer((request) => {
     const type = (request as { type: string }).type;
     if (type === 'weekrow:announcement') return { title: 'T', message };
-    if (type === 'weekrow:announcement-read') return { read: true };
     if (type === 'weekrow:announcement-list') {
       const entries: AnnouncementEntry[] = [
         {
@@ -90,7 +89,7 @@ describe('announcementsFix: Read more', () => {
     ).toEqual(['All courses', ...COURSES.map((course) => course.name)]);
   });
 
-  it('intercepts a plain click on Read more, opens the message in a shadow root and marks it read', async () => {
+  it('intercepts a plain click on Read more, opens the message in a shadow root', async () => {
     const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
     readMore().dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
@@ -102,7 +101,6 @@ describe('announcementsFix: Read more', () => {
     ).toBeNull();
     expect(context.sent).toEqual([
       { type: 'weekrow:announcement', courseId: '101', topicId: '31901' },
-      { type: 'weekrow:announcement-read', courseId: '101', topicId: '31901' },
     ]);
     expect(document.querySelector(ITEM)?.hasAttribute('data-wr-open')).toBe(true);
   });
@@ -135,7 +133,7 @@ describe('announcementsFix: Read more', () => {
     expect(seen).toBe(false);
   });
 
-  it('sends the read mark once, however many passes draw the message', async () => {
+  it('sends only the request for the message, however many passes draw it', async () => {
     readMore().dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
     );
@@ -143,12 +141,12 @@ describe('announcementsFix: Read more', () => {
       fix.apply(context);
       await flush();
     }
-    expect(
-      context.sent.filter((m) => (m as { type: string }).type === 'weekrow:announcement-read'),
-    ).toHaveLength(1);
+    expect(context.sent).toEqual([
+      { type: 'weekrow:announcement', courseId: '101', topicId: '31901' },
+    ]);
   });
 
-  it('closes with Show less, and hides the item of a read announcement from the unread list', async () => {
+  it('closes with Show less, and leaves the read state and the item alone', async () => {
     readMore().dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
     );
@@ -165,10 +163,14 @@ describe('announcementsFix: Read more', () => {
     fix.apply(context);
     expect(document.querySelector(`${ITEM} > [data-wr-own]`)).toBeNull();
     expect(document.querySelector(ITEM)?.hasAttribute('data-wr-open')).toBe(false);
-    expect(document.querySelector(ITEM)?.hasAttribute('data-wr-gone')).toBe(true);
+    expect(document.querySelector(ITEM)?.hasAttribute('data-wr-gone')).toBe(false);
+    expect(document.querySelector(ITEM)?.hasAttribute('data-wr-read')).toBe(false);
+    expect(context.sent).toEqual([
+      { type: 'weekrow:announcement', courseId: '101', topicId: '31901' },
+    ]);
   });
 
-  it('shows a link to Canvas when the message does not load, and tries the read mark again later', async () => {
+  it('shows a link to Canvas when the message does not load', async () => {
     context.answer(() => Promise.reject(new Error('down')));
     readMore().dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
@@ -198,7 +200,7 @@ describe('announcementsFix: Read more', () => {
   });
 });
 
-describe('announcementsFix: keyboard and read mark', () => {
+describe('announcementsFix: keyboard and read state', () => {
   const open = async () => {
     readMore().dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
@@ -223,23 +225,18 @@ describe('announcementsFix: keyboard and read mark', () => {
     expect(document.activeElement).toBe(readMore());
   });
 
-  it('sends the read mark only after the message loaded', async () => {
-    context.answer((request) => {
-      const type = (request as { type: string }).type;
-      if (type === 'weekrow:announcement') return Promise.reject(new Error('down'));
-      return { read: true };
-    });
+  it('shows no line about a read mark, whether Canvas shows the announcement as read or not', async () => {
     await open();
-    expect(context.sent.map((m) => (m as { type: string }).type)).toEqual(['weekrow:announcement']);
-  });
-
-  it('sends no read mark for an announcement that Canvas shows as read', async () => {
+    expect(hostOf()?.shadowRoot?.textContent).not.toContain('Marked as read');
+    lessButton()?.click();
+    fix.apply(context);
+    await flush();
     document
       .querySelector(`${ITEM} [data-testid="mark-read-31901"]`)
       ?.setAttribute('data-testid', 'mark-unread-31901');
     await open();
+    expect(hostOf()?.shadowRoot?.textContent).not.toContain('Marked as read');
     expect(context.sent.map((m) => (m as { type: string }).type)).toEqual(['weekrow:announcement']);
-    expect(hostOf()?.shadowRoot?.textContent).toContain('Marked as read.');
   });
 
   it('builds the message once, however many passes run', async () => {

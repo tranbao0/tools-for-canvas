@@ -314,6 +314,4 @@ export interface CanvasApi {
   getAnnouncement(courseId: string, topicId: string): Promise<AnnouncementTopic>;
   /** The announcements of one course posted in `range`, newest first. */
   listAnnouncements(courseId: string, range: TimeRange): Promise<AnnouncementTopic[]>;
-  /** Marks an announcement as read for the student. Canvas answers 204. */
-  markAnnouncementRead(courseId: string, topicId: string): Promise<void>;
 }

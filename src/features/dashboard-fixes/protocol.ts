@@ -34,23 +34,8 @@ export interface AnnouncementListMessage {
   courseId: string;
 }
 
-/**
- * In-page script to background: the student opened an announcement. The background marks it as
- * read with the write safety of every write (generation, origin and user). The reply is an
- * `OkReply`.
- */
-export interface AnnouncementReadMessage {
-  type: 'weekrow:announcement-read';
-  courseId: string;
-  topicId: string;
-}
-
 export type FixMessage =
-  | SaveToolsMessage
-  | DashboardDataMessage
-  | AnnouncementMessage
-  | AnnouncementListMessage
-  | AnnouncementReadMessage;
+  SaveToolsMessage | DashboardDataMessage | AnnouncementMessage | AnnouncementListMessage;
 
 /** One course for the grade cards, the course colors and the course filter. */
 export interface DashboardCourse {
@@ -137,20 +122,11 @@ export function isAnnouncementListMessage(value: unknown): value is Announcement
   return hasType(value, 'weekrow:announcement-list') && isCanvasId(value['courseId']);
 }
 
-export function isAnnouncementReadMessage(value: unknown): value is AnnouncementReadMessage {
-  return (
-    hasType(value, 'weekrow:announcement-read') &&
-    isCanvasId(value['courseId']) &&
-    isCanvasId(value['topicId'])
-  );
-}
-
 export function isFixMessage(value: unknown): value is FixMessage {
   return (
     isSaveToolsMessage(value) ||
     isDashboardDataMessage(value) ||
     isAnnouncementMessage(value) ||
-    isAnnouncementListMessage(value) ||
-    isAnnouncementReadMessage(value)
+    isAnnouncementListMessage(value)
   );
 }

@@ -207,11 +207,6 @@ export interface CourseChoice {
   name: string;
 }
 
-/** The reply to a read mark: whether Canvas marked the announcement. */
-export interface ReadReply {
-  read: boolean;
-}
-
 export const OK_REPLY: OkReply = { ok: true };
 
 type Fields = Record<string, unknown>;
