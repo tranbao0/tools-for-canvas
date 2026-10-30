@@ -193,11 +193,7 @@ export class CanvasState {
       },
       {
         path: '/api/v1/announcements',
-        respond: (request) => {
-          const codes = new URL(request.url).searchParams.getAll('context_codes[]');
-          const list = ANNOUNCEMENTS.filter((topic) => codes.includes(`course_${topic.courseId}`));
-          return { body: json(list.map((topic) => this.topicJson(topic))) };
-        },
+        respond: (request) => this.announcementPage(request),
       },
       {
         path: /^\/api\/v1\/courses\/\d+\/discussion_topics\/\d+$/,
@@ -219,6 +215,15 @@ export class CanvasState {
           return { status: 204 };
         },
       },
+      {
+        method: 'DELETE',
+        path: /^\/api\/v1\/courses\/\d+\/discussion_topics\/\d+\/read$/,
+        respond: (request) => {
+          const [courseId, topicId] = topicIds(request);
+          this.readAnnouncements.delete(`${courseId}:${topicId}`);
+          return { status: 204 };
+        },
+      },
       ...courseIds.map((id): FakeCanvasRoute => ({
         // The all-assignments request of the planner-off list: no ids and no bucket.
         path: new RegExp(`^/api/v1/courses/${id}/assignments\\?(?!.*assignment_ids)(?!.*bucket=)`),
@@ -237,6 +242,43 @@ export class CanvasState {
     ];
   }
 
+  /**
+   * The announcements list as Canvas answers it: only the courses of `context_codes[]`, only the
+   * posts from `start_date` to `end_date` (the 14 days before today and 28 days after the start
+   * without dates), newest first, in pages of `per_page` with a `Link: rel="next"` header. The
+   * fixtures are all published, so `active_only` changes nothing here.
+   */
+  private announcementPage(request: RecordedRequest): FakeReply {
+    const url = new URL(request.url);
+    const codes = url.searchParams.getAll('context_codes[]');
+    if (codes.length === 0) return { status: 400, body: { message: 'Missing context_codes' } };
+    const day = 24 * 60 * 60 * 1000;
+    const startParam = url.searchParams.get('start_date');
+    const endParam = url.searchParams.get('end_date');
+    const start = startParam === null ? Date.parse(this.scenario.now) - 14 * day : Date.parse(startParam);
+    const end = endParam === null ? start + 28 * day : Date.parse(endParam);
+    const rows = ANNOUNCEMENTS.filter(
+      (topic) =>
+        codes.includes(`course_${topic.courseId}`) &&
+        Date.parse(topic.posted_at ?? '') >= start &&
+        Date.parse(topic.posted_at ?? '') <= end,
+    ).sort((a, b) => Date.parse(b.posted_at ?? '') - Date.parse(a.posted_at ?? ''));
+    const perPage = Math.max(1, Number(url.searchParams.get('per_page') ?? '10') || 10);
+    const page = Math.max(1, Number(url.searchParams.get('page') ?? '1') || 1);
+    const pageRows = rows.slice((page - 1) * perPage, page * perPage);
+    const pageUrl = (number: number): string => {
+      const next = new URL(url);
+      next.searchParams.set('page', String(number));
+      return next.href;
+    };
+    const links = [`<${pageUrl(page)}>; rel="current"`, `<${pageUrl(1)}>; rel="first"`];
+    if (page * perPage < rows.length) links.unshift(`<${pageUrl(page + 1)}>; rel="next"`);
+    return {
+      body: json(pageRows.map((topic) => this.topicJson(topic))),
+      headers: { link: links.join(',') },
+    };
+  }
+
   private topicJson(topic: (typeof ANNOUNCEMENTS)[number]): unknown {
     return {
       id: topic.id,
@@ -244,6 +286,7 @@ export class CanvasState {
       message: topic.message,
       posted_at: topic.posted_at,
       user_name: topic.user_name,
+      author: { display_name: topic.user_name },
       context_code: `course_${topic.courseId}`,
       read_state: this.readAnnouncements.has(`${topic.courseId}:${topic.id}`) ? 'read' : 'unread',
     };
