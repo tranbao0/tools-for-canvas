@@ -1947,6 +1947,7 @@ Announcements are still not tasks (decision 3), so they stay out of the groups, 
   A content script is always an in-page list, whatever its message says, and only the saved Canvas may ask.
 - The same cache rules apply as for the other data: the list and the marks drop with the cache when another student signs in, when the saved address changes and when the student signs out.
   Each feed request asks Canvas who is signed in (at most every 30 seconds), as the dashboard data does, and answers nothing from a cache of another student.
+  A check that only fails, such as offline, leaves the cache of the same student, and the tab shows "Couldn't load your announcements" with Retry, as the Tasks tab shows "Couldn't refresh".
   The surface drops its feed and its tab when the student, the Canvas or the state changes, so it never draws the rows of the student before.
   A failed or abandoned read write makes the list load again at the next request, because Canvas may differ from the cache.
   A load that a newer load for other courses replaced does not write its result.
@@ -2013,7 +2014,7 @@ The message of a row is part of the same column, so wide content scrolls inside 
 
 **Size.**
 
-The in-page script grew from 34.0 KB to 37.8 KB gzip, against the 40 KB budget.
+The in-page script grew from 34.0 KB to 38.0 KB gzip, against the 40 KB budget.
 The sanitizer is in the list script and in the script of the fixes.
 If a later feature goes over the budget, the Announcements view can move to a script of its own that the background injects when the tab opens, as decision 22 did for the fixes.
 

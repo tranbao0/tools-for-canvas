@@ -194,6 +194,15 @@ function feedMatches(feed: AnnouncementFeed, state: StateReply): boolean {
   );
 }
 
+/**
+ * Whether a feed must go: the state is not ready, or a ready feed names another student or
+ * Canvas. An `unavailable` feed names nobody, so it stays until the next reply.
+ */
+function staleFeed(feed: AnnouncementFeed, state: StateReply): boolean {
+  if (state.kind !== 'ready') return true;
+  return feed.status === 'ready' && !feedMatches(feed, state);
+}
+
 function isTabSurface(surface: RequestSurface): surface is 'panel' | 'inpage' {
   return surface === 'panel' || surface === 'inpage';
 }
@@ -343,7 +352,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     }
     // The feed belongs to one student on one Canvas, like the notice. Another student, a
     // sign-out or another address drops it, and the new student starts with Tasks (decision 24).
-    if (feed !== null && !feedMatches(feed, reply)) {
+    if (feed !== null && staleFeed(feed, reply)) {
       feed = null;
       listTab = 'tasks';
     }

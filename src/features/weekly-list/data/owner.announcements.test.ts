@@ -305,6 +305,22 @@ describe('announcementFeed', () => {
     );
   });
 
+  it('shows the error with Retry, not placeholders, when the sign-in check fails offline', async () => {
+    const h = await loaded();
+    await loadedFeed(h);
+    await vi.advanceTimersByTimeAsync(31_000);
+    h.canvas.fail('getSelf', canvasError('network'), { times: 1 });
+
+    const feed = ready(await h.owner.announcementFeed(PANEL_FEED));
+
+    expect(feed).toMatchObject({ rows: [], failed: true, loading: false, userId: IDS.user });
+    // The cache of the same student stays, and the next request shows the rows again.
+    expect((await sessionCacheItem.getValue())?.announcements).not.toBeNull();
+    const again = ready(await h.owner.announcementFeed(PANEL_FEED));
+    expect(again.failed).toBe(false);
+    expect(again.rows.length).toBeGreaterThan(0);
+  });
+
   it('does not load for a signed-out student', async () => {
     const h = await loaded();
     h.canvas.fail('getSelf', canvasError('unauthorized', 401));

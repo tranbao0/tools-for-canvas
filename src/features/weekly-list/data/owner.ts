@@ -2048,7 +2048,30 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     // The list holds one student's data, so Canvas confirms who is signed in, as for the
     // dashboard data (at most every 30 seconds).
-    if (!(await signedInStudentOwnsCache())) return unavailable();
+    const checkedUser = cache.session.profile.id;
+    if (!(await signedInStudentOwnsCache())) {
+      // Another student or a 401 cleared the cache: there is nothing to show. A check that only
+      // failed (offline, a server error) leaves the cache of the same student, and the tab shows
+      // its error with Retry, as the Tasks tab shows "Couldn't refresh".
+      const kept = (cache as SessionCache | null)?.session;
+      if (
+        kept == null ||
+        kept.profile.id !== checkedUser ||
+        (cache as SessionCache | null)?.failure?.kind === 'signed_out'
+      ) {
+        return unavailable();
+      }
+      return {
+        status: 'ready',
+        origin,
+        userId: kept.profile.id,
+        tab: cache?.listTabs[request.surface] ?? DEFAULT_LIST_TABS[request.surface],
+        rows: [],
+        unread: 0,
+        loading: false,
+        failed: true,
+      };
+    }
     const settings = await store.settings.getValue();
     if (cache === null || cache.session === null) return unavailable();
     const session = cache.session;

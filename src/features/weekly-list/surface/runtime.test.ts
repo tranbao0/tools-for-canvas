@@ -1568,6 +1568,25 @@ describe('the Announcements tab', () => {
     expect(runtime.announcements()).toEqual({ tab: 'tasks', feed: null, showRead: false });
   });
 
+  it('keeps the tab while the feed is unavailable, as when the background is offline', async () => {
+    const fake = feedHost('announcements');
+    const runtime = await started(fake);
+    fake.reply = (message) =>
+      message.type === 'weekrow:announcement-feed'
+        ? { status: 'unavailable', tab: 'announcements' }
+        : message.type === 'weekrow:get-state'
+          ? readyFor(fake.user, { origin: fake.origin })
+          : { ok: true, retryAt: null };
+
+    for (let change = 0; change < 3; change += 1) {
+      fake.changed();
+      await settle();
+      expect(runtime.announcements()?.tab).toBe('announcements');
+    }
+    // The tab shows its placeholders, and the choice stays.
+    expect(runtime.announcements()?.feed).toBeNull();
+  });
+
   it('drops the feed when the state is not ready, as after a sign-out', async () => {
     const fake = feedHost('announcements');
     const runtime = await started(fake);
