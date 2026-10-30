@@ -1993,7 +1993,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (!isCurrent(stamp)) return null;
     if (value !== null) return value;
     try {
-      const self = await apiFor(origin).getSelf();
+      const self = await apiFor(origin)
+        .withPriority(() => 'high')
+        .getSelf();
       return isCurrent(stamp) && self.id === stamp.userId ? {} : null;
     } catch {
       return null;

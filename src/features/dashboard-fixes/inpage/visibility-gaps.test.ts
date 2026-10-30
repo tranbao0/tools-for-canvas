@@ -218,6 +218,27 @@ describe('before the first data reply', () => {
   });
 });
 
+it('drops what the page showed before a student was confirmed', async () => {
+  student = undefined;
+  engine.setSettings(ON);
+  engine.setActive(true);
+  await settle();
+  // The toggle hides every grade, and the native cards still show theirs.
+  document
+    .querySelector('[data-testid="hide-all-grades-checkbox"]')!
+    .setAttribute('data-testid', 'show-all-grades-checkbox');
+  await settle();
+  document.querySelector('[data-testid="course-grade-card-103"]')!.remove();
+  await settle();
+  student = '5';
+  readStudent = '5';
+  stored = { '103': false };
+  engine.reload();
+  await settle();
+  expect(reads()).toBe(1);
+  expect(grade('103')).toBe('•••');
+});
+
 describe('the student of a read', () => {
   it('drops a read that names another student', async () => {
     readStudent = '4';

@@ -283,10 +283,9 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         if (next.userId !== undefined && next.userId !== gradeStore.userId) {
           const changed = gradeStore.userId !== undefined;
           gradeStore.userId = next.userId;
-          if (changed) {
-            fixes.allCourseGrades.remove();
-            markBlind();
-          }
+          // What the page showed before a student was confirmed belongs to no confirmed student.
+          if (changed) fixes.allCourseGrades.remove();
+          markBlind();
         }
         // The result of a read that ended late counts only for the read that is the last one since
         // the last blind moment, and only for the confirmed student.

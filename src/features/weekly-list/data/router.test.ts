@@ -237,6 +237,23 @@ describe('routeDataMessage', () => {
     expect(owner.dashboardData).not.toHaveBeenCalled();
   });
 
+  it('passes the token of a grade preference read to the owner, cut to 64 characters', async () => {
+    owner.dashboardGradeVisibility.mockClear();
+    await routeDataMessage(
+      owner,
+      { type: 'weekrow:dashboard-data', includeGradeVisibility: true, readToken: 'a'.repeat(100) },
+      CONTENT_SCRIPT,
+      host,
+    );
+    await routeDataMessage(
+      owner,
+      { type: 'weekrow:dashboard-data', includeGradeVisibility: true, readToken: 7 },
+      CONTENT_SCRIPT,
+      host,
+    );
+    expect(owner.dashboardGradeVisibility.mock.calls).toEqual([['a'.repeat(64)], [undefined]]);
+  });
+
   describe('the messages of the dashboard fixes', () => {
     const ANNOUNCEMENT = { courseId: '101', topicId: '31901' };
 
