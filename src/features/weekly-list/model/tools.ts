@@ -1,7 +1,7 @@
 /**
  * Readable names for outside tools, taken from the host of `external_tool_tag_attributes.url`.
  */
-import { isIpHost, parseUrl } from '../../../shared/platform/url';
+import { isIpHost, parseUrl } from '../../../shared/platform/address';
 
 /** Second-level labels of common public suffixes such as `co.uk` or `edu.au`. */
 const SECOND_LEVEL_SUFFIX_LABELS = new Set(['ac', 'co', 'com', 'edu', 'gov', 'net', 'org']);

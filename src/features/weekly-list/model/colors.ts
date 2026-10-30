@@ -2,7 +2,24 @@
  * Course colors for rings and items. See docs/design.md, decision 8.
  */
 import type { Colors } from '../../../shared/canvas/types';
-import { isGroupContext } from './context';
+
+/*
+ * The context of an item: a course id, a group context id, or `null` for the Personal context.
+ */
+
+/** Label of the ring and context of custom tasks with no course. The UI shows its own text for it. */
+export const PERSONAL_LABEL = 'Personal';
+
+/**
+ * Prefix of the context id for items of a group whose course is unknown, such as an account group.
+ * Such an item gets `courseId` `group_<id>`, which is also its Canvas color key.
+ */
+export const GROUP_CONTEXT_PREFIX = 'group_';
+
+/** True for a `group_<id>` context id, which is not a Canvas course id. */
+export function isGroupContext(courseId: string): boolean {
+  return courseId.startsWith(GROUP_CONTEXT_PREFIX);
+}
 
 /** Canvas's 12 default dashboard colors, from canvas-lms `DashboardCardBackgroundStore`. */
 export const DEFAULT_DASHBOARD_COLORS: readonly string[] = [

@@ -12,8 +12,7 @@ import {
   watchItems,
 } from '../../../shared/platform/storage';
 import { SettingsView } from '../ui/SettingsView';
-import { PAGE_LAYOUT_CSS } from '../../../shared/ui/pageLayout';
-import { installStyles } from '../../../shared/ui/styles';
+import { PAGE_LAYOUT_CSS, installStyles } from '../../../shared/ui/styles';
 import { sendToBackground } from './hosts';
 import { followExtensionPageTheme } from '../../../shared/ui/theme';
 

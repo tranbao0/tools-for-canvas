@@ -1,8 +1,11 @@
 /**
  * Where a surface runtime runs on an extension page: the side panel and the welcome page. The
  * in-page list has its own host (inpageHost.ts). See docs/design.md, decisions 4, 5 and 11.
+ * This module also renders a runtime into the page (`mountRuntime`).
  */
 import { browser } from 'wxt/browser';
+import { render, type VNode } from 'preact';
+import type { SurfaceState } from '../model/types';
 import { logFailure } from '../../../shared/platform/log';
 import { requestAccess } from '../../../shared/platform/permissions';
 import {
@@ -20,7 +23,7 @@ import {
   sendToBackground,
   systemClock,
 } from './hostParts';
-import type { SurfaceHost } from './runtime';
+import type { InPlaceSettings, SurfaceHost, SurfaceRuntime } from './runtime';
 
 export { pageLeave, sendToBackground } from './hostParts';
 
@@ -82,4 +85,17 @@ export function extensionPageHost(): SurfaceHost {
     },
     log: logFailure,
   };
+}
+
+/** Renders the runtime state and its settings on every change, and starts the runtime. */
+export function mountRuntime(
+  root: HTMLElement,
+  runtime: SurfaceRuntime,
+  view: (state: SurfaceState, settings: InPlaceSettings | undefined) => VNode,
+): () => void {
+  const draw = (): void => render(view(runtime.state(), runtime.settings()), root);
+  runtime.subscribe(draw);
+  draw();
+  runtime.start();
+  return draw;
 }

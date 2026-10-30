@@ -9,8 +9,7 @@ import type {
   PlannerItem,
   PlannerOverride,
 } from '../../../shared/canvas/types';
-import { ringColor } from './colors';
-import { GROUP_CONTEXT_PREFIX, PERSONAL_LABEL } from './context';
+import { GROUP_CONTEXT_PREFIX, PERSONAL_LABEL, ringColor } from './colors';
 import { classifyHandIn, type HandInInfo } from './handin';
 import { normalizeInstant } from './time';
 import type { AssignmentData, CanvasFacts, Item, ItemKind, OverrideRef } from './types';

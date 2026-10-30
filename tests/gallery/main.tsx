@@ -13,8 +13,7 @@ import { render, type ComponentChildren, type VNode } from 'preact';
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { App } from '../../src/features/weekly-list/ui/App';
 import { SettingsView } from '../../src/features/weekly-list/ui/SettingsView';
-import { PAGE_LAYOUT_CSS } from '../../src/shared/ui/pageLayout';
-import { APP_CSS, installStyles } from '../../src/shared/ui/styles';
+import { APP_CSS, PAGE_LAYOUT_CSS, installStyles } from '../../src/shared/ui/styles';
 import { WelcomeView } from '../../src/features/weekly-list/ui/WelcomeView';
 import type { AppProps, SurfaceKind } from '../../src/features/weekly-list/ui/contract';
 import {

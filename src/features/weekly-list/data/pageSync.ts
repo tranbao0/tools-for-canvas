@@ -8,8 +8,7 @@
  */
 import { browser } from 'wxt/browser';
 import type { PageChangedMessage } from './protocol';
-import { parseUrl } from '../../../shared/platform/url';
-import { isUsableOrigin, originMatchPattern } from '../../../shared/platform/address';
+import { isUsableOrigin, originMatchPattern, parseUrl } from '../../../shared/platform/address';
 import { logFailure } from '../../../shared/platform/log';
 import {
   canvasOriginItem,

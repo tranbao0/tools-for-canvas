@@ -6,8 +6,8 @@ import { canvasOriginItem, settingsItem } from '../../../shared/platform/storage
 import { MOUNT_CONTAINER_ID } from './adapters';
 import { DEFAULT_MOUNT_TIMEOUT_MS, type InpageMount } from './mount';
 import { HIDE_NATIVE_TODO_STYLE_ID } from './nativeTodo';
-import { isSavedCanvasOrigin } from './origin';
 import {
+  isSavedCanvasOrigin,
   startInpage,
   type InpageController,
   type PageChoices,

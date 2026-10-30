@@ -2,8 +2,7 @@
  * Course progress rings. See docs/design.md, decision 8.
  */
 import type { Colors, Course, DashboardPositions } from '../../../shared/canvas/types';
-import { ringColor } from './colors';
-import { PERSONAL_LABEL, isGroupContext } from './context';
+import { PERSONAL_LABEL, isGroupContext, ringColor } from './colors';
 import type { Ring } from './types';
 
 /** One item's share of a ring. */

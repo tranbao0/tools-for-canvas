@@ -4,11 +4,9 @@
 import { BROWSER_KIND } from '../../../shared/platform/browserKind';
 import { logFailure } from '../../../shared/platform/log';
 import { settingsItem } from '../../../shared/platform/storage';
-import { PAGE_LAYOUT_CSS } from '../../../shared/ui/pageLayout';
-import { installStyles } from '../../../shared/ui/styles';
+import { PAGE_LAYOUT_CSS, installStyles } from '../../../shared/ui/styles';
 import { WelcomeView } from '../ui/WelcomeView';
-import { actionShortcut, extensionPageHost } from './hosts';
-import { mountRuntime } from './mountRuntime';
+import { actionShortcut, extensionPageHost, mountRuntime } from './hosts';
 import { createSurfaceRuntime, type SurfaceRuntime } from './runtime';
 import { followExtensionPageTheme } from '../../../shared/ui/theme';
 

@@ -7,8 +7,7 @@ import { connectPanelPort } from '../../../shared/platform/panelPort';
 import { settingsItem } from '../../../shared/platform/storage';
 import { App } from '../ui/App';
 import { installStyles } from '../../../shared/ui/styles';
-import { extensionPageHost } from './hosts';
-import { mountRuntime } from './mountRuntime';
+import { extensionPageHost, mountRuntime } from './hosts';
 import { createSurfaceRuntime, type SurfaceRuntime } from './runtime';
 import { followExtensionPageTheme } from '../../../shared/ui/theme';
 

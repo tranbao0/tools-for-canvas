@@ -4,9 +4,8 @@ import { t } from '../../../shared/ui/i18n';
 import type { SurfaceState } from '../model/types';
 import type { Actions } from './contract';
 import { hostOf } from './format';
-import { OfferBanner } from './Notices';
+import { OfferBanner, browserIsOffline } from './Notices';
 import { Heading, HostText, MARKER, withNode, type HeadingLevel } from '../../../shared/ui/parts';
-import { browserIsOffline } from './online';
 
 /** A sentence with the host of `origin` in it, as breakable host text. */
 function withHost(key: 'noAccessBody' | 'noCoursesBody', origin: string) {

@@ -6,8 +6,7 @@
  * into a Canvas page of the saved address only.
  */
 import { browser, type Browser } from 'wxt/browser';
-import { parseUrl } from './url';
-import { canAutoSaveOrigin, originMatchPattern } from './address';
+import { canAutoSaveOrigin, originMatchPattern, parseUrl } from './address';
 import { isCanvasDocument } from './detectCanvas';
 import { logFailure } from './log';
 

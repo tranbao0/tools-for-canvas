@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findNextLink } from './paging';
+import { findNextLink } from './client';
 
 const BASE = 'https://school.instructure.com/api/v1/planner/items';
 

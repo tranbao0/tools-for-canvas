@@ -5,9 +5,13 @@ import { t, tp, type MessageKey, type PluralKey } from '../../../shared/ui/i18n'
 import type { ItemView, Offer, UndoInfo, WeekView } from '../model/types';
 import { formatTimeOrDateTime, hostOf } from './format';
 import { CloseIcon } from '../../../shared/ui/icons';
-import { browserIsOffline } from './online';
 import { HostText, MARKER, withNode } from '../../../shared/ui/parts';
 import { ringName } from './Rings';
+
+/** The browser says it has no network. `navigator.onLine` is `true` when it does not know. */
+export function browserIsOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
 
 /** How long the accept button stays off after the offer shows or its host changes. */
 export const OFFER_ARM_MS = 1000;
