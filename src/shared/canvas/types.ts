@@ -297,9 +297,7 @@ export interface CanvasApi {
   /** Every active override, duplicates removed by id. */
   listPlannerOverrides(): Promise<PlannerOverride[]>;
   /** GraphQL `customGradeStatusesConnection`, keyed by course id. */
-  getWidgetGradeVisibility?(
-    userId: string,
-  ): Promise<Record<string, Record<string, boolean>> | null>;
+  getWidgetGradeVisibility?(userId: string): Promise<WidgetGradePreferences | null>;
   listCustomGradeStatuses(courseIds: string[]): Promise<Record<string, CustomGradeStatus[]>>;
   createOverride(input: {
     plannableType: OverridePlannableType;
@@ -332,4 +330,9 @@ export interface CanvasApi {
    * answers 204 with no body.
    */
   setAnnouncementRead(courseId: string, topicId: string, read: boolean): Promise<void>;
+}
+
+export interface WidgetGradePreferences {
+  gradeVisibilities: Record<string, Record<string, boolean>>;
+  showGrades: Record<string, boolean>;
 }

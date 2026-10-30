@@ -81,6 +81,10 @@ export interface DashboardData {
   ready: boolean;
   courses: DashboardCourse[];
   extras: ExtraItem[];
+  /** A local main toggle change still needs a matching server read. */
+  mainTogglePending?: boolean;
+  /** Saved main toggles, keyed by widget id. Missing values default to true. */
+  showGrades?: Record<string, boolean>;
   /**
    * The grade visibilities of the signed-in student, or `null` when they are unknown. A reply to
    * a read names the student in `userId`. A data reply carries the result of a read that ended

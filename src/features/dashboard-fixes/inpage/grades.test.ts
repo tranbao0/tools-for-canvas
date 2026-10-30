@@ -70,6 +70,31 @@ describe('gradesFix', () => {
     expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('95%');
   });
 
+  it.each([
+    [false, false, false, '•••'],
+    [true, true, false, '•••'],
+    [true, true, true, '95%'],
+    [true, false, false, '95%'],
+  ])(
+    'combines server and local main toggles (%s, %s, %s)',
+    (server, pending, override, expected) => {
+      document
+        .querySelector('[data-testid="hide-all-grades-checkbox"]')
+        ?.setAttribute('data-testid', 'show-all-grades-checkbox');
+      gradesFix().apply(
+        fakeContext({
+          ...dashboardData(),
+          showGrades: { 'course-grades-widget': server },
+          mainTogglePending: pending,
+          gradeVisibilities: { 'course-grades-widget': override ? { '107': true } : {} },
+        }),
+      );
+      expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe(
+        expected,
+      );
+    },
+  );
+
   it('keeps a saved per-course hidden grade hidden when the main toggle is on', () => {
     const context = fakeContext({
       ...dashboardData(),

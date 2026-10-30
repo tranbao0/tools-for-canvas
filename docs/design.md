@@ -1642,8 +1642,15 @@ I read each of them in the package source.
   `ui/features/widget_dashboard/react/hooks/useWidgetConfig.ts` saves the settings through `updateWidgetDashboardConfig`.
   `app/graphql/mutations/update_widget_dashboard_config.rb` stores them in the user's `widget_dashboard_config` preference under `filters[widgetId]`.
   `app/graphql/types/user_type.rb` exposes that preference as the JSON string `widgetDashboardConfig`.
-  The copied cards read that preference through GraphQL only when a Course grades widget is present, and follow the visible main toggle when no course override exists.
-  They also keep visibility changes from native cards when those cards leave the current page.
+  The copied cards read that preference through GraphQL only when a Course grades widget is present, and use `gradeVisibilities[id] ?? showGrades`.
+  The package saves `showGrades` beside `gradeVisibilities`, with a default of `true`.
+  After a local toggle change, the main value is false if either the server or the local toggle says hidden.
+  This guard lasts until a read that began after the change agrees with the local toggle.
+  After agreement, a server value from another tab controls the copies even if this tab still shows its earlier toggle.
+  A return to a visible tab starts a fresh read at most once per 30 seconds, measured with `performance.now()`.
+  Unit tests cover the return event and the cross-tab main value.
+  The headless E2E test covers the saved main value but does not claim to test a tab return.
+  The copied cards also keep visibility changes from native cards when those cards leave the current page.
   A failed preference read keeps copied grades hidden.
   A copy may show a grade only when a server read confirms it, and that read began after the last moment the fix could have missed a change.
   The fix can miss a change in four moments.

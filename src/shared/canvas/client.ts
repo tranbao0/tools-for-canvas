@@ -205,7 +205,10 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
         const saved = body.data.legacyNode.widgetDashboardConfig;
         if (saved === null || saved === undefined) return null;
         const config = JSON.parse(saved) as {
-          filters?: Record<string, { gradeVisibilities?: Record<string, boolean> }>;
+          filters?: Record<
+            string,
+            { gradeVisibilities?: Record<string, boolean>; showGrades?: boolean }
+          >;
         };
         const entries = Object.entries(config.filters ?? {}).map(([id, value]) => {
           const visibility = value.gradeVisibilities ?? {};
@@ -216,7 +219,14 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
             throw new Error('Invalid grade visibility');
           return [id, visibility] as const;
         });
-        return Object.fromEntries(entries);
+        const showGrades = Object.fromEntries(
+          Object.entries(config.filters ?? {}).map(([id, value]) => {
+            if (value.showGrades !== undefined && typeof value.showGrades !== 'boolean')
+              throw new Error('Invalid main grade visibility');
+            return [id, value.showGrades ?? true];
+          }),
+        );
+        return { gradeVisibilities: Object.fromEntries(entries), showGrades };
       },
 
       getSelf: async () => getObject<UserSelf>('/api/v1/users/self'),

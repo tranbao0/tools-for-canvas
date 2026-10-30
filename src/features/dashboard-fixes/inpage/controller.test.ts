@@ -148,7 +148,7 @@ describe('createFixesEngine', () => {
     await settle();
     expect(reads()).toHaveLength(before + 1);
     expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
-    release({ ...DATA, gradeVisibilities: { 'course-grades-widget': { '107': false } } });
+    release({ ...DATA, gradeVisibilities: {}, showGrades: { 'course-grades-widget': false } });
     await settle();
     expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
     change('visible');
@@ -160,6 +160,35 @@ describe('createFixesEngine', () => {
     await settle(30_000);
     change('visible');
     expect(reads()).toHaveLength(before + 2);
+    state.mockRestore();
+  });
+
+  it('keeps a local hide through a stale main value until a later read agrees', async () => {
+    let server = true;
+    send.mockImplementation(async () => ({
+      ...DATA,
+      showGrades: { 'course-grades-widget': server },
+    }));
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    const text = () => document.querySelector('[data-testid="course-107-grade"]')?.textContent;
+    expect(text()).toBe('95%');
+    document
+      .querySelector('[data-testid="hide-all-grades-checkbox"]')!
+      .setAttribute('data-testid', 'show-all-grades-checkbox');
+    await settle();
+    expect(text()).toBe('•••');
+    const state = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    server = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await settle();
+    expect(text()).toBe('•••');
+    server = true;
+    await settle(30_000);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await settle();
+    expect(text()).toBe('95%');
     state.mockRestore();
   });
 

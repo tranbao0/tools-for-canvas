@@ -342,6 +342,9 @@ describe('sanitizeHtml: the hostile corpus', () => {
 });
 
 describe('htmlToText', () => {
+  it('returns empty text for empty input', () => {
+    expect(htmlToText('', 10)).toBe('');
+  });
   it('reads the text of the allowed and of the unlisted tags, with a break between blocks', () => {
     expect(
       htmlToText('<p>The <strong>lab</strong> moves.</p><p>Bring <em>goggles</em>.</p>', 200),

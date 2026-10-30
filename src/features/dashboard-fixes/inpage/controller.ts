@@ -82,6 +82,8 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   let loadSeq = 0;
   /** What the server confirmed for the confirmed student, or `null` while nothing is confirmed. */
   let visibility: DashboardData['gradeVisibilities'] = null;
+  let showGrades: DashboardData['showGrades'];
+  let mainTogglePending = false;
   /** A read must begin: nothing is confirmed, or the page changed what a confirmation covers. */
   let wantRead = true;
   let reading = false;
@@ -165,6 +167,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
       );
     if (enabled('allCourseGrades') && toggleState && (toggles !== toggleState || configChanged)) {
       wantRead = true;
+      if (toggles !== toggleState) mainTogglePending = true;
     }
     toggleState = toggles;
     nativeVisibility = nextNative;
@@ -230,6 +233,8 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     reading = false;
     wantRead = true;
     visibility = null;
+    showGrades = undefined;
+    mainTogglePending = false;
     gradeStore.observed.clear();
     gradeStore.serverStates.clear();
     toggleState = '';
@@ -242,6 +247,14 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     const before = enabled('allCourseGrades');
     change();
     if (before !== enabled('allCourseGrades')) markBlind();
+  }
+
+  function confirmMainToggle(): void {
+    if (!mainTogglePending) return;
+    mainTogglePending = !findGradeWidgets(doc).every((found) => {
+      const id = (found.widget.getAttribute('data-testid') ?? '').replace(/^widget-/, '');
+      return (showGrades?.[id] ?? true) === !found.gradesHidden;
+    });
   }
 
   function startRead(): void {
@@ -260,7 +273,9 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         // A result counts only for the student that is confirmed now.
         const confirmed = result?.userId !== undefined && result.userId === gradeStore.userId;
         visibility = confirmed ? (result?.gradeVisibilities ?? null) : null;
-        if (data) data = { ...data, gradeVisibilities: visibility };
+        showGrades = confirmed ? result?.showGrades : undefined;
+        if (confirmed && visibility !== null) confirmMainToggle();
+        if (data) data = { ...data, gradeVisibilities: visibility, showGrades, mainTogglePending };
         schedule(0);
       })
       .catch((error: unknown) => {
@@ -276,10 +291,10 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
       !enabled('allCourseGrades') ||
       gradeStore.userId === undefined ||
       findGradeWidgets(doc).length === 0 ||
-      Date.now() - lastVisibilityRefresh < VISIBILITY_REFRESH_MS
+      performance.now() - lastVisibilityRefresh < VISIBILITY_REFRESH_MS
     )
       return;
-    lastVisibilityRefresh = Date.now();
+    lastVisibilityRefresh = performance.now();
     startRead();
     schedule(0);
   }
@@ -316,10 +331,12 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
           next.userId === gradeStore.userId
         ) {
           visibility = next.gradeVisibilities;
+          showGrades = next.showGrades;
+          confirmMainToggle();
         }
         // A read that ended with no result runs again when the data changes.
         if (visibility === null && !reading) wantRead = true;
-        data = { ...next, gradeVisibilities: visibility };
+        data = { ...next, gradeVisibilities: visibility, showGrades, mainTogglePending };
         schedule(0);
       })
       .catch((error: unknown) => logFailure('dashboard data', error));

@@ -1,3 +1,4 @@
+import type { WidgetGradePreferences } from '../../../shared/canvas/types';
 /**
  * The single data owner. See docs/design.md, decisions 2, 5, 6, 9, 10 and 11.
  *
@@ -1957,7 +1958,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       lateVisibility.userId === session.profile.id &&
       lateVisibility.generation === generation
         ? {
-            gradeVisibilities: lateVisibility.value,
+            ...lateVisibility.value,
             ...(lateVisibility.token === undefined
               ? {}
               : { visibilityToken: lateVisibility.token }),
@@ -1976,7 +1977,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         userId: string;
         generation: number;
         token: string | undefined;
-        value: DashboardData['gradeVisibilities'];
+        value: WidgetGradePreferences;
       }
     | undefined;
 
@@ -1988,15 +1989,17 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   async function confirmedPreferences(
     origin: string,
     stamp: WriteStamp,
-    value: Record<string, Record<string, boolean>> | null,
-  ): Promise<Record<string, Record<string, boolean>> | null> {
+    value: WidgetGradePreferences | null,
+  ): Promise<WidgetGradePreferences | null> {
     if (!isCurrent(stamp)) return null;
     if (value !== null) return value;
     try {
       const self = await apiFor(origin)
         .withPriority(() => 'high')
         .getSelf();
-      return isCurrent(stamp) && self.id === stamp.userId ? {} : null;
+      return isCurrent(stamp) && self.id === stamp.userId
+        ? { gradeVisibilities: {}, showGrades: {} }
+        : null;
     } catch {
       return null;
     }
@@ -2048,7 +2051,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       ]);
       return gradeVisibilities === null
         ? { ...base, gradeVisibilities: null }
-        : { ...base, userId, gradeVisibilities };
+        : { ...base, userId, ...gradeVisibilities };
     } catch {
       return { ...base, gradeVisibilities: null };
     } finally {

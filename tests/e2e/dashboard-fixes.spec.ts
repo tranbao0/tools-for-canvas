@@ -555,8 +555,11 @@ test.describe('course grades', () => {
     await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
   });
 
-  test('refresh a copied grade when the tab returns', async ({ context, page }) => {
-    let hidden: Record<string, boolean> = {};
+  test('hide copied grades when the server main toggle is off', async ({
+    context,
+    page,
+  }, testInfo) => {
+    const hidden: Record<string, boolean> = { '108': true };
     const served = await serveScenario(
       context,
       [
@@ -569,7 +572,9 @@ test.describe('course grades', () => {
               data: {
                 legacyNode: {
                   widgetDashboardConfig: JSON.stringify({
-                    filters: { 'course-grades-widget': { gradeVisibilities: hidden } },
+                    filters: {
+                      'course-grades-widget': { gradeVisibilities: hidden, showGrades: false },
+                    },
                   }),
                 },
               },
@@ -582,18 +587,10 @@ test.describe('course grades', () => {
     await addCsrfCookie(context, served.canvas.origin);
     await openCanvasPage(page, served.canvas.origin);
     const widget = page.getByTestId('widget-course-grades-widget');
-    await expect(widget.getByTestId('course-107-grade')).toHaveText('95%');
-    hidden = { '107': false };
-    await page.evaluate(() => {
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
-      document.dispatchEvent(new Event('visibilitychange'));
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
     await expect(page.locator('[data-wr-card]')).toHaveCount(2);
-    await expect(widget.getByTestId('course-107-grade')).toHaveText('•••');
     await expect(widget.getByTestId('course-108-grade')).toHaveText('N/A');
-    await widget.screenshot({ path: '/tmp/ticket-i-grade-cards.png' });
+    await expect(widget.getByTestId('course-107-grade')).toHaveText('•••');
+    await widget.screenshot({ path: testInfo.outputPath('grade-cards.png') });
   });
 
   test('show dots for a grade that the student hid while the fix was off', async ({

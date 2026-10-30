@@ -957,7 +957,24 @@ describe('widget grade visibility', () => {
       },
     }));
     await expect(testClient().getWidgetGradeVisibility!('5')).resolves.toEqual({
-      'course-grades-widget': { '107': false, '108': true },
+      gradeVisibilities: { 'course-grades-widget': { '107': false, '108': true } },
+      showGrades: { 'course-grades-widget': true },
+    });
+  });
+
+  it.each([false, true])('reads the saved main toggle %s', async (showGrades) => {
+    recordAll(() => ({
+      data: {
+        legacyNode: {
+          widgetDashboardConfig: JSON.stringify({
+            filters: { 'course-grades-widget': { showGrades } },
+          }),
+        },
+      },
+    }));
+    await expect(testClient().getWidgetGradeVisibility!('5')).resolves.toEqual({
+      gradeVisibilities: { 'course-grades-widget': {} },
+      showGrades: { 'course-grades-widget': showGrades },
     });
   });
 
@@ -968,7 +985,10 @@ describe('widget grade visibility', () => {
 
   it('reads a preference with no course overrides as nothing hidden', async () => {
     recordAll(() => ({ data: { legacyNode: { widgetDashboardConfig: '{}' } } }));
-    await expect(testClient().getWidgetGradeVisibility!('5')).resolves.toEqual({});
+    await expect(testClient().getWidgetGradeVisibility!('5')).resolves.toEqual({
+      gradeVisibilities: {},
+      showGrades: {},
+    });
   });
 
   it('rejects an unreadable preference so callers can keep grades hidden', async () => {

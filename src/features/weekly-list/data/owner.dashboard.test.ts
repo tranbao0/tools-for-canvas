@@ -1,3 +1,4 @@
+import type { WidgetGradePreferences } from '../../../shared/canvas/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnnouncementTopic } from '../../../shared/canvas/types';
 import { IDS } from '../../../../tests/fixtures/scenario';
@@ -322,7 +323,10 @@ describe('announcements', () => {
 describe('dashboardGradeVisibility', () => {
   it('reads the preferences of the confirmed student and names that student', async () => {
     const h = await loaded();
-    const read = vi.fn(async () => ({ 'course-grades-widget': { '107': false } }));
+    const read = vi.fn(async () => ({
+      gradeVisibilities: { 'course-grades-widget': { '107': false } },
+      showGrades: {},
+    }));
     const priority = vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
     h.canvas.getWidgetGradeVisibility = read;
     const result = await h.owner.dashboardGradeVisibility();
@@ -335,7 +339,10 @@ describe('dashboardGradeVisibility', () => {
 
   it('does not read for the previous student when another one signed in', async () => {
     const h = await loaded();
-    const read = vi.fn(async () => ({ 'course-grades-widget': { '107': false } }));
+    const read = vi.fn(async () => ({
+      gradeVisibilities: { 'course-grades-widget': { '107': false } },
+      showGrades: {},
+    }));
     vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
     h.canvas.getWidgetGradeVisibility = read;
     await vi.advanceTimersByTimeAsync(31_000);
@@ -348,7 +355,7 @@ describe('dashboardGradeVisibility', () => {
 
   it('does not read when the sign-in check fails', async () => {
     const h = await loaded();
-    const read = vi.fn(async () => ({}));
+    const read = vi.fn(async () => ({ gradeVisibilities: {}, showGrades: {} }));
     vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
     h.canvas.getWidgetGradeVisibility = read;
     await vi.advanceTimersByTimeAsync(31_000);
@@ -383,7 +390,7 @@ describe('dashboardGradeVisibility', () => {
     vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
     h.canvas.getWidgetGradeVisibility = async () => {
       await h.owner.originChanged('https://other.instructure.com');
-      return { 'course-grades-widget': { '107': false } };
+      return { gradeVisibilities: { 'course-grades-widget': { '107': false } }, showGrades: {} };
     };
     const result = await h.owner.dashboardGradeVisibility();
     expect(result.userId).toBeUndefined();
@@ -393,9 +400,7 @@ describe('dashboardGradeVisibility', () => {
   it('returns unknown preferences after five seconds', async () => {
     const h = await loaded();
     vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
-    h.canvas.getWidgetGradeVisibility = vi.fn(
-      () => new Promise<Record<string, Record<string, boolean>>>(() => {}),
-    );
+    h.canvas.getWidgetGradeVisibility = vi.fn(() => new Promise<WidgetGradePreferences>(() => {}));
     const pending = h.owner.dashboardGradeVisibility();
     await vi.advanceTimersByTimeAsync(5000);
     expect((await pending).gradeVisibilities).toBeNull();
@@ -404,7 +409,7 @@ describe('dashboardGradeVisibility', () => {
 
 it('publishes a visibility result after the owner wait ends', async () => {
   const h = await loaded();
-  let finish!: (value: Record<string, Record<string, boolean>>) => void;
+  let finish!: (value: WidgetGradePreferences) => void;
   vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
   h.canvas.getWidgetGradeVisibility = () =>
     new Promise((resolve) => {
@@ -414,14 +419,14 @@ it('publishes a visibility result after the owner wait ends', async () => {
   await vi.advanceTimersByTimeAsync(5000);
   expect((await pending).gradeVisibilities).toBeNull();
   const value = { 'course-grades-widget': { '107': false } };
-  finish(value);
+  finish({ gradeVisibilities: value, showGrades: {} });
   await vi.advanceTimersByTimeAsync(0);
   expect((await h.owner.dashboardData()).gradeVisibilities).toEqual(value);
 });
 
 it('does not publish the late result of a read that a newer read replaced', async () => {
   const h = await loaded();
-  const finishes: Array<(value: Record<string, Record<string, boolean>>) => void> = [];
+  const finishes: Array<(value: WidgetGradePreferences) => void> = [];
   vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
   h.canvas.getWidgetGradeVisibility = () =>
     new Promise((resolve) => {
@@ -432,9 +437,9 @@ it('does not publish the late result of a read that a newer read replaced', asyn
   expect((await first).gradeVisibilities).toBeNull();
   const second = h.owner.dashboardGradeVisibility();
   await vi.advanceTimersByTimeAsync(0);
-  finishes[0]!({ 'course-grades-widget': { '107': false } });
+  finishes[0]!({ gradeVisibilities: { 'course-grades-widget': { '107': false } }, showGrades: {} });
   await vi.advanceTimersByTimeAsync(0);
   expect((await h.owner.dashboardData()).gradeVisibilities).toBeUndefined();
-  finishes[1]!({ 'course-grades-widget': { '107': true } });
+  finishes[1]!({ gradeVisibilities: { 'course-grades-widget': { '107': true } }, showGrades: {} });
   expect((await second).gradeVisibilities).toEqual({ 'course-grades-widget': { '107': true } });
 });

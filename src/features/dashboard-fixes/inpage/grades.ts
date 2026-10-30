@@ -7,7 +7,7 @@
  * layout and loses its buttons, because they belong to React. The color of the header is the
  * course color, the grade is the total that Canvas sends for the course, and `N/A` shows when
  * Canvas sends none (a course that hides its totals, or one with no score yet). While the
- * widget's "Show all grades" toggle is off, the copies show dots, as the widget does.
+ * saved main toggle is off, the copies without a course override show dots.
  */
 import { findGradeWidgets, type GradeCards } from '../../../shared/canvas/widgetDashboard';
 import { t } from '../../../shared/ui/i18n';
@@ -160,9 +160,14 @@ export function gradesFix(
       }
     }
     nativeStates.set(found.widget, { hidden: found.gradesHidden, values });
+    const serverMain = context.data.showGrades?.[widgetId] ?? true;
+    const showGrades = context.data.mainTogglePending
+      ? serverMain && !found.gradesHidden
+      : context.data.showGrades === undefined
+        ? !found.gradesHidden
+        : serverMain;
     const hidden = (id: string): boolean =>
-      visibility == null ||
-      !(overrides?.get(id) ?? visibility?.[widgetId]?.[id] ?? !found.gradesHidden);
+      visibility == null || !(overrides?.get(id) ?? visibility?.[widgetId]?.[id] ?? showGrades);
     const signature = JSON.stringify([
       missing.map((course) => [course.id, course.name, course.color, course.score, course.grade]),
       missing.map((course) => hidden(course.id)),
