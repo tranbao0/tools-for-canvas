@@ -182,11 +182,19 @@ The list did not show there, and only the side panel had it.
 The widgets filled about 1,100 px on the left, and a wide empty area stayed on the right.
 The owner wants the list in the page on every dashboard view.
 This replaces the first rule of this decision, which was to inject nothing on the widget dashboard and in List View.
+A first build turned on Canvas's own right column there (the `with-right-side` body class).
+On 2026-10-30 the owner tested that build on the live page (sjsu.instructure.com, new widget dashboard).
+Canvas's right column squeezed the widget grid into narrow columns, and the list got only about 170 px of content width.
+The owner asked for a card like the original Tasks for Canvas, larger, with the look of the widgets, and with the widgets at their own width.
+The owner then chose a card inside the widget grid as the main mode on the widget dashboard, and a floating panel as the backup.
+The owner accepts that the in-grid card needs an update when Canvas changes the markup of its widget grid.
+Later that day the owner asked for the same relief on a long classic dashboard: after a long scroll, the list must not stay at the top of a column that is far out of view.
 
 The Canvas page is the main home.
 The in-page list replaces the Canvas To Do list on the classic dashboard (Card View and Recent Activity) and on course home pages, like the original Tasks for Canvas.
-The list also shows in the right column of the new widget dashboard and of List View.
-Those two views have no right column, so the extension turns Canvas's own column on and mounts the list there.
+The list also shows on the new widget dashboard and in List View.
+Those two views have no right column, and the extension does not turn Canvas's column on.
+It mounts the list as a card in the page content instead (see "In-page rules").
 It always shows on these pages, also while the side panel is open.
 On a course home page, the in-page list shows only that course.
 The extension injects nothing on any other page, and nothing on a page without the expected anchors.
@@ -209,9 +217,12 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The classic anchors (`#right-side-wrapper`, `#right-side`, `.Sidebar__TodoListContainer`) still match production Canvas in October 2026 [13].
 - The widget dashboard's own markup has only test ids, and its package had 16 major versions in 2026 [13].
   The mount does not use them.
-  It uses the classic anchors that every Canvas page has: `#right-side-wrapper`, `#right-side`, the body classes and the route.
+  It uses the classic anchors that every Canvas page has: `#right-side-wrapper`, `#right-side`, `#content`, the body classes and the route.
+  Only the in-grid card reads the widget test ids, and it reads them in one small file (`widgetGrid.ts`).
+  Without them, the list floats beside the content.
 - List View hides the right column, and the original forced it visible [9].
-  The list does the same on purpose now, in the way that Canvas's own layout expects (see "In-page rules").
+  The first build did the same, in the way that Canvas's own layout expects.
+  On the live widget dashboard that squeezed the widgets, so the list now stays out of Canvas's right column on these two views.
 
 **Risk:**
 
@@ -224,11 +235,21 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - The extension reads the dashboard view once, when the list mounts.
   If Canvas switches between Card View and List View without a page load, the list can sit in the wrong layout until the next load.
   The live checklist tells the tester to note whether this happens.
-- The 12 px gap assumes that Canvas leaves 72 px between the content and the column card (48 px of content padding and 24 px of column padding).
-  If Canvas changes those paddings, the gap changes by the same amount.
-- The first widget row sits at a fixed offset below the top of the column.
-  The list lines up with it at 1,200 px and wider, with the offset that the test fixture has.
-  A live check on a real page can show a different offset.
+- The in-grid card depends on the test ids `widget-columns`, `widget-column-*`, `save-customize-button`, `cancel-customize-button` and `add-widget-placeholder-*` of package version 16.1.0.
+  A Canvas release can rename them.
+  The layout then finds no grid, and the list floats beside the content.
+  The one file `widgetGrid.ts` holds every one of these selectors.
+- The grid grows into the free space on the right by the width of the card and one gutter, with a negative right margin.
+  The Canvas columns get their measured width as an inline style, so they do not change.
+  An ancestor of the grid with `overflow: hidden` would cut the card off.
+  The live checklist asks the tester to check this at wide windows.
+- The floating card sticks inside a tall container with `position: sticky`.
+  This needs a positioned ancestor of the content that spans the page, which Canvas has (`.ic-Layout-columns`), and no ancestor with `overflow` other than visible between the card and the viewport.
+- The edit mode is found from the buttons that the widget package shows only then.
+  If a release changes them, the card stays in the grid while the student drags widgets.
+  The removal count then sends the list to the floating panel when React removes the card too often.
+- The dock under the right column needs a column that is as tall as the page, as Canvas's flex layout makes it.
+  With less than 240 px of free space under the column items, the list does not dock.
 
 **Opening and closing the panel:**
 
@@ -264,23 +285,56 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - Every Canvas page has `#right-side-wrapper`, but Canvas shows it only when the body has the `with-right-side` class [13].
 - On the dashboard, when the body has `with-right-side`, mount only when one of `.Sidebar__TodoListContainer`, `.todo-list-header` or `.coming_up` appears inside `#right-side`.
   A `MutationObserver` waits for them, as the original did [9].
-- On the dashboard, when the body has no `with-right-side` (the widget dashboard and List View [13]), turn Canvas's right column on and mount at once.
-  - Add the `with-right-side` body class.
-    Canvas's own layout CSS then shows `#right-side-wrapper`, puts it beside the content at its usual width, and stacks it under the content on narrow windows.
-  - Add one style that does three things.
-    It shows the wrapper also where Canvas hides it with an inline style.
-    From 992 px it pulls the list toward the content, so that the gap between the content and the list is 12 px, the gutter between two widget cards.
-    From 1,200 px it lines the list up with the first widget row.
-  - Mark the body with `data-weekrow-column`, so that the removal knows that the extension added the class.
+- On the dashboard, when the body has no `with-right-side` (the widget dashboard and List View [13]), mount at once, when the page has `#content`.
+  The list does not add `with-right-side` and does not show `#right-side-wrapper`.
+  It takes one of these places in the page content, and `layout.ts` decides which.
+  - **In the grid** (widget dashboard only).
+    When `[data-testid="widget-columns"]` and its `[data-testid^="widget-column-"]` children exist, and the grid is a row, the list is a widget column of its own after the last Canvas column.
+    - The grid grows into the free space on the right by the width of the card plus one gutter (the measured `column-gap` of the grid), with a negative right margin.
+    - Each Canvas column gets its measured width as an inline style, so the Canvas columns keep their width.
+    - The card is 372 px wide, at least 340 px.
+      It starts at the top of the grid, which is the first widget row.
+      It scrolls with the page, as the other widgets do, and it is not sticky.
+    - The grid has room when the free space between the right edge of the grid and the viewport holds the card, the gutter and a 24 px gap to the viewport.
+  - **First in the last Canvas column**, at the width of that column, when the grid has no room or is a stack.
+    The Canvas columns never shrink.
+  - **Floating** (List View, edit mode and the backup).
+    The list is a card of 372 px, at least 360 px, in the free area to the right of the content, one gutter away from the right edge of the widgets.
+    The right edge of the widgets is the right edge of the children of `#content`, measured with a `ResizeObserver` and never with a widget test id.
+    - The top of the card lines up with the first widget row, or with the top of the content in List View.
+    - The card is sticky, with a 24 px gap to the top of the viewport.
+      Its height is at most the viewport height minus 48 px.
+      The content of the card scrolls inside, and the header with the span controls stays in view.
+    - When the free area is too small, the content gets just enough right padding for the card, the gutter and a 24 px gap, so the widgets reflow by the smallest amount.
+    - When the content would be narrower than 720 px, the list is **stacked** instead: a card above the content, at the width of the content, not floating.
+  - Every style that the list sets on a page element is an inline style that the code records in the `data-weekrow-styled` attribute, so the removal undoes all of them from the DOM alone.
+  - Mark the body with `data-weekrow-column`.
     An observer of an older copy of the script stops at once when the marker is gone.
-  - A `MutationObserver` puts the class, the style and the container back if the page removes them.
-  - When the list unmounts or the setting "Show the weekly list on Canvas pages" is off, remove the class, the marker and the style.
-    If Canvas has filled `#right-side` by then, the column is Canvas's own, and the class stays.
-  - A list that fails to mount removes the class, the marker and the style as well.
+  - A `MutationObserver` puts the container back if the page removes it, in the same place, with the same state: the container is moved and not created again, so the open groups and the scroll position stay.
+  - The list floats for the rest of the page view when the card is removed more than 3 times in 10 seconds, and when the grid anchors are missing for more than 1.5 seconds after they were there.
+  - The list floats while "Customize dashboard" edit mode is on, and returns to its place when edit mode ends.
+    The edit mode shows in the page as the `cancel-customize-button` and `save-customize-button` buttons, and as `add-widget-placeholder-*` drop zones.
+  - List View has no widget grid, so it uses the floating card only.
+  - All grid anchors are in `widgetGrid.ts`, which says what each one is.
+    A change of the Canvas markup needs an edit in that one file.
+  - When the list unmounts or the setting "Show the weekly list on Canvas pages" is off, remove the inline styles and the marker.
+    A list that fails to mount does the same.
   - The K-5 dashboard (`#dashboard-app-container`) gets nothing.
+- On the classic dashboard and on course home pages, when the whole right column has scrolled above the viewport, the list docks.
+  Recent Activity is a very long page, and the list sits at the top of the column.
+  - A sentinel at the bottom of the column (`#right-side-wrapper`) is watched with an `IntersectionObserver`, and a scroll listener catches a jump over it.
+  - The container stays in the DOM, and a spacer of the same height holds its place in the column, so nothing in the column moves.
+    The container takes `position: absolute` under the column, at the width of the column content, with a card look and the sticky 24 px gap.
+    It is the same list, not a copy, so open groups, scroll position and checks are shared.
+  - The card sits under the last item of the column, so it never covers one.
+    The column must be beside the content and have 240 px of free space under its items, or the list stays in its place.
+  - When the student scrolls back and the sentinel comes into view, the card goes away, and the list is back in its place.
 - On a course home page, mount only when the path is exactly `/courses/:id` and the body has `with-right-side`, as the original did [9].
 - Mount the list as a sibling before `#right-side`, inside `#right-side-wrapper`.
   Canvas replaces the contents of `#right-side`, so a node inside it would be lost [13].
+  On the widget dashboard and in List View, the container starts there and then moves into the page content.
+- The card has the look of a Canvas widget card, measured from the widget styles of the test fixture: a 1 px border, 12 px corners, 20 px and 24 px of padding, and an 18 px bold heading.
+  The widget cards of the fixture have no shadow, so the card has none.
 - Hide only the student To Do list (`.Sidebar__TodoListContainer`).
   Keep Coming Up, Recent Feedback and the other sidebar content.
 - A user who also has a teacher, TA or designer role gets the legacy teacher To Do list instead [13].
@@ -312,7 +366,9 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 
 **Widths:**
 
-- The in-page column gives about 240 px of content width [13].
+- The in-page column on the classic dashboard gives about 240 px of content width [13].
+- The card on the widget dashboard and in List View is 372 px wide.
+  With the 1 px border and 24 px of padding on each side, the list content is at least 320 px wide.
 - The Chrome and Edge panel opens at 360 px, which is the Chromium minimum [11].
 - The Firefox sidebar opens at 18em and can shrink to 14em [12].
   Inferred from common system font sizes, that is about 170 to 230 px.
@@ -1127,8 +1183,10 @@ These sizes come from one test build of the same small app [19].
    - One test opens the real side panel with `PW_CHROMIUM_ATTACH_TO_OTHER=1` [19].
      Playwright cannot click the toolbar, so this test uses a test-only button on the panel page that calls `sidePanel.open`.
      Release builds do not include it.
-   - The widget dashboard and List View fixtures must get the list in the right column, with no overlap of the widgets, at 1,920, 1,280 and 1,000 px and on a narrow window.
-     The page must return to its first state when the setting is off.
+   - The widget dashboard and List View fixtures must get the list as a card that overlaps no widget, at 1,920, 1,600, 1,280, 1,000 and 700 px.
+     The Canvas widget columns must have the same width with and without the list.
+     The page must return to its first state when the setting is off, with the same computed styles and boxes.
+   - A long classic dashboard must dock the list under the right column after the column has scrolled out of view, without covering a column item, and take it back on the scroll up.
    - Screenshot tests run at 200 px, 240 px and 360 px.
    - One test serves a slow Canvas: each answer waits 700 ms, and the planner answers only the requested range, 100 items a page with `Link: rel="next"`, over a full term of work.
      It checks that a week loaded ahead shows within 300 ms of the click, that a past week within the horizon needs no request, and that a week not yet cached shows within one round trip and asks only for the missing week.

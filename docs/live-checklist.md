@@ -162,7 +162,7 @@ Use a new, empty profile, and the student account.
    Expect: on a Canvas with its own domain, the Canvas page shows nothing of the extension, the open welcome page and the side panel ask "Use <host> as your Canvas?", and the Canvas To Do stays.
    Click "Use it".
    Expect: the weekly list appears in the Canvas tab with no reload, on the dashboard and on course home pages.
-   Expect: with List View or the new widget dashboard, the Canvas page shows the list in a right column, and the side panel shows the list too.
+   Expect: with List View or the new widget dashboard, the Canvas page shows the list as a card, and the side panel shows the list too.
    Open the panel.
    Expect: the list loads for the span that starts today.
 7. Click the toolbar button again, then press Alt+Shift+W twice.
@@ -196,15 +196,32 @@ Use a new, empty profile, and the student account.
     Expect: each ring shows "done/total" for the shown span, a ring at 100 percent with no past-due work shows a check mark, and a click on a ring shows only that course.
 15. Open the Canvas Card View dashboard, then the Recent Activity dashboard, then a course home page.
     Expect: the weekly list replaces the Canvas To Do list, and on the course home page it shows only that course.
+    On the Recent Activity dashboard, scroll down until the whole right column (the list, Coming Up and Recent Feedback) is above the top of the window.
+    Expect: the list shows again as a card at the top of the empty space under the column, at the width of the column, with a 24 px gap above it.
+    Expect: the card never covers an item of the column, and it scrolls inside when it is taller than the window.
+    Check an item off in the card, then scroll back up until the end of the column shows.
+    Expect: the card goes away as soon as the end of the column comes into view, the list is back in its place, and the check mark shows in it.
+    Expect: the same on a course home page when the page is longer than the right column.
 16. Open the new Canvas dashboard (if your school has it) and the List View dashboard.
-    Expect: the weekly list shows in a right column next to the content, and the widgets move left and do not overlap it.
-    Expect: on the new dashboard, the top of the list lines up with the first row of widgets at 1,200 px and wider.
-    Expect: on a narrow window, the list moves under the content.
+    Expect: Canvas does not show its right column, and the widgets keep their width.
+    Expect: on the new dashboard in a wide window (about 1,800 px and wider), the list is a widget card of its own, after the last widget column, and its top lines up with the first row of widgets.
+    Expect: the card is at least 340 px wide, has the look of the widget cards, and scrolls with the page, as the other widgets do.
+    Write down the window width at which the card moves into the last widget column (first in that column, at its width) because the grid has no room.
+    Expect: the widget columns have the same width with and without the list, in both places.
+    Click "Customize dashboard".
+    Expect: while you edit the layout, the list floats in the free area on the right (or above the content on a narrow window), and it does not cover a widget or a drop zone.
+    Click "Save changes" or "Cancel".
+    Expect: the list returns to its place in the grid.
+    Expect: on List View, the list floats in the free area on the right, with its top at the top of the content, and it stays in view with a 24 px gap while the page scrolls.
+    Expect: the floating card is at least 360 px wide and has its own scroll when it is taller than the window, with the header and the span controls in view.
+    Expect: when the content would be narrower than about 720 px, the list is a card above the content, at the width of the content.
     Expect: the list follows the page theme, also with the widget dashboard dark mode.
+    Reload the dashboard five times, and edit and save the layout twice.
+    Expect: the list is in its place each time, and it does not jump between places.
     Turn off "Show the weekly list on Canvas pages".
-    Expect: the list leaves, and the page looks as it did before, with no empty column.
+    Expect: the list leaves, and the page looks as it did before, with no empty space.
     Switch the dashboard from Card View to List View with the menu.
-    Expect: after a reload, the list shows in the right column.
+    Expect: after a reload, the list shows as a card.
     Write down whether the list also shows without the reload.
 17. With the side panel open, look at the Card View dashboard in the same window.
     Expect: the in-page list shows in full, as it does with the panel closed.
