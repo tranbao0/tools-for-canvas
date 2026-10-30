@@ -412,7 +412,7 @@ Run them on the classic dashboard in Card View, then in List View, then on a cou
 50. Check the Edge Add-ons listing.
     Expect: the description has the license link and does not mention other browsers.
 51. Check the Firefox Add-ons listing.
-    Expect: the source zip and the lockfile are attached, the reviewer notes say that the only writes are done marks, skip marks and custom tasks sent to the student's own Canvas at the student's request, and two-factor authentication is on.
+    Expect: the source zip and the lockfile are attached, the reviewer notes say that the only writes are done marks, skip marks, custom tasks and announcement read marks sent to the student's own Canvas at the student's request, and two-factor authentication is on.
 52. Check every listing.
     Expect: the privacy policy link opens `docs/privacy.md` on the project site.
     Expect: the description ends with the trademark notice at the end of the README.

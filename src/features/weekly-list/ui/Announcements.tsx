@@ -4,7 +4,7 @@
  * message, which goes through the strict sanitizer. Opening a row never marks it as read: the
  * "Mark as read" control of an unread row is the only thing that does.
  */
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { t } from '../../../shared/ui/i18n';
 import { htmlToText, sanitizeHtml } from '../../../shared/ui/sanitize';
 import { CheckIcon } from '../../../shared/ui/icons';
@@ -52,7 +52,8 @@ function AnnouncementItem(props: {
   const [ids] = useState(() => ({ body: newId('ann') }));
   const [message, setMessage] = useState<MessageState | null>(null);
   const open = message !== null;
-  const snippet = htmlToText(row.message, SNIPPET_CHARS);
+  // The preview is read once for a message, not at each redraw of a long list.
+  const snippet = useMemo(() => htmlToText(row.message, SNIPPET_CHARS), [row.message]);
   const key = announcementKey(row.courseId, row.id);
   /** The row that the student closed or opened last, so a late reply of another open is dropped. */
   const opened = useRef(0);

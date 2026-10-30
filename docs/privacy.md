@@ -146,6 +146,7 @@ The only data that leave your browser are the writes listed above, which go to y
 
 To remove the data on your device, remove the extension.
 Your done marks, skip marks and custom tasks stay in Canvas, like any other Canvas planner data.
+A read mark on an announcement stays in Canvas too.
 You can change them in Canvas, or with the extension before you remove it.
 
 ## Changes to this policy

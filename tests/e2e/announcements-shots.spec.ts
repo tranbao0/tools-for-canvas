@@ -25,6 +25,8 @@ const QUIZ_3 = 'Quiz 3: Cell membranes';
 const LAB_ROOM = 'Lab room change for Thursday';
 
 async function shoot(locator: Locator, name: string): Promise<void> {
+  // The pointer stays where the last click was, and would draw a hover underline.
+  await locator.page().mouse.move(0, 0);
   await locator.screenshot({ path: path.join(DIR, `${name}.png`) });
 }
 
@@ -83,10 +85,12 @@ for (const width of [360, 240, 170]) {
 
       await page.getByRole('tab', { name: /^Announcements/ }).click();
       await expect(page.getByRole('button', { name: LAB_ROOM, exact: true })).toBeVisible();
+      await page.mouse.move(0, 0);
       await page.screenshot({ path: path.join(DIR, `panel-announcements-${tag}.png`) });
 
       await page.getByRole('button', { name: LAB_ROOM, exact: true }).click();
       await expect(page.locator('.wr-ann-body')).toContainText('Science Hall 214');
+      await page.mouse.move(0, 0);
       await page.screenshot({ path: path.join(DIR, `panel-announcements-open-${tag}.png`) });
     });
   }

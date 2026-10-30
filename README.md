@@ -60,7 +60,7 @@ On another Canvas, the side panel offers "Switch to this Canvas?".
 ## Privacy
 
 Tools for Canvas reads your Canvas data in your browser and shows it to you.
-It writes only done marks, skip marks and your own tasks, and only to your own Canvas.
+It writes only done marks, skip marks, your own tasks and announcement read marks, and only to your own Canvas.
 On your device, it stores only its settings, your Canvas address, a change time stamp and which one-time notes you have seen.
 Nothing goes anywhere else: there are no analytics, no error reports and no remote configuration.
 A lint rule and a CI check enforce this in the code.

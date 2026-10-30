@@ -389,6 +389,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     A new span starts at the top.
   - The card scrolls with the page, and it is not sticky.
     The card of List View and the docked card of the classic dashboard keep their sticky 24 px gap, and they have the same height limit and the same scroll region.
+  - The scroll region keeps at least 128 px in every card, so with the tab strip (decision 24) a low window still shows a row.
+    The whole card then scrolls, and the header does not stay in view.
   - The side panel scrolls as one page, and it has no such region and no minimize button.
 - On a course home page, the rows do not repeat the course name, because the whole list is that course.
 - The list has two tabs, Tasks and Announcements, in the classic dashboard (Card View and Recent Activity), in List View, on course home pages and in the side panel.
@@ -973,7 +975,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 - The cache lives in `storage.session`.
   It is held in memory, never written to disk, and it survives service worker restarts and panel reloads.
   So decision 2 stays true, and a panel that opens while offline still has the last data.
-- The planner items, the assignment details, the undated work and the planner-off assignment lists each have their own key in `storage.session`.
+- The planner items, the assignment details, the undated work, the planner-off assignment lists and the announcements of the Announcements tab (`weekrowAnnouncements`, decision 24) each have their own key in `storage.session`.
   A write sends only the parts that changed.
   So a new week does not write every assignment detail again, and the change events that reach each extension page stay small.
 - The background keeps at most 3 requests in flight [10].
@@ -1081,6 +1083,9 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | All assignments (planner turned off only) | `GET /api/v1/courses/:id/assignments?include[]=submission&per_page=100` | Instead of the planner, per course |
 | Undated work | `GET /api/v1/courses/:id/assignments?bucket=undated&...` | 5-minute timer, per course |
 | Overrides | `GET /api/v1/planner/overrides?per_page=100` | 5-minute timer, when No due date has items |
+| Announcements (decision 24) | `GET /api/v1/announcements?context_codes[]=course_:id...&start_date=...&end_date=...&active_only=true&per_page=100` | A surface with the Announcements tab asks, and the list is missing or older than 60 seconds; one request for each 20 courses |
+| Announcement message | `GET /api/v1/courses/:id/discussion_topics/:id` | The student opens a row (decision 22 and 24) |
+| Announcement read mark | `PUT` and `DELETE /api/v1/courses/:id/discussion_topics/:id/read` | The student presses "Mark as read" or Undo, with the sign-in check before it |
 
 **Request rules:**
 
@@ -1307,7 +1312,7 @@ These sizes come from one test build of the same small app [19].
 - Publish the same version on the Chrome Web Store, Microsoft Edge Add-ons and Firefox Add-ons.
 - Host one privacy policy page on the project's GitHub Pages site.
   - It says the extension reads Canvas data in the browser.
-  - It says the extension writes only done marks, skip marks and custom tasks, and only to the student's own Canvas.
+  - It says the extension writes only done marks, skip marks, custom tasks and announcement read marks, and only to the student's own Canvas.
   - It says the extension stores only settings, the Canvas address, a change time stamp and which one-time notes were seen on the device.
   - It says nothing goes anywhere else.
   - It includes the Chrome Web Store Limited Use statement [20].
@@ -1320,7 +1325,7 @@ These sizes come from one test build of the same small app [19].
 - Firefox Add-ons [12] [20]:
   - Set `gecko.id`.
   - Set `data_collection_permissions` to `required: ["none"]`.
-    The reviewer notes explain that the only writes are done marks, skip marks and custom tasks, sent to the student's own Canvas at the student's request.
+    The reviewer notes explain that the only writes are done marks, skip marks, custom tasks and announcement read marks, sent to the student's own Canvas at the student's request.
   - Upload the source with a `build-for-amo` npm script and the lockfile.
   - Turn on two-factor authentication.
 - Edge Add-ons [20]:
