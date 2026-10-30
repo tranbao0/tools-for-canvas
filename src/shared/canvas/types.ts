@@ -120,6 +120,17 @@ export interface Term {
   end_at: string | null;
 }
 
+/**
+ * A student enrollment of a course, with the totals that `include[]=total_scores` adds. Canvas
+ * leaves the totals out when the course hides final grades, and sends `null` when there is no
+ * score yet.
+ */
+export interface CourseEnrollment {
+  type?: string;
+  computed_current_score?: number | null;
+  computed_current_grade?: string | null;
+}
+
 export interface Course {
   id: string;
   /** Already the student's nickname when one is set. */
@@ -129,6 +140,20 @@ export interface Course {
   /** When true, the course's own dates replace the term dates for students. */
   restrict_enrollments_to_course_dates?: boolean;
   term?: Term;
+  enrollments?: CourseEnrollment[];
+}
+
+/** The fields of an announcement (a discussion topic) that the dashboard fixes read. */
+export interface AnnouncementTopic {
+  id: string;
+  title: string;
+  /** HTML that a teacher wrote. Never insert it without sanitizing it. */
+  message: string | null;
+  posted_at: string | null;
+  /** `read` or `unread`. */
+  read_state?: string;
+  user_name?: string | null;
+  author?: { display_name?: string | null } | null;
 }
 
 export interface Group {
@@ -285,4 +310,10 @@ export interface CanvasApi {
   createNote(input: NoteInput): Promise<PlannerNote>;
   updateNote(id: string, input: NoteInput): Promise<PlannerNote>;
   deleteNote(id: string): Promise<void>;
+  /** One announcement of a course, with its full message. */
+  getAnnouncement(courseId: string, topicId: string): Promise<AnnouncementTopic>;
+  /** The announcements of one course posted in `range`, newest first. */
+  listAnnouncements(courseId: string, range: TimeRange): Promise<AnnouncementTopic[]>;
+  /** Marks an announcement as read for the student. Canvas answers 204. */
+  markAnnouncementRead(courseId: string, topicId: string): Promise<void>;
 }

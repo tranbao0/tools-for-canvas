@@ -548,6 +548,24 @@
   "noCoursesYet": {
     "message": "Your courses show here after your list loads."
   },
+  "settingFixes": {
+    "message": "New dashboard fixes"
+  },
+  "fixesHelp": {
+    "message": "Small fixes for the widgets of the new Canvas dashboard. Each one works on its own."
+  },
+  "fixCourseColors": {
+    "message": "Course colors on Course work icons"
+  },
+  "fixAnnouncements": {
+    "message": "Announcements in place"
+  },
+  "fixCourseWork": {
+    "message": "Course work extras"
+  },
+  "fixCourseGrades": {
+    "message": "All course grades"
+  },
   "settingShowRings": {
     "message": "Show progress rings"
   },
@@ -625,5 +643,92 @@
   },
   "welcomeReadyNext": {
     "message": "Open your Canvas dashboard to see your week."
+  },
+  "annShowLess": {
+    "message": "Show less"
+  },
+  "annLoading": {
+    "message": "Loading the announcement…"
+  },
+  "annFailed": {
+    "message": "Couldn't load the announcement."
+  },
+  "annOpenOnCanvas": {
+    "message": "Open it on Canvas"
+  },
+  "annMarkedRead": {
+    "message": "Marked as read."
+  },
+  "annCourseFilter": {
+    "message": "Course filter:"
+  },
+  "annAllCourses": {
+    "message": "All courses"
+  },
+  "annReadMore": {
+    "message": "Read more"
+  },
+  "annSentBy": {
+    "message": "Sent by $1"
+  },
+  "annEmptyUnread": {
+    "message": "No unread announcements"
+  },
+  "annEmptyRead": {
+    "message": "No read announcements"
+  },
+  "annEmptyAll": {
+    "message": "No recent announcements"
+  },
+  "annListFailed": {
+    "message": "Couldn't load the announcements of this course."
+  },
+  "annListLoading": {
+    "message": "Loading announcements…"
+  },
+  "annShowMore": {
+    "message": "Show more"
+  },
+  "alsoDue": {
+    "message": "Also due"
+  },
+  "alsoDueNote": {
+    "message": "The Due card counts the next 90 days. Missing and Submitted count every date. This list adds the work that the list above leaves out."
+  },
+  "alsoDueShowAll": {
+    "message": "Show all"
+  },
+  "alsoDueShowFewer": {
+    "message": "Show fewer"
+  },
+  "alsoDueNoDate": {
+    "message": "No due date"
+  },
+  "alsoDueOverdue": {
+    "message": "Overdue"
+  },
+  "alsoDueTypeAssignment": {
+    "message": "Assignment"
+  },
+  "alsoDueTypeQuiz": {
+    "message": "Quiz"
+  },
+  "alsoDueTypeDiscussion": {
+    "message": "Discussion"
+  },
+  "alsoDueTypePage": {
+    "message": "Page"
+  },
+  "alsoDueTypeNote": {
+    "message": "Task"
+  },
+  "alsoDueTypeOther": {
+    "message": "Work"
+  },
+  "alsoDueAria": {
+    "message": "Also due, sorted by due date"
+  },
+  "gradeNA": {
+    "message": "N/A"
   }
 }

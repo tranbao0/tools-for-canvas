@@ -3,6 +3,7 @@
  * Views are pure: they render props and call actions. They never call Canvas or browser APIs,
  * except `allowAccess`, which the runtime implements so that it runs inside the click handler.
  */
+import type { ToolsSettings } from '../../../shared/settings/tools';
 import type { Settings, SurfaceState } from '../model/types';
 
 export type SurfaceKind = 'panel' | 'inpage';
@@ -53,6 +54,8 @@ export interface Actions {
   retry(): void;
   /** Saves the settings shown in place in the panel or the in-page list. */
   saveSettings(settings: Settings): void;
+  /** Saves the switches of the small tools shown in place (decision 22). */
+  saveTools(tools: ToolsSettings): void;
   markNoteSeen(note: 'firstDone' | 'firstSkip'): void;
 }
 
@@ -64,11 +67,19 @@ export interface AppProps {
    * The data for the settings shown in place (decision 18). Missing until loaded; the gear then
    * shows a short loading state.
    */
-  settings?: { value: Settings; courses: { id: string; name: string }[] };
+  settings?: {
+    value: Settings;
+    courses: { id: string; name: string }[];
+    /** The switches of the small tools. Missing until they load: the group then stays out. */
+    tools?: ToolsSettings;
+  };
 }
 
 export interface SettingsProps {
   settings: Settings;
+  /** The switches of the small tools, and how to save them. */
+  tools: ToolsSettings;
+  onToolsChange(tools: ToolsSettings): void;
   /** All active student courses, including hidden ones. */
   courses: { id: string; name: string }[];
   origin: string | null;

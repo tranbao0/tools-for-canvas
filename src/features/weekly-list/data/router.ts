@@ -11,6 +11,8 @@
  * page has the saved origin.
  */
 import { browser, type Browser } from 'wxt/browser';
+import type { ToolsSettings } from '../../../shared/settings/tools';
+import { toolsSettingsItem } from '../../../shared/settings/toolsItem';
 import type { Settings } from '../model/types';
 import { injectInpage, injectInpageIntoOrigin } from '../../../shared/platform/inject';
 import { openWelcomePrompt } from '../../../shared/platform/install';
@@ -24,6 +26,7 @@ import {
   isDataMessage,
   type OkReply,
   type PageContextReply,
+  type ReadReply,
   type OpenPageMessage,
   type RefreshReply,
   type SeenNote,
@@ -50,6 +53,9 @@ export interface RouterHost {
   /** The stored settings, for the in-page script, which cannot read the storage itself. */
   readSettings(): Promise<Settings>;
   saveSettings(settings: Settings): Promise<void>;
+  /** The stored switches of the small tools (decision 22). */
+  readTools(): Promise<ToolsSettings>;
+  saveTools(tools: ToolsSettings): Promise<void>;
   /** Saves that the student has seen a one-time note. */
   markNoteSeen(note: SeenNote): Promise<void>;
   /** Opens the welcome page for a Canvas that waits for an answer, once per browser session. */
@@ -173,9 +179,22 @@ export function routeDataMessage(
     case 'weekrow:page-context':
       return allowed.then(async (): Promise<PageContextReply> => ({
         settings: await host.readSettings(),
+        tools: await host.readTools(),
       }));
     case 'weekrow:save-settings':
       return allowed.then(() => host.saveSettings(message.settings)).then(ok);
+    case 'weekrow:save-tools':
+      return allowed.then(() => host.saveTools(message.tools)).then(ok);
+    case 'weekrow:dashboard-data':
+      return allowed.then(() => owner.dashboardData());
+    case 'weekrow:announcement':
+      return allowed.then(() => owner.announcement(message.courseId, message.topicId));
+    case 'weekrow:announcement-list':
+      return allowed.then(() => owner.announcements(message.courseId));
+    case 'weekrow:announcement-read':
+      return allowed
+        .then(() => owner.markAnnouncementRead(message.courseId, message.topicId))
+        .then((read): ReadReply => ({ read }));
     case 'weekrow:mark-note-seen':
       return allowed.then(() => host.markNoteSeen(message.note)).then(ok);
     case 'weekrow:refresh':
@@ -200,6 +219,8 @@ export const browserRouterHost: RouterHost = {
   },
   readSettings: () => settingsItem.getValue(),
   saveSettings: (settings) => settingsItem.setValue(settings),
+  readTools: () => toolsSettingsItem.getValue(),
+  saveTools: (tools) => toolsSettingsItem.setValue(tools),
   async markNoteSeen(note) {
     await seenNotesItem.setValue({ ...(await seenNotesItem.getValue()), [note]: true });
   },

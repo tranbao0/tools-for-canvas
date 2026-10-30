@@ -5,6 +5,8 @@
  * Surfaces never fetch Canvas. They ask the background for their state, send refresh requests
  * and actions, and learn about new data from the change marker in `storage.local`.
  */
+import { isFixMessage, type FixMessage } from '../../dashboard-fixes/protocol';
+import type { ToolsSettings } from '../../../shared/settings/tools';
 import { isSettings } from '../model/settings';
 import type { Settings, SurfaceState } from '../model/types';
 import type { SurfaceKind, TaskInput } from '../ui/contract';
@@ -130,6 +132,8 @@ export interface PageContextMessage {
 
 export interface PageContextReply {
   settings: Settings;
+  /** The switches of the small tools (decision 22). */
+  tools: ToolsSettings;
 }
 
 /** In-page script to background: the student changed the settings shown in place. */
@@ -164,7 +168,8 @@ export type DataMessage =
   | SaveSettingsMessage
   | MarkNoteSeenMessage
   | OpenPageMessage
-  | CanvasDetectedMessage;
+  | CanvasDetectedMessage
+  | FixMessage;
 
 export interface OkReply {
   ok: true;
@@ -200,6 +205,11 @@ export interface ActionReply {
 export interface CourseChoice {
   id: string;
   name: string;
+}
+
+/** The reply to a read mark: whether Canvas marked the announcement. */
+export interface ReadReply {
+  read: boolean;
 }
 
 export const OK_REPLY: OkReply = { ok: true };
@@ -369,6 +379,7 @@ export function isDataMessage(value: unknown): value is DataMessage {
     isSaveSettingsMessage(value) ||
     isMarkNoteSeenMessage(value) ||
     isOpenPageMessage(value) ||
-    isCanvasDetectedMessage(value)
+    isCanvasDetectedMessage(value) ||
+    isFixMessage(value)
   );
 }

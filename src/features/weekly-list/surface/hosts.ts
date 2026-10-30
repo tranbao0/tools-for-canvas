@@ -9,6 +9,7 @@ import type { SurfaceState } from '../model/types';
 import { logFailure } from '../../../shared/platform/log';
 import { requestAccess } from '../../../shared/platform/permissions';
 import { changeMarkerItem, offerItem, watchItems } from '../../../shared/platform/storage';
+import { toolsSettingsItem } from '../../../shared/settings/toolsItem';
 import { seenNotesItem, settingsItem, type SeenNotes } from '../data/storage';
 import {
   browserTimers,
@@ -58,6 +59,7 @@ export function extensionPageHost(): SurfaceHost {
     send: sendToBackground,
     watchChanges: (listener) => watchItems([changeMarkerItem, offerItem, seenNotesItem], listener),
     settings: settingsItem,
+    tools: toolsSettingsItem,
     clock: systemClock,
     timers: browserTimers,
     visibility: documentVisibility(),

@@ -6,6 +6,8 @@ import type { CourseChoice, StateReply } from '../data/protocol';
 import type { Settings } from '../model/types';
 import { logFailure } from '../../../shared/platform/log';
 import { canvasOriginItem, changeMarkerItem, watchItems } from '../../../shared/platform/storage';
+import { toolsSettingsItem } from '../../../shared/settings/toolsItem';
+import type { ToolsSettings } from '../../../shared/settings/tools';
 import { settingsItem } from '../data/storage';
 import { SettingsView } from '../ui/SettingsView';
 import { PAGE_LAYOUT_CSS, installStyles } from '../../../shared/ui/styles';
@@ -26,6 +28,7 @@ export async function startOptions(root: HTMLElement): Promise<void> {
   installStyles(document, PAGE_LAYOUT_CSS);
   followExtensionPageTheme(settingsItem, [document.documentElement, root], logFailure);
   let settings: Settings = await settingsItem.getValue();
+  let tools: ToolsSettings = await toolsSettingsItem.getValue();
   let origin: string | null = await canvasOriginItem.getValue();
   let courses: CourseChoice[] = [];
   /** Counts the course requests, so only the newest answer counts. */
@@ -39,9 +42,23 @@ export async function startOptions(root: HTMLElement): Promise<void> {
       .then(() => sendToBackground({ type: 'weekrow:refresh', reason: 'settings' }))
       .catch((error: unknown) => logFailure('save settings', error));
   };
+  const onToolsChange = (next: ToolsSettings): void => {
+    tools = next;
+    draw();
+    toolsSettingsItem
+      .setValue(next)
+      .catch((error: unknown) => logFailure('save tools settings', error));
+  };
   const draw = (): void =>
     render(
-      <SettingsView settings={settings} courses={courses} origin={origin} onChange={onChange} />,
+      <SettingsView
+        settings={settings}
+        tools={tools}
+        onToolsChange={onToolsChange}
+        courses={courses}
+        origin={origin}
+        onChange={onChange}
+      />,
       root,
     );
   // The list comes with the state, which is not ready until the first round has loaded it. The
@@ -60,6 +77,10 @@ export async function startOptions(root: HTMLElement): Promise<void> {
 
   settingsItem.watch((value) => {
     settings = value;
+    draw();
+  });
+  toolsSettingsItem.watch((value) => {
+    tools = value;
     draw();
   });
   canvasOriginItem.watch((value) => {

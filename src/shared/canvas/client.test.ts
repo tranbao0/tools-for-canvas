@@ -105,6 +105,22 @@ describe('read requests', () => {
         ['enrollment_state', 'active'],
         ['enrollment_type', 'student'],
         ['include[]', 'term'],
+        ['include[]', 'total_scores'],
+        ['per_page', '100'],
+      ],
+    ],
+    [
+      'listAnnouncements',
+      (client) =>
+        client.listAnnouncements('77', {
+          start: '2026-04-30T04:00:00.000Z',
+          end: '2026-10-27T18:00:00.000Z',
+        }),
+      '/api/v1/announcements',
+      [
+        ['context_codes[]', 'course_77'],
+        ['start_date', '2026-04-30T04:00:00.000Z'],
+        ['end_date', '2026-10-27T18:00:00.000Z'],
         ['per_page', '100'],
       ],
     ],
@@ -456,6 +472,53 @@ describe('writes', () => {
         body: undefined,
       },
     ]);
+  });
+
+  it('getAnnouncement sends GET for the topic of the course', async () => {
+    const seen = recordAll(() => ({ id: '9', title: 'Hello', message: '<p>Hi</p>' }));
+    await expect(testClient().getAnnouncement('77', '9')).resolves.toMatchObject({ id: '9' });
+    expect(seen).toEqual([
+      {
+        method: 'GET',
+        path: '/api/v1/courses/77/discussion_topics/9',
+        params: [],
+        csrf: null,
+        contentType: null,
+        body: undefined,
+      },
+    ]);
+  });
+
+  it('markAnnouncementRead sends PUT with the token, no body, and accepts an empty answer', async () => {
+    const seen: SeenRequest[] = [];
+    server.use(
+      http.put(api('/api/v1/courses/77/discussion_topics/9/read'), async ({ request }) => {
+        seen.push(await describeRequest(request));
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await expect(testClient().markAnnouncementRead('77', '9')).resolves.toBeUndefined();
+    expect(seen).toEqual([
+      {
+        method: 'PUT',
+        path: '/api/v1/courses/77/discussion_topics/9/read',
+        params: [],
+        csrf: CSRF_TOKEN,
+        contentType: null,
+        body: undefined,
+      },
+    ]);
+  });
+
+  it('refuses an announcement id that is not a Canvas id, without a request', async () => {
+    const seen = recordAll();
+    await expect(testClient().markAnnouncementRead('77', '9/../x')).rejects.toMatchObject({
+      kind: 'bad_request',
+    });
+    await expect(testClient().getAnnouncement('7 7', '9')).rejects.toMatchObject({
+      kind: 'bad_request',
+    });
+    expect(seen).toEqual([]);
   });
 
   it('sends the CSRF token on writes only', async () => {

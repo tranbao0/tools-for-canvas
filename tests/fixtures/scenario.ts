@@ -221,7 +221,7 @@ export interface Scenario {
   self: UserSelf;
   /** `GET /api/v1/users/self/profile` */
   profile: Profile;
-  /** `GET /api/v1/courses?enrollment_state=active&enrollment_type=student&include[]=term` */
+  /** `GET /api/v1/courses?enrollment_state=active&enrollment_type=student&include[]=term&include[]=total_scores` */
   courses: Course[];
   /** `GET /api/v1/users/self/groups` */
   groups: Group[];
@@ -459,12 +459,14 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       name: 'BIO 110: Principles of Biology',
       courseCode: 'BIO 110',
       term: fall,
+      totals: { score: 84.4, grade: 'B' },
     },
     {
       id: C.calculus,
       name: 'MATH 221: Calculus II',
       courseCode: 'MATH 221',
       term: fall,
+      totals: { score: 78.9, grade: 'C+' },
     },
     {
       id: C.history,
@@ -472,24 +474,28 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       nickname: 'History',
       courseCode: 'HIST 205',
       term: fall,
+      totals: { score: 91.5, grade: 'A-' },
     },
     {
       id: C.chemistry,
       name: 'CHEM 120: General Chemistry',
       courseCode: 'CHEM 120',
       term: fall,
+      totals: { score: 88, grade: null },
     },
     {
       id: C.orientation,
       name: 'Student Success Orientation',
       courseCode: 'SSO 100',
       term: orientationTerm,
+      totals: 'hidden',
     },
     {
       id: C.club,
       name: 'Intramural Ultimate Frisbee Club',
       courseCode: 'ULTIMATE',
       term: defaultTerm,
+      totals: { score: null, grade: null },
     },
   ];
 

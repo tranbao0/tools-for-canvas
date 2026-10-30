@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { DEFAULT_SETTINGS } from '../model/types';
 import type { DataOwner } from './owner';
@@ -22,6 +23,10 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
     originChanged: vi.fn(async () => undefined),
     accessChanged: vi.fn(async () => undefined),
     settled: vi.fn(async () => undefined),
+    dashboardData: vi.fn(async () => ({ origin: SAVED, ready: true, courses: [], extras: [] })),
+    announcement: vi.fn(async () => ({ title: 'Hello', message: '<p>Hi</p>' })),
+    announcements: vi.fn(async () => []),
+    markAnnouncementRead: vi.fn(async () => true),
     dispose: vi.fn(),
   } as unknown as DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi.fn> };
 }
@@ -33,6 +38,8 @@ function fakeHost(saved: string | null = SAVED): RouterHost & {
   injectInpageIntoOrigin: ReturnType<typeof vi.fn>;
   readSettings: ReturnType<typeof vi.fn>;
   saveSettings: ReturnType<typeof vi.fn>;
+  readTools: ReturnType<typeof vi.fn>;
+  saveTools: ReturnType<typeof vi.fn>;
   markNoteSeen: ReturnType<typeof vi.fn>;
 } {
   return {
@@ -44,6 +51,8 @@ function fakeHost(saved: string | null = SAVED): RouterHost & {
     injectInpageIntoOrigin: vi.fn(async () => []),
     readSettings: vi.fn(async () => DEFAULT_SETTINGS),
     saveSettings: vi.fn(async () => undefined),
+    readTools: vi.fn(async () => DEFAULT_TOOLS_SETTINGS),
+    saveTools: vi.fn(async () => undefined),
     markNoteSeen: vi.fn(async () => undefined),
   };
 }
@@ -98,8 +107,16 @@ describe('routeDataMessage', () => {
       for (const sender of [CONTENT_SCRIPT, EXTENSION_PAGE]) {
         await expect(
           routeDataMessage(owner, { type: 'weekrow:page-context' }, sender, host),
-        ).resolves.toEqual({ settings: SETTINGS });
+        ).resolves.toEqual({ settings: SETTINGS, tools: DEFAULT_TOOLS_SETTINGS });
       }
+    });
+
+    it('save the switches of the tools for the saved Canvas', async () => {
+      const tools = {
+        dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
+      };
+      await routeDataMessage(owner, { type: 'weekrow:save-tools', tools }, CONTENT_SCRIPT, host);
+      expect(host.saveTools).toHaveBeenCalledWith(tools);
     });
 
     it('save the settings and the notes for the saved Canvas', async () => {
@@ -147,6 +164,16 @@ describe('routeDataMessage', () => {
         { type: 'weekrow:save-settings' },
         { type: 'weekrow:mark-note-seen', note: 'other' },
         { type: 'weekrow:mark-note-seen' },
+        { type: 'weekrow:save-tools' },
+        { type: 'weekrow:save-tools', tools: { dashboardFixes: { courseColors: false } } },
+        {
+          type: 'weekrow:save-tools',
+          tools: { dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: 1 } },
+        },
+        {
+          type: 'weekrow:save-tools',
+          tools: { ...DEFAULT_TOOLS_SETTINGS, other: { on: true } },
+        },
       ];
       for (const message of bad) {
         expect(
@@ -155,6 +182,85 @@ describe('routeDataMessage', () => {
         ).toBeNull();
       }
       expect(host.saveSettings).not.toHaveBeenCalled();
+      expect(host.saveTools).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the messages of the dashboard fixes', () => {
+    const ANNOUNCEMENT = { courseId: '101', topicId: '31901' };
+
+    it('answer the saved Canvas and extension pages from the owner', async () => {
+      for (const sender of [CONTENT_SCRIPT, EXTENSION_PAGE]) {
+        await expect(
+          routeDataMessage(owner, { type: 'weekrow:dashboard-data' }, sender, host),
+        ).resolves.toMatchObject({ ready: true });
+        await expect(
+          routeDataMessage(owner, { type: 'weekrow:announcement', ...ANNOUNCEMENT }, sender, host),
+        ).resolves.toEqual({ title: 'Hello', message: '<p>Hi</p>' });
+        await expect(
+          routeDataMessage(
+            owner,
+            { type: 'weekrow:announcement-list', courseId: '101' },
+            sender,
+            host,
+          ),
+        ).resolves.toEqual([]);
+      }
+      expect(owner.announcement).toHaveBeenCalledWith('101', '31901');
+      expect(owner.announcements).toHaveBeenCalledWith('101');
+    });
+
+    it('send the read mark to the owner, which writes it with the write safety', async () => {
+      await expect(
+        routeDataMessage(
+          owner,
+          { type: 'weekrow:announcement-read', ...ANNOUNCEMENT },
+          CONTENT_SCRIPT,
+          host,
+        ),
+      ).resolves.toEqual({ read: true });
+      expect(owner.markAnnouncementRead).toHaveBeenCalledWith('101', '31901');
+    });
+
+    it.each([
+      ['another Canvas host', OTHER_CANVAS],
+      ['a frame inside the saved Canvas', { ...CONTENT_SCRIPT, frameId: 5 }],
+      ['a sender with no tab', { url: CONTENT_SCRIPT.url }],
+    ])('refuse every message from %s', async (_name, sender) => {
+      const messages = [
+        { type: 'weekrow:dashboard-data' },
+        { type: 'weekrow:announcement', ...ANNOUNCEMENT },
+        { type: 'weekrow:announcement-list', courseId: '101' },
+        { type: 'weekrow:announcement-read', ...ANNOUNCEMENT },
+        { type: 'weekrow:save-tools', tools: DEFAULT_TOOLS_SETTINGS },
+      ];
+      for (const message of messages) {
+        await expect(routeDataMessage(owner, message, sender, host)).rejects.toThrow();
+      }
+      expect(owner.dashboardData).not.toHaveBeenCalled();
+      expect(owner.announcement).not.toHaveBeenCalled();
+      expect(owner.announcements).not.toHaveBeenCalled();
+      expect(owner.markAnnouncementRead).not.toHaveBeenCalled();
+      expect(host.saveTools).not.toHaveBeenCalled();
+    });
+
+    it('refuse an id that is not a Canvas id, as no message of the protocol', () => {
+      const bad = [
+        { type: 'weekrow:announcement', courseId: '../users/self', topicId: '1' },
+        { type: 'weekrow:announcement', courseId: '1', topicId: '1/read' },
+        { type: 'weekrow:announcement-read', courseId: '1', topicId: '' },
+        { type: 'weekrow:announcement-read', courseId: 1, topicId: '2' },
+        { type: 'weekrow:announcement-list', courseId: '1?x=2' },
+        { type: 'weekrow:announcement-list' },
+      ];
+      for (const message of bad) {
+        expect(
+          routeDataMessage(owner, message, CONTENT_SCRIPT, host),
+          JSON.stringify(message),
+        ).toBeNull();
+      }
+      expect(owner.announcement).not.toHaveBeenCalled();
+      expect(owner.markAnnouncementRead).not.toHaveBeenCalled();
     });
   });
 

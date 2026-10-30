@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS, type Settings } from '../model/types';
@@ -19,7 +20,14 @@ function setup(
 ) {
   const onChange = vi.fn<(settings: Settings) => void>();
   render(
-    <SettingsView settings={settings} courses={courses} origin={origin} onChange={onChange} />,
+    <SettingsView
+      settings={settings}
+      tools={DEFAULT_TOOLS_SETTINGS}
+      onToolsChange={vi.fn()}
+      courses={courses}
+      origin={origin}
+      onChange={onChange}
+    />,
   );
   return { onChange };
 }

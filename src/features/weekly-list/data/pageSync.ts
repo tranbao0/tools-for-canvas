@@ -11,6 +11,7 @@ import type { PageChangedMessage } from './protocol';
 import { isUsableOrigin, originMatchPattern, parseUrl } from '../../../shared/platform/address';
 import { logFailure } from '../../../shared/platform/log';
 import { canvasOriginItem, changeMarkerItem, watchItems } from '../../../shared/platform/storage';
+import { toolsSettingsItem } from '../../../shared/settings/toolsItem';
 import { seenNotesItem, settingsItem } from './storage';
 
 /** How long a change waits for the next one, so one round of changes sends one message. */
@@ -64,7 +65,10 @@ export function wirePageSync(): () => void {
       .then((origin) => schedule(origin))
       .catch((error: unknown) => logFailure('page change message', error));
   };
-  const stopItems = watchItems([changeMarkerItem, settingsItem, seenNotesItem], onChange);
+  const stopItems = watchItems(
+    [changeMarkerItem, settingsItem, seenNotesItem, toolsSettingsItem],
+    onChange,
+  );
   const stopOrigin = canvasOriginItem.watch((origin, previous) => schedule(origin, previous));
   return () => {
     stopItems();

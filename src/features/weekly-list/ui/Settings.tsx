@@ -5,6 +5,8 @@
  */
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { t, type MessageKey } from '../../../shared/ui/i18n';
+import { FixesSettings } from '../../dashboard-fixes/ui/FixesSettings';
+import type { ToolsSettings } from '../../../shared/settings/tools';
 import type { Settings } from '../model/types';
 import type { AppProps } from './contract';
 import { ChevronLeftIcon } from '../../../shared/ui/icons';
@@ -34,6 +36,9 @@ export function SettingsFields(props: {
   courses: { id: string; name: string }[];
   level: HeadingLevel;
   onChange(settings: Settings): void;
+  /** The switches of the small tools. Without them, their group stays out. */
+  tools?: ToolsSettings;
+  onToolsChange?(tools: ToolsSettings): void;
 }) {
   const { settings, courses } = props;
   const [ids] = useState(() =>
@@ -132,6 +137,10 @@ export function SettingsFields(props: {
           {t('themeHelp')}
         </p>
       </div>
+
+      {props.tools && props.onToolsChange && (
+        <FixesSettings tools={props.tools} level={props.level} onChange={props.onToolsChange} />
+      )}
     </div>
   );
 }
@@ -145,12 +154,17 @@ export function SettingsPanel(props: {
   data: AppProps['settings'];
   level: HeadingLevel;
   onChange(settings: Settings): void;
+  onToolsChange(tools: ToolsSettings): void;
   onBack(): void;
 }) {
   const { data } = props;
   const rootRef = useRef<HTMLElement>(null);
   const [edit, setEdit] = useState<{ base: Settings; value: Settings } | null>(null);
+  const [toolsEdit, setToolsEdit] = useState<{ base: ToolsSettings; value: ToolsSettings } | null>(
+    null,
+  );
   const shown = data && edit?.base === data.value ? edit.value : data?.value;
+  const shownTools = data?.tools && toolsEdit?.base === data.tools ? toolsEdit.value : data?.tools;
 
   useLayoutEffect(() => {
     rootRef.current?.querySelector<HTMLElement>('[data-part="settings-head"]')?.focus();
@@ -184,6 +198,11 @@ export function SettingsPanel(props: {
           onChange={(next) => {
             setEdit({ base: data.value, value: next });
             props.onChange(next);
+          }}
+          tools={shownTools}
+          onToolsChange={(next) => {
+            if (data.tools) setToolsEdit({ base: data.tools, value: next });
+            props.onToolsChange(next);
           }}
         />
       ) : (

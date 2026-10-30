@@ -26,6 +26,7 @@ export function spyActions(): SpyActions {
     openCanvas: vi.fn(),
     retry: vi.fn(),
     saveSettings: vi.fn(),
+    saveTools: vi.fn(),
     markNoteSeen: vi.fn(),
   };
 }

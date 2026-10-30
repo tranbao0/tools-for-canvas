@@ -49,6 +49,8 @@ export const FULL_REPLIES = {
         {
           type: 'student', role: 'StudentEnrollment', role_id: '3', user_id: '5501',
           enrollment_state: 'active', limit_privileges_to_course_section: false,
+          computed_current_score: 91.5, computed_final_score: 80.2,
+          computed_current_grade: 'A-', computed_final_grade: 'B-',
         },
       ],
       hide_final_grades: false, workflow_state: 'available',

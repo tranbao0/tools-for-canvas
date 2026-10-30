@@ -7,7 +7,14 @@ import { AppMark } from '../../../shared/ui/icons';
 import { HostText, newId } from '../../../shared/ui/parts';
 import { SettingsFields } from './Settings';
 
-export function SettingsView({ settings, courses, origin, onChange }: SettingsProps) {
+export function SettingsView({
+  settings,
+  tools,
+  onToolsChange,
+  courses,
+  origin,
+  onChange,
+}: SettingsProps) {
   const [addressId] = useState(() => newId('address'));
   return (
     <div class="wr" data-surface="page">
@@ -16,7 +23,14 @@ export function SettingsView({ settings, courses, origin, onChange }: SettingsPr
           <AppMark size={32} />
           <h1 class="wr-page-title">{t('settingsTitle')}</h1>
         </header>
-        <SettingsFields settings={settings} courses={courses} level={2} onChange={onChange} />
+        <SettingsFields
+          settings={settings}
+          courses={courses}
+          level={2}
+          onChange={onChange}
+          tools={tools}
+          onToolsChange={onToolsChange}
+        />
         <section class="wr-setting wr-address" aria-labelledby={addressId}>
           <h2 class="wr-setting-name" id={addressId}>
             {t('settingAddress')}

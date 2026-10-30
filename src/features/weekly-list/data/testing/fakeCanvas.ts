@@ -5,6 +5,7 @@
 import type { PrioritySource, RequestPriority } from '../../../../shared/canvas/limiter';
 import {
   CanvasError,
+  type AnnouncementTopic,
   type CanvasApi,
   type NoteInput,
   type PlannerItem,
@@ -48,6 +49,8 @@ export interface FakeCanvas extends CanvasApi {
   holdIf(method: FakeMethod, match: (args: unknown[]) => boolean): () => void;
   /** Makes the calls of a method that `match` selects reject with `error`. */
   failIf(method: FakeMethod, match: (args: unknown[]) => boolean, error: unknown): void;
+  /** Sets the announcements that Canvas lists for a course, and returns by id. */
+  setAnnouncements(courseId: string, topics: AnnouncementTopic[]): void;
   /** Forgets the recorded calls. */
   resetCalls(): void;
   /** Overrides that Canvas holds now, as `GET /api/v1/planner/overrides` lists them. */
@@ -87,6 +90,7 @@ export function createFakeCanvas(scenario: Scenario): FakeCanvas {
   /** Overrides by item key: the embedded ones, the listed ones and the written ones. */
   const overrides = new Map<string, PlannerOverride>();
   const notes = new Map<string, PlannerNote | null>();
+  const announcements = new Map<string, AnnouncementTopic[]>();
   let nextId = 90001;
 
   for (const item of scenario.plannerItems) {
@@ -185,6 +189,28 @@ export function createFakeCanvas(scenario: Scenario): FakeCanvas {
       getSelf: () => call('getSelf', [], () => scenario.self, priority),
       getProfile: () => call('getProfile', [], () => scenario.profile, priority),
       listCourses: () => call('listCourses', [], () => scenario.courses, priority),
+      getAnnouncement: (courseId, topicId) =>
+        call(
+          'getAnnouncement',
+          [courseId, topicId],
+          () =>
+            announcements.get(courseId)?.find((topic) => topic.id === topicId) ?? {
+              id: topicId,
+              title: 'Announcement',
+              message: null,
+              posted_at: null,
+            },
+          priority,
+        ),
+      listAnnouncements: (courseId, range) =>
+        call(
+          'listAnnouncements',
+          [courseId, range],
+          () => announcements.get(courseId) ?? [],
+          priority,
+        ),
+      markAnnouncementRead: (courseId, topicId) =>
+        call('markAnnouncementRead', [courseId, topicId], () => undefined, priority),
       listGroups: () => call('listGroups', [], () => scenario.groups, priority),
       getColors: () => call('getColors', [], () => scenario.colors, priority),
       getDashboardPositions: () =>
@@ -324,6 +350,9 @@ export function createFakeCanvas(scenario: Scenario): FakeCanvas {
     },
     failIf(method, match, error) {
       conditionalFailures.push({ method, match, error });
+    },
+    setAnnouncements(courseId, topics) {
+      announcements.set(courseId, topics);
     },
     resetCalls() {
       calls.length = 0;

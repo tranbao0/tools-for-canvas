@@ -1038,7 +1038,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 |---|---|---|
 | Sign-in check | `GET /api/v1/users/self` | Setup, every light and full round, and after any 401 |
 | Time zone and language | `GET /api/v1/users/self/profile` | Once per session |
-| Courses | `GET /api/v1/courses?enrollment_state=active&enrollment_type=student&include[]=term&per_page=100` | Once per session |
+| Courses | `GET /api/v1/courses?enrollment_state=active&enrollment_type=student&include[]=term&include[]=total_scores&per_page=100` | Once per session |
 | Groups | `GET /api/v1/users/self/groups?per_page=100` | Once per session |
 | Course colors | `GET /api/v1/users/self/colors` | Once per session |
 | Course order | `GET /api/v1/users/self/dashboard_positions` | Once per session |

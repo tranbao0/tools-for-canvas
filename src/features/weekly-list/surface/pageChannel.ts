@@ -12,6 +12,11 @@
  * - `weekrow:changed` comes back from the background with `tabs.sendMessage` after any change of
  *   the data, the settings, the notes or the saved address, and the script asks again.
  */
+import {
+  DEFAULT_TOOLS_SETTINGS,
+  isToolsSettings,
+  type ToolsSettings,
+} from '../../../shared/settings/tools';
 import { isSettings } from '../model/settings';
 import { DEFAULT_SETTINGS, type Settings } from '../model/types';
 import {
@@ -27,6 +32,7 @@ interface PageContext {
   /** The page origin when it is the saved Canvas, otherwise `null`. */
   origin: string | null;
   settings: Settings;
+  tools: ToolsSettings;
 }
 
 export interface PageChannel {
@@ -37,6 +43,14 @@ export interface PageChannel {
     setValue(settings: Settings): Promise<void>;
     watch(listener: (settings: Settings) => void): () => void;
   };
+  /** The switches of the small tools: read, save, and follow the changes of other surfaces. */
+  tools: {
+    getValue(): Promise<ToolsSettings>;
+    setValue(tools: ToolsSettings): Promise<void>;
+    watch(listener: (tools: ToolsSettings) => void): () => void;
+  };
+  /** Asks the background, for the fixes of the dashboard. The reply is not checked here. */
+  send(message: DataMessage): Promise<unknown>;
   /** Calls the listener when the background says that data, settings or notes changed. */
   watchChanges(listener: () => void): () => void;
   markNoteSeen(note: SeenNote): Promise<void>;
@@ -64,6 +78,7 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
   const changeListeners = new Set<() => void>();
   const originListeners = new Set<(origin: string | null) => void>();
   const settingsListeners = new Set<(settings: Settings) => void>();
+  const toolsListeners = new Set<(tools: ToolsSettings) => void>();
   let last: PageContext | null = null;
 
   /** Asks the background. A refusal or a missing background means that the page is not saved. */
@@ -74,10 +89,21 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
     } catch {
       reply = undefined;
     }
-    const settings = (reply as Partial<PageContextReply> | undefined)?.settings;
-    if (!isSettings(settings))
-      return { origin: null, settings: last?.settings ?? defaultSettings() };
-    return { origin: deps.pageOrigin, settings };
+    const fields = reply as Partial<PageContextReply> | undefined;
+    const { settings, tools } = fields ?? {};
+    if (!isSettings(settings)) {
+      return {
+        origin: null,
+        settings: last?.settings ?? defaultSettings(),
+        tools: last?.tools ?? structuredClone(DEFAULT_TOOLS_SETTINGS),
+      };
+    }
+    return {
+      origin: deps.pageOrigin,
+      settings,
+      // A reply of an older background has no tools. The defaults then apply.
+      tools: isToolsSettings(tools) ? tools : structuredClone(DEFAULT_TOOLS_SETTINGS),
+    };
   }
 
   /** Reads again, remembers the answer and tells the watchers of what changed. */
@@ -89,6 +115,9 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
       if (previous.origin !== next.origin) for (const l of [...originListeners]) l(next.origin);
       if (JSON.stringify(previous.settings) !== JSON.stringify(next.settings)) {
         for (const l of [...settingsListeners]) l(next.settings);
+      }
+      if (JSON.stringify(previous.tools) !== JSON.stringify(next.tools)) {
+        for (const l of [...toolsListeners]) l(next.tools);
       }
     }
     return next;
@@ -114,7 +143,17 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
     watch: (listener) => subscribe(settingsListeners, listener),
   };
 
+  const tools: PageChannel['tools'] = {
+    getValue: async () => (await refresh()).tools,
+    async setValue(next) {
+      await deps.send({ type: 'weekrow:save-tools', tools: next });
+    },
+    watch: (listener) => subscribe(toolsListeners, listener),
+  };
+
   return {
+    tools,
+    send: deps.send,
     choices: {
       origin: {
         getValue: async () => (await refresh()).origin,

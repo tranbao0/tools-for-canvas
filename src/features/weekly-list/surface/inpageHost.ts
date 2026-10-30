@@ -65,6 +65,7 @@ export function inpageHost(
     send,
     watchChanges: channel.watchChanges,
     settings: channel.settings,
+    tools: channel.tools,
     clock: systemClock,
     timers: browserTimers,
     visibility: documentVisibility(win.document),

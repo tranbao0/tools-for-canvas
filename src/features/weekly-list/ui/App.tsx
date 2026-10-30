@@ -78,6 +78,7 @@ export function App(props: AppProps) {
         data={props.settings}
         level={level}
         onChange={(next) => actions.saveSettings(next)}
+        onToolsChange={(next) => actions.saveTools(next)}
         onBack={() => {
           returnTo.current = settingsFrom;
           setSettingsFrom(null);

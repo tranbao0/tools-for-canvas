@@ -3,6 +3,8 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { DEFAULT_SETTINGS } from '../model/types';
 import { wirePageSync } from './pageSync';
 import { canvasOriginItem, changeMarkerItem } from '../../../shared/platform/storage';
+import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
+import { toolsSettingsItem } from '../../../shared/settings/toolsItem';
 import { seenNotesItem, settingsItem } from './storage';
 
 const SCHOOL = 'https://school.instructure.com';
@@ -49,6 +51,13 @@ describe('wirePageSync', () => {
     ['the change marker', () => changeMarkerItem.setValue(5)],
     ['the settings', () => settingsItem.setValue({ ...DEFAULT_SETTINGS, showRings: false })],
     ['the seen notes', () => seenNotesItem.setValue({ firstDone: true, firstSkip: false })],
+    [
+      'the tools settings',
+      () =>
+        toolsSettingsItem.setValue({
+          dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
+        }),
+    ],
   ])(
     'tells the open tabs of the saved Canvas, and only them, after %s changes',
     async (_n, change) => {
@@ -67,6 +76,18 @@ describe('wirePageSync', () => {
     await settleAll();
 
     expect(sendMessage.mock.calls.filter(([id]) => id === 1)).toHaveLength(1);
+  });
+
+  it('sends one message to a tab for one change of the tools settings', async () => {
+    await toolsSettingsItem.setValue({
+      dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, allCourseGrades: false },
+    });
+    await settle();
+
+    expect(sendMessage.mock.calls.filter(([id]) => id === 1)).toEqual([
+      [1, { type: 'weekrow:changed' }],
+    ]);
+    expect(sendMessage.mock.calls.filter(([id]) => id === 2)).toHaveLength(1);
   });
 
   it('tells the tabs of the old address too when the address changes, so they remove their list', async () => {

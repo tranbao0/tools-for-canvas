@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { DEFAULT_SETTINGS } from '../model/types';
@@ -18,8 +19,15 @@ function fakeChannel(): PageChannel & { changeListeners: Set<() => void> } {
     setValue: vi.fn(async () => undefined),
     watch: vi.fn(() => () => undefined),
   };
+  const tools = {
+    getValue: vi.fn(async () => DEFAULT_TOOLS_SETTINGS),
+    setValue: vi.fn(async () => undefined),
+    watch: vi.fn(() => () => undefined),
+  };
   return {
     changeListeners,
+    tools,
+    send: vi.fn(async () => undefined),
     choices: {
       origin: { getValue: async () => CUSTOM, watch: () => () => undefined },
       settings,

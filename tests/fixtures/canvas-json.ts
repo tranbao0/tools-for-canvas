@@ -54,13 +54,31 @@ export interface CourseSpec {
   nickname?: string;
   courseCode: string;
   term: TermSpec;
+  /**
+   * The current total that `include[]=total_scores` adds to the student enrollment. `hidden`
+   * stands for a course that hides its final grades: Canvas then sends no totals at all.
+   */
+  totals?: { score: number | null; grade: string | null } | 'hidden';
 }
 
 export function termJson(term: TermSpec): Term {
   return { id: term.id, name: term.name, start_at: term.startAt, end_at: term.endAt };
 }
 
+function enrollmentsOf(spec: CourseSpec): Course['enrollments'] {
+  if (spec.totals === undefined) return undefined;
+  if (spec.totals === 'hidden') return [{ type: 'student' }];
+  return [
+    {
+      type: 'student',
+      computed_current_score: spec.totals.score,
+      computed_current_grade: spec.totals.grade,
+    },
+  ];
+}
+
 export function courseJson(spec: CourseSpec): Course {
+  const enrollments = enrollmentsOf(spec);
   return {
     id: spec.id,
     name: spec.nickname ?? spec.name,
@@ -68,6 +86,7 @@ export function courseJson(spec: CourseSpec): Course {
     start_at: null,
     restrict_enrollments_to_course_dates: false,
     term: termJson(spec.term),
+    ...(enrollments === undefined ? {} : { enrollments }),
   };
 }
 

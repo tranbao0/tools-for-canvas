@@ -29,6 +29,7 @@ import {
   type UndoData,
 } from '../data/protocol';
 import { sameSpan } from '../model/settings';
+import type { ToolsSettings } from '../../../shared/settings/tools';
 import { nextDayStart } from '../model/time';
 import type { ItemView, Settings, SurfaceState, UndoInfo, WeekView } from '../model/types';
 import type { SeenNotes } from '../data/storage';
@@ -61,6 +62,13 @@ interface SettingsStore {
   watch(listener: (settings: Settings) => void): () => void;
 }
 
+/** The stored switches of the small tools, such as `toolsSettingsItem`. */
+interface ToolsStore {
+  getValue(): Promise<ToolsSettings>;
+  setValue(tools: ToolsSettings): Promise<void>;
+  watch(listener: (tools: ToolsSettings) => void): () => void;
+}
+
 /** The data of the settings shown in place (decision 18). */
 export type InPlaceSettings = NonNullable<AppProps['settings']>;
 
@@ -71,6 +79,7 @@ export interface SurfaceHost {
   /** Calls the listener when the data owner has new data. Returns a remover. */
   watchChanges(listener: () => void): () => void;
   settings: SettingsStore;
+  tools: ToolsStore;
   clock: { now(): number };
   timers: SurfaceTimers;
   visibility: Visibility;
@@ -169,6 +178,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   /** The span the student last asked for. A shown span can lag behind it while a span loads. */
   let spanOffset = 0;
   let settings: Settings | null = null;
+  let tools: ToolsSettings | null = null;
   /** Every active course, from the last state that carried them. */
   let courses: CourseChoice[] | null = null;
   let coursesOrigin: string | null = null;
@@ -210,7 +220,9 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   }
 
   function inPlaceSettings(): InPlaceSettings | undefined {
-    return settings === null || courses === null ? undefined : { value: settings, courses };
+    return settings === null || courses === null
+      ? undefined
+      : { value: settings, courses, ...(tools === null ? {} : { tools }) };
   }
 
   function loadSettings(): void {
@@ -223,6 +235,14 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
         emit();
       })
       .catch(report('settings'));
+    host.tools
+      .getValue()
+      .then((value) => {
+        if (stopped || tools !== null) return;
+        tools = value;
+        emit();
+      })
+      .catch(report('tools settings'));
   }
 
   /** A new span starts at the span that holds today, on this surface and on every other. */
@@ -548,6 +568,11 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
         })
         .catch(report('save settings'));
     },
+    saveTools(next: ToolsSettings) {
+      tools = next;
+      emit();
+      host.tools.setValue(next).catch(report('save tools settings'));
+    },
     markNoteSeen(note: 'firstDone' | 'firstSkip') {
       host.markNoteSeen(note).then(reload).catch(report('seen note'));
     },
@@ -571,6 +596,12 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       );
       if (showsSettingsInPlace(options.surface)) {
         stops.push(host.settings.watch(onSettings));
+        stops.push(
+          host.tools.watch((value) => {
+            tools = value;
+            emit();
+          }),
+        );
         loadSettings();
       }
       if (host.visibility.isVisible()) becameVisible();

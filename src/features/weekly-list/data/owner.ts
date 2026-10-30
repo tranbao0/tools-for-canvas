@@ -16,6 +16,12 @@ import type {
   PlannerOverride,
   TimeRange,
 } from '../../../shared/canvas/types';
+import { dashboardCourses, extrasFromView } from '../../dashboard-fixes/data/dashboardData';
+import type {
+  AnnouncementBody,
+  AnnouncementEntry,
+  DashboardData,
+} from '../../dashboard-fixes/protocol';
 import { assignmentIdsToLookup } from '../model/normalize';
 import { redoBlocksDone } from '../model/rules';
 import { moveToTodayTodoDate, todoDateFor } from '../model/tasks';
@@ -186,6 +192,18 @@ export interface DataOwner {
    */
   acceptOffer(origin: string): Promise<boolean>;
   act(action: DataAction): Promise<ActionReply>;
+  /** The data of the dashboard fixes, from the cache. It makes no request (decision 22). */
+  dashboardData(): Promise<DashboardData>;
+  /** One announcement of the saved Canvas with its full message. */
+  announcement(courseId: string, topicId: string): Promise<AnnouncementBody>;
+  /** The recent announcements of one course. */
+  announcements(courseId: string): Promise<AnnouncementEntry[]>;
+  /**
+   * Marks an announcement as read, as a write of the student: it waits behind the writes before
+   * it, and it goes out only when Canvas confirms the signed-in student. Resolves with whether
+   * Canvas marked it.
+   */
+  markAnnouncementRead(courseId: string, topicId: string): Promise<boolean>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
@@ -1811,6 +1829,100 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   // ---------------------------------------------------------------------------------------------
+  // Dashboard fixes (decision 22)
+  // ---------------------------------------------------------------------------------------------
+
+  /** The weeks that "Also due" reads: today and the 13 days after it. */
+  const EXTRAS_SPAN = { kind: 'fortnight', days: 14 } as const;
+  /** The longest message the background passes on, so a huge post cannot fill the message. */
+  const MAX_MESSAGE_CHARS = 500_000;
+  const MAX_LIST_MESSAGE_CHARS = 4_000;
+  const MAX_LISTED_ANNOUNCEMENTS = 10;
+  const ANNOUNCEMENT_WINDOW_MS = 180 * 24 * 60 * 60 * 1000;
+
+  async function dashboardData(): Promise<DashboardData> {
+    await ready();
+    const origin = await savedOrigin();
+    if (origin === null || cache === null || cache.session === null) {
+      return { origin: origin ?? '', ready: false, courses: [], extras: [] };
+    }
+    const session = cache.session;
+    const base = await viewContext(origin);
+    // Every course shows, also one that the student hid from the weekly list: the widgets of
+    // Canvas show all of them.
+    const context: ViewContext = {
+      ...base,
+      settings: { ...base.settings, span: EXTRAS_SPAN, hiddenCourseIds: [] },
+    };
+    if (cache === null) return { origin, ready: false, courses: [], extras: [] };
+    const result = viewFor(
+      cache,
+      session,
+      { surface: 'inpage', spanOffset: 0, scopeCourseId: null },
+      context,
+      { show: false, pastDuePending: false },
+    );
+    return {
+      origin,
+      ready: result.exact && !blocksLoads(cache.failure),
+      courses: dashboardCourses(session.courses, session.colors, session.profile.id),
+      extras: extrasFromView(result.view),
+    };
+  }
+
+  async function announcementApi(): Promise<CanvasApi> {
+    await ready();
+    const origin = await savedOrigin();
+    if (origin === null) throw new Error('No Canvas address is saved');
+    return apiFor(origin);
+  }
+
+  async function announcement(courseId: string, topicId: string): Promise<AnnouncementBody> {
+    const topic = await (await announcementApi()).getAnnouncement(courseId, topicId);
+    return {
+      title: String(topic.title ?? ''),
+      message: String(topic.message ?? '').slice(0, MAX_MESSAGE_CHARS),
+    };
+  }
+
+  async function announcements(courseId: string): Promise<AnnouncementEntry[]> {
+    const api = await announcementApi();
+    const end = clock.now();
+    const topics = await api.listAnnouncements(courseId, {
+      start: isoInstant(end - ANNOUNCEMENT_WINDOW_MS),
+      end: isoInstant(end),
+    });
+    return topics.slice(0, MAX_LISTED_ANNOUNCEMENTS).map((topic) => ({
+      id: String(topic.id),
+      courseId,
+      title: String(topic.title ?? ''),
+      message: String(topic.message ?? '').slice(0, MAX_LIST_MESSAGE_CHARS),
+      postedAt: topic.posted_at ?? null,
+      author: topic.user_name ?? topic.author?.display_name ?? null,
+      read: topic.read_state === 'read',
+    }));
+  }
+
+  async function markAnnouncementRead(courseId: string, topicId: string): Promise<boolean> {
+    await ready();
+    if (cache === null || cache.session === null) return false;
+    let marked = false;
+    await enqueueWrite(async (stamp) => {
+      // The student is confirmed first, as for every write.
+      if (stamp.origin === null || !(await verifyUser(stamp))) return false;
+      try {
+        await apiFor(stamp.origin).markAnnouncementRead(courseId, topicId);
+        marked = isCurrent(stamp);
+      } catch (error) {
+        deps.log('announcement read', error);
+      }
+      // The planner cache does not depend on the read state, so no round has to follow.
+      return false;
+    });
+    return marked;
+  }
+
+  // ---------------------------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------------------------
 
@@ -1964,6 +2076,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       await ready();
       return act(action);
     },
+
+    dashboardData,
+    announcement,
+    announcements,
+    markAnnouncementRead,
 
     async originChanged(origin) {
       await ready();

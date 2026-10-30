@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_TOOLS_SETTINGS, type ToolsSettings } from '../../../shared/settings/tools';
 import type { DataMessage, StateReply, UndoData } from '../data/protocol';
 import {
   DEFAULT_SETTINGS,
@@ -27,6 +28,9 @@ const UNDO: UndoData = {
   origin: ORIGIN,
   entries: [{ key: 'assignment:1', previous: NOT_DONE }],
 };
+const COLORS_OFF: ToolsSettings = {
+  dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
+};
 const DONE_INFO = { kind: 'done', count: 1 } as const;
 const ALL_COURSES = readyState().allCourses;
 
@@ -48,6 +52,12 @@ interface FakeHost {
   storeSettings(next: Settings): void;
   /** Settings saved through the host. */
   saved: Settings[];
+  /** The stored tools settings. */
+  storedTools: ToolsSettings;
+  /** Another surface saves new tools settings. */
+  storeTools(next: ToolsSettings): void;
+  /** Tools settings saved through the host. */
+  savedTools: ToolsSettings[];
 }
 
 /** A ready reply, as the data owner sends it: with the signed-in user. */
@@ -63,6 +73,7 @@ function fakeHost(): FakeHost {
   let visibilityListener: ((visible: boolean) => void) | null = null;
   let leaveListener: (() => void) | null = null;
   let settingsListener: ((settings: Settings) => void) | null = null;
+  let toolsListener: ((tools: ToolsSettings) => void) | null = null;
   let visible = true;
   const fake: FakeHost = {
     sent,
@@ -78,6 +89,12 @@ function fakeHost(): FakeHost {
     leave: () => leaveListener?.(),
     stored: { ...DEFAULT_SETTINGS },
     saved: [],
+    storedTools: DEFAULT_TOOLS_SETTINGS,
+    savedTools: [],
+    storeTools(next) {
+      fake.storedTools = next;
+      toolsListener?.(next);
+    },
     storeSettings(next) {
       fake.stored = next;
       settingsListener?.(next);
@@ -96,6 +113,18 @@ function fakeHost(): FakeHost {
         return () => {
           changeListener = null;
         };
+      },
+      tools: {
+        getValue: async () => fake.storedTools,
+        setValue: async (next) => {
+          fake.savedTools.push(next);
+        },
+        watch(listener) {
+          toolsListener = listener;
+          return () => {
+            toolsListener = null;
+          };
+        },
       },
       settings: {
         getValue: async () => fake.stored,
@@ -1029,7 +1058,11 @@ describe('settings in place', () => {
       runtime.start();
       await settle();
 
-      expect(runtime.settings()).toEqual({ value: fake.stored, courses: ALL_COURSES });
+      expect(runtime.settings()).toEqual({
+        value: fake.stored,
+        courses: ALL_COURSES,
+        tools: DEFAULT_TOOLS_SETTINGS,
+      });
       runtime.stop();
     }
   });
@@ -1099,6 +1132,115 @@ describe('settings in place', () => {
     await settle();
 
     expect(runtime.settings()?.value.showRings).toBe(false);
+  });
+
+  it('loads the stored tools with the settings', async () => {
+    const fake = fakeHost();
+    fake.storedTools = COLORS_OFF;
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
+
+    runtime.start();
+    await settle();
+
+    expect(runtime.settings()?.tools).toEqual(COLORS_OFF);
+    runtime.stop();
+  });
+
+  it('shows the settings without tools until the tools are read', async () => {
+    const fake = fakeHost();
+    fake.host.tools.getValue = () => new Promise<ToolsSettings>(() => undefined);
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+
+    runtime.start();
+    await settle();
+
+    expect(runtime.settings()).toEqual({ value: fake.stored, courses: ALL_COURSES });
+    runtime.stop();
+  });
+
+  it('saves the tools, shows them at once, and sends them to the host', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
+    const seen: boolean[] = [];
+    runtime.subscribe(() =>
+      seen.push(runtime.settings()?.tools?.dashboardFixes.courseColors ?? true),
+    );
+    runtime.start();
+    await settle();
+    seen.length = 0;
+
+    runtime.actions.saveTools(COLORS_OFF);
+    expect(runtime.settings()?.tools).toEqual(COLORS_OFF);
+    expect(seen).toEqual([false]);
+    await settle();
+
+    expect(fake.savedTools).toEqual([COLORS_OFF]);
+    runtime.stop();
+  });
+
+  it('logs a failed save of the tools and keeps showing them', async () => {
+    const fake = fakeHost();
+    const failure = new Error('refused');
+    fake.host.tools.setValue = async () => {
+      throw failure;
+    };
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
+    runtime.start();
+    await settle();
+
+    runtime.actions.saveTools(COLORS_OFF);
+    await settle();
+
+    expect(fake.host.log).toHaveBeenCalledWith('save tools settings', failure);
+    expect(runtime.settings()?.tools).toEqual(COLORS_OFF);
+    runtime.stop();
+  });
+
+  it('follows tools that another surface saves, until the runtime stops', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    const listener = vi.fn();
+    runtime.subscribe(listener);
+    runtime.start();
+    await settle();
+    listener.mockClear();
+
+    fake.storeTools(COLORS_OFF);
+
+    expect(runtime.settings()?.tools).toEqual(COLORS_OFF);
+    expect(listener).toHaveBeenCalledTimes(1);
+    runtime.stop();
+    fake.storeTools(DEFAULT_TOOLS_SETTINGS);
+    expect(runtime.settings()?.tools).toEqual(COLORS_OFF);
+  });
+
+  it('keeps a change of the tools that comes while the first read runs', async () => {
+    const fake = fakeHost();
+    let finish: (tools: ToolsSettings) => void = () => undefined;
+    fake.host.tools.getValue = () =>
+      new Promise<ToolsSettings>((resolve) => {
+        finish = resolve;
+      });
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    fake.storeTools(COLORS_OFF);
+    finish(DEFAULT_TOOLS_SETTINGS);
+    await settle();
+
+    expect(runtime.settings()?.tools).toEqual(COLORS_OFF);
+    runtime.stop();
+  });
+
+  it('loads no tools for the welcome page', async () => {
+    const fake = fakeHost();
+    const getValue = vi.spyOn(fake.host.tools, 'getValue');
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'page', scopeCourseId: null });
+
+    runtime.start();
+    await settle();
+
+    expect(getValue).not.toHaveBeenCalled();
+    expect(runtime.settings()).toBeUndefined();
   });
 
   it('keeps the courses across other states and drops them for another address', async () => {

@@ -1,4 +1,5 @@
 import { chunk, unique, uniqueBy } from './batch';
+import { isCanvasId } from './ids';
 import { isJsonObject } from './classify';
 import {
   customGradeStatusesQuery,
@@ -18,6 +19,7 @@ import { createLimiter, type RequestPriority } from './limiter';
 import { withRateLimitRetry } from './retry';
 import {
   CanvasError,
+  type AnnouncementTopic,
   type Assignment,
   type CanvasApi,
   type CanvasClientOptions,
@@ -66,11 +68,9 @@ export function apiUrl(path: string, params: readonly QueryParam[] = []): string
   return search ? `${path}?${search}` : path;
 }
 
-const CANVAS_ID = /^\d+(~\d+)?$/;
-
 /** Checks an id before it goes into a URL path. */
 function pathId(id: string): string {
-  if (!CANVAS_ID.test(id)) {
+  if (!isCanvasId(id)) {
     throw new CanvasError('bad_request', `Not a Canvas id: ${JSON.stringify(id)}`);
   }
   return id;
@@ -99,6 +99,10 @@ function noteBody(input: NoteInput): Record<string, string | null> {
     todo_date: input.todoDate,
     course_id: input.courseId ?? null,
   };
+}
+
+function topicPath(courseId: string, topicId: string): string {
+  return `/api/v1/courses/${pathId(courseId)}/discussion_topics/${pathId(topicId)}`;
 }
 
 function assignmentsPath(courseId: string): string {
@@ -183,6 +187,8 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
             ['enrollment_state', 'active'],
             ['enrollment_type', 'student'],
             ['include[]', 'term'],
+            // The totals come with the courses, so the grade cards need no other request.
+            ['include[]', 'total_scores'],
             ['per_page', PER_PAGE],
           ]),
         ),
@@ -267,6 +273,24 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
 
       deleteNote: async (id) => {
         await send({ method: 'DELETE', url: `/api/v1/planner_notes/${pathId(id)}` });
+      },
+
+      getAnnouncement: async (courseId, topicId) =>
+        getObject<AnnouncementTopic>(topicPath(courseId, topicId)),
+
+      listAnnouncements: async (courseId, range) =>
+        getAll<AnnouncementTopic>(
+          apiUrl('/api/v1/announcements', [
+            ['context_codes[]', `course_${pathId(courseId)}`],
+            ['start_date', range.start],
+            ['end_date', range.end],
+            ['per_page', PER_PAGE],
+          ]),
+        ),
+
+      // Canvas answers 204 with no body, so this does not read an object.
+      markAnnouncementRead: async (courseId, topicId) => {
+        await send({ method: 'PUT', url: `${topicPath(courseId, topicId)}/read` });
       },
     };
   }

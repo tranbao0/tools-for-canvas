@@ -9,6 +9,7 @@
  * Canvas fonts are in the local test cache (see vite.config.ts), the gallery loads them, so the
  * text renders in Canvas's Lato as on a Canvas page.
  */
+import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import { render, type ComponentChildren, type VNode } from 'preact';
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { App } from '../../src/features/weekly-list/ui/App';
@@ -674,6 +675,8 @@ const scenes: Scene[] = [
     render: () => (
       <SettingsView
         settings={settings}
+        tools={DEFAULT_TOOLS_SETTINGS}
+        onToolsChange={(next) => console.info('tools', next)}
         courses={Object.values(COURSES).map(({ id, name }) => ({ id, name }))}
         origin={ORIGIN}
         onChange={(next) => console.info('settings', next)}
