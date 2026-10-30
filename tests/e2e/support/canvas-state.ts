@@ -1,4 +1,4 @@
-import type { PlannerNote } from '../../../src/lib/canvas/types';
+import type { PlannerItem, PlannerNote, PlannerOverride } from '../../../src/lib/canvas/types';
 import { notePlannerItem, type FixtureContext } from '../../fixtures/canvas-json';
 import { CANVAS_ERRORS, type CanvasErrorFixture } from '../../fixtures/errors';
 import {
@@ -8,13 +8,17 @@ import {
   type Scenario,
 } from '../../fixtures/scenario';
 import { compareInstants } from '../../fixtures/time';
-import type { WirePlannerItem, WirePlannerOverride } from '../../fixtures/wire-types';
 import type { FakeCanvas, FakeCanvasRoute, FakeReply, RecordedRequest } from './fake-canvas';
 import { apiRoutes, json } from './scenario-api';
 
 /** A Canvas error fixture as a fake reply. */
 export function errorReply(error: CanvasErrorFixture, extraHeaders: Record<string, string> = {}) {
-  return { status: error.status, headers: { ...error.headers, ...extraHeaders }, body: error.body };
+  const contentType = error.body.startsWith('{')
+    ? 'application/json; charset=utf-8'
+    : error.body.startsWith('<')
+      ? 'text/html; charset=utf-8'
+      : 'text/plain; charset=utf-8';
+  return { status: error.status, contentType, headers: extraHeaders, body: error.body };
 }
 
 function jsonBody(request: RecordedRequest): Record<string, unknown> {
@@ -26,14 +30,14 @@ function lastPathPart(request: RecordedRequest): string {
 }
 
 /** The assignment a planner row stands for: its own id, or the id of its graded quiz or discussion. */
-function rowAssignmentId(row: WirePlannerItem): string | null {
+function rowAssignmentId(row: PlannerItem): string | null {
   if (row.plannable_type === 'assignment') return row.plannable_id;
   const id = row.plannable.assignment_id;
   return typeof id === 'string' ? id : null;
 }
 
 /** Whether an override belongs to a planner row, as Canvas matches them. */
-function overrideMatchesRow(override: WirePlannerOverride, row: WirePlannerItem): boolean {
+function overrideMatchesRow(override: PlannerOverride, row: PlannerItem): boolean {
   const assignmentId = rowAssignmentId(row);
   if (override.assignment_id !== null && assignmentId !== null) {
     return override.assignment_id === assignmentId;
@@ -78,7 +82,7 @@ export class CanvasState {
    * whatever the range: the extension places items by their own dates and drops the rest.
    */
   plannerPageSize: number | null = null;
-  private readonly overrides = new Map<string, WirePlannerOverride>();
+  private readonly overrides = new Map<string, PlannerOverride>();
   private readonly notes = new Map<string, NoteRecord>();
   private nextOverrideId = 99001;
   private nextNoteId = 8901;
@@ -94,7 +98,7 @@ export class CanvasState {
   }
 
   /** The current override of a planner row, by the row's type and id. */
-  overrideFor(plannableType: string, plannableId: string): WirePlannerOverride | null {
+  overrideFor(plannableType: string, plannableId: string): PlannerOverride | null {
     const row = this.scenario.plannerItems.find(
       (item) => item.plannable_type === plannableType && item.plannable_id === plannableId,
     );
@@ -110,9 +114,9 @@ export class CanvasState {
   }
 
   /** Every planner row, with the current overrides and custom tasks, ordered by date. */
-  plannerItems(): WirePlannerItem[] {
+  plannerItems(): PlannerItem[] {
     const overrides = [...this.overrides.values()];
-    const embed = (row: WirePlannerItem): WirePlannerItem => {
+    const embed = (row: PlannerItem): PlannerItem => {
       const match = overrides.find((override) => overrideMatchesRow(override, row));
       return { ...row, planner_override: match === undefined ? null : { ...match } };
     };
@@ -223,12 +227,10 @@ export class CanvasState {
       timeZone: this.scenario.timeZone,
       userId: IDS.user,
       userName: this.scenario.self.name,
-      teacherId: IDS.teacher,
-      teacherName: 'Dr. Maya Okafor',
     };
   }
 
-  private noteRow(note: PlannerNote): WirePlannerItem {
+  private noteRow(note: PlannerNote): PlannerItem {
     const course =
       note.course_id === null
         ? null
@@ -254,16 +256,13 @@ export class CanvasState {
     );
     if (taken) return errorReply(CANVAS_ERRORS.overrideExists);
     const id = String(this.nextOverrideId++);
-    const override: WirePlannerOverride = {
+    const override: PlannerOverride = {
       id,
       plannable_type: plannableType,
       plannable_id: plannableId,
       user_id: IDS.user,
       workflow_state: 'active',
       marked_complete: body['marked_complete'] === true,
-      deleted_at: null,
-      created_at: this.scenario.now,
-      updated_at: this.scenario.now,
       dismissed: body['dismissed'] === true,
       assignment_id: assignmentId,
     };
@@ -274,11 +273,10 @@ export class CanvasState {
   private updateOverride(id: string, body: Record<string, unknown>): FakeReply {
     const current = this.overrides.get(id);
     if (current === undefined) return errorReply(CANVAS_ERRORS.notFound);
-    const updated: WirePlannerOverride = {
+    const updated: PlannerOverride = {
       ...current,
       marked_complete: body['marked_complete'] === true,
       dismissed: body['dismissed'] === true,
-      updated_at: this.scenario.now,
     };
     this.overrides.set(id, updated);
     return { body: json(updated) };

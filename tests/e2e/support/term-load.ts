@@ -36,8 +36,6 @@ export function addTermLoad(scenario: Scenario): number {
     timeZone: scenario.timeZone,
     userId: IDS.user,
     userName: scenario.self.name,
-    teacherId: IDS.teacher,
-    teacherName: 'Dr. Maya Okafor',
   };
   const contextNames = new Map(
     scenario.plannerItems.flatMap((item) =>
@@ -59,18 +57,13 @@ export function addTermLoad(scenario: Scenario): number {
         id,
         courseId,
         name: `Daily practice ${id}`,
-        assignmentGroupId: '1199',
-        position: Number(id) - FIRST_ID + 1,
         due,
-        points: 5,
         submissionTypes: ['online_text_entry'],
-        createdAt: days.at(TERM_FIRST_DAY - 7, '10:00'),
         submission: done
           ? {
               submittedAt: days.at(day, '20:00:00'),
               score: 5,
               grade: '5',
-              gradedAt: days.at(day + 1, '09:00:00'),
               graderId: IDS.teacher,
             }
           : {},

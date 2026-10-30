@@ -3,21 +3,6 @@
  * real clock, so the same input always gives the same fixture.
  */
 
-const MONTHS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-] as const;
-
 /** Calendar days in one time zone, counted from the day that contains `now`. */
 export interface LocalDays {
   readonly timeZone: string;
@@ -59,17 +44,4 @@ export function isBefore(a: string, b: string): boolean {
 export function secondsBetween(from: string, to: string): number {
   return Temporal.Instant.from(from).until(Temporal.Instant.from(to), { largestUnit: 'second' })
     .seconds;
-}
-
-/** Canvas `date_string` and `time_string` style text, such as "Oct 29 at 8am" or "Oct 21 at 11:59pm". */
-export function canvasDateTimeText(instant: string, timeZone: string, now: string): string {
-  const local = Temporal.Instant.from(instant).toZonedDateTimeISO(timeZone);
-  const nowYear = Temporal.Instant.from(now).toZonedDateTimeISO(timeZone).year;
-  const month = MONTHS[local.month - 1] ?? '';
-  const date =
-    local.year === nowYear ? `${month} ${local.day}` : `${month} ${local.day}, ${local.year}`;
-  const hour12 = local.hour % 12 === 0 ? 12 : local.hour % 12;
-  const minutes = local.minute === 0 ? '' : `:${String(local.minute).padStart(2, '0')}`;
-  const suffix = local.hour < 12 ? 'am' : 'pm';
-  return `${date} at ${hour12}${minutes}${suffix}`;
 }

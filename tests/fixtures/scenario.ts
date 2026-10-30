@@ -2,18 +2,28 @@
  * One student's Canvas, as a consistent set of real-shaped Canvas responses.
  *
  * `buildScenario(now)` places every date relative to `now`, in the student's Canvas time zone
- * (America/New_York), so the same work is "due tomorrow" for any `now`. Fields that Canvas
- * computes, such as `missing`, `late`, `locked_for_user` and `availability_status`, follow the
- * canvas-lms rules at that `now`. `SCENARIO` is the scenario at `SCENARIO_NOW`, a Tuesday
- * afternoon in the week before daylight saving time ends.
+ * (America/New_York), so the same work is "due tomorrow" for any `now`. Each response holds the
+ * fields that the extension reads. Fields that Canvas computes, such as `missing`, `late` and
+ * `locked_for_user`, follow the canvas-lms rules at that `now`. `SCENARIO` is the scenario at
+ * `SCENARIO_NOW`, a Tuesday afternoon in the week before daylight saving time ends.
+ *
+ * `full-replies.ts` holds one complete Canvas reply for each kind of request.
  *
  * See tests/fixtures/README.md for what each piece covers.
  */
 import type {
+  Colors,
+  Course,
   CustomGradeStatus,
+  DashboardPositions,
+  Group,
   PlannableType,
+  PlannerItem,
   PlannerNote,
+  PlannerOverride,
+  Profile,
   TimeRange,
+  UserSelf,
 } from '../../src/lib/canvas/types';
 import {
   announcementPlannerItem,
@@ -22,7 +32,6 @@ import {
   assignmentPlannerItem,
   calendarEventPlannerItem,
   courseJson,
-  fakeToken,
   gradedDiscussionPlannerItem,
   groupJson,
   notePlannerItem,
@@ -46,21 +55,10 @@ import {
   type PageSpec,
   type PlannerCourse,
   type TermSpec,
-  type ToolSpec,
   type UngradedTopicSpec,
 } from './canvas-json';
 import { compareInstants, localDays } from './time';
-import type {
-  WireAssignment,
-  WireColors,
-  WireCourse,
-  WireDashboardPositions,
-  WireGroup,
-  WirePlannerItem,
-  WirePlannerOverride,
-  WireProfile,
-  WireUserSelf,
-} from './wire-types';
+import type { WireAssignment } from './wire-types';
 
 export const SCENARIO_NOW = '2026-10-27T18:00:00Z';
 export const SCENARIO_ORIGIN = 'https://school.instructure.com';
@@ -70,7 +68,6 @@ export const SCENARIO_TIME_ZONE = 'America/New_York';
 export const IDS = {
   user: '5501',
   teacher: '9801',
-  rootAccount: '1',
   courses: {
     biology: '101',
     calculus: '102',
@@ -221,22 +218,22 @@ export interface Scenario {
   origin: string;
   timeZone: string;
   /** `GET /api/v1/users/self` */
-  self: WireUserSelf;
+  self: UserSelf;
   /** `GET /api/v1/users/self/profile` */
-  profile: WireProfile;
+  profile: Profile;
   /** `GET /api/v1/courses?enrollment_state=active&enrollment_type=student&include[]=term` */
-  courses: WireCourse[];
+  courses: Course[];
   /** `GET /api/v1/users/self/groups` */
-  groups: WireGroup[];
+  groups: Group[];
   /** `GET /api/v1/users/self/colors` */
-  colors: WireColors;
+  colors: Colors;
   /** `GET /api/v1/users/self/dashboard_positions` */
-  dashboardPositions: WireDashboardPositions;
+  dashboardPositions: DashboardPositions;
   /**
    * Every planner item of the student, from 400 days ago to the end of the fall term, in the
    * order Canvas returns them. Use `plannerItemsInRange` to answer one planner request.
    */
-  plannerItems: WirePlannerItem[];
+  plannerItems: PlannerItem[];
   /**
    * The instant Canvas filters on, keyed by `<plannable_type>:<plannable_id>`, for items where it
    * is not `plannable_date`. Older-style peer reviews match on the reviewer's own due date.
@@ -250,13 +247,13 @@ export interface Scenario {
   assignments: Record<string, WireAssignment[]>;
   /**
    * `GET /api/v1/courses/:id/assignments?bucket=undated&include[]=submission&include[]=checkpoints&exclude_checkpoints=true`,
-   * keyed by course id, with `has_sub_assignments` and `checkpoints` on every assignment.
+   * keyed by course id, with `has_sub_assignments` on every assignment.
    * History also holds its two checkpoint parents with `has_sub_assignments: true`, as a server
    * that ignores `exclude_checkpoints` returns them.
    */
   undatedAssignments: Record<string, WireAssignment[]>;
   /** `GET /api/v1/planner/overrides`: every active override the student made, ordered by id. */
-  plannerOverrides: WirePlannerOverride[];
+  plannerOverrides: PlannerOverride[];
   /** `GET /api/v1/planner_notes`: the student's custom tasks. */
   plannerNotes: PlannerNote[];
   /** Teacher status names by course id, as `CanvasApi.listCustomGradeStatuses` returns them. */
@@ -264,9 +261,7 @@ export interface Scenario {
 }
 
 /** The key Canvas planner items are matched by in `plannerRangeDates`. */
-export function plannerItemKey(
-  item: Pick<WirePlannerItem, 'plannable_type' | 'plannable_id'>,
-): string {
+export function plannerItemKey(item: Pick<PlannerItem, 'plannable_type' | 'plannable_id'>): string {
   return `${item.plannable_type}:${item.plannable_id}`;
 }
 
@@ -274,7 +269,7 @@ export function plannerItemKey(
  * The items one `GET /api/v1/planner/items?start_date=...&end_date=...` request returns: those
  * whose range date is inside the range, both ends included, as Canvas does.
  */
-export function plannerItemsInRange(scenario: Scenario, range: TimeRange): WirePlannerItem[] {
+export function plannerItemsInRange(scenario: Scenario, range: TimeRange): PlannerItem[] {
   return scenario.plannerItems.filter((item) => {
     const date = scenario.plannerRangeDates[plannerItemKey(item)] ?? item.plannable_date;
     return compareInstants(range.start, date) <= 0 && compareInstants(date, range.end) <= 0;
@@ -284,17 +279,15 @@ export function plannerItemsInRange(scenario: Scenario, range: TimeRange): WireP
 /**
  * The planner-off request of one course,
  * `GET /api/v1/courses/:id/assignments?include[]=submission&include[]=checkpoints`:
- * `assignments` with `has_sub_assignments` and `checkpoints` on every assignment. A checkpointed
- * discussion has no due date on its parent assignment, so its checkpoints come from the undated list.
+ * `assignments` with `has_sub_assignments` on every assignment. Only the undated list knows which
+ * assignments are checkpointed discussions, so the flag comes from there.
  */
 export function allAssignmentsInCourse(scenario: Scenario, courseId: string): WireAssignment[] {
   const undated = new Map((scenario.undatedAssignments[courseId] ?? []).map((a) => [a.id, a]));
   return (scenario.assignments[courseId] ?? []).map((assignment) => {
-    const withCheckpoints = undated.get(assignment.id);
     return {
       ...assignment,
-      has_sub_assignments: withCheckpoints?.has_sub_assignments ?? false,
-      checkpoints: withCheckpoints?.checkpoints ?? [],
+      has_sub_assignments: undated.get(assignment.id)?.has_sub_assignments ?? false,
     };
   });
 }
@@ -316,7 +309,6 @@ interface ScenarioSpecs {
   events: CalendarEventSpec[];
   announcements: { courseId: string; announcement: AnnouncementSpec }[];
   extraOverrides: { spec: OverrideSpec; target: OverrideTarget }[];
-  userCreatedAt: string;
 }
 
 export function buildScenario(now: string): Scenario {
@@ -334,7 +326,7 @@ export function buildScenario(now: string): Scenario {
   const plannerItems = sortPlannerItems([
     ...specs.assignments.flatMap((a) => assignmentPlannerItems(ctx, courseOf(a.courseId), a)),
     ...specs.assessmentRequests.map((r) =>
-      assessmentRequestPlannerItem(ctx, courseOf(r.assignment.courseId), r),
+      assessmentRequestPlannerItem(courseOf(r.assignment.courseId), r),
     ),
     ...specs.pages.map((p) => pagePlannerItem(ctx, courseOf(p.courseId), p.page)),
     ...specs.courseTopics.map((t) =>
@@ -361,17 +353,15 @@ export function buildScenario(now: string): Scenario {
   }
 
   // Every course is in one account, which has discussion checkpoints turned on (History uses
-  // them), so requests with `include[]=checkpoints` get the checkpoint fields on every assignment.
+  // them), so requests with `include[]=checkpoints` get `has_sub_assignments` on every assignment.
   const assignments: Record<string, WireAssignment[]> = {};
   const undatedAssignments: Record<string, WireAssignment[]> = {};
   for (const course of specs.courses) {
-    const own = sortAssignments(specs.assignments.filter((a) => a.courseId === course.id));
+    const own = specs.assignments.filter((a) => a.courseId === course.id);
     assignments[course.id] = own.map((a) => assignmentJson(ctx, a, submissionIdOf(a)));
     undatedAssignments[course.id] = own
       .filter((a) => a.due === null)
-      .map((a) =>
-        assignmentJson(ctx, a, submissionIdOf(a), { bucket: 'undated', includeCheckpoints: true }),
-      );
+      .map((a) => assignmentJson(ctx, a, submissionIdOf(a), { includeCheckpoints: true }));
   }
 
   const customGradeStatuses = Object.fromEntries(
@@ -382,9 +372,9 @@ export function buildScenario(now: string): Scenario {
     now,
     origin: ctx.origin,
     timeZone: ctx.timeZone,
-    self: selfJson(ctx, specs.userCreatedAt),
+    self: selfJson(ctx),
     profile: profileJson(ctx),
-    courses: specs.courses.map((c) => courseJson(ctx, c)),
+    courses: specs.courses.map((c) => courseJson(c)),
     groups: specs.groups.map(groupJson),
     colors: { custom_colors: { ...COURSE_COLORS } },
     dashboardPositions: { dashboard_positions: { ...DASHBOARD_POSITIONS } },
@@ -403,6 +393,9 @@ const CUSTOM_GRADE_STATUSES: readonly CustomGradeStatus[] = [
   { id: IDS.customGradeStatuses.conferenceNeeded, name: 'Conference needed' },
   { id: IDS.customGradeStatuses.medicalExcuse, name: 'Medical excuse' },
 ];
+
+const GRADESCOPE_URL = 'https://www.gradescope.com/auth/lti1p3/launch';
+const NEW_QUIZZES_URL = 'https://school.quiz-lti-iad-prod.instructure.com/lti/launch';
 
 /** Chemistry has no saved color. */
 const COURSE_COLORS: Readonly<Record<string, string>> = {
@@ -433,8 +426,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
     timeZone: SCENARIO_TIME_ZONE,
     userId: IDS.user,
     userName: 'Jordan Rivera',
-    teacherId: IDS.teacher,
-    teacherName: 'Dr. Maya Okafor',
   };
   const T = IDS.teacher;
   const A = IDS.assignments;
@@ -447,7 +438,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
     name: 'Fall 2026',
     startAt: days.onDate(fallStart, '00:00'),
     endAt: at(53, '00:00'),
-    createdAt: days.onDate(fallStart.subtract({ months: 5 }), '14:03:12'),
   };
   const orientationStart = days.today.subtract({ years: 3 }).subtract({ days: 67 });
   const orientationTerm: TermSpec = {
@@ -455,20 +445,13 @@ function scenarioSpecs(now: string): ScenarioSpecs {
     name: 'Continuing Students',
     startAt: days.onDate(orientationStart, '00:00'),
     endAt: null,
-    createdAt: days.onDate(orientationStart.subtract({ months: 2 }), '09:41:05'),
   };
   const defaultTerm: TermSpec = {
     id: IDS.terms.default,
     name: 'Default Term',
     startAt: null,
     endAt: null,
-    createdAt: days.onDate(orientationStart.subtract({ years: 2 }), '16:20:00'),
   };
-
-  const fallCourseCreated = days.onDate(fallStart.subtract({ days: 30 }), '11:00');
-  const created = at(-60, '10:00');
-  const orientationCreated = days.onDate(orientationStart.add({ days: 3 }), '10:00');
-  const clubCreated = days.onDate(days.today.subtract({ years: 1 }), '10:00');
 
   const courses: CourseSpec[] = [
     {
@@ -476,16 +459,12 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       name: 'BIO 110: Principles of Biology',
       courseCode: 'BIO 110',
       term: fall,
-      createdAt: fallCourseCreated,
-      defaultView: 'modules',
     },
     {
       id: C.calculus,
       name: 'MATH 221: Calculus II',
       courseCode: 'MATH 221',
       term: fall,
-      createdAt: fallCourseCreated,
-      defaultView: 'modules',
     },
     {
       id: C.history,
@@ -493,32 +472,24 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       nickname: 'History',
       courseCode: 'HIST 205',
       term: fall,
-      createdAt: fallCourseCreated,
-      defaultView: 'wiki',
     },
     {
       id: C.chemistry,
       name: 'CHEM 120: General Chemistry',
       courseCode: 'CHEM 120',
       term: fall,
-      createdAt: fallCourseCreated,
-      defaultView: 'modules',
     },
     {
       id: C.orientation,
       name: 'Student Success Orientation',
       courseCode: 'SSO 100',
       term: orientationTerm,
-      createdAt: days.onDate(orientationStart.subtract({ days: 20 }), '10:00'),
-      defaultView: 'modules',
     },
     {
       id: C.club,
       name: 'Intramural Ultimate Frisbee Club',
       courseCode: 'ULTIMATE',
       term: defaultTerm,
-      createdAt: clubCreated,
-      defaultView: 'feed',
     },
   ];
 
@@ -526,338 +497,183 @@ function scenarioSpecs(now: string): ScenarioSpecs {
     {
       id: IDS.groups.labGroup,
       name: 'Lab Group 4',
-      categoryId: '401',
-      createdAt: at(-50, '13:00'),
-      membersCount: 4,
-      context: { type: 'Course', courseId: C.chemistry, name: 'CHEM 120: General Chemistry' },
+      context: { type: 'Course', courseId: C.chemistry },
     },
     {
       id: IDS.groups.honorsSociety,
       name: 'Honors Society',
-      categoryId: '88',
-      createdAt: days.onDate(days.today.subtract({ years: 1 }), '12:00'),
-      membersCount: 212,
-      context: { type: 'Account', accountId: IDS.rootAccount, name: 'Northfield State University' },
+      context: { type: 'Account' },
     },
   ];
-
-  const gradescope = (name: string): ToolSpec => ({
-    url: 'https://www.gradescope.com/auth/lti1p3/launch',
-    toolId: '311',
-    resourceLinkTitle: name,
-    newTab: true,
-  });
-  const newQuizzes = (name: string): ToolSpec => ({
-    url: 'https://school.quiz-lti-iad-prod.instructure.com/lti/launch',
-    toolId: '87',
-    resourceLinkTitle: name,
-    newTab: false,
-  });
 
   const labReport2: AssignmentSpec = {
     id: A.bioLabReport2,
     courseId: C.biology,
     name: 'Lab report 2: Enzymes',
-    assignmentGroupId: '1101',
-    position: 2,
     due: due(-28),
-    points: 20,
     submissionTypes: ['online_upload'],
-    createdAt: created,
-    peerReviews: { count: 1, assignAt: at(-27, '00:00') },
     submission: {
       submittedAt: at(-28, '22:10'),
       score: 12,
       grade: '12',
-      gradedAt: at(-24, '14:00'),
       graderId: T,
       redoRequest: true,
-      feedback: 'Please redo the methods section and resubmit.',
+      hasFeedback: true,
       feedbackRead: false,
     },
     override: {
       id: O.bioLabReport2,
       markedComplete: true,
       dismissed: false,
-      createdAt: at(-29, '18:00'),
-      updatedAt: at(-28, '22:10'),
     },
   };
   const labReport3: AssignmentSpec = {
     id: A.bioLabReport3,
     courseId: C.biology,
     name: 'Lab report 3: Photosynthesis',
-    assignmentGroupId: '1101',
-    position: 3,
     due: due(-6),
-    points: 20,
     submissionTypes: ['online_upload'],
-    createdAt: created,
-    peerReviews: { count: 1, assignAt: at(-5, '00:00') },
     submission: { submittedAt: at(-6, '21:04') },
   };
 
+  // Assignments are listed in the order Canvas returns them: by assignment group, then by
+  // position. A new spec goes where it belongs in that order.
   const assignments: AssignmentSpec[] = [
     // Biology: Canvas uploads, classic graded quizzes, an excused item and undated extra credit.
     {
       id: A.bioLabReport1,
       courseId: C.biology,
       name: 'Lab report 1: Microscopy',
-      assignmentGroupId: '1101',
-      position: 1,
       due: due(-56),
-      points: 20,
       submissionTypes: ['online_upload'],
-      createdAt: created,
       submission: {
         submittedAt: at(-57, '20:15'),
         score: 18,
         grade: '18',
-        gradedAt: at(-50, '09:30'),
         graderId: T,
-        feedback: 'Clear figures. Label the magnification next time.',
+        hasFeedback: true,
         feedbackRead: true,
       },
     },
     labReport2,
     labReport3,
-    lab(
-      C.biology,
-      A.bioLabReport4,
-      'Lab report 4: Cellular respiration',
-      '1101',
-      4,
-      due(1),
-      created,
-    ),
-    lab(C.biology, A.bioLabReport5, 'Lab report 5: Genetics', '1101', 5, due(15), created),
-    lab(C.biology, A.bioLabReport6, 'Lab report 6: Evolution', '1101', 6, due(43), created),
+    lab(C.biology, A.bioLabReport4, 'Lab report 4: Cellular respiration', due(1)),
+    lab(C.biology, A.bioLabReport5, 'Lab report 5: Genetics', due(15)),
+    lab(C.biology, A.bioLabReport6, 'Lab report 6: Evolution', due(43)),
     {
-      ...lab(
-        C.biology,
-        A.bioLabPracticalExcused,
-        'Lab practical makeup',
-        '1101',
-        7,
-        due(-35),
-        created,
-      ),
-      submission: { excused: true, gradedAt: at(-30, '11:00'), graderId: T },
+      ...lab(C.biology, A.bioLabPracticalExcused, 'Lab practical makeup', due(-35)),
+      submission: { excused: true, graderId: T },
     },
     {
       id: A.bioQuiz2,
       courseId: C.biology,
       name: 'Quiz 2: Macromolecules',
-      assignmentGroupId: '1102',
-      position: 1,
       due: due(-14),
-      points: 10,
       submissionTypes: ['online_quiz'],
       quizId: IDS.quizzes.bioQuiz2,
-      createdAt: created,
       submission: {
         submittedAt: at(-15, '21:14:03'),
         score: 9,
         grade: '9',
-        gradedAt: at(-15, '21:14:03'),
       },
       override: {
         id: O.bioQuiz2,
         markedComplete: true,
         dismissed: false,
-        createdAt: at(-16, '08:00'),
       },
     },
     {
       id: A.bioQuiz3Today,
       courseId: C.biology,
       name: 'Quiz 3: Cell membranes',
-      assignmentGroupId: '1102',
-      position: 2,
       due: due(0),
-      points: 10,
       submissionTypes: ['online_quiz'],
       quizId: IDS.quizzes.bioQuiz3Today,
-      createdAt: created,
       submission: {},
     },
     {
       id: A.bioQuiz4,
       courseId: C.biology,
       name: 'Quiz 4: Metabolism',
-      assignmentGroupId: '1102',
-      position: 3,
       due: due(14),
-      points: 10,
       submissionTypes: ['online_quiz'],
       quizId: IDS.quizzes.bioQuiz4,
-      createdAt: created,
       submission: {},
     },
     {
       id: A.bioPreLab7Missing,
       courseId: C.biology,
       name: 'Pre-lab worksheet 7',
-      assignmentGroupId: '1103',
-      position: 1,
       due: due(-3),
-      points: 5,
       submissionTypes: ['online_text_entry'],
-      createdAt: created,
       submission: {},
     },
     {
       id: A.bioExtraCreditUndated,
       courseId: C.biology,
       name: 'Extra credit: Science news summary',
-      assignmentGroupId: '1104',
-      position: 1,
       due: null,
-      points: 5,
       submissionTypes: ['online_text_entry'],
-      createdAt: created,
       submission: {},
     },
     {
       id: A.bioOptionalReflectionUndatedSkipped,
       courseId: C.biology,
       name: 'Optional: Lab tour reflection',
-      assignmentGroupId: '1104',
-      position: 2,
       due: null,
-      points: 0,
       submissionTypes: ['online_text_entry'],
-      createdAt: created,
       submission: {},
       override: {
         id: O.bioOptionalReflection,
         markedComplete: false,
         dismissed: true,
-        createdAt: at(-20, '12:00'),
       },
     },
 
     // Calculus: Gradescope work, New Quizzes, an extension, a locked missing item and a skip.
     {
-      ...tool(
-        C.calculus,
-        A.mathHomework3,
-        'Homework 3',
-        '2101',
-        1,
-        due(-30),
-        gradescope('Homework 3'),
-        created,
-      ),
+      ...tool(C.calculus, A.mathHomework3, 'Homework 3', due(-30), GRADESCOPE_URL),
       submission: { latePolicyStatus: 'missing' },
       override: {
         id: O.mathHomework3,
         markedComplete: true,
         dismissed: false,
-        createdAt: at(-31, '16:20'),
       },
     },
     {
-      ...tool(
-        C.calculus,
-        A.mathHomework4,
-        'Homework 4',
-        '2101',
-        2,
-        due(-23),
-        gradescope('Homework 4'),
-        created,
-      ),
+      ...tool(C.calculus, A.mathHomework4, 'Homework 4', due(-23), GRADESCOPE_URL),
       submission: {
         score: 4,
         grade: '4',
-        gradedAt: at(-18, '10:00'),
         graderId: T,
         redoRequest: true,
-        feedback: 'Problems 3 and 4 are incomplete. Resubmit on Gradescope.',
+        hasFeedback: true,
         feedbackRead: true,
       },
       override: {
         id: O.mathHomework4,
         markedComplete: true,
         dismissed: false,
-        createdAt: at(-23, '21:40'),
       },
     },
     {
-      ...tool(
-        C.calculus,
-        A.mathHomework5,
-        'Homework 5',
-        '2101',
-        3,
-        due(-16),
-        gradescope('Homework 5'),
-        created,
-      ),
+      ...tool(C.calculus, A.mathHomework5, 'Homework 5', due(-16), GRADESCOPE_URL),
       lockAt: at(-14, '23:59:59'),
     },
     {
-      ...tool(
-        C.calculus,
-        A.mathHomework6,
-        'Homework 6',
-        '2101',
-        4,
-        due(-9),
-        gradescope('Homework 6'),
-        created,
-      ),
-      submission: { score: 10, grade: '10', gradedAt: at(-4, '09:00'), graderId: T },
+      ...tool(C.calculus, A.mathHomework6, 'Homework 6', due(-9), GRADESCOPE_URL),
+      submission: { score: 10, grade: '10', graderId: T },
     },
-    tool(
-      C.calculus,
-      A.mathHomework7,
-      'Homework 7',
-      '2101',
-      5,
-      due(-2),
-      gradescope('Homework 7'),
-      created,
-    ),
-    tool(
-      C.calculus,
-      A.mathHomework8,
-      'Homework 8',
-      '2101',
-      6,
-      due(3),
-      gradescope('Homework 8'),
-      created,
-    ),
-    tool(
-      C.calculus,
-      A.mathHomework9,
-      'Homework 9',
-      '2101',
-      7,
-      due(10),
-      gradescope('Homework 9'),
-      created,
-    ),
+    tool(C.calculus, A.mathHomework7, 'Homework 7', due(-2), GRADESCOPE_URL),
+    tool(C.calculus, A.mathHomework8, 'Homework 8', due(3), GRADESCOPE_URL),
+    tool(C.calculus, A.mathHomework9, 'Homework 9', due(10), GRADESCOPE_URL),
     {
-      ...tool(
-        C.calculus,
-        A.mathExam1,
-        'Exam 1',
-        '2102',
-        1,
-        at(-20, '11:50'),
-        newQuizzes('Exam 1'),
-        created,
-      ),
-      points: 100,
+      ...tool(C.calculus, A.mathExam1, 'Exam 1', at(-20, '11:50'), NEW_QUIZZES_URL),
       newQuiz: true,
       submission: {
         submittedAt: at(-20, '11:41'),
         score: 86,
         grade: '86',
-        gradedAt: at(-20, '11:41'),
       },
     },
     {
@@ -865,113 +681,57 @@ function scenarioSpecs(now: string): ScenarioSpecs {
         C.calculus,
         A.mathIntegrationQuiz,
         'Quiz: Integration by parts',
-        '2102',
-        2,
         due(2),
-        newQuizzes('Quiz: Integration by parts'),
-        created,
+        NEW_QUIZZES_URL,
       ),
-      points: 20,
       newQuiz: true,
     },
     {
-      ...tool(
-        C.calculus,
-        A.mathFinalExam,
-        'Final exam',
-        '2102',
-        3,
-        at(48, '10:00'),
-        newQuizzes('Final exam'),
-        created,
-      ),
-      points: 150,
+      ...tool(C.calculus, A.mathFinalExam, 'Final exam', at(48, '10:00'), NEW_QUIZZES_URL),
       newQuiz: true,
     },
     {
-      ...tool(
-        C.calculus,
-        A.mathPracticeExamUndated,
-        'Practice exam',
-        '2102',
-        4,
-        null,
-        newQuizzes('Practice exam'),
-        created,
-      ),
-      points: 0,
+      ...tool(C.calculus, A.mathPracticeExamUndated, 'Practice exam', null, NEW_QUIZZES_URL),
       newQuiz: true,
     },
     {
-      ...lab(C.calculus, A.mathProblemSet4Skipped, 'Problem set 4', '2103', 1, due(-19), created),
-      points: 15,
+      ...lab(C.calculus, A.mathProblemSet4Skipped, 'Problem set 4', due(-19)),
       override: {
         id: O.mathProblemSet4,
         markedComplete: false,
         dismissed: true,
-        createdAt: at(-12, '19:30'),
       },
     },
     {
-      ...lab(
-        C.calculus,
-        A.mathProblemSet5LockedMissing,
-        'Problem set 5',
-        '2103',
-        2,
-        due(-12),
-        created,
-      ),
-      points: 15,
+      ...lab(C.calculus, A.mathProblemSet5LockedMissing, 'Problem set 5', due(-12)),
       lockAt: at(-10, '23:59:59'),
     },
     {
-      ...lab(C.calculus, A.mathProblemSet6Extended, 'Problem set 6', '2103', 3, due(-1), created),
-      points: 15,
+      ...lab(C.calculus, A.mathProblemSet6Extended, 'Problem set 6', due(-1)),
       submission: { latePolicyStatus: 'extended' },
     },
-    {
-      ...lab(
-        C.calculus,
-        A.mathProblemSet7Midnight,
-        'Problem set 7',
-        '2103',
-        4,
-        at(5, '00:00'),
-        created,
-      ),
-      points: 15,
-    },
+    lab(C.calculus, A.mathProblemSet7Midnight, 'Problem set 7', at(5, '00:00')),
 
     // History: checkpointed discussions, a teacher status, a graded discussion and reminders.
     {
       id: A.historyDebate1,
       courseId: C.history,
       name: 'Debate 1: Who built the Atlantic economy?',
-      assignmentGroupId: '3101',
-      position: 1,
       due: null,
-      points: 10,
       submissionTypes: ['discussion_topic'],
-      createdAt: created,
       topic: {
         id: IDS.topics.historyDebate1,
-        postedAt: at(-20, '09:00'),
-        message: '<p>Make your case, then reply to two classmates.</p>',
         unreadCount: 0,
-        entryCount: 41,
       },
       checkpoints: [
         {
           id: IDS.subAssignments.historyDebate1ReplyToTopic,
           tag: 'reply_to_topic',
           due: due(-15),
-          points: 5,
           submission: {
             submittedAt: at(-15, '19:02'),
             score: 5,
             grade: '5',
-            gradedAt: at(-11, '08:00'),
             graderId: T,
           },
         },
@@ -979,7 +739,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
           id: IDS.subAssignments.historyDebate1ReplyToEntry,
           tag: 'reply_to_entry',
           due: due(-12),
-          points: 5,
           submission: { submittedAt: at(-12, '22:45') },
         },
       ],
@@ -989,39 +748,28 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       id: A.historyDebate2,
       courseId: C.history,
       name: 'Debate 2: Was the Atlantic world one system?',
-      assignmentGroupId: '3101',
-      position: 2,
       due: null,
-      points: 10,
       submissionTypes: ['discussion_topic'],
-      createdAt: created,
       topic: {
         id: IDS.topics.historyDebate2,
-        postedAt: at(-6, '09:00'),
-        message: '<p>Post your position by today. Reply to two classmates by Friday.</p>',
         unreadCount: 7,
-        entryCount: 12,
       },
       checkpoints: [
         {
           id: IDS.subAssignments.historyDebate2ReplyToTopic,
           tag: 'reply_to_topic',
           due: due(0),
-          points: 5,
           submission: {},
           override: {
             id: O.historyDebate2ReplyToTopic,
             markedComplete: false,
             dismissed: false,
-            createdAt: at(-2, '20:05'),
-            updatedAt: at(-2, '20:06'),
           },
         },
         {
           id: IDS.subAssignments.historyDebate2ReplyToEntry,
           tag: 'reply_to_entry',
           due: due(3),
-          points: 5,
           submission: {},
         },
       ],
@@ -1031,128 +779,52 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       id: A.historyEquianoDiscussion,
       courseId: C.history,
       name: "Primary source: Equiano's Narrative",
-      assignmentGroupId: '3101',
-      position: 3,
       due: due(4),
-      points: 10,
       submissionTypes: ['discussion_topic'],
-      createdAt: created,
       topic: {
         id: IDS.topics.historyEquiano,
-        postedAt: at(-9, '09:00'),
-        message: '<p>Choose one passage and explain what it shows about the Middle Passage.</p>',
         unreadCount: 0,
-        entryCount: 3,
       },
       submission: {},
       override: {
         id: O.historyEquiano,
         markedComplete: true,
         dismissed: false,
-        createdAt: at(-1, '21:30'),
       },
     },
     {
-      ...lab(C.history, A.historyEssayDraft, 'Essay 1 draft', '3102', 1, due(-5), created),
-      points: 25,
+      ...lab(C.history, A.historyEssayDraft, 'Essay 1 draft', due(-5)),
       submission: { customGradeStatusId: IDS.customGradeStatuses.incomplete, graderId: T },
     },
+    lab(C.history, A.historyEssayFinal, 'Essay 1 final', due(9)),
+    noSubmission(C.history, A.historyParticipationUndated, 'Class participation (overall)', null),
     {
-      ...lab(C.history, A.historyEssayFinal, 'Essay 1 final', '3102', 2, due(9), created),
-      points: 75,
+      ...noSubmission(C.history, A.historyParticipationWeek8, 'Participation: Week 8', due(-7)),
+      submission: { score: 2, grade: '2', graderId: T },
     },
-    noSubmission(
-      C.history,
-      A.historyParticipationUndated,
-      'Class participation (overall)',
-      '3103',
-      1,
-      null,
-      50,
-      created,
-    ),
-    {
-      ...noSubmission(
-        C.history,
-        A.historyParticipationWeek8,
-        'Participation: Week 8',
-        '3103',
-        8,
-        due(-7),
-        2,
-        created,
-      ),
-      submission: { score: 2, grade: '2', gradedAt: at(-6, '10:00'), graderId: T },
-    },
-    noSubmission(
-      C.history,
-      A.historyParticipationWeek9,
-      'Participation: Week 9',
-      '3103',
-      9,
-      due(0),
-      2,
-      created,
-    ),
-    noSubmission(
-      C.history,
-      A.historyParticipationWeek10,
-      'Participation: Week 10',
-      '3103',
-      10,
-      due(7),
-      2,
-      created,
-    ),
+    noSubmission(C.history, A.historyParticipationWeek9, 'Participation: Week 9', due(0)),
+    noSubmission(C.history, A.historyParticipationWeek10, 'Participation: Week 10', due(7)),
 
     // Chemistry: paper labs, a locked pre-lab, new-style peer reviews, a graded discussion and a reading.
+    paper(C.chemistry, A.chemSafetyContractUndated, 'Safety contract', null),
     {
-      ...paper(C.chemistry, A.chemSafetyContractUndated, 'Safety contract', 1, null, created),
-      points: 0,
+      ...paper(C.chemistry, A.chemLab5Graded, 'Lab 5: Stoichiometry notebook', at(-13, '13:00')),
+      submission: { score: 9, grade: '9', graderId: T },
     },
+    paper(C.chemistry, A.chemLab6PastDue, 'Lab 6: Calorimetry notebook', at(-6, '13:00')),
+    paper(C.chemistry, A.chemLab7Tomorrow, 'Lab 7: Titration notebook', at(1, '13:00')),
     {
-      ...paper(
-        C.chemistry,
-        A.chemLab5Graded,
-        'Lab 5: Stoichiometry notebook',
-        5,
-        at(-13, '13:00'),
-        created,
-      ),
-      submission: { score: 9, grade: '9', gradedAt: at(-10, '16:00'), graderId: T },
-    },
-    paper(
-      C.chemistry,
-      A.chemLab6PastDue,
-      'Lab 6: Calorimetry notebook',
-      6,
-      at(-6, '13:00'),
-      created,
-    ),
-    paper(C.chemistry, A.chemLab7Tomorrow, 'Lab 7: Titration notebook', 7, at(1, '13:00'), created),
-    {
-      ...lab(C.chemistry, A.chemLab8PreLabLocked, 'Lab 8 pre-lab', '4101', 8, due(3), created),
-      points: 5,
+      ...lab(C.chemistry, A.chemLab8PreLabLocked, 'Lab 8 pre-lab', due(3)),
       unlockAt: at(2, '08:00'),
     },
     {
-      ...lab(
-        C.chemistry,
-        A.chemLabReportDraft,
-        'Lab report draft: Kinetics',
-        '4102',
-        1,
-        due(-4),
-        created,
-      ),
+      ...lab(C.chemistry, A.chemLabReportDraft, 'Lab report draft: Kinetics', due(-4)),
       submission: { submittedAt: at(-4, '18:02') },
       peerReviews: {
         count: 2,
-        assignAt: at(-3, '00:00'),
         sub: {
           id: IDS.peerReviewSubAssignments.chemLabReportDraftReview,
           due: due(2),
-          points: 4,
           submission: {},
         },
       },
@@ -1161,18 +833,11 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       id: A.chemGreenChemistryDiscussion,
       courseId: C.chemistry,
       name: 'Discussion: Green chemistry in industry',
-      assignmentGroupId: '4103',
-      position: 1,
       due: due(3),
-      points: 10,
       submissionTypes: ['discussion_topic'],
-      createdAt: created,
       topic: {
         id: IDS.topics.chemGreenChemistry,
-        postedAt: at(-7, '09:00'),
-        message: '<p>Find one industrial process that was redesigned to use less solvent.</p>',
         unreadCount: 2,
-        entryCount: 9,
       },
       submission: {},
     },
@@ -1180,85 +845,37 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       id: A.chemReadingNotGraded,
       courseId: C.chemistry,
       name: 'Reading: Chapter 9',
-      assignmentGroupId: '4104',
-      position: 1,
       due: due(2),
-      points: null,
-      gradingType: 'not_graded',
       submissionTypes: ['not_graded'],
-      createdAt: created,
       submission: {},
     },
 
     // Orientation: a long-running course with an old term.
     {
-      ...text(
-        C.orientation,
-        A.orientationWelcomeSurveyOld,
-        'Welcome survey',
-        1,
-        due(-400),
-        orientationCreated,
-      ),
+      ...text(C.orientation, A.orientationWelcomeSurveyOld, 'Welcome survey', due(-400)),
       submission: { submittedAt: at(-401, '10:00') },
     },
-    text(
-      C.orientation,
-      A.orientationModule3Missing,
-      'Module 3 reflection',
-      3,
-      due(-70),
-      orientationCreated,
-    ),
-    text(
-      C.orientation,
-      A.orientationModule4,
-      'Module 4 reflection',
-      4,
-      due(16),
-      orientationCreated,
-    ),
     {
-      ...text(
-        C.orientation,
-        A.orientationIntegrityPledge,
-        'Academic integrity pledge',
-        2,
-        null,
-        orientationCreated,
-      ),
+      ...text(C.orientation, A.orientationIntegrityPledge, 'Academic integrity pledge', null),
       override: {
         id: O.orientationIntegrityPledge,
         markedComplete: true,
         dismissed: true,
-        createdAt: at(-40, '13:12'),
       },
     },
+    text(C.orientation, A.orientationModule3Missing, 'Module 3 reflection', due(-70)),
+    text(C.orientation, A.orientationModule4, 'Module 4 reflection', due(16)),
 
     // Club: the hidden course.
     {
       id: A.clubWaiver,
       courseId: C.club,
       name: 'Liability waiver',
-      assignmentGroupId: '6101',
-      position: 1,
       due: due(1),
-      points: null,
-      gradingType: 'not_graded',
       submissionTypes: ['online_upload'],
-      createdAt: clubCreated,
       submission: {},
     },
-    noSubmission(
-      C.club,
-      A.clubAttendanceUndated,
-      'Practice attendance',
-      '6101',
-      2,
-      null,
-      null,
-      clubCreated,
-    ),
+    noSubmission(C.club, A.clubAttendanceUndated, 'Practice attendance', null),
   ];
 
   const assessmentRequests: AssessmentRequestSpec[] = [
@@ -1268,7 +885,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       date: due(8),
       revieweeId: '5622',
       completed: false,
-      createdAt: at(-5, '00:00:12'),
     },
     {
       id: IDS.assessmentRequests.bioLabReport2ReviewCompleted,
@@ -1276,7 +892,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       date: due(-21),
       revieweeId: '5618',
       completed: true,
-      createdAt: at(-27, '00:00:09'),
     },
   ];
 
@@ -1288,7 +903,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
         title: 'Read: Chapter 7 - Cellular respiration',
         slug: 'read-chapter-7-cellular-respiration',
         todoDate: at(2, '09:00'),
-        createdAt: created,
       },
     },
     {
@@ -1298,12 +912,10 @@ function scenarioSpecs(now: string): ScenarioSpecs {
         title: 'Watch: Lab safety video',
         slug: 'watch-lab-safety-video',
         todoDate: at(-55, '09:00'),
-        createdAt: created,
         override: {
           id: O.bioSafetyVideo,
           markedComplete: true,
           dismissed: false,
-          createdAt: at(-56, '19:45'),
         },
       },
     },
@@ -1316,13 +928,11 @@ function scenarioSpecs(now: string): ScenarioSpecs {
         id: IDS.topics.historyIntroduceYourself,
         title: 'Introduce yourself',
         todoDate: due(-60),
-        postedAt: at(-62, '09:00'),
         unreadCount: 0,
         override: {
           id: O.historyIntroduceYourself,
           markedComplete: true,
           dismissed: false,
-          createdAt: at(-60, '20:00'),
         },
       },
     },
@@ -1332,7 +942,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
         id: IDS.topics.historyReadingCircle,
         title: 'Reading circle: Week 9 questions',
         todoDate: at(1, '12:00'),
-        postedAt: at(-3, '09:00'),
         unreadCount: 4,
       },
     },
@@ -1342,7 +951,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
         id: IDS.topics.orientationModule1CheckIn,
         title: 'Module 1: Check in',
         todoDate: due(-140),
-        postedAt: at(-150, '09:00'),
         unreadCount: 0,
       },
     },
@@ -1352,7 +960,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
         id: IDS.topics.clubTournamentSignUp,
         title: 'Tournament sign-up',
         todoDate: at(2, '20:00'),
-        postedAt: at(-5, '09:00'),
         unreadCount: 0,
       },
     },
@@ -1365,7 +972,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
         id: IDS.topics.labGroupPoster,
         title: 'Lab group 4: Plan the poster',
         todoDate: at(1, '18:00'),
-        postedAt: at(-2, '11:00'),
         unreadCount: 1,
       },
     },
@@ -1375,7 +981,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
         id: IDS.topics.honorsVolunteerSignUp,
         title: 'Volunteer sign-up for open house',
         todoDate: at(3, '12:00'),
-        postedAt: at(-4, '15:00'),
         unreadCount: 0,
       },
     },
@@ -1424,7 +1029,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
         id: O.labGoggles,
         markedComplete: true,
         dismissed: false,
-        createdAt: at(-3, '17:30'),
       },
     },
     {
@@ -1442,34 +1046,19 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       id: IDS.calendarEvents.bioReviewSession,
       title: 'BIO 110 midterm review session',
       startAt: at(1, '17:00'),
-      endAt: at(1, '18:30'),
-      allDay: false,
-      locationName: 'Science Hall 120',
-      description: '<p>Bring your questions.</p>',
-      createdAt: at(-10, '09:00'),
       context: { type: 'Course', course: biologyCourse },
     },
     {
       id: IDS.calendarEvents.dentist,
       title: 'Dentist appointment',
       startAt: at(2, '15:30'),
-      endAt: at(2, '16:30'),
-      allDay: false,
-      locationName: null,
-      description: null,
-      createdAt: at(-8, '20:00'),
       context: { type: 'User' },
     },
     {
       id: IDS.calendarEvents.fallBreak,
       title: 'Fall break - no classes',
       startAt: at(30, '00:00'),
-      endAt: at(31, '00:00'),
-      allDay: true,
-      locationName: null,
-      description: null,
-      createdAt: at(-90, '09:00'),
-      context: { type: 'Account', accountId: IDS.rootAccount, name: 'Northfield State University' },
+      context: { type: 'Account', name: 'Northfield State University' },
     },
   ];
 
@@ -1500,7 +1089,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
         id: O.oldCourseAssignment,
         markedComplete: true,
         dismissed: false,
-        createdAt: at(-400, '12:00'),
       },
       target: { dbType: 'assignment' as const, plannableId: '880', assignmentId: '880' },
     },
@@ -1519,7 +1107,6 @@ function scenarioSpecs(now: string): ScenarioSpecs {
     events,
     announcements,
     extraOverrides,
-    userCreatedAt: days.onDate(days.today.subtract({ years: 2 }), '15:02:11'),
   };
 }
 
@@ -1528,27 +1115,8 @@ function scenarioSpecs(now: string): ScenarioSpecs {
 // ---------------------------------------------------------------------------
 
 /** A Canvas file upload. */
-function lab(
-  courseId: string,
-  id: string,
-  name: string,
-  assignmentGroupId: string,
-  position: number,
-  dueAt: string | null,
-  createdAt: string,
-): AssignmentSpec {
-  return {
-    id,
-    courseId,
-    name,
-    assignmentGroupId,
-    position,
-    due: dueAt,
-    points: 20,
-    submissionTypes: ['online_upload'],
-    createdAt,
-    submission: {},
-  };
+function lab(courseId: string, id: string, name: string, dueAt: string | null): AssignmentSpec {
+  return { id, courseId, name, due: dueAt, submissionTypes: ['online_upload'], submission: {} };
 }
 
 /** An external tool assignment, such as Gradescope or a New Quiz. */
@@ -1556,48 +1124,23 @@ function tool(
   courseId: string,
   id: string,
   name: string,
-  assignmentGroupId: string,
-  position: number,
   dueAt: string | null,
-  launch: ToolSpec,
-  createdAt: string,
+  launch: string,
 ): AssignmentSpec {
   return {
     id,
     courseId,
     name,
-    assignmentGroupId,
-    position,
     due: dueAt,
-    points: 10,
     submissionTypes: ['external_tool'],
     tool: launch,
-    createdAt,
     submission: {},
   };
 }
 
 /** An on-paper lab notebook in chemistry. */
-function paper(
-  courseId: string,
-  id: string,
-  name: string,
-  position: number,
-  dueAt: string | null,
-  createdAt: string,
-): AssignmentSpec {
-  return {
-    id,
-    courseId,
-    name,
-    assignmentGroupId: '4101',
-    position,
-    due: dueAt,
-    points: 10,
-    submissionTypes: ['on_paper'],
-    createdAt,
-    submission: {},
-  };
+function paper(courseId: string, id: string, name: string, dueAt: string | null): AssignmentSpec {
+  return { id, courseId, name, due: dueAt, submissionTypes: ['on_paper'], submission: {} };
 }
 
 /** A gradebook column with nothing to hand in. */
@@ -1605,48 +1148,14 @@ function noSubmission(
   courseId: string,
   id: string,
   name: string,
-  assignmentGroupId: string,
-  position: number,
   dueAt: string | null,
-  points: number | null,
-  createdAt: string,
 ): AssignmentSpec {
-  return {
-    id,
-    courseId,
-    name,
-    assignmentGroupId,
-    position,
-    due: dueAt,
-    points,
-    gradingType: points === null ? 'not_graded' : 'points',
-    submissionTypes: ['none'],
-    createdAt,
-    submission: {},
-  };
+  return { id, courseId, name, due: dueAt, submissionTypes: ['none'], submission: {} };
 }
 
 /** A text entry in the orientation course. */
-function text(
-  courseId: string,
-  id: string,
-  name: string,
-  position: number,
-  dueAt: string | null,
-  createdAt: string,
-): AssignmentSpec {
-  return {
-    id,
-    courseId,
-    name,
-    assignmentGroupId: '5101',
-    position,
-    due: dueAt,
-    points: 5,
-    submissionTypes: ['online_text_entry'],
-    createdAt,
-    submission: {},
-  };
+function text(courseId: string, id: string, name: string, dueAt: string | null): AssignmentSpec {
+  return { id, courseId, name, due: dueAt, submissionTypes: ['online_text_entry'], submission: {} };
 }
 
 // ---------------------------------------------------------------------------
@@ -1662,7 +1171,7 @@ function assignmentPlannerItems(
   ctx: FixtureContext,
   course: PlannerCourse,
   spec: AssignmentSpec,
-): WirePlannerItem[] {
+): PlannerItem[] {
   if (spec.checkpoints !== undefined) {
     return spec.checkpoints.map((checkpoint) =>
       subAssignmentPlannerItem(ctx, course, spec, checkpoint),
@@ -1690,7 +1199,7 @@ function assignmentOverrideTarget(spec: AssignmentSpec): OverrideTarget {
   return { dbType: 'assignment', plannableId: spec.id, assignmentId: spec.id };
 }
 
-function listedOverrides(specs: ScenarioSpecs): WirePlannerOverride[] {
+function listedOverrides(specs: ScenarioSpecs): PlannerOverride[] {
   const entries: { spec: OverrideSpec; target: OverrideTarget }[] = [];
   for (const a of specs.assignments) {
     if (a.override !== undefined)
@@ -1732,7 +1241,7 @@ function listedOverrides(specs: ScenarioSpecs): WirePlannerOverride[] {
     .sort((a, b) => compareIds(a.id, b.id));
 }
 
-function sortPlannerItems(items: WirePlannerItem[]): WirePlannerItem[] {
+function sortPlannerItems(items: PlannerItem[]): PlannerItem[] {
   return [...items].sort(
     (a, b) =>
       compareInstants(a.plannable_date, b.plannable_date) ||
@@ -1758,15 +1267,6 @@ function typeOrder(type: PlannableType): number {
   return TYPE_ORDER.indexOf(type);
 }
 
-function sortAssignments(specs: AssignmentSpec[]): AssignmentSpec[] {
-  return [...specs].sort(
-    (a, b) =>
-      compareIds(a.assignmentGroupId, b.assignmentGroupId) ||
-      a.position - b.position ||
-      compareIds(a.id, b.id),
-  );
-}
-
 /** Compares numeric id strings without converting them to numbers. */
 function compareIds(a: string, b: string): number {
   return a.length - b.length || (a < b ? -1 : a > b ? 1 : 0);
@@ -1778,45 +1278,17 @@ function groupName(groups: GroupSpec[], id: string): string {
   return group.name;
 }
 
-function selfJson(ctx: FixtureContext, createdAt: string): WireUserSelf {
-  return {
-    id: ctx.userId,
-    name: ctx.userName,
-    created_at: createdAt,
-    sortable_name: 'Rivera, Jordan',
-    short_name: ctx.userName,
-    avatar_url: `${ctx.origin}/images/messages/avatar-50.png`,
-    last_name: 'Rivera',
-    first_name: 'Jordan',
-    locale: null,
-    effective_locale: 'en',
-    permissions: {
-      can_update_name: true,
-      can_update_avatar: true,
-      limit_parent_app_web_access: false,
-    },
-  };
+function selfJson(ctx: FixtureContext): UserSelf {
+  return { id: ctx.userId, name: ctx.userName };
 }
 
-function profileJson(ctx: FixtureContext): WireProfile {
+function profileJson(ctx: FixtureContext): Profile {
   return {
     id: ctx.userId,
     name: ctx.userName,
-    short_name: ctx.userName,
-    sortable_name: 'Rivera, Jordan',
-    avatar_url: `${ctx.origin}/images/messages/avatar-50.png`,
-    title: null,
-    bio: null,
-    pronunciation: null,
-    primary_email: 'jrivera@students.northfield.edu',
-    login_id: 'jrivera',
-    integration_id: null,
     time_zone: ctx.timeZone,
     locale: null,
     effective_locale: 'en',
-    calendar: { ics: `${ctx.origin}/feeds/calendars/user_${fakeToken(`u${ctx.userId}`)}.ics` },
-    k5_user: false,
-    use_classic_font_in_k5: false,
   };
 }
 

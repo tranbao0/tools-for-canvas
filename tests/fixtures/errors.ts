@@ -1,8 +1,12 @@
 /**
- * Canvas error responses with their exact status, headers and body text.
+ * Canvas error responses with their status and body text.
+ *
+ * The extension reads the status of an error, the text "Rate Limit Exceeded" of a throttle, and
+ * whether a 403 body is a JSON object. So a response holds no headers, and a JSON body holds the
+ * message that names the case.
  *
  * Sources in canvas-lms at commit 1c9f0bb:
- * - `render_json_unauthorized` and `add_www_authenticate_header` (lib/authentication_methods.rb);
+ * - `render_json_unauthorized` (lib/authentication_methods.rb);
  * - `RequestThrottle#rate_limit_exceeded` (app/middleware/request_throttle.rb);
  * - `PlannerOverridesController#create` with the `plannable_id` uniqueness validation;
  * - `AssignmentsApiController#get_assignments` for the `assignment_ids[]` checks.
@@ -10,32 +14,17 @@
 
 export interface CanvasErrorFixture {
   status: number;
-  headers: Readonly<Record<string, string>>;
   /** The raw body text. */
   body: string;
 }
 
-const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' } as const;
-const THROTTLE_HEADERS = {
-  'Content-Type': 'text/plain; charset=utf-8',
-  'X-Rate-Limit-Remaining': '0.0',
-} as const;
-
-function jsonError(
-  status: number,
-  body: unknown,
-  headers: Readonly<Record<string, string>> = JSON_HEADERS,
-): CanvasErrorFixture {
-  return { status, headers, body: JSON.stringify(body) };
+function jsonError(status: number, body: unknown): CanvasErrorFixture {
+  return { status, body: JSON.stringify(body) };
 }
 
 export const CANVAS_ERRORS = {
-  /** Any API call with no session. Canvas adds the Bearer realm header, which marks the site as Canvas. */
-  signedOut: jsonError(
-    401,
-    { status: 'unauthenticated', errors: [{ message: 'user authorization required' }] },
-    { ...JSON_HEADERS, 'WWW-Authenticate': 'Bearer realm="canvas-lms"' },
-  ),
+  /** Any API call with no session. */
+  signedOut: jsonError(401, { errors: [{ message: 'user authorization required' }] }),
   /**
    * A signed-in student under "Limited Access for Students": the planner and planner notes
    * answer 403 with JSON `status` `unauthorized`.
@@ -45,26 +34,13 @@ export const CANVAS_ERRORS = {
     errors: [{ message: 'user not authorized to perform that action' }],
   }),
   /** The throttle on self-hosted or older Canvas. */
-  rateLimited403: {
-    status: 403,
-    headers: THROTTLE_HEADERS,
-    body: '403 Forbidden (Rate Limit Exceeded)\n',
-  },
+  rateLimited403: { status: 403, body: '403 Forbidden (Rate Limit Exceeded)\n' },
   /** The throttle on Instructure-hosted Canvas. */
-  rateLimited429: {
-    status: 429,
-    headers: THROTTLE_HEADERS,
-    body: '429 Too Many Requests (Rate Limit Exceeded)\n',
-  },
+  rateLimited429: { status: 429, body: '429 Too Many Requests (Rate Limit Exceeded)\n' },
   /** A second `POST /api/v1/planner/overrides` for the same item. */
-  overrideExists: jsonError(400, {
-    errors: { plannable_id: [{ attribute: 'plannable_id', type: 'taken', message: 'taken' }] },
-  }),
+  overrideExists: jsonError(400, { errors: { plannable_id: [{ message: 'taken' }] } }),
   notFound: jsonError(404, { errors: [{ message: 'The specified resource does not exist.' }] }),
-  serverError: jsonError(500, {
-    errors: [{ message: 'An error occurred.', error_code: 'internal_server_error' }],
-    error_report_id: '6235',
-  }),
+  serverError: jsonError(500, { errors: [{ message: 'An error occurred.' }] }),
   /** More than 100 `assignment_ids[]` in one request. Canvas puts two spaces before "Limit". */
   tooManyAssignmentIds: jsonError(400, {
     message: 'Request contains too many assignment_ids.  Limit 100',
@@ -84,23 +60,10 @@ export const NOT_CANVAS_RESPONSES = {
   /** A normal web page at `/api/v1/users/self`. */
   htmlPage: {
     status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
     body: '<!DOCTYPE html><html><head><title>Northfield State University</title></head><body><h1>Page not found</h1></body></html>',
   },
-  /** A 401 from another app: no `Bearer realm="canvas-lms"` header. */
-  otherApp401: jsonError(
-    401,
-    { error: 'unauthorized' },
-    { ...JSON_HEADERS, 'WWW-Authenticate': 'Basic realm="intranet"' },
-  ),
   /** A school address that sends the browser to its sign-in service. */
-  redirectToSignIn: {
-    status: 302,
-    headers: {
-      Location: 'https://sso.northfield.edu/idp/profile/SAML2/Redirect/SSO?execution=e1s1',
-    },
-    body: '',
-  },
+  redirectToSignIn: { status: 302, body: '' },
 } as const satisfies Record<string, CanvasErrorFixture>;
 
 /** Canvas puts this prefix before some JSON bodies. The client removes it. */

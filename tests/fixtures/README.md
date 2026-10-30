@@ -1,6 +1,10 @@
 # Test fixtures
 
 These fixtures give tests one realistic Canvas student and a set of fake Canvas pages.
+The scenario holds the fields that the extension reads.
+These are the required fields of the contract types in `src/lib/canvas/types.ts`, the optional fields that production code reads, and `locked_for_user`.
+A required contract field that no code reads yet, such as `late`, stays, because the type needs it.
+`full-replies.ts` holds one complete Canvas reply for each kind of request.
 The JSON shapes follow the canvas-lms serializers at commit 1c9f0bb, with string ids.
 Nothing here reads the real clock or the network.
 
@@ -8,7 +12,7 @@ Nothing here reads the real clock or the network.
 
 `buildScenario(now)` returns every Canvas response for one student, Jordan Rivera, with dates relative to `now`.
 Dates fall on local days in America/New_York, so "due tomorrow at 11:59 pm" stays true for any `now`.
-Fields that Canvas computes, such as `missing`, `late`, `locked_for_user` and `availability_status`, follow the Canvas rules at `now`.
+Fields that Canvas computes, such as `missing`, `late` and `locked_for_user`, follow the Canvas rules at `now`.
 `SCENARIO` is the frozen scenario at `SCENARIO_NOW`, Tuesday 2026-10-27 at 2 pm EDT.
 Its current week runs from Sunday Oct 25 to Saturday Oct 31, and daylight saving time ends on Sunday Nov 1.
 `IDS` names every id by its meaning, for example `IDS.assignments.mathHomework5`.
@@ -37,19 +41,30 @@ Older-style peer reviews match on the reviewer's own due date, which `plannerRan
 
 `SCENARIO.assignments` answers the assignment details request, `assignment_ids[]` with `include[]=submission`, when you filter it by id.
 `SCENARIO.undatedAssignments` answers the undated request, which also sends `include[]=checkpoints` and `exclude_checkpoints=true`.
-Every course is in one account that has discussion checkpoints turned on, so each undated assignment has `has_sub_assignments` and `checkpoints`.
+Every course is in one account that has discussion checkpoints turned on, so each undated assignment has `has_sub_assignments`.
 History's undated list still holds its two checkpoint parents, as a server that ignores `exclude_checkpoints` returns them.
-`allAssignmentsInCourse(scenario, courseId)` answers the planner-off request, `include[]=submission&include[]=checkpoints`, with the checkpoint fields on every assignment.
+`allAssignmentsInCourse(scenario, courseId)` answers the planner-off request, `include[]=submission&include[]=checkpoints`, with `has_sub_assignments` on every assignment.
+
+## full-replies.ts
+
+`FULL_REPLIES` holds one complete Canvas reply for each kind of request that the extension makes.
+The kinds are planner items, planner overrides, planner notes, assignments by id, the undated bucket, the planner-off assignment list, courses, groups, colors, dashboard positions, the profile, `users/self` and the GraphQL custom grade statuses.
+A list holds some items of the scenario, not all of them.
+Each reply has every field that Canvas sends, as the canvas-lms serializers at commit 1c9f0bb write them.
+Its items are the items of `SCENARIO` with the same ids, so each has a trimmed counterpart.
+`tests/unit/full-replies.test.ts` serves each reply to the production client and model.
+It checks that the result equals the result for the trimmed item, so a field that the extension ignores changes nothing.
+Update a reply when the matching item of `SCENARIO` changes.
 
 ## wire-types.ts
 
-These types extend the shared contract types with every field that Canvas really sends.
-A fixture value of a wire type is assignable to the matching contract type.
+Most fixtures use the contract types in `src/lib/canvas/types.ts` as they are.
+This file adds `WireAssignment`, which has `locked_for_user`, and the type of the GraphQL answer.
 
 ## canvas-json.ts
 
-These builders turn short specs into exact Canvas JSON.
-They copy the Canvas rules for `missing`, `late`, `graded`, html_url, lock info and override types.
+These builders turn short specs into the JSON that the extension reads.
+They copy the Canvas rules for `missing`, `late`, `graded`, `locked_for_user`, html_url and override types.
 
 ## time.ts
 
@@ -57,7 +72,7 @@ These helpers compute local days and Canvas-style instants from one given `now`.
 
 ## errors.ts
 
-`CANVAS_ERRORS` holds exact Canvas error responses: signed out, Limited Access, the 403 and 429 throttle, a duplicate override, 404 and 500.
+`CANVAS_ERRORS` holds Canvas error responses with the status and body that the extension reads: signed out, Limited Access, the 403 and 429 throttle, a duplicate override, 404 and 500.
 `invalidAssignmentIds(ids)` builds the 400 that Canvas sends when one id is not an assignment.
 `NOT_CANVAS_RESPONSES` holds answers from a site that is not Canvas, for the setup check.
 

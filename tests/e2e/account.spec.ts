@@ -4,14 +4,9 @@
  * and all cached data, so one student never sees another student's work on a shared computer.
  */
 import type { Page } from '@playwright/test';
+import type { Course, PlannerItem, Profile, UserSelf } from '../../src/lib/canvas/types';
 import { IDS, type Scenario } from '../fixtures/scenario';
-import type {
-  WireAssignment,
-  WireCourse,
-  WirePlannerItem,
-  WireProfile,
-  WireUserSelf,
-} from '../fixtures/wire-types';
+import type { WireAssignment } from '../fixtures/wire-types';
 import { advanceBackgroundClock } from './support/clock';
 import { serveFakeCanvas, type FakeCanvas, type FakeCanvasRoute } from './support/fake-canvas';
 import { json, saveAddress } from './support/scenario-api';
@@ -39,10 +34,10 @@ const SECOND_USER_ID = '6603';
 const AFTER_LIMIT_MS = 2 * 60_000;
 
 interface SecondStudent {
-  self: WireUserSelf;
-  profile: WireProfile;
-  course: WireCourse;
-  row: WirePlannerItem;
+  self: UserSelf;
+  profile: Profile;
+  course: Course;
+  row: PlannerItem;
   assignment: WireAssignment;
 }
 
@@ -60,10 +55,6 @@ function forSecondStudent<T>(value: T): T {
     ['4003', ASSIGNMENT_ID],
     [IDS.user, SECOND_USER_ID],
     ['Jordan Rivera', 'Sam Okafor'],
-    ['Rivera, Jordan', 'Okafor, Sam'],
-    ['jrivera', 'sokafor'],
-    ['Jordan', 'Sam'],
-    ['Rivera', 'Okafor'],
   ];
   let text = JSON.stringify(value);
   for (const [from, to] of replacements) text = text.replaceAll(from, to);

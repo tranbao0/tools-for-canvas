@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import { customGradeStatusesQuery, readCustomGradeStatuses } from '../../src/lib/canvas/graphql';
-import type { PlannableType } from '../../src/lib/canvas/types';
-import { CANVAS_ERRORS, NOT_CANVAS_RESPONSES, invalidAssignmentIds } from '../fixtures/errors';
+import type { PlannableType, PlannerItem } from '../../src/lib/canvas/types';
+import { CANVAS_ERRORS, invalidAssignmentIds } from '../fixtures/errors';
 import { customGradeStatusesAnswer } from '../fixtures/graphql';
 import { FIXTURE_PAGES, renderFixturePage, type FixturePage } from '../fixtures/pages';
 import {
@@ -14,7 +14,7 @@ import {
   plannerItemsInRange,
   type Scenario,
 } from '../fixtures/scenario';
-import type { WireAssignment, WirePlannerItem } from '../fixtures/wire-types';
+import type { WireAssignment } from '../fixtures/wire-types';
 
 /** A Tuesday afternoon, a Saturday (tomorrow is in the next week), the night the clocks change, and winter. */
 const NOWS = [SCENARIO_NOW, '2026-10-31T16:00:00Z', '2026-11-01T06:30:00Z', '2027-01-15T14:00:00Z'];
@@ -48,7 +48,7 @@ function details(
 }
 
 /** The assignment behind a planner item, when Canvas has one for the details request. */
-function backingAssignmentId(item: WirePlannerItem): string | null {
+function backingAssignmentId(item: PlannerItem): string | null {
   const type: PlannableType = item.plannable_type;
   switch (type) {
     case 'assignment':
@@ -153,9 +153,6 @@ describe.each(NOWS)('buildScenario(%s)', (now) => {
       expect(item.submissions.graded).toBe(
         sub.excused === true || (sub.score !== null && sub.workflow_state === 'graded'),
       );
-      if (item.plannable_type === 'quiz') expect(assignment.quiz_id).toBe(item.plannable_id);
-      if (item.plannable_type === 'discussion_topic')
-        expect(assignment.discussion_topic?.id).toBe(item.plannable_id);
     }
   });
 
@@ -217,7 +214,6 @@ describe.each(NOWS)('buildScenario(%s)', (now) => {
       const listed = new Set((s.assignments[courseId] ?? []).map((a) => a.id));
       for (const a of undated) {
         expect(a.due_at).toBeNull();
-        expect(a.bucket).toBe('undated');
         expect(listed.has(a.id)).toBe(true);
       }
     }
@@ -271,10 +267,7 @@ describe('SCENARIO', () => {
     expect(term(IDS.courses.biology)?.start_at).toBe('2026-08-24T04:00:00Z');
     expect(term(IDS.courses.orientation)?.start_at).toBe('2023-08-21T04:00:00Z');
     expect(term(IDS.courses.club)?.start_at).toBeNull();
-    expect(SCENARIO.courses.find((c) => c.id === IDS.courses.history)).toMatchObject({
-      name: 'History',
-      original_name: 'HIST 205: The Atlantic World',
-    });
+    expect(SCENARIO.courses.find((c) => c.id === IDS.courses.history)?.name).toBe('History');
     expect(SCENARIO.colors.custom_colors[`course_${IDS.courses.chemistry}`]).toBeUndefined();
     expect(
       SCENARIO.dashboardPositions.dashboard_positions[`course_${IDS.courses.orientation}`],
@@ -302,17 +295,10 @@ describe('SCENARIO', () => {
     const find = (courseId: string, id: string) => details(SCENARIO, courseId, id);
     const preLab = find(IDS.courses.chemistry, IDS.assignments.chemLab8PreLabLocked);
     expect(preLab?.locked_for_user).toBe(true);
-    expect(preLab?.lock_info).toEqual({
-      asset_string: 'assignment_4004',
-      unlock_at: '2026-10-29T12:00:00Z',
-    });
-    expect(preLab?.availability_status).toEqual({
-      status: 'pending',
-      date: '2026-10-29T12:00:00Z',
-    });
+    expect(preLab?.unlock_at).toBe('2026-10-29T12:00:00Z');
     const lockedMissing = find(IDS.courses.calculus, IDS.assignments.mathProblemSet5LockedMissing);
     expect(lockedMissing?.submission?.missing).toBe(true);
-    expect(lockedMissing?.availability_status).toEqual({ status: 'closed', date: null });
+    expect(lockedMissing?.locked_for_user).toBe(true);
     const gradescopeClosed = find(IDS.courses.calculus, IDS.assignments.mathHomework5);
     expect(gradescopeClosed?.submission?.missing).toBe(false);
     expect(gradescopeClosed?.external_tool_tag_attributes?.url).toBe(
@@ -384,14 +370,6 @@ describe('SCENARIO', () => {
 });
 
 describe('CANVAS_ERRORS', () => {
-  it('marks a signed-out Canvas with the Bearer realm', () => {
-    expect(CANVAS_ERRORS.signedOut.status).toBe(401);
-    expect(CANVAS_ERRORS.signedOut.headers['WWW-Authenticate']).toBe('Bearer realm="canvas-lms"');
-    expect(NOT_CANVAS_RESPONSES.otherApp401.headers['WWW-Authenticate']).not.toContain(
-      'canvas-lms',
-    );
-  });
-
   it('sends JSON status "unauthorized" for Limited Access', () => {
     expect(CANVAS_ERRORS.limitedAccess.status).toBe(403);
     expect(JSON.parse(CANVAS_ERRORS.limitedAccess.body)).toMatchObject({ status: 'unauthorized' });

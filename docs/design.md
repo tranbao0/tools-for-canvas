@@ -1054,7 +1054,10 @@ These sizes come from one test build of the same small app [19].
    - whether the assignments API and overrides still work under "Limited Access for Students";
    - `GET /api/v1/planner/overrides` returns the expected data.
 2. **Unit tests:** Vitest with the WXT Vitest plugin and its fake browser [19].
-   - Canvas responses come from JSON fixtures with the real Canvas shape, served by MSW, as canvas-lms does in its own tests [19].
+   - Canvas responses come from JSON fixtures, served by MSW, as canvas-lms does in its own tests [19].
+     The fixtures hold the fields that the extension reads.
+     One full Canvas reply for each request holds every field that Canvas sends, as the canvas-lms serializers write them.
+     A unit test runs each full reply through the production code and checks that the extra fields change nothing.
    - Fixtures include a checkpoint course, Gradescope and on-paper work, a no-submission column, an extension, a teacher-set status, a redo request after a done mark, a locked item, a locked missing item, a Gradescope item past its lock date, a peer review due in a later week, a module "Mark as done" override with both flags true, a long-running course for the horizon cap, a mixed-role layout, the Limited Access 403, the rate-limit 403 and 429, and every UI state.
    - Tests cover week math across time zones and daylight saving changes, the Saturday and Sunday week edges, the done rule, the placement rules in the current week and in past weeks, every status chip and availability marker, reminders, the undated-work rules, peer reviews placed on their real date, the term horizon and its 16-week cap, the Tomorrow look-ahead, the chart center check mark and the legend past-due count, the planner-off list, paging, the override sequence including the 400 recovery, Skip, and the CSRF header.
    - Tests also cover a background restart while a panel is open, ten page-loaded messages in ten seconds (one refresh round), and the content script sync for both kinds of address.
