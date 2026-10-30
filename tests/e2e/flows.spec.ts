@@ -294,7 +294,11 @@ test.describe('in-page list', () => {
   });
 
   for (const fixture of ['dashboard-widgets', 'dashboard-list-view']) {
-    test(`adds nothing to ${fixture}`, async ({ context, page, serviceWorker }) => {
+    test(`puts the list in the right column of ${fixture}`, async ({
+      context,
+      page,
+      serviceWorker,
+    }) => {
       const scenario = buildScenario(SCENARIO_NOW);
       const canvas = await serveFakeCanvas(context, [
         { path: '/', page: fixture },
@@ -303,16 +307,12 @@ test.describe('in-page list', () => {
 
       await openCanvasPage(page, canvas);
 
-      // The in-page script ran on this page: the address is saved and the list data loaded.
-      await expect.poll(() => savedAddress(serviceWorker)).toBe(canvas.origin);
-      await expect
-        .poll(() =>
-          canvas.requests.some((request) => request.path.startsWith('/api/v1/planner/items')),
-        )
-        .toBe(true);
-      await expect(page.locator('#weekrow-inpage')).toHaveCount(0);
-      await expect(page.locator('weekrow-list')).toHaveCount(0);
-      await expect(page.locator('#weekrow-hide-native-todo')).toHaveCount(0);
+      const list = page.locator('#right-side-wrapper > #weekrow-inpage');
+      await expect(list.getByRole('checkbox', { name: `Done: ${QUIZ_3}` })).toBeVisible();
+      expect(await savedAddress(serviceWorker)).toBe(canvas.origin);
+      await expect(page.locator('#weekrow-inpage + #right-side')).toHaveCount(1);
+      await expect(page.locator('body')).toHaveClass(/\bwith-right-side\b/);
+      expect(canvas.blocked).toEqual([]);
     });
   }
 });

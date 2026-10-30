@@ -123,9 +123,9 @@ export const LIST_VIEW: PageFixture = {
   wrapperStyle: 'display: none;',
 };
 
-/** The widget dashboard: a React root in `#content`, and an empty, hidden right column. */
+/** The widget dashboard: a React root in `#content`, and an empty right column that Canvas hides. */
 export const WIDGET_DASHBOARD: PageFixture = {
-  bodyClass: 'with-right-side dashboard primary-nav-expanded',
+  bodyClass: 'dashboard primary-nav-expanded',
   content: `
     <div data-testid="widget-dashboard">
       <div data-testid="widget-columns">
@@ -134,7 +134,6 @@ export const WIDGET_DASHBOARD: PageFixture = {
       </div>
     </div>`,
   rightSide: '',
-  wrapperStyle: 'display: none;',
 };
 
 /** The K-5 dashboard: no right column at all. */

@@ -338,10 +338,10 @@ test.describe('first run', () => {
     await expect(useOffer(page, 'canvas.school.edu')).toBeVisible();
     await page.getByRole('button', { name: 'Use it', exact: true }).click();
 
-    // List View has no right column, so the page shows no list. The panel and the address work.
+    // The panel and the address work. The page shows the list in the column that it turns on.
     await expect(doneBox(page, QUIZ_3)).toBeVisible();
     expect(await savedAddress(background)).toBe(CUSTOM);
-    await expect(canvasTab.locator('#weekrow-inpage, weekrow-list')).toHaveCount(0);
+    await expect(doneBox(inpageList(canvasTab), QUIZ_3)).toBeVisible();
     expect(canvas.unmatched).toEqual([]);
   });
 

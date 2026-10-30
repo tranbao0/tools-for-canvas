@@ -4,6 +4,7 @@
  */
 import { render } from 'preact';
 import { browser, type Browser } from 'wxt/browser';
+import { ownsRightColumn } from '../inpage/layout';
 import { showNativeTodo, syncNativeTodo } from '../inpage/nativeTodo';
 import type { InpageMount } from '../inpage/mount';
 import { attempt, startInpage } from '../inpage/start';
@@ -84,6 +85,7 @@ export function mountInpageList(mount: InpageMount, deps: InpageListDeps): () =>
   const doc = deps.doc ?? document;
   const { runtime } = deps;
   const ui = attachShadowMount(mount.container, { css: APP_CSS, theme: detectPageTheme(doc) });
+  if (ownsRightColumn(doc)) ui.host.setAttribute('data-column', '');
   // The host and the UI root always carry a theme: the student's choice, or with Automatic
   // the theme of the Canvas page (decision 19).
   const stopTheme = followTheme(
@@ -107,6 +109,7 @@ export function mountInpageList(mount: InpageMount, deps: InpageListDeps): () =>
     stopDrawing();
     attempt('in-page list removal', () => view.setContainer(null));
     ui.remove();
+    mount.release();
     mount.container.remove();
     showNativeTodo(doc);
     attempt('in-page list removal', stopTheme);

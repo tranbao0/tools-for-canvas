@@ -77,6 +77,15 @@
   border-radius: 4px;
 }
 
+/* In a right column that the list turned on, the list is a card, like the widgets beside it. */
+:host([data-column]) .wr[data-surface='inpage'],
+:host([data-column][data-theme='dark']) .wr[data-surface='inpage'] {
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--wr-btn-line);
+  border-radius: 12px;
+}
+
 .wr *,
 .wr *::before,
 .wr *::after {

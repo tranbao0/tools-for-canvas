@@ -417,9 +417,16 @@ describe.each(Object.entries(FIXTURE_PAGES))('page %s', (_name, page: FixturePag
       rightSide?.querySelector('.Sidebar__TodoListContainer, .todo-list-header, .coming_up') ??
       null;
     const coursePath = /^\/courses\/\d+$/.test(new URL(page.url).pathname);
+    const dashboardPath = new URL(page.url).pathname === '/';
     const dashboardRule = isCanvas && withRightSide && anchor !== null && !coursePath;
+    const columnRule =
+      isCanvas &&
+      dashboardPath &&
+      !withRightSide &&
+      doc.querySelector('#right-side-wrapper > #right-side') !== null;
     const courseRule = isCanvas && withRightSide && coursePath;
     expect(dashboardRule).toBe(page.expectedMount === 'dashboard');
+    expect(columnRule).toBe(page.expectedMount === 'dashboard_column');
     expect(courseRule).toBe(page.expectedMount === 'course_home');
   });
 
@@ -436,7 +443,7 @@ describe.each(Object.entries(FIXTURE_PAGES))('page %s', (_name, page: FixturePag
   });
 });
 
-describe('page layouts that must get no injected node', () => {
+describe('page layouts without a right column', () => {
   it('hides the right column in List View', () => {
     const doc = new DOMParser().parseFromString(
       renderFixturePage(FIXTURE_PAGES.dashboardListView),
@@ -456,5 +463,6 @@ describe('page layouts that must get no injected node', () => {
     expect(step?.innerHTML).toContain('data-testid="widget-columns"');
     expect(doc.body.classList.contains('with-right-side')).toBe(false);
     expect(doc.querySelector('#right-side')?.children.length).toBe(0);
+    expect(doc.querySelector<HTMLElement>('#right-side')?.style.display).toBe('none');
   });
 });

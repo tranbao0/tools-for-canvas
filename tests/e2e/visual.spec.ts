@@ -190,6 +190,63 @@ for (const fixture of Object.keys(PAGES)) {
   }
 }
 
+/**
+ * A dark Canvas page for the dark shots: the page background, the widget cards and the text, so
+ * the list is judged beside dark widgets and not only on its own dark theme.
+ */
+const DARK_PAGE_CSS = `
+  body, .ic-app, .ic-Layout-wrapper { background: #1c2229 !important; color: #e8eaec !important; }
+  a { color: #7db7e8 !important; }
+  .fixture-widget, .fixture-planner-item { background: #262d35 !important; border-color: #3a434d !important; color: #e8eaec !important; }
+  .fixture-widget li { border-top-color: #3a434d !important; }
+  .fixture-widget-tabs { border-bottom-color: #3a434d !important; }
+  .Button { background: #262d35 !important; color: #e8eaec !important; border-color: #3a434d !important; }
+`;
+
+/** Pages with no right column of their own, where the list turns Canvas's column on. */
+const COLUMN_PAGES = ['dashboard-widgets', 'dashboard-list-view'];
+
+for (const fixture of COLUMN_PAGES) {
+  for (const width of [1920, 1280, 1000, 600]) {
+    for (const scheme of ['light', 'dark'] as const) {
+      test(`in-page ${fixture} ${width}px ${scheme}`, async ({ context, page, serviceWorker }) => {
+        const errors = watchErrors(page);
+        const scenario = buildScenario(new Date().toISOString());
+        const canvas = await serveFakeCanvas(context, [
+          { path: '/', page: fixture },
+          ...apiRoutes(scenario),
+        ]);
+        await saveAddress(serviceWorker, canvas.origin);
+        await saveSettings(serviceWorker, {
+          ...DEFAULT_SETTINGS,
+          theme: scheme === 'dark' ? 'dark' : 'auto',
+        });
+        await page.setViewportSize({ width, height: 1000 });
+        await page.goto(`${canvas.origin}/?fixture_delay_ms=0`);
+        await page.locator(FIXTURE_READY_SELECTOR).waitFor({ state: 'attached' });
+        await useRealCanvasCss(page);
+        if (scheme === 'dark') await page.addStyleTag({ content: DARK_PAGE_CSS });
+        await settle(page);
+        await page.waitForTimeout(800);
+        const list = page.locator('#right-side-wrapper > #weekrow-inpage');
+        try {
+          await expectRendered(
+            canvas,
+            list,
+            list.getByRole('heading', { level: 2, name: WEEK }),
+            errors,
+          );
+        } finally {
+          await page.screenshot({
+            path: `${OUT}/inpage-${fixture}-${width}-${scheme}.png`,
+            fullPage: true,
+          });
+        }
+      });
+    }
+  }
+}
+
 const PAGE_TITLES: Record<string, string> = {
   'welcome.html': 'Welcome to Tools for Canvas',
   'options.html': 'Settings',

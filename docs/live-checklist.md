@@ -162,7 +162,7 @@ Use a new, empty profile, and the student account.
    Expect: on a Canvas with its own domain, the Canvas page shows nothing of the extension, the open welcome page and the side panel ask "Use <host> as your Canvas?", and the Canvas To Do stays.
    Click "Use it".
    Expect: the weekly list appears in the Canvas tab with no reload, on the dashboard and on course home pages.
-   Expect: with List View or the new widget dashboard, the Canvas page shows no list, and the side panel shows the list.
+   Expect: with List View or the new widget dashboard, the Canvas page shows the list in a right column, and the side panel shows the list too.
    Open the panel.
    Expect: the list loads for the current week.
 7. Click the toolbar button again, then press Alt+Shift+W twice.
@@ -191,7 +191,15 @@ Use a new, empty profile, and the student account.
 15. Open the Canvas Card View dashboard, then the Recent Activity dashboard, then a course home page.
     Expect: the weekly list replaces the Canvas To Do list, and on the course home page it shows only that course.
 16. Open the new Canvas dashboard (if your school has it) and the List View dashboard.
-    Expect: Tools for Canvas adds nothing to these pages.
+    Expect: the weekly list shows in a right column next to the content, and the widgets move left and do not overlap it.
+    Expect: on the new dashboard, the top of the list lines up with the first row of widgets at 1,200 px and wider.
+    Expect: on a narrow window, the list moves under the content.
+    Expect: the list follows the page theme, also with the widget dashboard dark mode.
+    Turn off "Show the weekly list on Canvas pages".
+    Expect: the list leaves, and the page looks as it did before, with no empty column.
+    Switch the dashboard from Card View to List View with the menu.
+    Expect: after a reload, the list shows in the right column.
+    Write down whether the list also shows without the reload.
 17. With the side panel open, look at the Card View dashboard in the same window.
     Expect: the in-page list shows in full, as it does with the panel closed.
 18. Sign out of Canvas, then open the panel.

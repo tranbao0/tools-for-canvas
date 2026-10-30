@@ -109,9 +109,13 @@ describe('mountInpageList', () => {
     const start = vi.spyOn(runtime, 'start');
     const stop = vi.spyOn(runtime, 'stop');
     const settings = settingsStore(initial);
-    const dispose = mountInpageList({ courseId: null, container }, { runtime, settings });
+    const releaseColumn = vi.fn();
+    const dispose = mountInpageList(
+      { courseId: null, container, release: releaseColumn },
+      { runtime, settings },
+    );
     const host = (): HTMLElement => container.querySelector(SHADOW_HOST_NAME) as HTMLElement;
-    return { container, runtime, start, stop, settings, dispose, host };
+    return { container, runtime, start, stop, settings, dispose, host, releaseColumn };
   }
 
   it('renders the list in an open shadow root with its styles and the page theme', () => {
@@ -181,11 +185,12 @@ describe('mountInpageList', () => {
   });
 
   it('removes everything it added when the content script ends', () => {
-    const { stop, settings, dispose } = setup();
+    const { stop, settings, dispose, releaseColumn } = setup();
 
     dispose();
 
     expect(document.getElementById('weekrow-inpage')).toBeNull();
+    expect(releaseColumn).toHaveBeenCalledTimes(1);
     expect(document.querySelector(SHADOW_HOST_NAME)).toBeNull();
     expect(nativeTodoHidden()).toBe(false);
     expect(document.getElementById('right-side')).not.toBeNull();

@@ -9,6 +9,7 @@ import {
   findDashboardAnchors,
   isAdapterPath,
 } from './adapters';
+import { claimRightColumn, releaseRightColumn } from './layout';
 import { showNativeTodo } from './nativeTodo';
 
 /** What the mount callback gets. */
@@ -17,6 +18,8 @@ export interface InpageMount {
   courseId: string | null;
   /** The empty container, a sibling before `#right-side` inside `#right-side-wrapper`. */
   container: HTMLElement;
+  /** Undoes what the mount changed in the page layout, other than the container. */
+  release(): void;
 }
 
 export type MountCallback = (mount: InpageMount) => void;
@@ -28,7 +31,7 @@ export type MountOutcome =
   | { kind: 'mounted'; mount: InpageMount }
   /** No adapter applies to this path, for example a course assignments page. */
   | { kind: 'no_adapter' }
-  /** The anchors did not appear in time, for example on the widget dashboard or in List View. */
+  /** The anchors did not appear in time, for example a classic dashboard whose sidebar never loads. */
   | { kind: 'timeout' }
   | { kind: 'cancelled' };
 
@@ -43,7 +46,7 @@ export interface MountOptions {
 
 /**
  * Removes a list that an earlier copy of the content script left on the page, and the style that
- * hides the native To Do with it. Returns whether a list was there.
+ * hides the native To Do and the right column that it turned on. Returns whether a list was there.
  *
  * A copy that is still alive cleans up by itself: WXT invalidates it before a newer copy of the
  * same script runs. A copy whose context the browser destroyed cannot clean up. Firefox does this
@@ -53,6 +56,7 @@ export interface MountOptions {
 export function removeStaleMount(doc: Document = document): boolean {
   const stale = [...doc.querySelectorAll(`#${MOUNT_CONTAINER_ID}`)];
   for (const node of stale) node.remove();
+  releaseRightColumn(doc);
   showNativeTodo(doc);
   return stale.length > 0;
 }
@@ -95,9 +99,11 @@ export function mountWhenReady(
       if (finished) return true;
       const found = findDashboardAnchors(pathname, doc) ?? findCourseHomeAnchors(pathname, doc);
       if (found === null) return false;
+      const container = createMountContainer(doc, found.anchors);
       const mount: InpageMount = {
         courseId: found.courseId,
-        container: createMountContainer(doc, found.anchors),
+        container,
+        release: found.claimsColumn ? claimRightColumn(doc, container) : () => undefined,
       };
       finish({ kind: 'mounted', mount });
       onMount(mount);

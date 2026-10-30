@@ -4,7 +4,8 @@
  *
  * Every Canvas page has `#right-side-wrapper`, but Canvas shows it only when the body has the
  * `with-right-side` class. Canvas replaces the contents of `#right-side`, so the list mounts as
- * a sibling before `#right-side`, inside `#right-side-wrapper`.
+ * a sibling before `#right-side`, inside `#right-side-wrapper`. The widget dashboard and List
+ * View have no right column, so on the dashboard the list turns Canvas's column on (layout.ts).
  *
  * An adapter returns the course and the anchors when the page meets its mount condition, and
  * `null` otherwise, so the caller waits and asks again as Canvas builds the page.
@@ -21,12 +22,15 @@ export interface AdapterResult {
   /** The course of a course home page, otherwise `null`. */
   courseId: string | null;
   anchors: SidebarAnchors;
+  /** The page has no right column, so the list turns Canvas's own column on. */
+  claimsColumn: boolean;
 }
 
 /** The dashboard is the root path. `/dashboard` serves the same page. */
 const DASHBOARD_PATH = /^\/(?:dashboard\/?)?$/;
 /** `/courses/123`, with an optional trailing slash. Cross-shard ids look like `1~2`. */
 const COURSE_HOME_PATH = /^\/courses\/(\d+(?:~\d+)?)\/?$/;
+const RIGHT_SIDE_CLASS = 'with-right-side';
 const DASHBOARD_SIDEBAR_CONTENT = '.Sidebar__TodoListContainer, .todo-list-header, .coming_up';
 
 /** Whether an adapter applies to the page path. */
@@ -34,28 +38,35 @@ export function isAdapterPath(pathname: string): boolean {
   return DASHBOARD_PATH.test(pathname) || COURSE_HOME_PATH.test(pathname);
 }
 
-/** The right column anchors, or `null` when Canvas does not show a right column. */
+/** The right column anchors of the page. */
 function findSidebarAnchors(doc: Document): SidebarAnchors | null {
-  if (doc.body?.classList.contains('with-right-side') !== true) return null;
   const wrapper = doc.getElementById('right-side-wrapper');
   const rightSide = doc.getElementById('right-side');
   if (wrapper === null || rightSide === null || rightSide.parentElement !== wrapper) return null;
   return { wrapper, rightSide };
 }
 
+function showsRightColumn(doc: Document): boolean {
+  return doc.body?.classList.contains(RIGHT_SIDE_CLASS) === true;
+}
+
 /**
- * The classic dashboard. It mounts only when `#right-side` holds the student To Do
- * (`.Sidebar__TodoListContainer`), the teacher To Do header (`.todo-list-header`) or Coming Up
- * (`.coming_up`). Canvas loads that sidebar after the page. The widget dashboard and List View
- * never meet this condition.
+ * The dashboard. With a right column (Card View and Recent Activity) it mounts only when
+ * `#right-side` holds the student To Do (`.Sidebar__TodoListContainer`), the teacher To Do
+ * header (`.todo-list-header`) or Coming Up (`.coming_up`). Canvas loads that sidebar after the
+ * page. Without a right column (the widget dashboard and List View) it mounts at once and turns
+ * the column on. The K-5 dashboard has `#dashboard-app-container` and gets nothing.
  */
 export function findDashboardAnchors(pathname: string, doc: Document): AdapterResult | null {
   if (!DASHBOARD_PATH.test(pathname)) return null;
   const anchors = findSidebarAnchors(doc);
-  if (anchors === null || anchors.rightSide.querySelector(DASHBOARD_SIDEBAR_CONTENT) === null) {
-    return null;
+  if (anchors === null) return null;
+  if (!showsRightColumn(doc)) {
+    if (doc.getElementById('dashboard-app-container') !== null) return null;
+    return { courseId: null, anchors, claimsColumn: true };
   }
-  return { courseId: null, anchors };
+  if (anchors.rightSide.querySelector(DASHBOARD_SIDEBAR_CONTENT) === null) return null;
+  return { courseId: null, anchors, claimsColumn: false };
 }
 
 /**
@@ -65,8 +76,8 @@ export function findDashboardAnchors(pathname: string, doc: Document): AdapterRe
 export function findCourseHomeAnchors(pathname: string, doc: Document): AdapterResult | null {
   const courseId = COURSE_HOME_PATH.exec(pathname)?.[1];
   if (courseId === undefined) return null;
-  const anchors = findSidebarAnchors(doc);
-  return anchors === null ? null : { courseId, anchors };
+  const anchors = showsRightColumn(doc) ? findSidebarAnchors(doc) : null;
+  return anchors === null ? null : { courseId, anchors, claimsColumn: false };
 }
 
 /** Creates the empty mount container before `#right-side`. */

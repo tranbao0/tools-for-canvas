@@ -17,8 +17,11 @@ import { fileURLToPath } from 'node:url';
 export const FIXTURE_ORIGIN = 'https://school.instructure.com';
 export const FIXTURE_READY_SELECTOR = 'html[data-fixture-ready="true"]';
 
-/** Where the in-page list belongs on a page, or `none` when nothing may be injected. */
-export type ExpectedMount = 'dashboard' | 'course_home' | 'none';
+/**
+ * Where the in-page list belongs on a page, or `none` when nothing may be injected.
+ * `dashboard_column` is a dashboard without a right column, where the list turns Canvas's column on.
+ */
+export type ExpectedMount = 'dashboard' | 'dashboard_column' | 'course_home' | 'none';
 
 export interface FixturePage {
   /** File name in tests/fixtures/pages. */
@@ -61,7 +64,7 @@ export const FIXTURE_PAGES = {
     title: 'Dashboard',
     bodyClass: 'primary-nav-expanded dashboard-is-planner',
     url: `${FIXTURE_ORIGIN}/`,
-    expectedMount: 'none',
+    expectedMount: 'dashboard_column',
     courseId: null,
     hasStudentTodo: false,
     hasTeacherTodo: false,
@@ -72,7 +75,7 @@ export const FIXTURE_PAGES = {
     title: 'Dashboard',
     bodyClass: 'primary-nav-expanded',
     url: `${FIXTURE_ORIGIN}/`,
-    expectedMount: 'none',
+    expectedMount: 'dashboard_column',
     courseId: null,
     hasStudentTodo: false,
     hasTeacherTodo: false,

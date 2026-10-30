@@ -31,7 +31,7 @@ This extension has no account, no server of its own and no telemetry.
 | 1 | Version 1 scope | The core of the original, plus work Canvas hides |
 | 2 | Where done marks and custom tasks live | In Canvas, as planner overrides and planner notes |
 | 3 | What counts as a task | All work the student must do; no calendar events or announcements |
-| 4 | Where the list appears | In the Canvas page where the To Do list was; an optional side panel for other pages |
+| 4 | Where the list appears | In the Canvas page, in the right column of every dashboard view and of course home pages; an optional side panel for other pages |
 | 5 | Site access and onboarding | Access to all sites, a tiny Canvas detector, and no setup step |
 | 6 | List layout and item placement | Items are placed by date and done state only, each in one group |
 | 7 | Item status | One set of status chips, the same on every item in every view |
@@ -177,12 +177,19 @@ If the course lookup fails, the item uses the course or group name that the plan
 
 **Decision:** D.
 The owner chose it after testing an early build: the panel took the spot that the list should have, and on Firefox it opened on the left.
+On 2026-10-29 the owner tested on a real Canvas with the new widget dashboard.
+The list did not show there, and only the side panel had it.
+The widgets filled about 1,100 px on the left, and a wide empty area stayed on the right.
+The owner wants the list in the page on every dashboard view.
+This replaces the first rule of this decision, which was to inject nothing on the widget dashboard and in List View.
 
 The Canvas page is the main home.
 The in-page list replaces the Canvas To Do list on the classic dashboard (Card View and Recent Activity) and on course home pages, like the original Tasks for Canvas.
-It always shows there, also while the side panel is open.
+The list also shows in the right column of the new widget dashboard and of List View.
+Those two views have no right column, so the extension turns Canvas's own column on and mounts the list there.
+It always shows on these pages, also while the side panel is open.
 On a course home page, the in-page list shows only that course.
-The extension injects nothing on the new widget dashboard, in List View or on any page without the expected anchors.
+The extension injects nothing on any other page, and nothing on a page without the expected anchors.
 The side panel is an optional extra for those pages, and it opens only when the student clicks the toolbar button or presses the shortcut.
 It never opens by itself.
 Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
@@ -200,10 +207,23 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - A signed-in test is still needed (see decision 13).
 - The in-page list gives the zero-click view that users of the original liked.
   The classic anchors (`#right-side-wrapper`, `#right-side`, `.Sidebar__TodoListContainer`) still match production Canvas in October 2026 [13].
-- The widget dashboard's only anchors are test ids, and its package had 16 major versions in 2026 [13].
-  Injecting there would break often.
+- The widget dashboard's own markup has only test ids, and its package had 16 major versions in 2026 [13].
+  The mount does not use them.
+  It uses the classic anchors that every Canvas page has: `#right-side-wrapper`, `#right-side`, the body classes and the route.
 - List View hides the right column, and the original forced it visible [9].
-  That is a hack, and the side panel covers List View.
+  The list does the same on purpose now, in the way that Canvas's own layout expects (see "In-page rules").
+
+**Risk:**
+
+- The widget dashboard may change.
+  The mount depends only on the classic page frame, which the server renders for every page.
+  If Canvas removes `#right-side-wrapper` from the widget dashboard, the list does not mount there, and the side panel still works.
+- The widget dashboard has its own dark mode.
+  The list finds the theme of the page from the body background, so it can stay light beside dark widgets.
+  The Theme setting fixes this.
+- The first widget row sits at a fixed offset below the top of the column.
+  The list lines up with it at 1,200 px and wider, with the offset that the test fixture has.
+  A live check on a real page can show a different offset.
 
 **Opening and closing the panel:**
 
@@ -237,9 +257,16 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 **In-page rules:**
 
 - Every Canvas page has `#right-side-wrapper`, but Canvas shows it only when the body has the `with-right-side` class [13].
-- On the dashboard, mount only when the body has `with-right-side` and one of `.Sidebar__TodoListContainer`, `.todo-list-header` or `.coming_up` appears inside `#right-side`.
+- On the dashboard, when the body has `with-right-side`, mount only when one of `.Sidebar__TodoListContainer`, `.todo-list-header` or `.coming_up` appears inside `#right-side`.
   A `MutationObserver` waits for them, as the original did [9].
-  The widget dashboard and List View never meet this condition [13].
+- On the dashboard, when the body has no `with-right-side` (the widget dashboard and List View [13]), turn Canvas's right column on and mount at once.
+  - Add the `with-right-side` body class.
+    Canvas's own layout CSS then shows `#right-side-wrapper`, puts it beside the content at its usual width, and stacks it under the content on narrow windows.
+  - Add one style that shows the wrapper also where Canvas hides it with an inline style, and, from 1,200 px, lines the list up with the first widget row.
+  - Mark the body with `data-weekrow-column`, so that the removal knows that the extension added the class.
+  - A `MutationObserver` puts the class and the container back if the page removes them.
+  - When the list unmounts or the setting "Show the weekly list on Canvas pages" is off, remove the class, the marker and the style.
+  - The K-5 dashboard (`#dashboard-app-container`) gets nothing.
 - On a course home page, mount only when the path is exactly `/courses/:id` and the body has `with-right-side`, as the original did [9].
 - Mount the list as a sibling before `#right-side`, inside `#right-side-wrapper`.
   Canvas replaces the contents of `#right-side`, so a node inside it would be lost [13].
@@ -1073,7 +1100,8 @@ These sizes come from one test build of the same small app [19].
    - One test opens the real side panel with `PW_CHROMIUM_ATTACH_TO_OTHER=1` [19].
      Playwright cannot click the toolbar, so this test uses a test-only button on the panel page that calls `sidePanel.open`.
      Release builds do not include it.
-   - The widget dashboard and List View fixtures must get no injected node.
+   - The widget dashboard and List View fixtures must get the list in the right column, with no overlap of the widgets, at 1,920, 1,280 and 1,000 px and on a narrow window.
+     The page must return to its first state when the setting is off.
    - Screenshot tests run at 200 px, 240 px and 360 px.
    - One test serves a slow Canvas: each answer waits 700 ms, and the planner answers only the requested range, 100 items a page with `Link: rel="next"`, over a full term of work.
      It checks that a week loaded ahead shows within 300 ms of the click, that a past week within the horizon needs no request, and that a week not yet cached shows within one round trip and asks only for the missing week.
