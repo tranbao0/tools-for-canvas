@@ -255,7 +255,8 @@ export class CanvasState {
     const day = 24 * 60 * 60 * 1000;
     const startParam = url.searchParams.get('start_date');
     const endParam = url.searchParams.get('end_date');
-    const start = startParam === null ? Date.parse(this.scenario.now) - 14 * day : Date.parse(startParam);
+    const start =
+      startParam === null ? Date.parse(this.scenario.now) - 14 * day : Date.parse(startParam);
     const end = endParam === null ? start + 28 * day : Date.parse(endParam);
     const rows = ANNOUNCEMENTS.filter(
       (topic) =>

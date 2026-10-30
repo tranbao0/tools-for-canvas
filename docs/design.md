@@ -30,8 +30,8 @@ This extension has no account, no server of its own and no telemetry.
 |---|---|---|
 | 1 | Version 1 scope | The core of the original, plus work Canvas hides |
 | 2 | Where done marks and custom tasks live | In Canvas, as planner overrides and planner notes |
-| 3 | What counts as a task | All work the student must do; no calendar events or announcements |
-| 4 | Where the list appears | In the Canvas page: the right column of the classic dashboard and of course home pages, and a card beside the grid on the widget dashboard; an optional side panel for other pages |
+| 3 | What counts as a task | All work the student must do; no calendar events or announcements (announcements are not tasks, and have their own tab, see decision 24) |
+| 4 | Where the list appears | In the Canvas page: the right column of the classic dashboard and of course home pages, and a card beside the grid on the widget dashboard; an optional side panel for other pages. The Announcements tab shows everywhere except the widget dashboard (decision 24) |
 | 5 | Site access and onboarding | Access to all sites, a tiny Canvas detector, and no setup step |
 | 6 | List layout and item placement | Items are placed by date and done state only, each in one group |
 | 7 | Item status | One set of status chips, the same on every item in every view |
@@ -51,6 +51,7 @@ This extension has no account, no server of its own and no telemetry.
 | 21 | Visual design | Looks like a native part of Canvas, not an add-on sidebar |
 | 22 | New dashboard fixes | Four small fixes for the widgets of the new Canvas dashboard, each with its own switch, in a page script of their own |
 | 23 | File access check | A read-only check that runs on the owner's live Canvas in test builds only, and answers the open questions for the file viewer |
+| 24 | Announcements in the weekly list | A Tasks and Announcements switch under the rings on the classic dashboard, List View, course home pages and the side panel, with a read mark that only an explicit student action writes |
 
 ## Decisions
 
@@ -390,6 +391,11 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The card of List View and the docked card of the classic dashboard keep their sticky 24 px gap, and they have the same height limit and the same scroll region.
   - The side panel scrolls as one page, and it has no such region and no minimize button.
 - On a course home page, the rows do not repeat the course name, because the whole list is that course.
+- The list has two tabs, Tasks and Announcements, in the classic dashboard (Card View and Recent Activity), in List View, on course home pages and in the side panel.
+  The new widget dashboard has its own Announcements widget, so the list shows no switch there and sends no announcement request.
+  The adapter decides from the server-rendered page: a right column means the classic dashboard or a course home page, and the body class `dashboard-is-planner` means List View.
+  The widget grid renders late, so the list asks for the grid again before each announcement request and shows no tab when it finds one.
+  Decision 24 has the rest.
 
 **Widths:**
 
@@ -1626,7 +1632,8 @@ I read each of them in the package source.
   `GET /api/v1/announcements` (`AnnouncementsApiController#index`) only lists the announcements.
   `GET /api/v1/courses/:id/discussion_topics/:id/view` (the `view` action) logs the access and renders the materialized view of the entries, and it does not change the read state of the topic.
   The topic HTML page does mark it: `DiscussionTopicsController#show` calls `change_read_state("read")` for the signed-in user when the student can read the topic.
-  So the extension never loads the topic page itself, and it uses only the first two requests.
+  So the extension never loads the topic page itself, and it reads announcements with only the first two requests.
+  The read mark of decision 24 uses `PUT` and `DELETE` on `/api/v1/courses/:id/discussion_topics/:id/read` (`mark_topic_read` and `mark_topic_unread`), which change only the read state of the topic.
   A page that the student opens on Canvas, such as with Ctrl+click on "Read more", marks the topic as read by Canvas, as it does without the extension.
 
 **Where the code lives.**
@@ -1673,7 +1680,8 @@ I read each of them in the package source.
    The extension makes no such mark, and the Canvas page of an announcement marks it as read when the student opens that page.
    The owner found the first design on a live Canvas on 2026-10-30.
    With the Unread filter, the student opened and closed a message, and the extension had marked it as read, so it left the list.
-   The extension has no request that writes to an announcement.
+   The dashboard fixes have no request that writes to an announcement.
+   The only write of the extension for an announcement is the explicit "Mark as read" control of the weekly list (decision 24).
    The ids are checked as Canvas ids at the message boundary and again before they enter a path.
    With the Unread filter, an announcement that the student opens stays in the list after the message closes, until the student marks it as read.
    The course filter hides the list of the widget and its pager when a course is chosen.
@@ -1714,7 +1722,7 @@ The group shows in the three places of decision 18.
 **Sanitizer rules.**
 The message of an announcement is HTML that a teacher wrote, so it is hostile input.
 The background cannot sanitize it, because a service worker has no `DOMParser`, so it passes the message on as text.
-The page script does the work in `src/shared/ui/sanitize.ts`:
+The page scripts of the fixes and of the weekly list share one sanitizer, `src/shared/ui/sanitize.ts` (decision 24 uses it for the open message of the Announcements tab):
 
 - It parses the message with `DOMParser`, which makes an inert document.
   It then builds new nodes in the page with `createElement`, for the tags and attributes on the list below.
@@ -1862,6 +1870,153 @@ The owner runs it on `sjsu.instructure.com` in Firefox and pastes the report.
   The test runs the check, reads the report and checks that it holds no secret.
   Another test loads the release build and checks that it has none of the check.
 
+### 24. Announcements in the weekly list
+
+**Question:** How does the weekly list show announcements, as the original Tasks for Canvas did on the classic dashboard?
+
+**Decision:** The list gets two tabs under the rings, "Tasks" and "Announcements".
+The owner asked for it on 2026-10-30.
+The original had small tab icons under the rings: announcements, tasks and done.
+Announcements are still not tasks (decision 3), so they stay out of the groups, the rings and the done count, and have their own view.
+
+**The switch.**
+
+- It is a two-option switch under the rings, or under the header when the rings are off.
+  It uses the ARIA tabs pattern: `tablist`, `tab` with `aria-selected`, and one `tabpanel`, with the arrow keys, Home and End.
+  The styling is that of the tabs of Canvas: text on a line, a bar in the brand color under the chosen tab.
+- "Announcements" has a small count of the unread announcements in the shown scope.
+  The accessible name says "Announcements, 3 unread".
+- Tasks is the default.
+  The choice is kept for each surface (the side panel and the in-page list) for the browser session only, and it is not a setting.
+  The in-page script may not use the extension storage (decision 5), so the choice lives in the cache in `storage.session`, and the page asks the background for it.
+  It goes with the user: another student starts with Tasks again.
+- The header, the span arrows and the rings stay as they are in both tabs.
+  They describe the week.
+  The rings do not filter the Announcements tab.
+
+**Where it shows.**
+
+- On the classic dashboard (Card View and Recent Activity), in List View, in the side panel, and on course home pages, where it shows only that course.
+- Not on the new widget dashboard, which has its own Announcements widget.
+  The list sends no announcement request there.
+  The adapter reads the server-rendered signals (a right column, or the body class `dashboard-is-planner`).
+  The grid of the widgets renders late, so the list also checks for the grid before each request.
+  A school can show the widget dashboard for a student whose old dashboard view is List View, so the body class alone is not enough.
+  Such a page can send a request before the grid renders, and then drops the tab.
+
+**The Announcements view.**
+
+- It lists the announcements of the last 14 days of the active student courses that the student shows (hidden courses are out), newest first.
+  Unread ones have a bold title and a "Mark as read" control.
+- Each row has the dot in the course color, the short name of the course (the course code, or the name when there is none), the title, the author, a relative date ("Today", "Yesterday", "3 days ago", then the date) and a snippet of two lines of plain text.
+  On a course home page the row leaves out the course name.
+- A "Show read" switch at the top of the view is off by default.
+  With it off, a read announcement leaves the list.
+  With it on, a read announcement stays, without the control.
+- The states match the Tasks tab: three light placeholder bars while the first load runs, "No announcements in the last 14 days." or "No unread announcements in the last 14 days." for an empty list, and "Couldn't load your announcements" with a Retry button.
+  The frame stays and works in each of them.
+
+**Data.**
+
+- The background loads the list with one request for all shown courses:
+  `GET /api/v1/announcements?context_codes[]=course_:id...&start_date=...&end_date=...&active_only=true&per_page=100`, with the `Link` pages followed.
+  A student with more than 20 courses gets one request for each 20.
+  The window is the last 14 days, from now.
+  `active_only=true` leaves out unpublished and delayed posts.
+- Canvas sends `read_state` (`read` or `unread`) for each topic of this list, `context_code` (`course_<id>`) and the author [10].
+  The source of `AnnouncementsApiController#index` and `serialize_additional_topic_fields` was read on 2026-10-30 [28].
+  So the list needs no second request for the read state.
+- The cache keeps at most 100 announcements, newest first, each with a message of at most 1,500 characters.
+  The row shows a snippet, and the full message loads when the row opens.
+  It lives in `storage.session` with the other data, under its own key.
+  A topic that names a course that the request did not ask for, or has no valid date, is dropped.
+- The data owner loads the list when a surface asks for it and the list is missing, belongs to other courses, or is older than 60 seconds, as the 60-second limit of decision 11 says.
+  The first request answers at once with "loading", and the change marker tells the surface when the rows are in.
+  A failed load keeps the rows of the load before it.
+  A forced request, as from the Retry button, loads at once.
+- The feed has its own message, `weekrow:announcement-feed`.
+  The state of the list is as before for a surface without the tab.
+  A content script is always an in-page list, whatever its message says, and only the saved Canvas may ask.
+- The same cache rules apply as for the other data: the list and the marks drop with the cache when another student signs in, when the saved address changes and when the student signs out.
+  A load result goes into the cache only for the generation, the Canvas and the student that asked for it.
+- The snippet is made in the surface with `DOMParser`, because a service worker has none.
+  `htmlToText` reads the message in an inert document, leaves out the elements that carry code or a foreign document, and returns text that the row shows as text.
+  The snippet never becomes markup, and it loads no image.
+
+**The open message.**
+
+- A click on the title opens the row in place.
+  The full message loads through the `weekrow:announcement` message of decision 22, `GET /api/v1/courses/:id/discussion_topics/:id`, which does not mark the topic as read.
+  It then goes through the strict sanitizer, which moved to `src/shared/ui/sanitize.ts` so that the page script of the fixes and the list script share it.
+  The rules of decision 22 apply unchanged: an allowlist of tags and attributes, nodes built one by one, links with http, https and mailto only, https images with no referrer for another origin, and limits on depth and size.
+  The list is already in a shadow root (or in the side panel page), so the styles of Canvas do not reach the message.
+  The message styles keep images within the width and let tables and code scroll sideways, so a 240 px column holds them.
+- Opening a row does not mark it as read.
+  "Show less" and a click on the title close it.
+- "Open in Canvas" opens `/courses/:id/discussion_topics/:id` in the same tab.
+  The Canvas page marks the announcement as read, so the row says so in a short line.
+  The extension never loads that page itself.
+
+**The read mark.**
+
+- Only an explicit action marks an announcement as read (decision 22).
+  Each unread row has a small circle button with the label "Mark as read", like the read circle of the Canvas widget.
+- The button sends the action `markAnnouncement`, and the background sends `PUT /api/v1/courses/:id/discussion_topics/:id/read` [28].
+  Canvas answers 204 with no body.
+- The write has the full safety of decision 11:
+  - It goes through the write queue, which stamps it with the generation, the Canvas and the user of the cache, and drops it when one of them changed.
+  - Canvas confirms the student before the request (`GET /api/v1/users/self`), as for a task create.
+    The 204 reply names no user, so the response check of the override writes cannot run.
+    A student of another account, a 401 or a failed check ends the queue, as in decision 11.
+  - The request carries `X-CSRF-Token`, like every write.
+  - The owner writes only for an announcement that its list holds.
+    The ids are checked as Canvas ids at the message boundary and again before they enter a path.
+    A mark that changes nothing (the announcement is read already) sends nothing.
+- The mark shows at once.
+  The cache holds it as a local mark with a sequence number, on top of the loaded list.
+  A load drops a confirmed mark only when the load started after the confirmation, so a list request that started before the write cannot bring the old state back.
+  A failed write takes the mark away, and a worker restart drops the marks that never got an answer and loads the list again.
+- With "Show read" off, the row leaves the list, and the Undo notice appears: "Marked as read" with "Undo", which has no timer, as in decision 6.
+  Ctrl+Z (Cmd+Z) undoes too.
+  Undo sends `DELETE .../read` (`mark_topic_unread`) and brings the row back.
+  The Undo data carries the user and the Canvas, and the owner ignores it when either changed, as for `restore`.
+- Focus moves to the next row when the row leaves, and back to the row after Undo (decision 19).
+- The write needs no full planner round, so the job reports no sync.
+
+**Scrolling.**
+
+- The view lives in the one scroll region of the card, with the task list.
+  The region takes the label of the tab: "Tasks by day" or "Announcements".
+  Each tab keeps its own scroll position.
+  A new span resets the position of Tasks only.
+- In a low window the region keeps at least 128 px, and the whole card scrolls instead.
+  Without this the tab strip took the last room of the card.
+- The side panel scrolls as a page, as before.
+
+**Widths.**
+
+The tabs and the rows work from 170 px up.
+Below 240 px the tab strip is compact, and at 170 px the two tabs can stand on two lines.
+The message of a row is part of the same column, so wide content scrolls inside it.
+
+**Size.**
+
+The in-page script grew from 34.0 KB to 37.8 KB gzip, against the 40 KB budget.
+The sanitizer is in the list script and in the script of the fixes.
+If a later feature goes over the budget, the Announcements view can move to a script of its own that the background injects when the tab opens, as decision 22 did for the fixes.
+
+**Risks.**
+
+- The list needs one more request for each 20 courses, and one more every 60 seconds at most while a surface is open.
+- Canvas can change the fields of the announcements list.
+  The cache keeps only the fields it reads, and a topic with no valid course or date drops out.
+- The signals that tell the widget dashboard from List View come from the server and the late grid.
+  A school that shows the widget dashboard to a student whose old view was List View gets the tab until the grid renders.
+- The relative date follows the Canvas time zone of the list.
+- A student who opens an announcement in Canvas marks it as read there, so the row shows it as unread until the next load (at most 60 seconds, or the next change).
+- The read mark and the Undo are two writes.
+  If the second one fails, Canvas keeps the first state, and the next load shows it.
+
 ## Open risks
 
 These items need a live check or an outside answer.
@@ -1882,6 +2037,9 @@ These items need a live check or an outside answer.
 10. Instructure has not said whether the classic dashboard survives in the 2027 UI [13].
 11. The widget dashboard package changes often, so the finders of decision 22 need a live check against the package that the school runs.
 12. The file viewer depends on the answers of the file access check (decision 23): file bytes through the redirect chain, framing an extension page under the Canvas policy, and the DOM hooks of file links.
+13. The Announcements tab (decision 24) has not run against a real Canvas.
+    The live checklist has the steps.
+    The `read_state` and `context_code` fields of the list come from canvas-lms source only.
 
 ## Build order
 
@@ -1922,3 +2080,4 @@ These items need a live check or an outside answer.
 25. Gradescope instructor guide on posting grades to Canvas, seen only as a search result summary because a direct fetch returned 403. https://guides.gradescope.com
 26. Browser color scheme behavior for extension pages: the W3C WebExtensions issue on preferred color schemes, the W3C CSS issue of December 2025 about Chrome's theme mode, and Mozilla's website appearance help page. https://github.com/w3c/webextensions/issues/242 and https://lists.w3.org/Archives/Public/public-css-archive/2025Dec/0569.html and https://support.mozilla.org/en-US/kb/change-website-appearance-settings-firefox
 27. Store searches on 2026-10-27 for plain names, through the Chrome Web Store search pages and the Firefox Add-ons search API. https://chromewebstore.google.com/search/tools%20for%20canvas and https://addons.mozilla.org/api/v5/addons/search/?q=tools%20for%20canvas
+28. canvas-lms source on the default branch, read on 2026-10-30: `AnnouncementsApiController#index`, `DiscussionTopicsApiController#mark_topic_read` and `#mark_topic_unread`, `Api::V1::DiscussionTopics#serialize_additional_topic_fields`, the routes for `discussion_topics/:topic_id/read`, and `UsersController#user_dashboard` with `DashboardHelper#show_planner?`. https://github.com/instructure/canvas-lms/blob/master/app/controllers/announcements_api_controller.rb and https://github.com/instructure/canvas-lms/blob/master/app/controllers/discussion_topics_api_controller.rb and https://github.com/instructure/canvas-lms/blob/master/lib/api/v1/discussion_topics.rb and https://github.com/instructure/canvas-lms/blob/master/config/routes.rb and https://github.com/instructure/canvas-lms/blob/master/app/controllers/users_controller.rb

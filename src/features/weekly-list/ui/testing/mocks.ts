@@ -11,7 +11,8 @@ import type {
   SurfaceState,
   WeekView,
 } from '../../model/types';
-import type { Actions } from '../contract';
+import type { AnnouncementRow } from '../../data/announcements';
+import type { Actions, AnnouncementsProps } from '../contract';
 
 export const ORIGIN = 'https://school.instructure.com';
 
@@ -735,5 +736,91 @@ export function noopActions(
     },
     openAnnouncement: record('openAnnouncement'),
     retryAnnouncements: record('retryAnnouncements'),
+  };
+}
+
+/** The announcements of the gallery: unread and read ones of three courses, newest first. */
+export function announcementRows(): AnnouncementRow[] {
+  const row = (
+    id: string,
+    course: CourseKey,
+    title: string,
+    author: string | null,
+    postedAt: string,
+    message: string,
+    read = false,
+  ): AnnouncementRow => ({
+    id,
+    courseId: COURSES[course].id,
+    courseCode: COURSES[course].code,
+    color: COURSES[course].color,
+    title,
+    author,
+    postedAt,
+    message,
+    read,
+  });
+  return [
+    row(
+      '31901',
+      'bio',
+      'Lab room change for Thursday',
+      'Dr. Maya Okafor',
+      '2026-10-27T16:00:00Z',
+      '<p>The lab section moves to <strong>Science Hall 214</strong> on Thursday. Read the lab safety page first.</p>',
+    ),
+    row(
+      '32901',
+      'math',
+      'Office hours move to Thursday this week',
+      'Prof. Ines Duarte',
+      '2026-10-27T15:00:00Z',
+      '<p>Office hours move to <em>Thursday</em>, 3pm to 4pm.</p>',
+    ),
+    row(
+      '34901',
+      'chem',
+      'Safety goggles are required',
+      'Sam Whitaker',
+      '2026-10-26T15:00:00Z',
+      '<p>Everyone needs splash goggles for Lab 7.</p>',
+    ),
+    row(
+      '31002',
+      'bio',
+      'Syllabus quiz reminder',
+      'Dr. Maya Okafor',
+      '2026-10-20T14:00:00Z',
+      '<p>The syllabus quiz closes on Friday.</p>',
+      true,
+    ),
+    row(
+      '35001',
+      'hist',
+      'A very long announcement title that has to wrap onto several lines in a narrow list',
+      null,
+      '2026-10-15T14:00:00Z',
+      '',
+    ),
+  ];
+}
+
+/** The Announcements tab of a surface, with `patch` applied. */
+export function announcementsProps(patch: Partial<AnnouncementsProps> = {}): AnnouncementsProps {
+  const rows = announcementRows();
+  return {
+    tab: 'announcements',
+    feed: {
+      status: 'ready',
+      origin: ORIGIN,
+      userId: '5501',
+      tab: 'announcements',
+      rows,
+      unread: rows.filter((r) => !r.read).length,
+      loading: false,
+      failed: false,
+    },
+    showRead: false,
+    ...patch,
   };
 }

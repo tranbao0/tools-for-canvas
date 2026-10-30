@@ -26,6 +26,7 @@ import {
 const QUIZ_3 = 'Quiz 3: Cell membranes';
 const LAB_7 = 'Lab 7: Titration notebook';
 const SKETCHBOOK = 'Figure drawing sketchbook';
+const ANNOUNCEMENT_TITLE = 'Lab room change for Thursday';
 const ART_COURSE = 'ART 150: Drawing I';
 const ART_ID = '301';
 const ASSIGNMENT_ID = '7001';
@@ -90,6 +91,7 @@ function secondStudentRoutes(student: SecondStudent): FakeCanvasRoute[] {
     { path: '/api/v1/users/self/dashboard_positions', body: json({ dashboard_positions: {} }) },
     { path: '/api/v1/planner/items', body: json([student.row]) },
     { path: '/api/v1/planner/overrides', body: json([]) },
+    { path: '/api/v1/announcements', body: json([]) },
     {
       path: new RegExp(`^/api/v1/courses/${ART_ID}/assignments\\?.*bucket=undated`),
       body: json([]),
@@ -127,6 +129,8 @@ test('a different student signs in between rounds, and nothing of the first stud
   await expect(doneBox(page, QUIZ_3)).toBeVisible();
   await settledList(page);
   expect(await sessionStorageText(page)).toContain(LAB_7);
+  // The panel also loads the announcements of the first student, which must not outlive them.
+  await expect.poll(() => sessionStorageText(page)).toContain(ANNOUNCEMENT_TITLE);
 
   // The first student deletes a task, and the Undo notice stays open.
   const toast = page.locator('.wr-toast');
@@ -172,7 +176,16 @@ test('a different student signs in between rounds, and nothing of the first stud
 
   const cached = await sessionStorageText(page);
   const note = IDS.notes.libraryBooksToday;
-  for (const trace of [LAB_7, QUIZ_3, 'CHEM 120', 'Jordan Rivera', `"${note}"`, `:${note}"`]) {
+  for (const trace of [
+    LAB_7,
+    QUIZ_3,
+    ANNOUNCEMENT_TITLE,
+    'Dr. Maya Okafor',
+    'CHEM 120',
+    'Jordan Rivera',
+    `"${note}"`,
+    `:${note}"`,
+  ]) {
     expect(cached).not.toContain(trace);
   }
   expect(cached).toContain(SKETCHBOOK);

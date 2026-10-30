@@ -23,6 +23,8 @@ import {
 } from '../../src/features/weekly-list/surface/shadowMount';
 import {
   allDoneView,
+  announcementRows,
+  announcementsProps,
   checkedButMissing,
   COURSES,
   currentRings,
@@ -44,6 +46,7 @@ import {
   readyState,
 } from '../../src/features/weekly-list/ui/testing/mocks';
 import type { Settings } from '../../src/features/weekly-list/model/types';
+import type { AnnouncementFeed } from '../../src/features/weekly-list/data/announcements';
 
 /** The folder with Canvas's Lato fonts, or an empty string when the cache is missing. */
 declare const __CANVAS_FONTS__: string;
@@ -54,6 +57,25 @@ const only = params.get('scene');
 const actions = noopActions((name, args) => console.info('action', name, ...args));
 
 const PANEL_WIDTHS = [170, 240, 360, 480];
+
+/** Actions whose "Show more" loads a message, as the background does. */
+const actionsWithMessages = {
+  ...actions,
+  loadAnnouncementMessage: async () =>
+    '<p>The lab section moves to <strong>Science Hall 214</strong> on Thursday.</p>' +
+    '<p>Read the <a href="/courses/101/pages/lab-safety">lab safety page</a> first.</p>' +
+    '<ul><li>Bring your goggles</li><li>Bring your notebook</li></ul>' +
+    '<table><tr><th>Group</th><th>Room</th><th>Time</th><th>Instructor</th></tr>' +
+    '<tr><td>A</td><td>214</td><td>9:00 am</td><td>Dr. Okafor</td></tr></table>',
+};
+
+/** A feed reply with the given rows, for the states of the tab. */
+function feedWith(patch: Partial<Extract<AnnouncementFeed, { status: 'ready' }>>) {
+  const base = announcementsProps();
+  return announcementsProps({
+    feed: { ...(base.feed as Extract<AnnouncementFeed, { status: 'ready' }>), ...patch },
+  });
+}
 
 interface Scene {
   name: string;
@@ -83,7 +105,7 @@ async function clickAll(root: ParentNode, selector: string): Promise<void> {
 function app(
   surface: SurfaceKind,
   state: AppProps['state'],
-  options: Pick<AppProps, 'settings'> = {},
+  options: Pick<AppProps, 'settings' | 'announcements'> = {},
 ) {
   // The span control is on once the settings have loaded, with the span that the view shows.
   const loaded: AppProps['settings'] =
@@ -269,6 +291,102 @@ const scenes: Scene[] = [
     widths: [240],
     shadow: true,
     render: app('inpage', readyState({ view: laterSpanView() })),
+  },
+  {
+    name: 'announcements',
+    widths: PANEL_WIDTHS,
+    render: app('panel', readyState(), { announcements: announcementsProps() }),
+  },
+  {
+    name: 'announcements-open',
+    widths: PANEL_WIDTHS,
+    render: () => (
+      <App
+        surface="panel"
+        state={readyState()}
+        actions={actionsWithMessages}
+        announcements={announcementsProps()}
+      />
+    ),
+    async setup(root) {
+      root.querySelector<HTMLElement>('.wr-ann-title')?.click();
+      await tick();
+      await tick();
+    },
+  },
+  {
+    name: 'announcements-show-read',
+    widths: [240, 360],
+    render: app('panel', readyState(), { announcements: announcementsProps({ showRead: true }) }),
+  },
+  {
+    name: 'announcements-undo',
+    widths: [240, 360],
+    render: app('panel', readyState({ undo: { kind: 'announcement_read', count: 1 } }), {
+      announcements: announcementsProps(),
+    }),
+  },
+  {
+    name: 'announcements-loading',
+    widths: [240, 360],
+    render: app('panel', readyState(), {
+      announcements: feedWith({ rows: [], unread: 0, loading: true }),
+    }),
+  },
+  {
+    name: 'announcements-empty',
+    widths: [240, 360],
+    render: app('panel', readyState(), {
+      announcements: feedWith({ rows: [], unread: 0 }),
+    }),
+  },
+  {
+    name: 'announcements-empty-unread',
+    widths: [240, 360],
+    render: app('panel', readyState(), {
+      announcements: feedWith({ rows: announcementRows().filter((r) => r.read), unread: 0 }),
+    }),
+  },
+  {
+    name: 'announcements-failed',
+    widths: [240, 360],
+    render: app('panel', readyState(), {
+      announcements: feedWith({ rows: [], unread: 0, failed: true }),
+    }),
+  },
+  {
+    name: 'inpage-tabs',
+    widths: [240],
+    shadow: true,
+    render: app('inpage', readyState({ view: busyWeekView() }), {
+      announcements: announcementsProps({ tab: 'tasks' }),
+    }),
+  },
+  {
+    name: 'inpage-announcements',
+    widths: [240],
+    shadow: true,
+    render: app('inpage', readyState({ view: busyWeekView() }), {
+      announcements: announcementsProps(),
+    }),
+  },
+  {
+    name: 'inpage-announcements-open',
+    widths: [240],
+    shadow: true,
+    render: () => (
+      <App
+        surface="inpage"
+        state={readyState({ view: busyWeekView() })}
+        actions={actionsWithMessages}
+        announcements={announcementsProps()}
+      />
+    ),
+    async setup(root) {
+      root.querySelector<HTMLElement>('.wr-ann-title')?.click();
+      await tick();
+      await tick();
+    },
   },
   {
     name: 'ready-span-day',

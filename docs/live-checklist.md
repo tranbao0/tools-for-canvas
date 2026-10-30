@@ -357,20 +357,68 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
 39. Open a course home page and the Courses tab.
     Expect: no fix shows, and nothing changes.
 
+### Announcements tab
+
+These steps need a student with unread announcements in two courses from the last 14 days, one read announcement from the last 14 days, one announcement older than 14 days, an announcement with a rich message (a link, an image and a list), and one hidden course (in the settings of the extension) that has an announcement.
+Run them on the classic dashboard in Card View, then in List View, then on a course home page.
+
+40. Look under the rings of the weekly list.
+    Expect: a switch with "Tasks" and "Announcements" shows, "Tasks" is chosen, and "Announcements" has a small count of the unread announcements.
+    Expect: the count leaves out the hidden course, the read announcement and the old announcement.
+    Press the Left and Right arrow keys on a tab.
+    Expect: the other tab is chosen and takes the focus.
+41. Choose "Announcements".
+    Expect: the unread announcements of the last 14 days show, newest first, each with the dot of its course color, the short name of the course, the title in bold, the author, a relative date such as "Today" and a snippet of two lines of plain text.
+    Expect: the card keeps its height, and the list scrolls inside it.
+    Turn on "Show read".
+    Expect: the read announcement joins the list, with a normal title and no "Mark as read" control.
+42. Click the title of an unread announcement.
+    Expect: the whole message shows in the row, with its links, image and list, and "Show less" and "Open in Canvas" show.
+    Expect: the announcement is still unread in Canvas (check the unread count of Canvas, and do not open its page).
+    Click "Show less".
+    Expect: the row closes.
+43. Click "Mark as read" of an unread announcement.
+    Expect: the row leaves the list, the count goes down by one, and the notice "Marked as read" shows with "Undo".
+    Expect: focus moves to the next row.
+    Reload the page, and look at the announcement in Canvas.
+    Expect: Canvas shows it as read.
+    Mark another announcement as read, then click "Undo".
+    Expect: the row comes back, focus moves to it, and Canvas shows it as unread again.
+44. Click "Open in Canvas" in an open row.
+    Expect: the announcement page opens in the same tab, and Canvas marks it as read there.
+45. Choose "Announcements", scroll the list a little, choose "Tasks", scroll that list, and choose "Announcements" again.
+    Expect: each tab shows the place where you left it.
+    Reload the page.
+    Expect: the tab that you chose last is chosen.
+    Open the side panel.
+    Expect: it shows its own tab choice, which starts with "Tasks".
+46. Open a course home page.
+    Expect: the Announcements tab shows only the announcements of that course, and the rows show no course name.
+47. Open the new widget dashboard.
+    Expect: the weekly list shows no switch, and the Announcements widget of Canvas is the place for announcements.
+    Open the network tab of the browser's developer tools.
+    Expect: the extension sends no request to `/api/v1/announcements`.
+    Switch the dashboard to List View.
+    Expect: the switch shows.
+48. Make the window 240 px wide with the side panel (Firefox) or make the card narrow, then choose "Announcements".
+    Expect: the switch, the count and the rows fit, and a long title wraps.
+    Open a message with a wide table or a wide image.
+    Expect: the table scrolls sideways inside the row and the image fits the width.
+
 ### Store listings
 
-40. Check the Chrome Web Store listing.
+49. Check the Chrome Web Store listing.
     Expect: the single purpose is "Show your Canvas coursework for the week as a to-do list.", the data usage ticks "Website content" processed only on the device, the account is a non-trader, and 2-Step Verification is on.
-41. Check the Edge Add-ons listing.
+50. Check the Edge Add-ons listing.
     Expect: the description has the license link and does not mention other browsers.
-42. Check the Firefox Add-ons listing.
+51. Check the Firefox Add-ons listing.
     Expect: the source zip and the lockfile are attached, the reviewer notes say that the only writes are done marks, skip marks and custom tasks sent to the student's own Canvas at the student's request, and two-factor authentication is on.
-43. Check every listing.
+52. Check every listing.
     Expect: the privacy policy link opens `docs/privacy.md` on the project site.
     Expect: the description ends with the trademark notice at the end of the README.
-44. Sign in to the reviewer test account.
+53. Sign in to the reviewer test account.
     Expect: the planner, done marks and custom tasks work in its course.
-45. Before the first release only, run the final name check from design decision 17.
+54. Before the first release only, run the final name check from design decision 17.
 
 ## Part 3: File access check (Firefox test channel)
 

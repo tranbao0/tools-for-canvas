@@ -84,13 +84,10 @@ test.describe('the switch', () => {
       const root = host.querySelector('weekrow-list')?.shadowRoot;
       const at = (selector: string) =>
         root?.querySelector(selector)?.getBoundingClientRect().top ?? -1;
-      return [
-        at('.wr-rings, .wr-ring-row, [data-part="rings"]'),
-        at('[role="tablist"]'),
-        at('.wr-scroll'),
-      ];
+      return [at('.wr-rings'), at('[role="tablist"]'), at('.wr-scroll')];
     });
-    expect(order[1]).toBeGreaterThan(0);
+    expect(order[0]).toBeGreaterThan(0);
+    expect(order[1]).toBeGreaterThan(order[0] ?? 0);
     expect(order[2]).toBeGreaterThan(order[1] ?? 0);
   });
 
@@ -253,10 +250,7 @@ test.describe('the Announcements tab', () => {
     await expect(titleButton(list, LAB_ROOM)).toBeVisible();
   });
 
-  test('remembers the chosen tab for the session, and each tab keeps its scroll position', async ({
-    context,
-    page,
-  }) => {
+  test('remembers the chosen tab for the session', async ({ context, page }) => {
     await open(context, page);
     const list = await openAnnouncements(page);
     await page.reload();
@@ -265,6 +259,58 @@ test.describe('the Announcements tab', () => {
     await expect(titleButton(list, LAB_ROOM)).toBeVisible();
     await tab(inpageList(page), 'Tasks').click();
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await page.reload();
+    await page.locator('html[data-fixture-ready="true"]').waitFor({ state: 'attached' });
+    await expect(tab(inpageList(page), 'Tasks')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('keeps the scroll position of each tab in the one scroll region of the card', async ({
+    context,
+    page,
+  }) => {
+    await open(context, page);
+    // A short window makes the region of the card short, so both tabs scroll.
+    await page.setViewportSize({ width: 1280, height: 700 });
+    const list = inpageList(page);
+    const top = (): Promise<number> =>
+      list.evaluate(
+        (host) =>
+          (
+            host
+              .querySelector('weekrow-list')
+              ?.shadowRoot?.querySelector('.wr-scroll') as HTMLElement
+          ).scrollTop,
+      );
+    const scrollTo = (value: number): Promise<void> =>
+      list.evaluate((host, to) => {
+        (
+          host.querySelector('weekrow-list')?.shadowRoot?.querySelector('.wr-scroll') as HTMLElement
+        ).scrollTop = to;
+      }, value);
+
+    // Wait until the region has room to scroll, after the window change and the loading days.
+    const room = (): Promise<number> =>
+      list.evaluate((host) => {
+        const region = host.querySelector('weekrow-list')?.shadowRoot?.querySelector('.wr-scroll');
+        return region ? region.scrollHeight - region.clientHeight : 0;
+      });
+    await expect.poll(room).toBeGreaterThan(130);
+    await scrollTo(120);
+    await expect.poll(top).toBe(120);
+    await tab(list, /^Announcements/).click();
+    await expect(titleButton(list, LAB_ROOM)).toBeVisible();
+    // The region has the label of the tab, and the new tab starts at the top.
+    await expect(list.getByRole('region', { name: 'Announcements' })).toBeVisible();
+    await expect.poll(top).toBe(0);
+    await expect.poll(room).toBeGreaterThan(50);
+    await scrollTo(40);
+    await expect.poll(top).toBe(40);
+
+    await tab(list, 'Tasks').click();
+    await expect(list.getByRole('region', { name: 'Tasks by day' })).toBeVisible();
+    await expect.poll(top).toBe(120);
+    await tab(list, /^Announcements/).click();
+    await expect.poll(top).toBe(40);
   });
 });
 

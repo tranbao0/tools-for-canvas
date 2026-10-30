@@ -149,7 +149,8 @@
 
 .wr[data-surface='inpage'] > .wr-scroll {
   flex: 1 1 auto;
-  min-height: 0;
+  /* In a low window the list keeps room for about one row, and the whole card scrolls instead. */
+  min-height: 128px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;

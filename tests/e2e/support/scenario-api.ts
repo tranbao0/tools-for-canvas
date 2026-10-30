@@ -33,6 +33,8 @@ export function apiRoutes(scenario: Scenario): FakeCanvasRoute[] {
     { path: '/api/v1/planner/items', body: json(scenario.plannerItems) },
     { path: '/api/v1/planner/overrides', body: json(scenario.plannerOverrides) },
     { method: 'POST', path: '/api/v1/planner/overrides', body: json(created) },
+    // The list of the Announcements tab. A Canvas with state (CanvasState) answers it first.
+    { path: '/api/v1/announcements', body: [] },
     ...courseIds.map((id): FakeCanvasRoute => ({
       path: new RegExp(`^/api/v1/courses/${id}/assignments\\?.*bucket=undated`),
       body: json(scenario.undatedAssignments[id] ?? []),

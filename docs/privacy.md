@@ -7,7 +7,7 @@ Last updated: 2026-10-30.
 
 Tools for Canvas has no account, no server of its own and no telemetry.
 It reads your Canvas data in your browser and shows it to you.
-It writes only done marks, skip marks and custom tasks, and only to your own Canvas.
+It writes only done marks, skip marks, custom tasks and announcement read marks, and only to your own Canvas.
 Nothing goes anywhere else, except the images that a teacher put into an announcement (see "What the extension sends elsewhere").
 
 ## What the extension reads
@@ -22,7 +22,8 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - your done marks, skip marks and custom tasks;
 - the names of custom grade statuses in your courses;
 - your current grade and grade letter in each course, which Canvas sends with the course list, unless the course hides them;
-- the announcements of your courses: the full text of an announcement that you open, and the recent announcements of a course that you choose in the announcements filter.
+- the announcements of your courses: the title, author, date, read state and the start of the text of the announcements of the last 14 days of your shown courses, for the Announcements tab of the list;
+- the full text of an announcement that you open, and the recent announcements of a course that you choose in the announcements filter of the new dashboard.
 
 It reads the `_csrf_token` cookie of your Canvas site, because Canvas requires that token to accept a write.
 
@@ -58,11 +59,14 @@ The extension writes only to your own Canvas, and only when you ask it to:
 
 - a done mark when you check an item off, or remove it when you uncheck the item;
 - a skip mark when you skip an item, or remove it when you unskip the item;
-- a custom task when you create, edit or delete one.
+- a custom task when you create, edit or delete one;
+- a read mark on an announcement when you press "Mark as read" in the Announcements tab, or an unread mark when you press Undo.
 
-The extension does not mark an announcement as read.
+The extension marks an announcement as read only when you press "Mark as read".
 When you open an announcement in place, it only reads the announcement.
-Only you mark an announcement as read, with the read circle of the widget or by opening its Canvas page.
+The extension never loads the Canvas page of an announcement itself.
+That page marks the announcement as read, so it opens only when you press "Open in Canvas", or when you open it in Canvas yourself.
+Before it sends a read mark, the extension asks Canvas who is signed in, so that a mark never goes to the account of another person.
 
 Done marks and skip marks are Canvas planner overrides.
 Custom tasks are Canvas planner notes.
@@ -87,6 +91,9 @@ The extension stores only these items in browser storage on your device:
 - a change time stamp, so that open lists refresh after a write;
 - which one-time notes you have seen;
 - which small fixes for the new Canvas dashboard are on.
+
+The extension also keeps these items in browser memory (`storage.session`) for the browser session only: the announcements of the Announcements tab, the read marks that Canvas has not shown yet, and the tab (Tasks or Announcements) that each list shows.
+The browser clears them when it closes, and the extension drops them when another person signs in to Canvas.
 
 The settings, the address, the notes and the switches of the fixes are in storage that web pages cannot reach.
 In Chrome and Edge, the extension locks its `storage.local` against page scripts.
