@@ -139,20 +139,18 @@ export function SettingsFields(props: {
       </div>
 
       <div class="wr-setting wr-setting-row">
-        <div>
-          <label class="wr-setting-name" for={ids.canvas}>
-            {t('settingShowOnCanvas')}
-          </label>
-          <p class="wr-setting-help" id={ids.canvasHelp}>
-            {t('showOnCanvasHelp')}
-          </p>
-        </div>
+        <label class="wr-setting-name" for={ids.canvas}>
+          {t('settingShowOnCanvas')}
+        </label>
         <Switch
           id={ids.canvas}
           checked={settings.showOnCanvasPages}
           describedBy={ids.canvasHelp}
           onChange={(showOnCanvasPages) => update({ showOnCanvasPages })}
         />
+        <p class="wr-setting-help" id={ids.canvasHelp}>
+          {t('showOnCanvasHelp')}
+        </p>
       </div>
 
       <div class="wr-setting">

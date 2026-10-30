@@ -1008,6 +1008,11 @@ textarea.wr-input {
   color: var(--wr-text-2);
 }
 
+/* Short help lines break into even lines, so no line ends with one word alone. */
+.wr-setting-help {
+  text-wrap: balance;
+}
+
 .wr-error {
   color: var(--wr-error);
 }
@@ -1046,9 +1051,8 @@ textarea.wr-input {
   column-gap: 12px;
 }
 
-.wr-setting-row > div {
-  display: grid;
-  gap: 4px;
+.wr-setting-row > .wr-setting-help {
+  grid-column: 1 / -1;
 }
 
 .wr-course-list > li {

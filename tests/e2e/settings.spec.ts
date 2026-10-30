@@ -149,6 +149,56 @@ test.describe('settings in place', () => {
   });
 });
 
+test.describe('settings help text', () => {
+  /** How many words the last line of each help paragraph holds, with its line count. */
+  function lastLines(scope: Page): Promise<{ text: string; lines: number; lastWords: number }[]> {
+    return scope.locator('.wr-setting-help').evaluateAll((paragraphs) =>
+      paragraphs.map((paragraph) => {
+        const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+        const tops: number[] = [];
+        const words: number[] = [];
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const text = node.textContent ?? '';
+          for (const match of text.matchAll(/\S+/g)) {
+            const range = document.createRange();
+            range.setStart(node, match.index);
+            range.setEnd(node, match.index + match[0].length);
+            const top = Math.round(range.getClientRects()[0]?.top ?? 0);
+            if (tops.at(-1) !== top) {
+              tops.push(top);
+              words.push(0);
+            }
+            words[words.length - 1] = (words.at(-1) ?? 0) + 1;
+          }
+        }
+        return {
+          text: paragraph.textContent ?? '',
+          lines: tops.length,
+          lastWords: words.at(-1) ?? 0,
+        };
+      }),
+    );
+  }
+
+  for (const width of [240, 300, 360, 420]) {
+    test(`no help line ends with one word alone at ${width} px`, async ({
+      context,
+      page,
+      extensionUrl,
+    }) => {
+      const { panel } = await openBoth(context, page, extensionUrl('sidepanel.html'));
+      await panel.setViewportSize({ width, height: 900 });
+      await openSettingsInPlace(panel);
+
+      const lines = await lastLines(panel);
+      expect(lines.length).toBeGreaterThanOrEqual(4);
+      for (const line of lines) {
+        if (line.lines > 1) expect(line.lastWords, line.text).toBeGreaterThanOrEqual(2);
+      }
+    });
+  }
+});
+
 test.describe('theme', () => {
   test('Dark and Light apply to the side panel and the in-page list, and Automatic follows each surface', async ({
     context,
