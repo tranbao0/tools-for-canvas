@@ -65,7 +65,8 @@ const WIDGET_CARD = 'section[data-testid^="widget-"]';
 function firstCardOf(column: HTMLElement): HTMLElement | null {
   const card = column.querySelector<HTMLElement>(WIDGET_CARD);
   if (card !== null) return card;
-  const first = column.firstElementChild;
+  // The list may stand first in the column, and it is not a widget.
+  const first = [...column.children].find((child) => !child.id.startsWith('weekrow-'));
   return first instanceof HTMLElement ? first : null;
 }
 

@@ -9,11 +9,13 @@
  */
 import path from 'node:path';
 import type { Page } from '@playwright/test';
+import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import {
   doneBox,
   expect,
   inpageList,
   openCanvasPage,
+  saveSettings,
   serveScenario,
   settledList,
   test,
@@ -360,5 +362,31 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
       expect(look.list).toEqual(look.widget);
       expect(look.list?.['borderTopWidth']).toBe('0px');
     });
+  }
+});
+
+test.describe('screenshots of the card on the widget dashboard', () => {
+  for (const width of [1100, 1300, 1500, 1700, 1920]) {
+    for (const theme of ['light', 'dark'] as const) {
+      test(`at ${width} px, ${theme}`, async ({ context, page, background }) => {
+        await saveSettings(background, { ...DEFAULT_SETTINGS, theme });
+        const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
+        await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
+        await openCanvasPage(page, canvas.origin);
+        await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+        await settledList(page);
+        if (theme === 'dark') {
+          await page.evaluate(() =>
+            document.querySelector('.fixture-widget-app')?.setAttribute('data-fixture-dark', ''),
+          );
+        }
+        await page.screenshot({ path: path.join(SHOTS, `card-${width}-${theme}.png`) });
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+          ),
+        ).toBe(true);
+      });
+    }
   }
 });

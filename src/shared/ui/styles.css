@@ -129,23 +129,25 @@
 }
 
 /*
- * The card has a height limit: the window height minus 48px, at most 760px and at least 420px. A
- * card with less content is as tall as its content. The header and the rings stay at the top, and
+ * The list has a height limit, in a card and in the right column of the classic dashboard: the
+ * window height minus 48px, at most 760px and at least 420px. A list with less content is as tall
+ * as its content. The header and the rings stay at the top, and
  * the groups scroll in .wr-scroll. A view without that region, such as the settings, scrolls the
  * whole card.
  */
-:host([data-panel]) .wr[data-surface='inpage'] {
+.wr[data-surface='inpage'] {
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
   max-height: max(420px, min(100vh - 48px, 760px));
   overflow: hidden auto;
 }
 
-:host([data-panel]) .wr[data-surface='inpage'] > * {
+.wr[data-surface='inpage'] > * {
   flex: none;
 }
 
-:host([data-panel]) .wr[data-surface='inpage'] > .wr-scroll {
+.wr[data-surface='inpage'] > .wr-scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -163,6 +165,7 @@
 }
 
 /* The minimized list: one header row high, with the look of a widget card. */
+.wr[data-surface='inpage'][data-minimized],
 :host([data-panel]) .wr[data-surface='inpage'][data-minimized] {
   padding: 0;
   overflow: hidden;
@@ -174,7 +177,7 @@
   gap: 12px;
   width: 100%;
   min-height: 56px;
-  padding: 0 var(--wr-pad-x, 24px);
+  padding: 0 var(--wr-pad-x, 12px);
   border: 0;
   border-radius: 12px;
   background: transparent;

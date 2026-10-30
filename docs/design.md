@@ -199,7 +199,7 @@ This replaces the own grid column and the sticky floating card on the widget das
 The card has the look of a widget card: no border, the shadow of a widget, and 12 px corners.
 On the same day the owner asked for three more changes.
 The in-page list shows the full list, as the side panel does, with no short glance.
-The card has a fixed height, and the groups scroll inside it.
+The card has a height limit, and the groups scroll inside it.
 A minimize button replaces the setting "Show the weekly list on Canvas pages" (decision 18).
 The owner also asked for relief on a long classic dashboard: after a long scroll, the list must not stay at the top of a column that is far out of view.
 

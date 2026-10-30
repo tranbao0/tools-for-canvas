@@ -234,6 +234,82 @@ test.describe('the full list in the card', () => {
   });
 });
 
+test.describe('the list in other places', () => {
+  for (const pageName of ['dashboard-card-view', 'course-home']) {
+    test(`has the height limit and the scroll region on ${pageName}`, async ({
+      context,
+      page,
+      background,
+    }) => {
+      await saveSettings(background, MONTH);
+      const path = pageName === 'course-home' ? '/courses/101' : '/';
+      const { canvas } = await serveScenario(context, [{ path, page: pageName }]);
+      await page.setViewportSize({ width: 1920, height: 800 });
+      await openCanvasPage(page, canvas.origin, path);
+      await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+      await settledList(page);
+      const box = await page.evaluate(() => {
+        const root = document.querySelector('#weekrow-inpage > weekrow-list')?.shadowRoot;
+        const card = root?.querySelector('.wr') as HTMLElement;
+        const scroll = root?.querySelector('.wr-scroll') as HTMLElement;
+        return {
+          height: card.getBoundingClientRect().height,
+          overflowY: getComputedStyle(scroll).overflowY,
+          scrollable: scroll.scrollHeight > scroll.clientHeight,
+        };
+      });
+      expect(box.height).toBeLessThanOrEqual(limit(800) + 1);
+      expect(box.overflowY).toBe('auto');
+      expect(box.scrollable).toBe(true);
+    });
+  }
+
+  test('keeps the scroll position when the card moves from the free area to a column', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background);
+    await region(page).evaluate((element) => {
+      element.scrollTop = 300;
+    });
+    await expect.poll(async () => (await cardBox(page)).scroll.top).toBe(300);
+    await page.setViewportSize({ width: 1500, height: 800 });
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          document.querySelector('#weekrow-inpage > weekrow-list')?.getAttribute('data-panel'),
+        ),
+      )
+      .toBe('column');
+    await expect.poll(async () => (await cardBox(page)).scroll.top).toBe(300);
+  });
+
+  test('does not cover an empty widget column', async ({ context, page, background }) => {
+    await open(context, page, background);
+    await page.evaluate(() => {
+      const first = document.querySelector('[data-testid="widget-column-1"]');
+      const second = document.querySelector('[data-testid="widget-column-2"]');
+      while (second?.firstElementChild) first?.append(second.firstElementChild);
+    });
+    await expect
+      .poll(async () => {
+        const result = await page.evaluate(() => {
+          const column = document
+            .querySelector('[data-testid="widget-column-2"]')
+            ?.getBoundingClientRect();
+          const card = document
+            .querySelector('#weekrow-inpage > weekrow-list')
+            ?.shadowRoot?.querySelector('.wr')
+            ?.getBoundingClientRect();
+          return column && card ? card.left >= column.right - 1 : false;
+        });
+        return result;
+      })
+      .toBe(true);
+  });
+});
+
 test.describe('screenshots of the Month span', () => {
   for (const width of [1920, 1280]) {
     for (const theme of ['light', 'dark'] as const) {

@@ -33,6 +33,7 @@ import {
   PANEL_WIDTH_PX,
   SENTINEL_ID,
   SPACER_ID,
+  cardOf,
   clearAllInlineStyles,
   keepCardScroll,
   moveContainer,
@@ -150,7 +151,9 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
       'scroll',
       (event) => {
         const target = event.target as HTMLElement;
-        if (target.classList?.contains('wr')) scrollTop = target.scrollTop;
+        if (target.classList?.contains('wr') || target.classList?.contains('wr-scroll')) {
+          scrollTop = target.scrollTop;
+        }
       },
       true,
     );
@@ -159,7 +162,7 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
   function restoreScroll(): void {
     if (!detached) return;
     detached = false;
-    const card = container.firstElementChild?.shadowRoot?.querySelector('.wr');
+    const card = cardOf(container);
     if (card) card.scrollTop = scrollTop;
   }
 
@@ -186,11 +189,16 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
     const leftMargin =
       first !== undefined && wrapperBox ? Math.max(0, first.left - wrapperBox.left) : 0;
     const limit = boxRight - Math.max(leftMargin, gutter);
-    const gridRight = cards.reduce(
-      (right, box) => Math.max(right, box.right),
+    // A column with no widget still takes drops, so the area starts after the columns, not after
+    // the cards.
+    const gridRight = canvasColumns.reduce(
+      (right, column) => Math.max(right, column.getBoundingClientRect().right - cardMargin),
       Number.NEGATIVE_INFINITY,
     );
-    const top = cards.reduce((least, box) => Math.min(least, box.top), Number.POSITIVE_INFINITY);
+    const top = cards.reduce(
+      (least, box) => Math.min(least, box.top),
+      columns.getBoundingClientRect().top + cardMargin,
+    );
     const free = limit - gridRight;
     const slack = mode === 'area' ? HYSTERESIS_PX : 0;
     const content = doc.getElementById('content');

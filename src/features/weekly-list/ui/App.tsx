@@ -38,6 +38,9 @@ import { captureFocus, firstRowControl, restoreFocus, usable, type FocusSnapshot
 
 type ReadyState = Extract<SurfaceState, { kind: 'ready' }>;
 
+/** How long focus follows a minimize or an expand that the student asked for. */
+const FOCUS_FOLLOW_MS = 1500;
+
 /** Where the groups of the in-page list were scrolled to, kept while the list is on the page. */
 interface ScrollMemory {
   top: number;
@@ -132,12 +135,16 @@ export function App(props: AppProps) {
   const scrollMemory = useRef<ScrollMemory>({ top: 0, key: '' });
   const saved = props.settings?.value;
   const minimized = surface === 'inpage' && saved?.minimized === true;
-  /** The state that the student asked for and that has not shown yet. Focus follows it. */
-  const pendingFocus = useRef<boolean | null>(null);
+  /**
+   * The state that the student asked for, and until when focus follows it. The page can draw the
+   * list again after the change, for example when a refresh arrives, and that draw can drop the
+   * focus, so the follow lasts a moment and acts only while nothing in the list has focus.
+   */
+  const pendingFocus = useRef<{ value: boolean; until: number } | null>(null);
   const setMinimized = (value: boolean) => {
     // An expanded list starts at the top, and so does a list that goes to the bar.
     scrollMemory.current.top = 0;
-    pendingFocus.current = value;
+    pendingFocus.current = { value, until: Date.now() + FOCUS_FOLLOW_MS };
     if (saved) actions.saveSettings({ ...saved, minimized: value });
   };
   const onMinimize = surface === 'inpage' && saved ? () => setMinimized(true) : undefined;
@@ -147,10 +154,18 @@ export function App(props: AppProps) {
    * leaves focus alone.
    */
   useLayoutEffect(() => {
-    if (pendingFocus.current !== minimized) return;
-    pendingFocus.current = null;
-    rootRef.current
-      ?.querySelector<HTMLElement>(minimized ? '[data-part="expand"]' : '[data-part="minimize"]')
+    const pending = pendingFocus.current;
+    const root = rootRef.current;
+    if (pending === null || root === null) return;
+    if (Date.now() > pending.until) {
+      pendingFocus.current = null;
+      return;
+    }
+    if (pending.value !== minimized) return;
+    const owner = root.getRootNode() as Document | ShadowRoot;
+    if (owner.activeElement !== null && root.contains(owner.activeElement)) return;
+    root
+      .querySelector<HTMLElement>(minimized ? '[data-part="expand"]' : '[data-part="minimize"]')
       ?.focus();
   });
   /** The opener to focus once the view is back. */

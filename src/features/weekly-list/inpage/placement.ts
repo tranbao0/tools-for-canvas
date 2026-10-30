@@ -115,9 +115,17 @@ export function moveContainer(container: HTMLElement, parent: Node, before: Node
   if (active !== null && active.isConnected) (active as HTMLElement).focus({ preventScroll: true });
 }
 
-/** The scrolling card inside the container, when the list has rendered. */
-function cardOf(container: HTMLElement): HTMLElement | null {
-  return hostOf(container)?.shadowRoot?.querySelector<HTMLElement>('.wr') ?? null;
+/**
+ * The element of the list that scrolls, when the list has rendered: the region of the groups, or
+ * the whole card in a view that has no such region, such as the settings.
+ */
+export function cardOf(container: HTMLElement): HTMLElement | null {
+  const root = hostOf(container)?.shadowRoot;
+  return (
+    root?.querySelector<HTMLElement>('.wr-scroll') ??
+    root?.querySelector<HTMLElement>('.wr') ??
+    null
+  );
 }
 
 /**
