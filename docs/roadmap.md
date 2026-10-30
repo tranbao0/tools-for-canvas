@@ -8,7 +8,7 @@ No tool needs an account, uses AI or sends data anywhere but the student's own C
 The order below is the build order.
 Each tool gets its own design decision in `docs/design.md` before it is built.
 
-## 1. Weekly list (in progress)
+## 1. Weekly list (built)
 
 - Spans that start today, Past due in every span, and checked items that never count as late.
 - The list inside the new dashboard grid, with a floating panel as the fallback, and a docked panel on long classic dashboard pages.
