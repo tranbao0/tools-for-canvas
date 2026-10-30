@@ -335,8 +335,10 @@ export type { Offer };
  * It has no timer, so keyboard and screen reader users can reach it.
  */
 export interface UndoInfo {
-  kind: 'done' | 'skipped' | 'skipped_all' | 'deleted';
+  kind: 'done' | 'skipped' | 'skipped_all' | 'deleted' | 'announcement_read';
   count: number;
+  /** The key of the Announcements row that Undo brings back, so focus can follow it. */
+  target?: string;
 }
 
 export type SurfaceState =

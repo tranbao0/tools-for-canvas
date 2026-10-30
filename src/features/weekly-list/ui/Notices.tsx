@@ -175,6 +175,7 @@ const UNDO_TEXT = {
   skipped: 'undoSkipped',
   skipped_all: 'undoSkippedAll',
   deleted: 'undoDeleted',
+  announcement_read: 'undoAnnouncementRead',
 } as const satisfies Record<UndoInfo['kind'], PluralKey>;
 
 export type OneTimeNote = 'firstDone' | 'firstSkip';

@@ -1363,6 +1363,261 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   transform: translateX(14px);
 }
 
+/* The Tasks and Announcements tabs: text tabs on a line, the chosen one marked by a bar. */
+
+.wr-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  margin: 2px 0 4px;
+  border-bottom: 1px solid var(--wr-line);
+}
+
+.wr-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  margin-bottom: -1px;
+  padding: 0 8px;
+  border-bottom: 3px solid transparent;
+  color: var(--wr-text-2);
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.wr-tab:hover {
+  border-bottom-color: var(--wr-btn-line);
+  color: var(--wr-text);
+}
+
+.wr-tab[aria-selected='true'] {
+  border-bottom-color: var(--wr-brand);
+  color: var(--wr-text);
+}
+
+.wr-tab:focus-visible {
+  outline-offset: -3px;
+}
+
+.wr-tab-badge {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--wr-primary);
+  color: var(--wr-on-primary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+/* The Announcements tab: a bar with the Show read switch, then one row for each announcement. */
+
+.wr-ann-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  color: var(--wr-text-2);
+}
+
+.wr-ann-bar .wr-switch {
+  transform: scale(0.85);
+  transform-origin: right center;
+}
+
+.wr-ann {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--wr-line);
+}
+
+.wr-ann:last-child {
+  border-bottom: 0;
+}
+
+.wr-ann-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--wr-text-2);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.wr-ann-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: light-dark(var(--wr-course), color-mix(in srgb, var(--wr-course) 65%, #fff));
+}
+
+.wr-ann-course {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wr-ann-when {
+  margin-inline-start: auto;
+  white-space: nowrap;
+}
+
+.wr-ann-title {
+  display: block;
+  width: 100%;
+  margin-block: 1px;
+  padding-block: 3px;
+  color: var(--wr-link);
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.wr-ann-title:hover {
+  color: var(--wr-link-hover);
+  text-decoration: underline;
+}
+
+.wr-ann.is-unread .wr-ann-title {
+  font-weight: 700;
+}
+
+.wr-ann-author {
+  color: var(--wr-text-2);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.wr-ann-snippet {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--wr-text-2);
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.wr-ann-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 12px;
+}
+
+.wr-ann-actions:not(:empty) {
+  margin-top: 4px;
+}
+
+.wr-ann-read {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  color: var(--wr-link);
+  white-space: nowrap;
+}
+
+.wr-ann-read:hover {
+  color: var(--wr-link-hover);
+  text-decoration: underline;
+}
+
+.wr-ann-circle {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--wr-stroke);
+  border-radius: 50%;
+  background: var(--wr-bg);
+  color: transparent;
+  font-size: 8px;
+}
+
+.wr-ann-read:hover .wr-ann-circle {
+  border-color: var(--wr-text);
+  color: var(--wr-text);
+}
+
+.wr-ann-note {
+  margin-top: 4px;
+  color: var(--wr-text-2);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* The message of a teacher, after the sanitizer: only these tags and no style of its own. */
+
+.wr-ann-body {
+  margin-top: 4px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.wr-ann-body :where(p, ul, ol, blockquote, pre, table, h1, h2, h3, h4, h5, h6) {
+  margin: 0 0 8px;
+}
+
+.wr-ann-body :where(ul, ol) {
+  padding-inline-start: 20px;
+}
+
+.wr-ann-body ul {
+  list-style: disc;
+}
+
+.wr-ann-body ol {
+  list-style: decimal;
+}
+
+.wr-ann-body :where(h1, h2, h3, h4, h5, h6) {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wr-ann-body blockquote {
+  padding-inline-start: 10px;
+  border-inline-start: 3px solid var(--wr-line);
+}
+
+.wr-ann-body a {
+  color: var(--wr-link);
+  text-decoration: underline;
+}
+
+.wr-ann-body img {
+  max-width: 100%;
+  height: auto;
+}
+
+.wr-ann-body :where(table, pre) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.wr-ann-body :where(th, td) {
+  padding: 2px 6px;
+  border: 1px solid var(--wr-line);
+}
+
+.wr-ann-body :where(code, pre) {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.wr-skel-tall {
+  height: 64px;
+}
+
 /* Medium widths */
 
 @container wr (width >= 320px) {
@@ -1430,6 +1685,11 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   .wr-sublist {
     margin-left: 4px;
     padding-left: 6px;
+  }
+
+  .wr-tab {
+    min-height: 32px;
+    padding: 0 6px;
   }
 
   .wr-form-actions .wr-btn {

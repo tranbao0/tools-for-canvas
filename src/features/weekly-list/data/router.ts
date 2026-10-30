@@ -175,6 +175,13 @@ export function routeDataMessage(
         : { ...message.request, surface: 'inpage' as const };
       return allowed.then(() => owner.getState(request));
     }
+    case 'weekrow:announcement-feed': {
+      // A content script is an in-page list, whatever it says.
+      const request = host.isExtensionPage(sender)
+        ? message.request
+        : { ...message.request, surface: 'inpage' as const };
+      return allowed.then(() => owner.announcementFeed(request));
+    }
     case 'weekrow:page-context':
       return allowed.then(async (): Promise<PageContextReply> => ({
         settings: await host.readSettings(),

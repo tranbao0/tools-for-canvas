@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { sanitizeHtml } from './sanitize';
+import { HOSTILE_MESSAGE } from '../../../tests/fixtures/announcements';
+import { htmlToText, sanitizeHtml } from './sanitize';
 
 const ORIGIN = 'https://school.instructure.com';
 
@@ -244,5 +245,60 @@ describe('sanitizeHtml: the hostile corpus', () => {
   it('returns an empty fragment for an empty message', () => {
     expect(clean('')).toBe('');
     expect(clean('   ')).toBe('');
+  });
+});
+
+describe('htmlToText', () => {
+  it('reads the text of the allowed and of the unlisted tags, with a break between blocks', () => {
+    expect(
+      htmlToText('<p>The <strong>lab</strong> moves.</p><p>Bring <em>goggles</em>.</p>', 200),
+    ).toBe('The lab moves. Bring goggles.');
+    expect(
+      htmlToText('<ul><li>One</li><li>Two</li></ul>a<br>b<custom-tag>c</custom-tag>', 200),
+    ).toBe('One Two a bc');
+    expect(htmlToText('<table><tr><td>A</td><td>214</td></tr></table>', 200)).toBe('A 214');
+  });
+
+  it('collapses white space and decodes entities', () => {
+    expect(htmlToText('<p>  a\n\n   b &amp; c &lt;d&gt; &nbsp; e </p>', 200)).toBe('a b & c <d> e');
+  });
+
+  it('leaves out the text of every element that carries code or a foreign document', () => {
+    const text = htmlToText(
+      '<p>keep</p><script>window.__x = 1</script><style>p{color:red}</style><svg><text>svg</text></svg>' +
+        '<math><mtext>math</mtext></math><template>tpl</template><noscript>ns</noscript>' +
+        '<iframe>frame</iframe><textarea>area</textarea><title>title</title><form>form</form>',
+      200,
+    );
+    expect(text).toBe('keep');
+  });
+
+  it('returns text that is never read as markup', () => {
+    const text = htmlToText('<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>', 200);
+    const box = document.createElement('div');
+    box.textContent = text;
+    expect(box.querySelector('script')).toBeNull();
+    expect(text).toBe('<script>alert(1)</script>');
+  });
+
+  it('runs none of the hostile corpus and keeps its good text', () => {
+    const text = htmlToText(HOSTILE_MESSAGE, 400);
+    expect(text).toContain('The lab section moves to Science Hall 214 on Thursday.');
+    expect(text).toContain('Bring your goggles');
+    expect(text).not.toContain('__pwned');
+    expect(text).not.toContain('Send');
+    expect(text).not.toContain('password');
+  });
+
+  it('cuts the text at the limit and adds an ellipsis', () => {
+    expect(htmlToText('<p>abcdefghij</p>', 5)).toBe('abcde…');
+    expect(htmlToText('<p>abcde</p>', 5)).toBe('abcde');
+    expect(htmlToText('<p>' + 'word '.repeat(5000) + '</p>', 50).length).toBeLessThanOrEqual(51);
+  });
+
+  it('stays flat on deep and large input', () => {
+    expect(htmlToText(`${'<div>'.repeat(5000)}x${'</div>'.repeat(5000)}`, 10)).toBeTypeOf('string');
+    expect(htmlToText('<span>a</span>'.repeat(20000), 100000).length).toBeLessThanOrEqual(5000);
+    expect(htmlToText('', 10)).toBe('');
   });
 });

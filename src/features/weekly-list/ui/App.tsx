@@ -27,7 +27,10 @@ import {
   staleText,
   type OneTimeNote,
 } from './Notices';
-import { Bar, newId, type HeadingLevel } from '../../../shared/ui/parts';
+import { Bar, newId, newIds, type HeadingLevel } from '../../../shared/ui/parts';
+import type { ListTab } from '../data/announcements';
+import { Announcements } from './Announcements';
+import { ListTabs, tabId } from './ListTabs';
 import { ChevronDownIcon } from '../../../shared/ui/icons';
 import { Rings } from './Rings';
 import { SettingsPanel } from './Settings';
@@ -55,6 +58,7 @@ interface ScrollMemory {
 function ScrollRegion(props: {
   memory: ScrollMemory;
   resetKey: string;
+  label: string;
   children: ComponentChildren;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -74,7 +78,7 @@ function ScrollRegion(props: {
       class="wr-scroll"
       role="region"
       tabIndex={0}
-      aria-label={t('scrollRegionLabel')}
+      aria-label={props.label}
       onScroll={(event) => {
         memory.top = event.currentTarget.scrollTop;
       }}
@@ -133,6 +137,8 @@ export function App(props: AppProps) {
   const [settingsFrom, setSettingsFrom] = useState<string | null>(null);
   /** The scroll position of the groups, which a redraw, a refresh or the settings keep. */
   const scrollMemory = useRef<ScrollMemory>({ top: 0, key: '' });
+  /** The scroll position of the Announcements tab. Each tab keeps its own (decision 24). */
+  const announcementsScroll = useRef<ScrollMemory>({ top: 0, key: '' });
   const saved = props.settings?.value;
   const minimized = surface === 'inpage' && saved?.minimized === true;
   /**
@@ -144,6 +150,7 @@ export function App(props: AppProps) {
   const setMinimized = (value: boolean) => {
     // An expanded list starts at the top, and so does a list that goes to the bar.
     scrollMemory.current.top = 0;
+    announcementsScroll.current.top = 0;
     pendingFocus.current = { value, until: Date.now() + FOCUS_FOLLOW_MS };
     if (saved) actions.saveSettings({ ...saved, minimized: value });
   };
@@ -218,7 +225,12 @@ export function App(props: AppProps) {
         state={state}
         actions={actions}
         rootRef={rootRef}
-        scrollMemory={surface === 'inpage' ? scrollMemory.current : null}
+        scrollMemory={
+          surface === 'inpage'
+            ? { tasks: scrollMemory.current, announcements: announcementsScroll.current }
+            : null
+        }
+        announcements={props.announcements}
         settings={props.settings?.value}
         onSettings={openSettings}
         onMinimize={onMinimize}
@@ -386,8 +398,10 @@ function ReadyView(props: {
   state: ReadyState;
   actions: Actions;
   rootRef: RefObject<HTMLDivElement | null>;
-  /** The scroll position of the groups, for the in-page list. The side panel scrolls as a page. */
-  scrollMemory: ScrollMemory | null;
+  /** The scroll position of each tab, for the in-page list. The side panel scrolls as a page. */
+  scrollMemory: Record<ListTab, ScrollMemory> | null;
+  /** The Announcements tab, or `undefined` on a surface without the tabs. */
+  announcements: AppProps['announcements'];
   /** The saved settings, or `undefined` until they load. */
   settings: Settings | undefined;
   onSettings: OpenSettings;
@@ -402,6 +416,11 @@ function ReadyView(props: {
   const [save, setSave] = useState<'idle' | 'saving' | 'failed'>('idle');
   const [notes, setNotes] = useState<OneTimeNote[]>([]);
   const [limitedId] = useState(() => newId('limited'));
+  const [tabIds] = useState(() => newIds('tab', ['tasks', 'announcements', 'panel'] as const));
+  const ann = props.announcements;
+  const tab: ListTab = ann?.tab ?? 'tasks';
+  /** The row that Undo brings back, and until when focus follows it. */
+  const restoredRow = useRef<{ key: string; until: number } | null>(null);
   /** Where focus goes when the form closes. The list is re-created, so this is a selector. */
   const returnFocus = useRef<string | null>(null);
   /** The last focused control outside the notices. Focus goes back there when a notice closes. */
@@ -429,7 +448,31 @@ function ReadyView(props: {
     }
   });
 
-  useUndoShortcut(rootRef, form === null && state.undo !== null, () => actions.undo());
+  /** Undo of a read mark brings the row back, and focus goes to it (WCAG 2.4.3). */
+  const undo = () => {
+    const target = state.undo?.target;
+    if (target !== undefined) restoredRow.current = { key: target, until: Date.now() + 1500 };
+    actions.undo();
+  };
+  useLayoutEffect(() => {
+    const pending = restoredRow.current;
+    const root = rootRef.current;
+    if (pending === null || root === null) return;
+    if (Date.now() > pending.until) {
+      restoredRow.current = null;
+      return;
+    }
+    const row = [...root.querySelectorAll<HTMLElement>('[data-row-key]')].find(
+      (element) => element.dataset.rowKey === pending.key,
+    );
+    const control =
+      row?.querySelector<HTMLElement>('[data-part="mark"]') ??
+      row?.querySelector<HTMLElement>('[data-part="title"]');
+    if (control === null || control === undefined) return;
+    restoredRow.current = null;
+    control.focus();
+  });
+  useUndoShortcut(rootRef, form === null && state.undo !== null, undo);
   useStickyInsets(rootRef, surface, form === null);
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -559,15 +602,36 @@ function ReadyView(props: {
       )}
     </>
   );
+  /** Changing the tab keeps the scroll position of the tab that the student leaves. */
+  const selectTab = (next: ListTab) => {
+    const region = rootRef.current?.querySelector<HTMLElement>('.wr-scroll');
+    if (props.scrollMemory !== null && region) props.scrollMemory[tab].top = region.scrollTop;
+    actions.setListTab(next);
+  };
+  const content =
+    ann === undefined ? (
+      groups
+    ) : (
+      <div role="tabpanel" id={tabIds.panel} aria-labelledby={tabId(tabIds, tab)}>
+        {tab === 'tasks' ? (
+          groups
+        ) : (
+          <Announcements data={ann} view={view} origin={state.origin} actions={actions} />
+        )}
+      </div>
+    );
   const scrolling = props.scrollMemory ? (
     <ScrollRegion
-      memory={props.scrollMemory}
-      resetKey={`${view.span.kind}:${view.span.days}:${view.spanStart}`}
+      memory={props.scrollMemory[tab]}
+      resetKey={
+        tab === 'tasks' ? `${view.span.kind}:${view.span.days}:${view.spanStart}` : 'announcements'
+      }
+      label={tab === 'tasks' ? t('scrollRegionLabel') : t('feedRegion')}
     >
-      {groups}
+      {content}
     </ScrollRegion>
   ) : (
-    groups
+    content
   );
 
   if (form !== null) {
@@ -635,8 +699,16 @@ function ReadyView(props: {
           />
         </div>
       )}
+      {ann !== undefined && (
+        <ListTabs
+          tab={tab}
+          unread={ann.feed?.status === 'ready' ? ann.feed.unread : null}
+          ids={tabIds}
+          onSelect={selectTab}
+        />
+      )}
       {scrolling}
-      <Dock undo={state.undo} onUndo={() => actions.undo()} onClose={() => actions.dismissUndo()} />
+      <Dock undo={state.undo} onUndo={undo} onClose={() => actions.dismissUndo()} />
     </>
   );
 }

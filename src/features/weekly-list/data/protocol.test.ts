@@ -3,6 +3,7 @@ import { isSettings } from '../model/settings';
 import {
   isAcceptOfferMessage,
   isActionMessage,
+  isAnnouncementFeedMessage,
   isCanvasDetectedMessage,
   isDataAction,
   isDataMessage,
@@ -78,6 +79,15 @@ describe('actions', () => {
     { kind: 'moveTaskToToday', noteId: '8' },
     { kind: 'sendDelete', noteId: '8' },
     { kind: 'cancelDelete', noteId: '8' },
+    { kind: 'markAnnouncement', courseId: '101', topicId: '31901' },
+    { kind: 'markAnnouncement', courseId: '1~2', topicId: '31901' },
+    {
+      kind: 'restoreAnnouncement',
+      userId: '9',
+      origin: 'https://a.edu',
+      courseId: '101',
+      topicId: '31901',
+    },
   ];
 
   it.each(valid)('accepts $kind', (action) => {
@@ -104,12 +114,56 @@ describe('actions', () => {
     },
     { kind: 'sendDelete', noteId: '' },
     { kind: 'cancelDelete' },
+    { kind: 'markAnnouncement', courseId: '101' },
+    { kind: 'markAnnouncement', courseId: '../users/self', topicId: '1' },
+    { kind: 'markAnnouncement', courseId: '1', topicId: '2/read' },
+    { kind: 'markAnnouncement', courseId: 101, topicId: '2' },
+    {
+      kind: 'restoreAnnouncement',
+      userId: '',
+      origin: 'https://a.edu',
+      courseId: '1',
+      topicId: '2',
+    },
+    { kind: 'restoreAnnouncement', userId: '9', origin: '', courseId: '1', topicId: '2' },
+    { kind: 'restoreAnnouncement', userId: '9', origin: 'https://a.edu', courseId: '1' },
     { kind: 'createTask', input: { ...TASK, title: '' } },
     { kind: 'deleteOverride', key: 'assignment:1' },
     { kind: 'keepSavedAddress' },
     { key: 'assignment:1' },
   ])('rejects %j', (action) => {
     expect(isDataAction(action)).toBe(false);
+  });
+});
+
+describe('the announcement feed message', () => {
+  const request = { surface: 'inpage', scopeCourseId: null, force: false, tab: null };
+
+  it('accepts a request of a surface that shows the tabs', () => {
+    expect(isAnnouncementFeedMessage({ type: 'weekrow:announcement-feed', request })).toBe(true);
+    expect(
+      isAnnouncementFeedMessage({
+        type: 'weekrow:announcement-feed',
+        request: { ...request, surface: 'panel', scopeCourseId: '101', force: true, tab: 'tasks' },
+      }),
+    ).toBe(true);
+    expect(isDataMessage({ type: 'weekrow:announcement-feed', request })).toBe(true);
+  });
+
+  it.each([
+    { ...request, surface: 'page' },
+    { ...request, surface: undefined },
+    { ...request, scopeCourseId: '1/../x' },
+    { ...request, scopeCourseId: undefined },
+    { ...request, force: 'yes' },
+    { ...request, tab: 'settings' },
+    { ...request, tab: undefined },
+    null,
+    'inpage',
+  ])('rejects the request %j', (bad) => {
+    expect(isAnnouncementFeedMessage({ type: 'weekrow:announcement-feed', request: bad })).toBe(
+      false,
+    );
   });
 });
 

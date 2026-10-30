@@ -18,6 +18,13 @@ import type { AssignmentData, SubmissionData } from '../model/types';
 import { browser } from 'wxt/browser';
 import { emptyCoverage, type PlannerCoverage } from './coverage';
 import type { Patch } from './patches';
+import {
+  DEFAULT_LIST_TABS,
+  type AnnouncementMarks,
+  type AnnouncementsLoaded,
+  type ListTab,
+  type TabSurface,
+} from './announcements';
 
 /** Data that loads once per browser session. */
 export interface SessionData {
@@ -76,7 +83,13 @@ export interface SessionCache {
    * service worker restart still sends them.
    */
   pendingDeletes: Record<string, number>;
-  /** The next id for patches. */
+  /** The announcements of the Announcements tab, and the courses they were loaded for. */
+  announcements: AnnouncementsLoaded | null;
+  /** Read marks that the student made and Canvas may not show yet (decision 24). */
+  announcementMarks: AnnouncementMarks;
+  /** The tab each surface shows, for the browser session (decision 24). */
+  listTabs: Record<TabSurface, ListTab>;
+  /** The next id for patches, announcement marks and loads. */
   nextId: number;
 }
 
@@ -147,6 +160,9 @@ export function emptyCache(origin: string): SessionCache {
     limits: { lastRoundAt: null, lastRoundScope: null, lastFullAt: null },
     patches: [],
     pendingDeletes: {},
+    announcements: null,
+    announcementMarks: {},
+    listTabs: { ...DEFAULT_LIST_TABS },
     nextId: 1,
   };
 }
@@ -157,6 +173,7 @@ const PART_KEYS = {
   details: 'weekrowDetails',
   undated: 'weekrowUndated',
   allAssignments: 'weekrowAllAssignments',
+  announcements: 'weekrowAnnouncements',
 } as const satisfies Partial<Record<keyof SessionCache, string>>;
 
 type CachePart = keyof typeof PART_KEYS;
@@ -167,7 +184,8 @@ const HEAD_KEY = 'weekrowCache';
 const PARTS = Object.keys(PART_KEYS) as CachePart[];
 
 function emptyPart(part: CachePart): unknown {
-  return part === 'planner' ? emptyCoverage() : {};
+  if (part === 'planner') return emptyCoverage();
+  return part === 'announcements' ? null : {};
 }
 
 /**
@@ -204,8 +222,14 @@ function createSessionCacheItem() {
         await area().remove([HEAD_KEY, ...Object.values(PART_KEYS)]);
         return;
       }
-      const { planner, details, undated, allAssignments, ...head } = value;
-      const parts: Record<CachePart, unknown> = { planner, details, undated, allAssignments };
+      const { planner, details, undated, allAssignments, announcements, ...head } = value;
+      const parts: Record<CachePart, unknown> = {
+        planner,
+        details,
+        undated,
+        allAssignments,
+        announcements,
+      };
       const changes: Record<string, unknown> = { [HEAD_KEY]: head };
       const sent = PARTS.filter((part) => written.get(part) !== parts[part]);
       for (const part of sent) changes[PART_KEYS[part]] = parts[part];

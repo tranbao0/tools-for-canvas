@@ -28,5 +28,11 @@ export function spyActions(): SpyActions {
     saveSettings: vi.fn(),
     saveTools: vi.fn(),
     markNoteSeen: vi.fn(),
+    setListTab: vi.fn(),
+    setShowRead: vi.fn(),
+    markAnnouncementRead: vi.fn(),
+    loadAnnouncementMessage: vi.fn(async () => null),
+    openAnnouncement: vi.fn(),
+    retryAnnouncements: vi.fn(),
   };
 }

@@ -141,3 +141,44 @@ export function sanitizeHtml(html: string, options: SanitizeOptions): DocumentFr
   if (source.body) walk(source.body, fragment, 0);
   return fragment;
 }
+
+/** Tags that end a line of text, so the text of two of them never runs together. */
+const BREAKING_TAGS: ReadonlySet<string> = new Set(
+  'p br div li ul ol h1 h2 h3 h4 h5 h6 blockquote pre table tr th td'.split(' '),
+);
+
+/**
+ * The plain text of `html`, cut to `maxLength` characters, for a preview. It reads an inert
+ * document: no script runs and no image loads. Elements that carry code or a foreign document
+ * (script, style, svg and the like) add no text. The result is text to show as text, never markup.
+ */
+export function htmlToText(html: string, maxLength: number): string {
+  const source = new DOMParser().parseFromString(html, 'text/html');
+  const parts: string[] = [];
+  let length = 0;
+  let budget = MAX_NODES;
+
+  function walk(parent: Node, level: number): void {
+    if (level > MAX_LEVEL) return;
+    for (const node of parent.childNodes) {
+      if (length > maxLength || budget-- <= 0) return;
+      if (node.nodeType === 3) {
+        const text = (node as Text).data;
+        parts.push(text);
+        length += text.length;
+      } else if (node.nodeType === 1) {
+        const element = node as Element;
+        const tag = element.localName;
+        if (element.namespaceURI !== HTML_NAMESPACE || DROPPED_TAGS.has(tag)) continue;
+        const breaks = BREAKING_TAGS.has(tag);
+        if (breaks) parts.push(' ');
+        walk(element, level + 1);
+        if (breaks) parts.push(' ');
+      }
+    }
+  }
+
+  if (source.body) walk(source.body, 0);
+  const text = parts.join('').replace(/\s+/g, ' ').trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength).trimEnd()}…` : text;
+}

@@ -108,7 +108,9 @@ describe('adapter paths', () => {
     loadPage(document, { ...fixture, rightSide: sidebar });
     await mountWhenReady(onMount, { pathname });
 
-    expect(mounts).toEqual([{ courseId, container: container(), release: expect.any(Function) }]);
+    expect(mounts).toEqual([
+      { courseId, announcements: true, container: container(), release: expect.any(Function) },
+    ]);
   });
 });
 
@@ -127,7 +129,12 @@ describe('classic dashboard', () => {
 
     expect(outcome.kind).toBe('mounted');
     expect(mounts).toEqual([
-      { courseId: null, container: container(), release: expect.any(Function) },
+      {
+        courseId: null,
+        announcements: true,
+        container: container(),
+        release: expect.any(Function),
+      },
     ]);
     expectMountedBeforeRightSide();
   });
@@ -215,7 +222,12 @@ describe('dashboard without a right column', () => {
 
     expect(outcome.kind).toBe('mounted');
     expect(mounts).toEqual([
-      { courseId: null, container: container(), release: expect.any(Function) },
+      {
+        courseId: null,
+        announcements: true,
+        container: container(),
+        release: expect.any(Function),
+      },
     ]);
     // A page without layout (happy-dom) has no room beside the content: the card stacks above it.
     expect(panelContainer()?.nextElementSibling).toBe(document.getElementById('content'));
@@ -231,6 +243,15 @@ describe('dashboard without a right column', () => {
     const outcome = await mountWhenReady(onMount, { pathname: '/' });
 
     expect(outcome.kind).toBe('mounted');
+    // The widget dashboard has its own Announcements widget, so the list gets no tabs there.
+    expect(mounts).toEqual([
+      {
+        courseId: null,
+        announcements: false,
+        container: container(),
+        release: expect.any(Function),
+      },
+    ]);
     // A page without layout (happy-dom) has no flex row, so the grid counts as one stack.
     const first = document.querySelector('[data-testid="widget-column-1"]');
     expect(panelContainer()?.parentElement).toBe(first);
@@ -422,7 +443,7 @@ describe('course home', () => {
 
     expect(outcome.kind).toBe('mounted');
     expect(mounts).toEqual([
-      { courseId: '5', container: container(), release: expect.any(Function) },
+      { courseId: '5', announcements: true, container: container(), release: expect.any(Function) },
     ]);
     expectMountedBeforeRightSide();
   });
@@ -472,7 +493,7 @@ describe('mountWhenReady', () => {
     expect(stale.isConnected).toBe(false);
     expect(document.querySelectorAll(`#${MOUNT_CONTAINER_ID}`)).toHaveLength(1);
     expect(mounts).toEqual([
-      { courseId: '5', container: container(), release: expect.any(Function) },
+      { courseId: '5', announcements: true, container: container(), release: expect.any(Function) },
     ]);
     expectMountedBeforeRightSide();
     expect(nativeTodoHidden()).toBe(false);

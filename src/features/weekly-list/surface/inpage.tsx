@@ -7,6 +7,7 @@ import { browser, type Browser } from 'wxt/browser';
 import { showNativeTodo, syncNativeTodo } from '../inpage/nativeTodo';
 import type { InpageMount } from '../inpage/mount';
 import { attempt, startInpage } from '../inpage/start';
+import { findWidgetGrid } from '../../../shared/canvas/widgetDashboard';
 import { detectPageTheme } from '../../../shared/ui/pageTheme';
 import { logFailure } from '../../../shared/platform/log';
 import { App } from '../ui/App';
@@ -54,6 +55,7 @@ export function createInpageView(
         state={state}
         actions={runtime.actions}
         settings={runtime.settings()}
+        announcements={runtime.announcements()}
       />,
       container,
     );
@@ -131,6 +133,8 @@ function mountList(
   const runtime = createSurfaceRuntime(inpageHost(window, ctx, channel), {
     surface: 'inpage',
     scopeCourseId: mount.courseId,
+    // The widget grid renders late, so a page that looked like List View is checked again.
+    announcementTabs: () => mount.announcements && findWidgetGrid(document) === null,
   });
   const remove = mountInpageList(mount, { runtime, settings: channel.settings });
   // The context ending stops the page flow, and that removes the list.

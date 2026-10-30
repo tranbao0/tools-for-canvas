@@ -33,7 +33,8 @@ import type { ToolsSettings } from '../../../shared/settings/tools';
 import { nextDayStart } from '../model/time';
 import type { ItemView, Settings, SurfaceState, UndoInfo, WeekView } from '../model/types';
 import type { SeenNotes } from '../data/storage';
-import type { Actions, AppProps, TaskInput } from '../ui/contract';
+import { announcementKey, type AnnouncementFeed, type ListTab } from '../data/announcements';
+import type { Actions, AnnouncementsProps, AppProps, TaskInput } from '../ui/contract';
 
 /** The full refresh timer of decision 11. */
 export const TIMER_REFRESH_MS = 5 * 60_000;
@@ -104,6 +105,12 @@ interface SurfaceOptions {
   surface: RequestSurface;
   /** The course of a course home page, or `null`. */
   scopeCourseId: string | null;
+  /**
+   * The surface shows the Tasks and Announcements tabs (design decision 24). A surface without
+   * them, such as the new widget dashboard, sends no announcement request. A function is asked
+   * again for each request and each draw, for a page whose layout becomes clear late.
+   */
+  announcementTabs?: boolean | (() => boolean);
 }
 
 export interface SurfaceRuntime {
@@ -116,6 +123,8 @@ export interface SurfaceRuntime {
    * welcome page show no settings in place. The course list comes with the state.
    */
   settings(): InPlaceSettings | undefined;
+  /** The Announcements tab, or `undefined` on a surface without the tabs. */
+  announcements(): AnnouncementsProps | undefined;
   /** Calls the listener after every change of the state or the settings. Returns a remover. */
   subscribe(listener: (state: SurfaceState) => void): () => void;
   start(): void;
@@ -134,6 +143,8 @@ const DATA_WRITES: ReadonlySet<DataAction['kind']> = new Set([
   'deleteTask',
   'moveTaskToToday',
   'cancelDelete',
+  'markAnnouncement',
+  'restoreAnnouncement',
 ]);
 
 /** The Undo notice that shows: what it says, and what Undo needs. */
@@ -173,6 +184,10 @@ function showsSettingsInPlace(surface: RequestSurface): boolean {
   return surface === 'panel' || surface === 'inpage';
 }
 
+function isTabSurface(surface: RequestSurface): surface is 'panel' | 'inpage' {
+  return surface === 'panel' || surface === 'inpage';
+}
+
 export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions): SurfaceRuntime {
   let base: SurfaceState = { kind: 'loading' };
   /** The span the student last asked for. A shown span can lag behind it while a span loads. */
@@ -184,6 +199,16 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   let coursesOrigin: string | null = null;
   let courseFilter: string | null | undefined = undefined;
   let notice: Notice | null = null;
+  const tabsOption = options.announcementTabs ?? false;
+  const tabsShown = (): boolean =>
+    isTabSurface(options.surface) && (typeof tabsOption === 'function' ? tabsOption() : tabsOption);
+  let listTab: ListTab = 'tasks';
+  let feed: AnnouncementFeed | null = null;
+  let showRead = false;
+  /** The feed request that carried the tab the student chose last. An earlier reply cannot undo it. */
+  let tabChosenAt = 0;
+  let feedSeq = 0;
+  let feedApplied = 0;
   /** Counts writes, so only the reply to the newest write shows its Undo notice. */
   let writeSeq = 0;
   let requestSeq = 0;
@@ -310,6 +335,37 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     followCourses(reply);
     scheduleMidnight();
     emit();
+    if (reply.kind === 'ready') requestFeed();
+  }
+
+  /**
+   * Asks for the Announcements tab: the rows, the unread count and the tab that the surface
+   * remembers. A newer reply replaces an older one, and a reply to a request that went out before
+   * the student chose a tab keeps that choice.
+   */
+  function requestFeed(force = false, tab: ListTab | null = null): void {
+    if (!tabsShown() || stopped || !isTabSurface(options.surface)) return;
+    feedSeq += 1;
+    const seq = feedSeq;
+    if (tab !== null) tabChosenAt = seq;
+    host
+      .send({
+        type: 'weekrow:announcement-feed',
+        request: {
+          surface: options.surface,
+          scopeCourseId: options.scopeCourseId,
+          force,
+          tab,
+        },
+      })
+      .then((reply) => {
+        if (stopped || seq <= feedApplied || reply === undefined) return;
+        feedApplied = seq;
+        feed = reply as AnnouncementFeed;
+        if (seq >= tabChosenAt) listTab = feed.tab;
+        emit();
+      })
+      .catch(report('announcement feed'));
   }
 
   function reload(): void {
@@ -391,7 +447,15 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
           // A newer write or a stopped surface ends this notice before it shows.
           if (isWrite && seq === writeSeq && !stopped) {
             const count = data.flatMap((d) => (d.kind === 'overrides' ? d.entries : [null])).length;
-            notice = { info: { kind: shows, count }, data };
+            const first = data[0];
+            const target =
+              first?.kind === 'announcement'
+                ? announcementKey(first.courseId, first.topicId)
+                : undefined;
+            notice = {
+              info: target === undefined ? { kind: shows, count } : { kind: shows, count, target },
+              data,
+            };
             emit();
           } else {
             for (const d of data) if (d.kind === 'delete') endDelete(d.noteId);
@@ -509,7 +573,20 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
         sendAction(
           data.kind === 'delete'
             ? { kind: 'cancelDelete', noteId: data.noteId }
-            : { kind: 'restore', userId: data.userId, origin: data.origin, entries: data.entries },
+            : data.kind === 'announcement'
+              ? {
+                  kind: 'restoreAnnouncement',
+                  userId: data.userId,
+                  origin: data.origin,
+                  courseId: data.courseId,
+                  topicId: data.topicId,
+                }
+              : {
+                  kind: 'restore',
+                  userId: data.userId,
+                  origin: data.origin,
+                  entries: data.entries,
+                },
         );
       }
     },
@@ -576,12 +653,39 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     markNoteSeen(note: 'firstDone' | 'firstSkip') {
       host.markNoteSeen(note).then(reload).catch(report('seen note'));
     },
+    setListTab(next: ListTab) {
+      if (!tabsShown()) return;
+      listTab = next;
+      emit();
+      requestFeed(false, next);
+    },
+    setShowRead(show: boolean) {
+      showRead = show;
+      emit();
+    },
+    markAnnouncementRead(courseId: string, topicId: string) {
+      sendAction({ kind: 'markAnnouncement', courseId, topicId }, 'announcement_read');
+    },
+    async loadAnnouncementMessage(courseId: string, topicId: string) {
+      const reply = (await host.send({ type: 'weekrow:announcement', courseId, topicId })) as
+        { message?: unknown } | undefined;
+      return typeof reply?.message === 'string' ? reply.message : null;
+    },
+    openAnnouncement(courseId: string, topicId: string) {
+      originAction((origin) =>
+        host.openUrl(`${origin}/courses/${courseId}/discussion_topics/${topicId}`, origin),
+      );
+    },
+    retryAnnouncements() {
+      requestFeed(true);
+    },
   };
 
   return {
     actions,
     state: current,
     settings: inPlaceSettings,
+    announcements: () => (tabsShown() ? { tab: listTab, feed, showRead } : undefined),
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);

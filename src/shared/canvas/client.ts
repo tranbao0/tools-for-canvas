@@ -55,6 +55,8 @@ export function findNextLink(linkHeader: string | null): string | null {
 }
 
 export const PER_PAGE = 100;
+/** The most courses one announcements request names, so its URL stays short. */
+export const MAX_FEED_COURSES_PER_REQUEST = 20;
 /** Canvas rejects more ids, and `per_page` must be at least the number of ids. */
 export const MAX_ASSIGNMENT_IDS_PER_REQUEST = 100;
 
@@ -287,6 +289,36 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
             ['per_page', PER_PAGE],
           ]),
         ),
+
+      listAnnouncementFeed: async (courseIds, range) => {
+        const batches = chunk(unique(courseIds), MAX_FEED_COURSES_PER_REQUEST);
+        const results = await Promise.all(
+          batches.map((ids) =>
+            getAll<AnnouncementTopic>(
+              apiUrl('/api/v1/announcements', [
+                ...ids.map((id): QueryParam => ['context_codes[]', `course_${pathId(id)}`]),
+                ['start_date', range.start],
+                ['end_date', range.end],
+                ['active_only', true],
+                ['per_page', PER_PAGE],
+              ]),
+            ),
+          ),
+        );
+        return uniqueBy(
+          results
+            .flat()
+            .sort((a, b) => Date.parse(b.posted_at ?? '') - Date.parse(a.posted_at ?? '')),
+          (topic) => topic.id,
+        );
+      },
+
+      setAnnouncementRead: async (courseId, topicId, read) => {
+        await send({
+          method: read ? 'PUT' : 'DELETE',
+          url: `${topicPath(courseId, topicId)}/read`,
+        });
+      },
     };
   }
 

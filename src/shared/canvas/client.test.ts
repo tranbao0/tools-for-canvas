@@ -474,6 +474,89 @@ describe('writes', () => {
     ]);
   });
 
+  it('listAnnouncementFeed names the courses once, asks for published posts and follows the pages', async () => {
+    const seen: SeenRequest[] = [];
+    server.use(
+      http.get(api('/api/v1/announcements'), async ({ request }) => {
+        seen.push(await describeRequest(request));
+        const url = new URL(request.url);
+        if (url.searchParams.get('page') === null) {
+          return HttpResponse.json(
+            [{ id: '1', posted_at: '2026-10-20T10:00:00Z', context_code: 'course_7' }],
+            { headers: { Link: `<${ORIGIN}/api/v1/announcements?page=2>; rel="next"` } },
+          );
+        }
+        return HttpResponse.json([
+          { id: '2', posted_at: '2026-10-26T10:00:00Z', context_code: 'course_8' },
+        ]);
+      }),
+    );
+    const topics = await testClient().listAnnouncementFeed(['7', '8'], {
+      start: '2026-10-13T04:00:00.000Z',
+      end: '2026-10-27T18:00:00.000Z',
+    });
+    expect(topics.map((topic) => topic.id)).toEqual(['2', '1']);
+    expect(seen[0]?.params).toEqual([
+      ['context_codes[]', 'course_7'],
+      ['context_codes[]', 'course_8'],
+      ['start_date', '2026-10-13T04:00:00.000Z'],
+      ['end_date', '2026-10-27T18:00:00.000Z'],
+      ['active_only', 'true'],
+      ['per_page', '100'],
+    ]);
+    expect(seen).toHaveLength(2);
+  });
+
+  it('listAnnouncementFeed splits many courses into several requests', async () => {
+    const seen = recordAll(() => []);
+    const ids = Array.from({ length: 45 }, (_, index) => String(index + 1));
+    await testClient().listAnnouncementFeed(ids, { start: 'a', end: 'b' });
+    const sizes = seen.map(
+      (request) => request.params.filter(([name]) => name === 'context_codes[]').length,
+    );
+    expect(sizes.sort((a, b) => a - b)).toEqual([5, 20, 20]);
+  });
+
+  it('listAnnouncementFeed refuses a course id that is not a Canvas id, without a request', async () => {
+    const seen = recordAll(() => []);
+    await expect(
+      testClient().listAnnouncementFeed(['7&x=1'], { start: 'a', end: 'b' }),
+    ).rejects.toMatchObject({ kind: 'bad_request' });
+    expect(seen).toEqual([]);
+  });
+
+  it('setAnnouncementRead sends PUT to mark and DELETE to unmark, with the token and no body', async () => {
+    const seen: SeenRequest[] = [];
+    server.use(
+      http.all(api('/api/v1/courses/77/discussion_topics/9/read'), async ({ request }) => {
+        seen.push(await describeRequest(request));
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const client = testClient();
+    await expect(client.setAnnouncementRead('77', '9', true)).resolves.toBeUndefined();
+    await expect(client.setAnnouncementRead('77', '9', false)).resolves.toBeUndefined();
+    const read = {
+      path: '/api/v1/courses/77/discussion_topics/9/read',
+      params: [],
+      csrf: CSRF_TOKEN,
+      contentType: null,
+      body: undefined,
+    };
+    expect(seen).toEqual([
+      { ...read, method: 'PUT' },
+      { ...read, method: 'DELETE' },
+    ]);
+  });
+
+  it('setAnnouncementRead refuses an id that is not a Canvas id, without a request', async () => {
+    const seen = recordAll();
+    await expect(testClient().setAnnouncementRead('77', '9/../x', true)).rejects.toMatchObject({
+      kind: 'bad_request',
+    });
+    expect(seen).toEqual([]);
+  });
+
   it('getAnnouncement sends GET for the topic of the course', async () => {
     const seen = recordAll(() => ({ id: '9', title: 'Hello', message: '<p>Hi</p>' }));
     await expect(testClient().getAnnouncement('77', '9')).resolves.toMatchObject({ id: '9' });

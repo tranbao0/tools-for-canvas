@@ -13,6 +13,7 @@ function fakeRuntime(state: SurfaceState): SurfaceRuntime & { set(next: SurfaceS
     actions: noopActions(),
     state: () => current,
     settings: () => undefined,
+    announcements: () => undefined,
     subscribe: () => () => undefined,
     start: () => undefined,
     stop: () => undefined,
@@ -111,7 +112,7 @@ describe('mountInpageList', () => {
     const settings = settingsStore(initial);
     const releaseColumn = vi.fn();
     const dispose = mountInpageList(
-      { courseId: null, container, release: releaseColumn },
+      { courseId: null, announcements: false, container, release: releaseColumn },
       { runtime, settings },
     );
     const host = (): HTMLElement => container.querySelector(SHADOW_HOST_NAME) as HTMLElement;

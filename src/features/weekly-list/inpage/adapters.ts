@@ -24,6 +24,11 @@ export interface AdapterResult {
   anchors: SidebarAnchors;
   /** The page has no right column, so the list takes a place in the page content (layout.ts). */
   claimsLayout: boolean;
+  /**
+   * The list shows the Tasks and Announcements tabs (design decision 24). The new widget
+   * dashboard has its own Announcements widget, so it gets none.
+   */
+  announcements: boolean;
 }
 
 /** The dashboard is the root path. `/dashboard` serves the same page. */
@@ -31,6 +36,8 @@ const DASHBOARD_PATH = /^\/(?:dashboard\/?)?$/;
 /** `/courses/123`, with an optional trailing slash. Cross-shard ids look like `1~2`. */
 const COURSE_HOME_PATH = /^\/courses\/(\d+(?:~\d+)?)\/?$/;
 const RIGHT_SIDE_CLASS = 'with-right-side';
+/** Canvas adds this body class on the server when the dashboard shows List View. */
+const LIST_VIEW_CLASS = 'dashboard-is-planner';
 const DASHBOARD_SIDEBAR_CONTENT = '.Sidebar__TodoListContainer, .todo-list-header, .coming_up';
 
 /** Whether the path is the dashboard, whichever of its views the student chose. */
@@ -69,10 +76,13 @@ export function findDashboardAnchors(pathname: string, doc: Document): AdapterRe
   if (!showsRightColumn(doc)) {
     if (doc.getElementById('dashboard-app-container') !== null) return null;
     if (doc.getElementById('content') === null) return null;
-    return { courseId: null, anchors, claimsLayout: true };
+    // List View has the class from the server. The widget dashboard has neither class, and the
+    // markup of its widgets is not read here, because it renders late.
+    const listView = doc.body.classList.contains(LIST_VIEW_CLASS);
+    return { courseId: null, anchors, claimsLayout: true, announcements: listView };
   }
   if (anchors.rightSide.querySelector(DASHBOARD_SIDEBAR_CONTENT) === null) return null;
-  return { courseId: null, anchors, claimsLayout: false };
+  return { courseId: null, anchors, claimsLayout: false, announcements: true };
 }
 
 /**
@@ -83,7 +93,7 @@ export function findCourseHomeAnchors(pathname: string, doc: Document): AdapterR
   const courseId = COURSE_HOME_PATH.exec(pathname)?.[1];
   if (courseId === undefined) return null;
   const anchors = showsRightColumn(doc) ? findSidebarAnchors(doc) : null;
-  return anchors === null ? null : { courseId, anchors, claimsLayout: false };
+  return anchors === null ? null : { courseId, anchors, claimsLayout: false, announcements: true };
 }
 
 /** Creates the empty mount container before `#right-side`. */

@@ -26,6 +26,7 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
     dashboardData: vi.fn(async () => ({ origin: SAVED, ready: true, courses: [], extras: [] })),
     announcement: vi.fn(async () => ({ title: 'Hello', message: '<p>Hi</p>' })),
     announcements: vi.fn(async () => []),
+    announcementFeed: vi.fn(async () => ({ status: 'unavailable', tab: 'tasks' })),
     dispose: vi.fn(),
   } as unknown as DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi.fn> };
 }
@@ -135,6 +136,38 @@ describe('routeDataMessage', () => {
       expect(host.markNoteSeen).toHaveBeenCalledWith('firstSkip');
     });
 
+    it('answer a feed request, and make a content script an in-page list whatever it says', async () => {
+      const request = { surface: 'panel', scopeCourseId: null, force: false, tab: null };
+      await routeDataMessage(
+        owner,
+        { type: 'weekrow:announcement-feed', request },
+        EXTENSION_PAGE,
+        host,
+      );
+      await routeDataMessage(
+        owner,
+        { type: 'weekrow:announcement-feed', request },
+        CONTENT_SCRIPT,
+        host,
+      );
+      expect(owner.announcementFeed.mock.calls.map(([asked]) => asked.surface)).toEqual([
+        'panel',
+        'inpage',
+      ]);
+    });
+
+    it('route the announcement read mark as an action, from the saved Canvas only', async () => {
+      const message = {
+        type: 'weekrow:action',
+        action: { kind: 'markAnnouncement', courseId: '101', topicId: '31901' },
+      };
+      await routeDataMessage(owner, message, CONTENT_SCRIPT, host);
+      expect(owner.act).toHaveBeenCalledWith(message.action);
+      owner.act.mockClear();
+      await expect(routeDataMessage(owner, message, OTHER_CANVAS, host)).rejects.toThrow();
+      expect(owner.act).not.toHaveBeenCalled();
+    });
+
     it.each([
       ['another Canvas host', OTHER_CANVAS],
       ['a frame inside the saved Canvas', { ...CONTENT_SCRIPT, frameId: 5 }],
@@ -218,6 +251,10 @@ describe('routeDataMessage', () => {
         { type: 'weekrow:dashboard-data' },
         { type: 'weekrow:announcement', ...ANNOUNCEMENT },
         { type: 'weekrow:announcement-list', courseId: '101' },
+        {
+          type: 'weekrow:announcement-feed',
+          request: { surface: 'inpage', scopeCourseId: null, force: false, tab: null },
+        },
         { type: 'weekrow:save-tools', tools: DEFAULT_TOOLS_SETTINGS },
       ];
       for (const message of messages) {
@@ -226,6 +263,7 @@ describe('routeDataMessage', () => {
       expect(owner.dashboardData).not.toHaveBeenCalled();
       expect(owner.announcement).not.toHaveBeenCalled();
       expect(owner.announcements).not.toHaveBeenCalled();
+      expect(owner.announcementFeed).not.toHaveBeenCalled();
       expect(host.saveTools).not.toHaveBeenCalled();
     });
 

@@ -33,13 +33,20 @@ async function open(
   options: { page?: string; path?: string; width?: number } = {},
 ) {
   const path = options.path ?? '/';
-  const served = await serveScenario(context, [{ path, page: options.page ?? 'dashboard-card-view' }]);
+  const served = await serveScenario(context, [
+    { path, page: options.page ?? 'dashboard-card-view' },
+  ]);
   await addCsrfCookie(context, served.canvas.origin);
   await page.setViewportSize({ width: options.width ?? 1280, height: 1000 });
   await openCanvasPage(page, served.canvas.origin, path);
   await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
   await settledList(page);
   return served;
+}
+
+/** The button of a row that opens its message. The Mark as read button has the title in its name too. */
+function titleButton(list: Locator, title: string): Locator {
+  return list.getByRole('button', { name: title, exact: true });
 }
 
 function tab(list: Locator, name: string | RegExp): Locator {
@@ -49,12 +56,14 @@ function tab(list: Locator, name: string | RegExp): Locator {
 async function openAnnouncements(page: Page): Promise<Locator> {
   const list = inpageList(page);
   await tab(list, /^Announcements/).click();
-  await expect(list.getByRole('button', { name: LAB_ROOM })).toBeVisible();
+  await expect(titleButton(list, LAB_ROOM)).toBeVisible();
   return list;
 }
 
 function writesTo(canvas: FakeCanvas, method: string) {
-  return canvas.requests.filter((r) => r.method === method && READ_PATH.test(r.path.split('?')[0] ?? ''));
+  return canvas.requests.filter(
+    (r) => r.method === method && READ_PATH.test(r.path.split('?')[0] ?? ''),
+  );
 }
 
 test.describe('the switch', () => {
@@ -73,8 +82,13 @@ test.describe('the switch', () => {
     // The strip sits under the rings and above the groups.
     const order = await list.evaluate((host) => {
       const root = host.querySelector('weekrow-list')?.shadowRoot;
-      const at = (selector: string) => root?.querySelector(selector)?.getBoundingClientRect().top ?? -1;
-      return [at('.wr-rings, .wr-ring-row, [data-part="rings"]'), at('[role="tablist"]'), at('.wr-scroll')];
+      const at = (selector: string) =>
+        root?.querySelector(selector)?.getBoundingClientRect().top ?? -1;
+      return [
+        at('.wr-rings, .wr-ring-row, [data-part="rings"]'),
+        at('[role="tablist"]'),
+        at('.wr-scroll'),
+      ];
     });
     expect(order[1]).toBeGreaterThan(0);
     expect(order[2]).toBeGreaterThan(order[1] ?? 0);
@@ -95,7 +109,9 @@ test.describe('the switch', () => {
     await expect(list.getByRole('tab')).toHaveCount(0);
     // Give a late request time to appear.
     await page.waitForTimeout(500);
-    expect(canvas.requests.filter((r) => r.path.startsWith('/api/v1/announcements'))).toHaveLength(0);
+    expect(canvas.requests.filter((r) => r.path.startsWith('/api/v1/announcements'))).toHaveLength(
+      0,
+    );
   });
 });
 
@@ -135,9 +151,16 @@ test.describe('the Announcements tab', () => {
     const list = await openAnnouncements(page);
     const panel = list.getByRole('tabpanel');
     await list.getByRole('switch', { name: 'Show read' }).click();
-    await expect(panel.locator('.wr-ann-title')).toHaveText([LAB_ROOM, OFFICE_HOURS, GOGGLES, SYLLABUS]);
+    await expect(panel.locator('.wr-ann-title')).toHaveText([
+      LAB_ROOM,
+      OFFICE_HOURS,
+      GOGGLES,
+      SYLLABUS,
+    ]);
     // A read row has no Mark as read control.
-    await expect(panel.locator('li', { hasText: SYLLABUS }).getByRole('button', { name: /Mark as read/ })).toHaveCount(0);
+    await expect(
+      panel.locator('li', { hasText: SYLLABUS }).getByRole('button', { name: /Mark as read/ }),
+    ).toHaveCount(0);
   });
 
   test('opens a message in place without marking it as read, and the sanitizer holds', async ({
@@ -146,7 +169,7 @@ test.describe('the Announcements tab', () => {
   }) => {
     const { canvas } = await open(context, page);
     const list = await openAnnouncements(page);
-    const toggle = list.getByRole('button', { name: LAB_ROOM });
+    const toggle = titleButton(list, LAB_ROOM);
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
@@ -156,7 +179,9 @@ test.describe('the Announcements tab', () => {
     await expect(body.locator('script, iframe, form, svg, input')).toHaveCount(0);
     await expect(body.locator('[onerror], [onclick], [style]')).toHaveCount(0);
     await expect(body.getByRole('link', { name: 'party' })).toHaveCount(0);
-    expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined();
+    expect(
+      await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned),
+    ).toBeUndefined();
 
     // Opening sends no read mark and loads no Canvas topic page.
     await page.waitForTimeout(300);
@@ -184,7 +209,7 @@ test.describe('the Announcements tab', () => {
     await list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` }).click();
 
     await expect.poll(() => writesTo(canvas, 'PUT').length).toBe(1);
-    await expect(list.getByRole('button', { name: LAB_ROOM })).toHaveCount(0);
+    await expect(titleButton(list, LAB_ROOM)).toHaveCount(0);
     await expect(list.locator('.wr-toast')).toContainText('Marked as read');
     await expect(tab(list, /^Announcements/)).toHaveAccessibleName('Announcements, 2 unread');
     await settledList(page);
@@ -195,7 +220,7 @@ test.describe('the Announcements tab', () => {
     expect(puts[0]?.headers['x-csrf-token']).toBe(CSRF_TOKEN);
     expect(state.readAnnouncements.has('101:31901')).toBe(true);
     // The row stays away after the lists load again.
-    await expect(list.getByRole('button', { name: LAB_ROOM })).toHaveCount(0);
+    await expect(titleButton(list, LAB_ROOM)).toHaveCount(0);
     // Focus moves to the next row.
     await expect(list.getByRole('button', { name: `Mark as read: ${OFFICE_HOURS}` })).toBeFocused();
   });
@@ -204,14 +229,16 @@ test.describe('the Announcements tab', () => {
     const { canvas, state } = await open(context, page);
     const list = await openAnnouncements(page);
     await list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` }).click();
-    await expect(list.getByRole('button', { name: LAB_ROOM })).toHaveCount(0);
+    await expect(titleButton(list, LAB_ROOM)).toHaveCount(0);
 
     await list.locator('.wr-toast').getByRole('button', { name: 'Undo' }).click();
-    await expect(list.getByRole('button', { name: LAB_ROOM })).toBeVisible();
+    await expect(titleButton(list, LAB_ROOM)).toBeVisible();
     await expect.poll(() => writesTo(canvas, 'DELETE').length).toBe(1);
     await settledList(page);
     expect(writesTo(canvas, 'PUT')).toHaveLength(1);
-    expect(writesTo(canvas, 'DELETE')[0]?.path).toBe('/api/v1/courses/101/discussion_topics/31901/read');
+    expect(writesTo(canvas, 'DELETE')[0]?.path).toBe(
+      '/api/v1/courses/101/discussion_topics/31901/read',
+    );
     expect(state.readAnnouncements.has('101:31901')).toBe(false);
     await expect(tab(list, /^Announcements/)).toHaveAccessibleName('Announcements, 3 unread');
     await expect(list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` })).toBeFocused();
@@ -223,7 +250,7 @@ test.describe('the Announcements tab', () => {
     await list.getByRole('switch', { name: 'Show read' }).click();
     await list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` }).click();
     await expect(list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` })).toHaveCount(0);
-    await expect(list.getByRole('button', { name: LAB_ROOM })).toBeVisible();
+    await expect(titleButton(list, LAB_ROOM)).toBeVisible();
   });
 
   test('remembers the chosen tab for the session, and each tab keeps its scroll position', async ({
@@ -235,7 +262,7 @@ test.describe('the Announcements tab', () => {
     await page.reload();
     await page.locator('html[data-fixture-ready="true"]').waitFor({ state: 'attached' });
     await expect(tab(inpageList(page), /^Announcements/)).toHaveAttribute('aria-selected', 'true');
-    await expect(list.getByRole('button', { name: LAB_ROOM })).toBeVisible();
+    await expect(titleButton(list, LAB_ROOM)).toBeVisible();
     await tab(inpageList(page), 'Tasks').click();
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
   });
@@ -265,13 +292,17 @@ test.describe('hidden courses', () => {
     page,
     background,
   }) => {
-    await saveSettings(background, { ...DEFAULT_SETTINGS, hiddenCourseIds: ['101'] });
+    await saveSettings(background, { ...DEFAULT_SETTINGS, hiddenCourseIds: ['104'] });
     const { canvas } = await open(context, page);
     const list = inpageList(page);
     await tab(list, /^Announcements/).click();
-    await expect(list.locator('.wr-ann-title')).toHaveText([OFFICE_HOURS, GOGGLES]);
-    for (const request of canvas.requests.filter((r) => r.path.startsWith('/api/v1/announcements'))) {
-      expect(new URL(request.url).searchParams.getAll('context_codes[]')).not.toContain('course_101');
+    await expect(list.locator('.wr-ann-title')).toHaveText([LAB_ROOM, OFFICE_HOURS]);
+    for (const request of canvas.requests.filter((r) =>
+      r.path.startsWith('/api/v1/announcements'),
+    )) {
+      expect(new URL(request.url).searchParams.getAll('context_codes[]')).not.toContain(
+        'course_104',
+      );
     }
   });
 });

@@ -5,6 +5,7 @@
  */
 import type { ToolsSettings } from '../../../shared/settings/tools';
 import type { Settings, SurfaceState } from '../model/types';
+import type { AnnouncementFeed, ListTab } from '../data/announcements';
 
 export type SurfaceKind = 'panel' | 'inpage';
 
@@ -57,12 +58,44 @@ export interface Actions {
   /** Saves the switches of the small tools shown in place (decision 22). */
   saveTools(tools: ToolsSettings): void;
   markNoteSeen(note: 'firstDone' | 'firstSkip'): void;
+  /** Shows the Tasks or the Announcements tab, and keeps the choice for the session. */
+  setListTab(tab: ListTab): void;
+  /** Shows or hides the announcements that the student has read. */
+  setShowRead(show: boolean): void;
+  /**
+   * Marks an announcement as read. Only this explicit action writes a read state (design
+   * decision 24). An Undo notice follows.
+   */
+  markAnnouncementRead(courseId: string, topicId: string): void;
+  /**
+   * The full message of an announcement, as HTML that a teacher wrote, or `null` when it did not
+   * load. Loading it does not mark the announcement as read.
+   */
+  loadAnnouncementMessage(courseId: string, topicId: string): Promise<string | null>;
+  /** Opens the announcement page in Canvas. Canvas marks the announcement as read there. */
+  openAnnouncement(courseId: string, topicId: string): void;
+  /** Loads the announcements again, after a failed load. */
+  retryAnnouncements(): void;
+}
+
+/** The Announcements tab of a surface (design decision 24). */
+export interface AnnouncementsProps {
+  tab: ListTab;
+  /** `null` until the first reply. */
+  feed: AnnouncementFeed | null;
+  showRead: boolean;
 }
 
 export interface AppProps {
   surface: SurfaceKind;
   state: SurfaceState;
   actions: Actions;
+  /**
+   * Set on a surface that shows the Tasks and Announcements tabs: the side panel, the classic
+   * dashboard, List View and course home pages. Missing on the new widget dashboard, which has
+   * its own Announcements widget.
+   */
+  announcements?: AnnouncementsProps;
   /**
    * The data for the settings shown in place (decision 18). Missing until loaded; the gear then
    * shows a short loading state.

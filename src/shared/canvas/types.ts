@@ -154,6 +154,8 @@ export interface AnnouncementTopic {
   read_state?: string;
   user_name?: string | null;
   author?: { display_name?: string | null } | null;
+  /** `course_<id>`. The announcements list sends it for each topic (`include_context_code`). */
+  context_code?: string;
 }
 
 export interface Group {
@@ -314,4 +316,17 @@ export interface CanvasApi {
   getAnnouncement(courseId: string, topicId: string): Promise<AnnouncementTopic>;
   /** The announcements of one course posted in `range`, newest first. */
   listAnnouncements(courseId: string, range: TimeRange): Promise<AnnouncementTopic[]>;
+  /**
+   * The published announcements of several courses posted in `range`, newest first, in as many
+   * requests as the number of courses needs. Each topic names its course in `context_code`.
+   */
+  listAnnouncementFeed(
+    courseIds: readonly string[],
+    range: TimeRange,
+  ): Promise<AnnouncementTopic[]>;
+  /**
+   * Marks an announcement as read (`PUT .../read`) or as unread (`DELETE .../read`). Canvas
+   * answers 204 with no body.
+   */
+  setAnnouncementRead(courseId: string, topicId: string, read: boolean): Promise<void>;
 }

@@ -223,6 +223,31 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
           () => announcements.get(courseId) ?? [],
           priority,
         ),
+      listAnnouncementFeed: (courseIds, range) => {
+        // Canvas reads its state when the request arrives, not when a held answer is released.
+        const topics = courseIds.flatMap((courseId) =>
+          (announcements.get(courseId) ?? [])
+            .filter(
+              (topic) =>
+                topic.posted_at !== null &&
+                Date.parse(topic.posted_at) >= Date.parse(range.start) &&
+                Date.parse(topic.posted_at) <= Date.parse(range.end),
+            )
+            .map((topic) => ({ context_code: `course_${courseId}`, ...structuredClone(topic) })),
+        );
+        return call('listAnnouncementFeed', [courseIds, range], () => topics, priority);
+      },
+      setAnnouncementRead: (courseId, topicId, read) =>
+        call(
+          'setAnnouncementRead',
+          [courseId, topicId, read],
+          () => {
+            const topic = announcements.get(courseId)?.find((entry) => entry.id === topicId);
+            if (topic === undefined) throw canvasError('not_found', 404);
+            topic.read_state = read ? 'read' : 'unread';
+          },
+          priority,
+        ),
       listGroups: () => call('listGroups', [], () => scenario.groups, priority),
       getColors: () => call('getColors', [], () => scenario.colors, priority),
       getDashboardPositions: () =>

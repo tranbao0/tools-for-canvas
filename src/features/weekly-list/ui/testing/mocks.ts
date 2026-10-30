@@ -726,5 +726,14 @@ export function noopActions(
     saveSettings: record('saveSettings'),
     saveTools: record('saveTools'),
     markNoteSeen: record('markNoteSeen'),
+    setListTab: record('setListTab'),
+    setShowRead: record('setShowRead'),
+    markAnnouncementRead: record('markAnnouncementRead'),
+    loadAnnouncementMessage: async (...args) => {
+      record('loadAnnouncementMessage')(...args);
+      return null;
+    },
+    openAnnouncement: record('openAnnouncement'),
+    retryAnnouncements: record('retryAnnouncements'),
   };
 }

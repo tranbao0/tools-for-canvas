@@ -22,9 +22,16 @@ export function startPanel(root: HTMLElement): SurfaceRuntime {
   const runtime = createSurfaceRuntime(extensionPageHost(), {
     surface: 'panel',
     scopeCourseId: null,
+    announcementTabs: true,
   });
-  mountRuntime(root, runtime, (state, settings) => (
-    <App surface="panel" state={state} actions={runtime.actions} settings={settings} />
+  mountRuntime(root, runtime, (state, settings, announcements) => (
+    <App
+      surface="panel"
+      state={state}
+      actions={runtime.actions}
+      settings={settings}
+      announcements={announcements}
+    />
   ));
   browser.windows
     .getCurrent()

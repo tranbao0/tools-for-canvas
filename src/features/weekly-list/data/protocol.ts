@@ -10,6 +10,8 @@ import type { ToolsSettings } from '../../../shared/settings/tools';
 import { isSettings } from '../model/settings';
 import type { Settings, SurfaceState } from '../model/types';
 import type { SurfaceKind, TaskInput } from '../ui/contract';
+import { isCanvasId } from '../../../shared/canvas/ids';
+import { isListTab, type AnnouncementFeedRequest } from './announcements';
 import type { OverrideFlags } from './patches';
 
 /** The extension page or surface that asks. `page` is the welcome page. */
@@ -66,7 +68,23 @@ export type DataAction =
   /** The Undo notice of a task delete ended, so the delayed DELETE is sent now. */
   | { kind: 'sendDelete'; noteId: string }
   /** Undo of a task delete. It works until the DELETE request has started. */
-  | { kind: 'cancelDelete'; noteId: string };
+  | { kind: 'cancelDelete'; noteId: string }
+  /**
+   * The student marks an announcement of the Announcements tab as read: `PUT .../read`. Only this
+   * explicit action writes a read state (decisions 22 and 24).
+   */
+  | { kind: 'markAnnouncement'; courseId: string; topicId: string }
+  /**
+   * Undo of that mark: `DELETE .../read`. The owner ignores it when `userId` is not the signed-in
+   * user or `origin` is not the saved Canvas, as it does for `restore`.
+   */
+  | {
+      kind: 'restoreAnnouncement';
+      userId: string;
+      origin: string;
+      courseId: string;
+      topicId: string;
+    };
 
 type DataActionKind = DataAction['kind'];
 
@@ -74,6 +92,15 @@ type DataActionKind = DataAction['kind'];
 interface GetStateMessage {
   type: 'weekrow:get-state';
   request: SurfaceRequest;
+}
+
+/**
+ * Asks for the Announcements tab of one surface. The reply is an `AnnouncementFeed`. It is a
+ * message of its own, so the state of the list stays as it is for a surface without the tab.
+ */
+interface AnnouncementFeedMessage {
+  type: 'weekrow:announcement-feed';
+  request: AnnouncementFeedRequest;
 }
 
 /** The reply is a `RefreshReply`. */
@@ -161,6 +188,7 @@ export interface PageChangedMessage {
 
 export type DataMessage =
   | GetStateMessage
+  | AnnouncementFeedMessage
   | RefreshMessage
   | ActionMessage
   | AcceptOfferMessage
@@ -193,7 +221,14 @@ export type UndoData =
       origin: string;
       entries: PreviousOverride[];
     }
-  | { kind: 'delete'; userId: string; origin: string; noteId: string };
+  | { kind: 'delete'; userId: string; origin: string; noteId: string }
+  | {
+      kind: 'announcement';
+      userId: string;
+      origin: string;
+      courseId: string;
+      topicId: string;
+    };
 
 export interface ActionReply {
   /** Set when the action can be undone. The surface shows the Undo notice and keeps this data. */
@@ -245,6 +280,18 @@ export function isSurfaceRequest(value: unknown): value is SurfaceRequest {
     Number.isInteger(value['spanOffset']) &&
     (filter === undefined || isStringOrNull(filter)) &&
     isStringOrNull(value['scopeCourseId'])
+  );
+}
+
+export function isAnnouncementFeedRequest(value: unknown): value is AnnouncementFeedRequest {
+  if (!isObject(value)) return false;
+  const tab = value['tab'];
+  const scope = value['scopeCourseId'];
+  return (
+    (value['surface'] === 'panel' || value['surface'] === 'inpage') &&
+    (scope === null || isCanvasId(scope)) &&
+    typeof value['force'] === 'boolean' &&
+    (tab === null || isListTab(tab))
   );
 }
 
@@ -303,6 +350,15 @@ export function isDataAction(value: unknown): value is DataAction {
       return isTaskInput(value['input']);
     case 'updateTask':
       return isNonEmptyString(value['noteId']) && isTaskInput(value['input']);
+    case 'markAnnouncement':
+      return isCanvasId(value['courseId']) && isCanvasId(value['topicId']);
+    case 'restoreAnnouncement':
+      return (
+        isNonEmptyString(value['userId']) &&
+        isNonEmptyString(value['origin']) &&
+        isCanvasId(value['courseId']) &&
+        isCanvasId(value['topicId'])
+      );
     case 'deleteTask':
     case 'moveTaskToToday':
     case 'sendDelete':
@@ -323,6 +379,10 @@ export function isRefreshMessage(value: unknown): value is RefreshMessage {
     isString(value['reason']) &&
     REFRESH_REASONS.includes(value['reason'])
   );
+}
+
+export function isAnnouncementFeedMessage(value: unknown): value is AnnouncementFeedMessage {
+  return hasType(value, 'weekrow:announcement-feed') && isAnnouncementFeedRequest(value['request']);
 }
 
 export function isActionMessage(value: unknown): value is ActionMessage {
@@ -367,6 +427,7 @@ export function isCanvasPageLoadedMessage(value: unknown): value is CanvasPageLo
 export function isDataMessage(value: unknown): value is DataMessage {
   return (
     isGetStateMessage(value) ||
+    isAnnouncementFeedMessage(value) ||
     isRefreshMessage(value) ||
     isActionMessage(value) ||
     isAcceptOfferMessage(value) ||

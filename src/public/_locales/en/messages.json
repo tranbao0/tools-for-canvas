@@ -712,5 +712,74 @@
   },
   "alsoDueInfo": {
     "message": "The Due card counts the next 90 days. Missing and Submitted count every date. This list adds the work that the list above leaves out."
+  },
+  "undoAnnouncementRead_one": {
+    "message": "Marked as read"
+  },
+  "undoAnnouncementRead_other": {
+    "message": "$1 marked as read"
+  },
+  "listTabs": {
+    "message": "Weekly list view"
+  },
+  "tabTasks": {
+    "message": "Tasks"
+  },
+  "tabAnnouncements": {
+    "message": "Announcements"
+  },
+  "tabAnnouncementsUnread": {
+    "message": "Announcements, $1 unread"
+  },
+  "feedRegion": {
+    "message": "Announcements"
+  },
+  "showRead": {
+    "message": "Show read"
+  },
+  "feedLoading": {
+    "message": "Loading announcements"
+  },
+  "feedEmpty": {
+    "message": "No announcements in the last 14 days."
+  },
+  "feedEmptyUnread": {
+    "message": "No unread announcements in the last 14 days."
+  },
+  "feedFailed": {
+    "message": "Couldn't load your announcements"
+  },
+  "feedUnread": {
+    "message": "Unread"
+  },
+  "feedMarkRead": {
+    "message": "Mark as read"
+  },
+  "feedMarkReadItem": {
+    "message": "Mark as read: $1"
+  },
+  "feedShowLess": {
+    "message": "Show less"
+  },
+  "feedOpen": {
+    "message": "Open in Canvas"
+  },
+  "feedOpenNote": {
+    "message": "Canvas marks the announcement as read when you open it there."
+  },
+  "feedMessageLoading": {
+    "message": "Loading the message"
+  },
+  "feedMessageFailed": {
+    "message": "Couldn't load the message."
+  },
+  "feedToday": {
+    "message": "Today"
+  },
+  "feedYesterday": {
+    "message": "Yesterday"
+  },
+  "feedDaysAgo": {
+    "message": "$1 days ago"
   }
 }

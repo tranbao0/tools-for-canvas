@@ -29,6 +29,7 @@ import type {
 } from '../../../shared/canvas/types';
 import { assignmentIdsToLookup } from '../model/normalize';
 import type { AssignmentData } from '../model/types';
+import { DEFAULT_LIST_TABS } from './announcements';
 import { toAssignmentData, type RoundScope, type SessionCache, type SessionData } from './cache';
 import {
   chunkInterval,
@@ -508,5 +509,8 @@ export function clearData(cache: SessionCache): SessionCache {
     lastSuccessAt: null,
     patches: [],
     pendingDeletes: {},
+    announcements: null,
+    announcementMarks: {},
+    listTabs: { ...DEFAULT_LIST_TABS },
   };
 }

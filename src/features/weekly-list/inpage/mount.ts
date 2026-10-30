@@ -22,6 +22,8 @@ export interface InpageMount {
    * On the widget dashboard and in List View the layout moves it into the page content.
    */
   container: HTMLElement;
+  /** The list shows the Tasks and Announcements tabs (design decision 24). */
+  announcements: boolean;
   /** Undoes what the mount changed in the page layout, other than the container. */
   release(): void;
 }
@@ -106,6 +108,7 @@ export function mountWhenReady(
       const container = createMountContainer(doc, found.anchors);
       const mount: InpageMount = {
         courseId: found.courseId,
+        announcements: found.announcements,
         container,
         release: found.claimsLayout
           ? claimDashboardLayout(doc, container)

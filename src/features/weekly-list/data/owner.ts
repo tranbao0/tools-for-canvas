@@ -23,6 +23,19 @@ import type {
   DashboardData,
 } from '../../dashboard-fixes/protocol';
 import { assignmentIdsToLookup } from '../model/normalize';
+import {
+  DEFAULT_LIST_TABS,
+  announcementKey,
+  announcementRange,
+  confirmedMarks,
+  courseKeyOf,
+  feedRows,
+  settleMarks,
+  storedAnnouncements,
+  type AnnouncementFeed,
+  type AnnouncementFeedRequest,
+  type AnnouncementMark,
+} from './announcements';
 import { redoBlocksDone } from '../model/rules';
 import { moveToTodayTodoDate, todoDateFor } from '../model/tasks';
 import type { Item, Offer, Settings } from '../model/types';
@@ -198,6 +211,12 @@ export interface DataOwner {
   announcement(courseId: string, topicId: string): Promise<AnnouncementBody>;
   /** The recent announcements of one course. */
   announcements(courseId: string): Promise<AnnouncementEntry[]>;
+  /**
+   * The Announcements tab of one surface: the announcements of the last 14 days of the courses
+   * the student shows, with the read marks applied (decision 24). The first request loads them
+   * and replies at once with `loading`; the change marker tells the surface when they are in.
+   */
+  announcementFeed(request: AnnouncementFeedRequest): Promise<AnnouncementFeed>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
@@ -357,8 +376,15 @@ function withoutUnsentWrites(stored: SessionCache): { cache: SessionCache; dropp
   const pendingDeletes = Object.fromEntries(
     Object.entries(stored.pendingDeletes).filter(([noteId]) => waiting.has(noteId)),
   );
+  // A read mark that was never confirmed may or may not have reached Canvas. The list loads again.
+  const marks = confirmedMarks(stored.announcementMarks);
+  const lostMarks = Object.keys(marks).length < Object.keys(stored.announcementMarks).length;
+  const announcements =
+    lostMarks && stored.announcements !== null
+      ? { ...stored.announcements, checkedAt: null }
+      : stored.announcements;
   return {
-    cache: { ...stored, patches, pendingDeletes },
+    cache: { ...stored, patches, pendingDeletes, announcementMarks: marks, announcements },
     dropped: patches.length < stored.patches.length,
   };
 }
@@ -406,6 +432,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   /** Courses whose names did not load. The next round tries them again. */
   const statusesFailed = new Set<string>();
   const tasks = new Set<Promise<unknown>>();
+  /** The load of the Announcements list that runs now, by the courses it asks for. */
+  let announcementLoad: { key: string } | null = null;
 
   function track(promise: Promise<unknown>): void {
     const tracked = promise.catch((error: unknown) => deps.log('data task', error));
@@ -701,6 +729,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     // Running planner jobs finish without a trace, so their parts can load again.
     jobs.clear();
     detailsInFlight.clear();
+    announcementLoad = null;
   }
 
   /**
@@ -1390,6 +1419,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           patch.confirmedAt !== null ||
           (patch.kind === 'note' && patch.note === null && waiting.has(patch.noteId)),
       ),
+      announcementMarks: confirmedMarks(cache.announcementMarks),
     };
     // A DELETE that is out stays: it ends the task, and sending it again skips the check.
     for (const noteId of queuedDeletes) if (!startedDeletes.has(noteId)) requeueDelete(noteId);
@@ -1819,6 +1849,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       case 'cancelDelete':
         cancelDelete(action.noteId);
         return NO_UNDO;
+      case 'markAnnouncement':
+        return markAnnouncement(action.courseId, action.topicId, true, null);
+      case 'restoreAnnouncement':
+        return markAnnouncement(action.courseId, action.topicId, false, {
+          userId: action.userId,
+          origin: action.origin,
+        });
     }
   }
 
@@ -1935,6 +1972,192 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       author: topic.user_name ?? topic.author?.display_name ?? null,
       read: topic.read_state === 'read',
     }));
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Announcements tab (decision 24)
+  // ---------------------------------------------------------------------------------------------
+
+  function needsAnnouncementLoad(key: string, force: boolean): boolean {
+    const loaded = cache?.announcements ?? null;
+    if (force || loaded === null || loaded.courseKey !== key) return true;
+    return loaded.checkedAt === null || clock.now() - loaded.checkedAt >= REFRESH_LIMIT_MS;
+  }
+
+  /**
+   * Loads the list in the background. The result goes into the cache only for the student and
+   * the Canvas that asked, and it settles the read marks that were confirmed before the load
+   * started. A failure keeps the rows of the load before it.
+   */
+  function startAnnouncementLoad(origin: string, courseIds: readonly string[]): void {
+    const key = courseKeyOf(courseIds);
+    if (announcementLoad?.key === key || cache === null) return;
+    const entry = { key };
+    announcementLoad = entry;
+    const stamp = writeStamp();
+    const startSeq = nextId();
+    const api = apiFor(origin);
+    track(
+      (async () => {
+        let topics: ReturnType<typeof storedAnnouncements> | null = null;
+        try {
+          topics = storedAnnouncements(
+            await api.listAnnouncementFeed(courseIds, announcementRange(clock.now())),
+            courseIds,
+          );
+        } catch (error) {
+          deps.log('announcements', error);
+        }
+        if (announcementLoad === entry) announcementLoad = null;
+        if (!isCurrent(stamp) || cache === null) return;
+        const previous = cache.announcements;
+        const kept = previous?.courseKey === key ? previous.topics : null;
+        cache = {
+          ...cache,
+          announcements: {
+            courseKey: key,
+            topics: topics ?? kept,
+            checkedAt: clock.now(),
+            failed: topics === null,
+          },
+          announcementMarks:
+            topics === null
+              ? cache.announcementMarks
+              : settleMarks(cache.announcementMarks, startSeq),
+        };
+        persist();
+        await bump();
+      })(),
+    );
+  }
+
+  async function announcementFeed(request: AnnouncementFeedRequest): Promise<AnnouncementFeed> {
+    await ready();
+    const origin = await savedOrigin();
+    if (origin !== knownOrigin) await handleOrigin(origin);
+    const unavailable = (): AnnouncementFeed => ({
+      status: 'unavailable',
+      tab: cache?.listTabs[request.surface] ?? DEFAULT_LIST_TABS[request.surface],
+    });
+    if (origin === null || cache === null || cache.session === null) return unavailable();
+    if (cache.failure?.kind === 'signed_out' || !(await deps.hasAccess(origin))) {
+      return unavailable();
+    }
+    const settings = await store.settings.getValue();
+    if (cache === null || cache.session === null) return unavailable();
+    const session = cache.session;
+    if (request.tab !== null && cache.listTabs[request.surface] !== request.tab) {
+      cache = { ...cache, listTabs: { ...cache.listTabs, [request.surface]: request.tab } };
+      persist();
+    }
+    const ids = visibleCourseIds(session, settings);
+    const key = courseKeyOf(ids);
+    if (ids.length > 0 && needsAnnouncementLoad(key, request.force)) {
+      startAnnouncementLoad(origin, ids);
+    }
+    const loaded = cache.announcements;
+    const rows = feedRows({
+      topics: loaded?.topics ?? [],
+      marks: cache.announcementMarks,
+      session,
+      visibleCourseIds: ids,
+      scopeCourseId: request.scopeCourseId,
+      now: clock.now(),
+    });
+    const complete = loaded !== null && loaded.topics !== null && loaded.courseKey === key;
+    return {
+      status: 'ready',
+      origin,
+      userId: session.profile.id,
+      tab: cache.listTabs[request.surface],
+      rows,
+      unread: rows.filter((row) => !row.read).length,
+      loading: ids.length > 0 && !complete && announcementLoad !== null,
+      failed: ids.length > 0 && !complete && loaded?.failed === true && announcementLoad === null,
+    };
+  }
+
+  function updateMark(
+    key: string,
+    seq: number,
+    change: (mark: AnnouncementMark) => AnnouncementMark | null,
+  ): void {
+    const mark = cache?.announcementMarks[key];
+    if (cache === null || mark === undefined || mark.seq !== seq) return;
+    const { [key]: _removed, ...others } = cache.announcementMarks;
+    const next = change(mark);
+    cache = { ...cache, announcementMarks: next === null ? others : { ...others, [key]: next } };
+  }
+
+  /**
+   * Sends the read mark of an announcement. The reply is a 204 with no user, so the response
+   * check of the override writes cannot run. Canvas confirms the student before the request
+   * instead, as for a task create (decision 11). The mark stays on top of the list until a load
+   * that started after the confirmation shows it, and a failed write takes it away again.
+   */
+  async function runAnnouncementWrite(
+    courseId: string,
+    topicId: string,
+    read: boolean,
+    seq: number,
+    stamp: WriteStamp,
+  ): Promise<boolean> {
+    const key = announcementKey(courseId, topicId);
+    if (stamp.origin === null) return false;
+    if (!(await verifyUser(stamp))) {
+      updateMark(key, seq, () => null);
+      return false;
+    }
+    try {
+      await apiFor(stamp.origin).setAnnouncementRead(courseId, topicId, read);
+    } catch (error) {
+      deps.log('write', error);
+      if (!isCurrent(stamp)) return false;
+      updateMark(key, seq, () => null);
+      await verifyUser(stamp);
+      await finishWrite();
+      return false;
+    }
+    if (!isCurrent(stamp)) return false;
+    updateMark(key, seq, (mark) => ({ ...mark, confirmedSeq: nextId() }));
+    await finishWrite();
+    // The list needs no round: the mark holds until a load shows the new state.
+    return false;
+  }
+
+  async function markAnnouncement(
+    courseId: string,
+    topicId: string,
+    read: boolean,
+    undoing: { userId: string; origin: string } | null,
+  ): Promise<ActionReply> {
+    await ready();
+    const origin = knownOrigin;
+    const session = cache?.session;
+    if (origin === null || cache === null || session == null) return NO_UNDO;
+    const userId = session.profile.id;
+    if (undoing !== null && (undoing.userId !== userId || undoing.origin !== origin)) {
+      return NO_UNDO;
+    }
+    // Only an announcement that the list shows can get a mark.
+    const topic = cache.announcements?.topics?.find(
+      (candidate) => candidate.courseId === courseId && candidate.id === topicId,
+    );
+    const key = announcementKey(courseId, topicId);
+    if (topic === undefined) return NO_UNDO;
+    if ((cache.announcementMarks[key]?.read ?? topic.read) === read) return NO_UNDO;
+    const seq = nextId();
+    cache = {
+      ...cache,
+      announcementMarks: {
+        ...cache.announcementMarks,
+        [key]: { read, seq, confirmedSeq: null },
+      },
+    };
+    persist();
+    bumpLater();
+    void enqueueWrite((stamp) => runAnnouncementWrite(courseId, topicId, read, seq, stamp));
+    return read ? { undo: { kind: 'announcement', userId, origin, courseId, topicId } } : NO_UNDO;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -2095,6 +2318,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     dashboardData,
     announcement,
     announcements,
+    announcementFeed,
 
     async originChanged(origin) {
       await ready();

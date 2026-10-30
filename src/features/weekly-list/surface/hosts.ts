@@ -6,6 +6,7 @@
 import { browser } from 'wxt/browser';
 import { render, type VNode } from 'preact';
 import type { SurfaceState } from '../model/types';
+import type { AnnouncementsProps } from '../ui/contract';
 import { logFailure } from '../../../shared/platform/log';
 import { requestAccess } from '../../../shared/platform/permissions';
 import { changeMarkerItem, offerItem, watchItems } from '../../../shared/platform/storage';
@@ -87,9 +88,14 @@ export function extensionPageHost(): SurfaceHost {
 export function mountRuntime(
   root: HTMLElement,
   runtime: SurfaceRuntime,
-  view: (state: SurfaceState, settings: InPlaceSettings | undefined) => VNode,
+  view: (
+    state: SurfaceState,
+    settings: InPlaceSettings | undefined,
+    announcements: AnnouncementsProps | undefined,
+  ) => VNode,
 ): () => void {
-  const draw = (): void => render(view(runtime.state(), runtime.settings()), root);
+  const draw = (): void =>
+    render(view(runtime.state(), runtime.settings(), runtime.announcements()), root);
   runtime.subscribe(draw);
   draw();
   runtime.start();
