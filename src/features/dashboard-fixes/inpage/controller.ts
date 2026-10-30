@@ -93,7 +93,6 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   /** Names the running or last read, so a late result can only go back to that read. */
   let readToken = '';
   let readCount = 0;
-  let readObservations = new Map<string, Map<string, boolean>>();
   let lastVisibilityRefresh = -Infinity;
   const engineId = Math.random().toString(36).slice(2);
   let toggleState = '';
@@ -282,16 +281,6 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     }, [2000, 5000, 15000][retryAttempt]);
   }
 
-  function confirmObservations(): void {
-    if (visibility == null) return;
-    for (const [widget, values] of readObservations) {
-      for (const [id, value] of values) {
-        if (visibility[widget]?.[id] === true && gradeStore.observed.get(widget)?.get(id) === value)
-          gradeStore.observed.get(widget)?.delete(id);
-      }
-    }
-  }
-
   function startRead(): void {
     if (reading) {
       wantRead = true;
@@ -300,9 +289,6 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     wantRead = false;
     reading = true;
     const seq = visibilitySeq;
-    readObservations = new Map(
-      [...gradeStore.observed].map(([id, values]) => [id, new Map(values)]),
-    );
     readToken = `${engineId}-${++readCount}`;
     visibility = null;
     if (data) data = { ...data, gradeVisibilities: null };
@@ -320,7 +306,6 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         const confirmed = result?.userId !== undefined && result.userId === gradeStore.userId;
         visibility = confirmed ? (result?.gradeVisibilities ?? null) : null;
         showGrades = confirmed ? result?.showGrades : undefined;
-        if (confirmed) confirmObservations();
         if (data) data = { ...data, gradeVisibilities: visibility, showGrades };
         schedule(0);
       })
@@ -384,7 +369,6 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         ) {
           visibility = next.gradeVisibilities;
           showGrades = next.showGrades;
-          confirmObservations();
         }
         // A read that ended with no result runs again when the data changes.
         if (visibility === null && !reading) wantRead = true;

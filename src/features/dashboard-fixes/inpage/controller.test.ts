@@ -175,6 +175,7 @@ describe('createFixesEngine', () => {
     engine.setSettings(ON);
     engine.setActive(true);
     await settle();
+    expect(document.querySelector('[data-testid="hide-all-grades-checkbox"]')).not.toBeNull();
     const reads = () =>
       send.mock.calls.filter(
         ([m]) => m.type === 'weekrow:dashboard-data' && m.includeGradeVisibility,
@@ -184,6 +185,7 @@ describe('createFixesEngine', () => {
     expect(reads()).toBe(1);
     release({ ...DATA, showGrades: { 'course-grades-widget': false } });
     await settle();
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
     for (const delay of [2000, 5000, 15000]) {
       const before = reads();
       await settle(delay);
@@ -197,14 +199,10 @@ describe('createFixesEngine', () => {
     expect(reads()).toBe(4);
   });
 
-  it('keeps a local main hide across a blind moment with a visible server', async () => {
-    send.mockResolvedValue({ ...DATA, showGrades: { 'course-grades-widget': true } });
+  it('keeps a server main hide across a blind moment with the local toggle on', async () => {
+    send.mockResolvedValue({ ...DATA, showGrades: { 'course-grades-widget': false } });
     engine.setSettings(ON);
     engine.setActive(true);
-    await settle();
-    document
-      .querySelector('[data-testid="hide-all-grades-checkbox"]')
-      ?.setAttribute('data-testid', 'show-all-grades-checkbox');
     await settle();
     engine.setActive(false);
     engine.setActive(true);
@@ -212,7 +210,7 @@ describe('createFixesEngine', () => {
     expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
   });
 
-  it('keeps a local hide through a stale main value until a later read agrees', async () => {
+  it('follows the server main constraint while the local toggle stays on', async () => {
     let server = true;
     send.mockImplementation(async () => ({
       ...DATA,
@@ -223,11 +221,6 @@ describe('createFixesEngine', () => {
     await settle();
     const text = () => document.querySelector('[data-testid="course-107-grade"]')?.textContent;
     expect(text()).toBe('95%');
-    document
-      .querySelector('[data-testid="hide-all-grades-checkbox"]')!
-      .setAttribute('data-testid', 'show-all-grades-checkbox');
-    await settle();
-    expect(text()).toBe('•••');
     const state = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
     server = false;
     document.dispatchEvent(new Event('visibilitychange'));
@@ -237,7 +230,7 @@ describe('createFixesEngine', () => {
     await settle(10_000);
     document.dispatchEvent(new Event('visibilitychange'));
     await settle();
-    expect(text()).toBe('•••');
+    expect(text()).toBe('95%');
     state.mockRestore();
   });
 
@@ -260,6 +253,106 @@ describe('createFixesEngine', () => {
     await settle();
     expect(send).toHaveBeenCalledTimes(1);
     expect(document.querySelector('[data-testid="course-103-grade"]')?.textContent).toBe('•••');
+  });
+
+  it('keeps an observed hide after a stale visible read and a blind moment', async () => {
+    const visible = { ...DATA, gradeVisibilities: { 'course-grades-widget': { '103': true } } };
+    send.mockResolvedValue(visible);
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    let release: (value: unknown) => void = () => undefined;
+    send.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    document.querySelector('[data-testid="course-103-grade"]')!.textContent = '•••';
+    await settle();
+    document.querySelector('[data-testid="course-grade-card-103"]')!.remove();
+    await settle();
+    release(visible);
+    await settle();
+    expect(document.querySelector('[data-testid="course-103-grade"]')?.textContent).toBe('•••');
+    engine.setActive(false);
+    engine.setActive(true);
+    await settle();
+    expect(document.querySelector('[data-testid="course-103-grade"]')?.textContent).toBe('•••');
+  });
+
+  it('lifts an observed hide only after an observed show', async () => {
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    const native = document.querySelector('[data-testid="course-103-grade"]')!;
+    native.textContent = '•••';
+    await settle();
+    native.textContent = '84%';
+    await settle();
+    document.querySelector('[data-testid="course-grade-card-103"]')!.remove();
+    await settle();
+    expect(document.querySelector('[data-testid="course-103-grade"]')?.textContent).not.toBe('•••');
+  });
+
+  it('refreshes on focus before the retry can run', async () => {
+    const state = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    send.mockResolvedValue({ ...DATA, showGrades: { 'course-grades-widget': false } });
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
+    send.mockResolvedValue(DATA);
+    window.dispatchEvent(new Event('focus'));
+    await settle();
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('95%');
+    state.mockRestore();
+  });
+
+  it('throttles focus refreshes for five seconds', async () => {
+    const state = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(10000);
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    window.dispatchEvent(new Event('focus'));
+    await settle();
+    send.mockClear();
+    clock.mockReturnValue(14999);
+    window.dispatchEvent(new Event('focus'));
+    await settle();
+    expect(send).not.toHaveBeenCalled();
+    clock.mockReturnValue(15000);
+    window.dispatchEvent(new Event('focus'));
+    await settle();
+    expect(send).toHaveBeenCalledTimes(1);
+    clock.mockRestore();
+    state.mockRestore();
+  });
+
+  it('discards a read when the native config changes in flight', async () => {
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    const state = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    let release: (value: unknown) => void = () => undefined;
+    send.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    window.dispatchEvent(new Event('focus'));
+    await settle();
+    document.querySelector('[data-testid="course-103-grade"]')!.textContent = '•••';
+    await settle();
+    release(DATA);
+    await settle();
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
+    release(DATA);
+    await settle();
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('95%');
+    state.mockRestore();
   });
 
   it('asks for the data only when a fix is on', async () => {

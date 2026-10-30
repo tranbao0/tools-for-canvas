@@ -1645,7 +1645,9 @@ I read each of them in the package source.
   A copied card shows a grade only when every source allows it.
   It reads this tab's native main toggle from the DOM on each render.
   A hidden native main toggle hides every copy.
-  A per-course native hide stays in the page store until a confirmed read that starts after the observation says visible.
+  An eye-button hide observed in this page view lasts for the whole page view.
+  Only a later observed eye-button show of the same course in this page view lifts that hide.
+  Server reads can add hides, but they never lift an observed hide.
   A server per-course value or main value constrains a copy only when it is present and false.
   A missing server key adds no constraint.
   A confirmed read must start after the last blind moment and name the confirmed student.

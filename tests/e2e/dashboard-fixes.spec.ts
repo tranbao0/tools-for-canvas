@@ -593,6 +593,61 @@ test.describe('course grades', () => {
     await widget.screenshot({ path: testInfo.outputPath('grade-cards.png') });
   });
 
+  test('keep an observed hide when a stale server still allows the grade', async ({
+    context,
+    page,
+  }) => {
+    const hold: { reply?: Promise<void> } = {};
+    let release: () => void = () => undefined;
+    const served = await serveScenario(
+      context,
+      [
+        ...PAGE,
+        {
+          method: 'POST',
+          path: '/api/graphql',
+          respond: async () => {
+            await hold.reply;
+            return {
+              body: {
+                data: {
+                  legacyNode: {
+                    widgetDashboardConfig: JSON.stringify({
+                      filters: {
+                        'course-grades-widget': { gradeVisibilities: { '103': true } },
+                      },
+                    }),
+                  },
+                },
+              },
+            };
+          },
+        },
+      ],
+      EIGHT_COURSES,
+    );
+    await addCsrfCookie(context, served.canvas.origin);
+    await openCanvasPage(page, served.canvas.origin);
+    const widget = page.getByTestId('widget-course-grades-widget');
+    await expect(widget.getByTestId('course-107-grade')).toHaveText('95%');
+    const reads = () =>
+      served.canvas.requests.filter((request) => request.path === '/api/graphql').length;
+    const before = reads();
+    hold.reply = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await widget.getByTestId('course-103-grade').evaluate((node) => {
+      node.textContent = '•••';
+    });
+    await expect.poll(reads).toBeGreaterThan(before);
+    await widget.getByTestId('course-grade-card-103').evaluate((node) => node.remove());
+    await expect(widget.getByTestId('course-103-grade')).toHaveText('•••');
+    release();
+    await expect(widget.getByTestId('course-107-grade')).toHaveText('95%');
+    await expect(widget.getByTestId('course-103-grade')).toHaveText('•••');
+    await widget.screenshot({ path: test.info().outputPath('hidden-grade.png') });
+  });
+
   test('show dots for a grade that the student hid while the fix was off', async ({
     context,
     page,

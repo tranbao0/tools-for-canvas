@@ -71,22 +71,21 @@ describe('gradesFix', () => {
   });
 
   it.each([
-    [false, false, false, '•••'],
+    [false, true, true, '•••'],
     [true, true, false, '•••'],
-    [true, true, true, '•••'],
-    [true, false, false, '•••'],
+    [true, true, true, '95%'],
+    [true, false, true, '•••'],
   ])(
-    'combines server and local main toggles (%s, %s, %s)',
-    (server, _pending, override, expected) => {
-      document
-        .querySelector('[data-testid="hide-all-grades-checkbox"]')
-        ?.setAttribute('data-testid', 'show-all-grades-checkbox');
-      gradesFix().apply(
+    'combines server main, server course, and observation (%s, %s, %s)',
+    (server, course, observation, expected) => {
+      gradesFix({
+        serverStates: new Map(),
+        observed: new Map([['course-grades-widget', new Map([['107', observation]])]]),
+      }).apply(
         fakeContext({
           ...dashboardData(),
           showGrades: { 'course-grades-widget': server },
-
-          gradeVisibilities: { 'course-grades-widget': override ? { '107': true } : {} },
+          gradeVisibilities: { 'course-grades-widget': { '107': course } },
         }),
       );
       expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe(
@@ -228,7 +227,7 @@ it('saved override {103:false} survives toggle off, card leaves page, toggle on'
   expect(grade('103')).toBe('•••');
 });
 
-it('keeps an observation until the read path confirms it', () => {
+it('keeps an observed hide in the page store', () => {
   drawDashboard();
   const store = {
     observed: new Map([['course-grades-widget', new Map([['107', false]])]]),
