@@ -34,8 +34,8 @@ type MountList = (mount: InpageMount) => (() => void) | null;
 /**
  * The two choices that decide what the page shows, as the in-page script reads them: the saved
  * Canvas address and the stored settings. In the browser they come from the background through
- * checked messages (src/features/weekly-list/surface/pageChannel.ts), because no content script can read the
- * extension's storage.
+ * checked messages (src/features/weekly-list/surface/pageChannel.ts), because no content script
+ * can read the extension's storage.
  */
 export interface PageChoices {
   origin: {

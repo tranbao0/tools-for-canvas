@@ -94,6 +94,25 @@ Other commands:
 | `npm run zip`           | Makes the store packages and the Firefox source zip in `.output` |
 | `npm run build-for-amo` | Builds the Firefox package as the Firefox Add-ons reviewers do   |
 
+## Project layout
+
+Tools for Canvas is a set of fixes, and the weekly list is the first one.
+Each fix lives in its own folder, and code that any fix can use is shared.
+
+| Folder                       | What it holds                                                                     |
+| ---------------------------- | --------------------------------------------------------------------------------- |
+| `src/entrypoints`            | The entry points that WXT builds: background, detector, in-page script and pages  |
+| `src/shared/canvas`          | The Canvas client, its types, the request limiter and paging                      |
+| `src/shared/platform`        | Storage, access, install and welcome, injection, messages and browser helpers     |
+| `src/shared/ui`              | Parts with the Canvas look: icons, buttons, the theme, styles and the page layout |
+| `src/features/weekly-list`   | The weekly list, in the subfolders `model`, `data`, `inpage`, `surface` and `ui`  |
+| `tests/e2e`, `tests/firefox` | End-to-end tests in Chromium and the Firefox smoke test                           |
+| `tests/fixtures`             | The fake Canvas data, with the tests that check it                                |
+| `tests/gallery`              | The screenshot gallery of the views                                               |
+
+A unit test sits next to its code as `name.test.ts` or `name.test.tsx`.
+A `testing` folder holds the helpers that several tests of one folder share.
+
 ## Test and check
 
 | Command                  | What it does                                                                           |
