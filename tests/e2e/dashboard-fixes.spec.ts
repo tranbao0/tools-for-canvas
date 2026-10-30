@@ -12,10 +12,12 @@ import {
   DEFAULT_TOOLS_SETTINGS,
   type DashboardFixesSettings,
 } from '../../src/shared/settings/tools';
+import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import {
   addCsrfCookie,
   expect,
   openCanvasPage,
+  saveSettings,
   saveTools,
   serveScenario,
   test,
@@ -308,6 +310,10 @@ test.describe('course work extras', () => {
     await expect(extra).toContainText('Extra credit: Science news summary');
     await expect(extra).toContainText('No due date');
     await expect(extra).toContainText('Overdue');
+    // The note gives the numbers of the work that the list above leaves out.
+    await expect(extra.locator('.wr-x-note')).toContainText(
+      /adds \d+ with no due date, \d+ overdue and \d+ with a to-do date/,
+    );
     // Four rows first, and a link to the longer list.
     await expect(extra.locator('.wr-x-row')).toHaveCount(4);
     await extra.getByRole('button', { name: 'Show all' }).click();
@@ -428,6 +434,27 @@ test.describe('course grades', () => {
     await rerender(page);
     await expect(widget.locator('[data-testid^="course-grade-card-"]')).toHaveCount(8);
   });
+});
+
+test.describe('a cold start with the weekly list off', () => {
+  for (const span of [
+    { kind: 'week', days: 7 },
+    { kind: 'day', days: 1 },
+  ] as const) {
+    test(`fills Also due with a ${span.kind} span, before any list has loaded the planner`, async ({
+      context,
+      page,
+      background,
+    }) => {
+      await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false, span });
+      await open(context, page);
+      const extra = page.locator('[data-wr-extra]');
+      await expect(extra).toContainText('Extra credit: Science news summary');
+      await extra.getByRole('button', { name: 'Show all' }).click();
+      await expect(extra).toContainText('Read: Chapter 7 - Cellular respiration');
+      await expect(page.locator('#weekrow-inpage')).toHaveCount(0);
+    });
+  }
 });
 
 test.describe('the switches', () => {

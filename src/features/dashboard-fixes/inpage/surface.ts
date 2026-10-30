@@ -10,6 +10,7 @@ import { logFailure } from '../../../shared/platform/log';
 import { sendFromContentScript } from '../../weekly-list/surface/inpageHost';
 import { createPageChannel } from '../../weekly-list/surface/pageChannel';
 import type { PageScriptContext } from '../../weekly-list/surface/pageScript';
+import { removeStaleFixes } from './controller';
 import { startDashboardFixes } from './start';
 
 /** How often the script checks that its extension is still there (see pageScript.ts). */
@@ -26,6 +27,8 @@ function listenToBackground(handler: (message: unknown) => void): () => void {
 }
 
 export async function startDashboardSurface(ctx: PageScriptContext): Promise<void> {
+  // A copy that the browser destroyed, as Firefox does on an update, cannot clean up.
+  removeStaleFixes();
   const channel = createPageChannel({
     send: (message) => sendFromContentScript(message, ctx),
     pageOrigin: window.location.origin,

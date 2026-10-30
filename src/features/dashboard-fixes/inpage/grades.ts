@@ -31,6 +31,8 @@ function cardCourseId(card: HTMLElement): string {
 
 export function gradesFix(): Fix {
   let doc: Document | null = null;
+  /** What each grid shows. It stays out of the page, where a script could read the grades. */
+  const signatures = new WeakMap<Element, string>();
 
   /** Sets the text of the element with `suffix`, and removes it when there is no text. */
   function fill(card: HTMLElement, id: string, suffix: string, text: string | null): void {
@@ -77,7 +79,7 @@ export function gradesFix(): Fix {
           // The copy has the color alone: no photo and no tint over it.
           header.style.backgroundImage = 'none';
           header.style.backgroundColor = course.color;
-          for (const child of header.children) {
+          for (const child of [...header.children]) {
             if (child !== overlay && child instanceof HTMLElement) child.remove();
           }
         }
@@ -112,14 +114,14 @@ export function gradesFix(): Fix {
     if (
       template !== undefined &&
       first !== undefined &&
-      found.grid.getAttribute('data-wr-signature') === signature &&
+      signatures.get(found.grid) === signature &&
       copies.length === missing.length &&
       found.grid.lastElementChild === copies.at(-1)
     ) {
       return;
     }
     for (const copy of copies) copy.remove();
-    found.grid.setAttribute('data-wr-signature', signature);
+    signatures.set(found.grid, signature);
     if (template === undefined) return;
     for (const course of missing) found.grid.append(copyFor(template, course, found.gradesHidden));
   }
@@ -133,9 +135,6 @@ export function gradesFix(): Fix {
       for (const node of doc?.querySelectorAll('[data-wr-card]') ?? []) node.remove();
       for (const node of doc?.querySelectorAll('[data-wr-grades]') ?? []) {
         node.removeAttribute('data-wr-grades');
-      }
-      for (const node of doc?.querySelectorAll('[data-wr-signature]') ?? []) {
-        node.removeAttribute('data-wr-signature');
       }
     },
   };

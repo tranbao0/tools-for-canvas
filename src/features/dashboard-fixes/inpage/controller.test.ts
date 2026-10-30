@@ -5,7 +5,7 @@ import {
   DEFAULT_TOOLS_SETTINGS,
   type DashboardFixesSettings,
 } from '../../../shared/settings/tools';
-import { createFixesEngine, type FixesEngine } from './controller';
+import { createFixesEngine, removeStaleFixes, type FixesEngine } from './controller';
 import { dashboardData, drawDashboard, extra, ORIGIN } from './testing/dashboard';
 
 const ON = DEFAULT_TOOLS_SETTINGS.dashboardFixes;
@@ -177,5 +177,20 @@ describe('createFixesEngine', () => {
     engine.setActive(true);
     await settle();
     expect(marks()).toBe(0);
+  });
+});
+
+describe('removeStaleFixes', () => {
+  it('removes the nodes, the marks and the stylesheet that an earlier copy left', async () => {
+    const before = document.body.innerHTML;
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    expect(document.body.innerHTML).not.toBe(before);
+    // The earlier copy is gone with no chance to clean up: a new copy starts from the page.
+    removeStaleFixes(document);
+    expect(document.body.innerHTML).toBe(before);
+    expect(document.getElementById('wr-dashboard-fixes')).toBeNull();
+    expect(document.querySelector('[data-wr-own]')).toBeNull();
   });
 });

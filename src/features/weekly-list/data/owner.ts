@@ -1840,10 +1840,48 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   const MAX_LISTED_ANNOUNCEMENTS = 10;
   const ANNOUNCEMENT_WINDOW_MS = 180 * 24 * 60 * 60 * 1000;
 
+  /** How long a sign-in check of the dashboard data stays good. */
+  const USER_CHECK_MS = 30_000;
+  let userCheckedAt = -Infinity;
+
+  /**
+   * Whether the student who is signed in now is the student of the cache. The dashboard data hold
+   * grades, so a page of another student must never get them: a student who signs in within the
+   * 60-second limit of a round would otherwise see the cache of the one before. A mismatch drops
+   * the cache, and a 401 signs out, as in a write.
+   */
+  async function signedInStudentOwnsCache(): Promise<boolean> {
+    const stamp = writeStamp();
+    if (stamp.origin === null || stamp.userId === null) return false;
+    if (clock.now() - userCheckedAt < USER_CHECK_MS) return true;
+    try {
+      const self = await apiFor(stamp.origin).getSelf();
+      if (!isCurrent(stamp)) return false;
+      if (self.id === stamp.userId) {
+        userCheckedAt = clock.now();
+        return true;
+      }
+      await dropUserData();
+    } catch (error) {
+      if (isCurrent(stamp) && isCanvasError(error, 'unauthorized')) {
+        signOut({ kind: 'signed_out' });
+      } else if (!isCurrent(stamp)) {
+        return false;
+      }
+    }
+    userCheckedAt = -Infinity;
+    return false;
+  }
+
   async function dashboardData(): Promise<DashboardData> {
     await ready();
     const origin = await savedOrigin();
-    if (origin === null || cache === null || cache.session === null) {
+    if (
+      origin === null ||
+      cache === null ||
+      cache.session === null ||
+      !(await signedInStudentOwnsCache())
+    ) {
       return { origin: origin ?? '', ready: false, courses: [], extras: [] };
     }
     const session = cache.session;
@@ -1854,7 +1892,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       ...base,
       settings: { ...base.settings, span: EXTRAS_SPAN, hiddenCourseIds: [] },
     };
-    if (cache === null) return { origin, ready: false, courses: [], extras: [] };
+    if (cache === null || cache.session === null) {
+      return { origin, ready: false, courses: [], extras: [] };
+    }
     const result = viewFor(
       cache,
       session,

@@ -8,7 +8,7 @@ Last updated: 2026-10-30.
 Tools for Canvas has no account, no server of its own and no telemetry.
 It reads your Canvas data in your browser and shows it to you.
 It writes only done marks, skip marks, custom tasks and announcement read marks, and only to your own Canvas.
-Nothing goes anywhere else.
+Nothing goes anywhere else, except the images that a teacher put into an announcement (see "What the extension sends elsewhere").
 
 ## What the extension reads
 
@@ -96,7 +96,8 @@ Nothing.
 The extension sends no data to the developer or to any third party.
 It has no analytics, no error reporting, no advertising and no remote configuration.
 It opens no web page on install or uninstall.
-All network requests go to the one Canvas address that you saved.
+All requests of the extension go to the one Canvas address that you saved.
+The one exception is an image in an announcement that you open in place: the browser loads it from the address that your teacher chose, with no referrer, as the Canvas page of the announcement does.
 
 The code enforces this.
 All network requests go through one function that allows only your Canvas address.
@@ -109,7 +110,7 @@ A lint rule forbids network calls anywhere else in the code, and a CI check scan
 | Access to all `https://` sites | To find your Canvas on any school address, to check each page for the Canvas markers, and to read and write your data on your saved Canvas only |
 | `storage` | To store the settings and the Canvas address listed above, and to hold Canvas data in memory |
 | `cookies` | To read the `_csrf_token` cookie that Canvas requires for a write |
-| `scripting` | To run the Canvas check in the tabs that were open before you installed or updated the extension, and to show the list in your saved Canvas |
+| `scripting` | To run the Canvas check in the tabs that were open before you installed or updated the extension, and to show the list and the dashboard fixes in your saved Canvas |
 | `sidePanel` (Chrome and Edge) | To show the list in the browser side panel |
 
 ## Sharing and sale

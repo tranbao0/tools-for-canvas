@@ -90,6 +90,28 @@ describe('gradesFix', () => {
     expect(cards()).toHaveLength(0);
   });
 
+  it('keeps no grade in an attribute of the page, also while grades are hidden', () => {
+    const fix = gradesFix();
+    fix.apply(fakeContext());
+    for (const element of document.querySelectorAll('*')) {
+      for (const name of element.getAttributeNames()) {
+        expect(`${name}=${element.getAttribute(name)}`).not.toMatch(/95\.7|"score"/);
+      }
+    }
+  });
+
+  it('leaves only the grade overlay in the header of a copy, with no photo and no tint', () => {
+    const header = document
+      .querySelector('[data-testid="course-grade-card-103"] .fx-grade')
+      ?.closest('.fx-card-head');
+    const photo = document.createElement('div');
+    const tint = document.createElement('div');
+    header?.append(photo, tint);
+    gradesFix().apply(fakeContext());
+    const copy = document.querySelector('[data-testid="course-grade-card-107"] .fx-card-head');
+    expect(copy?.children).toHaveLength(1);
+  });
+
   it('removes its cards and the marks that hide the pager', () => {
     const fix = gradesFix();
     fix.apply(fakeContext());

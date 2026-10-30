@@ -292,7 +292,6 @@ test.describe('the widget dashboard', () => {
       background,
     }) => {
       await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
-      await saveTools(background, NO_FIXES);
       const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
       await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
       await openCanvasPage(page, canvas.origin);

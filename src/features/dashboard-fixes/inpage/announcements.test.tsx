@@ -198,6 +198,69 @@ describe('announcementsFix: Read more', () => {
   });
 });
 
+describe('announcementsFix: keyboard and read mark', () => {
+  const open = async () => {
+    readMore().dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
+    );
+    fix.apply(context);
+    await flush();
+    fix.apply(context);
+    await flush();
+  };
+  const hostOf = () => document.querySelector<HTMLElement>(`${ITEM} > [data-wr-own]`);
+  const lessButton = () =>
+    [...(hostOf()?.shadowRoot?.querySelectorAll('button') ?? [])].find(
+      (button) => button.textContent === 'Show less',
+    );
+
+  it('moves the focus into the message when it opens, and back to Read more when it closes', async () => {
+    await open();
+    expect(hostOf()?.shadowRoot?.activeElement).toBe(lessButton());
+    lessButton()?.click();
+    fix.apply(context);
+    await flush();
+    expect(document.activeElement).toBe(readMore());
+  });
+
+  it('sends the read mark only after the message loaded', async () => {
+    context.answer((request) => {
+      const type = (request as { type: string }).type;
+      if (type === 'weekrow:announcement') return Promise.reject(new Error('down'));
+      return { read: true };
+    });
+    await open();
+    expect(context.sent.map((m) => (m as { type: string }).type)).toEqual(['weekrow:announcement']);
+  });
+
+  it('sends no read mark for an announcement that Canvas shows as read', async () => {
+    document
+      .querySelector(`${ITEM} [data-testid="mark-read-31901"]`)
+      ?.setAttribute('data-testid', 'mark-unread-31901');
+    await open();
+    expect(context.sent.map((m) => (m as { type: string }).type)).toEqual(['weekrow:announcement']);
+    expect(hostOf()?.shadowRoot?.textContent).toContain('Marked as read.');
+  });
+
+  it('builds the message once, however many passes run', async () => {
+    await open();
+    const body = hostOf()?.shadowRoot?.querySelector('.wr-body');
+    fix.apply(context);
+    await flush();
+    expect(hostOf()?.shadowRoot?.querySelector('.wr-body')).toBe(body);
+  });
+
+  it('leaves a click alone in a widget that the fix did not find', () => {
+    document.querySelector('[data-testid="announcement-filter-select"]')?.remove();
+    fix.apply(context);
+    drawDashboard();
+    document.querySelector('[data-testid="announcement-filter-select"]')?.remove();
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    readMore().dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+});
+
 describe('announcementsFix: the course filter', () => {
   const select = () =>
     document.querySelector<HTMLSelectElement>('[data-wr-filter] select') as HTMLSelectElement;
@@ -244,6 +307,18 @@ describe('announcementsFix: the course filter', () => {
     expect(document.querySelector('[data-wr-list]')?.shadowRoot?.textContent).toContain(
       "Couldn't load the announcements of this course.",
     );
+  });
+
+  it('asks again for a course that failed once the background has new data', async () => {
+    context.answer(() => Promise.reject(new Error('down')));
+    await choose('101');
+    replies(context);
+    fix.reload?.();
+    fix.apply(context);
+    await flush();
+    fix.apply(context);
+    await flush();
+    expect(document.querySelector('[data-wr-list]')?.shadowRoot?.textContent).toContain('First');
   });
 
   it('opens a message in place inside the filtered list', async () => {

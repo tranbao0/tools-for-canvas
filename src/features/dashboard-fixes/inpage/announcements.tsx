@@ -13,7 +13,7 @@
  * its pager and shows the recent announcements of the course, which the background loads.
  */
 import { render } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   findAnnouncementItem,
   findAnnouncementsWidgets,
@@ -50,56 +50,77 @@ export function announcementsFix(): Fix {
   const readSent = new Set<string>();
   const lists = new Map<string, AnnouncementEntry[] | 'loading' | 'failed'>();
   let courseId = '';
+  /** The announcement whose message should take the focus once it shows. */
+  let focusOpened: string | null = null;
+  /** The announcement whose "Read more" link should take the focus back once the message closes. */
+  let focusClosed: string | null = null;
   let current: FixContext | null = null;
   let stopClicks: (() => void) | null = null;
 
   const keyOf = (course: string, topic: string): string => `${course}:${topic}`;
 
-  /** The message of one announcement, with "Show less". It marks the announcement as read. */
-  function Message(props: { course: string; topic: string; onClose(): void }) {
+  /**
+   * The message of one announcement, with "Show less". It marks the announcement as read once the
+   * message is on screen. `known` tells that the announcement is read already.
+   */
+  function Message(props: { course: string; topic: string; known: boolean; onClose(): void }) {
     const { course, topic } = props;
     const key = keyOf(course, topic);
     const context = current as FixContext;
     const [message, setMessage] = useState(bodies.get(key));
     const [failed, setFailed] = useState(false);
     const [marked, setMarked] = useState(read.has(key));
+    const less = useRef<HTMLButtonElement>(null);
+    // The sanitized nodes are made once for a message, so a new pass keeps the selection.
+    const body = useMemo(() => {
+      if (message === undefined) return null;
+      const box = context.doc.createElement('div');
+      box.className = 'wr-body';
+      box.append(sanitizeHtml(message.message, { origin: context.origin, doc: context.doc }));
+      return box;
+    }, [message]);
+
     useEffect(() => {
-      if (message === undefined) {
-        context
-          .send({ type: 'weekrow:announcement', courseId: course, topicId: topic })
-          .then((reply) => {
-            const body = reply as AnnouncementBody | undefined;
-            if (typeof body?.message !== 'string') throw new Error('No message');
-            bodies.set(key, body);
-            setMessage(body);
-          })
-          .catch(() => setFailed(true));
+      // The link that opened the message is gone, so the focus moves into the message.
+      if (focusOpened === key) {
+        focusOpened = null;
+        less.current?.focus();
       }
-      if (!read.has(key) && !readSent.has(key)) {
-        readSent.add(key);
-        context
-          .send({ type: 'weekrow:announcement-read', courseId: course, topicId: topic })
-          .then((reply) => {
-            if ((reply as { read?: boolean } | undefined)?.read !== true)
-              throw new Error('Not read');
-            read.add(key);
-            setMarked(true);
-            context.again();
-          })
-          // A mark that failed is tried again the next time the student opens the announcement.
-          .catch(() => readSent.delete(key));
-      }
+    }, []);
+    useEffect(() => {
+      if (message !== undefined) return;
+      context
+        .send({ type: 'weekrow:announcement', courseId: course, topicId: topic })
+        .then((reply) => {
+          const loaded = reply as AnnouncementBody | undefined;
+          if (typeof loaded?.message !== 'string') throw new Error('No message');
+          bodies.set(key, loaded);
+          setMessage(loaded);
+        })
+        .catch(() => setFailed(true));
     }, [key]);
+    useEffect(() => {
+      // Only a message that the student can read counts as opened.
+      if (message === undefined || props.known || read.has(key) || readSent.has(key)) return;
+      readSent.add(key);
+      context
+        .send({ type: 'weekrow:announcement-read', courseId: course, topicId: topic })
+        .then((reply) => {
+          if ((reply as { read?: boolean } | undefined)?.read !== true) throw new Error('Not read');
+          read.add(key);
+          setMarked(true);
+          context.again();
+        })
+        // A mark that failed is tried again the next time the student opens the announcement.
+        .catch(() => readSent.delete(key));
+    }, [key, message !== undefined]);
     return (
       <>
         <div
-          class="wr-body"
-          ref={(box) =>
-            message &&
-            box?.replaceChildren(
-              sanitizeHtml(message.message, { origin: context.origin, doc: context.doc }),
-            )
-          }
+          ref={(slot) => {
+            if (slot !== null && body !== null && slot.firstChild !== body)
+              slot.replaceChildren(body);
+          }}
         />
         <p class="wr-x-note" role="status">
           {failed ? (
@@ -114,13 +135,13 @@ export function announcementsFix(): Fix {
             </>
           ) : message === undefined ? (
             t('annLoading')
-          ) : marked ? (
+          ) : marked || props.known ? (
             t('annMarkedRead')
           ) : (
             ''
           )}
         </p>
-        <button type="button" class="wr-x-link" onClick={props.onClose}>
+        <button type="button" class="wr-x-link" ref={less} onClick={props.onClose}>
           {t('annShowLess')}
         </button>
       </>
@@ -146,8 +167,13 @@ export function announcementsFix(): Fix {
   }
 
   function setOpen(context: FixContext, key: string, on: boolean): void {
-    if (on) open.add(key);
-    else open.delete(key);
+    if (on) {
+      open.add(key);
+      focusOpened = key;
+    } else {
+      open.delete(key);
+      focusClosed = key;
+    }
     context.again();
   }
 
@@ -158,6 +184,11 @@ export function announcementsFix(): Fix {
     found.item.toggleAttribute('data-wr-open', open.has(key));
     if (!open.has(key)) {
       if (hosted !== null) unmount(hosted);
+      if (focusClosed === key) {
+        // The link has its place back, and the focus goes there.
+        focusClosed = null;
+        found.link.focus();
+      }
     } else if (hosted === null) {
       const { host, root } = shadowHost(context.doc);
       found.item.append(host);
@@ -165,6 +196,7 @@ export function announcementsFix(): Fix {
         <Message
           course={found.courseId}
           topic={found.topicId}
+          known={found.item.querySelector(`[data-testid="mark-unread-${found.topicId}"]`) !== null}
           onClose={() => setOpen(context, key, false)}
         />,
         root,
@@ -178,7 +210,8 @@ export function announcementsFix(): Fix {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
       return;
     }
-    const row = target.closest<HTMLElement>('[data-testid^="announcement-item-"]');
+    // Only a row in a widget that the last pass found: the fix does nothing where it cannot work.
+    const row = target.closest<HTMLElement>('[data-wr-ann] [data-testid^="announcement-item-"]');
     const found = row === null ? null : findAnnouncementItem(row, current.origin);
     if (found === null || !(found.link.contains(target) || found.title?.contains(target))) return;
     // The widget would leave the page. React listens at its root, so this runs first.
@@ -219,6 +252,15 @@ export function announcementsFix(): Fix {
     const { entry } = props;
     const key = keyOf(entry.courseId, entry.id);
     const [on, setOn] = useState(open.has(key));
+    const more = useRef<HTMLButtonElement>(null);
+    const refocus = useRef(false);
+    useEffect(() => {
+      // Closing the message gives the focus back to the button that opened it.
+      if (!on && refocus.current) {
+        refocus.current = false;
+        more.current?.focus();
+      }
+    }, [on]);
     const posted = entry.postedAt === null ? null : new Date(entry.postedAt);
     const meta = [
       entry.author === null ? null : t('annSentBy', entry.author),
@@ -227,8 +269,13 @@ export function announcementsFix(): Fix {
         : posted.toLocaleDateString(undefined, { dateStyle: 'medium' }),
     ].filter(Boolean);
     const show = (next: boolean): void => {
-      if (next) open.add(key);
-      else open.delete(key);
+      if (next) {
+        open.add(key);
+        focusOpened = key;
+      } else {
+        open.delete(key);
+        refocus.current = true;
+      }
       setOn(next);
     };
     return (
@@ -236,9 +283,14 @@ export function announcementsFix(): Fix {
         <div class="wr-x-title">{entry.title}</div>
         <div class="wr-x-meta">{meta.join(' | ')}</div>
         {on ? (
-          <Message course={entry.courseId} topic={entry.id} onClose={() => show(false)} />
+          <Message
+            course={entry.courseId}
+            topic={entry.id}
+            known={entry.read}
+            onClose={() => show(false)}
+          />
         ) : (
-          <button type="button" class="wr-x-link" onClick={() => show(true)}>
+          <button type="button" class="wr-x-link" ref={more} onClick={() => show(true)}>
             {t('annReadMore')}
           </button>
         )}
@@ -295,7 +347,7 @@ export function announcementsFix(): Fix {
     if (field.previousElementSibling !== widget.filterBlock) widget.filterBlock.after(field);
     render(
       <CourseFilter
-        id="wr-course-filter"
+        id={`wr-course-filter-${widget.widget.getAttribute('data-testid') ?? ''}`}
         courses={courses}
         onChange={(id) => {
           courseId = id;
@@ -362,8 +414,13 @@ export function announcementsFix(): Fix {
           .forEach((host) => host.toggleAttribute('data-wr-dark', dark));
       }
     },
+    reload() {
+      // A list that failed is asked for again. The others stay on screen.
+      for (const [id, entries] of lists) if (entries === 'failed') lists.delete(id);
+    },
     remove() {
       stopClicks?.();
+      lists.clear();
       stopClicks = null;
       const doc = current?.doc;
       current = null;

@@ -93,7 +93,7 @@ describe('dashboardData', () => {
     }
   });
 
-  it('makes no Canvas request', async () => {
+  it('makes no request for data: only the sign-in check, at most once in 30 seconds', async () => {
     const h = await loaded();
     const before = h.canvas.calls.length;
 
@@ -101,7 +101,31 @@ describe('dashboardData', () => {
     await h.owner.dashboardData();
     await h.owner.settled();
 
-    expect(h.canvas.calls.length).toBe(before);
+    expect(h.canvas.calls.slice(before).map((call) => call.method)).toEqual(['getSelf']);
+    await vi.advanceTimersByTimeAsync(31_000);
+    h.canvas.resetCalls();
+    await h.owner.dashboardData();
+    expect(h.canvas.calls.map((call) => call.method)).toEqual(['getSelf']);
+  });
+
+  it('gives no grade and no work to another student who signed in, and drops the cache', async () => {
+    const h = await loaded();
+    expect((await h.owner.dashboardData()).courses.length).toBeGreaterThan(0);
+    await vi.advanceTimersByTimeAsync(31_000);
+    signInOtherUser(h);
+
+    const data = await h.owner.dashboardData();
+
+    expect(data).toMatchObject({ ready: false, courses: [], extras: [] });
+    expect((await sessionCacheItem.getValue())?.session?.profile.id).not.toBe(IDS.user);
+  });
+
+  it('gives nothing when the sign-in check fails with a 401', async () => {
+    const h = await loaded();
+    await vi.advanceTimersByTimeAsync(31_000);
+    h.canvas.fail('getSelf', canvasError('unauthorized', 401), { times: 1 });
+
+    expect(await h.owner.dashboardData()).toMatchObject({ ready: false, courses: [] });
   });
 
   it('shows a course that the student hid from the weekly list', async () => {

@@ -25,6 +25,8 @@ export interface FixContext {
 
 export interface Fix {
   apply(context: FixContext): void;
+  /** The background has new data: the fix forgets what failed. */
+  reload?(): void;
   /** Undoes everything the fix did to the page. */
   remove(): void;
 }

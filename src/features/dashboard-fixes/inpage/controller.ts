@@ -167,6 +167,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   }
 
   function load(): void {
+    for (const key of applied) fixes[key].reload?.();
     const seq = (loadSeq += 1);
     if (!anyEnabled()) return;
     options
@@ -211,4 +212,19 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
       style = null;
     },
   };
+}
+
+/**
+ * Removes what an earlier copy of the script left on the page: its nodes, its marks on the nodes
+ * of Canvas and its stylesheet. Firefox destroys the context of a script when its extension
+ * updates and then injects the new version, so the old copy cannot clean up after itself. Every
+ * node and mark of the fixes starts with `data-wr-`.
+ */
+export function removeStaleFixes(doc: Document = document): void {
+  doc.querySelectorAll('[data-wr-own]').forEach((node) => node.remove());
+  for (const element of doc.querySelectorAll('*')) {
+    for (const name of element.getAttributeNames()) {
+      if (name.startsWith('data-wr-')) element.removeAttribute(name);
+    }
+  }
 }

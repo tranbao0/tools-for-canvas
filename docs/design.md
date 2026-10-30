@@ -950,7 +950,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 - After each write, the background stores a change marker (a time stamp only) in `storage.local`.
   Every surface listens to `storage.onChanged` and refreshes.
   `runtime.sendMessage` does not reach content scripts, so it cannot do this job [24].
-- The extension stores only these items in `storage.local`: its settings, the Canvas address, the change marker, and which one-time notes the student has seen.
+- The extension stores only these items in `storage.local`: its settings, the switches of the small tools (decision 22), the Canvas address, the change marker, and which one-time notes the student has seen.
 
 **Fallback:** Background fetches with the student's cookies have not been tested live.
 Firefox treats requests from extension pages with host permission as first-party [12].
@@ -1631,7 +1631,8 @@ I read each of them in the package source.
    A recompute would have to replace numbers that React draws, so every render would fight the extension.
    The planner cache covers two weeks, and the Due card covers 90 days, so the extension could not compute the right number without more requests.
    So the section says, in one line under its heading, how the three cards count, and it adds the work that the list leaves out.
-   The note shows only when the widget has the cards.
+   The note gives the numbers of the list that the filters let through: how much work has no due date, how much is overdue, and how much has a to-do date in the next 14 days.
+   It shows only when the widget has the cards.
 4. **All course grades.**
    The fix hides the pager and adds a card for each course that has no card on the page.
    A card is a copy of a card that the widget drew, so it has the same markup, classes and theme.
@@ -1683,6 +1684,10 @@ The page script does the work in `src/features/dashboard-fixes/inpage/sanitize.t
   The extension reads the color of the card to choose the colors of its pills.
 - The read filter and the course filter labels are English.
   A school with another language sees the filter act as "All", and "All Courses" as a course name that matches no course.
+- The dashboard data hold grades, so the background asks Canvas who is signed in (at most every 30 seconds) before it answers, and it drops the cache when another student signed in.
+  The weekly list keeps the 60-second limit of decision 11 for its own data.
+- The copies of the grade cards and the course list of the announcement filter keep the data of the session: a grade that Canvas posts later shows in the cards of the widget and in the copies after the next refresh of the courses.
+- An image in an announcement loads from the address that the teacher chose, as it does on the Canvas page, with no referrer for another origin.
 - The extension cannot mark an announcement as unread again, and the read button of the widget keeps its old look until React loads the list again.
 - The "Also due" section covers two weeks of pages and tasks, because the planner cache does.
 - A grade card copy has no color menu, no hide button and no update date, because those belong to React or to data that the extension does not have.
