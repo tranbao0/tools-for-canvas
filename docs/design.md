@@ -49,6 +49,7 @@ This extension has no account, no server of its own and no telemetry.
 | 19 | Accessibility, language and theme | WCAG 2.2 AA, English text, a Theme setting with Automatic, Light and Dark |
 | 20 | No-telemetry guarantee | One fetch wrapper that only reaches the student's Canvas |
 | 21 | Visual design | Looks like a native part of Canvas, not an add-on sidebar |
+| 22 | New dashboard fixes | Four small fixes for the widgets of the new Canvas dashboard, each with its own switch, in a page script of their own |
 
 ## Decisions
 
@@ -1415,6 +1416,9 @@ The owner chose it on 2026-10-27.
 - There is no switch for undated work.
   The No due date group starts collapsed, and Skip clears single items.
 
+The small tools have their own switches, one group for each tool (decision 22).
+They show in the same three places, below Theme, and they are stored apart from these five settings.
+
 **Left out from the original:** the three-day view, list length, theme color, confetti, streaks, the Announcements tab, repeat-weekly custom tasks, Gradescope data, teacher mode and the 12-hour or 24-hour setting [9].
 
 ### 19. Accessibility, language and theme
@@ -1528,6 +1532,162 @@ The owner asked for it after testing an early build: the list should feel like p
 - The original Tasks for Canvas felt native because it looked like Canvas's own To Do list.
 - A list that matches Canvas reads as trustworthy and calm, and it does not compete with the page for attention.
 
+### 22. New dashboard fixes
+
+**Question:** How does the extension fix the gaps of the new Canvas widget dashboard (roadmap item 2)?
+
+**Decision:** Four fixes, each with its own switch in one setting group, "New dashboard fixes".
+All four are on by default.
+The owner chose the list on 2026-10-30 (see `docs/roadmap.md`).
+The fixes run on the dashboard of the saved Canvas, next to the weekly list, and need not have the list turned on.
+
+| Switch | Fix |
+|---|---|
+| Course colors on Course work icons | The icon box of each Course work item takes the color of its course |
+| Announcements in place | "Read more" and the title open the whole message in the card, and a course filter joins the read filter |
+| Course work extras | An "Also due" section under the Course work list |
+| All course grades | A grade card for every course, not only six |
+
+**Facts.**
+They come from the source of the widget package `@instructure/platform-widget-dashboard`, version 16.2.0, and from canvas-lms at commit 1c9f0bb [10] [13].
+I read each of them in the package source.
+
+- The Course work widget lists assignment submissions only (`courseWorkSubmissionsConnection`), 4 to a page (6 in the combined widget), with no sort.
+  Every filter leaves out work with no due date.
+  Overdue work shows only under Missing.
+  Pages, ungraded discussions and planner notes never show.
+- The three summary counts come from `submissionStatistics`.
+  Only the Due count takes a date range, which is today to 90 days.
+  The Missing and Submitted counts take no date range.
+  The list under "Not submitted" starts at the present moment and has no end.
+  So the cards and the list can disagree.
+- The icon of an item is colored by the status of the submission (`getSubmissionStatus`), never by the course.
+  React rewrites the inline color of the icon on every render.
+- The Announcements widget cuts a title at 75 characters and a message at 120, with the HTML taken out.
+  The title is plain text.
+  "Read more" is the only link, and it sets `window.location.href` to the page of the announcement.
+  The default read filter is Unread.
+  The widget has no course filter, and it loads 3 announcements of all courses a page, so a course filter cannot work on its list.
+  The widget marks an announcement as read with a GraphQL mutation.
+- The Course grades widget shows 6 cards a page (`MAX_GRID_ITEMS`) and a pager under them.
+  The widget reads all courses from `ENV`, so nothing is missing from its data.
+- `GET /api/v1/courses` with `include[]=total_scores` adds `computed_current_score` and `computed_current_grade` to the student enrollment.
+  Canvas ignores the argument for a course that hides its final grades, and then sends no totals.
+- `GET /api/v1/announcements` takes `context_codes[]`, `start_date` and `end_date`.
+  Without dates it returns the 14 days before today and the 28 days after the start.
+  `PUT /api/v1/courses/:id/discussion_topics/:id/read` marks a topic as read and answers 204.
+
+**Where the code lives.**
+
+- The feature is in `src/features/dashboard-fixes`.
+  The widget selectors are in `src/shared/canvas/widgetDashboard.ts`, the one adapter that the list layout also uses.
+  The package has only test ids, so every finder starts from a test id inside the content of a widget, never from the id of the widget, because an added widget has another id.
+- The fixes have a page script of their own, `dashboard.js`.
+  The background injects it with the list script, and only into a tab whose path is the dashboard.
+  The list script was 32.7 KB gzip, and the fixes added about 9 KB, which put one script over the budget of 40 KB.
+  A course home page has no widgets, so it should not load the code of the fixes.
+  The script has no storage access and reads the saved address and the switches through the same checked messages as the list script.
+  `scripts/check-storage.mjs`, `check-fetch.mjs` and `check-size.mjs` check it like the list script, and each script has its own size budget.
+- One `MutationObserver` serves the whole feature.
+  It watches the content of the page, and a batch of changes (50 ms) runs one pass of the enabled fixes.
+  The observer ignores the nodes that the fixes add, so a pass never starts another.
+  Each fix is idempotent: a pass draws only what React removed.
+  A fix never removes or edits a node of React.
+  It adds nodes with `data-wr-own`, and it sets `data-wr-` attributes on nodes of React, which one stylesheet reads.
+  It sets no inline style on a node of React, because React rewrites it.
+- A switch that goes off removes its fix at once, and the page is as Canvas draws it.
+  A test compares the markup of the widgets before and after.
+
+**The choices.**
+
+1. **Course colors.**
+   The background of the icon box is the course color with `!important`, and the icon takes white or black by the rule that the package uses for its grade cards (white when its contrast is at least 4.5).
+   This is the nearest native style.
+   The status keeps its place in the pill beside the title, which the fix leaves alone.
+   The course id comes from the item link (`/courses/:id/...`).
+   The color is the saved Canvas color, or the default color that the rings use.
+   The background computes the ink color, so the script stays small.
+2. **Announcements in place.**
+   A click listener on the window, in the capture phase, takes a plain primary click on "Read more" or on the title, and stops it before React sees it.
+   A click with a modifier key, or with another button, keeps its native meaning.
+   The message comes from `GET /api/v1/courses/:id/discussion_topics/:id` through the background.
+   Opening it sends `PUT .../read` through the background, once for each announcement.
+   The background treats the PUT as a write: it waits behind the writes before it, it asks Canvas who is signed in first (the student check of every write), it drops the write when the generation, the address or the student changed, and it sends the CSRF token.
+   The ids are checked as Canvas ids at the message boundary and again before they enter a path.
+   With the Unread filter, a read announcement leaves the list when its message closes.
+   The course filter hides the list of the widget and its pager when a course is chosen.
+   It then shows the recent announcements of the course, at most 10 from the last 180 days, loaded by the background, with the read filter applied.
+   The match of the read filter uses the English labels of the widget.
+   An unknown label counts as "All".
+3. **Course work extras.**
+   The section shows work with no due date, open overdue work (not under Missing, where the widget lists it), and open pages, ungraded discussions and the student's own tasks that have a to-do date.
+   It also follows the course filter of the widget, by the course name in its input.
+   It shows 4 rows, in the order undated, overdue, to-do.
+   "Show all" shows up to 20 rows, sorted by due date, with undated work last.
+   The data come from the planner cache of the weekly list (two weeks from today, and Past due), with no new request.
+   Courses that the student hid in the weekly list still count, because the widgets of Canvas show them.
+   **The summary counts.**
+   The choice is a note, not a recompute.
+   A recompute would have to replace numbers that React draws, so every render would fight the extension.
+   The planner cache covers two weeks, and the Due card covers 90 days, so the extension could not compute the right number without more requests.
+   So the section says, in one line under its heading, how the three cards count, and it adds the work that the list leaves out.
+   The note shows only when the widget has the cards.
+4. **All course grades.**
+   The fix hides the pager and adds a card for each course that has no card on the page.
+   A card is a copy of a card that the widget drew, so it has the same markup, classes and theme.
+   The copy loses its buttons, which belong to React, and its ids.
+   Its header takes the course color, and it shows the letter grade when Canvas sends one, else the whole percent, else "N/A".
+   Canvas sends no total for a course that hides its totals, which gives "N/A", as in the widget.
+   While the toggle "Show all grades" is off, the copies show dots, as the widget does.
+   The courses come from the courses request that the extension already makes, with `include[]=total_scores` added, so there is no new request.
+
+**Settings.**
+The switches are the tools settings, a trusted item (`toolsSettings`) under decision 5: the storage lock on Chrome and Edge, the vault on Firefox, and a check of each field when it is read.
+Each tool is a group under its own key, so a future tool adds a group and nothing else.
+The weekly list settings keep their five fields.
+The background sends the same `changed` message when the switches change.
+The group shows in the three places of decision 18.
+
+**Sanitizer rules.**
+The message of an announcement is HTML that a teacher wrote, so it is hostile input.
+The background cannot sanitize it, because a service worker has no `DOMParser`, so it passes the message on as text.
+The page script does the work in `src/features/dashboard-fixes/inpage/sanitize.ts`:
+
+- It parses the message with `DOMParser`, which makes an inert document.
+  It then builds new nodes in the page with `createElement`, for the tags and attributes on the list below.
+  It never moves a parsed node into the page, and it never turns a string into markup, so no `innerHTML` takes unsanitized content, and no serialize and parse round trip can mutate it.
+- Tags: p, br, strong, em, b, i, u, ul, ol, li, a, h1 to h6, blockquote, code, pre, span, div, img, table, thead, tbody, tr, th, td, in the HTML namespace.
+  Script, style, iframe, object, embed, svg, math, form, input and similar tags drop with everything inside.
+  Another tag drops itself and keeps its sanitized children, so the text stays.
+- Attributes: `href` on a, `src` and `alt` on img, `colspan` and `rowspan` (1 to 100) on th and td.
+  No other attribute, so no style, no class, no id and no event handler.
+- Links: http, https and mailto only, after the address resolves against the Canvas address.
+  They open in a new tab with `rel="noopener noreferrer"`.
+  A link with another scheme, no address or a broken address loses its link and keeps its text.
+- Images: https only, after the address resolves against the Canvas address, so a relative Canvas file works.
+  An image of another origin loads with no referrer.
+  Any other image drops.
+- The nesting depth is 40 elements, the number of nodes is 5,000 and the recursion is 200 levels, so a hostile message cannot exhaust the page.
+- The message shows inside the shadow root of a host that the fix adds, so the styles of Canvas do not reach it.
+- A test corpus holds script, event handlers, `javascript:` and `data:` addresses (with tabs, newlines, entities and mixed case), svg, math, style, iframe, form, template, noscript, base, meta and mutation tricks.
+  A browser test runs the same kind of message in a page and checks that nothing ran.
+
+**Risks.**
+
+- The markup of the widgets changes with the releases of the package, which had 16 major versions in 2026.
+  Every finder returns nothing when its test ids are gone, and the fix then does nothing.
+  The adapter file names the version that its selectors follow.
+- The finders for the title and the snippet of an announcement use the structure of the item: the snippet is the element before the one that holds "Read more".
+  A change of the structure can make the title click and the hidden snippet stop working, while "Read more" keeps working.
+- The widget keeps its own dark theme in JavaScript.
+  The extension reads the color of the card to choose the colors of its pills.
+- The read filter and the course filter labels are English.
+  A school with another language sees the filter act as "All", and "All Courses" as a course name that matches no course.
+- The extension cannot mark an announcement as unread again, and the read button of the widget keeps its old look until React loads the list again.
+- The "Also due" section covers two weeks of pages and tasks, because the planner cache does.
+- A grade card copy has no color menu, no hide button and no update date, because those belong to React or to data that the extension does not have.
+- A hostile message that a future browser parses in a new way would still go through the same allowlist, because the output is built node by node.
+
 ## Open risks
 
 These items need a live check or an outside answer.
@@ -1546,6 +1706,7 @@ These items need a live check or an outside answer.
 8. The Instructure API Policy bans access through "technologies not approved by Instructure", but it does not say what that covers [20].
 9. The final name needs a full trademark clearance search [21].
 10. Instructure has not said whether the classic dashboard survives in the 2027 UI [13].
+11. The widget dashboard package changes often, so the finders of decision 22 need a live check against the package that the school runs.
 
 ## Build order
 

@@ -1,13 +1,13 @@
 # Privacy policy
 
 This policy covers the Tools for Canvas browser extension for Chrome, Microsoft Edge and Firefox.
-Last updated: 2026-10-28.
+Last updated: 2026-10-30.
 
 ## Summary
 
 Tools for Canvas has no account, no server of its own and no telemetry.
 It reads your Canvas data in your browser and shows it to you.
-It writes only done marks, skip marks and custom tasks, and only to your own Canvas.
+It writes only done marks, skip marks, custom tasks and announcement read marks, and only to your own Canvas.
 Nothing goes anywhere else.
 
 ## What the extension reads
@@ -20,7 +20,9 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - your active courses, your course groups, your course colors and your dashboard order;
 - your planner items, assignments, submissions and their status, such as missing, excused or graded;
 - your done marks, skip marks and custom tasks;
-- the names of custom grade statuses in your courses.
+- the names of custom grade statuses in your courses;
+- your current grade and grade letter in each course, which Canvas sends with the course list, unless the course hides them;
+- the announcements of your courses: the full text of an announcement that you open, and the recent announcements of a course that you choose in the announcements filter.
 
 It reads the `_csrf_token` cookie of your Canvas site, because Canvas requires that token to accept a write.
 
@@ -46,9 +48,9 @@ Until you answer, the extension keeps the detected Canvas address in session sto
 Session storage stays in browser memory and the browser clears it when it closes.
 The extension opens its welcome page once per browser session when it finds a Canvas that waits for your answer.
 The extension shows its list only on the Canvas address that you saved.
-The list script runs only there.
+The list script and the script of the dashboard fixes run only there.
 It sends no message and no event to the page.
-Neither the list script nor the page script can read or write the storage of the extension: the background answers them through checked messages.
+None of the page scripts can read or write the storage of the extension: the background answers them through checked messages.
 
 ## What the extension writes
 
@@ -56,12 +58,23 @@ The extension writes only to your own Canvas, and only when you ask it to:
 
 - a done mark when you check an item off, or remove it when you uncheck the item;
 - a skip mark when you skip an item, or remove it when you unskip the item;
-- a custom task when you create, edit or delete one.
+- a custom task when you create, edit or delete one;
+- a read mark when you open an announcement in place, as when you open it on the Canvas page.
 
+The read mark is the same mark that Canvas sets when you open an announcement.
 Done marks and skip marks are Canvas planner overrides.
 Custom tasks are Canvas planner notes.
 Canvas, its To Do list and its mobile apps show the same data.
 On a module item, Canvas can count a done mark as the module's "Mark as done" requirement.
+
+## What the new dashboard fixes do
+
+The fixes work on the new Canvas dashboard and use only the requests that this policy lists.
+They recolor icons, open an announcement in place, show your overdue work, work with no due date, pages and tasks under the Course work list, and show a grade card for each course.
+The text of an announcement is written by your teacher.
+The extension shows it only after it removes everything that could run code, load a frame or send a form.
+The fixes read the grade of each course from the course list, in your browser, and show it only to you on your own dashboard.
+Each fix has a switch in the settings, and each is on by default.
 
 ## What the extension stores on your device
 
@@ -70,9 +83,10 @@ The extension stores only these items in browser storage on your device:
 - its settings;
 - the address of your Canvas site;
 - a change time stamp, so that open lists refresh after a write;
-- which one-time notes you have seen.
+- which one-time notes you have seen;
+- which small fixes for the new Canvas dashboard are on.
 
-The settings, the address and the notes are in storage that web pages cannot reach.
+The settings, the address, the notes and the switches of the fixes are in storage that web pages cannot reach.
 In Chrome and Edge, the extension locks its `storage.local` against page scripts.
 In Firefox, they live in the extension's own IndexedDB, with a copy in `storage.local` that the extension checks and repairs.
 

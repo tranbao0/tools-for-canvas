@@ -14,7 +14,7 @@ Each tool gets its own design decision in `docs/design.md` before it is built.
 - The list inside the new dashboard grid, with a floating panel as the fallback, and a docked panel on long classic dashboard pages.
 - Lazy loading: nearest days first, placeholders, and Past due last.
 
-## 2. New dashboard fixes
+## 2. New dashboard fixes (built, see decision 22)
 
 - Course colors on the Course work icons.
 - Announcements: "Read more" opens in place, and a course filter.

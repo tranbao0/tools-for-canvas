@@ -294,17 +294,62 @@ Use a new, empty profile, and the student account.
 31. Remove the extension.
     Expect: no web page opens, and your done marks and custom tasks are still in Canvas.
 
+### New dashboard fixes
+
+These steps need the new widget dashboard ("Switch to new dashboard view" in Canvas) with the Course work, Announcements and Course grades widgets, and a student with more than six active courses, one course that hides its totals and an unread announcement in a course with a rich message.
+
+32. Open the new widget dashboard.
+    Expect: the icon of each Course work item has the color of its course, the same color as the course card on the Courses tab, with a white or black icon.
+    Expect: the status pill beside each title still shows Missing, Late, Submitted or the due date.
+    Expect: in the dark theme of the dashboard, the colors stay.
+33. In the Announcements widget, click "Read more" of an unread announcement.
+    Expect: the whole message shows in the card, with its links, images and lists, and the page does not change.
+    Expect: the announcement shows "Marked as read." and, in Canvas, it is read (check the Canvas page of the announcement and the unread count).
+    Click "Show less".
+    Expect: with the Unread filter, the announcement leaves the list.
+    Click the title of another announcement.
+    Expect: the same as "Read more".
+    Hold Ctrl (Cmd on a Mac) and click "Read more".
+    Expect: Canvas opens the announcement in a new tab.
+34. In the Announcements widget, use the new "Course filter:" beside the read filter.
+    Expect: the list shows the announcements of that course, filtered by the read filter, with its own "Read more" in place, and the pager of the widget is gone.
+    Choose "All courses".
+    Expect: the list of the widget is back.
+35. Open the Course work widget with the filter "Not submitted".
+    Expect: an "Also due" section under the list shows work with no due date, overdue work, and pages, ungraded discussions and your own tasks that have a to-do date.
+    Click "Show all".
+    Expect: up to 20 rows, sorted by due date, and the focus stays on the button.
+    Change the filter to "Missing".
+    Expect: the overdue work leaves the section, because Missing lists it.
+    Change the course filter to one course.
+    Expect: the section shows the work of that course only.
+    Compare the three cards with the list.
+    Expect: the note under "Also due" says how they count.
+36. In the Course grades widget, with more than six courses:
+    Expect: the pager is gone, and a card shows for every active course.
+    Expect: a course that hides its totals shows "N/A", and the letter or percent of the other cards matches the Canvas grades page.
+    Turn off "Show all grades".
+    Expect: every card, also the added ones, shows dots.
+37. Reload the dashboard, then change something in Canvas that makes React draw a widget again, such as the filter or the page of a widget.
+    Expect: the colors, the section, the filter and the added cards come back each time, and an open announcement stays open.
+38. In the settings of the extension, turn off each switch of "New dashboard fixes" in turn, with the dashboard open.
+    Expect: the matching fix goes away at once, the page shows what Canvas draws, and the other fixes stay.
+    Turn off "Show the weekly list on Canvas pages".
+    Expect: the fixes keep working.
+39. Open a course home page and the Courses tab.
+    Expect: no fix shows, and nothing changes.
+
 ### Store listings
 
-32. Check the Chrome Web Store listing.
+40. Check the Chrome Web Store listing.
     Expect: the single purpose is "Show your Canvas coursework for the week as a to-do list.", the data usage ticks "Website content" processed only on the device, the account is a non-trader, and 2-Step Verification is on.
-33. Check the Edge Add-ons listing.
+41. Check the Edge Add-ons listing.
     Expect: the description has the license link and does not mention other browsers.
-34. Check the Firefox Add-ons listing.
+42. Check the Firefox Add-ons listing.
     Expect: the source zip and the lockfile are attached, the reviewer notes say that the only writes are done marks, skip marks and custom tasks sent to the student's own Canvas at the student's request, and two-factor authentication is on.
-35. Check every listing.
+43. Check every listing.
     Expect: the privacy policy link opens `docs/privacy.md` on the project site.
     Expect: the description ends with the trademark notice at the end of the README.
-36. Sign in to the reviewer test account.
+44. Sign in to the reviewer test account.
     Expect: the planner, done marks and custom tasks work in its course.
-37. Before the first release only, run the final name check from design decision 17.
+45. Before the first release only, run the final name check from design decision 17.
