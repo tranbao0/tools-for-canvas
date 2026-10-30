@@ -88,6 +88,40 @@ describe('sanitizeHtml: what stays', () => {
   });
 });
 
+describe('sanitizeHtml: images on the Canvas origin', () => {
+  it('keeps file, equation and asset paths of Canvas, and any https image of another origin', () => {
+    for (const path of [
+      '/courses/1/files/2/preview',
+      '/courses/10~42/files/2/download?wrapper=1',
+      '/users/3/files/4/preview',
+      '/groups/5/files/6',
+      '/accounts/7/files/8',
+      '/files/9/download',
+      '/equation_images/x%5E2',
+      '/images/emoji/1.png',
+      '/dist/images/logo.png',
+    ]) {
+      expect(parsed(`<img src="${path}">`).querySelector('img'), path).not.toBeNull();
+    }
+    expect(parsed('<img src="https://example.org/a.png">').querySelector('img')).not.toBeNull();
+  });
+
+  it('drops an image whose address is another page of Canvas, which a GET could change', () => {
+    for (const path of [
+      '/courses/1/discussion_topics/5',
+      '/courses/1/discussion_topics/5/read',
+      '/courses/1/modules/items/9',
+      '/courses/1/pages/p',
+      '/api/v1/courses/1/discussion_topics/5',
+      '/logout',
+      '/courses/1/files/../discussion_topics/5',
+      '//school.instructure.com/courses/1/discussion_topics/5',
+    ]) {
+      expect(parsed(`<img src="${path}">`).querySelector('img'), path).toBeNull();
+    }
+  });
+});
+
 describe('sanitizeHtml: the hostile corpus', () => {
   const hostile: [string, string][] = [
     ['a script', '<p>a</p><script>window.__x = 1</script><p>b</p>'],

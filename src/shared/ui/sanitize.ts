@@ -38,6 +38,10 @@ const DROPPED_TAGS: ReadonlySet<string> = new Set(
   ),
 );
 
+/** The paths on the Canvas origin that an image may load: files, equation images and assets. */
+const CANVAS_IMAGE_PATH =
+  /^\/(?:(?:courses|groups|users|accounts)\/\d+(?:~\d+)?\/files\/|files\/|equation_images\/|images\/|dist\/)/;
+
 const LINK_SCHEMES: ReadonlySet<string> = new Set(['http:', 'https:', 'mailto:']);
 
 /** The deepest nesting that is kept, and the most nodes. Beyond them only text stays. */
@@ -93,6 +97,9 @@ export function sanitizeHtml(html: string, options: SanitizeOptions): DocumentFr
       case 'img': {
         const url = resolve(element.getAttribute('src')?.trim() ?? '', origin);
         if (url === null || url.protocol !== 'https:') return null;
+        // Opening a message must not load a Canvas page that changes state, such as a topic page
+        // that marks the topic as read. On Canvas itself only file, equation and asset paths load.
+        if (url.origin === origin && !CANVAS_IMAGE_PATH.test(url.pathname)) return null;
         made.setAttribute('src', url.href);
         made.setAttribute('alt', element.getAttribute('alt') ?? '');
         made.setAttribute('loading', 'lazy');

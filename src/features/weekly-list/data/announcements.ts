@@ -82,11 +82,15 @@ export function courseKeyOf(courseIds: readonly string[]): string {
   return [...courseIds].sort().join(',');
 }
 
-/** The window of a load: the last 14 days, ending now. */
+/**
+ * The window of a load: the last 14 days, ending one day from now. Canvas compares the end with
+ * the post date, so a computer clock that runs slow must not hide a new post. The server
+ * already leaves out delayed posts (`active_only`).
+ */
 export function announcementRange(now: number): { start: string; end: string } {
   return {
     start: new Date(now - ANNOUNCEMENT_WINDOW_DAYS * DAY_MS).toISOString(),
-    end: new Date(now).toISOString(),
+    end: new Date(now + DAY_MS).toISOString(),
   };
 }
 

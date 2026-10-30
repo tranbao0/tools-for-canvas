@@ -22,7 +22,7 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - your done marks, skip marks and custom tasks;
 - the names of custom grade statuses in your courses;
 - your current grade and grade letter in each course, which Canvas sends with the course list, unless the course hides them;
-- the announcements of your courses: the title, author, date, read state and the start of the text of the announcements of the last 14 days of your shown courses, for the Announcements tab of the list;
+- the announcements of your courses: the title, author, date, read state and text of the announcements of the last 14 days of your shown courses, for the Announcements tab of the list (the extension keeps the first 1,500 characters of each text in memory);
 - the full text of an announcement that you open, and the recent announcements of a course that you choose in the announcements filter of the new dashboard.
 
 It reads the `_csrf_token` cookie of your Canvas site, because Canvas requires that token to accept a write.

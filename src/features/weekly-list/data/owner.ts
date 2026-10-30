@@ -1421,6 +1421,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       ),
       announcementMarks: confirmedMarks(cache.announcementMarks),
     };
+    staleAnnouncements();
     // A DELETE that is out stays: it ends the task, and sending it again skips the check.
     for (const noteId of queuedDeletes) if (!startedDeletes.has(noteId)) requeueDelete(noteId);
     persist();
@@ -2008,8 +2009,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         } catch (error) {
           deps.log('announcements', error);
         }
-        if (announcementLoad === entry) announcementLoad = null;
-        if (!isCurrent(stamp) || cache === null) return;
+        // A load that a newer one replaced (the hidden courses changed) must not overwrite it.
+        const current = announcementLoad === entry;
+        if (current) announcementLoad = null;
+        if (!current || !isCurrent(stamp) || cache === null) return;
         const previous = cache.announcements;
         const kept = previous?.courseKey === key ? previous.topics : null;
         cache = {
@@ -2043,6 +2046,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (cache.failure?.kind === 'signed_out' || !(await deps.hasAccess(origin))) {
       return unavailable();
     }
+    // The list holds one student's data, so Canvas confirms who is signed in, as for the
+    // dashboard data (at most every 30 seconds).
+    if (!(await signedInStudentOwnsCache())) return unavailable();
     const settings = await store.settings.getValue();
     if (cache === null || cache.session === null) return unavailable();
     const session = cache.session;
@@ -2075,6 +2081,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       loading: ids.length > 0 && !complete && announcementLoad !== null,
       failed: ids.length > 0 && !complete && loaded?.failed === true && announcementLoad === null,
     };
+  }
+
+  /** The list loads again at the next request, because Canvas may differ from the cache now. */
+  function staleAnnouncements(): void {
+    if (cache?.announcements == null) return;
+    cache = { ...cache, announcements: { ...cache.announcements, checkedAt: null } };
   }
 
   function updateMark(
@@ -2114,11 +2126,16 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       deps.log('write', error);
       if (!isCurrent(stamp)) return false;
       updateMark(key, seq, () => null);
+      staleAnnouncements();
       await verifyUser(stamp);
       await finishWrite();
       return false;
     }
-    if (!isCurrent(stamp)) return false;
+    if (!isCurrent(stamp)) {
+      // The queue ended while the request ran, so the mark is gone and Canvas may show it.
+      staleAnnouncements();
+      return false;
+    }
     updateMark(key, seq, (mark) => ({ ...mark, confirmedSeq: nextId() }));
     await finishWrite();
     // The list needs no round: the mark holds until a load shows the new state.

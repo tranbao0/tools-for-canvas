@@ -127,8 +127,40 @@ describe('announcementFeed', () => {
     expect(ids).not.toContain(C.club);
     expect(range).toEqual({
       start: new Date(Date.now() - 14 * DAY_MS).toISOString(),
-      end: new Date(Date.now()).toISOString(),
+      // One day of room, so a computer clock that runs slow hides no new post.
+      end: new Date(Date.now() + DAY_MS).toISOString(),
     });
+  });
+
+  it('does not let a load for an old set of courses overwrite a newer one', async () => {
+    const h = await loaded();
+    const release = h.canvas.holdIf('listAnnouncementFeed', ([ids]) =>
+      (ids as string[]).includes(C.calculus),
+    );
+    await h.owner.announcementFeed(PANEL_FEED);
+
+    const settings = await import('./storage').then((m) => m.settingsItem);
+    await settings.setValue({ ...(await settings.getValue()), hiddenCourseIds: [C.calculus] });
+    await h.owner.announcementFeed(PANEL_FEED);
+    await vi.waitFor(() => expect(h.canvas.callsOf('listAnnouncementFeed')).toHaveLength(2));
+    release();
+    await h.owner.settled();
+
+    const cache = await sessionCacheItem.getValue();
+    expect(cache?.announcements?.courseKey).not.toContain(C.calculus);
+    const feed = ready(await h.owner.announcementFeed(PANEL_FEED));
+    expect(feed.loading).toBe(false);
+    expect(feed.rows.map((row) => row.courseId)).not.toContain(C.calculus);
+  });
+
+  it('asks Canvas who is signed in, and shows nothing of the cache to another student', async () => {
+    const h = await loaded();
+    await loadedFeed(h);
+    await vi.advanceTimersByTimeAsync(31_000);
+    signInOtherUser(h);
+
+    expect((await h.owner.announcementFeed(PANEL_FEED)).status).toBe('unavailable');
+    expect((await sessionCacheItem.getValue())?.announcements).toBeNull();
   });
 
   it('shows only the course of a course home page', async () => {
@@ -377,6 +409,21 @@ describe('marking an announcement as read', () => {
     const feed = ready(await h.owner.announcementFeed(PANEL_FEED));
     expect(feed.rows.find((row) => row.id === '11')?.read).toBe(false);
     expect((await sessionCacheItem.getValue())?.announcementMarks).toEqual({});
+  });
+
+  it('loads the list again when a write failed, so the row shows what Canvas has', async () => {
+    const h = await loaded();
+    await loadedFeed(h);
+    h.canvas.fail('setAnnouncementRead', canvasError('server', 500), { times: 1 });
+    await h.owner.act({ kind: 'markAnnouncement', courseId: C.biology, topicId: '11' });
+    await h.owner.settled();
+    h.canvas.resetCalls();
+
+    // No force and no 60 seconds: the failed write alone makes the list load again.
+    await h.owner.announcementFeed(PANEL_FEED);
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('listAnnouncementFeed')).toHaveLength(1);
   });
 
   it('undoes with a DELETE for the same student on the same Canvas', async () => {

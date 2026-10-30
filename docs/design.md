@@ -1741,6 +1741,8 @@ The page scripts of the fixes and of the weekly list share one sanitizer, `src/s
   They open in a new tab with `rel="noopener noreferrer"`.
   A link with another scheme, no address or a broken address loses its link and keeps its text.
 - Images: https only, after the address resolves against the Canvas address, so a relative Canvas file works.
+  An image on the Canvas origin loads only from a file, equation image or asset path (`/files/`, `/courses/:id/files/`, `/users/:id/files/`, `/groups/:id/files/`, `/accounts/:id/files/`, `/equation_images/`, `/images/`, `/dist/`).
+  Any other Canvas page as an image address drops, because a GET of a topic page marks the topic as read, and opening a message must change nothing.
   An image of another origin loads with no referrer.
   Any other image drops.
 - The nesting depth is 40 elements, the number of nodes is 5,000 and the recursion is 200 levels, so a hostile message cannot exhaust the page.
@@ -1926,7 +1928,8 @@ Announcements are still not tasks (decision 3), so they stay out of the groups, 
 - The background loads the list with one request for all shown courses:
   `GET /api/v1/announcements?context_codes[]=course_:id...&start_date=...&end_date=...&active_only=true&per_page=100`, with the `Link` pages followed.
   A student with more than 20 courses gets one request for each 20.
-  The window is the last 14 days, from now.
+  The window starts 14 days ago and ends one day from now, so a computer clock that runs slow hides no new post.
+  The list shows only the posts of the last 14 days.
   `active_only=true` leaves out unpublished and delayed posts.
 - Canvas sends `read_state` (`read` or `unread`) for each topic of this list, `context_code` (`course_<id>`) and the author [10].
   The source of `AnnouncementsApiController#index` and `serialize_additional_topic_fields` was read on 2026-10-30 [28].
@@ -1943,6 +1946,10 @@ Announcements are still not tasks (decision 3), so they stay out of the groups, 
   The state of the list is as before for a surface without the tab.
   A content script is always an in-page list, whatever its message says, and only the saved Canvas may ask.
 - The same cache rules apply as for the other data: the list and the marks drop with the cache when another student signs in, when the saved address changes and when the student signs out.
+  Each feed request asks Canvas who is signed in (at most every 30 seconds), as the dashboard data does, and answers nothing from a cache of another student.
+  The surface drops its feed and its tab when the student, the Canvas or the state changes, so it never draws the rows of the student before.
+  A failed or abandoned read write makes the list load again at the next request, because Canvas may differ from the cache.
+  A load that a newer load for other courses replaced does not write its result.
   A load result goes into the cache only for the generation, the Canvas and the student that asked for it.
 - The snippet is made in the surface with `DOMParser`, because a service worker has none.
   `htmlToText` reads the message in an inert document, leaves out the elements that carry code or a foreign document, and returns text that the row shows as text.
@@ -2018,6 +2025,10 @@ If a later feature goes over the budget, the Announcements view can move to a sc
 - The signals that tell the widget dashboard from List View come from the server and the late grid.
   A school that shows the widget dashboard to a student whose old view was List View gets the tab until the grid renders.
 - The relative date follows the Canvas time zone of the list.
+- The Canvas API documentation says the announcements request can fail when the student lacks the View Announcements permission in any listed course, while the source of `index` shows no such check.
+  If it is true, one such course fails the request for its 20 courses, and the tab shows the error.
+  The live checklist has a step for it.
+  The fix, if needed, is to ask again for each course of a failed batch.
 - A student who opens an announcement in Canvas marks it as read there, so the row shows it as unread until the next load (at most 60 seconds, or the next change).
 - The read mark and the Undo are two writes.
   If the second one fails, Canvas keeps the first state, and the next load shows it.

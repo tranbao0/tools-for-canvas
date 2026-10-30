@@ -1549,6 +1549,39 @@ describe('the Announcements tab', () => {
     expect(runtime.announcements()?.feed).toMatchObject({ unread: 5 });
   });
 
+  it('shows nothing of the feed of the student before when another student signs in, and starts with Tasks', async () => {
+    const fake = feedHost('announcements');
+    const runtime = await started(fake);
+    expect(runtime.announcements()?.feed).not.toBeNull();
+    // The background answers the state for the new student, and the feed reply is slow.
+    fake.user = 'user-2';
+    fake.reply = (message) =>
+      message.type === 'weekrow:announcement-feed'
+        ? new Promise(() => undefined)
+        : message.type === 'weekrow:get-state'
+          ? readyFor(fake.user, { origin: fake.origin })
+          : { ok: true, retryAt: null };
+
+    fake.changed();
+    await settle();
+
+    expect(runtime.announcements()).toEqual({ tab: 'tasks', feed: null, showRead: false });
+  });
+
+  it('drops the feed when the state is not ready, as after a sign-out', async () => {
+    const fake = feedHost('announcements');
+    const runtime = await started(fake);
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state'
+        ? ({ kind: 'signed_out', origin: fake.origin, isFirefox: false, offer: null } as const)
+        : { ok: true, retryAt: null };
+
+    fake.changed();
+    await settle();
+
+    expect(runtime.announcements()).toMatchObject({ tab: 'tasks', feed: null });
+  });
+
   it('asks again with force when the student presses Retry', async () => {
     const fake = feedHost();
     const runtime = await started(fake);

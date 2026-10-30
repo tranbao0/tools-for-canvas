@@ -372,6 +372,8 @@ Run them on the classic dashboard in Card View, then in List View, then on a cou
     Expect: the card keeps its height, and the list scrolls inside it.
     Turn on "Show read".
     Expect: the read announcement joins the list, with a normal title and no "Mark as read" control.
+    If a course of the student has "View Announcements" turned off for students, check that the list still shows the other courses.
+    If it shows "Couldn't load your announcements" instead, the request fails for the whole batch of its courses, and the fix in design decision 24 is needed.
 42. Click the title of an unread announcement.
     Expect: the whole message shows in the row, with its links, image and list, and "Show less" and "Open in Canvas" show.
     Expect: the announcement is still unread in Canvas (check the unread count of Canvas, and do not open its page).

@@ -184,6 +184,16 @@ function showsSettingsInPlace(surface: RequestSurface): boolean {
   return surface === 'panel' || surface === 'inpage';
 }
 
+/** Whether a feed reply belongs to the student and the Canvas of a state. */
+function feedMatches(feed: AnnouncementFeed, state: StateReply): boolean {
+  return (
+    state.kind === 'ready' &&
+    feed.status === 'ready' &&
+    feed.userId === state.userId &&
+    feed.origin === state.origin
+  );
+}
+
 function isTabSurface(surface: RequestSurface): surface is 'panel' | 'inpage' {
   return surface === 'panel' || surface === 'inpage';
 }
@@ -330,6 +340,12 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       else if (reply.userId !== notice.data[0]?.userId || reply.origin !== notice.data[0]?.origin) {
         notice = null;
       }
+    }
+    // The feed belongs to one student on one Canvas, like the notice. Another student, a
+    // sign-out or another address drops it, and the new student starts with Tasks (decision 24).
+    if (feed !== null && !feedMatches(feed, reply)) {
+      feed = null;
+      listTab = 'tasks';
     }
     base = reply;
     followCourses(reply);
@@ -685,7 +701,15 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     actions,
     state: current,
     settings: inPlaceSettings,
-    announcements: () => (tabsShown() ? { tab: listTab, feed, showRead } : undefined),
+    announcements: () =>
+      tabsShown()
+        ? {
+            tab: listTab,
+            // A feed of another student never shows, not even until the next reply.
+            feed: feed !== null && feedMatches(feed, base as StateReply) ? feed : null,
+            showRead,
+          }
+        : undefined,
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
