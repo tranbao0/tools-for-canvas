@@ -99,6 +99,8 @@
 
 :host(:is([data-panel='float'], [data-panel='dock'])) {
   height: 100% !important;
+  /* The host is as tall as the page area, so only the card takes clicks. */
+  pointer-events: none !important;
 }
 
 :host(:is([data-panel='float'], [data-panel='dock'])) .wr-mount {
@@ -107,6 +109,10 @@
 
 :host([data-panel]) .wr[data-surface='inpage'],
 :host([data-panel][data-theme='dark']) .wr[data-surface='inpage'] {
+  /* The surface and the line of a widget card: the dark card is lighter than the page. */
+  --wr-bg: light-dark(#fff, #1f2d3d);
+  --wr-btn-line: light-dark(#d7dade, #2e3e4e);
+  pointer-events: auto;
   box-sizing: border-box;
   margin: 0;
   padding: 0 var(--wr-pad-x) var(--wr-pad-y);

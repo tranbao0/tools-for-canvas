@@ -153,7 +153,7 @@ function listenToBackground(handler: (message: unknown) => void): () => void {
 
 /**
  * Runs the in-page flow: on the saved Canvas with "Show the weekly list on Canvas pages" on, it
- * waits for the page's anchors and mounts the list in a shadow root before `#right-side`. Turning
+ * waits for the page's anchors and mounts the list in a shadow root in the container that the layout places. Turning
  * the setting off or switching to another Canvas address removes the list and gives the page its
  * own To Do back. Pages without the anchors get nothing.
  */

@@ -423,6 +423,7 @@ describe.each(Object.entries(FIXTURE_PAGES))('page %s', (_name, page: FixturePag
       isCanvas &&
       dashboardPath &&
       !withRightSide &&
+      doc.querySelector('#content') !== null &&
       doc.querySelector('#right-side-wrapper > #right-side') !== null;
     const courseRule = isCanvas && withRightSide && coursePath;
     expect(dashboardRule).toBe(page.expectedMount === 'dashboard');

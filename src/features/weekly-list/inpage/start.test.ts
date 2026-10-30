@@ -203,7 +203,7 @@ describe('startInpage', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(document.body.outerHTML).toBe(before);
-    expect(document.getElementById('weekrow-column')).toBeNull();
+    expect(document.querySelector('[data-weekrow-styled], [data-weekrow-column]')).toBeNull();
     // Turning the setting off must not bring anything back.
     await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: false });
     document.body.classList.add('x');

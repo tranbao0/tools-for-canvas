@@ -6,11 +6,12 @@
  * has no room, or a floating card in the free area beside the content. The tests measure the
  * layout with Canvas's layout rules from the fixture stylesheet.
  */
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import {
   doneBox,
   expect,
+  group,
   inpageList,
   openCanvasPage,
   saveSettings,
@@ -305,21 +306,64 @@ test.describe('the widget dashboard', () => {
   }) => {
     await open(context, page, 1920);
     await expectMode(page, 'grid');
-    const marker = await page.evaluate(() => {
+    await page.evaluate(() => {
       const container = document.getElementById('weekrow-inpage');
       if (container) container.dataset['same'] = 'yes';
-      return container?.firstElementChild?.shadowRoot?.querySelector('.wr') !== null;
     });
-    expect(marker).toBe(true);
+    // The student opens the past due group, and the group shows its rows.
+    const pastDueSummary = (): Locator =>
+      group(inpageList(page), 'past_due').getByRole('button', { name: /\d+ past due/ });
+    const pastDue = pastDueSummary();
+    await pastDue.click();
+    await expect(pastDue).toHaveAttribute('aria-expanded', 'true');
     await rerenderContent(page);
     await expect(page.locator(`${GRID} > #weekrow-inpage`)).toHaveCount(1);
     await expectMode(page, 'grid');
-    // The same container comes back with its list, not a new one.
+    // The same container comes back with its list, not a new one, and the group is still open.
     await expect(page.locator('#weekrow-inpage[data-same="yes"]')).toHaveCount(1);
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await expect(pastDueSummary()).toHaveAttribute('aria-expanded', 'true');
     const columns = await boxes(page, CANVAS_COLUMNS);
     const card = await listBox(page);
     expect(card.y).toBeCloseTo((columns[1] as Box).y, 0);
+  });
+
+  test('keeps the scroll position of the floating card when the page removes the container', async ({
+    context,
+    page,
+  }) => {
+    await open(context, page, 1920);
+    await setEditMode(page, true);
+    await expectMode(page, 'float');
+    await addHeight(page);
+    await scrollTo(page, 300);
+    // Make the card taller than the viewport, then scroll inside it.
+    const scrolled = await page.evaluate(async () => {
+      const card = document
+        .querySelector('#weekrow-inpage > weekrow-list')
+        ?.shadowRoot?.querySelector<HTMLElement>('.wr');
+      if (!card) return -1;
+      const filler = document.createElement('div');
+      filler.style.height = '2000px';
+      card.append(filler);
+      card.scrollTop = 400;
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      return card.scrollTop;
+    });
+    expect(scrolled).toBe(400);
+    await page.evaluate(() => document.getElementById('weekrow-inpage')?.remove());
+    await expect(page.locator('#content-wrapper > #weekrow-inpage')).toHaveCount(1);
+    await expectMode(page, 'float');
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            document
+              .querySelector('#weekrow-inpage > weekrow-list')
+              ?.shadowRoot?.querySelector<HTMLElement>('.wr')?.scrollTop,
+        ),
+      )
+      .toBeGreaterThan(300);
   });
 
   test('floats for the rest of the page view after the page removes the card too often', async ({
@@ -377,7 +421,7 @@ test.describe('the widget dashboard', () => {
     await expectMode(page, 'float');
   });
 
-  for (const width of [1920, 1280]) {
+  for (const width of PAGE_WIDTHS) {
     test(`puts the page back when the setting is off at ${width} px`, async ({
       context,
       page,
@@ -500,6 +544,27 @@ test.describe('the floating card', () => {
     }
   }
 
+  test('lets clicks through the host below the card', async ({ context, page }) => {
+    await openFloating(context, page, 'dashboard-list-view', 1920);
+    await addHeight(page);
+    await scrollTo(page, 300);
+    const card = await listBox(page);
+    const hit = await page.evaluate(
+      ([x, y]) => {
+        const element = document.elementFromPoint(x as number, y as number);
+        return element === null ? null : `${element.tagName}#${element.id}`;
+      },
+      [card.x + 20, card.y - 10],
+    );
+    expect(hit).not.toBeNull();
+    expect(hit).not.toMatch(/^WEEKROW-LIST|#weekrow-inpage/);
+    const onCard = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x as number, y as number)?.tagName,
+      [card.x + 20, card.y + 20],
+    );
+    expect(onCard).toBe('WEEKROW-LIST');
+  });
+
   test('keeps the header of the list in view while the list scrolls inside', async ({
     context,
     page,
@@ -548,7 +613,7 @@ test.describe('the floating card', () => {
   }) => {
     await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
     const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-list-view' }]);
-    for (const width of [1920, 1280, 700]) {
+    for (const width of PAGE_WIDTHS) {
       await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
       await openCanvasPage(page, canvas.origin);
       const before = await snapshot(page);

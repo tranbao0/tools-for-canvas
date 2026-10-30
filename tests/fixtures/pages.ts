@@ -19,7 +19,7 @@ export const FIXTURE_READY_SELECTOR = 'html[data-fixture-ready="true"]';
 
 /**
  * Where the in-page list belongs on a page, or `none` when nothing may be injected.
- * `dashboard_column` is a dashboard without a right column, where the list turns Canvas's column on.
+ * `dashboard_column` is a dashboard without a right column, where the list takes a place in the page content.
  */
 export type ExpectedMount = 'dashboard' | 'dashboard_column' | 'course_home' | 'none';
 

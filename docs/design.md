@@ -188,7 +188,7 @@ Canvas's right column squeezed the widget grid into narrow columns, and the list
 The owner asked for a card like the original Tasks for Canvas, larger, with the look of the widgets, and with the widgets at their own width.
 The owner then chose a card inside the widget grid as the main mode on the widget dashboard, and a floating panel as the backup.
 The owner accepts that the in-grid card needs an update when Canvas changes the markup of its widget grid.
-Later that day the owner asked for the same relief on a long classic dashboard: after a long scroll, the list must not stay at the top of a column that is far out of view.
+The owner also asked for relief on a long classic dashboard: after a long scroll, the list must not stay at the top of a column that is far out of view.
 
 The Canvas page is the main home.
 The in-page list replaces the Canvas To Do list on the classic dashboard (Card View and Recent Activity) and on course home pages, like the original Tasks for Canvas.

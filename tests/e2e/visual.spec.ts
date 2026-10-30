@@ -195,12 +195,13 @@ for (const fixture of Object.keys(PAGES)) {
  * the list is judged beside dark widgets and not only on its own dark theme.
  */
 const DARK_PAGE_CSS = `
-  body, .ic-app, .ic-Layout-wrapper { background: #1c2229 !important; color: #e8eaec !important; }
+  *, *::before, *::after { transition: none !important; }
+  body, .ic-app, .ic-Layout-wrapper { background: #1b2330 !important; color: #e8eaec !important; }
   a { color: #7db7e8 !important; }
-  .fixture-widget, .fixture-planner-item { background: #262d35 !important; border-color: #3a434d !important; color: #e8eaec !important; }
-  .fixture-widget li { border-top-color: #3a434d !important; }
-  .fixture-widget-tabs { border-bottom-color: #3a434d !important; }
-  .Button { background: #262d35 !important; color: #e8eaec !important; border-color: #3a434d !important; }
+  .fixture-widget, .fixture-planner-item { background: #1f2d3d !important; border-color: #2e3e4e !important; color: #e8eaec !important; }
+  .fixture-widget li { border-top-color: #2e3e4e !important; }
+  .fixture-widget-tabs { border-bottom-color: #2e3e4e !important; }
+  .Button { background: #253443 !important; color: #e8eaec !important; border-color: #4a5b68 !important; }
 `;
 
 interface LayoutShot {
