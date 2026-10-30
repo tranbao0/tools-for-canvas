@@ -31,6 +31,13 @@ Each tool gets its own design decision in `docs/design.md` before it is built.
 - "Open in new tab" is the fallback when a file cannot load in the pane.
 - Files the student submitted open in the pane from the assignment page and the submission details, with a download button, instead of only downloading.
 - A test on a live Canvas comes first, to confirm that the extension can fetch file data on real schools.
+- File access check (built, see decision 23):
+  - Only Firefox test channel builds include it.
+    The settings have a "Developer" group with a "File access check" link.
+  - The student opens a Canvas page with a file link and clicks "Run check".
+    The check reads the file API, fetches the file bytes from the background and from an extension page through the redirects, tries a hidden iframe of an extension page in the Canvas page, and lists the file links and DOM hooks it finds.
+  - It makes a plain-text report with no names, tokens or query strings, and the owner pastes it into the next planning round.
+  - The viewer waits for that report.
 
 ## 4. One assignment view
 

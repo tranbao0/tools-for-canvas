@@ -6,6 +6,7 @@ import { wireDataRouter } from '@/features/weekly-list/data/router';
 import { wireActionClick } from '@/shared/platform/actionClick';
 import { wireInstall } from '@/shared/platform/install';
 import { logFailure } from '@/shared/platform/log';
+import { wireFileCheck } from '@/features/file-check/background';
 import { wirePageSync } from '@/features/weekly-list/data/pageSync';
 import { createPanelRegistry } from '@/shared/platform/panelRegistry';
 import { restrictStorageToTrustedContexts } from '@/shared/platform/trustedStorage';
@@ -26,4 +27,6 @@ export default defineBackground(() => {
   wireDataRouter(owner);
   wireDataTriggers(owner);
   wirePageSync();
+  // Only builds of the test channel include the file access check (docs/design.md, decision 23).
+  if (__FILE_CHECK__) wireFileCheck();
 });

@@ -16,6 +16,8 @@ const WORKER_TIMEOUT_MS = 10_000;
 export interface ExtensionOptions {
   /** The unpacked extension that the context loads. Defaults to {@link CHROME_EXTENSION_DIR}. */
   extensionDir: string;
+  /** More command line flags for Chromium. */
+  browserArgs: string[];
 }
 
 export interface ExtensionFixtures {
@@ -39,11 +41,16 @@ function isExtensionWorker(worker: Worker): boolean {
  */
 export const test = base.extend<ExtensionFixtures & ExtensionOptions>({
   extensionDir: [CHROME_EXTENSION_DIR, { option: true }],
-  context: async ({ extensionDir }, use) => {
+  browserArgs: [[], { option: true }],
+  context: async ({ extensionDir, browserArgs }, use) => {
     const context = await chromium.launchPersistentContext('', {
       channel: 'chromium',
       headless: true,
-      args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],
+      args: [
+        `--disable-extensions-except=${extensionDir}`,
+        `--load-extension=${extensionDir}`,
+        ...browserArgs,
+      ],
     });
     await use(context);
     await context.close();

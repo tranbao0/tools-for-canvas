@@ -61,8 +61,14 @@ export function isBuildFresh(browser, mode = 'release') {
 export function ensureBuild(browser, mode = 'release') {
   if (!isBuildFresh(browser, mode)) {
     console.log(`Building the ${browser} extension (${mode})...`);
-    // A release build never takes WXT_E2E from the shell, so it always writes the release output.
-    const { WXT_E2E: _unused, ...releaseEnv } = process.env;
+    // A release build never takes a test switch from the shell, so it always writes the release
+    // output and holds no test-only code, such as the file access check.
+    const {
+      WXT_E2E: _e2e,
+      FIREFOX_TEST_VERSION: _version,
+      FIREFOX_TEST_UPDATE_URL: _updateUrl,
+      ...releaseEnv
+    } = process.env;
     const env = mode === 'e2e' ? { ...releaseEnv, WXT_E2E: '1' } : releaseEnv;
     execSync(`npm run build:${browser}`, { cwd: ROOT, stdio: 'inherit', env });
   }

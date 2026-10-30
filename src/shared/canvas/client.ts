@@ -147,7 +147,7 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
     };
 
     const write = async <T>(
-      method: Exclude<HttpMethod, 'GET'>,
+      method: Exclude<HttpMethod, 'GET' | 'HEAD'>,
       url: string,
       body: unknown,
     ): Promise<T> => expectObject<T>((await send({ method, url, body })).data, url);

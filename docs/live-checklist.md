@@ -353,3 +353,23 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
 44. Sign in to the reviewer test account.
     Expect: the planner, done marks and custom tasks work in its course.
 45. Before the first release only, run the final name check from design decision 17.
+
+## Part 3: File access check (Firefox test channel)
+
+This part answers the open questions for the file viewer (roadmap item 3, design decision 23).
+Only a build of the Firefox test channel has the check.
+A store build or a build from `npm run build` does not.
+
+1. Install the test channel build from `https://tranbao0.github.io/tools-for-canvas/firefox/tools-for-canvas-latest.xpi` in Firefox, and sign in to `sjsu.instructure.com` as the student.
+2. Open a Canvas page that has a file link.
+   Good pages are a page or an assignment with a file in its text, a module with a file, or the submission details of an assignment where you handed in a file.
+3. Open the settings of the extension, find the "Developer" group, and click "File access check".
+   Expect: a new tab opens with the title "File access check".
+4. Click "Run check".
+   The check reads the Canvas tab you used last, so do not open another Canvas tab first.
+   Expect: a plain-text report shows in about 10 seconds.
+5. Click "Copy report" and paste it into the next planning message.
+   The report holds hosts and counts, and no names, file names, tokens or query strings.
+   Read it once before you paste it.
+6. Repeat steps 2 to 5 for each kind of page: a rich content file link, a module file item, the assignment page of a submitted file, and the submission details page.
+   To test one file, paste its id or its link in the field above "Run check".

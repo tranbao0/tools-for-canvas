@@ -6,6 +6,7 @@
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { t, type MessageKey } from '../../../shared/ui/i18n';
 import { FixesSettings } from '../../dashboard-fixes/ui/FixesSettings';
+import { DeveloperSection } from '../../file-check/ui/DeveloperSection';
 import type { ToolsSettings } from '../../../shared/settings/tools';
 import type { Settings } from '../model/types';
 import type { AppProps } from './contract';
@@ -141,6 +142,8 @@ export function SettingsFields(props: {
       {props.tools && props.onToolsChange && (
         <FixesSettings tools={props.tools} level={props.level} onChange={props.onToolsChange} />
       )}
+
+      {__FILE_CHECK__ && <DeveloperSection level={props.level} />}
     </div>
   );
 }

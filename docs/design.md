@@ -50,6 +50,7 @@ This extension has no account, no server of its own and no telemetry.
 | 20 | No-telemetry guarantee | One fetch wrapper that only reaches the student's Canvas |
 | 21 | Visual design | Looks like a native part of Canvas, not an add-on sidebar |
 | 22 | New dashboard fixes | Four small fixes for the widgets of the new Canvas dashboard, each with its own switch, in a page script of their own |
+| 23 | File access check | A read-only check that runs on the owner's live Canvas in test builds only, and answers the open questions for the file viewer |
 
 ## Decisions
 
@@ -1697,6 +1698,97 @@ The page script does the work in `src/features/dashboard-fixes/inpage/sanitize.t
 - A grade card copy has no color menu, no hide button and no update date, because those belong to React or to data that the extension does not have.
 - A hostile message that a future browser parses in a new way would still go through the same allowlist, because the output is built node by node.
 
+### 23. File access check
+
+**Question:** Can the planned file viewer (roadmap item 3) fetch Canvas files and frame an extension page on a real school?
+
+**Decision:** Build a "File access check" before the viewer.
+Only builds of the Firefox test channel (`FIREFOX_TEST_VERSION` is set) and the end-to-end build include it.
+A store build has none of it.
+The owner runs it on `sjsu.instructure.com` in Firefox and pastes the report.
+
+**The four questions.**
+
+1. Can the extension resolve a file with `GET /api/v1/files/:id`?
+2. Can it fetch the bytes of the file from the background and from an extension page, with the student's session, through the redirect chain (`/files/:id/download`, inst-fs, the "safer" domain `canvas-user-content.com`, verifiers)?
+3. Does the Content Security Policy of Canvas let the page frame an extension page from `web_accessible_resources`?
+4. Which links and DOM hooks does Canvas use for file previews, module file items, rich content file links and the student's own submission attachments?
+
+**How it works.**
+
+- A "Developer" group in the settings, in all three places, shows a "File access check" link.
+  The group exists only in test builds.
+  The link opens the check page, `file-check.html`, in a tab.
+- The check page has "Run check", an optional field for a file id or a file link, and "Copy report".
+  A click on "Run check" reads the Canvas tab that the student used last.
+- Scan: the background injects a function into that tab.
+  It counts `a.instructure_file_link`, `a[href*="/files/"]`, preview buttons, module file items and submission attachment links.
+  For each kind it returns the count, one sample path and up to three element shapes (the tag, the class names and the `data-` attribute names).
+  It also returns the first file id and the meta tag content security policy.
+  The page is not trusted, so the extension checks and redacts every field of the answer.
+- File API: the background calls `GET /api/v1/files/:id` through `canvasFetch` and records the status, the `content-type` header, `size`, the `content-type` field of the file, and whether `url` and `preview_url` exist.
+- File bytes: the background and the check page both fetch `url` with credentials.
+  A first request with `redirect: manual` shows whether the start redirects.
+  If it does, a second request follows the chain.
+  The report holds the host, the status and the media type of the first and the last answer, the number of bytes read, the first 5 bytes as escaped text, whether they are `%PDF-`, and whether the fetch threw.
+  `fetch` hides the hops between the first and the last answer, and the report says so.
+  The read stops at 25 MB.
+- Frame check: the background injects a function that adds a hidden iframe of `file-probe.html` to the Canvas tab.
+  The probe page posts a nonce to its parent.
+  The function waits 3 seconds for it, then removes the iframe in every case.
+  The background also sends a `HEAD` request for the page and reads its `content-security-policy` and `content-security-policy-report-only` headers.
+
+**Security.**
+
+- The check only reads: `GET` of the file API, `GET` of the file bytes, `HEAD` of the page, and two injected functions that read or frame.
+  A request to download a file can add a normal access record in Canvas, as when the student opens the file.
+- The file API call and the `HEAD` request go through `canvasFetch`, the fetch wrapper of decision 20.
+  The probe of the file bytes lives in `src/shared/canvas/fileFetch.ts`, in the one folder where lint allows `fetch`.
+  It keeps the start rule of the wrapper: the first address must be an https address on the saved Canvas origin, so a file address on another host is recorded as `origin_blocked` and not fetched.
+  Only the redirect leaves the origin, because that is the question of the check.
+- Every step works on the saved Canvas only (decision 5).
+  The background reads the saved address and compares it with the tab URL at each step, and again after the frame probe.
+  Only extension pages may run a step.
+  The settings link may also send "open" from the top frame of the saved Canvas.
+- The report holds hosts, structural paths, counts, statuses, media types and byte counts, and nothing else.
+  A path keeps only the segments `courses`, `files`, `modules`, `assignments`, `submissions`, `download`, `preview`, `api` and `v1`, and numeric ids become `:id`.
+  Query strings, fragments, user names in addresses, file names, tokens, verifiers, cookies and the nonces and hashes of a policy are removed.
+  A last pass over the whole report removes a query, a fragment and any long opaque value.
+- The probe page posts only to the saved Canvas origin, read from the trusted storage, and the injected function accepts only a message from its own iframe with the right nonce.
+  A hostile page can read the nonce and fake the handshake.
+  That can only falsify this diagnostic, which sends nothing anywhere.
+
+**`web_accessible_resources`.**
+
+- The manifest of a test build lists `file-probe.html` with `matches: ["https://*/*"]`, and with `use_dynamic_url: true` on Chromium.
+  A match pattern cannot name the saved Canvas, so the background injects the iframe into the saved Canvas only, and the probe page answers only the saved origin.
+- Firefox does not support `use_dynamic_url`, so the manifest leaves it out there.
+  A Firefox install already has its own random address for `moz-extension:` pages.
+- With `use_dynamic_url`, Chromium gives the iframe an address with a session id, but the page runs with the origin of the extension id, so `postMessage` shows that origin.
+  The check accepts both and records `dynamic address: yes`.
+  The Chromium end-to-end test confirms this.
+- The real viewer needs the same entry for its pane page, with the same `matches` and `use_dynamic_url` on Chromium.
+  `check-manifest` still fails any store build that has `web_accessible_resources`, until the viewer is built and the rule changes.
+
+**Test builds only.**
+
+- `wxt.config.ts` sets `FILE_CHECK` when `FIREFOX_TEST_VERSION` or `WXT_E2E=1` is set.
+  It then keeps the two pages (`file-check`, `file-probe`) and adds the manifest entry.
+  It also defines `__FILE_CHECK__` as a literal, so the branches behind it fall away in a store build.
+  The text of the group is in the code of the check, not in `_locales`, so it stays out of the store message file.
+- `scripts/lib/ensure-build.mjs` removes `FIREFOX_TEST_VERSION` and `WXT_E2E` from the environment of a release build.
+- `npm run check:file-check` fails when a built store target holds a page, a string or a manifest entry of the check.
+  It runs at the end of `npm run check`, after a build without the flag.
+
+**Tests.**
+
+- Unit tests cover the redaction with a hostile corpus (tokens, verifiers, names in paths, user names, encoded separators, policies with nonces and report addresses), the report, the scan, the frame probe, the file fetch and the message routing.
+- A Chromium end-to-end test serves a fake Canvas.
+  Its file route redirects once to a real HTTPS host on the loopback address, because Playwright does not route the hops of a redirect.
+  A rich content page has a file link.
+  The test runs the check, reads the report and checks that it holds no secret.
+  Another test loads the release build and checks that it has none of the check.
+
 ## Open risks
 
 These items need a live check or an outside answer.
@@ -1716,6 +1808,7 @@ These items need a live check or an outside answer.
 9. The final name needs a full trademark clearance search [21].
 10. Instructure has not said whether the classic dashboard survives in the 2027 UI [13].
 11. The widget dashboard package changes often, so the finders of decision 22 need a live check against the package that the school runs.
+12. The file viewer depends on the answers of the file access check (decision 23): file bytes through the redirect chain, framing an extension page under the Canvas policy, and the DOM hooks of file links.
 
 ## Build order
 

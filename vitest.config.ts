@@ -7,6 +7,8 @@ requireTemporal();
 
 export default defineConfig({
   plugins: [WxtVitest()],
+  // Store builds drop the file access check. Tests of its parts import them directly.
+  define: { __FILE_CHECK__: 'false' },
   test: {
     include: [
       'src/**/*.test.ts',

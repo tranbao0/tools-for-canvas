@@ -8,7 +8,7 @@ import { CanvasError, type CsrfTokenSource } from './types';
 export const CANVAS_ACCEPT = 'application/json+canvas-string-ids, application/json';
 export const CSRF_HEADER = 'X-CSRF-Token';
 
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+export type HttpMethod = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'DELETE';
 
 /**
  * Reduces an address to its origin. Only https addresses are allowed, because the extension
@@ -70,11 +70,14 @@ export interface CanvasFetchInit {
   readonly method: HttpMethod;
   readonly headers?: Readonly<Record<string, string>>;
   readonly body?: string;
+  /** The `Accept` header. Defaults to the Canvas JSON types. */
+  readonly accept?: string;
 }
 
 /**
  * Sends one request to `origin`.
- * Always uses `credentials: 'include'`, `redirect: 'manual'` and the Canvas `Accept` header.
+ * Always uses `credentials: 'include'` and `redirect: 'manual'`, and sends the Canvas `Accept`
+ * header unless the caller names another.
  * Throws `origin_blocked` for a URL on another origin, `network` when the fetch fails
  * and `redirect` for any redirect response. Returns every other response as is.
  */
@@ -89,7 +92,7 @@ export async function canvasFetch(
   try {
     response = await fetchImpl(target.href, {
       method: init.method,
-      headers: { ...init.headers, Accept: CANVAS_ACCEPT },
+      headers: { ...init.headers, Accept: init.accept ?? CANVAS_ACCEPT },
       body: init.body,
       credentials: 'include',
       redirect: 'manual',

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { CHECK_MARKERS, findCheckTraces } from './check-file-check.mjs';
 import { checkManifest } from './check-manifest.mjs';
 import {
   BUDGET_BYTES,
@@ -525,5 +526,55 @@ describe('check-manifest', () => {
     assert.equal(result.code, 1);
     assert.match(result.output, /FAIL edge-mv3: permissions is/);
     assert.doesNotMatch(result.output, /FAIL chrome-mv3/);
+  });
+});
+
+describe('check-file-check', () => {
+  const read = (files) => async (file) => files[file] ?? '';
+
+  test('passes for a build with none of the check', async () => {
+    const files = { 'background.js': 'console.log(1)', 'manifest.json': '{"manifest_version":3}' };
+    assert.deepEqual(await findCheckTraces(Object.keys(files), read(files)), []);
+  });
+
+  test('finds each marker of the check in a built file', async () => {
+    for (const marker of CHECK_MARKERS) {
+      const files = { 'chunks/shared-abc.js': `x("${marker}")` };
+      const problems = await findCheckTraces(Object.keys(files), read(files));
+      assert.equal(problems.length, 1, marker);
+    }
+  });
+
+  test('finds the pages of the check and the web accessible resources', async () => {
+    const files = {
+      'file-check.html': '',
+      'chunks/file-probe-Xy12.js': '',
+      'manifest.json': '{"web_accessible_resources":[]}',
+    };
+    const problems = await findCheckTraces(Object.keys(files), read(files));
+    assert.equal(problems.length, 3);
+  });
+
+  test('fails on a build directory that holds the check', async () => {
+    const dir = await writeTree({
+      'chrome-mv3/manifest.json': '{}',
+      'chrome-mv3/background.js': 'send("weekrow:file-check-scan")',
+    });
+    const { code, output } = await runScript('check-file-check.mjs', [
+      '--out-dir',
+      dir,
+      'chrome-mv3',
+    ]);
+    assert.equal(code, 1);
+    assert.match(output, /weekrow:file-check/);
+  });
+
+  test('passes on a build directory without the check', async () => {
+    const dir = await writeTree({
+      'chrome-mv3/manifest.json': '{}',
+      'chrome-mv3/background.js': 'console.log(1)',
+    });
+    const { code } = await runScript('check-file-check.mjs', ['--out-dir', dir, 'chrome-mv3']);
+    assert.equal(code, 0);
   });
 });

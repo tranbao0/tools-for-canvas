@@ -43,11 +43,25 @@ function pagesShareOneChunk(): Plugin {
 const TEST_VERSION = process.env.FIREFOX_TEST_VERSION;
 const TEST_UPDATE_URL = process.env.FIREFOX_TEST_UPDATE_URL;
 
+/**
+ * Builds of the test channel and the end-to-end build include the file access check
+ * (docs/design.md, decision 23). A store build never does: it has no entry for the check pages,
+ * no web accessible resources and no code behind the `__FILE_CHECK__` switch.
+ */
+const FILE_CHECK = Boolean(TEST_VERSION) || process.env['WXT_E2E'] === '1';
+const FILE_CHECK_PAGES = ['file-check', 'file-probe'];
+
 export default defineConfig({
   srcDir: 'src',
   publicDir: 'src/public',
   manifestVersion: 3,
   hooks: {
+    'entrypoints:found': (_wxt, infos) => {
+      if (FILE_CHECK) return;
+      for (let i = infos.length - 1; i >= 0; i -= 1) {
+        if (FILE_CHECK_PAGES.includes(infos[i]?.name ?? '')) infos.splice(i, 1);
+      }
+    },
     // `WXT_E2E=1` builds the extension for the end-to-end tests, with the test-only code that
     // `import.meta.env.WXT_E2E` guards. The build is otherwise a production build. It goes to
     // `.output-e2e`, so no folder of release output holds the test-only code.
@@ -61,6 +75,7 @@ export default defineConfig({
     },
   },
   vite: () => ({
+    define: { __FILE_CHECK__: JSON.stringify(FILE_CHECK) },
     plugins: [preact(), pagesShareOneChunk()],
     build: {
       // The pages are local files, so a preload link for the shared chunk only adds bytes.
@@ -93,6 +108,21 @@ export default defineConfig({
     // The detector is the one static content script. It is an unlisted script that WXT builds as
     // `detector.js` without the content script wrapper, which posts a message to every page.
     content_scripts: [{ matches: ['https://*/*'], js: ['detector.js'], run_at: 'document_idle' }],
+    // The probe page of the file access check, for the iframe that the check adds to the saved
+    // Canvas. The match pattern cannot name the saved Canvas, so the background injects the
+    // iframe into that origin only. Chromium gives the page a session address with
+    // `use_dynamic_url`; Firefox already gives each install its own address.
+    ...(FILE_CHECK
+      ? {
+          web_accessible_resources: [
+            {
+              resources: ['file-probe.html'],
+              matches: ['https://*/*'],
+              ...(browser === 'firefox' ? {} : { use_dynamic_url: true }),
+            },
+          ],
+        }
+      : {}),
     action: { default_title: '__MSG_actionTitle__' },
     commands: {
       _execute_action: { suggested_key: { default: 'Alt+Shift+W' } },
