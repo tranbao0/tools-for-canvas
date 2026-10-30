@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { offerItem } from '../../platform/storage';
-import { sessionCacheItem } from '../cache';
+import { offerItem } from '../../../shared/platform/storage';
+import { sessionCacheItem } from '../../../features/weekly-list/data/cache';
 import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
-import { FULL_REFRESH_INTERVAL_MS } from '../policy';
-import { canvasError } from '../testing/fakeCanvas';
+import { FULL_REFRESH_INTERVAL_MS } from '../../../features/weekly-list/data/policy';
+import { canvasError } from '../../../features/weekly-list/data/testing/fakeCanvas';
 import {
   ORIGIN,
   PANEL,
@@ -20,7 +20,7 @@ import {
   spanOf,
   ART,
   signInOtherUser,
-} from '../testing/harness';
+} from '../../../features/weekly-list/data/testing/harness';
 
 const C = IDS.courses;
 const VISIBLE_COURSES = [C.biology, C.calculus, C.history, C.chemistry, C.orientation];
@@ -500,7 +500,7 @@ describe('the shown span', () => {
   it('shows a span that the student switched to, after the settings change', async () => {
     const h = await createHarness();
     await loadReady(h);
-    const { settingsItem } = await import('../../platform/storage');
+    const { settingsItem } = await import('../../../shared/platform/storage');
     await settingsItem.setValue({ ...(await settingsItem.getValue()), span: MONTH.span });
     await h.owner.refresh('settings');
     h.canvas.resetCalls();

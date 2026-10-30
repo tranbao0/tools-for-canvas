@@ -11,8 +11,8 @@ import {
   redoBlocksDone,
   statusChip,
   type ChipContext,
-} from '../rules';
-import type { CanvasFacts, Item } from '../types';
+} from '../../../features/weekly-list/model/rules';
+import type { CanvasFacts, Item } from '../../../features/weekly-list/model/types';
 
 const NOW = Temporal.Instant.from('2026-10-27T18:00:00Z');
 const PAST = '2026-10-26T15:00:00.000Z';

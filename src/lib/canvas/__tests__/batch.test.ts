@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chunk, unique, uniqueBy } from '../batch';
+import { chunk, unique, uniqueBy } from '../../../shared/canvas/batch';
 
 describe('batch helpers', () => {
   it('splits into batches of at most the size', () => {

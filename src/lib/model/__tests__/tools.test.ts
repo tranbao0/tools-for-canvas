@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { classifyHandIn } from '../handin';
-import { registrableLabel, toolNameFromUrl } from '../tools';
+import { classifyHandIn } from '../../../features/weekly-list/model/handin';
+import { registrableLabel, toolNameFromUrl } from '../../../features/weekly-list/model/tools';
 
 describe('toolNameFromUrl', () => {
   it.each([

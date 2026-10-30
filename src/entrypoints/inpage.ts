@@ -1,5 +1,5 @@
-import { startInpageSurface } from '@/lib/surface/inpage';
-import { createPageScriptContext } from '@/lib/surface/pageScript';
+import { startInpageSurface } from '@/features/weekly-list/surface/inpage';
+import { createPageScriptContext } from '@/features/weekly-list/surface/pageScript';
 
 /**
  * The in-page list. The background injects this script with `scripting.executeScript` into a

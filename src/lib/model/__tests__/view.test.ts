@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { Assignment } from '../../canvas/types';
-import { DEFAULT_SETTINGS, type ModelInput, type Span } from '../types';
-import { buildWeekView, plannerRangeFor } from '../view';
+import type { Assignment } from '../../../shared/canvas/types';
+import {
+  DEFAULT_SETTINGS,
+  type ModelInput,
+  type Span,
+} from '../../../features/weekly-list/model/types';
+import { buildWeekView, plannerRangeFor } from '../../../features/weekly-list/model/view';
 import {
   assignment,
   course,

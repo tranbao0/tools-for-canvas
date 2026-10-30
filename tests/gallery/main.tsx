@@ -11,13 +11,16 @@
  */
 import { render, type ComponentChildren, type VNode } from 'preact';
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
-import { App } from '../../src/lib/ui/App';
-import { SettingsView } from '../../src/lib/ui/SettingsView';
-import { PAGE_LAYOUT_CSS } from '../../src/lib/ui/pageLayout';
-import { APP_CSS, installStyles } from '../../src/lib/ui/styles';
-import { WelcomeView } from '../../src/lib/ui/WelcomeView';
-import type { AppProps, SurfaceKind } from '../../src/lib/ui/contract';
-import { attachShadowMount, type ShadowMount } from '../../src/lib/surface/shadowMount';
+import { App } from '../../src/features/weekly-list/ui/App';
+import { SettingsView } from '../../src/features/weekly-list/ui/SettingsView';
+import { PAGE_LAYOUT_CSS } from '../../src/shared/ui/pageLayout';
+import { APP_CSS, installStyles } from '../../src/shared/ui/styles';
+import { WelcomeView } from '../../src/features/weekly-list/ui/WelcomeView';
+import type { AppProps, SurfaceKind } from '../../src/features/weekly-list/ui/contract';
+import {
+  attachShadowMount,
+  type ShadowMount,
+} from '../../src/features/weekly-list/surface/shadowMount';
 import {
   allDoneView,
   checkedButMissing,
@@ -37,8 +40,8 @@ import {
   OTHER_OFFER,
   pastWeekView,
   readyState,
-} from '../../src/lib/ui/testing/mocks';
-import type { Settings } from '../../src/lib/model/types';
+} from '../../src/features/weekly-list/ui/testing/mocks';
+import type { Settings } from '../../src/features/weekly-list/model/types';
 
 /** The folder with Canvas's Lato fonts, or an empty string when the cache is missing. */
 declare const __CANVAS_FONTS__: string;

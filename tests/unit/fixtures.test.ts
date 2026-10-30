@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { customGradeStatusesQuery, readCustomGradeStatuses } from '../../src/lib/canvas/graphql';
-import type { PlannableType, PlannerItem } from '../../src/lib/canvas/types';
+import { customGradeStatusesQuery, readCustomGradeStatuses } from '../../src/shared/canvas/graphql';
+import type { PlannableType, PlannerItem } from '../../src/shared/canvas/types';
 import { CANVAS_ERRORS, invalidAssignmentIds } from '../fixtures/errors';
 import { customGradeStatusesAnswer } from '../fixtures/graphql';
 import { FIXTURE_PAGES, renderFixturePage, type FixturePage } from '../fixtures/pages';

@@ -1,4 +1,4 @@
-import type { PlannerItem, PlannerNote, PlannerOverride } from '../../../src/lib/canvas/types';
+import type { PlannerItem, PlannerNote, PlannerOverride } from '../../../src/shared/canvas/types';
 import { notePlannerItem, type FixtureContext } from '../../fixtures/canvas-json';
 import { CANVAS_ERRORS, type CanvasErrorFixture } from '../../fixtures/errors';
 import {

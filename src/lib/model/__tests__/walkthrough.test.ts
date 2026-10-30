@@ -3,10 +3,14 @@
  * Tuesday 2026-10-27 at 2:00 pm. Every item must land in exactly one place with the right chips.
  */
 import { describe, expect, it } from 'vitest';
-import type { Assignment, Group, PlannerItem } from '../../canvas/types';
-import { assignmentIdsToLookup } from '../normalize';
-import { DEFAULT_SETTINGS, type ModelInput, type WeekView } from '../types';
-import { buildWeekView, plannerRangeFor } from '../view';
+import type { Assignment, Group, PlannerItem } from '../../../shared/canvas/types';
+import { assignmentIdsToLookup } from '../../../features/weekly-list/model/normalize';
+import {
+  DEFAULT_SETTINGS,
+  type ModelInput,
+  type WeekView,
+} from '../../../features/weekly-list/model/types';
+import { buildWeekView, plannerRangeFor } from '../../../features/weekly-list/model/view';
 import {
   assignment,
   course,

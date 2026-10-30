@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { rateLimitDelayMs, withRateLimitRetry } from '../retry';
-import { CanvasError } from '../types';
+import { rateLimitDelayMs, withRateLimitRetry } from '../../../shared/canvas/retry';
+import { CanvasError } from '../../../shared/canvas/types';
 import { catchError, settle, useRetryFakeTimers } from './support';
 
 function rateLimited(): CanvasError {

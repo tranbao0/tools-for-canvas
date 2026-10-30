@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PlannableType, PlannerItem } from '../../canvas/types';
+import type { PlannableType, PlannerItem } from '../../../shared/canvas/types';
 import {
   CHUNK_TARGET_ITEMS,
   MAX_CHUNKS,
@@ -19,9 +19,9 @@ import {
   withItems,
   type Interval,
   type PlannerCoverage,
-} from '../coverage';
-import { roundChunks } from '../rounds';
-import { plannerFit } from '../state';
+} from '../../../features/weekly-list/data/coverage';
+import { roundChunks } from '../../../features/weekly-list/data/rounds';
+import { plannerFit } from '../../../features/weekly-list/data/state';
 
 const DAY = 24 * 3_600_000;
 /** Sunday Oct 25, 2026, 00:00 in New York. */

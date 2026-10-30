@@ -1,7 +1,7 @@
 /**
  * Builders that turn compact fixture specs into the JSON that the extension reads.
  *
- * A built value holds the required fields of the contract types in `src/lib/canvas/types.ts` and
+ * A built value holds the required fields of the contract types in `src/shared/canvas/types.ts` and
  * the optional fields that production code reads. `full-replies.ts` holds the complete Canvas
  * replies.
  * The rules for the fields that Canvas computes mirror canvas-lms at commit 1c9f0bb:
@@ -22,7 +22,7 @@ import type {
   PlannerSubmissions,
   Submission,
   Term,
-} from '../../src/lib/canvas/types';
+} from '../../src/shared/canvas/types';
 import { isBefore, secondsBetween } from './time';
 import type { WireAssignment } from './wire-types';
 

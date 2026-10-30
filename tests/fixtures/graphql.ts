@@ -1,5 +1,5 @@
 /**
- * The fake Canvas answer to the teacher status query of `src/lib/canvas/graphql.ts`.
+ * The fake Canvas answer to the teacher status query of `src/shared/canvas/graphql.ts`.
  * The query has one alias per course (`c0`, `c1`, ...) and a variable of the same name that
  * holds the course id. The answer is built from those variables, so it does not depend on the
  * order of the courses.

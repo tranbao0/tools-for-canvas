@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isIpHost, parseUrl } from '../url';
+import { isIpHost, parseUrl } from '../../../shared/platform/url';
 
 describe('parseUrl', () => {
   it('parses a URL and gives null for other text', () => {

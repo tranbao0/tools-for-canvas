@@ -9,7 +9,7 @@ Tools for Canvas draws its icons with paths from `@instructure/ui-icons` 11.6.0,
 These are the icons that Canvas itself uses, so the list looks like a part of Canvas.
 
 - The icons are `IconAssignmentLine`, `IconQuizLine`, `IconDiscussionLine`, `IconDocumentLine`, `IconPeerReviewLine`, `IconNoteLine`, `IconSettingsLine`, `IconAddLine`, `IconArrowOpenStartLine`, `IconArrowOpenEndLine`, `IconArrowOpenDownSolid`, `IconXLine` and `IconCheckMarkSolid`.
-- The paths are in `src/lib/ui/icons.tsx`, and the fake Canvas pages in `tests/fixtures/pages` use some of them.
+- The paths are in `src/shared/ui/icons.tsx`, and the fake Canvas pages in `tests/fixtures/pages` use some of them.
 - The paths are scaled from the 1920 grid of the package to a 120 grid and rounded to whole numbers.
 - The built extension carries the same notice in `THIRD_PARTY_NOTICES.txt` (from `src/public`).
 

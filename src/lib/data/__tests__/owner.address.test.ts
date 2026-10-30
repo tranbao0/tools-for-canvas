@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { canvasOriginItem, offerItem } from '../../platform/storage';
+import { canvasOriginItem, offerItem } from '../../../shared/platform/storage';
 import {
   ORIGIN,
   PANEL,
@@ -8,7 +8,7 @@ import {
   loadReady,
   rangeOf,
   useScenarioClock,
-} from '../testing/harness';
+} from '../../../features/weekly-list/data/testing/harness';
 
 const CUSTOM = 'https://canvas.school.edu';
 const OTHER = 'https://other.instructure.com';

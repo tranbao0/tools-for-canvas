@@ -6,9 +6,9 @@ import {
   hashString,
   ringColor,
   savedColor,
-} from '../colors';
-import { buildRings, type RingEntry } from '../rings';
-import { buildWeekView } from '../view';
+} from '../../../features/weekly-list/model/colors';
+import { buildRings, type RingEntry } from '../../../features/weekly-list/model/rings';
+import { buildWeekView } from '../../../features/weekly-list/model/view';
 import { course, modelInput, override, plannerItem } from './builders';
 
 function entry(courseId: string | null, partial: Partial<RingEntry> = {}): RingEntry {

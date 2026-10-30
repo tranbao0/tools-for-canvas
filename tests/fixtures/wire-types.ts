@@ -1,12 +1,12 @@
 /**
  * The JSON shapes of the trimmed fixtures.
  *
- * A fixture holds the required fields of the contract types in `src/lib/canvas/types.ts` and the
+ * A fixture holds the required fields of the contract types in `src/shared/canvas/types.ts` and the
  * optional fields that production code reads. So most fixtures use those types as they are. The
  * types here add what the contract types do not have.
  * `full-replies.ts` holds the complete Canvas replies, with every field that Canvas sends.
  */
-import type { Assignment } from '../../src/lib/canvas/types';
+import type { Assignment } from '../../src/shared/canvas/types';
 
 /** An assignment with `locked_for_user`, which Canvas computes from `unlock_at` and `lock_at`. */
 export interface WireAssignment extends Assignment {

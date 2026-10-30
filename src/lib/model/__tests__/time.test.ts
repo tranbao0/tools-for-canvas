@@ -7,8 +7,8 @@ import {
   resolveTimeZone,
   sameTimeZone,
   spanBounds,
-} from '../time';
-import type { IsoDayOfWeek, Span } from '../types';
+} from '../../../features/weekly-list/model/time';
+import type { IsoDayOfWeek, Span } from '../../../features/weekly-list/model/types';
 import { course } from './builders';
 
 const WEEK: Span = { kind: 'week', days: 7 };

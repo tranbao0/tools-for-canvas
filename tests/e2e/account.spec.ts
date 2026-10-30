@@ -4,7 +4,7 @@
  * and all cached data, so one student never sees another student's work on a shared computer.
  */
 import type { Page } from '@playwright/test';
-import type { Course, PlannerItem, Profile, UserSelf } from '../../src/lib/canvas/types';
+import type { Course, PlannerItem, Profile, UserSelf } from '../../src/shared/canvas/types';
 import { IDS, type Scenario } from '../fixtures/scenario';
 import type { WireAssignment } from '../fixtures/wire-types';
 import { advanceBackgroundClock } from './support/clock';

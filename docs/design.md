@@ -1028,7 +1028,7 @@ These sizes come from one test build of the same small app [19].
   Each extension page (side panel, settings, welcome) must stay under 40 KB, because it loads from the extension's own files.
   The owner raised the page limit on 2026-10-29, when the span feature filled the 30 KB.
   CI checks these limits.
-  The extension pages load one shared chunk for all code under `src/lib`, because several small chunks cost more after gzip.
+  The extension pages load one shared chunk for all code under `src/shared` and `src/features`, because several small chunks cost more after gzip.
   A test build with Preact had a 9.3 KB content script [19].
 - The package manager is npm.
 - Development and tests use Node 26.

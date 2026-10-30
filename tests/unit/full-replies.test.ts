@@ -5,16 +5,16 @@
  * The client only casts a reply, so the decoders are the model functions and the GraphQL reader.
  */
 import { expect, it } from 'vitest';
-import { customGradeStatusesQuery, readCustomGradeStatuses } from '../../src/lib/canvas/graphql';
-import type * as Canvas from '../../src/lib/canvas/types';
-import { toAssignmentData } from '../../src/lib/data/cache';
-import { courseChoices } from '../../src/lib/data/state';
-import { ringColor } from '../../src/lib/model/colors';
-import { classifyHandIn } from '../../src/lib/model/handin';
-import * as model from '../../src/lib/model/normalize';
-import { horizons } from '../../src/lib/model/time';
-import { DEFAULT_SETTINGS } from '../../src/lib/model/types';
-import { resolveViewBasics } from '../../src/lib/model/view';
+import { customGradeStatusesQuery, readCustomGradeStatuses } from '../../src/shared/canvas/graphql';
+import type * as Canvas from '../../src/shared/canvas/types';
+import { toAssignmentData } from '../../src/features/weekly-list/data/cache';
+import { courseChoices } from '../../src/features/weekly-list/data/state';
+import { ringColor } from '../../src/features/weekly-list/model/colors';
+import { classifyHandIn } from '../../src/features/weekly-list/model/handin';
+import * as model from '../../src/features/weekly-list/model/normalize';
+import { horizons } from '../../src/features/weekly-list/model/time';
+import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
+import { resolveViewBasics } from '../../src/features/weekly-list/model/view';
 import { FULL_REPLIES as R } from '../fixtures/full-replies';
 import { customGradeStatusesAnswer } from '../fixtures/graphql';
 import { IDS, SCENARIO as S, allAssignmentsInCourse, plannerItemKey } from '../fixtures/scenario';

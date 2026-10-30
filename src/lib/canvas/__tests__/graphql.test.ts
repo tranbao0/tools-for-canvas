@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { customGradeStatusesQuery, MAX_GRAPHQL_ALIASES, readCustomGradeStatuses } from '../graphql';
+import {
+  customGradeStatusesQuery,
+  MAX_GRAPHQL_ALIASES,
+  readCustomGradeStatuses,
+} from '../../../shared/canvas/graphql';
 
 /** Counts `name:` aliases on fields, the way the Canvas anti-abuse analyzer counts them. */
 function aliasCount(query: string): number {

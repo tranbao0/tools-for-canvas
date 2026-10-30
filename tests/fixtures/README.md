@@ -2,7 +2,7 @@
 
 These fixtures give tests one realistic Canvas student and a set of fake Canvas pages.
 The scenario holds the fields that the extension reads.
-These are the required fields of the contract types in `src/lib/canvas/types.ts`, the optional fields that production code reads, and `locked_for_user`.
+These are the required fields of the contract types in `src/shared/canvas/types.ts`, the optional fields that production code reads, and `locked_for_user`.
 A required contract field that no code reads yet, such as `late`, stays, because the type needs it.
 `full-replies.ts` holds one complete Canvas reply for each kind of request.
 The JSON shapes follow the canvas-lms serializers at commit 1c9f0bb, with string ids.
@@ -58,7 +58,7 @@ Update a reply when the matching item of `SCENARIO` changes.
 
 ## wire-types.ts
 
-Most fixtures use the contract types in `src/lib/canvas/types.ts` as they are.
+Most fixtures use the contract types in `src/shared/canvas/types.ts` as they are.
 This file adds `WireAssignment`, which has `locked_for_user`, and the type of the GraphQL answer.
 
 ## canvas-json.ts
@@ -103,7 +103,7 @@ The pages load no other files, and each page sets an empty favicon so the browse
 The classic Card View dashboard at `/`, with `with-right-side` on the body.
 After load, `#right-side` gets the student To Do, Recent Feedback and View Grades, which is the real student layout.
 Coming Up shows only on the mixed-role page.
-The adapter treats Recent Activity the same as Card View, so `src/lib/inpage/testing/fixtures.ts` covers that layout in the adapter unit tests.
+The adapter treats Recent Activity the same as Card View, so `src/features/weekly-list/inpage/testing/fixtures.ts` covers that layout in the adapter unit tests.
 
 ### dashboard-list-view.html
 

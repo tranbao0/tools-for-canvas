@@ -4,8 +4,8 @@ import type { Plugin } from 'vite';
 import preact from '@preact/preset-vite';
 
 /**
- * In the build of the extension pages, all code under `src/lib` and all libraries go in one
- * chunk, which every page loads. Several small chunks cost more after gzip than one, because each
+ * In the build of the extension pages, all code under `src/shared` and `src/features`, and all
+ * libraries, go in one chunk, which every page loads. Several small chunks cost more after gzip than one, because each
  * chunk needs its own import list and cannot reuse the text of the others (design decision 12).
  * The builds of the scripts, which have one entry each, keep their single file.
  */
@@ -24,7 +24,12 @@ function pagesShareOneChunk(): Plugin {
           rolldownOptions: {
             output: {
               codeSplitting: {
-                groups: [{ name: 'shared', test: /[\\/](?:src[\\/]lib|node_modules)[\\/]/ }],
+                groups: [
+                  {
+                    name: 'shared',
+                    test: /[\\/](?:src[\\/](?:shared|features)|node_modules)[\\/]/,
+                  },
+                ],
               },
             },
           },

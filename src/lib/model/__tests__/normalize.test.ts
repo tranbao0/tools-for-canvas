@@ -9,8 +9,8 @@ import {
   overridesByAssignmentId,
   type CollectParams,
   type NormalizeDeps,
-} from '../normalize';
-import { DEFAULT_DASHBOARD_COLORS, ringColor } from '../colors';
+} from '../../../features/weekly-list/model/normalize';
+import { DEFAULT_DASHBOARD_COLORS, ringColor } from '../../../features/weekly-list/model/colors';
 import { ORIGIN, assignment, course, detailsById, override, plannerItem } from './builders';
 
 const DATE = '2026-10-29T03:59:00Z';

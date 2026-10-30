@@ -1,6 +1,6 @@
 import { browser } from 'wxt/browser';
-import type { CanvasDetectedMessage } from '@/lib/data/protocol';
-import { isCanvasDocument } from '@/lib/platform/detectCanvas';
+import type { CanvasDetectedMessage } from '@/features/weekly-list/data/protocol';
+import { isCanvasDocument } from '@/shared/platform/detectCanvas';
 
 /**
  * The Canvas detector (decision 5). The manifest lists it as the one static content script, for

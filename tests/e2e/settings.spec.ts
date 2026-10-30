@@ -4,7 +4,7 @@
  * change saves at once, and every surface follows it.
  */
 import type { BrowserContext, Locator, Page, Worker } from '@playwright/test';
-import type { Settings } from '../../src/lib/model/types';
+import type { Settings } from '../../src/features/weekly-list/model/types';
 import type { StorageArea } from './support/scenario-api';
 import {
   addCsrfCookie,

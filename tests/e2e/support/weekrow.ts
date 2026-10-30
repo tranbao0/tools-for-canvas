@@ -1,5 +1,5 @@
 import type { BrowserContext, Locator, Page, Worker } from '@playwright/test';
-import type { Settings } from '../../../src/lib/model/types';
+import type { Settings } from '../../../src/features/weekly-list/model/types';
 import { FIXTURE_READY_SELECTOR } from '../../fixtures/pages';
 import { SCENARIO_NOW, buildScenario, type Scenario } from '../../fixtures/scenario';
 import { CanvasState } from './canvas-state';

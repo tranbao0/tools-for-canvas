@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { collectItems } from '../../model/normalize';
-import type { Item } from '../../model/types';
+import { collectItems } from '../../../features/weekly-list/model/normalize';
+import type { Item } from '../../../features/weekly-list/model/types';
 import { IDS, SCENARIO } from '../../../../tests/fixtures/scenario';
 import {
   applyPatches,
@@ -11,7 +11,7 @@ import {
   propagateOverrideId,
   type NotePatch,
   type OverridePatch,
-} from '../patches';
+} from '../../../features/weekly-list/data/patches';
 
 const CONTEXT = { courses: SCENARIO.courses, userId: IDS.user };
 

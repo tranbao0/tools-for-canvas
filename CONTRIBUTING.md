@@ -64,7 +64,7 @@ On other systems, install Firefox and geckodriver yourself and set `FIREFOX_BIN`
 
 ## Project rules
 
-- Network calls go only through the Canvas fetch wrapper in `src/lib/canvas`.
+- Network calls go only through the Canvas fetch wrapper in `src/shared/canvas`.
   A lint rule forbids `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource` and `navigator.sendBeacon` everywhere else.
 - Add no analytics, no error reporting and no remote configuration.
 - The URL check fails on any URL in the build that is not in `scripts/url-allowlist.json`.

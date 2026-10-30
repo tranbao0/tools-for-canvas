@@ -4,8 +4,8 @@ import {
   MAX_HIDDEN_COURSES,
   isSettings,
   normalizeSettings,
-} from '../settings';
-import { DEFAULT_SETTINGS, type Settings } from '../types';
+} from '../../../features/weekly-list/model/settings';
+import { DEFAULT_SETTINGS, type Settings } from '../../../features/weekly-list/model/types';
 
 const STORED: Settings = {
   span: { kind: 'custom', days: 10 },

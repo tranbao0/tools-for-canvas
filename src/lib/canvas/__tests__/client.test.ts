@@ -1,7 +1,7 @@
 import { http, HttpResponse, type JsonBodyType } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createCanvasClient } from '../client';
-import { CanvasError, type CanvasApi, type PlannerOverride } from '../types';
+import { createCanvasClient } from '../../../shared/canvas/client';
+import { CanvasError, type CanvasApi, type PlannerOverride } from '../../../shared/canvas/types';
 import {
   api,
   catchError,

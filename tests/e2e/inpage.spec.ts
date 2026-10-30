@@ -4,7 +4,7 @@
  * and the compact list.
  */
 import type { BrowserContext, Locator, Page, Worker } from '@playwright/test';
-import { DEFAULT_SETTINGS } from '../../src/lib/model/types';
+import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import { IDS, type Scenario } from '../fixtures/scenario';
 import { readPageFixture } from './support/fake-canvas';
 import { saveAddress, savedAddress } from './support/scenario-api';

@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, vi } from 'vitest';
 import { setupServer, type SetupServer } from 'msw/node';
-import { createCanvasClient } from '../client';
-import type { CanvasApi, CanvasClientOptions } from '../types';
+import { createCanvasClient } from '../../../shared/canvas/client';
+import type { CanvasApi, CanvasClientOptions } from '../../../shared/canvas/types';
 
 export const ORIGIN = 'https://school.instructure.com';
 /** The raw cookie value is URL-encoded; the header carries the decoded value. */

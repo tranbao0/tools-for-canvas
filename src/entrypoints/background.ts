@@ -1,11 +1,14 @@
-import { createBackgroundDataOwner, wireDataTriggers } from '@/lib/data/background';
-import { wireDataRouter } from '@/lib/data/router';
-import { wireActionClick } from '@/lib/platform/actionClick';
-import { wireInstall } from '@/lib/platform/install';
-import { logFailure } from '@/lib/platform/log';
-import { wirePageSync } from '@/lib/platform/pageSync';
-import { createPanelRegistry } from '@/lib/platform/panelRegistry';
-import { restrictStorageToTrustedContexts } from '@/lib/platform/trustedStorage';
+import {
+  createBackgroundDataOwner,
+  wireDataTriggers,
+} from '@/features/weekly-list/data/background';
+import { wireDataRouter } from '@/features/weekly-list/data/router';
+import { wireActionClick } from '@/shared/platform/actionClick';
+import { wireInstall } from '@/shared/platform/install';
+import { logFailure } from '@/shared/platform/log';
+import { wirePageSync } from '@/features/weekly-list/data/pageSync';
+import { createPanelRegistry } from '@/shared/platform/panelRegistry';
+import { restrictStorageToTrustedContexts } from '@/shared/platform/trustedStorage';
 
 /**
  * Every listener is added synchronously at the top level, so the browser can wake the service

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSettings } from '../../model/settings';
+import { isSettings } from '../../../features/weekly-list/model/settings';
 import {
   isAcceptOfferMessage,
   isActionMessage,
@@ -16,7 +16,7 @@ import {
   isSurfaceRequest,
   isTaskInput,
   type DataAction,
-} from '../protocol';
+} from '../../../features/weekly-list/data/protocol';
 
 const REQUEST = { surface: 'panel', spanOffset: 0, scopeCourseId: null };
 const TASK = { title: 'Read', date: '2026-10-29', time: '09:30', courseId: '101', details: null };

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { classifyHttpFailure, parseCanvasJson, stripJsonPrefix } from '../classify';
-import type { CanvasErrorKind } from '../types';
+import {
+  classifyHttpFailure,
+  parseCanvasJson,
+  stripJsonPrefix,
+} from '../../../shared/canvas/classify';
+import type { CanvasErrorKind } from '../../../shared/canvas/types';
 
 describe('stripJsonPrefix', () => {
   it('removes a leading while(1); guard', () => {

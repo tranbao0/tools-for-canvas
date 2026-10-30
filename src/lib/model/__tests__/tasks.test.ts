@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { defaultTaskDate, moveToTodayTodoDate, taskDateParts, todoDateFor } from '../tasks';
-import { nextDayStart } from '../time';
-import { DEFAULT_SETTINGS } from '../types';
-import { plannerRangeFor, resolveViewBasics } from '../view';
+import {
+  defaultTaskDate,
+  moveToTodayTodoDate,
+  taskDateParts,
+  todoDateFor,
+} from '../../../features/weekly-list/model/tasks';
+import { nextDayStart } from '../../../features/weekly-list/model/time';
+import { DEFAULT_SETTINGS } from '../../../features/weekly-list/model/types';
+import { plannerRangeFor, resolveViewBasics } from '../../../features/weekly-list/model/view';
 import { course } from './builders';
 
 const NY = 'America/New_York';

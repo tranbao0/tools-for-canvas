@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RoundLimits } from '../cache';
+import type { RoundLimits } from '../../../features/weekly-list/data/cache';
 import {
   FULL_REFRESH_INTERVAL_MS,
   REFRESH_LIMIT_MS,
@@ -7,7 +7,7 @@ import {
   decideRound,
   limitsAfterStart,
   scopeForTrigger,
-} from '../policy';
+} from '../../../features/weekly-list/data/policy';
 
 const T = 1_000_000;
 const NONE: RoundLimits = { lastRoundAt: null, lastRoundScope: null, lastFullAt: null };

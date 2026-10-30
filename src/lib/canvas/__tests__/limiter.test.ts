@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createLimiter } from '../limiter';
+import { createLimiter } from '../../../shared/canvas/limiter';
 import { deferred, settle, type Deferred } from './support';
 
 describe('createLimiter', () => {

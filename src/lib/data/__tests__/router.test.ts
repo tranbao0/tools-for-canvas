@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { DEFAULT_SETTINGS } from '../../model/types';
-import type { DataOwner } from '../owner';
-import { routeDataMessage, wireDataRouter, type RouterHost } from '../router';
+import { DEFAULT_SETTINGS } from '../../../features/weekly-list/model/types';
+import type { DataOwner } from '../../../features/weekly-list/data/owner';
+import {
+  routeDataMessage,
+  wireDataRouter,
+  type RouterHost,
+} from '../../../features/weekly-list/data/router';
 
 const SAVED = 'https://school.instructure.com';
 const REQUEST = { surface: 'panel', spanOffset: 0, scopeCourseId: null } as const;

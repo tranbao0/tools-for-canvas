@@ -9,8 +9,13 @@ import type {
   PlannerOverride,
   PlannerSubmissions,
   Submission,
-} from '../../canvas/types';
-import { DEFAULT_SETTINGS, type ItemView, type ModelInput, type WeekView } from '../types';
+} from '../../../shared/canvas/types';
+import {
+  DEFAULT_SETTINGS,
+  type ItemView,
+  type ModelInput,
+  type WeekView,
+} from '../../../features/weekly-list/model/types';
 
 export const ORIGIN = 'https://school.instructure.com';
 

@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import type { Assignment } from '../../canvas/types';
-import { emptyCache, sessionCacheItem, toAssignmentData, type SessionCache } from '../cache';
-import { emptyCoverage } from '../coverage';
+import type { Assignment } from '../../../shared/canvas/types';
+import {
+  emptyCache,
+  sessionCacheItem,
+  toAssignmentData,
+  type SessionCache,
+} from '../../../features/weekly-list/data/cache';
+import { emptyCoverage } from '../../../features/weekly-list/data/coverage';
 
 const ORIGIN = 'https://school.instructure.com';
 

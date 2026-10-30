@@ -11,11 +11,16 @@ import {
   allAssignmentsInCourse,
   plannerItemsInRange,
 } from '../../../../tests/fixtures/scenario';
-import type { Assignment } from '../../canvas/types';
-import { defaultColorFor } from '../colors';
-import { assignmentIdsToLookup } from '../normalize';
-import { DEFAULT_SETTINGS, type ModelInput, type Settings, type WeekView } from '../types';
-import { buildWeekView, plannerRangeFor } from '../view';
+import type { Assignment } from '../../../shared/canvas/types';
+import { defaultColorFor } from '../../../features/weekly-list/model/colors';
+import { assignmentIdsToLookup } from '../../../features/weekly-list/model/normalize';
+import {
+  DEFAULT_SETTINGS,
+  type ModelInput,
+  type Settings,
+  type WeekView,
+} from '../../../features/weekly-list/model/types';
+import { buildWeekView, plannerRangeFor } from '../../../features/weekly-list/model/view';
 import { allItems, findItem, placements } from './builders';
 
 const { assignments: A, courses: C } = IDS;

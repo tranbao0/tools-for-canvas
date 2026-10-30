@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { changeMarkerItem, settingsItem } from '../../platform/storage';
+import { changeMarkerItem, settingsItem } from '../../../shared/platform/storage';
 import { IDS } from '../../../../tests/fixtures/scenario';
-import { sessionCacheItem, type SessionCache } from '../cache';
-import { toRange } from '../coverage';
-import { ACTIVE_RANGE_MS } from '../owner';
-import { REFRESH_LIMIT_MS, TIMER_FULL_AFTER_MS } from '../policy';
-import { canvasError, type FakeMethod } from '../testing/fakeCanvas';
+import { sessionCacheItem, type SessionCache } from '../../../features/weekly-list/data/cache';
+import { toRange } from '../../../features/weekly-list/data/coverage';
+import { ACTIVE_RANGE_MS } from '../../../features/weekly-list/data/owner';
+import { REFRESH_LIMIT_MS, TIMER_FULL_AFTER_MS } from '../../../features/weekly-list/data/policy';
+import {
+  canvasError,
+  type FakeMethod,
+} from '../../../features/weekly-list/data/testing/fakeCanvas';
 import {
   PANEL,
   advance,
@@ -17,7 +20,7 @@ import {
   type Harness,
   useScenarioClock,
   spanOf,
-} from '../testing/harness';
+} from '../../../features/weekly-list/data/testing/harness';
 
 beforeEach(() => useScenarioClock());
 afterEach(() => vi.useRealTimers());

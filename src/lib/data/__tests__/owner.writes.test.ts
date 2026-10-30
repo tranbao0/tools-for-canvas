@@ -1,13 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { moveToTodayTodoDate, todoDateFor } from '../../model/tasks';
-import { canvasOriginItem, changeMarkerItem, offerItem } from '../../platform/storage';
+import { moveToTodayTodoDate, todoDateFor } from '../../../features/weekly-list/model/tasks';
+import { canvasOriginItem, changeMarkerItem, offerItem } from '../../../shared/platform/storage';
 import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
-import { sessionCacheItem, type SessionCache } from '../cache';
-import { MAX_DELETE_DELAY_MS } from '../owner';
-import { pendingOverride, type NotePatch, type OverridePatch } from '../patches';
-import type { ActionReply } from '../protocol';
-import type { TaskInput } from '../../ui/contract';
-import { canvasError, createFakeCanvas } from '../testing/fakeCanvas';
+import { sessionCacheItem, type SessionCache } from '../../../features/weekly-list/data/cache';
+import { MAX_DELETE_DELAY_MS } from '../../../features/weekly-list/data/owner';
+import {
+  pendingOverride,
+  type NotePatch,
+  type OverridePatch,
+} from '../../../features/weekly-list/data/patches';
+import type { ActionReply } from '../../../features/weekly-list/data/protocol';
+import type { TaskInput } from '../../../features/weekly-list/ui/contract';
+import {
+  canvasError,
+  createFakeCanvas,
+} from '../../../features/weekly-list/data/testing/fakeCanvas';
 import {
   PANEL,
   advance,
@@ -19,7 +26,7 @@ import {
   signInOtherUser,
   useScenarioClock,
   type Harness,
-} from '../testing/harness';
+} from '../../../features/weekly-list/data/testing/harness';
 
 const A = IDS.assignments;
 const N = IDS.notes;

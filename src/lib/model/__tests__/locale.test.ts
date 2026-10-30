@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { hourCycleFor, localeCandidates, resolveLocale, resolveWeekStartDay } from '../locale';
+import {
+  hourCycleFor,
+  localeCandidates,
+  resolveLocale,
+  resolveWeekStartDay,
+} from '../../../features/weekly-list/model/locale';
 
 describe('resolveWeekStartDay', () => {
   it.each([

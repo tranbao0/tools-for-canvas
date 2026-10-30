@@ -132,7 +132,7 @@ async function waitForRender(driver) {
 
 /**
  * Firefox cannot lock `storage.local`, so the background keeps the saved address in the IndexedDB
- * of the extension and mirrors it to `storage.local` (src/lib/platform/trustedStorage.ts). This
+ * of the extension and mirrors it to `storage.local` (src/shared/platform/trustedStorage.ts). This
  * runs in the welcome page, which is an extension page: it saves an address through the real
  * accept-offer route, reads the vault, then writes a different address to the mirror, as a page
  * could, and checks that the background repairs the mirror from the vault.
@@ -191,7 +191,7 @@ async function checkAddressVault(driver) {
 
 /**
  * A content script on any https page can write `storage.local` in Firefox, so a bad value there
- * must never break the extension (src/lib/platform/trustedStorage.ts, src/lib/model/settings.ts).
+ * must never break the extension (src/shared/platform/trustedStorage.ts, src/features/weekly-list/model/settings.ts).
  * This runs in the welcome page: it writes settings and notes of the wrong type, as a page could,
  * and checks that the state still answers, that the page context holds clean defaults, and that
  * the background repairs the mirror from the vault.

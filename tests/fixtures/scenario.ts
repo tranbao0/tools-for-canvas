@@ -24,7 +24,7 @@ import type {
   Profile,
   TimeRange,
   UserSelf,
-} from '../../src/lib/canvas/types';
+} from '../../src/shared/canvas/types';
 import {
   announcementPlannerItem,
   assessmentRequestPlannerItem,

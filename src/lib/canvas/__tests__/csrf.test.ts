@@ -1,7 +1,7 @@
 import { browser, type Browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { csrfFromCookiesApi } from '../csrf';
+import { csrfFromCookiesApi } from '../../../shared/canvas/csrf';
 import { CSRF_TOKEN, ORIGIN } from './support';
 
 const ENCODED = encodeURIComponent(CSRF_TOKEN);

@@ -6,8 +6,8 @@ import {
   createCanvasTransport,
   resolveOnOrigin,
   toCanvasOrigin,
-} from '../http';
-import { CanvasError, type CanvasErrorKind } from '../types';
+} from '../../../shared/canvas/http';
+import { CanvasError, type CanvasErrorKind } from '../../../shared/canvas/types';
 import { api, catchError, CSRF_TOKEN, ORIGIN, useMswServer } from './support';
 
 const server = useMswServer();

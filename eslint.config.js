@@ -3,9 +3,9 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
-// Design decision 20: every network call goes through the Canvas fetch wrapper in src/lib/canvas.
+// Design decision 20: every network call goes through the Canvas fetch wrapper in src/shared/canvas.
 const NETWORK_MESSAGE =
-  'Network calls go only through the Canvas fetch wrapper in src/lib/canvas (design decision 20).';
+  'Network calls go only through the Canvas fetch wrapper in src/shared/canvas (design decision 20).';
 const NETWORK_GLOBALS = ['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource'];
 const GLOBAL_OBJECTS = ['window', 'self', 'globalThis'];
 
@@ -81,7 +81,7 @@ export default defineConfig([
   },
   {
     // The Canvas fetch wrapper is the one place that may reach the network.
-    files: ['src/lib/canvas/**/*.{ts,tsx}'],
+    files: ['src/shared/canvas/**/*.{ts,tsx}'],
     rules: allowNetworkRules,
   },
   {

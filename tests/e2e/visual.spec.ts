@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import type { Locator, Page, Worker } from '@playwright/test';
-import { DEFAULT_SETTINGS, type Settings } from '../../src/lib/model/types';
+import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/model/types';
 import { FIXTURE_READY_SELECTOR } from '../fixtures/pages';
 import { buildScenario } from '../fixtures/scenario';
 import { expect, test } from './support/extension';
