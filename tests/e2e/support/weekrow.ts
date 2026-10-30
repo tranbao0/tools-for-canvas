@@ -114,9 +114,9 @@ export async function saveSettings(worker: Worker, settings: Settings): Promise<
   }, settings);
 }
 
-/** The in-page list container that the extension adds before `#right-side`. */
+/** The in-page list container that the extension adds to the page. */
 export function inpageList(page: Page): Locator {
-  return page.locator('#right-side-wrapper > #weekrow-inpage');
+  return page.locator('#weekrow-inpage');
 }
 
 /** A group of the list, such as `past_due`, `today` or `day`. */

@@ -9,14 +9,18 @@ import {
   findDashboardAnchors,
   isAdapterPath,
 } from './adapters';
-import { claimRightColumn, releaseRightColumn } from './layout';
+import { dockWhenColumnScrolledPast } from './dock';
+import { claimDashboardLayout, releaseLayout } from './layout';
 import { showNativeTodo } from './nativeTodo';
 
 /** What the mount callback gets. */
 export interface InpageMount {
   /** Set on a course home page: the list shows only this course. */
   courseId: string | null;
-  /** The empty container, a sibling before `#right-side` inside `#right-side-wrapper`. */
+  /**
+   * The empty container. It starts as a sibling before `#right-side` inside `#right-side-wrapper`.
+   * On the widget dashboard and in List View the layout moves it into the page content.
+   */
   container: HTMLElement;
   /** Undoes what the mount changed in the page layout, other than the container. */
   release(): void;
@@ -46,7 +50,7 @@ export interface MountOptions {
 
 /**
  * Removes a list that an earlier copy of the content script left on the page, and the style that
- * hides the native To Do and the right column that it turned on. Returns whether a list was there.
+ * hides the native To Do and the layout it took. Returns whether a list was there.
  *
  * A copy that is still alive cleans up by itself: WXT invalidates it before a newer copy of the
  * same script runs. A copy whose context the browser destroyed cannot clean up. Firefox does this
@@ -56,7 +60,7 @@ export interface MountOptions {
 export function removeStaleMount(doc: Document = document): boolean {
   const stale = [...doc.querySelectorAll(`#${MOUNT_CONTAINER_ID}`)];
   for (const node of stale) node.remove();
-  releaseRightColumn(doc);
+  releaseLayout(doc);
   showNativeTodo(doc);
   return stale.length > 0;
 }
@@ -103,7 +107,9 @@ export function mountWhenReady(
       const mount: InpageMount = {
         courseId: found.courseId,
         container,
-        release: found.claimsColumn ? claimRightColumn(doc, container) : () => undefined,
+        release: found.claimsLayout
+          ? claimDashboardLayout(doc, container)
+          : dockWhenColumnScrolledPast(doc, container, found.anchors.wrapper),
       };
       finish({ kind: 'mounted', mount });
       onMount(mount);

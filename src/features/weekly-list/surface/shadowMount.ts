@@ -51,6 +51,7 @@ export function attachShadowMount(parent: HTMLElement, options: ShadowMountOptio
   const style = doc.createElement('style');
   style.textContent = `${HOST_RESET_CSS}\n${options.css}`;
   const root = doc.createElement('div');
+  root.className = 'wr-mount';
   root.setAttribute('data-theme', options.theme);
   shadow.append(style, root);
   for (const type of ISOLATED_EVENTS) shadow.addEventListener(type, stopPropagation);

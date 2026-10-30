@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MOUNT_CONTAINER_ID, isAdapterPath } from './adapters';
-import { COLUMN_CSS, COLUMN_STYLE_ID } from './layout';
+import { ANCHOR_GRACE_MS, REMOVAL_LIMIT } from './layout';
 import {
   DEFAULT_MOUNT_TIMEOUT_MS,
   mountWhenReady,
@@ -205,12 +205,10 @@ describe('classic dashboard', () => {
 
 describe('dashboard without a right column', () => {
   const bodyClass = (): string => document.body.className;
+  const panelContainer = (): HTMLElement | null => container();
 
-  it.each([
-    ['List View', LIST_VIEW],
-    ['the widget dashboard', WIDGET_DASHBOARD],
-  ])('turns the right column on and mounts at once on %s', async (_name, fixture) => {
-    loadPage(document, fixture);
+  it('mounts at once on List View, above the content, and leaves the right column alone', async () => {
+    loadPage(document, LIST_VIEW);
     const before = bodyClass();
 
     const outcome = await mountWhenReady(onMount, { pathname: '/' });
@@ -219,14 +217,40 @@ describe('dashboard without a right column', () => {
     expect(mounts).toEqual([
       { courseId: null, container: container(), release: expect.any(Function) },
     ]);
-    expectMountedBeforeRightSide();
-    expect(document.body.classList.contains('with-right-side')).toBe(true);
-    expect(document.getElementById(COLUMN_STYLE_ID)?.textContent).toBe(COLUMN_CSS);
-    expect(bodyClass()).toBe(`${before} with-right-side`);
+    // A page without layout (happy-dom) has no room beside the content: the card stacks above it.
+    expect(panelContainer()?.nextElementSibling).toBe(document.getElementById('content'));
+    expect(panelContainer()?.parentElement?.id).toBe('content-wrapper');
+    // Canvas's right column stays off, as it was.
+    expect(bodyClass()).toBe(before);
+    expect(document.getElementById('right-side-wrapper')?.style.display).toBe('none');
   });
 
-  it('turns the column off again on release, and leaves the page as it was', async () => {
-    loadPage(document, LIST_VIEW);
+  it('mounts first in the last widget column on the widget dashboard, without room in the grid', async () => {
+    loadPage(document, WIDGET_DASHBOARD);
+
+    const outcome = await mountWhenReady(onMount, { pathname: '/' });
+
+    expect(outcome.kind).toBe('mounted');
+    const last = document.querySelector('[data-testid="widget-column-2"]');
+    expect(panelContainer()?.parentElement).toBe(last);
+    expect(last?.firstElementChild).toBe(panelContainer());
+    expect(document.body.hasAttribute('data-weekrow-column')).toBe(true);
+  });
+
+  it('waits for #content before it mounts', async () => {
+    loadPage(document, WIDGET_DASHBOARD);
+    document.getElementById('content')?.remove();
+    const done = mountWhenReady(onMount, { pathname: '/', timeoutMs: 1_000 });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await done).toEqual({ kind: 'timeout' });
+  });
+
+  it.each([
+    ['List View', LIST_VIEW],
+    ['the widget dashboard', WIDGET_DASHBOARD],
+  ])('gives the page back on release, on %s', async (_name, fixture) => {
+    loadPage(document, fixture);
     const before = document.body.outerHTML;
     await mountWhenReady(onMount, { pathname: '/' });
 
@@ -234,67 +258,77 @@ describe('dashboard without a right column', () => {
     container()?.remove();
 
     expect(document.body.outerHTML).toBe(before);
-    expect(document.getElementById(COLUMN_STYLE_ID)).toBeNull();
-    // A release stops the watch: the class stays off.
-    document.body.classList.remove('with-right-side');
+    expect(document.querySelector('[data-weekrow-styled]')).toBeNull();
+    // A release stops the watch: nothing comes back.
+    document.body.classList.add('x');
     await flushObserver();
-    expect(document.body.classList.contains('with-right-side')).toBe(false);
-  });
-
-  it('keeps the class when Canvas filled the sidebar before the release', async () => {
-    loadPage(document, WIDGET_DASHBOARD);
-    await mountWhenReady(onMount, { pathname: '/' });
-
-    injectSidebar(document, STUDENT_SIDEBAR);
-    mounts[0]?.release();
-
-    expect(document.body.classList.contains('with-right-side')).toBe(true);
     expect(document.body.hasAttribute('data-weekrow-column')).toBe(false);
-  });
-
-  it('puts the class back when the page removes it', async () => {
-    loadPage(document, WIDGET_DASHBOARD);
-    await mountWhenReady(onMount, { pathname: '/' });
-
-    document.body.classList.remove('with-right-side');
-    await flushObserver();
-
-    expect(document.body.classList.contains('with-right-side')).toBe(true);
   });
 
   it('puts the container back when the page removes it', async () => {
     loadPage(document, WIDGET_DASHBOARD);
     await mountWhenReady(onMount, { pathname: '/' });
+    const first = container();
 
     container()?.remove();
     await flushObserver();
 
-    expectMountedBeforeRightSide();
-    expect(mounts[0]?.container).toBe(container());
+    expect(container()).toBe(first);
+    expect(first?.parentElement?.getAttribute('data-testid')).toBe('widget-column-2');
   });
 
-  it('puts the style back when it goes', async () => {
+  it('floats for the rest of the page view after the page removes the container four times', async () => {
+    loadPage(document, WIDGET_DASHBOARD);
+    await mountWhenReady(onMount, { pathname: '/' });
+    for (let round = 0; round < REMOVAL_LIMIT + 1; round += 1) {
+      container()?.remove();
+      await flushObserver();
+    }
+
+    // The grid would hold the container, but the layout puts it beside the content now.
+    expect(container()?.parentElement?.id).toBe('content-wrapper');
+    document.querySelector('[data-testid="widget-column-2"]')?.append(document.createElement('i'));
+    await flushObserver();
+    expect(container()?.parentElement?.id).toBe('content-wrapper');
+  });
+
+  it('floats when the student edits the dashboard, and returns after', async () => {
+    loadPage(document, WIDGET_DASHBOARD);
+    await mountWhenReady(onMount, { pathname: '/' });
+    const column = document.querySelector('[data-testid="widget-column-2"]');
+
+    const save = document.createElement('button');
+    save.dataset['testid'] = 'save-customize-button';
+    document.getElementById('content')?.append(save);
+    await flushObserver();
+    expect(container()?.parentElement?.id).toBe('content-wrapper');
+
+    save.remove();
+    await flushObserver();
+    expect(container()?.parentElement).toBe(column);
+  });
+
+  it('floats for good when the grid is gone for longer than the grace period', async () => {
     loadPage(document, WIDGET_DASHBOARD);
     await mountWhenReady(onMount, { pathname: '/' });
 
-    document.getElementById(COLUMN_STYLE_ID)?.remove();
+    document.querySelector('[data-testid="widget-columns"]')?.remove();
     await flushObserver();
-
-    expect(document.getElementById(COLUMN_STYLE_ID)).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(ANCHOR_GRACE_MS + 100);
+    expect(container()?.parentElement?.id).toBe('content-wrapper');
   });
 
   it('stops putting things back once a release took the marker away', async () => {
     loadPage(document, WIDGET_DASHBOARD);
     await mountWhenReady(onMount, { pathname: '/' });
 
-    // A newer copy of the script removes the list and the column. The older observer is still live.
+    // A newer copy of the script removes the list and the layout. The older observer is still live.
     removeStaleMount(document);
     await flushObserver();
 
     expect(container()).toBeNull();
-    expect(document.getElementById(COLUMN_STYLE_ID)).toBeNull();
     expect(document.body.hasAttribute('data-weekrow-column')).toBe(false);
-    expect(document.body.classList.contains('with-right-side')).toBe(false);
+    expect(document.querySelector('[data-weekrow-styled]')).toBeNull();
   });
 
   it('stays out when another list took the place of the container', async () => {
@@ -304,16 +338,14 @@ describe('dashboard without a right column', () => {
     first?.remove();
     const other = document.createElement('div');
     other.id = MOUNT_CONTAINER_ID;
-    document
-      .getElementById('right-side-wrapper')
-      ?.insertBefore(other, document.getElementById('right-side'));
+    document.getElementById('content-wrapper')?.append(other);
     await flushObserver();
 
     expect(container()).toBe(other);
     expect(first?.isConnected).toBe(false);
   });
 
-  it('removes the column of a list that an earlier copy left on the page', async () => {
+  it('removes the layout of a list that an earlier copy left on the page', async () => {
     loadPage(document, LIST_VIEW);
     const before = document.body.outerHTML;
     await mountWhenReady(onMount, { pathname: '/' });
@@ -321,7 +353,6 @@ describe('dashboard without a right column', () => {
     expect(removeStaleMount(document)).toBe(true);
 
     expect(document.body.outerHTML).toBe(before);
-    expect(document.getElementById(COLUMN_STYLE_ID)).toBeNull();
   });
 
   it('needs the anchors of the right column', async () => {
@@ -334,13 +365,38 @@ describe('dashboard without a right column', () => {
     expect(document.body.className).toBe('dashboard');
   });
 
-  it('does not turn the column on for a course home page', async () => {
+  it('does not take a layout for a course home page', async () => {
     loadPage(document, { ...COURSE_HOME, bodyClass: 'home context-course_5' });
     const done = mountWhenReady(onMount, { pathname: '/courses/5', timeoutMs: 1_000 });
 
     await vi.advanceTimersByTimeAsync(1_000);
     expect(await done).toEqual({ kind: 'timeout' });
-    expect(document.body.classList.contains('with-right-side')).toBe(false);
+    expect(document.body.className).toBe('home context-course_5');
+  });
+});
+
+describe('the dock of the classic dashboard', () => {
+  it('adds a sentinel at the end of the right column and removes it on release', async () => {
+    loadPage(document, CARD_VIEW);
+    injectSidebar(document, STUDENT_SIDEBAR);
+    await mountWhenReady(onMount, { pathname: '/' });
+
+    const wrapper = document.getElementById('right-side-wrapper');
+    expect(wrapper?.lastElementChild?.id).toBe('weekrow-sentinel');
+
+    mounts[0]?.release();
+    expect(document.getElementById('weekrow-sentinel')).toBeNull();
+  });
+
+  it('removes the sentinel of a list that an earlier copy left on the page', async () => {
+    loadPage(document, CARD_VIEW);
+    injectSidebar(document, STUDENT_SIDEBAR);
+    await mountWhenReady(onMount, { pathname: '/' });
+
+    expect(removeStaleMount(document)).toBe(true);
+
+    expect(document.getElementById('weekrow-sentinel')).toBeNull();
+    expect(container()).toBeNull();
   });
 });
 

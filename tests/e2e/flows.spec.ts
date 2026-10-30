@@ -294,7 +294,7 @@ test.describe('in-page list', () => {
   });
 
   for (const fixture of ['dashboard-widgets', 'dashboard-list-view']) {
-    test(`puts the list in the right column of ${fixture}`, async ({
+    test(`puts the list in the page content of ${fixture}, and leaves Canvas's right column off`, async ({
       context,
       page,
       serviceWorker,
@@ -307,11 +307,15 @@ test.describe('in-page list', () => {
 
       await openCanvasPage(page, canvas);
 
-      const list = page.locator('#right-side-wrapper > #weekrow-inpage');
+      const list = page.locator('#weekrow-inpage');
       await expect(list.getByRole('checkbox', { name: `Done: ${QUIZ_3}` })).toBeVisible();
       expect(await savedAddress(serviceWorker)).toBe(canvas.origin);
-      await expect(page.locator('#weekrow-inpage + #right-side')).toHaveCount(1);
-      await expect(page.locator('body')).toHaveClass(/\bwith-right-side\b/);
+      await expect(page.locator('#right-side-wrapper #weekrow-inpage')).toHaveCount(0);
+      await expect(
+        page.locator('#content #weekrow-inpage, #content-wrapper > #weekrow-inpage'),
+      ).toHaveCount(1);
+      await expect(page.locator('body')).not.toHaveClass(/\bwith-right-side\b/);
+      await expect(page.locator('#right-side-wrapper')).toBeHidden();
       expect(canvas.blocked).toEqual([]);
     });
   }

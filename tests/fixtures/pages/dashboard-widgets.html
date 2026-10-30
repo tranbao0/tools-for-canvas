@@ -95,15 +95,21 @@
     <span role="tab" aria-selected="false" data-testid="tab-courses">Courses</span>
   </div>
   <div data-testid="dashboard-tab-content">
+    <div class="fixture-widget-grid">
     <div data-testid="widget-columns">
       <div data-testid="widget-column-1">
         <div data-testid="widget-container-course-work-combined-widget" class="fixture-widget">
           <h2>Course work</h2>
-          <p>Due soon: 6 &bull; Missing: 4 &bull; Submitted: 9</p>
+          <p>Due soon: 8 &bull; Missing: 4 &bull; Submitted: 9</p>
           <ul>
             <li><a href="/courses/101/assignments/1012">Quiz 3: Cell membranes</a> &bull; BIO 110 &bull; Due today at 11:59pm</li>
             <li><a href="/courses/101/assignments/1004">Lab report 4: Cellular respiration</a> &bull; BIO 110 &bull; Due Oct 28</li>
             <li><a href="/courses/102/assignments/2009">Quiz: Integration by parts</a> &bull; MATH 221 &bull; Due Oct 29</li>
+            <li><a href="/courses/103/assignments/3010">Debate 2: Was the Atlantic world one system?</a> &bull; History &bull; Due Oct 29</li>
+            <li><a href="/courses/104/assignments/4003">Lab 7: Titration notebook</a> &bull; CHEM 120 &bull; Due Oct 30</li>
+            <li><a href="/courses/103/assignments/3050">Participation: Week 9</a> &bull; History &bull; Due Oct 31</li>
+            <li><a href="/courses/102/assignments/2011">Problem set 8</a> &bull; MATH 221 &bull; Due Nov 2</li>
+            <li><a href="/courses/101/assignments/1005">Lab report 5: Photosynthesis</a> &bull; BIO 110 &bull; Due Nov 4</li>
           </ul>
         </div>
         <div data-testid="widget-container-course-grades-widget" class="fixture-widget">
@@ -112,6 +118,65 @@
             <li>History &bull; 91%</li>
             <li>BIO 110 &bull; 84%</li>
             <li>MATH 221 &bull; 78%</li>
+            <li>CHEM 120 &bull; 88%</li>
+            <li>Orientation &bull; 100%</li>
+          </ul>
+        </div>
+        <div data-testid="widget-container-course-progress-widget" class="fixture-widget">
+          <h2>Course progress</h2>
+          <ul>
+            <li>History &bull; 7 of 11 modules</li>
+            <li>BIO 110 &bull; 5 of 12 modules</li>
+            <li>MATH 221 &bull; 6 of 14 modules</li>
+            <li>CHEM 120 &bull; 4 of 10 modules</li>
+          </ul>
+        </div>
+        <div data-testid="widget-container-recent-grades-widget" class="fixture-widget">
+          <h2>Recent grades</h2>
+          <ul>
+            <li><a href="/courses/101/assignments/1002">Lab report 2: Enzymes</a> &bull; 12 out of 20</li>
+            <li><a href="/courses/102/assignments/2004">Homework 6</a> &bull; 10 out of 10</li>
+            <li><a href="/courses/104/assignments/4001">Lab 5: Stoichiometry notebook</a> &bull; 9 out of 10</li>
+            <li><a href="/courses/103/assignments/3002">Reading response 3</a> &bull; 18 out of 20</li>
+            <li><a href="/courses/102/assignments/2002">Homework 5</a> &bull; 9 out of 10</li>
+          </ul>
+        </div>
+        <div data-testid="widget-container-upcoming-events-widget" class="fixture-widget">
+          <h2>Upcoming events</h2>
+          <ul>
+            <li>Week 9 &bull; Lab section and quiz review</li>
+            <li>Week 9 &bull; Debate preparation workshop</li>
+            <li>Week 10 &bull; Midterm review session</li>
+            <li>Week 10 &bull; Guest lecture: Marine biology</li>
+            <li>Week 10 &bull; Study group, library room 4</li>
+            <li>Week 11 &bull; Poster session</li>
+            <li>Week 11 &bull; Problem set clinic</li>
+            <li>Week 12 &bull; Thanksgiving break begins</li>
+          </ul>
+        </div>
+        <div data-testid="widget-container-course-links-widget" class="fixture-widget">
+          <h2>Course links</h2>
+          <ul>
+            <li><a href="/courses/101">BIO 110: Principles of Biology</a></li>
+            <li><a href="/courses/102">MATH 221: Calculus II</a></li>
+            <li><a href="/courses/103">HIST 205: The Atlantic World</a></li>
+            <li><a href="/courses/104">CHEM 120: General Chemistry</a></li>
+            <li><a href="/courses/105">Orientation</a></li>
+            <li><a href="/courses/101">BIO 110: Lab manual</a></li>
+            <li><a href="/courses/102">MATH 221: Formula sheet</a></li>
+            <li><a href="/courses/103">HIST 205: Reading list</a></li>
+          </ul>
+        </div>
+        <div data-testid="widget-container-attendance-widget" class="fixture-widget">
+          <h2>Attendance</h2>
+          <ul>
+            <li>BIO 110 &bull; 17 of 18 sessions</li>
+            <li>MATH 221 &bull; 20 of 21 sessions</li>
+            <li>HIST 205 &bull; 15 of 16 sessions</li>
+            <li>CHEM 120 &bull; 12 of 13 sessions</li>
+            <li>Orientation &bull; 4 of 4 sessions</li>
+            <li>BIO 110 lab &bull; 8 of 8 sessions</li>
+            <li>CHEM 120 lab &bull; 7 of 8 sessions</li>
           </ul>
         </div>
       </div>
@@ -121,13 +186,60 @@
           <ul>
             <li><a href="/courses/101/discussion_topics/31901">Lab room change for Thursday</a> &bull; BIO 110</li>
             <li><a href="/courses/102/discussion_topics/32901">Office hours move to Thursday this week</a> &bull; MATH 221</li>
+            <li><a href="/courses/104/discussion_topics/34901">Safety goggles are required</a> &bull; CHEM 120</li>
+            <li><a href="/courses/103/discussion_topics/33901">Library hours for the debate</a> &bull; History</li>
           </ul>
         </div>
         <div data-testid="widget-container-people-widget" class="fixture-widget">
           <h2>People</h2>
-          <ul><li>Dr. Maya Okafor &bull; Teacher</li></ul>
+          <ul>
+            <li>Dr. Maya Okafor &bull; Teacher</li>
+            <li>Prof. Ines Duarte &bull; Teacher</li>
+            <li>Sam Whitaker &bull; Teaching assistant</li>
+          </ul>
+        </div>
+        <div data-testid="widget-container-inbox-widget" class="fixture-widget">
+          <h2>Inbox</h2>
+          <ul>
+            <li>Dr. Maya Okafor &bull; Lab report feedback</li>
+            <li>Registrar &bull; Spring registration opens</li>
+            <li>Sam Whitaker &bull; Re: Office hours</li>
+            <li>Library &bull; Course reserve is ready</li>
+          </ul>
+        </div>
+        <div data-testid="widget-container-calendar-widget" class="fixture-widget">
+          <h2>Calendar</h2>
+          <ul>
+            <li>Mon &bull; Lab section 2pm</li>
+            <li>Tue &bull; Lecture 10am</li>
+            <li>Wed &bull; Study group 4pm</li>
+            <li>Thu &bull; Lab section 2pm</li>
+            <li>Fri &bull; Debate 11am</li>
+          </ul>
+        </div>
+        <div data-testid="widget-container-office-hours-widget" class="fixture-widget">
+          <h2>Office hours</h2>
+          <ul>
+            <li>Mon &bull; Dr. Okafor, 1pm to 2pm</li>
+            <li>Tue &bull; Prof. Duarte, 3pm to 4pm</li>
+            <li>Wed &bull; Sam Whitaker, 11am to 12pm</li>
+            <li>Thu &bull; Dr. Okafor, 1pm to 2pm</li>
+            <li>Fri &bull; Prof. Duarte, 10am to 11am</li>
+          </ul>
+        </div>
+        <div data-testid="widget-container-bookmarks-widget" class="fixture-widget">
+          <h2>Bookmarks</h2>
+          <ul>
+            <li><a href="/courses/101/pages/p0">Syllabus</a></li>
+            <li><a href="/courses/101/pages/p1">Lab safety rules</a></li>
+            <li><a href="/courses/101/pages/p2">Grading policy</a></li>
+            <li><a href="/courses/101/pages/p3">Late work policy</a></li>
+            <li><a href="/courses/101/pages/p4">Citation guide</a></li>
+            <li><a href="/courses/101/pages/p5">Study tips</a></li>
+          </ul>
         </div>
       </div>
+    </div>
     </div>
   </div>
 </div>

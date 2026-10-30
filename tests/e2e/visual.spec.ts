@@ -168,7 +168,7 @@ for (const fixture of Object.keys(PAGES)) {
       await useRealCanvasCss(page);
       await settle(page);
       await page.waitForTimeout(800);
-      const list = page.locator('#right-side-wrapper > #weekrow-inpage');
+      const list = page.locator('#weekrow-inpage');
       const name = `inpage-${fixture ? fixture.replace('/', '-') : 'dashboard'}${suffix}`;
       try {
         await expectRendered(
@@ -203,48 +203,169 @@ const DARK_PAGE_CSS = `
   .Button { background: #262d35 !important; color: #e8eaec !important; border-color: #3a434d !important; }
 `;
 
-/** Pages with no right column of their own, where the list turns Canvas's column on. */
-const COLUMN_PAGES = ['dashboard-widgets', 'dashboard-list-view'];
+interface LayoutShot {
+  name: string;
+  fixture: string;
+  width: number;
+  /** Swaps the header buttons as the widget package does in edit mode, so the list floats. */
+  edit?: boolean;
+  /** Adds height to a page that is too short to scroll. */
+  tall?: boolean;
+}
 
-for (const fixture of COLUMN_PAGES) {
-  for (const width of [1920, 1280, 1000, 600]) {
-    for (const scheme of ['light', 'dark'] as const) {
-      test(`in-page ${fixture} ${width}px ${scheme}`, async ({ context, page, serviceWorker }) => {
-        const errors = watchErrors(page);
-        const scenario = buildScenario(new Date().toISOString());
-        const canvas = await serveFakeCanvas(context, [
-          { path: '/', page: fixture },
-          ...apiRoutes(scenario),
-        ]);
-        await saveAddress(serviceWorker, canvas.origin);
-        await saveSettings(serviceWorker, {
-          ...DEFAULT_SETTINGS,
-          theme: scheme === 'dark' ? 'dark' : 'auto',
-        });
-        await page.setViewportSize({ width, height: 1000 });
-        await page.goto(`${canvas.origin}/?fixture_delay_ms=0`);
-        await page.locator(FIXTURE_READY_SELECTOR).waitFor({ state: 'attached' });
-        await useRealCanvasCss(page);
-        if (scheme === 'dark') await page.addStyleTag({ content: DARK_PAGE_CSS });
-        await settle(page);
-        await page.waitForTimeout(800);
-        const list = page.locator('#right-side-wrapper > #weekrow-inpage');
-        try {
-          await expectRendered(
-            canvas,
-            list,
-            list.getByRole('heading', { level: 2, name: WEEK }),
-            errors,
-          );
-        } finally {
-          await page.screenshot({
-            path: `${OUT}/inpage-${fixture}-${width}-${scheme}.png`,
-            fullPage: true,
+const LAYOUT_SHOTS: LayoutShot[] = [
+  { name: 'widgets-grid', fixture: 'dashboard-widgets', width: 1920 },
+  { name: 'widgets-column', fixture: 'dashboard-widgets', width: 1280 },
+  { name: 'widgets-edit-float', fixture: 'dashboard-widgets', width: 1920, edit: true },
+  { name: 'widgets-edit-float', fixture: 'dashboard-widgets', width: 1280, edit: true },
+  { name: 'listview-float', fixture: 'dashboard-list-view', width: 1920, tall: true },
+  { name: 'listview-float', fixture: 'dashboard-list-view', width: 1280, tall: true },
+  { name: 'listview-stack', fixture: 'dashboard-list-view', width: 1000, tall: true },
+];
+
+/** Where the layout put the list on the page, from the host of the list. */
+async function panelMode(page: Page): Promise<string | null> {
+  return page.evaluate(
+    () =>
+      document.querySelector('#weekrow-inpage > weekrow-list')?.getAttribute('data-panel') ?? null,
+  );
+}
+
+async function scrollPage(page: Page, y: number): Promise<void> {
+  await page.evaluate(async (target) => {
+    window.scrollTo(0, target);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  }, y);
+}
+
+for (const shot of LAYOUT_SHOTS) {
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`in-page ${shot.name} ${shot.width}px ${scheme}`, async ({
+      context,
+      page,
+      serviceWorker,
+    }) => {
+      const errors = watchErrors(page);
+      const scenario = buildScenario(new Date().toISOString());
+      const canvas = await serveFakeCanvas(context, [
+        { path: '/', page: shot.fixture },
+        ...apiRoutes(scenario),
+      ]);
+      await saveAddress(serviceWorker, canvas.origin);
+      await saveSettings(serviceWorker, {
+        ...DEFAULT_SETTINGS,
+        theme: scheme === 'dark' ? 'dark' : 'auto',
+      });
+      await page.setViewportSize({ width: shot.width, height: 900 });
+      await page.goto(`${canvas.origin}/?fixture_delay_ms=0`);
+      await page.locator(FIXTURE_READY_SELECTOR).waitFor({ state: 'attached' });
+      await useRealCanvasCss(page);
+      if (scheme === 'dark') await page.addStyleTag({ content: DARK_PAGE_CSS });
+      await settle(page);
+      await page.waitForTimeout(800);
+      const list = page.locator('#weekrow-inpage');
+      try {
+        await expectRendered(
+          canvas,
+          list,
+          list.getByRole('heading', { level: 2, name: WEEK }),
+          errors,
+        );
+        if (shot.tall) {
+          await page.evaluate(() => {
+            const filler = document.createElement('div');
+            filler.style.height = '3000px';
+            document.getElementById('content')?.append(filler);
           });
         }
-      });
-    }
+        if (shot.edit) {
+          await page.evaluate(() => {
+            const header = document.querySelector('.fixture-widget-header');
+            header?.querySelector('[data-testid="customize-dashboard-button"]')?.remove();
+            for (const [testid, label] of [
+              ['cancel-customize-button', 'Cancel'],
+              ['save-customize-button', 'Save changes'],
+            ] as const) {
+              const button = document.createElement('button');
+              button.type = 'button';
+              button.className = 'Button';
+              button.dataset['testid'] = testid;
+              button.textContent = label;
+              header?.append(button);
+            }
+          });
+        }
+        await page.waitForTimeout(400);
+      } finally {
+        const prefix = `${OUT}/layout-${shot.name}-${shot.width}-${scheme}`;
+        await page.screenshot({ path: `${prefix}-top.png` });
+        await scrollPage(page, 1500);
+        await page.screenshot({ path: `${prefix}-scrolled.png` });
+      }
+      expect(await panelMode(page)).not.toBeNull();
+    });
   }
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`in-page docked list ${scheme}`, async ({ context, page, serviceWorker }) => {
+    const errors = watchErrors(page);
+    const scenario = buildScenario(new Date().toISOString());
+    const canvas = await serveFakeCanvas(context, [
+      { path: '/', page: 'dashboard-card-view' },
+      ...apiRoutes(scenario),
+    ]);
+    await saveAddress(serviceWorker, canvas.origin);
+    await saveSettings(serviceWorker, {
+      ...DEFAULT_SETTINGS,
+      theme: scheme === 'dark' ? 'dark' : 'auto',
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`${canvas.origin}/?fixture_delay_ms=0`);
+    await page.locator(FIXTURE_READY_SELECTOR).waitFor({ state: 'attached' });
+    await useRealCanvasCss(page);
+    if (scheme === 'dark') await page.addStyleTag({ content: DARK_PAGE_CSS });
+    await settle(page);
+    await page.waitForTimeout(800);
+    const list = page.locator('#weekrow-inpage');
+    try {
+      await expectRendered(
+        canvas,
+        list,
+        list.getByRole('heading', { level: 2, name: WEEK }),
+        errors,
+      );
+      // A long Recent Activity, so the page is much longer than the right column.
+      await page.evaluate(() => {
+        const cards = document.getElementById('DashboardCard_Container');
+        const activity = document.getElementById('dashboard-activity');
+        if (!cards || !activity) return;
+        cards.style.display = 'none';
+        activity.style.display = 'block';
+        const items = document.createElement('ul');
+        items.className = 'recent_activity';
+        for (let index = 1; index <= 70; index += 1) {
+          const item = document.createElement('li');
+          item.className = 'stream-category';
+          item.innerHTML = `<div class="category_name">Announcement ${index}</div><div class="details">BIO 110 - posted ${index} days ago</div>`;
+          items.append(item);
+        }
+        activity.replaceChildren(items);
+      });
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: `${OUT}/layout-dock-${scheme}-top.png` });
+      const end = await page.evaluate(
+        () =>
+          (document.getElementById('weekrow-sentinel')?.getBoundingClientRect().bottom ?? 0) +
+          window.scrollY,
+      );
+      await scrollPage(page, end + 300);
+      await page.waitForTimeout(400);
+      expect(await panelMode(page)).toBe('dock');
+    } finally {
+      await page.screenshot({ path: `${OUT}/layout-dock-${scheme}-docked.png` });
+    }
+  });
 }
 
 const PAGE_TITLES: Record<string, string> = {

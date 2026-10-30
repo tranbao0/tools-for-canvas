@@ -232,12 +232,20 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
 .fixture-widget-tabs { display: flex; gap: 24px; margin-bottom: 24px; border-bottom: 1px solid #c7cdd1; }
 .fixture-widget-tabs span { padding: 8px 0; }
 .fixture-widget-tabs span[aria-selected="true"] { border-bottom: 3px solid #2b7abc; font-weight: 700; }
-[data-testid="widget-columns"] { display: flex; align-items: flex-start; gap: 12px; }
-[data-testid="widget-column-1"] { flex: 2; min-width: 0; }
-[data-testid="widget-column-2"] { flex: 1; min-width: 0; }
-@media (max-width: 1379px) { [data-testid="widget-columns"] { flex-direction: column; align-items: stretch; } }
+/* The package lays the grid out as an InstUI Flex: a View with 24px of padding around a row with
+   a 24px gap ("medium"), and columns of 66% and 33% that grow and shrink. Below the tablet width it
+   is one stacked column. */
+.fixture-widget-grid { padding: 24px; }
+[data-testid="widget-columns"] { display: flex; align-items: flex-start; gap: 24px; }
+[data-testid="widget-column-1"] { flex: 1 1 auto; width: 66%; min-width: 0; }
+[data-testid="widget-column-2"] { flex: 1 1 auto; width: 33%; min-width: 0; }
+@media (max-width: 1379px) {
+  .fixture-widget-grid { padding: 0; }
+  [data-testid="widget-columns"] { flex-direction: column; align-items: stretch; }
+  [data-testid="widget-column-1"], [data-testid="widget-column-2"] { width: 100%; }
+}
 .fixture-widget {
-  margin-bottom: 12px; padding: 20px 24px;
+  margin-bottom: 24px; padding: 20px 24px;
   border: 1px solid #d7dade; border-radius: 12px; background: #fff;
 }
 .fixture-widget h2 { margin-bottom: 12px; font-size: 18px; font-weight: 700; }

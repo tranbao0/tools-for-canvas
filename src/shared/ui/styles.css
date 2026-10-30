@@ -77,13 +77,66 @@
   border-radius: 4px;
 }
 
-/* In a right column that the list turned on, the list is a card, like the widgets beside it. */
-:host([data-column]) .wr[data-surface='inpage'],
-:host([data-column][data-theme='dark']) .wr[data-surface='inpage'] {
+/*
+ * A panel is the list as a card beside the widgets of the widget dashboard. The layout code sets
+ * data-panel on the host (src/features/weekly-list/inpage/layout.ts). The card has the look of a
+ * Canvas widget: a 1px border, 12px corners, 20px and 24px of padding, and an 18px bold heading.
+ * A docked list in the narrow right column of the classic dashboard has less padding.
+ *
+ * The card scrolls inside when it is taller than --wr-panel-max-height. Its header stays in view.
+ * Where the card floats (float and dock), the host fills the tall container that the layout
+ * sets, so that the card can stick to the top of the viewport inside it.
+ */
+:host([data-panel]) {
+  --wr-pad-x: 24px;
+  --wr-pad-y: 20px;
+}
+
+:host([data-panel='dock']) {
+  --wr-pad-x: 16px;
+  --wr-pad-y: 16px;
+}
+
+:host(:is([data-panel='float'], [data-panel='dock'])) {
+  height: 100% !important;
+}
+
+:host(:is([data-panel='float'], [data-panel='dock'])) .wr-mount {
+  height: 100%;
+}
+
+:host([data-panel]) .wr[data-surface='inpage'],
+:host([data-panel][data-theme='dark']) .wr[data-surface='inpage'] {
+  box-sizing: border-box;
   margin: 0;
-  padding: 16px;
+  padding: 0 var(--wr-pad-x) var(--wr-pad-y);
   border: 1px solid var(--wr-btn-line);
   border-radius: 12px;
+  overflow: hidden auto;
+}
+
+:host(:is([data-panel='float'], [data-panel='dock'])) .wr[data-surface='inpage'] {
+  position: sticky;
+  top: var(--wr-panel-top, 24px);
+  max-height: var(--wr-panel-max-height, none);
+}
+
+:host([data-panel]) .wr-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding-top: var(--wr-pad-y);
+  background: var(--wr-bg);
+}
+
+:host([data-panel]) .wr-head {
+  margin-bottom: 8px;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+:host([data-panel]) .wr-range {
+  font-size: 18px;
 }
 
 .wr *,

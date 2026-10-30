@@ -5,7 +5,7 @@
  * Every Canvas page has `#right-side-wrapper`, but Canvas shows it only when the body has the
  * `with-right-side` class. Canvas replaces the contents of `#right-side`, so the list mounts as
  * a sibling before `#right-side`, inside `#right-side-wrapper`. The widget dashboard and List
- * View have no right column, so on the dashboard the list turns Canvas's column on (layout.ts).
+ * View have no right column, so there the list takes a place in the page content (layout.ts).
  *
  * An adapter returns the course and the anchors when the page meets its mount condition, and
  * `null` otherwise, so the caller waits and asks again as Canvas builds the page.
@@ -22,8 +22,8 @@ export interface AdapterResult {
   /** The course of a course home page, otherwise `null`. */
   courseId: string | null;
   anchors: SidebarAnchors;
-  /** The page has no right column, so the list turns Canvas's own column on. */
-  claimsColumn: boolean;
+  /** The page has no right column, so the list takes a place in the page content (layout.ts). */
+  claimsLayout: boolean;
 }
 
 /** The dashboard is the root path. `/dashboard` serves the same page. */
@@ -54,8 +54,8 @@ function showsRightColumn(doc: Document): boolean {
  * The dashboard. With a right column (Card View and Recent Activity) it mounts only when
  * `#right-side` holds the student To Do (`.Sidebar__TodoListContainer`), the teacher To Do
  * header (`.todo-list-header`) or Coming Up (`.coming_up`). Canvas loads that sidebar after the
- * page. Without a right column (the widget dashboard and List View) it mounts at once and turns
- * the column on. The K-5 dashboard has `#dashboard-app-container` and gets nothing.
+ * page. Without a right column (the widget dashboard and List View) it mounts at once, when the
+ * page has `#content`, and the list takes a place in the content. The K-5 dashboard has `#dashboard-app-container` and gets nothing.
  */
 export function findDashboardAnchors(pathname: string, doc: Document): AdapterResult | null {
   if (!DASHBOARD_PATH.test(pathname)) return null;
@@ -63,10 +63,11 @@ export function findDashboardAnchors(pathname: string, doc: Document): AdapterRe
   if (anchors === null) return null;
   if (!showsRightColumn(doc)) {
     if (doc.getElementById('dashboard-app-container') !== null) return null;
-    return { courseId: null, anchors, claimsColumn: true };
+    if (doc.getElementById('content') === null) return null;
+    return { courseId: null, anchors, claimsLayout: true };
   }
   if (anchors.rightSide.querySelector(DASHBOARD_SIDEBAR_CONTENT) === null) return null;
-  return { courseId: null, anchors, claimsColumn: false };
+  return { courseId: null, anchors, claimsLayout: false };
 }
 
 /**
@@ -77,7 +78,7 @@ export function findCourseHomeAnchors(pathname: string, doc: Document): AdapterR
   const courseId = COURSE_HOME_PATH.exec(pathname)?.[1];
   if (courseId === undefined) return null;
   const anchors = showsRightColumn(doc) ? findSidebarAnchors(doc) : null;
-  return anchors === null ? null : { courseId, anchors, claimsColumn: false };
+  return anchors === null ? null : { courseId, anchors, claimsLayout: false };
 }
 
 /** Creates the empty mount container before `#right-side`. */
