@@ -199,7 +199,7 @@ Use a new, empty profile, and the student account.
     Expect: "Couldn't refresh. Showing your list from <time>." and "You're offline."
 20. Click the gear in the panel and change each of the six settings, then do the same with the gear in the in-page list.
     Expect: the settings open in place, Back returns to the list, and each change shows at once in the panel, in the in-page list and on the settings page.
-    Expect: the shown span, the first day of the week, the hidden courses, the rings, the in-page list and the theme follow the settings, and a hidden course adds a line such as "1 course hidden".
+    Expect: the shown span, the first day of the week, the courses that show in the list (every switch is on at first, and a course that you turn off leaves the list), the rings, the in-page list and the theme follow the settings, and a hidden course adds a line such as "1 course hidden".
 21. In the panel, pick each span in the control next to the arrows: Day, Week, 2 weeks, Month and Custom with 10 days.
     Expect: the header shows "Tue, Oct 27" for Day, "Oct 25 - 31" for Week, "Oct 25 - Nov 7" for 2 weeks, "October 2026" for Month and "Oct 27 - Nov 5" for Custom, with the dates in your Canvas time zone.
     Expect: Week and 2 weeks start on the first day of the week from the settings, Month is the calendar month, and Custom starts today.

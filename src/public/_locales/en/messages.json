@@ -518,14 +518,14 @@
   "weekStartHelp": {
     "message": "Automatic takes the first day from your Canvas language."
   },
-  "settingHiddenCourses": {
-    "message": "Hidden courses"
+  "settingCourses": {
+    "message": "Show in my list"
   },
-  "hiddenCoursesHelp": {
-    "message": "Hide a course, such as a club or an orientation course. Its work leaves your list and your rings."
+  "coursesHelp": {
+    "message": "Turn off a course, such as a club or an orientation course, to remove its work from your list and your rings."
   },
-  "hideCourse": {
-    "message": "Hide $1"
+  "showCourse": {
+    "message": "Show $1 in my list"
   },
   "noCoursesYet": {
     "message": "Your courses show here after your list loads."

@@ -28,7 +28,7 @@ describe('SettingsView', () => {
   it('shows the six settings and the address', () => {
     setup();
     expect(screen.getByLabelText('First day of the week')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Hidden courses' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Show in my list' })).toBeTruthy();
     expect(screen.getByRole('switch', { name: 'Show progress rings' })).toBeTruthy();
     expect(
       screen.getByRole('switch', { name: 'Show the weekly list on Canvas pages' }),
@@ -70,12 +70,33 @@ describe('SettingsView', () => {
     expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, theme: 'auto' });
   });
 
-  it('hides and shows a course', () => {
+  it('shows every course in my list by default: each switch is on', () => {
+    setup();
+    const switches = screen
+      .getAllByRole('switch')
+      .filter((el) => /in my list$/.test(el.getAttribute('aria-label') ?? ''));
+    expect(switches.length).toBeGreaterThan(0);
+    for (const el of switches) expect((el as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('turns a course off to hide it, and back on to show it, in the stored hidden ids', () => {
     const { onChange } = setup({ ...DEFAULT_SETTINGS, hiddenCourseIds: ['9'] });
-    const hide = screen.getByRole('switch', { name: 'Hide Orientation' }) as HTMLInputElement;
-    expect(hide.checked).toBe(false);
-    fireEvent.click(hide);
+    const course = screen.getByRole('switch', {
+      name: 'Show Orientation in my list',
+    }) as HTMLInputElement;
+    expect(course.checked).toBe(true);
+    fireEvent.click(course);
     expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, hiddenCourseIds: ['9', '2'] });
+  });
+
+  it('shows a hidden course as a switch that is off, and turning it on removes the id', () => {
+    const { onChange } = setup({ ...DEFAULT_SETTINGS, hiddenCourseIds: ['2', '9'] });
+    const course = screen.getByRole('switch', {
+      name: 'Show Orientation in my list',
+    }) as HTMLInputElement;
+    expect(course.checked).toBe(false);
+    fireEvent.click(course);
+    expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, hiddenCourseIds: ['9'] });
   });
 
   it('turns the rings and the in-page list off', () => {

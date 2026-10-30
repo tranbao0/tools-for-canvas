@@ -1245,7 +1245,7 @@ The owner chose it on 2026-10-27.
 |---|---|
 | Shown span (decision 9) | Week |
 | First day of the week | Automatic, from the Canvas language |
-| Hidden courses | None, so all active student courses show |
+| Show in my list | On for every course, so all active student courses show |
 | Show progress rings | On |
 | Show the weekly list on Canvas pages | On |
 | Theme | Automatic (see decision 19) |
@@ -1254,7 +1254,10 @@ The owner chose it on 2026-10-27.
   The gear in the panel and in the in-page list opens the settings in place, and a Back button returns to the list.
   The student never has to leave the page to change a setting.
 
-- "Hidden courses" is a list of the student's courses with a switch for each one, for example to hide a club or an orientation course.
+- "Show in my list" is a list of the student's courses with a switch for each one, for example to turn off a club or an orientation course.
+  - Every switch follows the rule of the other switches: on means shown.
+    The stored setting is still the list of hidden course ids (`hiddenCourseIds`), so a course with its switch off is in that list.
+  - Each switch has the accessible name "Show <course> in my list".
   - When any course is hidden, the list ends with one quiet line, such as "1 course hidden", with a link to the settings.
   - So the student always knows that the list is filtered.
 - "Show the weekly list on Canvas pages" has one help line: "Shows on the Card View and Recent Activity dashboards and on course home pages. On other pages, use the side panel."

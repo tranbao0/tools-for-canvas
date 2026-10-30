@@ -131,10 +131,10 @@ test.describe('settings in place', () => {
     await page.bringToFront();
 
     await openSettingsInPlace(list);
-    const biology = list.getByRole('switch', { name: `Hide ${BIOLOGY}` });
-    await expect(biology).not.toBeChecked();
-    await biology.click();
+    const biology = list.getByRole('switch', { name: `Show ${BIOLOGY} in my list` });
     await expect(biology).toBeChecked();
+    await biology.click();
+    await expect(biology).not.toBeChecked();
     await expect
       .poll(async () => (await storedSettings(background)).hiddenCourseIds)
       .toContain('101');

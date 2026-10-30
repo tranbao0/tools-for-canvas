@@ -1105,7 +1105,7 @@ describe('settings in place', () => {
     expect(actions.saveSettings).toHaveBeenLastCalledWith({ ...data.value, showRings: false });
     expect(rings.checked).toBe(false);
 
-    fireEvent.click(screen.getByRole('switch', { name: `Hide ${COURSES.bio.name}` }));
+    fireEvent.click(screen.getByRole('switch', { name: `Show ${COURSES.bio.name} in my list` }));
     expect(actions.saveSettings).toHaveBeenLastCalledWith({
       ...data.value,
       showRings: false,
@@ -1139,7 +1139,7 @@ describe('settings in place', () => {
     setupSettings(data, readyState(), 'inpage');
     openGear();
     expect(screen.getByRole('heading', { level: 2, name: 'Settings' })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 3, name: 'Hidden courses' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: 'Show in my list' })).toBeTruthy();
   });
 
   it('opens from the gear of a state with no week', () => {

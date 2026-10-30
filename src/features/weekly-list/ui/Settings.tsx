@@ -31,6 +31,7 @@ export function parseTheme(value: string): Settings['theme'] {
   return value === 'light' || value === 'dark' ? value : 'auto';
 }
 
+/** The stored list of hidden course ids after the student shows or hides one course. */
 export function toggleHidden(hidden: string[], courseId: string, hide: boolean): string[] {
   const without = hidden.filter((id) => id !== courseId);
   return hide ? [...without, courseId] : without;
@@ -49,7 +50,7 @@ export function SettingsFields(props: {
       'span',
       'weekStart',
       'weekStartHelp',
-      'hidden',
+      'courses',
       'rings',
       'canvas',
       'canvasHelp',
@@ -95,27 +96,27 @@ export function SettingsFields(props: {
         </p>
       </div>
 
-      <section class="wr-setting" aria-labelledby={ids.hidden}>
-        <Heading level={props.level} class="wr-setting-name" id={ids.hidden}>
-          {t('settingHiddenCourses')}
+      <section class="wr-setting" aria-labelledby={ids.courses}>
+        <Heading level={props.level} class="wr-setting-name" id={ids.courses}>
+          {t('settingCourses')}
         </Heading>
-        <p class="wr-setting-help">{t('hiddenCoursesHelp')}</p>
+        <p class="wr-setting-help">{t('coursesHelp')}</p>
         {courses.length === 0 ? (
           <p class="wr-setting-help">{t('noCoursesYet')}</p>
         ) : (
           <ul class="wr-course-list">
             {courses.map((course) => {
-              const id = `${ids.hidden}-${course.id}`;
+              const id = `${ids.courses}-${course.id}`;
               return (
                 <li key={course.id}>
                   <label for={id}>{course.name}</label>
                   <Switch
                     id={id}
-                    checked={settings.hiddenCourseIds.includes(course.id)}
-                    label={t('hideCourse', course.name)}
-                    onChange={(hide) =>
+                    checked={!settings.hiddenCourseIds.includes(course.id)}
+                    label={t('showCourse', course.name)}
+                    onChange={(show) =>
                       update({
-                        hiddenCourseIds: toggleHidden(settings.hiddenCourseIds, course.id, hide),
+                        hiddenCourseIds: toggleHidden(settings.hiddenCourseIds, course.id, !show),
                       })
                     }
                   />

@@ -209,10 +209,12 @@ test.describe('course home page', () => {
     await list.getByRole('button', { name: 'Settings' }).click();
     await expect(list.getByRole('button', { name: 'Back' })).toBeVisible();
     expect(context.pages()).toHaveLength(tabs);
-    const club = list.getByRole('switch', { name: 'Hide Intramural Ultimate Frisbee Club' });
-    await expect(club).toBeChecked();
-    await club.click();
+    const club = list.getByRole('switch', {
+      name: 'Show Intramural Ultimate Frisbee Club in my list',
+    });
     await expect(club).not.toBeChecked();
+    await club.click();
+    await expect(club).toBeChecked();
     await list.getByRole('button', { name: 'Back' }).click();
 
     // The course is back, so its list shows and replaces the native To Do.
