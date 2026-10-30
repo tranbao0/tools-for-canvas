@@ -221,6 +221,9 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - The widget dashboard has its own dark mode.
   The list finds the theme of the page from the body background, so it can stay light beside dark widgets.
   The Theme setting fixes this.
+- The extension reads the dashboard view once, when the list mounts.
+  If Canvas switches between Card View and List View without a page load, the list can sit in the wrong layout until the next load.
+  The live checklist tells the tester to note whether this happens.
 - The first widget row sits at a fixed offset below the top of the column.
   The list lines up with it at 1,200 px and wider, with the offset that the test fixture has.
   A live check on a real page can show a different offset.
@@ -264,8 +267,11 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     Canvas's own layout CSS then shows `#right-side-wrapper`, puts it beside the content at its usual width, and stacks it under the content on narrow windows.
   - Add one style that shows the wrapper also where Canvas hides it with an inline style, and, from 1,200 px, lines the list up with the first widget row.
   - Mark the body with `data-weekrow-column`, so that the removal knows that the extension added the class.
-  - A `MutationObserver` puts the class and the container back if the page removes them.
+    An observer of an older copy of the script stops at once when the marker is gone.
+  - A `MutationObserver` puts the class, the style and the container back if the page removes them.
   - When the list unmounts or the setting "Show the weekly list on Canvas pages" is off, remove the class, the marker and the style.
+    If Canvas has filled `#right-side` by then, the column is Canvas's own, and the class stays.
+  - A list that fails to mount removes the class, the marker and the style as well.
   - The K-5 dashboard (`#dashboard-app-container`) gets nothing.
 - On a course home page, mount only when the path is exactly `/courses/:id` and the body has `with-right-side`, as the original did [9].
 - Mount the list as a sibling before `#right-side`, inside `#right-side-wrapper`.

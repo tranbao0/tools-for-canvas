@@ -101,9 +101,18 @@ export async function startInpage(
   let wait: AbortController | null = null;
 
   function onMount(mount: InpageMount): void {
+    let removal: (() => void) | null = null;
     attempt('in-page list', () => {
-      removeList = mountList(mount);
+      removal = mountList(mount);
     });
+    // A list that did not mount leaves nothing on the page, not even the column that it turned on.
+    if (removal === null) {
+      attempt('in-page list removal', () => {
+        mount.release();
+        mount.container.remove();
+      });
+    }
+    removeList = removal;
   }
 
   /** Brings the page in line with the choices: the list mounts when both hold, else it goes. */

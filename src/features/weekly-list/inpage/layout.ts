@@ -29,13 +29,21 @@ export const COLUMN_CSS =
 
 /**
  * Turns the right column on and keeps it on while the page changes. When the page removes the
- * class or the container, a `MutationObserver` puts them back. Returns the function that stops
- * watching and turns the column off again.
+ * class, the style or the container, a `MutationObserver` puts them back. Returns the function
+ * that stops watching and turns the column off again.
+ *
+ * The marker on the body says that a list owns the column. Every release removes it, so an
+ * observer of an earlier copy of the script, which can outlive its copy for a few seconds, sees
+ * that the column is no longer owned and stops without putting anything back.
  */
 export function claimRightColumn(doc: Document, container: HTMLElement): () => void {
   const body = doc.body;
+  const observer = new MutationObserver(() => keep());
   const keep = (): void => {
-    if (!body.hasAttribute(COLUMN_ATTRIBUTE)) body.setAttribute(COLUMN_ATTRIBUTE, '');
+    if (!body.hasAttribute(COLUMN_ATTRIBUTE)) {
+      observer.disconnect();
+      return;
+    }
     if (!body.classList.contains(COLUMN_CLASS)) body.classList.add(COLUMN_CLASS);
     if (doc.getElementById(COLUMN_STYLE_ID) === null) {
       const style = doc.createElement('style');
@@ -50,7 +58,7 @@ export function claimRightColumn(doc: Document, container: HTMLElement): () => v
       rightSide.parentElement.insertBefore(container, rightSide);
     }
   };
-  const observer = new MutationObserver(keep);
+  body.setAttribute(COLUMN_ATTRIBUTE, '');
   observer.observe(doc.documentElement, {
     childList: true,
     subtree: true,
@@ -64,13 +72,18 @@ export function claimRightColumn(doc: Document, container: HTMLElement): () => v
   };
 }
 
-/** Turns the right column off: removes the style, the marker and the class that the list added. */
+/**
+ * Turns the right column off: removes the style and the marker, and the class that the list
+ * added. When Canvas has filled `#right-side` meanwhile, the column is Canvas's own, and the
+ * class stays.
+ */
 export function releaseRightColumn(doc: Document): void {
   doc.getElementById(COLUMN_STYLE_ID)?.remove();
   const body = doc.body;
   if (body === null || !body.hasAttribute(COLUMN_ATTRIBUTE)) return;
   body.removeAttribute(COLUMN_ATTRIBUTE);
-  body.classList.remove(COLUMN_CLASS);
+  if (doc.getElementById('right-side')?.childElementCount === 0)
+    body.classList.remove(COLUMN_CLASS);
 }
 
 /** Whether the list has turned the right column on, so it shows as a card among the widgets. */

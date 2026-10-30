@@ -17,6 +17,7 @@ import {
 import {
   CARD_VIEW,
   COURSE_HOME,
+  LIST_VIEW,
   NOT_CANVAS,
   STUDENT_SIDEBAR,
   injectSidebar,
@@ -181,6 +182,33 @@ describe('startInpage', () => {
     await vi.advanceTimersByTimeAsync(DEFAULT_MOUNT_TIMEOUT_MS);
 
     expect(mounts).toEqual([]);
+    expect(document.getElementById(MOUNT_CONTAINER_ID)).toBeNull();
+  });
+
+  it.each([
+    ['returns no removal', (): (() => void) | null => null],
+    [
+      'throws',
+      (): (() => void) => {
+        throw new Error('shadow root failed');
+      },
+    ],
+  ])('leaves nothing on a List View page when the list %s', async (_name, fail) => {
+    vi.useFakeTimers();
+    mountList.mockImplementationOnce(fail as (mount: InpageMount) => () => void);
+    await canvasOriginItem.setValue(CUSTOM);
+    loadPage(document, LIST_VIEW);
+    const before = document.body.outerHTML;
+    await start({ origin: CUSTOM, pathname: '/' });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(document.body.outerHTML).toBe(before);
+    expect(document.getElementById('weekrow-column')).toBeNull();
+    // Turning the setting off must not bring anything back.
+    await settingsItem.setValue({ ...DEFAULT_SETTINGS, showOnCanvasPages: false });
+    document.body.classList.add('x');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.body.classList.contains('with-right-side')).toBe(false);
     expect(document.getElementById(MOUNT_CONTAINER_ID)).toBeNull();
   });
 

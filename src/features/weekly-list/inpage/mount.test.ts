@@ -241,11 +241,11 @@ describe('dashboard without a right column', () => {
     expect(document.body.classList.contains('with-right-side')).toBe(false);
   });
 
-  it('keeps the class that Canvas set itself', async () => {
-    loadPage(document, { ...WIDGET_DASHBOARD, bodyClass: 'with-right-side dashboard' });
-    injectSidebar(document, STUDENT_SIDEBAR);
+  it('keeps the class when Canvas filled the sidebar before the release', async () => {
+    loadPage(document, WIDGET_DASHBOARD);
     await mountWhenReady(onMount, { pathname: '/' });
 
+    injectSidebar(document, STUDENT_SIDEBAR);
     mounts[0]?.release();
 
     expect(document.body.classList.contains('with-right-side')).toBe(true);
@@ -273,16 +273,28 @@ describe('dashboard without a right column', () => {
     expect(mounts[0]?.container).toBe(container());
   });
 
-  it('puts the style back when it goes, and the marker too', async () => {
+  it('puts the style back when it goes', async () => {
     loadPage(document, WIDGET_DASHBOARD);
     await mountWhenReady(onMount, { pathname: '/' });
 
     document.getElementById(COLUMN_STYLE_ID)?.remove();
-    document.body.removeAttribute('data-weekrow-column');
     await flushObserver();
 
     expect(document.getElementById(COLUMN_STYLE_ID)).not.toBeNull();
-    expect(document.body.hasAttribute('data-weekrow-column')).toBe(true);
+  });
+
+  it('stops putting things back once a release took the marker away', async () => {
+    loadPage(document, WIDGET_DASHBOARD);
+    await mountWhenReady(onMount, { pathname: '/' });
+
+    // A newer copy of the script removes the list and the column. The older observer is still live.
+    removeStaleMount(document);
+    await flushObserver();
+
+    expect(container()).toBeNull();
+    expect(document.getElementById(COLUMN_STYLE_ID)).toBeNull();
+    expect(document.body.hasAttribute('data-weekrow-column')).toBe(false);
+    expect(document.body.classList.contains('with-right-side')).toBe(false);
   });
 
   it('stays out when another list took the place of the container', async () => {
