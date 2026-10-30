@@ -197,7 +197,12 @@ The card, a column of its own at the end of the grid, showed only as a thin sliv
 At smaller sizes it left the grid, and the page needed a sideways scroll to reach it.
 The owner chose a new place after that test, to match the old dashboard: the card sits in the wide white area to the right of the grid, where the old dashboard has its right column.
 This replaces the own grid column and the sticky floating card on the widget dashboard.
-The card has the look of a widget card: no border, the shadow of a widget, and 12 px corners.
+The card has the look of a widget card: no border, the shadow of a widget, 8 px corners in light mode and 12 px corners in dark mode.
+Source check on 2026-10-30: `@instructure/platform-widget-dashboard@16.2.0`, `dist/index.js` (`TemplateWidget`), uses an InstUI View with `shadow="above"`, `borderRadius="large"`, `background="primary"` and `padding="medium"`.
+`@instructure/ui-view@11.7.4`, `src/View/v1/theme.ts` and `src/View/v1/styles.ts`, maps those properties to the theme tokens.
+`@instructure/ui-theme-tokens@11.7.4`, `tokens/canvas/scss/_variables.scss`, gives large radius `0.5rem` (8 px), medium spacing `1.5rem` (24 px), white background `#FFFFFF` and shadow `0 0.1875rem 0.375rem rgba(0,0,0,0.1), 0 0.1875rem 0.375rem rgba(0,0,0,0.15)`.
+The widget package's `dist/index.js` dark component overrides set View large and medium radii to `12px` and primary background to `#1F2D3D`, and keep the padding and shadow.
+Canvas at `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`, `ui/features/widget_dashboard/react/components/widgets/CourseGradesWidget/CourseGradesWidget.tsx`, imports `TemplateWidget` from the package.
 On the same day the owner asked for three more changes.
 The in-page list shows the full list, as the side panel does, with no short glance.
 The card has a height limit, and the groups scroll inside it.
@@ -1625,6 +1630,16 @@ I read each of them in the package source.
   The default read filter is Unread.
   The widget has no course filter, and it loads 3 announcements of all courses a page, so a course filter cannot work on its list.
   The widget marks an announcement as read with a GraphQL mutation.
+- Students can hide each course grade independently.
+  In `@instructure/platform-widget-dashboard@16.2.0`, `dist/index.js` (`CourseGradesWidget`), `gradeVisibilities[courseId] ?? showGrades` controls the card, so a saved course override also takes precedence when the main toggle changes.
+  `dist/index.js` (`CourseGradeCard`) shows `•••` with an accessible hidden-grade label.
+  Canvas at `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c` has the same rules in `ui/features/widget_dashboard/react/components/widgets/CourseGradesWidget/CourseGradesWidget.tsx`.
+  `ui/features/widget_dashboard/react/hooks/useWidgetConfig.ts` saves the settings through `updateWidgetDashboardConfig`.
+  `app/graphql/mutations/update_widget_dashboard_config.rb` stores them in the user's `widget_dashboard_config` preference under `filters[widgetId]`.
+  `app/graphql/types/user_type.rb` exposes that preference as the JSON string `widgetDashboardConfig`.
+  The copied cards read that preference through GraphQL only when a Course grades widget is present, and follow the visible main toggle when no course override exists.
+  They also keep visibility changes from native cards when those cards leave the current page.
+  A failed preference read keeps copied grades hidden.
 - The Course grades widget shows 6 cards a page (`MAX_GRID_ITEMS`) and a pager under them.
   The widget reads all courses from `ENV`, so nothing is missing from its data.
 - `GET /api/v1/courses` with `include[]=total_scores` adds `computed_current_score` and `computed_current_grade` to the student enrollment.

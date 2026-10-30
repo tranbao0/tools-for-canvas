@@ -179,6 +179,35 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
 
       withPriority,
 
+      getWidgetGradeVisibility: async (userId) => {
+        const response = await send({
+          method: 'POST',
+          url: GRAPHQL_PATH,
+          body: {
+            query:
+              'query WidgetGradeVisibility($id: ID!) { legacyNode(_id: $id, type: User) { ... on User { widgetDashboardConfig } } }',
+            variables: { id: userId },
+          },
+        });
+        const body = response.data as {
+          data?: { legacyNode?: { widgetDashboardConfig?: string | null } };
+        };
+        if (!body.data?.legacyNode) throw new Error('No widget preferences');
+        const config = JSON.parse(body.data.legacyNode.widgetDashboardConfig ?? '{}') as {
+          filters?: Record<string, { gradeVisibilities?: Record<string, boolean> }>;
+        };
+        const entries = Object.entries(config.filters ?? {}).map(([id, value]) => {
+          const visibility = value.gradeVisibilities ?? {};
+          if (
+            !isJsonObject(visibility) ||
+            Object.values(visibility).some((item) => typeof item !== 'boolean')
+          )
+            throw new Error('Invalid grade visibility');
+          return [id, visibility] as const;
+        });
+        return Object.fromEntries(entries);
+      },
+
       getSelf: async () => getObject<UserSelf>('/api/v1/users/self'),
 
       getProfile: async () => getObject<Profile>('/api/v1/users/self/profile'),

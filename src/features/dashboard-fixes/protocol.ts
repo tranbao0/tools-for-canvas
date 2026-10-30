@@ -19,6 +19,7 @@ export interface SaveToolsMessage {
 /** In-page script to background: asks for the data of the fixes. The reply is a `DashboardData`. */
 export interface DashboardDataMessage {
   type: 'weekrow:dashboard-data';
+  includeGradeVisibility?: boolean;
 }
 
 /** In-page script to background: asks for one announcement. The reply is an `AnnouncementBody`. */
@@ -77,6 +78,7 @@ export interface DashboardData {
   ready: boolean;
   courses: DashboardCourse[];
   extras: ExtraItem[];
+  gradeVisibilities?: Record<string, Record<string, boolean>> | null;
 }
 
 /** The full message of an announcement. `message` is HTML, so it is never inserted as it is. */

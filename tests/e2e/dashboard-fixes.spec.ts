@@ -507,6 +507,41 @@ test.describe('course grades', () => {
     await expect(widget.locator('[data-testid="course-grade-card-103"]')).toHaveCount(1);
   });
 
+  test('keep a saved hidden grade hidden with Show all grades enabled', async ({
+    context,
+    page,
+  }) => {
+    const served = await serveScenario(
+      context,
+      [
+        ...PAGE,
+        {
+          method: 'POST',
+          path: '/api/graphql',
+          body: {
+            data: {
+              legacyNode: {
+                widgetDashboardConfig: JSON.stringify({
+                  filters: { 'course-grades-widget': { gradeVisibilities: { '107': false } } },
+                }),
+              },
+            },
+          },
+        },
+      ],
+      EIGHT_COURSES,
+    );
+    await addCsrfCookie(context, served.canvas.origin);
+    await openCanvasPage(page, served.canvas.origin);
+    await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
+    await expect(page.getByTestId('course-107-grade')).toHaveAttribute(
+      'aria-label',
+      'Grade hidden for PSYC 100: Intro to Psychology',
+    );
+    await rerender(page);
+    await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
+  });
+
   test('show dots while the toggle hides every grade, and survive a new draw', async ({
     context,
     page,

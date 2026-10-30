@@ -46,7 +46,10 @@ describe('createFixesEngine', () => {
     expect(send).not.toHaveBeenCalled();
     engine.setActive(true);
     await settle();
-    expect(send).toHaveBeenCalledWith({ type: 'weekrow:dashboard-data' });
+    expect(send).toHaveBeenCalledWith({
+      type: 'weekrow:dashboard-data',
+      includeGradeVisibility: true,
+    });
     expect(document.querySelector('[data-wr-cc]')).not.toBeNull();
     expect(document.querySelector('[data-wr-extra]')).not.toBeNull();
     expect(document.querySelectorAll('[data-wr-card]').length).toBeGreaterThan(0);

@@ -942,3 +942,29 @@ describe('listCustomGradeStatuses', () => {
     });
   });
 });
+
+describe('widget grade visibility', () => {
+  it('reads saved course overrides from the user preference', async () => {
+    recordAll(() => ({
+      data: {
+        legacyNode: {
+          widgetDashboardConfig: JSON.stringify({
+            filters: {
+              'course-grades-widget': { gradeVisibilities: { '107': false, '108': true } },
+            },
+          }),
+        },
+      },
+    }));
+    await expect(testClient().getWidgetGradeVisibility!('5')).resolves.toEqual({
+      'course-grades-widget': { '107': false, '108': true },
+    });
+  });
+
+  it('rejects an unreadable preference so callers can keep grades hidden', async () => {
+    recordAll(() => ({ errors: [{ message: 'Unavailable' }] }));
+    await expect(testClient().getWidgetGradeVisibility!('5')).rejects.toThrow(
+      'No widget preferences',
+    );
+  });
+});

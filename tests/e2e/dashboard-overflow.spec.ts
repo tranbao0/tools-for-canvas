@@ -361,6 +361,7 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
       expect(look.headerPadding).toBe(look.widgetPadding);
       expect(look.list).toEqual(look.widget);
       expect(look.list?.['borderTopWidth']).toBe('0px');
+      expect(look.list?.['borderRadius']).toBe('8px');
     });
   }
 });
@@ -380,6 +381,9 @@ test.describe('screenshots of the card on the widget dashboard', () => {
             document.querySelector('.fixture-widget-app')?.setAttribute('data-fixture-dark', ''),
           );
         }
+        const radius = theme === 'dark' ? '12px' : '8px';
+        await expect(page.locator(CARDS).first()).toHaveCSS('border-radius', radius);
+        await expect(inpageList(page).locator('.wr')).toHaveCSS('border-radius', radius);
         await page.screenshot({ path: path.join(SHOTS, `card-${width}-${theme}.png`) });
         expect(
           await page.evaluate(

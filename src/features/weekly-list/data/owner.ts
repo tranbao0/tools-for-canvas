@@ -206,7 +206,7 @@ export interface DataOwner {
   acceptOffer(origin: string): Promise<boolean>;
   act(action: DataAction): Promise<ActionReply>;
   /** The data of the dashboard fixes, from the cache. It makes no request (decision 22). */
-  dashboardData(): Promise<DashboardData>;
+  dashboardData(includeGradeVisibility?: boolean): Promise<DashboardData>;
   /** One announcement of the saved Canvas with its full message. */
   announcement(courseId: string, topicId: string): Promise<AnnouncementBody>;
   /** The recent announcements of one course. */
@@ -1905,7 +1905,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return false;
   }
 
-  async function dashboardData(): Promise<DashboardData> {
+  async function dashboardData(includeGradeVisibility = false): Promise<DashboardData> {
     await ready();
     const origin = await savedOrigin();
     if (
@@ -1939,6 +1939,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       ready: result.exact && !blocksLoads(cache.failure),
       courses: dashboardCourses(session.courses, session.colors, session.profile.id),
       extras: extrasFromView(result.view),
+      ...(includeGradeVisibility && apiFor(origin).getWidgetGradeVisibility
+        ? {
+            gradeVisibilities: await apiFor(origin).getWidgetGradeVisibility!(
+              session.profile.id,
+            ).catch(() => null),
+          }
+        : {}),
     };
   }
 

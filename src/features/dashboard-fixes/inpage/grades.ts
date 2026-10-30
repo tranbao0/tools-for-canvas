@@ -33,6 +33,7 @@ export function gradesFix(): Fix {
   let doc: Document | null = null;
   /** What each grid shows. It stays out of the page, where a script could read the grades. */
   const signatures = new WeakMap<Element, string>();
+  let observed = new WeakMap<Element, Map<string, boolean>>();
 
   /** Sets the text of the element with `suffix`, and removes it when there is no text. */
   function fill(card: HTMLElement, id: string, suffix: string, text: string | null): void {
@@ -64,7 +65,10 @@ export function gradesFix(): Fix {
     fill(card, course.id, 'last-updated', null);
     const grade = card.querySelector<HTMLElement>(`[data-testid="course-${course.id}-grade"]`);
     if (grade !== null) {
+      if (grade.getAttribute('aria-hidden') === 'true') grade.nextElementSibling?.remove();
       grade.textContent = hidden ? HIDDEN_GRADE : gradeText(course);
+      grade.removeAttribute('aria-hidden');
+      if (hidden) grade.setAttribute('aria-label', `Grade hidden for ${course.name}`);
       if (HEX.test(course.color) && HEX.test(course.ink)) {
         const ink = course.ink;
         grade.style.color = ink;
@@ -98,15 +102,34 @@ export function gradesFix(): Fix {
   }
 
   function sync(context: FixContext, found: GradeCards): void {
-    const courses = context.data?.courses ?? [];
+    if (context.data === null) return;
+    const courses = context.data.courses;
     const template = found.cards.find((card) => !card.hasAttribute('data-wr-card'));
     const native = found.cards.filter((card) => !card.hasAttribute('data-wr-card'));
     const shown = new Set(native.map(cardCourseId));
     const missing = template === undefined ? [] : courses.filter((course) => !shown.has(course.id));
     found.widget.setAttribute('data-wr-grades', '');
+    const widgetId = (found.widget.getAttribute('data-testid') ?? '').replace(/^widget-/, '');
+    const visibility = context.data?.gradeVisibilities;
+    let overrides = observed.get(found.widget);
+    if (!overrides) {
+      overrides = new Map(Object.entries(visibility?.[widgetId] ?? {}));
+      observed.set(found.widget, overrides);
+    }
+    for (const card of native) {
+      const id = cardCourseId(card);
+      const grade = card.querySelector(`[data-testid="course-${id}-grade"]`);
+      if (grade) {
+        const visible = grade.textContent !== HIDDEN_GRADE;
+        if (visible === !found.gradesHidden) overrides.delete(id);
+        else overrides.set(id, visible);
+      }
+    }
+    const hidden = (id: string): boolean =>
+      visibility == null || !(overrides?.get(id) ?? !found.gradesHidden);
     const signature = JSON.stringify([
       missing.map((course) => [course.id, course.name, course.color, course.score, course.grade]),
-      found.gradesHidden,
+      missing.map((course) => hidden(course.id)),
     ]);
     const copies = found.cards.filter((card) => card.hasAttribute('data-wr-card'));
     const first = copies[0];
@@ -123,7 +146,7 @@ export function gradesFix(): Fix {
     for (const copy of copies) copy.remove();
     signatures.set(found.grid, signature);
     if (template === undefined) return;
-    for (const course of missing) found.grid.append(copyFor(template, course, found.gradesHidden));
+    for (const course of missing) found.grid.append(copyFor(template, course, hidden(course.id)));
   }
 
   return {
@@ -131,7 +154,11 @@ export function gradesFix(): Fix {
       doc = context.doc;
       for (const found of findGradeWidgets(context.doc)) sync(context, found);
     },
+    reload() {
+      observed = new WeakMap();
+    },
     remove() {
+      observed = new WeakMap();
       for (const node of doc?.querySelectorAll('[data-wr-card]') ?? []) node.remove();
       for (const node of doc?.querySelectorAll('[data-wr-grades]') ?? []) {
         node.removeAttribute('data-wr-grades');

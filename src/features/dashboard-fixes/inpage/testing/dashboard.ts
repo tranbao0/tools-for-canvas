@@ -63,7 +63,7 @@ export function extra(patch: Partial<ExtraItem> & Pick<ExtraItem, 'key' | 'title
 }
 
 export function dashboardData(extras: ExtraItem[] = [], courses = COURSES): DashboardData {
-  return { origin: ORIGIN, ready: true, courses, extras };
+  return { origin: ORIGIN, ready: true, courses, extras, gradeVisibilities: {} };
 }
 
 export interface FakeContext extends FixContext {

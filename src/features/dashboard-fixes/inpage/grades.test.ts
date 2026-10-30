@@ -70,6 +70,43 @@ describe('gradesFix', () => {
     expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('95%');
   });
 
+  it('keeps a saved per-course hidden grade hidden when the main toggle is on', () => {
+    const context = fakeContext({
+      ...dashboardData(),
+      gradeVisibilities: { 'course-grades-widget': { '107': false } },
+    });
+    gradesFix().apply(context);
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
+  });
+
+  it('uses a saved visible override while the main toggle is off', () => {
+    document
+      .querySelector('[data-testid="hide-all-grades-checkbox"]')
+      ?.setAttribute('data-testid', 'show-all-grades-checkbox');
+    gradesFix().apply(
+      fakeContext({
+        ...dashboardData(),
+        gradeVisibilities: { 'course-grades-widget': { '107': true } },
+      }),
+    );
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('95%');
+  });
+
+  it('keeps a course hidden after its native card leaves the page', () => {
+    const fix = gradesFix();
+    const context = fakeContext();
+    document.querySelector('[data-testid="course-103-grade"]')!.textContent = '•••';
+    fix.apply(context);
+    document.querySelector('[data-testid="course-grade-card-103"]')!.remove();
+    fix.apply(context);
+    expect(document.querySelector('[data-testid="course-103-grade"]')?.textContent).toBe('•••');
+  });
+
+  it('keeps grades hidden when preferences cannot be read', () => {
+    gradesFix().apply(fakeContext({ ...dashboardData(), gradeVisibilities: null }));
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
+  });
+
   it('does not copy a card twice, and draws again after React drew the grid again', () => {
     const fix = gradesFix();
     const context = fakeContext();

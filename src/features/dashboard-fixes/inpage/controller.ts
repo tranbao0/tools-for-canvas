@@ -16,6 +16,7 @@ import { courseColorsFix } from './colors';
 import { isFixNode, type Fix, type FixContext } from './context';
 import { courseWorkFix } from './courseWork';
 import { gradesFix } from './grades';
+import { findGradeWidgets } from '../../../shared/canvas/widgetDashboard';
 import { FIXES_CSS } from './styles';
 
 /** How long a batch of page changes waits for the next one. */
@@ -71,6 +72,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let style: HTMLStyleElement | null = null;
   let loadSeq = 0;
+  let requestedVisibility = false;
   const blocks = new Map<string, string>();
   /** The fixes that have drawn something, so a switch-off knows which ones to undo. */
   const applied = new Set<FixKey>();
@@ -123,6 +125,8 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
 
   function run(): void {
     timer = null;
+    if (enabled('allCourseGrades') && !requestedVisibility && findGradeWidgets(doc).length > 0)
+      load();
     for (const key of keys) {
       if (enabled(key)) {
         applied.add(key);
@@ -170,13 +174,19 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     for (const key of applied) fixes[key].reload?.();
     const seq = (loadSeq += 1);
     if (!anyEnabled()) return;
+    const includeGradeVisibility = enabled('allCourseGrades') && findGradeWidgets(doc).length > 0;
+    requestedVisibility = includeGradeVisibility;
     options
-      .send({ type: 'weekrow:dashboard-data' })
+      .send({
+        type: 'weekrow:dashboard-data',
+        ...(includeGradeVisibility ? { includeGradeVisibility: true } : {}),
+      })
       .then((reply) => {
         if (seq !== loadSeq) return;
         const next = reply as DashboardData | undefined;
         if (typeof next?.origin !== 'string' || !Array.isArray(next.courses)) return;
         data = next;
+        fixes.allCourseGrades.reload?.();
         schedule(0);
       })
       .catch((error: unknown) => logFailure('dashboard data', error));

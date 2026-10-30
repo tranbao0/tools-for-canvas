@@ -46,7 +46,13 @@ export function apiRoutes(scenario: Scenario): FakeCanvasRoute[] {
     {
       method: 'POST',
       path: '/api/graphql',
-      respond: (request) => ({ body: json(customGradeStatusesAnswer(scenario, request.postData)) }),
+      respond: (request) => ({
+        body: json(
+          request.postData?.includes('WidgetGradeVisibility')
+            ? { data: { legacyNode: { widgetDashboardConfig: '{}' } } }
+            : customGradeStatusesAnswer(scenario, request.postData),
+        ),
+      }),
     },
   ];
 }
