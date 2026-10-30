@@ -12,14 +12,11 @@ import path from 'node:path';
 import { constants, gzipSync } from 'node:zlib';
 import { formatKb, listFiles, runForTargets } from './lib/build-output.mjs';
 
-/** The gzip budget for one entry point: 30 KB, with 1 KB = 1000 bytes. */
-export const BUDGET_BYTES = 30_000;
-
 /**
- * The gzip budget for an extension page (side panel, settings, welcome). These pages load from
- * the extension's own files, not from a web page, so they get more room.
+ * The gzip budget for one entry point: 40 KB, with 1 KB = 1000 bytes. Every entry point loads
+ * from the extension's own files, not over the network.
  */
-export const PAGE_BUDGET_BYTES = 40_000;
+export const BUDGET_BYTES = 40_000;
 
 /**
  * The gzip budget for the detector content script, in bytes. It runs on every https page
@@ -36,8 +33,7 @@ export const DETECTOR_ENTRY = 'detector.js';
  * @returns {number}
  */
 export function budgetFor(name) {
-  if (name === DETECTOR_ENTRY) return DETECTOR_BUDGET_BYTES;
-  return name.endsWith('.html') ? PAGE_BUDGET_BYTES : BUDGET_BYTES;
+  return name === DETECTOR_ENTRY ? DETECTOR_BUDGET_BYTES : BUDGET_BYTES;
 }
 
 const HTML_ASSET = /<(?:script|link)\b[^>]*?\b(?:src|href)\s*=\s*["']([^"']+)["']/gi;

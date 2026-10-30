@@ -35,7 +35,7 @@ describe('SettingsView', () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        'Shows on the Card View and Recent Activity dashboards and on course home pages. On other pages, use the side panel.',
+        'Shows on your Canvas dashboard and on course home pages. On other pages, use the side panel.',
       ),
     ).toBeTruthy();
     expect(screen.getByLabelText('Theme')).toBeTruthy();

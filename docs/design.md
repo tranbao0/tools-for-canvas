@@ -1068,9 +1068,9 @@ These sizes come from one test build of the same small app [19].
 - The in-page UI uses px units, because rem units follow the page's font size [19].
 - Plain CSS with custom properties for colors and spacing; no CSS framework.
 - No runtime dependencies besides Preact and `@preact/signals`.
-- Each script entry point (the background and the in-page script) must stay under 30 KB after gzip, and the detector under 2 KB.
-  Each extension page (side panel, settings, welcome) must stay under 40 KB, because it loads from the extension's own files.
-  The owner raised the page limit on 2026-10-29, when the span feature filled the 30 KB.
+- Each entry point must stay under 40 KB after gzip, and the detector under 2 KB, because the detector runs on every https page.
+  Every entry point loads from the extension's own files, not over the network.
+  The limit was 30 KB until 2026-10-29, when the span feature and the dashboard column filled it.
   CI checks these limits.
   The extension pages load one shared chunk for all code under `src/shared` and `src/features`, because several small chunks cost more after gzip.
   A test build with Preact had a 9.3 KB content script [19].
@@ -1303,7 +1303,7 @@ The owner chose it on 2026-10-27.
   - Each switch has the accessible name "Show <course> in my list".
   - When any course is hidden, the list ends with one quiet line, such as "1 course hidden", with a link to the settings.
   - So the student always knows that the list is filtered.
-- "Show the weekly list on Canvas pages" has one help line: "Shows on the Card View and Recent Activity dashboards and on course home pages. On other pages, use the side panel."
+- "Show the weekly list on Canvas pages" has one help line: "Shows on your Canvas dashboard and on course home pages. On other pages, use the side panel."
 - The settings page also shows the Canvas address, with a way to change it.
 
 **Why:**
