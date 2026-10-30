@@ -34,7 +34,8 @@ export function gradesFix(): Fix {
   /** What each grid shows. It stays out of the page, where a script could read the grades. */
   const signatures = new WeakMap<Element, string>();
   const nativeStates = new WeakMap<Element, { hidden: boolean; values: Map<string, boolean> }>();
-  let observed = new WeakMap<Element, Map<string, boolean>>();
+  const serverStates = new Map<string, Record<string, boolean>>();
+  let observed = new Map<string, Map<string, boolean>>();
 
   /** Sets the text of the element with `suffix`, and removes it when there is no text. */
   function fill(card: HTMLElement, id: string, suffix: string, text: string | null): void {
@@ -120,10 +121,18 @@ export function gradesFix(): Fix {
     found.widget.setAttribute('data-wr-grades', '');
     const widgetId = (found.widget.getAttribute('data-testid') ?? '').replace(/^widget-/, '');
     const visibility = context.data?.gradeVisibilities;
-    let overrides = observed.get(found.widget);
+    let overrides = observed.get(widgetId);
     if (!overrides) {
-      overrides = new Map(Object.entries(visibility?.[widgetId] ?? {}));
-      observed.set(found.widget, overrides);
+      overrides = new Map();
+      observed.set(widgetId, overrides);
+    }
+    if (visibility != null) {
+      const server = visibility[widgetId] ?? {};
+      const before = serverStates.get(widgetId);
+      for (const [id, value] of Object.entries(server)) {
+        if (overrides.get(id) === value || (before && before[id] !== value)) overrides.delete(id);
+      }
+      serverStates.set(widgetId, server);
     }
     const previous = nativeStates.get(found.widget);
     const values = new Map<string, boolean>();
@@ -145,7 +154,8 @@ export function gradesFix(): Fix {
     }
     nativeStates.set(found.widget, { hidden: found.gradesHidden, values });
     const hidden = (id: string): boolean =>
-      visibility == null || !(overrides?.get(id) ?? !found.gradesHidden);
+      visibility == null ||
+      !(overrides?.get(id) ?? visibility?.[widgetId]?.[id] ?? !found.gradesHidden);
     const signature = JSON.stringify([
       missing.map((course) => [course.id, course.name, course.color, course.score, course.grade]),
       missing.map((course) => hidden(course.id)),
@@ -173,11 +183,9 @@ export function gradesFix(): Fix {
       doc = context.doc;
       for (const found of findGradeWidgets(context.doc)) sync(context, found);
     },
-    reload() {
-      observed = new WeakMap();
-    },
     remove() {
-      observed = new WeakMap();
+      observed = new Map();
+      serverStates.clear();
       for (const node of doc?.querySelectorAll('[data-wr-card]') ?? []) node.remove();
       for (const node of doc?.querySelectorAll('[data-wr-grades]') ?? []) {
         node.removeAttribute('data-wr-grades');

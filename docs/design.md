@@ -1736,8 +1736,12 @@ I read each of them in the package source.
    Canvas sends no total for a course that hides its totals, which gives "N/A", as in the widget.
    While the toggle "Show all grades" is off, the copies show dots, as the widget does.
    The courses come from the courses request that the extension already makes, with `include[]=total_scores` added, so the course totals need no new request.
-   Grade visibility preferences load separately with a five-second timeout.
-   The page keeps these preferences until the widget toggle or configuration changes, or an explicit reload occurs.
+   Grade visibility preferences load separately at high priority with a five-second timeout.
+   The read uses the current session cookies and does not wait for the cache ownership check.
+   The page reads these preferences when the widget toggle or configuration changes.
+   Values observed on native cards take precedence over stale server preferences for this page view.
+   A later server value clears an observation when it confirms it or changes the previous server value.
+   A request whose timer expires in the queue gets one fresh attempt when a slot opens.
    Normal data change notices do not read them again.
    Cached dashboard data never waits for this read.
    Copies hide their grades while preferences are unknown.

@@ -546,6 +546,7 @@ test.describe('course grades', () => {
     await page
       .getByTestId('show-all-grades-checkbox')
       .evaluate((node) => node.setAttribute('data-testid', 'hide-all-grades-checkbox'));
+    await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
     await expect(page.getByTestId('course-108-grade')).toHaveText('N/A');
     await rerender(page);
     await expect(page.getByTestId('course-107-grade')).toHaveText('•••');

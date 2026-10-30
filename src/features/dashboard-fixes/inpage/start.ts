@@ -67,7 +67,7 @@ export async function startDashboardFixes(options: StartFixesOptions): Promise<F
   stops.push(
     channel.choices.origin.watch(follow),
     channel.tools.watch((tools) => engine.setSettings(tools.dashboardFixes)),
-    channel.watchChanges(() => engine.reload(false)),
+    channel.watchChanges(() => engine.reload()),
   );
   signal?.addEventListener('abort', controller.stop, { once: true });
   try {

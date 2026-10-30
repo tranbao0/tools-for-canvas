@@ -24,6 +24,13 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
     accessChanged: vi.fn(async () => undefined),
     settled: vi.fn(async () => undefined),
     dashboardData: vi.fn(async () => ({ origin: SAVED, ready: true, courses: [], extras: [] })),
+    dashboardGradeVisibility: vi.fn(async () => ({
+      origin: SAVED,
+      ready: false,
+      courses: [],
+      extras: [],
+      gradeVisibilities: {},
+    })),
     announcement: vi.fn(async () => ({ title: 'Hello', message: '<p>Hi</p>' })),
     announcements: vi.fn(async () => []),
     announcementFeed: vi.fn(async () => ({ status: 'unavailable', tab: 'tasks' })),
@@ -216,6 +223,18 @@ describe('routeDataMessage', () => {
       expect(host.saveSettings).not.toHaveBeenCalled();
       expect(host.saveTools).not.toHaveBeenCalled();
     });
+  });
+
+  it('routes the live grade preference read separately', async () => {
+    const reply = await routeDataMessage(
+      owner,
+      { type: 'weekrow:dashboard-data', includeGradeVisibility: true },
+      CONTENT_SCRIPT,
+      host,
+    );
+    expect(reply).toEqual(await owner.dashboardGradeVisibility());
+    expect(owner.dashboardGradeVisibility).toHaveBeenCalledTimes(2);
+    expect(owner.dashboardData).not.toHaveBeenCalled();
   });
 
   describe('the messages of the dashboard fixes', () => {

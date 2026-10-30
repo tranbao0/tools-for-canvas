@@ -74,7 +74,7 @@ describe('createFixesEngine', () => {
       includeGradeVisibility: true,
     });
     send.mockClear();
-    engine.reload(false);
+    engine.reload();
     await settle();
     expect(send).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith({ type: 'weekrow:dashboard-data' });
@@ -93,13 +93,49 @@ describe('createFixesEngine', () => {
     expect(document.querySelector('[data-wr-cc]')).not.toBeNull();
     expect(document.querySelector('[data-wr-extra]')).not.toBeNull();
     expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
-    engine.reload(false);
+    engine.reload();
     await settle();
     expect(
       send.mock.calls.filter(
         ([message]) => message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility,
       ),
     ).toHaveLength(1);
+  });
+
+  it('reads preferences again when the widget toggle changes', async () => {
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    send.mockClear();
+    document
+      .querySelector('[data-testid="hide-all-grades-checkbox"]')!
+      .setAttribute('data-testid', 'show-all-grades-checkbox');
+    await settle();
+    expect(send).toHaveBeenCalledWith({
+      type: 'weekrow:dashboard-data',
+      includeGradeVisibility: true,
+    });
+  });
+
+  it('keeps a native hidden grade through a stale read and a data notice', async () => {
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    document.querySelector('[data-testid="course-103-grade"]')!.textContent = '•••';
+    await settle();
+    expect(
+      send.mock.calls.filter(
+        ([message]) => message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility,
+      ),
+    ).toHaveLength(2);
+    document.querySelector('[data-testid="course-grade-card-103"]')!.remove();
+    await settle();
+    expect(document.querySelector('[data-testid="course-103-grade"]')?.textContent).toBe('•••');
+    send.mockClear();
+    engine.reload();
+    await settle();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[data-testid="course-103-grade"]')?.textContent).toBe('•••');
   });
 
   it('asks for the data only when a fix is on', async () => {

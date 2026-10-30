@@ -205,7 +205,7 @@ export interface DataOwner {
    */
   acceptOffer(origin: string): Promise<boolean>;
   act(action: DataAction): Promise<ActionReply>;
-  /** The data of the dashboard fixes, from the cache. It makes no request (decision 22). */
+  /** The data of the dashboard fixes, from the cache. It may request GET /users/self to check the signed-in student (decision 22). */
   dashboardData(): Promise<DashboardData>;
   dashboardGradeVisibility(): Promise<DashboardData>;
   /** One announcement of the saved Canvas with its full message. */
@@ -1945,11 +1945,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   async function dashboardGradeVisibility(): Promise<DashboardData> {
-    const base = await dashboardData();
+    await ready();
+    const origin = await savedOrigin();
+    const base: DashboardData = { origin: origin ?? '', ready: false, courses: [], extras: [] };
     const userId = cache?.session?.profile.id;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const read = apiFor(base.origin).getWidgetGradeVisibility;
+      const read = (origin ? apiFor(origin).withPriority(() => 'high') : null)
+        ?.getWidgetGradeVisibility;
       const gradeVisibilities =
         userId && read
           ? await Promise.race([

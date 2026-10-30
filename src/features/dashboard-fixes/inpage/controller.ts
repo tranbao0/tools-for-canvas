@@ -36,7 +36,7 @@ export interface FixesEngine {
   /** The switches of the fixes. A fix that is off is removed. */
   setSettings(settings: DashboardFixesSettings): void;
   /** Loads the data again, for example after the background says that it changed. */
-  reload(refreshVisibility?: boolean): void;
+  reload(): void;
   /** Removes everything and stops. */
   stop(): void;
 }
@@ -206,14 +206,15 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         if (stopped || seq !== visibilitySeq) return;
         visibility = (reply as DashboardData | undefined)?.gradeVisibilities ?? null;
         if (data) data = { ...data, gradeVisibilities: visibility };
-        fixes.allCourseGrades.reload?.();
         schedule(0);
       })
       .catch((error: unknown) => logFailure('grade preferences', error));
   }
 
   function load(): void {
-    for (const key of applied) fixes[key].reload?.();
+    for (const key of applied) {
+      if (key !== 'allCourseGrades') fixes[key].reload?.();
+    }
     const seq = (loadSeq += 1);
     if (!anyEnabled()) return;
     options
@@ -223,12 +224,12 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         const next = reply as DashboardData | undefined;
         if (typeof next?.origin !== 'string' || !Array.isArray(next.courses)) return;
         if (data !== null && data.userId !== next.userId) {
+          fixes.allCourseGrades.remove();
           visibility = null;
           visibilitySeq += 1;
           requestedVisibility = false;
         }
         data = { ...next, gradeVisibilities: visibility };
-        fixes.allCourseGrades.reload?.();
         schedule(0);
       })
       .catch((error: unknown) => logFailure('dashboard data', error));
@@ -248,8 +249,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
       update();
       if (!before && anyEnabled()) load();
     },
-    reload(refreshVisibility = true) {
-      if (refreshVisibility && requestedVisibility) loadVisibility();
+    reload() {
       load();
     },
     stop() {

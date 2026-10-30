@@ -8,12 +8,12 @@
  * one file to edit. The layout takes the free area beside the content, or the stack above it,
  * when the anchors are missing.
  *
- * As of package version 16.1.0, in `WidgetGrid`:
+ * As of package version 16.2.0, in `WidgetGrid`:
  * - `[data-testid="widget-columns"]` is a flex container with the columns as its children. On a
  *   desktop it is a row, and on a tablet or phone it is a column.
  * - A widget is a `div[data-testid="widget-container-<id>"]` around the `section` of
  *   `TemplateWidget` (`section[data-testid="widget-<id>"]`). The section is the visible card: it
- *   has a margin of 8px, 24px of padding, a shadow and 12px corners, and no border.
+ *   has a margin of 8px, 24px of padding, a shadow and 8px corners, and no border.
  * - Each column is `[data-testid="widget-column-1"]` and `widget-column-2` in a row, and
  *   `widget-column-1-stacked` and `widget-column-2-stacked` in a column.
  * - In edit mode ("Customize dashboard"), the header swaps the customize button for
