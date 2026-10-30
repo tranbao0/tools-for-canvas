@@ -234,7 +234,7 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
     }) => {
       const { without, withList } = await openPair(context, page, background, width);
       const card = withList.card as Box;
-      const [first, second] = withList.firstCards as [Box, Box];
+      const [first, second] = without.firstCards as [Box, Box];
       const firstTop = Math.min(first.y, second.y);
       const gutter = second.x - (first.x + first.width);
       // The top of the card is the top of the first widget row, in both places the card can take.
@@ -258,7 +258,11 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
       expect(Math.abs((withList.listBaseline ?? 0) - widgetBaseline)).toBeLessThanOrEqual(2);
       // The page header does not move, and the columns keep their place.
       expect(withList.header).toEqual(without.header);
-      expect(withList.firstCards).toEqual(without.firstCards);
+      const place = (box: Box): number[] => [box.x, box.y, box.width];
+      const kept = withList.mode === 'area' ? 2 : 1;
+      expect(withList.firstCards.map(place).slice(0, kept)).toEqual(
+        without.firstCards.map(place).slice(0, kept),
+      );
       await page.screenshot({
         path: path.join(SHOTS, `top-${width}.png`),
         clip: { x: 0, y: 0, width, height: VIEWPORT_HEIGHT },
@@ -311,11 +315,15 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
             borderLeftWidth: style.borderLeftWidth,
             borderRadius: style.borderRadius,
             backgroundColor: style.backgroundColor,
-            paddingTop: style.paddingTop,
             paddingLeft: style.paddingLeft,
           };
         };
+        const host = document.querySelector('#weekrow-inpage > weekrow-list');
         return {
+          widgetPadding: getComputedStyle(document.querySelector(cardsCss) as Element).paddingTop,
+          headerPadding: host?.shadowRoot
+            ? getComputedStyle(host.shadowRoot.querySelector('.wr-header') as Element).paddingTop
+            : null,
           widget: pick(document.querySelector(cardsCss)),
           list: pick(
             document
@@ -325,6 +333,8 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
         };
       }, CARDS);
       expect(look.list).not.toBeNull();
+      // The widget pads its top, and the list pads its header by the same amount.
+      expect(look.headerPadding).toBe(look.widgetPadding);
       expect(look.list).toEqual(look.widget);
       expect(look.list?.['borderTopWidth']).toBe('0px');
     });

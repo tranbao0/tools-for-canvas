@@ -11,6 +11,9 @@
  * As of package version 16.1.0, in `WidgetGrid`:
  * - `[data-testid="widget-columns"]` is a flex container with the columns as its children. On a
  *   desktop it is a row, and on a tablet or phone it is a column.
+ * - A widget is a `div[data-testid="widget-container-<id>"]` around the `section` of
+ *   `TemplateWidget` (`section[data-testid="widget-<id>"]`). The section is the visible card: it
+ *   has a margin of 8px, 24px of padding, a shadow and 12px corners, and no border.
  * - Each column is `[data-testid="widget-column-1"]` and `widget-column-2` in a row, and
  *   `widget-column-1-stacked` and `widget-column-2-stacked` in a column.
  * - In edit mode ("Customize dashboard"), the header swaps the customize button for
@@ -49,6 +52,21 @@ export interface WidgetGrid {
   columns: HTMLElement;
   /** The columns that Canvas renders, in order. At least one. */
   canvasColumns: HTMLElement[];
+  /**
+   * The visible card of the first widget of each column, in the order of the columns. A column
+   * without a widget has none. The card is the section of the widget, with its margin and shadow.
+   */
+  firstCards: HTMLElement[];
+}
+
+/** The card of a widget: the `section` that `TemplateWidget` renders. */
+const WIDGET_CARD = 'section[data-testid^="widget-"]';
+
+function firstCardOf(column: HTMLElement): HTMLElement | null {
+  const card = column.querySelector<HTMLElement>(WIDGET_CARD);
+  if (card !== null) return card;
+  const first = column.firstElementChild;
+  return first instanceof HTMLElement ? first : null;
 }
 
 /** The widget grid of the page, or `null` when the page has none or has not rendered it yet. */
@@ -59,7 +77,9 @@ export function findWidgetGrid(doc: Document): WidgetGrid | null {
     (child): child is HTMLElement =>
       child.getAttribute('data-testid')?.startsWith(COLUMN_PREFIX) === true,
   );
-  return canvasColumns.length === 0 ? null : { columns, canvasColumns };
+  if (canvasColumns.length === 0) return null;
+  const firstCards = canvasColumns.flatMap((column) => firstCardOf(column) ?? []);
+  return { columns, canvasColumns, firstCards };
 }
 
 /** Whether the student is rearranging the widgets. The grid takes drops in this mode. */

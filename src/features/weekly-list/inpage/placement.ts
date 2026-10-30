@@ -14,13 +14,13 @@ export const STYLED_ATTRIBUTE = 'data-weekrow-styled';
 /**
  * How the list sits on the page. The shadow stylesheet reads it from the `data-panel` attribute
  * of the host:
- * - `grid`: a widget column of its own, in the grid of the widget dashboard.
+ * - `area`: a card in the free area beside the widget grid, out of the flow, not sticky.
  * - `column`: first in the last widget column.
- * - `float`: a card that floats in the free area beside the content, sticky.
+ * - `float`: a card that floats in the free area beside the content, sticky, in List View.
  * - `stack`: a card above the content, at the width of the content.
  * - `dock`: a card that floats in the right column after the column's items scrolled out of view.
  */
-export type PanelMode = 'grid' | 'column' | 'float' | 'stack' | 'dock';
+export type PanelMode = 'area' | 'column' | 'float' | 'stack' | 'dock';
 
 /** The node at the bottom of the right column that the dock watches. */
 export const SENTINEL_ID = 'weekrow-sentinel';
@@ -30,8 +30,12 @@ export const SPACER_ID = 'weekrow-spacer';
 /** The space between the viewport and a sticky panel, above and below. */
 export const PANEL_EDGE_GAP_PX = 24;
 
-/** The width of the panel in the free area and of the in-grid column. */
+/** The width of the floating panel in List View. */
 export const PANEL_WIDTH_PX = 372;
+
+/** The card in the free area beside the widget grid is this wide at least, and this wide at most. */
+export const AREA_MIN_PX = 320;
+export const AREA_MAX_PX = 400;
 
 /** What an element had in an inline property before the list set it: the value and the priority. */
 type StyleRecord = Record<string, [value: string, priority: string]>;

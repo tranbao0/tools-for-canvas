@@ -5,25 +5,29 @@
  * Neither page renders a right column, and Canvas hides `#right-side-wrapper` there. The list
  * does not turn that column on, because the column squeezes the page content. It takes one of
  * these places instead:
- * - `grid`: on the widget dashboard, a widget column of its own after the last Canvas column.
- *   The grid grows into the free space on the right by the width of the card and one gutter,
- *   and the Canvas columns keep the width they had.
- * - `column`: first in the last Canvas column, at the width of that column, when the free space
- *   is too small for a column of its own.
- * - `float`: a card in the free area beside the content, sticky, in List View and when the grid
- *   is not usable. Where the free area is too small, the content gets just enough right padding.
+ * - `area`: on the widget dashboard, a card in the free area to the right of the widget grid, as
+ *   on the old dashboard. It is out of the flow, a sibling of `#content`, so it changes no size
+ *   in the grid and React cannot remove it. Its top lines up with the first widget row, and it
+ *   scrolls with the page.
+ * - `column`: first in the last Canvas column, at the width of that column, when the free area
+ *   is too small.
+ * - `float`: a card in the free area beside the content, sticky, in List View. Where the free
+ *   area is too small, the content gets just enough right padding.
  * - `stack`: the card above the content, at the width of the content, when the content would be
- *   narrower than `MIN_CONTENT_PX` beside a floating card.
+ *   narrower than `MIN_CONTENT_PX` beside a floating card, and on the dashboard when the free
+ *   area is too small and the grid anchors are gone.
  *
- * The grid anchors are in src/shared/canvas/widgetDashboard.ts. The list falls back to `float` for the rest of the page
- * view when the card is removed too often, when the anchors go away, and while the student edits
- * the dashboard.
+ * The grid anchors are in src/shared/canvas/widgetDashboard.ts. The list leaves the grid for the
+ * rest of the page view when the card is removed too often and when the anchors go away. While
+ * the student edits the dashboard, it stays in the free area, or it hides when there is no room.
  *
  * Every style that the list sets on a page element is an inline style that `placement.ts`
  * records, and `releaseLayout` removes them all, so the page comes back as it was.
  */
 import { MOUNT_CONTAINER_ID } from './adapters';
 import {
+  AREA_MAX_PX,
+  AREA_MIN_PX,
   PANEL_EDGE_GAP_PX,
   PANEL_VARIABLES,
   PANEL_WIDTH_PX,
@@ -54,8 +58,8 @@ export const REMOVAL_LIMIT = 3;
 export const REMOVAL_WINDOW_MS = 10_000;
 /** How long the anchors may be missing before the list floats for good. */
 export const ANCHOR_GRACE_MS = 1_500;
-/** A grid with a card of its own stays one while the free space is this much below the need. */
-const SCROLLBAR_SLACK_PX = 20;
+/** A card in the free area stays there while the free space is this much below the need. */
+const HYSTERESIS_PX = 20;
 /** The layers of the floating card: above the content, below Canvas's own overlays. */
 const PANEL_Z_INDEX = 2;
 
@@ -159,46 +163,89 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
     if (card) card.scrollTop = scrollTop;
   }
 
-  /** Puts the list in the grid, or first in the last Canvas column when the grid has no room. */
-  function arrangeInGrid(grid: WidgetGrid, viewportWidth: number): void {
-    const { columns, canvasColumns } = grid;
-    const style = view.getComputedStyle(columns);
-    const gutter = pixels(style.columnGap, FALLBACK_GUTTER_PX);
-    const isRow = style.display.includes('flex') && style.flexDirection.startsWith('row');
-    if (isRow) {
-      const free = viewportWidth - columns.getBoundingClientRect().right;
-      const slack = mode === 'grid' ? SCROLLBAR_SLACK_PX : 0;
-      if (free + slack >= gutter + PANEL_WIDTH_PX + PANEL_EDGE_GAP_PX) {
-        const widths = canvasColumns.map((column) => column.getBoundingClientRect().width);
-        canvasColumns.forEach((column, index) =>
-          setInlineStyles(column, {
-            flex: '0 0 auto',
-            width: `${widths[index] ?? 0}px`,
-            'box-sizing': 'border-box',
-          }),
-        );
-        setInlineStyles(columns, { 'margin-right': `-${gutter + PANEL_WIDTH_PX}px` });
-        moveContainer(container, columns, null);
-        setContainerStyle(
-          container,
-          `flex:0 0 ${PANEL_WIDTH_PX}px;width:${PANEL_WIDTH_PX}px;align-self:flex-start;box-sizing:border-box`,
-        );
-        setPanelMode(container, 'grid');
-        mode = 'grid';
-        return;
-      }
+  /** Puts the list in the free area beside the grid, or first in the last Canvas column. */
+  function arrangeInGrid(grid: WidgetGrid, viewportWidth: number, editing: boolean): void {
+    const { columns, canvasColumns, firstCards } = grid;
+    const columnStyle = view.getComputedStyle(columns);
+    const isRow = columnStyle.display.includes('flex') && columnStyle.flexDirection.startsWith('row');
+    const cards = firstCards.map((card) => card.getBoundingClientRect());
+    const sample = firstCards[0];
+    const cardMargin = sample ? pixels(view.getComputedStyle(sample).marginLeft, 0) : 0;
+    const columnGap = pixels(columnStyle.columnGap, FALLBACK_GUTTER_PX);
+    // The gutter between two cards that stand side by side, as the student sees it.
+    const [first, second] = cards;
+    const gutter =
+      isRow && first !== undefined && second !== undefined && second.left > first.right
+        ? second.left - first.right
+        : columnGap + 2 * cardMargin;
+    const wrapper = doc.getElementById('content-wrapper') ?? doc.getElementById('content');
+    const wrapperBox = wrapper?.getBoundingClientRect();
+    const boxRight = Math.min(wrapperBox?.right ?? viewportWidth, viewportWidth);
+    // The card keeps the margin of the page at its right, as the widgets keep it at their left.
+    const leftMargin = first !== undefined && wrapperBox ? Math.max(0, first.left - wrapperBox.left) : 0;
+    const limit = boxRight - Math.max(leftMargin, gutter);
+    const gridRight = cards.reduce((right, box) => Math.max(right, box.right), Number.NEGATIVE_INFINITY);
+    const top = cards.reduce((least, box) => Math.min(least, box.top), Number.POSITIVE_INFINITY);
+    const free = limit - gridRight;
+    const slack = mode === 'area' ? HYSTERESIS_PX : 0;
+    const content = doc.getElementById('content');
+    if (
+      content?.parentElement &&
+      Number.isFinite(gridRight) &&
+      free + slack >= gutter + AREA_MIN_PX
+    ) {
+      const left = gridRight + gutter;
+      const width = Math.min(AREA_MAX_PX, Math.max(AREA_MIN_PX, limit - left));
+      placeInArea(content, top, left, width);
+      return;
+    }
+    if (editing) {
+      // The columns take drops in edit mode, so the list does not sit among them.
+      hide();
+      return;
     }
     const last = canvasColumns[canvasColumns.length - 1];
     if (last === undefined) return;
-    const first = last.firstChild === container ? container.nextSibling : last.firstChild;
-    moveContainer(container, last, first);
-    setContainerStyle(container, `margin:0 0 ${gutter}px`);
+    const next = last.firstChild === container ? container.nextSibling : last.firstChild;
+    moveContainer(container, last, next);
+    setContainerStyle(container, `margin:${cardMargin}px`);
     setPanelMode(container, 'column');
     mode = 'column';
   }
 
-  /** Puts the list beside the content, or above it when the content would be too narrow. */
-  function arrangeFloating(grid: WidgetGrid | null, viewportWidth: number): void {
+  /** Puts the list in the page area at a place of the page, outside the flow. */
+  function placeInArea(content: HTMLElement, top: number, left: number, width: number): void {
+    const parent = content.parentElement;
+    if (parent === null) return;
+    moveContainer(container, parent, content);
+    const origin = originOf(doc, container);
+    setContainerStyle(
+      container,
+      `position:absolute;top:${top - origin.top}px;left:${left - origin.left}px;width:${width}px`,
+    );
+    setPanelMode(container, 'area');
+    mode = 'area';
+  }
+
+  /** Takes the list out of the view while the page is in a state that has no place for it. */
+  function hide(): void {
+    const slot = wrapperSlot();
+    if (slot) moveContainer(container, slot.parent, slot.before);
+    setContainerStyle(container, 'display:none');
+    setPanelMode(container, null);
+    mode = null;
+  }
+
+  /**
+   * Puts the list beside the content, or above it when the content would be too narrow. On the
+   * widget dashboard (`dashboard`) the card does not float and does not pad the content: it takes
+   * the free area beside the widgets when that area is wide enough, and the stack otherwise.
+   */
+  function arrangeFloating(
+    grid: WidgetGrid | null,
+    viewportWidth: number,
+    dashboard: boolean,
+  ): void {
     const content = doc.getElementById('content');
     const parent = content?.parentElement;
     if (!content || !parent) {
@@ -227,6 +274,21 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
     const gutter = grid
       ? pixels(view.getComputedStyle(grid.columns).columnGap, FALLBACK_GUTTER_PX)
       : FALLBACK_GUTTER_PX;
+    if (dashboard) {
+      const limit = Math.min(rect.right, viewportWidth) - Math.max(padLeft, gutter);
+      const areaLeft = right + gutter;
+      if (limit - areaLeft >= AREA_MIN_PX) {
+        const cards = grid?.firstCards.map((card) => card.getBoundingClientRect().top) ?? [];
+        const areaTop = cards.length > 0 ? Math.min(...cards) : rect.top + padTop;
+        placeInArea(content, areaTop, areaLeft, Math.min(AREA_MAX_PX, limit - areaLeft));
+        return;
+      }
+      moveContainer(container, parent, content);
+      setContainerStyle(container, `margin:${padTop}px ${padRight}px 0 ${padLeft}px`);
+      setPanelMode(container, 'stack');
+      mode = 'stack';
+      return;
+    }
     const need = PANEL_EDGE_GAP_PX + PANEL_WIDTH_PX + gutter;
     // The padding moves the edge of the content box, so the space is measured from the box.
     const extra = Math.max(0, need - (viewportWidth - boxRight));
@@ -267,8 +329,8 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
       // Out of the flow while the page is measured, so that the list changes no size.
       setContainerStyle(container, 'position:absolute');
       const viewportWidth = doc.documentElement.clientWidth;
-      if (grid !== null && !floatsForGood && !editing) arrangeInGrid(grid, viewportWidth);
-      else arrangeFloating(grid, viewportWidth);
+      if (grid !== null && !floatsForGood) arrangeInGrid(grid, viewportWidth, editing);
+      else arrangeFloating(grid, viewportWidth, grid !== null || seenGrid);
     });
     trackScroll();
     restoreScroll();

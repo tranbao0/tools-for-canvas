@@ -277,7 +277,7 @@ describe('dashboard without a right column', () => {
     expect(first?.parentElement?.getAttribute('data-testid')).toBe('widget-column-2');
   });
 
-  it('floats for the rest of the page view after the page removes the container four times', async () => {
+  it('leaves the grid for the rest of the page view after the page removes the container four times', async () => {
     loadPage(document, WIDGET_DASHBOARD);
     await mountWhenReady(onMount, { pathname: '/' });
     for (let round = 0; round < REMOVAL_LIMIT + 1; round += 1) {
@@ -285,14 +285,14 @@ describe('dashboard without a right column', () => {
       await flushObserver();
     }
 
-    // The grid would hold the container, but the layout puts it beside the content now.
+    // The last column would hold the container, but the layout puts it beside the content now.
     expect(container()?.parentElement?.id).toBe('content-wrapper');
     document.querySelector('[data-testid="widget-column-2"]')?.append(document.createElement('i'));
     await flushObserver();
     expect(container()?.parentElement?.id).toBe('content-wrapper');
   });
 
-  it('floats when the student edits the dashboard, and returns after', async () => {
+  it('hides while the student edits the dashboard and the free area has no room, and returns after', async () => {
     loadPage(document, WIDGET_DASHBOARD);
     await mountWhenReady(onMount, { pathname: '/' });
     const column = document.querySelector('[data-testid="widget-column-2"]');
@@ -301,14 +301,16 @@ describe('dashboard without a right column', () => {
     save.dataset['testid'] = 'save-customize-button';
     document.getElementById('content')?.append(save);
     await flushObserver();
-    expect(container()?.parentElement?.id).toBe('content-wrapper');
+    // A page without layout (happy-dom) has no free area. The columns take drops in edit mode.
+    expect(container()?.style.display).toBe('none');
+    expect(container()?.parentElement).not.toBe(column);
 
     save.remove();
     await flushObserver();
     expect(container()?.parentElement).toBe(column);
   });
 
-  it('floats for good when the grid is gone for longer than the grace period', async () => {
+  it('leaves the grid for good when the grid is gone for longer than the grace period', async () => {
     loadPage(document, WIDGET_DASHBOARD);
     await mountWhenReady(onMount, { pathname: '/' });
 
