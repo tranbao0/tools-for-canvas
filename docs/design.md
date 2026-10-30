@@ -1285,8 +1285,11 @@ The owner chose it on 2026-10-27.
 - Every action works with the keyboard alone.
 - Each ring has a text label, such as "3 of 5 done".
 - Done marks are real checkboxes.
-- When a done mark or a skip removes the focused row, focus moves to the same control of the next row, or of the previous row.
-  When no row is left, focus moves to the heading of the group if the group stays, then to the next link that opens a part of the list, such as "Rest of the week".
+- When a done mark or a skip removes the focused row, focus moves to the same control of the row that takes its place in the same list.
+  In the in-page list that can be a row that "Show N more" had hidden.
+  With no such row, focus moves to the same control of the next row, or of the previous row.
+  When no row is left, focus moves to the heading of the group if the group stays.
+  Then it moves to the first link that opens a part of the list and comes after the place of the row, such as "Rest of the week", or to the last such link before that place when none comes after.
   It never jumps to the Add button while the list has such a link.
 - Animation stops when the system asks for reduced motion.
 - No control ever hides under the sticky header or the bottom notice (WCAG 2.4.11).
@@ -1299,7 +1302,9 @@ The owner chose it on 2026-10-27.
   - A quiet line under the notice counts the ones that wait, such as "2 more notices".
     The next notice shows when the first one is closed or its cause is gone.
   - A notice has a brand bar on its left and no box, like a Canvas alert.
-  - The queue is the one live region for these notices, and it stays in the page while it is empty.
+  - The queue has one live region, with the front notice in it, and the region stays in the page and stays displayed while it is empty, so a screen reader announces the first notice that comes up.
+    The offer in the queue is not a region of its own, because the live region already announces it.
+    The count of waiting notices is outside the live region, so a change of the count does not read the front notice again.
     The text of the "limits the Canvas planner" line stays in the page as the reason of the disabled Add button, also while it waits.
   - The Undo notice, the filter line and the "N courses hidden" line are not in the queue.
 - The in-page shadow host sets `lang="en"` and `dir="ltr"`, because the list is English even on a Canvas page in another language.

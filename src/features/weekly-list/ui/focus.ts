@@ -2,9 +2,12 @@
  * Keeps keyboard focus in the surface when an update removes the focused control.
  *
  * - A row, for example after a done mark moves an item into the collapsed Done group:
- *   focus moves to the same control of the next row, or of the previous row. With no row left,
- *   it moves to the heading of the row's group, if the group stays, then to the next button that
- *   opens a part of the list, such as "Rest of the week", and last to the caller's fallback.
+ *   focus moves to the same control of the row that takes its place in the same list, which in
+ *   the glance can be a row that "Show N more" had hidden, or else of the next row, or of the
+ *   previous row. With no row left, it moves to the heading of the row's group, if the group
+ *   stays, then to the first button that opens a part of the list and comes after the place of
+ *   the row, such as "Rest of the week", or to the last such button before it when none comes
+ *   after, and last to the caller's fallback.
  * - "Skip all older", which goes away when the older list empties: focus moves to the Past due
  *   heading, or to the first row.
  * - Any other control, such as a button of the Undo notice: focus moves to the control that the
@@ -23,6 +26,9 @@ export type FocusSnapshot =
       group: string | null;
       /** How many buttons that open a part of the list come before the row. */
       toggles: number;
+      /** The id of the row's list, when the list has one, and the place of the row in it. */
+      list: string | null;
+      slot: number;
     }
   | {
       kind: 'control';
@@ -68,12 +74,15 @@ export function captureFocus(root: HTMLElement | null): FocusSnapshot | null {
   const key = row?.dataset.rowKey;
   if (!row || key === undefined) return { kind: 'control', part: partOf(active) };
   const toggles = Array.from(root.querySelectorAll(TOGGLE));
+  const list = row.closest('ul');
   return {
     kind: 'row',
     key,
     part: partOf(active),
     order: rowsOf(root).map((el) => el.dataset.rowKey ?? ''),
     group: row.closest('section')?.getAttribute('aria-labelledby') ?? null,
+    list: list?.id || null,
+    slot: list ? Array.from(list.children).indexOf(row) : 0,
     toggles: toggles.filter(
       (el) => row.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING,
     ).length,
@@ -112,6 +121,16 @@ export function usable(root: HTMLElement, element: HTMLElement | null): HTMLElem
   if (!element || !element.isConnected || !root.contains(element) || isDisabled(element))
     return null;
   return element;
+}
+
+/** The row that now holds the place of the removed row in its own list, if the list has it. */
+function slotTarget(
+  root: HTMLElement,
+  snapshot: Extract<FocusSnapshot, { kind: 'row' }>,
+): HTMLElement | null {
+  const list = snapshot.list ? root.querySelector(`[id="${snapshot.list}"]`) : null;
+  const row = list?.children[snapshot.slot];
+  return row instanceof HTMLElement ? focusable(row, snapshot.part) : null;
 }
 
 function rowTarget(
@@ -157,7 +176,11 @@ export function restoreFocus(
   if (!root || !snapshot || hasFocusIn(root)) return;
   let target: HTMLElement | null;
   if (snapshot.kind === 'row')
-    target = rowTarget(root, snapshot) ?? listTarget(root, snapshot) ?? fallback();
+    target =
+      slotTarget(root, snapshot) ??
+      rowTarget(root, snapshot) ??
+      listTarget(root, snapshot) ??
+      fallback();
   else if (snapshot.part === 'skip-older')
     target = root.querySelector<HTMLElement>(PAST_DUE_HEADING) ?? firstRowControl(root);
   else target = fallback();

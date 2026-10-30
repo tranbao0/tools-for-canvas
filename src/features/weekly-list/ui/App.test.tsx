@@ -1289,12 +1289,25 @@ describe('notice queue', () => {
     expect(document.querySelector('.wr-notices-more')).toBeNull();
   });
 
-  it('keeps one live region, with no region inside it', () => {
+  it('keeps one live region with only the front notice in it, and the count outside', () => {
     setup(busy(), 'panel');
     const live = document.querySelectorAll('.wr-notices');
     expect(live).toHaveLength(1);
     expect(live[0]?.getAttribute('role')).toBe('status');
-    expect(live[0]?.querySelector('[role="status"]')).toBeNull();
+    // No role or label of its own inside: the offer is announced by the live region.
+    expect(live[0]?.querySelector('[role], [aria-label]')).toBeNull();
+    expect(live[0]?.textContent).toContain('Switch to this Canvas?');
+    // The count is a sibling, so a change of the count does not make the region read again.
+    const more = document.querySelector('.wr-notices-more');
+    expect(more?.textContent).toBe('3 more notices');
+    expect(live[0]?.contains(more ?? null)).toBe(false);
+  });
+
+  it('keeps the live region in the page while it is empty', () => {
+    setup();
+    const live = document.querySelector('.wr-notices');
+    expect(live?.getAttribute('role')).toBe('status');
+    expect(live?.children).toHaveLength(0);
   });
 
   it('draws no box around a notice or an offer', () => {
@@ -1694,6 +1707,32 @@ describe('focus when the last visible row leaves the glance', () => {
     rerender(withGroups(state, group(two)));
 
     expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: 'Done: Two' }));
+  });
+});
+
+describe('focus when "Show N more" fills the slot of a checked row', () => {
+  it('goes to the row that now holds the place, not past it', () => {
+    const items = ['One', 'Two', 'Three', 'Four', 'Five', 'Six'].map((title) =>
+      mkItem({ title, course: 'bio' }),
+    );
+    const group = (list: ItemView[]) => mkGroup({ kind: 'today', date: '2026-10-27', items: list });
+    const tomorrow = mkGroup({
+      kind: 'tomorrow',
+      date: '2026-10-28',
+      items: [mkItem({ title: 'Later', course: 'bio' })],
+    });
+    const state = readyState({ view: mkView({ groups: [group(items), tomorrow] }) });
+    const { rerender } = setup(state, 'inpage');
+    expect(screen.queryByRole('checkbox', { name: 'Done: Four' })).toBeNull();
+    screen.getByRole('checkbox', { name: 'Done: Three' }).focus();
+
+    rerender({
+      ...state,
+      view: { ...state.view, groups: [group(items.filter((i) => i.title !== 'Three')), tomorrow] },
+    });
+
+    // Row 4 took the third slot. Focus goes there, and not to the first row of Tomorrow.
+    expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: 'Done: Four' }));
   });
 });
 

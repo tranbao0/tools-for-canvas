@@ -58,6 +58,31 @@ test.describe('signed out', () => {
   });
 });
 
+test.describe('notice queue', () => {
+  test('keeps the empty live region displayed, so the first notice is announced', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const { canvas } = await serveScenario(context);
+    await saveAddress(background, canvas.origin);
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await expect(doneBox(page, QUIZ_3)).toBeVisible();
+    await settledList(page);
+
+    const queue = page.locator('.wr-notices');
+    await expect(queue).toHaveCount(1);
+    await expect(queue).toHaveAttribute('role', 'status');
+    await expect(queue).toBeEmpty();
+    // `display: none` would take the region out of the accessibility tree.
+    const display = await queue.evaluate((el) => getComputedStyle(el).display);
+    expect(display).not.toBe('none');
+    // An empty region takes no room.
+    expect((await queue.boundingBox())?.height).toBe(0);
+  });
+});
+
 test.describe('planner turned off', () => {
   test('shows the list from all assignments, the notice and a disabled Add task', async ({
     context,
@@ -125,9 +150,11 @@ test.describe('planner turned off', () => {
     // The note, which the student can close, comes before the line that stays.
     await expect(queue).toContainText('Done marks sync to Canvas');
     await expect(queue).not.toContainText(LIMITED_LINE);
-    await expect(queue.locator('.wr-notices-more')).toHaveText('1 more notice');
+    await expect(page.locator('.wr-notices-more')).toHaveText('1 more notice');
     await expect(queue).toHaveAttribute('role', 'status');
-    await expect(queue.locator('[role="status"]')).toHaveCount(0);
+    await expect(queue.locator('[role]')).toHaveCount(0);
+    // The count is outside the live region, so it never makes the region read the notice again.
+    await expect(queue.locator('.wr-notices-more')).toHaveCount(0);
     // The Add button still names its reason while the line waits.
     await expect(page.getByRole('button', { name: 'Add task' })).toHaveAccessibleDescription(
       LIMITED_LINE,
@@ -136,7 +163,7 @@ test.describe('planner turned off', () => {
     await page.getByRole('button', { name: 'Got it' }).click();
 
     await expect(queue).toContainText(LIMITED_LINE);
-    await expect(queue.locator('.wr-notices-more')).toHaveCount(0);
+    await expect(page.locator('.wr-notices-more')).toHaveCount(0);
   });
 });
 

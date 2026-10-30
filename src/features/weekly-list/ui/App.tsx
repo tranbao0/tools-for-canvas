@@ -340,6 +340,7 @@ function ReadyView(props: {
         key="offer"
         offer={state.offer}
         mode="switch"
+        region={false}
         onAccept={(origin) => actions.acceptOffer(origin)}
         onDismiss={() => actions.dismissOffer()}
       />,

@@ -391,12 +391,13 @@
 /* Notices */
 
 /* The notice queue shows one slim notice, with a quiet count of the ones that wait. */
-.wr-notices {
+/* The live region stays displayed while it is empty, so a screen reader announces its first notice. */
+.wr-notices:not(:empty) {
   margin-block: 6px;
 }
 
-.wr-notices:empty {
-  display: none;
+.wr-notices:has(+ .wr-notices-more) {
+  margin-bottom: 0;
 }
 
 .wr-notice {
@@ -415,7 +416,7 @@
 }
 
 .wr-notices-more {
-  margin-top: 2px;
+  margin-block: 2px 6px;
   padding-left: 12px;
   color: var(--wr-text-2);
   font-size: 12px;

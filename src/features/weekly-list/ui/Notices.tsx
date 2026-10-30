@@ -21,6 +21,11 @@ interface OfferProps {
   mode: 'use' | 'switch';
   onAccept(origin: string): void;
   onDismiss(): void;
+  /**
+   * Whether the offer is a labelled region of its own. In the notice queue it is not: the live
+   * region around it already announces it.
+   */
+  region?: boolean;
 }
 
 /**
@@ -47,7 +52,11 @@ function OfferBox(props: OfferProps) {
   const host = hostOf(offer.origin);
   const use = props.mode === 'use';
   return (
-    <div class="wr-offer" role="region" aria-label={use ? t('offerUse', host) : t('offerSwitch')}>
+    <div
+      class="wr-offer"
+      role={props.region === false ? undefined : 'region'}
+      aria-label={props.region === false ? undefined : use ? t('offerUse', host) : t('offerSwitch')}
+    >
       <div>
         {use ? (
           <p class="wr-offer-title">
@@ -178,16 +187,19 @@ const NOTE_TEXT = {
 /**
  * The notice queue at the top of the list (design decision 19): one slim notice at a time, the
  * first of `notices`, which the caller sorts by priority. The others wait behind it, and a quiet
- * line counts them. The container stays in the page while it is empty, and it is the only live
- * region of the queue, so screen readers announce each notice that comes up.
+ * line counts them. The live region holds the front notice only and stays in the page while it
+ * is empty, so screen readers announce each notice that comes up. The count sits outside it, so
+ * a change of the count does not read the front notice again.
  */
 export function NoticeQueue(props: { notices: ComponentChildren[] }) {
   const [first, ...waiting] = props.notices;
   return (
-    <div class="wr-notices" role="status">
-      {first}
+    <>
+      <div class="wr-notices" role="status">
+        {first}
+      </div>
       {waiting.length > 0 && <p class="wr-notices-more">{tp('moreNotices', waiting.length)}</p>}
-    </div>
+    </>
   );
 }
 
