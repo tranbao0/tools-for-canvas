@@ -125,6 +125,7 @@ test.describe('side panel presence', () => {
     await openCanvasPage(page, canvas.origin);
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await settledList(page);
     expect(await savedAddress(background)).toBe(canvas.origin);
     const canvasWindow = await windowOfTab(background, `${canvas.origin}/*`);
     await settledList(page);
@@ -138,6 +139,7 @@ test.describe('side panel presence', () => {
 
     // The Canvas page is the main home: the list stays in full beside the open panel.
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await settledList(page);
     await expect(list.getByText('Shown in the side panel')).toHaveCount(0);
     await expect(list.locator('[data-part="title"]')).toHaveCount(rows);
     await expect(group(list, 'past_due')).toBeVisible();
@@ -169,6 +171,7 @@ test.describe('course home page', () => {
     await openCanvasPage(page, canvas.origin, `/courses/${IDS.courses.biology}`);
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await settledList(page);
 
     await expandEverything(list);
 
@@ -235,6 +238,7 @@ test.describe('pages with other layouts', () => {
 
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await settledList(page);
     await expect(page.locator('#right-side-wrapper > #weekrow-inpage + #right-side')).toHaveCount(
       1,
     );
@@ -302,6 +306,7 @@ test.describe('compact in-page list', () => {
     await openCanvasPage(page, canvas.origin);
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await settledList(page);
 
     const section = group(list, 'past_due');
     const summary = section.getByRole('button', { name: /\d+ past due/ });
@@ -328,6 +333,7 @@ test.describe('compact in-page list', () => {
     await openCanvasPage(page, canvas.origin);
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await settledList(page);
 
     // Tomorrow has 6 items.
     const section = group(list, 'tomorrow');
@@ -344,6 +350,7 @@ test.describe('compact in-page list', () => {
     await openCanvasPage(page, canvas.origin);
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await settledList(page);
 
     await expect(group(list, 'day')).toHaveCount(0);
     await expect(group(list, 'no_due_date')).toHaveCount(0);
@@ -365,6 +372,7 @@ test.describe('compact in-page list', () => {
     await openCanvasPage(page, canvas.origin);
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await settledList(page);
 
     const legend = await list.locator('.wr-legend-row').count();
     const drawn = await list.locator('.wr-ring').count();
@@ -382,6 +390,7 @@ test.describe('compact in-page list', () => {
     await openCanvasPage(page, canvas.origin);
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await settledList(page);
 
     // Today has 4 items: Quiz 3, Return library books, Participation: Week 9 and Debate 2.
     // The list renders each group in one pass, so these counts need no waiting.
@@ -397,6 +406,7 @@ test.describe('glance disclosure links and focus', () => {
     await openCanvasPage(page, canvas.origin);
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await settledList(page);
 
     const summary = group(list, 'past_due').getByRole('button', { name: /\d+ past due/ });
     const links = [
@@ -437,6 +447,7 @@ test.describe('glance disclosure links and focus', () => {
     await openCanvasPage(page, canvas.origin);
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await settledList(page);
     await settledList(page);
 
     /** What has focus in the shadow root of the list. */

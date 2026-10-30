@@ -685,6 +685,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     startedDeletes.clear();
     statusesInFlight.clear();
     statusesFailed.clear();
+    limitCheckPending = false;
     // Running planner jobs finish without a trace, so their parts can load again.
     jobs.clear();
     detailsInFlight.clear();
@@ -755,10 +756,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   async function executeRound(job: RoundScope): Promise<void> {
+    // Only a full round with a session sends the planner probe that finds out about a limit.
+    const probes = job === 'full' && cache?.session != null;
     try {
       await runExecutedRound(job);
     } finally {
-      limitCheckPending = false;
+      if (probes) limitCheckPending = false;
     }
   }
 
@@ -939,6 +942,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const coverage = plannerCoverage();
     if (coverage === null) return;
     const plan = loadPlan(session, spanOffset, context);
+    // A view that the student left stops taking the first slots from the one they look at.
+    for (const job of jobs) {
+      if (!job.all.some((chunk) => overlaps(chunk, plan.range))) job.priority = 'low';
+    }
     raiseJobs(plan.range, 'normal');
     raiseJobs(plan.near, 'high');
     const gaps = gapsIn(coverage, plan.range, pendingIntervals());
@@ -1020,12 +1027,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     for (const offset of [spanOffset + 1, spanOffset - 1]) prefetch(session, offset, context);
   }
 
-  /** Whether a job for a week that a surface shows touches this planner range. */
-  function shownJobRunning(range: TimeRange): boolean {
-    const interval = toInterval(range);
-    return [...jobs].some((job) => job.shown && job.all.some((chunk) => overlaps(chunk, interval)));
-  }
-
   function startJob(job: PlannerJob, context: ViewContext, reloadDetails: boolean): void {
     const origin = knownOrigin;
     if (origin === null) return;
@@ -1056,21 +1057,27 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     reloadDetails: boolean,
   ): Promise<void> {
     const gen = generation;
+    /** A planner request or a details request of this job failed. */
     let failed = false;
+    /** A details request failed, so the later batches stay out. */
+    let detailsFailed = false;
     const wanted: FetchedPart[] = [];
     let batches: Promise<void> = Promise.resolve();
 
+    // The job stays in `jobs` until its last request ends, so a view that asks again meanwhile
+    // does not start the same chunks a second time. Chunks that still arrive go into the cache.
     const fail = async (error: unknown): Promise<void> => {
       if (failed) return;
       failed = true;
-      jobs.delete(job);
       await jobFailed(job, error, api, gen);
     };
 
     /** Loads the details that the items of `parts` lack. A failure fails the job. */
     const loadDetailsOf = async (parts: FetchedPart[]): Promise<void> => {
       const items = parts.flatMap((part) => part.items);
-      if (failed || items.length === 0 || gen !== generation || cache?.session == null) return;
+      if (detailsFailed || items.length === 0 || gen !== generation || cache?.session == null) {
+        return;
+      }
       const lookup = assignmentIdsToLookup(items, context.settings.hiddenCourseIds);
       const detailIds = reloadDetails
         ? notInFlight(lookup)
@@ -1083,6 +1090,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         result = await loadDetails(api, detailIds);
       } catch (error) {
         ids.forEach((id) => detailsInFlight.delete(id));
+        detailsFailed = true;
         await fail(error);
         return;
       }
@@ -1099,7 +1107,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const loadBatch = async (): Promise<void> => {
       const parts = wanted.splice(0);
       await loadDetailsOf(parts);
-      if (failed || gen !== generation) return;
+      if (gen !== generation) return;
       job.undetailed = job.undetailed.filter(
         (chunk) => !parts.some((part) => part.interval === chunk),
       );
@@ -1108,7 +1116,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     };
 
     const arrive = async (part: FetchedPart): Promise<void> => {
-      if (failed || gen !== generation || cache?.session == null || cache.limited) return;
+      if (gen !== generation || cache?.session == null || cache.limited) return;
       const session = cache.session;
       let planner = mergeFetched(cache.planner, [part], job.startedAt);
       // Items that loaded before a write's confirmation lack it, so confirmed writes go in again.
@@ -1835,14 +1843,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     loadView(session, request.spanOffset, context);
     // After a failed load nothing is on its way, so no day shows as loading.
     const failed = blocksLoads(failure);
-    const beforeNow = toInterval(range);
-    const result = viewFor(cache, session, request, context, {
-      show: !failed,
-      pastDuePending: loadingIn({
-        start: beforeNow.start,
-        end: Math.min(context.now, beforeNow.end),
-      }),
-    });
+    const plan = loadPlan(session, request.spanOffset, context);
+    // Past due holds what is due before now. The days of a span before today stay on their own
+    // days, so a reload of that span leaves Past due alone.
+    const beforeNow = { start: plan.range.start, end: Math.min(context.now, plan.range.end) };
+    const pastDueParts = plan.backward ? subtractIntervals(beforeNow, [plan.near]) : [beforeNow];
+    const pastDuePending = pastDueParts.some(loadingIn);
+    const result = viewFor(cache, session, request, context, { show: !failed, pastDuePending });
     if (failed && !result.hasData) return { kind: 'cant_load', origin, offline, offer };
     if (result.exact) loadAround(session, request.spanOffset, context);
 
@@ -1855,7 +1862,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         failure?.kind === 'stale'
           ? { since: isoInstant(cache.lastSuccessAt ?? failure.at), offline }
           : null,
-      refreshing: running || (!failed && !result.exact) || shownJobRunning(range),
+      // The marker stays on until the shown days and Past due, with their details, are complete.
+      refreshing: running || (!failed && !result.exact) || loadingIn(plan.near) || pastDuePending,
       offer,
       // The surface holds its own Undo notice.
       undo: null,

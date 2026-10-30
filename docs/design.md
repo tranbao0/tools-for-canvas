@@ -944,7 +944,8 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   A write sends only the parts that changed.
   So a new week does not write every assignment detail again, and the change events that reach each extension page stay small.
 - The background keeps at most 3 requests in flight [10].
-  A free request slot goes first to the days of a span that a surface shows, then to the past-due range of that view, refresh rounds and writes, then to weeks that load ahead.
+  A free request slot goes first to the days of a span that a surface shows, then to the past-due range of that view, refresh rounds and writes (the same level), then to weeks that load ahead.
+  A load for a view that the surface no longer shows drops to the lowest level.
 - After each write, the background stores a change marker (a time stamp only) in `storage.local`.
   Every surface listens to `storage.onChanged` and refreshes.
   `runtime.sendMessage` does not reach content scripts, so it cannot do this job [24].
@@ -990,7 +991,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
   It also keeps the spans of time for which it holds every item that Canvas returns, each with the time it loaded.
 - A view requests only the parts of its planner range (decision 9) that no span covers and no running request fetches.
 - A span shows progressively, so a first fetch feels seamless.
-  The frame never goes away: the header, the arrows, the span control and the settings stay on screen and work during any load.
+  The frame never goes away during a load: the header, the arrows, the span control and the settings stay on screen and work.
   Once the session data is in, a span change, a switch to Month and the first minute after midnight never replace the list with a loading state.
   Only the first load, before the session data arrives, shows the header with a spinner.
 - The days of the shown span load nearest to today first, in chunks of 7, 7 and then 14 days, at the highest priority.
@@ -1013,7 +1014,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
   The planner jobs of the views load the parts that the cache lacks, so a round never loads the same days twice.
   A full round that finds nothing to reload sends one small request for the last day of the range, to learn whether the school limits the planner.
 - Chunks do not overlap, and the cache removes duplicate items by item key.
-- When a view has shown and Past due is in, the weeks before and after it load in the background, with the assignment details of their work.
+- When a view has shown and its whole range is in the cache, the weeks before and after it load in the background, with the assignment details of their work.
   These requests have the lowest priority.
   If the student opens such a week while it loads, its requests move to the highest priority, and no second request starts.
   A load that the Past due range of a view started never rises above normal priority.
@@ -1025,6 +1026,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
   It drops the rest.
 - A failed load of a week that a surface shows leads to the same states as a failed round.
   The days that arrived stay on screen with the "Couldn't refresh" line, and nothing shows as loading any more.
+  The days that never arrived show nothing, the view does not say that nothing is due, the rings do not show a check mark, and Past due stays out until its range is in.
   When no day of the span arrived, the surface shows "Couldn't load your list".
   A 403 starts a full round, which finds out whether the school now limits the planner.
 

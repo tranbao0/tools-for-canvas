@@ -174,8 +174,31 @@ describe('a load that fails', () => {
     const state = expectReady(await h.owner.getState(PANEL));
     expect(state.stale).not.toBeNull();
     expect(state.view.groups.some((group) => group.loading === true)).toBe(false);
-    expect(state.view.loading).toBe(false);
     expect(state.refreshing).toBe(false);
+    expect(state.view.groups.some((group) => group.kind === 'today')).toBe(true);
+    // The days that never arrived are not empty days: nothing is said about them, and the rings
+    // do not call the span finished.
+    expect(state.view.nothingDue).toBe(false);
+    expect(state.view.loading).toBe(true);
+    expect(state.view.groups.some((group) => group.date === '2026-11-10')).toBe(false);
+  });
+
+  it('leaves Past due out while its range is missing after a failed load, with no loading line', async () => {
+    const h = await createHarness();
+    await openFrame(h);
+    const todayStart = Date.parse('2026-10-27T04:00:00.000Z');
+    h.canvas.failIf(
+      'listPlannerItems',
+      (args) => Date.parse((args[0] as TimeRange).end) < todayStart,
+      canvasError('network'),
+    );
+
+    await h.owner.getState(PANEL);
+    await h.owner.settled();
+
+    const state = expectReady(await h.owner.getState(PANEL));
+    expect(state.stale).not.toBeNull();
+    expect(state.view.groups.some((group) => group.kind === 'past_due')).toBe(false);
     expect(state.view.groups.some((group) => group.kind === 'today')).toBe(true);
   });
 });
@@ -205,6 +228,28 @@ describe('midnight', () => {
     // preload never takes a high priority, so it never delays the days that are shown.
     expect(calls.filter((call) => call.priority === 'high')).toEqual([]);
     expect(calls.filter((call) => call.priority === 'normal').length).toBeGreaterThan(0);
+  });
+});
+
+describe('Past due while an old span reloads', () => {
+  it('stays a real group when a refresh reloads a span before the horizon', async () => {
+    const h = await createHarness({ settings: MONTH });
+    await loadReady(h);
+    const old = { ...PANEL, spanOffset: -6 };
+    await loadReady(h, old);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    await h.owner.refresh('timer');
+    await h.owner.settled();
+
+    const reload = h.canvas.hold('listPlannerItems');
+    const early = expectReady(await h.owner.getState(old));
+    // The reload of the old span is running, and Past due does not wait for it.
+    expect(h.canvas.callsOf('listPlannerItems').length).toBeGreaterThan(0);
+    expect(early.refreshing).toBe(true);
+    reload();
+    await h.owner.settled();
+
+    expect(early.view.groups.find((group) => group.kind === 'past_due')?.loading).toBeUndefined();
   });
 });
 

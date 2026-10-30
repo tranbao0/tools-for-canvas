@@ -250,7 +250,7 @@ function buildGroups(
   for (const group of dayGroups) group.items.sort(chronological);
 
   // The Past due line shows while its range loads, also when the range turns out to hold nothing.
-  if (loading.pastDue) pastDue.loading = true;
+  if (loading.pastDue && loading.unavailable !== true) pastDue.loading = true;
   return [pastDue, ...dayGroups, noDueDate, done].filter(hasContent);
 }
 
@@ -373,7 +373,7 @@ export function buildWeekView(input: ModelInput): WeekView {
   );
   const loading = input.loading ?? { days: [], pastDue: false };
   const groups = buildGroups(visible, context, byCourse, loading);
-  const isLoading = loading.pastDue || loading.days.length > 0;
+  const isLoading = loading.pastDue || loading.days.length > 0 || loading.incomplete === true;
 
   return {
     span: input.settings.span,

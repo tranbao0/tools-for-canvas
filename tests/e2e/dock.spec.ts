@@ -121,6 +121,7 @@ async function openLongPage(
   await openCanvasPage(page, served.canvas.origin, path);
   await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
   await settledList(page);
+  await settledList(page);
   return served;
 }
 

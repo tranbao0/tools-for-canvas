@@ -17,6 +17,7 @@ import {
   saveSettings,
   serveScenario,
   test,
+  settledList,
 } from './support/weekrow';
 
 const QUIZ_3 = 'Quiz 3: Cell membranes';
@@ -202,6 +203,7 @@ test.describe('the widget dashboard', () => {
     await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
     await openCanvasPage(page, canvas.origin);
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await settledList(page);
   }
 
   test('puts the card in the grid at 1920 px, beside the last column, in line with the first row', async ({
@@ -288,6 +290,7 @@ test.describe('the widget dashboard', () => {
       const widgetsWithout = await boxes(page, '[data-testid^="widget-container-"]');
       await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: true });
       await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+      await settledList(page);
       // The Canvas columns never shrink, in every mode.
       expect(await columnWidths(page)).toEqual(without);
       const widgets = await boxes(page, '[data-testid^="widget-container-"]');
@@ -322,6 +325,7 @@ test.describe('the widget dashboard', () => {
     // The same container comes back with its list, not a new one, and the group is still open.
     await expect(page.locator('#weekrow-inpage[data-same="yes"]')).toHaveCount(1);
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await settledList(page);
     await expect(pastDueSummary()).toHaveAttribute('aria-expanded', 'true');
     const columns = await boxes(page, CANVAS_COLUMNS);
     const card = await listBox(page);
@@ -435,6 +439,7 @@ test.describe('the widget dashboard', () => {
 
       await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: true });
       await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+      await settledList(page);
       await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
       await expect(page.locator('#weekrow-inpage, weekrow-list')).toHaveCount(0);
 
@@ -458,6 +463,7 @@ test.describe('the widget dashboard', () => {
     const before = await snapshot(page);
     await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: true });
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await settledList(page);
     await setEditMode(page, true);
     await expectMode(page, 'float');
     await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
@@ -472,6 +478,7 @@ test.describe('the widget dashboard', () => {
     await expect(page.locator('#weekrow-inpage')).toHaveCount(0);
     await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: true });
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await settledList(page);
     await expectMode(page, 'grid');
   });
 });
@@ -487,6 +494,7 @@ test.describe('the floating card', () => {
     await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
     await openCanvasPage(page, canvas.origin);
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await settledList(page);
     if (pageName === 'dashboard-widgets') {
       await setEditMode(page, true);
       await expectMode(page, width <= 1000 ? 'stack' : 'float');
@@ -581,6 +589,7 @@ test.describe('the floating card', () => {
     await page.setViewportSize({ width: 1920, height: VIEWPORT_HEIGHT });
     await openCanvasPage(page, canvas.origin);
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await settledList(page);
     const overflow = (): Promise<string | undefined> =>
       page.evaluate(() => {
         const card = document
@@ -654,6 +663,7 @@ test.describe('the floating card', () => {
     await page.evaluate(() => document.getElementById('weekrow-inpage')?.remove());
     await expect(page.locator('#content-wrapper > #weekrow-inpage')).toHaveCount(1);
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await settledList(page);
     await expectMode(page, 'float');
   });
 
@@ -670,6 +680,7 @@ test.describe('the floating card', () => {
       const before = await snapshot(page);
       await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: true });
       await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+      await settledList(page);
       await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: false });
       await expect(page.locator('#weekrow-inpage, weekrow-list')).toHaveCount(0);
       expect(await snapshot(page), `${width}px`).toEqual(before);
@@ -691,6 +702,7 @@ test.describe('the floating card', () => {
     const [before] = await boxes(page, '#dashboard_header_container');
     await saveSettings(background, { ...DEFAULT_SETTINGS, showOnCanvasPages: true });
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await settledList(page);
     await expectMode(page, 'float');
     // 198 px are free at 1600 px, and the card needs 420: the content gives up 222 px.
     const [after] = await boxes(page, '#dashboard_header_container');

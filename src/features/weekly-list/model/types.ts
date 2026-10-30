@@ -314,7 +314,14 @@ export interface ModelInput {
    * planner items are missing; `pastDue` is set while the past-due range loads. Missing means
    * nothing is loading.
    */
-  loading?: { days: readonly string[]; pastDue: boolean };
+  loading?: {
+    days: readonly string[];
+    pastDue: boolean;
+    /** Nothing is on its way: a missing Past due range leaves its group out, with no loading line. */
+    unavailable?: boolean;
+    /** Days are missing that show no placeholder, so the view must not claim nothing is due. */
+    incomplete?: boolean;
+  };
 }
 
 export type { Offer };

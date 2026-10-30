@@ -130,6 +130,10 @@ export interface Missing {
   days: string[];
   /** The cache lacks part of the range before now, which holds the Past due items. */
   pastDue: boolean;
+  /** Nothing is on its way, so the days and Past due that are missing show no placeholder. */
+  unavailable?: boolean;
+  /** Some days of the span are missing, and no placeholder says so. */
+  incomplete?: boolean;
 }
 
 const NOTHING_MISSING: Missing = { days: [], pastDue: false };
@@ -329,9 +333,23 @@ function viewForRequest(
   }
   const range = toInterval(plannerRangeForView(session, request.spanOffset, context));
   const shown = toInterval(spanRange(session, request.spanOffset, context));
-  const missing = loading.show
-    ? missingFor(cache.planner, session, request.spanOffset, context, loading.pastDuePending)
-    : NOTHING_MISSING;
+  const found = missingFor(
+    cache.planner,
+    session,
+    request.spanOffset,
+    context,
+    loading.pastDuePending,
+  );
+  // After a failed load nothing is on its way. The days that never arrived show nothing, but the
+  // view does not claim that they hold no work, and Past due stays out until its range is in.
+  const missing: Missing = loading.show
+    ? found
+    : {
+        days: [],
+        pastDue: found.pastDue,
+        unavailable: true,
+        incomplete: found.days.length > 0,
+      };
   // Every cached item goes in: the model places each by its own date and drops the rest, so a
   // peer review shows in its real week whichever request brought it.
   const items = coveredItems(cache.planner);
