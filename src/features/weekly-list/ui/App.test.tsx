@@ -596,6 +596,55 @@ describe('in-page list', () => {
     expect(screen.queryByRole('button', { name: /^Show \d+ more/ })).toBeNull();
   });
 
+  describe('disclosure links', () => {
+    const regionOf = (link: HTMLElement) => {
+      const id = link.getAttribute('aria-controls');
+      return id === null ? null : document.getElementById(id);
+    };
+
+    it('point at the region they open, open or closed', () => {
+      setup(
+        stateOf(pastDue(1), today(dueItems(titles)), day('2026-10-29', dueItems(['Thursday one']))),
+        'inpage',
+      );
+      const links = [
+        screen.getByRole('button', { name: /3 past due/ }),
+        screen.getByRole('button', { name: 'Show 2 more' }),
+        screen.getByRole('button', { name: /^Rest of the week/ }),
+      ];
+      for (const link of links) {
+        expect(link.getAttribute('aria-expanded')).toBe('false');
+        expect(regionOf(link)).not.toBeNull();
+      }
+      const summary = links[0];
+      if (!summary) throw new Error('no summary');
+      const region = regionOf(summary);
+      expect(region?.querySelector('li')).toBeNull();
+      fireEvent.click(summary);
+      expect(summary.getAttribute('aria-expanded')).toBe('true');
+      expect(regionOf(summary)).toBe(region);
+      expect(region?.querySelector('li')).not.toBeNull();
+    });
+
+    it('also name the regions of the "N older" and "N skipped" lines', () => {
+      setup(stateOf(pastDue(1)), 'panel');
+      for (const name of ['1 older', '1 skipped']) {
+        const link = screen.getByRole('button', { name });
+        expect(regionOf(link)).not.toBeNull();
+        fireEvent.click(link);
+        expect(regionOf(link)?.querySelector('li')).not.toBeNull();
+      }
+    });
+
+    it('name the region of a collapsible group in the side panel', () => {
+      setup(stateOf(mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) })), 'panel');
+      const toggle = screen.getByRole('button', { name: /^No due date/ });
+      expect(regionOf(toggle)).not.toBeNull();
+      fireEvent.click(toggle);
+      expect(regionOf(toggle)?.querySelector('li')).not.toBeNull();
+    });
+  });
+
   describe('past due', () => {
     it('is one summary line with the counts, and a disclosure button', () => {
       setup(stateOf(pastDue(1)), 'inpage');
@@ -1480,6 +1529,70 @@ describe('keyboard focus', () => {
     const { rerender } = setup(state);
     rerender({ ...state, refreshing: true });
     expect(document.activeElement).toBe(document.body);
+  });
+});
+
+describe('focus when the last visible row leaves the glance', () => {
+  const item = (title: string) => mkItem({ title, course: 'bio' });
+  const today = (...titles: string[]) =>
+    mkGroup({ kind: 'today', date: '2026-10-27', items: titles.map(item) });
+  const done = (...titles: string[]) =>
+    mkGroup({ kind: 'done', items: titles.map((title) => ({ ...item(title), state: 'done' })) });
+  const withGroups = (state: ReturnType<typeof readyState>, ...groups: ListGroup[]) => ({
+    ...state,
+    view: { ...state.view, groups },
+  });
+
+  it('goes to the "Rest of the week" link when no row or heading is left', () => {
+    const state = readyState({ view: mkView({ groups: [today('Only one'), done('Old one')] }) });
+    const { rerender } = setup(state, 'inpage');
+    screen.getByRole('checkbox', { name: 'Done: Only one' }).focus();
+
+    rerender(withGroups(state, done('Old one', 'Only one')));
+
+    const link = screen.getByRole('button', { name: /^Rest of the week/ });
+    expect(document.activeElement).toBe(link);
+    expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Add task' }));
+  });
+
+  it('goes to the Past due summary line when nothing follows the row', () => {
+    const late = mkGroup({ kind: 'past_due', items: [item('Late one')] });
+    const state = readyState({ view: mkView({ groups: [late, today('Only one')] }) });
+    const { rerender } = setup(state, 'inpage');
+    screen.getByRole('checkbox', { name: 'Done: Only one' }).focus();
+
+    rerender(withGroups(state, late));
+
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^1 past due/ }));
+  });
+
+  it('goes to the heading of the group when the group stays', () => {
+    const late = mkGroup({
+      kind: 'past_due',
+      items: [item('Late one')],
+      skipped: [mkItem({ title: 'Skipped one', state: 'skipped', chip: { kind: 'skipped' } })],
+    });
+    const state = readyState({ view: mkView({ groups: [late] }) });
+    const { rerender } = setup(state, 'panel');
+    screen.getByRole('checkbox', { name: 'Done: Late one' }).focus();
+
+    rerender(withGroups(state, { ...late, items: [] }));
+
+    const heading = document.activeElement as HTMLElement;
+    expect(heading.closest('[data-group="past_due"]')).not.toBeNull();
+    expect(heading.textContent).toContain('Past due');
+  });
+
+  it('still goes to the next row when there is one', () => {
+    const [one, two] = [item('One'), item('Two')];
+    const group = (...items: ItemView[]) => mkGroup({ kind: 'today', date: '2026-10-27', items });
+    const state = readyState({ view: mkView({ groups: [group(one, two)] }) });
+    const { rerender } = setup(state, 'inpage');
+    screen.getByRole('checkbox', { name: 'Done: One' }).focus();
+
+    rerender(withGroups(state, group(two)));
+
+    expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: 'Done: Two' }));
   });
 });
 

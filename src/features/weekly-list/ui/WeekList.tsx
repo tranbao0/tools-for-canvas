@@ -45,6 +45,7 @@ export function isGroupEmpty(group: ListGroup): boolean {
 }
 
 function ItemList(props: {
+  id?: string;
   items: ItemView[];
   view: WeekView;
   when: WhenMode;
@@ -53,7 +54,7 @@ function ItemList(props: {
 }) {
   if (props.items.length === 0) return null;
   return (
-    <ul class={props.nested ? 'wr-items wr-sublist' : 'wr-items'}>
+    <ul id={props.id} class={props.nested ? 'wr-items wr-sublist' : 'wr-items'}>
       {props.items.map((item) => (
         <ItemRow
           key={item.key}
@@ -87,6 +88,7 @@ function Disclosure(props: {
   action?: ComponentChildren;
   children: ComponentChildren;
 }) {
+  const [id] = useState(() => newId('region'));
   return (
     <>
       <div class="wr-subline">
@@ -94,6 +96,7 @@ function Disclosure(props: {
           type="button"
           class="wr-sub-toggle"
           aria-expanded={props.open}
+          aria-controls={id}
           onClick={props.onToggle}
         >
           <ChevronDownIcon />
@@ -101,7 +104,7 @@ function Disclosure(props: {
         </button>
         {props.action}
       </div>
-      {props.open && props.children}
+      <div id={id}>{props.open && props.children}</div>
     </>
   );
 }
@@ -148,6 +151,7 @@ function LimitedItems(props: {
   handlers: ItemHandlers;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [listId] = useState(() => newId('rows'));
   const focusKey = useRef<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -165,12 +169,20 @@ function LimitedItems(props: {
   const hidden = props.items.length - shown.length;
   return (
     <div ref={listRef}>
-      <ItemList items={shown} view={props.view} when={props.when} handlers={props.handlers} />
+      <ItemList
+        id={listId}
+        items={shown}
+        view={props.view}
+        when={props.when}
+        handlers={props.handlers}
+      />
       {hidden > 0 && (
         <div class="wr-subline">
           <button
             type="button"
             class="wr-sub-toggle wr-more"
+            aria-expanded="false"
+            aria-controls={listId}
             onClick={() => {
               focusKey.current = props.items[shown.length]?.key ?? null;
               setExpanded(true);
@@ -199,6 +211,7 @@ function GroupSection(props: {
   const [ownOpen, setOwnOpen] = useState(!collapsible);
   const open = summary ? summary.open : ownOpen;
   const [id] = useState(() => newId('group'));
+  const [bodyId] = useState(() => newId('body'));
   const rows = { view, when: whenMode(group.kind), handlers };
   const { kind, date } = group;
   const count = groupCount(group);
@@ -227,18 +240,13 @@ function GroupSection(props: {
 
   return (
     <section class="wr-group" aria-labelledby={id} data-group={group.kind}>
-      <Heading
-        level={props.level}
-        class="wr-group-head"
-        id={id}
-        part="group-head"
-        tabIndex={group.kind === 'past_due' ? -1 : undefined}
-      >
+      <Heading level={props.level} class="wr-group-head" id={id} part="group-head" tabIndex={-1}>
         {collapsible ? (
           <button
             type="button"
             class="wr-group-toggle"
             aria-expanded={open}
+            aria-controls={bodyId}
             onClick={summary ? summary.toggle : () => setOwnOpen(!ownOpen)}
           >
             <ChevronDownIcon />
@@ -248,38 +256,40 @@ function GroupSection(props: {
           headContent
         )}
       </Heading>
-      {open && (
-        <div>
-          <LimitedItems {...rows} items={group.items} limit={props.rowLimit} />
-          {group.kind === 'past_due' && (
+      <div id={bodyId}>
+        {open && (
+          <>
+            <LimitedItems {...rows} items={group.items} limit={props.rowLimit} />
+            {group.kind === 'past_due' && (
+              <SubList
+                {...rows}
+                label={tp('olderCount', group.older.length)}
+                items={group.older}
+                action={
+                  <button
+                    type="button"
+                    class="wr-link-btn"
+                    data-part="skip-older"
+                    onClick={handlers.onSkipAllOlder}
+                  >
+                    {t('skipAllOlder')}
+                  </button>
+                }
+              />
+            )}
             <SubList
               {...rows}
-              label={tp('olderCount', group.older.length)}
-              items={group.older}
-              action={
-                <button
-                  type="button"
-                  class="wr-link-btn"
-                  data-part="skip-older"
-                  onClick={handlers.onSkipAllOlder}
-                >
-                  {t('skipAllOlder')}
-                </button>
-              }
+              label={tp('doneCount', group.doneUndated.length)}
+              items={group.doneUndated}
             />
-          )}
-          <SubList
-            {...rows}
-            label={tp('doneCount', group.doneUndated.length)}
-            items={group.doneUndated}
-          />
-          <SubList
-            {...rows}
-            label={tp('skippedCount', group.skipped.length)}
-            items={group.skipped}
-          />
-        </div>
-      )}
+            <SubList
+              {...rows}
+              label={tp('skippedCount', group.skipped.length)}
+              items={group.skipped}
+            />
+          </>
+        )}
+      </div>
     </section>
   );
 }

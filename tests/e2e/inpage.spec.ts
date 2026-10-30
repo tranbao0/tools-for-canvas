@@ -391,3 +391,78 @@ test.describe('compact in-page list', () => {
     expect(await mainRows(today).count()).toBe(4);
   });
 });
+
+test.describe('glance disclosure links and focus', () => {
+  test('each link names the region it opens with aria-controls', async ({ context, page }) => {
+    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }]);
+    await openCanvasPage(page, canvas.origin);
+    const list = inpageList(page);
+    await expect(doneBox(list, QUIZ_3)).toBeVisible();
+
+    const summary = group(list, 'past_due').getByRole('button', { name: /\d+ past due/ });
+    const links = [
+      summary,
+      list.getByRole('button', { name: /^Rest of the week \(\d+\)$/ }),
+      group(list, 'tomorrow').getByRole('button', { name: 'Show 3 more' }),
+    ];
+    for (const link of links) {
+      await expect(link).toHaveAttribute('aria-expanded', 'false');
+      const id = await link.getAttribute('aria-controls');
+      expect(id).toBeTruthy();
+      await expect(list.locator(`[id="${id}"]`)).toHaveCount(1);
+    }
+
+    // The region that a link opens is the element that holds the new rows.
+    const region = list.locator(`[id="${await summary.getAttribute('aria-controls')}"]`);
+    await expect(region.locator('li')).toHaveCount(0);
+    await summary.click();
+    await expect(summary).toHaveAttribute('aria-expanded', 'true');
+    await expect(region.locator('li').first()).toBeVisible();
+  });
+
+  test('checking the last visible row moves focus to a link of the list, not to Add', async ({
+    context,
+    page,
+  }) => {
+    // Past due holds one row behind its summary line, and Today holds two rows.
+    const keep = new Set(['Problem set 6', QUIZ_3, 'Return library books']);
+    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }], {
+      extend(scenario) {
+        scenario.plannerItems = scenario.plannerItems.filter((item) =>
+          keep.has(item.plannable.title),
+        );
+        scenario.plannerNotes = scenario.plannerNotes.filter((note) => keep.has(note.title));
+      },
+    });
+    await addCsrfCookie(context, canvas.origin);
+    await openCanvasPage(page, canvas.origin);
+    const list = inpageList(page);
+    await expect(doneBox(list, QUIZ_3)).toBeVisible();
+    await settledList(page);
+
+    /** What has focus in the shadow root of the list. */
+    const focused = () =>
+      list.locator('weekrow-list').evaluate((host) => {
+        const el = host.shadowRoot?.activeElement ?? null;
+        return {
+          add: el?.closest('.wr-add') != null,
+          expanded: el?.getAttribute('aria-expanded') ?? null,
+          text: (el?.textContent ?? '').trim(),
+        };
+      });
+
+    // The first row has a row after it, so focus moves to that row.
+    await doneBox(list, QUIZ_3).focus();
+    await page.keyboard.press('Space');
+    await expect(doneBox(list, QUIZ_3)).toHaveCount(0);
+    await expect(doneBox(list, 'Return library books')).toBeFocused();
+
+    // The last visible row has none: focus goes to the next link of the list.
+    await page.keyboard.press('Space');
+    await expect(doneBox(list, 'Return library books')).toHaveCount(0);
+    await expect.poll(async () => (await focused()).text).toMatch(/^Rest of the week \(\d+\)$/);
+    const last = await focused();
+    expect(last.add).toBe(false);
+    expect(last.expanded).toBe('false');
+  });
+});

@@ -265,6 +265,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     With Day, the link holds only No due date and Done, and reads "No due date and done (2)".
   - A week with nothing due today or tomorrow shows the next day that has work, so the glance is never empty while work is due.
   - What the student opened stays open while the page stays open.
+  - Each of these links is a button with `aria-expanded` and `aria-controls`, and `aria-controls` names the region that the link opens.
+    The region stays in the page while it is closed, so the reference always resolves.
   - The side panel shows every item, with no summary line.
 - On a course home page, the rows do not repeat the course name, because the whole list is that course.
 
@@ -1276,6 +1278,9 @@ The owner chose it on 2026-10-27.
 - Every action works with the keyboard alone.
 - Each ring has a text label, such as "3 of 5 done".
 - Done marks are real checkboxes.
+- When a done mark or a skip removes the focused row, focus moves to the same control of the next row, or of the previous row.
+  When no row is left, focus moves to the heading of the group if the group stays, then to the next link that opens a part of the list, such as "Rest of the week".
+  It never jumps to the Add button while the list has such a link.
 - Animation stops when the system asks for reduced motion.
 - No control ever hides under the sticky header or the bottom notice (WCAG 2.4.11).
   One-time notes show inline at the top of the list, so only the short Undo notice is sticky.

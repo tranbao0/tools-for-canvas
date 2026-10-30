@@ -2,7 +2,9 @@
  * Keeps keyboard focus in the surface when an update removes the focused control.
  *
  * - A row, for example after a done mark moves an item into the collapsed Done group:
- *   focus moves to the same control of the next row, or of the previous row.
+ *   focus moves to the same control of the next row, or of the previous row. With no row left,
+ *   it moves to the heading of the row's group, if the group stays, then to the next button that
+ *   opens a part of the list, such as "Rest of the week", and last to the caller's fallback.
  * - "Skip all older", which goes away when the older list empties: focus moves to the Past due
  *   heading, or to the first row.
  * - Any other control, such as a button of the Undo notice: focus moves to the control that the
@@ -17,6 +19,10 @@ export type FocusSnapshot =
       part: string | null;
       /** Row keys in document order before the update. */
       order: string[];
+      /** The id of the heading of the row's group. */
+      group: string | null;
+      /** How many buttons that open a part of the list come before the row. */
+      toggles: number;
     }
   | {
       kind: 'control';
@@ -25,6 +31,9 @@ export type FocusSnapshot =
     };
 
 const ROW = '[data-row-key]';
+
+/** The buttons that open a group or a line of the list. */
+const TOGGLE = '.wr-group-toggle, .wr-sub-toggle';
 
 /** The Past due heading, which takes focus when "Skip all older" goes away. */
 export const PAST_DUE_HEADING = '[data-group="past_due"] [data-part="group-head"]';
@@ -58,11 +67,16 @@ export function captureFocus(root: HTMLElement | null): FocusSnapshot | null {
   const row = active.closest<HTMLElement>(ROW);
   const key = row?.dataset.rowKey;
   if (!row || key === undefined) return { kind: 'control', part: partOf(active) };
+  const toggles = Array.from(root.querySelectorAll(TOGGLE));
   return {
     kind: 'row',
     key,
     part: partOf(active),
     order: rowsOf(root).map((el) => el.dataset.rowKey ?? ''),
+    group: row.closest('section')?.getAttribute('aria-labelledby') ?? null,
+    toggles: toggles.filter(
+      (el) => row.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).length,
   };
 }
 
@@ -118,6 +132,19 @@ function rowTarget(
   return null;
 }
 
+/** Where focus goes when no row is left: the heading of the group, then the next toggle. */
+function listTarget(
+  root: HTMLElement,
+  snapshot: Extract<FocusSnapshot, { kind: 'row' }>,
+): HTMLElement | null {
+  const heading = snapshot.group
+    ? root.querySelector<HTMLElement>(`[id="${snapshot.group}"]`)
+    : null;
+  if (heading) return heading.querySelector<HTMLElement>(TOGGLE) ?? heading;
+  const toggles = root.querySelectorAll<HTMLElement>(TOGGLE);
+  return toggles[Math.min(snapshot.toggles, toggles.length - 1)] ?? null;
+}
+
 /**
  * After an update: if focus was in `root` and fell out of it, move it to a sensible control.
  * `fallback` names the control for a focused control that went away and has no rule of its own.
@@ -129,7 +156,8 @@ export function restoreFocus(
 ): void {
   if (!root || !snapshot || hasFocusIn(root)) return;
   let target: HTMLElement | null;
-  if (snapshot.kind === 'row') target = rowTarget(root, snapshot) ?? fallback();
+  if (snapshot.kind === 'row')
+    target = rowTarget(root, snapshot) ?? listTarget(root, snapshot) ?? fallback();
   else if (snapshot.part === 'skip-older')
     target = root.querySelector<HTMLElement>(PAST_DUE_HEADING) ?? firstRowControl(root);
   else target = fallback();
