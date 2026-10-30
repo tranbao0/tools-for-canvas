@@ -208,17 +208,17 @@ interface LayoutShot {
   name: string;
   fixture: string;
   width: number;
-  /** Swaps the header buttons as the widget package does in edit mode, so the list floats. */
+  /** Swaps the header buttons as the widget package does in edit mode. */
   edit?: boolean;
   /** Adds height to a page that is too short to scroll. */
   tall?: boolean;
 }
 
 const LAYOUT_SHOTS: LayoutShot[] = [
-  { name: 'widgets-grid', fixture: 'dashboard-widgets', width: 1920 },
+  { name: 'widgets-area', fixture: 'dashboard-widgets', width: 1920 },
   { name: 'widgets-column', fixture: 'dashboard-widgets', width: 1280 },
-  { name: 'widgets-edit-float', fixture: 'dashboard-widgets', width: 1920, edit: true },
-  { name: 'widgets-edit-float', fixture: 'dashboard-widgets', width: 1280, edit: true },
+  { name: 'widgets-edit', fixture: 'dashboard-widgets', width: 1920, edit: true },
+  { name: 'widgets-edit', fixture: 'dashboard-widgets', width: 1280, edit: true },
   { name: 'listview-float', fixture: 'dashboard-list-view', width: 1920, tall: true },
   { name: 'listview-float', fixture: 'dashboard-list-view', width: 1280, tall: true },
   { name: 'listview-stack', fixture: 'dashboard-list-view', width: 1000, tall: true },
@@ -303,7 +303,10 @@ for (const shot of LAYOUT_SHOTS) {
         await scrollPage(page, 1500);
         await page.screenshot({ path: `${prefix}-scrolled.png` });
       }
-      expect(await panelMode(page)).not.toBeNull();
+      // In edit mode a card that would sit in a column hides, and a card beside the grid stays.
+      const hidden = shot.edit === true && shot.width < 1400;
+      if (hidden) expect(await panelMode(page)).toBeNull();
+      else expect(await panelMode(page)).not.toBeNull();
     });
   }
 }
