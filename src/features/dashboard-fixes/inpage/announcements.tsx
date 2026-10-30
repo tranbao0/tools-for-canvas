@@ -342,14 +342,15 @@ export function announcementsFix(): Fix {
       'line-height',
       'color',
       'background-color',
-      'border-width',
-      'border-style',
-      'border-color',
       'border-radius',
       'padding-left',
       'padding-right',
     ]) {
       select.style.setProperty(name, native.getPropertyValue(name));
+    }
+    // Longhands, because not every browser computes the border shorthands.
+    for (const part of ['width', 'style', 'color']) {
+      select.style.setProperty(`border-${part}`, native.getPropertyValue(`border-top-${part}`));
     }
     select.style.setProperty('--wr-option-ink', native.color);
     select.style.setProperty('--wr-option-background', native.backgroundColor);

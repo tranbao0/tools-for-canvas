@@ -352,14 +352,16 @@ test('match the dark read filter colors', async ({ context, page }, testInfo) =>
   expect(await widget.locator('.wr-caret').evaluate((el) => getComputedStyle(el).color)).toBe(
     await read.evaluate((el) => getComputedStyle(el.nextElementSibling!).borderRightColor),
   );
-  const outline = (el: Element) => {
-    const css = getComputedStyle(el);
-    return [css.outlineColor, css.outlineStyle, css.outlineWidth, css.outlineOffset];
-  };
-  await read.focus();
-  const nativeFocus = await read.evaluate(outline);
+  // The course filter keeps the extension's brand focus ring, the same as its other controls.
   await course.focus();
-  expect(await course.evaluate(outline)).toEqual(nativeFocus);
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  expect(
+    await course.evaluate((el) => {
+      const css = getComputedStyle(el);
+      return [el.matches(':focus-visible'), css.outlineStyle, css.outlineWidth];
+    }),
+  ).toEqual([true, 'solid', '2px']);
   const luminance = (rgb: string) => {
     const channels = rgb
       .match(/\d+/g)!
@@ -370,7 +372,15 @@ test('match the dark read filter colors', async ({ context, page }, testInfo) =>
       });
     return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
   };
-  const contrast = (luminance(expected.color) + 0.05) / (luminance(expected.background) + 0.05);
+  // A transparent background shows the first opaque background behind it.
+  const shownBackground = await read.evaluate((el) => {
+    for (let node: Element | null = el; node; node = node.parentElement) {
+      const background = getComputedStyle(node).backgroundColor;
+      if (!/rgba\(.*,\s*0\)$/.test(background) && background !== 'transparent') return background;
+    }
+    return 'rgb(255, 255, 255)';
+  });
+  const contrast = (luminance(expected.color) + 0.05) / (luminance(shownBackground) + 0.05);
   expect(contrast).toBeGreaterThanOrEqual(4.5);
   await page.screenshot({ path: testInfo.outputPath('announcements-dark.png'), fullPage: true });
 });

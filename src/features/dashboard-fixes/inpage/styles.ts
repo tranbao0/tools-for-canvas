@@ -44,7 +44,7 @@ a.wr-x-title:hover{text-decoration:underline}
 [data-wr-dark] .wr-x-overdue{color:#f08a8d}
 .wr-x-link{all:unset;display:inline-block;margin-top:.25rem;font-size:.875rem;cursor:pointer;color:var(--ic-link-color,#0e68b3)}
 .wr-x-link:hover{text-decoration:underline}
-.wr-x-link:focus-visible,.wr-body a:focus-visible{outline:.125rem solid var(--ic-brand-primary,#0374b5);outline-offset:.125rem}
+.wr-x-link:focus-visible,.wr-filter-select:focus-visible,.wr-body a:focus-visible{outline:.125rem solid var(--ic-brand-primary,#0374b5);outline-offset:.125rem}
 :host{display:block;margin-block:.5rem .25rem;font-size:var(--wr-fs,.875rem);line-height:var(--wr-lh,1.4);overflow-wrap:anywhere}
 .wr-body{max-height:30rem;overflow:auto}
 .wr-body>:first-child{margin-top:0}
