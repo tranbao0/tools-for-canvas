@@ -17,6 +17,7 @@ import { useEffect, useState } from 'preact/hooks';
 import {
   findAnnouncementItem,
   findAnnouncementsWidgets,
+  isDarkWidget,
   type AnnouncementItem,
   type AnnouncementsWidget,
   type ReadFilter,
@@ -354,6 +355,11 @@ export function announcementsFix(): Fix {
         const list = widget.bar.querySelector(':scope > [data-wr-list]');
         if (courseId === '' && list) unmount(list);
         if (courseId !== '') drawList(context, widget);
+        // The hosts take the theme of the widget, which their shadow roots cannot see.
+        const dark = isDarkWidget(widget.widget);
+        widget.widget
+          .querySelectorAll(MINE)
+          .forEach((host) => host.toggleAttribute('data-wr-dark', dark));
       }
     },
     remove() {
