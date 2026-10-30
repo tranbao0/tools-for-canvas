@@ -45,8 +45,11 @@ function newestModification(entry) {
  * @returns {boolean}
  */
 export function isBuildFresh(browser, mode = 'release') {
-  const manifest = path.join(targetDir(browser, mode), 'manifest.json');
+  const dir = targetDir(browser, mode);
+  const manifest = path.join(dir, 'manifest.json');
   if (!existsSync(manifest)) return false;
+  // A build of the test channel can sit in the release folder. It is not a release build.
+  if (mode === 'release' && existsSync(path.join(dir, 'file-check.html'))) return false;
   const builtAt = statSync(manifest).mtimeMs;
   return BUILD_INPUTS.every((input) => newestModification(path.join(ROOT, input)) <= builtAt);
 }

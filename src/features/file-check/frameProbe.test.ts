@@ -29,7 +29,7 @@ function post(source: unknown, origin: string, data: unknown): void {
 
 describe('runFrameProbe', () => {
   it('adds a hidden iframe of the probe page and removes it after the handshake', async () => {
-    const pending = runFrameProbe('nonce-1', 3000);
+    const pending = runFrameProbe('nonce-1', 3000, location.origin);
     const frame = document.querySelector('iframe');
     expect(frame?.hidden).toBe(true);
     expect(frame?.getAttribute('src')).toBe(`${PROBE}?n=nonce-1`);
@@ -54,7 +54,7 @@ describe('runFrameProbe', () => {
     };
     vi.stubGlobal('browser', api);
     vi.stubGlobal('chrome', api);
-    const pending = runFrameProbe('nonce-1', 3000);
+    const pending = runFrameProbe('nonce-1', 3000, location.origin);
     const frame = document.querySelector('iframe');
     post(frame?.contentWindow, 'chrome-extension://evil', {
       type: PROBE_MESSAGE_TYPE,
@@ -69,7 +69,7 @@ describe('runFrameProbe', () => {
   });
 
   it('ignores a message with the wrong nonce, source or origin, then times out', async () => {
-    const pending = runFrameProbe('nonce-1', 3000);
+    const pending = runFrameProbe('nonce-1', 3000, location.origin);
     const frame = document.querySelector('iframe');
     const good = { type: PROBE_MESSAGE_TYPE, nonce: 'nonce-1' };
     post(frame?.contentWindow, 'chrome-extension://abcdef', { ...good, nonce: 'other' });
@@ -84,16 +84,22 @@ describe('runFrameProbe', () => {
     expect(document.querySelector('iframe')).toBeNull();
   });
 
+  it('adds no iframe when the page has another origin than expected', async () => {
+    const result = await runFrameProbe('nonce-1', 3000, 'https://school.instructure.com');
+    expect(result).toMatchObject({ handshake: false, error: 'wrong_origin', src: null });
+    expect(document.querySelector('iframe')).toBeNull();
+  });
+
   it('reports a missing runtime and adds no iframe', async () => {
     vi.stubGlobal('browser', undefined);
     vi.stubGlobal('chrome', undefined);
-    const result = await runFrameProbe('nonce-1', 3000);
+    const result = await runFrameProbe('nonce-1', 3000, location.origin);
     expect(result).toMatchObject({ handshake: false, error: 'no_url' });
     expect(document.querySelector('iframe')).toBeNull();
   });
 
   it('stops listening after it finished', async () => {
-    const pending = runFrameProbe('nonce-1', 3000);
+    const pending = runFrameProbe('nonce-1', 3000, location.origin);
     await vi.advanceTimersByTimeAsync(3000);
     await pending;
     expect(vi.getTimerCount()).toBe(0);

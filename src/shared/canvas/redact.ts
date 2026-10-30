@@ -84,13 +84,17 @@ export function mediaType(value: unknown): string | null {
     : '(unusual)';
 }
 
-/** Shows bytes as text. Printable ASCII stays; every other byte shows as `\xNN`. */
+/**
+ * Shows bytes as text. Printable ASCII stays; every other byte shows as `\xNN`. The bytes of `?`
+ * and `#` also show as escapes, so the last pass over a report does not take them for a query.
+ */
 export function escapeBytes(bytes: Uint8Array): string {
   let text = '';
   for (const byte of bytes) {
     if (byte === 0x5c) text += '\\\\';
-    else if (byte >= 0x20 && byte <= 0x7e) text += String.fromCharCode(byte);
-    else text += `\\x${byte.toString(16).padStart(2, '0')}`;
+    else if (byte >= 0x20 && byte <= 0x7e && byte !== 0x3f && byte !== 0x23) {
+      text += String.fromCharCode(byte);
+    } else text += `\\x${byte.toString(16).padStart(2, '0')}`;
   }
   return text;
 }

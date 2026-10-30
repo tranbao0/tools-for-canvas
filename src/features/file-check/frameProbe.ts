@@ -25,8 +25,24 @@ export interface RawFrame {
  * The page URL comes from `runtime.getURL` inside the page, because a browser that gives the
  * resource a dynamic URL gives it only there.
  */
-export function runFrameProbe(nonce: string, timeoutMs: number): Promise<RawFrame> {
+export function runFrameProbe(
+  nonce: string,
+  timeoutMs: number,
+  expectedOrigin: string,
+): Promise<RawFrame> {
   return new Promise((resolve) => {
+    // The tab can move between the check of the background and this run. Then nothing is added.
+    if (location.origin !== expectedOrigin) {
+      resolve({
+        src: null,
+        handshake: false,
+        loadEvent: false,
+        dynamicAddress: false,
+        ms: 0,
+        error: 'wrong_origin',
+      });
+      return;
+    }
     const started = Date.now();
     type RuntimeApi = { runtime: { id?: string; getURL(path: string): string } };
     const scope = globalThis as { browser?: RuntimeApi; chrome?: RuntimeApi };

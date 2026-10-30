@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import {
+  headAddress,
   pickTab,
   routeFileCheckMessage,
   wireFileCheck,
@@ -9,7 +10,7 @@ import {
 } from './background';
 
 const ORIGIN = 'https://school.instructure.com';
-const PAGE_URL = `${ORIGIN}/courses/5/files/Alice-resume.pdf?verifier=SECRETVERIFIER`;
+const PAGE_URL = `${ORIGIN}/courses/5/pages/Alice-notes?verifier=SECRETVERIFIER`;
 const EXTENSION = { url: 'chrome-extension://abc/file-check.html' };
 const PAGE_SENDER = { url: `${ORIGIN}/`, tab: { id: 3 }, frameId: 0 };
 
@@ -27,14 +28,14 @@ function host(overrides: Partial<FileCheckHost> = {}): FileCheckHost {
     savedOrigin: async () => ORIGIN,
     tabsOnOrigin: async () => tabs,
     tabUrl: async () => PAGE_URL,
-    runScan: async () => ({
+    runScan: async (_tabId, _origin) => ({
       pagePath: '/courses/5/files',
       kinds: [{ kind: 'files_href', count: 2, sample: '/courses/5/files/Alice.pdf', hooks: [] }],
       fileId: '42',
       fileIdKind: 'files_href',
       metaCsp: null,
     }),
-    runFrame: async () => ({
+    runFrame: async (_tabId, _nonce, _origin) => ({
       src: 'chrome-extension://x/file-probe.html?n=1',
       handshake: true,
       loadEvent: true,
@@ -88,7 +89,7 @@ describe('routeFileCheckMessage', () => {
       tabId: number;
       scan: { fileId: string; kinds: { sample: string | null }[] };
     };
-    expect(runScan).toHaveBeenCalledWith(7);
+    expect(runScan).toHaveBeenCalledWith(7, ORIGIN);
     expect(reply.tabId).toBe(7);
     expect(reply.scan.fileId).toBe('42');
     expect(JSON.stringify(reply)).not.toMatch(/Alice|SECRET/);
@@ -101,6 +102,15 @@ describe('routeFileCheckMessage', () => {
       host({ tabsOnOrigin: async () => [] }),
     );
     expect(reply).toEqual({ tabId: null, scan: null, error: 'no_canvas_tab' });
+  });
+
+  it('says so when the page moved away before the scan ran', async () => {
+    const reply = await ask(
+      { type: 'weekrow:file-check-scan' },
+      EXTENSION,
+      host({ runScan: async () => ({ wrongOrigin: true, kinds: [], pagePath: '/Alice' }) }),
+    );
+    expect(reply).toEqual({ tabId: 7, scan: null, error: 'wrong_origin' });
   });
 
   it('survives a failed scan', async () => {
@@ -215,10 +225,12 @@ describe('routeFileCheckMessage', () => {
       EXTENSION,
       host({ fetchImpl: fetchImpl as unknown as typeof fetch, runFrame }),
     )) as { frame: unknown; head: unknown };
-    expect(runFrame).toHaveBeenCalledWith(7, '00000000-0000-4000-8000-000000000000');
-    expect(requests).toEqual([{ url: PAGE_URL, method: 'HEAD', accept: 'text/html' }]);
+    expect(runFrame).toHaveBeenCalledWith(7, '00000000-0000-4000-8000-000000000000', ORIGIN);
+    expect(requests).toEqual([
+      { url: `${ORIGIN}/courses/5/pages/Alice-notes`, method: 'HEAD', accept: 'text/html' },
+    ]);
     expect(reply.head).toEqual({
-      path: '/courses/:id/files',
+      path: '/courses/:id',
       status: 200,
       error: null,
       csp: "frame-src 'self' 'nonce-REDACTED' https://x.example.com",
@@ -237,9 +249,26 @@ describe('routeFileCheckMessage', () => {
     await expect(run).rejects.toThrow(/saved Canvas/);
   });
 
+  it('injects nothing when the tab leaves the saved Canvas during the HEAD request', async () => {
+    const tabUrl = vi
+      .fn<(id: number) => Promise<string | undefined>>()
+      .mockResolvedValueOnce(PAGE_URL)
+      .mockResolvedValueOnce('https://evil.example.com/');
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 200 }));
+    const runFrame = vi.fn(host().runFrame);
+    const run = ask(
+      { type: 'weekrow:file-check-frame', tabId: 7 },
+      EXTENSION,
+      host({ tabUrl, runFrame, fetchImpl: fetchImpl as unknown as typeof fetch }),
+    );
+    await expect(run).rejects.toThrow(/left the saved Canvas/);
+    expect(runFrame).not.toHaveBeenCalled();
+  });
+
   it('refuses when the tab leaves the saved Canvas during the probe', async () => {
     const tabUrl = vi
       .fn<(id: number) => Promise<string | undefined>>()
+      .mockResolvedValueOnce(PAGE_URL)
       .mockResolvedValueOnce(PAGE_URL)
       .mockResolvedValueOnce('https://evil.example.com/');
     const fetchImpl = vi.fn(async () => new Response(null, { status: 200 }));
@@ -331,5 +360,30 @@ describe('wireFileCheck', () => {
       fakeBrowser.runtime.sendMessage({ type: 'weekrow:file-check-scan' }),
     ).resolves.toBeUndefined();
     stop();
+  });
+});
+
+describe('headAddress', () => {
+  it('drops the query and the fragment of the page', () => {
+    expect(headAddress(`${ORIGIN}/courses/5/pages/notes?x=SECRET#frag`, ORIGIN)).toBe(
+      `${ORIGIN}/courses/5/pages/notes`,
+    );
+  });
+
+  it('asks the front page when a request could do more than show a page', () => {
+    for (const path of [
+      '/files/42/download',
+      '/courses/5/files/42',
+      '/courses/5/files/42/',
+      '/courses/5/external_tools/9',
+      '/courses/5/external_tools/sessionless_launch',
+    ]) {
+      expect(headAddress(`${ORIGIN}${path}?verifier=SECRET`, ORIGIN)).toBe(`${ORIGIN}/`);
+    }
+    expect(headAddress('not an address', ORIGIN)).toBe(`${ORIGIN}/`);
+  });
+
+  it('keeps a list of files', () => {
+    expect(headAddress(`${ORIGIN}/courses/5/files`, ORIGIN)).toBe(`${ORIGIN}/courses/5/files`);
   });
 });

@@ -131,6 +131,14 @@ describe('escapeBytes', () => {
     expect(escapeBytes(new Uint8Array([0xff, 0x00, 0x7f]))).toBe('\\xff\\x00\\x7f');
     expect(escapeBytes(new Uint8Array())).toBe('');
   });
+
+  it('escapes the bytes of ? and # so that a report keeps them', () => {
+    expect(escapeBytes(new TextEncoder().encode('<?xml'))).toBe('<\\x3fxml');
+    expect(escapeBytes(new TextEncoder().encode('#!/bi'))).toBe('\\x23!/bi');
+    expect(scrubReport(`first 5 bytes: ${escapeBytes(new TextEncoder().encode('<?xml'))}`)).toBe(
+      'first 5 bytes: <\\x3fxml',
+    );
+  });
 });
 
 describe('redactCsp', () => {

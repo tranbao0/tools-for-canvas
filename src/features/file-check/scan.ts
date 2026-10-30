@@ -10,6 +10,8 @@ import { SCAN_KINDS, type KindSummary, type ScanKind, type ScanSummary } from '.
 
 /** What `scanPage` returns. Paths are not redacted yet. */
 export interface RawScan {
+  /** Set only when the page does not have the origin that the background expected. */
+  wrongOrigin?: true;
   pagePath: string;
   kinds: { kind: string; count: number; sample: string | null; hooks: string[] }[];
   fileId: string | null;
@@ -19,9 +21,20 @@ export interface RawScan {
 
 /**
  * Counts the file links and file elements of the page. Runs in the page. It must not use any
- * name from outside its own body.
+ * name from outside its own body. It reads nothing when the page does not have the origin that the
+ * background expected, because the tab can move between the check of the background and the run.
  */
-export function scanPage(): RawScan {
+export function scanPage(expectedOrigin: string): RawScan {
+  if (location.origin !== expectedOrigin) {
+    return {
+      wrongOrigin: true,
+      pagePath: '/',
+      kinds: [],
+      fileId: null,
+      fileIdKind: null,
+      metaCsp: null,
+    };
+  }
   const SELECTORS: [string, string][] = [
     ['instructure_file_link', 'a.instructure_file_link'],
     ['files_href', 'a[href*="/files/"]'],
@@ -77,7 +90,7 @@ export function scanPage(): RawScan {
     );
     const data = element
       .getAttributeNames()
-      .filter((name) => name.startsWith('data-') && SAFE_NAME.test(name));
+      .filter((name) => name.startsWith('data-') && SAFE_NAME.test(name) && !/\d{3}/.test(name));
     const tag = element.tagName.toLowerCase().replace(/[^a-z0-9-]/g, '');
     return `${tag}${classes
       .slice(0, 6)

@@ -23,7 +23,7 @@ describe('scanPage', () => {
       <a href="/courses/3/assignments/5/submissions/8?download=61">Submitted</a>
       <a href="/files/90/download?download_frd=1">Download</a>
       <a href="/attachments/12/download">Attachment</a>`;
-    const scan = normalizeScan(scanPage());
+    const scan = normalizeScan(scanPage(location.origin));
     expect(count(scan, 'instructure_file_link')).toBe(1);
     expect(count(scan, 'files_href')).toBe(4);
     expect(count(scan, 'preview_button')).toBe(1);
@@ -46,14 +46,14 @@ describe('scanPage', () => {
 
   it('takes the file id from the download parameter of a submission link', () => {
     document.body.innerHTML = '<a href="/courses/3/assignments/5/submissions/8?download=61">x</a>';
-    const scan = normalizeScan(scanPage());
+    const scan = normalizeScan(scanPage(location.origin));
     expect(scan.fileId).toBe('61');
     expect(scan.fileIdKind).toBe('submission_attachment');
   });
 
   it('finds nothing on a page without file links', () => {
     document.body.innerHTML = '<p>Nothing here</p><a href="/courses/3/grades">Grades</a>';
-    const scan = normalizeScan(scanPage());
+    const scan = normalizeScan(scanPage(location.origin));
     expect(scan.kinds.map((entry) => entry.count)).toEqual([0, 0, 0, 0, 0]);
     expect(scan.fileId).toBeNull();
     expect(scan.metaCsp).toBeNull();
@@ -62,15 +62,37 @@ describe('scanPage', () => {
   it('reads the meta tag policy and redacts its nonces and addresses', () => {
     document.head.innerHTML =
       '<meta http-equiv="Content-Security-Policy" content="frame-src https://a.example.com/Alice?token=1 \'nonce-abc123\'">';
-    const scan = normalizeScan(scanPage());
+    const scan = normalizeScan(scanPage(location.origin));
     expect(scan.metaCsp).toBe("frame-src https://a.example.com 'nonce-REDACTED'");
+  });
+
+  it('keeps out data names that look like ids', () => {
+    document.body.innerHTML =
+      '<a class="x-y" data-user-5501 data-api-endpoint href="/files/1">x</a>';
+    expect(normalizeScan(scanPage(location.origin)).kinds[1]?.hooks).toEqual([
+      'a.x-y[data-api-endpoint]',
+    ]);
   });
 
   it('keeps out class names that look like ids or are odd', () => {
     document.body.innerHTML =
       '<a class="instructure_file_link user-12345 Alice_Smith ok-name" href="/files/1">x</a>';
-    const scan = normalizeScan(scanPage());
+    const scan = normalizeScan(scanPage(location.origin));
     expect(scan.kinds[0]?.hooks).toEqual(['a.instructure_file_link.ok-name']);
+  });
+});
+
+describe('scanPage on a page that moved', () => {
+  it('reads nothing when the origin is not the expected one', () => {
+    document.body.innerHTML = '<a class="instructure_file_link" href="/files/1">x</a>';
+    expect(scanPage('https://school.instructure.com')).toEqual({
+      wrongOrigin: true,
+      pagePath: '/',
+      kinds: [],
+      fileId: null,
+      fileIdKind: null,
+      metaCsp: null,
+    });
   });
 });
 

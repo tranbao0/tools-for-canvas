@@ -44,11 +44,15 @@ const TEST_VERSION = process.env.FIREFOX_TEST_VERSION;
 const TEST_UPDATE_URL = process.env.FIREFOX_TEST_UPDATE_URL;
 
 /**
- * Builds of the test channel and the end-to-end build include the file access check
- * (docs/design.md, decision 23). A store build never does: it has no entry for the check pages,
- * no web accessible resources and no code behind the `__FILE_CHECK__` switch.
+ * Whether a build includes the file access check (docs/design.md, decision 23). Only the Firefox
+ * build of the test channel and the end-to-end build of any browser do. A store build never
+ * does: it has no entry for the check pages, no web accessible resources and no code behind the
+ * `__FILE_CHECK__` switch. A Chrome or Edge build never has it, even when a shell has set
+ * `FIREFOX_TEST_VERSION`.
  */
-const FILE_CHECK = Boolean(TEST_VERSION) || process.env['WXT_E2E'] === '1';
+function hasFileCheck(browser: string): boolean {
+  return (Boolean(TEST_VERSION) && browser === 'firefox') || process.env['WXT_E2E'] === '1';
+}
 const FILE_CHECK_PAGES = ['file-check', 'file-probe'];
 
 export default defineConfig({
@@ -56,8 +60,8 @@ export default defineConfig({
   publicDir: 'src/public',
   manifestVersion: 3,
   hooks: {
-    'entrypoints:found': (_wxt, infos) => {
-      if (FILE_CHECK) return;
+    'entrypoints:found': (wxt, infos) => {
+      if (hasFileCheck(wxt.config.browser)) return;
       for (let i = infos.length - 1; i >= 0; i -= 1) {
         if (FILE_CHECK_PAGES.includes(infos[i]?.name ?? '')) infos.splice(i, 1);
       }
@@ -74,8 +78,8 @@ export default defineConfig({
       );
     },
   },
-  vite: () => ({
-    define: { __FILE_CHECK__: JSON.stringify(FILE_CHECK) },
+  vite: ({ browser }) => ({
+    define: { __FILE_CHECK__: JSON.stringify(hasFileCheck(browser)) },
     plugins: [preact(), pagesShareOneChunk()],
     build: {
       // The pages are local files, so a preload link for the shared chunk only adds bytes.
@@ -112,7 +116,7 @@ export default defineConfig({
     // Canvas. The match pattern cannot name the saved Canvas, so the background injects the
     // iframe into that origin only. Chromium gives the page a session address with
     // `use_dynamic_url`; Firefox already gives each install its own address.
-    ...(FILE_CHECK
+    ...(hasFileCheck(browser)
       ? {
           web_accessible_resources: [
             {

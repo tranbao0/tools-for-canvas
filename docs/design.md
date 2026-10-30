@@ -1736,7 +1736,9 @@ The owner runs it on `sjsu.instructure.com` in Firefox and pastes the report.
 - Frame check: the background injects a function that adds a hidden iframe of `file-probe.html` to the Canvas tab.
   The probe page posts a nonce to its parent.
   The function waits 3 seconds for it, then removes the iframe in every case.
-  The background also sends a `HEAD` request for the page and reads its `content-security-policy` and `content-security-policy-report-only` headers.
+  The background also sends a `HEAD` request for the page, without its query, and reads its `content-security-policy` and `content-security-policy-report-only` headers.
+  On Canvas a `HEAD` request runs the action of a `GET` request.
+  So for a page where that could do more than show a page (a file page, a download or a tool launch), the check asks the front page `/` instead.
 
 **Security.**
 
@@ -1748,6 +1750,9 @@ The owner runs it on `sjsu.instructure.com` in Firefox and pastes the report.
   Only the redirect leaves the origin, because that is the question of the check.
 - Every step works on the saved Canvas only (decision 5).
   The background reads the saved address and compares it with the tab URL at each step, and again after the frame probe.
+  A tab can move between that check and the injection.
+  So each injected function gets the saved origin, and returns `wrong_origin` at once, without reading the page or adding the iframe, when `location.origin` is another origin.
+  Without this, a Firefox page could read the stable address of the extension from the iframe.
   Only extension pages may run a step.
   The settings link may also send "open" from the top frame of the saved Canvas.
 - The report holds hosts, structural paths, counts, statuses, media types and byte counts, and nothing else.
@@ -1757,6 +1762,16 @@ The owner runs it on `sjsu.instructure.com` in Firefox and pastes the report.
 - The probe page posts only to the saved Canvas origin, read from the trusted storage, and the injected function accepts only a message from its own iframe with the right nonce.
   A hostile page can read the nonce and fake the handshake.
   That can only falsify this diagnostic, which sends nothing anywhere.
+- The first 5 bytes of a file are part of the report, as the owner asked.
+  A text file would show its first letters.
+  The page and the tester read the report before they paste it.
+  The bytes `?` and `#` show as escapes, so the last pass does not cut them.
+- The follow-up request for the file bytes follows the redirect to any host with the student's cookies, because that is the question of the check.
+  A hostile saved Canvas could send it to another site.
+  That needs the student to confirm a hostile Canvas first, and the check exists in test builds only, so the risk is accepted.
+- The hooks list shows class names and `data-` names from the page.
+  Names with three digits in a row are left out.
+  A teacher can write a class name in rich content, so the tester reads the report before pasting it.
 
 **`web_accessible_resources`.**
 
@@ -1772,11 +1787,13 @@ The owner runs it on `sjsu.instructure.com` in Firefox and pastes the report.
 
 **Test builds only.**
 
-- `wxt.config.ts` sets `FILE_CHECK` when `FIREFOX_TEST_VERSION` or `WXT_E2E=1` is set.
-  It then keeps the two pages (`file-check`, `file-probe`) and adds the manifest entry.
+- `wxt.config.ts` includes the check when the build is for Firefox and `FIREFOX_TEST_VERSION` is set, or when `WXT_E2E=1` is set.
+  A Chrome or Edge build never has it because of `FIREFOX_TEST_VERSION`.
+  The build then keeps the two pages (`file-check`, `file-probe`) and adds the manifest entry.
   It also defines `__FILE_CHECK__` as a literal, so the branches behind it fall away in a store build.
   The text of the group is in the code of the check, not in `_locales`, so it stays out of the store message file.
 - `scripts/lib/ensure-build.mjs` removes `FIREFOX_TEST_VERSION` and `WXT_E2E` from the environment of a release build.
+  It also counts a release folder that holds `file-check.html` as stale.
 - `npm run check:file-check` fails when a built store target holds a page, a string or a manifest entry of the check.
   It runs at the end of `npm run check`, after a build without the flag.
 

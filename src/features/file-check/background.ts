@@ -48,8 +48,10 @@ export interface FileCheckHost {
   tabsOnOrigin(origin: string): Promise<CanvasTab[]>;
   /** The page address of a tab, or `undefined`. */
   tabUrl(tabId: number): Promise<string | undefined>;
-  runScan(tabId: number): Promise<unknown>;
-  runFrame(tabId: number, nonce: string): Promise<unknown>;
+  /** Runs the scan in the tab. The function reads the page only if its origin is `origin`. */
+  runScan(tabId: number, origin: string): Promise<unknown>;
+  /** Runs the frame probe in the tab. The function adds the iframe only if the origin is `origin`. */
+  runFrame(tabId: number, nonce: string, origin: string): Promise<unknown>;
   openCheckPage(): Promise<void>;
   newNonce(): string;
   fetchImpl?: typeof fetch;
@@ -131,14 +133,29 @@ async function fetchFileApi(
   }
 }
 
+/**
+ * Paths where a request can do more than show a page: a download adds an access record, and a tool
+ * launch starts the tool. A HEAD request runs the action of a GET request on Canvas, so a HEAD of
+ * such a page asks the front page instead. The policy header is the same for every page.
+ */
+const ACTION_PATH = /\/(?:download|external_tools|sessionless_launch)(?:\/|$)|\/files\/[^/]+\/?$/;
+
+/** The address to ask for the policy header: the page without its query, or the front page. */
+export function headAddress(pageUrl: string, origin: string): string {
+  const url = parseUrl(pageUrl);
+  if (url === null || ACTION_PATH.test(url.pathname)) return `${origin}/`;
+  return `${origin}${url.pathname}`;
+}
+
 /** A HEAD of the page that the tab shows, to read its content security policy header. */
 async function headOfPage(
   host: FileCheckHost,
   origin: string,
   pageUrl: string,
 ): Promise<HeadResult> {
+  const address = headAddress(pageUrl, origin);
   const result: HeadResult = {
-    path: describePath(pageUrl, origin),
+    path: describePath(address, origin),
     status: null,
     error: null,
     csp: null,
@@ -147,7 +164,7 @@ async function headOfPage(
   try {
     const response = await canvasFetch(
       origin,
-      pageUrl,
+      address,
       { method: 'HEAD', accept: 'text/html' },
       host.fetchImpl,
     );
@@ -177,7 +194,11 @@ async function scanReply(host: FileCheckHost, origin: string): Promise<FileCheck
   const tab = pickTab(await host.tabsOnOrigin(origin));
   if (tab === null) return { tabId: null, scan: null, error: 'no_canvas_tab' };
   try {
-    return { tabId: tab.id, scan: normalizeScan(await host.runScan(tab.id)), error: null };
+    const raw = await host.runScan(tab.id, origin);
+    if ((raw as { wrongOrigin?: unknown } | null)?.wrongOrigin === true) {
+      return { tabId: tab.id, scan: null, error: 'wrong_origin' };
+    }
+    return { tabId: tab.id, scan: normalizeScan(raw), error: null };
   } catch (error) {
     logFailure('file check scan', error);
     return { tabId: tab.id, scan: null, error: 'scan_failed' };
@@ -203,9 +224,13 @@ async function frameReply(
   const pageUrl = await tabOnSavedCanvas(host, origin, tabId);
   if (pageUrl === null) throw new Error('The tab does not show the saved Canvas');
   const head = await headOfPage(host, origin, pageUrl);
+  // The HEAD request takes time, so the tab is checked again just before the injection.
+  if ((await tabOnSavedCanvas(host, origin, tabId)) === null) {
+    throw new Error('The tab left the saved Canvas during the check');
+  }
   let raw: unknown;
   try {
-    raw = await host.runFrame(tabId, host.newNonce());
+    raw = await host.runFrame(tabId, host.newNonce(), origin);
   } catch (error) {
     logFailure('file check frame', error);
     raw = {
@@ -286,18 +311,19 @@ export const browserFileCheckHost: FileCheckHost = {
   async tabUrl(tabId) {
     return (await browser.tabs.get(tabId)).url;
   },
-  async runScan(tabId) {
+  async runScan(tabId, origin) {
     const [injected] = await browser.scripting.executeScript({
       target: { tabId, frameIds: [0] },
       func: scanPage,
+      args: [origin],
     });
     return injected?.result;
   },
-  async runFrame(tabId, nonce) {
+  async runFrame(tabId, nonce, origin) {
     const [injected] = await browser.scripting.executeScript({
       target: { tabId, frameIds: [0] },
       func: runFrameProbe,
-      args: [nonce, PROBE_TIMEOUT_MS],
+      args: [nonce, PROBE_TIMEOUT_MS, origin],
     });
     return injected?.result;
   },
