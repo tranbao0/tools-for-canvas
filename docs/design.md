@@ -1006,6 +1006,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
   Past due never changes under the student after that.
 - The rings count what has arrived and grow as more does.
   They show no check mark and no "Nothing due" until every day and Past due have loaded.
+  The "N late" badges of the legend wait for Past due, so a badge never grows while its range loads.
   The refresh marker stays on until the shown span and Past due are complete.
 - The assignment details of arrived items load after their planner items, in batches: a batch takes every item that arrived while the batch before it loaded.
   The chips and the done marks fill in then.
@@ -1027,7 +1028,8 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 - A failed load of a week that a surface shows leads to the same states as a failed round.
   The days that arrived stay on screen with the "Couldn't refresh" line, and nothing shows as loading any more.
   The days that never arrived show nothing, the view does not say that nothing is due, the rings do not show a check mark, and Past due stays out until its range is in.
-  When no day of the span arrived, the surface shows "Couldn't load your list".
+  When no day of the span arrived, the surface shows "Couldn't load your list" under the usual header.
+  The arrows, Today and the span control stay, so the student can step to a span that is in the cache.
   A 403 starts a full round, which finds out whether the school now limits the planner.
 
 **Requests:**

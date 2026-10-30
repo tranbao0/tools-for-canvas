@@ -25,6 +25,8 @@ export interface HeaderProps {
   onSpan: ((span: Span) => void) | null;
   /** Moves from the span the student last asked for: -1 or 1. */
   onStep(delta: number): void;
+  /** Keeps Today on although there is no view, after a failed load. */
+  todayEnabled?: boolean;
   onToday(): void;
   onAdd(): void;
   onSettings(): void;
@@ -36,7 +38,7 @@ export function Header(props: HeaderProps) {
   const [pending, setPending] = useState(false);
   const refreshing = props.refreshing || pending;
   const addDisabled = view === null || props.addDisabledReason !== null;
-  const todayOff = view === null || view.isCurrentSpan;
+  const todayOff = props.todayEnabled === true ? false : view === null || view.isCurrentSpan;
   const unit = spanUnit(props.span);
   const prev = t('prevSpan', unit);
   const next = t('nextSpan', unit);

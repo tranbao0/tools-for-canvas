@@ -24,6 +24,7 @@ import {
 
 /** 00:00 on Tuesday Nov 3 in New York: the first day after the first week. */
 const NOV_3 = Date.parse('2026-11-03T05:00:00.000Z');
+const DAY = 24 * 60 * 60 * 1000;
 /** 00:00 on Tuesday Oct 27 in New York. */
 const OCT_27 = Date.parse('2026-10-27T04:00:00.000Z');
 
@@ -169,7 +170,8 @@ test('Past due shows "Loading past due…" and then its items', async ({
   background,
   extensionUrl,
 }) => {
-  const gate = holdPlanner((range) => range.end < OCT_27);
+  // The nearest chunk of the past-due range arrives, and the older ones wait.
+  const gate = holdPlanner((range) => range.end < OCT_27 - 30 * DAY);
   const { canvas } = await serveScenario(context, [], {
     plannerPageSize: 100,
     plannerGate: gate.hold,
@@ -184,12 +186,17 @@ test('Past due shows "Loading past due…" and then its items', async ({
   await expect(pastDue).toContainText('Loading past due…');
   await expect(mainRows(pastDue)).toHaveCount(0);
   await expect(page.getByRole('progressbar', { name: 'Refreshing' })).toBeVisible();
+  // The late badges of the ring legend wait for the whole Past due range.
+  await expect(page.locator('.wr-legend-row').first()).toBeVisible();
+  expect(gate.held.length).toBeGreaterThan(0);
+  await expect(page.locator('.wr-legend-row em')).toHaveCount(0);
 
   gate.release();
 
   await expect(pastDue).not.toHaveAttribute('data-loading', 'true');
   await expect(pastDue).not.toContainText('Loading past due');
   await expect(mainRows(pastDue).first()).toBeVisible();
+  await expect(page.locator('.wr-legend-row em').first()).toBeVisible();
   await settledList(page);
   expect(canvas.unmatched).toEqual([]);
 });

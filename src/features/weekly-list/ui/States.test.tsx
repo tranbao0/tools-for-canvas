@@ -166,6 +166,18 @@ describe('access and sign-in', () => {
     expect(actions.retry).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the header and the arrows, so the student can step to a cached span', () => {
+    const actions = setup({ kind: 'cant_load', origin: ORIGIN, offline: false, offer: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Next week' }));
+    expect(actions.stepSpan).toHaveBeenCalledWith(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Previous week' }));
+    expect(actions.stepSpan).toHaveBeenCalledWith(-1);
+    // The span on screen is not known, so Today stays on.
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }));
+    expect(actions.goToSpan).toHaveBeenCalledWith(0);
+    expect(screen.getByRole('heading', { name: "Couldn't load your list" })).toBeTruthy();
+  });
+
   it('says "You\'re offline." after a network error only when the browser is offline', () => {
     const state: SurfaceState = {
       kind: 'cant_load',

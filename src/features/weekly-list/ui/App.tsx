@@ -116,6 +116,26 @@ export function App(props: AppProps) {
         onSettings={openSettings}
       />
     );
+  } else if (state.kind === 'cant_load') {
+    // The header and the arrows stay, so the student can step to a span that is cached.
+    body = (
+      <LoadingView
+        surface={surface}
+        span={props.settings?.value.span ?? DEFAULT_SPAN}
+        settings={props.settings?.value}
+        actions={actions}
+        onSettings={openSettings}
+        failed={
+          <StateBody
+            state={state}
+            actions={actions}
+            level={subLevel(level)}
+            context="surface"
+            showOffer={surface === 'panel'}
+          />
+        }
+      />
+    );
   } else {
     body = (
       <>
@@ -144,7 +164,9 @@ export function App(props: AppProps) {
 
 /**
  * Loading before any data: the header keeps its final layout and works, and a spinner shows, as
- * in Canvas's To Do. The student can already pick a span or step to another one.
+ * in Canvas's To Do. The student can already pick a span or step to another one. After a failed
+ * load, `failed` replaces the spinner, and the header works the same way, with Today on, because
+ * the span on screen is not known.
  */
 function LoadingView(props: {
   surface: SurfaceKind;
@@ -152,6 +174,7 @@ function LoadingView(props: {
   settings: Settings | undefined;
   actions: Actions;
   onSettings: OpenSettings;
+  failed?: ComponentChildren;
 }) {
   const { settings, actions } = props;
   return (
@@ -164,13 +187,16 @@ function LoadingView(props: {
         span={props.span}
         onSpan={settings ? (span) => actions.saveSettings({ ...settings, span }) : null}
         onStep={(delta) => actions.stepSpan(delta)}
+        todayEnabled={props.failed !== undefined}
         onToday={() => actions.goToSpan(0)}
         onAdd={() => undefined}
         onSettings={() => props.onSettings('gear')}
       />
-      <div class="wr-state">
-        <Spinner text={t('loading')} />
-      </div>
+      {props.failed ?? (
+        <div class="wr-state">
+          <Spinner text={t('loading')} />
+        </div>
+      )}
     </>
   );
 }

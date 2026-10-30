@@ -1384,16 +1384,17 @@ describe('days and Past due that are still loading', () => {
     expect(done.loading).toBe(false);
   });
 
-  it('shows Past due as one loading group with none of its items, and still counts them late', () => {
+  it('shows Past due as one loading group with none of its items, and counts no late item yet', () => {
     const shown = buildWeekView(input({ ...withItems, loading: { days: [], pastDue: true } }));
 
     const pastDue = shown.groups[0];
     expect(pastDue).toMatchObject({ kind: 'past_due', loading: true, items: [], older: [] });
     expect(shown.loading).toBe(true);
-    // The rings grow with what has arrived.
-    expect(shown.rings[0]?.pastDue).toBe(2);
+    // The late counts wait for the whole range, so no ring shows a count that still grows.
+    expect(shown.rings.map((ring) => ring.pastDue)).toEqual(shown.rings.map(() => 0));
     // The real group replaces the line once the range is loaded.
     const loaded = buildWeekView(input(withItems));
+    expect(loaded.rings.some((ring) => ring.pastDue > 0)).toBe(true);
     expect(loaded.groups[0]?.loading).toBeUndefined();
     expect(loaded.groups[0]?.items.length).toBe(1);
   });

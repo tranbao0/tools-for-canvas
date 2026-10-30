@@ -130,14 +130,14 @@ function placeItem(item: Item, input: ModelInput, context: PlacementContext): Pl
   };
 }
 
-function ringEntry(placed: Placed): RingEntry {
+function ringEntry(placed: Placed, hidePastDue: boolean): RingEntry {
   const view = placed.view;
   return {
     courseId: view.courseId,
     contextLabel: view.contextLabel,
     counted: placed.datedInSpan && view.state !== 'skipped' && !view.isReminder,
     done: view.state === 'done',
-    pastDue: isCountedPastDue(placed.slot),
+    pastDue: !hidePastDue && isCountedPastDue(placed.slot),
   };
 }
 
@@ -356,7 +356,14 @@ export function buildWeekView(input: ModelInput): WeekView {
     positions: input.positions,
     userId: input.profile.id,
   };
-  const rings = input.settings.showRings ? buildRings(placed.map(ringEntry), ringParams) : [];
+  // The late counts wait for the whole Past due range, so a badge never grows while it loads.
+  const loadingPastDue = input.loading?.pastDue === true;
+  const rings = input.settings.showRings
+    ? buildRings(
+        placed.map((entry) => ringEntry(entry, loadingPastDue)),
+        ringParams,
+      )
+    : [];
 
   const courses = new Map(input.courses.map((course) => [course.id, course]));
   const labels = new Map(
