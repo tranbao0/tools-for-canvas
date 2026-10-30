@@ -55,6 +55,19 @@ export function useScenarioClock(now: string = SCENARIO_NOW): void {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], now: Date.parse(now) });
 }
 
+/** Every owner a test built, so the test can wait for the work that its last request started. */
+const owners: DataOwner[] = [];
+
+/** Waits until every owner of the test has no request, write or storage write left. */
+export async function settleAll(): Promise<void> {
+  await Promise.all(owners.splice(0).map((owner) => owner.settled()));
+}
+
+function track(owner: DataOwner): DataOwner {
+  owners.push(owner);
+  return owner;
+}
+
 export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   fakeBrowser.reset();
   const scenario = options.scenario ?? buildScenario(new Date(Date.now()).toISOString());
@@ -93,12 +106,12 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
   };
   return {
     canvas,
-    owner: createDataOwner(deps),
+    owner: track(createDataOwner(deps)),
     deps,
     hasAccess,
     createApi,
     log,
-    restart: () => createDataOwner(deps),
+    restart: () => track(createDataOwner(deps)),
   };
 }
 
@@ -111,17 +124,22 @@ export function expectReady(state: StateReply): ReadyState {
 
 /**
  * Loads the first view and waits for every request, including the neighbor weeks that load in
- * the background once the view shows.
+ * the background once the view shows. A surface asks again after every change, so this asks
+ * again until a request starts nothing new.
  */
 export async function loadReady(
   harness: Harness,
   request: SurfaceRequest = PANEL,
 ): Promise<ReadyState> {
-  await harness.owner.getState(request);
-  await harness.owner.settled();
-  const state = expectReady(await harness.owner.getState(request));
-  await harness.owner.settled();
-  return state;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const calls = harness.canvas.calls.length;
+    const state = await harness.owner.getState(request);
+    await harness.owner.settled();
+    if (state.kind === 'ready' && !state.refreshing && harness.canvas.calls.length === calls) {
+      return state;
+    }
+  }
+  throw new Error('The view did not settle');
 }
 
 export function viewItems(view: WeekView): ItemView[] {

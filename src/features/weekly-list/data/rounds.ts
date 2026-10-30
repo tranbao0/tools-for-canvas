@@ -34,9 +34,9 @@ import {
   chunkInterval,
   coveredItems,
   emptyCoverage,
-  isCovered,
   itemTimes,
   mergeFetched,
+  mergeIntervals,
   toInterval,
   toRange,
   type FetchedPart,
@@ -149,6 +149,11 @@ interface RoundContext {
   rangesInUse(session: SessionData): TimeRange[];
   /** Assignment ids whose details another load is fetching now. */
   detailsInFlight: ReadonlySet<string>;
+  /**
+   * Called as soon as a round that starts with no session has loaded it, so the surfaces can
+   * show the frame and load the planner while the rest of the round runs.
+   */
+  onSession?(session: SessionData): void;
   /** Epoch milliseconds. */
   now: number;
 }
@@ -242,13 +247,35 @@ export async function fetchParts(
   return chunks.map((interval, index) => ({ interval, items: lists[index] ?? [] }));
 }
 
+/** A probe request covers this much of the end of the range. */
+const PROBE_MS = 24 * 3_600_000;
+
 /**
- * The chunks a light or full round reloads: the planner range of the current-week view. Where
- * the cache already covers it, the cached items show how to split it into one-page chunks.
+ * The chunks a light or full round reloads: the parts of the current-week range that the cache
+ * already holds, split into one-page chunks by the cached items. The parts it lacks load
+ * through the planner jobs of the views, nearest days first, and show as they arrive.
+ *
+ * A full round that finds nothing to reload still sends one small `probe` request, so it learns
+ * whether the school limits the planner. The request that fails with a 403 in a planner job
+ * starts such a round.
  */
-export function roundChunks(coverage: PlannerCoverage, current: TimeRange): Interval[] {
+export function roundChunks(
+  coverage: PlannerCoverage,
+  current: TimeRange,
+  probe: boolean,
+): Interval[] {
   const interval = toInterval(current);
-  return chunkInterval(interval, isCovered(coverage, interval) ? itemTimes(coverage) : null);
+  const held = mergeIntervals(
+    coverage.spans.flatMap((span) => {
+      const start = Math.max(span.start, interval.start);
+      const end = Math.min(span.end, interval.end);
+      return start < end ? [{ start, end }] : [];
+    }),
+  );
+  const times = itemTimes(coverage);
+  const chunks = held.flatMap((part) => chunkInterval(part, times));
+  if (chunks.length > 0 || !probe) return chunks;
+  return [{ start: Math.max(interval.start, interval.end - PROBE_MS), end: interval.end }];
 }
 
 interface PlannerResult {
@@ -355,7 +382,11 @@ export async function runRound(context: RoundContext): Promise<RoundUpdate> {
   const overrideList = shared(() => api.listPlannerOverrides());
   // A round that loads the session gets the user from the profile, so it needs no check.
   const userCheck = cache.session !== null ? checkUser(self, cache.session) : null;
-  const session = cache.session ?? (await loadSession(api));
+  let session = cache.session;
+  if (session === null) {
+    session = await loadSession(api);
+    context.onSession?.(session);
+  }
   const failedCourses = new Set<string>();
   const hidden = new Set(context.hiddenCourseIds);
   const visible = session.courses.filter((course) => !hidden.has(course.id)).map((c) => c.id);
@@ -383,7 +414,7 @@ export async function runRound(context: RoundContext): Promise<RoundUpdate> {
       ? []
       : cache.limited
         ? [toInterval(current)]
-        : roundChunks(cache.planner, current);
+        : roundChunks(cache.planner, current, kind === 'full' && cache.session !== null);
   // A round that finds the planner limited does not use the undated work. When the planner
   // fails first, the round fails with the planner's error, so the undated load's own failure
   // is handled here and dropped.

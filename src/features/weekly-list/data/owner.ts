@@ -11,6 +11,7 @@
 import type { RequestPriority } from '../../../shared/canvas/limiter';
 import type {
   CanvasApi,
+  PlannerItem,
   PlannerNote,
   PlannerOverride,
   TimeRange,
@@ -34,13 +35,16 @@ import {
   clipCoverage,
   coveredItems,
   gapsIn,
+  intersectIntervals,
   itemTimes,
   mergeFetched,
   mergeIntervals,
+  nearChunks,
   overlaps,
   staleParts,
   subtractIntervals,
   toInterval,
+  toRange,
   withItems,
   type FetchedPart,
   type Interval,
@@ -79,7 +83,6 @@ import {
   UserChangedError,
   clearData,
   commitUpdate,
-  fetchParts,
   loadDetails,
   loadStatuses,
   missingDetailIds,
@@ -93,11 +96,13 @@ import {
   canvasTimeZone,
   courseChoices,
   isoInstant,
+  loadPlan,
   offerForSurface,
   plannerRangeForView,
   skippedCourseChoices,
   viewFor,
   spanRange,
+  type LoadPlan,
   type ViewContext,
 } from './state';
 
@@ -205,20 +210,28 @@ interface ShownView {
 }
 
 /**
- * A planner load outside the refresh rounds, so a new week never waits behind a round. It loads
- * planner items first and shows them, then the assignment details of those items.
+ * A planner load outside the refresh rounds, so a new week never waits behind a round. Its chunks
+ * go into the cache one by one as they arrive, and the days they cover show at once. The
+ * assignment details of the arrived items load after them, in batches.
  */
 interface PlannerJob {
-  chunks: Interval[];
+  /** Every interval the job loads, to match the views that need it. */
+  all: Interval[];
+  /** The chunks that are not in the cache yet, nearest to today first. */
+  waiting: Interval[];
+  /** The chunks that are in the cache, while the assignment details of their items still load. */
+  undetailed: Interval[];
   /** Read when a request slot frees up, so a prefetch that a view now needs goes first. */
   priority: RequestPriority;
   /** A surface shows the week, so the list shows the refresh marker until the job ends. */
   shown: boolean;
-  /** `planner` until the items are in the cache, then `details`. */
+  /** `planner` until every chunk is in the cache, then `details`. */
   phase: 'planner' | 'details';
   /** Epoch milliseconds when the job started. */
   startedAt: number;
 }
+
+const PRIORITY_RANK: Readonly<Record<RequestPriority, number>> = { high: 2, normal: 1, low: 0 };
 
 function hull(intervals: readonly Interval[]): Interval {
   return {
@@ -356,6 +369,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   /** Assignment ids whose details a planner job is fetching now. */
   const detailsInFlight = new Set<string>();
   const pending: Record<RoundScope, boolean> = { full: false, light: false };
+  /** A full round is on its way to find out whether the school limits the planner. */
+  let limitCheckPending = false;
   let running = false;
   let runner: Promise<void> = Promise.resolve();
   let deferTimer: unknown = null;
@@ -740,6 +755,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   async function executeRound(job: RoundScope): Promise<void> {
+    try {
+      await runExecutedRound(job);
+    } finally {
+      limitCheckPending = false;
+    }
+  }
+
+  async function runExecutedRound(job: RoundScope): Promise<void> {
     const origin = knownOrigin;
     if (origin === null || cache === null) return;
     if (!(await deps.hasAccess(origin))) return;
@@ -768,6 +791,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         rangesInUse: (session) => rangesInUse(session, context),
         detailsInFlight,
         now: startedAt,
+        onSession: (session) => {
+          // The frame and the planner jobs of the views need the session, not the rest of the round.
+          if (gen !== generation || cache === null || cache.session !== null) return;
+          cache = { ...cache, session };
+          persist();
+          bumpLater();
+        },
       });
     } catch (error) {
       if (error instanceof UserChangedError) {
@@ -833,9 +863,20 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   // Planner jobs
   // ---------------------------------------------------------------------------------------------
 
-  /** The intervals that running jobs are fetching now. */
+  /** The intervals that running jobs have not put into the cache yet. */
   function pendingIntervals(): Interval[] {
-    return [...jobs].filter((job) => job.phase === 'planner').flatMap((job) => job.chunks);
+    return [...jobs].flatMap((job) => job.waiting);
+  }
+
+  /**
+   * Whether a running job still loads the planner items or the assignment details of any part
+   * of `interval`. The Past due group waits for both, because a handed-in item leaves it only
+   * once its details arrive.
+   */
+  function loadingIn(interval: Interval): boolean {
+    return [...jobs].some((job) =>
+      [...job.waiting, ...job.undetailed].some((chunk) => overlaps(chunk, interval)),
+    );
   }
 
   /** Planner jobs run only on the data of a signed-in session with the planner on and no failed round. */
@@ -845,33 +886,94 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return cache.planner;
   }
 
+  /** Orders chunks by their distance from today, the nearest first. */
+  function nearestFirst(chunks: Interval[], today: number): Interval[] {
+    const distance = (chunk: Interval): number =>
+      chunk.end <= today ? today - chunk.end : Math.max(0, chunk.start - today);
+    return [...chunks].sort((a, b) => distance(a) - distance(b));
+  }
+
+  /** Starts a job for `chunks`, if there are any. */
+  function startLoad(
+    chunks: Interval[],
+    priority: RequestPriority,
+    shown: boolean,
+    context: ViewContext,
+  ): void {
+    if (chunks.length === 0) return;
+    startJob(
+      {
+        all: [...chunks],
+        waiting: [...chunks],
+        undetailed: [],
+        priority,
+        shown,
+        phase: 'planner',
+        startedAt: clock.now(),
+      },
+      context,
+      false,
+    );
+  }
+
   /**
-   * Loads the parts of a planner range that the cache lacks and no job fetches yet, in chunks
-   * that load side by side. For a view, a running job that fetches any part of the range turns
-   * urgent and shows the refresh marker.
+   * Makes the running jobs that load any part of `interval` at least as urgent as `priority`,
+   * and marks them as shown. No second request starts for what they load.
    */
-  function loadGaps(range: TimeRange, kind: 'view' | 'prefetch', context: ViewContext): void {
+  function raiseJobs(interval: Interval, priority: RequestPriority): void {
+    for (const job of jobs) {
+      if (!job.all.some((chunk) => overlaps(chunk, interval))) continue;
+      if (PRIORITY_RANK[job.priority] < PRIORITY_RANK[priority]) job.priority = priority;
+      job.shown = true;
+    }
+  }
+
+  /**
+   * Loads what the cache lacks for a view that a surface shows (decision 11):
+   * - the days of the shown span, nearest to today first, in short chunks at high priority;
+   * - the rest of the planner range, which holds the Past due items, at normal priority.
+   * A running job that already loads a part of it turns urgent and shows the refresh marker.
+   * The Past due job never rises above normal, so it cannot take a slot from the shown days.
+   */
+  function loadView(session: SessionData, spanOffset: number, context: ViewContext): void {
     const coverage = plannerCoverage();
     if (coverage === null) return;
-    const interval = toInterval(range);
-    if (kind === 'view') {
-      for (const job of jobs) {
-        if (job.chunks.some((chunk) => overlaps(chunk, interval))) {
-          job.priority = 'high';
-          job.shown = true;
-        }
-      }
-    }
-    const gaps = gapsIn(coverage, interval, pendingIntervals());
-    if (gaps.length === 0) return;
-    const job: PlannerJob = {
-      chunks: gaps.flatMap((gap) => chunkInterval(gap, null)),
-      priority: kind === 'view' ? 'high' : 'low',
-      shown: kind === 'view',
-      phase: 'planner',
-      startedAt: clock.now(),
-    };
-    startJob(job, context, false);
+    const plan = loadPlan(session, spanOffset, context);
+    raiseJobs(plan.range, 'normal');
+    raiseJobs(plan.near, 'high');
+    const gaps = gapsIn(coverage, plan.range, pendingIntervals());
+    const nearGaps = intersectIntervals(gaps, plan.near);
+    const near = (plan.backward ? nearGaps.reverse() : nearGaps).flatMap((gap) =>
+      nearChunks(gap, plan.backward, plan.addDays),
+    );
+    startLoad(near, 'high', true, context);
+    const rest = gaps.flatMap((gap) => subtractIntervals(gap, [plan.near]));
+    startLoad(
+      nearestFirst(
+        rest.flatMap((gap) => chunkInterval(gap, null)),
+        plan.today,
+      ),
+      'normal',
+      true,
+      context,
+    );
+  }
+
+  /** Loads the planner range of a neighbor span in the background, at the lowest priority. */
+  function prefetch(session: SessionData, spanOffset: number, context: ViewContext): void {
+    const coverage = plannerCoverage();
+    if (coverage === null) return;
+    const plan: LoadPlan = loadPlan(session, spanOffset, context);
+    const gaps = gapsIn(coverage, plan.range, pendingIntervals());
+    startLoad(
+      nearestFirst(
+        gaps.flatMap((gap) => chunkInterval(gap, null)),
+        plan.today,
+      ),
+      'low',
+      false,
+      context,
+    );
   }
 
   /**
@@ -896,30 +998,32 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const reloadDetails =
       lastFullAt !== null && own.some((part) => staleParts(coverage, part, lastFullAt).length > 0);
     const times = itemTimes(coverage);
-    const job: PlannerJob = {
-      chunks: stale.flatMap((part) => chunkInterval(part, times)),
-      priority: 'normal',
-      shown: true,
-      phase: 'planner',
-      startedAt: clock.now(),
-    };
-    startJob(job, context, reloadDetails);
+    const chunks = stale.flatMap((part) => chunkInterval(part, times));
+    startJob(
+      {
+        all: [...chunks],
+        waiting: [...chunks],
+        undetailed: [],
+        priority: 'normal',
+        shown: true,
+        phase: 'planner',
+        startedAt: clock.now(),
+      },
+      context,
+      reloadDetails,
+    );
   }
 
   /** After a view shows: its week catches up after a round, and its neighbor weeks load ahead. */
   function loadAround(session: SessionData, spanOffset: number, context: ViewContext): void {
     if (spanOffset !== 0) refreshIfStale(session, spanOffset, context);
-    for (const offset of [spanOffset + 1, spanOffset - 1]) {
-      loadGaps(plannerRangeForView(session, offset, context), 'prefetch', context);
-    }
+    for (const offset of [spanOffset + 1, spanOffset - 1]) prefetch(session, offset, context);
   }
 
   /** Whether a job for a week that a surface shows touches this planner range. */
   function shownJobRunning(range: TimeRange): boolean {
     const interval = toInterval(range);
-    return [...jobs].some(
-      (job) => job.shown && job.chunks.some((chunk) => overlaps(chunk, interval)),
-    );
+    return [...jobs].some((job) => job.shown && job.all.some((chunk) => overlaps(chunk, interval)));
   }
 
   function startJob(job: PlannerJob, context: ViewContext, reloadDetails: boolean): void {
@@ -941,8 +1045,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   /**
-   * Runs a planner job: its items go into the cache and show as soon as they arrive, then the
-   * assignment details of those items fill in the chips.
+   * Runs a planner job. Its chunks load side by side, and each goes into the cache and shows as
+   * soon as it arrives. The assignment details of the arrived items then fill in the chips, in
+   * batches: a batch takes every item that arrived while the one before it loaded.
    */
   async function runJob(
     job: PlannerJob,
@@ -951,53 +1056,88 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     reloadDetails: boolean,
   ): Promise<void> {
     const gen = generation;
-    let parts: FetchedPart[];
-    try {
-      parts = await fetchParts(api, job.chunks);
-    } catch (error) {
+    let failed = false;
+    const wanted: FetchedPart[] = [];
+    let batches: Promise<void> = Promise.resolve();
+
+    const fail = async (error: unknown): Promise<void> => {
+      if (failed) return;
+      failed = true;
       jobs.delete(job);
       await jobFailed(job, error, api, gen);
-      return;
-    }
-    if (gen !== generation || cache?.session == null || cache.limited) return;
-    const session = cache.session;
-    let planner = mergeFetched(cache.planner, parts, job.startedAt);
-    // Items that loaded before a write's confirmation lack it, so confirmed writes go in again.
-    for (const patch of cache.patches) {
-      if (patch.confirmedAt !== null) planner = bakePlanner(planner, patch, session);
-    }
-    cache = prune({ ...cache, planner }, context);
-    job.phase = 'details';
-    const lookup = assignmentIdsToLookup(
-      parts.flatMap((part) => part.items),
-      context.settings.hiddenCourseIds,
-    );
-    const detailIds = reloadDetails
-      ? notInFlight(lookup)
-      : missingDetailIds(lookup, cache.details, detailsInFlight);
-    const ids = Object.values(detailIds).flat();
-    ids.forEach((id) => detailsInFlight.add(id));
-    persist();
-    await bump();
-    if (ids.length === 0) return;
-    let result: DetailsResult;
-    try {
-      result = await loadDetails(api, detailIds);
-    } catch (error) {
-      ids.forEach((id) => detailsInFlight.delete(id));
-      await jobFailed(job, error, api, gen);
-      return;
-    }
-    ids.forEach((id) => detailsInFlight.delete(id));
-    if (gen !== generation || cache?.session == null) return;
-    cache = {
-      ...cache,
-      details: { ...cache.details, ...result.details },
-      failedCourses: [...new Set([...cache.failedCourses, ...result.failedCourses])],
     };
-    loadStatusNames(context.settings, false);
-    persist();
-    await bump();
+
+    /** Loads the details that the items of `parts` lack. A failure fails the job. */
+    const loadDetailsOf = async (parts: FetchedPart[]): Promise<void> => {
+      const items = parts.flatMap((part) => part.items);
+      if (failed || items.length === 0 || gen !== generation || cache?.session == null) return;
+      const lookup = assignmentIdsToLookup(items, context.settings.hiddenCourseIds);
+      const detailIds = reloadDetails
+        ? notInFlight(lookup)
+        : missingDetailIds(lookup, cache.details, detailsInFlight);
+      const ids = Object.values(detailIds).flat();
+      if (ids.length === 0) return;
+      ids.forEach((id) => detailsInFlight.add(id));
+      let result: DetailsResult;
+      try {
+        result = await loadDetails(api, detailIds);
+      } catch (error) {
+        ids.forEach((id) => detailsInFlight.delete(id));
+        await fail(error);
+        return;
+      }
+      ids.forEach((id) => detailsInFlight.delete(id));
+      if (gen !== generation || cache?.session == null) return;
+      cache = {
+        ...cache,
+        details: { ...cache.details, ...result.details },
+        failedCourses: [...new Set([...cache.failedCourses, ...result.failedCourses])],
+      };
+      loadStatusNames(context.settings, false);
+    };
+
+    const loadBatch = async (): Promise<void> => {
+      const parts = wanted.splice(0);
+      await loadDetailsOf(parts);
+      if (failed || gen !== generation) return;
+      job.undetailed = job.undetailed.filter(
+        (chunk) => !parts.some((part) => part.interval === chunk),
+      );
+      persist();
+      await bump();
+    };
+
+    const arrive = async (part: FetchedPart): Promise<void> => {
+      if (failed || gen !== generation || cache?.session == null || cache.limited) return;
+      const session = cache.session;
+      let planner = mergeFetched(cache.planner, [part], job.startedAt);
+      // Items that loaded before a write's confirmation lack it, so confirmed writes go in again.
+      for (const patch of cache.patches) {
+        if (patch.confirmedAt !== null) planner = bakePlanner(planner, patch, session);
+      }
+      cache = prune({ ...cache, planner }, context);
+      job.waiting = job.waiting.filter((chunk) => chunk !== part.interval);
+      job.undetailed.push(part.interval);
+      if (job.waiting.length === 0) job.phase = 'details';
+      wanted.push(part);
+      batches = batches.then(loadBatch);
+      persist();
+      await bump();
+    };
+
+    await Promise.all(
+      [...job.waiting].map(async (chunk) => {
+        let items: PlannerItem[];
+        try {
+          items = await api.listPlannerItems(toRange(chunk));
+        } catch (error) {
+          await fail(error);
+          return;
+        }
+        await arrive({ interval: chunk, items });
+      }),
+    );
+    await batches;
   }
 
   /**
@@ -1014,7 +1154,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     deps.log('planner load', error);
     if (!job.shown || gen !== generation) return;
     if (isCanvasError(error, 'forbidden')) {
-      scheduleForcedFull();
+      // The jobs of one view fail together, and one round finds out for all of them.
+      if (cache?.limited !== true && !limitCheckPending) {
+        limitCheckPending = true;
+        scheduleForcedFull();
+      }
       return;
     }
     const failure = await failureFor(error, api, clock.now());
@@ -1688,13 +1832,18 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (cache === null) return { kind: 'loading' };
     const range = plannerRangeForView(session, request.spanOffset, context);
     noteShown(session, request.spanOffset, range, context);
-    loadGaps(range, 'view', context);
-    const result = viewFor(cache, session, request, context);
-    if (result === null) {
-      return blocksLoads(failure)
-        ? { kind: 'cant_load', origin, offline, offer }
-        : { kind: 'loading' };
-    }
+    loadView(session, request.spanOffset, context);
+    // After a failed load nothing is on its way, so no day shows as loading.
+    const failed = blocksLoads(failure);
+    const beforeNow = toInterval(range);
+    const result = viewFor(cache, session, request, context, {
+      show: !failed,
+      pastDuePending: loadingIn({
+        start: beforeNow.start,
+        end: Math.min(context.now, beforeNow.end),
+      }),
+    });
+    if (failed && !result.hasData) return { kind: 'cant_load', origin, offline, offer };
     if (result.exact) loadAround(session, request.spanOffset, context);
 
     const seenNotes = await store.seenNotes.getValue();
@@ -1706,7 +1855,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         failure?.kind === 'stale'
           ? { since: isoInstant(cache.lastSuccessAt ?? failure.at), offline }
           : null,
-      refreshing: running || !result.exact || shownJobRunning(range),
+      refreshing: running || (!failed && !result.exact) || shownJobRunning(range),
       offer,
       // The surface holds its own Undo notice.
       undo: null,

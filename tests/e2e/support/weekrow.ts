@@ -5,7 +5,12 @@ import { SCENARIO_NOW, buildScenario, type Scenario } from '../../fixtures/scena
 import { CanvasState } from './canvas-state';
 import { setBackgroundClock } from './clock';
 import { expect, test as base } from './extension';
-import { serveFakeCanvas, type FakeCanvas, type FakeCanvasRoute } from './fake-canvas';
+import {
+  serveFakeCanvas,
+  type FakeCanvas,
+  type FakeCanvasRoute,
+  type RecordedRequest,
+} from './fake-canvas';
 import type { StorageArea } from './scenario-api';
 
 export { expect };
@@ -46,6 +51,8 @@ export interface ScenarioOptions {
   latencyMs?: number;
   /** See `CanvasState.plannerPageSize`. */
   plannerPageSize?: number;
+  /** See `CanvasState.plannerGate`. */
+  plannerGate?: (request: RecordedRequest) => Promise<void> | undefined;
   /** The instant the scenario is built around. Defaults to `SCENARIO_NOW`. */
   now?: string;
   /** The origin of the Canvas. Defaults to the fake Canvas origin. */
@@ -67,6 +74,7 @@ export async function serveScenario(
   options.extend?.(scenario);
   const state = new CanvasState(scenario);
   state.plannerPageSize = options.plannerPageSize ?? null;
+  state.plannerGate = options.plannerGate ?? null;
   const canvas = await serveFakeCanvas(context, [...first, ...state.routes()], {
     latencyMs: options.latencyMs,
     origin: options.origin,

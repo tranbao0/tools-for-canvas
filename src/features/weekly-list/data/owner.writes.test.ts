@@ -19,6 +19,7 @@ import {
   signInOtherUser,
   useScenarioClock,
   type Harness,
+  settleAll,
 } from './testing/harness';
 
 const A = IDS.assignments;
@@ -29,7 +30,10 @@ const HOMEWORK_3 = `assignment:${A.mathHomework3}`;
 const TIME_ZONE = 'America/New_York';
 
 beforeEach(() => useScenarioClock());
-afterEach(() => vi.useRealTimers());
+afterEach(async () => {
+  await settleAll();
+  vi.useRealTimers();
+});
 
 async function loaded(): Promise<Harness> {
   const h = await createHarness();
@@ -157,11 +161,13 @@ describe('done marks', () => {
 
     // The next week loaded ahead, so the week after it needs a request.
     const next = { ...PANEL, spanOffset: 2 };
-    expect(await h.owner.getState(next)).toEqual({ kind: 'loading' });
+    const early = expectReady(await h.owner.getState(next));
+    expect(early.view.loading).toBe(true);
     await h.owner.settled();
 
     const state = expectReady(await h.owner.getState(next));
     expect(state.view.spanOffset).toBe(2);
+    expect(state.view.loading).toBe(false);
     expect(state.refreshing).toBe(false);
   });
 

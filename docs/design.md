@@ -797,7 +797,7 @@ Option A was the first decision, and it put the first days of a long span in the
 - The rings and the look-ahead follow the shown span.
   Past due does not: it holds the same overdue work in every span (see "Past-due work").
   Where this document says "the viewed week" or "this week", read "the shown span" and "the span that starts today".
-- A long span loads in several planner requests on the first view.
+- A long span loads in several planner requests, the days nearest to today first, and each day shows as soon as its request has answered.
   The cache keeps them, so the arrows and later views reuse what it holds (decision 11).
 - Date math uses the Temporal API.
   Chrome and Edge ship it from version 144, and Firefox from version 139 [18].
@@ -919,6 +919,7 @@ Option A was the first decision, and it put the first days of a long span in the
 - B. Each surface fetches its own data.
 
 **Decision:** A.
+The owner asked for progressive loading of a span on 2026-10-30, so that a first fetch feels seamless (see "The planner cache").
 
 **Why:**
 
@@ -943,7 +944,7 @@ Option A was the first decision, and it put the first days of a long span in the
   A write sends only the parts that changed.
   So a new week does not write every assignment detail again, and the change events that reach each extension page stay small.
 - The background keeps at most 3 requests in flight [10].
-  A free request slot goes first to a week that a surface shows, then to refresh rounds and writes, then to weeks that load ahead.
+  A free request slot goes first to the days of a span that a surface shows, then to the past-due range of that view, refresh rounds and writes, then to weeks that load ahead.
 - After each write, the background stores a change marker (a time stamp only) in `storage.local`.
   Every surface listens to `storage.onChanged` and refreshes.
   `runtime.sendMessage` does not reach content scripts, so it cannot do this job [24].
@@ -974,7 +975,9 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 - A write, or the change marker in `storage.local`, refreshes everything.
 - A change of the saved address refreshes everything.
 - At midnight in the Canvas time zone, the surfaces recompute the span that starts today and the day groups.
-  If the planner range changes, they also refresh the planner items.
+  The list stays on screen with its cached days and the refresh marker.
+  A new day that the cache lacks shows as placeholders and loads like any other day (see "The planner cache"), and the light round of the midnight refreshes the cached range.
+  The daily load ahead of the new neighbor span, with its assignment details, runs at the lowest priority, so it never delays the days that are shown.
 - At most one refresh round runs per 60 seconds.
   Loading a week that a surface shows is not a refresh round, so it never waits for this limit or for a running round.
   A write and a change of address skip this limit.
@@ -986,18 +989,34 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 - The cache keeps one copy of each planner item, by its item key.
   It also keeps the spans of time for which it holds every item that Canvas returns, each with the time it loaded.
 - A view requests only the parts of its planner range (decision 9) that no span covers and no running request fetches.
-- A new week shows as soon as its planner items arrive.
-  The assignment details of new items load after that, and their chips fill in.
-  The refresh marker shows until they arrive.
-  The first load of the current week waits for the session data, the planner items and the assignment details, so Past due does not change under the student.
+- A span shows progressively, so a first fetch feels seamless.
+  The frame never goes away: the header, the arrows, the span control and the settings stay on screen and work during any load.
+  Once the session data is in, a span change, a switch to Month and the first minute after midnight never replace the list with a loading state.
+  Only the first load, before the session data arrives, shows the header with a spinner.
+- The days of the shown span load nearest to today first, in chunks of 7, 7 and then 14 days, at the highest priority.
+  A span after today loads from its first day on, and a span before today from its last day back.
+  For the span that starts today, the days up to the end of the range, which the look-ahead of a one-day span shows, load with it.
+  Each chunk goes into the cache as soon as it arrives, and its days show at once.
+  A day whose chunk is still on its way shows its heading and one or two light placeholder bars.
+  A real row replaces them in place, and nothing above it moves.
+- The rest of the planner range, which holds the Past due items, loads after the days of the span, at normal priority, in up to 3 chunks side by side, each at least two weeks long.
+  While it loads, Past due is one line, "Loading past due…", in the style of a group heading.
+  The real group replaces the line when the range and the assignment details of its items are in, because a handed-in item leaves Past due only when its details arrive.
+  Past due never changes under the student after that.
+- The rings count what has arrived and grow as more does.
+  They show no check mark and no "Nothing due" until every day and Past due have loaded.
+  The refresh marker stays on until the shown span and Past due are complete.
+- The assignment details of arrived items load after their planner items, in batches: a batch takes every item that arrived while the batch before it loaded.
+  The chips and the done marks fill in then.
   The undated work and the override list load beside the planner, and teacher status names fill in after the list shows.
-- A long part loads in up to 3 chunks side by side, so it does not page through one long chain of requests.
-  - With no cached items to go by, the chunks have the same length, at least two weeks each.
-  - Where the cache already holds the range, as in a refresh round, the chunks hold about the same number of cached items, and a range that fits in one page of 100 stays one request.
-  - Chunks do not overlap, and the cache removes duplicate items by item key.
-- When a view has shown, the weeks before and after it load in the background, with the assignment details of their work.
+- A refresh round reloads only the parts of the current-week range that the cache already holds, in chunks of about the same number of cached items, and a part that fits in one page of 100 stays one request.
+  The planner jobs of the views load the parts that the cache lacks, so a round never loads the same days twice.
+  A full round that finds nothing to reload sends one small request for the last day of the range, to learn whether the school limits the planner.
+- Chunks do not overlap, and the cache removes duplicate items by item key.
+- When a view has shown and Past due is in, the weeks before and after it load in the background, with the assignment details of their work.
   These requests have the lowest priority.
   If the student opens such a week while it loads, its requests move to the highest priority, and no second request starts.
+  A load that the Past due range of a view started never rises above normal priority.
   A failed load ahead shows nothing.
 - When a reloaded span no longer returns a cached item, the item is dropped.
   Canvas files an older-style peer review under the reviewer's own due date, which the item does not carry.
@@ -1005,6 +1024,8 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 - To stay within the storage limits, the cache keeps the planner items of the current-week range and the next week, plus the views that surfaces showed in the last 10 minutes and the weeks next to them.
   It drops the rest.
 - A failed load of a week that a surface shows leads to the same states as a failed round.
+  The days that arrived stay on screen with the "Couldn't refresh" line, and nothing shows as loading any more.
+  When no day of the span arrived, the surface shows "Couldn't load your list".
   A 403 starts a full round, which finds out whether the school now limits the planner.
 
 **Requests:**
@@ -1017,7 +1038,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | Groups | `GET /api/v1/users/self/groups?per_page=100` | Once per session |
 | Course colors | `GET /api/v1/users/self/colors` | Once per session |
 | Course order | `GET /api/v1/users/self/dashboard_positions` | Once per session |
-| Week items | `GET /api/v1/planner/items?start_date=...&end_date=...&per_page=100` | The parts of a view's range that the cache lacks; the weeks before and after a shown view, ahead of time; the current-week range in each light and full round, in up to 3 chunks |
+| Week items | `GET /api/v1/planner/items?start_date=...&end_date=...&per_page=100` | The parts of a view's range that the cache lacks, the days of the span first; the weeks before and after a shown view, ahead of time; the cached parts of the current-week range in each light and full round, in up to 3 chunks |
 | Assignment details | `GET /api/v1/courses/:id/assignments?assignment_ids[]=...&include[]=submission&per_page=100` | New planner items, after they show, per course with assignment items; the current-week items in each full round; a shown week's items after a full round |
 | Teacher status names | `POST /api/graphql` with `customGradeStatusesConnection` for each course | Once per session, when a teacher status appears |
 | All assignments (planner turned off only) | `GET /api/v1/courses/:id/assignments?include[]=submission&per_page=100` | Instead of the planner, per course |
@@ -1056,7 +1077,9 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 
 | State | How it is detected | What the UI shows |
 |---|---|---|
-| Loading | No cached data yet | A skeleton with the final layout, so nothing jumps |
+| Loading | The session data has not arrived, which happens at the first load only | The header with working controls and a spinner |
+| Loading days | The cache lacks the planner items of some days of the shown span | The frame and the days that arrived. The other days show their heading and one or two light placeholder bars, and the refresh marker is on |
+| Loading Past due | The cache lacks part of the past-due range, or the details of its items | The span as above. Past due is one line, "Loading past due…" |
 | Not set up | No saved Canvas address | "Open your Canvas to see your list", with a button that opens the last known Canvas or a short hint |
 | No access | `permissions.contains` is false | An "Allow access" button |
 | Signed out | Any 401, then `GET /api/v1/users/self` returns 401 | An "Open Canvas to sign in" button and the saved address |
@@ -1486,6 +1509,8 @@ The owner asked for it after testing an early build: the list should feel like p
     The chips come after it.
   - A chip that is too long for the column wraps onto a second line instead of cutting its text.
   - Every target is at least 24 px high, as WCAG 2.2 AA asks.
+- Loading placeholders are light bars in the divider color, with a slow pulse, as Canvas draws its loading blocks.
+  They follow the theme, they stand still with reduced motion, and a screen reader does not read them.
 - Chips use Canvas's pill style.
   "Missing" looks like the red Missing pill in Canvas's planner.
 - The rings keep the Canvas course colors and use Canvas's type and spacing.

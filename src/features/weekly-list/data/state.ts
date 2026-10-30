@@ -10,10 +10,17 @@ import type {
 } from '../../../shared/canvas/types';
 import { buildWeekView, plannerRangeFor, resolveViewBasics } from '../model/view';
 import { collectItems } from '../model/normalize';
-import { spanBounds } from '../model/time';
+import { plainDateOf, spanBounds, startOfDay } from '../model/time';
 import type { Item, ModelInput, Offer, Settings, WeekView } from '../model/types';
 import type { SessionCache, SessionData } from './cache';
-import { coveredItems, isCovered, toInterval, type PlannerCoverage } from './coverage';
+import {
+  coveredItems,
+  isCovered,
+  overlaps,
+  toInterval,
+  type Interval,
+  type PlannerCoverage,
+} from './coverage';
 import { applyPatches } from './patches';
 import type { CourseChoice, RequestSurface, SurfaceRequest } from './protocol';
 
@@ -79,24 +86,85 @@ export function spanRange(
   return { start: bounds.start, end: isoInstant(Date.parse(bounds.end) - 1) };
 }
 
-interface PlannerFit {
-  /** The cache holds every item of the view's planner range, from the horizon on. */
-  exact: boolean;
+/** Where the planner items of a view lie, so the data layer can load the nearest days first. */
+export interface LoadPlan {
+  /** The planner range of the view, from the past-due horizon on. */
+  range: Interval;
   /**
-   * The cache holds every item of the shown span, so the view can show. Without `exact`, the
-   * Past due group may lack older items, such as after midnight or after a settings change.
+   * The days that the student reads first: the shown span, and for the span that starts today
+   * also the days up to the end of the range, which the look-ahead of a one-day span shows.
    */
-  showable: boolean;
+  near: Interval;
+  /** The shown span ends before today, so its nearest day is its last. */
+  backward: boolean;
+  /** Epoch milliseconds of 00:00 today in the Canvas time zone. */
+  today: number;
+  /** The start of the day `days` days from the day that starts at `from`, in the Canvas time zone. */
+  addDays(from: number, days: number): number;
 }
 
-/** How well the cached planner items fit a view. */
-export function plannerFit(
+export function loadPlan(session: SessionData, spanOffset: number, context: ViewContext): LoadPlan {
+  const range = toInterval(plannerRangeForView(session, spanOffset, context));
+  const span = toInterval(spanRange(session, spanOffset, context));
+  const timeZone = canvasTimeZone(session, context);
+  const today = startOfDay(
+    plainDateOf(Temporal.Instant.fromEpochMilliseconds(context.now), timeZone),
+    timeZone,
+  ).epochMilliseconds;
+  return {
+    range,
+    near: spanOffset === 0 ? { start: span.start, end: Math.max(span.end, range.end) } : span,
+    backward: span.end <= today,
+    today,
+    addDays: (from, days) =>
+      startOfDay(
+        plainDateOf(Temporal.Instant.fromEpochMilliseconds(from), timeZone).add({ days }),
+        timeZone,
+      ).epochMilliseconds,
+  };
+}
+
+/** What the cache lacks for a view, as the model shows it (`ModelInput.loading`). */
+export interface Missing {
+  /** Plain dates of the shown span whose planner items the cache lacks. */
+  days: string[];
+  /** The cache lacks part of the range before now, which holds the Past due items. */
+  pastDue: boolean;
+}
+
+const NOTHING_MISSING: Missing = { days: [], pastDue: false };
+
+function missingFor(
   coverage: Pick<PlannerCoverage, 'spans'>,
-  range: TimeRange,
-  week: TimeRange,
-): PlannerFit {
-  const exact = isCovered(coverage, toInterval(range));
-  return { exact, showable: exact || isCovered(coverage, toInterval(week)) };
+  session: SessionData,
+  spanOffset: number,
+  context: ViewContext,
+  pastDuePending: boolean,
+): Missing {
+  const input = basicsInput(session, spanOffset, context);
+  const timeZone = canvasTimeZone(session, context);
+  const bounds = spanBounds({
+    now: input.now,
+    timeZone,
+    span: input.settings.span,
+    spanOffset,
+  });
+  const days: string[] = [];
+  const last = Temporal.PlainDate.from(bounds.spanEnd);
+  for (
+    let date = Temporal.PlainDate.from(bounds.spanStart);
+    Temporal.PlainDate.compare(date, last) <= 0;
+    date = date.add({ days: 1 })
+  ) {
+    const day = {
+      start: startOfDay(date, timeZone).epochMilliseconds,
+      end: startOfDay(date.add({ days: 1 }), timeZone).epochMilliseconds,
+    };
+    if (!isCovered(coverage, day)) days.push(date.toString());
+  }
+  const range = toInterval(plannerRangeForView(session, spanOffset, context));
+  const beforeNow = { start: range.start, end: Math.min(context.now, range.end) };
+  return { days, pastDue: pastDuePending || !isCovered(coverage, beforeNow) };
 }
 
 function position(positions: DashboardPositions, courseId: string): number {
@@ -160,6 +228,7 @@ function modelInputFor(
   plannerItems: readonly PlannerItem[],
   request: SurfaceRequest,
   context: ViewContext,
+  missing: Missing = NOTHING_MISSING,
 ): ModelInput {
   const patched = applyPatches({ plannerItems, overrides: cache.overrides }, cache.patches, {
     courses: session.courses,
@@ -180,6 +249,7 @@ function modelInputFor(
     customGradeStatuses: cache.gradeStatuses,
     limited: cache.limited,
     allAssignments: cache.limited ? Object.values(cache.allAssignments).flat() : [],
+    loading: missing,
   };
 }
 
@@ -187,6 +257,8 @@ interface ViewResult {
   view: WeekView;
   /** The planner items cover the whole planner range of the view. */
   exact: boolean;
+  /** The cache holds planner items for some part of the shown span. */
+  hasData: boolean;
 }
 
 /**
@@ -213,22 +285,32 @@ function courseFilterApplies(
   );
 }
 
+/** What is still on its way to the cache, for the loading marks of a view. */
+export interface LoadingState {
+  /** Marks the days and the Past due range that are not loaded. Off after a failed load, when nothing is on its way. */
+  show: boolean;
+  /** A load of the Past due range, or of the details of its items, still runs. */
+  pastDuePending: boolean;
+}
+
 /**
- * The week view for a request, or `null` when the cached planner items do not cover its week yet.
- * A course filter that no longer applies is dropped, so the view's `courseFilter` is then
- * `undefined` and the surface clears its own filter.
+ * The week view for a request. It shows the items that the cache holds. The days of the span
+ * and the Past due range that the cache lacks are marked as loading. A course filter that no
+ * longer applies is dropped, so the view's `courseFilter` is then `undefined` and the surface
+ * clears its own filter.
  */
 export function viewFor(
   cache: SessionCache,
   session: SessionData,
   request: SurfaceRequest,
   context: ViewContext,
-): ViewResult | null {
-  const result = viewForRequest(cache, session, request, context);
+  loading: LoadingState = { show: true, pastDuePending: false },
+): ViewResult {
+  const result = viewForRequest(cache, session, request, context, loading);
   const filter = request.courseFilter;
-  if (result === null || filter === undefined) return result;
+  if (filter === undefined) return result;
   if (courseFilterApplies(filter, result.view, session, context.settings)) return result;
-  return viewForRequest(cache, session, { ...request, courseFilter: undefined }, context);
+  return viewForRequest(cache, session, { ...request, courseFilter: undefined }, context, loading);
 }
 
 function viewForRequest(
@@ -236,22 +318,27 @@ function viewForRequest(
   session: SessionData,
   request: SurfaceRequest,
   context: ViewContext,
-): ViewResult | null {
+  loading: LoadingState,
+): ViewResult {
   if (cache.limited) {
     return {
       view: buildWeekView(modelInputFor(cache, session, [], request, context)),
       exact: true,
+      hasData: true,
     };
   }
-  const range = plannerRangeForView(session, request.spanOffset, context);
-  const fit = plannerFit(cache.planner, range, spanRange(session, request.spanOffset, context));
-  if (!fit.showable) return null;
+  const range = toInterval(plannerRangeForView(session, request.spanOffset, context));
+  const shown = toInterval(spanRange(session, request.spanOffset, context));
+  const missing = loading.show
+    ? missingFor(cache.planner, session, request.spanOffset, context, loading.pastDuePending)
+    : NOTHING_MISSING;
   // Every cached item goes in: the model places each by its own date and drops the rest, so a
   // peer review shows in its real week whichever request brought it.
   const items = coveredItems(cache.planner);
   return {
-    view: buildWeekView(modelInputFor(cache, session, items, request, context)),
-    exact: fit.exact,
+    view: buildWeekView(modelInputFor(cache, session, items, request, context, missing)),
+    exact: isCovered(cache.planner, range),
+    hasData: cache.planner.spans.some((span) => overlaps(span, shown)),
   };
 }
 

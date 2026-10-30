@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { TimeRange } from '../../../shared/canvas/types';
 import { canvasOriginItem, offerItem } from '../../../shared/platform/storage';
 import {
   ORIGIN,
@@ -8,6 +9,7 @@ import {
   loadReady,
   rangeOf,
   useScenarioClock,
+  settleAll,
 } from './testing/harness';
 
 const CUSTOM = 'https://canvas.school.edu';
@@ -15,7 +17,10 @@ const OTHER = 'https://other.instructure.com';
 const BETA = 'https://school.beta.instructure.com';
 
 beforeEach(() => useScenarioClock());
-afterEach(() => vi.useRealTimers());
+afterEach(async () => {
+  await settleAll();
+  vi.useRealTimers();
+});
 
 describe('a Canvas page found by the detector', () => {
   it.each([
@@ -158,9 +163,17 @@ describe('accepting the offer', () => {
 
     expect(watched.length).toBeGreaterThan(0);
     expect(h.canvas.callsOf('getProfile')).toHaveLength(1);
-    // One round: the chunks of the current week's planner range, each asked for once.
-    expect(joinRanges(h.canvas.plannerRanges())).toEqual([await rangeOf(h, 0)]);
     expect(h.canvas.callsOf('listUndatedAssignments')).toHaveLength(5);
+    // The round loads the session. The surface then asks for the view, which loads the current
+    // week's planner range in chunks, each asked for once.
+    await loadReady(h);
+    const shown = h.canvas.calls.filter(
+      (call) => call.method === 'listPlannerItems' && call.priority !== 'low',
+    );
+    expect(joinRanges(shown.map((call) => call.args[0] as TimeRange))).toEqual([
+      await rangeOf(h, 0),
+    ]);
+    expect(h.canvas.callsOf('getProfile')).toHaveLength(1);
   });
 
   it.each([
@@ -207,10 +220,12 @@ describe('the saved address', () => {
     expect((await h.owner.getState(PANEL)).kind).toBe('not_set_up');
 
     await canvasOriginItem.setValue(ORIGIN);
-    expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
+    // The session loads at once, so the frame may already show.
+    expect(['loading', 'ready']).toContain((await h.owner.getState(PANEL)).kind);
     await h.owner.settled();
 
     expect((await h.owner.getState(PANEL)).kind).toBe('ready');
+    await h.owner.settled();
   });
 });
 

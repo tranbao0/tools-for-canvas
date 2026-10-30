@@ -82,6 +82,11 @@ export class CanvasState {
    * whatever the range: the extension places items by their own dates and drops the rest.
    */
   plannerPageSize: number | null = null;
+  /**
+   * Called for every planner request before it is answered. A test returns a promise to hold the
+   * answer back, for example to keep the later days of a long span loading.
+   */
+  plannerGate: ((request: RecordedRequest) => Promise<void> | undefined) | null = null;
   private readonly overrides = new Map<string, PlannerOverride>();
   private readonly notes = new Map<string, NoteRecord>();
   private nextOverrideId = 99001;
@@ -137,7 +142,8 @@ export class CanvasState {
     return [
       {
         path: '/api/v1/planner/items',
-        respond: (request) => {
+        respond: async (request) => {
+          await this.plannerGate?.(request);
           if (this.limited) return errorReply(CANVAS_ERRORS.limitedAccess);
           if (this.plannerReply !== null) return this.plannerReply;
           return this.plannerPageSize === null

@@ -12,6 +12,7 @@ import {
   isCovered,
   mergeFetched,
   mergeIntervals,
+  nearChunks,
   staleParts,
   subtractIntervals,
   toInterval,
@@ -21,7 +22,6 @@ import {
   type PlannerCoverage,
 } from './coverage';
 import { roundChunks } from './rounds';
-import { plannerFit } from './state';
 
 const DAY = 24 * 3_600_000;
 /** Sunday Oct 25, 2026, 00:00 in New York. */
@@ -105,20 +105,33 @@ describe('gaps', () => {
     expect(staleParts(coverage, span(-3, 10), 3)).toEqual([span(-3, 7)]);
     expect(staleParts(coverage, span(-3, 10), 1)).toEqual([]);
   });
+});
 
-  it('shows a view whose week is covered, and calls it exact when its whole range is', () => {
-    const range = toRange(span(-112, 7));
-    const week = toRange(span(0, 7));
-    expect(plannerFit(coverage, range, week)).toEqual({ exact: true, showable: true });
-    // After midnight the range starts a day earlier than the cache covers.
-    expect(plannerFit(coverage, toRange(span(-113, 7)), week)).toEqual({
-      exact: false,
-      showable: true,
-    });
-    expect(plannerFit(coverage, toRange(span(-112, 14)), toRange(span(7, 14)))).toEqual({
-      exact: false,
-      showable: false,
-    });
+describe('chunks of the shown span', () => {
+  const addDays = (from: number, days: number): number => from + days * DAY;
+
+  it('starts with short chunks at the start of a span after today, and keeps them contiguous', () => {
+    const chunks = nearChunks(span(0, 30), false, addDays);
+    expect(chunks).toEqual([span(0, 7), span(7, 14), span(14, 28), span(28, 30)]);
+  });
+
+  it('starts at the end of a span before today', () => {
+    const chunks = nearChunks(span(0, 30), true, addDays);
+    expect(chunks).toEqual([span(23, 30), span(16, 23), span(2, 16), span(0, 2)]);
+  });
+
+  it('keeps a week and a short span in one chunk, and never makes an empty chunk', () => {
+    expect(nearChunks(span(0, 7), false, addDays)).toEqual([span(0, 7)]);
+    expect(nearChunks(span(0, 2), false, addDays)).toEqual([span(0, 2)]);
+    expect(nearChunks(span(3, 3), false, addDays)).toEqual([]);
+  });
+
+  it('uses 14-day chunks for the rest of a long span', () => {
+    const chunks = nearChunks(span(0, 90), false, addDays);
+    expect(chunks.slice(0, 3).map((c) => (c.end - c.start) / DAY)).toEqual([7, 7, 14]);
+    expect(chunks.slice(2, -1).every((c) => (c.end - c.start) / DAY === 14)).toBe(true);
+    expect(chunks[0]?.start).toBe(day(0));
+    expect(chunks.at(-1)?.end).toBe(day(90));
   });
 });
 
@@ -296,16 +309,24 @@ describe('chunks', () => {
     expectContiguous(chunks, span(0, 7));
   });
 
-  it('splits a refresh of the current range by the cached items, or by time when it is not covered', () => {
+  it('splits a refresh of the current range by the cached items, and reloads only what is cached', () => {
     const items = Array.from({ length: 200 }, (_, index) =>
       item('assignment', String(index), day(-30) + index * (DAY / 8)),
     );
     const current = toRange(span(-112, 7));
     const covered = mergeFetched(emptyCoverage(), [{ interval: toInterval(current), items }], 1);
 
-    const byItems = roundChunks(covered, current);
+    const byItems = roundChunks(covered, current, false);
     expect(byItems).toHaveLength(3);
     expect(byItems[0]?.end).toBeGreaterThan(day(-30));
-    expect(roundChunks(emptyCoverage(), current)).toEqual(chunkInterval(span(-112, 7), null));
+    // A part the cache lacks is left to the planner jobs of the views.
+    expect(roundChunks(emptyCoverage(), current, false)).toEqual([]);
+    const partial = mergeFetched(emptyCoverage(), [{ interval: span(0, 7), items: [] }], 1);
+    expect(roundChunks(partial, current, false)).toEqual([span(0, 7)]);
+  });
+
+  it('probes with one small request when a full round has nothing to reload', () => {
+    const current = toRange(span(-112, 7));
+    expect(roundChunks(emptyCoverage(), current, true)).toEqual([span(6, 7)]);
   });
 });

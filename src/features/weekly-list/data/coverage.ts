@@ -48,6 +48,11 @@ export const CHUNK_TARGET_ITEMS = 80;
 export const MIN_CHUNK_MS = 14 * 24 * 3_600_000;
 /** At most this many chunks run side by side: the limit of requests in flight. */
 export const MAX_CHUNKS = 3;
+/**
+ * The lengths in days of the chunks of the shown span, nearest to today first. The first chunks
+ * are short, so the days the student reads first arrive first. The last length repeats.
+ */
+export const NEAR_CHUNK_DAYS: readonly number[] = [7, 7, 14];
 
 export function emptyCoverage(): PlannerCoverage {
   return { spans: [], items: {}, filed: {} };
@@ -299,6 +304,47 @@ export function chunkInterval(interval: Interval, times: readonly number[] | nul
   }
   const bounds = [interval.start, ...cuts, interval.end];
   return bounds.slice(1).map((end, index) => ({ start: bounds[index] ?? interval.start, end }));
+}
+
+/**
+ * Splits an interval of the shown span into chunks that load nearest to today first.
+ * `backward` starts at the end of the interval, for a span before today; otherwise at its start.
+ * `addDays(from, days)` is the start of the day `days` days from the day that starts at `from`,
+ * so every cut falls on a day start. Chunks do not overlap and leave no hole.
+ */
+export function nearChunks(
+  interval: Interval,
+  backward: boolean,
+  addDays: (from: number, days: number) => number,
+): Interval[] {
+  const chunks: Interval[] = [];
+  let edge = backward ? interval.end : interval.start;
+  for (let index = 0; ; index += 1) {
+    const length = NEAR_CHUNK_DAYS[Math.min(index, NEAR_CHUNK_DAYS.length - 1)] ?? 1;
+    if (backward) {
+      const start = Math.max(interval.start, addDays(edge, -length));
+      if (edge <= start) break;
+      chunks.push({ start, end: edge });
+      edge = start;
+      if (edge <= interval.start) break;
+    } else {
+      const end = Math.min(interval.end, addDays(edge, length));
+      if (end <= edge) break;
+      chunks.push({ start: edge, end });
+      edge = end;
+      if (edge >= interval.end) break;
+    }
+  }
+  return chunks;
+}
+
+/** The parts of `intervals` that lie inside `bounds`. */
+export function intersectIntervals(intervals: readonly Interval[], bounds: Interval): Interval[] {
+  return intervals.flatMap((interval) => {
+    const start = Math.max(interval.start, bounds.start);
+    const end = Math.min(interval.end, bounds.end);
+    return start < end ? [{ start, end }] : [];
+  });
 }
 
 /** The dates of the cached items, for `chunkInterval`. */

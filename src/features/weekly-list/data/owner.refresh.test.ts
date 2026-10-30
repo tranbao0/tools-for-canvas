@@ -18,10 +18,14 @@ import {
   type Harness,
   useScenarioClock,
   spanOf,
+  settleAll,
 } from './testing/harness';
 
 beforeEach(() => useScenarioClock());
-afterEach(() => vi.useRealTimers());
+afterEach(async () => {
+  await settleAll();
+  vi.useRealTimers();
+});
 
 /** A light round asks for the planner items, and for the user in parallel. */
 const LIGHT: FakeMethod[] = ['getSelf', 'listPlannerItems'];
@@ -45,6 +49,9 @@ async function loaded(): Promise<Harness> {
 /** The first load only, before the next week loads ahead. */
 async function firstLoadOnly(): Promise<Harness> {
   const h = await createHarness();
+  // The first round loads the session, and the view then loads the planner range of the week.
+  await h.owner.getState(PANEL);
+  await h.owner.settled();
   await h.owner.getState(PANEL);
   await h.owner.settled();
   h.canvas.resetCalls();
@@ -336,11 +343,19 @@ describe('midnight, settings and address changes', () => {
     const cachedEnd = (await rangeOf(h, 0)).end;
     vi.setSystemTime(SATURDAY);
     await h.owner.refresh('midnight');
-    // The new days are not cached yet, so the list waits for them.
-    expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
+    // The new days are not cached yet. The list stays, with the new days as placeholders and
+    // the refresh marker on, and the days load now.
+    const early = expectReady(await h.owner.getState(PANEL));
+    expect(early.view.today).toBe('2026-10-31');
+    expect(early.view.loading).toBe(true);
+    expect(early.view.groups.some((group) => group.loading === true)).toBe(true);
+    expect(early.view.nothingDue).toBe(false);
+    expect(early.refreshing).toBe(true);
     await h.owner.settled();
     const state = expectReady(await h.owner.getState(PANEL));
+    await h.owner.settled();
 
+    expect(state.view.loading).toBe(false);
     expect(state.view.today).toBe('2026-10-31');
     // The span now ends four days later, and those days were missing.
     const dayStart = Temporal.Instant.from(cachedEnd)

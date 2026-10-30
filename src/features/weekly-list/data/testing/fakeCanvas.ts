@@ -44,6 +44,10 @@ export interface FakeCanvas extends CanvasApi {
   fail(method: FakeMethod, error: unknown, options?: { times?: number; firstArg?: unknown }): void;
   /** Makes calls of a method wait until the returned function runs. */
   hold(method: FakeMethod): () => void;
+  /** Like `hold`, for the calls whose arguments `match` selects. */
+  holdIf(method: FakeMethod, match: (args: unknown[]) => boolean): () => void;
+  /** Makes the calls of a method that `match` selects reject with `error`. */
+  failIf(method: FakeMethod, match: (args: unknown[]) => boolean, error: unknown): void;
   /** Forgets the recorded calls. */
   resetCalls(): void;
   /** Overrides that Canvas holds now, as `GET /api/v1/planner/overrides` lists them. */
@@ -70,6 +74,16 @@ export function createFakeCanvas(scenario: Scenario): FakeCanvas {
   const calls: FakeCall[] = [];
   const failures = new Map<FakeMethod, Failure[]>();
   const holds = new Map<FakeMethod, Promise<void>>();
+  const conditionalHolds: {
+    method: FakeMethod;
+    match: (args: unknown[]) => boolean;
+    wait: Promise<void>;
+  }[] = [];
+  const conditionalFailures: {
+    method: FakeMethod;
+    match: (args: unknown[]) => boolean;
+    error: unknown;
+  }[] = [];
   /** Overrides by item key: the embedded ones, the listed ones and the written ones. */
   const overrides = new Map<string, PlannerOverride>();
   const notes = new Map<string, PlannerNote | null>();
@@ -88,6 +102,13 @@ export function createFakeCanvas(scenario: Scenario): FakeCanvas {
   ): Promise<T> {
     calls.push({ method, args, priority: typeof priority === 'function' ? priority() : priority });
     await holds.get(method);
+    for (const hold of conditionalHolds) {
+      if (hold.method === method && hold.match(args)) await hold.wait;
+    }
+    const matched = conditionalFailures.find(
+      (entry) => entry.method === method && entry.match(args),
+    );
+    if (matched !== undefined) throw matched.error;
     const list = failures.get(method) ?? [];
     const failure = list.find(
       (entry) =>
@@ -292,6 +313,17 @@ export function createFakeCanvas(scenario: Scenario): FakeCanvas {
         holds.delete(method);
         release();
       };
+    },
+    holdIf(method, match) {
+      let release!: () => void;
+      const wait = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      conditionalHolds.push({ method, match, wait });
+      return release;
+    },
+    failIf(method, match, error) {
+      conditionalFailures.push({ method, match, error });
     },
     resetCalls() {
       calls.length = 0;

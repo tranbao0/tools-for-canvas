@@ -4,6 +4,7 @@ import { offerItem } from '../../../shared/platform/storage';
 import { sessionCacheItem } from './cache';
 import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
 import { FULL_REFRESH_INTERVAL_MS } from './policy';
+import type { TimeRange } from '../../../shared/canvas/types';
 import { canvasError } from './testing/fakeCanvas';
 import {
   ORIGIN,
@@ -20,6 +21,7 @@ import {
   spanOf,
   ART,
   signInOtherUser,
+  settleAll,
 } from './testing/harness';
 
 const C = IDS.courses;
@@ -59,15 +61,52 @@ function groupKeys(state: ReturnType<typeof expectReady>): string[][] {
   );
 }
 
+/**
+ * Asks for the state, as a surface does after every change, until `done` holds. The data owner
+ * loads the planner of a view when the view is asked for.
+ */
+async function askUntil(
+  h: Awaited<ReturnType<typeof createHarness>>,
+  request: typeof PANEL,
+  done: () => boolean,
+): Promise<void> {
+  await vi.waitFor(async () => {
+    await h.owner.getState(request);
+    expect(done()).toBe(true);
+  });
+}
+
+/**
+ * The first round, then the load of the current week's view, without the weeks around it,
+ * which load ahead once the view is complete.
+ */
+async function firstViewOnly(h: Awaited<ReturnType<typeof createHarness>>): Promise<void> {
+  await h.owner.getState(PANEL);
+  await h.owner.settled();
+  await h.owner.getState(PANEL);
+  await h.owner.settled();
+}
+
 beforeEach(() => useScenarioClock());
-afterEach(() => vi.useRealTimers());
+afterEach(async () => {
+  await settleAll();
+  vi.useRealTimers();
+});
 
 describe('first load', () => {
-  it('shows loading, then loads every piece of data once and shows the week', async () => {
+  it('shows loading, then the frame, then loads every piece of data once and shows the week', async () => {
     const h = await createHarness();
 
     expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
     await h.owner.settled();
+    // The session is in, so the frame shows. Every day waits for its planner items.
+    const frame = expectReady(await h.owner.getState(PANEL));
+    expect(frame.view.loading).toBe(true);
+    expect(frame.view.nothingDue).toBe(false);
+    expect(frame.refreshing).toBe(true);
+    expect(frame.view.groups.filter((group) => group.loading).length).toBeGreaterThan(5);
+    await h.owner.settled();
+    await loadReady(h);
 
     for (const method of [
       'getProfile',
@@ -79,20 +118,37 @@ describe('first load', () => {
     ] as const) {
       expect(h.canvas.callsOf(method), method).toHaveLength(1);
     }
-    // The planner range of the current week, from the horizon on, in chunks side by side.
-    const planner = h.canvas.plannerRanges();
-    expect(planner).toHaveLength(3);
-    expect(joinRanges(planner)).toEqual([await rangeOf(h, 0)]);
+    // The shown week goes first at high priority, then the range before it, which holds Past due,
+    // at normal priority in chunks side by side. The neighbor weeks load last.
+    const planner = h.canvas.calls.filter((call) => call.method === 'listPlannerItems');
+    const at = (priority: string) =>
+      planner.filter((call) => call.priority === priority).map((call) => call.args[0] as TimeRange);
+    expect(at('high')).toEqual([await spanOf(h, 0)]);
+    expect(at('normal')).toHaveLength(3);
+    expect(joinRanges([...at('high'), ...at('normal')])).toEqual([await rangeOf(h, 0)]);
+    expect(at('low').length).toBeGreaterThan(0);
     expect(h.canvas.callsOf('listUndatedAssignments').map(([id]) => id)).toEqual(VISIBLE_COURSES);
-    expect(h.canvas.callsOf('listAssignmentsByIds').map(([id]) => id)).toEqual(VISIBLE_COURSES);
-    expect(h.canvas.callsOf('listAssignmentsByIds')).toContainEqual([
-      C.biology,
+    // Every course's details load, and no assignment id is asked for twice.
+    const detailCalls = h.canvas.callsOf('listAssignmentsByIds') as [string, string[]][];
+    expect(new Set(detailCalls.map(([id]) => id))).toEqual(new Set(VISIBLE_COURSES));
+    const askedIds = detailCalls.flatMap(([, ids]) => ids);
+    expect(new Set(askedIds).size).toBe(askedIds.length);
+    expect(askedIds).toEqual(
       expect.arrayContaining([IDS.assignments.bioQuiz3Today, IDS.assignments.bioLabReport4]),
-    ]);
+    );
     // Only history has a teacher status in the scenario.
     expect(h.canvas.callsOf('listCustomGradeStatuses')).toEqual([[[C.history]]]);
     expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
-    expect(h.canvas.calls.every((call) => call.priority === 'normal')).toBe(true);
+    // The round's own requests go at normal priority.
+    for (const method of [
+      'getProfile',
+      'listUndatedAssignments',
+      'listPlannerOverrides',
+    ] as const) {
+      expect(h.canvas.calls.filter((call) => call.method === method)).toSatisfy(
+        (calls: { priority: string }[]) => calls.every((call) => call.priority === 'normal'),
+      );
+    }
 
     const state = expectReady(await h.owner.getState(PANEL));
     expect(state).toMatchObject({
@@ -130,10 +186,10 @@ describe('first load', () => {
     expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
     // The undated work shows that No due date has items, so the override list starts while the
     // planner still loads.
+    await askUntil(h, PANEL, () => h.canvas.callsOf('listPlannerItems').length > 0);
     await vi.waitFor(() => expect(h.canvas.callsOf('listPlannerOverrides')).toHaveLength(1));
     expect(h.canvas.callsOf('listUndatedAssignments').map(([id]) => id)).toEqual(VISIBLE_COURSES);
     expect(h.canvas.callsOf('listAssignmentsByIds')).toEqual([]);
-    expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
 
     release();
     await h.owner.settled();
@@ -158,22 +214,28 @@ describe('first load', () => {
     expect(h.canvas.callsOf('listPlannerOverrides')).toHaveLength(1);
   });
 
-  it('waits for the assignment details before the first view, because reminders need them', async () => {
+  it('shows the week before its assignment details, and Past due only once they arrive', async () => {
     const h = await createHarness();
     const release = h.canvas.hold('listAssignmentsByIds');
+    const reminder = `assignment:${IDS.assignments.historyParticipationWeek9}`;
 
     await h.owner.getState(PANEL);
-    await vi.waitFor(() =>
-      expect(h.canvas.callsOf('listAssignmentsByIds').length).toBeGreaterThan(0),
-    );
-    expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
+    await askUntil(h, PANEL, () => h.canvas.callsOf('listAssignmentsByIds').length > 0);
+    const early = expectReady(await h.owner.getState(PANEL));
+
+    // The days show their items, which still lack the chips that the details bring.
+    expect(findItem(early, reminder)).toBeDefined();
+    expect(findItem(early, reminder)?.isReminder).toBe(false);
+    expect(early.refreshing).toBe(true);
+    // A handed-in item leaves Past due only when its details arrive, so Past due waits for them.
+    const pastDue = early.view.groups.find((group) => group.kind === 'past_due');
+    expect(pastDue).toMatchObject({ loading: true, items: [] });
 
     release();
     await h.owner.settled();
     const state = expectReady(await h.owner.getState(PANEL));
-    expect(
-      findItem(state, `assignment:${IDS.assignments.historyParticipationWeek9}`),
-    ).toMatchObject({ isReminder: true });
+    expect(findItem(state, reminder)).toMatchObject({ isReminder: true });
+    expect(state.view.groups.find((group) => group.kind === 'past_due')?.loading).toBeUndefined();
   });
 
   it('shows the list before the teacher status names arrive, and a name moves no item', async () => {
@@ -182,7 +244,7 @@ describe('first load', () => {
     const essay = `assignment:${IDS.assignments.historyEssayDraft}`;
 
     await h.owner.getState(PANEL);
-    await vi.waitFor(() => expect(h.canvas.callsOf('listCustomGradeStatuses')).toHaveLength(1));
+    await askUntil(h, PANEL, () => h.canvas.callsOf('listCustomGradeStatuses').length === 1);
     const before = expectReady(await h.owner.getState(PANEL));
     expect(findItem(before, essay)?.chip).toEqual({ kind: 'teacher_status', name: null });
 
@@ -199,7 +261,7 @@ describe('first load', () => {
     const release = h.canvas.hold('listCustomGradeStatuses');
 
     await h.owner.getState(PANEL);
-    await vi.waitFor(() => expect(h.canvas.callsOf('listCustomGradeStatuses')).toHaveLength(1));
+    await askUntil(h, PANEL, () => h.canvas.callsOf('listCustomGradeStatuses').length === 1);
     // The weeks around it load and commit while the first request is still out.
     await h.owner.getState({ ...PANEL, spanOffset: 1 });
     await h.owner.getState({ ...PANEL, spanOffset: -1 });
@@ -269,8 +331,7 @@ describe('first load', () => {
 
   it('loads the next week ahead once the current week shows, so the arrow shows it at once', async () => {
     const h = await createHarness();
-    await h.owner.getState(PANEL);
-    await h.owner.settled();
+    await firstViewOnly(h);
     h.canvas.resetCalls();
 
     expectReady(await h.owner.getState(PANEL));
@@ -302,7 +363,11 @@ describe('first load', () => {
     h.canvas.resetCalls();
     const later = { ...PANEL, spanOffset: 2 };
 
-    expect(await h.owner.getState(later)).toEqual({ kind: 'loading' });
+    // The frame stays, with the week as placeholders, while its items load.
+    const early = expectReady(await h.owner.getState(later));
+    expect(early.view.loading).toBe(true);
+    expect(early.refreshing).toBe(true);
+    expect(early.view.groups.some((group) => group.loading === true)).toBe(true);
     expect(h.canvas.plannerRanges()).toEqual([await spanOf(h, 2)]);
     expect(h.canvas.calls[0]?.priority).toBe('high');
     await h.owner.settled();
@@ -354,15 +419,16 @@ describe('first load', () => {
 
   it('makes a load ahead urgent when a surface shows its week while it runs', async () => {
     const h = await createHarness();
-    await h.owner.getState(PANEL);
-    await h.owner.settled();
+    await firstViewOnly(h);
     const release = h.canvas.hold('listPlannerItems');
     expectReady(await h.owner.getState(PANEL));
     expect(h.canvas.calls.at(-1)).toMatchObject({ method: 'listPlannerItems', priority: 'low' });
     h.canvas.resetCalls();
 
-    // The week is on its way, so showing it asks for nothing new.
-    expect(await h.owner.getState({ ...PANEL, spanOffset: 1 })).toEqual({ kind: 'loading' });
+    // The week is on its way, so showing it asks for nothing new. It shows as placeholders.
+    const early = expectReady(await h.owner.getState({ ...PANEL, spanOffset: 1 }));
+    expect(early.view.loading).toBe(true);
+    expect(early.refreshing).toBe(true);
     expect(h.canvas.calls).toEqual([]);
     release();
     await h.owner.settled();
@@ -372,6 +438,33 @@ describe('first load', () => {
     expect(details.length).toBeGreaterThan(0);
     expect(details.every((call) => call.priority === 'high')).toBe(true);
     expect(expectReady(await h.owner.getState({ ...PANEL, spanOffset: 1 })).refreshing).toBe(false);
+    await h.owner.settled();
+  });
+
+  it('keeps the Past due load below the shown days when a later view asks, and raises it for Past due only', async () => {
+    const h = await createHarness();
+    await h.owner.getState(PANEL);
+    await h.owner.settled();
+    const release = h.canvas.hold('listPlannerItems');
+
+    // The shown week loads at high priority, the range before it at normal priority.
+    await h.owner.getState(PANEL);
+    await vi.waitFor(() => expect(h.canvas.callsOf('listPlannerItems').length).toBe(4));
+    const priorities = () =>
+      h.canvas.calls.filter((call) => call.method === 'listPlannerItems').map((c) => c.priority);
+    expect(priorities().sort()).toEqual(['high', 'normal', 'normal', 'normal']);
+
+    // A second request for the same view, in the middle of the load, raises nothing and starts
+    // nothing: the Past due chunks stay at normal priority.
+    await h.owner.getState(PANEL);
+    await h.owner.getState({ ...PANEL, spanOffset: 1 });
+    expect(h.canvas.callsOf('listPlannerItems')).toHaveLength(5);
+    release();
+    await h.owner.settled();
+    expect(expectReady(await h.owner.getState({ ...PANEL, spanOffset: 1 })).view.loading).toBe(
+      false,
+    );
+    await h.owner.settled();
   });
 
   it('keeps Canvas data in storage.session and only allowed keys in storage.local', async () => {
@@ -509,10 +602,19 @@ describe('the shown span', () => {
     await h.owner.refresh('settings');
     h.canvas.resetCalls();
 
-    // The cache holds the week and its neighbor, so the month waits for the rest of its days.
-    expect(await h.owner.getState(PANEL)).toEqual({ kind: 'loading' });
+    // The cache holds the week and its neighbor. The month shows at once, with the rest of its
+    // days as placeholders, and the list never goes back to loading.
+    const early = expectReady(await h.owner.getState(PANEL));
+    expect(early.view).toMatchObject({ spanStart: '2026-10-27', spanEnd: '2026-11-26' });
+    expect(early.view.loading).toBe(true);
+    expect(early.refreshing).toBe(true);
+    const placeholders = early.view.groups.filter((group) => group.loading);
+    expect(placeholders[0]?.date).toBe('2026-11-10');
+    expect(placeholders.at(-1)?.date).toBe('2026-11-26');
+    expect(early.view.groups.find((group) => group.kind === 'today')?.loading).toBeUndefined();
     await h.owner.settled();
     const state = expectReady(await h.owner.getState(PANEL));
+    expect(state.view.loading).toBe(false);
 
     expect(state.view).toMatchObject({ spanStart: '2026-10-27', spanEnd: '2026-11-26' });
     // Only the days after the cached range are requested.
@@ -631,6 +733,9 @@ describe('states', () => {
 
     await h.owner.getState(PANEL);
     await h.owner.settled();
+    // The view's planner request finds the sign-out.
+    await h.owner.getState(PANEL);
+    await h.owner.settled();
 
     expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'signed_out', isFirefox: true });
   });
@@ -680,10 +785,14 @@ describe('states', () => {
     expect(state.view.limited).toBe(true);
     expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
     expect(h.canvas.callsOf('listAllAssignments').map(([id]) => id)).toEqual(VISIBLE_COURSES);
-    // The undated work loads beside the planner, before the round knows that the planner is
-    // limited. The round then drops it, and shares the one override list.
-    expect(h.canvas.callsOf('listPlannerOverrides')).toHaveLength(1);
-    expect(h.canvas.callsOf('listUndatedAssignments').map(([id]) => id)).toEqual(VISIBLE_COURSES);
+    // The first round loads the undated work and the override list before any planner request
+    // shows that the planner is limited. The planner request of the view then finds out, and the
+    // full round that follows loads them again beside its probe, then the list of all assignments.
+    expect(h.canvas.callsOf('listPlannerOverrides')).toHaveLength(2);
+    expect(h.canvas.callsOf('listUndatedAssignments').map(([id]) => id)).toEqual([
+      ...VISIBLE_COURSES,
+      ...VISIBLE_COURSES,
+    ]);
     expect(h.canvas.callsOf('listAssignmentsByIds')).toHaveLength(0);
     const kinds = new Set(viewItems(state.view).map((item) => item.kind));
     expect(kinds.has('note')).toBe(false);
@@ -746,8 +855,7 @@ describe('states', () => {
 
   it('loads ahead quietly: a failed load ahead shows nothing, and the week loads when shown', async () => {
     const h = await createHarness();
-    await h.owner.getState(PANEL);
-    await h.owner.settled();
+    await firstViewOnly(h);
     h.canvas.fail('listPlannerItems', canvasError('network'), { times: 1 });
 
     expectReady(await h.owner.getState(PANEL));
@@ -755,7 +863,7 @@ describe('states', () => {
 
     expect(h.log).toHaveBeenCalledWith('planner load', expect.anything());
     const next = { ...PANEL, spanOffset: 1 };
-    expect(await h.owner.getState(next)).toEqual({ kind: 'loading' });
+    expect(expectReady(await h.owner.getState(next)).view.loading).toBe(true);
     await h.owner.settled();
     expect(expectReady(await h.owner.getState(next)).stale).toBeNull();
   });
@@ -766,7 +874,7 @@ describe('states', () => {
     h.canvas.fail('listPlannerItems', canvasError('network'), { times: 1 });
     const later = { ...PANEL, spanOffset: 2 };
 
-    expect(await h.owner.getState(later)).toEqual({ kind: 'loading' });
+    expect(expectReady(await h.owner.getState(later)).view.loading).toBe(true);
     await h.owner.settled();
 
     expect(await h.owner.getState(later)).toMatchObject({ kind: 'cant_load', offline: true });
@@ -955,7 +1063,7 @@ describe('another user', () => {
 
     await h.owner.trigger('focus');
     await h.owner.settled();
-    const after = expectReady(await h.owner.getState(PANEL));
+    const after = await loadReady(h);
 
     expect(h.canvas.callsOf('getProfile')).toHaveLength(2);
     expect(viewItems(after.view)).toEqual([]);

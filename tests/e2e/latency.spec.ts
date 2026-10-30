@@ -8,9 +8,17 @@
  */
 import type { BrowserContext, Page, Worker } from '@playwright/test';
 import type { FakeCanvas, RecordedRequest } from './support/fake-canvas';
+import { holdPlanner, type PlannerGate } from './support/planner-gate';
 import { saveAddress } from './support/scenario-api';
 import { addTermLoad } from './support/term-load';
-import { addCsrfCookie, expect, openExtensionPage, serveScenario, test } from './support/weekrow';
+import {
+  addCsrfCookie,
+  expect,
+  openExtensionPage,
+  serveScenario,
+  settledList,
+  test,
+} from './support/weekrow';
 
 const LATENCY_MS = 700;
 const PAGE_SIZE = 100;
@@ -93,7 +101,7 @@ interface WeekChange {
   shownAt: number;
 }
 
-/** Clicks a header button and times the change until the heading names `week`. */
+/** Clicks a header button and times the change until the heading names `week` and its days are in. */
 async function timeWeekChange(page: Page, button: string, week: string): Promise<WeekChange> {
   await page.evaluate(() => {
     (window as unknown as { weekrowClicks: number[] }).weekrowClicks = [];
@@ -105,7 +113,9 @@ async function timeWeekChange(page: Page, button: string, week: string): Promise
         const check = (): void => {
           const heading = document.querySelector('h1.wr-range .wr-sr');
           const clicked = scope.weekrowClicks[0];
-          if (clicked !== undefined && heading?.textContent === name) {
+          // The week counts as shown once its heading is there and no day or Past due still loads.
+          const loading = document.querySelector('[data-loading="true"]');
+          if (clicked !== undefined && heading?.textContent === name && loading === null) {
             resolve({ ms: performance.now() - clicked, shownAt: Date.now() });
           } else {
             requestAnimationFrame(check);
@@ -191,6 +201,7 @@ async function openSlowCanvas(
   page: Page,
   background: Worker,
   panelUrl: string,
+  plannerGate?: PlannerGate,
 ): Promise<{ canvas: FakeCanvas; firstLoad: number }> {
   let added = 0;
   const { canvas } = await serveScenario(context, [], {
@@ -199,6 +210,7 @@ async function openSlowCanvas(
     },
     latencyMs: LATENCY_MS,
     plannerPageSize: PAGE_SIZE,
+    plannerGate: plannerGate?.hold,
   });
   expect(added).toBeGreaterThan(300);
   await addCsrfCookie(context, canvas.origin);
@@ -319,15 +331,23 @@ test('the next week shows within one round trip when it is clicked before it loa
   extensionUrl,
 }) => {
   test.setTimeout(120_000);
+  // The next week loads ahead, and this request stays out until the click came.
+  const gate = holdPlanner((range) => range.start >= Date.parse(NEXT_SPAN_START));
   const { canvas } = await openSlowCanvas(
     context,
     page,
     background,
     extensionUrl('sidepanel.html'),
+    gate,
   );
+  // The current week and Past due are in, so only the weeks around it are left to load ahead.
+  await settledList(page);
+  await expect.poll(() => gate.held.length).toBeGreaterThan(0);
   const from = canvas.requests.length;
 
-  // The click comes while the next week still loads ahead.
+  // The click comes while the next week still loads ahead. The week shows at once as
+  // placeholders, and its items arrive when the load that runs ends.
+  setTimeout(() => gate.release(), 300);
   const { ms } = await timeWeekChange(page, 'Next week', 'November 3 to 9');
   await waitForQuiet(canvas);
   const planner = canvas.requests.slice(from).flatMap((r) => plannerRequest(r) ?? []);
