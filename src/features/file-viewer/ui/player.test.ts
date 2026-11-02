@@ -1,6 +1,14 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { decodeText, imageFits, MAX_TEXT_BYTES, playerType, svgDrawSize } from './player';
+import {
+  decodeText,
+  imageFits,
+  MAX_SVG_PIXELS,
+  MAX_TEXT_BYTES,
+  playerType,
+  svgBudget,
+  svgDrawSize,
+} from './player';
 import { catchesDownload, fileTarget } from '../model';
 
 describe('passive file players', () => {
@@ -82,6 +90,13 @@ describe('submission attachment paths', () => {
       }
     });
   }
+  it('does not take a comment attachment, with or without a download attribute', () => {
+    const href = '/courses/12/assignments/3/submissions/7?comment_id=9&download=42';
+    expect(fileTarget(href, origin)).toBeNull();
+    expect(fileTarget('/courses/12/assignments/3/submissions/7?download=42', origin)).toEqual({
+      fileId: '42',
+    });
+  });
   it('keeps the download of a teacher button in the description and of a comment attachment', () => {
     const href = '/files/42/download?download_frd=1';
     for (const markup of [DESCRIPTION, COMMENT]) {
@@ -141,6 +156,30 @@ describe('svgDrawSize', () => {
       ),
     );
     expect((globalThis as { ran?: boolean }).ran).toBe(false);
+  });
+});
+
+describe('svgDrawSize with a long file', () => {
+  it('reads the size from the start tag of a file larger than the part it parses', () => {
+    const body = '<rect width="1" height="1"/>'.repeat(5000);
+    const text = `<?xml version="1.0"?><!-- c --><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50">${body}</svg>`;
+    const bytes = new TextEncoder().encode(text);
+    expect(bytes.length).toBeGreaterThan(64 * 1024);
+    expect(svgDrawSize(bytes)).toEqual({ width: 1024, height: 512 });
+  });
+  it('is not confused by a greater-than sign inside an attribute', () => {
+    const text = '<svg xmlns="http://www.w3.org/2000/svg" data-x="a>b" width="30" height="20">';
+    expect(svgDrawSize(new TextEncoder().encode(text))).toEqual({ width: 30, height: 20 });
+  });
+});
+
+describe('svgBudget', () => {
+  it('keeps a small drawing and shrinks a large one with the same shape', () => {
+    expect(svgBudget(2048, 2048)).toEqual({ width: 2048, height: 2048 });
+    const large = svgBudget(8192, 4096);
+    expect(large.width * large.height).toBeLessThanOrEqual(MAX_SVG_PIXELS);
+    expect(large.width / large.height).toBeCloseTo(2, 1);
+    expect(svgBudget(16384, 1)).toEqual({ width: 16384, height: 1 });
   });
 });
 

@@ -324,6 +324,7 @@ export async function startViewer(): Promise<void> {
         return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      const checkedHref = link.getAttribute('href');
       void (async () => {
         // The click is taken at once, even while the settings and the tabs are still loading.
         await starting;
@@ -332,7 +333,8 @@ export async function startViewer(): Promise<void> {
           // The viewer is off, so the click goes to the link after all. The click that the script
           // makes is not trusted, so the listener above ignores it, and the browser does what the
           // link says: it follows the link, saves a download, or opens a new tab.
-          link.click();
+          // A page script that changed the link in the meantime gets no click on the new address.
+          if (link.isConnected && link.getAttribute('href') === checkedHref) link.click();
           return;
         }
         if (!paneOpen()) await show();

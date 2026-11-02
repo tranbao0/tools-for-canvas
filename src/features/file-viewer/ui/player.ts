@@ -40,6 +40,19 @@ export const MAX_IMAGE_SIDE = 16_384;
 /** A hidden audio or video tab frees a file larger than this, and reads it again when it shows. */
 export const HIDDEN_MEDIA_LIMIT_BYTES = 20 * 1024 * 1024;
 
+/** A vector image is drawn at most this large, because a filter can make a large drawing slow. */
+export const MAX_SVG_PIXELS = 4_194_304;
+
+/** The size to draw an SVG at: its own size, or a smaller one with the same shape. */
+export function svgBudget(width: number, height: number): { width: number; height: number } {
+  if (width * height <= MAX_SVG_PIXELS) return { width, height };
+  const scale = Math.sqrt(MAX_SVG_PIXELS / (width * height));
+  return {
+    width: Math.max(1, Math.floor(width * scale)),
+    height: Math.max(1, Math.floor(height * scale)),
+  };
+}
+
 export function imageFits(width: number, height: number): boolean {
   return (
     width > 0 &&
@@ -58,8 +71,15 @@ export function imageFits(width: number, height: number): boolean {
 export function svgDrawSize(bytes: Uint8Array): { width: number; height: number } | null {
   let root: Element;
   try {
+    // Only the start tag of the root element holds the size, so a long file is not parsed whole.
+    // The tag is closed by hand, so a file that is cut or has errors further on does not matter.
     const text = new TextDecoder('utf-8').decode(bytes.subarray(0, 64 * 1024));
-    const parsed = new DOMParser().parseFromString(text, 'image/svg+xml').documentElement;
+    const tag = /<svg\b(?:[^>"']|"[^"]*"|'[^']*')*>/i.exec(text)?.[0];
+    if (!tag) return null;
+    const parsed = new DOMParser().parseFromString(
+      `${tag.replace(/\/?>$/, '')}/>`,
+      'image/svg+xml',
+    ).documentElement;
     if (parsed.localName !== 'svg') return null;
     root = parsed;
   } catch {

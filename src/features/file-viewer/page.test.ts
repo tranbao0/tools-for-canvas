@@ -246,6 +246,31 @@ describe('the page script', () => {
     vi.restoreAllMocks();
   });
 
+  it('clicks no link that the page changed while the viewer was switching off', async () => {
+    prepare();
+    let release: () => void = () => undefined;
+    const slow = new Promise<void>((resolve) => (release = resolve));
+    sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'weekrow:page-context') {
+        await slow;
+        return { tools: { fileViewer: false, fileViewerWidth: 480 }, settings: {} };
+      }
+      return reply(message);
+    });
+    const seen: boolean[] = [];
+    document.getElementById('file')!.addEventListener('click', () => seen.push(true));
+    const started = startViewer();
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    Object.defineProperty(event, 'isTrusted', { value: true });
+    document.getElementById('file')!.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    document.getElementById('file')!.setAttribute('href', 'https://evil.example/');
+    release();
+    await started;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(seen).toEqual([]);
+  });
+
   it('writes the tabs with the token of the last read', async () => {
     prepare();
     sendMessage.mockImplementation(async (message: { type: string }) =>

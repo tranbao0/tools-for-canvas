@@ -2319,9 +2319,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      - the address has the shape `/files/:id/download`, or `/courses/:id/assignments/:id/submissions/:id?download=:file`.
      A download button that a teacher puts in an assignment description, and a comment attachment, keep their download.
      The pane takes only the file id from the address and drops any `verifier`.
-   - A link without a `download` attribute opens the pane by its address alone, also in a comment.
-     A comment attachment may then fail to load, because its file record can refuse the student.
-     The card shows "Open in Canvas" in that case.
+   - A link without a `download` attribute opens the pane by its address alone.
+     The address of a comment attachment carries `comment_id`, and the pane never takes it, with or without a `download` attribute.
    - When the viewer is off, no click is rerouted.
      The script takes a click at once, before the settings have loaded, and if the setting turns out to be off, it clicks the same link again from script.
      That click is not trusted, so the script ignores it, and the browser does what the link says: it follows the link, saves a download or opens a new tab.
@@ -2486,7 +2485,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
       An animated GIF shows its first frame.
       An SVG shows as a picture only, because an image element never runs script.
       An SVG that reports no size, such as one with only a `viewBox`, is drawn at the size of its `width` and `height`, or at 1024 px wide with the ratio of the `viewBox`.
-      An inert parser reads those attributes.
+      An inert parser reads those attributes from the start tag of the root element.
+      A vector drawing is drawn at most 4,194,304 pixels large, with the same shape, because a filter can make a large drawing slow.
     - **Limits.**
       An image of more than 16,777,216 pixels, or of more than 16,384 pixels on a side, is not drawn, the same limits as a PDF page.
       The card above stays, with "Download" and "Open in Canvas", and a line says that the image is too large to show here.
@@ -2498,6 +2498,7 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
     - **Memory.**
       An audio or video file needs a live blob URL while it plays, so the URL stays while the tab shows.
       A hidden tab that holds a file of more than 20 MB frees the URL and the element, and reads the file again when the tab shows.
+      A hidden image tab does the same when the decoded picture (4 bytes a pixel) takes more than 20 MB.
       A small file stays.
       A hidden tab pauses its media.
 
