@@ -202,3 +202,7 @@ PDF.js, the program that shows a PDF, is part of the extension.
 It runs on your device from the files of the extension, loads nothing from the internet, and runs no script from the PDF.
 The search in a PDF runs on your device and sends nothing.
 A link inside a PDF opens in a new tab only when you click it.
+
+The file pane reads image, audio, video and text files through the same Canvas file checks as PDFs.
+It keeps the bytes in memory and frees each blob URL when its tab closes.
+SVG files appear only in image elements, and text files appear as plain text.

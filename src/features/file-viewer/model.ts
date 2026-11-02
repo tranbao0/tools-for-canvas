@@ -89,3 +89,12 @@ export function closeFile(state: Tabs, id: string): Tabs {
   if (state.active !== id) return { ids, active: state.active };
   return { ids, active: ids[index] ?? ids[index - 1] ?? null };
 }
+
+/** Canvas marks submission attachments as downloads, but students also need to read them. */
+export function catchesDownload(href: string, origin: string, pagePath: string): boolean {
+  return (
+    /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*(?:\/submissions\/[1-9][0-9]*)?\/?$/.test(
+      pagePath,
+    ) && fileTarget(href, origin) !== null
+  );
+}

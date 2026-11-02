@@ -15,6 +15,8 @@ import { FileCard, type FileState, type PaneFile } from './FileCard';
 import { fileKind, isPdf } from './fileInfo';
 import { fileLinks } from './links';
 import { PdfTab, type PdfHost } from './PdfTab';
+import { MediaTab } from './MediaTab';
+import { playerType } from './player';
 import { PANEL_ID, TabStrip, tabDomId, type TabItem } from './TabStrip';
 
 /** What the pane needs from the extension and from the Canvas page. */
@@ -230,11 +232,32 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const pdfTabs: ComponentChildren[] = [];
   for (const fileId of tabs.ids) {
     const state = files[fileId];
-    if (state?.kind !== 'ready' || !isPdf(state.file.contentType)) continue;
+    if (state?.kind !== 'ready') continue;
+    if (!isPdf(state.file.contentType) && !playerType(state.file.contentType, state.file.name))
+      continue;
     if (Number.isFinite(state.file.size) && state.file.size > MAX_FILE_BYTES) continue;
     const course = courseHints.current.get(fileId) ?? state.file.courseId;
     const links = fileLinks(host.origin, fileId, course, state.file.url);
     if (!links) continue;
+    if (!isPdf(state.file.contentType)) {
+      pdfTabs.push(
+        <MediaTab
+          key={fileId}
+          host={host}
+          url={links.download}
+          name={state.file.name}
+          contentType={state.file.contentType}
+          active={fileId === active}
+          attempt={attempts[fileId] ?? 0}
+          onRetry={() => readAgain(fileId)}
+          onReadFailed={() => {
+            failedReads.current.add(fileId);
+            refreshAccess();
+          }}
+        />,
+      );
+      continue;
+    }
     pdfTabs.push(
       <PdfTab
         key={fileId}

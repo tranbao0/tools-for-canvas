@@ -4,6 +4,7 @@ import { acceptPaneHello, isViewerSecret, secretMessage, validPaneReady } from '
 import {
   courseOfLink,
   fileTarget,
+  catchesDownload,
   normalizeTabs,
   normalizeWidth,
   openFile,
@@ -300,7 +301,7 @@ export async function startViewer(): Promise<void> {
       const link = event.target.closest<HTMLElement>(
         'a[href],button[data-file-id],button[data-url]',
       );
-      if (!link || link.hasAttribute('download')) return;
+      if (!link) return;
       const module = link.closest('[data-module-id],.context_module');
       const moduleId =
         module?.getAttribute('data-module-id') ?? module?.id.replace('context_module_', '');
@@ -308,6 +309,12 @@ export async function startViewer(): Promise<void> {
         link.getAttribute('href') ??
         link.dataset['url'] ??
         `/files/${link.dataset['fileId'] ?? ''}`;
+      // Canvas gives submission attachments a download attribute even when a plain click can read them.
+      if (
+        link.hasAttribute('download') &&
+        !catchesDownload(href, location.origin, location.pathname)
+      )
+        return;
       const target = fileTarget(href, location.origin, moduleId);
       if (!target) return;
       if (
