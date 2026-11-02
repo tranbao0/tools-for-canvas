@@ -1,3 +1,11 @@
+import {
+  normalizePositions,
+  positionKey,
+  validPosition,
+  viewerPositionsItem,
+  withPositions,
+  type SavedZoom,
+} from './positions';
 import { browser, type Browser } from 'wxt/browser';
 import type { CanvasApi } from '../../shared/canvas/types';
 import { canvasOriginItem } from '../../shared/platform/storage';
@@ -151,6 +159,8 @@ export function routeViewerMessage(
     !('type' in message) ||
     ![
       'viewer:file',
+      'viewer:position-get',
+      'viewer:position-set',
       'viewer:module-item',
       'viewer:tabs-get',
       'viewer:tabs-set',
@@ -172,6 +182,34 @@ export function routeViewerMessage(
     const tabId = sender.tab?.id;
     const owner = createViewerOwner(host, tabId);
     switch (request['type']) {
+      case 'viewer:position-get':
+      case 'viewer:position-set': {
+        const writing = request['type'] === 'viewer:position-set';
+        const fields = writing ? ['type', 'fileId', 'page', 'zoom'] : ['type', 'fileId'];
+        if (
+          Object.keys(request).some((key) => !fields.includes(key)) ||
+          !id(request['fileId']) ||
+          (writing && !validPosition(request['page'], request['zoom']))
+        )
+          throw new Error('Invalid viewer position');
+        const epoch = await readEpoch(host);
+        if (!(await host.mayFetch(origin, tabId))) throw new Error('The viewer may not read');
+        const student = await host.userId(origin, tabId);
+        if (student === null) throw new Error('The cookie is not confirmed for the viewer');
+        return withPositions(async () => {
+          if (epoch !== (await readEpoch(host))) throw new Error('The viewer session changed');
+          const key = positionKey(origin, student, request['fileId'] as string);
+          const positions = await viewerPositionsItem.getValue();
+          if (!writing) return positions[key] ?? null;
+          positions[key] = {
+            page: request['page'] as number,
+            zoom: request['zoom'] as SavedZoom,
+            at: Date.now(),
+          };
+          await viewerPositionsItem.setValue(normalizePositions(positions));
+          return { ok: true };
+        });
+      }
       case 'viewer:file':
         if (!id(request['fileId'])) throw new Error('Invalid file id');
         return owner.file(origin, request['fileId']);
@@ -316,6 +354,7 @@ export async function clearViewerTabs(): Promise<void> {
   const epoch = typeof values[EPOCH_KEY] === 'number' ? values[EPOCH_KEY] : 0;
   // The new epoch comes first, so a write with an old token fails even while the keys go.
   await browser.storage.session.set({ [EPOCH_KEY]: epoch + 1 });
+  await withPositions(() => viewerPositionsItem.setValue({}));
   const keys = Object.keys(values).filter(
     (key) => key.startsWith('viewer:') && !key.startsWith(SESSION_PREFIX),
   );
