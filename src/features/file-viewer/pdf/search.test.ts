@@ -41,6 +41,13 @@ describe('findMatches', () => {
     expect(findMatches(page(['hash', 'table']), 'hashtable')).toHaveLength(1);
   });
 
+  it('matches a run of white space in the page text with the one space of the query', () => {
+    const text = page(['hash  table ', '', 'next'], [false, true, false]);
+    expect(findMatches(text, 'hash table')).toEqual([{ start: 0, end: 11 }]);
+    expect(findMatches(text, 'table next')).toHaveLength(1);
+    expect(findMatches(page(['a\u00a0b']), 'a b')).toHaveLength(1);
+  });
+
   it('keeps offsets when a letter changes length in lower case', () => {
     // "İ" lower-cases to two characters; the search keeps it as it is, so offsets stay true.
     const text = page(['İİ match']);

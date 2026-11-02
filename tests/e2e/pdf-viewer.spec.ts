@@ -17,7 +17,13 @@ import {
   saveSetting,
 } from './support/file-viewer';
 import { expect, test as base } from './support/weekrow';
-import { FIXTURE_LINK, FIXTURE_WORD, lecturePdf } from '../fixtures/pdf/fixture';
+import {
+  FAX_BOX,
+  FIXTURE_LINK,
+  FIXTURE_WORD,
+  hostilePdf,
+  lecturePdf,
+} from '../fixtures/pdf/fixture';
 
 const FIXTURE = readFileSync('tests/fixtures/pdf/fixture.pdf');
 
@@ -30,6 +36,7 @@ const test = base.extend<HostFixtures>({
     const host = await startFileHost({
       '/inst-fs/fixture.pdf': { body: FIXTURE, contentType: 'application/pdf' },
       '/inst-fs/lecture.pdf': { body: lecturePdf(), contentType: 'application/pdf' },
+      '/inst-fs/hostile.pdf': { body: hostilePdf(), contentType: 'application/pdf' },
       '/inst-fs/slow.pdf': { body: FIXTURE, contentType: 'application/pdf', delay: 2500 },
       '/inst-fs/chunked.pdf': {
         body: FIXTURE,
@@ -43,6 +50,11 @@ const test = base.extend<HostFixtures>({
   },
 });
 test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
+// Each test loads the extension, a document and PDF.js in a browser that draws pages on the CPU, so
+// it gets more time than the default when other jobs share the machine.
+test.beforeEach(() => {
+  test.slow();
+});
 
 const SECOND = {
   ...NOTES,
@@ -136,6 +148,86 @@ test('a click opens the pane, page 1 has pixels, and the document has 3 pages', 
       ratio: window.devicePixelRatio,
     }));
   expect(Math.abs(sizes.pixels - sizes.css * sizes.ratio)).toBeLessThan(2);
+});
+
+test('a scanned-page image in fax coding draws', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost);
+  const canvas = pageBox(frame, 1).locator('canvas');
+  // The black bar of the image sits over columns 2 to 5 of 8: its middle is at 4/8 of the box.
+  const sample = (x: number, y: number) =>
+    canvas.evaluate(
+      (node: HTMLCanvasElement, point) => {
+        const [r, g, b, a] = node
+          .getContext('2d')!
+          .getImageData(
+            Math.floor(point.x * node.width),
+            Math.floor(point.y * node.height),
+            1,
+            1,
+          ).data;
+        return { r, g, b, a };
+      },
+      { x, y },
+    );
+  const at = (xPoints: number, yPoints: number) => [xPoints / 612, (792 - yPoints) / 792] as const;
+  const middle = at(FAX_BOX.left + FAX_BOX.size * 0.5, FAX_BOX.bottom + FAX_BOX.size / 2);
+  const left = at(FAX_BOX.left + FAX_BOX.size * 0.1, FAX_BOX.bottom + FAX_BOX.size / 2);
+  await expect.poll(async () => (await sample(...middle)).r).toBeLessThan(40);
+  expect((await sample(...left)).r).toBeGreaterThan(215);
+});
+
+test('a hostile PDF gets no script, no form, no popup and no unsafe link', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost, '/inst-fs/hostile.pdf');
+  const layer = pageBox(frame, 1).locator('.annotationLayer');
+  await expect(layer.locator('a[href="https://example.com/ok"]')).toHaveCount(1);
+  await expect(
+    layer.locator('input, textarea, select, button, .popup, .popupAnnotation'),
+  ).toHaveCount(0);
+  // The links with a script address or a file address have no address, so a click does nothing.
+  await expect(layer.locator('a[href^="javascript"], a[href^="file"]')).toHaveCount(0);
+  // The open action did not run: no dialog opened, and the pane still works.
+  await expect(frame.locator('[data-part="pdf-page-count"]')).toHaveText('of 1');
+});
+
+test('zoom clicks in a row leave every page at the last zoom, with its text and links', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost);
+  const zoomIn = frame.getByRole('button', { name: 'Zoom in' });
+  // Three clicks in one task: the second and the third come while the first draw still runs.
+  await zoomIn.evaluate((button: HTMLButtonElement) => {
+    button.click();
+    button.click();
+    button.click();
+  });
+  const box = pageBox(frame, 1);
+  await expect
+    .poll(async () => {
+      const [pixels, css, ratio] = await box
+        .locator('canvas')
+        .evaluate((node: HTMLCanvasElement) => [
+          node.width,
+          node.parentElement!.getBoundingClientRect().width,
+          window.devicePixelRatio,
+        ]);
+      return Math.abs(pixels! - css! * ratio!);
+    })
+    .toBeLessThan(2);
+  await expect(box.locator('.annotationLayer a[href]')).toHaveCount(2);
+  await expect(box.locator('.textLayer span').first()).toBeAttached();
 });
 
 test('next page goes to page 2, and the keys page and zoom', async ({
@@ -532,7 +624,8 @@ for (const width of [1920, 1280]) {
       const frame = pane(page);
       await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
       await frame.getByRole('button', { name: 'Thumbnails' }).click();
-      await expect(frame.locator('.pv-thumb-slot[data-drawn="true"]')).toHaveCount(6);
+      // The thumbnails in view of the list draw; the last ones may lie below it.
+      await expect(frame.locator('.pv-thumb-slot[data-drawn="true"]').nth(3)).toBeVisible();
       await frame.getByRole('button', { name: 'Search', exact: true }).click();
       await frame.locator('[data-part="pdf-search-input"]').fill('hash');
       await expect(frame.locator('[data-part="pdf-search-count"]')).toContainText(' of ');

@@ -2342,6 +2342,10 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      No other page loads it, and no page entry point lists it.
      The pane page draws on the main thread and uses no renderer worker (`disableWorkerRendering`).
      Each document runs in its own `PDFWorker`, from the worker file in `pdfjs/`.
+   - **Limits.**
+     A document of more than 20,000 pages is not shown, because each page costs a box and an observer.
+     The worker decodes no image of more than 100 million pixels.
+     A thumbnail is at most 3 times as tall as it is wide, and a thumbnail far from the list frees its canvas.
    - **Pages.**
      A page is a white box with a canvas, a text layer and an annotation layer.
      A page draws when it comes within one view height of the scroll area, and the `IntersectionObserver` of the engine reports it.
@@ -2397,11 +2401,17 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - **Theme.**
      The toolbar, the thumbnail list and the area around the pages follow the pane theme.
      The pages stay white in both themes.
+   - **Image decoders.**
+     Scanned pages, such as library scans of readings, use CCITT fax, JBIG2 or JPEG 2000 images, and PDF.js decodes them only with its decoder files.
+     The build copies the two JavaScript decoders, `jbig2_nowasm_fallback.js` (which also decodes CCITT fax) and `openjpeg_nowasm_fallback.js`, and their licenses, unmodified into `pdfjs/wasm/`.
+     The pane passes that folder as `wasmUrl` and sets `useWasm: false`, so the worker loads the decoders as modules of the extension.
+     The pane ships no WebAssembly, which would need `wasm-unsafe-eval` in the policy.
+     Color profiles then fall back to the plain color space of the file.
    - **Not shipped.**
-     PDF.js can load character maps, the standard font files and image decoders (JBIG2, JPEG 2000 and color management) from files next to it.
-     The pane ships none of them, because they would add about 4 MB to the extension and the limit of this page is 1.5 MB after gzip.
+     PDF.js can also load character maps and the standard font files.
+     The pane ships neither, because they would add about 2.5 MB to the extension.
      A PDF that needs them still opens.
-     Its non-embedded standard fonts use the system fonts, and a few images that use JPEG 2000 or JBIG2, and some old Asian encodings, may not draw.
+     Its non-embedded standard fonts use the system fonts, and text in some old Asian encodings may not draw.
      The live checklist asks the tester to open such a file.
 
 **Security:**
@@ -2415,11 +2425,14 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   The page checks the source window and nonce, then sends the port only to `event.origin`.
   Chromium can load `use_dynamic_url` pages under an origin different from the address returned by `getURL`.
   Each frame reload repeats the handshake.
-- The pane fetches only `/api/v1/files/:id` and the `url` that it returns, through the existing fetch wrapper (decision 20), plus the redirect that Canvas chooses.
+- The pane fetches only `/api/v1/files/:id` and the `url` that it returns, plus the redirect that Canvas chooses.
+  The record goes through the existing fetch wrapper (decision 20), and the bytes of a file through `src/shared/canvas/fileBytes.ts`, which keeps the same start rule.
+  An answer with the type `text/html`, such as a sign-in page, is a failed read.
 - PDF.js runs with `isEvalSupported: false` and `enableScripting: false`.
   Version 6.5.438 has no eval path and no scripting option in `getDocument`, so the two values are only written down.
   What keeps scripts out is the code: the pane never loads the scripting sandbox file, it passes `renderForms: false` and `enableScripting: false` to the annotation layer, and it draws link annotations only.
-  The pane also sets `enableXfa: false`, gives PDF.js no address (so it never fetches), and turns the renderer worker off.
+  The pane also sets `enableXfa: false`, gives PDF.js no address except the folder of its own decoders, and turns the renderer worker off.
+  The decoders load with `import()` from the extension and never with `fetch`, because `useWorkerFetch` and `useWasm` are off.
 - Links inside a PDF open in a new tab with `rel="noopener noreferrer"`, and only on a click.
   Only `http` and `https` addresses open.
   Any other scheme, such as `javascript:`, `data:` or `file:`, leaves the link without an address.
@@ -2443,10 +2456,10 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
 - The pane page and PDF.js load only when a file opens, and they get their own limit of 1.5 MB gzip, because they load from the extension's files.
 - `viewer-frame.js`, the pane page, stays under the 40 KB limit.
   It holds the app, the toolbar, the engine and the style sheet, and imports PDF.js at run time.
-- PDF.js and its worker count toward the 1.5 MB limit of `viewer.html`.
+- PDF.js, its worker and its decoders count toward the 1.5 MB limit of `viewer.html`.
   `check-size` adds the files of `pdfjs/` to that page, because a scan of the code cannot see an address that the page builds at run time.
-  It also follows the bare script name in the page, which it did not do before.
-- The sizes at the end of this build are in the report of the ticket: `viewer-frame.js` 30.9 KB and `viewer.html` 547.0 KB after gzip.
+  It follows the bare script name in the page (`src="viewer-frame.js"`), so the script counts too.
+- The sizes after gzip are about 31 KB for `viewer-frame.js` and about 0.7 MB for `viewer.html`, the same in all three browsers.
 
 **Implementation status:**
 

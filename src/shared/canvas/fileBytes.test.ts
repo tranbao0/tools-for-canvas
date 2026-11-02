@@ -133,6 +133,42 @@ describe('fetchFileBytes', () => {
     expect(sent).toBeLessThan(5);
   });
 
+  it('fails on a web page after the redirect, as a sign-in page is, and reads none of it', async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ cancel });
+    await expect(
+      fetchFileBytes({
+        origin: ORIGIN,
+        url: '/files/1/download',
+        fetchImpl: async () =>
+          new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8' } }),
+      }),
+    ).rejects.toMatchObject({ kind: 'not_a_file' });
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it('returns exactly the bytes when the length is known, also when the body is shorter or longer', async () => {
+    const exact = await fetchFileBytes({
+      origin: ORIGIN,
+      url: '/files/1/download',
+      fetchImpl: async () => reply([bytes(1, 2), bytes(3)], { headers: { 'content-length': '3' } }),
+    });
+    expect([...exact]).toEqual([1, 2, 3]);
+    const shorter = await fetchFileBytes({
+      origin: ORIGIN,
+      url: '/files/1/download',
+      fetchImpl: async () => reply([bytes(1, 2)], { headers: { 'content-length': '5' } }),
+    });
+    expect([...shorter]).toEqual([1, 2]);
+    const longer = await fetchFileBytes({
+      origin: ORIGIN,
+      url: '/files/1/download',
+      fetchImpl: async () =>
+        reply([bytes(1, 2), bytes(3, 4, 5)], { headers: { 'content-length': '3' } }),
+    });
+    expect([...longer]).toEqual([1, 2, 3, 4, 5]);
+  });
+
   it('has a limit of 100 MB by default', () => {
     expect(MAX_FILE_BYTES).toBe(100 * 1024 * 1024);
   });

@@ -31,5 +31,7 @@ PDF.js
 The PDF viewer of the file pane uses PDF.js from the npm package pdfjs-dist
 6.5.438. Copyright Mozilla Foundation. PDF.js is licensed under the Apache
 License, Version 2.0. The extension includes the files pdf.min.mjs and
-pdf.worker.min.mjs of the package without any change, in the folder pdfjs.
-The full text of the license is in the file pdfjs/LICENSE of the extension.
+pdf.worker.min.mjs of the package without any change, in the folder pdfjs,
+with the decoders jbig2_nowasm_fallback.js and openjpeg_nowasm_fallback.js in
+pdfjs/wasm. The full text of the license is in the file pdfjs/LICENSE of the
+extension, and the licenses of the two decoders are in pdfjs/wasm.

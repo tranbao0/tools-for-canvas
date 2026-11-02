@@ -1,13 +1,16 @@
 /**
  * Draws the page thumbnails of the side list lazily (design decision 25). A thumbnail draws when
  * its slot comes near the view of the list, one at a time. A thumbnail that leaves the view stops
- * its render task. A drawn thumbnail stays, because it is small.
+ * its render task and frees its canvas, so a long document keeps only the thumbnails near the view.
  */
 import { CSS_PER_POINT } from './zoom';
 import type { PdfDocument, PdfRenderTask } from './types';
 
 /** The width of a thumbnail, in CSS pixels. */
 export const THUMBNAIL_WIDTH = 104;
+
+/** The tallest thumbnail, in CSS pixels. A very tall page gets a narrower thumbnail. */
+export const THUMBNAIL_MAX_HEIGHT = 3 * THUMBNAIL_WIDTH;
 
 function isCancel(error: unknown): boolean {
   return (error as { name?: unknown } | null)?.name === 'RenderingCancelledException';
@@ -60,6 +63,12 @@ export class ThumbnailRenderer {
     const at = this.waiting.indexOf(index);
     if (at !== -1) this.waiting.splice(at, 1);
     if (this.current?.index === index) this.current.task?.cancel();
+    // A thumbnail far from the view frees its pixels. The slot keeps its size.
+    const slot = this.elements.get(index);
+    if (slot && this.drawn.delete(index)) {
+      slot.replaceChildren();
+      delete slot.dataset['drawn'];
+    }
   }
 
   private async next(): Promise<void> {
@@ -83,7 +92,8 @@ export class ThumbnailRenderer {
     try {
       const page = await this.doc.getPage(index + 1);
       const base = page.getViewport({ scale: CSS_PER_POINT });
-      const scale = (THUMBNAIL_WIDTH / base.width) * CSS_PER_POINT;
+      const scale =
+        Math.min(THUMBNAIL_WIDTH / base.width, THUMBNAIL_MAX_HEIGHT / base.height) * CSS_PER_POINT;
       const viewport = page.getViewport({ scale });
       const ratio = Math.max(1, this.devicePixelRatio());
       const canvas = document.createElement('canvas');

@@ -1,7 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildPdf, text } from './pdf-builder';
-import { FIXTURE_LINK, FIXTURE_PAGE_COUNT, FIXTURE_WORD, fixturePdf, lecturePdf } from './fixture';
+import {
+  FIXTURE_LINK,
+  FIXTURE_PAGE_COUNT,
+  FIXTURE_WORD,
+  fixturePdf,
+  hostilePdf,
+  lecturePdf,
+} from './fixture';
 
 const asText = (bytes: Buffer) => bytes.toString('latin1');
 
@@ -56,5 +63,24 @@ describe('the lecture PDF', () => {
     expect(file).toContain('/Count 4');
     expect(file).toContain('Hash tables');
     expect(file).not.toContain('/Subtype /Link');
+  });
+});
+
+describe('the hostile PDF', () => {
+  it('holds a script link, a file link, a script action, a form field and a popup note', () => {
+    const file = asText(hostilePdf());
+    expect(file).toContain('/URI (javascript:alert\\(document.domain\\))');
+    expect(file).toContain('/URI (file:///etc/passwd)');
+    expect(file).toContain('/OpenAction');
+    expect(file).toContain('/Subtype /Widget');
+    expect(file).toContain('/Open true');
+  });
+});
+
+describe('the fax image of the fixture', () => {
+  it('is written as ASCII hex, so the file stays plain text', () => {
+    const bytes = fixturePdf();
+    expect(bytes.every((byte) => byte < 128)).toBe(true);
+    expect(asText(bytes)).toContain('/Filter [/ASCIIHexDecode /CCITTFaxDecode]');
   });
 });

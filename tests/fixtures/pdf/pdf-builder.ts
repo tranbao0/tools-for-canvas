@@ -15,10 +15,31 @@ export interface LinkSpec {
   page?: number;
 }
 
+/** A black and white image that the page draws with `/<name> Do`. The data is hex text. */
+export interface ImageSpec {
+  name: string;
+  width: number;
+  height: number;
+  /** The filters, in the order that the reader applies them. The hex filter comes first. */
+  filters: string[];
+  /** The decode parameters of the filters, as PDF text, `null` for a filter without any. */
+  decodeParms: string[];
+  /** The bytes of the image as hex digits. */
+  hex: string;
+}
+
 export interface PageSpec {
   /** The content stream of the page. Build it with {@link text}, {@link fill} and {@link stroke}. */
   content: string;
   links?: LinkSpec[];
+  /** More annotations, as the text of their dictionaries. */
+  annots?: string[];
+  images?: ImageSpec[];
+}
+
+export interface PdfOptions {
+  /** More entries for the catalog, such as an action that runs when the file opens. */
+  catalog?: string;
 }
 
 export const PAGE_WIDTH = 612;
@@ -85,7 +106,7 @@ const FONTS: Record<Font, string> = {
 };
 
 /** Builds a PDF with the pages in order. */
-export function buildPdf(pages: readonly PageSpec[]): Buffer {
+export function buildPdf(pages: readonly PageSpec[], options: PdfOptions = {}): Buffer {
   const objects: string[] = [];
   // Object numbers: 1 catalog, 2 page tree, 3 to 6 fonts, then three objects or more per page.
   const fontObjects = Object.keys(FONTS) as Font[];
@@ -95,12 +116,14 @@ export function buildPdf(pages: readonly PageSpec[]): Buffer {
   const layout = pages.map((page) => {
     const pageNumber = next;
     const contentNumber = next + 1;
-    const annotNumbers = (page.links ?? []).map((_link, index) => next + 2 + index);
-    next += 2 + annotNumbers.length;
+    const annotCount = (page.links ?? []).length + (page.annots ?? []).length;
+    const annotNumbers = Array.from({ length: annotCount }, (_unused, index) => next + 2 + index);
+    const imageNumbers = (page.images ?? []).map((_image, index) => next + 2 + annotCount + index);
+    next += 2 + annotCount + imageNumbers.length;
     pageNumbers.push(pageNumber);
-    return { pageNumber, contentNumber, annotNumbers };
+    return { pageNumber, contentNumber, annotNumbers, imageNumbers };
   });
-  objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objects[1] = `<< /Type /Catalog /Pages 2 0 R ${options.catalog ?? ''} >>`;
   objects[2] = `<< /Type /Pages /Kids [${pageNumbers.map((n) => `${n} 0 R`).join(' ')}] /Count ${pages.length} >>`;
   fontObjects.forEach((font, index) => {
     objects[3 + index] =
@@ -112,11 +135,26 @@ export function buildPdf(pages: readonly PageSpec[]): Buffer {
     const annots = entry.annotNumbers.map((n) => `${n} 0 R`).join(' ');
     objects[entry.pageNumber] =
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] ` +
-      `/Resources << /Font << ${fontResources} >> >> /Contents ${entry.contentNumber} 0 R` +
+      `/Resources << /Font << ${fontResources} >>` +
+      (entry.imageNumbers.length === 0
+        ? ''
+        : ` /XObject << ${(page.images ?? []).map((image, i) => `/${image.name} ${entry.imageNumbers[i]} 0 R`).join(' ')} >>`) +
+      ` >> /Contents ${entry.contentNumber} 0 R` +
       (annots === '' ? '' : ` /Annots [${annots}]`) +
       ' >>';
     objects[entry.contentNumber] =
       `<< /Length ${Buffer.byteLength(page.content, 'latin1')} >>\nstream\n${page.content}endstream`;
+    (page.annots ?? []).forEach((annot, annotIndex) => {
+      objects[entry.annotNumbers[(page.links ?? []).length + annotIndex]!] = annot;
+    });
+    (page.images ?? []).forEach((image, imageIndex) => {
+      const filters = `[${image.filters.map((name) => `/${name}`).join(' ')}]`;
+      objects[entry.imageNumbers[imageIndex]!] =
+        `<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} ` +
+        `/ColorSpace /DeviceGray /BitsPerComponent 1 /Filter ${filters} ` +
+        `/DecodeParms [${image.decodeParms.join(' ')}] /Length ${image.hex.length + 1} >>\n` +
+        `stream\n${image.hex}>\nendstream`;
+    });
     (page.links ?? []).forEach((link, linkIndex) => {
       const number = entry.annotNumbers[linkIndex]!;
       const action =

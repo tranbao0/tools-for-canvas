@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { test, expect, serveScenario } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
-import { openFirstFile } from './support/file-viewer';
+import { openFirstFile, pdfDownloadRoute } from './support/file-viewer';
 
 const html = `<!doctype html><html style="padding-right: 13px"><head><script>INST={environment:'production'};ENV={current_user_id:'5501'};</script></head><body><header>Canvas</header><nav>Course navigation</nav><main><h1>Course files</h1><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a><div data-module-id="7" data-type="File"><a href="/courses/101/modules/items/9">Module notes</a></div><a href="/courses/101/pages/next">Next page</a></main></body></html>`;
 
@@ -21,6 +21,7 @@ test('file pane channel, module resolution, padding and page changes', async ({
   const { canvas } = await serveScenario(context, [
     { path: '/courses/101/pages/notes', body: realisticHtml, contentType: 'text/html' },
     { path: '/courses/101/pages/next', body: html, contentType: 'text/html' },
+    pdfDownloadRoute,
     {
       path: '/api/v1/files/42',
       body: {
