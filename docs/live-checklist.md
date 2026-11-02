@@ -553,3 +553,16 @@ A store build or a build from `npm run build` does not.
   Expect page 1 with Fit width.
 - Repeat the restore check in Firefox.
   Expect the saved page.
+
+## One assignment view, step 1 (pending implementation)
+
+These checks wait for the Grades page integration of decision 26.
+
+1. Open a course Grades page with a graded assignment that has a rubric, comments and submitted files.
+2. Expand the assignment and compare the due date, score, rubric assessment and feedback with Canvas's own pages.
+3. Open a comment attachment and a submitted file in the file pane.
+4. Open two assignments and collapse one of them.
+5. Use the Canvas title link and its rubric and comment toggles.
+6. Turn off One assignment view and check that all added controls disappear.
+7. Repeat in light and dark themes at 1920 and 1280 px in Chrome, Edge and Firefox.
+8. Switch Canvas accounts and check that the earlier student's details do not remain visible.

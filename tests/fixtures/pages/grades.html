@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Grades - fixture course</title>
+  </head>
+  <body>
+    <!-- canvas-lms 1c9f0bb: gradebooks/grade_summary.html.erb and GradeSummaryAssignmentPresenter#classes. -->
+    <main id="content">
+      <h1>Grades for Student</h1>
+      <table id="grades_summary">
+        <thead>
+          <tr><th>Name</th><th>Due</th><th>Submitted</th><th>Status</th><th>Score</th><th>Details</th></tr>
+        </thead>
+        <tbody>
+          <tr class="student_assignment" id="submission_101" data-muted="false">
+            <th class="title" scope="row"><a href="/courses/12/assignments/101/submissions/42">Essay</a><div class="context">Assignments</div></th>
+            <td>Nov 3</td><td>Nov 1</td><td>Submitted</td><td>5 / 10</td>
+            <td>
+              <a href="#" class="toggle_rubric_assessments_link" aria-label="See rubric results" aria-controls="rubric_101" aria-expanded="false">Rubric</a>
+              <a href="#" id="assignment_comment_101" class="toggle_comments_link" aria-label="Read comments" aria-expanded="false">Comments</a>
+            </td>
+          </tr>
+          <tr id="comments_thread_101" class="comments comments_thread" hidden><td colspan="6">Canvas comments</td></tr>
+          <tr id="rubric_101" class="rubric_assessments" hidden><td colspan="6">Canvas rubric</td></tr>
+          <tr class="student_assignment" id="submission_102" data-muted="false">
+            <th class="title" scope="row"><a href="/courses/12/assignments/102">Reading</a></th>
+            <td>Nov 4</td><td></td><td></td><td>- / 10</td><td></td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+    <script>
+      document.querySelector('.toggle_rubric_assessments_link').addEventListener('click', (event) => {
+        event.preventDefault();
+        const row = document.getElementById('rubric_101');
+        row.hidden = !row.hidden;
+        event.currentTarget.setAttribute('aria-expanded', String(!row.hidden));
+      });
+      document.querySelector('.toggle_comments_link').addEventListener('click', (event) => {
+        event.preventDefault();
+        const row = document.getElementById('comments_thread_101');
+        row.hidden = !row.hidden;
+        event.currentTarget.setAttribute('aria-expanded', String(!row.hidden));
+      });
+    </script>
+  </body>
+</html>
