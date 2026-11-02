@@ -227,7 +227,7 @@ describe('done marks', () => {
     h.canvas.resetCalls();
     signInOtherUser(h);
 
-    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null, refused: true });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('updateOverride')).toEqual([]);
@@ -242,11 +242,11 @@ describe('done marks', () => {
     vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('renewed');
     h.canvas.fail('getSelf', canvasError('network'), { times: 1 });
 
-    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null, refused: true });
     expect(h.canvas.callsOf('updateOverride')).toEqual([]);
 
-    await advance(h, 31_000);
-    await h.owner.act(restoreOf(reply));
+    // The Undo is a tap of the student, so a second tap checks again at once.
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
     await h.owner.settled();
     expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
   });
@@ -1100,7 +1100,7 @@ describe('writes across a sign-out, another user or another Canvas', () => {
       const keys = order(await olderKeys(h));
       expect(keys.length).toBeGreaterThan(2);
       h.canvas.fail(method, error, { times: 1 });
-      signInOtherUser(h);
+      signInOtherUser(h, { sameCookie: true });
 
       await h.owner.act({ kind: 'skip', keys });
       await h.owner.settled();
@@ -1117,7 +1117,7 @@ describe('writes across a sign-out, another user or another Canvas', () => {
     h.canvas.fail('createOverride', canvasError('server', 500), { times: 1 });
     h.canvas.fail('updateOverride', canvasError('server', 500), { times: 1 });
     h.canvas.fail('getSelf', canvasError('network'), { times: 1 });
-    signInOtherUser(h);
+    signInOtherUser(h, { sameCookie: true });
 
     await h.owner.act({ kind: 'skip', keys });
     await h.owner.settled();
@@ -1134,7 +1134,7 @@ describe('writes across a sign-out, another user or another Canvas', () => {
     h.canvas.fail('createOverride', canvasError('unauthorized', 401), { times: 1 });
     h.canvas.fail('updateOverride', canvasError('unauthorized', 401), { times: 1 });
     h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
-    signInOtherUser(h);
+    signInOtherUser(h, { sameCookie: true });
 
     await h.owner.act({ kind: 'skip', keys });
     await h.owner.settled();
@@ -1221,7 +1221,7 @@ describe('writes across a sign-out, another user or another Canvas', () => {
       .map((entry) => entry.key);
     h.canvas.fail('createOverride', canvasError('unauthorized', 401), { times: 100 });
     h.canvas.fail('updateOverride', canvasError('unauthorized', 401), { times: 100 });
-    signInOtherUser(h);
+    signInOtherUser(h, { sameCookie: true });
 
     await h.owner.act({ kind: 'skip', keys });
     await h.owner.settled();

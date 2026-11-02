@@ -235,6 +235,11 @@ export interface ActionReply {
   undo: UndoData | null;
   /** Only the reply to a task create has it: whether Canvas saved the task. */
   created?: boolean;
+  /**
+   * Only the reply to an Undo has it: the sign-in check refused the Undo, so nothing was
+   * restored. The surface shows the Undo notice again.
+   */
+  refused?: true;
 }
 
 export interface CourseChoice {

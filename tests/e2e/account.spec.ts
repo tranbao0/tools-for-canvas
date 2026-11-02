@@ -5,8 +5,10 @@
  */
 import type { Page } from '@playwright/test';
 import type { Course, PlannerItem, Profile, UserSelf } from '../../src/shared/canvas/types';
+import { CANVAS_ERRORS } from '../fixtures/errors';
 import { IDS, type Scenario } from '../fixtures/scenario';
 import type { WireAssignment } from '../fixtures/wire-types';
+import { errorReply } from './support/canvas-state';
 import { advanceBackgroundClock } from './support/clock';
 import { serveFakeCanvas, type FakeCanvas, type FakeCanvasRoute } from './support/fake-canvas';
 import { json, saveAddress } from './support/scenario-api';
@@ -565,13 +567,12 @@ test('a change to the second session cookie checks the cached student', async ({
   await openExtensionPage(page, extensionUrl('sidepanel.html'));
   await expect(doneBox(page, QUIZ_3)).toBeVisible();
   await settledList(page);
-  await context.route(`${first.canvas.origin}/api/v1/users/self`, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(forSecondStudent(first.scenario.self)),
-    }),
-  );
+  // Canvas answers every request as the second student from now on, as it does for the new
+  // cookie. A route for the user request alone would leave the profile of the first student, and
+  // the round that follows would load that profile for the new cookie.
+  const student = secondStudent(first.scenario);
+  await context.unrouteAll({ behavior: 'ignoreErrors' });
+  await serveFakeCanvas(context, secondStudentRoutes(student));
   await context.addCookies([
     {
       name: '_normandy_session',
@@ -595,4 +596,72 @@ test('a change to the second session cookie checks the cached student', async ({
     });
   });
   expect(reply.kind === 'ready' && reply.userId === IDS.user).toBe(false);
+  await expect(doneBox(page, SKETCHBOOK)).toBeVisible();
+  await settledList(page);
+  for (const title of [QUIZ_3, LAB_7]) await expect(page.getByText(title)).toHaveCount(0);
+  expect(await sessionStorageText(page)).not.toContain(LAB_7);
+});
+
+test('five page loads without a session cookie make no Canvas API request', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await serveFakeCanvas(context, [
+    { path: '/', page: 'dashboard-card-view' },
+    { path: /^\/api\//, respond: () => errorReply(CANVAS_ERRORS.signedOut) },
+  ]);
+  await context.clearCookies({ name: 'canvas_session' });
+  await saveAddress(background, canvas.origin);
+  for (let load = 0; load < 5; load += 1) {
+    await openCanvasPage(page, canvas.origin);
+    await expect(
+      inpageList(page).getByRole('heading', { name: "You're signed out of Canvas" }),
+    ).toBeVisible();
+  }
+  expect(canvas.requests.filter((r) => r.path.startsWith('/api/'))).toEqual([]);
+});
+
+test('a refused Undo shows its notice again beside the error, and the next tap restores the mark', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const first = await serveScenario(context);
+  await addCsrfCookie(context, first.canvas.origin);
+  await saveAddress(background, first.canvas.origin);
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await expect(doneBox(page, QUIZ_3)).toBeVisible();
+  await settledList(page);
+  await doneBox(page, QUIZ_3).click();
+  const toast = page.locator('.wr-toast');
+  await expect(toast).toContainText('Marked done');
+  await settledList(page);
+
+  // The cookie changes and the check of the student cannot reach Canvas.
+  await context.route(`${first.canvas.origin}/api/v1/users/self`, (route) => route.abort('failed'));
+  await context.addCookies([
+    {
+      name: 'canvas_session',
+      value: 'renewed',
+      url: first.canvas.origin,
+      secure: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  const writes = () => first.canvas.requests.filter((r) => r.method !== 'GET').length;
+  const before = writes();
+  await toast.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.getByText("Couldn't load your list", { exact: true })).toBeVisible();
+  await expect(toast).toContainText('Marked done');
+  await expect(toast.getByRole('button', { name: 'Undo', exact: true })).toBeVisible();
+  expect(writes()).toBe(before);
+  await page.screenshot({ path: '/tmp/a7-refused-undo.png' });
+
+  // Canvas answers again. The Undo is a tap of the student, so it checks at once.
+  await context.unroute(`${first.canvas.origin}/api/v1/users/self`);
+  await toast.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(doneBox(page, QUIZ_3)).not.toBeChecked();
+  await expect.poll(writes).toBeGreaterThan(before);
 });
