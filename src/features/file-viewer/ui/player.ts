@@ -39,7 +39,9 @@ export function sniffRaster(bytes: Uint8Array): string | null {
   if (has(0xff, 0xd8, 0xff)) return 'image/jpeg';
   if (at(0, 'GIF87a') || at(0, 'GIF89a')) return 'image/gif';
   if (at(0, 'RIFF') && at(8, 'WEBP')) return 'image/webp';
-  if (at(4, 'ftyp') && (at(8, 'avif') || at(8, 'avis'))) return 'image/avif';
+  // An AVIF file names its brand first, or a generic image brand when `avif` is only a compatible one.
+  if (at(4, 'ftyp') && ['avif', 'avis', 'mif1', 'miaf', 'msf1'].some((brand) => at(8, brand)))
+    return 'image/avif';
   return null;
 }
 export const MAX_TEXT_BYTES = 2 * 1024 * 1024;

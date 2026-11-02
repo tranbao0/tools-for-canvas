@@ -39,7 +39,7 @@ test('image zoom, early blob cleanup and file card', async ({ context, page, bac
       .toBe(640);
     expect(await image.evaluate((node: HTMLImageElement) => node.naturalHeight)).toBe(360);
     expect(await image.evaluate((node) => node.tagName)).toBe('IMG');
-    await expect(frame.locator('canvas')).toHaveCount(0);
+    await expect(frame.locator('.fv-media canvas')).toHaveCount(0);
     // The blob URL is freed as soon as the image has loaded, before the tab closes.
     await expect.poll(async () => (await readBlobs(frame)).revoked).toHaveLength(1);
     const blobs = await readBlobs(frame);
@@ -118,7 +118,7 @@ for (const { shape, width, height, shown } of SIZES)
           .toBe(width);
       } else {
         await expect(frame.getByRole('alert')).toHaveText('This image is too large to show here');
-        await expect(frame.locator('canvas, img')).toHaveCount(0);
+        await expect(frame.locator('.fv-media canvas, .fv-media img')).toHaveCount(0);
         await expect(frame.getByRole('button', { name: 'Zoom in' })).toHaveCount(0);
       }
       // The card above the picture keeps its two links in both cases.

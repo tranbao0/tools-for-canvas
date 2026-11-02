@@ -2543,9 +2543,11 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
       The viewer must be on, and the page must be a submission details page of the saved Canvas.
       The background reads the URL of the tab, checks the saved origin, the path and the File viewer setting, and then injects.
       `scripting.executeScript` cannot name a frame by its origin, and the `webNavigation` permission would add a browser history warning to every install.
-      So the background runs a probe with `allFrames: true`, and the probe only returns `location.origin` and `location.pathname` of each frame.
-      The catcher goes by `frameIds` into the frames other than the top frame whose origin is the saved origin and whose path is a submission details page, and into no other frame.
-      The frame can move between the probe and the injection, so the catcher checks its own page again.
+      So the background runs a probe with `allFrames: true`, and the probe only returns `self.origin` (the origin of the document, which is `"null"` for a sandboxed frame) and `location.pathname` of each frame.
+      The catcher goes into the frames other than the top frame whose origin is the saved origin and whose path is a submission details page, and into no other frame.
+      The injection names the probed documents (`documentIds`) where the browser has them, so a frame that moved on since the probe gets nothing.
+      Firefox before 153 has no document ids and uses `frameIds`, and the catcher checks its own page again in both cases.
+      The page script asks for one injection at a time, and for one more after it when a frame loaded meanwhile, so a page that reloads its frame in a loop cannot make the background probe the tab faster than it answers.
       A second injection into the same document stops the first copy, with a private marker as the page script does.
       No new permission is needed.
     - **Forwarding.**
@@ -2555,8 +2557,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
       The file id must be a valid id.
       The background sends `viewer:open-from-frame` with `tabs.sendMessage(tabId, message, { frameId: 0 })`, so the message stays in the same tab and goes to the top frame only.
       The page script of the top frame accepts it only when `sender.id` is the id of this extension and `sender.tab` is undefined, which is a message from the background and never from a page, and when the file id is valid.
-      It answers `{ opened: true }` and opens the file in the pane of the top frame, like a click.
-      It answers `{ opened: false }` when the viewer is off.
+      It opens the file in the pane of the top frame like a click, and answers `{ opened: true }` once the pane has the file or is about to get it.
+      It answers `{ opened: false }` when the viewer is off, and when the pane cannot start.
     - **When nothing opens the file.**
       The catcher takes the click before it knows the answer.
       When the answer is not `{ opened: true }`, or when no answer comes, the catcher clicks the same link again from script, unless the link changed.

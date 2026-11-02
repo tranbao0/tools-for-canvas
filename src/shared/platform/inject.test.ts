@@ -276,11 +276,25 @@ describe('injectSubmissionFrames', () => {
     });
   });
 
+  it('names the probed documents when the browser has document ids', async () => {
+    scripting.executeScript.mockResolvedValueOnce([
+      { frameId: 0, documentId: 'top', result: { origin: ORIGIN, path: PATH } },
+      { frameId: 4, documentId: 'doc-4', result: { origin: ORIGIN, path: PATH } },
+      { frameId: 5, documentId: 'doc-5', result: { origin: 'null', path: PATH } },
+    ] as never);
+    await injectSubmissionFrames(7, ORIGIN);
+    expect(scripting.executeScript).toHaveBeenLastCalledWith({
+      target: { tabId: 7, documentIds: ['doc-4'] },
+      files: [FRAME_FILE],
+    });
+  });
+
   it('runs a probe that only reads the origin and the path of a frame', async () => {
     scripting.executeScript.mockResolvedValueOnce([] as never);
     await injectSubmissionFrames(7, ORIGIN);
     const probe = (scripting.executeScript.mock.calls[0]![0] as unknown as { func: () => unknown })
       .func;
+    vi.stubGlobal('self', { origin: ORIGIN });
     vi.stubGlobal('location', { origin: ORIGIN, pathname: PATH, search: '?secret=1' });
     try {
       expect(probe()).toEqual({ origin: ORIGIN, path: PATH });

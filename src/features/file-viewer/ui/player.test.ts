@@ -176,6 +176,8 @@ describe('sniffRaster', () => {
       'image/webp',
     );
     expect(sniffRaster(new Uint8Array([0, 0, 0, 24, ...ascii('ftypavif')]))).toBe('image/avif');
+    expect(sniffRaster(new Uint8Array([0, 0, 0, 24, ...ascii('ftypmif1')]))).toBe('image/avif');
+    expect(sniffRaster(new Uint8Array([0, 0, 0, 24, ...ascii('ftypheic')]))).toBeNull();
   });
   it('names nothing for markup, text or a short file', () => {
     expect(
