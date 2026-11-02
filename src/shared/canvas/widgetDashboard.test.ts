@@ -6,6 +6,7 @@ import {
   findCourseWorkIcons,
   findCourseWorkWidgets,
   findGradeWidgets,
+  expectsWidgetDashboard,
   findWidgetGrid,
   inEditMode,
   isDarkWidget,
@@ -146,5 +147,40 @@ describe('isDarkWidget', () => {
     widget.style.backgroundColor = 'transparent';
     widget.parentElement!.style.backgroundColor = 'rgb(20, 20, 20)';
     expect(isDarkWidget(widget)).toBe(true);
+  });
+});
+
+describe('telling the widget dashboard from the other dashboards', () => {
+  const page = (content: string): void => {
+    document.body.innerHTML = `<div id="content">${content}</div>`;
+  };
+
+  it('knows the empty content that the server sends before React draws', () => {
+    page('');
+    expect(expectsWidgetDashboard(document)).toBe(true);
+  });
+
+  it.each([
+    ['the tabs', '<div data-testid="dashboard-tabs"></div>'],
+    ['the tab panel', '<div data-testid="dashboard-tab-content"></div>'],
+    ['the grid', '<div data-testid="widget-columns"></div>'],
+  ])('knows the page once React drew %s', (_name, markup) => {
+    page(markup);
+    expect(expectsWidgetDashboard(document)).toBe(true);
+  });
+
+  it.each([
+    '#dashboard',
+    '#dashboard_header_container',
+    '#dashboard-planner',
+    '#dashboard-activity',
+  ])('knows a dashboard that the server filled with %s', (selector) => {
+    page(`<div id="${selector.slice(1)}"></div>`);
+    expect(expectsWidgetDashboard(document)).toBe(false);
+  });
+
+  it('needs #content', () => {
+    document.body.innerHTML = '';
+    expect(expectsWidgetDashboard(document)).toBe(false);
   });
 });

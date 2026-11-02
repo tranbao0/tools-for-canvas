@@ -350,3 +350,40 @@ export function isDarkWidget(widget: HTMLElement): boolean {
 export function findDashboardPanel(doc: Document): HTMLElement | null {
   return doc.querySelector<HTMLElement>('[data-testid="dashboard-tab-content"]');
 }
+
+// -------------------------------------------------------------------------------------------------
+// Telling the widget dashboard from the other dashboards, before React draws it
+// -------------------------------------------------------------------------------------------------
+
+/**
+ * What the widget dashboard has once React drew it: the tabs, the active tab panel and the grid.
+ * Any one of them says that the page is the widget dashboard.
+ */
+const DRAWN_WIDGET_DASHBOARD =
+  '[data-testid="dashboard-tabs"], [data-testid="dashboard-tab-content"], [data-testid="widget-columns"]';
+
+/**
+ * What the server renders inside `#content` for every other dashboard: Card View, Recent Activity
+ * and List View all have `#dashboard` (`users/user_dashboard.html.erb`) with the header, the
+ * planner, the activity stream and the course cards. The widget dashboard has none of them.
+ */
+const CLASSIC_DASHBOARD_CONTENT =
+  '#dashboard, #dashboard_header_container, #dashboard-planner, #dashboard-activity, #DashboardCard_Container';
+
+/**
+ * Whether the dashboard page shows the widget dashboard, or will show it when React has drawn it.
+ * The caller has checked that the route is the dashboard, that the body has neither
+ * `with-right-side` nor `dashboard-is-planner`, and that the page is not the K-5 dashboard.
+ *
+ * The server HTML of the widget dashboard has no tabs and no widget root: `UsersController#user_dashboard`
+ * answers with `render html: "", layout: true`, and `ui/features/widget_dashboard/index.tsx` renders
+ * the whole app into the empty `#content` after the script loads (canvas-lms at master, checked on
+ * 2026-11-02). So the signal before React draws is the empty `#content`, with none of the content
+ * that the other dashboards render on the server. After React draws, the tabs, the tab panel or the
+ * grid say it.
+ */
+export function expectsWidgetDashboard(doc: Document): boolean {
+  if (doc.querySelector(DRAWN_WIDGET_DASHBOARD) !== null) return true;
+  const content = doc.getElementById('content');
+  return content !== null && content.querySelector(CLASSIC_DASHBOARD_CONTENT) === null;
+}

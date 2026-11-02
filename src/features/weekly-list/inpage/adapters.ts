@@ -11,6 +11,8 @@
  * `null` otherwise, so the caller waits and asks again as Canvas builds the page.
  */
 
+import { expectsWidgetDashboard } from '../../../shared/canvas/widgetDashboard';
+
 export const MOUNT_CONTAINER_ID = 'weekrow-inpage';
 
 export interface SidebarAnchors {
@@ -24,6 +26,11 @@ export interface AdapterResult {
   anchors: SidebarAnchors;
   /** The page has no right column, so the list takes a place in the page content (layout.ts). */
   claimsLayout: boolean;
+  /**
+   * The page is the new widget dashboard, drawn or not yet drawn. The layout then waits for the
+   * widget grid before it places the list (layout.ts).
+   */
+  widgetDashboard: boolean;
   /**
    * The list shows the Tasks and Announcements tabs (design decision 24). The new widget
    * dashboard has its own Announcements widget, so it gets none.
@@ -76,13 +83,25 @@ export function findDashboardAnchors(pathname: string, doc: Document): AdapterRe
   if (!showsRightColumn(doc)) {
     if (doc.getElementById('dashboard-app-container') !== null) return null;
     if (doc.getElementById('content') === null) return null;
-    // List View has the class from the server. The widget dashboard has neither class, and the
-    // markup of its widgets is not read here, because it renders late.
+    // List View has the class from the server. The widget dashboard has neither class, and its
+    // widgets render late, so it is told by the empty content that the server sends.
     const listView = doc.body.classList.contains(LIST_VIEW_CLASS);
-    return { courseId: null, anchors, claimsLayout: true, announcements: listView };
+    return {
+      courseId: null,
+      anchors,
+      claimsLayout: true,
+      widgetDashboard: !listView && expectsWidgetDashboard(doc),
+      announcements: listView,
+    };
   }
   if (anchors.rightSide.querySelector(DASHBOARD_SIDEBAR_CONTENT) === null) return null;
-  return { courseId: null, anchors, claimsLayout: false, announcements: true };
+  return {
+    courseId: null,
+    anchors,
+    claimsLayout: false,
+    widgetDashboard: false,
+    announcements: true,
+  };
 }
 
 /**
@@ -93,7 +112,9 @@ export function findCourseHomeAnchors(pathname: string, doc: Document): AdapterR
   const courseId = COURSE_HOME_PATH.exec(pathname)?.[1];
   if (courseId === undefined) return null;
   const anchors = showsRightColumn(doc) ? findSidebarAnchors(doc) : null;
-  return anchors === null ? null : { courseId, anchors, claimsLayout: false, announcements: true };
+  return anchors === null
+    ? null
+    : { courseId, anchors, claimsLayout: false, widgetDashboard: false, announcements: true };
 }
 
 /** Creates the empty mount container before `#right-side`. */

@@ -261,9 +261,12 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   If Canvas switches between Card View and List View without a page load, the list can sit in the wrong layout until the next load.
   The live checklist tells the tester to note whether this happens.
 - The widget card uses the real `widget-columns` box and its gutter.
-  The card sits in a container under `body`, outside the capped `#wrapper`.
+  The card sits in a container under `body`, outside the widget tray and outside every Canvas layout box.
   It uses document coordinates and scrolls with the page.
   Its left edge is one grid gutter past the right edge of the columns.
+  This puts the card in the white area to the right of the widgets.
+  In a wide window, that area overlaps the 48 px right padding of `#content`, where Canvas draws nothing.
+  The card never covers a visible Canvas element.
   Its width is 320 to 400 px.
   The viewport must also have room for a 24 px right margin.
   On Dashboard, its top matches the first widget row.
@@ -273,6 +276,11 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The card never enters a widget column.
   Mutation and size observers measure the placement again after tab changes and redraws.
   The Courses view uses the last measured grid inset when it has no grid.
+  The widget dashboard has no grid when the page loads, and the fallback position differs from the position at the grid.
+  So the card waits for the grid on this page, and it stays hidden for up to 10 seconds.
+  The card is then placed once, at the grid.
+  After 10 seconds with no grid, the card uses the fallback: one gutter right of the main column of `#content`, or above `#content` when there is no room.
+  When the grid arrives later, the card moves once, and only when its mode or its position changes.
 - The card of List View scrolls with the page.
 - The dock under the right column needs a column that is as tall as the page, as Canvas's flex layout makes it.
   With less than 240 px of free space under the column items, the list does not dock.
@@ -314,8 +322,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - On the dashboard, when the body has no `with-right-side` (the widget dashboard and List View [13]), mount at once, when the page has `#content`.
   The list does not add `with-right-side` and does not show `#right-side-wrapper`.
   It takes one of these places in the page content, and `layout.ts` decides which.
-  - **Beside the widget grid**, outside `#wrapper`, when the viewport has room for a gutter, a card of at least 320 px and a 24 px right margin.
-    The card is under `body` and uses document coordinates.
+  - **Beside the widget grid**, in the white area, one gutter right of the widget columns, when the viewport has room for a gutter, a card of at least 320 px and a 24 px right margin.
+    The card is under `body`, outside the widget tray and outside every Canvas layout box, and it uses document coordinates.
     It grows to 400 px.
     Its left edge is one column gap past the real `widget-columns` box.
     Its top matches the first widget row on Dashboard and the tab content on Courses.
@@ -324,9 +332,18 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The card fills the tab content width in normal flow.
     The widgets move down and keep their width.
     The extension changes no width, maximum width, padding or margin on Canvas boxes.
-  - List View uses the same white area under `body` when it fits, or normal flow above `#content`.
+  - List View uses the same white area under `body`, one gutter right of its main content column, when it fits, or normal flow above `#content`.
+    The main content column is `#content` without its right padding.
+    The gutter is 24 px when the page has no grid to measure.
     The extension never sets layout styles on any Canvas box, including during loading.
-    The card stays hidden until a grid or List View content appears, or three seconds pass.
+    List View has content from the server, so its card is placed at once.
+  - The adapter tells the widget dashboard from the other dashboards with stable signals.
+    The route is `/`, the body has no `with-right-side` and no `dashboard-is-planner`, and the page is not the K-5 dashboard.
+    The server sends the widget dashboard with an empty `#content` (`UsersController#user_dashboard` renders `html: ""`), and React draws the whole app into it.
+    So before React draws, the signal is an empty `#content` with none of the server content of the other dashboards (`#dashboard`, the header, the planner, the activity stream, the course cards).
+    After React draws, the tabs, the tab panel or the grid are the signal.
+    All these selectors are in `src/shared/canvas/widgetDashboard.ts`.
+  - On the widget dashboard, the card stays hidden until the grid exists, for up to 10 seconds.
     Missing tab panels use the grid or `#content` as the anchor.
   - Mark the body with `data-weekrow-column`.
     An observer of an older copy of the script stops at once when the marker is gone.

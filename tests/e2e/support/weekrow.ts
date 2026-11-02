@@ -154,6 +154,8 @@ export function doneBox(scope: Page | Locator, title: string): Locator {
 /** Waits until the list shows no refresh in progress. */
 export async function settledList(page: Page): Promise<void> {
   await page.getByRole('progressbar', { name: 'Refreshing' }).waitFor({ state: 'detached' });
+  // The marker can be missing before the first refresh draws it, so the data must also be in.
+  await expect(page.getByText('Loading past due…')).toHaveCount(0);
 }
 
 /**

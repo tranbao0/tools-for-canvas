@@ -111,7 +111,7 @@ export function mountWhenReady(
         announcements: found.announcements,
         container,
         release: found.claimsLayout
-          ? claimDashboardLayout(doc, container)
+          ? claimDashboardLayout(doc, container, { waitForGrid: found.widgetDashboard })
           : dockWhenColumnScrolledPast(doc, container, found.anchors.wrapper),
       };
       finish({ kind: 'mounted', mount });
