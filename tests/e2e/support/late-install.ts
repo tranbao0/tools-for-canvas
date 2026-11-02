@@ -1,8 +1,12 @@
-import { test as base, chromium, type BrowserContext, type Worker } from '@playwright/test';
-import { CHROME_EXTENSION_DIR } from './extension';
-
-/** How long to wait for the extension service worker after the install. */
-const WORKER_TIMEOUT_MS = 10_000;
+import { test as base, type BrowserContext, type Page, type Worker } from '@playwright/test';
+import {
+  CHROME_EXTENSION_DIR,
+  START_UP_FIXTURE_TIMEOUT_MS,
+  WORKER_TIMEOUT_MS,
+  isExtensionWorker,
+  launchBrowser,
+  timedStep,
+} from './extension';
 
 export interface InstalledExtension {
   serviceWorker: Worker;
@@ -26,27 +30,38 @@ interface UnpackedCdp {
   send(method: 'Extensions.loadUnpacked', params: { path: string }): Promise<{ id: string }>;
 }
 
-function isExtensionWorker(worker: Worker): boolean {
-  return worker.url().startsWith('chrome-extension://');
-}
-
 /**
  * The Playwright test function for an install while tabs are open. The browser starts with no
  * extension, and `installExtension` loads the built one through the DevTools protocol, which
  * Chromium allows with `--enable-unsafe-extension-debugging`.
  */
 export const test = base.extend<LateInstallFixtures>({
-  context: async ({}, use) => {
-    const context = await chromium.launchPersistentContext('', {
-      channel: 'chromium',
-      headless: true,
-      args: ['--enable-unsafe-extension-debugging'],
-      // Playwright turns extensions off by default.
-      ignoreDefaultArgs: ['--disable-extensions'],
-    });
-    await use(context);
-    await context.close();
-  },
+  context: [
+    async ({}, use, testInfo) => {
+      // The install happens in the test body, so the launch waits for no service worker.
+      const context = await launchBrowser(
+        testInfo,
+        {
+          channel: 'chromium',
+          headless: true,
+          args: ['--enable-unsafe-extension-debugging'],
+          // Playwright turns extensions off by default.
+          ignoreDefaultArgs: ['--disable-extensions'],
+        },
+        null,
+      );
+      await use(context);
+      await context.close();
+    },
+    { scope: 'test', timeout: START_UP_FIXTURE_TIMEOUT_MS },
+  ],
+  page: [
+    async ({ context }, use, testInfo) => {
+      const page: Page = await timedStep(testInfo, 'new page', () => context.newPage());
+      await use(page);
+    },
+    { scope: 'test', timeout: START_UP_FIXTURE_TIMEOUT_MS },
+  ],
   installExtension: async ({ context }, use) => {
     await use(async () => {
       const browser = context.browser();
