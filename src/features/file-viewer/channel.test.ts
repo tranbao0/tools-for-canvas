@@ -4,6 +4,7 @@ import {
   acceptViewerConnect,
   bindViewerPort,
   createViewerSecret,
+  helloMessage,
   isExtensionOrigin,
   secretMessage,
   validOpenFile,
@@ -62,15 +63,16 @@ describe('extension origins', () => {
 
 describe('hello from the pane', () => {
   const pane = {} as Window;
-  const hello = (overrides: Partial<MessageEvent> = {}) =>
+  const hello = (overrides: Partial<MessageEvent> = {}, id = 'abcdefghij') =>
     acceptPaneHello(
       {
         source: pane,
         origin: 'chrome-extension://abc',
-        data: { type: 'viewer-hello' },
+        data: helloMessage('abcdefghij'),
         ...overrides,
       } as MessageEvent,
       pane,
+      id,
     );
   it('gives back the origin of the frame', () => {
     expect(hello()).toBe('chrome-extension://abc');
@@ -78,12 +80,23 @@ describe('hello from the pane', () => {
   it('ignores another window, a web page origin and a hello with more in it', () => {
     expect(hello({ source: {} as Window })).toBeNull();
     expect(hello({ origin: 'https://evil.example' })).toBeNull();
-    expect(hello({ data: { type: 'viewer-hello', secret } })).toBeNull();
-    expect(hello({ data: { type: 'other' } })).toBeNull();
+    expect(hello({ data: { ...helloMessage('abcdefghij'), secret } })).toBeNull();
+    expect(hello({ data: { type: 'other', extensionId: 'abcdefghij' } })).toBeNull();
     expect(hello({ data: null })).toBeNull();
     expect(
-      acceptPaneHello({ source: pane, origin: 'chrome-extension://abc', data: {} }, null),
+      acceptPaneHello(
+        { source: pane, origin: 'chrome-extension://abc', data: helloMessage('abcdefghij') },
+        null,
+        'abcdefghij',
+      ),
     ).toBeNull();
+  });
+  it('ignores a page of another extension', () => {
+    expect(
+      hello({ data: helloMessage('another-extension'), origin: 'moz-extension://x' }),
+    ).toBeNull();
+    expect(hello({ data: { type: 'viewer-hello' } })).toBeNull();
+    expect(hello({}, '')).toBeNull();
   });
   it('trusts the answer of the pane only with the secret', () => {
     expect(validPaneReady({ type: 'ready', secret }, secret)).toBe(true);

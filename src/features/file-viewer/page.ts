@@ -9,6 +9,7 @@ import {
   normalizeWidth,
   openFile,
   plainClick,
+  type Tabs,
 } from './model';
 import type { ToolsSettings } from '../../shared/settings/tools';
 import { detectPageTheme } from '../../shared/ui/pageTheme';
@@ -17,27 +18,41 @@ import { inpageTheme, type ThemeChoice } from '../../shared/ui/theme';
 export function listenViewerHello(
   sourceWindow: Pick<Window, 'addEventListener' | 'removeEventListener'>,
   frame: HTMLIFrameElement,
+  extensionId: string,
   connect: (origin: string) => void,
 ): () => void {
   const hello = (event: MessageEvent) => {
-    const origin = acceptPaneHello(event, frame.contentWindow);
+    const origin = acceptPaneHello(event, frame.contentWindow, extensionId);
     if (origin !== null) connect(origin);
   };
   sourceWindow.addEventListener('message', hello);
   return () => sourceWindow.removeEventListener('message', hello);
 }
 
+/** How long the pane page has to answer with the secret before the pane closes. */
+const HANDSHAKE_MS = 15_000;
+
 export async function startViewer(): Promise<void> {
-  if (document.getElementById('tools-file-viewer')) return;
+  // An earlier copy of this script, such as one that an update left behind, stops first. The
+  // marker is private to this script, so an element of the page cannot stop the viewer.
+  const scope = globalThis as typeof globalThis & { __weekrowViewer?: () => void };
+  scope.__weekrowViewer?.();
+  const lifetime = new AbortController();
+  let live = true;
   const readContext = () =>
     browser.runtime.sendMessage({ type: 'weekrow:page-context' }) as Promise<
       { tools: ToolsSettings; settings?: { theme?: ThemeChoice } } | undefined
     >;
-  const readTabs = async () =>
-    normalizeTabs(await browser.runtime.sendMessage({ type: 'viewer:tabs-get' }));
+  // `null` when the background did not answer, such as before the first load of the list. The
+  // tabs in memory stay as they are then.
+  const readTabs = async (): Promise<Tabs | null> => {
+    const reply: unknown = await browser.runtime.sendMessage({ type: 'viewer:tabs-get' });
+    return typeof reply === 'object' && reply !== null ? normalizeTabs(reply) : null;
+  };
   const context = await readContext();
-  if (!context?.tools.fileViewer) return;
-  let tabs = await readTabs();
+  if (!live || !context?.tools.fileViewer) return;
+  let tabs: Tabs = (await readTabs().catch(() => null)) ?? { ids: [], active: null };
+  if (!live) return;
   // The pane follows the Theme setting, and with Automatic it follows this Canvas page (decision 19).
   let themeChoice: ThemeChoice = context.settings?.theme ?? 'auto';
   const resolveTheme = () => inpageTheme(themeChoice, () => detectPageTheme(document));
@@ -69,10 +84,10 @@ export async function startViewer(): Promise<void> {
   const send = async () => {
     const [latest, stored] = await Promise.all([
       readContext().catch(() => undefined),
-      readTabs().catch(() => tabs),
+      readTabs().catch(() => null),
     ]);
     if (latest?.settings?.theme) themeChoice = latest.settings.theme;
-    tabs = stored;
+    tabs = stored ?? tabs;
     applyTheme();
     const courseId = tabs.active === null ? undefined : courses.get(tabs.active);
     if (tabs.active)
@@ -83,7 +98,12 @@ export async function startViewer(): Promise<void> {
       });
   };
   let removeHello: (() => void) | undefined;
-  const close = () => {
+  let handshake: ReturnType<typeof setTimeout> | undefined;
+  let lastHelloAt = -Infinity;
+  /** Removes the pane and gives the page its padding back. The stored tabs stay. */
+  const drop = () => {
+    clearTimeout(handshake);
+    handshake = undefined;
     removeHello?.();
     removeHello = undefined;
     host?.remove();
@@ -93,11 +113,19 @@ export async function startViewer(): Promise<void> {
     port?.close();
     port = undefined;
     document.documentElement.style.setProperty('padding-right', padding, priority);
+  };
+  const close = () => {
+    drop();
     tabs = { ids: [], active: null };
     void browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs });
   };
+  // A page can remove the host. Then no pane is open, and the next click opens a new one.
+  const paneOpen = () => {
+    if (host && !host.isConnected) drop();
+    return host !== undefined;
+  };
   const show = async () => {
-    if (host) {
+    if (paneOpen()) {
       void send();
       return;
     }
@@ -137,10 +165,18 @@ export async function startViewer(): Promise<void> {
     // The pane page says hello first, so the port goes to the origin the frame really has.
     // Chromium can load a web-accessible page under a dynamic address that differs from getURL.
     // The port counts only after the pane answers with the secret.
-    removeHello = listenViewerHello(window, frame, (origin) => {
+    const answerInTime = () => {
+      clearTimeout(handshake);
+      handshake = setTimeout(() => {
+        if (host && !port) close();
+      }, HANDSHAKE_MS);
+    };
+    removeHello = listenViewerHello(window, frame, browser.runtime.id, (origin) => {
+      lastHelloAt = performance.now();
       pending?.close();
       port?.close();
       port = undefined;
+      answerInTime();
       const channel = new MessageChannel();
       const candidate = channel.port1;
       pending = candidate;
@@ -156,11 +192,25 @@ export async function startViewer(): Promise<void> {
           return;
         }
         port = candidate;
+        clearTimeout(handshake);
         applyTheme();
         void send();
       };
       frame.contentWindow?.postMessage({ type: 'viewer-connect' }, origin, [channel.port2]);
       candidate.postMessage(secretMessage(secret));
+    });
+    // Every load of the frame after the first is a new document, and it must say hello again. The
+    // hello can come a moment before the load event, so a hello shortly before the load counts.
+    // The hello replaces the port of the document before it. If no hello follows, the pane closes.
+    let loads = 0;
+    frame.addEventListener('load', () => {
+      loads += 1;
+      if (loads === 1) return;
+      const loadedAt = performance.now();
+      clearTimeout(handshake);
+      handshake = setTimeout(() => {
+        if (host && lastHelloAt < loadedAt - 2000) close();
+      }, HANDSHAKE_MS);
     });
     render(h(CloseIcon, {}), root.querySelector('button')!);
     root.querySelector('section')!.append(frame);
@@ -201,10 +251,11 @@ export async function startViewer(): Promise<void> {
     document.body.append(host);
     applyTheme();
     layout();
+    answerInTime();
   };
-  window.addEventListener('resize', layout);
+  window.addEventListener('resize', layout, { signal: lifetime.signal });
   // The background says when a setting changed, so the pane follows the Theme setting at once.
-  browser.runtime.onMessage.addListener((message: unknown) => {
+  const onChanged = (message: unknown) => {
     if ((message as { type?: unknown } | null)?.type !== 'weekrow:changed') return;
     void readContext().then(
       (latest) => {
@@ -216,7 +267,8 @@ export async function startViewer(): Promise<void> {
       },
       () => undefined,
     );
-  });
+  };
+  browser.runtime.onMessage.addListener(onChanged);
   document.addEventListener(
     'click',
     (event) => {
@@ -251,7 +303,7 @@ export async function startViewer(): Promise<void> {
         const courseId =
           'courseId' in target ? target.courseId : courseOfLink(href, location.origin);
         if (courseId) courses.set(file.fileId, courseId);
-        if (host && port) {
+        if (paneOpen() && port) {
           // The pane is open and owns the tabs, so it opens the file and saves the tabs itself.
           port.postMessage({
             type: 'open-file',
@@ -260,12 +312,18 @@ export async function startViewer(): Promise<void> {
           });
           return;
         }
-        tabs = openFile(await readTabs(), file.fileId);
+        tabs = openFile((await readTabs().catch(() => null)) ?? tabs, file.fileId);
         await browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs });
         await show();
       })().catch(() => undefined);
     },
-    true,
+    { capture: true, signal: lifetime.signal },
   );
+  scope.__weekrowViewer = () => {
+    live = false;
+    lifetime.abort();
+    browser.runtime.onMessage.removeListener(onChanged);
+    drop();
+  };
   if (tabs.active) void show();
 }

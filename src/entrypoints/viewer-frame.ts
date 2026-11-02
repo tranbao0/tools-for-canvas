@@ -4,6 +4,7 @@ import { canvasOriginItem } from '@/shared/platform/storage';
 import {
   acceptViewerConnect,
   bindViewerPort,
+  helloMessage,
   isViewerSecret,
 } from '@/features/file-viewer/channel';
 import { normalizeTabs, type Tabs } from '@/features/file-viewer/model';
@@ -116,7 +117,7 @@ export default defineUnlistedScript(() => {
     render(h(ViewerApp, { host: host(canvasOrigin), opens }), document.getElementById('app')!);
     // Tell the Canvas page that this frame is ready, at the saved Canvas origin only.
     void secret.then((known) => {
-      if (known) parent.postMessage({ type: 'viewer-hello' }, canvasOrigin);
+      if (known) parent.postMessage(helloMessage(browser.runtime.id), canvasOrigin);
     });
   });
 });

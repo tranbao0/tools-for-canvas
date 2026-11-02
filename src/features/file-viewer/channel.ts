@@ -79,20 +79,30 @@ export function secretMessage(secret: string): { type: 'secret'; secret: string 
   return { type: 'secret', secret };
 }
 
+/** The hello of the pane page. It names the extension, which is no secret. */
+export function helloMessage(extensionId: string): { type: 'viewer-hello'; extensionId: string } {
+  return { type: 'viewer-hello', extensionId };
+}
+
 /**
  * The page script side. Checks a hello from the pane frame and gives back the origin to send the
- * port to. The pane frame has an extension origin, so a page that replaced the frame by
- * navigating it gets no port.
+ * port to. The pane frame has an extension origin, and its hello names this extension. A page
+ * that replaced the frame by navigating it to a web page, or to a page of another extension,
+ * gets no port. Chromium can load the pane under a session address that differs from the address
+ * of `getURL`, so the origin is checked by its kind and the extension by its id.
  */
 export function acceptPaneHello(
   event: Pick<MessageEvent, 'source' | 'origin' | 'data'>,
   paneWindow: MessageEventSource | null,
+  extensionId: string,
 ): string | null {
   if (paneWindow === null || event.source !== paneWindow || !isExtensionOrigin(event.origin))
     return null;
   const data = event.data as Record<string, unknown> | null;
   if (typeof data !== 'object' || data === null) return null;
-  if (data['type'] !== 'viewer-hello' || Object.keys(data).length !== 1) return null;
+  if (data['type'] !== 'viewer-hello' || Object.keys(data).length !== 2) return null;
+  if (typeof extensionId !== 'string' || extensionId === '' || data['extensionId'] !== extensionId)
+    return null;
   return event.origin;
 }
 

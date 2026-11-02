@@ -184,10 +184,12 @@ This independent project is not affiliated with or endorsed by Instructure.
 The file viewer reads a file record with `GET /api/v1/files/:id` from your saved Canvas address.
 The record supplies the file name, content type, size, download address and course when known.
 The file viewer resolves a module item with `GET /api/v1/courses/:id/modules/:id/items/:id` to find its file id.
-The extension stores the open file ids in session storage for each browser tab.
+The extension stores the open file ids and the id of your Canvas account in session storage for each browser tab.
 It also stores a random secret there for each open pane, so that only the Canvas page script and the pane page can talk to each other.
 The secret is never shown or sent anywhere.
-It removes the file ids and the secret when the browser tab closes.
+It removes the file ids and the secret when the browser tab closes, and the file ids also when you sign out or another account signs in.
+In Firefox, the Canvas page can see the random address of the extension while the pane is open.
+This shows that the extension is installed, and it reveals nothing else.
 The file viewer reads a record or bytes only while the session cookie of your Canvas is the one that the extension confirmed for your account, so it never shows the file of another account.
 If it cannot confirm it, the pane shows "Open in Canvas" and reads nothing.
 The file viewer switch and pane width stay in local settings.

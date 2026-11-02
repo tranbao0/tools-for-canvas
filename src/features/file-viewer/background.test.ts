@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createViewerOwner, routeViewerMessage, sessionKey, type ViewerHost } from './background';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
+import {
+  clearViewerTabs,
+  createViewerOwner,
+  routeViewerMessage,
+  sessionKey,
+  type ViewerHost,
+} from './background';
 
 function setup() {
   const api = {
@@ -23,6 +30,7 @@ function setup() {
     isExtensionPage: (sender) => sender.url?.startsWith('extension://x/') === true,
     read: read as ViewerHost['read'],
     mayFetch: vi.fn(async () => true),
+    userId: vi.fn(async () => 'u1'),
     get: vi.fn(async (key: string) => store.get(key)),
     set: vi.fn(async (key: string, value: unknown) => {
       store.set(key, value);
@@ -107,6 +115,7 @@ describe('viewer router', () => {
     expect(host.set).toHaveBeenCalledWith('viewer:https://school.edu:7', {
       ids: ['1'],
       active: '1',
+      userId: 'u1',
     });
     expect(await routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)).toEqual({
       ids: ['1'],
@@ -131,6 +140,49 @@ describe('viewer router', () => {
     expect(routeViewerMessage({ type: 'other' }, sender, host)).toBeNull();
   });
 });
+describe('tabs and students', () => {
+  it('gives the tabs back only to the student who opened them, and without the student id', async () => {
+    const { host, sender } = setup();
+    await routeViewerMessage(
+      { type: 'viewer:tabs-set', tabs: { ids: ['5', '6'], active: '6' } },
+      sender,
+      host,
+    );
+    expect(await routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)).toEqual({
+      ids: ['5', '6'],
+      active: '6',
+    });
+    vi.mocked(host.userId).mockResolvedValue('u2');
+    expect(await routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)).toEqual({
+      ids: [],
+      active: null,
+    });
+  });
+  it('refuses to read or write tabs when the cookie rules refuse', async () => {
+    const { host, sender, store } = setup();
+    vi.mocked(host.userId).mockResolvedValue(null);
+    await expect(routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)).rejects.toThrow(
+      'confirmed',
+    );
+    await expect(
+      routeViewerMessage(
+        { type: 'viewer:tabs-set', tabs: { ids: ['1'], active: '1' } },
+        sender,
+        host,
+      ),
+    ).rejects.toThrow('confirmed');
+    expect(store.size).toBe(0);
+  });
+  it('treats tabs stored with no student as none', async () => {
+    const { host, sender, store } = setup();
+    store.set('viewer:https://school.edu:7', { ids: ['1'], active: '1' });
+    expect(await routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)).toEqual({
+      ids: [],
+      active: null,
+    });
+  });
+});
+
 describe('pane session', () => {
   it('makes a new secret for the tab of the page script, and the pane of that tab reads it', async () => {
     const { host, sender, pane, store } = setup();
@@ -176,5 +228,21 @@ describe('pane session', () => {
     await expect(
       routeViewerMessage({ type: 'viewer:session' }, { ...sender, tab: undefined }, host),
     ).rejects.toThrow('saved Canvas');
+  });
+});
+
+describe('clearing the tabs', () => {
+  it('removes the tabs of every browser tab and keeps the pane secrets', async () => {
+    fakeBrowser.reset();
+    await fakeBrowser.storage.session.set({
+      'viewer:https://school.edu:7': { ids: ['1'], active: '1', userId: 'u1' },
+      'viewer:https://school.edu:8': { ids: [], active: null, userId: 'u1' },
+      [sessionKey(7)]: 'a'.repeat(64),
+      other: 1,
+    });
+    await clearViewerTabs();
+    expect(Object.keys(await fakeBrowser.storage.session.get(null)).sort()).toEqual(
+      [sessionKey(7), 'other'].sort(),
+    );
   });
 });

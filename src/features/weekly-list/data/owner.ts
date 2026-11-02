@@ -179,6 +179,11 @@ export interface DataOwnerDeps {
   browserLanguage(): string | null;
   isFirefox: boolean;
   log(step: string, error: unknown): void;
+  /**
+   * Called when the data of the student goes: a sign-out, another student, or a new address. The
+   * file viewer clears the tabs that it keeps for each browser tab.
+   */
+  onUserDataCleared?(): void;
 }
 
 /** What the page of a detected Canvas shows. See {@link DataOwner.canvasDetected}. */
@@ -264,6 +269,11 @@ export interface DataOwner {
    * request of its own.
    */
   viewerMayFetch(origin: string | null, tabId: number | undefined): Promise<boolean>;
+  /**
+   * The id of the student of the cache, for the tab state of the viewer, under the same rules as
+   * `viewerRead`. `null` when the rules refuse.
+   */
+  viewerUserId(origin: string | null, tabId: number | undefined): Promise<string | null>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
@@ -801,9 +811,18 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     requested.clear();
     cancelDefer();
     cache = { ...clearData(cache), failure: null };
+    userDataCleared();
     persist();
     scheduleForcedFull();
     await bump();
+  }
+
+  function userDataCleared(): void {
+    try {
+      deps.onUserDataCleared?.();
+    } catch (error) {
+      deps.log('user data cleared', error);
+    }
   }
 
   /**
@@ -817,6 +836,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     generation += 1;
     clearSessionWork();
     cache = { ...clearData(cache), failure };
+    userDataCleared();
     // Whoever calls this, the next person to open a surface must not see the old list.
     persist();
     bumpLater();
@@ -1406,6 +1426,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       sendWaitingDeletes(knownOrigin, cache, new Set(startedDeletes));
     }
     knownOrigin = origin;
+    userDataCleared();
     generation += 1;
     clearSessionWork();
     requested.clear();
@@ -2490,6 +2511,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return response;
   }
 
+  async function viewerUserId(
+    origin: string | null,
+    tabId: number | undefined,
+  ): Promise<string | null> {
+    if ((await viewerOrigin(origin, tabId)) === null) return null;
+    return cache?.session?.profile.id ?? null;
+  }
+
   async function viewerMayFetch(
     origin: string | null,
     tabId: number | undefined,
@@ -3035,6 +3064,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     announcementFeed,
     viewerRead,
     viewerMayFetch,
+    viewerUserId,
 
     async originChanged(origin) {
       await ready();

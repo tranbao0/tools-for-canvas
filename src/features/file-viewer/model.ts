@@ -7,10 +7,21 @@ export type FileTarget =
   { fileId: string } | { courseId: string; moduleId: string; itemId: string };
 const ID = /^[1-9][0-9]{0,19}$/;
 const FILE = /^\/(?:courses\/[1-9][0-9]*\/)?files\/([1-9][0-9]*)(?:\/(?:download|preview))?$/;
+/**
+ * A left click of the student with no modifier key. A script of the Canvas page can dispatch a
+ * click on any link, and such an event is not trusted, so it never opens a file.
+ */
 export function plainClick(
-  event: Pick<MouseEvent, 'button' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'>,
+  event: Pick<MouseEvent, 'isTrusted' | 'button' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'>,
 ): boolean {
-  return event.button === 0 && !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey;
+  return (
+    event.isTrusted &&
+    event.button === 0 &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.metaKey
+  );
 }
 export function fileTarget(href: string, origin: string, moduleId?: string): FileTarget | null {
   let url: URL;

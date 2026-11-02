@@ -115,18 +115,20 @@ test('Chromium refuses a pane frame that a script makes, and the ports that the 
   const canvas = await openCoursePage(context, page, background);
   // The script listens before the pane opens. The origin of the hello shows it the address of
   // the pane page, so it can make a frame of its own with that page.
-  await page.evaluate(() => {
-    window.__spy = { messages: [], ports: [] };
-    window.addEventListener('message', (event) => {
-      window.__spy.messages.push(JSON.stringify(event.data));
-      if ((event.data as { type?: unknown } | null)?.type !== 'viewer-hello') return;
-      const hostile = document.createElement('iframe');
-      hostile.id = 'hostile';
-      hostile.src = `${event.origin}/viewer.html`;
-      document.body.append(hostile);
+  const install = () =>
+    page.evaluate(() => {
+      window.__spy = { messages: [], ports: [] };
+      window.addEventListener('message', (event) => {
+        window.__spy.messages.push(JSON.stringify(event.data));
+        if ((event.data as { type?: unknown } | null)?.type !== 'viewer-hello') return;
+        const hostile = document.createElement('iframe');
+        hostile.id = 'hostile';
+        hostile.src = `${event.origin}/viewer.html`;
+        document.body.append(hostile);
+      });
     });
-  });
-  await openFirstFile(page, 'Read notes');
+  // The page can load again before the click works, so the script listens again after each load.
+  await openFirstFile(page, 'Read notes', install);
   const real = await pane(page);
   await expect(real.locator(FILE_NAME)).toHaveText('Course notes.pdf');
   await expect(page.locator('#hostile')).toBeAttached();
@@ -173,22 +175,24 @@ test('a script that listens for the hello cannot take the port or learn the secr
   const canvas = await openCoursePage(context, page, background);
   // The listener runs in the main world before the pane opens. It answers every hello with its
   // own port, a wrong secret and a request for another file, to the window that said hello.
-  await page.evaluate(() => {
-    window.__spy = { messages: [], ports: [] };
-    window.addEventListener('message', (event) => {
-      window.__spy.messages.push(JSON.stringify(event.data));
-      const data = event.data as { type?: unknown } | null;
-      if (data?.type !== 'viewer-hello' || !event.source) return;
-      for (const secret of ['0'.repeat(64), 'f'.repeat(64)]) {
-        const channel = new MessageChannel();
-        channel.port1.onmessage = (answer) => window.__spy.ports.push(JSON.stringify(answer.data));
-        (event.source as Window).postMessage({ type: 'viewer-connect' }, '*', [channel.port2]);
-        channel.port1.postMessage({ type: 'secret', secret });
-        channel.port1.postMessage({ type: 'open-file', fileId: '43' });
-      }
+  const install = () =>
+    page.evaluate(() => {
+      window.__spy = { messages: [], ports: [] };
+      window.addEventListener('message', (event) => {
+        window.__spy.messages.push(JSON.stringify(event.data));
+        const data = event.data as { type?: unknown } | null;
+        if (data?.type !== 'viewer-hello' || !event.source) return;
+        for (const secret of ['0'.repeat(64), 'f'.repeat(64)]) {
+          const channel = new MessageChannel();
+          channel.port1.onmessage = (answer) =>
+            window.__spy.ports.push(JSON.stringify(answer.data));
+          (event.source as Window).postMessage({ type: 'viewer-connect' }, '*', [channel.port2]);
+          channel.port1.postMessage({ type: 'secret', secret });
+          channel.port1.postMessage({ type: 'open-file', fileId: '43' });
+        }
+      });
     });
-  });
-  await openFirstFile(page, 'Read notes');
+  await openFirstFile(page, 'Read notes', install);
   const real = await pane(page);
   await expect(real.locator(FILE_NAME)).toHaveText('Course notes.pdf');
   // The real port connected anyway: the theme reached the pane.
@@ -206,22 +210,23 @@ test('a frame that a script navigated to a web page gets no port', async ({
   page,
   background,
 }) => {
-  const evil = `<!doctype html><script>window.addEventListener('message', (event) => { (window.got = window.got || []).push(event.data && event.data.type); }); parent.postMessage({ type: 'viewer-hello' }, '*');</script>`;
+  const evil = `<!doctype html><script>window.addEventListener('message', (event) => { (window.got = window.got || []).push(event.data && event.data.type); }); parent.postMessage({ type: 'viewer-hello', extensionId: parent.__extId }, '*');</script>`;
   await openCoursePage(context, page, background, undefined, [
     { path: '/courses/101/pages/evil', body: evil, contentType: 'text/html' },
   ]);
   // The script keeps the window that says hello. The frame is in a closed shadow root, so this
   // is the only way to reach it.
-  await page.evaluate(() => {
-    window.addEventListener('message', (event) => {
-      if (
-        (event.data as { type?: unknown } | null)?.type === 'viewer-hello' &&
-        !('__pane' in window)
-      )
-        (window as unknown as { __pane: Window }).__pane = event.source as Window;
+  const install = () =>
+    page.evaluate(() => {
+      window.addEventListener('message', (event) => {
+        const data = event.data as { type?: unknown; extensionId?: unknown } | null;
+        if (data?.type !== 'viewer-hello' || '__pane' in window) return;
+        // The page script of the extension is not the only one that sees the hello.
+        (window as unknown as { __pane: Window; __extId: unknown }).__pane = event.source as Window;
+        (window as unknown as { __extId: unknown }).__extId = data.extensionId;
+      });
     });
-  });
-  await openFirstFile(page, 'Read notes');
+  await openFirstFile(page, 'Read notes', install);
   await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
   await page.evaluate(() => {
     (window as unknown as { __pane: Window }).__pane.location.href = '/courses/101/pages/evil';
@@ -254,26 +259,61 @@ for (const mode of ['ctrl', 'middle', 'download', 'off'] as const) {
     }
     await page.goto(`${canvas.origin}/courses/101/pages/notes`);
     await page.waitForTimeout(500);
-    const caught = await page.getByText('Read notes').evaluate((link, mode) => {
-      if (mode === 'download') link.setAttribute('download', '');
-      let prevented = false;
-      let reached = false;
-      link.addEventListener('click', (event) => {
-        reached = true;
-        prevented = event.defaultPrevented;
-        event.preventDefault();
-      });
-      link.dispatchEvent(
-        new MouseEvent('click', {
-          bubbles: true,
-          cancelable: true,
-          ctrlKey: mode === 'ctrl',
-          button: mode === 'middle' ? 1 : 0,
-        }),
-      );
-      return { prevented, reached };
+    // A real click, with the keys or the button of the mode. The listener runs after the page
+    // script, records whether it prevented the action, and then stops the navigation.
+    const link = page.getByText('Read notes');
+    await link.evaluate((node, mode) => {
+      if (mode === 'download') node.setAttribute('download', '');
+      (window as unknown as { seen: boolean[] }).seen = [];
+      for (const type of ['click', 'auxclick']) {
+        node.addEventListener(type, (event) => {
+          (window as unknown as { seen: boolean[] }).seen.push(event.defaultPrevented);
+          event.preventDefault();
+        });
+      }
     }, mode);
-    expect(caught).toEqual({ prevented: false, reached: true });
+    await link.click({
+      button: mode === 'middle' ? 'middle' : 'left',
+      modifiers: mode === 'ctrl' ? ['Control'] : [],
+    });
+    expect(await page.evaluate(() => (window as unknown as { seen: boolean[] }).seen)).toEqual([
+      false,
+    ]);
     await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
   });
 }
+
+test('a click that a script of the page makes opens nothing', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await serveScenario(context, [
+    { path: '/courses/101/pages/notes', body: html, contentType: 'text/html' },
+  ]);
+  await saveAddress(background, canvas.origin);
+  await page.goto(`${canvas.origin}/courses/101/pages/notes`);
+  await page.waitForTimeout(1000);
+  const seen = await page.evaluate(() => {
+    const link = document.querySelector<HTMLAnchorElement>('a.instructure_file_link')!;
+    const other = document.createElement('a');
+    other.href = '/files/999';
+    other.textContent = 'Other file';
+    document.body.append(other);
+    const results: boolean[] = [];
+    for (const node of [link, other]) {
+      node.addEventListener('click', (event) => {
+        results.push(event.defaultPrevented);
+        event.preventDefault();
+      });
+      node.click();
+      node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    }
+    return results;
+  });
+  // The script clicks four times, and none of them was stopped by the page script.
+  expect(seen).toEqual([false, false, false, false]);
+  await page.waitForTimeout(500);
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+  expect(canvas.requests.filter((request) => request.path.startsWith('/api/v1/files'))).toEqual([]);
+});

@@ -2259,7 +2259,9 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      The pane exists only while the student has a file open.
    - A handle on its left edge resizes it, from 360 px to 70 percent of the window, and the width is saved.
    - The pane uses a fixed host and a closed shadow root, with an extension iframe inside.
-     A script of the Canvas page cannot reach the frame element, and `window.frames` does not list a frame in a shadow root.
+     A script of the Canvas page cannot reach the frame element or the address in its `src`.
+     This is no protection for the channel, because the hello gives the script the window of the pane (`event.source`) and the origin of the pane page.
+     The secret protects the channel, not the shadow root.
    - Only the `html` element receives right padding equal to the pane width.
      Closing restores its exact inline value and priority.
    - The pane has a close button, and Escape closes it when focus is inside.
@@ -2268,6 +2270,9 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - Each file opens in its own tab inside the pane, up to 8 tabs; the 9th file replaces the oldest tab that is not active.
    - A file that is already open becomes the active tab.
    - The open tabs last while the Canvas tab is open, and they come back after a page change in the same Canvas tab.
+     The background keeps them with the id of the student of the cache.
+     It reads and writes them only when the cookie rules confirm that student (decision 11), and it gives back none when the student is another one.
+     A sign-out, another student and a new address clear them.
    - The tab strip is the ARIA tabs pattern, drawn like the tabs of Canvas: text tabs on a line, and the active tab has a bar in the brand color.
      Each tab shows a file type icon and the file name.
      A long name ends with an ellipsis, and the tooltip of the tab shows the whole name.
@@ -2287,6 +2292,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - The page script listens on `document` in the capture phase and stops Canvas handlers only after a match.
    - Links with `download` keep their normal action.
    - A click with Ctrl, Shift, Alt or Meta, a middle click, and "Open in new tab" keep the browser's normal action.
+   - Only a click of the student counts (`event.isTrusted`).
+     A script of the Canvas page can click any link, and such a click opens nothing, so a script cannot open a file or replace the tabs.
    - Module items are resolved to their file through `GET /api/v1/courses/:id/modules/:id/items/:id`.
 4. **Viewers by file type.**
    - PDF: a bundled PDF.js viewer with search, page thumbnails, zoom and keyboard paging (item 9).
@@ -2448,10 +2455,10 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
     The pane gets the same secret.
   - The frame address is `viewer.html` with no hash and no query.
   - The pane sends `viewer-hello` to the saved Canvas origin once it has the secret.
-    The hello holds nothing but its type.
-    The page script takes it only from its own frame and only when `event.origin` is an extension origin (`chrome-extension:` or `moz-extension:`).
-    A frame that a script of the page navigated to a web page has a web origin, and gets no port.
-    Chromium can load `use_dynamic_url` pages under an origin different from the address returned by `getURL`, so the page script sends the port to `event.origin`, not to a fixed address.
+    The hello holds its type and the id of the extension, which is no secret.
+    The page script takes it only from its own frame, only when `event.origin` is an extension origin (`chrome-extension:` or `moz-extension:`), and only when the id is the id of this extension.
+    A frame that a script of the page navigated to a web page, or to a page of another extension, gets no port.
+    Chromium can load `use_dynamic_url` pages under an origin different from the address returned by `getURL`, so the page script checks the kind of the origin and the id, and sends the port to `event.origin`, not to a fixed address.
   - The page script transfers one port and sends the secret as the first message on it.
     The pane never sends first on a port that it received.
     It checks the first message, and a message that is not `secret` with the right value closes the port.
@@ -2460,9 +2467,12 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   - The pane keeps listening for ports until one proves the secret.
     A script of the Canvas page can send a port too, and it must not block the port of the page script.
   - Each frame reload repeats the hello, and each open of the pane makes a new secret.
+    Every load of the frame after the first drops the port of the document before it.
+    If no valid answer with the secret arrives within 15 seconds of the open, or of a load, the pane closes.
   - After the proof, the pane accepts only two messages from the page: `open-file`, with a file id and an optional course id, and `theme`, with the value `light` or `dark`.
     It never accepts a path or a full URL to load, and it drops a message with another key or value.
-  - The pane frame sits in a closed shadow root, and `window.frames` does not list it.
+  - The pane frame sits in a closed shadow root, which keeps the frame element and its address from the page.
+    A script can still get the window of the pane from the event of the hello, so the channel does not rely on the root.
   - A script of the page that makes its own `viewer.html` frame gets the same secret from the background, because the tab id is the same.
     Chromium refuses such a frame, because the page is reachable only through its session address.
     Firefox loads it, because the hello shows the address.
@@ -2475,8 +2485,18 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   The owner refuses unless the tab uses the cookie store of the requests, the address is the saved Canvas, and a check confirmed the sign-in cookie for the student of the cache.
   It reads the cookie before the request and again before the reply, and it drops the reply when the cookie changed, so a reply never crosses students.
   A sender without a tab is refused.
+  The routes for the tabs follow the same rules.
   On a profile that has no cache yet, the first list load must finish before a file opens.
   A file that is clicked earlier shows "Couldn't load this file", and "Retry" works after the list has loaded.
+- **One live copy of the page script.**
+  The page script keeps a teardown function on its own global, as the in-page list does.
+  A copy that starts again, such as after an update, first stops the copy before it: it removes the click, resize and message listeners and the pane.
+  A private marker decides this, never an element of the page, so a page cannot stop the viewer with an element of the same id.
+  If the page removes the pane element, the next click opens a new pane.
+- **Accepted cost: the address of the extension.**
+  Firefox gives each install a random address, and the hello shows it to the page, because the page must know where to send the port.
+  A page can use that address to tell that the extension is installed, and it can load the pane page in a frame of its own, which gets no port (item above).
+  Chromium loads the pane only under a session address that the page cannot guess.
 - The pane fetches only `/api/v1/files/:id` and the `url` that it returns, plus the redirect that Canvas chooses.
   The record goes through the existing fetch wrapper (decision 20), and the bytes of a file through `src/shared/canvas/fileBytes.ts`, which keeps the same start rule.
   An answer with the type `text/html`, such as a sign-in page, is a failed read.
