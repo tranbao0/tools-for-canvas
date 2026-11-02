@@ -4,6 +4,8 @@ import { browser } from 'wxt/browser';
 import { createViewerNonce } from './channel';
 import { fileTarget, normalizeTabs, normalizeWidth, openFile, plainClick } from './model';
 import type { ToolsSettings } from '../../shared/settings/tools';
+import { detectPageTheme } from '../../shared/ui/pageTheme';
+import { inpageTheme, type ThemeChoice } from '../../shared/ui/theme';
 
 export function listenViewerHello(
   sourceWindow: Pick<Window, 'addEventListener' | 'removeEventListener'>,
@@ -22,10 +24,23 @@ export function listenViewerHello(
 
 export async function startViewer(): Promise<void> {
   if (document.getElementById('tools-file-viewer')) return;
-  const context = (await browser.runtime.sendMessage({ type: 'weekrow:page-context' })) as
-    { tools: ToolsSettings } | undefined;
+  const readContext = () =>
+    browser.runtime.sendMessage({ type: 'weekrow:page-context' }) as Promise<
+      { tools: ToolsSettings; settings?: { theme?: ThemeChoice } } | undefined
+    >;
+  const readTabs = async () =>
+    normalizeTabs(await browser.runtime.sendMessage({ type: 'viewer:tabs-get' }));
+  const context = await readContext();
   if (!context?.tools.fileViewer) return;
-  let tabs = normalizeTabs(await browser.runtime.sendMessage({ type: 'viewer:tabs-get' }));
+  let tabs = await readTabs();
+  // The pane follows the Theme setting, and with Automatic it follows this Canvas page (decision 19).
+  let themeChoice: ThemeChoice = context.settings?.theme ?? 'auto';
+  const resolveTheme = () => inpageTheme(themeChoice, () => detectPageTheme(document));
+  const applyTheme = () => {
+    const theme = resolveTheme();
+    host?.setAttribute('data-theme', theme);
+    port?.postMessage({ type: 'theme', nonce, theme });
+  };
   let width = normalizeWidth(context.tools.fileViewerWidth, innerWidth);
   let host: HTMLDivElement | undefined;
   let port: MessagePort | undefined;
@@ -40,7 +55,12 @@ export async function startViewer(): Promise<void> {
       document.documentElement.style.setProperty('padding-right', host.style.width, 'important');
     }
   };
-  const send = (courseId?: string) => {
+  // The pane changes the tabs too, so the stored tabs are read again before they are used.
+  const send = async (courseId?: string) => {
+    const [latest, stored] = await Promise.all([readContext().catch(() => undefined), readTabs()]);
+    if (latest?.settings?.theme) themeChoice = latest.settings.theme;
+    tabs = stored;
+    applyTheme();
     if (tabs.active)
       port?.postMessage({
         type: 'open-file',
@@ -64,7 +84,7 @@ export async function startViewer(): Promise<void> {
   };
   const show = (courseId?: string) => {
     if (host) {
-      send(courseId);
+      void send(courseId);
       return;
     }
     padding = document.documentElement.style.getPropertyValue('padding-right');
@@ -75,10 +95,12 @@ export async function startViewer(): Promise<void> {
     host.style.cssText = 'position:fixed;right:0;top:0;height:100vh;z-index:2147483647;';
     const root = host.attachShadow({ mode: 'open' });
     root.innerHTML = `<style>
-      :host{color-scheme:light dark;color:light-dark(#273540,#e8eaec)}section{box-sizing:border-box;height:100%;background:light-dark(#fff,#262626);border-left:1px solid light-dark(#c7cdd1,#6a6f73);display:flex;flex-direction:column;font-family:Lato,Arial,sans-serif}
-      header{height:56px;display:flex;justify-content:flex-end;align-items:center;padding:0 12px;border-bottom:1px solid light-dark(#c7cdd1,#6a6f73)}
-      button{width:38px;height:38px;border:0;border-radius:4px;background:transparent;color:inherit;font-size:18px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}button:hover{background:light-dark(#f2f3f4,#394047)}button:focus-visible{outline:2px solid #0374b5;outline-offset:2px}
-      iframe{border:0;width:100%;flex:1;min-height:0} .handle{position:absolute;left:-4px;top:0;width:8px;height:100%;cursor:ew-resize;touch-action:none}.handle:hover,.handle:focus-visible{background:#0374b5} @media(max-width:899px){.handle{display:none}}
+      :host{--bg:#fff;--text:#273540;--line:#e8eaec;--edge:#c7cdd1;--hover:#f2f4f4;--focus:#0374b5;color:var(--text)}
+      :host([data-theme='dark']){--bg:#1b2330;--text:#fff;--line:#2e3e4e;--edge:#4a5b68;--hover:#253443;--focus:#5a9fd4}
+      section{box-sizing:border-box;height:100%;background:var(--bg);border-left:1px solid var(--edge);display:flex;flex-direction:column;font-family:'Lato Extended',Lato,'Helvetica Neue',Helvetica,Arial,sans-serif}
+      header{flex:none;height:48px;display:flex;justify-content:flex-end;align-items:center;padding:0 8px;border-bottom:1px solid var(--line)}
+      button{width:32px;height:32px;border:0;border-radius:4px;background:transparent;color:inherit;font-size:16px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}button:hover{background:var(--hover)}button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+      iframe{border:0;width:100%;flex:1;min-height:0;background:transparent} .handle{position:absolute;left:-4px;top:0;width:8px;height:100%;cursor:ew-resize;touch-action:none}.handle:hover,.handle:focus-visible{background:var(--focus)} @media(max-width:899px){.handle{display:none}}
       </style><section aria-label="File viewer"><div class="handle" role="separator" aria-label="Resize file viewer" aria-orientation="vertical" tabindex="0"></div><header><button aria-label="Close file viewer" title="Close"></button></header></section>`;
     const frame = document.createElement('iframe');
     frame.title = 'File viewer';
@@ -93,7 +115,8 @@ export async function startViewer(): Promise<void> {
         if (message.data?.type === 'close' && message.data.nonce === nonce) close();
       };
       frame.contentWindow?.postMessage({ type: 'viewer-connect', nonce }, origin, [channel.port2]);
-      send(courseId);
+      applyTheme();
+      void send(courseId);
     });
     render(h(CloseIcon, {}), root.querySelector('button')!);
     root.querySelector('section')!.append(frame);
@@ -132,6 +155,7 @@ export async function startViewer(): Promise<void> {
       void save();
     });
     document.body.append(host);
+    applyTheme();
     layout();
   };
   window.addEventListener('resize', layout);
@@ -168,7 +192,7 @@ export async function startViewer(): Promise<void> {
             : ((await browser.runtime.sendMessage({ type: 'viewer:module-item', ...target })) as
                 { fileId: string } | undefined);
         if (!file) return;
-        tabs = openFile(tabs, file.fileId);
+        tabs = openFile(await readTabs(), file.fileId);
         await browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs });
         show('courseId' in target ? target.courseId : undefined);
       })().catch(() => undefined);

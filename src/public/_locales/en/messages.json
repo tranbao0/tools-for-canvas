@@ -784,5 +784,62 @@
   },
   "feedDaysAgo": {
     "message": "$1 days ago"
+  },
+  "fileTabs": {
+    "message": "Open files"
+  },
+  "fileTabClose": {
+    "message": "Close $1"
+  },
+  "fileTabLoading": {
+    "message": "Loading…"
+  },
+  "fileTabUnavailable": {
+    "message": "Unavailable file"
+  },
+  "fileMeta": {
+    "message": "$1 · $2"
+  },
+  "fileTypeImage": {
+    "message": "Image"
+  },
+  "fileTypeAudio": {
+    "message": "Audio"
+  },
+  "fileTypeVideo": {
+    "message": "Video"
+  },
+  "fileTypeText": {
+    "message": "Text"
+  },
+  "fileTypeWord": {
+    "message": "Word document"
+  },
+  "fileTypePowerPoint": {
+    "message": "PowerPoint"
+  },
+  "fileTypeExcel": {
+    "message": "Excel"
+  },
+  "fileTypeOther": {
+    "message": "File"
+  },
+  "fileDownload": {
+    "message": "Download"
+  },
+  "fileOpenInCanvas": {
+    "message": "Open in Canvas"
+  },
+  "fileAllowAccess": {
+    "message": "Allow access"
+  },
+  "fileLoading": {
+    "message": "Loading file"
+  },
+  "fileLoadError": {
+    "message": "Couldn't load this file"
+  },
+  "fileRetry": {
+    "message": "Retry"
   }
 }

@@ -42,17 +42,9 @@ test('file pane channel, module resolution, padding and page changes', async ({
   await page.getByText('Read notes').first().click();
   const host = page.locator('#tools-file-viewer');
   await expect(host).toBeVisible();
-  for (const width of [1920, 1280]) {
-    await page.setViewportSize({ width, height: 1080 });
-    for (const colorScheme of ['light', 'dark'] as const) {
-      await page.emulateMedia({ colorScheme });
-      await page.screenshot({ path: `screenshots/file-viewer-${width}-${colorScheme}.png` });
-    }
-  }
-
-  await expect(page.frameLocator('iframe[title="File viewer"]').locator('body')).toHaveText(
-    'Course notes.pdf',
-  );
+  await expect(
+    page.frameLocator('iframe[title="File viewer"]').locator('[data-part="card-name"]'),
+  ).toHaveText('Course notes.pdf');
   const probeUrl = await page.locator('iframe[title="File viewer"]').getAttribute('src');
   await page.evaluate((url) => {
     const probe = document.createElement('iframe');
@@ -78,7 +70,7 @@ test('file pane channel, module resolution, padding and page changes', async ({
     sender.remove();
   });
   await page.waitForTimeout(200);
-  await expect(probe.locator('body')).not.toHaveText('Course notes.pdf');
+  await expect(probe.locator('[data-part="card-name"]')).toHaveCount(0);
   await page.evaluate(() => {
     const target = document.querySelector<HTMLIFrameElement>('#viewer-probe')!;
     const nonce = target.src.split('#')[1];
@@ -86,7 +78,7 @@ test('file pane channel, module resolution, padding and page changes', async ({
     target.contentWindow!.postMessage({ type: 'viewer-connect', nonce }, '*', [channel.port2]);
     channel.port1.postMessage({ type: 'open-file', nonce, fileId: '42' });
   });
-  await expect(probe.locator('body')).toHaveText('Course notes.pdf');
+  await expect(probe.locator('[data-part="card-name"]')).toHaveText('Course notes.pdf');
   await page.locator('#viewer-probe').evaluate((element) => element.remove());
   const navigation = page.waitForEvent('framenavigated', (frame) =>
     frame.url().includes('viewer.html'),
@@ -96,9 +88,9 @@ test('file pane channel, module resolution, padding and page changes', async ({
     .find((frame) => frame.url().includes('viewer.html'))!
     .evaluate(() => location.reload());
   await navigation;
-  await expect(page.frameLocator('iframe[title="File viewer"]').locator('body')).toHaveText(
-    'Course notes.pdf',
-  );
+  await expect(
+    page.frameLocator('iframe[title="File viewer"]').locator('[data-part="card-name"]'),
+  ).toHaveText('Course notes.pdf');
   await page.frameLocator('iframe[title="File viewer"]').locator('body').click();
   await page.keyboard.press('Escape');
   await expect(host).toHaveCount(0);
@@ -108,9 +100,9 @@ test('file pane channel, module resolution, padding and page changes', async ({
   await expect(page.locator('html')).toHaveCSS('padding-right', '13px');
   await page.getByText('Module notes').click();
   await expect(host).toBeVisible();
-  await expect(page.frameLocator('iframe[title="File viewer"]').locator('body')).toHaveText(
-    'Course notes.pdf',
-  );
+  await expect(
+    page.frameLocator('iframe[title="File viewer"]').locator('[data-part="card-name"]'),
+  ).toHaveText('Course notes.pdf');
   await page.getByRole('separator').focus();
   await page.keyboard.press('ArrowLeft');
   await expect(host).toHaveCSS('width', '500px');

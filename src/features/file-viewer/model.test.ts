@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fileTarget, openFile, normalizeWidth, validRequest, plainClick } from './model';
+import { closeFile, fileTarget, openFile, normalizeWidth, validRequest, plainClick } from './model';
 
 describe('file targets', () => {
   for (const path of [
@@ -62,4 +62,25 @@ describe('plain clicks', () => {
     it(key, () => expect(plainClick({ ...event, [key]: true })).toBe(false));
   }
   it('rejects a middle click', () => expect(plainClick({ ...event, button: 1 })).toBe(false));
+});
+describe('closing a tab', () => {
+  const state = { ids: ['1', '2', '3'], active: '2' };
+  it('activates the tab that takes its place', () => {
+    expect(closeFile(state, '2')).toEqual({ ids: ['1', '3'], active: '3' });
+  });
+  it('activates the tab before when the last tab closes', () => {
+    expect(closeFile({ ids: ['1', '2', '3'], active: '3' }, '3')).toEqual({
+      ids: ['1', '2'],
+      active: '2',
+    });
+  });
+  it('keeps the active tab when another tab closes', () => {
+    expect(closeFile(state, '1')).toEqual({ ids: ['2', '3'], active: '2' });
+  });
+  it('leaves nothing active after the only tab', () => {
+    expect(closeFile({ ids: ['1'], active: '1' }, '1')).toEqual({ ids: [], active: null });
+  });
+  it('ignores a tab that is not open', () => {
+    expect(closeFile(state, '9')).toBe(state);
+  });
 });

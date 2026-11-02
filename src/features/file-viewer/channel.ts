@@ -5,6 +5,15 @@ export interface OpenFileMessage {
   fileId: string;
   courseId?: string;
 }
+/** The resolved theme of the Canvas page, for the colors of the pane page. */
+export interface ThemeMessage {
+  type: 'theme';
+  nonce: string;
+  theme: 'light' | 'dark';
+}
+
+export type PaneMessage = OpenFileMessage | ThemeMessage;
+
 const ID = /^[1-9][0-9]{0,19}$/;
 const NONCE = /^[0-9a-f]{32}$/;
 
@@ -28,13 +37,24 @@ export function validOpenFile(value: unknown, nonce: string): value is OpenFileM
   );
 }
 
+export function validTheme(value: unknown, nonce: string): value is ThemeMessage {
+  if (!NONCE.test(nonce) || typeof value !== 'object' || value === null) return false;
+  const message = value as Record<string, unknown>;
+  return (
+    Object.keys(message).every((key) => ['type', 'nonce', 'theme'].includes(key)) &&
+    message.type === 'theme' &&
+    message.nonce === nonce &&
+    (message.theme === 'light' || message.theme === 'dark')
+  );
+}
+
 /** Bind the transferred port only after the saved origin and parent have been checked. */
 export function acceptViewerChannel(
   event: MessageEvent,
   savedOrigin: string,
   parent: MessageEventSource,
   nonce: string,
-  receive: (message: OpenFileMessage) => void,
+  receive: (message: PaneMessage) => void,
 ): (() => void) | null {
   if (
     event.origin !== savedOrigin ||
@@ -50,7 +70,8 @@ export function acceptViewerChannel(
     return null;
   const port = event.ports[0]!;
   const listener = (message: MessageEvent<unknown>) => {
-    if (validOpenFile(message.data, nonce)) receive(message.data);
+    if (validOpenFile(message.data, nonce) || validTheme(message.data, nonce))
+      receive(message.data);
   };
   port.addEventListener('message', listener);
   port.start();

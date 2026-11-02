@@ -2267,6 +2267,19 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - Each file opens in its own tab inside the pane, up to 8 tabs; the 9th file replaces the oldest tab that is not active.
    - A file that is already open becomes the active tab.
    - The open tabs last while the Canvas tab is open, and they come back after a page change in the same Canvas tab.
+   - The tab strip is the ARIA tabs pattern, drawn like the tabs of Canvas: text tabs on a line, and the active tab has a bar in the brand color.
+     Each tab shows a file type icon and the file name.
+     A long name ends with an ellipsis, and the tooltip of the tab shows the whole name.
+   - Each tab has its own close button.
+     The button is a sibling of the tab, not a child, because a button cannot hold another button.
+     Only the active tab and its close button are in the tab order of the keyboard (roving tabindex).
+   - The arrow keys move to the next and previous tab and wrap around, Home and End go to the first and last tab, and Delete closes the focused tab.
+     A tab activates as soon as it gets focus (automatic activation), because switching tabs only shows another card and costs nothing.
+   - Closing the active tab activates the tab that takes its place, or the tab before it when the last tab closed.
+   - Closing the last tab closes the pane and restores the padding of the page.
+   - The pane page is the one place that changes the tabs after the pane opens.
+     It reads the stored tabs when the page asks it to open a file, and it writes them back with `viewer:tabs-set` after each change.
+     The page script reads the stored tabs again before it opens a file, so it never brings back a tab that the student closed.
 3. **Which clicks open the pane.**
    - A plain left click on a Canvas file link: `a.instructure_file_link`, links to `/courses/:id/files/:id` or `/files/:id`, file preview buttons, module items of the file type, and the student's own submission attachments.
    - The page script listens on `document` in the capture phase and stops Canvas handlers only after a match.
@@ -2283,14 +2296,35 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
 5. **Fetching.**
    - The pane's extension page reads the file record, then fetches the bytes with the student's session through the redirect, as decision 23 proved.
    - Files larger than 100 MB show the "Open in Canvas" card instead.
-   - When the host permission is withheld, the pane shows one "Allow access" button that calls `permissions.request`, and "Open in Canvas" next to it.
+   - When `viewer:permission` says that the host permission is withheld, the pane shows one "Allow access" button next to "Open in Canvas".
+     The button calls `permissions.request` for the saved Canvas address and for `https://*/*`, the same set that `viewer:permission` checks, directly inside the click.
+     Then the pane checks the permission again and loads the active card and every card that failed.
+     The button shows also when a file does not load, because a withheld permission makes the first fetch fail.
 6. **Settings.** A "File viewer" switch in the tools settings, on by default.
+7. **The card of a file.**
+   - The card of the active tab shows an icon, the file name, and a line with the type and the size, such as "PDF · 265 KB".
+     The size uses units of 1024 bytes.
+   - "Download" links to the `url` of the file record, and "Open in Canvas" links to `/courses/:id/files/:id`, or to `/files/:id` when the file has no course.
+     A `url` that does not belong to the saved Canvas is replaced by `/files/:id/download`.
+     Both links open in a new tab with `noopener`.
+   - The region with `data-part="viewer-body"` below the card is where the viewers of item 4 draw.
+   - While the record loads, the card shows light bars in the divider color.
+   - When the record does not load, the card shows "Couldn't load this file" with "Retry" and "Open in Canvas", and the tab shows "Unavailable file".
+8. **The theme of the pane.**
+   - The pane follows the Theme setting (decision 19).
+     With Automatic, it follows the Canvas page, as the in-page list does, and never the system, because the pane is part of the page.
+   - The page script resolves the theme and sets it on the pane frame, and it sends it to the pane page as a `theme` message over the channel, with each handshake and each new file.
+     The pane page sets `data-theme` on its root element and shows nothing until the first message arrives.
+   - The header, the border and the close button of the frame use the same theme.
+   - The pane page and its colors follow decision 21: the font stack and the tokens of the list stylesheet, and no school colors, because an extension page cannot read them.
 
 **Security:**
 
 - The pane page is in `web_accessible_resources` with `matches: ["https://*/*"]`, and `use_dynamic_url: true` on Chromium.
   `check-manifest` allows exactly this one page.
-- The page script and the pane talk through a `MessageChannel` set up with a random nonce; the pane accepts only file ids and course ids, never a path or a full URL to load.
+- The page script and the pane talk through a `MessageChannel` set up with a random nonce.
+  The pane accepts only two messages from the page: `open-file`, with a file id and an optional course id, and `theme`, with the value `light` or `dark`.
+  It never accepts a path or a full URL to load, and it drops a message with another key or value.
 - The pane sends `viewer-hello` to the saved Canvas origin before the page transfers a port.
   The page checks the source window and nonce, then sends the port only to `event.origin`.
   Chromium can load `use_dynamic_url` pages under an origin different from the address returned by `getURL`.
@@ -2308,12 +2342,14 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
 
 The identity checks, the tab model, the channel validation and the viewer size limits are implemented.
 The background routes and settings are implemented.
-The pane frame and file-name placeholder have an initial implementation.
-The browser test receives the file name through the hello handshake.
+The pane frame and its close button are implemented.
+The pane page is a Preact app with the tab strip, the file card, the access button, the states and the theme (items 2, 5, 7 and 8).
 The pane checks cover modified clicks, the off switch, Escape, reload and rejected channel messages.
+The pane checks also cover the tab keys, closing tabs, reopening an open file, the card, the withheld permission and the theme.
 The store build smoke test checks the pane in Firefox.
-The layout checks use the course fixture at 1920 and 1280 px in light and dark.
-The full file UI is not implemented yet.
+The layout checks use the course fixture at 1920 and 1280 px in light and dark, with three tabs.
+The viewers of item 4 are not implemented yet, and the region for them is empty.
+The pane page uses the font stack of the list stylesheet, and Lato shows only where the system has it, because an extension page cannot use the web font of the Canvas page.
 The channel checks the saved Canvas origin, the parent window, the nonce and one transferred port before it accepts file identities.
 
 **Build order:**
