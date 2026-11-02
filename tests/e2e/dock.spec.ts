@@ -7,6 +7,7 @@
 import type { Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import { IDS } from '../fixtures/scenario';
+import { pageQuiet } from './support/settle';
 import {
   addCsrfCookie,
   doneBox,
@@ -140,7 +141,7 @@ test.describe('the classic dashboard with a long Recent Activity', () => {
 
     // The end of the column is still in view: the list stays in its place.
     await scrollTo(page, columnEnd - 100);
-    await page.waitForTimeout(150);
+    await pageQuiet(page);
     expect(await dockState(page)).toMatchObject({
       panel: null,
       spacer: false,
@@ -169,7 +170,7 @@ test.describe('the classic dashboard with a long Recent Activity', () => {
 
     // It sticks to the top while the page scrolls on.
     await scrollTo(page, columnEnd + 700);
-    await page.waitForTimeout(100);
+    await pageQuiet(page);
     expect((await cardBox(page)).y).toBeCloseTo(24, 0);
 
     // Scrolling back brings the end of the column into view, and the list returns to its place.
@@ -244,7 +245,7 @@ test.describe('the classic dashboard with a long Recent Activity', () => {
     await makeActivityLong(page);
     const columnEnd = (await dockState(page)).sentinelTop;
     await scrollTo(page, columnEnd + 60);
-    await page.waitForTimeout(300);
+    await pageQuiet(page);
     expect(await dockState(page)).toMatchObject({ panel: null, spacer: false });
   });
 });
@@ -257,7 +258,7 @@ test.describe('a course home page with a short right column', () => {
       filler.style.height = '4000px';
       document.getElementById('content')?.append(filler);
     });
-    await page.waitForTimeout(200);
+    await pageQuiet(page);
     const columnEnd = (await dockState(page)).sentinelTop;
     expect((await dockState(page)).panel).toBeNull();
     await scrollTo(page, columnEnd + 60);

@@ -6,6 +6,7 @@
  */
 import { contentScriptWorld, servePageAt } from './support/content-script';
 import { savedAddress } from './support/scenario-api';
+import { backgroundQuiet, pageQuiet, stableValue } from './support/settle';
 import {
   doneBox,
   expect,
@@ -47,7 +48,9 @@ test('a content script on any page can neither read nor write storage.local', as
 
   // The page loads again, and the background injects nothing into it.
   await evilTab.reload();
-  await evilTab.waitForTimeout(800);
+  await pageQuiet(evilTab);
+  await backgroundQuiet(background);
+  await pageQuiet(evilTab);
   await expect(evilTab.locator('#weekrow-inpage, weekrow-list')).toHaveCount(0);
 });
 
@@ -130,7 +133,8 @@ test('the page sees neither a message nor an event from the extension, with the 
 
   await openCanvasPage(page, canvas.origin);
   await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-  await page.waitForTimeout(500);
+  const seen = () => page.evaluate(() => (window as unknown as { __seen: string[] }).__seen);
+  await stableValue(page, seen);
 
-  expect(await page.evaluate(() => (window as unknown as { __seen: string[] }).__seen)).toEqual([]);
+  expect(await seen()).toEqual([]);
 });

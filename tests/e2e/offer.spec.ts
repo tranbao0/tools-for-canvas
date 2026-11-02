@@ -6,6 +6,7 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import { contentScriptWorld, servePageAt } from './support/content-script';
 import { savedAddress } from './support/scenario-api';
+import { backgroundQuiet, pageQuiet } from './support/settle';
 import { expect, inpageList, openCanvasPage, serveScenario, test } from './support/weekrow';
 
 const CUSTOM = 'https://canvas.school.edu';
@@ -52,7 +53,8 @@ test('a page that loads again cannot swap the host under the click of the studen
   expect(await use.boundingBox()).toEqual(before);
   await expect(use).toHaveAttribute('aria-disabled', 'true');
   await welcome.mouse.click(before.x + before.width / 2, before.y + before.height / 2);
-  await welcome.waitForTimeout(300);
+  await pageQuiet(welcome);
+  await backgroundQuiet(background);
   expect(await savedAddress(background)).toBeNull();
 
   // After a second the button is on. The student decides, and the host that they read is saved.

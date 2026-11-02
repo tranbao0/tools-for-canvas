@@ -18,6 +18,7 @@ import {
   test,
 } from './support/weekrow';
 import type { FakeCanvas } from './support/fake-canvas';
+import { requestsQuiet } from './support/settle';
 
 const QUIZ_3 = 'Quiz 3: Cell membranes';
 const LAB_ROOM = 'Lab room change for Thursday';
@@ -104,8 +105,9 @@ test.describe('the switch', () => {
     const list = inpageList(page);
     await expect(list.getByRole('tablist')).toHaveCount(0);
     await expect(list.getByRole('tab')).toHaveCount(0);
-    // Give a late request time to appear.
-    await page.waitForTimeout(500);
+    // Wait until the page is quiet, so that a late request has come.
+    await settledList(page);
+    await requestsQuiet(page, canvas.requests);
     expect(canvas.requests.filter((r) => r.path.startsWith('/api/v1/announcements'))).toHaveLength(
       0,
     );
@@ -181,7 +183,7 @@ test.describe('the Announcements tab', () => {
     ).toBeUndefined();
 
     // Opening sends no read mark and loads no Canvas topic page.
-    await page.waitForTimeout(300);
+    await requestsQuiet(page, canvas.requests);
     expect(writesTo(canvas, 'PUT')).toHaveLength(0);
     expect(writesTo(canvas, 'DELETE')).toHaveLength(0);
     expect(
@@ -210,7 +212,7 @@ test.describe('the Announcements tab', () => {
     await expect(list.locator('.wr-toast')).toContainText('Marked as read');
     await expect(tab(list, /^Announcements/)).toHaveAccessibleName('Announcements, 2 unread');
     await settledList(page);
-    await page.waitForTimeout(300);
+    await requestsQuiet(page, canvas.requests);
     const puts = writesTo(canvas, 'PUT');
     expect(puts).toHaveLength(1);
     expect(puts[0]?.path).toBe('/api/v1/courses/101/discussion_topics/31901/read');

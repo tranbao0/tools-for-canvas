@@ -7,6 +7,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { setBackgroundClock } from './support/clock';
 import { saveAddress } from './support/scenario-api';
+import { backgroundQuiet, pageQuiet } from './support/settle';
 import {
   addCsrfCookie,
   doneBox,
@@ -616,7 +617,8 @@ test('a pick saved in one panel replaces what another panel shows, and its blur 
   // Leaving A's select saves nothing, and Day does not come back.
   await picker(page).focus();
   await page.keyboard.press('Tab');
-  await page.waitForTimeout(600);
+  await pageQuiet(page);
+  await backgroundQuiet(background);
   expect(await saves()).toBe(before);
   await expect(picker(page)).toHaveValue('week');
   await expect(picker(second)).toHaveValue('week');
