@@ -23,4 +23,8 @@ export default defineUnlistedScript(() => {
     }
   };
   window.addEventListener('message', listener);
+  // Tell the Canvas page that this frame is ready, at the saved Canvas origin only.
+  void origin.then((canvasOrigin) => {
+    if (canvasOrigin) parent.postMessage({ type: 'viewer-hello', nonce }, canvasOrigin);
+  });
 });

@@ -33,7 +33,10 @@ export async function startViewer(): Promise<void> {
       });
   };
   let nonce = '';
+  let removeHello: (() => void) | undefined;
   const close = () => {
+    removeHello?.();
+    removeHello = undefined;
     host?.remove();
     host = undefined;
     port?.close();
@@ -63,20 +66,25 @@ export async function startViewer(): Promise<void> {
     const frame = document.createElement('iframe');
     frame.title = 'File viewer';
     frame.src = browser.runtime.getURL('/viewer.html') + `#${nonce}`;
-    frame.addEventListener('load', () => {
+    // The pane page says hello first, so the port goes to the origin the frame really has.
+    // Chromium can load a web-accessible page under a dynamic address that differs from getURL.
+    const hello = (event: MessageEvent) => {
+      if (!host || event.source !== frame.contentWindow) return;
+      const data = event.data as { type?: unknown; nonce?: unknown } | null;
+      if (data?.type !== 'viewer-hello' || data.nonce !== nonce) return;
       port?.close();
       const channel = new MessageChannel();
       port = channel.port1;
-      port.onmessage = (event) => {
-        if (event.data?.type === 'close' && event.data.nonce === nonce) close();
+      port.onmessage = (message) => {
+        if (message.data?.type === 'close' && message.data.nonce === nonce) close();
       };
-      frame.contentWindow?.postMessage(
-        { type: 'viewer-connect', nonce },
-        new URL(frame.src).origin,
-        [channel.port2],
-      );
+      frame.contentWindow?.postMessage({ type: 'viewer-connect', nonce }, event.origin, [
+        channel.port2,
+      ]);
       send(courseId);
-    });
+    };
+    window.addEventListener('message', hello);
+    removeHello = () => window.removeEventListener('message', hello);
     root.querySelector('section')!.append(frame);
     root.querySelector('button')!.addEventListener('click', close);
     root.addEventListener('keydown', (event) => {
