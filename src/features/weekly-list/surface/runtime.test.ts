@@ -442,6 +442,65 @@ describe('actions', () => {
     expect(runtime.state()).toMatchObject({ undo: null });
   });
 
+  it('shows the notice again when the data owner refuses the Undo, and sends the restore again on the next tap', async () => {
+    const fake = undoHost();
+    const { runtime } = await started(fake);
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+    expect(runtime.state()).toMatchObject({ undo: DONE_INFO });
+    const answer = fake.reply;
+    let refuse = true;
+    fake.reply = (message) =>
+      message.type === 'weekrow:action' && message.action.kind === 'restore'
+        ? refuse
+          ? { undo: null, refused: true }
+          : { undo: null }
+        : answer(message);
+
+    runtime.actions.undo();
+    // The notice goes while the Undo is on its way.
+    expect(runtime.state()).toMatchObject({ undo: null });
+    await settle();
+    expect(runtime.state()).toMatchObject({ undo: DONE_INFO });
+
+    refuse = false;
+    runtime.actions.undo();
+    await settle();
+    expect(runtime.state()).toMatchObject({ undo: null });
+    expect(sentActions(fake.sent).filter((action) => action.kind === 'restore')).toHaveLength(2);
+  });
+
+  it('keeps the refused Undo notice beside the error state until the student closes it', async () => {
+    const fake = undoHost();
+    const { runtime } = await started(fake);
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+    const answer = fake.reply;
+    fake.reply = (message) => {
+      if (message.type === 'weekrow:action' && message.action.kind === 'restore') {
+        return { undo: null, refused: true };
+      }
+      if (message.type === 'weekrow:get-state') {
+        return {
+          kind: 'cant_load',
+          cacheCheckFailed: true,
+          origin: ORIGIN,
+          offline: false,
+          offer: null,
+        };
+      }
+      return answer(message);
+    };
+
+    runtime.actions.undo();
+    await settle();
+    expect(runtime.state()).toMatchObject({ kind: 'cant_load', undo: DONE_INFO });
+
+    runtime.actions.dismissUndo();
+    expect(runtime.state()).toMatchObject({ kind: 'cant_load' });
+    expect(runtime.state()).not.toMatchObject({ undo: DONE_INFO });
+  });
+
   it('skips the items of the "N older" list that it shows, with one notice', async () => {
     const { fake, runtime } = await started(undoHost());
     const state = runtime.state();

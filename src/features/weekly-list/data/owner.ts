@@ -242,6 +242,10 @@ export interface DataOwner {
 }
 
 const NO_UNDO: ActionReply = { undo: null };
+/** The reply to an Undo that the cookie check refused. The surface shows the notice again. */
+const UNDO_REFUSED: ActionReply = { undo: null, refused: true };
+/** The result of a request whose response the cookie rule kept out of the cache. */
+const DROPPED = Symbol('dropped');
 const NO_RETRY: RefreshResult = { retryAt: null };
 
 /** A view that a surface showed. */
@@ -803,9 +807,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const api = apiFor(origin);
     track(
       (async () => {
-        const names = await loadStatuses(api, ids);
-        ids.forEach((id) => statusesInFlight.delete(id));
-        if (gen !== generation || cache === null) return;
+        let names: Awaited<ReturnType<typeof loadStatuses>> | typeof DROPPED;
+        try {
+          names = await cookieBound(() => loadStatuses(api, ids));
+        } finally {
+          ids.forEach((id) => statusesInFlight.delete(id));
+        }
+        // A dropped answer is no failure of the course: the next round asks again.
+        if (names === DROPPED || gen !== generation || cache === null) return;
         ids.filter((id) => names[id] === undefined).forEach((id) => statusesFailed.add(id));
         if (Object.keys(names).length === 0) return;
         cache = { ...cache, gradeStatuses: { ...cache.gradeStatuses, ...names } };
@@ -844,9 +853,26 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const api = apiFor(origin);
     let update: RoundUpdate | null = null;
     // The first request of the round starts right after this read, so the round's own user
-    // check binds to this fingerprint and to no later one.
-    const roundFingerprint = (await readFingerprint(origin)) ?? null;
+    // check binds to this fingerprint and to no later one. Without a readable cookie no request
+    // starts: a missing cookie is a sign-out, and an unreadable store is a failed check.
+    const roundFingerprint = await readFingerprint(origin);
     if (gen !== generation || cache === null) return;
+    if (roundFingerprint === null) {
+      if (cache.failure?.kind !== 'signed_out') signOut({ kind: 'signed_out' });
+      return;
+    }
+    if (roundFingerprint === undefined) {
+      cache = { ...cache, failure: unreadableCookieFailure() };
+      persist();
+      await bump();
+      return;
+    }
+    const binding: Binding = {
+      stamp: writeStamp(),
+      origin,
+      fingerprint: roundFingerprint,
+      round: true,
+    };
     let failure: Failure | null = null;
     try {
       update = await runRound({
@@ -861,15 +887,15 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         onSession: (session) => {
           // The frame and the planner jobs of the views need the session, not the rest of the round.
           if (gen !== generation || cache === null || cache.session !== null) return;
-          cache = { ...cache, session };
-          persist();
           // The session requests carried the cookie read before the round, as long as it is
           // still the cookie now. The surfaces ask again only after that is settled.
           track(
             (async () => {
-              const now = await readFingerprint(origin);
-              if (gen !== generation || cache === null) return;
-              if (now === roundFingerprint) recordUserCheck(roundFingerprint);
+              if (!(await bindingHolds(binding))) return;
+              if (gen !== generation || cache === null || cache.session !== null) return;
+              cache = { ...cache, session };
+              recordUserCheck(binding.fingerprint);
+              persist();
               await bump();
             })(),
           );
@@ -884,13 +910,18 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       failure = await failureFor(error, api, clock.now());
     }
     // The user request of the round can wait in the queue or back off after a rate limit. If the
-    // cookie changed by the end, the round cannot say which cookie its answer belongs to.
-    const unchanged = update !== null && (await readFingerprint(origin)) === roundFingerprint;
+    // cookie changed by the end, the round cannot say which cookie its answer belongs to, and
+    // none of it goes into the cache.
+    const committable = update !== null && (await bindingHolds(binding));
     if (gen !== generation || cache === null) return;
 
+    if (update !== null && !committable) {
+      await bump();
+      return;
+    }
     if (update !== null) {
       cache = prune(settlePatches(commitUpdate(cache, update, clock.now()), startedAt), context);
-      recordUserCheck(unchanged ? roundFingerprint : null);
+      recordUserCheck(binding.fingerprint);
       loadStatusNames(context.settings, true);
     } else if (failure?.kind === 'signed_out') {
       signOut(failure);
@@ -914,12 +945,17 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   async function applyTrigger(trigger: LimitedTrigger): Promise<number | null> {
     await ready();
     if (knownOrigin === null || cache === null) return null;
-    const now = clock.now();
-    // A Canvas page load after a sign-out is the sign-in signal, so it skips the limit.
+    // A Canvas page load after a sign-out is the sign-in signal, so it skips the limit. Without
+    // a session cookie there is no sign-in, and the limit holds.
     if (trigger === 'page_loaded' && cache.failure?.kind === 'signed_out') {
-      scheduleForcedFull();
-      return null;
+      const fingerprint = await readFingerprint(knownOrigin);
+      if (knownOrigin === null || cache === null) return null;
+      if (fingerprint !== null && fingerprint !== undefined) {
+        scheduleForcedFull();
+        return null;
+      }
     }
+    const now = clock.now();
     const scope = scopeForTrigger(trigger, cache.limits, now);
     if (scope === null) return null;
     const decision = decideRound(scope, cache.limits, now);
@@ -1162,9 +1198,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       const ids = Object.values(detailIds).flat();
       if (ids.length === 0) return;
       ids.forEach((id) => detailsInFlight.add(id));
-      let result: DetailsResult;
+      let result: DetailsResult | typeof DROPPED;
       try {
-        result = await loadDetails(api, detailIds);
+        result = await cookieBound(() => loadDetails(api, detailIds));
       } catch (error) {
         ids.forEach((id) => detailsInFlight.delete(id));
         detailsFailed = true;
@@ -1172,6 +1208,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         return;
       }
       ids.forEach((id) => detailsInFlight.delete(id));
+      if (result === DROPPED) {
+        // The cookie is not the one of the request, so the later batches stay out. The next round
+        // loads the details again.
+        detailsFailed = true;
+        return;
+      }
       if (gen !== generation || cache?.session == null) return;
       cache = {
         ...cache,
@@ -1212,11 +1254,16 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
     await Promise.all(
       [...job.waiting].map(async (chunk) => {
-        let items: PlannerItem[];
+        let items: PlannerItem[] | typeof DROPPED;
         try {
-          items = await api.listPlannerItems(toRange(chunk));
+          items = await cookieBound(() => api.listPlannerItems(toRange(chunk)));
         } catch (error) {
           await fail(error);
+          return;
+        }
+        if (items === DROPPED) {
+          // The chunk stays a gap, and the surfaces ask again.
+          if (gen === generation) await bump();
           return;
         }
         await arrive({ interval: chunk, items });
@@ -1731,6 +1778,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     flagsFor: (item: Item) => OverrideFlags | null,
     undoable: boolean,
   ): Promise<ActionReply> {
+    // A mark is a write for the student of the cache, so the cookie check comes first.
+    await ready();
+    if (!(await signedInStudentOwnsCache())) return NO_UNDO;
     const write = await writeContext();
     if (write === null) return NO_UNDO;
     const entries: PreviousOverride[] = [];
@@ -1852,7 +1902,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       case 'restore':
         // An Undo can outlive the state that showed it, so it writes only for a student that the
         // session cookie check confirms. The check also signs out a student without a cookie.
-        if (!(await signedInStudentOwnsCache())) return NO_UNDO;
+        // Undo is a tap of the student, so the check limits do not hold it back, as with Retry.
+        // A refused Undo says so, and the surface shows its notice again.
+        if (!(await signedInStudentOwnsCache(true))) return UNDO_REFUSED;
         return restoreOverrides(action.userId, action.origin, action.entries);
       case 'createTask':
         return createTask(action.input);
@@ -1944,6 +1996,68 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       deps.log('cookie store', error);
       return false;
     }
+  }
+
+  /**
+   * What the cookie rule keeps for one request: the cache it fills and the fingerprint read just
+   * before it. A round (`round`) fills a cache that may have no student yet, and its own user
+   * request confirms its fingerprint.
+   */
+  interface Binding {
+    stamp: WriteStamp;
+    origin: string;
+    fingerprint: string;
+    round?: true;
+  }
+
+  /** The failure of a sign-in check that could not read the cookies. Retry tries again. */
+  function unreadableCookieFailure(): Failure {
+    return { kind: 'stale', offline: false, cause: 'unknown', at: clock.now(), check: true };
+  }
+
+  /**
+   * Reads the fingerprint before a request that fills the cache. `null` means that the request
+   * must not start: there is no cookie, the cookies cannot be read, or no check confirmed the
+   * cookie for the student of the cache.
+   */
+  async function bindRequest(): Promise<Binding | null> {
+    const stamp = writeStamp();
+    if (stamp.origin === null) return null;
+    const fingerprint = await readFingerprint(stamp.origin);
+    if (fingerprint === null || fingerprint === undefined) return null;
+    if (!isCurrent(stamp) || !confirmedFingerprint(fingerprint)) return null;
+    return { stamp, origin: stamp.origin, fingerprint };
+  }
+
+  /**
+   * The rule for every response that goes into the cache (decision 11): the cookie is the same
+   * now as before the request, and the cache is still the one that asked. A request that is not
+   * a round also needs a confirmed fingerprint for the student of the cache. The caller commits
+   * right after this resolves true, with no wait between.
+   */
+  async function bindingHolds(binding: Binding): Promise<boolean> {
+    const fingerprint = await readFingerprint(binding.origin);
+    const current =
+      binding.round === true
+        ? binding.stamp.gen === generation && binding.origin === knownOrigin && cache !== null
+        : isCurrent(binding.stamp);
+    return (
+      current &&
+      fingerprint === binding.fingerprint &&
+      (binding.round === true || confirmedFingerprint(fingerprint))
+    );
+  }
+
+  /**
+   * Runs a request whose response goes into the cache, under the cookie rule. It resolves with
+   * the response, or with `DROPPED` when the response must not enter the cache, and then nothing
+   * of it may be used. A request that fails rejects as it would without the rule.
+   */
+  async function cookieBound<T>(request: () => Promise<T>): Promise<T | typeof DROPPED> {
+    const binding = await bindRequest();
+    if (binding === null) return DROPPED;
+    const response = await request();
+    return (await bindingHolds(binding)) ? response : DROPPED;
   }
 
   /** Confirms the fingerprint that was read just before a request, for the student of the cache. */
@@ -2300,18 +2414,21 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     track(
       (async () => {
         let topics: ReturnType<typeof storedAnnouncements> | null = null;
+        let dropped = false;
         try {
-          topics = storedAnnouncements(
-            await api.listAnnouncementFeed(courseIds, announcementRange(clock.now())),
-            courseIds,
+          const feed = await cookieBound(() =>
+            api.listAnnouncementFeed(courseIds, announcementRange(clock.now())),
           );
+          if (feed === DROPPED) dropped = true;
+          else topics = storedAnnouncements(feed, courseIds);
         } catch (error) {
           deps.log('announcements', error);
         }
         // A load that a newer one replaced (the hidden courses changed) must not overwrite it.
         const current = announcementLoad === entry;
         if (current) announcementLoad = null;
-        if (!current || !isCurrent(stamp) || cache === null) return;
+        // A dropped answer leaves the cache as it was, and the next request loads again.
+        if (dropped || !current || !isCurrent(stamp) || cache === null) return;
         const previous = cache.announcements;
         const kept = previous?.courseKey === key ? previous.topics : null;
         cache = {
@@ -2471,6 +2588,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     undoing: { userId: string; origin: string } | null,
   ): Promise<ActionReply> {
     await ready();
+    // An Undo writes only for a student that the session cookie check confirms, as `restore` does.
+    if (undoing !== null && !(await signedInStudentOwnsCache(true))) return UNDO_REFUSED;
     const origin = knownOrigin;
     const session = cache?.session;
     if (origin === null || cache === null || session == null) return NO_UNDO;

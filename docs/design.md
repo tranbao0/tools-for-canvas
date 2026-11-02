@@ -1013,16 +1013,29 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   When the check returns the user, F0 becomes confirmed for that user.
   A fingerprint that first appeared after the request started is never confirmed by it.
   The round's own `GET /api/v1/users/self` is a check too, and it confirms the F0 that the owner read before the round.
-  A round that ends with another cookie than F0 confirms nothing, because its user request can wait in the queue or back off after a rate limit.
-  A round that loads the session confirms F0 only if the cookie is still F0 when the session has arrived.
+  A round that ends with another cookie than F0 confirms nothing and saves nothing, because its user request can wait in the queue or back off after a rate limit.
+  A round that loads the session saves the session, and confirms F0, only if the cookie is still F0 when the session has arrived.
   After the response, the reader reads the cookie again (F1).
   If F1 is confirmed, the reader serves.
   If not, the reader runs one follow-up check with its own F0.
   If the cookie is still not confirmed after the follow-up, the reply is `cant_load` with the "Couldn't check your Canvas sign-in" line, never the cache.
+- Every response that goes into the cache follows one rule, in one helper of the owner:
+  1. The owner reads the fingerprint before the request.
+     A request that is not a round starts only when that fingerprint is confirmed for the student of the cache.
+  2. The owner reads the fingerprint again before the commit.
+  3. The response goes into the cache only when both reads match and, for a request that is not a round, the fingerprint is confirmed for the student of the cache.
+     A round confirms its own fingerprint with its user request.
+  4. Otherwise the owner drops the response, and the surfaces ask again.
+  The rule covers the round commit, the session of a round, each planner chunk of a job, the assignment details, the teacher status names and the Announcements load.
+  A dropped response is not a failure of the course or of the load, so it sets no failure line.
+- A round starts only with a readable session cookie.
+  No cookie: no request starts, the student is signed out, and the round keeps the 60-second limit.
+  A cookie store that cannot be read: no request starts, and the state is `cant_load` with Retry.
+  A Canvas page load after a sign-out skips the limit only when the session cookie is there, because only then it is a sign-in.
 - Checks are rare.
   No more than two checks start in any 30 seconds, from all readers together.
   After a failed check, or after a follow-up that sees a change, the next check waits 30 seconds, also after a restart of the worker.
-  The Retry button skips both limits.
+  The Retry button skips both limits, and so does the Undo of a done or skip mark, because both are taps of the student.
 - A check uses its own client method.
   It skips the request queue, has no retry, and ends after 10 seconds.
   A timeout is `Couldn't reach Canvas`, not offline.
@@ -1032,12 +1045,17 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 - A different user clears all cached data and invalidates pending work before either feature can serve it.
 - The Undo notice of a surface stays through any reply that is not `ready`, so a task delete never goes out early.
   The owner sends the delete at its own time.
-  An Undo that restores overrides first passes the same cookie check, and it does nothing when the check fails.
+  An Undo of a done mark, a skip mark or an announcement read mark first passes the same cookie check, and it does nothing when the check fails.
+  The reply of a refused Undo says `refused`, and the surface shows the Undo notice again, also beside the `cant_load` state.
+  A done mark, a skip mark and an unskip mark pass the same check before they write.
+- A read that finds that `cookies.get` fails is the same as a check that fails: the reply is `cant_load` with Retry, and Retry reads the cookie again.
+  `cant_load` always shows the Retry button.
 - A Canvas page load of the saved origin reads the cookie, and the owner wakes the open surfaces when the cookie is gone or not confirmed.
   The surfaces then ask again, so a list on screen does not outlive a sign-out.
   The page load makes no request.
-- Open risk: a round that spans a sign-in change can save answers that carried the new cookie.
-  The next good check for the new student drops the cache, but the check limits can delay that check.
+- Open risk: a cookie that changes from F0 to another value and back to F0 while a request waits passes the two reads.
+  Only a request that carries the other cookie can break the rule, and the reads cannot see it.
+- Open risk: a Canvas that renews the session cookie on every reply drops most responses and ends in `cant_load` until the cookie stops changing.
 - Open risk: the open surfaces learn of a sign-out only from a Canvas page load, a focus change, a visibility change or the timer.
   A sign-out that ends on another site, such as a single sign-on page, shows the list until one of them happens.
   The ticket removed the cookie event listener on purpose.
@@ -1685,6 +1703,7 @@ The fixes run on the dashboard of the saved Canvas, next to the weekly list, and
 The dashboard uses the origin that the router checks and shares the session fingerprint check in decision 11.
 The extension reads both session cookies there to compare their salted fingerprints.
 It never stores or sends their values.
+The cache writes of the weekly list follow the cookie rule of decision 11, and the dashboard reads only what that rule let into the cache.
 
 | Switch | Fix |
 |---|---|
@@ -1911,6 +1930,7 @@ The page scripts of the fixes and of the weekly list share one sanitizer, `src/s
   A school with another language sees the filter act as "All", and "All Courses" as a course name that matches no course.
 - The dashboard fixes and weekly list share the same session fingerprint check from decision 11.
   A page of another cookie store gets no grades, and a page without a session cookie gets none either.
+  A read of the cache that the cookie check does not confirm gets no data, and a cookie store that cannot be read gets none either.
   Announcement requests use the origin that the message router checked, without reading the saved address again.
   The weekly list keeps the 60-second limit of decision 11 for full data refreshes.
 - The copies of the grade cards and the course list of the announcement filter keep the data of the session: a grade that Canvas posts later shows in the cards of the widget and in the copies after the next refresh of the courses.

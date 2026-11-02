@@ -912,20 +912,22 @@ it('does not confirm the cookie of a round when the cookie changed before the ro
   expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
 });
 
-it('does not confirm the cookie of a first load when the cookie changed during the load', async () => {
+it('drops a first load when the cookie changed during the load and loads again for the new cookie', async () => {
   const h = await createHarness();
   vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('load-start');
   const original = h.canvas.getProfile;
+  let profiles = 0;
   h.canvas.getProfile = async () => {
     const profile = await original();
-    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('changed-during-load');
+    if (++profiles === 1)
+      vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('changed-during-load');
     return profile;
   };
   await loadReady(h);
   const confirmed = (await sessionCacheItem.getValue())?.userCheck?.fingerprints ?? [];
-  // Only a check that read the new cookie before its own request can confirm it.
-  expect(confirmed).not.toContain('load-start');
-  expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+  // Only a round that read the new cookie before its own requests can confirm it.
+  expect(confirmed).toEqual(['changed-during-load']);
+  expect(profiles).toBeGreaterThan(1);
 });
 
 it('confirms the cookie of a first load that stays the same', async () => {

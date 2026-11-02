@@ -46,6 +46,9 @@ When both cookies exist, the fingerprint includes both salted hashes.
 It stores up to three confirmed fingerprints with their cookie names, the user id and the check time in session storage.
 It stores a random per-install salt in trusted extension storage.
 It never stores or sends the session cookie value.
+It reads the fingerprint before and after each request that fills its cache.
+It keeps the answer only when both fingerprints match and the check confirmed that fingerprint for the same student.
+It starts no request to Canvas when there is no session cookie or when the cookie cannot be read.
 It does not announce itself to the page.
 It sends nothing to any server.
 On a page that is not Canvas, it stops at once and keeps nothing.

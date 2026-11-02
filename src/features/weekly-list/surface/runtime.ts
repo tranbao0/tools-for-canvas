@@ -465,7 +465,11 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     )
       .then(async (sent) => {
         const replies = sent as (ActionReply | undefined)[];
-        const reply = replies[0];
+        const first = replies[0];
+        const reply =
+          first !== undefined && replies.some((r) => r?.refused === true)
+            ? { ...first, refused: true as const }
+            : first;
         const data = replies.flatMap((r) => (r?.undo ? [r.undo] : []));
         if (data.length > 0 && shows !== undefined) {
           // A newer write or a stopped surface ends this notice before it shows.
@@ -593,7 +597,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       if (last === null) return;
       notice = null;
       emit();
-      for (const data of last.data) {
+      const sends = last.data.map((data) =>
         sendAction(
           data.kind === 'delete'
             ? { kind: 'cancelDelete', noteId: data.noteId }
@@ -611,8 +615,20 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
                   origin: data.origin,
                   entries: data.entries,
                 },
-        );
-      }
+        ),
+      );
+      const seq = writeSeq;
+      // The data owner refuses an Undo while the sign-in check fails. Nothing was restored then,
+      // so the notice shows again, unless the student acted or left meanwhile. A restore is safe
+      // to send twice.
+      Promise.all(sends)
+        .then((replies) => {
+          if (!replies.some((reply) => reply?.refused === true)) return;
+          if (stopped || seq !== writeSeq || notice !== null) return;
+          notice = last;
+          emit();
+        })
+        .catch(report('undo'));
     },
     dismissUndo() {
       endUndo();

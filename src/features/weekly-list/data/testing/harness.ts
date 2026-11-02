@@ -209,10 +209,13 @@ export const ART = '900';
 
 /**
  * Signs another student in to the same fake Canvas, with one course and no work. The cache of
- * the owner still holds the first student until a request finds the change.
+ * the owner still holds the first student until a request finds the change. With `sameCookie`
+ * the session cookie stays as it was, as when the cookie check cannot tell the two students apart.
  */
-export function signInOtherUser(h: Harness): void {
-  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+export function signInOtherUser(h: Harness, options: { sameCookie?: boolean } = {}): void {
+  if (options.sameCookie !== true) {
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+  }
   const scenario = h.canvas.scenario;
   const [template] = scenario.courses;
   if (template === undefined) throw new Error('The scenario has no course');
