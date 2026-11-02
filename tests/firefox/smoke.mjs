@@ -15,7 +15,8 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { Builder } from 'selenium-webdriver';
+import { startFileHost } from '../e2e/support/file-host.ts';
+import { Builder, By } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
 import { ensureBuild } from '../../scripts/lib/ensure-build.mjs';
 
@@ -279,7 +280,31 @@ async function main() {
   }
   const extensionDir = ensureBuild('firefox');
   const addonId = readAddonId(extensionDir);
-  const driver = await startFirefox({ firefoxBin, geckodriverBin, addonId });
+  const files = {};
+  const server = await startFileHost(files);
+  const origin = server.origin.replace('127.0.0.1', 'school.instructure.com');
+  files['/courses/101'] = {
+    body: '<html><head><script>INST={environment:\'production\'};ENV={current_user_id:\'5501\'};</script></head><body><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a></body></html>',
+    contentType: 'text/html',
+  };
+  files['/api/v1/files/42'] = {
+    body: JSON.stringify({
+      id: 42,
+      display_name: 'Course notes.pdf',
+      filename: 'notes.pdf',
+      'content-type': 'application/pdf',
+      size: 10,
+      url: `${origin}/files/42/download`,
+    }),
+    contentType: 'application/json',
+  };
+  const driver = await startFirefox({
+    firefoxBin,
+    geckodriverBin,
+    addonId,
+    acceptInsecureCerts: true,
+    localDomains: 'school.instructure.com',
+  });
   try {
     const capabilities = await driver.getCapabilities();
     console.log(`Firefox ${capabilities.get('browserVersion')} with ${geckodriverBin}`);
@@ -295,10 +320,44 @@ async function main() {
     await driver.get(url);
     await waitForRender(driver);
     console.log(`${url} rendered "${(await driver.getTitle()) || '(no title)'}"`);
+    await driver.get(welcomeUrl);
+    const saved = await driver.executeAsyncScript(
+      `
+      const done = arguments[arguments.length - 1];
+      const origin = arguments[0];
+      (async () => {
+        await browser.storage.session.set({ offer: { origin } });
+        return browser.runtime.sendMessage({ type: 'weekrow:accept-offer', origin });
+      })().then(done, error => done({ error: String(error) }));
+    `,
+      origin,
+    );
+    if (saved?.error) throw new Error(saved.error);
+    await driver.get(`${origin}/courses/101`);
+    await driver.executeScript(
+      `document.querySelector('a').addEventListener('click', event => event.preventDefault());`,
+    );
+    const frame = await driver.wait(
+      async () =>
+        driver.executeScript(
+          'document.querySelector("a").click(); return document.querySelector("#tools-file-viewer")?.shadowRoot.querySelector("iframe") ?? null;',
+        ),
+      10_000,
+    );
+    if (!(await frame.getAttribute('src')).includes('/viewer.html#'))
+      throw new Error('Wrong pane page');
+    await driver.switchTo().frame(frame);
+    await driver.wait(
+      async () => (await driver.findElement(By.css('body')).getText()) === 'Course notes.pdf',
+      10_000,
+    );
+    await driver.switchTo().defaultContent();
+    console.log('Firefox store file pane: passed.');
     console.log('Firefox smoke test: passed.');
     return 0;
   } finally {
     await driver.quit();
+    await server.close();
   }
 }
 
