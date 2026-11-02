@@ -10,6 +10,7 @@
 import path from 'node:path';
 import { chromium, type Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
+import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import {
   doneBox,
   expect,
@@ -24,6 +25,7 @@ import {
 
 test.beforeEach(async ({ background }) => {
   await saveTools(background, {
+    ...DEFAULT_TOOLS_SETTINGS,
     dashboardFixes: {
       courseColors: false,
       announcementsInPlace: false,

@@ -1,5 +1,6 @@
 /** Placement checks for the widget dashboard and List View. */
 import { chromium, type Page } from '@playwright/test';
+import { DEFAULT_TOOLS_SETTINGS, type ToolsSettings } from '../../src/shared/settings/tools';
 import {
   saveTools,
   doneBox,
@@ -201,7 +202,8 @@ test.describe('the widget dashboard', () => {
   }
 });
 
-const NO_FIXES = {
+const NO_FIXES: ToolsSettings = {
+  ...DEFAULT_TOOLS_SETTINGS,
   dashboardFixes: {
     courseColors: false,
     announcementsInPlace: false,
