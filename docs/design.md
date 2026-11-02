@@ -2825,6 +2825,36 @@ So a student switches pages to check the rubric while submitting, or to read fee
 2. The same rows on the Assignments list.
 3. "Submit" in the docked pane, and the refresh after a submission.
 
+**Step 1 checkpoint (not built):**
+
+The fixture and the isolated rubric and comment renderers are built.
+The Grades page does not load this feature yet.
+The route, cookie binding, row controls, settings and browser checks remain to be built.
+
+**Verified source facts for step 1:**
+
+These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
+`app/views/gradebooks/grade_summary.html.erb` renders assignment rows with `id="submission_<assignment id>"` and a `th.title` cell.
+`app/presenters/grade_summary_assignment_presenter.rb`, method `classes`, adds `student_assignment`.
+The title can link to the assignment page, submission details or peer reviews, so the extension must preserve the existing link.
+The comments row has `id="comments_thread_<assignment id>"` and the rubric row has `id="rubric_<assignment id>"`.
+The controls use `toggle_comments_link` and `toggle_rubric_assessments_link`.
+The rubric row renders `app/views/shared/_rubric.html.erb` when the non-scoring rubric feature is off.
+`lib/api/v1/assignment.rb` returns the description through `api_user_content` and returns criteria and ratings from an active rubric association.
+Each criterion and rating has its own id, description and points.
+The rubric settings include `hide_points` and `hide_score_total`.
+`app/controllers/assignments_api_controller.rb`, method `show`, handles the submission and can-submit includes.
+The assignment serializer includes the submission and computes `can_submit` only when requested and applicable.
+`app/controllers/submissions_api_controller.rb`, method `show`, passes the requested includes to the submission serializer after its read authorization check.
+`lib/api/v1/submission.rb` includes published comments when `submission_comments` is requested and includes the rubric assessment only when the student can read the grade.
+`lib/api/v1/rubric_assessment.rb`, method `indexed_rubric_assessment_json`, keys the assessment by criterion id and returns `rating_id`, comments and points.
+`lib/api/v1/submission_comment.rb` returns author fields, a creation time and attachments, and strips HTML from the default comment field.
+The renderer still applies the shared sanitizer to comment content as a further check.
+The Grades template links comment attachments through the submission URL with `download` and `comment_id` parameters.
+`tests/fixtures/pages/grades.html` models these row hooks without copying the Canvas template.
+`tests/fixtures/assignment-view.ts` models the two API reply bodies.
+The fixture does not yet run in the browser test server.
+
 ## Open risks
 
 These items need a live check or an outside answer.
