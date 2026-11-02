@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { FileBytesError } from '../../../shared/canvas/fileBytes';
 import { t } from '../../../shared/ui/i18n';
 import { Progress, type PdfHost } from './PdfTab';
@@ -8,6 +8,7 @@ import {
   imageFits,
   MAX_TEXT_BYTES,
   playerType,
+  svgBudget,
   svgDrawSize,
   TEXT_READ_BYTES,
 } from './player';
@@ -69,6 +70,7 @@ export function MediaTab(props: {
     if (!begin || !kind || !mime) return;
     if (released) {
       setSource('');
+      setCanvas(null);
       return;
     }
     if ((kind === 'audio' || kind === 'video') && !document.createElement(kind).canPlayType(mime)) {
@@ -137,6 +139,15 @@ export function MediaTab(props: {
         );
         return;
       }
+      // A decoded picture takes 4 bytes a pixel. A hidden tab gives up a large one, like a media file.
+      heavy.current = width * height * 4 > limit;
+      if (heavy.current && !shown.current) {
+        free();
+        setProgress(null);
+        setReleased(true);
+        return;
+      }
+      if (mime === 'image/svg+xml') ({ width, height } = svgBudget(width, height));
       const drawing = document.createElement('canvas');
       drawing.width = width;
       drawing.height = height;
@@ -146,7 +157,13 @@ export function MediaTab(props: {
         fail("Couldn't show this image");
         return;
       }
-      context.drawImage(picture, 0, 0, width, height);
+      try {
+        context.drawImage(picture, 0, 0, width, height);
+      } catch {
+        free();
+        fail("Couldn't show this image");
+        return;
+      }
       // The picture is on the canvas. The address of the file goes away at once.
       free();
       setProgress(null);
@@ -207,7 +224,7 @@ export function MediaTab(props: {
       .forEach((media) => media.pause());
   }, [props.active, source]);
   // The canvas is made outside the page, so it goes in here, sized for the zoom.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const place = holder.current;
     if (!place || !canvas) return;
     canvas.setAttribute('role', 'img');

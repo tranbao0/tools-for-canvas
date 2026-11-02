@@ -45,7 +45,9 @@ test('image zoom, early blob cleanup and file card', async ({ context, page, bac
     const initial = await image.boundingBox();
     expect(initial!.width).toBeCloseTo(640, 0);
     await frame.getByRole('button', { name: 'Zoom in', exact: true }).click();
-    expect((await image.boundingBox())!.width).toBeGreaterThan(initial!.width);
+    await expect
+      .poll(async () => (await image.boundingBox())!.width)
+      .toBeGreaterThan(initial!.width);
     await frame.getByRole('button', { name: 'Zoom to fit', exact: true }).click();
     for (const width of [1920, 1280])
       for (const theme of ['light', 'dark'] as const) {
@@ -125,3 +127,49 @@ for (const { shape, width, height, shown } of SIZES)
       await host.close();
     }
   });
+
+// A vector file with only a view box has no size of its own, and a browser may report none.
+test('an SVG with only a view box is drawn on a canvas with the shape of its box', async ({
+  context,
+  page,
+  background,
+}) => {
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><rect width="100" height="50" fill="#2d6"/></svg>';
+  const host = await startFileHost({
+    '/vb': { body: svg, contentType: 'image/svg+xml' },
+  });
+  try {
+    await openCoursePage(context, page, background, undefined, [
+      {
+        path: '/api/v1/files/43',
+        body: {
+          id: '43',
+          display_name: 'box.svg',
+          filename: 'box.svg',
+          'content-type': 'image/svg+xml',
+          size: svg.length,
+          url: '/files/43/download',
+          context_type: 'Course',
+          context_id: '101',
+        },
+      },
+      {
+        path: '/files/43/download',
+        status: 302,
+        headers: { location: `${host.origin}/vb` },
+        body: '',
+      },
+    ]);
+    await openFirstFile(page, 'Read notes');
+    const frame = await pane(page);
+    await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
+    const canvas = frame.getByRole('img', { name: 'box.svg' });
+    await expect
+      .poll(() => canvas.evaluate((node: HTMLCanvasElement) => node.width / node.height))
+      .toBeCloseTo(2, 1);
+    expect(await canvas.evaluate((node: HTMLCanvasElement) => node.width)).toBeGreaterThan(0);
+  } finally {
+    await host.close();
+  }
+});

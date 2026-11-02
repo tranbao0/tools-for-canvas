@@ -336,3 +336,93 @@ it('does not keep a large file that finishes loading in a hidden tab', async () 
   await waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:late'));
   expect(document.querySelector('video')).toBeNull();
 });
+
+it('draws a large SVG at a smaller size with the same shape', async () => {
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:svg');
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  fakeImage(5000, 2000);
+  const host = { readFile: vi.fn(async () => new Uint8Array([1])), loadPdfjs: vi.fn() };
+  render(
+    <MediaTab
+      {...base}
+      host={host as unknown as PdfHost}
+      name="big.svg"
+      contentType="image/svg+xml"
+      active
+    />,
+  );
+  const canvas = (await screen.findByRole('img', { name: 'big.svg' })) as HTMLCanvasElement;
+  expect(canvas.width * canvas.height).toBeLessThanOrEqual(4_194_304);
+  expect(canvas.width / canvas.height).toBeCloseTo(2.5, 1);
+});
+
+it('says so, and frees the URL, when the browser cannot draw the image', async () => {
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:bad');
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  fakeImage(10, 10);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+    () =>
+      ({
+        drawImage: () => {
+          throw new Error('broken');
+        },
+      }) as never,
+  );
+  const failed = vi.fn();
+  const host = { readFile: vi.fn(async () => new Uint8Array([1])), loadPdfjs: vi.fn() };
+  render(
+    <MediaTab
+      {...base}
+      host={host as unknown as PdfHost}
+      name="x.png"
+      contentType="image/png"
+      active
+      onReadFailed={failed}
+    />,
+  );
+  expect((await screen.findByRole('alert')).textContent).toContain("Couldn't show this image");
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  expect(revoke).toHaveBeenCalledWith('blob:bad');
+  expect(failed).not.toHaveBeenCalled();
+});
+
+it('frees the canvas of a large image while its tab is hidden, and draws it again on show', async () => {
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:img');
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  fakeImage(100, 100);
+  const host = { readFile: vi.fn(async () => new Uint8Array([1])), loadPdfjs: vi.fn() };
+  const small = {
+    ...base,
+    host: host as unknown as PdfHost,
+    name: 'p.png',
+    contentType: 'image/png',
+  };
+  // 100 x 100 pixels take 40,000 bytes, which is over a limit of 1,000 bytes.
+  const view = render(<MediaTab {...small} active hiddenLimit={1000} />);
+  await screen.findByRole('img', { name: 'p.png' });
+  view.rerender(<MediaTab {...small} active={false} hiddenLimit={1000} />);
+  await waitFor(() => expect(document.querySelector('canvas')).toBeNull());
+  view.rerender(<MediaTab {...small} active hiddenLimit={1000} />);
+  await screen.findByRole('img', { name: 'p.png' });
+  expect(host.readFile).toHaveBeenCalledTimes(2);
+});
+
+it('keeps the canvas of a small image while its tab is hidden', async () => {
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:img2');
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  fakeImage(10, 10);
+  const host = { readFile: vi.fn(async () => new Uint8Array([1])), loadPdfjs: vi.fn() };
+  const small = {
+    ...base,
+    host: host as unknown as PdfHost,
+    name: 's.png',
+    contentType: 'image/png',
+  };
+  const view = render(<MediaTab {...small} active />);
+  await screen.findByRole('img', { name: 's.png' });
+  view.rerender(<MediaTab {...small} active={false} />);
+  view.rerender(<MediaTab {...small} active />);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  expect(document.querySelector('canvas')).not.toBeNull();
+  expect(host.readFile).toHaveBeenCalledTimes(1);
+});

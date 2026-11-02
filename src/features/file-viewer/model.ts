@@ -34,9 +34,11 @@ export function fileTarget(href: string, origin: string, moduleId?: string): Fil
   const file = FILE.exec(url.pathname);
   if (file?.[1] && ID.test(file[1])) return { fileId: file[1] };
   // Canvas links a submission attachment as `/courses/:id/assignments/:id/submissions/:id?download=:file`.
+  // A comment attachment adds `comment_id`. It is a file of someone else, so it keeps its action.
   const download = url.searchParams.get('download');
   if (
     download !== null &&
+    !url.searchParams.has('comment_id') &&
     ID.test(download) &&
     /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*\/submissions\/[1-9][0-9]*$/.test(
       url.pathname,
