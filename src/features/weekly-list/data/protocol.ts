@@ -66,7 +66,7 @@ export type DataAction =
   | { kind: 'deleteTask'; noteId: string }
   | { kind: 'moveTaskToToday'; noteId: string }
   /** The Undo notice of a task delete ended, so the delayed DELETE is sent now. */
-  | { kind: 'sendDelete'; noteId: string }
+  | { kind: 'sendDelete'; noteId: string; deleteToken?: number }
   /** Undo of a task delete. It works until the DELETE request has started. */
   | { kind: 'cancelDelete'; noteId: string }
   /**
@@ -231,6 +231,7 @@ export type UndoData =
     };
 
 export interface ActionReply {
+  deleteToken?: number;
   /** Set when the action can be undone. The surface shows the Undo notice and keeps this data. */
   undo: UndoData | null;
   /** Only the reply to a task create has it: whether Canvas saved the task. */

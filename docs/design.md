@@ -1052,10 +1052,12 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 - The Undo notice of a surface stays through any reply that is not `ready`, so a task delete never goes out early.
   The background owns the delayed delete from the tap and saves its due time and patch in storage.session before it replies.
   Its timer sends the delete within two minutes without a close message.
-  A panel delete holds a port, and its disconnect sends that delete sooner as a best effort.
+  A panel delete holds a port, and its disconnect sends only the waiting delete with the token returned for that tap.
+  The panel closes the port after Undo or when the notice ends.
   The pagehide message also sends the delete sooner as a best effort.
-  A one-minute browser alarm wakes the worker, and every worker start restores pending deletes and sends those that are due.
+  A one-minute browser alarm runs only while deletes wait, and every worker start restores pending deletes and sends those that are due.
   A worker restart can delay a delete until the next wake, but cannot discard it.
+  Session storage clears when the browser exits or the extension updates, so a delete that still waits then is lost.
   An Undo of a done mark, a skip mark or an announcement read mark first passes the same cookie check, and it does nothing when the check fails.
   The reply of a refused Undo says `refused`, and the surface shows the Undo notice again, also beside the `cant_load` state.
   A refused Undo is `refused` only while the cache still belongs to the student of the Undo.
@@ -1154,7 +1156,8 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
   Loading a week that a surface shows is not a refresh round, so it never waits for this limit or for a running round.
   A write and a change of address skip this limit.
 - The 5-minute and midnight timers run in each visible panel or in-page list, not in the background.
-  A stopped service worker loses its timers [24], and this way no `alarms` permission is needed.
+  A stopped service worker loses its timers [24].
+  The `alarms` permission lets the background resume waiting task deletes.
 
 **The planner cache:**
 

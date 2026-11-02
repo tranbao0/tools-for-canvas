@@ -83,7 +83,10 @@ export function wireDataTriggers(owner: DataOwner): () => void {
       void browser.runtime.lastError;
       closed = true;
       void pending
-        .then(() => owner.act({ kind: 'sendDelete', noteId }))
+        .then((reply) => {
+          if (reply.deleteToken !== undefined)
+            return owner.act({ kind: 'sendDelete', noteId, deleteToken: reply.deleteToken });
+        })
         .catch(report('closed delete'));
     });
     void pending
@@ -101,7 +104,21 @@ export function wireDataTriggers(owner: DataOwner): () => void {
       void owner.resumeDeletes().catch(report('pending deletes'));
   };
   browser.alarms.onAlarm.addListener(onAlarm);
-  void browser.alarms.create('weekrow-deletes', { periodInMinutes: 1 });
+  const syncAlarm = async (): Promise<void> => {
+    if (await sessionCacheItem.hasPendingDeletes()) {
+      if (!(await browser.alarms.get('weekrow-deletes')))
+        await browser.alarms.create('weekrow-deletes', { periodInMinutes: 1 });
+    } else await browser.alarms.clear('weekrow-deletes');
+  };
+  let alarmChain = Promise.resolve();
+  const updateAlarm = (): void => {
+    alarmChain = alarmChain.then(syncAlarm).catch(report('delete alarm'));
+  };
+  const onStorage = (_changes: unknown, area: string): void => {
+    if (area === 'session') updateAlarm();
+  };
+  browser.storage.onChanged.addListener(onStorage);
+  updateAlarm();
   void owner.resumeDeletes().catch(report('pending deletes'));
   browser.runtime.onStartup.addListener(onStartup);
   browser.windows.onFocusChanged.addListener(onFocus);
@@ -116,6 +133,7 @@ export function wireDataTriggers(owner: DataOwner): () => void {
     browser.alarms.onAlarm.removeListener(onAlarm);
     browser.runtime.onStartup.removeListener(onStartup);
     browser.windows.onFocusChanged.removeListener(onFocus);
+    browser.storage.onChanged.removeListener(onStorage);
     stopOrigin();
     stopAccess();
   };

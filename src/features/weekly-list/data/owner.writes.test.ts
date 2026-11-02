@@ -659,6 +659,33 @@ describe('custom tasks', () => {
     expect(h.canvas.callsOf('deleteNote')).toHaveLength(1);
   });
 
+  it('waits for session persistence before it returns a delete token', async () => {
+    const h = await loaded();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const save = h.deps.store.cache.setValue.bind(h.deps.store.cache);
+    vi.spyOn(h.deps.store.cache, 'setValue').mockImplementation(async (value) => {
+      await gate;
+      await save(value);
+    });
+    let returned = false;
+    const pending = h.owner
+      .act({ kind: 'deleteTask', noteId: N.libraryBooksToday })
+      .then((reply) => {
+        returned = true;
+        return reply;
+      });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(returned).toBe(false);
+    } finally {
+      release();
+      await pending;
+    }
+  });
+
   it('sends a delete without a close message after the worker restarts', async () => {
     const h = await loaded();
     await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });

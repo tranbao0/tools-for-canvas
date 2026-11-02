@@ -2024,6 +2024,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     bumpLater();
     if (operation === 'update') return NO_UNDO;
     return {
+      deleteToken: patch.id,
       undo: { kind: 'delete', userId: write.session.profile.id, origin: write.origin, noteId },
     };
   }
@@ -2121,7 +2122,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         );
       case 'sendDelete':
         // A refused check leaves the delete to its timer, which sends it after a check.
-        if (await signedInStudentOwnsCache()) sendDelete(action.noteId);
+        if (
+          (await signedInStudentOwnsCache()) &&
+          (action.deleteToken === undefined ||
+            findDeletePatch(action.noteId)?.id === action.deleteToken)
+        )
+          sendDelete(action.noteId);
         return NO_UNDO;
       case 'cancelDelete':
         cancelDelete(action.noteId);
