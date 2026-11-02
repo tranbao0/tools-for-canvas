@@ -6,6 +6,7 @@
 import type { BrowserContext, Page, Worker } from '@playwright/test';
 import { contentScriptWorld, servePageAt } from './support/content-script';
 import { savedAddress } from './support/scenario-api';
+import { backgroundQuiet, pageQuiet, stableValue } from './support/settle';
 import {
   doneBox,
   expect,
@@ -265,7 +266,8 @@ test.describe('first run', () => {
     await openCanvasPage(second, 'https://evil2.example');
     const third = await context.newPage();
     await openCanvasPage(third, EVIL);
-    await third.waitForTimeout(500);
+    await pageQuiet(third);
+    await backgroundQuiet(background);
 
     // The pages get nothing of the extension.
     for (const tab of [first, second, third]) {
@@ -294,7 +296,8 @@ test.describe('first run', () => {
     // The page has no access to the extension page, and a click on its own content saves nothing.
     await evilTab.mouse.click(300, 300);
     await evilTab.keyboard.press('Enter');
-    await evilTab.waitForTimeout(300);
+    await pageQuiet(evilTab);
+    await backgroundQuiet(background);
     expect(await savedAddress(background)).toBeNull();
 
     // The student reads the real name and answers.
@@ -353,7 +356,7 @@ test.describe('first run', () => {
     const messages = await watchPageMessages(page);
     await openCanvasPage(page, canvas.origin);
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-    await page.waitForTimeout(500);
+    await stableValue(page, messages);
 
     expect(await messages()).toEqual([]);
   });

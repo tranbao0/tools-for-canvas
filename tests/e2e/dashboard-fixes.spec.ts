@@ -21,6 +21,7 @@ import {
   test,
   type ScenarioOptions,
 } from './support/weekrow';
+import { requestsQuiet, stableValue } from './support/settle';
 
 const PAGE = [{ path: '/', page: 'dashboard-widgets' }] as const;
 const OFF: DashboardFixesSettings = {
@@ -207,8 +208,8 @@ test.describe('announcements in place', () => {
       'none',
     );
 
-    // Wait for any late write, then check that none went out.
-    await page.waitForTimeout(500);
+    // Wait until the page is quiet, so that a late write has gone out, then check that none did.
+    await requestsQuiet(page, canvas.requests);
     // The extension reads Canvas through GET and through GraphQL queries. No mutation goes out.
     const writes = canvas.requests.filter(
       (r) =>
@@ -793,8 +794,7 @@ test.describe('the switches', () => {
     await expect(
       page.locator('[data-testid="widget-container-course-work-combined-widget"]'),
     ).toBeVisible();
-    await page.waitForTimeout(500);
-    const before = await widgetsHtml(page);
+    const before = await stableValue(page, () => widgetsHtml(page));
     expect(before).not.toContain('data-wr-');
 
     await saveTools(background, DEFAULT_TOOLS_SETTINGS);
