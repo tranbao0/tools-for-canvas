@@ -1,14 +1,20 @@
 import { readFileSync } from 'node:fs';
 import { test, expect, serveScenario } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
-import { openFirstFile, pane, saveSetting } from './support/file-viewer';
+import {
+  openFirstFile,
+  pane,
+  previewFrame,
+  saveSetting,
+  SUBMISSION_PATH,
+  submissionRoute,
+} from './support/file-viewer';
 import { startFileHost, TRUST_TEST_CERTIFICATE } from './support/file-host';
 
 test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
 
 const notes = readFileSync('tests/fixtures/files/notes.txt', 'utf8');
-const submissionDetails = readFileSync('tests/fixtures/pages/submission-details.html', 'utf8');
-const PAGE = '/courses/101/assignments/7/submissions/5501';
+const PAGE = SUBMISSION_PATH;
 
 /** The file record of a text file. */
 function textRecord(id: string, name: string, size: number) {
@@ -25,39 +31,35 @@ function textRecord(id: string, name: string, size: number) {
   };
 }
 
-// The two shapes of a link to a file that the student handed in. Each is in the files table of
-// the submission details, with a download attribute.
-for (const { shape, link } of [
-  { shape: 'a submission download link', link: 'Submission text' },
-  { shape: 'a file download link', link: 'Submission copy' },
-])
-  test(`${shape} on a submission opens as passive text in the pane`, async ({
-    context,
-    page,
-    background,
-  }) => {
-    const { canvas } = await serveScenario(context, [
-      { path: PAGE, contentType: 'text/html', body: submissionDetails },
-      textRecord('42', 'submission.txt', notes.length),
-      { path: '/files/42/download', contentType: 'text/plain', body: notes },
-    ]);
-    await saveAddress(background, canvas.origin);
-    await page.goto(`${canvas.origin}${PAGE}`);
-    await openFirstFile(page, link);
-    const frame = await pane(page);
-    await expect(frame.locator('pre')).toHaveText(notes);
-    expect(await frame.locator('pre').textContent()).toBe(notes);
-    // The file holds a script tag. It is text, and it never runs.
-    await expect(frame.locator('pre script')).toHaveCount(0);
-    expect(await frame.evaluate(() => 'fileScriptRan' in window)).toBe(false);
-    for (const width of [1920, 1280])
-      for (const theme of ['light', 'dark'] as const) {
-        await page.setViewportSize({ width, height: 1080 });
-        await saveSetting(background, { theme });
-        await expect(frame.locator('html')).toHaveAttribute('data-theme', theme);
-        await page.screenshot({ path: `screenshots/file-viewer-text-${width}-${theme}.png` });
-      }
-  });
+// The student's file is a link in the files table in the frame of the submission details, with
+// no download attribute.
+test('a submission file opens as passive text in the pane', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await serveScenario(context, [
+    submissionRoute,
+    textRecord('42', 'submission.txt', notes.length),
+    { path: '/files/42/download', contentType: 'text/plain', body: notes },
+  ]);
+  await saveAddress(background, canvas.origin);
+  await page.goto(`${canvas.origin}${PAGE}`);
+  await openFirstFile(page, 'Submission text', undefined, previewFrame(page).locator('body'));
+  const frame = await pane(page);
+  await expect(frame.locator('pre')).toHaveText(notes);
+  expect(await frame.locator('pre').textContent()).toBe(notes);
+  // The file holds a script tag. It is text, and it never runs.
+  await expect(frame.locator('pre script')).toHaveCount(0);
+  expect(await frame.evaluate(() => 'fileScriptRan' in window)).toBe(false);
+  for (const width of [1920, 1280])
+    for (const theme of ['light', 'dark'] as const) {
+      await page.setViewportSize({ width, height: 1080 });
+      await saveSetting(background, { theme });
+      await expect(frame.locator('html')).toHaveAttribute('data-theme', theme);
+      await page.screenshot({ path: `screenshots/file-viewer-text-${width}-${theme}.png` });
+    }
+});
 
 test('text stops reading at 2 MB and shows the start of a long file', async ({
   context,
@@ -73,7 +75,7 @@ test('text stops reading at 2 MB and shows the start of a long file', async ({
   });
   try {
     const { canvas } = await serveScenario(context, [
-      { path: PAGE, contentType: 'text/html', body: submissionDetails },
+      submissionRoute,
       textRecord('42', 'long.txt', long.length),
       {
         path: '/files/42/download',
@@ -84,7 +86,7 @@ test('text stops reading at 2 MB and shows the start of a long file', async ({
     ]);
     await saveAddress(background, canvas.origin);
     await page.goto(`${canvas.origin}${PAGE}`);
-    await openFirstFile(page, 'Submission text');
+    await openFirstFile(page, 'Submission text', undefined, previewFrame(page).locator('body'));
     const frame = await pane(page);
     await expect(frame.getByText('Shown in part')).toBeVisible();
     const shown = (await frame.locator('pre').textContent())!;

@@ -8,6 +8,7 @@
 import { toolsSettingsItem } from '../settings/toolsItem';
 import { browser, type Browser } from 'wxt/browser';
 import { canAutoSaveOrigin, originMatchPattern, parseUrl } from './address';
+import { isSubmissionPage } from '../../features/file-viewer/model';
 import { isCanvasDocument } from './detectCanvas';
 import { logFailure } from './log';
 
@@ -57,6 +58,50 @@ export async function injectInpage(
       ...pageScripts(tab.url),
       ...((await toolsSettingsItem.getValue()).fileViewer ? (['/viewer.js'] as const) : []),
     ],
+  });
+}
+
+/** The click catcher for the files list in the frame of the submission details page. */
+export const FRAME_FILE = '/submission-frame.js';
+
+/** What a probe reports about a frame. It reads two strings and changes nothing. */
+interface FrameProbe {
+  origin: string;
+  path: string;
+}
+
+/**
+ * Runs the click catcher in the same-origin child frames of a tab that shows a submission details
+ * page of `origin` (decision 25, item 11). Canvas draws the student's file list in such a frame.
+ *
+ * `scripting.executeScript` cannot name a frame by its origin, and the `webNavigation` permission
+ * would add a browser history warning, so a probe asks every frame of the tab for its origin and
+ * path. The probe only reads those two strings. The catcher goes into the frames of the saved
+ * origin whose path is a submission page, and into no other frame. The frame can still move
+ * between the probe and the injection, so the catcher checks its own page again.
+ */
+export async function injectSubmissionFrames(tabId: number, origin: string): Promise<void> {
+  if (!(await toolsSettingsItem.getValue()).fileViewer) return;
+  const top = await browser.tabs.get(tabId);
+  const topUrl = top.url === undefined ? null : parseUrl(top.url);
+  if (topUrl?.origin !== origin || !isSubmissionPage(topUrl.pathname))
+    throw new Error('The tab does not show a submission page of the saved Canvas');
+  const probes = await browser.scripting.executeScript({
+    target: { tabId, allFrames: true },
+    func: (): FrameProbe => ({ origin: location.origin, path: location.pathname }),
+  });
+  const frameIds = probes
+    .filter(
+      (probe) =>
+        probe.frameId !== 0 &&
+        (probe.result as FrameProbe | undefined)?.origin === origin &&
+        isSubmissionPage((probe.result as FrameProbe).path),
+    )
+    .map((probe) => probe.frameId);
+  if (frameIds.length === 0) return;
+  await browser.scripting.executeScript({
+    target: { tabId, frameIds },
+    files: [FRAME_FILE],
   });
 }
 

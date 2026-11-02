@@ -18,6 +18,7 @@ export const PAGE_SCRIPTS = Object.freeze([
   'inpage.js',
   'dashboard.js',
   'viewer.js',
+  'submission-frame.js',
 ]);
 
 /**

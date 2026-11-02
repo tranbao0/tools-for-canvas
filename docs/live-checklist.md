@@ -500,6 +500,11 @@ A store build or a build from `npm run build` does not.
 - Open a Word file and check the Download and Open in Canvas card.
 - Open an SVG image and check that it shows as a picture.
   Right-click it and check that the menu offers no "Open image in new tab".
+- Open an animated GIF, such as one from a lecture slide.
+  Expect: the GIF plays and loops, in each browser.
+  Right-click it, choose "Open image in new tab" if the menu offers it, and expect a blank or failed tab, never the picture.
+  Close the tab, wait a minute, and expect the GIF in the pane to be still playing.
+- Open a PNG or JPEG photo, and check Zoom to fit, 100%, Zoom in and Zoom out.
 - Open a very large photo, over 16 million pixels or over 16,384 px on a side, and check that the pane says it is too large and keeps Download and Open in Canvas.
 - Open a long text file (several MB) and check that the pane shows "Shown in part" at once, without a long wait.
 - Open a large video (over 20 MB), switch to another tab for a moment, and switch back.
@@ -514,10 +519,22 @@ A store build or a build from `npm run build` does not.
   Expect: the browser saves the file, and the pane does not open it.
 - Open the submission details page of the same assignment.
   Find the list of your submitted files.
-  Use "Inspect" to see if it is in the frame `#preview_frame`, and write down the link tag as above.
+  Use "Inspect" to check that the list is in the frame `#preview_frame`, and write down the link tag as above.
+  Expect: `table.file-upload-submission-table > tbody > tr.file-upload-submission > td.file-upload-submission-info > a.file-upload-submission-info__link`, with `?download=:file`, no `download` attribute, and a frame address that ends in `?preview=1&rand=:number`.
   Click a file in the list.
-  Expect: the pane opens the file.
-  If the list is in a frame and the click saves or opens the file in Canvas instead, write down that the page script does not enter the frame.
+  Expect: the pane opens the file in the top frame, and the frame does not save the file.
+  If the frame saves the file instead, wait a second after the page loads and click again.
+  Write down if the first click was too early, because the click catcher is injected after the frame loads.
+- On the same page, click the "Preview" button of a row that has one (a file that Canvas can preview).
+  Expect: Canvas opens its own preview, and the pane does not open.
+- On the same page, press Ctrl and click a file in the list.
+  Expect: the browser does what it does without the extension, and the pane does not open.
+- On the same page, choose another attempt in the submission dropdown, if the assignment has more than one, and click a file in the list again.
+  Expect: the pane opens the file, because the frame loaded again and got a new click catcher.
+- Open the browser's extension page for the add-on and check its permissions.
+  Expect: no "Read your browsing history" line, which `webNavigation` would add.
+- Turn the File viewer setting off, reload the submission details page, and click a file in the list.
+  Expect: the browser saves the file, and the pane does not open.
 - Add a comment with an attachment as the teacher (or use a graded assignment with one), and open the assignment page and the submission details page as the student.
   Inspect the comment attachment link and write down its tag, its `href` and whether it has a `download` attribute.
   Click it.

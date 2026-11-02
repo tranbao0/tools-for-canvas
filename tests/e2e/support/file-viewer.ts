@@ -1,8 +1,35 @@
 import { readFileSync } from 'node:fs';
-import type { BrowserContext, Frame, Page, Worker } from '@playwright/test';
+import type { BrowserContext, Frame, Locator, Page, Worker } from '@playwright/test';
 import type { FakeCanvasRoute } from './fake-canvas';
 import { expect, serveScenario } from './weekrow';
 import { saveAddress, type StorageArea } from './scenario-api';
+
+/** The submission details page of the fixtures, and the frame that Canvas loads in it. */
+export const SUBMISSION_PATH = '/courses/101/assignments/7/submissions/5501';
+const detailsPage = readFileSync('tests/fixtures/pages/submission-details.html', 'utf8');
+const previewPage = readFileSync('tests/fixtures/pages/submission-preview.html', 'utf8');
+
+/**
+ * Serves the submission details page as Canvas does: the page at the path, the frame document at
+ * the same path with `?preview=1`, and a file download as an attachment, which the browser saves.
+ */
+export const submissionRoute: FakeCanvasRoute = {
+  path: SUBMISSION_PATH,
+  respond: (request) => {
+    if (request.path.includes('download='))
+      return {
+        headers: { 'content-disposition': 'attachment; filename="file.txt"' },
+        body: 'The saved file.',
+      };
+    return {
+      contentType: 'text/html',
+      body: request.path.includes('preview=1') ? previewPage : detailsPage,
+    };
+  },
+};
+
+/** The files list in the frame of the submission details page. */
+export const previewFrame = (page: Page) => page.frameLocator('#preview_frame');
 
 /** A small Canvas page with file links, for the pane checks. */
 export const simpleHtml = `<!doctype html><html style="padding-right: 13px"><head><script>INST={environment:'production'};ENV={current_user_id:'5501'};</script></head><body><header>Canvas</header><nav>Course navigation</nav><main><h1>Course files</h1><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a><div data-module-id="7" data-type="File"><a href="/courses/101/modules/items/9">Module notes</a></div><a href="/courses/101/pages/next">Next page</a></main></body></html>`;
@@ -178,8 +205,8 @@ export async function openFirstFile(
   page: Page,
   name: string,
   prepare?: () => Promise<void>,
-  /** The part of the page that holds the link. */
-  scope = '#content',
+  /** The part of the page that holds the link: a selector in the page, or a locator in a frame. */
+  scope: string | Locator = '#content',
 ): Promise<void> {
   const url = page.url();
   await prepare?.();
@@ -188,7 +215,9 @@ export async function openFirstFile(
       await page.goto(url);
       await prepare?.();
     }
-    await page.locator(scope).getByRole('link', { name }).click();
+    await (typeof scope === 'string' ? page.locator(scope) : scope)
+      .getByRole('link', { name })
+      .click();
     await expect(page.locator('#tools-file-viewer')).toBeVisible({ timeout: 1500 });
   }).toPass({ timeout: 20_000 });
 }

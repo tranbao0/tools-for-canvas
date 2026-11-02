@@ -8,6 +8,7 @@ import {
   imageFits,
   MAX_TEXT_BYTES,
   playerType,
+  sniffRaster,
   svgBudget,
   svgDrawSize,
   TEXT_READ_BYTES,
@@ -23,12 +24,20 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
+/** The size of the picture in its own pixels. */
+function naturalSize(picture: HTMLCanvasElement | HTMLImageElement) {
+  return picture instanceof HTMLImageElement
+    ? { width: picture.naturalWidth, height: picture.naturalHeight }
+    : { width: picture.width, height: picture.height };
+}
+
 /**
  * Each tab owns its read until it closes (design decision 25, items 4 and 5).
  *
  * File content never becomes a document of the extension. An image goes through a blob URL only
- * inside an element that is not in the page. The tab draws it on a canvas as soon as the element
- * has loaded, and then frees the URL, so no address of the file is left to open. Only audio and
+ * inside an element that is not in the page. A vector image is drawn on a canvas as soon as the
+ * element has loaded, and a raster image (which cannot run script) stays in that element so that a
+ * GIF can play. Either way the URL is freed at once, so no address of the file is left to open. Only audio and
  * video keep a URL while they play, because they need one, and they cannot run script.
  */
 export function MediaTab(props: {
@@ -48,7 +57,7 @@ export function MediaTab(props: {
   if (props.active) started.current = true;
   const begin = started.current;
   const [source, setSource] = useState('');
-  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [visual, setVisual] = useState<HTMLCanvasElement | HTMLImageElement | null>(null);
   const [ready, setReady] = useState(false);
   const [partial, setPartial] = useState(false);
   const [progress, setProgress] = useState<{ loaded: number; total: number | null } | null>(null);
@@ -70,7 +79,7 @@ export function MediaTab(props: {
     if (!begin || !kind || !mime) return;
     if (released) {
       setSource('');
-      setCanvas(null);
+      setVisual(null);
       return;
     }
     if ((kind === 'audio' || kind === 'video') && !document.createElement(kind).canPlayType(mime)) {
@@ -81,7 +90,7 @@ export function MediaTab(props: {
     let live = true;
     let free: (() => void) | undefined;
     setSource('');
-    setCanvas(null);
+    setVisual(null);
     setReady(false);
     setError(null);
     setProgress({ loaded: 0, total: null });
@@ -90,7 +99,14 @@ export function MediaTab(props: {
       setError({ text, retry: false });
     };
     const show = async (bytes: Uint8Array) => {
-      const blob = URL.createObjectURL(new Blob([bytes as BlobPart], { type: mime }));
+      // A raster image shows in an element. Its type comes from the first bytes, never from the
+      // name or the header, so a file that holds markup is never given to an element as a picture.
+      const raster = kind === 'image' ? sniffRaster(bytes) : null;
+      if (kind === 'image' && raster === null && mime !== 'image/svg+xml') {
+        fail("Couldn't show this image");
+        return;
+      }
+      const blob = URL.createObjectURL(new Blob([bytes as BlobPart], { type: raster ?? mime }));
       let freed = false;
       free = () => {
         if (freed) return;
@@ -147,7 +163,15 @@ export function MediaTab(props: {
         setReleased(true);
         return;
       }
-      if (mime === 'image/svg+xml') ({ width, height } = svgBudget(width, height));
+      if (raster !== null) {
+        // A raster image cannot run script, and an animated GIF needs its own element to play.
+        // The element keeps the decoded picture, so the address can go away at once.
+        free();
+        setProgress(null);
+        setVisual(picture);
+        return;
+      }
+      ({ width, height } = svgBudget(width, height));
       const drawing = document.createElement('canvas');
       drawing.width = width;
       drawing.height = height;
@@ -167,7 +191,7 @@ export function MediaTab(props: {
       // The picture is on the canvas. The address of the file goes away at once.
       free();
       setProgress(null);
-      setCanvas(drawing);
+      setVisual(drawing);
     };
     void props.host
       .readFile(
@@ -223,20 +247,24 @@ export function MediaTab(props: {
       ?.querySelectorAll<HTMLMediaElement>('audio,video')
       .forEach((media) => media.pause());
   }, [props.active, source]);
-  // The canvas is made outside the page, so it goes in here, sized for the zoom.
+  // The picture is made outside the page, so it goes in here, sized for the zoom.
   useLayoutEffect(() => {
     const place = holder.current;
-    if (!place || !canvas) return;
-    canvas.setAttribute('role', 'img');
-    canvas.setAttribute('aria-label', props.name);
-    canvas.style.cssText =
+    if (!place || !visual) return;
+    if (visual instanceof HTMLImageElement) visual.alt = props.name;
+    else {
+      visual.setAttribute('role', 'img');
+      visual.setAttribute('aria-label', props.name);
+    }
+    visual.style.cssText =
       zoom === null
         ? 'max-width:100%;max-height:100%;object-fit:contain'
-        : `width:${canvas.width * zoom}px;height:${canvas.height * zoom}px;max-width:none`;
-    if (canvas.parentNode !== place) place.replaceChildren(canvas);
-  }, [canvas, zoom, props.name]);
+        : `width:${naturalSize(visual).width * zoom}px;height:${naturalSize(visual).height * zoom}px;max-width:none`;
+    if (visual.parentNode !== place) place.replaceChildren(visual);
+  }, [visual, zoom, props.name]);
   const scale = () => {
-    const fitted = canvas && canvas.width > 0 ? canvas.clientWidth / canvas.width : 0;
+    const width = visual ? naturalSize(visual).width : 0;
+    const fitted = visual && width > 0 ? visual.clientWidth / width : 0;
     return zoom ?? (fitted > 0 ? fitted : 1);
   };
   return (
@@ -259,7 +287,7 @@ export function MediaTab(props: {
           total={progress.total}
         />
       )}
-      {canvas && kind === 'image' && (
+      {visual && kind === 'image' && (
         <>
           <div class="fv-image-controls">
             <button type="button" class="wr-btn" onClick={() => setZoom(null)}>

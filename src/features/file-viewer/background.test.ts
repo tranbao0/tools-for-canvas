@@ -36,6 +36,9 @@ function setup() {
       store.set(key, value);
     }),
     permission: vi.fn(async () => true),
+    tabUrl: vi.fn(async () => 'https://school.edu/courses/2/assignments/3/submissions/4'),
+    injectFrames: vi.fn(async () => undefined),
+    openInTop: vi.fn(async () => true),
   };
   const sender = { url: 'https://school.edu/courses/2', frameId: 0, tab: { id: 7 } };
   const pane = { url: 'extension://x/viewer.html', frameId: 3, tab: { id: 7 } };
@@ -77,6 +80,7 @@ describe('viewer router', () => {
     'viewer:permission',
     'viewer:session',
     'viewer:fetch-allowed',
+    'viewer:inject-frames',
   ])('rejects an untrusted sender for %s', async (type) => {
     const { host, sender, api } = setup();
     await expect(
@@ -265,6 +269,77 @@ describe('pane session', () => {
     await expect(
       routeViewerMessage({ type: 'viewer:session' }, { ...sender, tab: undefined }, host),
     ).rejects.toThrow('saved Canvas');
+  });
+});
+
+describe('files list frame', () => {
+  const frame = {
+    url: 'https://school.edu/courses/2/assignments/3/submissions/4?preview=1&rand=5',
+    frameId: 5,
+    tab: { id: 7 },
+  };
+  const open = { type: 'viewer:frame-open', fileId: '42' };
+
+  it('passes the file of a child frame of the saved Canvas to the top frame of its tab', async () => {
+    const { host } = setup();
+    expect(await routeViewerMessage(open, frame, host)).toEqual({ opened: true });
+    expect(host.openInTop).toHaveBeenCalledWith(7, '42');
+    vi.mocked(host.openInTop).mockResolvedValue(false);
+    expect(await routeViewerMessage(open, frame, host)).toEqual({ opened: false });
+  });
+  it.each([
+    ['the top frame', { ...frame, frameId: 0 }],
+    [
+      'a frame of another site',
+      { ...frame, url: 'https://other.edu/courses/2/assignments/3/submissions/4' },
+    ],
+    ['a frame with another path', { ...frame, url: 'https://school.edu/courses/2/files/4' }],
+    ['an extension page', { url: 'extension://x/viewer.html', frameId: 3, tab: { id: 7 } }],
+    ['a sender with no tab', { ...frame, tab: undefined }],
+    ['a sender with no frame id', { ...frame, frameId: undefined }],
+  ])('refuses %s', async (_name, sender) => {
+    const { host } = setup();
+    await expect(routeViewerMessage(open, sender, host)).rejects.toThrow();
+    expect(host.openInTop).not.toHaveBeenCalled();
+  });
+  it('refuses a bad file id and a tab whose top frame is not a submission page of the saved Canvas', async () => {
+    const { host } = setup();
+    await expect(routeViewerMessage({ ...open, fileId: '4/2' }, frame, host)).rejects.toThrow(
+      'file id',
+    );
+    for (const url of [
+      'https://other.edu/courses/2/assignments/3/submissions/4',
+      'https://school.edu/courses/2',
+      null,
+    ]) {
+      vi.mocked(host.tabUrl).mockResolvedValue(url);
+      await expect(routeViewerMessage(open, frame, host)).rejects.toThrow('submission page');
+    }
+    expect(host.openInTop).not.toHaveBeenCalled();
+  });
+  it('injects the catcher only for the top frame of a submission page of the saved Canvas', async () => {
+    const { host, sender } = setup();
+    const top = { ...sender, url: 'https://school.edu/courses/2/assignments/3/submissions/4' };
+    const ask = { type: 'viewer:inject-frames' };
+    await routeViewerMessage(ask, top, host);
+    expect(host.injectFrames).toHaveBeenCalledWith(7, 'https://school.edu');
+    for (const refused of [
+      { ...top, frameId: 5 },
+      { ...top, tab: undefined },
+      { ...top, url: 'https://other.edu/x' },
+    ]) {
+      await expect(routeViewerMessage(ask, refused, host)).rejects.toThrow();
+    }
+    vi.mocked(host.tabUrl).mockResolvedValue('https://school.edu/courses/2');
+    await expect(routeViewerMessage(ask, top, host)).rejects.toThrow('submission page');
+    await expect(
+      routeViewerMessage(
+        ask,
+        { url: 'extension://x/viewer.html', frameId: 3, tab: { id: 7 } },
+        host,
+      ),
+    ).rejects.toThrow();
+    expect(host.injectFrames).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -6,10 +6,11 @@ import {
   MAX_SVG_PIXELS,
   MAX_TEXT_BYTES,
   playerType,
+  sniffRaster,
   svgBudget,
   svgDrawSize,
 } from './player';
-import { catchesDownload, fileTarget } from '../model';
+import { catchesDownload, fileTarget, frameFileTarget } from '../model';
 
 describe('passive file players', () => {
   it('routes supported images and media', () => {
@@ -50,8 +51,6 @@ describe('submission attachment paths', () => {
     document.body.innerHTML = markup.replace('HREF', href);
     return document.querySelector('a')!;
   }
-  const TABLE =
-    '<table class="file-upload-submission-table"><tr><td><a href="HREF" download>f</a></td></tr></table>';
   const SIDEBAR =
     '<aside id="right-side"><div class="details"><div class="content"><div><a href="HREF" download>f</a></div></div></div></aside>';
   const DESCRIPTION =
@@ -72,11 +71,12 @@ describe('submission attachment paths', () => {
   ]) {
     it(`takes only the identity from ${href}`, () => {
       expect(fileTarget(href, origin)).toEqual({ fileId: '42' });
-      for (const markup of [TABLE, SIDEBAR]) {
+      for (const markup of [SIDEBAR]) {
         const link = linkIn(markup, href);
         expect(catchesDownload(link, href, origin, '/courses/12/assignments/3')).toBe(true);
+        // The submission details page has no such list in its top frame.
         expect(catchesDownload(link, href, origin, '/courses/12/assignments/3/submissions/7')).toBe(
-          true,
+          false,
         );
         expect(catchesDownload(link, href, origin, '/courses/12/files')).toBe(false);
         expect(
@@ -110,7 +110,7 @@ describe('submission attachment paths', () => {
   it('keeps a download link inside a description even when it sits in a submission container', () => {
     const href = '/files/42/download';
     document.body.innerHTML =
-      '<table class="file-upload-submission-table"><tr><td><div class="user_content"><a href="/files/42/download" download>f</a></div></td></tr></table>';
+      '<aside id="right-side"><div class="details"><div class="content"><div class="user_content"><a href="/files/42/download" download>f</a></div></div></div></aside>';
     expect(
       catchesDownload(document.querySelector('a')!, href, origin, '/courses/12/assignments/3'),
     ).toBe(false);
@@ -121,6 +121,70 @@ describe('submission attachment paths', () => {
     expect(
       catchesDownload(document.querySelector('a')!, href, origin, '/courses/12/assignments/3'),
     ).toBe(false);
+  });
+});
+
+describe('files list in the submission frame', () => {
+  const origin = 'https://canvas.example';
+  const path = '/courses/12/assignments/3/submissions/7';
+  const href = `${path}?download=42`;
+  const row = (link: string) =>
+    `<table class="file-upload-submission-table"><tr class="file-upload-submission"><td class="file-upload-submission-info">${link}</td><td><a role="button" class="modal_preview_link Button--link" href="${href}">Preview</a></td></tr></table>`;
+  const FILE = `<a href="${href}" class="text file-upload-submission-info__link">f.pdf</a>`;
+  const linkIn = (markup: string, selector = 'a') => {
+    document.body.innerHTML = markup;
+    return document.querySelector(selector)!;
+  };
+
+  it('takes the file of a link in the files list, with no download attribute', () => {
+    expect(frameFileTarget(linkIn(row(FILE)), href, origin, path)).toEqual({ fileId: '42' });
+    const direct = '/files/42/download?download_frd=1&verifier=secret';
+    const other = `<a href="${direct}" class="file-upload-submission-info__link">f</a>`;
+    expect(frameFileTarget(linkIn(row(other)), direct, origin, path)).toEqual({ fileId: '42' });
+  });
+  it('leaves the Preview button of the row to Canvas', () => {
+    expect(
+      frameFileTarget(linkIn(row(FILE), '.modal_preview_link'), href, origin, path),
+    ).toBeNull();
+  });
+  it('takes no comment attachment, no link outside the list, and no other page', () => {
+    const comment = `${path}?comment_id=9&download=42`;
+    const attachment = `<a href="${comment}" class="file-upload-submission-info__link">f</a>`;
+    expect(frameFileTarget(linkIn(row(attachment)), comment, origin, path)).toBeNull();
+    const outside = `<main><a href="${href}" class="file-upload-submission-info__link">f</a></main>`;
+    expect(frameFileTarget(linkIn(outside), href, origin, path)).toBeNull();
+    const inComment = `<div class="comments"><div class="comment_attachments">${row(FILE)}</div></div>`;
+    expect(frameFileTarget(linkIn(inComment), href, origin, path)).toBeNull();
+    const link = linkIn(row(FILE));
+    expect(frameFileTarget(link, href, origin, '/courses/12/assignments/3')).toBeNull();
+    expect(frameFileTarget(link, href, origin, '/courses/12/files/42')).toBeNull();
+    expect(frameFileTarget(link, `https://other.example${href}`, origin, path)).toBeNull();
+    expect(frameFileTarget(link, '/courses/12/modules/items/9', origin, path)).toBeNull();
+  });
+});
+
+describe('sniffRaster', () => {
+  const ascii = (text: string) => [...text].map((char) => char.charCodeAt(0));
+  it('names the raster formats by their first bytes', () => {
+    expect(sniffRaster(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]))).toBe(
+      'image/png',
+    );
+    expect(sniffRaster(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))).toBe('image/jpeg');
+    expect(sniffRaster(new Uint8Array(ascii('GIF89a....')))).toBe('image/gif');
+    expect(sniffRaster(new Uint8Array(ascii('GIF87a....')))).toBe('image/gif');
+    expect(sniffRaster(new Uint8Array([...ascii('RIFF'), 1, 2, 3, 4, ...ascii('WEBPVP8 ')]))).toBe(
+      'image/webp',
+    );
+    expect(sniffRaster(new Uint8Array([0, 0, 0, 24, ...ascii('ftypavif')]))).toBe('image/avif');
+  });
+  it('names nothing for markup, text or a short file', () => {
+    expect(
+      sniffRaster(new Uint8Array(ascii('<svg xmlns="http://www.w3.org/2000/svg"/>'))),
+    ).toBeNull();
+    expect(sniffRaster(new Uint8Array(ascii('<?xml version="1.0"?><svg/>')))).toBeNull();
+    expect(sniffRaster(new Uint8Array(ascii('GIF')))).toBeNull();
+    expect(sniffRaster(new Uint8Array([1, 2, 3]))).toBeNull();
+    expect(sniffRaster(new Uint8Array())).toBeNull();
   });
 });
 

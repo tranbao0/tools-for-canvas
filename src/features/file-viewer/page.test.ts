@@ -271,6 +271,34 @@ describe('the page script', () => {
     expect(seen).toEqual([]);
   });
 
+  it('keeps both files when two clicks come before the pane has connected', async () => {
+    prepare();
+    document.body.innerHTML =
+      '<a id="file" href="/files/5">A</a><a id="other" href="/files/6">B</a>';
+    let stored: { ids: string[]; active: string | null } = { ids: [], active: null };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+    sendMessage.mockImplementation(async (message: { type: string; tabs?: typeof stored }) => {
+      if (message.type === 'viewer:tabs-get') {
+        const snapshot = { ...stored, token: '1:1' };
+        await tick();
+        return snapshot;
+      }
+      if (message.type === 'viewer:tabs-set') {
+        await tick();
+        stored = message.tabs!;
+        return { ok: true };
+      }
+      return reply(message);
+    });
+    await startViewer();
+    for (const id of ['file', 'other']) {
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+      Object.defineProperty(event, 'isTrusted', { value: true });
+      document.getElementById(id)!.dispatchEvent(event);
+    }
+    await vi.waitFor(() => expect(stored).toEqual({ ids: ['5', '6'], active: '6' }));
+  });
+
   it('writes the tabs with the token of the last read', async () => {
     prepare();
     sendMessage.mockImplementation(async (message: { type: string }) =>

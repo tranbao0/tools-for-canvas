@@ -35,6 +35,7 @@ export const DETECTOR_ENTRY = 'detector.js';
 export function budgetFor(name) {
   if (name === DETECTOR_ENTRY) return DETECTOR_BUDGET_BYTES;
   if (name === 'viewer.js') return 15_000;
+  if (name === 'submission-frame.js') return 4_000;
   if (name === 'viewer.html') return 1_500_000;
   return BUDGET_BYTES;
 }

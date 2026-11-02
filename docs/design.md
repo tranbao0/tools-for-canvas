@@ -2262,10 +2262,19 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   - The Submission section of the assignment page (`app/views/assignments/_submission_sidebar.html.erb`) draws in the right column, as `div.details > div.content > div > a`.
     The link is `/courses/:id/assignments/:id/submissions/:user?download=:file`, and it has no `download` attribute.
   - Comment attachments in that section are `div.comments.module > div.comment > div.comment_attachments > div.comment_attachment > a.comment_attachment_link`, with `?comment_id=:id&download=:file`.
-  - The submission details page (`app/views/submissions/show.html.erb`) shows the submitted work in the frame `#preview_frame`.
-    The file list is the table `table.file-upload-submission-table` in `show_preview.html.erb`, loaded in that frame.
-    Each row is `tr.file-upload-submission > td.file-upload-submission-info > a.file-upload-submission-info__link`, with `?download=:file`.
-    The page script runs only in the top frame, so it cannot see this table until the live check shows otherwise.
+  - The submission details page (`app/views/submissions/show.html.erb`) shows the submitted work in the frame `iframe#preview_frame`.
+    The frame address comes from `Submission::ShowPresenter#submission_preview_frame_url` (`app/presenters/submission/show_presenter.rb`).
+    It is `submission_data_url(preview: 1, rand: rand(999_999))`, which is the same path as the page with the query `?preview=1&rand=N`.
+    So the frame is a page of the same origin.
+    The file list is the table `table.file-upload-submission-table`, which `app/views/submissions/show_preview.html.erb` writes inline, in the branch for `online_upload`.
+    There is no partial for the table.
+    The only partial of that branch is `submissions/originality_score`.
+    Each row is `tr.file-upload-submission > td.file-upload-submission-info > a.file-upload-submission-info__link`, with `?download=:file` (`download: attachment.id` in `preview_url`).
+    The link has no `download` attribute.
+    A row of a file that Canvas can preview also has the button `a.modal_preview_link.Button--link` with the same `href`, which opens the annotated copy.
+    The comment attachments of the page are in `show.html.erb` itself, so they are in the top frame and not in the preview frame.
+    The page script is injected only into the top frame, so it cannot see this table.
+    Item 11 adds a click catcher for the frame.
 
 **Decision:**
 
@@ -2307,17 +2316,27 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      It reads the stored tabs once, when it first gets a request to open a file, and after that it keeps the tabs in memory and writes them back with `viewer:tabs-set` after each change, in order.
      While the pane is open, the page script only sends `open-file` over the port.
      It writes the tabs itself only before the pane page has connected, so a close in the pane never meets an old copy.
+   - The page script runs the opens of its clicks one after another.
+     Each one reads the stored tabs, adds its file and writes them back.
+     Two that ran side by side would both start from the same tabs, and the second write would drop the file of the first.
+     The order of the tabs is also the order of the clicks.
+   - The page script tells a pane what to open once for each port (`synced`).
+     The first `open-file` request makes the pane restore the stored tabs, and from then on the pane owns them.
+     A copy that the page script read from the store is older than the pane, so it is never sent again.
+     Otherwise it would undo what the student did in the pane since.
+     A click that finishes writing the tabs after the pane has connected sends its file as a request.
 3. **Which clicks open the pane.**
    - A plain left click on a Canvas file link: `a.instructure_file_link`, links to `/courses/:id/files/:id` or `/files/:id`, file preview buttons, module items of the file type, and the student's own submission attachments.
    - The page script listens on `document` in the capture phase and stops Canvas handlers only after a match.
    - Links with `download` keep their normal action.
      The one exception is a link to a file that the student handed in, because Canvas can mark those files as downloads while the student needs to read them.
      A link counts only when all of these are true:
-     - the page is an assignment page or a submission details page;
-     - the link sits in the submission files table (`.file-upload-submission-table`) or in the Submission section of the assignment page (`#right-side .details > .content`);
+     - the page is an assignment page;
+     - the link sits in the Submission section of the assignment page (`#right-side .details > .content`);
      - the link sits in no description or user content (`.description`, `.user_content`) and in no comment (`.comments`, `.comment`, `.comment_attachments`);
      - the address has the shape `/files/:id/download`, or `/courses/:id/assignments/:id/submissions/:id?download=:file`.
      A download button that a teacher puts in an assignment description, and a comment attachment, keep their download.
+   - The files list of the submission details page is in a frame, and item 11 handles it.
      The pane takes only the file id from the address and drops any `verifier`.
    - A link without a `download` attribute opens the pane by its address alone.
      The address of a comment attachment carries `comment_id`, and the pane never takes it, with or without a `download` attribute.
@@ -2336,7 +2355,7 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      The pane saves the page and the zoom of each file, keyed by Canvas origin, user and file id, for the last 200 files.
      The first build keeps the page, the zoom and the document of each tab only while the pane stays open.
      Saving them across reloads is build step 3.
-   - Image: drawn on a canvas inside the pane (item 10).
+   - Image: a raster image shows in an image element, and an SVG is drawn on a canvas (item 10).
    - Audio and video: the browser's own elements, from a blob URL of the fetched bytes.
    - Plain text and code: shown as text, never rendered as HTML.
    - Any other type, such as Word or PowerPoint: a short card with "Open in Canvas" and "Download", because Canvas converts those files on its own servers.
@@ -2478,15 +2497,21 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
 
 10. **The players for other files.**
     - **Images.**
-      The pane makes the blob URL of the bytes and loads it in an image element that is never in the page.
-      When the element has loaded, the pane checks the size, draws the picture on a canvas with `role="img"` and the file name as its label, and frees the blob URL at once.
-      The pane keeps no image element and no address of the file.
-      Zoom works on the canvas: "Zoom to fit", 100 percent, "Zoom in" and "Zoom out".
-      An animated GIF shows its first frame.
-      An SVG shows as a picture only, because an image element never runs script.
-      An SVG that reports no size, such as one with only a `viewBox`, is drawn at the size of its `width` and `height`, or at 1024 px wide with the ratio of the `viewBox`.
-      An inert parser reads those attributes from the start tag of the root element.
-      A vector drawing is drawn at most 4,194,304 pixels large, with the same shape, because a filter can make a large drawing slow.
+      The pane makes the blob URL of the bytes and loads it in an image element that is not in the page yet.
+      When the element has loaded, the pane checks the size and frees the blob URL at once.
+      Zoom works on the picture: "Zoom to fit", 100 percent, "Zoom in" and "Zoom out".
+      - **Raster images** (PNG, JPEG, GIF, WebP and AVIF) stay in that element, which goes into the pane with `alt` set to the file name.
+        A raster image cannot run script, and an animated GIF plays only in an element, because a canvas draws its first frame.
+        The type of the blob comes from the first bytes of the file (`sniffRaster`), never from the name or the header.
+        A file that claims to be an image but holds no raster signature, such as markup that is named `photo.png`, is never given to an element: the tab says "Couldn't show this image".
+        The element keeps its decoded frames, so the freed URL does not stop an animation.
+        Chromium 156 and Firefox 159 both keep a GIF moving after `URL.revokeObjectURL` (tests: `tests/e2e/file-viewer-image.spec.ts` and `tests/firefox/smoke.mjs`), so the pane keeps no blob after the load.
+      - **SVG** is drawn on a canvas with `role="img"` and the file name as its label, and the element is dropped.
+        The pane keeps no image element and no address of an SVG.
+        An SVG shows as a picture only, because an image element never runs script.
+        An SVG that reports no size, such as one with only a `viewBox`, is drawn at the size of its `width` and `height`, or at 1024 px wide with the ratio of the `viewBox`.
+        An inert parser reads those attributes from the start tag of the root element.
+        A vector drawing is drawn at most 4,194,304 pixels large, with the same shape, because a filter can make a large drawing slow.
     - **Limits.**
       An image of more than 16,777,216 pixels, or of more than 16,384 pixels on a side, is not drawn, the same limits as a PDF page.
       The card above stays, with "Download" and "Open in Canvas", and a line says that the image is too large to show here.
@@ -2501,6 +2526,46 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
       A hidden image tab does the same when the decoded picture (4 bytes a pixel) takes more than 20 MB.
       A small file stays.
       A hidden tab pauses its media.
+
+11. **The files list of the submission details page.**
+    - **The problem.**
+      The page script runs only in the top frame (`frameIds: [0]`), and Canvas draws the student's file list in the frame `#preview_frame` (live facts).
+      A click on a file there never reaches the page script, so the browser saves the file.
+    - **The click catcher** is the script `submission-frame.js` (`src/features/file-viewer/frame.ts`).
+      It runs in the same-origin child frame of a submission details page, and in no other frame.
+      It catches the same clicks as the page script: a trusted plain left click, with the same `plainClick` rule (`isTrusted`, the left button, no Ctrl, Shift, Alt or Meta).
+      It catches only `a.file-upload-submission-info__link` inside `.file-upload-submission-table`, and never a link inside a description, user content or a comment (`frameFileTarget`).
+      The Preview button of the row (`a.modal_preview_link`) keeps its action, because it opens the annotated copy in Canvas.
+      A comment attachment is in the top frame, so the catcher never sees one, and an address with `comment_id` never matches.
+      The catcher stays off unless its own path is a submission details page and the top frame is of the same origin.
+    - **Injection.**
+      The page script of the top frame asks the background with `viewer:inject-frames`, once when it starts and again after each trusted `load` event of `iframe#preview_frame`, because each load is a new document.
+      The viewer must be on, and the page must be a submission details page of the saved Canvas.
+      The background reads the URL of the tab, checks the saved origin, the path and the File viewer setting, and then injects.
+      `scripting.executeScript` cannot name a frame by its origin, and the `webNavigation` permission would add a browser history warning to every install.
+      So the background runs a probe with `allFrames: true`, and the probe only returns `location.origin` and `location.pathname` of each frame.
+      The catcher goes by `frameIds` into the frames other than the top frame whose origin is the saved origin and whose path is a submission details page, and into no other frame.
+      The frame can move between the probe and the injection, so the catcher checks its own page again.
+      A second injection into the same document stops the first copy, with a private marker as the page script does.
+      No new permission is needed.
+    - **Forwarding.**
+      The catcher sends `viewer:frame-open` with the file id to the background.
+      The background accepts it only from a child frame (frame id other than 0) of a tab, whose own URL is a submission details page of the saved origin.
+      It also reads the tab and requires that the top frame shows a submission details page of the saved origin.
+      The file id must be a valid id.
+      The background sends `viewer:open-from-frame` with `tabs.sendMessage(tabId, message, { frameId: 0 })`, so the message stays in the same tab and goes to the top frame only.
+      The page script of the top frame accepts it only when `sender.id` is the id of this extension and `sender.tab` is undefined, which is a message from the background and never from a page, and when the file id is valid.
+      It answers `{ opened: true }` and opens the file in the pane of the top frame, like a click.
+      It answers `{ opened: false }` when the viewer is off.
+    - **When nothing opens the file.**
+      The catcher takes the click before it knows the answer.
+      When the answer is not `{ opened: true }`, or when no answer comes, the catcher clicks the same link again from script, unless the link changed.
+      That click is not trusted, so the catcher ignores it, and the browser saves the file, as without the extension.
+    - **Tests.**
+      The fixture `tests/fixtures/pages/submission-details.html` is the top frame with `#preview_frame` and the comments, and `submission-preview.html` is the frame document with the files table, as in `show_preview.html.erb`.
+      `tests/e2e/file-viewer-submission.spec.ts` clicks a file in the frame and checks that the pane opens in the top frame and that the frame does not follow the link.
+      It also checks the Preview button, a script click, a modifier click, a comment attachment, the fallback download, and a page with the viewer off.
+      `src/features/file-viewer/background.test.ts` checks every refusal of the router.
 
 **Security:**
 
@@ -2567,9 +2632,13 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
     - So the policy of the extension pages stopped the script in both browsers, but the file still became a document of the extension origin.
       The fix does not rely on that policy.
   - **The rules.**
-    - The pane keeps no image element and no address of an image.
-      It loads the blob URL in an image element outside the page, draws the picture on a canvas, and frees the URL when the element has loaded (item 10).
+    - An SVG never stays in an element.
+      The pane loads the blob URL in an image element outside the page, draws the picture on a canvas, and frees the URL when the element has loaded (item 10).
       A freed URL opens nothing.
+    - A raster image stays in an image element, because an animated GIF needs it.
+      A raster image cannot run script, so a document of it in the extension origin would show a picture and nothing more.
+      The pane gives an element only bytes with a raster signature, types the blob by that signature, and frees the URL when the element has loaded.
+      So "Open image in new tab" on the element opens a freed address.
     - The pane does not read the pixels back, because a `foreignObject` can taint a canvas.
     - Every other blob URL is for audio or video, which need a live URL and cannot run script.
       The tab frees it when it closes, and when a large file is hidden (item 10).
@@ -2577,7 +2646,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   - **Tests.**
     - Chromium: `tests/e2e/file-viewer-hostile.spec.ts` opens the hostile SVG, checks the canvas, that no `img` or blob address is in the pane, that every blob URL is freed, that a freed URL cannot be read or opened as an SVG page, and that no `hostile-` key exists.
     - Firefox: `tests/firefox/smoke.mjs` runs the same checks through the driver.
-    - `tests/e2e/file-viewer-image.spec.ts` checks that the URL is freed before the tab closes, and the size limits.
+    - `tests/e2e/file-viewer-image.spec.ts` checks that a raster image shows in an element, that the URL is freed before the tab closes, the size limits, and that an animated GIF changes pixels after its URL is freed.
+    - `src/features/file-viewer/ui/MediaTab.test.tsx` checks that markup named `fake.png` reaches no element, and that the blob type follows the signature.
 - **The cookie rules (decision 11).**
   `viewer:file` and `viewer:module-item` pass the tab id of the sender to the data owner.
   The owner refuses unless the tab uses the cookie store of the requests, the address is the saved Canvas, and a check confirmed the sign-in cookie for the student of the cache.
@@ -2586,6 +2656,15 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   The routes for the tabs follow the same rules.
   On a profile that has no confirmed student yet, the viewer runs the shared `users/self` check with its existing limits before reading.
   The viewer binds that proof to the cookie, origin and generation without loading the weekly list.
+- **The frame catcher.**
+  - It is injected only into the same-origin child frames of the saved Canvas on a submission details page (item 11).
+    The probe that finds the frames runs in every frame of the tab, including frames of other sites such as video players and LTI tools, but it reads two strings and returns them.
+    The catcher never runs in a frame of another origin.
+  - A trusted click is required, so a script of the Canvas page cannot make the catcher open a file.
+  - The background accepts the forward only from a child frame whose URL is on the saved origin, in a tab whose top frame is on the saved origin, and it sends to the top frame of that tab only.
+    The page script of the top frame accepts the message only from the background.
+  - The file id is the only data that crosses.
+    It is a number that the page already shows in the link, and the pane reads the file with the same cookie rules as for any click.
 - **One live copy of the page script.**
   The page script keeps a teardown function on its own global, as the in-page list does.
   A copy that starts again, such as after an update, first stops the copy before it: it removes the click, resize and message listeners and the pane.
@@ -2689,7 +2768,8 @@ These items need a live check or an outside answer.
     Real course PDFs may use fonts, images or encodings that the pane does not ship files for.
     The live checklist has the steps.
 15. The real link shapes of the student's own submission files, and of comment attachments, are known only from canvas-lms source (decision 25, live facts).
-    The submission details page keeps its file list in a frame that the page script does not enter.
+    The submission details page keeps its file list in a same-origin frame, and the click catcher of item 11 handles it.
+    That catcher has run only against the fixture.
     The live checklist has the steps.
 
 ## Build order

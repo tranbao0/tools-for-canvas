@@ -9,6 +9,7 @@ import {
   trackBlobs,
 } from './support/file-viewer';
 import { startFileHost, TRUST_TEST_CERTIFICATE } from './support/file-host';
+import { animatedGif } from './support/gif.mjs';
 import { solidPng } from './support/png';
 
 test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
@@ -30,12 +31,15 @@ test('image zoom, early blob cleanup and file card', async ({ context, page, bac
     const frame = await pane(page);
     await trackBlobs(frame);
     await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
-    // The picture is on a canvas. No element of the pane holds the address of the file.
+    // A raster picture shows in an image element, which cannot run script, and the address of
+    // the file is freed as soon as the element has loaded.
     const image = frame.getByRole('img', { name: /Lecture photo/ });
-    await expect.poll(() => image.evaluate((canvas: HTMLCanvasElement) => canvas.width)).toBe(640);
-    expect(await image.evaluate((canvas: HTMLCanvasElement) => canvas.height)).toBe(360);
-    expect(await image.evaluate((node) => node.tagName)).toBe('CANVAS');
-    await expect(frame.locator('img')).toHaveCount(0);
+    await expect
+      .poll(() => image.evaluate((node: HTMLImageElement) => node.naturalWidth))
+      .toBe(640);
+    expect(await image.evaluate((node: HTMLImageElement) => node.naturalHeight)).toBe(360);
+    expect(await image.evaluate((node) => node.tagName)).toBe('IMG');
+    await expect(frame.locator('canvas')).toHaveCount(0);
     // The blob URL is freed as soon as the image has loaded, before the tab closes.
     await expect.poll(async () => (await readBlobs(frame)).revoked).toHaveLength(1);
     const blobs = await readBlobs(frame);
@@ -108,13 +112,13 @@ for (const { shape, width, height, shown } of SIZES)
       await trackBlobs(frame);
       await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
       if (shown) {
-        const canvas = frame.getByRole('img', { name: 'scan.png' });
+        const picture = frame.getByRole('img', { name: 'scan.png' });
         await expect
-          .poll(() => canvas.evaluate((node: HTMLCanvasElement) => node.width))
+          .poll(() => picture.evaluate((node: HTMLImageElement) => node.naturalWidth))
           .toBe(width);
       } else {
         await expect(frame.getByRole('alert')).toHaveText('This image is too large to show here');
-        await expect(frame.locator('canvas')).toHaveCount(0);
+        await expect(frame.locator('canvas, img')).toHaveCount(0);
         await expect(frame.getByRole('button', { name: 'Zoom in' })).toHaveCount(0);
       }
       // The card above the picture keeps its two links in both cases.
@@ -169,6 +173,64 @@ test('an SVG with only a view box is drawn on a canvas with the shape of its box
       .poll(() => canvas.evaluate((node: HTMLCanvasElement) => node.width / node.height))
       .toBeCloseTo(2, 1);
     expect(await canvas.evaluate((node: HTMLCanvasElement) => node.width)).toBeGreaterThan(0);
+  } finally {
+    await host.close();
+  }
+});
+
+// An animated GIF needs its own element to play. The URL of the file is freed once the element has
+// loaded, and the picture must keep moving after that.
+test('an animated GIF keeps playing after its URL is freed', async ({
+  context,
+  page,
+  background,
+}) => {
+  const gif = animatedGif();
+  const host = await startFileHost({ '/spin': { body: gif, contentType: 'image/gif' } });
+  try {
+    await openCoursePage(context, page, background, undefined, [
+      {
+        path: '/api/v1/files/43',
+        body: {
+          id: '43',
+          display_name: 'spin.gif',
+          filename: 'spin.gif',
+          'content-type': 'image/gif',
+          size: gif.length,
+          url: '/files/43/download',
+          context_type: 'Course',
+          context_id: '101',
+        },
+      },
+      {
+        path: '/files/43/download',
+        status: 302,
+        headers: { location: `${host.origin}/spin` },
+        body: '',
+      },
+    ]);
+    await openFirstFile(page, 'Read notes');
+    const frame = await pane(page);
+    await trackBlobs(frame);
+    await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
+    const picture = frame.getByRole('img', { name: 'spin.gif' });
+    await expect(picture).toBeVisible();
+    expect(await picture.evaluate((node) => node.tagName)).toBe('IMG');
+    await expect.poll(async () => (await readBlobs(frame)).revoked).toHaveLength(1);
+    const blobs = await readBlobs(frame);
+    expect(blobs.revoked).toEqual(blobs.created);
+    // The frames are red and blue and last 100 ms each. The picture must change over time, after
+    // the URL is gone. A canvas would draw the first frame only, so the test looks at the element.
+    const seen = new Set<string>();
+    await expect
+      .poll(
+        async () => {
+          seen.add((await picture.screenshot()).toString('base64'));
+          return seen.size;
+        },
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThan(1);
   } finally {
     await host.close();
   }

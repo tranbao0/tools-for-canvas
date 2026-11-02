@@ -103,11 +103,11 @@ export function closeFile(state: Tabs, id: string): Tabs {
 }
 
 /**
- * The places where Canvas lists the files that the student handed in: the table of the submission
- * details (`table.file-upload-submission-table`), and the Submission section of the assignment
- * page, which Canvas draws in the right column (`#right-side .details > .content`).
+ * The place where Canvas lists the files that the student handed in on the assignment page: the
+ * Submission section in the right column (`#right-side .details > .content`). The list on the
+ * submission details page is in a frame, which the frame catcher handles (`frameFileTarget`).
  */
-const SUBMISSION_FILES = '.file-upload-submission-table,#right-side .details > .content';
+const SUBMISSION_FILES = '#right-side .details > .content';
 /** Text that other people write and files that are not the student's own work. */
 const NOT_SUBMISSION_FILES = '.description,.user_content,.comments,.comment,.comment_attachments';
 
@@ -123,11 +123,45 @@ export function catchesDownload(
   pagePath: string,
 ): boolean {
   return (
-    /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*(?:\/submissions\/[1-9][0-9]*)?\/?$/.test(
-      pagePath,
-    ) &&
+    /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*\/?$/.test(pagePath) &&
     link.closest(SUBMISSION_FILES) !== null &&
     link.closest(NOT_SUBMISSION_FILES) === null &&
     fileTarget(href, origin) !== null
   );
+}
+
+/** The submission details page, and the address of the frame in it that lists the files. */
+const SUBMISSION_PAGE =
+  /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*\/submissions\/[1-9][0-9]*\/?$/;
+export function isSubmissionPage(pagePath: string): boolean {
+  return SUBMISSION_PAGE.test(pagePath);
+}
+
+/**
+ * The file of a link in the files list of the submission details frame, or `null` when the link
+ * is not one of the student's own files. Canvas draws that list as `table.file-upload-submission-table`
+ * in the frame `#preview_frame`, with the links `a.file-upload-submission-info__link`. The
+ * "Preview" button of the same row (`a.modal_preview_link`) opens the annotated copy, so it keeps
+ * its action. Comment attachments are not in this frame, and they never match.
+ */
+export function frameFileTarget(
+  link: Element,
+  href: string,
+  origin: string,
+  pagePath: string,
+): { fileId: string } | null {
+  if (
+    !isSubmissionPage(pagePath) ||
+    !link.matches('a.file-upload-submission-info__link') ||
+    link.closest('.file-upload-submission-table') === null ||
+    link.closest(NOT_SUBMISSION_FILES) !== null
+  )
+    return null;
+  const target = fileTarget(href, origin);
+  return target !== null && 'fileId' in target ? target : null;
+}
+
+/** Whether a value is the id of a file. */
+export function isFileId(value: unknown): value is string {
+  return typeof value === 'string' && ID.test(value);
 }
