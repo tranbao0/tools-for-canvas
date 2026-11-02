@@ -2578,6 +2578,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   async function viewerConfirm(origin: string | null, tabId: number | undefined): Promise<boolean> {
+    await ready();
+    // Without a readable cookie there is nothing to confirm, and a check would sign the student out
+    // again, so the surfaces would refresh for every page load.
+    if (origin === null || origin !== knownOrigin || !(await readFingerprint(origin))) return false;
     return (await viewerOrigin(origin, tabId, true)) !== null;
   }
 

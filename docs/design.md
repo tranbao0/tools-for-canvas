@@ -2720,7 +2720,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   On Firefox the position keys live only in the IndexedDB vault, with no copy in `storage.local`, because they hold the student id and the ids of the files that the student opened, and content scripts can read `storage.local` there.
 - A viewer request that the cookie rules refuse only because the new cookie is not confirmed yet runs once more.
   This is the first request after another student signs in, which joins the check of the new cookie that ends by finding another student.
-  The background confirms the cookie with the checks of a cold start, under their limits (two checks in 30 seconds, and a wait after a failed check), and then runs the request again.
+  The background confirms the cookie with the checks of a cold start, under their limit of two checks in 30 seconds, and then runs the request again.
+  A page without a readable sign-in cookie starts no check.
   A second refusal stands, and the pane shows the error card of the file with "Retry".
 
 **Size:**
