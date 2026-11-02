@@ -291,10 +291,49 @@ describe('dashboard without a right column', () => {
     loadPage(document, WIDGET_DASHBOARD);
     await mountWhenReady(onMount, { pathname: '/' });
     const first = container();
-    document.querySelector('[data-testid="dashboard-tab-content"]')!.innerHTML = '<p>Courses</p>';
+    const panel = document.querySelector('[data-testid="dashboard-tab-content"]')!;
+    panel.parentElement!.insertBefore(document.createElement('div'), panel);
+    panel.innerHTML = '<p>Courses</p>';
     await flushObserver();
     expect(container()).toBe(first);
     expect(first?.nextElementSibling?.getAttribute('data-testid')).toBe('dashboard-tab-content');
+  });
+
+  it('sets the panel mode when the host arrives after placement', async () => {
+    loadPage(document, WIDGET_DASHBOARD);
+    await mountWhenReady(onMount, { pathname: '/' });
+    await flushObserver();
+    const host = document.createElement('weekrow-list');
+    container()!.append(host);
+    await flushObserver();
+    expect(host.getAttribute('data-panel')).toBe('stack');
+  });
+
+  it('uses the grid when the tab panel is missing and content when the grid is removed', async () => {
+    loadPage(document, WIDGET_DASHBOARD);
+    const panel = document.querySelector('[data-testid="dashboard-tab-content"]')!;
+    const grid = document.querySelector('[data-testid="widget-columns"]')!;
+    panel.parentElement!.append(grid);
+    panel.remove();
+    await mountWhenReady(onMount, { pathname: '/' });
+    expect(container()?.nextElementSibling).toBe(grid);
+    grid.remove();
+    await flushObserver();
+    expect(container()?.nextElementSibling?.id).toBe('content');
+    expect(container()?.style.display).not.toBe('none');
+  });
+
+  it('stops mutation and resize work after unmount', async () => {
+    loadPage(document, WIDGET_DASHBOARD);
+    await mountWhenReady(onMount, { pathname: '/' });
+    const first = container()!;
+    mounts[0]!.release();
+    first.remove();
+    document.getElementById('content')!.replaceChildren(document.createElement('p'));
+    window.dispatchEvent(new Event('resize'));
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(first.isConnected).toBe(false);
+    expect(document.body.hasAttribute('data-weekrow-column')).toBe(false);
   });
 
   it('stops putting things back once a release took the marker away', async () => {

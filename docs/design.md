@@ -273,8 +273,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The card never enters a widget column.
   Mutation and size observers measure the placement again after tab changes and redraws.
   The Courses view uses the last measured grid inset when it has no grid.
-- The floating card of List View sticks inside a tall container with `position: sticky`.
-  This needs a positioned ancestor of the content that spans the page, which Canvas has (`.ic-Layout-columns`), and no ancestor with `overflow` other than visible between the card and the viewport.
+- The card of List View scrolls with the page.
 - The dock under the right column needs a column that is as tall as the page, as Canvas's flex layout makes it.
   With less than 240 px of free space under the column items, the list does not dock.
 
@@ -325,19 +324,15 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The card fills the tab content width in normal flow.
     The widgets move down and keep their width.
     The extension changes no width, maximum width, padding or margin on Canvas boxes.
-  - **Floating** (List View).
-    The list is a card of 372 px, at least 360 px, in the free area to the right of the content, one gutter away from the right edge of the widgets.
-    The right edge of the widgets is the right edge of the children of `#content`, measured with a `ResizeObserver` and never with a widget test id.
-    - The top of the card lines up with the top of the content.
-    - The card is sticky, with a 24 px gap to the top of the viewport.
-    - When the free area is too small, the content gets just enough right padding for the card, the gutter and a 24 px gap, so the widgets reflow by the smallest amount.
-    - When the content would be narrower than 720 px, the list is **stacked** instead: a card above the content, at the width of the content, not floating.
-  - Every style that the list sets on a page element is an inline style that the code records in the `data-weekrow-styled` attribute, so the removal undoes all of them from the DOM alone.
+  - List View uses the same white area under `body` when it fits, or normal flow above `#content`.
+    The extension never sets layout styles on any Canvas box, including during loading.
+    The card stays hidden until a grid or List View content appears, or three seconds pass.
+    Missing tab panels use the grid or `#content` as the anchor.
   - Mark the body with `data-weekrow-column`.
     An observer of an older copy of the script stops at once when the marker is gone.
   - A `MutationObserver` puts the container back if the page removes it, in the same place, with the same state: the container is moved and not created again, so the open groups and the scroll position stay.
   - Mutation and size observers watch the tab content and measure again after tab switches, redraws, resizing and zoom.
-  - List View has no widget grid, so it uses the floating card only.
+  - Observer work runs once per frame and ignores unrelated body portals.
   - All grid anchors are in `src/shared/canvas/widgetDashboard.ts`, which says what each one is.
     A change of the Canvas markup needs an edit in that one file.
   - When the list unmounts, for example when the student switches to another Canvas address, remove the inline styles and the marker.
@@ -385,7 +380,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - The scroll position stays over a redraw, a data refresh, the settings and the task form, while the page stays open.
     A new span starts at the top.
   - The card scrolls with the page, and it is not sticky.
-    The card of List View and the docked card of the classic dashboard keep their sticky 24 px gap, and they have the same height limit and the same scroll region.
+    The docked card of the classic dashboard keeps its sticky 24 px gap, with the same height limit and scroll region.
   - The scroll region keeps at least 128 px in every card, so with the tab strip (decision 24) a low window still shows a row.
     The whole card then scrolls, and the header does not stay in view.
   - The side panel scrolls as one page, and it has no such region and no minimize button.

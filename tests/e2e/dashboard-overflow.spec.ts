@@ -8,7 +8,7 @@
  * at 1366 px inside a wrapper capped at 1366 px after the 84 px navigation bar.
  */
 import path from 'node:path';
-import type { Page } from '@playwright/test';
+import { chromium, type Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import {
   doneBox,
@@ -16,10 +16,22 @@ import {
   inpageList,
   openCanvasPage,
   saveSettings,
+  saveTools,
   serveScenario,
   settledList,
   test,
 } from './support/weekrow';
+
+test.beforeEach(async ({ background }) => {
+  await saveTools(background, {
+    dashboardFixes: {
+      courseColors: false,
+      announcementsInPlace: false,
+      courseWorkExtras: false,
+      allCourseGrades: false,
+    },
+  });
+});
 
 const QUIZ_3 = 'Quiz 3: Cell membranes';
 const CANVAS_COLUMNS = '[data-testid="widget-columns"] > [data-testid^="widget-column-"]';
@@ -215,7 +227,7 @@ async function setWindow(
 }
 
 /**
- * Measures the same Canvas boxes with the weekly card shown and hidden.
+ * Measures Canvas against a separate browser without the extension.
  * Other tools keep the same state in both measurements.
  */
 async function openPair(
@@ -231,36 +243,14 @@ async function openPair(
   await settledList(page);
   const withList = await measure(page);
 
-  const canvasBoxes = await page.evaluate(() => {
-    const mount = document.getElementById('weekrow-inpage')!;
-    const selectors = [
-      '#wrapper',
-      '#content',
-      '[data-testid="dashboard-tab-content"]',
-      '[data-testid="widget-columns"]',
-    ];
-    const read = () =>
-      selectors.map((css) => {
-        const { x, y, width, height } = document.querySelector(css)!.getBoundingClientRect();
-        return { x, y, width, height };
-      });
-    const shown = read();
-    const style = mount.getAttribute('style') ?? '';
-    mount.style.display = 'none';
-    const hidden = read();
-    mount.setAttribute('style', style);
-    return { shown, hidden };
-  });
-  const saved = await page.locator('#weekrow-inpage').getAttribute('style');
-  await page.locator('#weekrow-inpage').evaluate((element) => {
-    (element as HTMLElement).style.display = 'none';
-  });
-  const without = await measure(page);
-  await page.locator('#weekrow-inpage').evaluate((element, style) => {
-    element.setAttribute('style', style ?? '');
-  }, saved);
-  withList.canvasBoxes = canvasBoxes.shown;
-  without.canvasBoxes = canvasBoxes.hidden;
+  const browser = await chromium.launch({ channel: 'chromium' });
+  const baselineContext = await browser.newContext();
+  await serveScenario(baselineContext, [{ path: '/', page: 'dashboard-widgets' }]);
+  const baseline = await baselineContext.newPage();
+  await setWindow(baselineContext, baseline, width, zoom);
+  await openCanvasPage(baseline, canvas.origin);
+  const without = await measure(baseline);
+  await browser.close();
   return { without, withList };
 }
 
