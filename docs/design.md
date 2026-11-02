@@ -53,6 +53,7 @@ This extension has no account, no server of its own and no telemetry.
 | 23 | File access check | A read-only check that runs on the owner's live Canvas in test builds only, and answers the open questions for the file viewer |
 | 24 | Announcements in the weekly list | A Tasks and Announcements switch under the rings on the classic dashboard, List View, course home pages and the side panel, with a read mark that only an explicit student action writes |
 | 25 | File viewer | Files open in a docked, resizable pane with tabs beside Canvas; PDFs in a bundled PDF.js viewer that saves the page, other types in the browser's own players or an "Open in Canvas" card |
+| 26 | One assignment view | Grades and Assignments rows expand in place to show the score, instructions, rubric, feedback and files; Submit opens Canvas's own turn-in page in the docked pane |
 
 ## Decisions
 
@@ -2772,6 +2773,57 @@ The channel checks the saved Canvas origin, the parent window, one transferred p
 1. The pane, the tabs, the click catching for file links and module items, and the PDF viewer (done, except the live checks).
 2. Images, audio, video, text, the "Open in Canvas" card and the student's own submission files (built, except the live checks).
 3. Saved page and zoom per file (built, except the live checks).
+
+### 26. One assignment view
+
+**Question:** How does a student see an assignment's instructions, grade, rubric, feedback and turn-in in one place?
+
+**Problem:** Canvas splits one assignment over several pages.
+The owner showed this on 2026-10-30 with screenshots of sjsu.instructure.com:
+
+- The Grades page (`/courses/:id/grades`) lists every assignment with its score, a rubric toggle and comment icons, but a student cannot turn anything in from it.
+- The submission details page (`/courses/:id/assignments/:id/submissions/:id`) holds only the files, the comments and "Re-submit Assignment".
+- The Assignments list and the assignment page hold the instructions and the turn-in.
+
+So a student switches pages to check the rubric while submitting, or to read feedback next to the instructions.
+
+**Decision:**
+
+1. **Where it shows.**
+   - Each assignment row on the Grades page and on the Assignments list gets a small expand button at its start.
+   - A click on the button opens the assignment in place under its row; a second click closes it.
+   - The row's own link still opens the Canvas assignment page as before.
+   - Several rows may be open at once, and the open rows last while the page stays open.
+2. **What the open row shows,** top to bottom:
+   - The due date, the score and the same status chips as the weekly list (decision 7).
+   - The instructions, shortened to about 10 lines with "Show more".
+   - The rubric: each criterion with its ratings and points, with the student's own assessment marked when there is one.
+   - The teacher's feedback: comments newest first, with their attachments.
+   - The student's own submitted files and comment attachments.
+   - Two buttons: "Submit" (or "Re-submit" after a submission) and "Open assignment".
+3. **Files** in the open row open in the file viewer pane (decision 25).
+4. **Turn-in.**
+   - "Submit" opens Canvas's own assignment page in the docked pane of decision 25, as a Canvas-origin frame inside the pane host on the Canvas page.
+   - Canvas allows this, because its `frame-ancestors 'self'` lets a Canvas page frame its own pages.
+   - The extension never builds its own upload, so every Canvas submission type, plagiarism tool and LTI tool keeps working.
+   - After a submission, the open row and the weekly list read again.
+5. **Data.**
+   - The background reads one assignment with `GET /api/v1/courses/:id/assignments/:id?include[]=submission&include[]=can_submit` and the student's own submission with `GET /api/v1/courses/:id/assignments/:id/submissions/self?include[]=submission_comments&include[]=rubric_assessment`.
+   - The rubric comes with the assignment record.
+   - It reads only when a row opens, and keeps the result for the page view.
+   - Every read follows the cookie binding of decision 11, so a reply never crosses students.
+6. **Settings.** A "One assignment view" switch in the tools settings, on by default.
+
+**Security:**
+
+- Instructions and comments are teacher HTML, so they go through the shared sanitizer of decision 22.
+- The turn-in frame is a Canvas page in the Canvas origin, not an extension page, so it gets no extension rights.
+
+**Build order:**
+
+1. The expand rows on the Grades page, with the read-only content (score, instructions, rubric, feedback, files).
+2. The same rows on the Assignments list.
+3. "Submit" in the docked pane, and the refresh after a submission.
 
 ## Open risks
 
