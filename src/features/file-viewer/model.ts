@@ -33,6 +33,16 @@ export function fileTarget(href: string, origin: string, moduleId?: string): Fil
   if (url.origin !== origin) return null;
   const file = FILE.exec(url.pathname);
   if (file?.[1] && ID.test(file[1])) return { fileId: file[1] };
+  // Canvas links a submission attachment as `/courses/:id/assignments/:id/submissions/:id?download=:file`.
+  const download = url.searchParams.get('download');
+  if (
+    download !== null &&
+    ID.test(download) &&
+    /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*\/submissions\/[1-9][0-9]*$/.test(
+      url.pathname,
+    )
+  )
+    return { fileId: download };
   const module = /^\/courses\/([1-9][0-9]*)\/modules\/items\/([1-9][0-9]*)$/.exec(url.pathname);
   if (module?.[1] && module[2] && moduleId && ID.test(moduleId))
     return { courseId: module[1], moduleId, itemId: module[2] };

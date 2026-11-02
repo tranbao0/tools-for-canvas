@@ -30,7 +30,10 @@ export const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 export function decodeText(bytes: Uint8Array): string {
   const shown = bytes.subarray(0, MAX_TEXT_BYTES);
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(shown);
+    // Only a cut file may end in half a character. Streaming drops that half and keeps the rest.
+    return new TextDecoder('utf-8', { fatal: true }).decode(shown, {
+      stream: bytes.length > MAX_TEXT_BYTES,
+    });
   } catch {
     return new TextDecoder('windows-1252').decode(shown);
   }
