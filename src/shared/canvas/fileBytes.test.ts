@@ -190,6 +190,66 @@ describe('fetchFileBytes', () => {
   });
 });
 
+describe('fetchFileBytes confirmation', () => {
+  const kindOf = async (promise: Promise<unknown>) =>
+    ((await promise.catch((caught: unknown) => caught)) as FileBytesError).kind;
+
+  it('does not start the read when the cookie is not confirmed', async () => {
+    const fetchImpl = vi.fn(async () => reply([bytes(1)]));
+    const kind = await kindOf(
+      fetchFileBytes({
+        origin: ORIGIN,
+        url: '/files/1/download',
+        confirm: async () => false,
+        fetchImpl,
+      }),
+    );
+    expect(kind).toBe('unconfirmed');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('counts a check that fails as not confirmed', async () => {
+    const fetchImpl = vi.fn(async () => reply([bytes(1)]));
+    const kind = await kindOf(
+      fetchFileBytes({
+        origin: ORIGIN,
+        url: '/files/1/download',
+        confirm: async () => {
+          throw new Error('no background');
+        },
+        fetchImpl,
+      }),
+    );
+    expect(kind).toBe('unconfirmed');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('drops the bytes when the cookie is no longer confirmed after the read', async () => {
+    const answers = [true, false];
+    const kind = await kindOf(
+      fetchFileBytes({
+        origin: ORIGIN,
+        url: '/files/1/download',
+        confirm: async () => answers.shift() ?? false,
+        fetchImpl: async () => reply([bytes(1, 2)]),
+      }),
+    );
+    expect(kind).toBe('unconfirmed');
+  });
+
+  it('returns the bytes when both checks pass', async () => {
+    const confirm = vi.fn(async () => true);
+    const result = await fetchFileBytes({
+      origin: ORIGIN,
+      url: '/files/1/download',
+      confirm,
+      fetchImpl: async () => reply([bytes(1, 2)]),
+    });
+    expect([...result]).toEqual([1, 2]);
+    expect(confirm).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('declaredLength', () => {
   it('reads a plain number and nothing else', () => {
     expect(declaredLength(new Headers({ 'content-length': '271512' }))).toBe(271512);

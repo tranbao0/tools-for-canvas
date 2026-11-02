@@ -26,7 +26,7 @@ export default defineBackground(() => {
   wireInstall();
   const owner = createBackgroundDataOwner();
   wireDataRouter(owner);
-  wireViewerRouter();
+  wireViewerRouter(owner);
   wireDataTriggers(owner);
   wirePageSync();
   // Only builds of the test channel include the file access check (docs/design.md, decision 23).

@@ -12,7 +12,14 @@ import { resolveOnOrigin, toCanvasOrigin } from './http';
 export const MAX_FILE_BYTES = 100 * 1024 * 1024;
 
 export type FileBytesFailure =
-  'origin_blocked' | 'too_large' | 'status' | 'not_a_file' | 'network' | 'aborted';
+  | 'origin_blocked'
+  | 'too_large'
+  | 'status'
+  | 'not_a_file'
+  | 'network'
+  | 'aborted'
+  /** The background did not confirm the sign-in cookie for the student of the cache. */
+  | 'unconfirmed';
 
 export class FileBytesError extends Error {
   constructor(
@@ -34,6 +41,13 @@ export interface FileBytesOptions {
   /** Called after each chunk. `total` is `null` when the answer has no usable length. */
   onProgress?: (loaded: number, total: number | null) => void;
   signal?: AbortSignal;
+  /**
+   * Asks whether the cookie is confirmed for the student of the cache. The read does not start
+   * when the answer is `false`, and the bytes are dropped when the answer after the read is
+   * `false`, so a file never goes to a student whom the cache does not belong to. A check that
+   * throws counts as `false`.
+   */
+  confirm?: () => Promise<boolean>;
   /** Defaults to {@link MAX_FILE_BYTES}. */
   maxBytes?: number;
   fetchImpl?: typeof fetch;
@@ -71,6 +85,18 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
       error instanceof Error ? error.message : 'Blocked address',
     );
   }
+  const confirmed = async (): Promise<void> => {
+    if (options.confirm === undefined) return;
+    let answer = false;
+    try {
+      answer = await options.confirm();
+    } catch {
+      // A check that fails counts as not confirmed.
+    }
+    if (isAbort(undefined, signal)) throw new FileBytesError('aborted', 'The read was cancelled');
+    if (!answer) throw new FileBytesError('unconfirmed', 'The sign-in is not confirmed');
+  };
+  await confirmed();
   // A body with a known length fills one buffer. A body that runs past its length goes to chunks.
   let target: Uint8Array | null = null;
   let chunks: Uint8Array[] = [];
@@ -100,6 +126,7 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
       const whole = new Uint8Array(await response.arrayBuffer());
       if (whole.length > maxBytes) throw new FileBytesError('too_large', 'The file is too large');
       onProgress?.(whole.length, whole.length);
+      await confirmed();
       return whole;
     }
     if (total !== null) target = new Uint8Array(total);
@@ -128,6 +155,7 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
     if (isAbort(error, signal)) throw new FileBytesError('aborted', 'The read was cancelled');
     throw new FileBytesError('network', error instanceof Error ? error.message : 'Network error');
   }
+  await confirmed();
   if (target !== null) return loaded === target.length ? target : target.slice(0, loaded);
   const bytes = new Uint8Array(loaded);
   let offset = 0;

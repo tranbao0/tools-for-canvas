@@ -1,99 +1,165 @@
 import { describe, expect, it, vi } from 'vitest';
-import { acceptViewerChannel, createViewerNonce, validOpenFile, validTheme } from './channel';
+import {
+  acceptPaneHello,
+  acceptViewerConnect,
+  bindViewerPort,
+  createViewerSecret,
+  isExtensionOrigin,
+  secretMessage,
+  validOpenFile,
+  validPaneReady,
+  validTheme,
+} from './channel';
 
-const nonce = 'a'.repeat(32);
-const open = { type: 'open-file', nonce, fileId: '42', courseId: '12' };
+const secret = 'a'.repeat(64);
+const open = { type: 'open-file', fileId: '42', courseId: '12' };
 
 describe('viewer identities', () => {
   it('accepts file and course ids', () => {
-    expect(validOpenFile(open, nonce)).toBe(true);
-    expect(validOpenFile({ type: 'open-file', nonce, fileId: '42' }, nonce)).toBe(true);
+    expect(validOpenFile(open)).toBe(true);
+    expect(validOpenFile({ type: 'open-file', fileId: '42' })).toBe(true);
   });
   it('rejects addresses and extra fields', () => {
     for (const field of ['fileId', 'courseId']) {
       for (const value of ['https://school.edu/files/42', '//school.edu/files/42', '/files/42']) {
-        expect(validOpenFile({ ...open, [field]: value }, nonce)).toBe(false);
+        expect(validOpenFile({ ...open, [field]: value })).toBe(false);
       }
     }
-    expect(validOpenFile({ ...open, url: 'https://school.edu/files/42' }, nonce)).toBe(false);
+    expect(validOpenFile({ ...open, url: 'https://school.edu/files/42' })).toBe(false);
+    expect(validOpenFile({ ...open, nonce: 'x' })).toBe(false);
   });
-  it('rejects a wrong or absent nonce', () => {
-    expect(validOpenFile({ ...open, nonce: 'b'.repeat(32) }, nonce)).toBe(false);
-    expect(validOpenFile({ ...open, nonce: undefined }, nonce)).toBe(false);
-    expect(validOpenFile(open, '')).toBe(false);
-  });
-  it('creates random 128 bit nonces', () => {
-    const first = createViewerNonce();
-    expect(first).toMatch(/^[0-9a-f]{32}$/);
-    expect(createViewerNonce()).not.toBe(first);
+  it('creates random 256 bit secrets', () => {
+    const first = createViewerSecret();
+    expect(first).toMatch(/^[0-9a-f]{64}$/);
+    expect(createViewerSecret()).not.toBe(first);
   });
 });
 
 describe('viewer theme', () => {
-  const theme = { type: 'theme', nonce, theme: 'dark' };
+  const theme = { type: 'theme', theme: 'dark' };
   it('accepts the light and dark themes', () => {
-    expect(validTheme(theme, nonce)).toBe(true);
-    expect(validTheme({ ...theme, theme: 'light' }, nonce)).toBe(true);
+    expect(validTheme(theme)).toBe(true);
+    expect(validTheme({ ...theme, theme: 'light' })).toBe(true);
   });
-  it('rejects other values, extra fields and a wrong nonce', () => {
+  it('rejects other values and extra fields', () => {
     for (const value of ['auto', 'DARK', '', undefined, 1, null, {}]) {
-      expect(validTheme({ ...theme, theme: value }, nonce)).toBe(false);
+      expect(validTheme({ ...theme, theme: value })).toBe(false);
     }
-    expect(validTheme({ ...theme, color: 'red' }, nonce)).toBe(false);
-    expect(validTheme({ ...theme, nonce: 'b'.repeat(32) }, nonce)).toBe(false);
-    expect(validTheme(theme, '')).toBe(false);
-    expect(validTheme(null, nonce)).toBe(false);
+    expect(validTheme({ ...theme, color: 'red' })).toBe(false);
+    expect(validTheme(null)).toBe(false);
   });
 });
 
-describe('viewer channel', () => {
+describe('extension origins', () => {
+  it('accepts the origin of an extension page and nothing else', () => {
+    expect(isExtensionOrigin('chrome-extension://abcdef')).toBe(true);
+    expect(isExtensionOrigin('moz-extension://1234-5678')).toBe(true);
+    for (const origin of ['https://school.edu', 'null', '', 'chrome-extension://a/b', 'http://a']) {
+      expect(isExtensionOrigin(origin)).toBe(false);
+    }
+  });
+});
+
+describe('hello from the pane', () => {
+  const pane = {} as Window;
+  const hello = (overrides: Partial<MessageEvent> = {}) =>
+    acceptPaneHello(
+      {
+        source: pane,
+        origin: 'chrome-extension://abc',
+        data: { type: 'viewer-hello' },
+        ...overrides,
+      } as MessageEvent,
+      pane,
+    );
+  it('gives back the origin of the frame', () => {
+    expect(hello()).toBe('chrome-extension://abc');
+  });
+  it('ignores another window, a web page origin and a hello with more in it', () => {
+    expect(hello({ source: {} as Window })).toBeNull();
+    expect(hello({ origin: 'https://evil.example' })).toBeNull();
+    expect(hello({ data: { type: 'viewer-hello', secret } })).toBeNull();
+    expect(hello({ data: { type: 'other' } })).toBeNull();
+    expect(hello({ data: null })).toBeNull();
+    expect(
+      acceptPaneHello({ source: pane, origin: 'chrome-extension://abc', data: {} }, null),
+    ).toBeNull();
+  });
+  it('trusts the answer of the pane only with the secret', () => {
+    expect(validPaneReady({ type: 'ready', secret }, secret)).toBe(true);
+    expect(validPaneReady({ type: 'ready', secret: 'b'.repeat(64) }, secret)).toBe(false);
+    expect(validPaneReady({ type: 'ready' }, secret)).toBe(false);
+    expect(validPaneReady({ type: 'secret', secret }, secret)).toBe(false);
+    expect(validPaneReady({ type: 'ready', secret, extra: 1 }, secret)).toBe(false);
+    expect(validPaneReady({ type: 'ready', secret }, 'short')).toBe(false);
+  });
+});
+
+function fakePort() {
+  let listener: ((event: { data: unknown }) => void) | undefined;
+  return {
+    addEventListener: vi.fn((_: string, next: typeof listener) => (listener = next)),
+    removeEventListener: vi.fn(() => (listener = undefined)),
+    start: vi.fn(),
+    close: vi.fn(),
+    postMessage: vi.fn(),
+    deliver: (data: unknown) => listener?.({ data }),
+  };
+}
+
+describe('port of the pane', () => {
   const parent = {} as Window;
-  function setup(overrides: Partial<MessageEvent> = {}) {
-    const port = {
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      start: vi.fn(),
-      close: vi.fn(),
-    };
+  function connect(overrides: Partial<MessageEvent> = {}) {
+    const port = fakePort();
     const event = {
       origin: 'https://school.edu',
       source: parent,
-      data: { type: 'viewer-connect', nonce },
+      data: { type: 'viewer-connect' },
       ports: [port],
       ...overrides,
     } as unknown as MessageEvent;
-    const receive = vi.fn();
-    const close = acceptViewerChannel(event, 'https://school.edu', parent, nonce, receive);
-    return { port, receive, close };
+    return { port, offered: acceptViewerConnect(event, 'https://school.edu', parent) };
   }
-  it('rejects another origin, source, nonce, or port count', () => {
+  it('takes a port only from the parent at the saved origin, with a bare connect message', () => {
+    expect(connect().offered).not.toBeNull();
     for (const override of [
       { origin: 'https://other.edu' },
       { source: {} as Window },
-      { data: { type: 'viewer-connect', nonce: 'b'.repeat(32) } },
+      { data: { type: 'viewer-connect', nonce: 'x' } },
+      { data: { type: 'viewer-connect', secret } },
       { ports: [] },
     ]) {
-      const { port, close } = setup(override);
-      expect(close).toBeNull();
-      expect(port.start).not.toHaveBeenCalled();
+      expect(connect(override).offered).toBeNull();
     }
   });
-  it('filters port messages and closes the port on cleanup', () => {
-    const { port, receive, close } = setup();
-    expect(port.start).toHaveBeenCalledOnce();
-    const listener = port.addEventListener.mock.calls[0]![1] as (event: { data: unknown }) => void;
-    listener({ data: { ...open, nonce: 'wrong' } });
-    listener({ data: { ...open, fileId: 'https://school.edu/files/42' } });
+  it('never sends first, and drops a port whose first message has no right secret', () => {
+    for (const first of [{ type: 'open-file', fileId: '1' }, secretMessage('b'.repeat(64)), null]) {
+      const { port } = connect();
+      const receive = vi.fn();
+      bindViewerPort(port as unknown as MessagePort, secret, { receive, bound: vi.fn() });
+      expect(port.postMessage).not.toHaveBeenCalled();
+      port.deliver(first);
+      expect(port.close).toHaveBeenCalledOnce();
+      expect(port.postMessage).not.toHaveBeenCalled();
+      expect(receive).not.toHaveBeenCalled();
+    }
+  });
+  it('answers the right secret, then passes on valid messages only', () => {
+    const { port } = connect();
+    const receive = vi.fn();
+    const bound = vi.fn();
+    const unbind = bindViewerPort(port as unknown as MessagePort, secret, { receive, bound });
+    port.deliver(secretMessage(secret));
+    expect(port.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'ready', secret });
+    expect(bound).toHaveBeenCalledOnce();
+    port.deliver({ ...open, fileId: 'https://school.edu/files/42' });
+    port.deliver({ type: 'theme', theme: 'blue' });
     expect(receive).not.toHaveBeenCalled();
-    listener({ data: open });
-    expect(receive).toHaveBeenCalledWith(open);
-    const theme = { type: 'theme', nonce, theme: 'light' };
-    listener({ data: { ...theme, theme: 'blue' } });
-    expect(receive).toHaveBeenCalledTimes(1);
-    listener({ data: theme });
-    expect(receive).toHaveBeenLastCalledWith(theme);
-    close!();
-    expect(port.removeEventListener).toHaveBeenCalledWith('message', listener);
+    port.deliver(open);
+    port.deliver({ type: 'theme', theme: 'light' });
+    expect(receive).toHaveBeenNthCalledWith(1, open);
+    expect(receive).toHaveBeenNthCalledWith(2, { type: 'theme', theme: 'light' });
+    unbind();
     expect(port.close).toHaveBeenCalledOnce();
   });
 });

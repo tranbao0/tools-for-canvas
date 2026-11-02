@@ -248,6 +248,22 @@ export interface DataOwner {
    * and replies at once with `loading`; the change marker tells the surface when they are in.
    */
   announcementFeed(request: AnnouncementFeedRequest, tabId?: number): Promise<AnnouncementFeed>;
+  /**
+   * A read of the file viewer (decision 25). It runs only for a tab in the cookie store of the
+   * requests, for the saved Canvas, and while the cookie is confirmed for the student of the
+   * cache. The reply is dropped when the cookie changed during the request, so it never crosses
+   * students. Rejects when any of that fails.
+   */
+  viewerRead<T>(
+    origin: string | null,
+    tabId: number | undefined,
+    read: (api: CanvasApi) => Promise<T>,
+  ): Promise<T>;
+  /**
+   * Whether the pane may fetch the bytes of a file now: the same rules as `viewerRead`, with no
+   * request of its own.
+   */
+  viewerMayFetch(origin: string | null, tabId: number | undefined): Promise<boolean>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
@@ -2443,6 +2459,44 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
   }
 
+  /** The saved Canvas a viewer surface may use now under the rules of the cookie, or `null`. */
+  async function viewerOrigin(
+    origin: string | null,
+    tabId: number | undefined,
+  ): Promise<string | null> {
+    await ready();
+    if (
+      tabId === undefined ||
+      origin === null ||
+      origin !== knownOrigin ||
+      cache?.session == null ||
+      !(await surfaceMayRead(tabId)) ||
+      !(await signedInStudentOwnsCache())
+    ) {
+      return null;
+    }
+    return origin;
+  }
+
+  async function viewerRead<T>(
+    origin: string | null,
+    tabId: number | undefined,
+    read: (api: CanvasApi) => Promise<T>,
+  ): Promise<T> {
+    const allowed = await viewerOrigin(origin, tabId);
+    if (allowed === null) throw new Error('The cookie is not confirmed for the viewer');
+    const response = await cookieBound(() => read(apiFor(allowed)));
+    if (response === DROPPED) throw new Error('The cookie changed during the viewer read');
+    return response;
+  }
+
+  async function viewerMayFetch(
+    origin: string | null,
+    tabId: number | undefined,
+  ): Promise<boolean> {
+    return (await viewerOrigin(origin, tabId)) !== null;
+  }
+
   async function dashboardGradeVisibility(token?: string, tabId?: number): Promise<DashboardData> {
     await ready();
     const origin = await savedOrigin();
@@ -2979,6 +3033,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     announcement,
     announcements,
     announcementFeed,
+    viewerRead,
+    viewerMayFetch,
 
     async originChanged(origin) {
       await ready();

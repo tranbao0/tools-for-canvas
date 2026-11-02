@@ -1,7 +1,7 @@
 import { render, h } from 'preact';
 import { CloseIcon } from '../../shared/ui/icons';
 import { browser } from 'wxt/browser';
-import { createViewerNonce } from './channel';
+import { acceptPaneHello, isViewerSecret, secretMessage, validPaneReady } from './channel';
 import {
   courseOfLink,
   fileTarget,
@@ -17,13 +17,11 @@ import { inpageTheme, type ThemeChoice } from '../../shared/ui/theme';
 export function listenViewerHello(
   sourceWindow: Pick<Window, 'addEventListener' | 'removeEventListener'>,
   frame: HTMLIFrameElement,
-  nonce: string,
   connect: (origin: string) => void,
 ): () => void {
   const hello = (event: MessageEvent) => {
-    if (event.source !== frame.contentWindow) return;
-    const data = event.data as { type?: unknown; nonce?: unknown } | null;
-    if (data?.type === 'viewer-hello' && data.nonce === nonce) connect(event.origin);
+    const origin = acceptPaneHello(event, frame.contentWindow);
+    if (origin !== null) connect(origin);
   };
   sourceWindow.addEventListener('message', hello);
   return () => sourceWindow.removeEventListener('message', hello);
@@ -46,11 +44,14 @@ export async function startViewer(): Promise<void> {
   const applyTheme = () => {
     const theme = resolveTheme();
     host?.setAttribute('data-theme', theme);
-    port?.postMessage({ type: 'theme', nonce, theme });
+    port?.postMessage({ type: 'theme', theme });
   };
   let width = normalizeWidth(context.tools.fileViewerWidth, innerWidth);
   let host: HTMLDivElement | undefined;
+  // The port of the pane once it proved the secret, and a port that waits for that proof.
   let port: MessagePort | undefined;
+  let pending: MessagePort | undefined;
+  let opening = false;
   let padding = '';
   let priority = '';
   const layout = () => {
@@ -77,36 +78,51 @@ export async function startViewer(): Promise<void> {
     if (tabs.active)
       port?.postMessage({
         type: 'open-file',
-        nonce,
         fileId: tabs.active,
         ...(courseId ? { courseId } : {}),
       });
   };
-  let nonce = '';
   let removeHello: (() => void) | undefined;
   const close = () => {
     removeHello?.();
     removeHello = undefined;
     host?.remove();
     host = undefined;
+    pending?.close();
+    pending = undefined;
     port?.close();
     port = undefined;
     document.documentElement.style.setProperty('padding-right', padding, priority);
     tabs = { ids: [], active: null };
     void browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs });
   };
-  const show = () => {
+  const show = async () => {
     if (host) {
       void send();
       return;
     }
+    if (opening) return;
+    opening = true;
+    // The background makes the secret of this pane. Only this script and the pane page get it, so
+    // it is in no address and in no window message. The frame loads after the secret is stored.
+    let secret: string;
+    try {
+      const session = (await browser.runtime.sendMessage({ type: 'viewer:session' })) as
+        { secret?: unknown } | undefined;
+      if (!isViewerSecret(session?.secret)) return;
+      secret = session.secret;
+    } catch {
+      return;
+    } finally {
+      opening = false;
+    }
     padding = document.documentElement.style.getPropertyValue('padding-right');
     priority = document.documentElement.style.getPropertyPriority('padding-right');
-    nonce = createViewerNonce();
     host = document.createElement('div');
     host.id = 'tools-file-viewer';
     host.style.cssText = 'position:fixed;right:0;top:0;height:100vh;z-index:2147483647;';
-    const root = host.attachShadow({ mode: 'open' });
+    // A closed root keeps a script of the Canvas page from reaching the frame element.
+    const root = host.attachShadow({ mode: 'closed' });
     root.innerHTML = `<style>
       :host{--bg:#fff;--text:#273540;--line:#e8eaec;--edge:#c7cdd1;--hover:#f2f4f4;--focus:#0374b5;color:var(--text)}
       :host([data-theme='dark']){--bg:#1b2330;--text:#fff;--line:#2e3e4e;--edge:#4a5b68;--hover:#253443;--focus:#5a9fd4}
@@ -117,19 +133,34 @@ export async function startViewer(): Promise<void> {
       </style><section aria-label="File viewer"><div class="handle" role="separator" aria-label="Resize file viewer" aria-orientation="vertical" tabindex="0"></div><header><button aria-label="Close file viewer" title="Close"></button></header></section>`;
     const frame = document.createElement('iframe');
     frame.title = 'File viewer';
-    frame.src = browser.runtime.getURL('/viewer.html') + `#${nonce}`;
+    frame.src = browser.runtime.getURL('/viewer.html');
     // The pane page says hello first, so the port goes to the origin the frame really has.
     // Chromium can load a web-accessible page under a dynamic address that differs from getURL.
-    removeHello = listenViewerHello(window, frame, nonce, (origin) => {
+    // The port counts only after the pane answers with the secret.
+    removeHello = listenViewerHello(window, frame, (origin) => {
+      pending?.close();
       port?.close();
+      port = undefined;
       const channel = new MessageChannel();
-      port = channel.port1;
-      port.onmessage = (message) => {
-        if (message.data?.type === 'close' && message.data.nonce === nonce) close();
+      const candidate = channel.port1;
+      pending = candidate;
+      candidate.onmessage = (message) => {
+        if (port === candidate) {
+          if ((message.data as { type?: unknown } | null)?.type === 'close') close();
+          return;
+        }
+        if (pending !== candidate) return;
+        pending = undefined;
+        if (!validPaneReady(message.data, secret)) {
+          candidate.close();
+          return;
+        }
+        port = candidate;
+        applyTheme();
+        void send();
       };
-      frame.contentWindow?.postMessage({ type: 'viewer-connect', nonce }, origin, [channel.port2]);
-      applyTheme();
-      void send();
+      frame.contentWindow?.postMessage({ type: 'viewer-connect' }, origin, [channel.port2]);
+      candidate.postMessage(secretMessage(secret));
     });
     render(h(CloseIcon, {}), root.querySelector('button')!);
     root.querySelector('section')!.append(frame);
@@ -224,7 +255,6 @@ export async function startViewer(): Promise<void> {
           // The pane is open and owns the tabs, so it opens the file and saves the tabs itself.
           port.postMessage({
             type: 'open-file',
-            nonce,
             fileId: file.fileId,
             ...(courseId ? { courseId } : {}),
           });
@@ -232,10 +262,10 @@ export async function startViewer(): Promise<void> {
         }
         tabs = openFile(await readTabs(), file.fileId);
         await browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs });
-        show();
+        await show();
       })().catch(() => undefined);
     },
     true,
   );
-  if (tabs.active) show();
+  if (tabs.active) void show();
 }
