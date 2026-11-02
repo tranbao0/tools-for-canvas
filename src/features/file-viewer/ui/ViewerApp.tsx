@@ -5,15 +5,19 @@
  * The background keeps the tabs of the browser tab. This app reads them when the page asks it to
  * open a file, and writes them back after every change the student makes in the pane.
  */
+import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { MAX_FILE_BYTES } from '../../../shared/canvas/fileBytes';
 import { t } from '../../../shared/ui/i18n';
 import { closeFile, openFile, type Tabs } from '../model';
 import { FileCard, type FileState, type PaneFile } from './FileCard';
-import { fileKind } from './fileInfo';
+import { fileKind, isPdf } from './fileInfo';
+import { fileLinks } from './links';
+import { PdfTab, type PdfHost } from './PdfTab';
 import { PANEL_ID, TabStrip, tabDomId, type TabItem } from './TabStrip';
 
 /** What the pane needs from the extension and from the Canvas page. */
-export interface PaneHost {
+export interface PaneHost extends PdfHost {
   /** The saved Canvas address. */
   origin: string;
   /** The record of a file, or `undefined` when it did not load. */
@@ -49,6 +53,14 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const requested = useRef(new Set<string>());
   const courseHints = useRef(new Map<string, string>());
   const focusAfter = useRef<string | null>(null);
+
+  // Counts the reads of each PDF. A change makes the tab read its file again.
+  const [attempts, setAttempts] = useState<Readonly<Record<string, number>>>({});
+  const failedReads = useRef(new Set<string>());
+  const readAgain = useCallback((fileId: string) => {
+    failedReads.current.delete(fileId);
+    setAttempts((all) => ({ ...all, [fileId]: (all[fileId] ?? 0) + 1 }));
+  }, []);
 
   const accessCalls = useRef(0);
   const refreshAccess = useCallback(() => {
@@ -147,6 +159,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     const next = closeFile(tabsRef.current, fileId);
     // A file that opens again loads again, also after an error.
     requested.current.delete(fileId);
+    failedReads.current.delete(fileId);
     setFiles((all) => Object.fromEntries(Object.entries(all).filter(([id]) => id !== fileId)));
     commit(next);
     if (next.ids.length === 0) {
@@ -157,6 +170,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   };
   const reload = (fileId: string) => {
     requested.current.add(fileId);
+    failedReads.current.delete(fileId);
     load(fileId);
   };
   const allow = () => {
@@ -168,7 +182,11 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
         for (const [fileId, state] of Object.entries(files)) {
           if (state.kind === 'error') retry.add(fileId);
         }
+        // A card that loads again also reads its PDF again, because the tab draws after the
+        // record is ready. Another PDF whose bytes did not load reads them again.
+        const again = [...failedReads.current].filter((fileId) => !retry.has(fileId));
         retry.forEach(reload);
+        again.forEach(readAgain);
       },
       () => undefined,
     );
@@ -187,6 +205,35 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     }
   }
   const active = tabs.active;
+  // Each PDF tab keeps its own document while the pane is open. The tabs of other files draw nothing.
+  const pdfTabs: ComponentChildren[] = [];
+  for (const fileId of tabs.ids) {
+    const state = files[fileId];
+    if (state?.kind !== 'ready' || !isPdf(state.file.contentType)) continue;
+    if (Number.isFinite(state.file.size) && state.file.size > MAX_FILE_BYTES) continue;
+    const course = courseHints.current.get(fileId) ?? state.file.courseId;
+    const url = fileLinks(host.origin, fileId, course, state.file.url)?.download;
+    if (!url) continue;
+    pdfTabs.push(
+      <PdfTab
+        key={fileId}
+        url={url}
+        host={host}
+        active={fileId === active}
+        attempt={attempts[fileId] ?? 0}
+        onReadFailed={() => {
+          failedReads.current.add(fileId);
+          refreshAccess();
+        }}
+        onRetry={() => readAgain(fileId)}
+      />,
+    );
+  }
+  const activeState = active === null ? undefined : files[active];
+  const activePdf =
+    activeState?.kind === 'ready' &&
+    isPdf(activeState.file.contentType) &&
+    !(Number.isFinite(activeState.file.size) && activeState.file.size > MAX_FILE_BYTES);
   return (
     <div class="fv-app">
       {tabs.ids.length > 0 && (
@@ -208,7 +255,9 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
           onRetry={() => active !== null && reload(active)}
           onAllow={allow}
         />
-        <div class="fv-body" data-part="viewer-body" />
+        <div class="fv-body" data-part="viewer-body" data-kind={activePdf ? 'pdf' : undefined}>
+          {pdfTabs}
+        </div>
       </div>
     </div>
   );

@@ -841,5 +841,92 @@
   },
   "fileRetry": {
     "message": "Retry"
+  },
+  "pdfLoading": {
+    "message": "Loading PDF"
+  },
+  "pdfProgress": {
+    "message": "$1 of $2"
+  },
+  "pdfOpening": {
+    "message": "Opening PDF"
+  },
+  "pdfLoadError": {
+    "message": "Couldn't load this PDF"
+  },
+  "pdfBadFile": {
+    "message": "This PDF can't be shown. Use Download or Open in Canvas."
+  },
+  "pdfPassword": {
+    "message": "This PDF needs a password. Use Download or Open in Canvas."
+  },
+  "pdfToolbar": {
+    "message": "PDF tools"
+  },
+  "pdfThumbnails": {
+    "message": "Page thumbnails"
+  },
+  "pdfThumbnailsToggle": {
+    "message": "Thumbnails"
+  },
+  "pdfThumbnailLabel": {
+    "message": "Page $1"
+  },
+  "pdfPreviousPage": {
+    "message": "Previous page"
+  },
+  "pdfNextPage": {
+    "message": "Next page"
+  },
+  "pdfPageNumber": {
+    "message": "Page number"
+  },
+  "pdfPageCount": {
+    "message": "of $1"
+  },
+  "pdfZoomOut": {
+    "message": "Zoom out"
+  },
+  "pdfZoomIn": {
+    "message": "Zoom in"
+  },
+  "pdfZoomLevel": {
+    "message": "Zoom level"
+  },
+  "pdfFitWidth": {
+    "message": "Fit width"
+  },
+  "pdfFitPage": {
+    "message": "Fit page"
+  },
+  "pdfPercent": {
+    "message": "$1%"
+  },
+  "pdfSearch": {
+    "message": "Search"
+  },
+  "pdfSearchField": {
+    "message": "Search in this PDF"
+  },
+  "pdfSearchPrevious": {
+    "message": "Previous match"
+  },
+  "pdfSearchNext": {
+    "message": "Next match"
+  },
+  "pdfSearchClose": {
+    "message": "Close search"
+  },
+  "pdfSearchCount": {
+    "message": "$1 of $2"
+  },
+  "pdfSearchNone": {
+    "message": "No matches"
+  },
+  "pdfSearching": {
+    "message": "Searching…"
+  },
+  "pdfPages": {
+    "message": "PDF pages"
   }
 }
