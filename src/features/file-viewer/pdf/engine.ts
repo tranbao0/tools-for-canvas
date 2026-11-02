@@ -52,6 +52,10 @@ export interface EngineOptions {
   scroller: HTMLElement;
   /** The element that holds the pages. */
   pages: HTMLElement;
+  /** The folder of the image decoders, with a slash at the end. */
+  wasmUrl?: string;
+  /** Ends the open and the worker, also while the document still loads. */
+  signal?: AbortSignal;
   devicePixelRatio?: () => number;
   onChange(state: EngineState): void;
   onPageError?(index: number, error: unknown): void;
@@ -60,6 +64,10 @@ export interface EngineOptions {
 /** The space around the pages, in CSS pixels. The style sheet uses the same value. */
 const PAD = PAGE_GAP;
 const MAX_RENDERS_AT_ONCE = 2;
+/** A document with more pages is not shown. Each page costs a box and an observer. */
+export const MAX_PAGES = 20_000;
+/** The largest image that the worker decodes, in pixels. */
+const MAX_IMAGE_PIXELS = 100_000_000;
 const SIZE_BATCH = 24;
 
 const IDLE_SEARCH: SearchState = { query: '', status: 'idle', total: 0, current: 0 };
@@ -136,9 +144,9 @@ export class PdfEngine {
   static async open(options: EngineOptions): Promise<PdfEngine> {
     const { lib } = options;
     const worker = new lib.PDFWorker();
-    // PDF.js 6 has no eval path and no scripting in the display API, so these two options are
-    // not part of its API. They stay as written commands, and the code never loads the
-    // scripting sandbox. Nothing in the document runs.
+    // PDF.js 6.5.438 has no eval path and no scripting option in `getDocument`, so it ignores
+    // `isEvalSupported` and `enableScripting`. They state the intent. What keeps scripts out is
+    // that the viewer never loads the scripting sandbox and draws link annotations only.
     const params = {
       data: options.bytes,
       worker,
@@ -146,15 +154,28 @@ export class PdfEngine {
       enableScripting: false,
       disableWorkerRendering: true,
       useWorkerFetch: false,
-      isOffscreenCanvasSupported: false,
+      // The image decoders run as plain JavaScript from the files of the extension. The viewer
+      // ships no WebAssembly, so the color space and function code that needs it falls back too.
+      useWasm: false,
+      ...(options.wasmUrl === undefined ? {} : { wasmUrl: options.wasmUrl }),
+      maxImageSize: MAX_IMAGE_PIXELS,
       enableXfa: false,
       stopAtErrors: false,
     };
     const task = lib.getDocument(params);
+    const abort = () => {
+      void task.destroy().catch(() => undefined);
+      worker.destroy();
+    };
+    options.signal?.addEventListener('abort', abort, { once: true });
     let doc: PdfDocument;
     try {
       doc = await task.promise;
+      if (options.signal?.aborted) throw new Error('The open was cancelled');
+      if (doc.numPages > MAX_PAGES) throw new Error('The document has too many pages');
     } catch (error) {
+      options.signal?.removeEventListener('abort', abort);
+      void task.destroy().catch(() => undefined);
       worker.destroy();
       throw error;
     }

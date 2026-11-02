@@ -440,8 +440,8 @@ Use Firefox first, and then Chrome and Edge.
     Expect: the first tab shows page 3 again without a new bar, and the network tab of the developer tools shows no new request for it.
     Close the second tab.
     Expect: the first tab stays.
-56. Open the PDF with a scanned page, and a PDF that was made with a non-Latin font (for example Japanese or Arabic) if you have one.
-    Expect: the pages draw.
+56. Open the PDF with a scanned page (a library scan of a reading), and a PDF that was made with a non-Latin font (for example Japanese or Arabic) if you have one.
+    Expect: the scanned page shows its picture of the text, and the other pages draw.
     Write down any page with a missing image, a box in place of a letter, or a font that looks wrong (design decision 25, item 9, "Not shipped").
 57. Open the PDF of 20 MB or more on a slow connection, or throttle the connection in the developer tools.
     Expect: the bar moves, and the pane stays usable while it loads.

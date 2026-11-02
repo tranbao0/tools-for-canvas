@@ -64,6 +64,19 @@ const FILE_CHECK_PAGES = ['file-check', 'file-probe'];
  */
 const PDFJS_FILES = ['pdf.min.mjs', 'pdf.worker.min.mjs'];
 const PDFJS_LICENSE = 'node_modules/pdfjs-dist/LICENSE';
+/**
+ * The image decoders that PDF.js loads as plain JavaScript (JBIG2 and CCITT fax, JPEG 2000). They
+ * serve scanned pages. The pane ships no WebAssembly, so it ships only these fallbacks, with
+ * their licenses.
+ */
+const PDFJS_DECODERS = [
+  'jbig2_nowasm_fallback.js',
+  'openjpeg_nowasm_fallback.js',
+  'LICENSE_JBIG2',
+  'LICENSE_PDFJS_JBIG2',
+  'LICENSE_OPENJPEG',
+  'LICENSE_PDFJS_OPENJPEG',
+];
 
 export default defineConfig({
   srcDir: 'src',
@@ -75,6 +88,12 @@ export default defineConfig({
         files.push({
           absoluteSrc: path.resolve('node_modules/pdfjs-dist/build', name),
           relativeDest: `pdfjs/${name}`,
+        });
+      }
+      for (const name of PDFJS_DECODERS) {
+        files.push({
+          absoluteSrc: path.resolve('node_modules/pdfjs-dist/wasm', name),
+          relativeDest: `pdfjs/wasm/${name}`,
         });
       }
       // The Apache License 2.0 of PDF.js travels with its files.

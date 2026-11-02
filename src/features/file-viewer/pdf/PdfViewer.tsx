@@ -17,6 +17,7 @@ import {
 } from '../../../shared/ui/icons';
 import { PdfEngine, type EngineState } from './engine';
 import { keyContextOf, pdfKeyAction } from './keys';
+import { pdfjsDecoderUrl } from './loader';
 import { parsePageInput } from './pageInput';
 import { Thumbnails } from './Thumbnails';
 import type { PdfjsLib } from './types';
@@ -72,9 +73,12 @@ export function PdfViewer(props: {
     if (!bytes || !container || !host) return;
     let cancelled = false;
     let opened: PdfEngine | undefined;
+    const abort = new AbortController();
     PdfEngine.open({
       lib: props.lib,
       bytes,
+      wasmUrl: pdfjsDecoderUrl(),
+      signal: abort.signal,
       scroller: container,
       pages: host,
       onChange: (next) => {
@@ -97,6 +101,7 @@ export function PdfViewer(props: {
     );
     return () => {
       cancelled = true;
+      abort.abort();
       opened?.destroy();
     };
   }, [props.lib, props.source]);
@@ -215,7 +220,7 @@ export function PdfViewer(props: {
 
   return (
     <div class="pv-root" data-part="pdf-viewer" hidden={!props.active}>
-      <div class="pv-toolbar" role="toolbar" aria-label={t('pdfToolbar')}>
+      <div class="pv-toolbar" role="group" aria-label={t('pdfToolbar')}>
         <button
           type="button"
           class="pv-btn"

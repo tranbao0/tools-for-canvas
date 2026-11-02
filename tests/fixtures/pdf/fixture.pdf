@@ -1,9 +1,9 @@
 %PDF-1.4
 1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
+<< /Type /Catalog /Pages 2 0 R  >>
 endobj
 2 0 obj
-<< /Type /Pages /Kids [7 0 R 11 0 R 13 0 R] /Count 3 >>
+<< /Type /Pages /Kids [7 0 R 12 0 R 14 0 R] /Count 3 >>
 endobj
 3 0 obj
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
@@ -18,38 +18,45 @@ endobj
 << /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>
 endobj
 7 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 8 0 R /Annots [9 0 R 10 0 R] >>
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> /XObject << /Fax1 11 0 R >> >> /Contents 8 0 R /Annots [9 0 R 10 0 R] >>
 endobj
 8 0 obj
-<< /Length 279 >>
+<< /Length 315 >>
 stream
 0.17 0.48 0.74 rg 0 672 612 120 re f
 BT 1 1 1 rg /F2 28 Tf 48 722 Td (Fixture document) Tj ET
 BT 0 0 0 rg /F1 14 Tf 48 592 Td (This is page one.) Tj ET
 BT 0.05 0.4 0.7 rg /F1 14 Tf 48 552 Td (Course syllabus) Tj ET
 BT 0.05 0.4 0.7 rg /F1 14 Tf 48 512 Td (Jump to page two) Tj ET
+q 120 0 0 120 400 500 cm /Fax1 Do Q
 endstream
 endobj
 9 0 obj
 << /Type /Annot /Subtype /Link /Rect [48 548 160 566] /Border [0 0 0] /A << /S /URI /URI (https://example.com/syllabus) >> >>
 endobj
 10 0 obj
-<< /Type /Annot /Subtype /Link /Rect [48 508 170 526] /Border [0 0 0] /Dest [11 0 R /Fit] >>
+<< /Type /Annot /Subtype /Link /Rect [48 508 170 526] /Border [0 0 0] /Dest [12 0 R /Fit] >>
 endobj
 11 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 12 0 R >>
+<< /Type /XObject /Subtype /Image /Width 8 /Height 8 /ColorSpace /DeviceGray /BitsPerComponent 1 /Filter [/ASCIIHexDecode /CCITTFaxDecode] /DecodeParms [null << /K -1 /Columns 8 /Rows 8 >>] /Length 15 >>
+stream
+2EFFFFFF001001>
+endstream
 endobj
 12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 13 0 R >>
+endobj
+13 0 obj
 << /Length 138 >>
 stream
 BT 0 0 0 rg /F2 22 Tf 48 712 Td (Second page) Tj ET
 BT 0 0 0 rg /F1 14 Tf 48 672 Td (The zebrafish is the known word of this file.) Tj ET
 endstream
 endobj
-13 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 14 0 R >>
-endobj
 14 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 15 0 R >>
+endobj
+15 0 obj
 << /Length 114 >>
 stream
 BT 0 0 0 rg /F2 22 Tf 48 712 Td (Third page) Tj ET
@@ -57,24 +64,25 @@ BT 0 0 0 rg /F1 14 Tf 48 672 Td (This is the last page.) Tj ET
 endstream
 endobj
 xref
-0 15
+0 16
 0000000000 65535 f 
 0000000009 00000 n 
-0000000058 00000 n 
-0000000129 00000 n 
-0000000226 00000 n 
-0000000328 00000 n 
-0000000427 00000 n 
-0000000522 00000 n 
-0000000701 00000 n 
-0000001030 00000 n 
-0000001171 00000 n 
-0000001280 00000 n 
-0000001438 00000 n 
-0000001627 00000 n 
-0000001785 00000 n 
+0000000059 00000 n 
+0000000130 00000 n 
+0000000227 00000 n 
+0000000329 00000 n 
+0000000428 00000 n 
+0000000523 00000 n 
+0000000730 00000 n 
+0000001095 00000 n 
+0000001236 00000 n 
+0000001345 00000 n 
+0000001598 00000 n 
+0000001756 00000 n 
+0000001945 00000 n 
+0000002103 00000 n 
 trailer
-<< /Size 15 /Root 1 0 R >>
+<< /Size 16 /Root 1 0 R >>
 startxref
-1950
+2268
 %%EOF

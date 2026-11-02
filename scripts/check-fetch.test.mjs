@@ -103,10 +103,14 @@ describe('check-fetch', () => {
     const hashes = await loadVendorHashes();
     assert.ok(hashes.has('pdfjs/pdf.min.mjs'));
     assert.ok(hashes.has('pdfjs/pdf.worker.min.mjs'));
+    const sources = JSON.parse(await readFile('scripts/vendor-hashes.json', 'utf8')).source;
+    // Every pinned file is the file of the package that its entry names.
+    for (const [built, source] of Object.entries(sources)) {
+      const content = await readFile(path.join('node_modules', 'pdfjs-dist', source));
+      assert.equal(createHash('sha256').update(content).digest('hex'), hashes.get(built), built);
+    }
+    assert.deepEqual([...hashes.keys()].sort(), Object.keys(sources).sort());
     const real = await readFile(path.join('node_modules', 'pdfjs-dist', 'build', 'pdf.min.mjs'));
-    const pinned = createHash('sha256').update(real).digest('hex');
-    // The file in node_modules is the file that the pin names.
-    assert.equal(pinned, hashes.get('pdfjs/pdf.min.mjs'));
     const clean = await writeTree({ 'pdfjs/pdf.min.mjs': real });
     assert.deepEqual(await collectFetchCalls(clean), []);
     const changed = await writeTree({

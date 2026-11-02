@@ -53,6 +53,10 @@ export class PageView {
   zoom = 1;
   private visible = false;
   private generation = 0;
+  /** Counts the releases. A pass that builds the layers stops when the page was released. */
+  private epoch = 0;
+  /** The zoom of the render that runs now, or 0. */
+  private renderingZoom = 0;
   private proxy: PdfPage | undefined;
   private task: PdfRenderTask | undefined;
   private canvas: HTMLCanvasElement | undefined;
@@ -92,7 +96,7 @@ export class PageView {
 
   /** Whether the page needs a render for its current zoom. */
   needsRender(): boolean {
-    return this.visible && this.task === undefined && this.renderedZoom !== this.zoom;
+    return this.visible && this.renderedZoom !== this.zoom && this.renderingZoom !== this.zoom;
   }
 
   /** Draws the page at its zoom. A newer call or a release stops an older one. */
@@ -100,6 +104,7 @@ export class PageView {
     const generation = ++this.generation;
     this.cancelTask();
     const zoom = this.zoom;
+    this.renderingZoom = zoom;
     try {
       const proxy = (this.proxy ??= await this.context.doc.getPage(this.index + 1));
       if (generation !== this.generation) return;
@@ -119,9 +124,13 @@ export class PageView {
       this.task = undefined;
       this.showCanvas(canvas);
       this.renderedZoom = zoom;
-      await this.buildLayers(proxy, generation);
+      this.renderingZoom = 0;
+      await this.buildLayers(proxy);
     } catch (error) {
-      if (generation === this.generation) this.task = undefined;
+      if (generation === this.generation) {
+        this.task = undefined;
+        this.renderingZoom = 0;
+      }
       if (isCancel(error)) return;
       if (generation === this.generation) this.context.onError(this.index, error);
     }
@@ -138,9 +147,13 @@ export class PageView {
     this.canvasHost.append(canvas);
   }
 
-  private async buildLayers(proxy: PdfPage, generation: number): Promise<void> {
+  private async buildLayers(proxy: PdfPage): Promise<void> {
+    // A zoom changes the CSS variables of the layers, so one pass serves every zoom. A pass ends
+    // only when the page is released.
     if (this.layersFor === proxy && this.textHost) return;
+    const epoch = this.epoch;
     this.layersFor = proxy;
+    this.el.style.setProperty('--user-unit', String(proxy.userUnit));
     const viewport = proxy.getViewport({ scale: this.zoom * CSS_PER_POINT });
     const textHost = document.createElement('div');
     textHost.className = 'textLayer pv-text';
@@ -163,7 +176,7 @@ export class PageView {
       if (!isCancel(error)) this.context.onError(this.index, error);
       return;
     }
-    if (generation !== this.generation) return;
+    if (epoch !== this.epoch) return;
     this.textCancel = undefined;
     this.textDivs = textLayer.textDivs;
     this.textItems = textLayer.textContentItemsStr;
@@ -173,7 +186,7 @@ export class PageView {
     const all = (await proxy.getAnnotations({ intent: 'display' })) as {
       subtype?: string;
     }[];
-    if (generation !== this.generation) return;
+    if (epoch !== this.epoch) return;
     const links = all.filter((annotation) => annotation.subtype === 'Link');
     if (links.length === 0) return;
     const layer = new lib.AnnotationLayer({
@@ -209,6 +222,8 @@ export class PageView {
   /** Cancels the render task and frees the canvas and the layers. The box keeps its size. */
   release(): void {
     this.generation += 1;
+    this.epoch += 1;
+    this.renderingZoom = 0;
     this.cancelTask();
     this.textCancel?.();
     this.textCancel = undefined;

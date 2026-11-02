@@ -13,6 +13,7 @@ import {
   PAGE_WIDTH,
   buildPdf,
   fill,
+  type ImageSpec,
   outline,
   stroke,
   text,
@@ -24,6 +25,22 @@ export const FIXTURE_WORD = 'zebrafish';
 export const FIXTURE_PAGE_COUNT = 3;
 export const FIXTURE_LINK = 'https://example.com/syllabus';
 
+/**
+ * A scanned-page image: 8 by 8 pixels, a black bar over columns 2 to 5, coded as CCITT Group 4
+ * fax (the coding of library scans), written as hex text. Only a decoder for fax data can draw it.
+ */
+export const FAX_IMAGE: ImageSpec = {
+  name: 'Fax1',
+  width: 8,
+  height: 8,
+  filters: ['ASCIIHexDecode', 'CCITTFaxDecode'],
+  decodeParms: ['null', '<< /K -1 /Columns 8 /Rows 8 >>'],
+  hex: '2EFFFFFF001001',
+};
+
+/** Where the fax image sits on page 1: the box in points, as `[left, bottom, size]`. */
+export const FAX_BOX = { left: 400, bottom: 500, size: 120 } as const;
+
 export function fixturePdf(): Buffer {
   const pages: PageSpec[] = [
     {
@@ -32,7 +49,9 @@ export function fixturePdf(): Buffer {
         text(48, PAGE_HEIGHT - 70, 28, 'Fixture document', 'F2', [1, 1, 1]) +
         text(48, PAGE_HEIGHT - 200, 14, 'This is page one.') +
         text(48, PAGE_HEIGHT - 240, 14, 'Course syllabus', 'F1', [0.05, 0.4, 0.7]) +
-        text(48, PAGE_HEIGHT - 280, 14, 'Jump to page two', 'F1', [0.05, 0.4, 0.7]),
+        text(48, PAGE_HEIGHT - 280, 14, 'Jump to page two', 'F1', [0.05, 0.4, 0.7]) +
+        `q ${FAX_BOX.size} 0 0 ${FAX_BOX.size} ${FAX_BOX.left} ${FAX_BOX.bottom} cm /${FAX_IMAGE.name} Do Q\n`,
+      images: [FAX_IMAGE],
       links: [
         { rect: [48, PAGE_HEIGHT - 244, 160, PAGE_HEIGHT - 226], uri: FIXTURE_LINK },
         { rect: [48, PAGE_HEIGHT - 284, 170, PAGE_HEIGHT - 266], page: 1 },
@@ -50,6 +69,30 @@ export function fixturePdf(): Buffer {
     },
   ];
   return buildPdf(pages);
+}
+
+/**
+ * A file that tries what a hostile PDF tries: a link with a script address, a script that runs
+ * when the file opens, a form field, and a note with a popup.
+ */
+export function hostilePdf(): Buffer {
+  return buildPdf(
+    [
+      {
+        content: text(48, PAGE_HEIGHT - 80, 18, 'Hostile document', 'F2'),
+        links: [
+          { rect: [48, 600, 200, 620], uri: 'javascript:alert(document.domain)' },
+          { rect: [48, 560, 200, 580], uri: 'file:///etc/passwd' },
+          { rect: [48, 520, 200, 540], uri: 'https://example.com/ok' },
+        ],
+        annots: [
+          '<< /Type /Annot /Subtype /Widget /FT /Tx /T (field) /V (typed) /Rect [48 400 248 420] /F 4 >>',
+          '<< /Type /Annot /Subtype /Text /Contents (note) /Rect [300 400 320 420] /Open true /F 4 >>',
+        ],
+      },
+    ],
+    { catalog: '/OpenAction << /S /JavaScript /JS (app.alert\\(1\\)) >>' },
+  );
 }
 
 /** Breaks a paragraph into lines of at most `width` characters. */

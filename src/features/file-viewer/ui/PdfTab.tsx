@@ -25,7 +25,7 @@ export interface PdfHost {
 type Phase =
   | { kind: 'reading'; loaded: number; total: number | null }
   | { kind: 'viewer'; lib: PdfjsLib; source: PdfSource }
-  | { kind: 'error'; failure: PdfFailure | 'read' };
+  | { kind: 'error'; failure: PdfFailure | 'read' | 'large' };
 
 /** The part of the bytes read, from 0 to 1, or `null` when the length is not known. */
 export function progressFraction(loaded: number, total: number | null): number | null {
@@ -64,13 +64,14 @@ function Progress(props: { loaded: number; total: number | null }) {
   );
 }
 
-function failureText(failure: PdfFailure | 'read'): string {
+function failureText(failure: PdfFailure | 'read' | 'large'): string {
   switch (failure) {
     case 'password':
       return t('pdfPassword');
     case 'invalid':
       return t('pdfBadFile');
     case 'other':
+    case 'large':
       return t('pdfBadFile');
     case 'read':
       return t('pdfLoadError');
@@ -116,6 +117,11 @@ export function PdfTab(props: {
         );
       } catch (error) {
         if (!live || (error instanceof FileBytesError && error.kind === 'aborted')) return;
+        if (error instanceof FileBytesError && error.kind === 'too_large') {
+          // The record said the file was small, but the bytes are not. Reading again would not help.
+          setPhase({ kind: 'error', failure: 'large' });
+          return;
+        }
         setPhase({ kind: 'error', failure: 'read' });
         onReadFailed.current();
         return;

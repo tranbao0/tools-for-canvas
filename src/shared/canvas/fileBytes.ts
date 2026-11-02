@@ -11,7 +11,8 @@ import { resolveOnOrigin, toCanvasOrigin } from './http';
 /** Files over this size are not read. The viewer shows the card only. */
 export const MAX_FILE_BYTES = 100 * 1024 * 1024;
 
-export type FileBytesFailure = 'origin_blocked' | 'too_large' | 'status' | 'network' | 'aborted';
+export type FileBytesFailure =
+  'origin_blocked' | 'too_large' | 'status' | 'not_a_file' | 'network' | 'aborted';
 
 export class FileBytesError extends Error {
   constructor(
@@ -70,7 +71,9 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
       error instanceof Error ? error.message : 'Blocked address',
     );
   }
-  const chunks: Uint8Array[] = [];
+  // A body with a known length fills one buffer. A body that runs past its length goes to chunks.
+  let target: Uint8Array | null = null;
+  let chunks: Uint8Array[] = [];
   let loaded = 0;
   try {
     const response = await fetchImpl(start.href, {
@@ -81,6 +84,11 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
     });
     if (!response.ok) {
       throw new FileBytesError('status', `The file answered ${response.status}`, response.status);
+    }
+    // After a redirect, a page that is not a file, such as a sign-in page, is a failure.
+    if (/^\s*text\/html/i.test(response.headers.get('content-type') ?? '')) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new FileBytesError('not_a_file', 'The answer is a web page, not a file');
     }
     const total = declaredLength(response.headers);
     if (total !== null && total > maxBytes) {
@@ -94,16 +102,25 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
       onProgress?.(whole.length, whole.length);
       return whole;
     }
+    if (total !== null) target = new Uint8Array(total);
     const reader = response.body.getReader();
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      loaded += value.length;
-      if (loaded > maxBytes) {
+      if (loaded + value.length > maxBytes) {
         await reader.cancel().catch(() => undefined);
         throw new FileBytesError('too_large', 'The file is too large');
       }
-      chunks.push(value);
+      if (target !== null && loaded + value.length <= target.length) {
+        target.set(value, loaded);
+      } else {
+        if (target !== null) {
+          chunks = [target.subarray(0, loaded)];
+          target = null;
+        }
+        chunks.push(value);
+      }
+      loaded += value.length;
       onProgress?.(loaded, total);
     }
   } catch (error) {
@@ -111,6 +128,7 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
     if (isAbort(error, signal)) throw new FileBytesError('aborted', 'The read was cancelled');
     throw new FileBytesError('network', error instanceof Error ? error.message : 'Network error');
   }
+  if (target !== null) return loaded === target.length ? target : target.slice(0, loaded);
   const bytes = new Uint8Array(loaded);
   let offset = 0;
   for (const chunk of chunks) {

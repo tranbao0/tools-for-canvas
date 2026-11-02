@@ -43,6 +43,8 @@ PDF.js is licensed under the Apache License, Version 2.0.
 
 - The build copies `pdf.min.mjs` and `pdf.worker.min.mjs` from the package to `pdfjs/` in the extension, without any change.
 - The file pane loads them only when a PDF tab opens, and the worker runs from the extension's own files.
+- The build also copies the decoders `jbig2_nowasm_fallback.js` and `openjpeg_nowasm_fallback.js` of the package to `pdfjs/wasm/`, and their license files (`LICENSE_JBIG2`, `LICENSE_PDFJS_JBIG2`, `LICENSE_OPENJPEG`, `LICENSE_PDFJS_OPENJPEG`).
+  They decode scanned pages (JBIG2, CCITT fax and JPEG 2000) as plain JavaScript.
 - The build also copies the license of the package to `pdfjs/LICENSE`.
 - `scripts/vendor-hashes.json` holds the SHA-256 hash of each copied file, so a build check can tell a change.
 - The style rules for the text layer and the link layer in `src/features/file-viewer/ui/pdf.css` follow `web/pdf_viewer.css` of the package.

@@ -33,16 +33,6 @@ interface Joined {
   starts: number[];
 }
 
-/** Lower case that keeps the length of the text, so offsets stay valid. */
-function fold(text: string): string {
-  let out = '';
-  for (const char of text) {
-    const lower = char.toLowerCase();
-    out += lower.length === char.length ? lower : char;
-  }
-  return out;
-}
-
 function join(page: PageText): Joined {
   const starts: number[] = [];
   let text = '';
@@ -59,20 +49,28 @@ export function normalizeQuery(query: string): string {
   return query.trim().replace(/\s+/g, ' ');
 }
 
-/** Finds the matches of a query in a page. The search ignores case. */
+const PATTERN_SPECIALS = /[.*+?^${}()|[\]\\]/g;
+
+/** A pattern for the query: its words in order, with any run of white space between them. */
+function queryPattern(query: string): RegExp | null {
+  const words = normalizeQuery(query).split(' ').filter(Boolean);
+  if (words.length === 0) return null;
+  const source = words.map((word) => word.replace(PATTERN_SPECIALS, '\\$&')).join('\\s+');
+  return new RegExp(source, 'giu');
+}
+
+/**
+ * Finds the matches of a query in a page. The search ignores case. A run of white space in the
+ * page, a line end included, matches the white space of the query.
+ */
 export function findMatches(page: PageText, query: string, limit = MAX_MATCHES): TextMatch[] {
-  const needle = fold(normalizeQuery(query));
-  if (needle === '' || limit <= 0) return [];
-  // A run of white space in the page text matches the one space of the query.
+  const pattern = queryPattern(query);
+  if (pattern === null || limit <= 0) return [];
   const { text } = join(page);
-  const haystack = fold(text.replace(/\s/g, ' '));
   const matches: TextMatch[] = [];
-  let from = 0;
-  while (matches.length < limit) {
-    const at = haystack.indexOf(needle, from);
-    if (at === -1) break;
-    matches.push({ start: at, end: at + needle.length });
-    from = at + needle.length;
+  for (const found of text.matchAll(pattern)) {
+    matches.push({ start: found.index, end: found.index + found[0].length });
+    if (matches.length >= limit) break;
   }
   return matches;
 }

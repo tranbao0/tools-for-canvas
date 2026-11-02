@@ -22,6 +22,17 @@ export const courseHomeHtml = simpleHtml
     )}`,
   );
 
+/**
+ * The bytes of the file that `NOTES` names: the fixture PDF, as the text it is (it holds only
+ * ASCII). A pane that opens a PDF reads this file, so a test that does not care about the PDF
+ * still shows a document.
+ */
+export const pdfDownloadRoute: FakeCanvasRoute = {
+  path: '/files/42/download',
+  body: readFileSync('tests/fixtures/pdf/fixture.pdf', 'latin1'),
+  contentType: 'application/pdf',
+};
+
 export const NOTES = {
   id: '42',
   display_name: 'Course notes.pdf',
@@ -67,6 +78,7 @@ export async function openCoursePage(
 ) {
   const { canvas } = await serveScenario(context, [
     ...extraRoutes,
+    pdfDownloadRoute,
     { path: '/courses/101/pages/notes', body: html, contentType: 'text/html' },
     { path: '/api/v1/files/42', body: NOTES },
     { path: '/api/v1/files/43', body: PHOTO },

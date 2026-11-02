@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FileBytesError } from '../../../shared/canvas/fileBytes';
 import type { Tabs } from '../model';
 import type { PdfjsLib } from '../pdf/types';
 import type { PaneFile } from './FileCard';
@@ -194,6 +195,18 @@ describe('pdf tabs', () => {
     expect(screen.queryByText("Couldn't load this PDF")).toBeNull();
   });
 
+  it('shows the card only, without Retry, when the bytes pass the limit', async () => {
+    const { open } = setup({
+      readFile: vi.fn(async () => {
+        throw new FileBytesError('too_large', 'The file is too large');
+      }),
+    });
+    await open('1');
+    await screen.findByText("This PDF can't be shown. Use Download or Open in Canvas.");
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Download' })).toBeTruthy();
+  });
+
   it('shows Allow access after a failed read while the permission is withheld, and reads again', async () => {
     let granted = false;
     let fail = true;
@@ -237,6 +250,7 @@ describe('pdf tabs', () => {
         destroy() {}
       },
       getDocument: () => ({
+        destroy: () => Promise.resolve(),
         promise: Promise.reject(
           Object.assign(new Error('password'), { name: 'PasswordException' }),
         ),

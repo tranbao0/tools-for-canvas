@@ -9,6 +9,10 @@ import type { PdfjsLib } from './types';
 
 export const PDFJS_MODULE = '/pdfjs/pdf.min.mjs';
 export const PDFJS_WORKER = '/pdfjs/pdf.worker.min.mjs';
+/** The folder of the image decoders, with a slash at the end. */
+export const PDFJS_WASM_FOLDER = '/pdfjs/wasm/';
+
+export const pdfjsDecoderUrl = (): string => extensionUrl(PDFJS_WASM_FOLDER);
 
 const extensionUrl = (path: string): string => browser.runtime.getURL(path as never);
 
