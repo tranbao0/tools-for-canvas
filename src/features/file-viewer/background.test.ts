@@ -364,3 +364,42 @@ describe('clearing the tabs', () => {
     ).toBe(2);
   });
 });
+
+describe('saved positions', () => {
+  it('validates fields and refuses an unconfirmed student', async () => {
+    const { host, pane } = setup();
+    for (const fields of [
+      { fileId: '../1' },
+      { fileId: '1', page: 0, zoom: 1 },
+      { fileId: '1', page: 1, zoom: 6 },
+      { fileId: '1', page: 1, zoom: 1, student: 'other' },
+    ]) {
+      await expect(
+        routeViewerMessage({ type: 'viewer:position-set', ...fields }, pane, host),
+      ).rejects.toThrow('Invalid viewer position');
+    }
+    vi.mocked(host.userId).mockResolvedValue(null);
+    await expect(
+      routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host),
+    ).rejects.toThrow('cookie is not confirmed');
+  });
+
+  it('isolates students and clears positions with tabs', async () => {
+    const { host, pane } = setup();
+    await clearViewerTabs();
+    await routeViewerMessage(
+      { type: 'viewer:position-set', fileId: '1', page: 3, zoom: 1.5 },
+      pane,
+      host,
+    );
+    const get = () => routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host);
+    expect(await get()).toMatchObject({ page: 3, zoom: 1.5 });
+    vi.mocked(host.userId).mockResolvedValue('u2');
+    expect(await get()).toBeNull();
+    vi.mocked(host.userId).mockResolvedValue('u1');
+    await clearViewerTabs();
+    expect(await get()).toBeNull();
+    vi.mocked(host.mayFetch).mockResolvedValue(false);
+    await expect(get()).rejects.toThrow('may not read');
+  });
+});
