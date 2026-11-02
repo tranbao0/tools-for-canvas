@@ -70,6 +70,7 @@ const globalFetch: typeof fetch = (input, init) => globalThis.fetch(input, init)
 
 export interface CanvasFetchInit {
   readonly signal?: AbortSignal;
+  readonly cache?: RequestCache;
   readonly method: HttpMethod;
   readonly headers?: Readonly<Record<string, string>>;
   readonly body?: string;
@@ -99,6 +100,7 @@ export async function canvasFetch(
       body: init.body,
       credentials: 'include',
       redirect: 'manual',
+      ...(init.cache ? { cache: init.cache } : {}),
       ...(init.signal ? { signal: init.signal } : {}),
     });
   } catch (error) {
@@ -130,6 +132,7 @@ export interface CanvasRequest {
   /** Sent as a JSON body. */
   readonly body?: unknown;
   readonly signal?: AbortSignal;
+  readonly cache?: RequestCache;
 }
 
 export interface CanvasResponse {
@@ -177,6 +180,7 @@ export function createCanvasTransport(options: CanvasTransportOptions): CanvasTr
         method: request.method,
         headers,
         body,
+        ...(request.cache ? { cache: request.cache } : {}),
         ...(request.signal ? { signal: request.signal } : {}),
       },
       options.fetchImpl,

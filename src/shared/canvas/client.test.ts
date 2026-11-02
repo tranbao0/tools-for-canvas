@@ -1166,13 +1166,18 @@ it('retries a rate limit on the user request used by rounds', async () => {
 
 it('ends a hung cache check at ten seconds without an offline error', async () => {
   vi.useFakeTimers();
+  const fetchImpl = vi.fn<typeof fetch>(() => new Promise(() => undefined));
   const client = createCanvasClient({
     origin: ORIGIN,
     getCsrfToken: async () => null,
-    fetchImpl: () => new Promise(() => undefined),
+    fetchImpl,
   });
   const result = catchError(client.checkCacheUser());
   await vi.advanceTimersByTimeAsync(9999);
+  expect(fetchImpl).toHaveBeenCalledWith(
+    `${ORIGIN}/api/v1/users/self`,
+    expect.objectContaining({ cache: 'no-store' }),
+  );
   await vi.advanceTimersByTimeAsync(1);
   expect(await result).toMatchObject({ kind: 'server', message: "Couldn't reach Canvas" });
 });

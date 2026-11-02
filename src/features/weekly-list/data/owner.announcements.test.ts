@@ -309,13 +309,16 @@ describe('announcementFeed', () => {
     const h = await loaded();
     await loadedFeed(h);
     await vi.advanceTimersByTimeAsync(31_000);
-    h.canvas.fail('getSelf', canvasError('network'), { times: 1 });
+    vi.mocked(h.deps.sessionFingerprint!).mockResolvedValue('unconfirmed-session');
+    vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+    vi.spyOn(h.canvas, 'checkCacheUser').mockRejectedValueOnce(canvasError('network'));
 
     const feed = ready(await h.owner.announcementFeed(PANEL_FEED));
 
     expect(feed).toMatchObject({ rows: [], failed: true, loading: false, userId: IDS.user });
-    // The cache of the same student stays, and the next request shows the rows again.
+    // The cache of the same student stays until the next check can run.
     expect((await sessionCacheItem.getValue())?.announcements).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(31_000);
     const again = ready(await h.owner.announcementFeed(PANEL_FEED));
     expect(again.failed).toBe(false);
     expect(again.rows.length).toBeGreaterThan(0);

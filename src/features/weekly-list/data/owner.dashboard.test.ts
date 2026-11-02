@@ -312,7 +312,9 @@ describe('dashboardData', () => {
   it('gives nothing when the sign-in check fails with a 401', async () => {
     const h = await loaded();
     await vi.advanceTimersByTimeAsync(31_000);
-    h.canvas.fail('getSelf', canvasError('unauthorized', 401), { times: 1 });
+    vi.mocked(h.deps.sessionFingerprint!).mockResolvedValue('unconfirmed-session');
+    vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+    vi.spyOn(h.canvas, 'checkCacheUser').mockRejectedValueOnce(canvasError('unauthorized', 401));
 
     expect(await h.owner.dashboardData()).toMatchObject({ ready: false, courses: [] });
   });
@@ -533,7 +535,6 @@ describe('dashboardGradeVisibility', () => {
       gradeVisibilities: { 'course-grades-widget': { '107': false } },
       showGrades: {},
     }));
-    vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
     h.canvas.getWidgetGradeVisibility = read;
     await vi.advanceTimersByTimeAsync(31_000);
     signInOtherUser(h);
@@ -546,10 +547,11 @@ describe('dashboardGradeVisibility', () => {
   it('does not read when the sign-in check fails', async () => {
     const h = await loaded();
     const read = vi.fn(async () => ({ gradeVisibilities: {}, showGrades: {} }));
-    vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
     h.canvas.getWidgetGradeVisibility = read;
     await vi.advanceTimersByTimeAsync(31_000);
-    h.canvas.fail('getSelf', canvasError('unauthorized', 401), { times: 1 });
+    vi.mocked(h.deps.sessionFingerprint!).mockResolvedValue('unconfirmed-session');
+    vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+    vi.spyOn(h.canvas, 'checkCacheUser').mockRejectedValueOnce(canvasError('unauthorized', 401));
     expect((await h.owner.dashboardGradeVisibility()).gradeVisibilities).toBeNull();
     expect(read).not.toHaveBeenCalled();
   });

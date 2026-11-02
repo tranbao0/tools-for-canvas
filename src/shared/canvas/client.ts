@@ -236,7 +236,12 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
 
       checkCacheUser: async () => {
         const url = '/api/v1/users/self';
-        const request = transport({ method: 'GET', url, signal: AbortSignal.timeout(10_000) });
+        const request = transport({
+          method: 'GET',
+          url,
+          cache: 'no-store',
+          signal: AbortSignal.timeout(10_000),
+        });
         let timeout: ReturnType<typeof setTimeout> | undefined;
         try {
           const response = await Promise.race([

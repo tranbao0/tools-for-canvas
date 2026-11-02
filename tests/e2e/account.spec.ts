@@ -482,13 +482,20 @@ test('a first profile response never confirms the cookie from before that reques
   });
   const later: { profile?: Profile } = {};
   let self!: UserSelf;
+  let firstProfile = true;
   const first = await serveScenario(context, [
     {
       path: '/api/v1/users/self/profile',
       respond: async () => {
-        entered();
-        await held;
-        return { body: json(later.profile) };
+        if (firstProfile) {
+          firstProfile = false;
+          entered();
+          await held;
+          return { body: json(later.profile) };
+        }
+        return {
+          body: json(self.id === first.scenario.self.id ? first.scenario.profile : later.profile),
+        };
       },
     },
     { path: '/api/v1/users/self', respond: () => ({ body: json(self) }) },
