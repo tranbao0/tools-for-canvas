@@ -309,10 +309,10 @@ export async function startViewer(): Promise<void> {
         link.getAttribute('href') ??
         link.dataset['url'] ??
         `/files/${link.dataset['fileId'] ?? ''}`;
-      // Canvas gives submission attachments a download attribute even when a plain click can read them.
+      // A link with a download attribute keeps its action, except a file the student handed in.
       if (
         link.hasAttribute('download') &&
-        !catchesDownload(href, location.origin, location.pathname)
+        !catchesDownload(link, href, location.origin, location.pathname)
       )
         return;
       const target = fileTarget(href, location.origin, moduleId);
@@ -329,8 +329,10 @@ export async function startViewer(): Promise<void> {
         await starting;
         if (!live) return;
         if (!enabled) {
-          // The viewer is off, so the click goes to the link after all.
-          location.assign(new URL(href, location.href));
+          // The viewer is off, so the click goes to the link after all. The click that the script
+          // makes is not trusted, so the listener above ignores it, and the browser does what the
+          // link says: it follows the link, saves a download, or opens a new tab.
+          link.click();
           return;
         }
         if (!paneOpen()) await show();

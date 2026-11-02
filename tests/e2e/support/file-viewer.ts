@@ -178,6 +178,8 @@ export async function openFirstFile(
   page: Page,
   name: string,
   prepare?: () => Promise<void>,
+  /** The part of the page that holds the link. */
+  scope = '#content',
 ): Promise<void> {
   const url = page.url();
   await prepare?.();
@@ -186,7 +188,36 @@ export async function openFirstFile(
       await page.goto(url);
       await prepare?.();
     }
-    await page.locator('#content').getByRole('link', { name }).click();
+    await page.locator(scope).getByRole('link', { name }).click();
     await expect(page.locator('#tools-file-viewer')).toBeVisible({ timeout: 1500 });
   }).toPass({ timeout: 20_000 });
+}
+
+/** The blob URLs that the pane page made and freed. Call it before the file opens. */
+export interface BlobLog {
+  created: string[];
+  revoked: string[];
+}
+
+/** Records `createObjectURL` and `revokeObjectURL` in the pane page, in `window.__blobs`. */
+export async function trackBlobs(frame: Frame): Promise<void> {
+  await frame.evaluate(() => {
+    const log = { created: [] as string[], revoked: [] as string[] };
+    (window as unknown as { __blobs: typeof log }).__blobs = log;
+    const create = URL.createObjectURL.bind(URL);
+    const revoke = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = (object) => {
+      const url = create(object);
+      log.created.push(url);
+      return url;
+    };
+    URL.revokeObjectURL = (url) => {
+      log.revoked.push(url);
+      revoke(url);
+    };
+  });
+}
+
+export function readBlobs(frame: Frame): Promise<BlobLog> {
+  return frame.evaluate(() => (window as unknown as { __blobs: BlobLog }).__blobs);
 }

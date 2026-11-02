@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="300" height="200" viewBox="0 0 300 200" onload="localStorage.setItem('hostile-onload', location.href)">
+  <script>localStorage.setItem('hostile-script', location.href)</script>
+  <rect width="300" height="200" fill="#c33"/>
+  <a xlink:href="javascript:localStorage.setItem('hostile-link', location.href)" href="javascript:localStorage.setItem('hostile-link', location.href)">
+    <text x="20" y="40" fill="#fff" font-size="20">javascript link</text>
+  </a>
+  <foreignObject x="0" y="60" width="300" height="140">
+    <div xmlns="http://www.w3.org/1999/xhtml">
+      <p>foreign object</p>
+      <script>localStorage.setItem('hostile-foreign', location.href)</script>
+      <img src="x" onerror="localStorage.setItem('hostile-img-error', location.href)"/>
+      <a href="javascript:localStorage.setItem('hostile-foreign-link', location.href)">html link</a>
+    </div>
+  </foreignObject>
+</svg>

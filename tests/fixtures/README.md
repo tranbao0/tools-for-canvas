@@ -141,9 +141,24 @@ A university news page to serve at `https://news.northfield.edu/`.
 It has `with-right-side` on the body and a `#right-side` with a `.todo-list-header`, but no `#application.ic-app` and no `ENV`.
 Canvas detection must not accept it.
 
+### submission-details.html
+
+The submission details page at `/courses/101/assignments/7/submissions/5501`, as one complete page.
+It has the table of the files the student handed in (`table.file-upload-submission-table`), with two download links in the two shapes that the file pane takes: `?download=42` and `/files/42/download`.
+It also has a teacher's comment with an attachment (`.comment_attachments`), which must keep its download.
+In Canvas, this table is inside the preview frame of the page (`#preview_frame`), so the file pane cannot see it there until a live check shows otherwise (docs/live-checklist.md).
+
+### assignment-submitted.html
+
+The assignment page at `/courses/101/assignments/7`, after the student handed in a file.
+Its description (`.description.user_content`) has a download button of the teacher, which must keep its download.
+Its right column has the Submission section (`#right-side .details > .content`) with the student's file, and a comment attachment.
+
 ## files/
 
-The small files that the file pane tests serve as Canvas files: `image.png`, `notes.txt`, `document.docx`, `tone.wav` and `clip.webm`.
+The small files that the file pane tests serve as Canvas files: `image.png`, `notes.txt`, `hostile.svg`, `tone.wav` and `clip.webm`.
+`notes.txt` is the text file of a submission. It holds a `script` tag on purpose, to check that text never runs.
+`hostile.svg` is an SVG that tries to run script in every way: an inline script, an `onload` handler, a `javascript:` link, and a `foreignObject` with a script, an error handler and a link. Each vector writes a `hostile-` key into `localStorage`, so a test can tell if one ran.
 `tone.wav` is 0.5 s of a 440 Hz sine wave.
 `clip.webm` is 2 s of silent VP9 video at 320 by 180 pixels.
 Chromium and Firefox both play these two formats without a system codec.

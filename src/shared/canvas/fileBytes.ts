@@ -48,8 +48,15 @@ export interface FileBytesOptions {
    * throws counts as `false`.
    */
   confirm?: () => Promise<boolean>;
-  /** Defaults to {@link MAX_FILE_BYTES}. */
+  /** Defaults to {@link MAX_FILE_BYTES}. A file over this size fails with `too_large`. */
   maxBytes?: number;
+  /**
+   * Reads only the first part of the file. The read stops after this many bytes, cancels the rest
+   * of the body and returns the bytes it has. A longer file or a longer `Content-Length` is not an
+   * error, and the buffer and the progress total use the shorter of the two lengths. Use it for a
+   * viewer that shows the start of a file, such as plain text.
+   */
+  truncateAt?: number;
   fetchImpl?: typeof fetch;
 }
 
@@ -116,15 +123,21 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
       await response.body?.cancel().catch(() => undefined);
       throw new FileBytesError('not_a_file', 'The answer is a web page, not a file');
     }
-    const total = declaredLength(response.headers);
-    if (total !== null && total > maxBytes) {
+    const declared = declaredLength(response.headers);
+    const truncateAt =
+      options.truncateAt === undefined ? undefined : Math.min(options.truncateAt, maxBytes);
+    if (truncateAt === undefined && declared !== null && declared > maxBytes) {
       await response.body?.cancel().catch(() => undefined);
       throw new FileBytesError('too_large', 'The file is too large');
     }
+    const total =
+      declared !== null && truncateAt !== undefined ? Math.min(declared, truncateAt) : declared;
     onProgress?.(0, total);
     if (response.body === null) {
-      const whole = new Uint8Array(await response.arrayBuffer());
-      if (whole.length > maxBytes) throw new FileBytesError('too_large', 'The file is too large');
+      let whole = new Uint8Array(await response.arrayBuffer());
+      if (truncateAt !== undefined) whole = whole.slice(0, truncateAt);
+      else if (whole.length > maxBytes)
+        throw new FileBytesError('too_large', 'The file is too large');
       onProgress?.(whole.length, whole.length);
       await confirmed();
       return whole;
@@ -132,9 +145,14 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
     if (total !== null) target = new Uint8Array(total);
     const reader = response.body.getReader();
     for (;;) {
-      const { done, value } = await reader.read();
+      const { done, value: whole } = await reader.read();
       if (done) break;
-      if (loaded + value.length > maxBytes) {
+      let value = whole;
+      let last = false;
+      if (truncateAt !== undefined && loaded + value.length >= truncateAt) {
+        value = value.subarray(0, truncateAt - loaded);
+        last = true;
+      } else if (loaded + value.length > maxBytes) {
         await reader.cancel().catch(() => undefined);
         throw new FileBytesError('too_large', 'The file is too large');
       }
@@ -149,6 +167,10 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
       }
       loaded += value.length;
       onProgress?.(loaded, total);
+      if (last) {
+        await reader.cancel().catch(() => undefined);
+        break;
+      }
     }
   } catch (error) {
     if (error instanceof FileBytesError) throw error;

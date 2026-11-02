@@ -498,3 +498,29 @@ A store build or a build from `npm run build` does not.
 - Open audio and video files and check playback in each browser.
 - Open a text file with markup and check that the markup stays visible as text.
 - Open a Word file and check the Download and Open in Canvas card.
+- Open an SVG image and check that it shows as a picture.
+  Right-click it and check that the menu offers no "Open image in new tab".
+- Open a very large photo, over 16 million pixels or over 16,384 px on a side, and check that the pane says it is too large and keeps Download and Open in Canvas.
+- Open a long text file (several MB) and check that the pane shows "Shown in part" at once, without a long wait.
+- Open a large video (over 20 MB), switch to another tab for a moment, and switch back.
+  Expect: the video loads again, with a progress bar.
+- On the assignment page of an assignment where you handed in a file, right-click the file link in the Submission section and choose "Inspect".
+  Write down the full opening tag of the link: its `href`, its `class` and whether it has a `download` attribute.
+  Write down the tags that contain it, up to `#right-side`.
+  Expect: `div.details > div.content > div > a` with `?download=:file`, as decision 25 says.
+- On the same page, click that file link.
+  Expect: the file opens in the pane.
+- If the teacher's description has a download button for a file (a "Download" link with a `download` attribute), click it.
+  Expect: the browser saves the file, and the pane does not open it.
+- Open the submission details page of the same assignment.
+  Find the list of your submitted files.
+  Use "Inspect" to see if it is in the frame `#preview_frame`, and write down the link tag as above.
+  Click a file in the list.
+  Expect: the pane opens the file.
+  If the list is in a frame and the click saves or opens the file in Canvas instead, write down that the page script does not enter the frame.
+- Add a comment with an attachment as the teacher (or use a graded assignment with one), and open the assignment page and the submission details page as the student.
+  Inspect the comment attachment link and write down its tag, its `href` and whether it has a `download` attribute.
+  Click it.
+  Write down what happens: the pane opens it, the card shows "Couldn't load this file", or the browser saves it.
+- Turn the File viewer setting off, reload the assignment page, and click a submission file, a teacher download button and a comment attachment.
+  Expect: each link does what Canvas does without the extension, and a download is a download.

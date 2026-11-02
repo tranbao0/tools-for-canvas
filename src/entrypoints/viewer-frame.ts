@@ -54,12 +54,13 @@ export default defineUnlistedScript(() => {
             : null,
       };
     },
-    readFile: (url, onProgress, signal) =>
+    readFile: (url, onProgress, signal, options) =>
       fetchFileBytes({
         origin: canvasOrigin,
         url,
         onProgress,
         signal,
+        ...(options?.truncateAt === undefined ? {} : { truncateAt: options.truncateAt }),
         // The background says whether the cookie is confirmed for the student of the cache.
         confirm: async () =>
           (await browser.runtime.sendMessage({ type: 'viewer:fetch-allowed' })) === true,

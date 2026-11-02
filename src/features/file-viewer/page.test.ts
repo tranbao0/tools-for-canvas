@@ -210,6 +210,42 @@ describe('the page script', () => {
     await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
   });
 
+  it('lets the browser act on a click that came while the viewer was switching off', async () => {
+    prepare();
+    document.body.innerHTML = '<a id="file" href="/files/5" target="_blank">Notes</a>';
+    let release: () => void = () => undefined;
+    const slow = new Promise<void>((resolve) => (release = resolve));
+    sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'weekrow:page-context') {
+        await slow;
+        return { tools: { fileViewer: false, fileViewerWidth: 480 }, settings: {} };
+      }
+      return reply(message);
+    });
+    const seen: { trusted: boolean; prevented: boolean }[] = [];
+    document.getElementById('file')!.addEventListener('click', (event) => {
+      seen.push({ trusted: Boolean(event.isTrusted), prevented: event.defaultPrevented });
+    });
+    const assign = vi.fn();
+    vi.spyOn(window.location, 'assign').mockImplementation(assign);
+    const started = startViewer();
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    Object.defineProperty(event, 'isTrusted', { value: true });
+    document.getElementById('file')!.dispatchEvent(event);
+    // The script takes the click at first, because it does not know the setting yet.
+    expect(event.defaultPrevented).toBe(true);
+    expect(seen).toEqual([]);
+    release();
+    await started;
+    // Then it clicks the same link again. That click is not trusted, so the script ignores it, and
+    // the browser runs the link as it is, such as a new tab, a normal navigation or a download.
+    await vi.waitFor(() => expect(seen).toEqual([{ trusted: false, prevented: false }]));
+    expect(assign).not.toHaveBeenCalled();
+    expect(sessionRequests()).toBe(0);
+    expect(document.getElementById('tools-file-viewer')).toBeNull();
+    vi.restoreAllMocks();
+  });
+
   it('writes the tabs with the token of the last read', async () => {
     prepare();
     sendMessage.mockImplementation(async (message: { type: string }) =>
