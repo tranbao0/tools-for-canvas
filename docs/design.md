@@ -1061,7 +1061,8 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   Any other answer (no cookie, an unreadable store, or a cookie that no check confirmed) abandons the queue: the writes that Canvas has not confirmed go, and a forced round syncs the list.
   A read mark also keeps the user check before its request, because its reply has no user.
   The reply of an override write names its user.
-  When it names another user than the student of the write, the owner writes the flags from before back to that override (best effort, and a failure is only logged), and then drops the cache of the first student.
+  When it names another user than the student of the write, the owner writes the old flags back to that override (best effort, and a failure is only logged), and then drops the cache of the first student.
+  An override that this write created goes back to not done and not skipped, because the other student had none before.
 - A read that finds that `cookies.get` fails is the same as a check that fails: the reply is `cant_load` with Retry, and Retry reads the cookie again.
   `cant_load` always shows the Retry button.
 - A Canvas page load of the saved origin reads the cookie, and the owner wakes the open surfaces when the cookie is gone or not confirmed.

@@ -318,6 +318,8 @@ function blocksLoads(failure: Failure | null): boolean {
   return failure !== null;
 }
 
+const NO_FLAGS: OverrideFlags = { markedComplete: false, dismissed: false };
+
 function previousFlags(item: Item): OverrideFlags {
   return item.override === null
     ? { markedComplete: false, dismissed: false }
@@ -1625,9 +1627,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           : await createOrRecoverOverride(api, patch.target, flags, stamp.userId);
       if (saved.user_id !== stamp.userId) {
         // Another student signed in after the check. The flags went into the wrong account, so
-        // they go back, before the cache of the first student goes.
+        // they go back, before the cache of the first student goes. A POST made the override,
+        // so the other student had none before it.
         await api
-          .updateOverride(saved.id, previous)
+          .updateOverride(saved.id, patch.override.id === '' ? NO_FLAGS : previous)
           .catch((error: unknown) => deps.log('write', error));
         return userChanged(stamp);
       }
