@@ -92,4 +92,27 @@ describe('viewer reads', () => {
     await expect(h.owner.viewerRead(ORIGIN, TAB, read)).rejects.toThrow();
     expect(read).toHaveBeenCalledOnce();
   });
+
+  it('names the student of the cache, and only under the rules', async () => {
+    const h = await loaded();
+    await expect(h.owner.viewerUserId(ORIGIN, TAB)).resolves.toBe(h.canvas.scenario.profile.id);
+    await expect(h.owner.viewerUserId(ORIGIN, undefined)).resolves.toBeNull();
+    vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
+    await expect(h.owner.viewerUserId(ORIGIN, TAB)).resolves.toBeNull();
+  });
+
+  it('tells the viewer to clear its tabs on a sign-out and for another student', async () => {
+    const h = await loaded();
+    const cleared = vi.fn();
+    h.deps.onUserDataCleared = cleared;
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
+    await expect(h.owner.viewerMayFetch(ORIGIN, TAB)).resolves.toBe(false);
+    expect(cleared).toHaveBeenCalled();
+    const second = await loaded();
+    const other = vi.fn();
+    second.deps.onUserDataCleared = other;
+    signInOtherUser(second);
+    await expect(second.owner.viewerMayFetch(ORIGIN, TAB)).resolves.toBe(false);
+    expect(other).toHaveBeenCalled();
+  });
 });

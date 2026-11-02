@@ -64,11 +64,20 @@ describe('width', () => {
 });
 
 describe('plain clicks', () => {
-  const event = { button: 0, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false };
+  const event = {
+    isTrusted: true,
+    button: 0,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    metaKey: false,
+  };
   it('accepts a left click', () => expect(plainClick(event)).toBe(true));
   for (const key of ['ctrlKey', 'shiftKey', 'altKey', 'metaKey']) {
     it(key, () => expect(plainClick({ ...event, [key]: true })).toBe(false));
   }
+  it('rejects a click that a script made', () =>
+    expect(plainClick({ ...event, isTrusted: false })).toBe(false));
   it('rejects a middle click', () => expect(plainClick({ ...event, button: 1 })).toBe(false));
 });
 describe('closing a tab', () => {

@@ -23,8 +23,9 @@ function browserLanguage(): string | null {
 }
 
 /** The dependencies of the data owner in the background. */
-function backgroundDataDeps(): DataOwnerDeps {
+function backgroundDataDeps(extra: Pick<DataOwnerDeps, 'onUserDataCleared'>): DataOwnerDeps {
   return {
+    ...extra,
     createApi: (origin) => createCanvasClient({ origin, getCsrfToken: csrfFromCookiesApi(origin) }),
     hasAccess,
     sessionFingerprint,
@@ -49,8 +50,10 @@ function backgroundDataDeps(): DataOwnerDeps {
   };
 }
 
-export function createBackgroundDataOwner(): DataOwner {
-  return createDataOwner(backgroundDataDeps());
+export function createBackgroundDataOwner(
+  extra: Pick<DataOwnerDeps, 'onUserDataCleared'> = {},
+): DataOwner {
+  return createDataOwner(backgroundDataDeps(extra));
 }
 
 /**

@@ -419,7 +419,12 @@ async function main() {
     );
     // The frame sits in a closed shadow root, which only the driver can open.
     const frame = await driver.wait(async () => {
-      await driver.executeScript('document.querySelector("a").click();');
+      // A real click: the page script ignores a click that a script of the page makes.
+      await driver
+        .actions()
+        .move({ origin: await driver.findElement(By.css('a')) })
+        .click()
+        .perform();
       const hosts = await driver.findElements(By.css('#tools-file-viewer'));
       if (hosts.length === 0) return null;
       const shadow = await hosts[0].getShadowRoot();

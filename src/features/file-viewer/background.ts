@@ -27,6 +27,8 @@ export interface ViewerHost {
   ): Promise<T>;
   /** Whether the pane of a tab may fetch the bytes of a file now. */
   mayFetch(origin: string, tabId: number | undefined): Promise<boolean>;
+  /** The id of the student of the cache under the cookie rules, or `null` when they refuse. */
+  userId(origin: string, tabId: number | undefined): Promise<string | null>;
   get(key: string): Promise<unknown>;
   set(key: string, value: unknown): Promise<void>;
   permission(origin: string): Promise<boolean>;
@@ -34,6 +36,14 @@ export interface ViewerHost {
 
 /** The session storage key of the secret of one browser tab. A closed tab clears it. */
 export const sessionKey = (tabId: number) => `viewer:session:${tabId}`;
+const SESSION_PREFIX = 'viewer:session:';
+
+/** The tabs of the pane of a browser tab, with the student that opened them. */
+function storedUser(value: unknown): string | null {
+  const id =
+    typeof value === 'object' && value !== null ? (value as { userId?: unknown }).userId : null;
+  return typeof id === 'string' ? id : null;
+}
 
 export function createViewerOwner(host: ViewerHost, tabId: number | undefined) {
   return {
@@ -132,21 +142,31 @@ export function routeViewerMessage(
       }
       default: {
         if (tabId === undefined) throw new Error('A browser tab is required');
+        // The tabs belong to the student of the cache. The cookie rules must confirm that student
+        // first, and tabs of another student read as none.
+        const userId = await host.userId(origin, tabId);
+        if (userId === null) throw new Error('The cookie is not confirmed for the viewer');
         const key = `viewer:${origin}:${tabId}`;
-        if (request['type'] === 'viewer:tabs-get') return normalizeTabs(await host.get(key));
-        await host.set(key, normalizeTabs(request['tabs']));
+        if (request['type'] === 'viewer:tabs-get') {
+          const stored = await host.get(key);
+          return storedUser(stored) === userId ? normalizeTabs(stored) : normalizeTabs(null);
+        }
+        await host.set(key, { ...normalizeTabs(request['tabs']), userId });
         return { ok: true };
       }
     }
   })();
 }
 
-export function wireViewerRouter(owner: Pick<DataOwner, 'viewerRead' | 'viewerMayFetch'>): void {
+export function wireViewerRouter(
+  owner: Pick<DataOwner, 'viewerRead' | 'viewerMayFetch' | 'viewerUserId'>,
+): void {
   const host: ViewerHost = {
     savedOrigin: () => canvasOriginItem.getValue(),
     isExtensionPage: browserRouterHost.isExtensionPage,
     read: (origin, tabId, read) => owner.viewerRead(origin, tabId, read),
     mayFetch: (origin, tabId) => owner.viewerMayFetch(origin, tabId),
+    userId: (origin, tabId) => owner.viewerUserId(origin, tabId),
     get: async (key) => (await browser.storage.session.get(key))[key],
     set: (key, value) => browser.storage.session.set({ [key]: value }),
     // File redirects can use hosts selected by Canvas, so check the full file host grant.
@@ -174,4 +194,13 @@ export function wireViewerRouter(owner: Pick<DataOwner, 'viewerRead' | 'viewerMa
       )
       .catch((error: unknown) => logFailure('viewer tab cleanup', error));
   });
+}
+
+/** Removes the tabs that the viewer keeps for every browser tab. The pane secrets stay. */
+export async function clearViewerTabs(): Promise<void> {
+  const values = await browser.storage.session.get(null);
+  const keys = Object.keys(values).filter(
+    (key) => key.startsWith('viewer:') && !key.startsWith(SESSION_PREFIX),
+  );
+  if (keys.length > 0) await browser.storage.session.remove(keys);
 }

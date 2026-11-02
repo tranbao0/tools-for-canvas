@@ -1,4 +1,4 @@
-import { wireViewerRouter } from '@/features/file-viewer/background';
+import { clearViewerTabs, wireViewerRouter } from '@/features/file-viewer/background';
 import {
   createBackgroundDataOwner,
   wireDataTriggers,
@@ -24,7 +24,11 @@ export default defineBackground(() => {
   const registry = createPanelRegistry();
   wireActionClick({ registry });
   wireInstall();
-  const owner = createBackgroundDataOwner();
+  const owner = createBackgroundDataOwner({
+    onUserDataCleared: () => {
+      clearViewerTabs().catch((error: unknown) => logFailure('viewer tabs', error));
+    },
+  });
   wireDataRouter(owner);
   wireViewerRouter(owner);
   wireDataTriggers(owner);
