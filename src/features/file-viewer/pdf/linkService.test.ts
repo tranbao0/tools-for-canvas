@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
-import { PdfLinkService, safeExternalUrl } from './linkService';
+import { PdfLinkService, makeInternalLinksInert, safeExternalUrl } from './linkService';
 import type { PdfDocument } from './types';
 
 describe('safeExternalUrl', () => {
@@ -138,5 +138,41 @@ describe('PdfLinkService', () => {
     expect(service.eventBus).toBeUndefined();
     expect(await service.getAttachmentContent()).toBeNull();
     expect(() => service.executeSetOCGState()).not.toThrow();
+  });
+});
+
+describe('makeInternalLinksInert', () => {
+  function layer() {
+    const root = document.createElement('div');
+    root.innerHTML =
+      '<section><a href="#"></a></section><section><a href="https://example.com/x" target="_blank"></a></section>';
+    const [internal, external] = root.querySelectorAll('a') as unknown as HTMLAnchorElement[];
+    return { root, internal: internal!, external: external! };
+  }
+
+  it('takes the address from an internal link, so a middle click has nothing to open', () => {
+    const { root, internal, external } = layer();
+    makeInternalLinksInert(root);
+    expect(internal.hasAttribute('href')).toBe(false);
+    expect(internal.getAttribute('role')).toBe('link');
+    expect(internal.tabIndex).toBe(0);
+    expect(external.getAttribute('href')).toBe('https://example.com/x');
+    expect(external.hasAttribute('role')).toBe(false);
+  });
+
+  it('keeps the click and the Enter key working', () => {
+    const { root, internal } = layer();
+    const clicked = vi.fn();
+    internal.onclick = () => {
+      clicked();
+      return false;
+    };
+    makeInternalLinksInert(root);
+    internal.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+    expect(clicked).toHaveBeenCalledTimes(1);
+    internal.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    expect(clicked).toHaveBeenCalledTimes(1);
+    internal.click();
+    expect(clicked).toHaveBeenCalledTimes(2);
   });
 });

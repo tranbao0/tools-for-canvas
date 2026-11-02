@@ -112,6 +112,39 @@ describe('pdf tabs', () => {
     expect((await bar()).getAttribute('data-indeterminate')).toBe('true');
   });
 
+  it('shows a slim line and icon buttons for a PDF, not the card', async () => {
+    const { open } = setup();
+    await open('1');
+    await waitFor(() => expect(document.querySelector('[data-part="pdf-name"]')).toBeTruthy());
+    expect(document.querySelector('[data-part="card"]')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Notes.pdf' })).toBeNull();
+    expect(document.querySelector('[data-part="pdf-name"]')?.textContent).toBe('Notes.pdf');
+    expect(document.querySelector('[data-part="pdf-meta"]')?.textContent).toBe('PDF · 265 KB');
+    const download = screen.getByRole('link', { name: 'Download' }) as HTMLAnchorElement;
+    const canvas = screen.getByRole('link', { name: 'Open in Canvas' }) as HTMLAnchorElement;
+    expect(download.href).toBe(`${ORIGIN}/files/1/download`);
+    expect(canvas.href).toBe(`${ORIGIN}/courses/7/files/1`);
+    for (const link of [download, canvas]) {
+      expect(link.title).toBe(link.getAttribute('aria-label'));
+      expect(link.target).toBe('_blank');
+      expect(link.rel).toContain('noopener');
+      expect(link.textContent).toBe('');
+    }
+  });
+
+  it('keeps the card while the record loads and when it fails', async () => {
+    let release: (file: PaneFile | undefined) => void = () => undefined;
+    const { open, host } = setup({
+      loadFile: vi.fn(() => new Promise<PaneFile | undefined>((resolve) => (release = resolve))),
+    });
+    await open('1');
+    await waitFor(() => expect(host.loadFile).toHaveBeenCalledOnce());
+    await waitFor(() => expect(document.querySelector('[data-part="card-loading"]')).toBeTruthy());
+    await act(async () => release(undefined));
+    await screen.findByText("Couldn't load this file");
+    expect(document.querySelector('[data-part="pdf-info"]')).toBeNull();
+  });
+
   it('reads no file over 100 MB, and the card stays', async () => {
     const { open, host } = setup({
       loadFile: vi.fn(async () => ({ ...PDF, size: 150 * MB })),
@@ -173,7 +206,7 @@ describe('pdf tabs', () => {
     expect(host.readFile).toHaveBeenCalledOnce();
   });
 
-  it('shows the error with Retry when the read fails, and the card stays', async () => {
+  it('shows the error with Retry when the read fails, and the slim line stays', async () => {
     let fail = true;
     const { open, host } = setup({
       readFile: vi.fn(async () => {
@@ -183,7 +216,7 @@ describe('pdf tabs', () => {
     });
     await open('1');
     await screen.findByText("Couldn't load this PDF");
-    expect(screen.getByRole('heading', { name: 'Notes.pdf' })).toBeTruthy();
+    expect(document.querySelector('[data-part="pdf-name"]')?.textContent).toBe('Notes.pdf');
     expect(screen.queryByRole('button', { name: 'Allow access' })).toBeNull();
     // The pane checks the permission after the failure.
     expect(vi.mocked(host.hasAccess).mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -230,6 +263,22 @@ describe('pdf tabs', () => {
     });
     await waitFor(() => expect(host.readFile).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Allow access' })).toBeNull());
+  });
+
+  it('shows Open in Canvas, with Retry, when the sign-in is not confirmed', async () => {
+    const { open, host } = setup({
+      readFile: vi.fn(async () => {
+        throw new FileBytesError('unconfirmed', 'The sign-in is not confirmed');
+      }),
+    });
+    await open('1');
+    await screen.findByText("Canvas can't confirm your sign-in for this file. Use Open in Canvas.");
+    const text = document.querySelector<HTMLAnchorElement>('[data-part="open-in-canvas-text"]');
+    expect(text?.href).toBe(`${ORIGIN}/courses/7/files/1`);
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    // The permission is fine, so the failure does not ask for it again.
+    expect(host.hasAccess).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: 'Allow access' })).toBeNull();
   });
 
   it('shows a message and no Retry when PDF.js cannot load', async () => {

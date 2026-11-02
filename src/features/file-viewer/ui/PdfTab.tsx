@@ -8,7 +8,10 @@ import { FileBytesError } from '../../../shared/canvas/fileBytes';
 import { t } from '../../../shared/ui/i18n';
 import { PdfViewer, type PdfFailure, type PdfSource } from '../pdf/PdfViewer';
 import type { PdfjsLib } from '../pdf/types';
+import type { PaneFile } from './FileCard';
 import { formatSize } from './fileInfo';
+import type { FileLinks } from './links';
+import { PdfInfoLine } from './PdfHeader';
 
 /** What a PDF tab needs from the extension. */
 export interface PdfHost {
@@ -25,7 +28,7 @@ export interface PdfHost {
 type Phase =
   | { kind: 'reading'; loaded: number; total: number | null }
   | { kind: 'viewer'; lib: PdfjsLib; source: PdfSource }
-  | { kind: 'error'; failure: PdfFailure | 'read' | 'large' };
+  | { kind: 'error'; failure: PdfFailure | 'read' | 'large' | 'unconfirmed' };
 
 /** The part of the bytes read, from 0 to 1, or `null` when the length is not known. */
 export function progressFraction(loaded: number, total: number | null): number | null {
@@ -64,8 +67,10 @@ function Progress(props: { loaded: number; total: number | null }) {
   );
 }
 
-function failureText(failure: PdfFailure | 'read' | 'large'): string {
+function failureText(failure: PdfFailure | 'read' | 'large' | 'unconfirmed'): string {
   switch (failure) {
+    case 'unconfirmed':
+      return t('pdfUnconfirmed');
     case 'password':
       return t('pdfPassword');
     case 'invalid':
@@ -81,6 +86,12 @@ function failureText(failure: PdfFailure | 'read' | 'large'): string {
 export function PdfTab(props: {
   /** The address of the bytes, on the saved Canvas. */
   url: string;
+  /** The record of the file, for the slim line above the toolbar. */
+  file: PaneFile;
+  links: FileLinks | null;
+  /** False while the browser withholds access to the Canvas address. */
+  access: boolean;
+  onAllow(): void;
   host: PdfHost;
   active: boolean;
   /** Changes when the tab must read the file again. */
@@ -122,6 +133,11 @@ export function PdfTab(props: {
           setPhase({ kind: 'error', failure: 'large' });
           return;
         }
+        if (error instanceof FileBytesError && error.kind === 'unconfirmed') {
+          // The background has not confirmed the sign-in for this student. The permission is fine.
+          setPhase({ kind: 'error', failure: 'unconfirmed' });
+          return;
+        }
         setPhase({ kind: 'error', failure: 'read' });
         onReadFailed.current();
         return;
@@ -143,14 +159,31 @@ export function PdfTab(props: {
 
   return (
     <div class="pv-tab" hidden={!props.active} data-part="pdf-tab">
+      <PdfInfoLine
+        file={props.file}
+        links={props.links}
+        access={props.access}
+        onAllow={props.onAllow}
+      />
       {phase.kind === 'reading' && begin && <Progress loaded={phase.loaded} total={phase.total} />}
       {phase.kind === 'error' && (
         <div class="pv-error" data-part="pdf-error" role="alert">
           <p>{failureText(phase.failure)}</p>
-          {phase.failure === 'read' && (
+          {(phase.failure === 'read' || phase.failure === 'unconfirmed') && (
             <button type="button" class="wr-btn" onClick={props.onRetry}>
               {t('fileRetry')}
             </button>
+          )}
+          {phase.failure === 'unconfirmed' && props.links && (
+            <a
+              class="wr-btn"
+              href={props.links.canvas}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-part="open-in-canvas-text"
+            >
+              {t('fileOpenInCanvas')}
+            </a>
           )}
         </div>
       )}
