@@ -54,6 +54,11 @@ for (const width of [1920, 1280]) {
       await shoot(card, `card-announcements-${tag}`);
 
       await list.getByRole('button', { name: LAB_ROOM, exact: true }).click();
+      await expect(list.getByRole('button', { name: LAB_ROOM, exact: true })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      );
+      await expect(list.locator('.wr-ann-body')).toBeVisible();
       await expect(list.locator('.wr-ann-body')).toContainText('Science Hall 214');
       await shoot(card, `card-announcements-open-${tag}`);
 

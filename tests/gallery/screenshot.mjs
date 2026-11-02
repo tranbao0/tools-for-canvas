@@ -71,6 +71,9 @@ try {
     );
     for (const name of names) {
       if (onlyScenes.length > 0 && !onlyScenes.includes(name)) continue;
+      console.log(`Capturing ${name} (${theme})`);
+      // Keep the capture document limited to one scene, including its scroll height.
+      await page.goto(`${baseUrl}?theme=${theme}&scene=${encodeURIComponent(name)}`);
       const scene = page.locator(`[data-scene="${name}"][data-done]`);
       await scene.waitFor();
       await page.evaluate('document.fonts.ready.then(() => true)');
