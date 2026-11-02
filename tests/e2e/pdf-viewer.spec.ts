@@ -5,10 +5,12 @@
  * link and an internal link on page 1).
  */
 import { readFileSync } from 'node:fs';
-import type { FrameLocator, Locator, Page } from '@playwright/test';
+import type { Frame, Locator, Page } from '@playwright/test';
 import type { FakeCanvasRoute } from './support/fake-canvas';
 import { startFileHost, TRUST_TEST_CERTIFICATE, type FileHost } from './support/file-host';
 import {
+  FILE_NAME,
+  FILE_META,
   NOTES,
   courseHomeHtml,
   openCoursePage,
@@ -87,9 +89,9 @@ function routes(host: FileHost, target = '/inst-fs/fixture.pdf'): FakeCanvasRout
 }
 
 const VIEWER = '[data-part="pdf-viewer"]';
-const pageBox = (frame: FrameLocator, number: number): Locator =>
+const pageBox = (frame: Frame, number: number): Locator =>
   frame.locator(`.pv-page[data-page="${number}"]`);
-const pageInput = (frame: FrameLocator): Locator => frame.locator('[data-part="pdf-page-input"]');
+const pageInput = (frame: Frame): Locator => frame.locator('[data-part="pdf-page-input"]');
 
 /** Counts the pixels of a canvas that are not blank white. */
 async function inkOf(canvas: Locator): Promise<number> {
@@ -119,7 +121,7 @@ async function openPdf(
 ) {
   await openCoursePage(context, page, background, html, routes(host, target));
   await openFirstFile(page, 'Read notes');
-  const frame = pane(page);
+  const frame = await pane(page);
   await expect(frame.locator(VIEWER)).toBeVisible();
   await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
   return frame;
@@ -136,7 +138,7 @@ test('a click opens the pane, page 1 has pixels, and the document has 3 pages', 
   await expect(frame.locator('[data-part="pdf-page-count"]')).toHaveText('of 3');
   await expect(pageInput(frame)).toHaveValue('1');
   // The card stays above the viewer.
-  await expect(frame.locator('[data-part="card-name"]')).toHaveText('Course notes.pdf');
+  await expect(frame.locator(FILE_NAME)).toHaveText('Course notes.pdf');
   // The bytes came through the redirect, with the token of the redirect target.
   expect(fileHost.requests).toEqual(['/inst-fs/fixture.pdf?token=abc']);
   // The canvas is sharp: its pixel width follows the device pixel ratio.
@@ -226,7 +228,7 @@ test('zoom clicks in a row leave every page at the last zoom, with its text and 
       }),
     )
     .toBeLessThan(2);
-  await expect(box.locator('.annotationLayer a[href]')).toHaveCount(2);
+  await expect(box.locator('.annotationLayer a')).toHaveCount(2);
   await expect(box.locator('.textLayer span').first()).toBeAttached();
 });
 
@@ -400,6 +402,30 @@ test('links: the external link opens a new tab safely, the internal link scrolls
   await expect(pageInput(frame)).toHaveValue('2');
 });
 
+test('links: an internal link has no address, so a middle click opens nothing', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost);
+  const internal = pageBox(frame, 1).locator('.annotationLayer a:not([href^="http"])');
+  await expect(internal).toHaveCount(1);
+  await expect(internal).not.toHaveAttribute('href', /.*/);
+  await expect(internal).toHaveAttribute('role', 'link');
+  await expect(internal).toHaveAttribute('tabindex', '0');
+  let opened = 0;
+  context.on('page', () => (opened += 1));
+  await internal.click({ button: 'middle' });
+  await page.waitForTimeout(500);
+  expect(opened).toBe(0);
+  await expect(pageInput(frame)).toHaveValue('1');
+  // The keyboard still follows the link.
+  await internal.focus();
+  await page.keyboard.press('Enter');
+  await expect(pageInput(frame)).toHaveValue('2');
+});
+
 test('a PDF tab keeps its document and position while another tab is active', async ({
   context,
   page,
@@ -448,7 +474,7 @@ test('the progress bar shows the part read, and it is indeterminate without Cont
 }) => {
   await openCoursePage(context, page, background, html, routes(fileHost, '/inst-fs/slow.pdf'));
   await openFirstFile(page, 'Read notes');
-  const frame = pane(page);
+  const frame = await pane(page);
   const bar = frame.locator('[data-part="pdf-progress"]');
   await expect(bar).toHaveAttribute('data-indeterminate', 'false');
   await expect(bar).toHaveAttribute('aria-valuenow', /^(\d|[1-9]\d|100)$/);
@@ -464,7 +490,7 @@ test('with no Content-Length the progress bar is indeterminate', async ({
 }) => {
   await openCoursePage(context, page, background, html, routes(fileHost, '/inst-fs/chunked.pdf'));
   await openFirstFile(page, 'Read notes');
-  const frame = pane(page);
+  const frame = await pane(page);
   const bar = frame.locator('[data-part="pdf-progress"]');
   await expect(bar).toBeVisible();
   await expect(bar).toHaveAttribute('data-indeterminate', 'true');
@@ -480,8 +506,8 @@ test('a file over 100 MB shows the card only', async ({ context, page, backgroun
     ...routes(fileHost),
   ]);
   await openFirstFile(page, 'Read notes');
-  const frame = pane(page);
-  await expect(frame.locator('[data-part="card-meta"]')).toHaveText('PDF · 150 MB');
+  const frame = await pane(page);
+  await expect(frame.locator(FILE_META)).toHaveText('PDF · 150 MB');
   await expect(frame.getByRole('link', { name: 'Download' })).toBeVisible();
   await expect(frame.getByRole('link', { name: 'Open in Canvas' })).toBeVisible();
   await page.waitForTimeout(500);
@@ -507,9 +533,9 @@ test('a failed read keeps the card, and Retry reads the file again', async ({
     },
   ]);
   await openFirstFile(page, 'Read notes');
-  const frame = pane(page);
+  const frame = await pane(page);
   await expect(frame.getByText("Couldn't load this PDF")).toBeVisible();
-  await expect(frame.locator('[data-part="card-name"]')).toHaveText('Course notes.pdf');
+  await expect(frame.locator(FILE_NAME)).toHaveText('Course notes.pdf');
   await expect(frame.getByRole('button', { name: 'Allow access' })).toHaveCount(0);
   failing = false;
   await frame.getByRole('button', { name: 'Retry' }).click();
@@ -540,7 +566,7 @@ test('a failed read with a withheld permission shows Allow access, which reads t
     api.permissions.contains = () => Promise.resolve(false);
   });
   await openFirstFile(page, 'Read notes');
-  const frame = pane(page);
+  const frame = await pane(page);
   const allow = frame.getByRole('button', { name: 'Allow access' });
   await expect(allow).toBeVisible();
   await expect(frame.getByText("Couldn't load this PDF")).toBeVisible();
@@ -576,7 +602,7 @@ test('the toolbar and the page area follow the pane theme, and the pages stay wh
   await saveSetting(background, { theme: 'dark' });
   await page.reload();
   await openFirstFile(page, 'Read notes');
-  const frame = pane(page);
+  const frame = await pane(page);
   await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
   const colors = await frame.locator(VIEWER).evaluate((root) => {
     const style = (selector: string) => getComputedStyle(root.querySelector(selector)!);
@@ -621,8 +647,16 @@ for (const width of [1920, 1280]) {
           document.documentElement.style.background = '#1b1b1b';
         });
       });
-      const frame = pane(page);
+      const frame = await pane(page);
       await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+      // The slim line and the toolbar replace the 150 px card, so the pages start high.
+      const scroll = (await frame.locator('[data-part="pdf-scroll"]').boundingBox())!;
+      test.info().annotations.push({
+        type: 'pages area',
+        description: `top ${Math.round(scroll.y)} px, height ${Math.round(scroll.height)} px of 1080`,
+      });
+      expect(scroll.y).toBeLessThan(200);
+      expect(scroll.height).toBeGreaterThan(880);
       await frame.getByRole('button', { name: 'Thumbnails' }).click();
       // The thumbnails in view of the list draw; the last ones may lie below it.
       await expect(frame.locator('.pv-thumb-slot[data-drawn="true"]').nth(3)).toBeVisible();

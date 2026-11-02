@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import type { BrowserContext, FrameLocator, Page, Worker } from '@playwright/test';
+import type { BrowserContext, Frame, Page, Worker } from '@playwright/test';
 import type { FakeCanvasRoute } from './fake-canvas';
 import { expect, serveScenario } from './weekrow';
 import { saveAddress, type StorageArea } from './scenario-api';
@@ -62,10 +62,57 @@ export const SYLLABUS = {
   context_id: '101',
 };
 
-export const PANE = 'iframe[title="File viewer"]';
+/** The name and the type line of the visible file: the card, or the slim line of a PDF. */
+export const FILE_NAME = '[data-part="card-name"]:visible, [data-part="pdf-name"]:visible';
+export const FILE_META = '[data-part="card-meta"]:visible, [data-part="pdf-meta"]:visible';
 
-export function pane(page: Page): FrameLocator {
-  return page.frameLocator(PANE);
+/** The title of the pane frame. */
+export const PANE_TITLE = 'File viewer';
+
+/**
+ * The frame of the file pane. The frame sits in a closed shadow root, which no selector reaches,
+ * so this finds it among the frames of the page by its address and its title. A frame that a
+ * test makes itself has no such title.
+ */
+export async function pane(page: Page): Promise<Frame> {
+  let found: Frame | undefined;
+  await expect
+    .poll(
+      async () => {
+        for (const frame of page.frames()) {
+          if (!frame.url().endsWith('/viewer.html')) continue;
+          const element = await frame.frameElement().catch(() => null);
+          if (element && (await element.getAttribute('title').catch(() => null)) === PANE_TITLE) {
+            found = frame;
+            return true;
+          }
+        }
+        return false;
+      },
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+  return found!;
+}
+
+/** The box of the pane host, which lies in the light DOM of the page. */
+async function paneBox(page: Page) {
+  const box = await page.locator('#tools-file-viewer').boundingBox();
+  if (!box) throw new Error('The pane is not open');
+  return box;
+}
+
+/** Clicks the close button of the pane frame, which sits in the closed shadow root. */
+export async function closePane(page: Page): Promise<void> {
+  const box = await paneBox(page);
+  // The header is 56 px high, and the 38 px button ends 12 px from the right edge.
+  await page.mouse.click(box.x + box.width - 12 - 19, 28);
+}
+
+/** Focuses the resize handle on the left edge of the pane. */
+export async function focusPaneHandle(page: Page): Promise<void> {
+  const box = await paneBox(page);
+  await page.mouse.click(box.x + 2, box.y + box.height / 2);
 }
 
 /** Serves a Canvas with the three files and opens the course page. */

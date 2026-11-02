@@ -2258,7 +2258,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - The page shrinks to make room, the same as with a browser side panel, so nothing in Canvas is hidden.
      The pane exists only while the student has a file open.
    - A handle on its left edge resizes it, from 360 px to 70 percent of the window, and the width is saved.
-   - The pane uses a fixed host and a shadow root, with an extension iframe inside.
+   - The pane uses a fixed host and a closed shadow root, with an extension iframe inside.
+     A script of the Canvas page cannot reach the frame element, and `window.frames` does not list a frame in a shadow root.
    - Only the `html` element receives right padding equal to the pane width.
      Closing restores its exact inline value and priority.
    - The pane has a close button, and Escape closes it when focus is inside.
@@ -2301,6 +2302,10 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - Files larger than 100 MB show the card instead, with "Download" and "Open in Canvas".
      The pane checks the size of the file record before it fetches.
      It also stops the read when `Content-Length` or the bytes read pass 100 MB, because a header can be wrong.
+   - Before the pane fetches the bytes, it asks the background with `viewer:fetch-allowed` whether the sign-in cookie is confirmed for the student of the cache (decision 11).
+     It asks again after the read and drops the bytes when the answer changed.
+     When the answer is no, the pane shows "Canvas can't confirm your sign-in for this file" with "Retry" and "Open in Canvas".
+     This failure does not ask for the host permission again.
    - A PDF uses the same `url` that the card uses for "Download": the `url` of the record when it is on the saved Canvas, and `/files/:id/download` otherwise.
      The pane page fetches it with the student's session and follows the redirect, through `src/shared/canvas/fileBytes.ts`.
    - While the bytes load, a progress bar shows the part read, from `Content-Length`.
@@ -2314,20 +2319,28 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      Then the pane checks the permission again and loads the active card and every card that failed.
      The button shows also when a file does not load, because a withheld permission makes the first fetch fail.
 6. **Settings.** A "File viewer" switch in the tools settings, on by default.
-7. **The card of a file.**
-   - The card of the active tab shows an icon, the file name, and a line with the type and the size, such as "PDF · 265 KB".
+7. **The card of a file, and the header of a PDF.**
+   - The card of the active tab shows an icon, the file name, and a line with the type and the size, such as "Word document · 265 KB".
      The size uses units of 1024 bytes.
+   - A tab that shows a PDF has no card.
+     Its header is one slim line above the toolbar, about 36 px high, with the icon, the file name, the type and the size, such as "PDF · 265 KB".
+     A long name ends with an ellipsis, and the tooltip shows the whole name.
+     "Download" and "Open in Canvas" are ghost icon buttons at the end of that line.
+     Each has an accessible label and a tooltip.
+     At 1080 px of window height, the pages start at about 190 px and have about 890 px, where the card left about 735 px.
+   - The card stays when the record is loading, when it did not load, when the file is over 100 MB, and for every type that is not a PDF.
    - "Download" links to the `url` of the file record, and "Open in Canvas" links to `/courses/:id/files/:id`, or to `/files/:id` when no course is known.
      The course is the one in the link that the student clicked, then the one in the file record.
      A `url` that is empty, or that does not belong to the saved Canvas, is replaced by `/files/:id/download`.
-     Both links open in a new tab with `noopener`.
+     Both links open in a new tab with `noopener`, on the card and in the slim line.
    - The region with `data-part="viewer-body"` below the card is where the viewers of item 4 draw.
    - While the record loads, the card shows light bars in the divider color.
    - When the record does not load, the card shows "Couldn't load this file" with "Retry" and "Open in Canvas", and the tab shows "Unavailable file".
+   - "Allow access" shows in the slim line of a PDF, and on the card for every other tab.
 8. **The theme of the pane.**
    - The pane follows the Theme setting (decision 19).
      With Automatic, it follows the Canvas page, as the in-page list does, and never the system, because the pane is part of the page.
-   - The page script resolves the theme and sets it on the pane frame, and it sends it to the pane page as a `theme` message over the channel, with each handshake and each new file.
+   - The page script resolves the theme and sets it on the pane frame, and it sends it to the pane page as a `theme` message over the channel, once the pane proved the secret and with each new file.
      It also sends the theme again when the background says that a setting changed, so an open pane follows the Theme setting at once.
      The pane page sets `data-theme` on its root element and shows nothing until the first message arrives.
    - The header, the border and the close button of the frame use the same theme.
@@ -2361,6 +2374,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      An external link opens in a new tab with `rel="noopener noreferrer"`, and only `http` and `https` addresses open.
      An internal destination, named or explicit, scrolls to its page.
      The named actions Next, Previous, First and Last page work too.
+     PDF.js gives an internal link `href="#"`, and a middle click on it would open the pane page in a new tab.
+     The viewer removes that address after it renders the layer and gives the link `role="link"` and `tabindex="0"`, so a middle click does nothing, and Enter still follows the link.
    - **Toolbar** above the pages, as ghost icon buttons of Instructure UI:
      - a toggle for the page thumbnails;
      - Previous page, the page number input with "of N", and Next page;
@@ -2418,13 +2433,47 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
 
 - The pane page is in `web_accessible_resources` with `matches: ["https://*/*"]`, and `use_dynamic_url: true` on Chromium.
   `check-manifest` allows exactly this one page.
-- The page script and the pane talk through a `MessageChannel` set up with a random nonce.
-  The pane accepts only two messages from the page: `open-file`, with a file id and an optional course id, and `theme`, with the value `light` or `dark`.
-  It never accepts a path or a full URL to load, and it drops a message with another key or value.
-- The pane sends `viewer-hello` to the saved Canvas origin before the page transfers a port.
-  The page checks the source window and nonce, then sends the port only to `event.origin`.
-  Chromium can load `use_dynamic_url` pages under an origin different from the address returned by `getURL`.
-  Each frame reload repeats the handshake.
+- **The channel.**
+  The page script and the pane talk through a `MessageChannel`.
+  A script in the main world of the Canvas page shares the `Window` of the page script.
+  It can read every `postMessage` event of that window and post to the window of the pane.
+  So the address and the window messages carry no secret, and the pane trusts a port only after the secret proves it.
+  - The page script asks the background for a session with `viewer:session` each time it opens the pane, before it adds the frame.
+    The background accepts this only from the top frame of the saved Canvas.
+    It makes a random 256 bit secret, and keeps it in session storage under the id of the browser tab.
+    The key ends with the tab id, so closing the tab removes it.
+  - The pane page asks for the session with the same message.
+    The background reads the tab id from the sender, which is the browser tab that holds the frame.
+    It answers only a frame of `viewer.html` inside a tab, never a tab of its own, and only when a session exists for that tab.
+    The pane gets the same secret.
+  - The frame address is `viewer.html` with no hash and no query.
+  - The pane sends `viewer-hello` to the saved Canvas origin once it has the secret.
+    The hello holds nothing but its type.
+    The page script takes it only from its own frame and only when `event.origin` is an extension origin (`chrome-extension:` or `moz-extension:`).
+    A frame that a script of the page navigated to a web page has a web origin, and gets no port.
+    Chromium can load `use_dynamic_url` pages under an origin different from the address returned by `getURL`, so the page script sends the port to `event.origin`, not to a fixed address.
+  - The page script transfers one port and sends the secret as the first message on it.
+    The pane never sends first on a port that it received.
+    It checks the first message, and a message that is not `secret` with the right value closes the port.
+    Only then it answers with `ready` and the secret, and the page script drops the port unless the answer has the secret.
+    The page script sends the theme and the active file only after that answer.
+  - The pane keeps listening for ports until one proves the secret.
+    A script of the Canvas page can send a port too, and it must not block the port of the page script.
+  - Each frame reload repeats the hello, and each open of the pane makes a new secret.
+  - After the proof, the pane accepts only two messages from the page: `open-file`, with a file id and an optional course id, and `theme`, with the value `light` or `dark`.
+    It never accepts a path or a full URL to load, and it drops a message with another key or value.
+  - The pane frame sits in a closed shadow root, and `window.frames` does not list it.
+  - A script of the page that makes its own `viewer.html` frame gets the secret from the background too, because it has the same tab id.
+    It still gets no port, because the page script sends a port only to its own frame.
+    Chromium also refuses the frame of a web page to this page.
+    Such a frame can ask the background for the same data as the page itself could fetch with the session of the student, and for the list of file ids that are open in the tab.
+- **The cookie rules (decision 11).**
+  `viewer:file` and `viewer:module-item` pass the tab id of the sender to the data owner.
+  The owner refuses unless the tab uses the cookie store of the requests, the address is the saved Canvas, and a check confirmed the sign-in cookie for the student of the cache.
+  It reads the cookie before the request and again before the reply, and it drops the reply when the cookie changed, so a reply never crosses students.
+  A sender without a tab is refused.
+  On a profile that has no cache yet, the first list load must finish before a file opens.
+  A file that is clicked earlier shows "Couldn't load this file", and "Retry" works after the list has loaded.
 - The pane fetches only `/api/v1/files/:id` and the `url` that it returns, plus the redirect that Canvas chooses.
   The record goes through the existing fetch wrapper (decision 20), and the bytes of a file through `src/shared/canvas/fileBytes.ts`, which keeps the same start rule.
   An answer with the type `text/html`, such as a sign-in page, is a failed read.
@@ -2459,7 +2508,7 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
 - PDF.js, its worker and its decoders count toward the 1.5 MB limit of `viewer.html`.
   `check-size` adds the files of `pdfjs/` to that page, because a scan of the code cannot see an address that the page builds at run time.
   It follows the bare script name in the page (`src="viewer-frame.js"`), so the script counts too.
-- The sizes after gzip are about 31 KB for `viewer-frame.js` and about 0.7 MB for `viewer.html`, the same in all three browsers.
+- The sizes after gzip are about 32 KB for `viewer-frame.js` and about 0.7 MB for `viewer.html`, the same in all three browsers.
 
 **Implementation status:**
 
@@ -2468,13 +2517,16 @@ The background routes and settings are implemented.
 The pane frame and its close button are implemented.
 The pane page is a Preact app with the tab strip, the file card, the access button, the states and the theme (items 2, 5, 7 and 8).
 The pane checks cover modified clicks, the off switch, Escape, reload and rejected channel messages.
+The channel checks cover a script that makes its own pane frame, a script that answers the hello with its own port, and a frame that a script navigated to a web page.
+The viewer reads follow the cookie rules of the data owner.
+The PDF header is the slim line of item 7, and internal links of a PDF have no address.
 The pane checks also cover the tab keys, closing tabs, reopening an open file, the card, the withheld permission and the theme.
 The store build smoke test checks the pane in Firefox.
 The layout checks use the course fixture at 1920 and 1280 px in light and dark, with three tabs.
 The PDF viewer of items 4, 5 and 9 is implemented, with its fetch, progress bar, toolbar, search, thumbnails, keys, links and per-tab document.
 The viewers for images, audio, video and text, the student's own submission files, and saving the page and the zoom are not implemented yet.
 The pane page uses the font stack of the list stylesheet, and Lato shows only where the system has it, because an extension page cannot use the web font of the Canvas page.
-The channel checks the saved Canvas origin, the parent window, the nonce and one transferred port before it accepts file identities.
+The channel checks the saved Canvas origin, the parent window, one transferred port and the secret before it accepts file identities.
 
 **Build order:**
 
