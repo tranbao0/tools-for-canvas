@@ -4,7 +4,7 @@
  * destroys the document when it unmounts, which is when its tab closes.
  */
 import { browser } from 'wxt/browser';
-import { validPosition, type ViewerPosition } from '../positions';
+import { parsePositionReply, validPosition } from '../positions';
 import type { TargetedKeyboardEvent } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../../../shared/ui/i18n';
@@ -96,31 +96,44 @@ export function PdfViewer(props: {
     let opened: PdfEngine | undefined;
     const abort = new AbortController();
     let restored = false;
+    // The reply of the read carries the token that every save must send. Without a reply, nothing
+    // saves.
+    let token = '';
     let timer: ReturnType<typeof setTimeout> | undefined;
     let previous = '';
+    const send = () => {
+      timer = undefined;
+      if (!opened) return;
+      const { page, zoom } = opened.state;
+      void browser.runtime
+        .sendMessage({
+          type: 'viewer:position-set',
+          fileId: props.fileId,
+          page,
+          zoom: zoom.kind === 'scale' ? zoom.value : zoom.kind,
+          token,
+        })
+        .catch(() => undefined);
+    };
     const save = () => {
-      if (!restored || !opened) return;
+      if (!restored || token === '') return;
       clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (cancelled || !opened) return;
-        const { page, zoom } = opened.state;
-        void browser.runtime
-          .sendMessage({
-            type: 'viewer:position-set',
-            fileId: props.fileId,
-            page,
-            zoom: zoom.kind === 'scale' ? zoom.value : zoom.kind,
-          })
-          .catch(() => undefined);
-      }, 1000);
+      timer = setTimeout(send, 1000);
+    };
+    // A save that waits for the idle time goes out at once when the pane closes or the tab ends.
+    const flush = () => {
+      if (timer === undefined) return;
+      clearTimeout(timer);
+      send();
     };
     container.addEventListener('scroll', save, { passive: true });
+    window.addEventListener('pagehide', flush);
     const saved = browser.runtime
       .sendMessage({
         type: 'viewer:position-get',
         fileId: props.fileId,
       })
-      .catch(() => null) as Promise<ViewerPosition | null>;
+      .then(parsePositionReply, () => null);
     PdfEngine.open({
       lib: props.lib,
       bytes,
@@ -143,8 +156,10 @@ export function PdfViewer(props: {
           return;
         }
         opened = created;
-        const position = await saved;
+        const reply = await saved;
         if (cancelled) return;
+        token = reply?.token ?? '';
+        const position = reply?.position;
         if (position && validPosition(position.page, position.zoom)) {
           created.setZoom(
             typeof position.zoom === 'number'
@@ -163,9 +178,10 @@ export function PdfViewer(props: {
       },
     );
     return () => {
+      flush();
       cancelled = true;
-      clearTimeout(timer);
       container.removeEventListener('scroll', save);
+      window.removeEventListener('pagehide', flush);
       abort.abort();
       opened?.destroy();
     };

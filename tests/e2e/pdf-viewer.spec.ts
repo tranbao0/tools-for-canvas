@@ -19,7 +19,9 @@ import {
   pane,
   saveSetting,
 } from './support/file-viewer';
+import { json } from './support/scenario-api';
 import { expect, test as base } from './support/weekrow';
+import { SCENARIO_NOW, buildScenario } from '../fixtures/scenario';
 import {
   FAX_BOX,
   FIXTURE_LINK,
@@ -730,4 +732,181 @@ test('saved page and zoom return after reload', async ({ context, page, backgrou
   frame = await pane(page);
   await expect(pageInput(frame)).toHaveValue('3');
   await expect(frame.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
+});
+
+/** The saved positions in the storage of the extension. */
+function savedPositions(background: Parameters<typeof openCoursePage>[2]) {
+  return background.evaluate(async () => {
+    const stored = await (
+      globalThis as unknown as { chrome: typeof browser }
+    ).chrome.storage.local.get('viewerPositions');
+    return (stored['viewerPositions'] ?? {}) as Record<string, { page: number; zoom: unknown }>;
+  });
+}
+
+/** Goes to page 3 at 150 percent and waits until the position is saved. */
+async function saveThirdPageAtZoom(frame: Frame, background: Parameters<typeof openCoursePage>[2]) {
+  await pageInput(frame).fill('3');
+  await pageInput(frame).press('Enter');
+  await frame.getByRole('button', { name: 'Zoom level' }).click();
+  await frame.getByRole('menuitemradio', { name: '150%' }).click();
+  await expect
+    .poll(async () =>
+      Object.values(await savedPositions(background)).some(
+        (value) => value.page === 3 && value.zoom === 1.5,
+      ),
+    )
+    .toBe(true);
+}
+
+const OTHER_STUDENT = '987654';
+
+/** A Canvas whose signed-in student is the one that `who()` names, and a way to sign in another. */
+function studentCanvas() {
+  const scenario = buildScenario(SCENARIO_NOW);
+  let signedIn = scenario.self.id;
+  const routesOfStudent: FakeCanvasRoute[] = [
+    {
+      path: '/api/v1/users/self/profile',
+      respond: () => ({ body: json({ ...scenario.profile, id: signedIn }) }),
+    },
+    {
+      path: '/api/v1/users/self',
+      respond: () => ({ body: json({ ...scenario.self, id: signedIn }) }),
+    },
+  ];
+  return {
+    first: scenario.self.id,
+    routes: routesOfStudent,
+    /** Signs in the other student: the cookie changes and Canvas names the other student. */
+    async switchStudent(context: Parameters<typeof openCoursePage>[0], origin: string) {
+      signedIn = OTHER_STUDENT;
+      await context.addCookies([
+        { name: 'canvas_session', value: 'student-b', url: origin, secure: true, sameSite: 'Lax' },
+      ]);
+    },
+  };
+}
+
+const studentOf = (key: string): unknown => (JSON.parse(key) as unknown[])[1];
+
+test('a saved position does not open for another student', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const student = studentCanvas();
+  const canvas = await openCoursePage(context, page, background, html, [
+    ...student.routes,
+    ...routes(fileHost),
+  ]);
+  await openFirstFile(page, 'Read notes');
+  let frame = await pane(page);
+  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await saveThirdPageAtZoom(frame, background);
+  const keys = Object.keys(await savedPositions(background));
+  expect(keys).toHaveLength(1);
+  expect(studentOf(keys[0]!)).toBe(student.first);
+
+  await student.switchStudent(context, canvas.origin);
+  await page.reload();
+  await openFirstFile(page, 'Read notes');
+  frame = await pane(page);
+  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await expect(pageInput(frame)).toHaveValue('1');
+  await expect(frame.locator('[data-part="pdf-zoom-text"]')).not.toHaveText('150%');
+  expect(
+    Object.keys(await savedPositions(background)).filter((key) => studentOf(key) === student.first),
+  ).toEqual([]);
+});
+
+test('a pane that stayed open cannot save its position for the next student', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const student = studentCanvas();
+  const canvas = await openCoursePage(context, page, background, html, [
+    ...student.routes,
+    ...routes(fileHost),
+  ]);
+  await openFirstFile(page, 'Read notes');
+  const frame = await pane(page);
+  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await saveThirdPageAtZoom(frame, background);
+  // The pane records the answer to each save, so the test waits for it and needs no sleep.
+  await frame.evaluate(() => {
+    const runtime = (globalThis as unknown as { chrome: typeof browser }).chrome.runtime;
+    const send = runtime.sendMessage.bind(runtime) as (message: unknown) => Promise<unknown>;
+    const replies: unknown[] = [];
+    (globalThis as unknown as { __saves: unknown[] }).__saves = replies;
+    (runtime as unknown as { sendMessage: unknown }).sendMessage = async (message: {
+      type?: string;
+    }) => {
+      const reply = await send(message);
+      if (message.type === 'viewer:position-set') replies.push(reply ?? null);
+      return reply;
+    };
+  });
+
+  // The other student signs in, in another tab. That tab opens a file, so the background
+  // confirms the other student.
+  await student.switchStudent(context, canvas.origin);
+  const other = await context.newPage();
+  await other.goto(page.url());
+  await openFirstFile(other, 'Read notes');
+  await expect(pageBox(await pane(other), 1).locator('canvas')).toBeVisible();
+
+  // The first tab still shows the first student's pane. A zoom change there saves after a second.
+  await frame.getByRole('button', { name: 'Zoom level' }).click();
+  await frame.getByRole('menuitemradio', { name: '200%' }).click();
+  await expect
+    .poll(() =>
+      frame.evaluate(() => (globalThis as unknown as { __saves: unknown[] }).__saves.length),
+    )
+    .toBeGreaterThan(0);
+  const stored = await savedPositions(background);
+  expect(Object.keys(stored).filter((key) => studentOf(key) === OTHER_STUDENT)).toEqual([]);
+  expect(Object.values(stored).filter((value) => value.zoom === 2)).toEqual([]);
+});
+
+test('a closed tab leaves its saved page and zoom for the next tab', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost);
+  await saveThirdPageAtZoom(frame, background);
+  const url = page.url();
+  await page.close();
+  const next = await context.newPage();
+  await next.goto(url);
+  await openFirstFile(next, 'Read notes');
+  const reopened = await pane(next);
+  await expect(pageInput(reopened)).toHaveValue('3');
+  await expect(reopened.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
+});
+
+test('a reload right after a move still saves the page and zoom', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost);
+  await pageInput(frame).fill('3');
+  await pageInput(frame).press('Enter');
+  await frame.getByRole('button', { name: 'Zoom level' }).click();
+  await frame.getByRole('menuitemradio', { name: '150%' }).click();
+  await expect(frame.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
+  await expect(pageInput(frame)).toHaveValue('3');
+  // The idle time of the save has not passed. The unload must send the position.
+  await page.reload();
+  await openFirstFile(page, 'Read notes');
+  const reopened = await pane(page);
+  await expect(pageInput(reopened)).toHaveValue('3');
+  await expect(reopened.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
 });
