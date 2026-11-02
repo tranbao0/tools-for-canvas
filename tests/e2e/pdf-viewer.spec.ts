@@ -214,17 +214,17 @@ test('zoom clicks in a row leave every page at the last zoom, with its text and 
     button.click();
   });
   const box = pageBox(frame, 1);
+  // The canvas is replaced when a draw ends, so one read of the page box takes the numbers.
   await expect
-    .poll(async () => {
-      const [pixels, css, ratio] = await box
-        .locator('canvas')
-        .evaluate((node: HTMLCanvasElement) => [
-          node.width,
-          node.parentElement!.getBoundingClientRect().width,
-          window.devicePixelRatio,
-        ]);
-      return Math.abs(pixels! - css! * ratio!);
-    })
+    .poll(() =>
+      box.evaluate((element: HTMLElement) => {
+        const canvas = element.querySelector('canvas');
+        if (!canvas) return Number.POSITIVE_INFINITY;
+        return Math.abs(
+          canvas.width - element.getBoundingClientRect().width * window.devicePixelRatio,
+        );
+      }),
+    )
     .toBeLessThan(2);
   await expect(box.locator('.annotationLayer a[href]')).toHaveCount(2);
   await expect(box.locator('.textLayer span').first()).toBeAttached();
