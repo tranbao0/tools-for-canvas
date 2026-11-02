@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { t } from '../../shared/ui/i18n';
 import { acceptPaneHello, isViewerSecret, secretMessage, validPaneReady } from './channel';
 import {
   courseOfLink,
@@ -168,6 +169,14 @@ export async function startViewer(): Promise<void> {
       section{box-sizing:border-box;height:100%;background:var(--bg);border-left:1px solid var(--edge);display:flex;flex-direction:column;font-family:Lato,Arial,sans-serif}
       iframe{border:0;width:100%;flex:1;min-height:0;background:transparent} .handle{position:absolute;left:-4px;top:0;width:8px;height:100%;cursor:ew-resize;touch-action:none}.handle:hover,.handle:focus-visible{background:var(--focus)} @media(max-width:899px){.handle{display:none}}
       </style><section aria-label="File viewer"><div class="handle" role="separator" aria-label="Resize file viewer" aria-orientation="vertical" tabindex="0"></div></section>`;
+    const earlyClose = document.createElement('button');
+    earlyClose.type = 'button';
+    earlyClose.textContent = '×';
+    earlyClose.setAttribute('aria-label', t('fileViewerClose'));
+    earlyClose.style.cssText =
+      'position:absolute;right:8px;top:4px;width:32px;height:32px;z-index:1;color:var(--text);background:var(--bg);border:0;cursor:pointer';
+    earlyClose.addEventListener('click', close);
+    root.querySelector('section')!.append(earlyClose);
     const frame = document.createElement('iframe');
     frame.title = 'File viewer';
     frame.src = browser.runtime.getURL('/viewer.html');
@@ -185,6 +194,7 @@ export async function startViewer(): Promise<void> {
       pending?.close();
       port?.close();
       port = undefined;
+      earlyClose.hidden = false;
       answerInTime();
       const channel = new MessageChannel();
       const candidate = channel.port1;
@@ -201,6 +211,7 @@ export async function startViewer(): Promise<void> {
           return;
         }
         port = candidate;
+        earlyClose.hidden = true;
         clearTimeout(handshake);
         applyTheme();
         void send();
@@ -315,12 +326,13 @@ export async function startViewer(): Promise<void> {
           location.assign(new URL(href, location.href));
           return;
         }
+        if (!paneOpen()) await show();
         const file =
           'fileId' in target
             ? target
             : ((await browser.runtime.sendMessage({ type: 'viewer:module-item', ...target })) as
                 { fileId: string } | undefined);
-        if (!file) return;
+        if (!file || !paneOpen()) return;
         const courseId =
           'courseId' in target ? target.courseId : courseOfLink(href, location.origin);
         if (courseId) courses.set(file.fileId, courseId);

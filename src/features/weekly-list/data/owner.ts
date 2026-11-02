@@ -2380,6 +2380,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     try {
       const self = await apiFor(stamp.origin).checkCacheUser();
       if (!isCurrent(stamp)) return false;
+      if (cache?.failure?.kind === 'stale' && cache.failure.check) {
+        cache = { ...cache, failure: null };
+        persist();
+        await bump();
+        if (!isCurrent(stamp)) return false;
+      }
       if (stamp.userId === null && fingerprint !== null) {
         viewerProof = { origin: stamp.origin, gen: generation, userId: self.id, fingerprint };
         return true;
@@ -2389,16 +2395,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         return false;
       }
       recordUserCheck(fingerprint);
-      if (cache?.failure?.kind === 'stale' && cache.failure.check) {
-        cache = { ...cache, failure: null };
-        persist();
-        await bump();
-      }
       return true;
     } catch (error) {
       if (!isCurrent(stamp)) return false;
       if (isCanvasError(error, 'unauthorized')) signOut({ kind: 'signed_out' });
-      else {
+      else if (stamp.userId !== null) {
         const failure = await failureFor(error, apiFor(stamp.origin), clock.now());
         if (isCurrent(stamp) && failure.kind === 'stale') await failCheck(failure);
       }
@@ -2500,6 +2501,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   async function viewerOrigin(
     origin: string | null,
     tabId: number | undefined,
+    allowColdCheck = false,
   ): Promise<string | null> {
     await ready();
     if (
@@ -2511,6 +2513,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       return null;
     if (cache?.session == null) {
       if (!(await viewerProofHolds(origin))) {
+        if (!allowColdCheck) return null;
         if (userCheck === null && !checkAllowed(false)) return null;
         if (!(await startUserCheck()) || !(await viewerProofHolds(origin))) return null;
       }
@@ -2537,7 +2540,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     tabId: number | undefined,
     read: (api: CanvasApi) => Promise<T>,
   ): Promise<T> {
-    const allowed = await viewerOrigin(origin, tabId);
+    const allowed = await viewerOrigin(origin, tabId, true);
     if (allowed === null) throw new Error('The cookie is not confirmed for the viewer');
     if (cache?.session == null) {
       const proof = viewerProof;
@@ -2943,7 +2946,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     const session = cache.session;
     if (session === null) {
-      if (blocksLoads(failure)) return { kind: 'cant_load', origin, offline, offer };
+      if (blocksLoads(failure) && !(failure?.kind === 'stale' && failure.check))
+        return { kind: 'cant_load', origin, offline, offer };
       // The first round loads the session. Every state request waits for it.
       if (!running && !anyPending()) schedule('full');
       return { kind: 'loading' };

@@ -59,11 +59,19 @@ test('file pane channel, module resolution, padding and page changes', async ({
   const navigation = page.waitForEvent('framenavigated', (frame) =>
     frame.url().includes('viewer.html'),
   );
-  await (await pane(page)).evaluate(() => location.reload());
+  await (
+    await pane(page)
+  ).evaluate(() => {
+    setTimeout(() => location.reload(), 0);
+  });
   await navigation;
   await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
-  await (await pane(page)).locator('body').click();
-  await page.keyboard.press('Escape');
+  await (await pane(page)).getByRole('button', { name: 'Close file viewer', exact: true }).focus();
+  await (
+    await pane(page)
+  )
+    .getByRole('button', { name: 'Close file viewer', exact: true })
+    .press('Escape', { noWaitAfter: true });
   await expect(host).toHaveCount(0);
   await page.getByText('Read notes').first().click();
   await expect(page.locator('html')).toHaveCSS('padding-right', '480px');
@@ -357,6 +365,49 @@ test('a fresh profile opens a file before any list load', async ({ context, page
     expect(
       canvas.requests.filter((request) => request.path.startsWith('/api/v1/planner/items')),
     ).toHaveLength(0);
+  } finally {
+    release();
+  }
+});
+
+test('cold startup makes no sign-in check and a click shows a loading pane', async ({
+  context,
+  page,
+  background,
+}) => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const { canvas } = await serveScenario(context, [
+    {
+      path: '/api/v1/users/self',
+      respond: async () => {
+        await gate;
+        return { status: 503 };
+      },
+    },
+    { path: '/courses/101/pages/notes', body: html, contentType: 'text/html' },
+  ]);
+  try {
+    await saveAddress(background, canvas.origin);
+    await page.goto(`${canvas.origin}/courses/101/pages/notes`);
+    await page.waitForTimeout(500);
+    expect(canvas.requests.filter((request) => request.path === '/api/v1/users/self')).toHaveLength(
+      0,
+    );
+    await page.getByText('Read notes', { exact: true }).click();
+    await expect(page.locator('#tools-file-viewer')).toBeVisible();
+    await expect(
+      (await pane(page)).getByRole('button', { name: 'Close file viewer', exact: true }),
+    ).toBeVisible();
+    await (
+      await pane(page)
+    )
+      .getByRole('button', { name: 'Close file viewer', exact: true })
+      .evaluate((button: HTMLElement) => button.click())
+      .catch(() => undefined);
+    await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
   } finally {
     release();
   }

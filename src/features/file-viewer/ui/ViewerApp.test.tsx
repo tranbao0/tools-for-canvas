@@ -73,6 +73,17 @@ describe('pane tabs', () => {
     expect(tabs()).toHaveLength(0);
   });
 
+  it('saves the first cold tab after its file check confirms the student', async () => {
+    const getTabs = vi
+      .fn<PaneHost['getTabs']>()
+      .mockRejectedValueOnce(new Error('The cookie is not confirmed'))
+      .mockResolvedValue({ ids: [], active: null });
+    const { open, host } = setup({ getTabs });
+    await open('1');
+    await waitFor(() => expect(host.setTabs).toHaveBeenCalledWith({ ids: ['1'], active: '1' }));
+    expect(getTabs).toHaveBeenCalledTimes(2);
+  });
+
   it('opens one tab for each file and activates an open file again', async () => {
     const { open, host } = setup();
     await open('1');

@@ -76,23 +76,6 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     );
   }, [host]);
 
-  const load = useCallback(
-    (fileId: string) => {
-      setFiles((all) => ({ ...all, [fileId]: { kind: 'loading' } }));
-      host
-        .loadFile(fileId)
-        .then(
-          (file): FileState => (file ? { kind: 'ready', file } : { kind: 'error' }),
-          (): FileState => ({ kind: 'error' }),
-        )
-        .then((state) => {
-          setFiles((all) => ({ ...all, [fileId]: state }));
-          refreshAccess();
-        });
-    },
-    [host, refreshAccess],
-  );
-
   // The pane owns the tabs once they are loaded. The writes go out in order.
   const loaded = useRef(false);
   const pending = useRef<Promise<unknown>>(Promise.resolve());
@@ -110,6 +93,32 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
       save(next);
     },
     [save],
+  );
+
+  const load = useCallback(
+    (fileId: string) => {
+      setFiles((all) => ({ ...all, [fileId]: { kind: 'loading' } }));
+      host
+        .loadFile(fileId)
+        .then(
+          (file): FileState => (file ? { kind: 'ready', file } : { kind: 'error' }),
+          (): FileState => ({ kind: 'error' }),
+        )
+        .then((state) => {
+          setFiles((all) => ({ ...all, [fileId]: state }));
+          refreshAccess();
+          if (state.kind === 'ready' && !loaded.current) {
+            void host.getTabs().then(
+              () => {
+                loaded.current = true;
+                save(tabsRef.current);
+              },
+              () => undefined,
+            );
+          }
+        });
+    },
+    [host, refreshAccess, save],
   );
 
   useEffect(refreshAccess, [refreshAccess]);
@@ -261,20 +270,18 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
       : null;
   return (
     <div class="fv-app">
-      {tabs.ids.length > 0 && (
-        <div class="fv-tab-row">
-          <TabStrip tabs={tabs} items={items} onActivate={activate} onClose={close} />
-          <button
-            type="button"
-            class="wr-icon-btn fv-pane-close"
-            aria-label="Close file viewer"
-            title="Close file viewer"
-            onClick={() => host.closePane()}
-          >
-            <CloseIcon />
-          </button>
-        </div>
-      )}
+      <div class="fv-tab-row">
+        <TabStrip tabs={tabs} items={items} onActivate={activate} onClose={close} />
+        <button
+          type="button"
+          class="wr-icon-btn fv-pane-close"
+          aria-label={t('fileViewerClose')}
+          title={t('fileViewerClose')}
+          onClick={() => host.closePane()}
+        >
+          <CloseIcon />
+        </button>
+      </div>
       <div
         class="fv-panel"
         id={PANEL_ID}
