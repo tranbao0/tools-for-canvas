@@ -5,7 +5,7 @@ import { FIXTURE_READY_SELECTOR } from '../../fixtures/pages';
 import { SCENARIO_NOW, buildScenario, type Scenario } from '../../fixtures/scenario';
 import { CanvasState } from './canvas-state';
 import { setBackgroundClock } from './clock';
-import { expect, test as base } from './extension';
+import { START_UP_FIXTURE_TIMEOUT_MS, expect, test as base } from './extension';
 import {
   serveFakeCanvas,
   type FakeCanvas,
@@ -32,7 +32,7 @@ export const test = base.extend<WeekrowFixtures>({
       await setBackgroundClock(serviceWorker, SCENARIO_NOW);
       await use(serviceWorker);
     },
-    { auto: true },
+    { auto: true, timeout: START_UP_FIXTURE_TIMEOUT_MS },
   ],
 });
 
