@@ -1321,3 +1321,15 @@ it('ends a hung cache check at ten seconds without an offline error', async () =
   await vi.advanceTimersByTimeAsync(1);
   expect(await result).toMatchObject({ kind: 'server', message: "Couldn't reach Canvas" });
 });
+
+it('reads viewer records through the Canvas request queue', async () => {
+  const seen = recordAll(() => ({ type: 'File', content_id: '7' }));
+  const client = testClient();
+  await client.getViewerFile('7');
+  await client.getViewerModuleItem('2', '3', '4');
+  expect(seen.map((request) => [request.method, request.path])).toEqual([
+    ['GET', '/api/v1/files/7'],
+    ['GET', '/api/v1/courses/2/modules/3/items/4'],
+  ]);
+  expect(() => client.getViewerFile('../other')).toThrow(CanvasError);
+});

@@ -178,3 +178,12 @@ The extension sends no request to Ko-fi and shares no data with it.
 
 Canvas is a trademark of Instructure, Inc.
 This independent project is not affiliated with or endorsed by Instructure.
+
+## File viewer
+
+The file viewer reads a file record with `GET /api/v1/files/:id` from your saved Canvas address.
+The record supplies the file name, content type, size, download address and course when known.
+The file viewer resolves a module item with `GET /api/v1/courses/:id/modules/:id/items/:id` to find its file id.
+The extension stores the open file ids in session storage for each browser tab.
+It removes them when the browser tab closes.
+The file viewer switch and pane width stay in local settings.

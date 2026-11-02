@@ -43,7 +43,9 @@ export function SettingsFields(props: {
   onToolsChange?(tools: ToolsSettings): void;
 }) {
   const { settings, courses } = props;
-  const [ids] = useState(() => newIds('set', ['span', 'courses', 'rings', 'theme', 'themeHelp']));
+  const [ids] = useState(() =>
+    newIds('set', ['span', 'courses', 'rings', 'theme', 'themeHelp', 'fileViewer']),
+  );
   const update = (patch: Partial<Settings>) => props.onChange({ ...settings, ...patch });
 
   return (
@@ -124,7 +126,27 @@ export function SettingsFields(props: {
       </div>
 
       {props.tools && props.onToolsChange && (
-        <FixesSettings tools={props.tools} level={props.level} onChange={props.onToolsChange} />
+        <>
+          <FixesSettings tools={props.tools} level={props.level} onChange={props.onToolsChange} />
+          <section class="wr-setting">
+            <Heading level={props.level} class="wr-setting-name">
+              File viewer
+            </Heading>
+            <p class="wr-setting-help">Open Canvas files in a pane beside the page.</p>
+            <ul class="wr-course-list">
+              <li>
+                <label for={ids['fileViewer']}>File viewer</label>
+                <Switch
+                  id={ids['fileViewer']!}
+                  checked={props.tools.fileViewer}
+                  onChange={(checked) =>
+                    props.onToolsChange?.({ ...props.tools!, fileViewer: checked })
+                  }
+                />
+              </li>
+            </ul>
+          </section>
+        </>
       )}
 
       {__FILE_CHECK__ && <DeveloperSection level={props.level} />}

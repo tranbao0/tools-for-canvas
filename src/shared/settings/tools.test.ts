@@ -8,6 +8,8 @@ import {
 } from './tools';
 
 const ALL_OFF: ToolsSettings = {
+  fileViewer: true,
+  fileViewerWidth: 480,
   dashboardFixes: {
     courseColors: false,
     announcementsInPlace: false,
@@ -57,6 +59,8 @@ describe('normalizeToolsSettings', () => {
     };
 
     expect(normalizeToolsSettings(stored)).toEqual({
+      fileViewer: true,
+      fileViewerWidth: 480,
       dashboardFixes: {
         courseColors: false,
         announcementsInPlace: true,
@@ -68,6 +72,8 @@ describe('normalizeToolsSettings', () => {
 
   it('takes the default for a missing field', () => {
     expect(normalizeToolsSettings({ dashboardFixes: { allCourseGrades: false } })).toEqual({
+      fileViewer: true,
+      fileViewerWidth: 480,
       dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, allCourseGrades: false },
     });
   });
@@ -96,6 +102,7 @@ describe('isToolsSettings', () => {
     expect(isToolsSettings(ALL_OFF)).toBe(true);
     expect(
       isToolsSettings({
+        ...DEFAULT_TOOLS_SETTINGS,
         dashboardFixes: { ...ALL_OFF.dashboardFixes, courseWorkExtras: true },
       }),
     ).toBe(true);
@@ -130,4 +137,16 @@ describe('isToolsSettings', () => {
   ])('rejects %s', (_name, value) => {
     expect(isToolsSettings(value)).toBe(false);
   });
+});
+
+it('normalizes the viewer switch and saved width', () => {
+  expect(normalizeToolsSettings({ fileViewer: false, fileViewerWidth: 100 })).toMatchObject({
+    fileViewer: false,
+    fileViewerWidth: 360,
+  });
+  expect(normalizeToolsSettings({ fileViewer: 'yes', fileViewerWidth: Infinity })).toMatchObject({
+    fileViewer: true,
+    fileViewerWidth: 480,
+  });
+  expect(normalizeToolsSettings({ fileViewerWidth: 9000 }).fileViewerWidth).toBe(1344);
 });

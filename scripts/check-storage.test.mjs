@@ -66,6 +66,7 @@ describe('check-storage', () => {
     const dir = await writeTree({
       'chrome-mv3/detector.js': 'chrome.runtime.sendMessage(m)',
       'chrome-mv3/inpage.js': 'localStorage.getItem(k);chrome.runtime.sendMessage(m)',
+      'chrome-mv3/viewer.js': 'void 0',
       'chrome-mv3/dashboard.js': 'chrome.runtime.sendMessage(m)',
     });
     const result = await runCheck(['--out-dir', dir, 'chrome-mv3']);
@@ -77,6 +78,7 @@ describe('check-storage', () => {
     const dir = await writeTree({
       'firefox-mv3/detector.js': 'chrome.runtime.sendMessage(m)',
       'firefox-mv3/inpage.js': 'z.storage.onChanged.addListener(t)',
+      'firefox-mv3/viewer.js': 'void 0',
       'firefox-mv3/dashboard.js': 'indexedDB.open("x")',
       'firefox-mv3/background.js': 'browser.storage.local.get(null)',
     });

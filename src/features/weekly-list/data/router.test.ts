@@ -141,6 +141,8 @@ describe('routeDataMessage', () => {
 
     it('save the switches of the tools for the saved Canvas', async () => {
       const tools = {
+        fileViewer: true,
+        fileViewerWidth: 480,
         dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
       };
       await routeDataMessage(owner, { type: 'weekrow:save-tools', tools }, CONTENT_SCRIPT, host);

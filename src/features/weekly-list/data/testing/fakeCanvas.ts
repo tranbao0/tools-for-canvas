@@ -208,6 +208,12 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
     guard?: RequestGuard,
   ): Omit<CanvasApi, 'origin' | 'withPriority' | 'withGuard'> {
     return {
+      getViewerFile: async () => {
+        throw new Error('No file fixture');
+      },
+      getViewerModuleItem: async () => {
+        throw new Error('No module fixture');
+      },
       getSelf: () => call('getSelf', [], () => scenario.self, priority, guard),
       checkCacheUser: () => call('getSelf', [], () => scenario.self, priority, guard),
       getProfile: () => call('getProfile', [], () => scenario.profile, priority, guard),

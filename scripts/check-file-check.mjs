@@ -43,7 +43,11 @@ export async function findCheckTraces(files, readText) {
     }
     if (file === 'manifest.json') {
       const manifest = JSON.parse(text);
-      if (manifest.web_accessible_resources !== undefined) {
+      if (
+        (manifest.web_accessible_resources ?? []).some((entry) =>
+          entry.resources.some((resource) => resource !== 'viewer.html'),
+        )
+      ) {
         problems.push('manifest.json has web_accessible_resources');
       }
     }

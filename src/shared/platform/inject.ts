@@ -5,6 +5,7 @@
  * detector into the tabs that were open before an install or an update, and the in-page list
  * into a Canvas page of the saved address only.
  */
+import { toolsSettingsItem } from '../settings/toolsItem';
 import { browser, type Browser } from 'wxt/browser';
 import { canAutoSaveOrigin, originMatchPattern, parseUrl } from './address';
 import { isCanvasDocument } from './detectCanvas';
@@ -52,7 +53,10 @@ export async function injectInpage(
   await browser.scripting.executeScript({
     target:
       documentId === undefined ? { tabId, frameIds: [0] } : { tabId, documentIds: [documentId] },
-    files: pageScripts(tab.url),
+    files: [
+      ...pageScripts(tab.url),
+      ...((await toolsSettingsItem.getValue()).fileViewer ? (['/viewer.js'] as const) : []),
+    ],
   });
 }
 

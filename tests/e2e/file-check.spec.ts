@@ -294,7 +294,9 @@ test.describe('the release build', () => {
         globalThis as unknown as { chrome: { runtime: { getManifest(): object } } }
       ).chrome.runtime.getManifest(),
     );
-    expect(manifest).not.toHaveProperty('web_accessible_resources');
+    expect((manifest as { web_accessible_resources?: unknown }).web_accessible_resources).toEqual([
+      { resources: ['viewer.html'], matches: ['https://*/*'], use_dynamic_url: true },
+    ]);
     for (const file of ['file-check.html', 'file-probe.html']) {
       const response = await page.goto(extensionUrl(file)).catch(() => null);
       expect(response === null || !response.ok()).toBe(true);

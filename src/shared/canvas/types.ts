@@ -282,6 +282,21 @@ export interface CanvasClientOptions {
  * The Canvas calls the extension makes. Every list call follows `Link: rel="next"` to the end.
  */
 export interface CanvasApi {
+  getViewerFile(
+    fileId: string,
+  ): Promise<{
+    display_name: string;
+    'content-type': string;
+    size: number;
+    url: string;
+    context_type?: string;
+    context_id?: string;
+  }>;
+  getViewerModuleItem(
+    courseId: string,
+    moduleId: string,
+    itemId: string,
+  ): Promise<{ type: string; content_id?: string }>;
   readonly origin: string;
   /**
    * The same calls on the same request queue, sent with another priority. The function is read

@@ -306,3 +306,27 @@ test('the Shown span setting saves from the in-page settings, and the panel and 
     panel.getByRole('heading', { level: 1, name: 'October 27 to November 9' }),
   ).toBeVisible();
 });
+
+test('the file viewer switch saves and the settings group is visible', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const { panel } = await openBoth(context, page, extensionUrl('sidepanel.html'));
+  await openSettingsInPlace(panel);
+  const toggle = panel.getByRole('switch', { name: 'File viewer', exact: true });
+  await expect(toggle).toBeChecked();
+  await expect(panel.getByText('Open Canvas files in a pane beside the page.')).toBeVisible();
+  await panel.screenshot({ path: 'screenshots/file-viewer-settings.png', fullPage: true });
+  await toggle.click();
+  await expect
+    .poll(() =>
+      background.evaluate(async () => {
+        const api = (globalThis as unknown as { chrome: { storage: { local: StorageArea } } })
+          .chrome;
+        return (await api.storage.local.get('toolsSettings'))['toolsSettings'];
+      }),
+    )
+    .toMatchObject({ fileViewer: false });
+});

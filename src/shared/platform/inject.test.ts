@@ -1,3 +1,5 @@
+import { toolsSettingsItem } from '../settings/toolsItem';
+import { DEFAULT_TOOLS_SETTINGS } from '../settings/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { isCanvasDocument } from './detectCanvas';
@@ -43,6 +45,14 @@ describe('the built files', () => {
 });
 
 describe('injectInpage', () => {
+  it('leaves the viewer script out when its switch is off', async () => {
+    await toolsSettingsItem.setValue({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+    await injectInpage(7, 'https://canvas.school.edu');
+    expect(scripting.executeScript).toHaveBeenCalledWith({
+      target: { tabId: 7, frameIds: [0] },
+      files: [INPAGE_FILE],
+    });
+  });
   const ORIGIN = 'https://canvas.school.edu';
 
   it('runs the in-page script in the top frame of the tab', async () => {
@@ -50,7 +60,7 @@ describe('injectInpage', () => {
 
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 7, frameIds: [0] },
-      files: [INPAGE_FILE],
+      files: [INPAGE_FILE, '/viewer.js'],
     });
   });
 
@@ -63,7 +73,7 @@ describe('injectInpage', () => {
 
       expect(scripting.executeScript).toHaveBeenCalledWith({
         target: { tabId: 7, frameIds: [0] },
-        files: [INPAGE_FILE, DASHBOARD_FILE],
+        files: [INPAGE_FILE, DASHBOARD_FILE, '/viewer.js'],
       });
     },
   );
@@ -77,7 +87,7 @@ describe('injectInpage', () => {
 
       expect(scripting.executeScript).toHaveBeenCalledWith({
         target: { tabId: 7, frameIds: [0] },
-        files: [INPAGE_FILE],
+        files: [INPAGE_FILE, '/viewer.js'],
       });
     },
   );
@@ -87,7 +97,7 @@ describe('injectInpage', () => {
 
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 7, documentIds: ['doc-1'] },
-      files: [INPAGE_FILE],
+      files: [INPAGE_FILE, '/viewer.js'],
     });
   });
 

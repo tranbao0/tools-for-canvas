@@ -1,3 +1,4 @@
+import { normalizeWidth } from '../../features/file-viewer/model';
 /**
  * The settings of the small tools, one switch for each fix. See docs/design.md, decisions 18
  * and 22.
@@ -23,6 +24,8 @@ export interface DashboardFixesSettings {
 }
 
 export interface ToolsSettings {
+  fileViewer: boolean;
+  fileViewerWidth: number;
   dashboardFixes: DashboardFixesSettings;
 }
 
@@ -34,6 +37,8 @@ export const DASHBOARD_FIX_KEYS = [
 ] as const satisfies readonly (keyof DashboardFixesSettings)[];
 
 export const DEFAULT_TOOLS_SETTINGS: ToolsSettings = {
+  fileViewer: true,
+  fileViewerWidth: normalizeWidth(undefined),
   dashboardFixes: {
     courseColors: true,
     announcementsInPlace: true,
@@ -57,7 +62,12 @@ export function normalizeToolsSettings(stored: unknown): ToolsSettings {
   for (const key of DASHBOARD_FIX_KEYS) {
     if (typeof group[key] === 'boolean') fixes[key] = group[key];
   }
-  return { dashboardFixes: fixes };
+  return {
+    fileViewer:
+      isRecord(stored) && typeof stored['fileViewer'] === 'boolean' ? stored['fileViewer'] : true,
+    fileViewerWidth: normalizeWidth(isRecord(stored) ? stored['fileViewerWidth'] : undefined),
+    dashboardFixes: fixes,
+  };
 }
 
 /** Whether the value has the exact shape of the tools settings, with every field valid. */

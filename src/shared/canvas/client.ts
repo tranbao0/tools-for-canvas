@@ -184,6 +184,11 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
     };
 
     return {
+      getViewerFile: (fileId) => getObject(`/api/v1/files/${pathId(fileId)}`),
+      getViewerModuleItem: (courseId, moduleId, itemId) =>
+        getObject(
+          `/api/v1/courses/${pathId(courseId)}/modules/${pathId(moduleId)}/items/${pathId(itemId)}`,
+        ),
       origin,
 
       withPriority: (next) => build(next, guard),

@@ -61,6 +61,8 @@ describe('FixesSettings', () => {
 
   it('reflects the value of each field', () => {
     setup({
+      fileViewer: true,
+      fileViewerWidth: 480,
       dashboardFixes: {
         courseColors: false,
         announcementsInPlace: true,
@@ -82,12 +84,16 @@ describe('FixesSettings', () => {
 
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith({
+      fileViewer: true,
+      fileViewerWidth: 480,
       dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, [key]: false },
     });
   });
 
   it.each(LABELS)('turns on %s alone when the other switches are off', (key, label) => {
     const allOff: ToolsSettings = {
+      fileViewer: true,
+      fileViewerWidth: 480,
       dashboardFixes: {
         courseColors: false,
         announcementsInPlace: false,
@@ -100,6 +106,8 @@ describe('FixesSettings', () => {
     fireEvent.click(switchOf(label));
 
     expect(onChange).toHaveBeenCalledWith({
+      fileViewer: true,
+      fileViewerWidth: 480,
       dashboardFixes: { ...allOff.dashboardFixes, [key]: true },
     });
   });

@@ -1,3 +1,4 @@
+import { wireViewerRouter } from '@/features/file-viewer/background';
 import {
   createBackgroundDataOwner,
   wireDataTriggers,
@@ -25,6 +26,7 @@ export default defineBackground(() => {
   wireInstall();
   const owner = createBackgroundDataOwner();
   wireDataRouter(owner);
+  wireViewerRouter();
   wireDataTriggers(owner);
   wirePageSync();
   // Only builds of the test channel include the file access check (docs/design.md, decision 23).

@@ -109,6 +109,8 @@ describe('startDashboardFixes', () => {
     const controller = await startDashboardFixes(options(channel));
     await vi.advanceTimersByTimeAsync(120);
     channel.setTools({
+      fileViewer: true,
+      fileViewerWidth: 480,
       dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseWorkExtras: false },
     });
     await vi.advanceTimersByTimeAsync(120);
