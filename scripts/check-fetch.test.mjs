@@ -1,13 +1,15 @@
 // Tests for the fetch check. Run with: npm run test:scripts
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { collectFetchCalls, findFetchCalls, isCheckedBundle } from './check-fetch.mjs';
+import { createHash } from 'node:crypto';
+import { loadVendorHashes } from './lib/vendor.mjs';
 
 const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'check-fetch.mjs');
 const run = promisify(execFile);
@@ -69,8 +71,12 @@ describe('check-fetch', () => {
     assert.deepEqual(findFetchCalls('let t=n(e);fetch(e.href,t)'), ['let t=n(e);fetch(']);
   });
 
-  test('checks every script and page except the background script', () => {
+  test('checks every script and page except the background script and the file pane script', () => {
     assert.equal(isCheckedBundle('background.js'), false);
+    assert.equal(isCheckedBundle('viewer-frame.js'), false);
+    assert.equal(isCheckedBundle('viewer.js'), true);
+    assert.equal(isCheckedBundle('dashboard.js'), true);
+    assert.equal(isCheckedBundle('viewer.html'), true);
     assert.equal(isCheckedBundle('content-scripts/canvas.js'), true);
     assert.equal(isCheckedBundle('chunks/hosts-Bo6xBhEJ.js'), true);
     assert.equal(isCheckedBundle('sidepanel.html'), true);
@@ -91,6 +97,24 @@ describe('check-fetch', () => {
       hits.map((hit) => hit.file),
       ['chunks/hosts-a1.js', 'welcome.html'],
     );
+  });
+
+  test('skips a pinned PDF.js file, and scans a changed copy of it', async () => {
+    const hashes = await loadVendorHashes();
+    assert.ok(hashes.has('pdfjs/pdf.min.mjs'));
+    assert.ok(hashes.has('pdfjs/pdf.worker.min.mjs'));
+    const real = await readFile(path.join('node_modules', 'pdfjs-dist', 'build', 'pdf.min.mjs'));
+    const pinned = createHash('sha256').update(real).digest('hex');
+    // The file in node_modules is the file that the pin names.
+    assert.equal(pinned, hashes.get('pdfjs/pdf.min.mjs'));
+    const clean = await writeTree({ 'pdfjs/pdf.min.mjs': real });
+    assert.deepEqual(await collectFetchCalls(clean), []);
+    const changed = await writeTree({
+      'pdfjs/pdf.min.mjs': Buffer.concat([real, Buffer.from(';fetch("https://evil.example")')]),
+    });
+    const hits = await collectFetchCalls(changed);
+    assert.ok(hits.length > 0);
+    assert.ok(hits.every((hit) => hit.file === 'pdfjs/pdf.min.mjs'));
   });
 
   test('the command passes when only the background calls fetch', async () => {
