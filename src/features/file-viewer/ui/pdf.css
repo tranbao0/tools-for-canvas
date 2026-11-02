@@ -624,3 +624,17 @@
     box-shadow: 0 4px 12px #0003;
   }
 }
+
+.pv-wide-control {
+  display: contents;
+}
+@media (min-width: 441px) {
+  .pv-overflow {
+    display: none;
+  }
+}
+@media (max-width: 440px) {
+  .pv-wide-control {
+    display: none;
+  }
+}

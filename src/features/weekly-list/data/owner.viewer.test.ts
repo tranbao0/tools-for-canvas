@@ -4,8 +4,11 @@
  * check confirmed for the student of the cache, and no reply when the cookie changes during the
  * read.
  */
+import { emptyCache, sessionCacheItem } from './cache';
+import { canvasError } from './testing/fakeCanvas';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  PANEL,
   ORIGIN,
   createHarness,
   loadReady,
@@ -30,6 +33,65 @@ async function loaded(): Promise<Harness> {
 }
 
 describe('viewer reads', () => {
+  it('does not check a cold profile for tab or byte requests', async () => {
+    const h = await createHarness();
+    await expect(h.owner.viewerUserId(ORIGIN, TAB)).resolves.toBeNull();
+    await expect(h.owner.viewerMayFetch(ORIGIN, TAB)).resolves.toBe(false);
+    expect(h.canvas.calls).toHaveLength(0);
+  });
+
+  it.each([
+    ['503', canvasError('server', 503)],
+    ['429', canvasError('rate_limited', 429)],
+    ['timeout', new Error('The sign-in check timed out')],
+  ])('keeps a failed cold viewer check out of the list after restart (%s)', async (_, error) => {
+    const h = await createHarness();
+    h.canvas.fail('getSelf', error);
+    await expect(h.owner.viewerRead(ORIGIN, TAB, async () => 'file')).rejects.toThrow();
+    await h.owner.settled();
+    const owner = h.restart();
+    expect((await owner.getState(PANEL)).kind).toBe('loading');
+    await owner.settled();
+    expect((await owner.getState(PANEL)).kind).toBe('ready');
+  });
+
+  it('refuses a cold tab in another cookie store without a check', async () => {
+    const h = await createHarness();
+    vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
+    await expect(h.owner.viewerRead(ORIGIN, TAB, async () => 'file')).rejects.toThrow();
+    expect(h.canvas.calls).toHaveLength(0);
+  });
+
+  it('limits failed cold checks to two per window', async () => {
+    const h = await createHarness();
+    h.canvas.fail('getSelf', new Error('server unavailable'), { times: 3 });
+    for (let i = 0; i < 3; i += 1) {
+      await expect(h.owner.viewerRead(ORIGIN, TAB, async () => 'file')).rejects.toThrow();
+    }
+    expect(h.canvas.calls.filter((call) => call.method === 'getSelf')).toHaveLength(2);
+  });
+
+  it('a good cold check clears a stored check failure', async () => {
+    const h = await createHarness();
+    await h.owner.viewerUserId(ORIGIN, TAB);
+    await h.owner.settled();
+    const stored = emptyCache(ORIGIN);
+    await sessionCacheItem.setValue({
+      ...stored!,
+      failure: {
+        kind: 'stale',
+        offline: false,
+        cause: 'unknown',
+        check: true,
+        at: Date.now() - 31_000,
+      },
+    });
+    const owner = h.restart();
+    await expect(owner.viewerRead(ORIGIN, TAB, async () => 'file')).resolves.toBe('file');
+    await owner.settled();
+    expect((await sessionCacheItem.getValue())?.failure).toBeNull();
+  });
+
   it('runs the read for a confirmed cookie in the request store, and returns its reply', async () => {
     const h = await loaded();
     const read = vi.fn(async () => 'record');

@@ -2404,6 +2404,7 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      - Previous page, the page number input with "of N", and Next page;
      - Zoom out, a zoom menu and Zoom in;
      - Search.
+     Below 441 px, Thumbnails, the zoom menu and Search move into More PDF controls.
    - **Page input.**
      The input takes a whole number.
      A number outside the document goes to the nearest page.

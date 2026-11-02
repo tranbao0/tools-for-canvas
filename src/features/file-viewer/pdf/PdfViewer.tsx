@@ -62,6 +62,14 @@ export function PdfViewer(props: {
   const scroller = useRef<HTMLDivElement>(null);
   const pages = useRef<HTMLDivElement>(null);
   const searchField = useRef<HTMLInputElement>(null);
+  const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 440px)').matches);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 440px)');
+    const update = () => setCompact(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
   const [engine, setEngine] = useState<PdfEngine | null>(null);
   const [state, setState] = useState<EngineState | null>(null);
   const [thumbnails, setThumbnails] = useState(false);
@@ -228,9 +236,41 @@ export function PdfViewer(props: {
           ? t('pdfSearchNone')
           : t('pdfSearchCount', String(search.current), String(search.total));
 
+  const thumbnailControl = (
+    <button
+      type="button"
+      class="pv-btn"
+      data-part="pdf-thumbs-toggle"
+      aria-label={t('pdfThumbnailsToggle')}
+      title={t('pdfThumbnailsToggle')}
+      aria-pressed={thumbnails}
+      disabled={!ready}
+      onClick={() => setThumbnails(!thumbnails)}
+    >
+      <ThumbnailsIcon />
+    </button>
+  );
+  const zoomControl = state && (
+    <ZoomMenu mode={state.zoom} scale={state.scale} onChoose={(mode) => engine?.setZoom(mode)} />
+  );
+  const searchControl = (
+    <button
+      type="button"
+      class="pv-btn"
+      data-part="pdf-search-toggle"
+      aria-label={t('pdfSearch')}
+      title={t('pdfSearch')}
+      aria-pressed={searchOpen}
+      disabled={!ready}
+      onClick={() => (searchOpen ? closeSearch() : openSearch())}
+    >
+      <SearchIcon />
+    </button>
+  );
   return (
     <div class="pv-root" data-part="pdf-viewer" hidden={!props.active}>
       <div class="pv-toolbar" role="group" aria-label={t('pdfToolbar')}>
+        {!compact && <span class="pv-wide-control">{thumbnailControl}</span>}
         <span class="pv-rule" aria-hidden="true" />
         <button
           type="button"
@@ -296,6 +336,7 @@ export function PdfViewer(props: {
           <ZoomOutIcon />
         </button>
 
+        {!compact && <span class="pv-wide-control">{zoomControl}</span>}
         <button
           type="button"
           class="pv-btn"
@@ -307,60 +348,35 @@ export function PdfViewer(props: {
         >
           <ZoomInIcon />
         </button>
+        {!compact && <span class="pv-wide-control">{searchControl}</span>}
         <span class="pv-spacer" />
-        <details
-          ref={overflow}
-          class="pv-overflow"
-          onKeyDown={(event) => {
-            if (
-              event.key === 'Escape' &&
-              event.currentTarget.open &&
-              window.matchMedia('(max-width: 440px)').matches
-            ) {
-              event.preventDefault();
-              event.stopPropagation();
-              event.currentTarget.open = false;
-              event.currentTarget.querySelector('summary')?.focus();
-            }
-          }}
-        >
-          <summary class="pv-btn" aria-label="More PDF controls" title="More PDF controls">
-            ...
-          </summary>
-          <div class="pv-secondary">
-            <button
-              type="button"
-              class="pv-btn"
-              data-part="pdf-thumbs-toggle"
-              aria-label={t('pdfThumbnailsToggle')}
-              title={t('pdfThumbnailsToggle')}
-              aria-pressed={thumbnails}
-              disabled={!ready}
-              onClick={() => setThumbnails(!thumbnails)}
-            >
-              <ThumbnailsIcon />
-            </button>
-            {state && (
-              <ZoomMenu
-                mode={state.zoom}
-                scale={state.scale}
-                onChoose={(mode) => engine?.setZoom(mode)}
-              />
-            )}{' '}
-            <button
-              type="button"
-              class="pv-btn"
-              data-part="pdf-search-toggle"
-              aria-label={t('pdfSearch')}
-              title={t('pdfSearch')}
-              aria-pressed={searchOpen}
-              disabled={!ready}
-              onClick={() => (searchOpen ? closeSearch() : openSearch())}
-            >
-              <SearchIcon />
-            </button>
-          </div>
-        </details>
+        {compact && (
+          <details
+            ref={overflow}
+            class="pv-overflow"
+            onKeyDown={(event) => {
+              if (
+                event.key === 'Escape' &&
+                event.currentTarget.open &&
+                window.matchMedia('(max-width: 440px)').matches
+              ) {
+                event.preventDefault();
+                event.stopPropagation();
+                event.currentTarget.open = false;
+                event.currentTarget.querySelector('summary')?.focus();
+              }
+            }}
+          >
+            <summary class="pv-btn" aria-label={t('pdfMoreControls')} title={t('pdfMoreControls')}>
+              ...
+            </summary>
+            <div class="pv-secondary">
+              {thumbnailControl}
+              {zoomControl}
+              {searchControl}
+            </div>
+          </details>
+        )}
       </div>
       {searchOpen && (
         <div class="pv-search" role="search">

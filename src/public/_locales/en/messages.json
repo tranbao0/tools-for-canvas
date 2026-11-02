@@ -931,5 +931,11 @@
   },
   "pdfPages": {
     "message": "PDF pages"
+  },
+  "fileViewerClose": {
+    "message": "Close file viewer"
+  },
+  "pdfMoreControls": {
+    "message": "More PDF controls"
   }
 }

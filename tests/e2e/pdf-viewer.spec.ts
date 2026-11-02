@@ -677,7 +677,23 @@ for (const width of [1920, 1280]) {
           await page.keyboard.press('Escape');
           await expect(more).toBeFocused();
           await expect(frame.locator('.pv-secondary')).toBeHidden();
-        } else await expect(more).toBeHidden();
+        } else {
+          await expect(more).toBeHidden();
+          const controls = [
+            frame.getByRole('button', { name: 'Thumbnails', exact: true }),
+            frame.getByRole('button', { name: 'Previous page', exact: true }),
+            frame.getByRole('button', { name: 'Zoom out', exact: true }),
+            frame.locator('.pv-wide-control .pv-menu-host'),
+            frame.getByRole('button', { name: 'Zoom in', exact: true }),
+            frame.getByRole('button', { name: 'Search', exact: true }),
+          ];
+          let right = 0;
+          for (const control of controls) {
+            const box = (await control.boundingBox())!;
+            expect(box.x).toBeGreaterThanOrEqual(right);
+            right = box.x + box.width;
+          }
+        }
         await expect(frame.locator('.pv-toolbar')).toHaveCSS('flex-wrap', 'nowrap');
         await page.screenshot({
           path: `screenshots/pdf-viewer-${width}-${paneWidth}-${scheme}.png`,
