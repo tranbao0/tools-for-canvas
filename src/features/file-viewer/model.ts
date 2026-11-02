@@ -40,7 +40,7 @@ export function fileTarget(href: string, origin: string, moduleId?: string): Fil
     download !== null &&
     !url.searchParams.has('comment_id') &&
     ID.test(download) &&
-    /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*\/submissions\/[1-9][0-9]*$/.test(
+    /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*\/(?:submissions\/[1-9][0-9]*|anonymous_submissions\/[A-Za-z0-9]+)$/.test(
       url.pathname,
     )
   )
@@ -132,7 +132,7 @@ export function catchesDownload(
 
 /** The submission details page, and the address of the frame in it that lists the files. */
 const SUBMISSION_PAGE =
-  /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*\/submissions\/[1-9][0-9]*\/?$/;
+  /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*\/(?:submissions\/[1-9][0-9]*|anonymous_submissions\/[A-Za-z0-9]+)\/?$/;
 export function isSubmissionPage(pagePath: string): boolean {
   return SUBMISSION_PAGE.test(pagePath);
 }

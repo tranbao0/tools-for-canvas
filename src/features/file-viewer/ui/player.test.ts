@@ -68,6 +68,7 @@ describe('submission attachment paths', () => {
     '/files/42/download?download_frd=1&verifier=secret',
     '/courses/12/files/42/download?verifier=secret',
     '/courses/12/assignments/3/submissions/7?download=42',
+    '/courses/12/assignments/3/anonymous_submissions/aB12z?download=42',
   ]) {
     it(`takes only the identity from ${href}`, () => {
       expect(fileTarget(href, origin)).toEqual({ fileId: '42' });

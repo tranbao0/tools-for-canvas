@@ -7,6 +7,7 @@ import {
   normalizeWidth,
   validRequest,
   plainClick,
+  isSubmissionPage,
 } from './model';
 
 describe('file targets', () => {
@@ -113,5 +114,20 @@ describe('course of a link', () => {
     expect(courseOfLink('/courses/0/files/42', origin)).toBeNull();
     expect(courseOfLink('/courses/12/pages/x', origin)).toBeNull();
     expect(courseOfLink('https://other.edu/courses/12/files/42', origin)).toBeNull();
+  });
+});
+
+describe('anonymous submission paths', () => {
+  const path = '/courses/12/assignments/3/anonymous_submissions/aB12z';
+  it('accepts the details frame and the download target', () => {
+    expect(isSubmissionPage(path)).toBe(true);
+    expect(isSubmissionPage(path + '/')).toBe(true);
+    expect(fileTarget(path + '?download=42', 'https://school.edu')).toEqual({ fileId: '42' });
+    expect(fileTarget(path + '?download=42&comment_id=1', 'https://school.edu')).toBeNull();
+  });
+  it('keeps numeric ids for named submissions and rejects extra path segments', () => {
+    expect(isSubmissionPage('/courses/12/assignments/3/submissions/aB12z')).toBe(false);
+    expect(isSubmissionPage(path + '/extra')).toBe(false);
+    expect(isSubmissionPage(path + '-')).toBe(false);
   });
 });

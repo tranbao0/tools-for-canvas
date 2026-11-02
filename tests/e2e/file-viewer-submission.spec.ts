@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { test, expect, serveScenario } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
+import type { HandlerRoute } from './support/fake-canvas';
 import type { Worker } from '@playwright/test';
 import {
   openFirstFile,
@@ -109,62 +110,76 @@ const textFile = (id: string, name: string) => ({
  * The files list of the submission details page is in the same-origin frame `#preview_frame`
  * (decision 25, item 11). A click on a file there opens the pane in the top frame.
  */
-test('a file in the preview frame opens in the pane of the top frame', async ({
-  context,
-  page,
-  background,
-}) => {
-  const { canvas } = await serveScenario(context, [
-    submissionRoute,
-    textFile('42', 'submission.txt'),
-    textFile('44', 'second.txt'),
-    { path: '/files/42/download', contentType: 'text/plain', body: notes },
-    { path: '/files/44/download', contentType: 'text/plain', body: 'Second.' },
-  ]);
-  await saveAddress(background, canvas.origin);
-  await countFrameInjections(background);
-  await page.goto(`${canvas.origin}${SUBMISSION_PATH}`);
-  await catcherReady(background);
-  const list = previewFrame(page).locator('body');
-  await openFirstFile(page, 'Submission text', undefined, list);
-  const frame = await pane(page);
-  await expect(frame.locator('pre')).toHaveText(notes);
-  // The pane is in the top frame, and the frame did not follow the link.
-  await expect(page.locator('#tools-file-viewer')).toHaveCount(1);
-  expect(
-    page
-      .mainFrame()
-      .childFrames()
-      .map((child) => child.url()),
-  ).toContainEqual(expect.stringContaining('preview=1'));
-  expect(canvas.requests.some((request) => request.path.includes('download=42'))).toBe(false);
-  // A second file adds a tab.
-  await list.getByRole('link', { name: 'Second file' }).click();
-  await expect(frame.getByRole('tab')).toHaveCount(2);
-  await expect(frame.locator('pre:visible')).toHaveText('Second.');
-  // A new load of the frame needs a new catcher, and it gets one.
-  const before = await background.evaluate(
-    () => (globalThis as unknown as { __frameInjections: number }).__frameInjections,
-  );
-  await page.evaluate(() => {
-    (
-      document.getElementById('preview_frame') as HTMLIFrameElement
-    ).contentWindow!.location.reload();
+for (const submissionPath of [
+  SUBMISSION_PATH,
+  '/courses/101/assignments/7/anonymous_submissions/aB12z',
+]) {
+  test(`a file in the ${submissionPath} preview frame opens in the top pane`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    const { canvas } = await serveScenario(context, [
+      {
+        path: submissionPath,
+        respond: async (request) => {
+          const response = await (submissionRoute as HandlerRoute).respond(request);
+          return {
+            ...response,
+            body: String(response.body).replaceAll(SUBMISSION_PATH, submissionPath),
+          };
+        },
+      },
+      textFile('42', 'submission.txt'),
+      textFile('44', 'second.txt'),
+      { path: '/files/42/download', contentType: 'text/plain', body: notes },
+      { path: '/files/44/download', contentType: 'text/plain', body: 'Second.' },
+    ]);
+    await saveAddress(background, canvas.origin);
+    await countFrameInjections(background);
+    await page.goto(`${canvas.origin}${submissionPath}`);
+    await catcherReady(background);
+    const list = previewFrame(page).locator('body');
+    await openFirstFile(page, 'Submission text', undefined, list);
+    const frame = await pane(page);
+    await expect(frame.locator('pre')).toHaveText(notes);
+    // The pane is in the top frame, and the frame did not follow the link.
+    await expect(page.locator('#tools-file-viewer')).toHaveCount(1);
+    expect(
+      page
+        .mainFrame()
+        .childFrames()
+        .map((child) => child.url()),
+    ).toContainEqual(expect.stringContaining('preview=1'));
+    expect(canvas.requests.some((request) => request.path.includes('download=42'))).toBe(false);
+    // A second file adds a tab.
+    await list.getByRole('link', { name: 'Second file' }).click();
+    await expect(frame.getByRole('tab')).toHaveCount(2);
+    await expect(frame.locator('pre:visible')).toHaveText('Second.');
+    // A new load of the frame needs a new catcher, and it gets one.
+    const before = await background.evaluate(
+      () => (globalThis as unknown as { __frameInjections: number }).__frameInjections,
+    );
+    await page.evaluate(() => {
+      (
+        document.getElementById('preview_frame') as HTMLIFrameElement
+      ).contentWindow!.location.reload();
+    });
+    await expect
+      .poll(() =>
+        background.evaluate(
+          () => (globalThis as unknown as { __frameInjections: number }).__frameInjections,
+        ),
+      )
+      .toBeGreaterThan(before);
+    await list.getByRole('link', { name: 'Submission text' }).click();
+    await expect(frame.getByRole('tab', { selected: true })).toHaveAttribute(
+      'title',
+      'submission.txt',
+    );
+    expect(canvas.requests.some((request) => request.path.includes('download='))).toBe(false);
   });
-  await expect
-    .poll(() =>
-      background.evaluate(
-        () => (globalThis as unknown as { __frameInjections: number }).__frameInjections,
-      ),
-    )
-    .toBeGreaterThan(before);
-  await list.getByRole('link', { name: 'Submission text' }).click();
-  await expect(frame.getByRole('tab', { selected: true })).toHaveAttribute(
-    'title',
-    'submission.txt',
-  );
-  expect(canvas.requests.some((request) => request.path.includes('download='))).toBe(false);
-});
+}
 
 test('the Preview button of a row, a script click and a comment attachment keep their action', async ({
   context,
