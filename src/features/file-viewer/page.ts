@@ -75,7 +75,6 @@ export async function startViewer(): Promise<void> {
   // The port of the pane once it proved the secret, and a port that waits for that proof.
   let port: MessagePort | undefined;
   let pending: MessagePort | undefined;
-  let opening = false;
   let padding = '';
   let priority = '';
   const layout = () => {
@@ -145,14 +144,20 @@ export async function startViewer(): Promise<void> {
     if (host && !host.isConnected) drop();
     return host !== undefined;
   };
-  const show = async () => {
+  // Opens the pane. A call while another one is in progress waits for the same open.
+  let showing: Promise<void> | undefined;
+  const show = (): Promise<void> => {
+    showing ??= showNow().finally(() => {
+      showing = undefined;
+    });
+    return showing;
+  };
+  const showNow = async () => {
     if (!live) return;
     if (paneOpen()) {
       void send();
       return;
     }
-    if (opening) return;
-    opening = true;
     // The background makes the secret of this pane. Only this script and the pane page get it, so
     // it is in no address and in no window message. The frame loads after the secret is stored.
     let secret: string;
@@ -163,8 +168,6 @@ export async function startViewer(): Promise<void> {
       secret = session.secret;
     } catch {
       return;
-    } finally {
-      opening = false;
     }
     if (!live) return;
     lastHelloAt = -Infinity;
@@ -294,20 +297,23 @@ export async function startViewer(): Promise<void> {
   // back, so two that ran side by side would both start from the same tabs and the second write
   // would drop the file of the first. The tab order is also the order of the clicks.
   let opens: Promise<unknown> = Promise.resolve();
-  const openTarget = (target: FileTarget, href: string): Promise<void> => {
+  const openTarget = (target: FileTarget, href: string): Promise<boolean> => {
     const run = opens.then(() => openNow(target, href));
     opens = run.catch(() => undefined);
     return run;
   };
-  /** Opens a file in the pane: resolves a module item to its file, then adds the tab. */
-  const openNow = async (target: FileTarget, href: string): Promise<void> => {
+  /**
+   * Opens a file in the pane: resolves a module item to its file, then adds the tab. It resolves
+   * to whether the pane has the file or is about to get it.
+   */
+  const openNow = async (target: FileTarget, href: string): Promise<boolean> => {
     if (!paneOpen()) await show();
     const file =
       'fileId' in target
         ? target
         : ((await browser.runtime.sendMessage({ type: 'viewer:module-item', ...target })) as
             { fileId: string } | undefined);
-    if (!file || !paneOpen()) return;
+    if (!file || !paneOpen()) return false;
     const courseId = 'courseId' in target ? target.courseId : courseOfLink(href, location.origin);
     if (courseId) courses.set(file.fileId, courseId);
     const open = () => {
@@ -319,10 +325,11 @@ export async function startViewer(): Promise<void> {
         fileId: file.fileId,
         ...(courseId ? { courseId } : {}),
       });
+      return true;
     };
     if (paneOpen() && port) return open();
     const stored = await readTabs().catch(() => null);
-    if (!live) return;
+    if (!live) return false;
     if (stored) tabsToken = stored.token;
     tabs = openFile(stored?.tabs ?? tabs, file.fileId);
     await writeTabs(tabs);
@@ -330,6 +337,7 @@ export async function startViewer(): Promise<void> {
     // it has not seen this file, so it gets the file as a request, never as a copy of the store.
     if (paneOpen() && port) return open();
     await show();
+    return paneOpen();
   };
   document.addEventListener(
     'click',
@@ -425,9 +433,10 @@ export async function startViewer(): Promise<void> {
     const fileId = request.fileId;
     void (async () => {
       await starting;
-      respond({ opened: live && enabled });
-      if (live && enabled) await openTarget({ fileId }, `/files/${fileId}`);
-    })().catch(() => undefined);
+      // The catcher saves the file in the usual way unless the pane has it, so the answer comes
+      // after the open.
+      respond({ opened: live && enabled && (await openTarget({ fileId }, `/files/${fileId}`)) });
+    })().catch(() => respond({ opened: false }));
     return true;
   };
   browser.runtime.onMessage.addListener(onBackground);
@@ -444,8 +453,26 @@ export async function startViewer(): Promise<void> {
   if (live && enabled && isSubmissionPage(location.pathname)) {
     // Every load of the frame is a new document, which needs its own catcher. A script of the
     // page can fire a load event, so only a trusted one counts.
+    // One ask at a time, and one more after it when a load came meanwhile. A page that loads its
+    // frame again and again cannot make the background probe the tab more often than it can answer.
+    let asking = false;
+    let askAgain = false;
     const askForCatcher = () => {
-      void browser.runtime.sendMessage({ type: 'viewer:inject-frames' }).catch(() => undefined);
+      if (asking) {
+        askAgain = true;
+        return;
+      }
+      asking = true;
+      void browser.runtime
+        .sendMessage({ type: 'viewer:inject-frames' })
+        .catch(() => undefined)
+        .finally(() => {
+          asking = false;
+          if (askAgain && live) {
+            askAgain = false;
+            askForCatcher();
+          }
+        });
     };
     document.addEventListener(
       'load',

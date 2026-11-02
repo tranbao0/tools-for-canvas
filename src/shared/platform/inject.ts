@@ -88,19 +88,26 @@ export async function injectSubmissionFrames(tabId: number, origin: string): Pro
     throw new Error('The tab does not show a submission page of the saved Canvas');
   const probes = await browser.scripting.executeScript({
     target: { tabId, allFrames: true },
-    func: (): FrameProbe => ({ origin: location.origin, path: location.pathname }),
+    // `self.origin` is the origin of the document, which is "null" for a sandboxed frame.
+    func: (): FrameProbe => ({ origin: self.origin, path: location.pathname }),
   });
-  const frameIds = probes
-    .filter(
-      (probe) =>
-        probe.frameId !== 0 &&
-        (probe.result as FrameProbe | undefined)?.origin === origin &&
-        isSubmissionPage((probe.result as FrameProbe).path),
-    )
-    .map((probe) => probe.frameId);
-  if (frameIds.length === 0) return;
+  const found = probes.filter(
+    (probe) =>
+      probe.frameId !== 0 &&
+      (probe.result as FrameProbe | undefined)?.origin === origin &&
+      isSubmissionPage((probe.result as FrameProbe).path),
+  );
+  if (found.length === 0) return;
+  // A document id names the document that was probed, so a frame that moved on since gets
+  // nothing. Firefox before 153 has no document ids, and the catcher then checks its page itself.
+  const documentIds = found.flatMap((probe) =>
+    typeof probe.documentId === 'string' ? [probe.documentId] : [],
+  );
   await browser.scripting.executeScript({
-    target: { tabId, frameIds },
+    target:
+      documentIds.length === found.length
+        ? { tabId, documentIds }
+        : { tabId, frameIds: found.map((probe) => probe.frameId) },
     files: [FRAME_FILE],
   });
 }

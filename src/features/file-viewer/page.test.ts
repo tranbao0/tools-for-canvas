@@ -299,6 +299,81 @@ describe('the page script', () => {
     await vi.waitFor(() => expect(stored).toEqual({ ids: ['5', '6'], active: '6' }));
   });
 
+  describe('a file from the click catcher of the preview frame', () => {
+    type Listener = (
+      message: unknown,
+      sender: { id?: string; tab?: unknown },
+      respond: (reply: unknown) => void,
+    ) => boolean | undefined;
+    /** The listener for the messages of the background, as the browser would call it. */
+    const background = (): Listener => addListener.mock.calls.at(-1)![0] as Listener;
+    const ask = (message: unknown, sender: { id?: string; tab?: unknown }) => {
+      const respond = vi.fn();
+      const kept = background()(message, sender, respond);
+      return { respond, kept };
+    };
+    const open = { type: 'viewer:open-from-frame', fileId: '5' };
+    const fromBackground = { id: 'my-extension' };
+
+    it('opens the file for a message of the background and answers after it', async () => {
+      prepare();
+      await startViewer();
+      const { respond, kept } = ask(open, fromBackground);
+      expect(kept).toBe(true);
+      await vi.waitFor(() => expect(respond).toHaveBeenCalledWith({ opened: true }));
+      expect(document.getElementById('tools-file-viewer')).not.toBeNull();
+    });
+
+    it.each([
+      [
+        'a sender with a tab, which is a content script or a page',
+        { id: 'my-extension', tab: { id: 1 } },
+      ],
+      ['a sender of another extension', { id: 'other' }],
+      ['a sender with no id', {}],
+    ])('refuses %s', async (_name, sender) => {
+      prepare();
+      await startViewer();
+      const { respond, kept } = ask(open, sender);
+      expect(kept).toBeUndefined();
+      expect(respond).toHaveBeenCalledWith({ opened: false });
+      expect(sessionRequests()).toBe(0);
+    });
+
+    it.each(['0', '05', '5/6', 5, undefined])('refuses the file id %s', async (fileId) => {
+      prepare();
+      await startViewer();
+      const { respond } = ask({ ...open, fileId }, fromBackground);
+      expect(respond).toHaveBeenCalledWith({ opened: false });
+      expect(sessionRequests()).toBe(0);
+    });
+
+    it('answers that it did not open the file when the viewer is off', async () => {
+      prepare();
+      sendMessage.mockImplementation(async (message: { type: string }) =>
+        message.type === 'weekrow:page-context'
+          ? { tools: { fileViewer: false, fileViewerWidth: 480 }, settings: {} }
+          : reply(message),
+      );
+      const started = startViewer();
+      const { respond } = ask(open, fromBackground);
+      await started;
+      await vi.waitFor(() => expect(respond).toHaveBeenCalledWith({ opened: false }));
+      expect(document.getElementById('tools-file-viewer')).toBeNull();
+    });
+
+    it('answers that it did not open the file when the pane cannot start', async () => {
+      prepare();
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'viewer:session') throw new Error('No session');
+        return reply(message);
+      });
+      await startViewer();
+      const { respond } = ask(open, fromBackground);
+      await vi.waitFor(() => expect(respond).toHaveBeenCalledWith({ opened: false }));
+    });
+  });
+
   it('writes the tabs with the token of the last read', async () => {
     prepare();
     sendMessage.mockImplementation(async (message: { type: string }) =>
