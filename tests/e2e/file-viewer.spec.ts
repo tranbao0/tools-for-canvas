@@ -9,6 +9,7 @@ import {
   openFirstFile,
   pane,
   pdfDownloadRoute,
+  pressEscapeToClosePane,
 } from './support/file-viewer';
 
 const html = `<!doctype html><html style="padding-right: 13px"><head><script>INST={environment:'production'};ENV={current_user_id:'5501'};</script></head><body><header>Canvas</header><nav>Course navigation</nav><main><h1>Course files</h1><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a><div data-module-id="7" data-type="File"><a href="/courses/101/modules/items/9">Module notes</a></div><a href="/courses/101/pages/next">Next page</a></main></body></html>`;
@@ -66,10 +67,7 @@ test('file pane channel, module resolution, padding and page changes', async ({
   });
   await navigation;
   await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
-  await (await pane(page)).getByRole('button', { name: 'Close file viewer', exact: true }).focus();
-  // Escape removes the pane frame, so press it through the page keyboard, not the frame locator.
-  await page.keyboard.press('Escape');
-  await expect(host).toHaveCount(0);
+  await pressEscapeToClosePane(page);
   await page.getByText('Read notes').first().click();
   await expect(page.locator('html')).toHaveCSS('padding-right', '480px');
   await closePane(page);
