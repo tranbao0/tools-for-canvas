@@ -14,8 +14,8 @@ export const DETECTOR_SCRIPT = 'detector.js';
 export const INPAGE_SCRIPT = 'inpage.js';
 /** The script of the dashboard fixes. The background injects it into a dashboard page only. */
 export const DASHBOARD_SCRIPT = 'dashboard.js';
-const CHROMIUM_PERMISSIONS = ['storage', 'cookies', 'scripting', 'sidePanel'];
-const FIREFOX_PERMISSIONS = ['storage', 'cookies', 'scripting'];
+const CHROMIUM_PERMISSIONS = ['storage', 'cookies', 'scripting', 'alarms', 'sidePanel'];
+const FIREFOX_PERMISSIONS = ['storage', 'cookies', 'scripting', 'alarms'];
 const GECKO_ID = /^(?:[^@\s]+@[^@\s]+|\{[0-9a-f-]{36}\})$/i;
 
 /**

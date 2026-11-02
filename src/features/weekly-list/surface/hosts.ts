@@ -56,8 +56,26 @@ export async function openInCanvasTab(url: string, origin: string): Promise<void
 
 /** The host for extension pages: the side panel and the welcome page. */
 export function extensionPageHost(): SurfaceHost {
+  const deletePorts = new Set<import('wxt/browser').Browser.runtime.Port>();
   return {
-    send: sendToBackground,
+    send(message) {
+      if (message.type !== 'weekrow:action' || message.action.kind !== 'deleteTask') {
+        return sendToBackground(message);
+      }
+      // The browser closes this port even when pagehide cannot deliver a message.
+      const port = browser.runtime.connect({ name: `weekrow-delete:${message.action.noteId}` });
+      deletePorts.add(port);
+      return new Promise((resolve, reject) => {
+        port.onMessage.addListener((result: { reply?: unknown; error?: string }) => {
+          if (result.error !== undefined) reject(new Error(result.error));
+          else resolve(result.reply);
+        });
+        port.onDisconnect.addListener(() => {
+          deletePorts.delete(port);
+          reject(new Error('Delete connection closed'));
+        });
+      });
+    },
     watchChanges: (listener) => watchItems([changeMarkerItem, offerItem, seenNotesItem], listener),
     settings: settingsItem,
     tools: toolsSettingsItem,
