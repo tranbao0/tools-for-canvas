@@ -44,6 +44,7 @@ export function openWelcomePrompt(): Promise<void> {
 
 /** Runs the detector in the open tabs and, on install, opens the welcome page when it is needed. */
 async function handleInstalled(reason: 'install' | 'update'): Promise<void> {
+  if (reason === 'update') await browser.storage.local.remove('viewerPositions');
   let injected: InjectedTab[] = [];
   try {
     injected = await injectDetectorIntoOpenTabs();

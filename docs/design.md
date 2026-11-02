@@ -2713,6 +2713,7 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   The worker parses it in its own thread, and an error shows a message and leaves the pane working.
   A page of any size cannot make a larger canvas than the limits of item 9.
 - Saved page positions go through the trusted storage rules of decision 5.
+  On update, the extension removes the legacy `viewerPositions` key from `storage.local`, including any copy from an earlier Firefox test build.
   On Firefox they live only in the IndexedDB vault, with no copy in `storage.local`, because they hold the student id and the ids of the files that the student opened, and content scripts can read `storage.local` there.
 
 **Size:**
