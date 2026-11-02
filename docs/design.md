@@ -995,6 +995,9 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   Every route that reads for a tab makes this check first: the weekly list state, the dashboard data, the grade visibility read, the Announcements tab, one announcement and the announcement list of a course.
   For a tab in another store, the Announcements tab is `unavailable`, the grade visibility read has no visibilities, and one announcement or the announcement list is empty.
   Canvas hears nothing for such a tab.
+  The router passes the tab to every action too (a done mark, a skip mark, an Undo, a read mark and every task write), and the owner makes the same check first.
+  A refused action does nothing, and its reply is the plain one with no Undo.
+  A refused tab touches no state of the owner, so it cannot cancel the late grade result of a valid tab.
 - After each good user check, `storage.session` keeps the user id, the check time and the fingerprints that the checks confirmed, beside the cache.
   Each fingerprint includes the cookie name, so a name change needs a new check.
   The owner keeps the last three fingerprints that it confirmed for the current user.
@@ -1052,12 +1055,22 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   The reply of a refused Undo says `refused`, and the surface shows the Undo notice again, also beside the `cant_load` state.
   A refused Undo is `refused` only while the cache still belongs to the student of the Undo.
   After a sign-out or a change of student nothing can be restored, so the reply is the plain one and the notice ends.
-  A done mark, a skip mark, an unskip mark and an announcement read mark pass the same check before they write.
+  A done mark, a skip mark, an unskip mark, an announcement read mark, a task create, a task update, a move to today, a task delete and the "send now" of a delayed task delete pass the same check at the tap.
+  A refused tap does nothing, and the reply of a task create says that Canvas saved nothing.
+  A "send now" that the check refuses leaves the delete to its timer, which sends it after a check.
 - A write waits in a queue, so the check at the tap is not enough.
-  Just before each override request and each read mark request, the owner reads the fingerprint again.
-  The request goes out only when the fingerprint is confirmed for the student of the write.
-  Any other answer (no cookie, an unreadable store, or a cookie that no check confirmed) abandons the queue: the writes that Canvas has not confirmed go, and a forced round syncs the list.
-  A read mark also keeps the user check before its request, because its reply has no user.
+  Every write request goes through a guard of the request client: an optional callback that the shared request limiter runs once the request holds a slot, right before each attempt and before each retry after a rate limit.
+  The guard is on the override writes, the read marks, the task create, update and delete, and the delayed task delete.
+  The guard reads the fingerprint, and the request goes out only when the fingerprint is confirmed for the student of the write.
+  Any other answer (no cookie, an unreadable store, or a cookie that no check confirmed) makes the request fail with the `refused` error and abandons the queue: the writes that Canvas has not confirmed go, and a forced round syncs the list.
+  A refused request sends nothing, and its job ends without a second sync.
+  A read mark and a task create also keep the user check before their request, because the text of a task goes to the account of the cookie, and a read mark has no user in its reply.
+  The DELETE of a waiting task that goes to the Canvas the student leaves passes a guard too, with the fingerprints of the cache that the student leaves.
+  The write-backs after a reply for another user (the old flags of an override and the DELETE of a task that landed in another account) skip the guard, because they must reach the account that the first request wrote to.
+- A delayed task delete that waits in the queue when the queue is abandoned is parked, not sent again at once.
+  It keeps its entry in `pendingDeletes` and has no timer.
+  The owner sends it again when a reader or a check confirms a cookie for the student of the cache, and its request passes the guard like any write.
+  A DELETE counts as started, and Undo can no longer stop it, only after its guard passed.
   The reply of an override write names its user.
   When it names another user than the student of the write, the owner writes the old flags back to that override (best effort, and a failure is only logged), and then drops the cache of the first student.
   An override that this write created goes back to not done and not skipped, because the other student had none before.

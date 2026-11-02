@@ -220,7 +220,7 @@ export function routeDataMessage(
         .then(() => owner.refresh(message.reason))
         .then((result): RefreshReply => ({ ok: true, retryAt: result.retryAt }));
     case 'weekrow:action':
-      return allowed.then(() => owner.act(message.action));
+      return allowed.then(() => owner.act(message.action, sender.tab?.id));
     case 'weekrow:open-page':
       return allowed.then(() => host.openPage(message.page)).then(ok);
   }

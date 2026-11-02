@@ -242,7 +242,9 @@ export type CanvasErrorKind =
   /** The response is not Canvas JSON. */
   | 'not_canvas'
   /** The request targets an origin that the fetch wrapper does not allow. */
-  | 'origin_blocked';
+  | 'origin_blocked'
+  /** The guard of the request refused it, so nothing went out. */
+  | 'refused';
 
 export class CanvasError extends Error {
   readonly kind: CanvasErrorKind;
@@ -255,6 +257,13 @@ export class CanvasError extends Error {
     this.status = status;
   }
 }
+
+/**
+ * Runs right before each attempt of a request, also before each retry after a rate limit, and
+ * resolves with whether the request may go out. When it resolves `false`, the request fails
+ * with a `refused` error and nothing is sent.
+ */
+export type RequestGuard = () => Promise<boolean>;
 
 /** Reads the `_csrf_token` cookie value for writes, already URL-decoded. */
 export type CsrfTokenSource = () => Promise<string | null>;
@@ -279,6 +288,12 @@ export interface CanvasApi {
    * each time a request slot frees up, so a waiting request can become more urgent.
    */
   withPriority(priority: () => RequestPriority): CanvasApi;
+  /**
+   * The same calls on the same request queue, where every attempt of a request first runs the
+   * guard (see {@link RequestGuard}). The guard runs once the request holds a slot of the queue,
+   * so it sees the state at the moment of the attempt, not at the moment of the call.
+   */
+  withGuard(guard: RequestGuard): CanvasApi;
   getSelf(): Promise<UserSelf>;
   checkCacheUser(): Promise<UserSelf>;
   getProfile(): Promise<Profile>;

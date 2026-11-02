@@ -616,6 +616,38 @@ it('publishes a visibility result after the owner wait ends', async () => {
   expect((await h.owner.dashboardData()).gradeVisibilities).toEqual(value);
 });
 
+it('lets a tab in another cookie store touch nothing of the late result of a valid tab', async () => {
+  const h = await loaded();
+  let finish!: (value: WidgetGradePreferences) => void;
+  vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+  const read = vi.fn(
+    () =>
+      new Promise<WidgetGradePreferences>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  h.canvas.getWidgetGradeVisibility = read;
+  vi.mocked(h.deps.surfaceUsesRequestStore).mockImplementation(async (tabId) => tabId !== 9);
+  const pending = h.owner.dashboardGradeVisibility('token-1', 3);
+  await vi.advanceTimersByTimeAsync(5000);
+  expect((await pending).gradeVisibilities).toBeNull();
+
+  // The refused tab asks while the read of the valid tab is late, and it gets nothing.
+  expect(await h.owner.dashboardGradeVisibility('token-2', 9)).toMatchObject({
+    ready: false,
+    gradeVisibilities: null,
+  });
+  expect(read).toHaveBeenCalledTimes(1);
+  const value = { 'course-grades-widget': { '107': false } };
+  finish({ gradeVisibilities: value, showGrades: {} });
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(await h.owner.dashboardData()).toMatchObject({
+    gradeVisibilities: value,
+    visibilityToken: 'token-1',
+  });
+});
+
 it('does not publish the late result of a read that a newer read replaced', async () => {
   const h = await loaded();
   const finishes: Array<(value: WidgetGradePreferences) => void> = [];

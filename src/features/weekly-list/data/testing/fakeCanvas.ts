@@ -15,13 +15,14 @@ import {
   type PlannerItem,
   type PlannerNote,
   type PlannerOverride,
+  type RequestGuard,
   type TimeRange,
 } from '../../../../shared/canvas/types';
 import { itemKey } from '../../model/normalize';
 import { plannerItemsInRange, type Scenario } from '../../../../../tests/fixtures/scenario';
 import { notePlannerItem, plannerItemKey } from '../patches';
 
-export type FakeMethod = Exclude<keyof CanvasApi, 'origin' | 'withPriority'>;
+export type FakeMethod = Exclude<keyof CanvasApi, 'origin' | 'withPriority' | 'withGuard'>;
 
 interface FakeCall {
   method: FakeMethod;
@@ -111,8 +112,12 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
     args: unknown[],
     run: () => T,
     priority: PrioritySource,
+    guard?: RequestGuard,
   ): Promise<T> {
     return limit(async () => {
+      // The guard runs once the call holds a slot, as in the real client, and a refused call
+      // is not recorded, because nothing went out.
+      if (guard !== undefined && !(await guard())) throw canvasError('refused');
       calls.push({
         method,
         args,
@@ -198,12 +203,15 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
     return note;
   }
 
-  function methods(priority: PrioritySource): Omit<CanvasApi, 'origin' | 'withPriority'> {
+  function methods(
+    priority: PrioritySource,
+    guard?: RequestGuard,
+  ): Omit<CanvasApi, 'origin' | 'withPriority' | 'withGuard'> {
     return {
-      getSelf: () => call('getSelf', [], () => scenario.self, priority),
-      checkCacheUser: () => call('getSelf', [], () => scenario.self, priority),
-      getProfile: () => call('getProfile', [], () => scenario.profile, priority),
-      listCourses: () => call('listCourses', [], () => scenario.courses, priority),
+      getSelf: () => call('getSelf', [], () => scenario.self, priority, guard),
+      checkCacheUser: () => call('getSelf', [], () => scenario.self, priority, guard),
+      getProfile: () => call('getProfile', [], () => scenario.profile, priority, guard),
+      listCourses: () => call('listCourses', [], () => scenario.courses, priority, guard),
       getAnnouncement: (courseId, topicId) =>
         call(
           'getAnnouncement',
@@ -216,6 +224,7 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
               posted_at: null,
             },
           priority,
+          guard,
         ),
       listAnnouncements: (courseId, range) =>
         call(
@@ -223,6 +232,7 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
           [courseId, range],
           () => announcements.get(courseId) ?? [],
           priority,
+          guard,
         ),
       listAnnouncementFeed: (courseIds, range) => {
         // Canvas reads its state when the request arrives, not when a held answer is released.
@@ -248,19 +258,21 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
             topic.read_state = read ? 'read' : 'unread';
           },
           priority,
+          guard,
         ),
-      listGroups: () => call('listGroups', [], () => scenario.groups, priority),
-      getColors: () => call('getColors', [], () => scenario.colors, priority),
+      listGroups: () => call('listGroups', [], () => scenario.groups, priority, guard),
+      getColors: () => call('getColors', [], () => scenario.colors, priority, guard),
       getDashboardPositions: () =>
-        call('getDashboardPositions', [], () => scenario.dashboardPositions, priority),
+        call('getDashboardPositions', [], () => scenario.dashboardPositions, priority, guard),
       listPlannerItems: (range) =>
-        call('listPlannerItems', [range], () => plannerItems(range), priority),
+        call('listPlannerItems', [range], () => plannerItems(range), priority, guard),
       listAssignmentsByIds: (courseId, ids) =>
         call(
           'listAssignmentsByIds',
           [courseId, ids],
           () => (scenario.assignments[courseId] ?? []).filter((a) => ids.includes(a.id)),
           priority,
+          guard,
         ),
       listUndatedAssignments: (courseId) =>
         call(
@@ -268,6 +280,7 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
           [courseId],
           () => scenario.undatedAssignments[courseId] ?? [],
           priority,
+          guard,
         ),
       listAllAssignments: (courseId) =>
         call(
@@ -275,9 +288,10 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
           [courseId],
           () => scenario.assignments[courseId] ?? [],
           priority,
+          guard,
         ),
       listPlannerOverrides: () =>
-        call('listPlannerOverrides', [], () => [...overrides.values()], priority),
+        call('listPlannerOverrides', [], () => [...overrides.values()], priority, guard),
       listCustomGradeStatuses: (courseIds) =>
         call(
           'listCustomGradeStatuses',
@@ -285,6 +299,7 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
           () =>
             Object.fromEntries(courseIds.map((id) => [id, scenario.customGradeStatuses[id] ?? []])),
           priority,
+          guard,
         ),
       createOverride: (input) =>
         call(
@@ -308,6 +323,7 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
             return override;
           },
           priority,
+          guard,
         ),
       updateOverride: (id, input) =>
         call(
@@ -325,11 +341,12 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
             return updated;
           },
           priority,
+          guard,
         ),
       createNote: (input) =>
-        call('createNote', [input], () => saveNote(String(nextId++), input), priority),
+        call('createNote', [input], () => saveNote(String(nextId++), input), priority, guard),
       updateNote: (id, input) =>
-        call('updateNote', [id, input], () => saveNote(id, input), priority),
+        call('updateNote', [id, input], () => saveNote(id, input), priority, guard),
       deleteNote: (id) =>
         call(
           'deleteNote',
@@ -338,13 +355,22 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
             notes.set(id, null);
           },
           priority,
+          guard,
         ),
     };
   }
 
-  function withPriority(priority: PrioritySource): CanvasApi {
-    return { origin: scenario.origin, withPriority, ...methods(priority) };
+  function build(priority: PrioritySource, guard?: RequestGuard): CanvasApi {
+    return {
+      origin: scenario.origin,
+      withPriority: (next) => build(next, guard),
+      withGuard: (next) =>
+        build(priority, guard === undefined ? next : async () => (await guard()) && (await next())),
+      ...methods(priority, guard),
+    };
   }
+
+  const withPriority = (priority: PrioritySource): CanvasApi => build(priority);
 
   const fake: FakeCanvas = {
     origin: scenario.origin,
@@ -401,6 +427,7 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
     },
 
     withPriority,
+    withGuard: (guard) => build('normal', guard),
     ...methods('normal'),
   };
   return fake;

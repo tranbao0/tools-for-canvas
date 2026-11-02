@@ -845,6 +845,146 @@ describe('rate limit backoff', () => {
   });
 });
 
+describe('request guard', () => {
+  const tooMany = () =>
+    HttpResponse.text('429 Too Many Requests (Rate Limit Exceeded)\n', { status: 429 });
+
+  function profileServer(failures: number) {
+    const state = { calls: 0 };
+    server.use(
+      http.get(api('/api/v1/users/self/profile'), () => {
+        state.calls += 1;
+        return state.calls <= failures ? tooMany() : HttpResponse.json({ id: '1', name: 'Ada' });
+      }),
+    );
+    return state;
+  }
+
+  it('refuses a request with a typed error and sends nothing', async () => {
+    const seen = recordAll();
+    const guard = vi.fn(async () => false);
+    const client = testClient().withGuard(guard);
+
+    await expect(
+      client.createNote({ title: 'Read', todoDate: '2026-10-28T03:59:00.000Z' }),
+    ).rejects.toMatchObject({
+      kind: 'refused',
+    });
+    await expect(
+      client.updateOverride('7', { markedComplete: true, dismissed: false }),
+    ).rejects.toBeInstanceOf(CanvasError);
+
+    expect(guard).toHaveBeenCalledTimes(2);
+    expect(seen).toEqual([]);
+  });
+
+  it('lets a request go when the guard passes', async () => {
+    const seen = recordAll();
+    const guard = vi.fn(async () => true);
+
+    await testClient().withGuard(guard).deleteNote('5');
+
+    expect(guard).toHaveBeenCalledTimes(1);
+    expect(seen.map((request) => `${request.method} ${request.path}`)).toEqual([
+      'DELETE /api/v1/planner_notes/5',
+    ]);
+  });
+
+  it('runs before each retry after a rate limit, and a refused retry sends nothing', async () => {
+    useRetryFakeTimers();
+    const state = profileServer(5);
+    let allowed = true;
+    const guard = vi.fn(async () => allowed);
+    const error = catchError(testClient().withGuard(guard).getProfile());
+
+    await settleUntil(() => state.calls === 1);
+    expect(guard).toHaveBeenCalledTimes(1);
+    // The guard turns the next attempt down while the request waits to retry.
+    allowed = false;
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(await error).toMatchObject({ kind: 'refused' });
+    expect(guard).toHaveBeenCalledTimes(2);
+    expect(state.calls).toBe(1);
+  });
+
+  it('runs before every retry that goes out', async () => {
+    useRetryFakeTimers();
+    const state = profileServer(2);
+    const guard = vi.fn(async () => true);
+    const result = testClient().withGuard(guard).getProfile();
+
+    await settleUntil(() => state.calls === 1);
+    await vi.advanceTimersByTimeAsync(1000);
+    await settleUntil(() => state.calls === 2);
+    await vi.advanceTimersByTimeAsync(2000);
+
+    await expect(result).resolves.toEqual({ id: '1', name: 'Ada' });
+    expect(guard).toHaveBeenCalledTimes(3);
+    expect(state.calls).toBe(3);
+  });
+
+  it('runs once the request holds a slot of the queue, not when it joined', async () => {
+    const gate = deferred();
+    let colorCalls = 0;
+    server.use(
+      http.get(api('/api/v1/users/self/profile'), async () => {
+        await gate.promise;
+        return HttpResponse.json({ id: '1', name: 'Ada' });
+      }),
+      http.get(api('/api/v1/users/self/colors'), () => {
+        colorCalls += 1;
+        return HttpResponse.json({ custom_colors: {} });
+      }),
+    );
+    const client = testClient({ maxConcurrency: 1 });
+    const guard = vi.fn(async () => true);
+    const first = client.getProfile();
+    const second = client.withGuard(guard).getColors();
+
+    await settle();
+    expect(guard).not.toHaveBeenCalled();
+    expect(colorCalls).toBe(0);
+    gate.resolve();
+    await first;
+    await second;
+
+    expect(guard).toHaveBeenCalledTimes(1);
+    expect(colorCalls).toBe(1);
+  });
+
+  it('keeps the guard through withPriority, and runs an earlier guard first', async () => {
+    const seen = recordAll();
+    const order: string[] = [];
+    const outer = testClient().withGuard(async () => {
+      order.push('outer');
+      return true;
+    });
+    const guarded = outer
+      .withPriority(() => 'high')
+      .withGuard(async () => {
+        order.push('inner');
+        return false;
+      });
+
+    await expect(guarded.deleteNote('5')).rejects.toMatchObject({ kind: 'refused' });
+    await outer.withPriority(() => 'low').deleteNote('6');
+
+    expect(order).toEqual(['outer', 'inner', 'outer']);
+    expect(seen.map((request) => request.path)).toEqual(['/api/v1/planner_notes/6']);
+  });
+
+  it('does not guard the client that it was made from', async () => {
+    const seen = recordAll();
+    const client = testClient();
+    client.withGuard(async () => false);
+
+    await client.deleteNote('5');
+
+    expect(seen).toHaveLength(1);
+  });
+});
+
 describe('listCustomGradeStatuses', () => {
   interface GraphQLCall {
     readonly csrf: string | null;

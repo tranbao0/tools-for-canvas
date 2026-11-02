@@ -33,6 +33,7 @@ import {
   type PlannerNote,
   type PlannerOverride,
   type Profile,
+  type RequestGuard,
   type UserSelf,
 } from './types';
 
@@ -114,7 +115,8 @@ function assignmentsPath(courseId: string): string {
 /**
  * Creates the Canvas client. Data requests share one queue with at most `maxConcurrency`
  * requests in flight, and each request retries on a rate limit. Requests go at `normal`
- * priority; `withPriority` gives the same calls at another priority on the same queue.
+ * priority; `withPriority` gives the same calls at another priority on the same queue, and
+ * `withGuard` gives the same calls with a guard that runs before every attempt, also a retry.
  * Cache checks bypass the queue and rate limit retries. The data owner controls their rate.
  */
 export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
@@ -126,9 +128,15 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
   });
   const limit = createLimiter(options.maxConcurrency ?? 3);
 
-  function withPriority(priority: () => RequestPriority): CanvasApi {
+  function build(priority: () => RequestPriority, guard: RequestGuard | undefined): CanvasApi {
+    const attempt = async (request: CanvasRequest): Promise<CanvasResponse> => {
+      if (guard !== undefined && !(await guard())) {
+        throw new CanvasError('refused', 'The request guard refused the request');
+      }
+      return transport(request);
+    };
     const send = (request: CanvasRequest): Promise<CanvasResponse> =>
-      limit(() => withRateLimitRetry(() => transport(request)), priority);
+      limit(() => withRateLimitRetry(() => attempt(request)), priority);
 
     const getObject = async <T>(url: string): Promise<T> =>
       expectObject<T>((await send({ method: 'GET', url })).data, url);
@@ -178,7 +186,10 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
     return {
       origin,
 
-      withPriority,
+      withPriority: (next) => build(next, guard),
+
+      withGuard: (next) =>
+        build(priority, guard === undefined ? next : async () => (await guard()) && (await next())),
 
       getWidgetGradeVisibility: async (userId) => {
         const overall = AbortSignal.timeout(12000);
@@ -400,5 +411,5 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
     };
   }
 
-  return withPriority(() => 'normal');
+  return build(() => 'normal', undefined);
 }
