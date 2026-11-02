@@ -5,6 +5,7 @@
  * link and an internal link on page 1).
  */
 import { readFileSync } from 'node:fs';
+import type { browser } from 'wxt/browser';
 import type { Frame, Locator, Page } from '@playwright/test';
 import type { FakeCanvasRoute } from './support/fake-canvas';
 import { startFileHost, TRUST_TEST_CERTIFICATE, type FileHost } from './support/file-host';
@@ -704,3 +705,29 @@ for (const width of [1920, 1280]) {
     });
   }
 }
+
+test('saved page and zoom return after reload', async ({ context, page, background, fileHost }) => {
+  let frame = await openPdf(context, page, background, fileHost);
+  await pageInput(frame).fill('3');
+  await pageInput(frame).press('Enter');
+  await frame.getByRole('button', { name: 'Zoom level' }).click();
+  await frame.getByRole('menuitemradio', { name: '150%' }).click();
+  await expect
+    .poll(() =>
+      background.evaluate(async () => {
+        const stored = await (
+          globalThis as unknown as { chrome: typeof browser }
+        ).chrome.storage.local.get('viewerPositions');
+        return Object.values(
+          (stored['viewerPositions'] ?? {}) as Record<string, { page: number; zoom: number }>,
+        ).some((value) => value.page === 3 && value.zoom === 1.5);
+      }),
+    )
+    .toBe(true);
+  await page.screenshot({ path: test.info().outputPath('saved-position.png') });
+  await page.reload();
+  await openFirstFile(page, 'Read notes');
+  frame = await pane(page);
+  await expect(pageInput(frame)).toHaveValue('3');
+  await expect(frame.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
+});

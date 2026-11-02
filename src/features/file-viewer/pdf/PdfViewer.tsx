@@ -3,6 +3,8 @@
  * thumbnails, and the pages. The viewer owns one open document through a {@link PdfEngine}. It
  * destroys the document when it unmounts, which is when its tab closes.
  */
+import { browser } from 'wxt/browser';
+import { validPosition, type ViewerPosition } from '../positions';
 import type { TargetedKeyboardEvent } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../../../shared/ui/i18n';
@@ -43,6 +45,7 @@ export function classifyPdfError(error: unknown): PdfFailure {
 const SEARCH_DELAY_MS = 200;
 
 export function PdfViewer(props: {
+  fileId: string;
   lib: PdfjsLib;
   source: PdfSource;
   /** Whether the tab of this document is the active tab. */
@@ -92,6 +95,32 @@ export function PdfViewer(props: {
     let cancelled = false;
     let opened: PdfEngine | undefined;
     const abort = new AbortController();
+    let restored = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let previous = '';
+    const save = () => {
+      if (!restored || !opened) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (cancelled || !opened) return;
+        const { page, zoom } = opened.state;
+        void browser.runtime
+          .sendMessage({
+            type: 'viewer:position-set',
+            fileId: props.fileId,
+            page,
+            zoom: zoom.kind === 'scale' ? zoom.value : zoom.kind,
+          })
+          .catch(() => undefined);
+      }, 1000);
+    };
+    container.addEventListener('scroll', save, { passive: true });
+    const saved = browser.runtime
+      .sendMessage({
+        type: 'viewer:position-get',
+        fileId: props.fileId,
+      })
+      .catch(() => null) as Promise<ViewerPosition | null>;
     PdfEngine.open({
       lib: props.lib,
       bytes,
@@ -101,14 +130,30 @@ export function PdfViewer(props: {
       pages: host,
       onChange: (next) => {
         if (!cancelled) setState(next);
+        const position = JSON.stringify([next.page, next.zoom]);
+        if (position !== previous) {
+          previous = position;
+          save();
+        }
       },
     }).then(
-      (created) => {
+      async (created) => {
         if (cancelled) {
           created.destroy();
           return;
         }
         opened = created;
+        const position = await saved;
+        if (cancelled) return;
+        if (position && validPosition(position.page, position.zoom)) {
+          created.setZoom(
+            typeof position.zoom === 'number'
+              ? { kind: 'scale', value: position.zoom }
+              : { kind: position.zoom },
+          );
+          created.goToPage(position.page);
+        }
+        restored = true;
         if (!live.current.active) created.setActive(false);
         setEngine(created);
         setState(created.state);
@@ -119,10 +164,12 @@ export function PdfViewer(props: {
     );
     return () => {
       cancelled = true;
+      clearTimeout(timer);
+      container.removeEventListener('scroll', save);
       abort.abort();
       opened?.destroy();
     };
-  }, [props.lib, props.source]);
+  }, [props.lib, props.source, props.fileId]);
 
   useEffect(() => {
     engine?.setActive(props.active);

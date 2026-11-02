@@ -95,6 +95,7 @@ function failureText(failure: PdfFailure | 'read' | 'large' | 'unconfirmed'): st
 }
 
 export function PdfTab(props: {
+  fileId: string;
   /** The address of the bytes, on the saved Canvas. */
   url: string;
   /** The record of the file, for the slim line above the toolbar. */
@@ -200,6 +201,7 @@ export function PdfTab(props: {
       )}
       {phase.kind === 'viewer' && (
         <PdfViewer
+          fileId={props.fileId}
           lib={phase.lib}
           source={phase.source}
           active={props.active}

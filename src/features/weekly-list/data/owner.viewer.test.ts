@@ -1,3 +1,5 @@
+import { clearViewerTabs } from '../../file-viewer/background';
+import { viewerPositionsItem, positionKey } from '../../file-viewer/positions';
 /**
  * The reads of the file viewer follow the cookie rules of the data owner (design decisions 11 and
  * 25): only a tab in the cookie store of the requests, only the saved Canvas, only a cookie that a
@@ -175,16 +177,22 @@ describe('viewer reads', () => {
 
   it('tells the viewer to clear its tabs on a sign-out and for another student', async () => {
     const h = await loaded();
-    const cleared = vi.fn();
+    const key = positionKey(ORIGIN, '5501', '42');
+    const position = { [key]: { page: 3, zoom: 1.5, at: 1 } };
+    await viewerPositionsItem.setValue(position);
+    const cleared = vi.fn(clearViewerTabs);
     h.deps.onUserDataCleared = cleared;
     vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
     await expect(h.owner.viewerMayFetch(ORIGIN, TAB)).resolves.toBe(false);
     expect(cleared).toHaveBeenCalled();
+    await vi.waitFor(async () => expect(await viewerPositionsItem.getValue()).toEqual({}));
     const second = await loaded();
-    const other = vi.fn();
+    await viewerPositionsItem.setValue(position);
+    const other = vi.fn(clearViewerTabs);
     second.deps.onUserDataCleared = other;
     signInOtherUser(second);
     await expect(second.owner.viewerMayFetch(ORIGIN, TAB)).resolves.toBe(false);
     expect(other).toHaveBeenCalled();
+    await vi.waitFor(async () => expect(await viewerPositionsItem.getValue()).toEqual({}));
   });
 });
