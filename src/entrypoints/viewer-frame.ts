@@ -1,7 +1,11 @@
 import { browser } from 'wxt/browser';
 import { h, render } from 'preact';
 import { canvasOriginItem } from '@/shared/platform/storage';
-import { acceptViewerChannel } from '@/features/file-viewer/channel';
+import {
+  acceptViewerConnect,
+  bindViewerPort,
+  isViewerSecret,
+} from '@/features/file-viewer/channel';
 import { normalizeTabs, type Tabs } from '@/features/file-viewer/model';
 import { createOpenSource } from '@/features/file-viewer/ui/openSource';
 import { ViewerApp, type PaneHost } from '@/features/file-viewer/ui/ViewerApp';
@@ -25,7 +29,6 @@ function accessOrigins(origin: string): string[] {
 
 export default defineUnlistedScript(() => {
   const origin = canvasOriginItem.getValue();
-  const nonce = location.hash.slice(1);
   const style = document.createElement('style');
   style.textContent = `${APP_CSS}\n${viewerCss}\n${pdfCss}`;
   document.head.append(style);
@@ -49,7 +52,15 @@ export default defineUnlistedScript(() => {
       };
     },
     readFile: (url, onProgress, signal) =>
-      fetchFileBytes({ origin: canvasOrigin, url, onProgress, signal }),
+      fetchFileBytes({
+        origin: canvasOrigin,
+        url,
+        onProgress,
+        signal,
+        // The background says whether the cookie is confirmed for the student of the cache.
+        confirm: async () =>
+          (await browser.runtime.sendMessage({ type: 'viewer:fetch-allowed' })) === true,
+      }),
     loadPdfjs,
     async hasAccess() {
       return (await browser.runtime.sendMessage({ type: 'viewer:permission' })) !== false;
@@ -61,35 +72,51 @@ export default defineUnlistedScript(() => {
     async setTabs(tabs: Tabs) {
       await browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs });
     },
-    closePane: () => port?.postMessage({ type: 'close', nonce }),
+    closePane: () => port?.postMessage({ type: 'close' }),
   });
 
+  // The secret of this pane, from the background. It is in no address and in no window message.
+  const secret: Promise<string | undefined> = (
+    browser.runtime.sendMessage({ type: 'viewer:session' }) as Promise<{ secret?: unknown }>
+  ).then(
+    (reply) => (isViewerSecret(reply?.secret) ? reply.secret : undefined),
+    () => undefined,
+  );
+  // The pane keeps listening until a port proves the secret. A script of the Canvas page can send
+  // a port too, and it must not block the port of the page script.
   const listener = async (event: MessageEvent) => {
-    const canvasOrigin = await origin;
-    if (!canvasOrigin) return;
-    const disconnect = acceptViewerChannel(event, canvasOrigin, parent, nonce, (message) => {
-      if (message.type === 'theme') {
-        document.documentElement.setAttribute('data-theme', message.theme);
-        return;
-      }
-      opens.emit({
-        fileId: message.fileId,
-        ...(message.courseId ? { courseId: message.courseId } : {}),
-      });
+    const [canvasOrigin, known] = await Promise.all([origin, secret]);
+    if (!canvasOrigin || !known) return;
+    const offered = acceptViewerConnect(event, canvasOrigin, parent);
+    if (!offered) return;
+    bindViewerPort(offered, known, {
+      receive(message) {
+        if (message.type === 'theme') {
+          document.documentElement.setAttribute('data-theme', message.theme);
+          return;
+        }
+        opens.emit({
+          fileId: message.fileId,
+          ...(message.courseId ? { courseId: message.courseId } : {}),
+        });
+      },
+      bound() {
+        if (port) return;
+        port = offered;
+        window.removeEventListener('message', listener);
+        document.addEventListener('keydown', (key) => {
+          if (key.key === 'Escape') port?.postMessage({ type: 'close' });
+        });
+      },
     });
-    if (disconnect) {
-      port = event.ports[0];
-      window.removeEventListener('message', listener);
-      document.addEventListener('keydown', (key) => {
-        if (key.key === 'Escape') port?.postMessage({ type: 'close', nonce });
-      });
-    }
   };
   window.addEventListener('message', listener);
   void origin.then((canvasOrigin) => {
     if (!canvasOrigin) return;
     render(h(ViewerApp, { host: host(canvasOrigin), opens }), document.getElementById('app')!);
     // Tell the Canvas page that this frame is ready, at the saved Canvas origin only.
-    parent.postMessage({ type: 'viewer-hello', nonce }, canvasOrigin);
+    void secret.then((known) => {
+      if (known) parent.postMessage({ type: 'viewer-hello' }, canvasOrigin);
+    });
   });
 });

@@ -1,29 +1,44 @@
 import { browser, type Browser } from 'wxt/browser';
-import { createCanvasClient } from '../../shared/canvas/client';
-import { csrfFromCookiesApi } from '../../shared/canvas/csrf';
 import type { CanvasApi } from '../../shared/canvas/types';
 import { canvasOriginItem } from '../../shared/platform/storage';
 import { browserRouterHost, senderPageOrigin } from '../weekly-list/data/router';
+import type { DataOwner } from '../weekly-list/data/owner';
 import { logFailure } from '../../shared/platform/log';
-import { normalizeTabs, type Tabs } from './model';
+import { createViewerSecret, isViewerSecret } from './channel';
+import { normalizeTabs } from './model';
 
 type ViewerSender = Pick<Browser.runtime.MessageSender, 'url' | 'frameId'> & {
   tab?: { id?: number };
 };
 
+type ViewerApi = Pick<CanvasApi, 'getViewerFile' | 'getViewerModuleItem'>;
+
 export interface ViewerHost {
   savedOrigin(): Promise<string | null>;
   isExtensionPage(sender: ViewerSender): boolean;
-  api(origin: string): Pick<CanvasApi, 'getViewerFile' | 'getViewerModuleItem'>;
-  getTabs(key: string): Promise<unknown>;
-  setTabs(key: string, tabs: Tabs): Promise<void>;
+  /**
+   * A read of Canvas for a tab, under the cookie rules of the data owner: it rejects unless the
+   * tab uses the cookie store of the requests and the cookie is confirmed for the cache student.
+   */
+  read<T>(
+    origin: string,
+    tabId: number | undefined,
+    read: (api: ViewerApi) => Promise<T>,
+  ): Promise<T>;
+  /** Whether the pane of a tab may fetch the bytes of a file now. */
+  mayFetch(origin: string, tabId: number | undefined): Promise<boolean>;
+  get(key: string): Promise<unknown>;
+  set(key: string, value: unknown): Promise<void>;
   permission(origin: string): Promise<boolean>;
 }
 
-export function createViewerOwner(host: ViewerHost) {
+/** The session storage key of the secret of one browser tab. A closed tab clears it. */
+export const sessionKey = (tabId: number) => `viewer:session:${tabId}`;
+
+export function createViewerOwner(host: ViewerHost, tabId: number | undefined) {
   return {
     async file(origin: string, id: string) {
-      const file = await host.api(origin).getViewerFile(id);
+      const file = await host.read(origin, tabId, (api) => api.getViewerFile(id));
       return {
         name: file.display_name,
         contentType: file['content-type'],
@@ -33,7 +48,9 @@ export function createViewerOwner(host: ViewerHost) {
       };
     },
     async moduleItem(origin: string, courseId: string, moduleId: string, itemId: string) {
-      const item = await host.api(origin).getViewerModuleItem(courseId, moduleId, itemId);
+      const item = await host.read(origin, tabId, (api) =>
+        api.getViewerModuleItem(courseId, moduleId, itemId),
+      );
       if (item.type !== 'File' || !id(item.content_id))
         throw new Error('The module item is not a file');
       return { fileId: item.content_id };
@@ -42,6 +59,17 @@ export function createViewerOwner(host: ViewerHost) {
 }
 const id = (value: unknown): value is string =>
   typeof value === 'string' && /^[1-9][0-9]{0,19}$/.test(value);
+
+/** Whether a sender is the pane: the frame of `viewer.html` inside a tab, never a tab of its own. */
+function isPaneFrame(sender: ViewerSender): boolean {
+  if (sender.frameId === undefined || sender.frameId === 0 || sender.url === undefined)
+    return false;
+  try {
+    return new URL(sender.url).pathname === '/viewer.html';
+  } catch {
+    return false;
+  }
+}
 
 export function routeViewerMessage(
   message: unknown,
@@ -58,15 +86,19 @@ export function routeViewerMessage(
       'viewer:tabs-get',
       'viewer:tabs-set',
       'viewer:permission',
+      'viewer:session',
+      'viewer:fetch-allowed',
     ].includes(String(message.type))
   )
     return null;
   const request = message as Record<string, unknown>;
   return (async () => {
     const origin = await host.savedOrigin();
-    if (!origin || (!host.isExtensionPage(sender) && senderPageOrigin(sender) !== origin))
+    const fromPane = host.isExtensionPage(sender);
+    if (!origin || (!fromPane && senderPageOrigin(sender) !== origin))
       throw new Error('Only the saved Canvas may ask for its data');
-    const owner = createViewerOwner(host);
+    const tabId = sender.tab?.id;
+    const owner = createViewerOwner(host, tabId);
     switch (request['type']) {
       case 'viewer:file':
         if (!id(request['fileId'])) throw new Error('Invalid file id');
@@ -82,25 +114,41 @@ export function routeViewerMessage(
         );
       case 'viewer:permission':
         return host.permission(origin);
+      case 'viewer:fetch-allowed':
+        return host.mayFetch(origin, tabId);
+      case 'viewer:session': {
+        if (tabId === undefined) throw new Error('A browser tab is required');
+        if (fromPane) {
+          // The pane reads the secret that the page script made for its tab.
+          if (!isPaneFrame(sender)) throw new Error('Only the pane frame may read the session');
+          const secret = await host.get(sessionKey(tabId));
+          if (!isViewerSecret(secret)) throw new Error('No pane session is open for this tab');
+          return { secret };
+        }
+        // The top frame of the saved Canvas starts a session when it opens the pane.
+        const secret = createViewerSecret();
+        await host.set(sessionKey(tabId), secret);
+        return { secret };
+      }
       default: {
-        const tabId = sender.tab?.id;
         if (tabId === undefined) throw new Error('A browser tab is required');
         const key = `viewer:${origin}:${tabId}`;
-        if (request['type'] === 'viewer:tabs-get') return normalizeTabs(await host.getTabs(key));
-        await host.setTabs(key, normalizeTabs(request['tabs']));
+        if (request['type'] === 'viewer:tabs-get') return normalizeTabs(await host.get(key));
+        await host.set(key, normalizeTabs(request['tabs']));
         return { ok: true };
       }
     }
   })();
 }
 
-export function wireViewerRouter(): void {
+export function wireViewerRouter(owner: Pick<DataOwner, 'viewerRead' | 'viewerMayFetch'>): void {
   const host: ViewerHost = {
     savedOrigin: () => canvasOriginItem.getValue(),
     isExtensionPage: browserRouterHost.isExtensionPage,
-    api: (origin) => createCanvasClient({ origin, getCsrfToken: csrfFromCookiesApi(origin) }),
-    getTabs: async (key) => (await browser.storage.session.get(key))[key],
-    setTabs: (key, tabs) => browser.storage.session.set({ [key]: tabs }),
+    read: (origin, tabId, read) => owner.viewerRead(origin, tabId, read),
+    mayFetch: (origin, tabId) => owner.viewerMayFetch(origin, tabId),
+    get: async (key) => (await browser.storage.session.get(key))[key],
+    set: (key, value) => browser.storage.session.set({ [key]: value }),
     // File redirects can use hosts selected by Canvas, so check the full file host grant.
     permission: (origin) =>
       browser.permissions.contains({ origins: [`${origin}/*`, 'https://*/*'] }),
