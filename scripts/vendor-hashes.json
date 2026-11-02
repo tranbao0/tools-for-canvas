@@ -1,0 +1,9 @@
+{
+  "description": "SHA-256 of the vendored PDF.js files that the build copies unmodified from node_modules/pdfjs-dist/build into pdfjs/ (design decision 25). check-urls and check-fetch skip a built file only when its hash is listed here, so the reviewed upstream code is trusted as a unit and any change to it is scanned. Update the hashes together with the pinned version of pdfjs-dist.",
+  "package": "pdfjs-dist",
+  "version": "6.5.438",
+  "files": {
+    "pdfjs/pdf.min.mjs": "3a88402882cfa3e7e72c2c9b5149f52f0f88baf1c5b62aa11a41abdbc2072440",
+    "pdfjs/pdf.worker.min.mjs": "1e64c8240e54735ec5913b37acd5134747799cb8c6bb3777c70adbc01232d2aa"
+  }
+}

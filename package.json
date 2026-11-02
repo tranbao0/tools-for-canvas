@@ -61,6 +61,7 @@
   },
   "dependencies": {
     "@preact/signals": "2.11.4",
+    "pdfjs-dist": "6.5.438",
     "preact": "11.1.0"
   }
 }

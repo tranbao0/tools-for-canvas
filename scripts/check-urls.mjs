@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listFiles, readJson, runForTargets } from './lib/build-output.mjs';
+import { isPinnedVendorFile, loadVendorHashes } from './lib/vendor.mjs';
 
 const ALLOWLIST_FILE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -74,16 +75,20 @@ export async function loadAllowlist(file = ALLOWLIST_FILE) {
 }
 
 /**
- * Collects every URL in the text files of one target directory.
+ * Collects every URL in the text files of one target directory, except the pinned vendored files.
  * @param {string} dir
  * @returns {Promise<UrlHit[]>}
  */
 export async function collectUrls(dir) {
   const hits = [];
+  const vendor = await loadVendorHashes();
   for (const file of await listFiles(dir)) {
     if (!TEXT_FILE.test(file)) continue;
-    const text = await readFile(path.join(dir, file), 'utf8');
-    for (const url of extractUrls(text)) hits.push({ url, file });
+    const content = await readFile(path.join(dir, file));
+    // A pinned, unmodified PDF.js file holds inert strings, such as XFA namespaces. It is
+    // reviewed as a unit (scripts/vendor-hashes.json); a changed copy is scanned.
+    if (isPinnedVendorFile(file, content, vendor)) continue;
+    for (const url of extractUrls(content.toString('utf8'))) hits.push({ url, file });
   }
   return hits;
 }

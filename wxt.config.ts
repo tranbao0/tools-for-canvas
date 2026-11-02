@@ -55,11 +55,31 @@ function hasFileCheck(browser: string): boolean {
 }
 const FILE_CHECK_PAGES = ['file-check', 'file-probe'];
 
+/**
+ * The PDF.js files that the file pane loads at run time (docs/design.md, decision 25). They are
+ * copied unmodified from the package into `pdfjs/` of every build. They are not page entry
+ * points, so the pane page loads them only when a PDF tab opens, and no other page carries them.
+ * The folder is not at the root, because the size check counts each script at the root as an
+ * entry point with its own limit.
+ */
+const PDFJS_FILES = ['pdf.min.mjs', 'pdf.worker.min.mjs'];
+const PDFJS_LICENSE = 'node_modules/pdfjs-dist/LICENSE';
+
 export default defineConfig({
   srcDir: 'src',
   publicDir: 'src/public',
   manifestVersion: 3,
   hooks: {
+    'build:publicAssets': (_wxt, files) => {
+      for (const name of PDFJS_FILES) {
+        files.push({
+          absoluteSrc: path.resolve('node_modules/pdfjs-dist/build', name),
+          relativeDest: `pdfjs/${name}`,
+        });
+      }
+      // The Apache License 2.0 of PDF.js travels with its files.
+      files.push({ absoluteSrc: path.resolve(PDFJS_LICENSE), relativeDest: 'pdfjs/LICENSE' });
+    },
     'entrypoints:found': (wxt, infos) => {
       if (hasFileCheck(wxt.config.browser)) return;
       for (let i = infos.length - 1; i >= 0; i -= 1) {

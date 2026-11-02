@@ -25,3 +25,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+PDF.js
+
+The PDF viewer of the file pane uses PDF.js from the npm package pdfjs-dist
+6.5.438. Copyright Mozilla Foundation. PDF.js is licensed under the Apache
+License, Version 2.0. The extension includes the files pdf.min.mjs and
+pdf.worker.min.mjs of the package without any change, in the folder pdfjs.
+The full text of the license is in the file pdfjs/LICENSE of the extension.

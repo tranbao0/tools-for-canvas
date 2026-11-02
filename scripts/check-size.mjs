@@ -39,6 +39,24 @@ export function budgetFor(name) {
   return BUDGET_BYTES;
 }
 
+/**
+ * Files that a page loads at run time by an address that a scan of its code cannot see. The pane
+ * page loads PDF.js and its worker from `pdfjs/` when a PDF tab opens, so they count toward the
+ * limit of the page (design decision 25).
+ */
+export const RUNTIME_FOLDERS = Object.freeze({ 'viewer.html': 'pdfjs/' });
+
+/**
+ * Lists the files that an entry point loads at run time.
+ * @param {string} name the entry point name
+ * @param {readonly string[]} files every built file
+ * @returns {string[]}
+ */
+export function runtimeFiles(name, files) {
+  const folder = /** @type {Record<string, string | undefined>} */ (RUNTIME_FOLDERS)[name];
+  return folder === undefined ? [] : files.filter((file) => file.startsWith(folder));
+}
+
 const HTML_ASSET = /<(?:script|link)\b[^>]*?\b(?:src|href)\s*=\s*["']([^"']+)["']/gi;
 const JS_IMPORT =
   /\b(?:import|export)\b[^"'`;]*?\bfrom\s*["']([^"']+)["']|\bimport\s*\(?\s*["']([^"']+)["']/g;
@@ -105,7 +123,10 @@ export function directReferences(file, content) {
   for (const match of content.matchAll(pattern)) {
     const specifier = match[1] ?? match[2];
     if (specifier === undefined) continue;
-    const target = resolveReference(file, specifier);
+    // A page names a file next to it with a bare name, such as `src="viewer-frame.js"`. In a
+    // script, a bare name is a package, which a build has already bundled.
+    const bareName = file.endsWith('.html') && !/^(?:[a-z][a-z0-9+.-]*:|\/|\.)/i.test(specifier);
+    const target = resolveReference(file, bareName ? `./${specifier}` : specifier);
     if (target !== null && CODE_FILE.test(target)) references.push(target);
   }
   return references;
@@ -152,7 +173,9 @@ export async function measureEntryPoints(dir) {
   for (const file of files) contents.set(file, await readFile(path.join(dir, file)));
   const read = (/** @type {string} */ file) => contents.get(file)?.toString('utf8');
   return findEntryPoints(files).map((entry) => {
-    const closure = entryClosure(entry, read);
+    const closure = [
+      ...new Set([...entryClosure(entry, read), ...runtimeFiles(entry.name, files)]),
+    ].sort();
     const gzipBytes = closure.reduce(
       (sum, file) => sum + gzipSize(contents.get(file) ?? Buffer.alloc(0)),
       0,
