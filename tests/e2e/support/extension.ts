@@ -173,14 +173,48 @@ export const test = base.extend<ExtensionFixtures & ExtensionOptions>({
         },
         `Chromium may have rejected ${extensionDir}; run "npm run check:manifest" to look for manifest problems.`,
       );
+      const messages: string[] = [];
+      if (process.env['E2E_DETECTOR_LOG'] !== undefined) {
+        context.on('console', (message) => {
+          messages.push(`${Date.now()} ${message.type()} ${message.text()}`);
+        });
+        context.on('weberror', (error) => messages.push(String(error.error())));
+      }
       await use(context);
+      if (process.env['E2E_DETECTOR_LOG'] !== undefined) {
+        await testInfo.attach('extension-log', {
+          body: messages.join('\n'),
+          contentType: 'text/plain',
+        });
+      }
       await context.close();
     },
     { scope: 'test', timeout: START_UP_FIXTURE_TIMEOUT_MS },
   ],
   serviceWorker: [
     async ({ context }, use) => {
-      await use(await waitForExtensionWorker(context));
+      const worker = await waitForExtensionWorker(context);
+      if (process.env['E2E_DETECTOR_LOG'] !== undefined) {
+        await worker.evaluate(() => {
+          const api = (
+            globalThis as unknown as {
+              chrome: {
+                runtime: { onMessage: { addListener(listener: (message: unknown) => void): void } };
+              };
+            }
+          ).chrome;
+          api.runtime.onMessage.addListener((message) => {
+            if (
+              typeof message === 'object' &&
+              message !== null &&
+              'type' in message &&
+              message.type === 'weekrow:canvas-detected'
+            )
+              console.info('Detector report received', message);
+          });
+        });
+      }
+      await use(worker);
     },
     { scope: 'test', timeout: START_UP_FIXTURE_TIMEOUT_MS },
   ],

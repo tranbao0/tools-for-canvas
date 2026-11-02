@@ -520,7 +520,7 @@ describe('routeDataMessage', () => {
     ).toBeNull();
   });
 
-  it('answers the detector even when the injection fails', async () => {
+  it('rejects the detector report when the injection fails', async () => {
     host.injectInpage.mockRejectedValue(new Error('no access'));
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     await expect(
@@ -530,7 +530,7 @@ describe('routeDataMessage', () => {
         CONTENT_SCRIPT,
         host,
       ),
-    ).resolves.toEqual({ ok: true });
+    ).rejects.toThrow('no access');
   });
 
   it('accepts an offer only from extension pages, then shows the list in the open tabs', async () => {
