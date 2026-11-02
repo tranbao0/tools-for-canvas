@@ -645,9 +645,24 @@ test.describe('course grades', () => {
     hold.reply = new Promise<void>((resolve) => {
       release = resolve;
     });
-    await widget.getByTestId('course-103-grade').evaluate((node) => {
-      node.textContent = '•••';
-    });
+    // The fix records what the page shows in its next pass, 50 ms after a change, and the pass
+    // writes its stylesheet. The change waits for that write, so the card goes only after the
+    // fix has seen the hide. A read that is already on its way does not tell that the pass ran.
+    await widget.getByTestId('course-103-grade').evaluate(
+      (node) =>
+        new Promise<void>((resolve, reject) => {
+          const style = document.querySelector('style[data-wr-own="style"]');
+          if (style === null) {
+            reject(new Error('The fixes have no stylesheet'));
+            return;
+          }
+          new MutationObserver((_records, observer) => {
+            observer.disconnect();
+            resolve();
+          }).observe(style, { childList: true, characterData: true, subtree: true });
+          node.textContent = '•••';
+        }),
+    );
     await expect.poll(reads, { timeout: READ_WAIT }).toBeGreaterThan(before);
     await widget.getByTestId('course-grade-card-103').evaluate((node) => node.remove());
     await expect(widget.getByTestId('course-103-grade')).toHaveText('•••', {
