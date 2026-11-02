@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MOUNT_CONTAINER_ID, isAdapterPath } from './adapters';
+import { GRID_WAIT_MS } from './layout';
 import {
   DEFAULT_MOUNT_TIMEOUT_MS,
   mountWhenReady,
@@ -41,6 +42,24 @@ async function flushObserver(): Promise<void> {
 
 function container(): HTMLElement | null {
   return document.getElementById(MOUNT_CONTAINER_ID);
+}
+
+/** Counts the writes to the style of an element, which move it out of the flow and back. */
+function countStyleWrites(element: Element): () => number {
+  let count = 0;
+  new MutationObserver((records) => {
+    count += records.length;
+  }).observe(element, { attributes: true, attributeFilter: ['style'] });
+  return () => count;
+}
+
+/** Counts how often a node was inserted into the page, by a first insertion or by a move. */
+function countInsertions(node: Node): () => number {
+  let count = 0;
+  new MutationObserver((records) => {
+    for (const record of records) if ([...record.addedNodes].includes(node)) count += 1;
+  }).observe(document.documentElement, { childList: true, subtree: true });
+  return () => count;
 }
 
 function expectMountedBeforeRightSide(): void {
@@ -287,26 +306,170 @@ describe('dashboard without a right column', () => {
     expect(first?.nextElementSibling?.getAttribute('data-testid')).toBe('dashboard-tab-content');
   });
 
-  it('keeps the same container above the tab content after a redraw', async () => {
+  it('moves the same container once above the new tab panel when the page redraws it', async () => {
     loadPage(document, WIDGET_DASHBOARD);
     await mountWhenReady(onMount, { pathname: '/' });
     const first = container();
-    const panel = document.querySelector('[data-testid="dashboard-tab-content"]')!;
-    panel.parentElement!.insertBefore(document.createElement('div'), panel);
-    panel.innerHTML = '<p>Courses</p>';
+    const moves = countInsertions(first!);
+    const styleWrites = countStyleWrites(first!);
+
+    // React draws a new tab panel with a new grid, in place of the old ones.
+    document.getElementById('content')!.innerHTML = WIDGET_DASHBOARD.content;
     await flushObserver();
+
     expect(container()).toBe(first);
-    expect(first?.nextElementSibling?.getAttribute('data-testid')).toBe('dashboard-tab-content');
+    expect(first?.nextElementSibling).toBe(
+      document.querySelector('[data-testid="dashboard-tab-content"]'),
+    );
+    expect(moves()).toBe(1);
+    // The redraw does not take the container out of the flow, not even for a moment.
+    expect(styleWrites()).toBe(0);
+    // Nothing moves the container while the page stays as it is.
+    document.querySelector('[data-testid="widget-columns"]')!.setAttribute('class', 'x');
+    await flushObserver();
+    expect(moves()).toBe(1);
   });
 
-  it('sets the panel mode when the host arrives after placement', async () => {
+  it('sets the panel mode once when the host arrives, and leaves it alone after', async () => {
     loadPage(document, WIDGET_DASHBOARD);
     await mountWhenReady(onMount, { pathname: '/' });
     await flushObserver();
     const host = document.createElement('weekrow-list');
+    const styleWrites = countStyleWrites(container()!);
+    const writes: (string | null)[] = [];
+    new MutationObserver((records) => {
+      for (const record of records) writes.push(host.getAttribute(record.attributeName ?? ''));
+    }).observe(host, { attributes: true, attributeFilter: ['data-panel'] });
     container()!.append(host);
     await flushObserver();
+    // Redraws and class changes in the page leave the mode alone.
+    document.querySelector('[data-testid="widget-columns"]')!.setAttribute('class', 'x');
+    document.getElementById('content')!.append(document.createElement('p'));
+    await flushObserver();
     expect(host.getAttribute('data-panel')).toBe('stack');
+    expect(writes).toEqual(['stack']);
+    expect(styleWrites()).toBe(0);
+  });
+
+  describe('the widget dashboard before its grid exists', () => {
+    const waiting = { ...WIDGET_DASHBOARD, content: '' };
+    const drawGrid = (): void => {
+      document.getElementById('content')!.innerHTML = WIDGET_DASHBOARD.content;
+    };
+
+    it('keeps the card hidden in the right column until the grid arrives', async () => {
+      loadPage(document, waiting);
+      await mountWhenReady(onMount, { pathname: '/' });
+      const host = document.createElement('weekrow-list');
+      container()!.append(host);
+
+      // Long past the old deadline of 3 s, and just before the new one.
+      await vi.advanceTimersByTimeAsync(GRID_WAIT_MS - 1);
+      expect(container()?.style.display).toBe('none');
+      expect(container()?.parentElement?.id).toBe('right-side-wrapper');
+      expect(host.hasAttribute('data-panel')).toBe(false);
+
+      drawGrid();
+      await flushObserver();
+
+      expect(container()?.style.display).not.toBe('none');
+      expect(container()?.nextElementSibling?.getAttribute('data-testid')).toBe(
+        'dashboard-tab-content',
+      );
+      expect(host.getAttribute('data-panel')).toBe('stack');
+    });
+
+    it('uses the content fallback when the grid has not come after the wait', async () => {
+      loadPage(document, waiting);
+      await mountWhenReady(onMount, { pathname: '/' });
+      const host = document.createElement('weekrow-list');
+      container()!.append(host);
+
+      await vi.advanceTimersByTimeAsync(GRID_WAIT_MS - 1);
+      expect(container()?.style.display).toBe('none');
+      await vi.advanceTimersByTimeAsync(1);
+      await flushObserver();
+
+      expect(container()?.style.display).not.toBe('none');
+      expect(container()?.nextElementSibling?.id).toBe('content');
+      expect(host.getAttribute('data-panel')).toBe('stack');
+    });
+
+    it('moves the card once when the grid arrives after the wait', async () => {
+      loadPage(document, waiting);
+      await mountWhenReady(onMount, { pathname: '/' });
+      const moves = countInsertions(container()!);
+      await vi.advanceTimersByTimeAsync(GRID_WAIT_MS);
+      await flushObserver();
+      expect(moves()).toBe(1);
+
+      drawGrid();
+      await flushObserver();
+
+      expect(container()?.nextElementSibling?.getAttribute('data-testid')).toBe(
+        'dashboard-tab-content',
+      );
+      expect(moves()).toBe(2);
+      // The same page again: no move.
+      document.querySelector('[data-testid="widget-columns"]')!.setAttribute('class', 'x');
+      await flushObserver();
+      expect(moves()).toBe(2);
+    });
+
+    it('does not wait on List View, whose content comes from the server', async () => {
+      loadPage(document, LIST_VIEW);
+      await mountWhenReady(onMount, { pathname: '/' });
+      expect(container()?.style.display).not.toBe('none');
+      expect(container()?.nextElementSibling?.id).toBe('content');
+    });
+
+    it('does not wait on a dashboard that the server filled with classic content', async () => {
+      loadPage(document, { ...WIDGET_DASHBOARD, content: '<div id="dashboard"></div>' });
+      await mountWhenReady(onMount, { pathname: '/' });
+      expect(container()?.style.display).not.toBe('none');
+    });
+  });
+
+  it('puts the card back above its panel when the page pushes something between them', async () => {
+    loadPage(document, WIDGET_DASHBOARD);
+    await mountWhenReady(onMount, { pathname: '/' });
+    const panel = document.querySelector('[data-testid="dashboard-tab-content"]')!;
+    panel.parentElement!.insertBefore(document.createElement('div'), panel);
+    await flushObserver();
+    expect(container()?.nextElementSibling).toBe(panel);
+  });
+
+  it('measures again for a class on the body, which can move Canvas boxes', async () => {
+    loadPage(document, WIDGET_DASHBOARD);
+    await mountWhenReady(onMount, { pathname: '/' });
+    await flushObserver();
+    const measure = vi.spyOn(Element.prototype, 'getBoundingClientRect');
+    try {
+      document.body.classList.add('primary-nav-expanded');
+      await flushObserver();
+      expect(measure).toHaveBeenCalled();
+    } finally {
+      measure.mockRestore();
+    }
+  });
+
+  it('measures nothing for a class change that moves no anchor, and measures for a resize', async () => {
+    loadPage(document, WIDGET_DASHBOARD);
+    await mountWhenReady(onMount, { pathname: '/' });
+    await flushObserver();
+    const measure = vi.spyOn(Element.prototype, 'getBoundingClientRect');
+    try {
+      document.querySelector('[data-testid="widget-column-1"]')!.setAttribute('class', 'hover');
+      document.getElementById('content')!.classList.add('busy');
+      await flushObserver();
+      expect(measure).not.toHaveBeenCalled();
+
+      window.dispatchEvent(new Event('resize'));
+      await flushObserver();
+      expect(measure).toHaveBeenCalled();
+    } finally {
+      measure.mockRestore();
+    }
   });
 
   it('uses the grid when the tab panel is missing and content when the grid is removed', async () => {
@@ -323,17 +486,70 @@ describe('dashboard without a right column', () => {
     expect(container()?.style.display).not.toBe('none');
   });
 
-  it('stops mutation and resize work after unmount', async () => {
-    loadPage(document, WIDGET_DASHBOARD);
+  it('cancels the wait for the grid on unmount', async () => {
+    loadPage(document, { ...WIDGET_DASHBOARD, content: '' });
     await mountWhenReady(onMount, { pathname: '/' });
-    const first = container()!;
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
     mounts[0]!.release();
+
+    expect(vi.getTimerCount()).toBe(0);
+    // The deadline would have placed the list again, if it were still waiting.
+    const first = container()!;
     first.remove();
-    document.getElementById('content')!.replaceChildren(document.createElement('p'));
-    window.dispatchEvent(new Event('resize'));
-    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(GRID_WAIT_MS + 1000);
     expect(first.isConnected).toBe(false);
     expect(document.body.hasAttribute('data-weekrow-column')).toBe(false);
+  });
+
+  it('stops the frame, the observers and the scroll listener on unmount', async () => {
+    const observers: FakeResizeObserver[] = [];
+    class FakeResizeObserver {
+      observed = false;
+      constructor(readonly callback: () => void) {
+        observers.push(this);
+      }
+      observe(): void {
+        this.observed = true;
+      }
+      disconnect(): void {
+        this.observed = false;
+      }
+      unobserve(): void {}
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    try {
+      loadPage(document, WIDGET_DASHBOARD);
+      await mountWhenReady(onMount, { pathname: '/' });
+      const host = document.createElement('weekrow-list');
+      const root = host.attachShadow({ mode: 'open' });
+      const added = vi.spyOn(root, 'addEventListener');
+      const removed = vi.spyOn(root, 'removeEventListener');
+      container()!.append(host);
+      await flushObserver();
+      expect(observers.some((observer) => observer.observed)).toBe(true);
+      // The window resizes, so a frame is waiting when the list is released.
+      window.dispatchEvent(new Event('resize'));
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+      mounts[0]!.release();
+
+      expect(vi.getTimerCount()).toBe(0);
+      expect(observers.some((observer) => observer.observed)).toBe(false);
+      expect(added.mock.calls.filter(([type]) => type === 'scroll')).toHaveLength(1);
+      expect(removed.mock.calls.filter(([type]) => type === 'scroll')).toHaveLength(1);
+      // Nothing comes back: no timer, no frame and no observer places the list again.
+      const first = container()!;
+      first.remove();
+      document.getElementById('content')!.replaceChildren(document.createElement('p'));
+      window.dispatchEvent(new Event('resize'));
+      await vi.advanceTimersByTimeAsync(GRID_WAIT_MS + 1000);
+      expect(first.isConnected).toBe(false);
+      expect(document.body.hasAttribute('data-weekrow-column')).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('stops putting things back once a release took the marker away', async () => {

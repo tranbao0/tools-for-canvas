@@ -23,6 +23,17 @@ import {
 const LAYOUT_ATTRIBUTE = 'data-weekrow-column';
 /** The gutter when the page has no widget grid to measure it in. */
 const FALLBACK_GUTTER_PX = 24;
+/** How long the card waits for the widget grid on the widget dashboard, before it uses the fallback. */
+export const GRID_WAIT_MS = 10_000;
+
+export interface LayoutOptions {
+  /**
+   * The page is the widget dashboard. The card then stays hidden until the widget grid exists, or
+   * until `GRID_WAIT_MS` pass. The grid decides the position and the mode, and the fallback of the
+   * content column differs from it, so a card placed before the grid would jump when it arrives.
+   */
+  waitForGrid?: boolean;
+}
 
 function pixels(value: string, fallback: number): number {
   const parsed = Number.parseFloat(value);
@@ -60,16 +71,25 @@ function originOf(doc: Document, container: HTMLElement): Origin {
  * observer of an earlier copy of the script, which can outlive its copy for a few seconds, sees
  * that the layout is no longer owned and stops without putting anything back.
  */
-export function claimDashboardLayout(doc: Document, container: HTMLElement): () => void {
+export function claimDashboardLayout(
+  doc: Document,
+  container: HTMLElement,
+  options: LayoutOptions = {},
+): () => void {
   const body = doc.body;
   const view = doc.defaultView ?? window;
-  let ready = false;
+  let waiting = options.waitForGrid === true;
   let stopped = false;
-  const deadline = view.setTimeout(() => {
-    ready = true;
-    schedule();
-  }, 3000);
+  let deadline: number | undefined = waiting
+    ? view.setTimeout(() => {
+        deadline = undefined;
+        waiting = false;
+        schedule(true);
+      }, GRID_WAIT_MS)
+    : undefined;
   let frame: number | undefined;
+  /** A pass that a size change asked for measures again, even when no anchor changed. */
+  let forced = false;
   let applied: unknown[] = [];
   /** The scroll position of the card, kept for a card that the page removed and that comes back. */
   let scrollTop = 0;
@@ -100,24 +120,43 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
     if (card) card.scrollTop = scrollTop;
   }
 
-  let gridInset = FALLBACK_GUTTER_PX;
+  /** The distance from the right edge of the tab panel to the right edge of the grid, once measured. */
+  let gridInset: number | null = null;
   let widgetGutter = FALLBACK_GUTTER_PX;
+
+  /** The right edge of the content column of `#content`: its box without the right padding. */
+  function contentColumnRight(content: HTMLElement): number {
+    return (
+      content.getBoundingClientRect().right - pixels(view.getComputedStyle(content).paddingRight, 0)
+    );
+  }
+
+  /**
+   * The right edge that the card keeps one gutter away from: the widget columns, or the main
+   * content column when the page has no grid. The card never changes a Canvas box, so in the white
+   * space it overlaps the right padding of `#content`, where nothing is drawn.
+   */
+  function columnRight(
+    grid: WidgetGrid | null,
+    panel: HTMLElement,
+    content: HTMLElement | null,
+  ): number {
+    if (grid) return grid.columns.getBoundingClientRect().right;
+    if (gridInset !== null && findDashboardPanel(doc))
+      return panel.getBoundingClientRect().right - gridInset;
+    return content ? contentColumnRight(content) : panel.getBoundingClientRect().right;
+  }
 
   /** Places the card beside the tab panel or in the flow above it. */
   function arrangeWidget(grid: WidgetGrid | null, viewportWidth: number): void {
-    const panel = findDashboardPanel(doc) ?? grid?.columns ?? doc.getElementById('content');
+    const content = doc.getElementById('content');
+    const panel = findDashboardPanel(doc) ?? grid?.columns ?? content;
     if (!panel?.parentElement) return;
-    const panelBox = panel.getBoundingClientRect();
     if (grid) {
-      gridInset = panelBox.right - grid.columns.getBoundingClientRect().right;
+      gridInset = panel.getBoundingClientRect().right - grid.columns.getBoundingClientRect().right;
       widgetGutter = pixels(view.getComputedStyle(grid.columns).columnGap, FALLBACK_GUTTER_PX);
     }
-    const right = grid
-      ? grid.columns.getBoundingClientRect().right
-      : findDashboardPanel(doc)
-        ? panelBox.right - gridInset
-        : (doc.getElementById('wrapper')?.getBoundingClientRect().right ?? panelBox.right);
-    const left = right + widgetGutter;
+    const left = columnRight(grid, panel, content) + widgetGutter;
     const room = viewportWidth - PANEL_EDGE_GAP_PX - left;
     if (room >= AREA_MIN_PX) {
       if (container.parentNode !== body) moveContainer(container, body, null);
@@ -153,33 +192,52 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
     restoreScroll();
   }
 
+  function endWait(): void {
+    waiting = false;
+    if (deadline !== undefined) view.clearTimeout(deadline);
+    deadline = undefined;
+  }
+
   function place(force: boolean): void {
     const grid = findWidgetGrid(doc);
-    const content = doc.getElementById('content');
-    if (
-      !ready &&
-      (grid ||
-        findDashboardPanel(doc) ||
-        content?.querySelector('#dashboard-planner, #dashboard_header_container'))
-    )
-      ready = true;
-    if (!ready) {
+    if (grid) endWait();
+    if (waiting) {
       setContainerStyle(container, 'display:none');
       return;
     }
-    view.clearTimeout(deadline);
-    const key = [
-      grid?.columns,
-      findDashboardPanel(doc),
-      container.parentNode,
-      container.firstElementChild,
-    ];
-    if (!force && sameKey(key, applied)) return;
+    if (!force && sameKey(keyOf(grid), applied)) return;
     arrange(grid);
-    applied = key;
+    applied = keyOf(grid);
   }
 
+  /**
+   * Everything that decides the position, other than a size: a change of one of these places the
+   * card again even when the pass is not forced. In the flow, the element after the card is part
+   * of it, so a card that the page pushed away from its panel goes back.
+   */
+  function keyOf(grid: WidgetGrid | null): unknown[] {
+    return [
+      grid?.columns,
+      ...(grid?.firstCards ?? []),
+      findDashboardPanel(doc),
+      doc.getElementById('content'),
+      container.parentNode,
+      container.parentNode === body ? null : container.nextElementSibling,
+      container.firstElementChild,
+    ];
+  }
+
+  // A change in the page is checked against the anchors of the last pass. A change in a size is
+  // always measured again (`schedule(true)`).
   const observer = new MutationObserver((records) => {
+    // A class on the body can move Canvas boxes without a change of any size that is observed,
+    // such as the width of the navigation bar, so it measures again.
+    const bodyChanged = records.some(
+      (record) =>
+        record.type === 'attributes' &&
+        record.target === body &&
+        record.attributeName !== LAYOUT_ATTRIBUTE,
+    );
     if (
       !container.isConnected ||
       records.some((record) => {
@@ -194,25 +252,29 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
         );
       })
     )
-      schedule();
+      schedule(bodyChanged);
   });
-  const sizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
+  const onSize = (): void => schedule(true);
+  const sizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onSize);
 
-  function schedule(): void {
+  function schedule(force: boolean): void {
+    forced ||= force;
     if (stopped || frame !== undefined) return;
     frame = view.requestAnimationFrame(() => {
       frame = undefined;
-      keep(true);
+      const measure = forced;
+      forced = false;
+      keep(measure);
     });
   }
 
   function stop(): void {
     stopped = true;
-    view.clearTimeout(deadline);
+    endWait();
     scrollRoot?.removeEventListener('scroll', onScroll, true);
     observer.disconnect();
     sizeObserver?.disconnect();
-    view.removeEventListener('resize', schedule);
+    view.removeEventListener('resize', onSize);
     if (frame !== undefined) view.cancelAnimationFrame(frame);
     frame = undefined;
   }
@@ -249,7 +311,7 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
     attributeFilter: ['class', 'hidden', 'aria-selected', LAYOUT_ATTRIBUTE],
   });
   sizeObserver?.observe(doc.documentElement);
-  view.addEventListener('resize', schedule);
+  view.addEventListener('resize', onSize);
   keep(true);
   return () => {
     stop();
