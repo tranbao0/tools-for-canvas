@@ -1,0 +1,65 @@
+import { describe, expect, it } from 'vitest';
+import { fileTarget, openFile, normalizeWidth, validRequest, plainClick } from './model';
+
+describe('file targets', () => {
+  for (const path of [
+    '/files/42',
+    '/courses/12/files/42',
+    '/courses/12/files/42/preview',
+    '/files/42/download?wrap=1',
+  ]) {
+    it(path, () => expect(fileTarget(path, 'https://school.edu')).toEqual({ fileId: '42' }));
+  }
+  it('module item', () =>
+    expect(fileTarget('/courses/12/modules/items/34', 'https://school.edu', '56')).toEqual({
+      courseId: '12',
+      moduleId: '56',
+      itemId: '34',
+    }));
+  it('rejects another origin', () =>
+    expect(fileTarget('https://other.edu/files/42', 'https://school.edu')).toBeNull());
+});
+describe('tabs', () => {
+  it('activates an open file without duplicating it', () => {
+    const state = openFile(openFile({ ids: [], active: null }, '1'), '2');
+    expect(openFile(state, '1')).toEqual({ ids: ['1', '2'], active: '1' });
+  });
+  it('replaces the oldest inactive file at eight', () => {
+    expect(openFile({ ids: ['1', '2', '3', '4', '5', '6', '7', '8'], active: '1' }, '9')).toEqual({
+      ids: ['1', '3', '4', '5', '6', '7', '8', '9'],
+      active: '9',
+    });
+  });
+});
+describe('channel', () => {
+  it('accepts only ids and structural paths', () => {
+    expect(validRequest('42')).toBe(true);
+    expect(validRequest('/courses/12/files/42')).toBe(true);
+    for (const value of [
+      'https://school.edu/files/42',
+      '//other.edu/files/42',
+      '/files/42?url=https://other.edu',
+      '../files/42',
+      {},
+      null,
+    ])
+      expect(validRequest(value)).toBe(false);
+  });
+});
+describe('width', () => {
+  it('normalizes invalid and extreme values', () => {
+    expect(normalizeWidth(null)).toBe(480);
+    expect(normalizeWidth(NaN)).toBe(480);
+    expect(normalizeWidth(100)).toBe(360);
+    expect(normalizeWidth(10000)).toBe(1344);
+  });
+});
+
+describe('plain clicks', () => {
+  const event = { button: 0, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false };
+  it('accepts a left click', () => expect(plainClick(event)).toBe(true));
+  for (const key of ['ctrlKey', 'shiftKey', 'altKey', 'metaKey']) {
+    it(key, () => expect(plainClick({ ...event, [key]: true })).toBe(false));
+  }
+  it('rejects a middle click', () => expect(plainClick({ ...event, button: 1 })).toBe(false));
+});
