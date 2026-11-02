@@ -198,6 +198,8 @@ interface RefreshResult {
 }
 
 export interface DataOwner {
+  /** Restores delayed deletes when the worker wakes. */
+  resumeDeletes(): Promise<void>;
   /** `tabId` is the tab of the surface, when it has one. */
   getState(request: SurfaceRequest, tabId?: number): Promise<StateReply>;
   refresh(reason: RefreshReason): Promise<RefreshResult>;
@@ -2018,6 +2020,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       scheduleDelete(noteId, deleteAt);
     }
     persist();
+    if (operation === 'delete') await persistChain;
     bumpLater();
     if (operation === 'update') return NO_UNDO;
     return {
@@ -2970,6 +2973,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   return {
+    async resumeDeletes() {
+      await ready();
+    },
     getState,
 
     async refresh(reason) {

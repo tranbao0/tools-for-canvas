@@ -70,6 +70,39 @@ export function wireDataTriggers(owner: DataOwner): () => void {
     if (windowId === browser.windows.WINDOW_ID_NONE) return;
     owner.trigger('focus').catch(report('focus refresh'));
   };
+  const onConnect = (port: import('wxt/browser').Browser.runtime.Port): void => {
+    if (
+      !port.name.startsWith('weekrow-delete:') ||
+      !port.sender?.url?.startsWith(browser.runtime.getURL('/'))
+    )
+      return;
+    const noteId = port.name.slice('weekrow-delete:'.length);
+    let closed = false;
+    const pending = owner.act({ kind: 'deleteTask', noteId });
+    port.onDisconnect.addListener(() => {
+      void browser.runtime.lastError;
+      closed = true;
+      void pending
+        .then(() => owner.act({ kind: 'sendDelete', noteId }))
+        .catch(report('closed delete'));
+    });
+    void pending
+      .then((reply) => {
+        if (!closed) port.postMessage({ reply });
+      })
+      .catch((error: unknown) => {
+        report('task delete')(error);
+        if (!closed) port.postMessage({ error: 'Task delete failed' });
+      });
+  };
+  browser.runtime.onConnect.addListener(onConnect);
+  const onAlarm = (alarm: { name: string }): void => {
+    if (alarm.name === 'weekrow-deletes')
+      void owner.resumeDeletes().catch(report('pending deletes'));
+  };
+  browser.alarms.onAlarm.addListener(onAlarm);
+  void browser.alarms.create('weekrow-deletes', { periodInMinutes: 1 });
+  void owner.resumeDeletes().catch(report('pending deletes'));
   browser.runtime.onStartup.addListener(onStartup);
   browser.windows.onFocusChanged.addListener(onFocus);
   const stopOrigin = canvasOriginItem.watch((origin) => {
@@ -79,6 +112,8 @@ export function wireDataTriggers(owner: DataOwner): () => void {
     owner.accessChanged().catch(report('access change'));
   });
   return () => {
+    browser.runtime.onConnect.removeListener(onConnect);
+    browser.alarms.onAlarm.removeListener(onAlarm);
     browser.runtime.onStartup.removeListener(onStartup);
     browser.windows.onFocusChanged.removeListener(onFocus);
     stopOrigin();

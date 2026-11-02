@@ -440,7 +440,7 @@ An earlier version used option B; schools on their own domain then needed an "Al
 
 - `manifest_version`: 3 for every browser.
 - `host_permissions`: `https://*/*`
-- `permissions`: `storage`, `cookies`, `scripting`, and `sidePanel` on Chrome and Edge
+- `permissions`: `storage`, `cookies`, `scripting`, `alarms`, and `sidePanel` on Chrome and Edge
   - `cookies` reads the `_csrf_token` value for a write.
     It also reads the `canvas_session` or `_normandy_session` value for one job: to compare a salted fingerprint before cached data goes out (decision 11).
     The extension never stores or sends that value.
@@ -1050,7 +1050,12 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   A line that a failed round set stays until a round succeeds.
 - A different user clears all cached data and invalidates pending work before either feature can serve it.
 - The Undo notice of a surface stays through any reply that is not `ready`, so a task delete never goes out early.
-  The owner sends the delete at its own time.
+  The background owns the delayed delete from the tap and saves its due time and patch in storage.session before it replies.
+  Its timer sends the delete within two minutes without a close message.
+  A panel delete holds a port, and its disconnect sends that delete sooner as a best effort.
+  The pagehide message also sends the delete sooner as a best effort.
+  A one-minute browser alarm wakes the worker, and every worker start restores pending deletes and sends those that are due.
+  A worker restart can delay a delete until the next wake, but cannot discard it.
   An Undo of a done mark, a skip mark or an announcement read mark first passes the same cookie check, and it does nothing when the check fails.
   The reply of a refused Undo says `refused`, and the surface shows the Undo notice again, also beside the `cant_load` state.
   A refused Undo is `refused` only while the cache still belongs to the student of the Undo.

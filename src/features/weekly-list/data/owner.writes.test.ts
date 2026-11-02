@@ -659,7 +659,19 @@ describe('custom tasks', () => {
     expect(h.canvas.callsOf('deleteNote')).toHaveLength(1);
   });
 
-  it('sends DELETE at the latest 2 minutes after the delete', async () => {
+  it('sends a delete without a close message after the worker restarts', async () => {
+    const h = await loaded();
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    h.owner.dispose();
+    await vi.advanceTimersByTimeAsync(MAX_DELETE_DELAY_MS);
+    const owner = h.restart();
+    await owner.resumeDeletes();
+    await vi.advanceTimersByTimeAsync(0);
+    await owner.settled();
+    expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday]]);
+  });
+
+  it('sends DELETE after two minutes without a panel close message', async () => {
     const h = await loaded();
     await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
 

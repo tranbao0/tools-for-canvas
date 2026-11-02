@@ -144,7 +144,7 @@ export default defineConfig({
     name: '__MSG_extName__',
     description: '__MSG_extDescription__',
     default_locale: 'en',
-    permissions: ['storage', 'cookies', 'scripting'],
+    permissions: ['storage', 'cookies', 'scripting', 'alarms'],
     // Canvas runs on many school domains, so the extension asks for every https site. The
     // detector content script reads only Canvas markers (docs/design.md, decision 5).
     host_permissions: ['https://*/*'],

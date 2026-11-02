@@ -86,7 +86,7 @@ const CHROME_MANIFEST = {
   manifest_version: 3,
   name: '__MSG_extName__',
   default_locale: 'en',
-  permissions: ['storage', 'cookies', 'scripting', 'sidePanel'],
+  permissions: ['storage', 'cookies', 'scripting', 'alarms', 'sidePanel'],
   host_permissions: ['https://*/*'],
   action: { default_title: '__MSG_actionTitle__' },
   minimum_chrome_version: '144',
@@ -100,7 +100,7 @@ const FIREFOX_MANIFEST = {
   manifest_version: 3,
   name: '__MSG_extName__',
   default_locale: 'en',
-  permissions: ['storage', 'cookies', 'scripting'],
+  permissions: ['storage', 'cookies', 'scripting', 'alarms'],
   host_permissions: ['https://*/*'],
   action: { default_title: '__MSG_actionTitle__' },
   browser_specific_settings: {
