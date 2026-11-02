@@ -60,3 +60,11 @@ export function normalizeTabs(value: unknown): Tabs {
       typeof raw.active === 'string' && ids.includes(raw.active) ? raw.active : (ids[0] ?? null),
   };
 }
+/** Closes a tab. The tab that takes its place becomes active, or the one before it at the end. */
+export function closeFile(state: Tabs, id: string): Tabs {
+  const index = state.ids.indexOf(id);
+  if (index < 0) return state;
+  const ids = state.ids.filter((entry) => entry !== id);
+  if (state.active !== id) return { ids, active: state.active };
+  return { ids, active: ids[index] ?? ids[index - 1] ?? null };
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { acceptViewerChannel, createViewerNonce, validOpenFile } from './channel';
+import { acceptViewerChannel, createViewerNonce, validOpenFile, validTheme } from './channel';
 
 const nonce = 'a'.repeat(32);
 const open = { type: 'open-file', nonce, fileId: '42', courseId: '12' };
@@ -26,6 +26,23 @@ describe('viewer identities', () => {
     const first = createViewerNonce();
     expect(first).toMatch(/^[0-9a-f]{32}$/);
     expect(createViewerNonce()).not.toBe(first);
+  });
+});
+
+describe('viewer theme', () => {
+  const theme = { type: 'theme', nonce, theme: 'dark' };
+  it('accepts the light and dark themes', () => {
+    expect(validTheme(theme, nonce)).toBe(true);
+    expect(validTheme({ ...theme, theme: 'light' }, nonce)).toBe(true);
+  });
+  it('rejects other values, extra fields and a wrong nonce', () => {
+    for (const value of ['auto', 'DARK', '', undefined, 1, null, {}]) {
+      expect(validTheme({ ...theme, theme: value }, nonce)).toBe(false);
+    }
+    expect(validTheme({ ...theme, color: 'red' }, nonce)).toBe(false);
+    expect(validTheme({ ...theme, nonce: 'b'.repeat(32) }, nonce)).toBe(false);
+    expect(validTheme(theme, '')).toBe(false);
+    expect(validTheme(null, nonce)).toBe(false);
   });
 });
 
@@ -70,6 +87,11 @@ describe('viewer channel', () => {
     expect(receive).not.toHaveBeenCalled();
     listener({ data: open });
     expect(receive).toHaveBeenCalledWith(open);
+    const theme = { type: 'theme', nonce, theme: 'light' };
+    listener({ data: { ...theme, theme: 'blue' } });
+    expect(receive).toHaveBeenCalledTimes(1);
+    listener({ data: theme });
+    expect(receive).toHaveBeenLastCalledWith(theme);
     close!();
     expect(port.removeEventListener).toHaveBeenCalledWith('message', listener);
     expect(port.close).toHaveBeenCalledOnce();

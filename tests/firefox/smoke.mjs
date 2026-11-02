@@ -347,10 +347,10 @@ async function main() {
     if (!(await frame.getAttribute('src')).includes('/viewer.html#'))
       throw new Error('Wrong pane page');
     await driver.switchTo().frame(frame);
-    await driver.wait(
-      async () => (await driver.findElement(By.css('body')).getText()) === 'Course notes.pdf',
-      10_000,
-    );
+    await driver.wait(async () => {
+      const names = await driver.findElements(By.css('[data-part="card-name"]'));
+      return names.length === 1 && (await names[0].getText()) === 'Course notes.pdf';
+    }, 10_000);
     await driver.switchTo().defaultContent();
     console.log('Firefox store file pane: passed.');
     console.log('Firefox smoke test: passed.');

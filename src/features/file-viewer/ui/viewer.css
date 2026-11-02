@@ -1,0 +1,217 @@
+/*
+ * The file pane page (design decision 25). It adds to the list stylesheet: the colors, buttons,
+ * placeholder bars and states come from there. The pane looks like the tabs and cards of Canvas.
+ * The theme is data-theme on the root element, which the Canvas page sends over the channel.
+ */
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: transparent;
+}
+
+/* Nothing shows until the Canvas page has sent its theme, so the pane never flashes the wrong one. */
+html:not([data-theme]) #app {
+  visibility: hidden;
+}
+
+.wr[data-surface='viewer'] {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.fv-app {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Tabs: text tabs on a line, the chosen one marked by a bar in the brand color. */
+
+.fv-tabs {
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--wr-line);
+  scrollbar-width: thin;
+}
+
+.fv-tab {
+  display: flex;
+  flex: 0 1 200px;
+  align-items: center;
+  min-width: 120px;
+  margin-bottom: -1px;
+  border-bottom: 3px solid transparent;
+}
+
+.fv-tab:hover {
+  border-bottom-color: var(--wr-btn-line);
+}
+
+.fv-tab[data-selected='true'] {
+  border-bottom-color: var(--wr-brand);
+}
+
+.fv-tab-main {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 4px 0 14px;
+  color: var(--wr-text-2);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.fv-tab:hover .fv-tab-main,
+.fv-tab[data-selected='true'] .fv-tab-main {
+  color: var(--wr-text);
+}
+
+.fv-tab-main > .wr-icon {
+  font-size: 16px;
+}
+
+.fv-tab-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fv-tab-main:focus-visible {
+  outline-offset: -3px;
+}
+
+.wr .fv-tab-close {
+  flex: none;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  margin-right: 6px;
+  padding: 0;
+  color: var(--wr-text-2);
+}
+
+.wr .fv-tab-close:hover {
+  color: var(--wr-text);
+}
+
+.fv-tab-close > .wr-icon {
+  font-size: 12px;
+}
+
+/* The panel: the card of the file, then the region where the viewer draws it. */
+
+.fv-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.fv-card {
+  display: grid;
+  flex: none;
+  gap: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--wr-line);
+}
+
+.fv-card.wr-state {
+  max-width: none;
+}
+
+.fv-card-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.fv-card-icon {
+  flex: none;
+  color: var(--wr-text-2);
+  font-size: 40px;
+  line-height: 0;
+}
+
+.fv-card-text {
+  min-width: 0;
+}
+
+.fv-card-name {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.fv-card-meta {
+  margin: 4px 0 0;
+  color: var(--wr-text-2);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.fv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.fv-actions > .wr-btn {
+  gap: 8px;
+  text-decoration: none;
+}
+
+.fv-actions > a.wr-btn {
+  color: var(--wr-text);
+}
+
+.fv-actions > .wr-btn > .wr-icon {
+  font-size: 16px;
+}
+
+.fv-skel-icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+}
+
+.fv-skel-lines {
+  display: grid;
+  flex: 1;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.fv-skel-title {
+  width: 65%;
+  height: 22px;
+}
+
+.fv-skel-meta {
+  width: 30%;
+  height: 14px;
+}
+
+.fv-skel-button {
+  width: 120px;
+  height: 38px;
+}
+
+.fv-body {
+  flex: 1;
+  min-height: 160px;
+}
