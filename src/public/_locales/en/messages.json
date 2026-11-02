@@ -845,6 +845,9 @@
   "pdfLoading": {
     "message": "Loading PDF"
   },
+  "fileLoadingProgress": {
+    "message": "Loading file"
+  },
   "pdfProgress": {
     "message": "$1 of $2"
   },

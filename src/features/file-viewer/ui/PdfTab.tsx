@@ -20,6 +20,8 @@ export interface PdfHost {
     url: string,
     onProgress: (loaded: number, total: number | null) => void,
     signal: AbortSignal,
+    /** Read only the first `truncateAt` bytes, and take a longer file as complete. */
+    options?: { truncateAt?: number },
   ): Promise<Uint8Array>;
   /** Loads PDF.js. */
   loadPdfjs(): Promise<PdfjsLib>;
@@ -37,18 +39,27 @@ export function progressFraction(loaded: number, total: number | null): number |
   return Math.min(1, Math.max(0, loaded / total));
 }
 
-function Progress(props: { loaded: number; total: number | null }) {
+/** The bar for the bytes of a file that load. A PDF and the players of other files share it. */
+export function Progress(props: {
+  loaded: number;
+  total: number | null;
+  label?: string;
+  /** The prefix of the `data-part` names: `pdf` for a PDF tab, `media` for the other players. */
+  part?: 'pdf' | 'media';
+}) {
+  const part = props.part ?? 'pdf';
+  const label = props.label ?? t('pdfLoading');
   const fraction = progressFraction(props.loaded, props.total);
   const percent = fraction === null ? null : Math.round(fraction * 100);
   return (
-    <div class="pv-loading" data-part="pdf-loading">
-      <p class="pv-loading-title">{t('pdfLoading')}</p>
+    <div class="pv-loading" data-part={`${part}-loading`}>
+      <p class="pv-loading-title">{label}</p>
       <div
         class="pv-progress"
-        data-part="pdf-progress"
+        data-part={`${part}-progress`}
         data-indeterminate={fraction === null ? 'true' : 'false'}
         role="progressbar"
-        aria-label={t('pdfLoading')}
+        aria-label={label}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percent ?? undefined}

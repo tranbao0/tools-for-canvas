@@ -59,6 +59,72 @@ describe('fetchFileBytes', () => {
     ]);
   });
 
+  describe('truncateAt', () => {
+    const big = (length: number) => new Uint8Array(length).fill(7);
+    it('stops after the limit, cancels the body and does not fail on a longer file', async () => {
+      let pulled = 0;
+      let cancelled = false;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulled += 1;
+          controller.enqueue(big(4));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      });
+      const progress: [number, number | null][] = [];
+      const result = await fetchFileBytes({
+        origin: ORIGIN,
+        url: '/files/1/download',
+        truncateAt: 10,
+        maxBytes: 1000,
+        onProgress: (loaded, total) => progress.push([loaded, total]),
+        fetchImpl: async () =>
+          new Response(body, { status: 200, headers: { 'content-length': '900' } }),
+      });
+      expect(result.length).toBe(10);
+      expect(cancelled).toBe(true);
+      expect(pulled).toBeLessThan(6);
+      // The total is the shorter of the file and the limit.
+      expect(progress[0]).toEqual([0, 10]);
+      expect(progress.at(-1)).toEqual([10, 10]);
+    });
+
+    it('allocates only the limit for a file with a known length', async () => {
+      const result = await fetchFileBytes({
+        origin: ORIGIN,
+        url: '/files/1/download',
+        truncateAt: 8,
+        fetchImpl: async () =>
+          reply([big(5), big(5), big(5)], { headers: { 'content-length': String(90 * 2 ** 20) } }),
+      });
+      expect(result.length).toBe(8);
+      expect(result.buffer.byteLength).toBe(8);
+    });
+
+    it('returns a short file whole', async () => {
+      const result = await fetchFileBytes({
+        origin: ORIGIN,
+        url: '/files/1/download',
+        truncateAt: 100,
+        fetchImpl: async () => reply([bytes(1, 2, 3)], { headers: { 'content-length': '3' } }),
+      });
+      expect([...result]).toEqual([1, 2, 3]);
+    });
+
+    it('still fails on a file over maxBytes when no limit is set', async () => {
+      await expect(
+        fetchFileBytes({
+          origin: ORIGIN,
+          url: '/files/1/download',
+          maxBytes: 4,
+          fetchImpl: async () => reply([big(10)], { headers: { 'content-length': '10' } }),
+        }),
+      ).rejects.toMatchObject({ kind: 'too_large' });
+    });
+  });
+
   it('refuses a start address on another origin and sends no request', async () => {
     const fetchImpl = vi.fn();
     for (const url of ['https://evil.example/files/1', `http://school.instructure.com/files/1`]) {

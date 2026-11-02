@@ -325,8 +325,7 @@ async function checkHostilePaneFrame(driver, server) {
 }
 
 /**
- * Opens an image in the pane and checks that the image element has loaded the blob URL of the
- * fetched bytes.
+ * Opens an image in the pane and checks that it is drawn on a canvas.
  * @param {import('selenium-webdriver').WebDriver} driver
  */
 async function checkImageTab(driver) {
@@ -345,20 +344,104 @@ async function checkImageTab(driver) {
   }, 10_000);
   await driver.switchTo().frame(frame);
   const image = await driver.wait(async () => {
-    const images = await driver.findElements(By.css('.fv-media img'));
+    const images = await driver.findElements(By.css('.fv-media canvas'));
     return images[0] ?? false;
   }, 30_000);
   const loaded = await driver.wait(async () => {
     const result = await driver.executeScript(
-      'return { width: arguments[0].naturalWidth, source: arguments[0].src };',
+      'return { width: arguments[0].width, images: document.querySelectorAll("img").length };',
       image,
     );
     return result.width > 0 ? result : false;
   }, 20_000);
-  if (!loaded.source.startsWith('blob:'))
-    throw new Error(`The image is not a blob: ${loaded.source}`);
+  if (loaded.images !== 0) throw new Error('The pane holds an img element for the picture');
   await driver.switchTo().defaultContent();
-  console.log(`Firefox image viewer: the image loaded, ${loaded.width} px wide.`);
+  console.log(`Firefox image viewer: the image is drawn on a canvas, ${loaded.width} px wide.`);
+}
+
+/**
+ * Opens the hostile SVG of tests/fixtures/files in the pane. The file tries every way to run
+ * script (an inline script, an onload handler, a javascript: link, and a foreignObject with a
+ * script, an error handler and a link), and each way would write a "hostile-" key into
+ * localStorage. The pane must draw the picture on a canvas, keep no element and no blob URL of
+ * the file, and run none of it. A blob URL that stays open can be opened as a page in the
+ * extension origin, from the context menu "Open image in new tab".
+ * @param {import('selenium-webdriver').WebDriver} driver
+ */
+async function checkHostileSvg(driver) {
+  await driver.executeScript(
+    `document.getElementById('hostile-link').addEventListener('click', event => event.preventDefault());`,
+  );
+  const host = await driver.findElement(By.css('#tools-file-viewer'));
+  const frame = (await (await host.getShadowRoot()).findElements(By.css('iframe')))[0];
+  await driver.switchTo().frame(frame);
+  // Record the blob URLs the pane makes and frees. The script runs in the pane page itself.
+  await driver.executeScript(`
+    const log = { created: [], revoked: [] };
+    window.__blobs = log;
+    const create = URL.createObjectURL.bind(URL);
+    const revoke = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = (object) => {
+      const url = create(object);
+      log.created.push(url);
+      return url;
+    };
+    URL.revokeObjectURL = (url) => {
+      log.revoked.push(url);
+      revoke(url);
+    };
+  `);
+  await driver.switchTo().defaultContent();
+  // A real click: the page script ignores a click that a script of the page makes.
+  await driver
+    .actions()
+    .move({ origin: await driver.findElement(By.id('hostile-link')) })
+    .click()
+    .perform();
+  await driver.switchTo().frame(frame);
+  const canvas = await driver.wait(async () => {
+    const found = await driver.findElements(By.css('.fv-media canvas[aria-label="hostile.svg"]'));
+    return found[0] ?? false;
+  }, 30_000);
+  const state = await driver.executeScript(
+    `return {
+      width: arguments[0].width,
+      height: arguments[0].height,
+      role: arguments[0].getAttribute('role'),
+      images: document.querySelectorAll('img, object, embed').length,
+      blobAttributes: document.querySelectorAll('[src^="blob:"], [href^="blob:"]').length,
+      keys: Object.keys(localStorage).filter((key) => key.startsWith('hostile-')),
+      blobs: JSON.parse(JSON.stringify(window.__blobs ?? null)),
+    };`,
+    canvas,
+  );
+  if (state.width !== 300 || state.height !== 200 || state.role !== 'img')
+    throw new Error(`The hostile SVG did not draw as expected: ${JSON.stringify(state)}`);
+  if (state.images !== 0 || state.blobAttributes !== 0)
+    throw new Error(`The pane holds an element with the file: ${JSON.stringify(state)}`);
+  if (state.keys.length !== 0) throw new Error(`The hostile SVG ran: ${state.keys.join(', ')}`);
+  if (state.blobs === null || state.blobs.created.length === 0)
+    throw new Error('The blob log did not record the read');
+  const open = state.blobs.created.filter((url) => !state.blobs.revoked.includes(url));
+  if (open.length !== 0) throw new Error(`A blob URL of the file stays open: ${open.join(' ')}`);
+  // A freed URL gives nothing, not even as a page of its own.
+  const before = await driver.getAllWindowHandles();
+  const current = await driver.getWindowHandle();
+  await driver.executeScript('window.open(arguments[0])', state.blobs.created.at(-1));
+  await driver.sleep(1500);
+  const after = await driver.getAllWindowHandles();
+  const fresh = after.find((handle) => !before.includes(handle));
+  if (fresh) {
+    await driver.switchTo().window(fresh);
+    const type = await driver.executeScript(
+      `try { return document.contentType; } catch (error) { return 'none'; }`,
+    );
+    if (type === 'image/svg+xml') throw new Error('A freed blob URL opened the SVG as a page');
+    await driver.close();
+    await driver.switchTo().window(current);
+  }
+  await driver.switchTo().defaultContent();
+  console.log('Firefox hostile SVG: drawn on a canvas, nothing ran, no blob URL stays open.');
 }
 
 async function main() {
@@ -394,8 +477,28 @@ async function main() {
     body: readFileSync(new URL('../fixtures/files/image.png', import.meta.url)),
     contentType: 'image/png',
   };
+  files['/files/44/download'] = {
+    body: '',
+    contentType: 'text/plain',
+    location: `${server.origin}/inst-fs/hostile.svg`,
+  };
+  files['/inst-fs/hostile.svg'] = {
+    body: readFileSync(new URL('../fixtures/files/hostile.svg', import.meta.url)),
+    contentType: 'image/svg+xml',
+  };
+  files['/api/v1/files/44'] = {
+    body: JSON.stringify({
+      id: 44,
+      display_name: 'hostile.svg',
+      filename: 'hostile.svg',
+      'content-type': 'image/svg+xml',
+      size: 900,
+      url: `${origin}/files/44/download`,
+    }),
+    contentType: 'application/json',
+  };
   files['/courses/101'] = {
-    body: '<html><head><script>INST={environment:\'production\'};ENV={current_user_id:\'5501\'};</script></head><body><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a><a id="photo" class="instructure_file_link" href="/files/43">Lecture photo</a></body></html>',
+    body: '<html><head><script>INST={environment:\'production\'};ENV={current_user_id:\'5501\'};</script></head><body><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a><a id="photo" class="instructure_file_link" href="/files/43">Lecture photo</a><a id="hostile-link" class="instructure_file_link" href="/files/44">Hostile</a></body></html>',
     contentType: 'text/html',
   };
   files['/api/v1/files/42'] = {
@@ -512,6 +615,7 @@ async function main() {
     console.log(`Firefox PDF viewer: page 1 drew ${drawn.ink} dark pixels, ${count}`);
     await driver.switchTo().defaultContent();
     await checkImageTab(driver);
+    await checkHostileSvg(driver);
     await checkHostilePaneFrame(driver, server);
     console.log('Firefox store file pane: passed.');
     console.log('Firefox smoke test: passed.');

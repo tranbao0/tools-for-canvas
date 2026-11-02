@@ -100,11 +100,32 @@ export function closeFile(state: Tabs, id: string): Tabs {
   return { ids, active: ids[index] ?? ids[index - 1] ?? null };
 }
 
-/** Canvas marks submission attachments as downloads, but students also need to read them. */
-export function catchesDownload(href: string, origin: string, pagePath: string): boolean {
+/**
+ * The places where Canvas lists the files that the student handed in: the table of the submission
+ * details (`table.file-upload-submission-table`), and the Submission section of the assignment
+ * page, which Canvas draws in the right column (`#right-side .details > .content`).
+ */
+const SUBMISSION_FILES = '.file-upload-submission-table,#right-side .details > .content';
+/** Text that other people write and files that are not the student's own work. */
+const NOT_SUBMISSION_FILES = '.description,.user_content,.comments,.comment,.comment_attachments';
+
+/**
+ * Whether a link with a `download` attribute is a file the student handed in. Canvas can mark
+ * these as downloads, but the student needs to read them. A download button that a teacher puts in
+ * the assignment description, or a comment attachment, keeps its normal action.
+ */
+export function catchesDownload(
+  link: Element,
+  href: string,
+  origin: string,
+  pagePath: string,
+): boolean {
   return (
     /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*(?:\/submissions\/[1-9][0-9]*)?\/?$/.test(
       pagePath,
-    ) && fileTarget(href, origin) !== null
+    ) &&
+    link.closest(SUBMISSION_FILES) !== null &&
+    link.closest(NOT_SUBMISSION_FILES) === null &&
+    fileTarget(href, origin) !== null
   );
 }

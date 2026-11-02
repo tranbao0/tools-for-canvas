@@ -13,6 +13,8 @@ export interface FileHost {
   readonly origin: string;
   /** The paths (with the query) that reached the host, in order. */
   readonly requests: readonly string[];
+  /** The paths whose answer the client closed before the host had sent the whole body. */
+  readonly aborted: readonly string[];
   /** The `cookie` header of each request that reached the host. */
   readonly cookies: readonly (string | undefined)[];
   close(): Promise<void>;
@@ -51,10 +53,14 @@ export async function startFileHost(
   );
   const requests: string[] = [];
   const cookies: (string | undefined)[] = [];
+  const aborted: string[] = [];
   const server: Server = createServer(
     { key: readFileSync(key), cert: readFileSync(cert) },
     (request, response) => {
       requests.push(request.url ?? '');
+      response.on('close', () => {
+        if (!response.writableFinished) aborted.push(request.url ?? '');
+      });
       cookies.push(request.headers.cookie);
       const url = new URL(request.url ?? '/', 'https://127.0.0.1');
       const file = files[url.pathname];
@@ -85,6 +91,7 @@ export async function startFileHost(
   return {
     origin: `https://127.0.0.1:${port}`,
     requests,
+    aborted,
     cookies,
     close: () =>
       new Promise<void>((resolve) => {

@@ -2258,6 +2258,14 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   Canvas sends only `frame-ancestors 'self' sjsu.instructure.com ...` and no other CSP.
 - Module lists link to module items (`/courses/:id/modules/items/:id`, hook `a.ig-title.title.item_link`), not to files.
 - The assignment page links the student's own submission files under `/courses/:id/assignments/:id/submissions/:id`.
+- **Submission link shapes in the Canvas source (2026-11-02, canvas-lms `1c9f0bb`, not yet seen live).**
+  - The Submission section of the assignment page (`app/views/assignments/_submission_sidebar.html.erb`) draws in the right column, as `div.details > div.content > div > a`.
+    The link is `/courses/:id/assignments/:id/submissions/:user?download=:file`, and it has no `download` attribute.
+  - Comment attachments in that section are `div.comments.module > div.comment > div.comment_attachments > div.comment_attachment > a.comment_attachment_link`, with `?comment_id=:id&download=:file`.
+  - The submission details page (`app/views/submissions/show.html.erb`) shows the submitted work in the frame `#preview_frame`.
+    The file list is the table `table.file-upload-submission-table` in `show_preview.html.erb`, loaded in that frame.
+    Each row is `tr.file-upload-submission > td.file-upload-submission-info > a.file-upload-submission-info__link`, with `?download=:file`.
+    The page script runs only in the top frame, so it cannot see this table until the live check shows otherwise.
 
 **Decision:**
 
@@ -2303,9 +2311,20 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - A plain left click on a Canvas file link: `a.instructure_file_link`, links to `/courses/:id/files/:id` or `/files/:id`, file preview buttons, module items of the file type, and the student's own submission attachments.
    - The page script listens on `document` in the capture phase and stops Canvas handlers only after a match.
    - Links with `download` keep their normal action.
-     The one exception is a link to a file on an assignment page or a submission details page, because Canvas marks the student's own submission files as downloads.
-     Those links have the shape `/files/:id/download`, or `/courses/:id/assignments/:id/submissions/:id?download=:file`.
-     The pane takes only the file id from them and drops any `verifier`.
+     The one exception is a link to a file that the student handed in, because Canvas can mark those files as downloads while the student needs to read them.
+     A link counts only when all of these are true:
+     - the page is an assignment page or a submission details page;
+     - the link sits in the submission files table (`.file-upload-submission-table`) or in the Submission section of the assignment page (`#right-side .details > .content`);
+     - the link sits in no description or user content (`.description`, `.user_content`) and in no comment (`.comments`, `.comment`, `.comment_attachments`);
+     - the address has the shape `/files/:id/download`, or `/courses/:id/assignments/:id/submissions/:id?download=:file`.
+     A download button that a teacher puts in an assignment description, and a comment attachment, keep their download.
+     The pane takes only the file id from the address and drops any `verifier`.
+   - A link without a `download` attribute opens the pane by its address alone, also in a comment.
+     A comment attachment may then fail to load, because its file record can refuse the student.
+     The card shows "Open in Canvas" in that case.
+   - When the viewer is off, no click is rerouted.
+     The script takes a click at once, before the settings have loaded, and if the setting turns out to be off, it clicks the same link again from script.
+     That click is not trusted, so the script ignores it, and the browser does what the link says: it follows the link, saves a download or opens a new tab.
    - A click with Ctrl, Shift, Alt or Meta, a middle click, and "Open in new tab" keep the browser's normal action.
    - Only a click of the student counts (`event.isTrusted`).
      A script of the Canvas page can click any link, and such a click opens nothing, so a script cannot dispatch a click to open a file or replace the tabs.
@@ -2318,7 +2337,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      The pane saves the page and the zoom of each file, keyed by Canvas origin, user and file id, for the last 200 files.
      The first build keeps the page, the zoom and the document of each tab only while the pane stays open.
      Saving them across reloads is build step 3.
-   - Image, audio and video: the browser's own elements, from a blob URL of the fetched bytes.
+   - Image: drawn on a canvas inside the pane (item 10).
+   - Audio and video: the browser's own elements, from a blob URL of the fetched bytes.
    - Plain text and code: shown as text, never rendered as HTML.
    - Any other type, such as Word or PowerPoint: a short card with "Open in Canvas" and "Download", because Canvas converts those files on its own servers.
    - Every tab has "Download" and "Open in Canvas".
@@ -2333,7 +2353,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      This failure does not ask for the host permission again.
    - A PDF uses the same `url` that the card uses for "Download": the `url` of the record when it is on the saved Canvas, and `/files/:id/download` otherwise.
      The pane page fetches it with the student's session and follows the redirect, through `src/shared/canvas/fileBytes.ts`.
-   - While the bytes load, a progress bar shows the part read, from `Content-Length`.
+   - While the bytes of a PDF, an image, audio, video or text load, a progress bar shows the part read, from `Content-Length`.
+     The players share the bar of the PDF tab, with the label "Loading file".
      The value is clamped to 100 percent, because a compressed answer can differ from its length.
      When the answer has no usable length, the bar is indeterminate.
    - A read that fails for any reason keeps the card and shows "Couldn't load this PDF" with "Retry".
@@ -2456,6 +2477,30 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      Its non-embedded standard fonts use the system fonts, and text in some old Asian encodings may not draw.
      The live checklist asks the tester to open such a file.
 
+10. **The players for other files.**
+    - **Images.**
+      The pane makes the blob URL of the bytes and loads it in an image element that is never in the page.
+      When the element has loaded, the pane checks the size, draws the picture on a canvas with `role="img"` and the file name as its label, and frees the blob URL at once.
+      The pane keeps no image element and no address of the file.
+      Zoom works on the canvas: "Zoom to fit", 100 percent, "Zoom in" and "Zoom out".
+      An animated GIF shows its first frame.
+      An SVG shows as a picture only, because an image element never runs script.
+      An SVG that reports no size, such as one with only a `viewBox`, is drawn at the size of its `width` and `height`, or at 1024 px wide with the ratio of the `viewBox`.
+      An inert parser reads those attributes.
+    - **Limits.**
+      An image of more than 16,777,216 pixels, or of more than 16,384 pixels on a side, is not drawn, the same limits as a PDF page.
+      The card above stays, with "Download" and "Open in Canvas", and a line says that the image is too large to show here.
+    - **Text.**
+      The pane reads at most 2 MB and 4 bytes of a text file, so that a character cut at the limit is complete in the bytes.
+      The read cancels the rest of the answer, and the buffer and the progress total use the shorter of the file and the limit.
+      It is a separate option of `fetchFileBytes` (`truncateAt`), because `maxBytes` makes a longer file fail with `too_large`, which a PDF and the media players need.
+      The pane shows "Shown in part" when the file is longer.
+    - **Memory.**
+      An audio or video file needs a live blob URL while it plays, so the URL stays while the tab shows.
+      A hidden tab that holds a file of more than 20 MB frees the URL and the element, and reads the file again when the tab shows.
+      A small file stays.
+      A hidden tab pauses its media.
+
 **Security:**
 
 - The pane page is in `web_accessible_resources` with `matches: ["https://*/*"]`, and `use_dynamic_url: true` on Chromium.
@@ -2506,6 +2551,32 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   Another installed extension that has a web-accessible page which relays messages to its parent, and that a script navigates the pane frame to, could pass on the hello and get the port.
   The hello names this extension, which is no secret, so the id check does not stop this.
   It needs a second extension with that kind of page, and the port gives it the file ids that the pane opens and the theme, never a file.
+- **File content never becomes a page of the extension origin.**
+  The pane page makes blob URLs of file bytes in the extension origin.
+  A blob URL that stays in an element can be opened as a page of its own: "Open image in new tab" on an `img` navigates a top-level tab to it.
+  A teacher's SVG would then be a document of the extension origin, and a student would see it with the pane page's rights.
+  - **Measured on 2026-11-02, before the fix, with `tests/fixtures/files/hostile.svg`.**
+    The file has an inline script, an `onload` handler, a `javascript:` link, and a `foreignObject` with a script, an error handler and a `javascript:` link.
+    Each vector writes a `hostile-` key into `localStorage`.
+    - Chromium 156 (the Playwright build): `window.open(blobUrl)` from the pane opened the SVG as a top-level document, `blob:chrome-extension://<id>/<uuid>`.
+      None of the vectors ran.
+      The console reported each as blocked by the policy `script-src 'self'`, for the inline script, the inline handlers and the `javascript:` URLs, also after a click on the links.
+    - Firefox 159: the same `window.open` opened a tab at `blob:moz-extension://<uuid>/<uuid>` with the origin `moz-extension://<uuid>` and the content type `image/svg+xml`.
+      No key was written.
+    - So the policy of the extension pages stopped the script in both browsers, but the file still became a document of the extension origin.
+      The fix does not rely on that policy.
+  - **The rules.**
+    - The pane keeps no image element and no address of an image.
+      It loads the blob URL in an image element outside the page, draws the picture on a canvas, and frees the URL when the element has loaded (item 10).
+      A freed URL opens nothing.
+    - The pane does not read the pixels back, because a `foreignObject` can taint a canvas.
+    - Every other blob URL is for audio or video, which need a live URL and cannot run script.
+      The tab frees it when it closes, and when a large file is hidden (item 10).
+    - Text is set as a text node in a `pre` element, never as markup.
+  - **Tests.**
+    - Chromium: `tests/e2e/file-viewer-hostile.spec.ts` opens the hostile SVG, checks the canvas, that no `img` or blob address is in the pane, that every blob URL is freed, that a freed URL cannot be read or opened as an SVG page, and that no `hostile-` key exists.
+    - Firefox: `tests/firefox/smoke.mjs` runs the same checks through the driver.
+    - `tests/e2e/file-viewer-image.spec.ts` checks that the URL is freed before the tab closes, and the size limits.
 - **The cookie rules (decision 11).**
   `viewer:file` and `viewer:module-item` pass the tab id of the sender to the data owner.
   The owner refuses unless the tab uses the cookie store of the requests, the address is the saved Canvas, and a check confirmed the sign-in cookie for the student of the cache.
@@ -2615,6 +2686,9 @@ These items need a live check or an outside answer.
     The `read_state` and `context_code` fields of the list come from canvas-lms source only.
 14. The PDF viewer (decision 25, item 9) has run only against a fixture and a generated lecture file.
     Real course PDFs may use fonts, images or encodings that the pane does not ship files for.
+    The live checklist has the steps.
+15. The real link shapes of the student's own submission files, and of comment attachments, are known only from canvas-lms source (decision 25, live facts).
+    The submission details page keeps its file list in a frame that the page script does not enter.
     The live checklist has the steps.
 
 ## Build order

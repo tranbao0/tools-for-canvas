@@ -1,13 +1,63 @@
-<main id="content" class="ic-Layout-contentMain" role="main">
-  <h1>Submission details</h1>
-  <h2>Files</h2>
-  <ul>
-    <li>
-      <a href="/files/43/download?download_frd=1&amp;verifier=fixture" download>
-        field-notes.jpg
-      </a>
-    </li>
-  </ul>
-  <a href="#feedback">View Feedback</a>
-  <div id="feedback"></div>
-</main>
+<!doctype html>
+<html>
+  <head>
+    <title>Submission details</title>
+    <script>
+      INST = { environment: 'production' };
+      ENV = { current_user_id: '5501' };
+    </script>
+  </head>
+  <body class="with-right-side">
+    <div id="application" class="ic-app">
+      <div id="content" class="ic-Layout-contentMain" role="main">
+        <h1>Submission details</h1>
+        <div class="submission-details-header submission_details">Essay</div>
+        <table class="file-upload-submission-table">
+          <thead>
+            <tr>
+              <th class="file-info-header">Files</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="file-upload-submission">
+              <td class="file-upload-submission-info">
+                <a
+                  href="/courses/101/assignments/7/submissions/5501?download=42"
+                  class="text file-upload-submission-info__link"
+                  download
+                  >Submission text</a
+                >
+                <span class="file-upload-submission-info__filesize">65 Bytes</span>
+              </td>
+            </tr>
+            <tr class="file-upload-submission">
+              <td class="file-upload-submission-info">
+                <a
+                  href="/files/42/download?download_frd=1&amp;verifier=private"
+                  class="text file-upload-submission-info__link"
+                  download
+                  >Submission copy</a
+                >
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="comments module">
+          <div id="comment-1" class="comment">
+            <div class="comment_attachments">
+              <div class="comment_attachment">
+                <a
+                  href="/courses/101/assignments/7/submissions/5501?comment_id=1&amp;download=43"
+                  class="comment_attachment_link"
+                  download
+                  >Teacher comment file</a
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+        <a href="#feedback">View Feedback</a>
+      </div>
+    </div>
+  </body>
+</html>
