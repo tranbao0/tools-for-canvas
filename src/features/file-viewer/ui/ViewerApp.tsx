@@ -80,13 +80,23 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     [host, refreshAccess],
   );
 
+  // The pane owns the tabs once they are loaded. The writes go out in order.
+  const loaded = useRef(false);
+  const pending = useRef<Promise<unknown>>(Promise.resolve());
+  const writes = useRef<Promise<unknown>>(Promise.resolve());
+  const save = useCallback(
+    (next: Tabs) => {
+      writes.current = writes.current.then(() => host.setTabs(next)).catch(() => undefined);
+    },
+    [host],
+  );
   const commit = useCallback(
     (next: Tabs) => {
       tabsRef.current = next;
       setTabs(next);
-      host.setTabs(next).catch(() => undefined);
+      save(next);
     },
-    [host],
+    [save],
   );
 
   useEffect(refreshAccess, [refreshAccess]);
@@ -95,17 +105,24 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     () =>
       props.opens.subscribe((request) => {
         if (request.courseId) courseHints.current.set(request.fileId, request.courseId);
-        void (async () => {
-          const stored = await host.getTabs().catch(() => tabsRef.current);
-          const next = openFile(stored, request.fileId);
-          tabsRef.current = next;
-          setTabs(next);
-          if (JSON.stringify(next) !== JSON.stringify(stored)) {
-            host.setTabs(next).catch(() => undefined);
-          }
-        })();
+        // The requests run one after another, so the first read of the stored tabs finishes
+        // before the next request adds to the tabs.
+        pending.current = pending.current
+          .then(async () => {
+            // The first request restores the tabs that the background keeps. Later ones add to the
+            // tabs in memory, which already hold every change of the student.
+            const known = loaded.current
+              ? tabsRef.current
+              : await host.getTabs().catch(() => tabsRef.current);
+            loaded.current = true;
+            const next = openFile(known, request.fileId);
+            tabsRef.current = next;
+            setTabs(next);
+            if (JSON.stringify(next) !== JSON.stringify(known)) save(next);
+          })
+          .catch(() => undefined);
       }),
-    [host, props.opens],
+    [host, props.opens, save],
   );
 
   useEffect(() => {
@@ -128,6 +145,9 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const close = (fileId: string) => {
     const wasActive = tabsRef.current.active === fileId;
     const next = closeFile(tabsRef.current, fileId);
+    // A file that opens again loads again, also after an error.
+    requested.current.delete(fileId);
+    setFiles((all) => Object.fromEntries(Object.entries(all).filter(([id]) => id !== fileId)));
     commit(next);
     if (next.ids.length === 0) {
       host.closePane();

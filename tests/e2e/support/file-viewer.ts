@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { BrowserContext, FrameLocator, Page, Worker } from '@playwright/test';
-import { serveScenario } from './weekrow';
+import { expect, serveScenario } from './weekrow';
 import { saveAddress, type StorageArea } from './scenario-api';
 
 /** A small Canvas page with file links, for the pane checks. */
@@ -71,7 +71,6 @@ export async function openCoursePage(
   ]);
   await saveAddress(background, canvas.origin);
   await page.goto(`${canvas.origin}/courses/101/pages/notes`);
-  await page.waitForTimeout(500);
   return canvas;
 }
 
@@ -82,4 +81,26 @@ export async function saveSetting(worker: Worker, change: Record<string, unknown
     const stored = ((await api.storage.local.get('settings'))['settings'] ?? {}) as object;
     await api.storage.local.set({ settings: { ...stored, ...fields } });
   }, change);
+}
+
+/**
+ * Clicks a file link until the pane opens. A page that just loaded may not have its click
+ * listener yet, and then the click follows the link. The page then loads again and the click
+ * repeats. `prepare` runs after each load, before the click.
+ */
+export async function openFirstFile(
+  page: Page,
+  name: string,
+  prepare?: () => Promise<void>,
+): Promise<void> {
+  const url = page.url();
+  await prepare?.();
+  await expect(async () => {
+    if (page.url() !== url) {
+      await page.goto(url);
+      await prepare?.();
+    }
+    await page.locator('#content').getByRole('link', { name }).click();
+    await expect(page.locator('#tools-file-viewer')).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 20_000 });
 }

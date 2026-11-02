@@ -20,7 +20,7 @@ export function fileLinks(
 ): FileLinks | null {
   if (!ID.test(fileId)) return null;
   let download = new URL(`/files/${fileId}/download`, origin);
-  if (typeof url === 'string') {
+  if (typeof url === 'string' && url !== '') {
     try {
       const candidate = new URL(url, origin);
       if (candidate.origin === new URL(origin).origin) download = candidate;

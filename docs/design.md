@@ -2273,13 +2273,14 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - Each tab has its own close button.
      The button is a sibling of the tab, not a child, because a button cannot hold another button.
      Only the active tab and its close button are in the tab order of the keyboard (roving tabindex).
-   - The arrow keys move to the next and previous tab and wrap around, Home and End go to the first and last tab, and Delete closes the focused tab.
+   - The arrow keys move to the next and previous tab and wrap around, and Home and End go to the first and last tab.
      A tab activates as soon as it gets focus (automatic activation), because switching tabs only shows another card and costs nothing.
    - Closing the active tab activates the tab that takes its place, or the tab before it when the last tab closed.
    - Closing the last tab closes the pane and restores the padding of the page.
-   - The pane page is the one place that changes the tabs after the pane opens.
-     It reads the stored tabs when the page asks it to open a file, and it writes them back with `viewer:tabs-set` after each change.
-     The page script reads the stored tabs again before it opens a file, so it never brings back a tab that the student closed.
+   - The pane page is the one place that changes the tabs while the pane is open.
+     It reads the stored tabs once, when it first gets a request to open a file, and after that it keeps the tabs in memory and writes them back with `viewer:tabs-set` after each change, in order.
+     While the pane is open, the page script only sends `open-file` over the port.
+     It writes the tabs itself only before the pane page has connected, so a close in the pane never meets an old copy.
 3. **Which clicks open the pane.**
    - A plain left click on a Canvas file link: `a.instructure_file_link`, links to `/courses/:id/files/:id` or `/files/:id`, file preview buttons, module items of the file type, and the student's own submission attachments.
    - The page script listens on `document` in the capture phase and stops Canvas handlers only after a match.
@@ -2304,8 +2305,9 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
 7. **The card of a file.**
    - The card of the active tab shows an icon, the file name, and a line with the type and the size, such as "PDF · 265 KB".
      The size uses units of 1024 bytes.
-   - "Download" links to the `url` of the file record, and "Open in Canvas" links to `/courses/:id/files/:id`, or to `/files/:id` when the file has no course.
-     A `url` that does not belong to the saved Canvas is replaced by `/files/:id/download`.
+   - "Download" links to the `url` of the file record, and "Open in Canvas" links to `/courses/:id/files/:id`, or to `/files/:id` when no course is known.
+     The course is the one in the link that the student clicked, then the one in the file record.
+     A `url` that is empty, or that does not belong to the saved Canvas, is replaced by `/files/:id/download`.
      Both links open in a new tab with `noopener`.
    - The region with `data-part="viewer-body"` below the card is where the viewers of item 4 draw.
    - While the record loads, the card shows light bars in the divider color.
@@ -2314,6 +2316,7 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - The pane follows the Theme setting (decision 19).
      With Automatic, it follows the Canvas page, as the in-page list does, and never the system, because the pane is part of the page.
    - The page script resolves the theme and sets it on the pane frame, and it sends it to the pane page as a `theme` message over the channel, with each handshake and each new file.
+     It also sends the theme again when the background says that a setting changed, so an open pane follows the Theme setting at once.
      The pane page sets `data-theme` on its root element and shows nothing until the first message arrives.
    - The header, the border and the close button of the frame use the same theme.
    - The pane page and its colors follow decision 21: the font stack and the tokens of the list stylesheet, and no school colors, because an extension page cannot read them.
