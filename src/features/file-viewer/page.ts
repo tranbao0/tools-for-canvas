@@ -2,7 +2,14 @@ import { render, h } from 'preact';
 import { CloseIcon } from '../../shared/ui/icons';
 import { browser } from 'wxt/browser';
 import { createViewerNonce } from './channel';
-import { fileTarget, normalizeTabs, normalizeWidth, openFile, plainClick } from './model';
+import {
+  courseOfLink,
+  fileTarget,
+  normalizeTabs,
+  normalizeWidth,
+  openFile,
+  plainClick,
+} from './model';
 import type { ToolsSettings } from '../../shared/settings/tools';
 import { detectPageTheme } from '../../shared/ui/pageTheme';
 import { inpageTheme, type ThemeChoice } from '../../shared/ui/theme';
@@ -55,12 +62,18 @@ export async function startViewer(): Promise<void> {
       document.documentElement.style.setProperty('padding-right', host.style.width, 'important');
     }
   };
-  // The pane changes the tabs too, so the stored tabs are read again before they are used.
-  const send = async (courseId?: string) => {
-    const [latest, stored] = await Promise.all([readContext().catch(() => undefined), readTabs()]);
+  // The course the student opened each file from, for the "Open in Canvas" link.
+  const courses = new Map<string, string>();
+  // Sends the active file. The pane changes the tabs too, so the stored tabs are read again.
+  const send = async () => {
+    const [latest, stored] = await Promise.all([
+      readContext().catch(() => undefined),
+      readTabs().catch(() => tabs),
+    ]);
     if (latest?.settings?.theme) themeChoice = latest.settings.theme;
     tabs = stored;
     applyTheme();
+    const courseId = tabs.active === null ? undefined : courses.get(tabs.active);
     if (tabs.active)
       port?.postMessage({
         type: 'open-file',
@@ -82,9 +95,9 @@ export async function startViewer(): Promise<void> {
     tabs = { ids: [], active: null };
     void browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs });
   };
-  const show = (courseId?: string) => {
+  const show = () => {
     if (host) {
-      void send(courseId);
+      void send();
       return;
     }
     padding = document.documentElement.style.getPropertyValue('padding-right');
@@ -97,9 +110,9 @@ export async function startViewer(): Promise<void> {
     root.innerHTML = `<style>
       :host{--bg:#fff;--text:#273540;--line:#e8eaec;--edge:#c7cdd1;--hover:#f2f4f4;--focus:#0374b5;color:var(--text)}
       :host([data-theme='dark']){--bg:#1b2330;--text:#fff;--line:#2e3e4e;--edge:#4a5b68;--hover:#253443;--focus:#5a9fd4}
-      section{box-sizing:border-box;height:100%;background:var(--bg);border-left:1px solid var(--edge);display:flex;flex-direction:column;font-family:'Lato Extended',Lato,'Helvetica Neue',Helvetica,Arial,sans-serif}
-      header{flex:none;height:48px;display:flex;justify-content:flex-end;align-items:center;padding:0 8px;border-bottom:1px solid var(--line)}
-      button{width:32px;height:32px;border:0;border-radius:4px;background:transparent;color:inherit;font-size:16px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}button:hover{background:var(--hover)}button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+      section{box-sizing:border-box;height:100%;background:var(--bg);border-left:1px solid var(--edge);display:flex;flex-direction:column;font-family:Lato,Arial,sans-serif}
+      header{flex:none;height:56px;display:flex;justify-content:flex-end;align-items:center;padding:0 12px;border-bottom:1px solid var(--line)}
+      button{width:38px;height:38px;border:0;border-radius:4px;background:transparent;color:inherit;font-size:18px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}button:hover{background:var(--hover)}button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
       iframe{border:0;width:100%;flex:1;min-height:0;background:transparent} .handle{position:absolute;left:-4px;top:0;width:8px;height:100%;cursor:ew-resize;touch-action:none}.handle:hover,.handle:focus-visible{background:var(--focus)} @media(max-width:899px){.handle{display:none}}
       </style><section aria-label="File viewer"><div class="handle" role="separator" aria-label="Resize file viewer" aria-orientation="vertical" tabindex="0"></div><header><button aria-label="Close file viewer" title="Close"></button></header></section>`;
     const frame = document.createElement('iframe');
@@ -116,7 +129,7 @@ export async function startViewer(): Promise<void> {
       };
       frame.contentWindow?.postMessage({ type: 'viewer-connect', nonce }, origin, [channel.port2]);
       applyTheme();
-      void send(courseId);
+      void send();
     });
     render(h(CloseIcon, {}), root.querySelector('button')!);
     root.querySelector('section')!.append(frame);
@@ -159,6 +172,20 @@ export async function startViewer(): Promise<void> {
     layout();
   };
   window.addEventListener('resize', layout);
+  // The background says when a setting changed, so the pane follows the Theme setting at once.
+  browser.runtime.onMessage.addListener((message: unknown) => {
+    if ((message as { type?: unknown } | null)?.type !== 'weekrow:changed') return;
+    void readContext().then(
+      (latest) => {
+        const choice = latest?.settings?.theme;
+        if (choice && choice !== themeChoice) {
+          themeChoice = choice;
+          applyTheme();
+        }
+      },
+      () => undefined,
+    );
+  });
   document.addEventListener(
     'click',
     (event) => {
@@ -170,13 +197,11 @@ export async function startViewer(): Promise<void> {
       const module = link.closest('[data-module-id],.context_module');
       const moduleId =
         module?.getAttribute('data-module-id') ?? module?.id.replace('context_module_', '');
-      const target = fileTarget(
+      const href =
         link.getAttribute('href') ??
-          link.dataset['url'] ??
-          `/files/${link.dataset['fileId'] ?? ''}`,
-        location.origin,
-        moduleId,
-      );
+        link.dataset['url'] ??
+        `/files/${link.dataset['fileId'] ?? ''}`;
+      const target = fileTarget(href, location.origin, moduleId);
       if (!target) return;
       if (
         'itemId' in target &&
@@ -192,9 +217,22 @@ export async function startViewer(): Promise<void> {
             : ((await browser.runtime.sendMessage({ type: 'viewer:module-item', ...target })) as
                 { fileId: string } | undefined);
         if (!file) return;
+        const courseId =
+          'courseId' in target ? target.courseId : courseOfLink(href, location.origin);
+        if (courseId) courses.set(file.fileId, courseId);
+        if (host && port) {
+          // The pane is open and owns the tabs, so it opens the file and saves the tabs itself.
+          port.postMessage({
+            type: 'open-file',
+            nonce,
+            fileId: file.fileId,
+            ...(courseId ? { courseId } : {}),
+          });
+          return;
+        }
         tabs = openFile(await readTabs(), file.fileId);
         await browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs });
-        show('courseId' in target ? target.courseId : undefined);
+        show();
       })().catch(() => undefined);
     },
     true,

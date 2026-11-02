@@ -4,7 +4,7 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, test } from './support/weekrow';
-import { openCoursePage, pane, saveSetting } from './support/file-viewer';
+import { openCoursePage, openFirstFile, pane, saveSetting } from './support/file-viewer';
 
 const HOST = '#tools-file-viewer';
 
@@ -12,8 +12,9 @@ const HOST = '#tools-file-viewer';
 const fileLink = (page: Page, name: string) => page.locator('#content').getByRole('link', { name });
 
 /** Clicks the three file links, so the pane has three tabs. */
-async function openThree(page: Page): Promise<void> {
-  for (const name of ['Read notes', 'Lecture photo', 'Syllabus']) {
+async function openThree(page: Page, prepare?: () => Promise<void>): Promise<void> {
+  await openFirstFile(page, 'Read notes', prepare);
+  for (const name of ['Lecture photo', 'Syllabus']) {
     await fileLink(page, name).click();
     await expect(pane(page).getByRole('tab', { selected: true })).toBeVisible();
   }
@@ -26,7 +27,7 @@ test('two files make two tabs, and the keyboard moves between them', async ({
   background,
 }) => {
   await openCoursePage(context, page, background);
-  await fileLink(page, 'Read notes').click();
+  await openFirstFile(page, 'Read notes');
   await expect(pane(page).getByRole('heading', { name: 'Course notes.pdf' })).toBeVisible();
   await fileLink(page, 'Lecture photo').click();
   const tabs = pane(page).getByRole('tab');
@@ -80,10 +81,11 @@ test('closing a tab activates the next one, and the last tab closes the pane', a
   await expect(tabs).toHaveCount(1);
   await expect(pane(page).locator('[data-part="card-name"]')).toContainText('Lecture photo');
   await expect(page.locator('html')).toHaveCSS('padding-right', '480px');
-  // The pane frame goes away during the click, and a real input event would never finish.
+  // The pane frame goes away during the click, so the answer of the frame never arrives.
   await pane(page)
     .getByRole('button', { name: /^Close Lecture photo/ })
-    .evaluate((button: HTMLElement) => button.click());
+    .evaluate((button: HTMLElement) => button.click())
+    .catch(() => undefined);
   await expect(page.locator(HOST)).toHaveCount(0);
   await expect(page.locator('html')).toHaveCSS('padding-right', '13px');
 });
@@ -166,11 +168,11 @@ test('a file that does not load shows the error with Retry', async ({
     api.__realFetch = api.fetch;
     api.fetch = () => Promise.reject(new TypeError('offline'));
   });
-  await fileLink(page, 'Read notes').click();
+  await openFirstFile(page, 'Read notes');
   await expect(pane(page).getByText("Couldn't load this file")).toBeVisible();
   const open = pane(page).getByRole('link', { name: 'Open in Canvas' });
-  // The record did not load, so no course is known and Canvas finds the course itself.
-  await expect(open).toHaveAttribute('href', /\/files\/42$/);
+  // The record did not load, but the link that the student clicked names the course.
+  await expect(open).toHaveAttribute('href', /\/courses\/101\/files\/42$/);
   await expect(pane(page).getByRole('tab')).toHaveAttribute('title', 'Unavailable file');
   await background.evaluate(() => {
     const api = globalThis as unknown as { fetch: typeof fetch; __realFetch?: typeof fetch };
@@ -192,7 +194,7 @@ test('a withheld permission shows Allow access, which asks the browser and reloa
     ).chrome;
     api.permissions.contains = () => Promise.resolve(false);
   });
-  await fileLink(page, 'Read notes').click();
+  await openFirstFile(page, 'Read notes');
   const allow = pane(page).getByRole('button', { name: 'Allow access' });
   await expect(allow).toBeVisible();
   await expect(pane(page).getByRole('link', { name: 'Open in Canvas' })).toBeVisible();
@@ -252,7 +254,7 @@ test.describe('theme', () => {
   }) => {
     await openCoursePage(context, page, background);
     await page.emulateMedia({ colorScheme: 'dark' });
-    await fileLink(page, 'Read notes').click();
+    await openFirstFile(page, 'Read notes');
     await expect(pane(page).locator('[data-part="card-name"]')).toBeVisible();
     await expect(page.locator(HOST)).toHaveAttribute('data-theme', 'light');
     await expect(pane(page).locator('html')).toHaveAttribute('data-theme', 'light');
@@ -270,10 +272,11 @@ test.describe('theme', () => {
   }) => {
     await openCoursePage(context, page, background);
     await page.emulateMedia({ colorScheme: 'light' });
-    await page.evaluate(() => {
-      document.body.style.background = '#1b1b1b';
-    });
-    await fileLink(page, 'Read notes').click();
+    await openFirstFile(page, 'Read notes', () =>
+      page.evaluate(() => {
+        document.body.style.background = '#1b1b1b';
+      }),
+    );
     await expect(pane(page).locator('[data-part="card-name"]')).toBeVisible();
     await expect(page.locator(HOST)).toHaveAttribute('data-theme', 'dark');
     const colors = await paneColors(page);
@@ -282,18 +285,24 @@ test.describe('theme', () => {
     expect(Math.min(...channels(colors.close))).toBeGreaterThan(200);
   });
 
-  test('the Theme setting wins over the Canvas page', async ({ context, page, background }) => {
+  test('the Theme setting wins over the Canvas page, also while the pane is open', async ({
+    context,
+    page,
+    background,
+  }) => {
     await openCoursePage(context, page, background);
     await saveSetting(background, { theme: 'dark' });
     await page.reload();
-    await fileLink(page, 'Read notes').click();
+    await openFirstFile(page, 'Read notes');
     await expect(pane(page).locator('[data-part="card-name"]')).toBeVisible();
     await expect(page.locator(HOST)).toHaveAttribute('data-theme', 'dark');
     await expect(pane(page).locator('html')).toHaveAttribute('data-theme', 'dark');
+    // The open pane follows a change of the setting at once.
     await saveSetting(background, { theme: 'light' });
-    await fileLink(page, 'Lecture photo').click();
     await expect(page.locator(HOST)).toHaveAttribute('data-theme', 'light');
     await expect(pane(page).locator('html')).toHaveAttribute('data-theme', 'light');
+    await saveSetting(background, { theme: 'auto' });
+    await expect(page.locator(HOST)).toHaveAttribute('data-theme', 'light');
   });
 });
 
@@ -302,13 +311,13 @@ for (const width of [1920, 1280]) {
     test(`screenshot at ${width} px, ${scheme}`, async ({ context, page, background }) => {
       await openCoursePage(context, page, background);
       await page.setViewportSize({ width, height: 1080 });
-      if (scheme === 'dark') {
+      await openThree(page, async () => {
+        if (scheme !== 'dark') return;
         await page.evaluate(() => {
           document.body.style.background = '#1b1b1b';
           document.documentElement.style.background = '#1b1b1b';
         });
-      }
-      await openThree(page);
+      });
       await expect(pane(page).locator('[data-part="card-name"]')).toBeVisible();
       await page.screenshot({ path: `screenshots/file-viewer-tabs-${width}-${scheme}.png` });
     });

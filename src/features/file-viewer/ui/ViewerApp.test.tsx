@@ -58,7 +58,7 @@ function setup(overrides: Partial<PaneHost> = {}, stored: Tabs = { ids: [], acti
       opens.emit({ fileId, ...(courseId ? { courseId } : {}) });
     });
   };
-  return { host, open, saved: () => saved };
+  return { host, open, opens, saved: () => saved };
 }
 
 const tabs = () => screen.queryAllByRole('tab');
@@ -117,7 +117,7 @@ describe('pane tabs', () => {
     });
     expect(tabs()).toHaveLength(2);
     expect(tabs()[0]!.getAttribute('aria-selected')).toBe('true');
-    expect(saved()).toEqual({ ids: ['2', '3'], active: '2' });
+    await waitFor(() => expect(saved()).toEqual({ ids: ['2', '3'], active: '2' }));
     expect(host.closePane).not.toHaveBeenCalled();
   });
 
@@ -131,15 +131,55 @@ describe('pane tabs', () => {
     expect(host.closePane).toHaveBeenCalledOnce();
   });
 
-  it('closes the focused tab with Delete', async () => {
-    const { open } = setup();
+  it('loads a file again when it opens again after an error', async () => {
+    let fail = true;
+    const { open, host } = setup({
+      loadFile: vi.fn(async (id: string) => (fail ? undefined : FILES[id])),
+    });
     await open('1');
     await open('2');
-    await waitFor(() => expect(tabs()).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText("Couldn't load this file")).toHaveLength(1));
+    fail = false;
     await act(async () => {
-      fireEvent.keyDown(tabs()[1]!, { key: 'Delete' });
+      fireEvent.click(screen.getAllByRole('button', { name: /^Close Unavailable file/ })[0]!);
     });
-    expect(tabs()).toHaveLength(1);
+    await open('1');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.pdf' })).toBeTruthy());
+    expect(host.loadFile).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps a closed tab closed when the page opens another file', async () => {
+    const { open, opens, saved } = setup();
+    await open('1');
+    await open('2');
+    await screen.findByRole('heading', { name: 'Photo.png' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Close Photo.png' }));
+    });
+    // The page asks for a third file while its own copy of the tabs is old.
+    await act(async () => {
+      opens.emit({ fileId: '3' });
+    });
+    expect(tabs().map((tab) => tab.getAttribute('data-file-id'))).toEqual(['1', '3']);
+    await waitFor(() => expect(saved().ids).toEqual(['1', '3']));
+  });
+
+  it('keeps both files when two requests come before the stored tabs are read', async () => {
+    let release: (tabs: Tabs) => void = () => undefined;
+    const { opens, saved } = setup({
+      getTabs: vi.fn(() => new Promise<Tabs>((resolve) => (release = resolve))),
+    });
+    await act(async () => {
+      opens.emit({ fileId: '2' });
+      opens.emit({ fileId: '1' });
+    });
+    await act(async () => {
+      release({ ids: ['1'], active: '1' });
+    });
+    await waitFor(() => expect(tabs()).toHaveLength(2));
+    expect(tabs().map((tab) => tab.getAttribute('data-file-id'))).toEqual(['1', '2']);
+    expect(tabs().map((tab) => tab.getAttribute('aria-selected'))).toEqual(['true', 'false']);
+    await waitFor(() => expect(saved().ids).toEqual(['1', '2']));
   });
 
   it('restores every stored tab when the pane page loads again', async () => {

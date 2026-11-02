@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { closeFile, fileTarget, openFile, normalizeWidth, validRequest, plainClick } from './model';
+import {
+  closeFile,
+  courseOfLink,
+  fileTarget,
+  openFile,
+  normalizeWidth,
+  validRequest,
+  plainClick,
+} from './model';
 
 describe('file targets', () => {
   for (const path of [
@@ -82,5 +90,19 @@ describe('closing a tab', () => {
   });
   it('ignores a tab that is not open', () => {
     expect(closeFile(state, '9')).toBe(state);
+  });
+});
+describe('course of a link', () => {
+  const origin = 'https://school.edu';
+  it('reads the course from a course file link', () => {
+    expect(courseOfLink('/courses/12/files/42', origin)).toBe('12');
+    expect(courseOfLink(`${origin}/courses/12/files/42/download?wrap=1`, origin)).toBe('12');
+    expect(courseOfLink('/courses/12/modules/items/3', origin)).toBe('12');
+  });
+  it('finds no course in other links', () => {
+    expect(courseOfLink('/files/42', origin)).toBeNull();
+    expect(courseOfLink('/courses/0/files/42', origin)).toBeNull();
+    expect(courseOfLink('/courses/12/pages/x', origin)).toBeNull();
+    expect(courseOfLink('https://other.edu/courses/12/files/42', origin)).toBeNull();
   });
 });

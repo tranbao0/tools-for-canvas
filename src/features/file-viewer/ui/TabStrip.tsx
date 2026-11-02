@@ -3,8 +3,7 @@
  * tabs of Canvas: text tabs on a line, the chosen one marked by a bar in the brand color.
  * Each tab holds a file type icon and the file name. A close button sits next to each tab, in a
  * presentational wrapper, because a button cannot sit inside another button.
- * The arrow keys, Home and End move between the tabs and activate the tab at once. Delete closes
- * the focused tab.
+ * The arrow keys, Home and End move between the tabs and activate the tab at once.
  */
 import type { TargetedKeyboardEvent } from 'preact';
 import { useEffect } from 'preact/hooks';
@@ -46,11 +45,6 @@ export function TabStrip(props: {
     const tab = (event.target as HTMLElement).closest<HTMLElement>('[role="tab"]');
     const fileId = tab?.dataset['fileId'];
     if (!tab || fileId === undefined) return;
-    if (event.key === 'Delete') {
-      event.preventDefault();
-      props.onClose(fileId);
-      return;
-    }
     const target = tabKeyTarget(event.key, ids.indexOf(fileId), ids.length);
     const next = target === null ? undefined : ids[target];
     if (next === undefined) return;

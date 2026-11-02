@@ -27,6 +27,16 @@ export function fileTarget(href: string, origin: string, moduleId?: string): Fil
     return { courseId: module[1], moduleId, itemId: module[2] };
   return null;
 }
+/** The course of a file link such as `/courses/12/files/42`, or `null` when the link has none. */
+export function courseOfLink(href: string, origin: string): string | null {
+  try {
+    const url = new URL(href, origin);
+    if (url.origin !== origin) return null;
+    return /^\/courses\/([1-9][0-9]{0,19})\/(?:files|modules)\//.exec(url.pathname)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
 export function validRequest(value: unknown): value is string {
   return typeof value === 'string' && (ID.test(value) || FILE.test(value));
 }

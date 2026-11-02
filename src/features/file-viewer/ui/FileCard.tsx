@@ -19,7 +19,7 @@ interface CardProps {
   fileId: string;
   state: FileState;
   origin: string;
-  /** The course the student opened the file from, used when the record has no course. */
+  /** The course the student opened the file from, if the link told it. */
   courseHint: string | undefined;
   /** False while the browser withholds access to the Canvas address. */
   access: boolean;
@@ -59,7 +59,8 @@ export function FileCard(props: CardProps) {
       </div>
     );
   }
-  const course = (state.kind === 'ready' ? state.file.courseId : null) ?? props.courseHint;
+  // The course the student opened the file from comes first, then the course of the record.
+  const course = props.courseHint ?? (state.kind === 'ready' ? state.file.courseId : null);
   const links = fileLinks(
     props.origin,
     props.fileId,

@@ -87,6 +87,9 @@ describe('file links', () => {
       `${origin}/files/42/download?verifier=x`,
     );
   });
+  it('replaces an empty address', () => {
+    expect(fileLinks(origin, '42', null, '')?.download).toBe(`${origin}/files/42/download`);
+  });
   it('replaces an address on another host', () => {
     for (const url of ['https://evil.example/x', '//evil.example/x', 'javascript:alert(1)']) {
       expect(fileLinks(origin, '42', null, url)?.download).toBe(`${origin}/files/42/download`);
