@@ -8,7 +8,7 @@ import { buildScenario } from '../fixtures/scenario';
 import { expect, test } from './support/extension';
 import { serveFakeCanvas, type FakeCanvas } from './support/fake-canvas';
 import { apiRoutes, saveAddress, type StorageArea } from './support/scenario-api';
-import { pageQuiet } from './support/settle';
+import { animationsDone, pageQuiet } from './support/settle';
 
 /**
  * Screenshots of the real extension against the fake Canvas, for a person to review.
@@ -100,6 +100,7 @@ const WEEK = /^[A-Z][a-z]+ \d+ to (?:[A-Z][a-z]+ )?\d+$/;
 async function settle(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle');
   await pageQuiet(page);
+  await animationsDone(page);
 }
 
 /** Saves the settings as the settings page does. */
@@ -169,6 +170,7 @@ for (const fixture of Object.keys(PAGES)) {
       await useRealCanvasCss(page);
       await settle(page);
       await pageQuiet(page);
+      await animationsDone(page);
       const list = page.locator('#weekrow-inpage');
       const name = `inpage-${fixture ? fixture.replace('/', '-') : 'dashboard'}${suffix}`;
       try {
@@ -265,6 +267,7 @@ for (const shot of LAYOUT_SHOTS) {
       if (scheme === 'dark') await page.addStyleTag({ content: DARK_PAGE_CSS });
       await settle(page);
       await pageQuiet(page);
+      await animationsDone(page);
       const list = page.locator('#weekrow-inpage');
       try {
         await expectRendered(
@@ -298,6 +301,7 @@ for (const shot of LAYOUT_SHOTS) {
           });
         }
         await pageQuiet(page);
+        await animationsDone(page);
       } finally {
         const prefix = `${OUT}/layout-${shot.name}-${shot.width}-${scheme}`;
         await page.screenshot({ path: `${prefix}-top.png` });
@@ -332,6 +336,7 @@ for (const scheme of ['light', 'dark'] as const) {
     if (scheme === 'dark') await page.addStyleTag({ content: DARK_PAGE_CSS });
     await settle(page);
     await pageQuiet(page);
+    await animationsDone(page);
     const list = page.locator('#weekrow-inpage');
     try {
       await expectRendered(
@@ -358,6 +363,7 @@ for (const scheme of ['light', 'dark'] as const) {
         activity.replaceChildren(items);
       });
       await pageQuiet(page);
+      await animationsDone(page);
       await page.screenshot({ path: `${OUT}/layout-dock-${scheme}-top.png` });
       const end = await page.evaluate(
         () =>
@@ -366,6 +372,7 @@ for (const scheme of ['light', 'dark'] as const) {
       );
       await scrollPage(page, end + 300);
       await pageQuiet(page);
+      await animationsDone(page);
       expect(await panelMode(page)).toBe('dock');
     } finally {
       await page.screenshot({ path: `${OUT}/layout-dock-${scheme}-docked.png` });

@@ -183,6 +183,7 @@ test.describe('announcements in place', () => {
   test('leave the announcement unread when the student opens and closes the message', async ({
     context,
     page,
+    background,
   }) => {
     const { canvas, state } = await open(context, page);
     const circle = page.locator(`${ANNOUNCEMENT} [data-testid^="mark-read-"]`);
@@ -209,7 +210,7 @@ test.describe('announcements in place', () => {
     );
 
     // Wait until the page is quiet, so that a late write has gone out, then check that none did.
-    await requestsQuiet(page, canvas.requests);
+    await requestsQuiet(page, canvas.requests, background);
     // The extension reads Canvas through GET and through GraphQL queries. No mutation goes out.
     const writes = canvas.requests.filter(
       (r) =>

@@ -2,11 +2,17 @@ import { test as base, type BrowserContext, type Page, type Worker } from '@play
 import {
   CHROME_EXTENSION_DIR,
   START_UP_FIXTURE_TIMEOUT_MS,
-  WORKER_TIMEOUT_MS,
   isExtensionWorker,
   launchBrowser,
   timedStep,
 } from './extension';
+
+/**
+ * How long to wait for the extension service worker after the install. The install runs in the
+ * test body, so this budget stays under the timeout of the test, and a worker that does not start
+ * fails with its own error and not with the timeout of the test.
+ */
+const INSTALL_WORKER_TIMEOUT_MS = 20_000;
 
 export interface InstalledExtension {
   serviceWorker: Worker;
@@ -69,7 +75,7 @@ export const test = base.extend<LateInstallFixtures>({
       const cdp = (await browser.newBrowserCDPSession()) as unknown as UnpackedCdp;
       const started = context.waitForEvent('serviceworker', {
         predicate: isExtensionWorker,
-        timeout: WORKER_TIMEOUT_MS,
+        timeout: INSTALL_WORKER_TIMEOUT_MS,
       });
       const { id } = await cdp.send('Extensions.loadUnpacked', { path: CHROME_EXTENSION_DIR });
       const serviceWorker = await started;

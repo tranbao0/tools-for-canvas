@@ -34,6 +34,9 @@ export const WORKER_TIMEOUT_MS = 30_000;
  */
 export const START_UP_FIXTURE_TIMEOUT_MS = 2 * (LAUNCH_TIMEOUT_MS + WORKER_TIMEOUT_MS) + 30_000;
 
+/** How long to wait for the close of a browser from a failed attempt. */
+const CLOSE_TIMEOUT_MS = 15_000;
+
 /** A start-up step slower than this is logged even when `E2E_STEP_TIMING` is not set. */
 const SLOW_STEP_MS = 5_000;
 
@@ -96,6 +99,15 @@ function describeError(error: unknown): string {
   return text.split('\n')[0] ?? text;
 }
 
+/** Closes the browser of a failed attempt, and does not wait for a close that hangs. */
+async function closeFailedAttempt(context: BrowserContext | undefined): Promise<void> {
+  if (context === undefined) return;
+  await Promise.race([
+    context.close().catch(() => undefined),
+    new Promise<void>((resolve) => setTimeout(resolve, CLOSE_TIMEOUT_MS)),
+  ]);
+}
+
 /**
  * Launches a persistent headless Chromium. When `workerHint` is set, it also waits for the
  * extension service worker, and the hint helps to read a failure of that wait.
@@ -127,7 +139,7 @@ export async function launchBrowser(
       }
       return context;
     } catch (error) {
-      await context?.close().catch(() => undefined);
+      await closeFailedAttempt(context);
       const reason = `${phase} failed on attempt ${attempt} of ${attempts}: ${describeError(error)}`;
       if (attempt >= attempts) {
         const hint = phase === 'browser launch' || workerHint === null ? '' : ` ${workerHint}`;

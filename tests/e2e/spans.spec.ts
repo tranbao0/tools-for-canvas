@@ -617,8 +617,9 @@ test('a pick saved in one panel replaces what another panel shows, and its blur 
   // Leaving A's select saves nothing, and Day does not come back.
   await picker(page).focus();
   await page.keyboard.press('Tab');
-  await pageQuiet(page);
-  await backgroundQuiet(background);
+  // The picker saves a changed kind after a short delay of 400 ms, so the wait is longer than that.
+  await pageQuiet(page, 3, 500);
+  await backgroundQuiet(background, 500);
   expect(await saves()).toBe(before);
   await expect(picker(page)).toHaveValue('week');
   await expect(picker(second)).toHaveValue('week');
