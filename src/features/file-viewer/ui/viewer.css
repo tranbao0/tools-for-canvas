@@ -215,3 +215,19 @@ html:not([data-theme]) #app {
   flex: 1;
   min-height: 160px;
 }
+
+.fv-tab-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  border-bottom: 1px solid var(--wr-line);
+}
+.fv-tab-row .fv-tabs {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 0;
+}
+.wr .fv-pane-close {
+  flex: none;
+  margin: 0 8px;
+}

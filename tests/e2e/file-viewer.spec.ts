@@ -317,3 +317,47 @@ test('a click that a script of the page makes opens nothing', async ({
   await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
   expect(canvas.requests.filter((request) => request.path.startsWith('/api/v1/files'))).toEqual([]);
 });
+
+test('a fresh profile opens a file before any list load', async ({ context, page, background }) => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const { canvas } = await serveScenario(context, [
+    {
+      path: '/api/v1/users/self/profile',
+      respond: async () => {
+        await gate;
+        return { status: 503 };
+      },
+    },
+    pdfDownloadRoute,
+    {
+      path: '/courses/101/pages/notes',
+      body: html.replace('<main>', '<main id="content">'),
+      contentType: 'text/html',
+    },
+    {
+      path: '/api/v1/files/42',
+      body: {
+        id: '42',
+        display_name: 'Cold notes.pdf',
+        filename: 'notes.pdf',
+        'content-type': 'application/pdf',
+        size: 10,
+        url: '/files/42/download',
+      },
+    },
+  ]);
+  try {
+    await saveAddress(background, canvas.origin);
+    await page.goto(`${canvas.origin}/courses/101/pages/notes`);
+    await openFirstFile(page, 'Read notes');
+    await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Cold notes.pdf');
+    expect(
+      canvas.requests.filter((request) => request.path.startsWith('/api/v1/planner/items')),
+    ).toHaveLength(0);
+  } finally {
+    release();
+  }
+});

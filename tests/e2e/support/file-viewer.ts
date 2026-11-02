@@ -125,9 +125,7 @@ async function paneBox(page: Page) {
 
 /** Clicks the close button of the pane frame, which sits in the closed shadow root. */
 export async function closePane(page: Page): Promise<void> {
-  const box = await paneBox(page);
-  // The header is 56 px high, and the 38 px button ends 12 px from the right edge.
-  await page.mouse.click(box.x + box.width - 12 - 19, 28);
+  await (await pane(page)).getByRole('button', { name: 'Close file viewer', exact: true }).click();
 }
 
 /** Focuses the resize handle on the left edge of the pane. */

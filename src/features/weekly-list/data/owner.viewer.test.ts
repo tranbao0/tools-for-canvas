@@ -66,12 +66,22 @@ describe('viewer reads', () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it('refuses before the cache has a student, as on a fresh profile', async () => {
+  it('checks the student before a fresh profile reads a file', async () => {
     const h = await createHarness();
     const read = vi.fn(async () => 'record');
-    await expect(h.owner.viewerRead(ORIGIN, TAB, read)).rejects.toThrow();
-    expect(read).not.toHaveBeenCalled();
-    await expect(h.owner.viewerMayFetch(ORIGIN, TAB)).resolves.toBe(false);
+    await expect(h.owner.viewerRead(ORIGIN, TAB, read)).resolves.toBe('record');
+    expect(read).toHaveBeenCalledOnce();
+    await expect(h.owner.viewerMayFetch(ORIGIN, TAB)).resolves.toBe(true);
+  });
+
+  it('drops a cold-profile reply when the cookie changes during the read', async () => {
+    const h = await createHarness();
+    await expect(
+      h.owner.viewerRead(ORIGIN, TAB, async () => {
+        signInOtherUser(h);
+        return 'first student file';
+      }),
+    ).rejects.toThrow();
   });
 
   it('refuses a cookie that no check confirmed for the student of the cache', async () => {

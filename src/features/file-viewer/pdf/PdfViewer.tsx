@@ -49,6 +49,16 @@ export function PdfViewer(props: {
   active: boolean;
   onFailed(kind: PdfFailure): void;
 }) {
+  const overflow = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 440px)');
+    const update = () => {
+      if (overflow.current) overflow.current.open = !query.matches;
+    };
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
   const scroller = useRef<HTMLDivElement>(null);
   const pages = useRef<HTMLDivElement>(null);
   const searchField = useRef<HTMLInputElement>(null);
@@ -221,18 +231,6 @@ export function PdfViewer(props: {
   return (
     <div class="pv-root" data-part="pdf-viewer" hidden={!props.active}>
       <div class="pv-toolbar" role="group" aria-label={t('pdfToolbar')}>
-        <button
-          type="button"
-          class="pv-btn"
-          data-part="pdf-thumbs-toggle"
-          aria-label={t('pdfThumbnailsToggle')}
-          title={t('pdfThumbnailsToggle')}
-          aria-pressed={thumbnails}
-          disabled={!ready}
-          onClick={() => setThumbnails(!thumbnails)}
-        >
-          <ThumbnailsIcon />
-        </button>
         <span class="pv-rule" aria-hidden="true" />
         <button
           type="button"
@@ -297,13 +295,7 @@ export function PdfViewer(props: {
         >
           <ZoomOutIcon />
         </button>
-        {state && (
-          <ZoomMenu
-            mode={state.zoom}
-            scale={state.scale}
-            onChoose={(mode) => engine?.setZoom(mode)}
-          />
-        )}
+
         <button
           type="button"
           class="pv-btn"
@@ -316,18 +308,59 @@ export function PdfViewer(props: {
           <ZoomInIcon />
         </button>
         <span class="pv-spacer" />
-        <button
-          type="button"
-          class="pv-btn"
-          data-part="pdf-search-toggle"
-          aria-label={t('pdfSearch')}
-          title={t('pdfSearch')}
-          aria-pressed={searchOpen}
-          disabled={!ready}
-          onClick={() => (searchOpen ? closeSearch() : openSearch())}
+        <details
+          ref={overflow}
+          class="pv-overflow"
+          onKeyDown={(event) => {
+            if (
+              event.key === 'Escape' &&
+              event.currentTarget.open &&
+              window.matchMedia('(max-width: 440px)').matches
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+              event.currentTarget.open = false;
+              event.currentTarget.querySelector('summary')?.focus();
+            }
+          }}
         >
-          <SearchIcon />
-        </button>
+          <summary class="pv-btn" aria-label="More PDF controls" title="More PDF controls">
+            ...
+          </summary>
+          <div class="pv-secondary">
+            <button
+              type="button"
+              class="pv-btn"
+              data-part="pdf-thumbs-toggle"
+              aria-label={t('pdfThumbnailsToggle')}
+              title={t('pdfThumbnailsToggle')}
+              aria-pressed={thumbnails}
+              disabled={!ready}
+              onClick={() => setThumbnails(!thumbnails)}
+            >
+              <ThumbnailsIcon />
+            </button>
+            {state && (
+              <ZoomMenu
+                mode={state.zoom}
+                scale={state.scale}
+                onChoose={(mode) => engine?.setZoom(mode)}
+              />
+            )}{' '}
+            <button
+              type="button"
+              class="pv-btn"
+              data-part="pdf-search-toggle"
+              aria-label={t('pdfSearch')}
+              title={t('pdfSearch')}
+              aria-pressed={searchOpen}
+              disabled={!ready}
+              onClick={() => (searchOpen ? closeSearch() : openSearch())}
+            >
+              <SearchIcon />
+            </button>
+          </div>
+        </details>
       </div>
       {searchOpen && (
         <div class="pv-search" role="search">

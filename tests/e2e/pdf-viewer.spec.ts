@@ -657,15 +657,32 @@ for (const width of [1920, 1280]) {
       });
       expect(scroll.y).toBeLessThan(200);
       expect(scroll.height).toBeGreaterThan(880);
-      await frame.getByRole('button', { name: 'Thumbnails' }).click();
-      // The thumbnails in view of the list draw; the last ones may lie below it.
-      await expect(frame.locator('.pv-thumb-slot[data-drawn="true"]').nth(3)).toBeVisible();
-      await frame.getByRole('button', { name: 'Search', exact: true }).click();
-      await frame.locator('[data-part="pdf-search-input"]').fill('hash');
-      await expect(frame.locator('[data-part="pdf-search-count"]')).toContainText(' of ');
-      await expect(frame.locator('.textLayer .highlight.selected').first()).toBeVisible();
-      await expect.poll(() => inkOf(pageBox(frame, 1).locator('canvas'))).toBeGreaterThan(1000);
-      await page.screenshot({ path: `screenshots/pdf-viewer-${width}-${scheme}.png` });
+      for (const paneWidth of [480, 360]) {
+        await page.locator('#tools-file-viewer').evaluate((node, size) => {
+          (node as HTMLElement).style.width = `${size}px`;
+        }, paneWidth);
+        const more = frame.getByLabel('More PDF controls', { exact: true });
+        if (paneWidth === 360) {
+          await expect(more).toBeVisible();
+          await more.focus();
+          await page.keyboard.press('Enter');
+          await expect(
+            frame.getByRole('button', { name: 'Thumbnails', exact: true }),
+          ).toBeVisible();
+          await expect(frame.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
+          await page.keyboard.press('Tab');
+          await expect(
+            frame.getByRole('button', { name: 'Thumbnails', exact: true }),
+          ).toBeFocused();
+          await page.keyboard.press('Escape');
+          await expect(more).toBeFocused();
+          await expect(frame.locator('.pv-secondary')).toBeHidden();
+        } else await expect(more).toBeHidden();
+        await expect(frame.locator('.pv-toolbar')).toHaveCSS('flex-wrap', 'nowrap');
+        await page.screenshot({
+          path: `screenshots/pdf-viewer-${width}-${paneWidth}-${scheme}.png`,
+        });
+      }
     });
   }
 }

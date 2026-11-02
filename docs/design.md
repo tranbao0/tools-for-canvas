@@ -2365,7 +2365,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - The page script resolves the theme and sets it on the pane frame, and it sends it to the pane page as a `theme` message over the channel, once the pane proved the secret and with each new file.
      It also sends the theme again when the background says that a setting changed, so an open pane follows the Theme setting at once.
      The pane page sets `data-theme` on its root element and shows nothing until the first message arrives.
-   - The header, the border and the close button of the frame use the same theme.
+   - The border and the close button use the same theme.
+     The close button sits at the right end of the tab row.
    - The pane page and its colors follow decision 21: the font stack and the tokens of the list stylesheet, and no school colors, because an extension page cannot read them.
 9. **The PDF viewer.**
    - The viewer opens a file whose content type is `application/pdf`.
@@ -2507,8 +2508,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   It reads the cookie before the request and again before the reply, and it drops the reply when the cookie changed, so a reply never crosses students.
   A sender without a tab is refused.
   The routes for the tabs follow the same rules.
-  On a profile that has no cache yet, the first list load must finish before a file opens.
-  A file that is clicked earlier shows "Couldn't load this file", and "Retry" works after the list has loaded.
+  On a profile that has no confirmed student yet, the viewer runs the shared `users/self` check with its existing limits before reading.
+  The viewer binds that proof to the cookie, origin and generation without loading the weekly list.
 - **One live copy of the page script.**
   The page script keeps a teardown function on its own global, as the in-page list does.
   A copy that starts again, such as after an update, first stops the copy before it: it removes the click, resize and message listeners and the pane.
