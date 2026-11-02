@@ -206,3 +206,11 @@ A link inside a PDF opens in a new tab only when you click it.
 The file pane reads image, audio, video and text files through the same Canvas file checks as PDFs.
 It keeps the bytes in memory and frees each blob URL when its tab closes.
 SVG files appear only in image elements, and text files appear as plain text.
+
+## Saved PDF positions
+
+The extension stores the page number, zoom mode or scale, and save time for each PDF in a trusted IndexedDB store of the extension, with a copy in local browser storage (`storage.local`).
+Each entry uses the Canvas address, student ID and file ID as its key.
+The store keeps at most 200 entries and removes the oldest entries first.
+The extension clears these entries on sign-out and when the signed-in student changes.
+These entries stay on your device.

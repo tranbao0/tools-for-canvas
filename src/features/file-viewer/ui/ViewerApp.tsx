@@ -260,6 +260,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     }
     pdfTabs.push(
       <PdfTab
+        fileId={fileId}
         key={fileId}
         url={links.download}
         file={state.file}

@@ -2457,6 +2457,11 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      The buttons step through 25, 50, 75, 100, 125, 150, 200, 300, 400 and 500 percent, from the zoom in view.
      100 percent means 96/72 CSS pixels for each point of the page.
      A resize of the pane keeps the position in the document.
+   - **Saved position.**
+     Each PDF tab reads its saved page and zoom through the checked background routes.
+     After the document loads, the viewer applies the zoom first and then goes to the saved page, clamped to the page count.
+     A scroll or zoom change saves after one second of idle time.
+     A failed read or write does not block the viewer.
    - **Search.**
      The search bar opens under the toolbar.
      The search ignores case and reads the text of every page once, in the background of the first search.
@@ -2744,7 +2749,7 @@ The channel checks the saved Canvas origin, the parent window, one transferred p
 
 1. The pane, the tabs, the click catching for file links and module items, and the PDF viewer (done, except the live checks).
 2. Images, audio, video, text, the "Open in Canvas" card and the student's own submission files (built, except the live checks).
-3. Saved page and zoom per file.
+3. Saved page and zoom per file (built, except the live checks).
 
 ## Open risks
 

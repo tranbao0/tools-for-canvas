@@ -541,3 +541,15 @@ A store build or a build from `npm run build` does not.
   Write down what happens: the pane opens it, the card shows "Couldn't load this file", or the browser saves it.
 - Turn the File viewer setting off, reload the assignment page, and click a submission file, a teacher download button and a comment attachment.
   Expect: each link does what Canvas does without the extension, and a download is a download.
+
+## Saved PDF positions
+
+- Open a PDF with at least three pages, go to page 3, and set the zoom to 150 percent.
+  Wait one second, close its tab, and open the file again.
+  Expect page 3 at 150 percent.
+- Reload the Canvas page and open the same file.
+  Expect page 3 at 150 percent.
+- Sign out and sign in as another student, then open the same file.
+  Expect page 1 with Fit width.
+- Repeat the restore check in Firefox.
+  Expect the saved page.

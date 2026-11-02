@@ -759,6 +759,39 @@ async function main() {
     const count = await driver.findElement(By.css('[data-part="pdf-page-count"]')).getText();
     if (count !== `of ${FIXTURE_PAGE_COUNT}`) throw new Error(`Wrong page count: ${count}`);
     console.log(`Firefox PDF viewer: page 1 drew ${drawn.ink} dark pixels, ${count}`);
+    await driver.findElement(By.css('[data-part="pdf-next"]')).click();
+    await driver.findElement(By.css('[data-part="pdf-next"]')).click();
+    await driver.wait(async () => {
+      const stored = await driver.executeAsyncScript(`
+        const done = arguments[arguments.length - 1];
+        browser.storage.local.get('viewerPositions').then(done);
+      `);
+      return Object.values(stored.viewerPositions ?? {}).some((value) => value.page === 3);
+    }, 10_000);
+    await driver.findElement(By.css('[aria-label="Close Course notes.pdf"]')).click();
+    await driver.switchTo().defaultContent();
+    await driver
+      .actions()
+      .move({ origin: await driver.findElement(By.css('a')) })
+      .click()
+      .perform();
+    const restoredHost = await driver.wait(async () => {
+      await driver
+        .actions()
+        .move({ origin: await driver.findElement(By.css('a')) })
+        .click()
+        .perform();
+      const hosts = await driver.findElements(By.css('#tools-file-viewer'));
+      return hosts[0] ?? false;
+    }, 10_000);
+    const restoredShadow = await restoredHost.getShadowRoot();
+    const restoredFrame = await restoredShadow.findElement(By.css('iframe'));
+    await driver.switchTo().frame(restoredFrame);
+    await driver.wait(async () => {
+      const inputs = await driver.findElements(By.css('[data-part="pdf-page-input"]'));
+      return inputs.length && (await inputs[0].getAttribute('value')) === '3';
+    }, 15_000);
+    console.log('Firefox PDF saved page: page 3 restored');
     await driver.switchTo().defaultContent();
     await checkImageTab(driver);
     await checkHostileSvg(driver);
