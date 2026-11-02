@@ -193,6 +193,29 @@ describe('pane tabs', () => {
   });
 });
 
+describe('tabs that fail to load', () => {
+  it('does not treat a refused read as no tabs, and reads again at the next request', async () => {
+    let refuse = true;
+    const stored: Tabs = { ids: ['1'], active: '1' };
+    const { open, host, saved } = setup({
+      getTabs: vi.fn(async () => {
+        if (refuse) throw new Error('The tabs did not load');
+        return stored;
+      }),
+    });
+    await open('2');
+    await waitFor(() => expect(tabs()).toHaveLength(1));
+    // The read failed, so nothing was written, which would have replaced the stored tabs.
+    expect(host.setTabs).not.toHaveBeenCalled();
+    refuse = false;
+    await open('3');
+    await waitFor(() => expect(tabs()).toHaveLength(2));
+    expect(host.getTabs).toHaveBeenCalledTimes(2);
+    // The tab that opened while the read failed stays, and the tabs are written with the token.
+    await waitFor(() => expect(saved().ids).toEqual(['2', '3']));
+  });
+});
+
 describe('file card', () => {
   it('shows the name, the type and the size with both links', async () => {
     const { open } = setup();

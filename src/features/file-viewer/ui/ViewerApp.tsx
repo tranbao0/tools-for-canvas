@@ -122,15 +122,26 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
         pending.current = pending.current
           .then(async () => {
             // The first request restores the tabs that the background keeps. Later ones add to the
-            // tabs in memory, which already hold every change of the student.
-            const known = loaded.current
-              ? tabsRef.current
-              : await host.getTabs().catch(() => tabsRef.current);
-            loaded.current = true;
+            // tabs in memory, which already hold every change of the student. A read that fails
+            // is not "no tabs": the next request reads again, and tabs that opened meanwhile stay.
+            let known = tabsRef.current;
+            let recovered = false;
+            if (!loaded.current) {
+              try {
+                const stored = await host.getTabs();
+                loaded.current = true;
+                recovered = known.ids.length > 0;
+                if (!recovered) known = stored;
+              } catch {
+                // The tabs in memory stay, and they are not written.
+              }
+            }
             const next = openFile(known, request.fileId);
             tabsRef.current = next;
             setTabs(next);
-            if (JSON.stringify(next) !== JSON.stringify(known)) save(next);
+            if (loaded.current && (recovered || JSON.stringify(next) !== JSON.stringify(known))) {
+              save(next);
+            }
           })
           .catch(() => undefined);
       }),

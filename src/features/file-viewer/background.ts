@@ -102,7 +102,7 @@ export function routeViewerMessage(
   )
     return null;
   const request = message as Record<string, unknown>;
-  return (async () => {
+  const run = async () => {
     const origin = await host.savedOrigin();
     const fromPane = host.isExtensionPage(sender);
     if (!origin || (!fromPane && senderPageOrigin(sender) !== origin))
@@ -147,15 +147,44 @@ export function routeViewerMessage(
         const userId = await host.userId(origin, tabId);
         if (userId === null) throw new Error('The cookie is not confirmed for the viewer');
         const key = `viewer:${origin}:${tabId}`;
+        // The token names the student and the clearing round of the tabs. A write must carry the
+        // token that the last read gave, so a pane that stayed open cannot write the tabs of one
+        // student back as the tabs of another, or after a clearing.
+        const token = `${await readEpoch(host)}:${userId}`;
         if (request['type'] === 'viewer:tabs-get') {
           const stored = await host.get(key);
-          return storedUser(stored) === userId ? normalizeTabs(stored) : normalizeTabs(null);
+          const tabs = storedUser(stored) === userId ? normalizeTabs(stored) : normalizeTabs(null);
+          return { ...tabs, token };
         }
+        if (request['token'] !== token) throw new Error('The tabs changed since they were read');
         await host.set(key, { ...normalizeTabs(request['tabs']), userId });
         return { ok: true };
       }
     }
-  })();
+  };
+  // The reads and writes of the tabs of one browser tab run in the order they arrive, so the last
+  // write that arrives is the last one stored.
+  const tabId = sender.tab?.id;
+  return tabId !== undefined && /^viewer:tabs-(?:get|set)$/.test(String(request['type']))
+    ? enqueue(tabId, run)
+    : run();
+}
+
+const queues = new Map<number, Promise<unknown>>();
+function enqueue<T>(tabId: number, run: () => Promise<T>): Promise<T> {
+  const result = (queues.get(tabId) ?? Promise.resolve()).then(run, run);
+  const tail = result.catch(() => undefined);
+  queues.set(tabId, tail);
+  void tail.then(() => {
+    if (queues.get(tabId) === tail) queues.delete(tabId);
+  });
+  return result;
+}
+
+const EPOCH_KEY = `${SESSION_PREFIX}epoch`;
+async function readEpoch(host: Pick<ViewerHost, 'get'>): Promise<number> {
+  const value = await host.get(EPOCH_KEY);
+  return typeof value === 'number' ? value : 0;
 }
 
 export function wireViewerRouter(
@@ -199,6 +228,9 @@ export function wireViewerRouter(
 /** Removes the tabs that the viewer keeps for every browser tab. The pane secrets stay. */
 export async function clearViewerTabs(): Promise<void> {
   const values = await browser.storage.session.get(null);
+  const epoch = typeof values[EPOCH_KEY] === 'number' ? values[EPOCH_KEY] : 0;
+  // The new epoch comes first, so a write with an old token fails even while the keys go.
+  await browser.storage.session.set({ [EPOCH_KEY]: epoch + 1 });
   const keys = Object.keys(values).filter(
     (key) => key.startsWith('viewer:') && !key.startsWith(SESSION_PREFIX),
   );

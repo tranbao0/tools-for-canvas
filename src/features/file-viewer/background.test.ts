@@ -41,6 +41,13 @@ function setup() {
   const pane = { url: 'extension://x/viewer.html', frameId: 3, tab: { id: 7 } };
   return { host, sender, pane, api, store, read };
 }
+type Sender = ReturnType<typeof setup>['sender'];
+type Reply = { ids: string[]; active: string | null; token: string };
+const tabsGet = async (sender: Sender, host: ViewerHost) =>
+  (await routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)) as Reply;
+const tabsSet = (sender: Sender, host: ViewerHost, tabs: unknown, token: unknown) =>
+  routeViewerMessage({ type: 'viewer:tabs-set', tabs, token }, sender, host);
+
 describe('viewer owner', () => {
   it('maps the file record and resolves module files, under the tab of the sender', async () => {
     const { host, api, read } = setup();
@@ -107,8 +114,14 @@ describe('viewer router', () => {
   });
   it('takes the tab id from the sender and normalizes the stored value', async () => {
     const { host, sender } = setup();
+    const { token } = await tabsGet(sender, host);
     await routeViewerMessage(
-      { type: 'viewer:tabs-set', tabId: 99, tabs: { ids: ['1', '../bad'], active: 'bad' } },
+      {
+        type: 'viewer:tabs-set',
+        tabId: 99,
+        token,
+        tabs: { ids: ['1', '../bad'], active: 'bad' },
+      },
       sender,
       host,
     );
@@ -117,10 +130,7 @@ describe('viewer router', () => {
       active: '1',
       userId: 'u1',
     });
-    expect(await routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)).toEqual({
-      ids: ['1'],
-      active: '1',
-    });
+    expect(await tabsGet(sender, host)).toEqual({ ids: ['1'], active: '1', token });
   });
   it('allows extension pages and rejects paths as ids', async () => {
     const { host, sender } = setup();
@@ -143,43 +153,70 @@ describe('viewer router', () => {
 describe('tabs and students', () => {
   it('gives the tabs back only to the student who opened them, and without the student id', async () => {
     const { host, sender } = setup();
-    await routeViewerMessage(
-      { type: 'viewer:tabs-set', tabs: { ids: ['5', '6'], active: '6' } },
-      sender,
-      host,
-    );
-    expect(await routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)).toEqual({
+    const first = await tabsGet(sender, host);
+    await tabsSet(sender, host, { ids: ['5', '6'], active: '6' }, first.token);
+    expect(await tabsGet(sender, host)).toEqual({
       ids: ['5', '6'],
       active: '6',
+      token: first.token,
     });
     vi.mocked(host.userId).mockResolvedValue('u2');
-    expect(await routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)).toEqual({
-      ids: [],
-      active: null,
-    });
+    const other = await tabsGet(sender, host);
+    expect(other).toMatchObject({ ids: [], active: null });
+    expect(other.token).not.toBe(first.token);
   });
   it('refuses to read or write tabs when the cookie rules refuse', async () => {
     const { host, sender, store } = setup();
+    const { token } = await tabsGet(sender, host);
     vi.mocked(host.userId).mockResolvedValue(null);
     await expect(routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)).rejects.toThrow(
       'confirmed',
     );
-    await expect(
-      routeViewerMessage(
-        { type: 'viewer:tabs-set', tabs: { ids: ['1'], active: '1' } },
-        sender,
-        host,
-      ),
-    ).rejects.toThrow('confirmed');
+    await expect(tabsSet(sender, host, { ids: ['1'], active: '1' }, token)).rejects.toThrow(
+      'confirmed',
+    );
     expect(store.size).toBe(0);
   });
   it('treats tabs stored with no student as none', async () => {
     const { host, sender, store } = setup();
     store.set('viewer:https://school.edu:7', { ids: ['1'], active: '1' });
-    expect(await routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)).toEqual({
-      ids: [],
-      active: null,
-    });
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: [], active: null });
+  });
+  it('refuses a write that has no token, an old token, or the token of another student', async () => {
+    const { host, sender, store } = setup();
+    const { token } = await tabsGet(sender, host);
+    const tabs = { ids: ['1'], active: '1' };
+    await expect(tabsSet(sender, host, tabs, undefined)).rejects.toThrow('changed');
+    await expect(tabsSet(sender, host, tabs, 'wrong')).rejects.toThrow('changed');
+    // An open pane of student u1 writes after student u2 took over the tab.
+    vi.mocked(host.userId).mockResolvedValue('u2');
+    await expect(tabsSet(sender, host, tabs, token)).rejects.toThrow('changed');
+    expect(store.size).toBe(0);
+  });
+  it('refuses a write with a token from before the tabs were cleared', async () => {
+    fakeBrowser.reset();
+    const { host, sender, store } = setup();
+    const { token } = await tabsGet(sender, host);
+    store.set('viewer:session:epoch', 1);
+    await expect(tabsSet(sender, host, { ids: ['1'], active: '1' }, token)).rejects.toThrow(
+      'changed',
+    );
+    expect((await tabsGet(sender, host)).token).not.toBe(token);
+  });
+  it('stores the writes of one tab in the order they arrive', async () => {
+    const { host, sender, store } = setup();
+    const { token } = await tabsGet(sender, host);
+    // The first write waits on a slow check, and the second write waits on none.
+    let release: (id: string) => void = () => undefined;
+    const slow = new Promise<string>((resolve) => (release = resolve));
+    vi.mocked(host.userId).mockImplementationOnce(() => slow);
+    const first = tabsSet(sender, host, { ids: ['1'], active: '1' }, token);
+    const second = tabsSet(sender, host, { ids: ['2'], active: '2' }, token);
+    // Without the queue, the second write is done by now, and the slow first one comes last.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    release('u1');
+    await Promise.all([first, second]);
+    expect(store.get('viewer:https://school.edu:7')).toMatchObject({ ids: ['2'], active: '2' });
   });
 });
 
@@ -241,8 +278,14 @@ describe('clearing the tabs', () => {
       other: 1,
     });
     await clearViewerTabs();
-    expect(Object.keys(await fakeBrowser.storage.session.get(null)).sort()).toEqual(
-      [sessionKey(7), 'other'].sort(),
+    const kept = await fakeBrowser.storage.session.get(null);
+    expect(Object.keys(kept).sort()).toEqual(
+      [sessionKey(7), 'other', 'viewer:session:epoch'].sort(),
     );
+    expect(kept['viewer:session:epoch']).toBe(1);
+    await clearViewerTabs();
+    expect(
+      (await fakeBrowser.storage.session.get('viewer:session:epoch'))['viewer:session:epoch'],
+    ).toBe(2);
   });
 });

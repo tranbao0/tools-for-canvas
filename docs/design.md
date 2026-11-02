@@ -2273,6 +2273,10 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      The background keeps them with the id of the student of the cache.
      It reads and writes them only when the cookie rules confirm that student (decision 11), and it gives back none when the student is another one.
      A sign-out, another student and a new address clear them.
+     A read gives a token (the clearing round and the student), and a write must send the token of the last read.
+     So an open pane cannot write the tabs of one student back as the tabs of another, or after a clearing.
+     The reads and writes of one browser tab run in the order they arrive.
+     A pane or page script whose read was refused keeps its tabs in memory, writes nothing, and reads again at the next request.
    - The tab strip is the ARIA tabs pattern, drawn like the tabs of Canvas: text tabs on a line, and the active tab has a bar in the brand color.
      Each tab shows a file type icon and the file name.
      A long name ends with an ellipsis, and the tooltip of the tab shows the whole name.
@@ -2293,7 +2297,10 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - Links with `download` keep their normal action.
    - A click with Ctrl, Shift, Alt or Meta, a middle click, and "Open in new tab" keep the browser's normal action.
    - Only a click of the student counts (`event.isTrusted`).
-     A script of the Canvas page can click any link, and such a click opens nothing, so a script cannot open a file or replace the tabs.
+     A script of the Canvas page can click any link, and such a click opens nothing, so a script cannot dispatch a click to open a file or replace the tabs.
+     A page can still move a link under the pointer or retarget it, and a real click then opens the file of that link.
+     The page can fetch that file itself with the session of the student, so this gives it nothing more.
+   - The click listener starts first, before the settings and the stored tabs load, so a click at once still opens the pane.
    - Module items are resolved to their file through `GET /api/v1/courses/:id/modules/:id/items/:id`.
 4. **Viewers by file type.**
    - PDF: a bundled PDF.js viewer with search, page thumbnails, zoom and keyboard paging (item 9).
@@ -2468,7 +2475,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
     A script of the Canvas page can send a port too, and it must not block the port of the page script.
   - Each frame reload repeats the hello, and each open of the pane makes a new secret.
     Every load of the frame after the first drops the port of the document before it.
-    If no valid answer with the secret arrives within 15 seconds of the open, or of a load, the pane closes.
+    If no valid answer with the secret arrives within 15 seconds of the open, or no hello follows a load, the page script removes the pane and restores the padding of the page.
+    The stored tabs stay, so the next click opens the pane again.
   - After the proof, the pane accepts only two messages from the page: `open-file`, with a file id and an optional course id, and `theme`, with the value `light` or `dark`.
     It never accepts a path or a full URL to load, and it drops a message with another key or value.
   - The pane frame sits in a closed shadow root, which keeps the frame element and its address from the page.
@@ -2478,8 +2486,13 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
     Firefox loads it, because the hello shows the address.
     The copy still gets no port, because the page script sends a port only to the frame that it made.
     The copy runs only code of the extension, and the page cannot read a frame of another origin.
+    So a page can deface or close the pane frame, but it cannot read from it.
     The copy reads the tabs only after a port proves the secret, and on load it asks only `viewer:session` and `viewer:permission`.
     It can ask the background for a file record, which is a read of the saved Canvas that the page can make itself with the session of the student, under the same cookie rules.
+- **Accepted risk: another extension.**
+  Another installed extension that has a web-accessible page which relays messages to its parent, and that a script navigates the pane frame to, could pass on the hello and get the port.
+  The hello names this extension, which is no secret, so the id check does not stop this.
+  It needs a second extension with that kind of page, and the port gives it the file ids that the pane opens and the theme, never a file.
 - **The cookie rules (decision 11).**
   `viewer:file` and `viewer:module-item` pass the tab id of the sender to the data owner.
   The owner refuses unless the tab uses the cookie store of the requests, the address is the saved Canvas, and a check confirmed the sign-in cookie for the student of the cache.
