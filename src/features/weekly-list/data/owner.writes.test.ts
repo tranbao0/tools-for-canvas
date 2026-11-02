@@ -1465,23 +1465,31 @@ describe('a Canvas that the student leaves by accepting another one', () => {
   }
 
   it('sends the waiting task delete to the old address, once the check of the student is done', async () => {
-    const { h, events, switchTo } = await customSchool();
-    const deleteNote = h.canvas.deleteNote.bind(h.canvas);
-    h.canvas.deleteNote = async (id: string) => {
-      events.push(`deleteNote ${id}`);
-      return deleteNote(id);
-    };
+    const { h, switchTo } = await customSchool();
     await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
     // The check of the student, before the DELETE goes, is slow.
     const releaseSelf = h.canvas.hold('getSelf');
 
     await switchTo(OTHER);
     await vi.advanceTimersByTimeAsync(50);
-    expect(events).toEqual([]);
+    expect(h.canvas.callsOf('deleteNote')).toEqual([]);
     releaseSelf();
     await h.owner.settled();
 
-    expect(events).toEqual([`deleteNote ${N.libraryBooksToday}`]);
+    expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday]]);
+  });
+
+  it('does not send the waiting task delete under a cookie that no check confirmed', async () => {
+    const { h, switchTo } = await customSchool();
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    // Another student signs in on the old Canvas, and the check before the DELETE cannot tell.
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+
+    await switchTo(OTHER);
+    await h.owner.settled();
+    await advance(h, MAX_DELETE_DELAY_MS);
+
+    expect(h.canvas.callsOf('deleteNote')).toEqual([]);
   });
 
   it('cleans up a create that crossed the address change, on the Canvas that took it', async () => {

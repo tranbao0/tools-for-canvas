@@ -639,6 +639,11 @@ test.describe('course grades', () => {
     await widget.getByTestId('course-103-grade').evaluate((node) => {
       node.textContent = '•••';
     });
+    // The fix batches page changes for 50 ms and records the hide in the pass after that. A
+    // read that began earlier, such as the one that a focus event starts, also counts for the
+    // poll below, so the poll cannot tell that the pass ran. A page timer that is set now and
+    // is due later fires after the timer of the fix, whatever the load is.
+    await page.evaluate(() => new Promise<void>((resolve) => setTimeout(resolve, 100)));
     await expect.poll(reads).toBeGreaterThan(before);
     await widget.getByTestId('course-grade-card-103').evaluate((node) => node.remove());
     await expect(widget.getByTestId('course-103-grade')).toHaveText('•••');

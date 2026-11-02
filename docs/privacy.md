@@ -51,6 +51,9 @@ It never stores or sends the session cookie value.
 It reads the fingerprint before and after each request that fills its cache.
 It keeps the answer only when both fingerprints match and the check confirmed that fingerprint for the same student.
 It starts no request to Canvas when there is no session cookie or when the cookie cannot be read.
+It reads the fingerprint again right before each request that writes to Canvas, also before a retry after a rate limit.
+It sends a write only when a check confirmed that fingerprint for the same student.
+This covers done marks, skip marks, read marks of announcements, and the creation, change and deletion of your own tasks.
 It does not announce itself to the page.
 It sends nothing to any server.
 On a page that is not Canvas, it stops at once and keeps nothing.

@@ -15,6 +15,7 @@ import type {
   PlannerItem,
   PlannerNote,
   PlannerOverride,
+  RequestGuard,
   TimeRange,
 } from '../../../shared/canvas/types';
 import { dashboardCourses, extrasFromView } from '../../dashboard-fixes/data/dashboardData';
@@ -213,7 +214,8 @@ export interface DataOwner {
    * resolves with `false` when the offer stored is not for that origin.
    */
   acceptOffer(origin: string): Promise<boolean>;
-  act(action: DataAction): Promise<ActionReply>;
+  /** `tabId` is the tab of the surface, when it has one. A tab in another cookie store may not act. */
+  act(action: DataAction, tabId?: number): Promise<ActionReply>;
   /** The data of the dashboard fixes, from the cache. It makes no request (decision 22). */
   dashboardData(origin?: string | null, tabId?: number): Promise<DashboardData>;
   /**
@@ -1352,11 +1354,21 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const noteIds = Object.keys(left.pendingDeletes).filter((id) => !started.has(id));
     if (userId === undefined || noteIds.length === 0) return;
     const api = apiFor(origin);
+    // The cookie of the Canvas that the student leaves must still be one that a check confirmed
+    // for this student, right before each DELETE.
+    const guarded = api.withGuard(async () => {
+      const fingerprint = await readFingerprint(origin);
+      return (
+        fingerprint != null &&
+        left.userCheck?.userId === userId &&
+        left.userCheck.fingerprints.includes(fingerprint)
+      );
+    });
     track(
       api
         .getSelf()
         .then(async (self) => {
-          if (self.id === userId) await Promise.all(noteIds.map((id) => api.deleteNote(id)));
+          if (self.id === userId) await Promise.all(noteIds.map((id) => guarded.deleteNote(id)));
         })
         .catch((error: unknown) => deps.log('task delete', error)),
     );
@@ -1522,8 +1534,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       announcementMarks: confirmedMarks(cache.announcementMarks),
     };
     staleAnnouncements();
-    // A DELETE that is out stays: it ends the task, and sending it again skips the check.
-    for (const noteId of queuedDeletes) if (!startedDeletes.has(noteId)) requeueDelete(noteId);
+    // A DELETE that is out stays: it ends the task. A DELETE that waits in the queue is parked:
+    // it keeps its entry in `pendingDeletes` and has no timer, because the cookie that made the
+    // queue end is not confirmed. `releaseParkedDeletes` sends it once a cookie is confirmed.
+    for (const noteId of queuedDeletes)
+      if (!startedDeletes.has(noteId)) queuedDeletes.delete(noteId);
     persist();
     scheduleForcedFull();
   }
@@ -1533,6 +1548,21 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     queuedDeletes.delete(noteId);
     startedDeletes.delete(noteId);
     scheduleDelete(noteId, cache?.pendingDeletes[noteId] ?? clock.now());
+  }
+
+  /**
+   * Sends the task deletes that an abandoned queue parked, under the generation of now. Call it
+   * where a cookie has just been confirmed for the student of the cache. Each DELETE still passes
+   * the cookie check right before its request.
+   */
+  function releaseParkedDeletes(): void {
+    if (cache === null) return;
+    for (const [noteId, deleteAt] of Object.entries(cache.pendingDeletes)) {
+      if (deleteTimers.has(noteId) || queuedDeletes.has(noteId) || startedDeletes.has(noteId)) {
+        continue;
+      }
+      scheduleDelete(noteId, deleteAt);
+    }
   }
 
   /**
@@ -1597,6 +1627,19 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return false;
   }
 
+  /**
+   * The guard of a queued write. The client runs it once the request holds a slot of the queue,
+   * right before each attempt and before each retry after a rate limit, so the cookie check
+   * happens just before the request leaves (decision 11). `onPass` runs at once after a pass.
+   */
+  function writeGuard(stamp: WriteStamp, onPass?: () => void): RequestGuard {
+    return async () => {
+      if (!(await cookieConfirmed(stamp))) return false;
+      onPass?.();
+      return true;
+    };
+  }
+
   /** A response for another user than the cached one: the cache goes, and the write ends. */
   async function userChanged(stamp: WriteStamp): Promise<false> {
     if (sameStudent(stamp)) await dropUserData();
@@ -1614,8 +1657,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   ): Promise<boolean> {
     const patch = findPatch(patchId);
     if (stamp.origin === null || patch === undefined || patch.kind !== 'override') return false;
-    if (!(await cookieConfirmed(stamp))) return false;
     const api = apiFor(stamp.origin);
+    // The guard checks the cookie right before each attempt. The write-backs below use `api`,
+    // because they must reach the account that the first request wrote to.
+    const writer = api.withGuard(writeGuard(stamp));
     const flags = {
       markedComplete: patch.override.marked_complete,
       dismissed: patch.override.dismissed,
@@ -1623,8 +1668,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     try {
       const saved =
         patch.override.id !== ''
-          ? await api.updateOverride(patch.override.id, flags)
-          : await createOrRecoverOverride(api, patch.target, flags, stamp.userId);
+          ? await writer.updateOverride(patch.override.id, flags)
+          : await createOrRecoverOverride(writer, patch.target, flags, stamp.userId);
       if (saved.user_id !== stamp.userId) {
         // Another student signed in after the check. The flags went into the wrong account, so
         // they go back, before the cache of the first student goes. A POST made the override,
@@ -1644,6 +1689,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       await finishWrite();
       return true;
     } catch (error) {
+      // The guard refused the request and ended the queue, so there is nothing to sync.
+      if (isCanvasError(error, 'refused')) return false;
       if (error instanceof UserChangedError) return userChanged(stamp);
       const gone = await failWrite(patch, error, stamp);
       await finishWrite();
@@ -1664,7 +1711,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (!(await verifyUser(stamp))) return { created: false, sync: false };
     try {
       const api = apiFor(stamp.origin);
-      const response = await api.createNote(noteInput(note));
+      // The user check above can take a while, so the guard reads the cookie again right before
+      // each attempt. The text reaches Canvas only under a cookie that a check confirmed.
+      const response = await api.withGuard(writeGuard(stamp)).createNote(noteInput(note));
       if (response.user_id !== stamp.userId) {
         // Another student signed in after the check. The text went into the wrong account, so
         // it comes out again, before the cache of the first student goes.
@@ -1687,6 +1736,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       await finishWrite();
       return { created: true, sync: true };
     } catch (error) {
+      if (isCanvasError(error, 'refused')) return { created: false, sync: false };
       const gone = await failWrite(undefined, error, stamp);
       await finishWrite();
       return { created: false, sync: !gone };
@@ -1701,13 +1751,22 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const patch = findPatch(patchId);
     if (stamp.origin === null || patch === undefined || patch.kind !== 'note') return false;
     if (operation === 'delete' && patch.confirmedAt !== null) return false;
-    const api = apiFor(stamp.origin);
-    if (operation === 'delete') startedDeletes.add(patch.noteId);
+    // A DELETE counts as started once its cookie check passed, because Undo can no longer stop it.
+    const writer = apiFor(stamp.origin).withGuard(
+      writeGuard(
+        stamp,
+        operation === 'delete'
+          ? () => {
+              startedDeletes.add(patch.noteId);
+            }
+          : undefined,
+      ),
+    );
     try {
       let saved: NoteValue | null = null;
-      if (operation === 'delete') await api.deleteNote(patch.noteId);
+      if (operation === 'delete') await writer.deleteNote(patch.noteId);
       else if (patch.note !== null) {
-        const response = await api.updateNote(patch.noteId, noteInput(patch.note));
+        const response = await writer.updateNote(patch.noteId, noteInput(patch.note));
         if (isCurrent(stamp) && response.user_id !== stamp.userId) return userChanged(stamp);
         saved = noteValue(response);
       }
@@ -1725,6 +1784,15 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       await finishWrite();
       return true;
     } catch (error) {
+      if (isCanvasError(error, 'refused')) {
+        // The guard ended the queue before the request left. A DELETE waits for a confirmed
+        // cookie, with its entry in `pendingDeletes`.
+        if (operation === 'delete') {
+          queuedDeletes.delete(patch.noteId);
+          startedDeletes.delete(patch.noteId);
+        }
+        return false;
+      }
       // A DELETE that failed after an abandoned queue is for the same student: the task stays
       // hidden, and the DELETE goes out again under the current generation.
       if (operation === 'delete' && sameStudent(stamp) && !isCurrent(stamp)) {
@@ -1892,6 +1960,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     build: (write: WriteContext, timeZone: string, current: Item) => NoteValue | null,
     operation: NoteOperation,
   ): Promise<ActionReply> {
+    // A task write is a write for the student of the cache, so the cookie check comes first.
+    if (!(await signedInStudentOwnsCache())) return NO_UNDO;
     const write = await writeContext();
     if (write === null || cache === null || cache.limited) return NO_UNDO;
     const current = write.items.get(noteKey(noteId));
@@ -1916,6 +1986,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
   /** Creates a task. The reply comes after Canvas answered, so the task shows with its real id. */
   async function createTask(input: TaskInput): Promise<ActionReply> {
+    // The text of the task goes to the account of the cookie, so the cookie check comes first.
+    if (!(await signedInStudentOwnsCache())) return { undo: null, created: false };
     const write = await writeContext();
     if (write === null || cache === null || cache.limited) return NO_UNDO;
     const timeZone = canvasTimeZone(write.session, write.context);
@@ -2004,7 +2076,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           'update',
         );
       case 'sendDelete':
-        sendDelete(action.noteId);
+        // A refused check leaves the delete to its timer, which sends it after a check.
+        if (await signedInStudentOwnsCache()) sendDelete(action.noteId);
         return NO_UNDO;
       case 'cancelDelete':
         cancelDelete(action.noteId);
@@ -2144,6 +2217,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       },
     };
     persist();
+    releaseParkedDeletes();
   }
 
   function confirmedFingerprint(fingerprint: string): boolean {
@@ -2214,6 +2288,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         return false;
       }
       if (confirmedFingerprint(fingerprint)) {
+        releaseParkedDeletes();
         const age = clock.now() - (cache?.userCheck?.at ?? -Infinity);
         if (
           checks === 0 &&
@@ -2368,18 +2443,18 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     await ready();
     const origin = await savedOrigin();
     const base: DashboardData = { origin: origin ?? '', ready: false, courses: [], extras: [] };
+    // A tab in another cookie store gets nothing and touches nothing, so it cannot cancel the
+    // late result of a read that a valid tab started.
+    if (!(await surfaceMayRead(tabId))) return { ...base, gradeVisibilities: null };
     const readId = ++visibilityRead;
     lateVisibility = undefined;
     let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       // The read is for the student whom the sign-in check confirms now, never for the student
-      // of an older cache. A tab in another cookie store never gets a read.
+      // of an older cache.
       const confirmed =
-        origin !== null &&
-        cache?.session != null &&
-        (await surfaceMayRead(tabId)) &&
-        (await signedInStudentOwnsCache());
+        origin !== null && cache?.session != null && (await signedInStudentOwnsCache());
       const stamp = writeStamp();
       const userId = stamp.userId;
       const read =
@@ -2638,11 +2713,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       updateMark(key, seq, () => null);
       return false;
     }
-    // The check above can take a while, so the cookie is read again just before the request.
-    if (!(await cookieConfirmed(stamp))) return false;
     try {
-      await apiFor(stamp.origin).setAnnouncementRead(courseId, topicId, read);
+      // The check above can take a while, so the guard reads the cookie again right before the
+      // request.
+      await apiFor(stamp.origin)
+        .withGuard(writeGuard(stamp))
+        .setAnnouncementRead(courseId, topicId, read);
     } catch (error) {
+      if (isCanvasError(error, 'refused')) return false;
       deps.log('write', error);
       if (!isCurrent(stamp)) return false;
       updateMark(key, seq, () => null);
@@ -2883,8 +2961,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       });
     },
 
-    async act(action) {
+    async act(action, tabId) {
       await ready();
+      // A tab in another cookie store gets nothing, as for the routes that read.
+      if (!(await surfaceMayRead(tabId))) {
+        return action.kind === 'createTask' ? { undo: null, created: false } : NO_UNDO;
+      }
       return act(action);
     },
 

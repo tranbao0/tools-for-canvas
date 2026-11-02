@@ -192,7 +192,7 @@ describe('routeDataMessage', () => {
         action: { kind: 'markAnnouncement', courseId: '101', topicId: '31901' },
       };
       await routeDataMessage(owner, message, CONTENT_SCRIPT, host);
-      expect(owner.act).toHaveBeenCalledWith(message.action);
+      expect(owner.act).toHaveBeenCalledWith(message.action, 3);
       owner.act.mockClear();
       await expect(routeDataMessage(owner, message, OTHER_CANVAS, host)).rejects.toThrow();
       expect(owner.act).not.toHaveBeenCalled();
@@ -373,7 +373,11 @@ describe('routeDataMessage', () => {
     await expect(
       routeDataMessage(owner, { type: 'weekrow:action', action }, CONTENT_SCRIPT, host),
     ).resolves.toEqual({ undo: null });
-    expect(owner.act).toHaveBeenCalledWith(action);
+    // The tab of the sender goes along, so the owner can check its cookie store.
+    expect(owner.act).toHaveBeenCalledWith(action, 3);
+
+    await routeDataMessage(owner, { type: 'weekrow:action', action }, EXTENSION_PAGE, host);
+    expect(owner.act).toHaveBeenLastCalledWith(action, undefined);
   });
 
   it('treats a Canvas page load as a refresh trigger, with the origin of the sender page', async () => {
