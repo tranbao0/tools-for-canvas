@@ -2463,10 +2463,13 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   - After the proof, the pane accepts only two messages from the page: `open-file`, with a file id and an optional course id, and `theme`, with the value `light` or `dark`.
     It never accepts a path or a full URL to load, and it drops a message with another key or value.
   - The pane frame sits in a closed shadow root, and `window.frames` does not list it.
-  - A script of the page that makes its own `viewer.html` frame gets the secret from the background too, because it has the same tab id.
-    It still gets no port, because the page script sends a port only to its own frame.
-    Chromium also refuses the frame of a web page to this page.
-    Such a frame can ask the background for the same data as the page itself could fetch with the session of the student, and for the list of file ids that are open in the tab.
+  - A script of the page that makes its own `viewer.html` frame gets the same secret from the background, because the tab id is the same.
+    Chromium refuses such a frame, because the page is reachable only through its session address.
+    Firefox loads it, because the hello shows the address.
+    The copy still gets no port, because the page script sends a port only to the frame that it made.
+    The copy runs only code of the extension, and the page cannot read a frame of another origin.
+    The copy reads the tabs only after a port proves the secret, and on load it asks only `viewer:session` and `viewer:permission`.
+    It can ask the background for a file record, which is a read of the saved Canvas that the page can make itself with the session of the student, under the same cookie rules.
 - **The cookie rules (decision 11).**
   `viewer:file` and `viewer:module-item` pass the tab id of the sender to the data owner.
   The owner refuses unless the tab uses the cookie store of the requests, the address is the saved Canvas, and a check confirmed the sign-in cookie for the student of the cache.

@@ -281,6 +281,49 @@ async function checkBadSettings(driver) {
   console.log('Bad settings in storage change nothing, and the mirror is repaired');
 }
 
+/**
+ * A script of the Canvas page makes its own frame of the pane page, which Firefox loads, and
+ * offers it ports with no secret and a wrong one. The copy must open no file and send nothing back.
+ */
+async function checkHostilePaneFrame(driver, server) {
+  await driver.executeScript(
+    `window.__got = [];
+     const copy = document.createElement('iframe');
+     copy.id = 'hostile';
+     copy.src = arguments[0];
+     document.body.append(copy);`,
+    `moz-extension://${EXTENSION_UUID}/viewer.html`,
+  );
+  const copy = await driver.wait(async () => {
+    const found = await driver.findElements(By.id('hostile'));
+    return found[0] ?? null;
+  }, 10_000);
+  await driver.switchTo().frame(copy);
+  await driver.wait(async () => (await driver.findElements(By.css('#app'))).length === 1, 10_000);
+  await driver.switchTo().defaultContent();
+  await driver.executeScript(`
+    const target = document.getElementById('hostile');
+    for (const first of [null, { type: 'secret', secret: 'a'.repeat(64) }, { type: 'open-file', fileId: '43' }]) {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = (event) => window.__got.push(JSON.stringify(event.data));
+      target.contentWindow.postMessage({ type: 'viewer-connect' }, '*', [channel.port2]);
+      if (first) channel.port1.postMessage(first);
+      channel.port1.postMessage({ type: 'open-file', fileId: '43' });
+      channel.port1.postMessage({ type: 'theme', theme: 'dark' });
+    }
+  `);
+  await driver.sleep(1500);
+  const got = await driver.executeScript('return window.__got;');
+  if (got.length !== 0) throw new Error(`A hostile port got an answer: ${got.join(' ')}`);
+  if (server.requests.some((request) => request.includes('/api/v1/files/43')))
+    throw new Error('A hostile frame opened another file');
+  await driver.switchTo().frame(copy);
+  const tabs = await driver.findElements(By.css('.fv-tab'));
+  await driver.switchTo().defaultContent();
+  if (tabs.length !== 0) throw new Error('A hostile frame opened a tab');
+  console.log('Firefox pane channel: a page script cannot take the port of a frame of its own.');
+}
+
 async function main() {
   // Selenium Manager must never download a browser or a driver during a test.
   process.env.SE_OFFLINE = 'true';
@@ -406,6 +449,7 @@ async function main() {
     if (count !== `of ${FIXTURE_PAGE_COUNT}`) throw new Error(`Wrong page count: ${count}`);
     console.log(`Firefox PDF viewer: page 1 drew ${drawn.ink} dark pixels, ${count}`);
     await driver.switchTo().defaultContent();
+    await checkHostilePaneFrame(driver, server);
     console.log('Firefox store file pane: passed.');
     console.log('Firefox smoke test: passed.');
     return 0;
