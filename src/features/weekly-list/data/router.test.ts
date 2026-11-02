@@ -86,7 +86,7 @@ describe('routeDataMessage', () => {
       CONTENT_SCRIPT,
       host,
     );
-    expect(owner.announcement).toHaveBeenCalledWith('5', '9', SAVED);
+    expect(owner.announcement).toHaveBeenCalledWith('5', '9', SAVED, 3);
   });
 
   it('answers a state request with the owner state', async () => {
@@ -182,6 +182,8 @@ describe('routeDataMessage', () => {
         'panel',
         'inpage',
       ]);
+      // The tab of a content script goes along, so the owner can check its cookie store.
+      expect(owner.announcementFeed.mock.calls.map(([, tabId]) => tabId)).toEqual([undefined, 3]);
     });
 
     it('route the announcement read mark as an action, from the saved Canvas only', async () => {
@@ -272,7 +274,10 @@ describe('routeDataMessage', () => {
       CONTENT_SCRIPT,
       host,
     );
-    expect(owner.dashboardGradeVisibility.mock.calls).toEqual([['a'.repeat(64)], [undefined]]);
+    expect(owner.dashboardGradeVisibility.mock.calls).toEqual([
+      ['a'.repeat(64), 3],
+      [undefined, 3],
+    ]);
   });
 
   describe('the messages of the dashboard fixes', () => {
@@ -295,8 +300,14 @@ describe('routeDataMessage', () => {
           ),
         ).resolves.toEqual([]);
       }
-      expect(owner.announcement).toHaveBeenCalledWith('101', '31901', SAVED);
-      expect(owner.announcements).toHaveBeenCalledWith('101', SAVED);
+      expect(owner.announcement.mock.calls).toEqual([
+        ['101', '31901', SAVED, 3],
+        ['101', '31901', SAVED, undefined],
+      ]);
+      expect(owner.announcements.mock.calls).toEqual([
+        ['101', SAVED, 3],
+        ['101', SAVED, undefined],
+      ]);
     });
 
     it.each([

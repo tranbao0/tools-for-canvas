@@ -227,7 +227,23 @@ describe('done marks', () => {
     h.canvas.resetCalls();
     signInOtherUser(h);
 
-    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null, refused: true });
+    // The cache of the first student is gone, so a later tap cannot succeed: the notice ends.
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('updateOverride')).toEqual([]);
+    expect(h.canvas.callsOf('createOverride')).toEqual([]);
+  });
+
+  it('ends the Undo notice after a sign-out, where a refused Undo would show it again', async () => {
+    const h = await loaded();
+    const reply = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    await h.owner.settled();
+    h.canvas.resetCalls();
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
+
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('updateOverride')).toEqual([]);
@@ -1252,7 +1268,9 @@ describe('writes across a sign-out, another user or another Canvas', () => {
     releaseProfile();
     await h.owner.settled();
     expect(expectReady(await h.owner.getState(PANEL)).userId).toBe('7777');
-    expect(h.canvas.callsOf('updateOverride')).toEqual([]);
+    // The flags that went into the account of the second student go back.
+    const created = h.canvas.overrides().find((o) => o.assignment_id === A.bioQuiz3Today);
+    expect(h.canvas.callsOf('updateOverride')).toEqual([[created?.id, NOT_DONE]]);
   });
 
   it('does not put the flags of one student onto an override of another that Canvas lists', async () => {

@@ -983,7 +983,9 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 - Before the weekly list or the dashboard fixes serve cached data, the owner reads the Canvas session cookie (`canvas_session` and `_normandy_session`) with `cookies.get` and compares a fingerprint of it.
   Each cookie gets the SHA-256 of a random per-install salt and its value.
   When both cookies exist, the fingerprint includes both hashes in the order of the cookie names.
-  The salt stays in trusted extension storage.
+  The salt is a trusted item (decision 5).
+  On Chrome and Edge, it lives in `storage.local`, which the browser locks to trusted extension contexts, so content scripts can neither read nor write it.
+  On Firefox, it lives in the IndexedDB vault of the extension, which content scripts cannot open, and `createTrustedItem` also mirrors it to `storage.local`, which content scripts can read.
   The extension never stores or sends the cookie value.
   The cookie names are one ordered constant in `src/shared/canvas/session.ts`.
   The cookie comes from the store that the requests of the extension use: the default store of the browser (`0` on Chrome and Edge, `firefox-default` on Firefox).
@@ -992,6 +994,9 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   It causes no check and no sign-out.
   The router passes the tab of the sender, and the owner asks the browser which store lists the tab.
   A surface without a tab, such as the side panel, uses the default store.
+  Every route that reads for a tab makes this check first: the weekly list state, the dashboard data, the grade visibility read, the Announcements tab, one announcement and the announcement list of a course.
+  For a tab in another store, the Announcements tab is `unavailable`, the grade visibility read has no visibilities, and one announcement or the announcement list is empty.
+  Canvas hears nothing for such a tab.
 - After each good user check, `storage.session` keeps the user id, the check time and the fingerprints that the checks confirmed, beside the cache.
   Each fingerprint includes the cookie name, so a name change needs a new check.
   The owner keeps the last three fingerprints that it confirmed for the current user.
@@ -1047,7 +1052,16 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   The owner sends the delete at its own time.
   An Undo of a done mark, a skip mark or an announcement read mark first passes the same cookie check, and it does nothing when the check fails.
   The reply of a refused Undo says `refused`, and the surface shows the Undo notice again, also beside the `cant_load` state.
-  A done mark, a skip mark and an unskip mark pass the same check before they write.
+  A refused Undo is `refused` only while the cache still belongs to the student of the Undo.
+  After a sign-out or a change of student nothing can be restored, so the reply is the plain one and the notice ends.
+  A done mark, a skip mark, an unskip mark and an announcement read mark pass the same check before they write.
+- A write waits in a queue, so the check at the tap is not enough.
+  Just before each override request and each read mark request, the owner reads the fingerprint again.
+  The request goes out only when the fingerprint is confirmed for the student of the write.
+  Any other answer (no cookie, an unreadable store, or a cookie that no check confirmed) abandons the queue: the writes that Canvas has not confirmed go, and a forced round syncs the list.
+  A read mark also keeps the user check before its request, because its reply has no user.
+  The reply of an override write names its user.
+  When it names another user than the student of the write, the owner writes the flags from before back to that override (best effort, and a failure is only logged), and then drops the cache of the first student.
 - A read that finds that `cookies.get` fails is the same as a check that fails: the reply is `cant_load` with Retry, and Retry reads the cookie again.
   `cant_load` always shows the Retry button.
 - A Canvas page load of the saved origin reads the cookie, and the owner wakes the open surfaces when the cookie is gone or not confirmed.

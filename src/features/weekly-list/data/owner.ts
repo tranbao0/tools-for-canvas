@@ -219,18 +219,33 @@ export interface DataOwner {
   /**
    * The grade visibilities of the signed-in student, read live. The sign-in check confirms the
    * student first, and the reply names that student. `token` names the read for a late result.
+   * A tab in another cookie store gets no grade visibilities.
    */
-  dashboardGradeVisibility(token?: string): Promise<DashboardData>;
-  /** One announcement of the saved Canvas with its full message. */
-  announcement(courseId: string, topicId: string, origin: string | null): Promise<AnnouncementBody>;
-  /** The recent announcements of one course. */
-  announcements(courseId: string, origin: string | null): Promise<AnnouncementEntry[]>;
+  dashboardGradeVisibility(token?: string, tabId?: number): Promise<DashboardData>;
+  /**
+   * One announcement of the saved Canvas with its full message. A tab in another cookie store
+   * gets an empty one.
+   */
+  announcement(
+    courseId: string,
+    topicId: string,
+    origin: string | null,
+    tabId?: number,
+  ): Promise<AnnouncementBody>;
+  /**
+   * The recent announcements of one course. A tab in another cookie store gets none.
+   */
+  announcements(
+    courseId: string,
+    origin: string | null,
+    tabId?: number,
+  ): Promise<AnnouncementEntry[]>;
   /**
    * The Announcements tab of one surface: the announcements of the last 14 days of the courses
    * the student shows, with the read marks applied (decision 24). The first request loads them
    * and replies at once with `loading`; the change marker tells the surface when they are in.
    */
-  announcementFeed(request: AnnouncementFeedRequest): Promise<AnnouncementFeed>;
+  announcementFeed(request: AnnouncementFeedRequest, tabId?: number): Promise<AnnouncementFeed>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
@@ -1565,15 +1580,39 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     await bump();
   }
 
+  /**
+   * Reads the session cookie just before a queued request goes out (decision 11), and resolves
+   * with whether a sign-in check confirmed it for the student of the stamp. Any other answer
+   * (no cookie, an unreadable store, or a cookie that no check confirmed) abandons the queue, so
+   * a write that the student made for one account never goes out under another.
+   */
+  async function cookieConfirmed(stamp: WriteStamp): Promise<boolean> {
+    if (stamp.origin === null) return false;
+    const fingerprint = await readFingerprint(stamp.origin);
+    if (!isCurrent(stamp)) return false;
+    if (fingerprint != null && confirmedFingerprint(fingerprint)) return true;
+    abandonQueue();
+    return false;
+  }
+
   /** A response for another user than the cached one: the cache goes, and the write ends. */
   async function userChanged(stamp: WriteStamp): Promise<false> {
     if (sameStudent(stamp)) await dropUserData();
     return false;
   }
 
-  async function runOverrideWrite(patchId: number, stamp: WriteStamp): Promise<boolean> {
+  /**
+   * Sends one override write. `previous` holds the flags from before the write, so that a write
+   * that Canvas saved for another account can go back (best effort).
+   */
+  async function runOverrideWrite(
+    patchId: number,
+    previous: OverrideFlags,
+    stamp: WriteStamp,
+  ): Promise<boolean> {
     const patch = findPatch(patchId);
     if (stamp.origin === null || patch === undefined || patch.kind !== 'override') return false;
+    if (!(await cookieConfirmed(stamp))) return false;
     const api = apiFor(stamp.origin);
     const flags = {
       markedComplete: patch.override.marked_complete,
@@ -1584,8 +1623,15 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         patch.override.id !== ''
           ? await api.updateOverride(patch.override.id, flags)
           : await createOrRecoverOverride(api, patch.target, flags, stamp.userId);
+      if (saved.user_id !== stamp.userId) {
+        // Another student signed in after the check. The flags went into the wrong account, so
+        // they go back, before the cache of the first student goes.
+        await api
+          .updateOverride(saved.id, previous)
+          .catch((error: unknown) => deps.log('write', error));
+        return userChanged(stamp);
+      }
       if (!isCurrent(stamp) || cache === null) return false;
-      if (saved.user_id !== stamp.userId) return userChanged(stamp);
       const confirmed: OverridePatch = { ...patch, override: saved, confirmedAt: clock.now() };
       replacePatch(patchId, confirmed);
       cache = bake(
@@ -1698,6 +1744,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     key: string,
     target: OverrideTarget,
     flags: OverrideFlags,
+    previous: OverrideFlags,
     overrideId: string,
     userId: string,
   ): void {
@@ -1710,7 +1757,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       confirmedAt: null,
     };
     addPatch(patch);
-    void enqueueWrite((stamp) => runOverrideWrite(patch.id, stamp));
+    void enqueueWrite((stamp) => runOverrideWrite(patch.id, previous, stamp));
   }
 
   function addNotePatch(noteId: string, note: NoteValue | null): NotePatch {
@@ -1789,8 +1836,16 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       const target = item === undefined ? null : overrideTargetFor(item);
       const flags = item === undefined ? null : flagsFor(item);
       if (item === undefined || target === null || flags === null) continue;
-      addOverridePatch(key, target, flags, item.override?.id ?? '', write.session.profile.id);
-      entries.push({ key, previous: previousFlags(item) });
+      const previous = previousFlags(item);
+      addOverridePatch(
+        key,
+        target,
+        flags,
+        previous,
+        item.override?.id ?? '',
+        write.session.profile.id,
+      );
+      entries.push({ key, previous });
     }
     if (entries.length === 0) return NO_UNDO;
     persist();
@@ -1819,7 +1874,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       const item = write.items.get(key);
       const target = item === undefined ? null : overrideTargetFor(item);
       if (item === undefined || target === null) continue;
-      addOverridePatch(key, target, previous, item.override?.id ?? '', userId);
+      addOverridePatch(key, target, previous, previousFlags(item), item.override?.id ?? '', userId);
       changed = true;
     }
     if (changed) {
@@ -1880,6 +1935,15 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     };
   }
 
+  /**
+   * The reply to an Undo that the sign-in check did not confirm. The notice stays only while the
+   * cache belongs to the student of the Undo, because a later tap can still succeed then. After a
+   * sign-out or another student, nothing can be restored, so the notice ends.
+   */
+  function refusedUndo(userId: string): ActionReply {
+    return cache?.session?.profile.id === userId ? UNDO_REFUSED : NO_UNDO;
+  }
+
   async function act(action: DataAction): Promise<ActionReply> {
     switch (action.kind) {
       case 'setDone':
@@ -1903,8 +1967,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         // An Undo can outlive the state that showed it, so it writes only for a student that the
         // session cookie check confirms. The check also signs out a student without a cookie.
         // Undo is a tap of the student, so the check limits do not hold it back, as with Retry.
-        // A refused Undo says so, and the surface shows its notice again.
-        if (!(await signedInStudentOwnsCache(true))) return UNDO_REFUSED;
+        // A refused Undo says so, and the surface shows its notice again, but only while the
+        // cache still belongs to the student of the Undo.
+        if (!(await signedInStudentOwnsCache(true))) return refusedUndo(action.userId);
         return restoreOverrides(action.userId, action.origin, action.entries);
       case 'createTask':
         return createTask(action.input);
@@ -2296,7 +2361,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
   }
 
-  async function dashboardGradeVisibility(token?: string): Promise<DashboardData> {
+  async function dashboardGradeVisibility(token?: string, tabId?: number): Promise<DashboardData> {
     await ready();
     const origin = await savedOrigin();
     const base: DashboardData = { origin: origin ?? '', ready: false, courses: [], extras: [] };
@@ -2306,9 +2371,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       // The read is for the student whom the sign-in check confirms now, never for the student
-      // of an older cache.
+      // of an older cache. A tab in another cookie store never gets a read.
       const confirmed =
-        origin !== null && cache?.session != null && (await signedInStudentOwnsCache());
+        origin !== null &&
+        cache?.session != null &&
+        (await surfaceMayRead(tabId)) &&
+        (await signedInStudentOwnsCache());
       const stamp = writeStamp();
       const userId = stamp.userId;
       const read =
@@ -2359,7 +2427,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     courseId: string,
     topicId: string,
     origin: string | null,
+    tabId?: number,
   ): Promise<AnnouncementBody> {
+    if (!(await surfaceMayRead(tabId))) return { title: '', message: '' };
     const topic = await (await announcementApi(origin)).getAnnouncement(courseId, topicId);
     return {
       title: String(topic.title ?? ''),
@@ -2370,7 +2440,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   async function announcements(
     courseId: string,
     origin: string | null,
+    tabId?: number,
   ): Promise<AnnouncementEntry[]> {
+    if (!(await surfaceMayRead(tabId))) return [];
     const api = await announcementApi(origin);
     const end = clock.now();
     const topics = await api.listAnnouncements(courseId, {
@@ -2450,7 +2522,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     );
   }
 
-  async function announcementFeed(request: AnnouncementFeedRequest): Promise<AnnouncementFeed> {
+  async function announcementFeed(
+    request: AnnouncementFeedRequest,
+    tabId?: number,
+  ): Promise<AnnouncementFeed> {
     await ready();
     const origin = await savedOrigin();
     if (origin !== knownOrigin) await handleOrigin(origin);
@@ -2458,6 +2533,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       status: 'unavailable',
       tab: cache?.listTabs[request.surface] ?? DEFAULT_LIST_TABS[request.surface],
     });
+    if (!(await surfaceMayRead(tabId))) return unavailable();
     if (origin === null || cache === null || cache.session === null) return unavailable();
     if (cache.failure?.kind === 'signed_out' || !(await deps.hasAccess(origin))) {
       return unavailable();
@@ -2559,6 +2635,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       updateMark(key, seq, () => null);
       return false;
     }
+    // The check above can take a while, so the cookie is read again just before the request.
+    if (!(await cookieConfirmed(stamp))) return false;
     try {
       await apiFor(stamp.origin).setAnnouncementRead(courseId, topicId, read);
     } catch (error) {
@@ -2588,8 +2666,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     undoing: { userId: string; origin: string } | null,
   ): Promise<ActionReply> {
     await ready();
-    // An Undo writes only for a student that the session cookie check confirms, as `restore` does.
-    if (undoing !== null && !(await signedInStudentOwnsCache(true))) return UNDO_REFUSED;
+    // A mark or an Undo writes only for a student that the session cookie check confirms. An Undo
+    // is a tap of the student, so the check limits do not hold it back, as with `restore`.
+    if (!(await signedInStudentOwnsCache(undoing !== null))) {
+      return undoing === null ? NO_UNDO : refusedUndo(undoing.userId);
+    }
     const origin = knownOrigin;
     const session = cache?.session;
     if (origin === null || cache === null || session == null) return NO_UNDO;

@@ -305,3 +305,173 @@ describe('writes and Undo go through the cookie check', () => {
     expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
   });
 });
+
+describe('a tab in another cookie store', () => {
+  const ANNOUNCEMENT = {
+    id: '11',
+    title: 'Lab room change',
+    message: '<p>x</p>',
+    posted_at: new Date(Date.now() - 3_600_000).toISOString(),
+  };
+
+  it('gets nothing from the four routes that read for a tab, and Canvas hears nothing', async () => {
+    const h = await loaded();
+    h.canvas.setAnnouncements(IDS.courses.biology, [ANNOUNCEMENT]);
+    vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
+    h.canvas.resetCalls();
+
+    expect(await h.owner.announcementFeed(PANEL_FEED, 9)).toMatchObject({ status: 'unavailable' });
+    expect(await h.owner.dashboardGradeVisibility(undefined, 9)).toMatchObject({
+      ready: false,
+      gradeVisibilities: null,
+    });
+    expect(await h.owner.announcement(IDS.courses.biology, '11', ORIGIN, 9)).toEqual({
+      title: '',
+      message: '',
+    });
+    expect(await h.owner.announcements(IDS.courses.biology, ORIGIN, 9)).toEqual([]);
+    await h.owner.settled();
+
+    expect(vi.mocked(h.deps.surfaceUsesRequestStore).mock.calls).toEqual([[9], [9], [9], [9]]);
+    expect(h.canvas.calls).toEqual([]);
+  });
+
+  it('is served as before when its store is the one of the requests', async () => {
+    const h = await loaded();
+    h.canvas.setAnnouncements(IDS.courses.biology, [ANNOUNCEMENT]);
+    h.canvas.resetCalls();
+
+    expect(await h.owner.announcementFeed(PANEL_FEED, 9)).toMatchObject({ status: 'ready' });
+    expect(await h.owner.announcement(IDS.courses.biology, '11', ORIGIN, 9)).toMatchObject({
+      title: 'Lab room change',
+    });
+    expect(await h.owner.announcements(IDS.courses.biology, ORIGIN, 9)).toHaveLength(1);
+  });
+
+  it('gets nothing when its store cannot be told', async () => {
+    const h = await loaded();
+    vi.mocked(h.deps.surfaceUsesRequestStore).mockRejectedValue(new Error('no stores'));
+
+    expect(await h.owner.announcementFeed(PANEL_FEED, 9)).toMatchObject({ status: 'unavailable' });
+    expect(await h.owner.announcements(IDS.courses.biology, ORIGIN, 9)).toEqual([]);
+  });
+});
+
+describe('queued writes go through the cookie check just before they go out', () => {
+  const BIO_QUIZ_3 = `assignment:${IDS.assignments.bioQuiz3Today}`;
+
+  function overrideWrites(h: Harness): string[] {
+    return h.canvas.calls
+      .map((call) => call.method as string)
+      .filter((name) => name === 'createOverride' || name === 'updateOverride');
+  }
+
+  it('sends no write of "Skip all older" under student B after the cookie changed', async () => {
+    const h = await loaded();
+    const before = await h.owner.getState(PANEL);
+    if (before.kind !== 'ready') throw new Error('The list is not ready');
+    const older = before.view.groups.find((group) => group.kind === 'past_due')?.older ?? [];
+    expect(older.length).toBeGreaterThan(2);
+    // The first request waits, and the other writes wait behind it in the queue.
+    const release = h.canvas.hold('createOverride');
+    const reply = await h.owner.act({ kind: 'skip', keys: older.map((entry) => entry.key) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reply.undo?.kind).toBe('overrides');
+    expect(overrideWrites(h)).toHaveLength(1);
+
+    // Student B signs in while the first request waits. Canvas saved it in the account of B.
+    signInOtherUser(h);
+    release();
+    await h.owner.settled();
+
+    // The write that was out stays, and its flags go back. No queued write follows.
+    expect(overrideWrites(h)).toEqual(['createOverride', 'updateOverride']);
+    expect(h.canvas.callsOf('updateOverride')[0]?.[1]).toEqual({
+      markedComplete: false,
+      dismissed: false,
+    });
+  });
+
+  it('sends no queued write of "Skip all older" when only the cookie changed', async () => {
+    const h = await loaded();
+    const before = await h.owner.getState(PANEL);
+    if (before.kind !== 'ready') throw new Error('The list is not ready');
+    const older = before.view.groups.find((group) => group.kind === 'past_due')?.older ?? [];
+    const release = h.canvas.hold('createOverride');
+    await h.owner.act({ kind: 'skip', keys: older.map((entry) => entry.key) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(overrideWrites(h)).toHaveLength(1);
+
+    // The first answer is still the one of student A, but the cookie is another one now.
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+    h.canvas.fail('getSelf', canvasError('network'), { times: 5 });
+    release();
+    await h.owner.settled();
+
+    expect(overrideWrites(h)).toEqual(['createOverride']);
+  });
+
+  it('abandons the queue when the cookie changes and no check confirms the new one', async () => {
+    const h = await loaded();
+    const release = h.canvas.hold('createOverride');
+    await h.owner.act({ kind: 'setDone', key: BIO_QUIZ_3, done: true });
+    await h.owner.act({ kind: 'setDone', key: BIO_QUIZ_3, done: false });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
+
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('renewed');
+    h.canvas.fail('getSelf', canvasError('network'), { times: 5 });
+    release();
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
+    expect(h.canvas.callsOf('updateOverride')).toEqual([]);
+  });
+
+  async function withUnreadAnnouncement(): Promise<Harness> {
+    const h = await loaded();
+    h.canvas.setAnnouncements(IDS.courses.biology, [
+      {
+        id: '11',
+        title: 'Lab room change',
+        message: '<p>x</p>',
+        posted_at: new Date(Date.now() - 3_600_000).toISOString(),
+      },
+    ]);
+    await h.owner.announcementFeed(PANEL_FEED);
+    await h.owner.settled();
+    h.canvas.resetCalls();
+    return h;
+  }
+
+  it('sends no read mark after the cookie changed during the sign-in check', async () => {
+    const h = await withUnreadAnnouncement();
+    const releaseSelf = h.canvas.hold('getSelf');
+    await h.owner.act({ kind: 'markAnnouncement', courseId: IDS.courses.biology, topicId: '11' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+    releaseSelf();
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([]);
+  });
+
+  it('sends no read mark for a cookie that no check confirms', async () => {
+    const h = await withUnreadAnnouncement();
+    await vi.advanceTimersByTimeAsync(31_000);
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+    h.canvas.fail('getSelf', canvasError('network'), { times: 5 });
+
+    const reply = await h.owner.act({
+      kind: 'markAnnouncement',
+      courseId: IDS.courses.biology,
+      topicId: '11',
+    });
+    await h.owner.settled();
+
+    expect(reply).toEqual({ undo: null });
+    expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([]);
+  });
+});
