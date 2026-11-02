@@ -420,8 +420,13 @@ test('links: an internal link has no address, so a middle click opens nothing', 
   await expect(internal).toHaveAttribute('tabindex', '0');
   let opened = 0;
   context.on('page', () => (opened += 1));
+  await internal.evaluate((link) => {
+    link.addEventListener('auxclick', () => link.setAttribute('data-middle-clicked', 'true'), {
+      once: true,
+    });
+  });
   await internal.click({ button: 'middle' });
-  await page.waitForTimeout(500);
+  await expect(internal).toHaveAttribute('data-middle-clicked', 'true');
   expect(opened).toBe(0);
   await expect(pageInput(frame)).toHaveValue('1');
   // The keyboard still follows the link.

@@ -45,6 +45,12 @@ beforeEach(() => {
 afterEach(() => remove());
 
 describe('wireInstall', () => {
+  it('removes the legacy local viewer map on update and keeps other items', async () => {
+    await fakeBrowser.storage.local.set({ viewerPositions: { private: true }, other: 7 });
+    await fakeBrowser.runtime.onInstalled.trigger({ reason: 'update', previousVersion: '0.1.0' });
+    expect(await fakeBrowser.storage.local.get(null)).toEqual({ other: 7 });
+  });
+
   it('opens the local welcome page on install when no tab is open', async () => {
     await fakeBrowser.runtime.onInstalled.trigger({ reason: 'install' });
 
