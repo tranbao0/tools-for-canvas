@@ -44,7 +44,9 @@ The extension reads the Canvas session cookie (`canvas_session` and `_normandy_s
 It does this before it shows cached data, to know that the same student is signed in.
 When both cookies exist, the fingerprint includes both salted hashes.
 It stores up to three confirmed fingerprints with their cookie names, the user id and the check time in session storage.
-It stores a random per-install salt in trusted extension storage.
+It stores a random per-install salt in a trusted storage item.
+On Chrome and Edge, the item lives in `storage.local`, which the browser locks to trusted extension contexts, so web pages and content scripts cannot read it.
+On Firefox, the item lives in the IndexedDB of the extension, which content scripts cannot open, and the extension also copies it to `storage.local`, which content scripts can read.
 It never stores or sends the session cookie value.
 It reads the fingerprint before and after each request that fills its cache.
 It keeps the answer only when both fingerprints match and the check confirmed that fingerprint for the same student.

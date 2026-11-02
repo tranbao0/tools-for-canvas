@@ -185,7 +185,7 @@ export function routeDataMessage(
       const request = host.isExtensionPage(sender)
         ? message.request
         : { ...message.request, surface: 'inpage' as const };
-      return allowed.then(() => owner.announcementFeed(request));
+      return allowed.then(() => owner.announcementFeed(request, sender.tab?.id));
     }
     case 'weekrow:page-context':
       return allowed.then(async (): Promise<PageContextReply> => ({
@@ -201,15 +201,18 @@ export function routeDataMessage(
         message.includeGradeVisibility === true
           ? owner.dashboardGradeVisibility(
               typeof message.readToken === 'string' ? message.readToken.slice(0, 64) : undefined,
+              sender.tab?.id,
             )
           : owner.dashboardData(origin, sender.tab?.id),
       );
     case 'weekrow:announcement':
       return allowed.then((origin) =>
-        owner.announcement(message.courseId, message.topicId, origin),
+        owner.announcement(message.courseId, message.topicId, origin, sender.tab?.id),
       );
     case 'weekrow:announcement-list':
-      return allowed.then((origin) => owner.announcements(message.courseId, origin));
+      return allowed.then((origin) =>
+        owner.announcements(message.courseId, origin, sender.tab?.id),
+      );
     case 'weekrow:mark-note-seen':
       return allowed.then(() => host.markNoteSeen(message.note)).then(ok);
     case 'weekrow:refresh':
