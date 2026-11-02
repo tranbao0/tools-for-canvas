@@ -2288,15 +2288,27 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - A click with Ctrl, Shift, Alt or Meta, a middle click, and "Open in new tab" keep the browser's normal action.
    - Module items are resolved to their file through `GET /api/v1/courses/:id/modules/:id/items/:id`.
 4. **Viewers by file type.**
-   - PDF: a bundled PDF.js viewer with search, page thumbnails, zoom and keyboard paging.
+   - PDF: a bundled PDF.js viewer with search, page thumbnails, zoom and keyboard paging (item 9).
      The pane saves the page and the zoom of each file, keyed by Canvas origin, user and file id, for the last 200 files.
+     The first build keeps the page, the zoom and the document of each tab only while the pane stays open.
+     Saving them across reloads is build step 3.
    - Image, audio and video: the browser's own elements, from a blob URL of the fetched bytes.
    - Plain text and code: shown as text, never rendered as HTML.
    - Any other type, such as Word or PowerPoint: a short card with "Open in Canvas" and "Download", because Canvas converts those files on its own servers.
    - Every tab has "Download" and "Open in Canvas".
 5. **Fetching.**
    - The pane's extension page reads the file record, then fetches the bytes with the student's session through the redirect, as decision 23 proved.
-   - Files larger than 100 MB show the "Open in Canvas" card instead.
+   - Files larger than 100 MB show the card instead, with "Download" and "Open in Canvas".
+     The pane checks the size of the file record before it fetches.
+     It also stops the read when `Content-Length` or the bytes read pass 100 MB, because a header can be wrong.
+   - A PDF uses the same `url` that the card uses for "Download": the `url` of the record when it is on the saved Canvas, and `/files/:id/download` otherwise.
+     The pane page fetches it with the student's session and follows the redirect, through `src/shared/canvas/fileBytes.ts`.
+   - While the bytes load, a progress bar shows the part read, from `Content-Length`.
+     The value is clamped to 100 percent, because a compressed answer can differ from its length.
+     When the answer has no usable length, the bar is indeterminate.
+   - A read that fails for any reason keeps the card and shows "Couldn't load this PDF" with "Retry".
+     After a failed read the pane checks the permission again, so a withheld permission shows "Allow access" next to the card.
+     "Allow access" reads the failed PDFs again.
    - When `viewer:permission` says that the host permission is withheld, the pane shows one "Allow access" button next to "Open in Canvas".
      The button calls `permissions.request` for the saved Canvas address and for `https://*/*`, the same set that `viewer:permission` checks, directly inside the click.
      Then the pane checks the permission again and loads the active card and every card that failed.
@@ -2320,6 +2332,77 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      The pane page sets `data-theme` on its root element and shows nothing until the first message arrives.
    - The header, the border and the close button of the frame use the same theme.
    - The pane page and its colors follow decision 21: the font stack and the tokens of the list stylesheet, and no school colors, because an extension page cannot read them.
+9. **The PDF viewer.**
+   - The viewer opens a file whose content type is `application/pdf`.
+     It sits in the region of item 7, below the card of the file.
+   - **Loading PDF.js.**
+     The build copies `pdf.min.mjs` and `pdf.worker.min.mjs` of `pdfjs-dist` 6.5.438 unmodified into `pdfjs/`.
+     The version is pinned exactly in `package.json`.
+     The pane page imports the library from its own extension address when the first PDF tab starts to read.
+     No other page loads it, and no page entry point lists it.
+     The pane page draws on the main thread and uses no renderer worker (`disableWorkerRendering`).
+     Each document runs in its own `PDFWorker`, from the worker file in `pdfjs/`.
+   - **Pages.**
+     A page is a white box with a canvas, a text layer and an annotation layer.
+     A page draws when it comes within one view height of the scroll area, and the `IntersectionObserver` of the engine reports it.
+     At most 2 pages draw at the same time, the nearest to the page in view first.
+     A page that leaves that range cancels its render task and frees its canvas and layers.
+     The canvas uses the device pixel ratio.
+     Its size stays under 16,777,216 pixels and 16,384 pixels on a side, and CSS stretches a canvas that had to shrink.
+     A page that draws again after a zoom keeps its old canvas until the new one is ready.
+   - **Text and links.**
+     The text layer holds the text, so a student can select and copy it, and the search can mark it.
+     The annotation layer draws links only.
+     It gets no form, no popup and no script.
+     An external link opens in a new tab with `rel="noopener noreferrer"`, and only `http` and `https` addresses open.
+     An internal destination, named or explicit, scrolls to its page.
+     The named actions Next, Previous, First and Last page work too.
+   - **Toolbar** above the pages, as ghost icon buttons of Instructure UI:
+     - a toggle for the page thumbnails;
+     - Previous page, the page number input with "of N", and Next page;
+     - Zoom out, a zoom menu and Zoom in;
+     - Search.
+   - **Page input.**
+     The input takes a whole number.
+     A number outside the document goes to the nearest page.
+     Other text is rejected and the input shows the page in view again.
+   - **Zoom.**
+     The default is "Fit width".
+     The menu offers "Fit width", "Fit page", 50, 75, 100, 125, 150, 200, 300 and 400 percent.
+     The buttons step through 25, 50, 75, 100, 125, 150, 200, 300, 400 and 500 percent, from the zoom in view.
+     100 percent means 96/72 CSS pixels for each point of the page.
+     A resize of the pane keeps the position in the document.
+   - **Search.**
+     The search bar opens under the toolbar.
+     The search ignores case and reads the text of every page once, in the background of the first search.
+     The bar shows "N of M", "No matches" or "Searching…".
+     Enter and Shift+Enter, and the arrow buttons, go to the next and the previous match, and wrap around.
+     The matches show in the text layer, and the selected match has a stronger color.
+     Escape closes the bar and clears the marks, and it does not close the pane.
+     At most 5,000 matches count.
+   - **Thumbnails.**
+     The list shows one slot for each page.
+     A thumbnail draws when its slot comes within 200 px of the list, one at a time.
+     A click goes to the page, and the page in view has a mark.
+   - **Keys** work in the pane page only:
+     - PageUp and PageDown go to the previous and the next page, and Home and End to the first and the last page.
+       They do not work in a field, in the tab strip or in a menu, where those keys have their own use.
+     - Ctrl or Cmd with plus (or equals), minus and 0 zoom in, zoom out and reset to 100 percent.
+     - Ctrl or Cmd with F opens the search and puts the focus in the field.
+   - **Tabs.**
+     Each PDF tab keeps its own document, its zoom, its search and its position while the pane stays open.
+     The tab of another file is hidden, and its pages free their canvases.
+     The pane reads the bytes of a tab when it first becomes active, and never again, unless the student chooses "Retry".
+     Closing a tab destroys its document and ends its worker.
+   - **Theme.**
+     The toolbar, the thumbnail list and the area around the pages follow the pane theme.
+     The pages stay white in both themes.
+   - **Not shipped.**
+     PDF.js can load character maps, the standard font files and image decoders (JBIG2, JPEG 2000 and color management) from files next to it.
+     The pane ships none of them, because they would add about 4 MB to the extension and the limit of this page is 1.5 MB after gzip.
+     A PDF that needs them still opens.
+     Its non-embedded standard fonts use the system fonts, and a few images that use JPEG 2000 or JBIG2, and some old Asian encodings, may not draw.
+     The live checklist asks the tester to open such a file.
 
 **Security:**
 
@@ -2333,13 +2416,37 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   Chromium can load `use_dynamic_url` pages under an origin different from the address returned by `getURL`.
   Each frame reload repeats the handshake.
 - The pane fetches only `/api/v1/files/:id` and the `url` that it returns, through the existing fetch wrapper (decision 20), plus the redirect that Canvas chooses.
-- PDF.js runs with `isEvalSupported: false`, no PDF scripting, and links inside a PDF open in a new tab with `noopener`.
+- PDF.js runs with `isEvalSupported: false` and `enableScripting: false`.
+  Version 6.5.438 has no eval path and no scripting option in `getDocument`, so the two values are only written down.
+  What keeps scripts out is the code: the pane never loads the scripting sandbox file, it passes `renderForms: false` and `enableScripting: false` to the annotation layer, and it draws link annotations only.
+  The pane also sets `enableXfa: false`, gives PDF.js no address (so it never fetches), and turns the renderer worker off.
+- Links inside a PDF open in a new tab with `rel="noopener noreferrer"`, and only on a click.
+  Only `http` and `https` addresses open.
+  Any other scheme, such as `javascript:`, `data:` or `file:`, leaves the link without an address.
+- The search marks the text layer with DOM text nodes and `span` elements, never with markup from the PDF.
+- The pane page is the second place that reads bytes with `fetch`, next to the background script.
+  `scripts/check-fetch.mjs` allows `fetch` in `background.js` and `viewer-frame.js`, and in no other script or page.
+  The read keeps the start rule of the wrapper (an https address on the saved Canvas) and follows the redirect that Canvas chooses, as decision 23 proved.
+  It stops at 100 MB.
+- The PDF.js files come from the package without change.
+  `scripts/vendor-hashes.json` holds their SHA-256 hashes.
+  `check-urls` and `check-fetch` skip a built file in `pdfjs/` only when its hash matches, so a changed copy is scanned and fails.
+  PDF.js holds inert strings that the URL check would list (XFA namespaces and a license address), and code that fetches for the addresses of its options.
+- A PDF is untrusted data.
+  The worker parses it in its own thread, and an error shows a message and leaves the pane working.
+  A page of any size cannot make a larger canvas than the limits of item 9.
 - Saved page positions go through the trusted storage rules of decision 5.
 
 **Size:**
 
 - The page script that catches clicks and draws the pane frame is its own small script, like `dashboard.js`, so the in-page list keeps its 40 KB limit.
 - The pane page and PDF.js load only when a file opens, and they get their own limit of 1.5 MB gzip, because they load from the extension's files.
+- `viewer-frame.js`, the pane page, stays under the 40 KB limit.
+  It holds the app, the toolbar, the engine and the style sheet, and imports PDF.js at run time.
+- PDF.js and its worker count toward the 1.5 MB limit of `viewer.html`.
+  `check-size` adds the files of `pdfjs/` to that page, because a scan of the code cannot see an address that the page builds at run time.
+  It also follows the bare script name in the page, which it did not do before.
+- The sizes at the end of this build are in the report of the ticket: `viewer-frame.js` 30.9 KB and `viewer.html` 547.0 KB after gzip.
 
 **Implementation status:**
 
@@ -2351,13 +2458,14 @@ The pane checks cover modified clicks, the off switch, Escape, reload and reject
 The pane checks also cover the tab keys, closing tabs, reopening an open file, the card, the withheld permission and the theme.
 The store build smoke test checks the pane in Firefox.
 The layout checks use the course fixture at 1920 and 1280 px in light and dark, with three tabs.
-The viewers of item 4 are not implemented yet, and the region for them is empty.
+The PDF viewer of items 4, 5 and 9 is implemented, with its fetch, progress bar, toolbar, search, thumbnails, keys, links and per-tab document.
+The viewers for images, audio, video and text, the student's own submission files, and saving the page and the zoom are not implemented yet.
 The pane page uses the font stack of the list stylesheet, and Lato shows only where the system has it, because an extension page cannot use the web font of the Canvas page.
 The channel checks the saved Canvas origin, the parent window, the nonce and one transferred port before it accepts file identities.
 
 **Build order:**
 
-1. The pane, the tabs, the click catching for file links and module items, and the PDF viewer.
+1. The pane, the tabs, the click catching for file links and module items, and the PDF viewer (done, except the live checks).
 2. Images, audio, video, text, the "Open in Canvas" card and the student's own submission files.
 3. Saved page and zoom per file.
 
@@ -2384,6 +2492,9 @@ These items need a live check or an outside answer.
 13. The Announcements tab (decision 24) has not run against a real Canvas.
     The live checklist has the steps.
     The `read_state` and `context_code` fields of the list come from canvas-lms source only.
+14. The PDF viewer (decision 25, item 9) has run only against a fixture and a generated lecture file.
+    Real course PDFs may use fonts, images or encodings that the pane does not ship files for.
+    The live checklist has the steps.
 
 ## Build order
 

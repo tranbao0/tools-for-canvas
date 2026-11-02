@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { startFileHost } from '../e2e/support/file-host.ts';
+import { FIXTURE_PAGE_COUNT } from '../fixtures/pdf/fixture.ts';
 import { Builder, By } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
 import { ensureBuild } from '../../scripts/lib/ensure-build.mjs';
@@ -25,6 +26,17 @@ const EXTENSION_UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
 const SIDEBAR_PAGE = 'sidepanel.html';
 const WELCOME_PAGE = 'welcome.html';
 const RENDER_TIMEOUT_MS = 10_000;
+/** Counts the pixels of the canvas of page 1 that are not white. It runs in the pane page. */
+const PAGE_ONE_INK = `
+  const canvas = document.querySelector('.pv-page[data-page="1"] canvas');
+  if (!canvas || canvas.width === 0) return { ink: 0 };
+  const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+  let ink = 0;
+  for (let at = 0; at < pixels.length; at += 4) {
+    if (pixels[at + 3] > 0 && (pixels[at] < 250 || pixels[at + 1] < 250 || pixels[at + 2] < 250)) ink += 1;
+  }
+  return { ink };
+`;
 const CACHE_DIR = process.env.WEEKROW_TEST_CACHE ?? path.join(homedir(), '.cache', 'weekrow-test');
 
 /**
@@ -282,6 +294,16 @@ async function main() {
   const addonId = readAddonId(extensionDir);
   const files = {};
   const server = await startFileHost(files);
+  // The download address redirects to another host, as Canvas redirects to its file storage.
+  files['/files/42/download'] = {
+    body: '',
+    contentType: 'text/plain',
+    location: `${server.origin}/inst-fs/fixture.pdf`,
+  };
+  files['/inst-fs/fixture.pdf'] = {
+    body: readFileSync(new URL('../fixtures/pdf/fixture.pdf', import.meta.url)),
+    contentType: 'application/pdf',
+  };
   const origin = server.origin.replace('127.0.0.1', 'school.instructure.com');
   files['/courses/101'] = {
     body: '<html><head><script>INST={environment:\'production\'};ENV={current_user_id:\'5501\'};</script></head><body><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a></body></html>',
@@ -351,6 +373,15 @@ async function main() {
       const names = await driver.findElements(By.css('[data-part="card-name"]'));
       return names.length === 1 && (await names[0].getText()) === 'Course notes.pdf';
     }, 10_000);
+    // The pane reads the PDF through the redirect, runs PDF.js and its worker from the files of
+    // the extension, and draws page 1 of the fixture.
+    const drawn = await driver.wait(async () => {
+      const result = await driver.executeScript(PAGE_ONE_INK);
+      return result?.ink > 1000 ? result : false;
+    }, 20_000);
+    const count = await driver.findElement(By.css('[data-part="pdf-page-count"]')).getText();
+    if (count !== `of ${FIXTURE_PAGE_COUNT}`) throw new Error(`Wrong page count: ${count}`);
+    console.log(`Firefox PDF viewer: page 1 drew ${drawn.ink} dark pixels, ${count}`);
     await driver.switchTo().defaultContent();
     console.log('Firefox store file pane: passed.');
     console.log('Firefox smoke test: passed.');

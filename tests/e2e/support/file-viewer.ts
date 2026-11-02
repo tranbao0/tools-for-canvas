@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { BrowserContext, FrameLocator, Page, Worker } from '@playwright/test';
+import type { FakeCanvasRoute } from './fake-canvas';
 import { expect, serveScenario } from './weekrow';
 import { saveAddress, type StorageArea } from './scenario-api';
 
@@ -62,8 +63,10 @@ export async function openCoursePage(
   page: Page,
   background: Worker,
   html = courseHomeHtml,
+  extraRoutes: readonly FakeCanvasRoute[] = [],
 ) {
   const { canvas } = await serveScenario(context, [
+    ...extraRoutes,
     { path: '/courses/101/pages/notes', body: html, contentType: 'text/html' },
     { path: '/api/v1/files/42', body: NOTES },
     { path: '/api/v1/files/43', body: PHOTO },

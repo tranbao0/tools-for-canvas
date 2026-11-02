@@ -23,8 +23,20 @@ export interface FileHost {
  * not route the hops of a redirect, so a redirect from the fake Canvas needs a real host to land
  * on, the way Canvas redirects to its file storage. Run Chromium with {@link TRUST_TEST_CERTIFICATE}.
  */
+export interface HostedFile {
+  /** A string, or the bytes of a binary file such as a PDF. */
+  body: string | Buffer;
+  contentType: string;
+  /** Redirects to this address instead of serving the body. */
+  location?: string;
+  /** Sends the body in two parts, and waits this many milliseconds between them. */
+  delay?: number;
+  /** Leaves out `Content-Length`, so the body uses chunked transfer. Needs {@link delay}. */
+  chunked?: boolean;
+}
+
 export async function startFileHost(
-  files: Readonly<Record<string, { body: string; contentType: string; location?: string }>>,
+  files: Readonly<Record<string, HostedFile>>,
 ): Promise<FileHost> {
   const dir = mkdtempSync(path.join(tmpdir(), 'weekrow-file-host-'));
   const key = path.join(dir, 'key.pem');
@@ -52,6 +64,17 @@ export async function startFileHost(
       }
       if (file.location !== undefined) {
         response.writeHead(302, { location: file.location }).end();
+        return;
+      }
+      if (file.delay !== undefined) {
+        const bytes = Buffer.from(file.body);
+        const half = Math.ceil(bytes.length / 2);
+        response.writeHead(200, {
+          'content-type': file.contentType,
+          ...(file.chunked === true ? {} : { 'content-length': String(bytes.length) }),
+        });
+        response.write(bytes.subarray(0, half));
+        setTimeout(() => response.end(bytes.subarray(half)), file.delay);
         return;
       }
       response.writeHead(200, { 'content-type': file.contentType }).end(file.body);
