@@ -189,7 +189,13 @@ test('a file that does not load shows the error with Retry', async ({
       __realFetch?: typeof fetch;
     };
     api.__realFetch = api.fetch;
-    api.fetch = () => Promise.reject(new TypeError('offline'));
+    // Only the file record fails. The owner still confirms the student and reads the list.
+    api.fetch = (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (new URL(url).pathname === '/api/v1/files/42')
+        return Promise.reject(new TypeError('offline'));
+      return api.__realFetch!(input, init);
+    };
   });
   await openFirstFile(page, 'Read notes');
   await expect((await pane(page)).getByText("Couldn't load this file")).toBeVisible();

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { budgetFor, entryClosure, findEntryPoints, runtimeFiles } from './check-size.mjs';
 
-test('viewer budgets apply only to the two viewer entry points', () => {
+test('viewer budgets apply only to the three viewer entry points', () => {
   assert.equal(budgetFor('viewer.js'), 15_000);
   assert.equal(budgetFor('submission-frame.js'), 4_000);
   assert.equal(budgetFor('viewer.html'), 1_500_000);

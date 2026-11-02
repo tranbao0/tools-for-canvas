@@ -2729,6 +2729,9 @@ The PDF viewer of items 4, 5 and 9 is implemented, with its fetch, progress bar,
 The viewers for images, audio, video and text and the submission download exception are implemented.
 Audio and video have fixtures and playback checks in Chromium.
 The fixtures are WAV and WebM, which Chromium and Firefox play without a system codec.
+The submission matchers accept numeric ids under `submissions` and alphanumeric ids under `anonymous_submissions`, for both the top page and its preview frame.
+The browser checks cover anonymous submission downloads and count the canvases of a hidden PDF tab.
+The Retry check fails only the file record request, so it does not interrupt the background checks of the signed-in student.
 The Firefox smoke test opens an image in the pane and checks that it has loaded.
 Image zoom, tab URL cleanup, the Word card and passive submission text have browser checks.
 Image, text and video screenshots cover 1920 and 1280 px in light and dark.

@@ -442,7 +442,9 @@ test('a PDF tab keeps its document and position while another tab is active', as
   await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
   await expect(frame.locator(VIEWER)).toHaveCount(2);
   await expect(frame.locator(`${VIEWER}:visible .pv-page[data-page="1"] canvas`)).toBeVisible();
+  await expect(frame.locator(`${VIEWER}:not(:visible) canvas`)).toHaveCount(0);
   await tabs.nth(0).click();
+  await expect(frame.locator(`${VIEWER}:visible .pv-page[data-page="3"] canvas`)).toBeVisible();
   await expect(frame.locator(`${VIEWER}:visible [data-part="pdf-page-input"]`)).toHaveValue('3');
   await expect(frame.locator(`${VIEWER}:visible`)).toHaveCount(1);
   // The two files were read once each.
