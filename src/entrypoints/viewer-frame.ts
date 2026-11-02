@@ -6,7 +6,10 @@ import { normalizeTabs, type Tabs } from '@/features/file-viewer/model';
 import { createOpenSource } from '@/features/file-viewer/ui/openSource';
 import { ViewerApp, type PaneHost } from '@/features/file-viewer/ui/ViewerApp';
 import type { PaneFile } from '@/features/file-viewer/ui/FileCard';
+import { fetchFileBytes } from '@/shared/canvas/fileBytes';
+import { loadPdfjs } from '@/features/file-viewer/pdf/loader';
 import { APP_CSS } from '@/shared/ui/styles';
+import pdfCss from '@/features/file-viewer/ui/pdf.css?inline';
 import viewerCss from '@/features/file-viewer/ui/viewer.css?inline';
 
 function isPaneFile(value: unknown): value is Omit<PaneFile, 'courseId'> & { courseId?: unknown } {
@@ -24,7 +27,7 @@ export default defineUnlistedScript(() => {
   const origin = canvasOriginItem.getValue();
   const nonce = location.hash.slice(1);
   const style = document.createElement('style');
-  style.textContent = `${APP_CSS}\n${viewerCss}`;
+  style.textContent = `${APP_CSS}\n${viewerCss}\n${pdfCss}`;
   document.head.append(style);
   const opens = createOpenSource();
   let port: MessagePort | undefined;
@@ -45,6 +48,9 @@ export default defineUnlistedScript(() => {
             : null,
       };
     },
+    readFile: (url, onProgress, signal) =>
+      fetchFileBytes({ origin: canvasOrigin, url, onProgress, signal }),
+    loadPdfjs,
     async hasAccess() {
       return (await browser.runtime.sendMessage({ type: 'viewer:permission' })) !== false;
     },

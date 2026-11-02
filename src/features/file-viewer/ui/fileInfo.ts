@@ -17,6 +17,11 @@ export function formatSize(bytes: number): string {
   return `${text} ${UNITS[unit]}`;
 }
 
+/** Whether the viewer shows the file as a PDF. The content type decides, not the name. */
+export function isPdf(contentType: string): boolean {
+  return contentType.toLowerCase().split(';')[0]?.trim() === 'application/pdf';
+}
+
 function extensionOf(name: string): string {
   const dot = name.lastIndexOf('.');
   return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toLowerCase() : '';
