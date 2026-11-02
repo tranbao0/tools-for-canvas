@@ -1,9 +1,9 @@
 import {
-  keepStudent,
-  normalizePositions,
-  positionKey,
+  clearPositions,
+  keepOnlyStudent,
+  readPosition,
+  savePosition,
   validPosition,
-  viewerPositionsItem,
   withPositions,
   type SavedZoom,
 } from './positions';
@@ -17,6 +17,7 @@ import { logFailure } from '../../shared/platform/log';
 import { createViewerSecret, isViewerSecret } from './channel';
 import { FRAME_OPEN, TOP_OPEN } from './frame';
 import { isFileId, isSubmissionPage, normalizeTabs } from './model';
+import { ViewerUnconfirmedError } from './unconfirmed';
 
 type ViewerSender = Pick<Browser.runtime.MessageSender, 'url' | 'frameId'> & {
   tab?: { id?: number };
@@ -40,6 +41,11 @@ export interface ViewerHost {
   mayFetch(origin: string, tabId: number | undefined): Promise<boolean>;
   /** The id of the student of the cache under the cookie rules, or `null` when they refuse. */
   userId(origin: string, tabId: number | undefined): Promise<string | null>;
+  /**
+   * Confirms the cookie for a tab whose request the rules refused, with the cold-start checks and
+   * their limits. Resolves to whether the cookie is confirmed now.
+   */
+  confirm(origin: string, tabId: number | undefined): Promise<boolean>;
   get(key: string): Promise<unknown>;
   set(key: string, value: unknown): Promise<void>;
   permission(origin: string): Promise<boolean>;
@@ -196,9 +202,9 @@ export function routeViewerMessage(
         )
           throw new Error('Invalid viewer position');
         const epoch = await readEpoch(host);
-        if (!(await host.mayFetch(origin, tabId))) throw new Error('The viewer may not read');
+        if (!(await host.mayFetch(origin, tabId))) throw new ViewerUnconfirmedError();
         const student = await host.userId(origin, tabId);
-        if (student === null) throw new Error('The cookie is not confirmed for the viewer');
+        if (student === null) throw new ViewerUnconfirmedError();
         // The token names the student and the clearing round. A write must carry the token that
         // the last read gave, so a pane that stayed open cannot save the position of one student
         // as the position of another, or after a clearing.
@@ -207,21 +213,19 @@ export function routeViewerMessage(
           throw new Error('The position changed since it was read');
         return withPositions(async () => {
           if (epoch !== (await readEpoch(host))) throw new Error('The viewer session changed');
-          const key = positionKey(origin, student, request['fileId'] as string);
-          const stored = await viewerPositionsItem.getValue();
-          const positions = keepStudent(stored, origin, student);
+          const file = request['fileId'] as string;
           if (!writing) {
             // The earlier student's entries leave the disk as soon as another student opens a PDF.
-            if (Object.keys(positions).length !== Object.keys(stored).length)
-              await viewerPositionsItem.setValue(positions);
-            return { position: positions[key] ?? null, token };
+            await keepOnlyStudent(origin, student);
+            return { position: await readPosition(origin, student, file), token };
           }
-          positions[key] = {
-            page: request['page'] as number,
-            zoom: request['zoom'] as SavedZoom,
-            at: Date.now(),
-          };
-          await viewerPositionsItem.setValue(normalizePositions(positions));
+          await savePosition(
+            origin,
+            student,
+            file,
+            { page: request['page'] as number, zoom: request['zoom'] as SavedZoom },
+            Date.now(),
+          );
           return { ok: true };
         });
       }
@@ -268,7 +272,7 @@ export function routeViewerMessage(
         // The tabs belong to the student of the cache. The cookie rules must confirm that student
         // first, and tabs of another student read as none.
         const userId = await host.userId(origin, tabId);
-        if (userId === null) throw new Error('The cookie is not confirmed for the viewer');
+        if (userId === null) throw new ViewerUnconfirmedError();
         const key = `viewer:${origin}:${tabId}`;
         // The token names the student and the clearing round of the tabs. A write must carry the
         // token that the last read gave, so a pane that stayed open cannot write the tabs of one
@@ -285,13 +289,26 @@ export function routeViewerMessage(
       }
     }
   };
+  // A request that the cookie rules refuse only because the new cookie is not confirmed yet, such
+  // as the first one after another student signs in, waits for a check and runs once more. The
+  // check follows the limits of a cold start, and a second refusal stands.
+  const tabId = sender.tab?.id;
+  const attempt = async (): Promise<unknown> => {
+    try {
+      return await run();
+    } catch (error) {
+      if (!(error instanceof ViewerUnconfirmedError)) throw error;
+    }
+    const origin = await host.savedOrigin();
+    if (!origin || !(await host.confirm(origin, tabId))) throw new ViewerUnconfirmedError();
+    return run();
+  };
   // The reads and writes of the tabs of one browser tab run in the order they arrive, so the last
   // write that arrives is the last one stored.
-  const tabId = sender.tab?.id;
   return tabId !== undefined &&
     /^viewer:(?:tabs|position)-(?:get|set)$/.test(String(request['type']))
-    ? enqueue(tabId, run)
-    : run();
+    ? enqueue(tabId, attempt)
+    : attempt();
 }
 
 const queues = new Map<number, Promise<unknown>>();
@@ -312,7 +329,7 @@ async function readEpoch(host: Pick<ViewerHost, 'get'>): Promise<number> {
 }
 
 export function wireViewerRouter(
-  owner: Pick<DataOwner, 'viewerRead' | 'viewerMayFetch' | 'viewerUserId'>,
+  owner: Pick<DataOwner, 'viewerRead' | 'viewerMayFetch' | 'viewerUserId' | 'viewerConfirm'>,
 ): void {
   const host: ViewerHost = {
     savedOrigin: () => canvasOriginItem.getValue(),
@@ -320,6 +337,7 @@ export function wireViewerRouter(
     read: (origin, tabId, read) => owner.viewerRead(origin, tabId, read),
     mayFetch: (origin, tabId) => owner.viewerMayFetch(origin, tabId),
     userId: (origin, tabId) => owner.viewerUserId(origin, tabId),
+    confirm: (origin, tabId) => owner.viewerConfirm(origin, tabId),
     get: async (key) => (await browser.storage.session.get(key))[key],
     set: (key, value) => browser.storage.session.set({ [key]: value }),
     // File redirects can use hosts selected by Canvas, so check the full file host grant.
@@ -385,7 +403,7 @@ export function clearViewerTabs(): Promise<void> {
       (key) => key.startsWith('viewer:') && !key.startsWith(SESSION_PREFIX),
     );
     const results = await Promise.allSettled([
-      viewerPositionsItem.setValue({}),
+      clearPositions(),
       keys.length > 0 ? browser.storage.session.remove(keys) : Promise.resolve(),
     ]);
     for (const result of results) if (result.status === 'rejected') failures.push(result.reason);

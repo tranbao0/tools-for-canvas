@@ -9,6 +9,7 @@
  */
 import { browser, type Browser } from 'wxt/browser';
 import { anyAutoSavedCanvasTab, injectDetectorIntoOpenTabs, type InjectedTab } from './inject';
+import { removeOldPositionMap } from '../../features/file-viewer/positions';
 import { logFailure } from './log';
 import { welcomePromptedItem } from './storage';
 
@@ -44,7 +45,8 @@ export function openWelcomePrompt(): Promise<void> {
 
 /** Runs the detector in the open tabs and, on install, opens the welcome page when it is needed. */
 async function handleInstalled(reason: 'install' | 'update'): Promise<void> {
-  if (reason === 'update') await browser.storage.local.remove('viewerPositions');
+  if (reason === 'update')
+    await removeOldPositionMap().catch((error: unknown) => logFailure('old positions', error));
   let injected: InjectedTab[] = [];
   try {
     injected = await injectDetectorIntoOpenTabs();

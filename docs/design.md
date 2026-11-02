@@ -1122,7 +1122,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 - After each write, the background stores a change marker (a time stamp only) in `storage.local`.
   Every surface listens to `storage.onChanged` and refreshes.
   `runtime.sendMessage` does not reach content scripts, so it cannot do this job [24].
-- The extension stores only these items in `storage.local`: its settings, the switches of the small tools (decision 22), the Canvas address, the change marker, which one-time notes the student has seen, and on Chrome and Edge the saved PDF positions (decision 25).
+- The extension stores only these items in `storage.local`: its settings, the switches of the small tools (decision 22), the Canvas address, the change marker, which one-time notes the student has seen, and on Chrome and Edge the saved PDF positions, one key for each position (decision 25).
 
 **Fallback:** Background fetches with the student's cookies have not been tested live.
 Firefox treats requests from extension pages with host permission as first-party [12].
@@ -2353,6 +2353,9 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
 4. **Viewers by file type.**
    - PDF: a bundled PDF.js viewer with search, page thumbnails, zoom and keyboard paging (item 9).
      The pane saves the page and the zoom of each file, keyed by Canvas origin, user and file id, for the last 200 files.
+     Each position has its own key, `viewerPosition:` followed by the JSON of the origin, the user and the file id, so a save writes one small entry and a change event carries that key only.
+     A save that takes the store over 200 drops the oldest positions.
+     A read of a position removes the keys of other students, other Canvas addresses and bad keys, without reading their values.
      The first build keeps the page, the zoom and the document of each tab only while the pane stays open.
      Saving them across reloads is build step 3.
    - Image: a raster image shows in an image element, and an SVG is drawn on a canvas (item 10).
@@ -2713,8 +2716,12 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   The worker parses it in its own thread, and an error shows a message and leaves the pane working.
   A page of any size cannot make a larger canvas than the limits of item 9.
 - Saved page positions go through the trusted storage rules of decision 5.
-  On update, the extension removes the legacy `viewerPositions` key from `storage.local`, including any copy from an earlier Firefox test build.
-  On Firefox they live only in the IndexedDB vault, with no copy in `storage.local`, because they hold the student id and the ids of the files that the student opened, and content scripts can read `storage.local` there.
+  On update, the extension removes the `viewerPositions` key of the earlier single map from `storage.local` and from the vault.
+  On Firefox the position keys live only in the IndexedDB vault, with no copy in `storage.local`, because they hold the student id and the ids of the files that the student opened, and content scripts can read `storage.local` there.
+- A viewer request that the cookie rules refuse only because the new cookie is not confirmed yet runs once more.
+  This is the first request after another student signs in, which joins the check of the new cookie that ends by finding another student.
+  The background confirms the cookie with the checks of a cold start, under their limits (two checks in 30 seconds, and a wait after a failed check), and then runs the request again.
+  A second refusal stands, and the pane shows the error card of the file with "Retry".
 
 **Size:**
 
@@ -2735,7 +2742,7 @@ The pane frame and its close button are implemented.
 The pane page is a Preact app with the tab strip, the file card, the access button, the states and the theme (items 2, 5, 7 and 8).
 The pane checks cover modified clicks, the off switch, Escape, reload and rejected channel messages.
 The channel checks cover a script that makes its own pane frame, a script that answers the hello with its own port, and a frame that a script navigated to a web page.
-The viewer reads follow the cookie rules of the data owner.
+The viewer reads follow the cookie rules of the data owner, and the first request of a new student waits for the confirmation of the cookie once.
 The PDF header is the slim line of item 7, and internal links of a PDF have no address.
 The pane checks also cover the tab keys, closing tabs, reopening an open file, the card, the withheld permission and the theme.
 The store build smoke test checks the pane in Firefox.

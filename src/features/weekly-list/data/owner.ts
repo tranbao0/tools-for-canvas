@@ -72,6 +72,7 @@ import {
   type PlannerCoverage,
 } from './coverage';
 import { failureFor, isCanvasError } from './failures';
+import { ViewerUnconfirmedError } from '../../file-viewer/unconfirmed';
 import {
   applyPatch,
   matchesTarget,
@@ -276,6 +277,12 @@ export interface DataOwner {
    * `viewerRead`. `null` when the rules refuse.
    */
   viewerUserId(origin: string | null, tabId: number | undefined): Promise<string | null>;
+  /**
+   * Confirms the cookie for a tab that a request refused, with the checks of `viewerRead`: a cold
+   * profile may start one check, and the limits of the checks hold. Resolves to whether the cookie
+   * is confirmed now.
+   */
+  viewerConfirm(origin: string | null, tabId: number | undefined): Promise<boolean>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
@@ -2541,7 +2548,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     read: (api: CanvasApi) => Promise<T>,
   ): Promise<T> {
     const allowed = await viewerOrigin(origin, tabId, true);
-    if (allowed === null) throw new Error('The cookie is not confirmed for the viewer');
+    if (allowed === null) throw new ViewerUnconfirmedError();
     if (cache?.session == null) {
       const proof = viewerProof;
       if (!(await viewerProofHolds(allowed))) throw new Error('The viewer cookie changed');
@@ -2568,6 +2575,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     tabId: number | undefined,
   ): Promise<boolean> {
     return (await viewerOrigin(origin, tabId)) !== null;
+  }
+
+  async function viewerConfirm(origin: string | null, tabId: number | undefined): Promise<boolean> {
+    return (await viewerOrigin(origin, tabId, true)) !== null;
   }
 
   async function dashboardGradeVisibility(token?: string, tabId?: number): Promise<DashboardData> {
@@ -3113,6 +3124,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     viewerRead,
     viewerMayFetch,
     viewerUserId,
+    viewerConfirm,
 
     async originChanged(origin) {
       await ready();

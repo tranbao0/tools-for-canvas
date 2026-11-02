@@ -1,5 +1,6 @@
 import { clearViewerTabs } from '../../file-viewer/background';
-import { viewerPositionsItem, positionKey } from '../../file-viewer/positions';
+import { ViewerUnconfirmedError } from '../../file-viewer/unconfirmed';
+import { readPosition, savePosition } from '../../file-viewer/positions';
 /**
  * The reads of the file viewer follow the cookie rules of the data owner (design decisions 11 and
  * 25): only a tab in the cookie store of the requests, only the saved Canvas, only a cookie that a
@@ -157,6 +158,31 @@ describe('viewer reads', () => {
     expect(read).not.toHaveBeenCalled();
   });
 
+  it('refuses with an error that names the missing confirmation, and confirms the new student on the next try', async () => {
+    const h = await loaded();
+    const read = vi.fn(async () => 'record');
+    signInOtherUser(h);
+    await expect(h.owner.viewerRead(ORIGIN, TAB, read)).rejects.toBeInstanceOf(
+      ViewerUnconfirmedError,
+    );
+    await expect(h.owner.viewerConfirm(ORIGIN, TAB)).resolves.toBe(true);
+    await expect(h.owner.viewerUserId(ORIGIN, TAB)).resolves.toBe('7777');
+    await expect(h.owner.viewerRead(ORIGIN, TAB, read)).resolves.toBe('record');
+  });
+
+  it('confirms with the limits of the cold-start checks and under the rules of the tab', async () => {
+    const h = await createHarness();
+    h.canvas.fail('getSelf', new Error('server unavailable'), { times: 3 });
+    for (let i = 0; i < 3; i += 1)
+      await expect(h.owner.viewerConfirm(ORIGIN, TAB)).resolves.toBe(false);
+    expect(h.canvas.calls.filter((call) => call.method === 'getSelf')).toHaveLength(2);
+
+    const other = await createHarness();
+    await expect(other.owner.viewerConfirm(ORIGIN, undefined)).resolves.toBe(false);
+    await expect(other.owner.viewerConfirm('https://other.edu', TAB)).resolves.toBe(false);
+    expect(other.canvas.calls).toHaveLength(0);
+  });
+
   it('drops the reply when the cookie changes during the read', async () => {
     const h = await loaded();
     const read = vi.fn(async () => {
@@ -177,22 +203,22 @@ describe('viewer reads', () => {
 
   it('tells the viewer to clear its tabs on a sign-out and for another student', async () => {
     const h = await loaded();
-    const key = positionKey(ORIGIN, '5501', '42');
-    const position = { [key]: { page: 3, zoom: 1.5, at: 1 } };
-    await viewerPositionsItem.setValue(position);
+    const save = () => savePosition(ORIGIN, '5501', '42', { page: 3, zoom: 1.5 }, 1);
+    const saved = () => readPosition(ORIGIN, '5501', '42');
+    await save();
     const cleared = vi.fn(clearViewerTabs);
     h.deps.onUserDataCleared = cleared;
     vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
     await expect(h.owner.viewerMayFetch(ORIGIN, TAB)).resolves.toBe(false);
     expect(cleared).toHaveBeenCalled();
-    await vi.waitFor(async () => expect(await viewerPositionsItem.getValue()).toEqual({}));
+    await vi.waitFor(async () => expect(await saved()).toBeNull());
     const second = await loaded();
-    await viewerPositionsItem.setValue(position);
+    await save();
     const other = vi.fn(clearViewerTabs);
     second.deps.onUserDataCleared = other;
     signInOtherUser(second);
     await expect(second.owner.viewerMayFetch(ORIGIN, TAB)).resolves.toBe(false);
     expect(other).toHaveBeenCalled();
-    await vi.waitFor(async () => expect(await viewerPositionsItem.getValue()).toEqual({}));
+    await vi.waitFor(async () => expect(await saved()).toBeNull());
   });
 });
