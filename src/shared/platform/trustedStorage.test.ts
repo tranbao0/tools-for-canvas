@@ -3,6 +3,7 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { canvasOriginItem } from './storage';
 import {
   createTrustedItem,
+  createTrustedRecords,
   restrictStorageToTrustedContexts,
   type TrustedItemOptions,
   type Vault,
@@ -16,6 +17,7 @@ function memoryVault(): Vault & { values: Map<string, unknown> } {
   return {
     values,
     get: async (key) => values.get(key),
+    keys: async () => [...values.keys()],
     async set(key, value) {
       if (value === null || value === undefined) values.delete(key);
       else values.set(key, structuredClone(value));
@@ -258,5 +260,98 @@ describe('with a vault, as on Firefox', () => {
     await settle();
 
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('records, one key each', () => {
+  const options = {
+    prefix: 'note:',
+    parse: (stored: unknown) => (typeof stored === 'number' ? stored : undefined),
+  };
+
+  it('keep each record under its own key in storage.local on Chrome and Edge', async () => {
+    const records = createTrustedRecords(options, null);
+    await fakeBrowser.storage.local.set({ other: 1 });
+    await records.set('a', 1);
+    await records.set('b', 2);
+
+    expect(await fakeBrowser.storage.local.get(null)).toEqual({
+      other: 1,
+      'note:a': 1,
+      'note:b': 2,
+    });
+    expect((await records.ids()).sort()).toEqual(['a', 'b']);
+    expect(await records.get('a')).toBe(1);
+    expect(await records.get('missing')).toBeUndefined();
+    expect([...(await records.all())]).toEqual([
+      ['a', 1],
+      ['b', 2],
+    ]);
+
+    await records.remove(['a']);
+    expect(await fakeBrowser.storage.local.get(null)).toEqual({ other: 1, 'note:b': 2 });
+  });
+
+  it('write one key and send one changed key to a listener', async () => {
+    const records = createTrustedRecords(options, null);
+    for (let i = 0; i < 20; i += 1) await records.set(String(i), i);
+    const changes: string[][] = [];
+    fakeBrowser.storage.onChanged.addListener((change) => changes.push(Object.keys(change)));
+
+    await records.set('7', 70);
+
+    expect(changes).toEqual([['note:7']]);
+  });
+
+  it('leave a bad value out of the list of records and report its id', async () => {
+    const records = createTrustedRecords(options, null);
+    await fakeBrowser.storage.local.set({ 'note:a': 'bad', 'note:b': 2 });
+
+    expect([...(await records.all())]).toEqual([['b', 2]]);
+    expect((await records.ids()).sort()).toEqual(['a', 'b']);
+    expect(await records.get('a')).toBeUndefined();
+  });
+
+  it('live only in the vault, with no copy in storage.local, as on Firefox', async () => {
+    const vault = memoryVault();
+    const records = createTrustedRecords(options, vault);
+    await records.set('a', 1);
+    await records.set('b', 2);
+    vault.values.set('unrelated', 5);
+
+    expect([...vault.values]).toEqual([
+      ['note:a', 1],
+      ['note:b', 2],
+      ['unrelated', 5],
+    ]);
+    expect(await fakeBrowser.storage.local.get(null)).toEqual({});
+    expect((await records.ids()).sort()).toEqual(['a', 'b']);
+    expect(await records.get('b')).toBe(2);
+
+    await records.remove(['a', 'b']);
+    expect([...vault.values.keys()]).toEqual(['unrelated']);
+  });
+
+  it('ignore what a page wrote to storage.local when a vault holds the records', async () => {
+    const vault = memoryVault();
+    const records = createTrustedRecords(options, vault);
+    await records.set('a', 1);
+
+    await fakeBrowser.storage.local.set({ 'note:a': 99, 'note:evil': 5 });
+
+    expect(await records.get('a')).toBe(1);
+    expect(await records.get('evil')).toBeUndefined();
+    expect([...(await records.all())]).toEqual([['a', 1]]);
+  });
+
+  it('remove a single key from the vault and from storage.local', async () => {
+    const vault = memoryVault();
+    vault.values.set('old', { x: 1 });
+    await fakeBrowser.storage.local.set({ old: { x: 1 }, kept: 2 });
+
+    await createTrustedRecords(options, vault).removeKey('old');
+
+    expect(vault.values.has('old')).toBe(false);
+    expect(await fakeBrowser.storage.local.get(null)).toEqual({ kept: 2 });
   });
 });

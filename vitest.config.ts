@@ -17,5 +17,6 @@ export default defineConfig({
       'tests/fixtures/**/*.test.tsx',
     ],
     restoreMocks: true,
+    setupFiles: ['./src/shared/platform/testing/fakeStorageKeys.ts'],
   },
 });

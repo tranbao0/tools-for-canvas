@@ -7,7 +7,8 @@ import {
   sessionKey,
   type ViewerHost,
 } from './background';
-import { positionKey, viewerPositionsItem } from './positions';
+import { MAX_POSITIONS, positionKey } from './positions';
+import { ViewerUnconfirmedError } from './unconfirmed';
 
 function setup() {
   const api = {
@@ -32,6 +33,7 @@ function setup() {
     read: read as ViewerHost['read'],
     mayFetch: vi.fn(async () => true),
     userId: vi.fn(async () => 'u1'),
+    confirm: vi.fn(async () => false),
     get: vi.fn(async (key: string) => store.get(key)),
     set: vi.fn(async (key: string, value: unknown) => {
       store.set(key, value);
@@ -46,6 +48,11 @@ function setup() {
   return { host, sender, pane, api, store, read };
 }
 type Sender = ReturnType<typeof setup>['sender'];
+/** The keys that hold saved positions, in the extension storage. */
+const storedPositionKeys = async () =>
+  Object.keys(await fakeBrowser.storage.local.get(null)).filter((key) =>
+    key.startsWith('viewerPosition:'),
+  );
 type Reply = { ids: string[]; active: string | null; token: string };
 const tabsGet = async (sender: Sender, host: ViewerHost) =>
   (await routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)) as Reply;
@@ -103,13 +110,78 @@ describe('viewer router', () => {
   it('refuses a read when the cookie rules refuse it', async () => {
     const { host, pane, api } = setup();
     host.read = vi.fn(async () => {
-      throw new Error('The cookie is not confirmed for the viewer');
+      throw new ViewerUnconfirmedError();
     });
     await expect(
       routeViewerMessage({ type: 'viewer:file', fileId: '1' }, pane, host),
     ).rejects.toThrow('confirmed');
     expect(api.getViewerFile).not.toHaveBeenCalled();
   });
+  it('confirms the cookie once and runs a refused request again', async () => {
+    const { host, sender, pane, api } = setup();
+    // The first reads come before the check of the new cookie, and the check then confirms it.
+    vi.mocked(host.userId).mockResolvedValueOnce(null);
+    vi.mocked(host.confirm).mockResolvedValue(true);
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: [], active: null });
+    expect(host.confirm).toHaveBeenCalledTimes(1);
+    expect(host.confirm).toHaveBeenCalledWith('https://school.edu', 7);
+
+    vi.mocked(host.confirm).mockClear();
+    const read = vi.mocked(host.read);
+    read.mockRejectedValueOnce(new ViewerUnconfirmedError());
+    expect(
+      await routeViewerMessage({ type: 'viewer:file', fileId: '1' }, pane, host),
+    ).toMatchObject({
+      name: 'Notes',
+    });
+    expect(host.confirm).toHaveBeenCalledTimes(1);
+    expect(api.getViewerFile).toHaveBeenCalledTimes(1);
+
+    vi.mocked(host.confirm).mockClear();
+    vi.mocked(host.mayFetch).mockResolvedValueOnce(false);
+    expect(
+      await routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host),
+    ).toMatchObject({ position: null });
+    expect(host.confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses after one more try when the check does not confirm the cookie', async () => {
+    const { host, sender, pane } = setup();
+    vi.mocked(host.userId).mockResolvedValue(null);
+    await expect(tabsGet(sender, host)).rejects.toThrow('cookie is not confirmed');
+    expect(host.confirm).toHaveBeenCalledTimes(1);
+    expect(host.userId).toHaveBeenCalledTimes(1);
+
+    // The cookie is confirmed, but the request is refused again: no third try.
+    vi.mocked(host.confirm).mockClear();
+    vi.mocked(host.confirm).mockResolvedValue(true);
+    vi.mocked(host.read).mockRejectedValue(new ViewerUnconfirmedError());
+    await expect(
+      routeViewerMessage({ type: 'viewer:file', fileId: '1' }, pane, host),
+    ).rejects.toThrow('cookie is not confirmed');
+    expect(host.confirm).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(host.read)).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not check the cookie again for any other refusal', async () => {
+    const { host, sender, pane } = setup();
+    await expect(
+      routeViewerMessage({ type: 'viewer:file', fileId: 'x' }, pane, host),
+    ).rejects.toThrow('Invalid file id');
+    await expect(
+      routeViewerMessage(
+        { type: 'viewer:tabs-get' },
+        { ...sender, url: 'https://evil.example/' },
+        host,
+      ),
+    ).rejects.toThrow('Only the saved Canvas');
+    vi.mocked(host.read).mockRejectedValueOnce(new Error('The file is gone'));
+    await expect(
+      routeViewerMessage({ type: 'viewer:file', fileId: '1' }, pane, host),
+    ).rejects.toThrow('gone');
+    expect(host.confirm).not.toHaveBeenCalled();
+  });
+
   it('asks the cookie rules whether the pane may fetch bytes', async () => {
     const { host, pane } = setup();
     expect(await routeViewerMessage({ type: 'viewer:fetch-allowed' }, pane, host)).toBe(true);
@@ -386,6 +458,68 @@ describe('saved positions', () => {
     ).rejects.toThrow('cookie is not confirmed');
   });
 
+  it('writes one small entry for each save', async () => {
+    const { host, pane } = setup();
+    await clearViewerTabs();
+    const get = () =>
+      routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host) as Promise<{
+        token: string;
+      }>;
+    const { token } = await get();
+    const save = (fileId: string, page: number) =>
+      routeViewerMessage(
+        { type: 'viewer:position-set', fileId, page, zoom: 1.5, token },
+        pane,
+        host,
+      );
+    // Many positions are stored already, and the next save must not rewrite them.
+    for (let file = 1; file <= 50; file += 1) await save(String(file), 2);
+    const set = vi.spyOn(fakeBrowser.storage.local, 'set');
+    const changed: string[][] = [];
+    const listener = (changes: Record<string, unknown>) => changed.push(Object.keys(changes));
+    fakeBrowser.storage.onChanged.addListener(listener);
+    await save('7', 9);
+    fakeBrowser.storage.onChanged.removeListener(listener);
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(set.mock.calls[0]![0]).toEqual({
+      [`viewerPosition:${positionKey('https://school.edu', 'u1', '7')}`]: {
+        page: 9,
+        zoom: 1.5,
+        at: expect.any(Number) as number,
+      },
+    });
+    expect(changed).toEqual([[`viewerPosition:${positionKey('https://school.edu', 'u1', '7')}`]]);
+    expect(await storedPositionKeys()).toHaveLength(50);
+    set.mockRestore();
+  });
+
+  it('keeps the newest positions when a save passes the limit', async () => {
+    const { host, pane } = setup();
+    await clearViewerTabs();
+    const { token } = (await routeViewerMessage(
+      { type: 'viewer:position-get', fileId: '1' },
+      pane,
+      host,
+    )) as { token: string };
+    const now = vi.spyOn(Date, 'now');
+    for (let file = 1; file <= MAX_POSITIONS + 1; file += 1) {
+      now.mockReturnValue(file);
+      await routeViewerMessage(
+        { type: 'viewer:position-set', fileId: String(file), page: 2, zoom: 1, token },
+        pane,
+        host,
+      );
+    }
+    now.mockRestore();
+    const keys = await storedPositionKeys();
+    expect(keys).toHaveLength(MAX_POSITIONS);
+    expect(keys).not.toContain(`viewerPosition:${positionKey('https://school.edu', 'u1', '1')}`);
+    expect(keys).toContain(`viewerPosition:${positionKey('https://school.edu', 'u1', '2')}`);
+    expect(keys).toContain(
+      `viewerPosition:${positionKey('https://school.edu', 'u1', String(MAX_POSITIONS + 1))}`,
+    );
+  });
+
   it('answers only the pane frame', async () => {
     const { host, pane, sender } = setup();
     const top = { ...sender, frameId: 0 };
@@ -451,10 +585,11 @@ describe('saved positions', () => {
     vi.mocked(host.userId).mockResolvedValue('u2');
     // A read of the next student removes the earlier student's entry.
     await get();
-    expect(Object.keys(await viewerPositionsItem.getValue())).toEqual([]);
+    expect(await storedPositionKeys()).toEqual([]);
     await set((await get()).token);
-    const stored = Object.keys(await viewerPositionsItem.getValue());
-    expect(stored).toEqual([positionKey('https://school.edu', 'u2', '1')]);
+    expect(await storedPositionKeys()).toEqual([
+      `viewerPosition:${positionKey('https://school.edu', 'u2', '1')}`,
+    ]);
   });
 
   it('isolates students and clears positions with tabs', async () => {
@@ -483,7 +618,7 @@ describe('saved positions', () => {
     await clearViewerTabs();
     expect((await get()).position).toBeNull();
     vi.mocked(host.mayFetch).mockResolvedValue(false);
-    await expect(get()).rejects.toThrow('may not read');
+    await expect(get()).rejects.toThrow('cookie is not confirmed');
   });
 
   it('refuses a save with the token of another student or of an older clearing', async () => {

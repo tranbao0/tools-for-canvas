@@ -714,6 +714,21 @@ for (const width of [1920, 1280]) {
   }
 }
 
+/** The saved positions in the storage of the extension, by the key of the file and the student. */
+function savedPositions(background: Parameters<typeof openCoursePage>[2]) {
+  return background.evaluate(async () => {
+    const stored = await (
+      globalThis as unknown as { chrome: typeof browser }
+    ).chrome.storage.local.get(null);
+    const prefix = 'viewerPosition:';
+    return Object.fromEntries(
+      Object.entries(stored)
+        .filter(([key]) => key.startsWith(prefix))
+        .map(([key, value]) => [key.slice(prefix.length), value]),
+    ) as Record<string, { page: number; zoom: unknown }>;
+  });
+}
+
 test('saved page and zoom return after reload', async ({ context, page, background, fileHost }) => {
   let frame = await openPdf(context, page, background, fileHost);
   await pageInput(frame).fill('3');
@@ -721,15 +736,10 @@ test('saved page and zoom return after reload', async ({ context, page, backgrou
   await frame.getByRole('button', { name: 'Zoom level' }).click();
   await frame.getByRole('menuitemradio', { name: '150%' }).click();
   await expect
-    .poll(() =>
-      background.evaluate(async () => {
-        const stored = await (
-          globalThis as unknown as { chrome: typeof browser }
-        ).chrome.storage.local.get('viewerPositions');
-        return Object.values(
-          (stored['viewerPositions'] ?? {}) as Record<string, { page: number; zoom: number }>,
-        ).some((value) => value.page === 3 && value.zoom === 1.5);
-      }),
+    .poll(async () =>
+      Object.values(await savedPositions(background)).some(
+        (value) => value.page === 3 && value.zoom === 1.5,
+      ),
     )
     .toBe(true);
   await page.screenshot({ path: test.info().outputPath('saved-position.png') });
@@ -739,16 +749,6 @@ test('saved page and zoom return after reload', async ({ context, page, backgrou
   await expect(pageInput(frame)).toHaveValue('3');
   await expect(frame.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
 });
-
-/** The saved positions in the storage of the extension. */
-function savedPositions(background: Parameters<typeof openCoursePage>[2]) {
-  return background.evaluate(async () => {
-    const stored = await (
-      globalThis as unknown as { chrome: typeof browser }
-    ).chrome.storage.local.get('viewerPositions');
-    return (stored['viewerPositions'] ?? {}) as Record<string, { page: number; zoom: unknown }>;
-  });
-}
 
 /** Goes to page 3 at 150 percent and waits until the position is saved. */
 async function saveThirdPageAtZoom(frame: Frame, background: Parameters<typeof openCoursePage>[2]) {
@@ -771,19 +771,32 @@ const OTHER_STUDENT = '987654';
 function studentCanvas() {
   const scenario = buildScenario(SCENARIO_NOW);
   let signedIn = scenario.self.id;
+  // The answers that name the student take this long.
+  let delayMs = 0;
+  const answerLate = () => new Promise<void>((resolve) => setTimeout(resolve, delayMs));
   const routesOfStudent: FakeCanvasRoute[] = [
     {
       path: '/api/v1/users/self/profile',
-      respond: () => ({ body: json({ ...scenario.profile, id: signedIn }) }),
+      respond: async () => {
+        await answerLate();
+        return { body: json({ ...scenario.profile, id: signedIn }) };
+      },
     },
     {
       path: '/api/v1/users/self',
-      respond: () => ({ body: json({ ...scenario.self, id: signedIn }) }),
+      respond: async () => {
+        await answerLate();
+        return { body: json({ ...scenario.self, id: signedIn }) };
+      },
     },
   ];
   return {
     first: scenario.self.id,
     routes: routesOfStudent,
+    /** Makes the answers that name the student late, so a check of the cookie takes a while. */
+    slowChecks(ms: number): void {
+      delayMs = ms;
+    },
     /** Signs in the other student: the cookie changes and Canvas names the other student. */
     async switchStudent(
       context: Parameters<typeof openCoursePage>[0],
@@ -871,6 +884,32 @@ test('a saved position does not open for another student', async ({
   expect(
     Object.keys(await savedPositions(background)).filter((key) => studentOf(key) === student.first),
   ).toEqual([]);
+});
+
+test('the first file of a new student opens while the new cookie is not confirmed yet', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const student = studentCanvas();
+  const canvas = await openCoursePage(context, page, background, html, [
+    ...student.routes,
+    ...routes(fileHost),
+  ]);
+  await openFirstFile(page, 'Read notes');
+  await expect(pageBox(await pane(page), 1).locator('canvas')).toBeVisible();
+
+  // The other student signs in, and the answer that names the student comes late. The first
+  // requests of the pane and of the page join the check of the new cookie, which ends by finding
+  // another student. They are refused, although the next request is not.
+  student.slowChecks(800);
+  await student.switchStudent(context, background, canvas.origin);
+  await page.reload();
+  await openFirstFile(page, 'Read notes');
+  const frame = await pane(page);
+  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await expect(frame.getByRole('status').filter({ hasText: 'Loading file' })).toHaveCount(0);
 });
 
 test('a pane that stayed open cannot save its position for the next student', async ({
