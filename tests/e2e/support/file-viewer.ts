@@ -117,6 +117,17 @@ export const FILE_META = '[data-part="card-meta"]:visible, [data-part="pdf-meta"
 /** The title of the pane frame. */
 export const PANE_TITLE = 'File viewer';
 
+/** The frame of the file pane now, or `undefined` when there is none. */
+async function findPane(page: Page): Promise<Frame | undefined> {
+  for (const frame of page.frames()) {
+    if (!frame.url().endsWith('/viewer.html')) continue;
+    const element = await frame.frameElement().catch(() => null);
+    if (element && (await element.getAttribute('title').catch(() => null)) === PANE_TITLE)
+      return frame;
+  }
+  return undefined;
+}
+
 /**
  * The frame of the file pane. The frame sits in a closed shadow root, which no selector reaches,
  * so this finds it among the frames of the page by its address and its title. A frame that a
@@ -127,15 +138,8 @@ export async function pane(page: Page): Promise<Frame> {
   await expect
     .poll(
       async () => {
-        for (const frame of page.frames()) {
-          if (!frame.url().endsWith('/viewer.html')) continue;
-          const element = await frame.frameElement().catch(() => null);
-          if (element && (await element.getAttribute('title').catch(() => null)) === PANE_TITLE) {
-            found = frame;
-            return true;
-          }
-        }
-        return false;
+        found = await findPane(page);
+        return found !== undefined;
       },
       { timeout: 15_000 },
     )
@@ -150,14 +154,46 @@ async function paneBox(page: Page) {
   return box;
 }
 
-/** Clicks the close button of the pane frame, which sits in the closed shadow root. */
+const PANE_HOST = '#tools-file-viewer';
+const CLOSE_BUTTON = { name: 'Close file viewer', exact: true } as const;
+
+/**
+ * Closes the pane with the close button and waits for the pane to go.
+ *
+ * Two things make the real input of this step unreliable, so it repeats until the pane is gone.
+ * - A mouse event that comes before the pane frame has its hit test data goes to the page, not
+ *   to the frame, and then the click does nothing.
+ * - The click removes the frame that handles it, so Chromium sometimes never acknowledges the
+ *   mouse event, and `mouse.click` then waits until the test times out. So the click goes
+ *   through the page mouse, and nothing waits for its acknowledgement.
+ */
 export async function closePane(page: Page): Promise<void> {
-  // The click removes the pane frame, so click through the page mouse, not the frame locator.
-  const button = (await pane(page)).getByRole('button', { name: 'Close file viewer', exact: true });
-  await expect(button).toBeVisible();
-  const box = await button.boundingBox();
-  if (!box) throw new Error('The close button has no box.');
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect((await pane(page)).getByRole('button', CLOSE_BUTTON)).toBeVisible();
+  await expect(async () => {
+    const frame = await findPane(page);
+    if (frame) {
+      const box = await frame.getByRole('button', CLOSE_BUTTON).boundingBox({ timeout: 2000 });
+      if (!box) throw new Error('The close button has no box.');
+      void page.mouse.click(box.x + box.width / 2, box.y + box.height / 2).catch(() => undefined);
+    }
+    await expect(page.locator(PANE_HOST)).toHaveCount(0, { timeout: 2000 });
+  }).toPass({ timeout: 20_000 });
+}
+
+/**
+ * Focuses the close button of the pane and presses Escape, which closes the pane. It repeats
+ * until the pane is gone, for the same two reasons as {@link closePane}: a key press can go to
+ * the page before the frame has the focus, and the key press removes the frame that handles it.
+ */
+export async function pressEscapeToClosePane(page: Page): Promise<void> {
+  await expect(async () => {
+    const frame = await findPane(page);
+    if (frame) {
+      await frame.getByRole('button', CLOSE_BUTTON).focus({ timeout: 2000 });
+      void page.keyboard.press('Escape').catch(() => undefined);
+    }
+    await expect(page.locator(PANE_HOST)).toHaveCount(0, { timeout: 2000 });
+  }).toPass({ timeout: 20_000 });
 }
 
 /** Focuses the resize handle on the left edge of the pane. */
