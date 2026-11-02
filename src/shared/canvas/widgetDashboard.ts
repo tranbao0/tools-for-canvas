@@ -345,3 +345,8 @@ export function isDarkWidget(widget: HTMLElement): boolean {
   }
   return false;
 }
+
+/** The active dashboard tab panel. */
+export function findDashboardPanel(doc: Document): HTMLElement | null {
+  return doc.querySelector<HTMLElement>('[data-testid="dashboard-tab-content"]');
+}

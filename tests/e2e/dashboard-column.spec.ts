@@ -1,6 +1,7 @@
 /** Placement checks for the widget dashboard and List View. */
-import type { Page } from '@playwright/test';
+import { chromium, type Page } from '@playwright/test';
 import {
+  saveTools,
   doneBox,
   expect,
   inpageList,
@@ -19,15 +20,6 @@ interface Box {
   y: number;
   width: number;
   height: number;
-}
-
-function overlap(a: Box, b: Box): boolean {
-  return (
-    a.x < b.x + b.width - 0.5 &&
-    b.x < a.x + a.width - 0.5 &&
-    a.y < b.y + b.height - 0.5 &&
-    b.y < a.y + a.height - 0.5
-  );
 }
 
 async function boxes(page: Page, selector: string): Promise<Box[]> {
@@ -73,26 +65,6 @@ async function expectMode(page: Page, mode: string): Promise<void> {
   await expect.poll(() => panelMode(page)).toBe(mode);
 }
 
-/** Makes the page taller than any scroll in the tests, for a page that is short. */
-async function addHeight(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const filler = document.createElement('div');
-    filler.style.height = '3000px';
-    document.getElementById('content')?.append(filler);
-  });
-}
-
-async function scrollTo(page: Page, y: number): Promise<number> {
-  return page.evaluate(async (target) => {
-    window.scrollTo(0, target);
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    return window.scrollY;
-  }, y);
-}
-
-const PAGE_WIDTHS = [1920, 1600, 1280, 1000, 700];
-/** A width of the widget dashboard where the free area beside the grid holds the card, and one where not. */
-
 async function openPage(
   context: Parameters<typeof serveScenario>[0],
   page: Page,
@@ -113,17 +85,18 @@ test.describe('the widget dashboard', () => {
       const wide = width >= 1920;
       await expectMode(page, wide ? 'area' : 'stack');
       const selectors = ['#wrapper', '#content', '[data-testid="dashboard-tab-content"]', GRID];
-      const before = await page.evaluate((items) => {
-        const mount = document.getElementById('weekrow-inpage')!;
-        const saved = mount.style.cssText;
-        mount.style.display = 'none';
-        const result = items.map((css) => {
-          const r = document.querySelector(css)!.getBoundingClientRect();
-          return { x: r.x, width: r.width };
-        });
-        mount.style.cssText = saved;
-        return result;
-      }, selectors);
+      const browser = await chromium.launch({ channel: 'chromium' });
+      const baselineContext = await browser.newContext();
+      const { canvas } = await serveScenario(baselineContext, [
+        { path: '/', page: 'dashboard-widgets' },
+      ]);
+      const baseline = await baselineContext.newPage();
+      await baseline.setViewportSize({ width, height: VIEWPORT_HEIGHT });
+      await openCanvasPage(baseline, canvas.origin);
+      const before = await Promise.all(
+        selectors.map(async (css) => (await boxes(baseline, css))[0]!),
+      );
+      await browser.close();
       for (const tab of ['Dashboard', 'Courses', 'Dashboard']) {
         await page.getByRole('tab', { name: tab, exact: true }).click();
         await expectMode(page, wide ? 'area' : 'stack');
@@ -137,6 +110,20 @@ test.describe('the widget dashboard', () => {
           })
           .toBe(true);
         const card = await listBox(page);
+        if (wide) {
+          const anchor = (
+            await boxes(
+              page,
+              tab === 'Dashboard'
+                ? 'section[data-testid^="widget-"]'
+                : '[data-testid="dashboard-tab-content"]',
+            )
+          )[0]!;
+          expect(card.y).toBeCloseTo(anchor.y, 0);
+        } else {
+          const tabs = (await boxes(page, '[data-testid="dashboard-tabs"]'))[0]!;
+          expect(card.y).toBeGreaterThanOrEqual(tabs.y + tabs.height);
+        }
         const heading = (await boxes(page, 'h1'))[0]!;
         expect(card.y).toBeGreaterThan(heading.y);
         expect(await noSideScroll(page)).toBe(true);
@@ -160,167 +147,106 @@ test.describe('the widget dashboard', () => {
   }
 });
 
-test.describe('the floating card', () => {
-  async function openFloating(
-    context: Parameters<typeof serveScenario>[0],
-    page: Page,
-    width: number,
-  ): Promise<void> {
-    await openPage(context, page, 'dashboard-list-view', width);
-  }
-
-  for (const width of PAGE_WIDTHS) {
-    test(`on List View at ${width} px`, async ({ context, page }) => {
-      await openFloating(context, page, width);
-      await addHeight(page);
-      const stacked = width <= 1000;
-      await expectMode(page, stacked ? 'stack' : 'float');
-      const content = (await boxes(page, '#content'))[0] as Box;
-      const blocks = await boxes(page, '#dashboard_header_container, .fixture-planner-item');
-      const card = await listBox(page);
-      for (const block of blocks)
-        expect(overlap(block, card), `block ${JSON.stringify(block)}`).toBe(false);
-      expect(await noSideScroll(page)).toBe(true);
-      expect(card.x + card.width).toBeLessThanOrEqual(width + 1);
-
-      if (stacked) {
-        // The card sits above the content, at the width of the content.
-        for (const block of blocks) expect(card.y + card.height).toBeLessThanOrEqual(block.y + 1);
-        expect(card.width).toBeGreaterThan(content.width * 0.8);
-        return;
-      }
-      expect(card.width).toBeGreaterThanOrEqual(360);
-      // The top lines up with the top of the content.
-      const top = (await boxes(page, '#content > :first-child'))[0]?.y;
-      expect(card.y).toBeCloseTo(top ?? -1, 0);
-      // The card stays in view after the page scrolls 1500 px.
-      const scrolled = await scrollTo(page, 1500);
-      expect(scrolled).toBeGreaterThan(900);
-      const after = await listBox(page);
-      expect(after.y).toBeCloseTo(24, 0);
-      expect(after.y + after.height).toBeLessThanOrEqual(VIEWPORT_HEIGHT - 24 + 1);
-      for (const block of await boxes(page, '.fixture-planner-item')) {
-        expect(overlap(block, after)).toBe(false);
-      }
-    });
-  }
-
-  test('keeps the scroll position of the floating card when the window changes size', async ({
+for (const width of [2088, 1280]) {
+  test(`delayed dashboard never styles Canvas or changes mode at ${width}`, async ({
     context,
     page,
+    background,
   }) => {
-    await openFloating(context, page, 1920);
-    await addHeight(page);
-    await scrollTo(page, 300);
-    await page.evaluate(async () => {
-      const card = document
-        .querySelector('#weekrow-inpage > weekrow-list')
-        ?.shadowRoot?.querySelector<HTMLElement>('.wr');
-      if (!card) return;
-      const filler = document.createElement('div');
-      filler.style.height = '2000px';
-      card.append(filler);
-      card.scrollTop = 500;
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-    });
-    await page.setViewportSize({ width: 1880, height: VIEWPORT_HEIGHT });
-    await page.waitForTimeout(300);
-    const top = await page.evaluate(
-      () =>
-        document
-          .querySelector('#weekrow-inpage > weekrow-list')
-          ?.shadowRoot?.querySelector<HTMLElement>('.wr')?.scrollTop,
-    );
-    expect(top).toBe(500);
-  });
-
-  test('lets clicks through the host below the card', async ({ context, page }) => {
-    await openFloating(context, page, 1920);
-    await addHeight(page);
-    await scrollTo(page, 300);
-    const card = await listBox(page);
-    const hit = await page.evaluate(
-      ([x, y]) => {
-        const element = document.elementFromPoint(x as number, y as number);
-        return element === null ? null : `${element.tagName}#${element.id}`;
+    await saveTools(background, {
+      dashboardFixes: {
+        courseColors: false,
+        announcementsInPlace: false,
+        courseWorkExtras: false,
+        allCourseGrades: false,
       },
-      [card.x + 20, card.y - 10],
-    );
-    expect(hit).not.toBeNull();
-    expect(hit).not.toMatch(/^WEEKROW-LIST|#weekrow-inpage/);
-    const onCard = await page.evaluate(
-      ([x, y]) => document.elementFromPoint(x as number, y as number)?.tagName,
-      [card.x + 20, card.y + 20],
-    );
-    expect(onCard).toBe('WEEKROW-LIST');
-  });
-
-  test('keeps the header of the list in view while the card scrolls inside', async ({
-    context,
-    page,
-  }) => {
-    await openFloating(context, page, 1920);
-    await addHeight(page);
-    await scrollTo(page, 300);
-    const result = await page.evaluate(async () => {
-      const root = document.querySelector('#weekrow-inpage > weekrow-list')?.shadowRoot;
-      const card = root?.querySelector<HTMLElement>('.wr');
-      const header = root?.querySelector<HTMLElement>('.wr-header');
-      if (!card || !header) return null;
-      // Make the content taller than the card.
-      const filler = document.createElement('div');
-      filler.style.height = '2000px';
-      card.append(filler);
-      card.scrollTop = 600;
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      return {
-        scrollTop: card.scrollTop,
-        cardTop: card.getBoundingClientRect().top,
-        headerTop: header.getBoundingClientRect().top,
-        cardHeight: card.getBoundingClientRect().height,
-      };
     });
-    expect(result?.scrollTop).toBeGreaterThan(0);
-    expect(result?.headerTop).toBeCloseTo(result?.cardTop ?? 0, 0);
-    expect(result?.cardHeight).toBeLessThanOrEqual(VIEWPORT_HEIGHT - 48 + 1);
-  });
-
-  test('on List View, keeps the list when the page removes the container', async ({
-    context,
-    page,
-  }) => {
-    await openFloating(context, page, 1920);
-    await page.evaluate(() => document.getElementById('weekrow-inpage')?.remove());
-    await expect(page.locator('#content-wrapper > #weekrow-inpage')).toHaveCount(1);
+    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
+    await page.setViewportSize({ width, height: 800 });
+    await page.addInitScript(() => {
+      const audit = { styles: [] as string[], modes: [] as string[] };
+      Object.assign(window, { placementAudit: audit });
+      new MutationObserver((records) => {
+        for (const record of records) {
+          const element = record.target as Element;
+          if (record.attributeName === 'style' && !element.closest('#weekrow-inpage')) {
+            audit.styles.push(element.id || element.tagName);
+          }
+          if (record.attributeName === 'data-weekrow-styled')
+            audit.styles.push('data-weekrow-styled');
+          if (record.attributeName === 'data-panel') {
+            const mode = element.getAttribute('data-panel');
+            if (mode && audit.modes.at(-1) !== mode) audit.modes.push(mode);
+          }
+        }
+      }).observe(document, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['style', 'data-panel', 'data-weekrow-styled'],
+      });
+    });
+    await page.goto(`${canvas.origin}/?fixture_delay_ms=1500`);
+    await expect(page.locator('html')).toHaveAttribute('data-fixture-ready', 'true', {
+      timeout: 20000,
+    });
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
     await settledList(page);
-    await expectMode(page, 'float');
+    expect(
+      await page.evaluate(() => (window as unknown as { placementAudit: unknown }).placementAudit),
+    ).toEqual({ styles: [], modes: [width === 2088 ? 'area' : 'stack'] });
+    await expect(page.locator('[data-weekrow-styled]')).toHaveCount(0);
+    for (const tab of ['Dashboard', 'Courses']) {
+      await page.getByRole('tab', { name: tab, exact: true }).click();
+      await settledList(page);
+      await page.screenshot({ path: `screenshots/j2-delay-${width}-${tab}.png`, fullPage: true });
+    }
   });
+}
 
-  test('the content keeps its width except for the padding that the card needs', async ({
-    context,
-    page,
-  }) => {
-    await openFloating(context, page, 1600);
-    await expectMode(page, 'float');
-    // 198 px are free at 1600 px, and the card needs 420: the content gives up 222 px. Without
-    // the list the header container fills the content box.
-    const [header] = await boxes(page, '#dashboard_header_container');
-    const content = await page.evaluate(() => {
-      const element = document.getElementById('content');
-      if (!element) return null;
-      const style = getComputedStyle(element);
-      return {
-        width: element.getBoundingClientRect().width,
-        left: Number.parseFloat(style.paddingLeft),
-        right: Number.parseFloat(style.paddingRight),
-      };
-    });
-    expect(content).not.toBeNull();
-    expect(content?.right).toBeCloseTo(48 + 222, 0);
-    expect((header as Box).width).toBeCloseTo(
-      (content?.width ?? 0) - (content?.left ?? 0) - (content?.right ?? 0),
-      0,
-    );
+test('List View keeps Canvas styles and supports resize after placement', async ({
+  context,
+  page,
+}) => {
+  await openPage(context, page, 'dashboard-list-view', 2088);
+  await expectMode(page, 'area');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expectMode(page, 'stack');
+  await expect(page.locator('[data-weekrow-styled]')).toHaveCount(0);
+  const card = await listBox(page);
+  const content = (await boxes(page, '#content'))[0]!;
+  expect(card.y + card.height).toBeLessThanOrEqual(content.y);
+  await page.setViewportSize({ width: 2088, height: 800 });
+  await expectMode(page, 'area');
+});
+
+test('keeps the body container still for portals and updates after widget resize', async ({
+  context,
+  page,
+}) => {
+  await openPage(context, page, 'dashboard-widgets', 2088);
+  const writes = await page.evaluate(async () => {
+    const mount = document.getElementById('weekrow-inpage')!;
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((batch) => records.push(...batch));
+    observer.observe(mount, { attributes: true });
+    const portal = document.createElement('div');
+    document.body.append(portal);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const result = { count: records.length, next: mount.nextSibling === portal };
+    observer.disconnect();
+    portal.remove();
+    return result;
   });
+  expect(writes).toEqual({ count: 0, next: true });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expectMode(page, 'stack');
+  await page.setViewportSize({ width: 2088, height: 800 });
+  await expectMode(page, 'area');
+  await expect
+    .poll(async () =>
+      Math.abs(
+        (await listBox(page)).y - (await boxes(page, 'section[data-testid^="widget-"]'))[0]!.y,
+      ),
+    )
+    .toBeLessThan(1);
 });

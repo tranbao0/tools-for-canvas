@@ -4,8 +4,6 @@ import {
   AREA_MAX_PX,
   AREA_MIN_PX,
   PANEL_EDGE_GAP_PX,
-  PANEL_VARIABLES,
-  PANEL_WIDTH_PX,
   SENTINEL_ID,
   SPACER_ID,
   cardOf,
@@ -13,19 +11,18 @@ import {
   keepCardScroll,
   moveContainer,
   setContainerStyle,
-  setInlineStyles,
   setPanelMode,
 } from './placement';
-import { findWidgetGrid, type WidgetGrid } from '../../../shared/canvas/widgetDashboard';
+import {
+  findWidgetGrid,
+  findDashboardPanel,
+  type WidgetGrid,
+} from '../../../shared/canvas/widgetDashboard';
 
 /** Set on the body while a list owns the layout. Every release removes it. */
 const LAYOUT_ATTRIBUTE = 'data-weekrow-column';
-/** The content must stay at least this wide, or the card goes above it. */
-export const MIN_CONTENT_PX = 720;
 /** The gutter when the page has no widget grid to measure it in. */
 const FALLBACK_GUTTER_PX = 24;
-/** The layers of the floating card: above the content, below Canvas's own overlays. */
-const PANEL_Z_INDEX = 2;
 
 function pixels(value: string, fallback: number): number {
   const parsed = Number.parseFloat(value);
@@ -66,7 +63,12 @@ function originOf(doc: Document, container: HTMLElement): Origin {
 export function claimDashboardLayout(doc: Document, container: HTMLElement): () => void {
   const body = doc.body;
   const view = doc.defaultView ?? window;
-  let seenGrid = false;
+  let ready = false;
+  let stopped = false;
+  const deadline = view.setTimeout(() => {
+    ready = true;
+    schedule();
+  }, 3000);
   let frame: number | undefined;
   let applied: unknown[] = [];
   /** The scroll position of the card, kept for a card that the page removed and that comes back. */
@@ -77,34 +79,18 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
   const sameKey = (a: unknown[], b: unknown[]): boolean =>
     a.length === b.length && a.every((value, index) => value === b[index]);
 
-  const wrapperSlot = (): { parent: Node; before: Node | null } | null => {
-    const rightSide = doc.getElementById('right-side');
-    const parent = rightSide?.parentNode;
-    return rightSide && parent ? { parent, before: rightSide } : null;
+  const onScroll = (event: Event): void => {
+    const target = event.target as HTMLElement;
+    if (target.classList?.contains('wr') || target.classList?.contains('wr-scroll'))
+      scrollTop = target.scrollTop;
   };
-
-  /** What the placement depends on. A change in any of it means that the list must be placed again. */
-  const keyOf = (grid: WidgetGrid | null): unknown[] => [
-    grid?.columns,
-    grid?.canvasColumns.at(-1),
-    container.parentNode,
-    container.firstElementChild,
-  ];
 
   function trackScroll(): void {
     const root = container.firstElementChild?.shadowRoot ?? null;
     if (root === null || root === scrollRoot) return;
+    scrollRoot?.removeEventListener('scroll', onScroll, true);
     scrollRoot = root;
-    root.addEventListener(
-      'scroll',
-      (event) => {
-        const target = event.target as HTMLElement;
-        if (target.classList?.contains('wr') || target.classList?.contains('wr-scroll')) {
-          scrollTop = target.scrollTop;
-        }
-      },
-      true,
-    );
+    root.addEventListener('scroll', onScroll, true);
   }
 
   function restoreScroll(): void {
@@ -119,23 +105,29 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
 
   /** Places the card beside the tab panel or in the flow above it. */
   function arrangeWidget(grid: WidgetGrid | null, viewportWidth: number): void {
-    const panel = doc.querySelector<HTMLElement>('[data-testid="dashboard-tab-content"]');
+    const panel = findDashboardPanel(doc) ?? grid?.columns ?? doc.getElementById('content');
     if (!panel?.parentElement) return;
     const panelBox = panel.getBoundingClientRect();
     if (grid) {
       gridInset = panelBox.right - grid.columns.getBoundingClientRect().right;
       widgetGutter = pixels(view.getComputedStyle(grid.columns).columnGap, FALLBACK_GUTTER_PX);
     }
-    const right = grid ? grid.columns.getBoundingClientRect().right : panelBox.right - gridInset;
+    const right = grid
+      ? grid.columns.getBoundingClientRect().right
+      : findDashboardPanel(doc)
+        ? panelBox.right - gridInset
+        : (doc.getElementById('wrapper')?.getBoundingClientRect().right ?? panelBox.right);
     const left = right + widgetGutter;
     const room = viewportWidth - PANEL_EDGE_GAP_PX - left;
     if (room >= AREA_MIN_PX) {
+      if (container.parentNode !== body) moveContainer(container, body, null);
+      if (!container.style.position) setContainerStyle(container, 'position:absolute');
       const top = grid
         ? Math.min(
             ...grid.firstCards.map((card) => card.getBoundingClientRect().top),
             grid.columns.getBoundingClientRect().top + 8,
           )
-        : panelBox.top;
+        : panel.getBoundingClientRect().top;
       placeInArea(top, left, Math.min(AREA_MAX_PX, room));
       return;
     }
@@ -146,7 +138,7 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
 
   /** Positions the card in document coordinates outside the Canvas wrapper. */
   function placeInArea(top: number, left: number, width: number): void {
-    moveContainer(container, body, null);
+    if (container.parentNode !== body) moveContainer(container, body, null);
     const origin = originOf(doc, container);
     setContainerStyle(
       container,
@@ -155,112 +147,59 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
     setPanelMode(container, 'area');
   }
 
-  /**
-   * Puts the list beside the content, or above it when the content would be too narrow. On the
-   * widget dashboard (`dashboard`) the card does not float and does not pad the content: it takes
-   * the free area beside the widgets when that area is wide enough, and the stack otherwise.
-   */
-  function arrangeFloating(
-    grid: WidgetGrid | null,
-    viewportWidth: number,
-    dashboard: boolean,
-  ): void {
-    const content = doc.getElementById('content');
-    const parent = content?.parentElement;
-    if (!content || !parent) {
-      // The page has no content to lay out against. The list waits in the hidden column.
-      const slot = wrapperSlot();
-      if (slot) moveContainer(container, slot.parent, slot.before);
-      setContainerStyle(container, '');
-      setPanelMode(container, null);
-
-      return;
-    }
-    const style = view.getComputedStyle(content);
-    const padLeft = pixels(style.paddingLeft, 0);
-    const padRight = pixels(style.paddingRight, 0);
-    const padTop = pixels(style.paddingTop, 0);
-    const rect = content.getBoundingClientRect();
-    const boxLeft = rect.left + padLeft;
-    const boxRight = rect.right - padRight;
-    // The widgets end where the children of the content end, and never beyond the content box.
-    let childRight = Number.NEGATIVE_INFINITY;
-    for (const child of content.children) {
-      const box = child.getBoundingClientRect();
-      if (box.width > 0 && box.height > 0) childRight = Math.max(childRight, box.right);
-    }
-    const right = childRight > boxLeft ? Math.min(boxRight, childRight) : boxRight;
-    const gutter = grid
-      ? pixels(view.getComputedStyle(grid.columns).columnGap, FALLBACK_GUTTER_PX)
-      : FALLBACK_GUTTER_PX;
-    if (dashboard) {
-      arrangeWidget(grid, viewportWidth);
-      return;
-    }
-    const need = PANEL_EDGE_GAP_PX + PANEL_WIDTH_PX + gutter;
-    // The padding moves the edge of the content box, so the space is measured from the box.
-    const extra = Math.max(0, need - (viewportWidth - boxRight));
-
-    if (boxRight - boxLeft - extra < MIN_CONTENT_PX) {
-      moveContainer(container, parent, content);
-      setContainerStyle(container, `margin:${padTop}px ${padRight}px 0 ${padLeft}px`);
-      setPanelMode(container, 'stack');
-
-      return;
-    }
-
-    if (extra > 0) setInlineStyles(content, { 'padding-right': `${padRight + extra}px` });
-    moveContainer(container, parent, content);
-    // The first widget row, or the top of the content in List View, after the padding took effect.
-    const top = grid
-      ? grid.columns.getBoundingClientRect().top
-      : content.getBoundingClientRect().top + padTop;
-    const left = extra > 0 ? viewportWidth - PANEL_EDGE_GAP_PX - PANEL_WIDTH_PX : right + gutter;
-    const origin = originOf(doc, container);
-    const offsetTop = top - origin.top;
-    const reach = origin.element
-      ? 'bottom:0'
-      : `height:${Math.max(0, doc.documentElement.scrollHeight - offsetTop)}px`;
-    setContainerStyle(
-      container,
-      `position:absolute;top:${offsetTop}px;left:${left - origin.left}px;width:${PANEL_WIDTH_PX}px;` +
-        `${reach};pointer-events:none;z-index:${PANEL_Z_INDEX};${PANEL_VARIABLES}`,
-    );
-    setPanelMode(container, 'float');
-  }
-
-  /** Puts the page in its natural state, measures it, and places the list. */
   function arrange(grid: WidgetGrid | null): void {
-    keepCardScroll(container, () => {
-      clearAllInlineStyles(doc);
-      // Out of the flow while the page is measured, so that the list changes no size.
-      setContainerStyle(container, 'position:absolute');
-      const viewportWidth = doc.documentElement.clientWidth;
-      if (grid !== null || doc.querySelector('[data-testid="dashboard-tab-content"]'))
-        arrangeWidget(grid, viewportWidth);
-      else arrangeFloating(grid, viewportWidth, grid !== null || seenGrid);
-    });
+    keepCardScroll(container, () => arrangeWidget(grid, doc.documentElement.clientWidth));
     trackScroll();
     restoreScroll();
   }
 
   function place(force: boolean): void {
     const grid = findWidgetGrid(doc);
-    if (grid) seenGrid = true;
-    if (!force && sameKey(keyOf(grid), applied)) return;
+    const content = doc.getElementById('content');
+    if (
+      !ready &&
+      (grid ||
+        findDashboardPanel(doc) ||
+        content?.querySelector('#dashboard-planner, #dashboard_header_container'))
+    )
+      ready = true;
+    if (!ready) {
+      setContainerStyle(container, 'display:none');
+      return;
+    }
+    view.clearTimeout(deadline);
+    const key = [
+      grid?.columns,
+      findDashboardPanel(doc),
+      container.parentNode,
+      container.firstElementChild,
+    ];
+    if (!force && sameKey(key, applied)) return;
     arrange(grid);
-    applied = keyOf(grid);
+    applied = key;
   }
 
   const observer = new MutationObserver((records) => {
-    if (records.some((record) => !container.contains(record.target) && record.target !== container))
+    if (
+      !container.isConnected ||
+      records.some((record) => {
+        if (record.target === container) return record.type === 'childList';
+        if (container.contains(record.target)) return false;
+        if (record.type === 'attributes')
+          return record.target === body || !!doc.getElementById('content')?.contains(record.target);
+        return (
+          record.target !== body &&
+          record.target !== doc.documentElement &&
+          !!doc.getElementById('content')?.contains(record.target)
+        );
+      })
+    )
       schedule();
-    else keep();
   });
   const sizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
 
   function schedule(): void {
-    if (frame !== undefined) return;
+    if (stopped || frame !== undefined) return;
     frame = view.requestAnimationFrame(() => {
       frame = undefined;
       keep(true);
@@ -268,6 +207,9 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
   }
 
   function stop(): void {
+    stopped = true;
+    view.clearTimeout(deadline);
+    scrollRoot?.removeEventListener('scroll', onScroll, true);
     observer.disconnect();
     sizeObserver?.disconnect();
     view.removeEventListener('resize', schedule);
@@ -290,7 +232,7 @@ export function claimDashboardLayout(doc: Document, container: HTMLElement): () 
     // The card places itself by the size of the content box and of the grid, so a change in
     // either one, such as a window or zoom change that the grid answers, places it again.
     for (const element of [
-      doc.querySelector<HTMLElement>('[data-testid="dashboard-tab-content"]'),
+      findDashboardPanel(doc),
       doc.getElementById('content'),
       doc.getElementById('content-wrapper'),
       findWidgetGrid(doc)?.columns,
