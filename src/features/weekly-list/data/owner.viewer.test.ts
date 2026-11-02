@@ -183,6 +183,17 @@ describe('viewer reads', () => {
     expect(other.canvas.calls).toHaveLength(0);
   });
 
+  it('starts no check and clears nothing for a tab without a readable sign-in cookie', async () => {
+    const h = await loaded();
+    const cleared = vi.fn();
+    h.deps.onUserDataCleared = cleared;
+    const calls = h.canvas.calls.length;
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
+    await expect(h.owner.viewerConfirm(ORIGIN, TAB)).resolves.toBe(false);
+    expect(h.canvas.calls).toHaveLength(calls);
+    expect(cleared).not.toHaveBeenCalled();
+  });
+
   it('drops the reply when the cookie changes during the read', async () => {
     const h = await loaded();
     const read = vi.fn(async () => {

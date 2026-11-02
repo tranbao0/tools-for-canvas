@@ -120,14 +120,17 @@ export async function savePosition(
   await records.remove(ids.filter((id) => !newest.has(id)));
 }
 
-/** Removes all saved positions. */
-export async function clearPositions(): Promise<void> {
-  await records.remove(await records.ids());
-}
+/** The key that held the whole map of positions in an earlier build. */
+const OLD_MAP_KEY = 'viewerPositions';
 
 /** Removes the key that holds the whole map of positions, which an earlier build wrote. */
 export function removeOldPositionMap(): Promise<void> {
-  return records.removeKey('viewerPositions');
+  return records.removeKey(OLD_MAP_KEY);
+}
+
+/** Removes all saved positions, and the whole map of an earlier build if one is left. */
+export async function clearPositions(): Promise<void> {
+  await Promise.all([records.remove(await records.ids()), removeOldPositionMap()]);
 }
 
 export interface PositionReply {

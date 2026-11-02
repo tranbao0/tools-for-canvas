@@ -105,10 +105,10 @@ it('keeps only the entries of one student at one Canvas, and reads no value to f
   expect(await storedKeys()).toEqual([PREFIX + positionKey(ORIGIN, '1', '1'), 'unrelated'].sort());
 });
 
-it('clears all positions and leaves other keys', async () => {
+it('clears all positions and the whole map of an earlier build, and leaves other keys', async () => {
   await savePosition(ORIGIN, '1', '1', { page: 2, zoom: 1 }, 1);
   await savePosition(ORIGIN, '2', '3', { page: 2, zoom: 1 }, 1);
-  await fakeBrowser.storage.local.set({ settings: { theme: 'dark' } });
+  await fakeBrowser.storage.local.set({ settings: { theme: 'dark' }, viewerPositions: { a: 1 } });
   await clearPositions();
   expect(await storedKeys()).toEqual(['settings']);
 });

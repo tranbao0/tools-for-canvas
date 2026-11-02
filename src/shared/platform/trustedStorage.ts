@@ -207,7 +207,14 @@ export function createTrustedRecords<T>(
   const dropKeys = async (names: readonly string[]): Promise<void> => {
     if (names.length === 0) return;
     if (vault === null) await browser.storage.local.remove([...names]);
-    else for (const name of names) await vault.set(name, null);
+    else await Promise.all(names.map((name) => vault.set(name, null)));
+  };
+  /** The stored values of these keys, read together. */
+  const readMany = async (names: readonly string[]): Promise<Record<string, unknown>> => {
+    if (vault === null) return browser.storage.local.get([...names]);
+    return Object.fromEntries(
+      await Promise.all(names.map(async (name) => [name, await vault.get(name)] as const)),
+    );
   };
   return {
     ids: async () => (await keys()).map(idOf),
@@ -215,9 +222,11 @@ export function createTrustedRecords<T>(
       return parse(await read(keyOf(id)));
     },
     async all() {
+      const names = await keys();
+      const values = await readMany(names);
       const result = new Map<string, T>();
-      for (const key of await keys()) {
-        const record = parse(await read(key));
+      for (const key of names) {
+        const record = parse(values[key]);
         if (record !== undefined) result.set(idOf(key), record);
       }
       return result;
