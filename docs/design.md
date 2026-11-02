@@ -2467,7 +2467,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      The background refuses a save from a browser tab that has already closed, because it cannot check the cookie store of that tab, so a browser tab that closes within the idle time loses the last move.
      The read gives a token that names the student and the clearing round, as the tabs of the pane do.
      A save must carry the token of its last read, so a pane that stays open cannot save its position for the next student, or after a clearing.
-     A save also removes the entries of other students and of other Canvas addresses, so a student who signs in after another, also after a browser restart, never leaves the earlier student's files on disk.
+     A read or a save also removes the entries of other students and of other Canvas addresses, so the files of the earlier student leave the disk as soon as the next student opens a PDF, also after a browser restart.
+     The calls of one browser tab run in the order they arrive, like the tabs routes.
      A failed read or write does not block the viewer, and a viewer without a token does not save.
    - **Search.**
      The search bar opens under the toolbar.

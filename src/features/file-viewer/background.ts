@@ -208,8 +208,14 @@ export function routeViewerMessage(
         return withPositions(async () => {
           if (epoch !== (await readEpoch(host))) throw new Error('The viewer session changed');
           const key = positionKey(origin, student, request['fileId'] as string);
-          const positions = keepStudent(await viewerPositionsItem.getValue(), origin, student);
-          if (!writing) return { position: positions[key] ?? null, token };
+          const stored = await viewerPositionsItem.getValue();
+          const positions = keepStudent(stored, origin, student);
+          if (!writing) {
+            // The earlier student's entries leave the disk as soon as another student opens a PDF.
+            if (Object.keys(positions).length !== Object.keys(stored).length)
+              await viewerPositionsItem.setValue(positions);
+            return { position: positions[key] ?? null, token };
+          }
           positions[key] = {
             page: request['page'] as number,
             zoom: request['zoom'] as SavedZoom,
@@ -282,7 +288,8 @@ export function routeViewerMessage(
   // The reads and writes of the tabs of one browser tab run in the order they arrive, so the last
   // write that arrives is the last one stored.
   const tabId = sender.tab?.id;
-  return tabId !== undefined && /^viewer:tabs-(?:get|set)$/.test(String(request['type']))
+  return tabId !== undefined &&
+    /^viewer:(?:tabs|position)-(?:get|set)$/.test(String(request['type']))
     ? enqueue(tabId, run)
     : run();
 }
@@ -357,19 +364,31 @@ export function wireViewerRouter(
   });
 }
 
-/** Removes the tabs that the viewer keeps for every browser tab. The pane secrets stay. */
-export async function clearViewerTabs(): Promise<void> {
-  const values = await browser.storage.session.get(null);
-  const epoch = typeof values[EPOCH_KEY] === 'number' ? values[EPOCH_KEY] : 0;
-  // The new epoch comes first, so a write with an old token fails even while the keys go.
-  await browser.storage.session.set({ [EPOCH_KEY]: epoch + 1 });
-  const keys = Object.keys(values).filter(
-    (key) => key.startsWith('viewer:') && !key.startsWith(SESSION_PREFIX),
-  );
-  // Both run, so a failure of one never leaves the other data of the old student behind.
-  const results = await Promise.allSettled([
-    withPositions(() => viewerPositionsItem.setValue({})),
-    keys.length > 0 ? browser.storage.session.remove(keys) : Promise.resolve(),
-  ]);
-  for (const result of results) if (result.status === 'rejected') throw result.reason;
+/**
+ * Removes the tabs and the saved positions that the viewer keeps for every browser tab. The pane
+ * secrets stay. The steps run one after another with the position writes, so two clears never
+ * share an epoch, and a failed step never leaves the data of the other steps behind.
+ */
+export function clearViewerTabs(): Promise<void> {
+  return withPositions(async () => {
+    const failures: unknown[] = [];
+    let values: Record<string, unknown> = {};
+    try {
+      values = await browser.storage.session.get(null);
+      const epoch = typeof values[EPOCH_KEY] === 'number' ? values[EPOCH_KEY] : 0;
+      // The new epoch comes first, so a write with an old token fails even while the data goes.
+      await browser.storage.session.set({ [EPOCH_KEY]: epoch + 1 });
+    } catch (error) {
+      failures.push(error);
+    }
+    const keys = Object.keys(values).filter(
+      (key) => key.startsWith('viewer:') && !key.startsWith(SESSION_PREFIX),
+    );
+    const results = await Promise.allSettled([
+      viewerPositionsItem.setValue({}),
+      keys.length > 0 ? browser.storage.session.remove(keys) : Promise.resolve(),
+    ]);
+    for (const result of results) if (result.status === 'rejected') failures.push(result.reason);
+    if (failures.length > 0) throw failures[0];
+  });
 }

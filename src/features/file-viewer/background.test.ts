@@ -400,7 +400,40 @@ describe('saved positions', () => {
     ).resolves.toMatchObject({ position: null });
   });
 
-  it('drops the positions of other students when it saves', async () => {
+  it('runs the position calls of one browser tab in the order they arrive', async () => {
+    const { host, pane } = setup();
+    await clearViewerTabs();
+    const token = (
+      (await routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host)) as {
+        token: string;
+      }
+    ).token;
+    // The first save waits at the cookie check. The second save and the read come after it.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    vi.mocked(host.userId).mockImplementationOnce(async () => {
+      await held;
+      return 'u1';
+    });
+    const set = (page: number) =>
+      routeViewerMessage(
+        { type: 'viewer:position-set', fileId: '1', page, zoom: 1, token },
+        pane,
+        host,
+      );
+    const first = set(2);
+    const second = set(5);
+    const read = routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host);
+    release();
+    const [, , seen] = await Promise.all([first, second, read]);
+    // The read comes after both saves, and the later save is the one that stays.
+    expect(seen).toMatchObject({ position: { page: 5 } });
+    expect(
+      await routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host),
+    ).toMatchObject({ position: { page: 5 } });
+  });
+
+  it('drops the positions of other students when it reads or saves', async () => {
     const { host, pane } = setup();
     await clearViewerTabs();
     const get = () =>
@@ -416,6 +449,9 @@ describe('saved positions', () => {
       );
     await set((await get()).token);
     vi.mocked(host.userId).mockResolvedValue('u2');
+    // A read of the next student removes the earlier student's entry.
+    await get();
+    expect(Object.keys(await viewerPositionsItem.getValue())).toEqual([]);
     await set((await get()).token);
     const stored = Object.keys(await viewerPositionsItem.getValue());
     expect(stored).toEqual([positionKey('https://school.edu', 'u2', '1')]);
