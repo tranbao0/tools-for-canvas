@@ -65,6 +65,26 @@ export const viewerPositionsItem = createTrustedItem<ViewerPositions>({
   normalize: normalizePositions,
 });
 
+export interface PositionReply {
+  position: ViewerPosition | null;
+  /** The token that a save must carry. */
+  token: string;
+}
+
+/** Reads the answer of `viewer:position-get`, or `null` when the answer is not one. */
+export function parsePositionReply(reply: unknown): PositionReply | null {
+  if (typeof reply !== 'object' || reply === null) return null;
+  const { position, token } = reply as { position?: unknown; token?: unknown };
+  if (typeof token !== 'string' || token === '') return null;
+  if (typeof position !== 'object' || position === null) return { position: null, token };
+  const { page, zoom, at } = position as Partial<ViewerPosition>;
+  if (typeof page !== 'number' || !validPosition(page, zoom)) return { position: null, token };
+  return {
+    position: { page, zoom: zoom as SavedZoom, at: typeof at === 'number' ? at : 0 },
+    token,
+  };
+}
+
 let tail: Promise<unknown> = Promise.resolve();
 /** Serializes writes and clears across all browser tabs. */
 export function withPositions<T>(run: () => Promise<T>): Promise<T> {

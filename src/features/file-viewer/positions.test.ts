@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { normalizePositions, positionKey, validPosition } from './positions';
+import { normalizePositions, parsePositionReply, positionKey, validPosition } from './positions';
 
 it('keeps the newest 200 positions', () => {
   const stored = Object.fromEntries(
@@ -23,6 +23,22 @@ it('drops bad keys and values and strips extra fields', () => {
   for (const zoom of [0, 6, Infinity, '150%', {}, null]) expect(validPosition(1, zoom)).toBe(false);
   for (const zoom of [0.25, 5, 'fit-page', 'fit-width']) expect(validPosition(1, zoom)).toBe(true);
   expect(normalizePositions(null)).toEqual({});
+});
+
+it('reads only a well formed answer of the position route', () => {
+  expect(parsePositionReply({ position: null, token: '0:u1' })).toEqual({
+    position: null,
+    token: '0:u1',
+  });
+  expect(
+    parsePositionReply({ position: { page: 2, zoom: 'fit-page', at: 5, extra: 1 }, token: 't' }),
+  ).toEqual({ position: { page: 2, zoom: 'fit-page', at: 5 }, token: 't' });
+  expect(parsePositionReply({ position: { page: 0, zoom: 1 }, token: 't' })).toEqual({
+    position: null,
+    token: 't',
+  });
+  for (const reply of [undefined, null, 'x', {}, { position: null }, { position: null, token: '' }])
+    expect(parsePositionReply(reply)).toBeNull();
 });
 
 it('separates students, origins and files', () => {

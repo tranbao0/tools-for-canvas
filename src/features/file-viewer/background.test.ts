@@ -369,10 +369,11 @@ describe('saved positions', () => {
   it('validates fields and refuses an unconfirmed student', async () => {
     const { host, pane } = setup();
     for (const fields of [
-      { fileId: '../1' },
-      { fileId: '1', page: 0, zoom: 1 },
-      { fileId: '1', page: 1, zoom: 6 },
-      { fileId: '1', page: 1, zoom: 1, student: 'other' },
+      { fileId: '../1', token: '0:u1' },
+      { fileId: '1', page: 0, zoom: 1, token: '0:u1' },
+      { fileId: '1', page: 1, zoom: 6, token: '0:u1' },
+      { fileId: '1', page: 1, zoom: 1 },
+      { fileId: '1', page: 1, zoom: 1, token: '0:u1', student: 'other' },
     ]) {
       await expect(
         routeViewerMessage({ type: 'viewer:position-set', ...fields }, pane, host),
@@ -387,19 +388,56 @@ describe('saved positions', () => {
   it('isolates students and clears positions with tabs', async () => {
     const { host, pane } = setup();
     await clearViewerTabs();
-    await routeViewerMessage(
-      { type: 'viewer:position-set', fileId: '1', page: 3, zoom: 1.5 },
-      pane,
-      host,
-    );
-    const get = () => routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host);
-    expect(await get()).toMatchObject({ page: 3, zoom: 1.5 });
+    const get = () =>
+      routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host) as Promise<{
+        position: unknown;
+        token: string;
+      }>;
+    const set = (token: string) =>
+      routeViewerMessage(
+        { type: 'viewer:position-set', fileId: '1', page: 3, zoom: 1.5, token },
+        pane,
+        host,
+      );
+    const first = await get();
+    expect(first.position).toBeNull();
+    await set(first.token);
+    expect(await get()).toMatchObject({ position: { page: 3, zoom: 1.5 } });
     vi.mocked(host.userId).mockResolvedValue('u2');
-    expect(await get()).toBeNull();
+    const second = await get();
+    expect(second.position).toBeNull();
+    expect(second.token).not.toBe(first.token);
     vi.mocked(host.userId).mockResolvedValue('u1');
     await clearViewerTabs();
-    expect(await get()).toBeNull();
+    expect((await get()).position).toBeNull();
     vi.mocked(host.mayFetch).mockResolvedValue(false);
     await expect(get()).rejects.toThrow('may not read');
+  });
+
+  it('refuses a save with the token of another student or of an older clearing', async () => {
+    const { host, pane, store } = setup();
+    await clearViewerTabs();
+    const get = () =>
+      routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host) as Promise<{
+        position: unknown;
+        token: string;
+      }>;
+    const set = (token: string) =>
+      routeViewerMessage(
+        { type: 'viewer:position-set', fileId: '1', page: 3, zoom: 1.5, token },
+        pane,
+        host,
+      );
+    const { token } = await get();
+    // A pane of the first student stays open while the second student signs in.
+    vi.mocked(host.userId).mockResolvedValue('u2');
+    await expect(set(token)).rejects.toThrow('changed since it was read');
+    expect((await get()).position).toBeNull();
+    // A pane that read before a clearing cannot write after it.
+    vi.mocked(host.userId).mockResolvedValue('u1');
+    await clearViewerTabs();
+    store.set('viewer:session:epoch', 1);
+    await expect(set(token)).rejects.toThrow('changed since it was read');
+    expect((await get()).position).toBeNull();
   });
 });

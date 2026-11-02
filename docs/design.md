@@ -2461,7 +2461,11 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      Each PDF tab reads its saved page and zoom through the checked background routes.
      After the document loads, the viewer applies the zoom first and then goes to the saved page, clamped to the page count.
      A scroll or zoom change saves after one second of idle time.
-     A failed read or write does not block the viewer.
+     A save that still waits goes out at once when the pane page unloads, such as on a reload, or when the file tab in the pane closes.
+     The background refuses a save from a browser tab that has already closed, because it cannot check the cookie store of that tab, so a browser tab that closes within the idle time loses the last move.
+     The read gives a token that names the student and the clearing round, as the tabs of the pane do.
+     A save must carry the token of its last read, so a pane that stays open cannot save its position for the next student, or after a clearing.
+     A failed read or write does not block the viewer, and a viewer without a token does not save.
    - **Search.**
      The search bar opens under the toolbar.
      The search ignores case and reads the text of every page once, in the background of the first search.

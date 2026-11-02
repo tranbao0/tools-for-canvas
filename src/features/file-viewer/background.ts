@@ -185,22 +185,28 @@ export function routeViewerMessage(
       case 'viewer:position-get':
       case 'viewer:position-set': {
         const writing = request['type'] === 'viewer:position-set';
-        const fields = writing ? ['type', 'fileId', 'page', 'zoom'] : ['type', 'fileId'];
+        const fields = writing ? ['type', 'fileId', 'page', 'zoom', 'token'] : ['type', 'fileId'];
         if (
           Object.keys(request).some((key) => !fields.includes(key)) ||
           !id(request['fileId']) ||
-          (writing && !validPosition(request['page'], request['zoom']))
+          (writing && (!validPosition(request['page'], request['zoom']) || !request['token']))
         )
           throw new Error('Invalid viewer position');
         const epoch = await readEpoch(host);
         if (!(await host.mayFetch(origin, tabId))) throw new Error('The viewer may not read');
         const student = await host.userId(origin, tabId);
         if (student === null) throw new Error('The cookie is not confirmed for the viewer');
+        // The token names the student and the clearing round. A write must carry the token that
+        // the last read gave, so a pane that stayed open cannot save the position of one student
+        // as the position of another, or after a clearing.
+        const token = `${epoch}:${student}`;
+        if (writing && request['token'] !== token)
+          throw new Error('The position changed since it was read');
         return withPositions(async () => {
           if (epoch !== (await readEpoch(host))) throw new Error('The viewer session changed');
           const key = positionKey(origin, student, request['fileId'] as string);
           const positions = await viewerPositionsItem.getValue();
-          if (!writing) return positions[key] ?? null;
+          if (!writing) return { position: positions[key] ?? null, token };
           positions[key] = {
             page: request['page'] as number,
             zoom: request['zoom'] as SavedZoom,
