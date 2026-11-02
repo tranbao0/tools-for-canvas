@@ -525,7 +525,7 @@ describe('actions', () => {
     ['signed_out', { kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: null }],
     ['loading', { kind: 'loading' }],
     ['the address form', { kind: 'not_set_up', offer: null, savedOrigin: ORIGIN }],
-  ] as const)('drops the notice when the state is %s', async (_name, other) => {
+  ] as const)('keeps the notice when the state is %s', async (_name, other) => {
     const { fake, runtime } = await started(undoHost());
     runtime.actions.setDone('assignment:1', true);
     await settle();
@@ -539,7 +539,7 @@ describe('actions', () => {
     fake.reply = base;
     fake.changed();
     await settle();
-    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: null });
+    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: DONE_INFO });
   });
 
   it('keeps the notice while another week loads', async () => {
@@ -562,7 +562,7 @@ describe('actions', () => {
     expect(runtime.state()).toMatchObject({ kind: 'ready', refreshing: true, undo: DONE_INFO });
   });
 
-  it('sends the delete when a delete notice drops because the state is not ready', async () => {
+  it('keeps Undo and does not send a delete during a check', async () => {
     const { fake, runtime } = await started(undoHost());
     runtime.actions.deleteTask('8');
     await settle();
@@ -574,8 +574,8 @@ describe('actions', () => {
     fake.changed();
     await settle();
 
-    expect(runtime.state()).toEqual({ kind: 'loading' });
-    expect(sentActions(fake.sent)).toEqual([{ kind: 'sendDelete', noteId: '8' }]);
+    expect(runtime.state()).toMatchObject({ kind: 'loading', undo: { kind: 'deleted' } });
+    expect(sentActions(fake.sent)).toEqual([]);
   });
 
   it('keeps a new notice when an answer to a request sent before it arrives late', async () => {

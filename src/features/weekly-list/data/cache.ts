@@ -39,7 +39,14 @@ export type Failure =
   /** Any 401, then `GET /api/v1/users/self` also returned 401. */
   | { kind: 'signed_out' }
   /** A refresh failed with a "Can't refresh" cause. The cause is kept for logs and retries. */
-  | { kind: 'stale'; offline: boolean; cause: CanvasErrorKind | 'unknown'; at: number };
+  | {
+      kind: 'stale';
+      offline: boolean;
+      cause: CanvasErrorKind | 'unknown';
+      at: number;
+      /** The sign-in check of the cached data failed, not a round. A good check clears it. */
+      check?: true;
+    };
 
 export type RoundScope = 'light' | 'full';
 
@@ -54,6 +61,8 @@ export interface RoundLimits {
 
 export interface SessionCache {
   origin: string;
+  /** The student of the cache, the last good check, and the session fingerprints it confirmed. */
+  userCheck?: { userId: string; at: number; fingerprints: string[] };
   session: SessionData | null;
   /** The planner items, merged from every load, and the spans they are complete for. */
   planner: PlannerCoverage;

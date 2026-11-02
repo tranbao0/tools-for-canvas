@@ -234,6 +234,9 @@ export async function serveFakeCanvas(
   options: FakeCanvasOptions = {},
 ): Promise<FakeCanvas> {
   const origin = new URL(options.origin ?? FAKE_CANVAS_ORIGIN).origin;
+  await context.addCookies([
+    { name: 'canvas_session', value: 'session-a', url: origin, secure: true, sameSite: 'Lax' },
+  ]);
   const latencyMs = options.latencyMs ?? 0;
   const replies = new Map<FakeCanvasRoute, Reply>();
   for (const route of routes) if (!isHandlerRoute(route)) replies.set(route, replyFor(route));

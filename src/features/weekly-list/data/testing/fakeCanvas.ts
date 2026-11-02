@@ -201,6 +201,7 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
   function methods(priority: PrioritySource): Omit<CanvasApi, 'origin' | 'withPriority'> {
     return {
       getSelf: () => call('getSelf', [], () => scenario.self, priority),
+      checkCacheUser: () => call('getSelf', [], () => scenario.self, priority),
       getProfile: () => call('getProfile', [], () => scenario.profile, priority),
       listCourses: () => call('listCourses', [], () => scenario.courses, priority),
       getAnnouncement: (courseId, topicId) =>

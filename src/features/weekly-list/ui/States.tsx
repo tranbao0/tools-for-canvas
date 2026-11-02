@@ -135,6 +135,7 @@ export function StateBody(props: {
             <Heading level={level} class="wr-state-title">
               {t('cantLoadTitle')}
             </Heading>
+            {state.cacheCheckFailed && <p class="wr-state-body">{t('cacheCheckFailed')}</p>}
             {state.offline && browserIsOffline() && <p class="wr-state-body">{t('offline')}</p>}
           </div>
           <div class="wr-state-actions">

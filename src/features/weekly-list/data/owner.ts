@@ -162,6 +162,13 @@ interface DataStore {
 
 export interface DataOwnerDeps {
   createApi(origin: string): CanvasApi;
+  /**
+   * The salted fingerprint of the Canvas session cookie in the store that the requests use, or
+   * `null` without a session cookie. It rejects when the cookie cannot be read.
+   */
+  sessionFingerprint(origin: string): Promise<string | null>;
+  /** Whether the tab of a surface lives in the store that the requests use. */
+  surfaceUsesRequestStore(tabId: number): Promise<boolean>;
   /** Whether the browser lets the extension reach the origin now (decision 5). */
   hasAccess(origin: string): Promise<boolean>;
   store: DataStore;
@@ -185,7 +192,8 @@ interface RefreshResult {
 }
 
 export interface DataOwner {
-  getState(request: SurfaceRequest): Promise<StateReply>;
+  /** `tabId` is the tab of the surface, when it has one. */
+  getState(request: SurfaceRequest, tabId?: number): Promise<StateReply>;
   refresh(reason: RefreshReason): Promise<RefreshResult>;
   trigger(reason: BrowserTrigger): Promise<void>;
   /** A page of `origin` loaded. Only the saved Canvas counts. */
@@ -206,27 +214,17 @@ export interface DataOwner {
    */
   acceptOffer(origin: string): Promise<boolean>;
   act(action: DataAction): Promise<ActionReply>;
-  /**
-   * Reads dashboard data from the cache. It starts with GET /users/self to check the student,
-   * unless the last check is under 30 seconds old or no student is signed in.
-   * A different student calls dropUserData(): it persists the cleared cache, sends a change
-   * notice and schedules a full refresh round.
-   * That round requests the profile, courses, groups, colors, dashboard positions, planner
-   * items, planner overrides, assignment details, undated assignments and custom grade statuses.
-   * It also requests all assignments and GET /users/self when the planner answers 403.
-   * It writes the refreshed cache and sends change notices.
-   * A 401 calls signOut(), which clears the session and sends a change notice.
-   */
-  dashboardData(): Promise<DashboardData>;
+  /** The data of the dashboard fixes, from the cache. It makes no request (decision 22). */
+  dashboardData(origin?: string | null, tabId?: number): Promise<DashboardData>;
   /**
    * The grade visibilities of the signed-in student, read live. The sign-in check confirms the
    * student first, and the reply names that student. `token` names the read for a late result.
    */
   dashboardGradeVisibility(token?: string): Promise<DashboardData>;
   /** One announcement of the saved Canvas with its full message. */
-  announcement(courseId: string, topicId: string): Promise<AnnouncementBody>;
+  announcement(courseId: string, topicId: string, origin: string | null): Promise<AnnouncementBody>;
   /** The recent announcements of one course. */
-  announcements(courseId: string): Promise<AnnouncementEntry[]>;
+  announcements(courseId: string, origin: string | null): Promise<AnnouncementEntry[]>;
   /**
    * The Announcements tab of one surface: the announcements of the last 14 days of the courses
    * the student shows, with the read marks applied (decision 24). The first request loads them
@@ -509,7 +507,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     let restored: ReturnType<typeof withoutUnsentWrites>;
     try {
       // A cache of an older shape can lack fields. They take their empty values.
-      restored = withoutUnsentWrites({ ...emptyCache(origin), ...stored });
+      const { userCheck, ...rest } = stored;
+      restored = withoutUnsentWrites({
+        ...emptyCache(origin),
+        ...rest,
+        ...(Array.isArray(userCheck?.fingerprints) ? { userCheck } : {}),
+      });
     } catch (error) {
       deps.log('cache restore', error);
       cache = emptyCache(origin);
@@ -840,6 +843,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const startedAt = context.now;
     const api = apiFor(origin);
     let update: RoundUpdate | null = null;
+    // The first request of the round starts right after this read, so the round's own user
+    // check binds to this fingerprint and to no later one.
+    const roundFingerprint = (await readFingerprint(origin)) ?? null;
+    if (gen !== generation || cache === null) return;
     let failure: Failure | null = null;
     try {
       update = await runRound({
@@ -856,7 +863,16 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           if (gen !== generation || cache === null || cache.session !== null) return;
           cache = { ...cache, session };
           persist();
-          bumpLater();
+          // The session requests carried the cookie read before the round, as long as it is
+          // still the cookie now. The surfaces ask again only after that is settled.
+          track(
+            (async () => {
+              const now = await readFingerprint(origin);
+              if (gen !== generation || cache === null) return;
+              if (now === roundFingerprint) recordUserCheck(roundFingerprint);
+              await bump();
+            })(),
+          );
         },
       });
     } catch (error) {
@@ -867,10 +883,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       deps.log('refresh round', error);
       failure = await failureFor(error, api, clock.now());
     }
+    // The user request of the round can wait in the queue or back off after a rate limit. If the
+    // cookie changed by the end, the round cannot say which cookie its answer belongs to.
+    const unchanged = update !== null && (await readFingerprint(origin)) === roundFingerprint;
     if (gen !== generation || cache === null) return;
 
     if (update !== null) {
       cache = prune(settlePatches(commitUpdate(cache, update, clock.now()), startedAt), context);
+      recordUserCheck(unchanged ? roundFingerprint : null);
       loadStatusNames(context.settings, true);
     } else if (failure?.kind === 'signed_out') {
       signOut(failure);
@@ -1830,6 +1850,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           false,
         );
       case 'restore':
+        // An Undo can outlive the state that showed it, so it writes only for a student that the
+        // session cookie check confirms. The check also signs out a student without a cookie.
+        if (!(await signedInStudentOwnsCache())) return NO_UNDO;
         return restoreOverrides(action.userId, action.origin, action.entries);
       case 'createTask':
         return createTask(action.input);
@@ -1888,50 +1911,204 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   const MAX_LISTED_ANNOUNCEMENTS = 10;
   const ANNOUNCEMENT_WINDOW_MS = 180 * 24 * 60 * 60 * 1000;
 
-  /** How long a sign-in check of the dashboard data stays good. */
+  /** How long a sign-in check of cached data stays good, and the wait after a failed one. */
   const USER_CHECK_MS = 30_000;
-  let userCheckedAt = -Infinity;
+  /** The most fingerprints the cache keeps as confirmed for its student. */
+  const CONFIRMED_FINGERPRINTS = 3;
+  /** The most checks that start in 30 seconds. Only a tap on Retry goes past it. */
+  const MAX_CHECKS_PER_WINDOW = 2;
+  /** The start times of the checks of the last 30 seconds. */
+  let checkStarts: number[] = [];
+  let retryAt = -Infinity;
+  let userCheck: Promise<boolean> | null = null;
 
   /**
-   * Whether the student who is signed in now is the student of the cache. The dashboard data hold
-   * grades, so a page of another student must never get them: a student who signs in within the
-   * 60-second limit of a round would otherwise see the cache of the one before. A mismatch drops
-   * the cache, and a 401 signs out, as in a write.
+   * The fingerprint of the session cookie, `null` without one, or `undefined` when the store of
+   * the requests cannot be told. Only `null` means the student is signed out.
    */
-  async function signedInStudentOwnsCache(): Promise<boolean> {
-    const stamp = writeStamp();
-    if (stamp.origin === null || stamp.userId === null) return false;
-    if (clock.now() - userCheckedAt < USER_CHECK_MS) return true;
+  async function readFingerprint(origin: string): Promise<string | null | undefined> {
     try {
-      const self = await apiFor(stamp.origin).getSelf();
-      if (!isCurrent(stamp)) return false;
-      if (self.id === stamp.userId) {
-        userCheckedAt = clock.now();
-        return true;
-      }
-      await dropUserData();
+      return await deps.sessionFingerprint(origin);
     } catch (error) {
-      if (isCurrent(stamp) && isCanvasError(error, 'unauthorized')) {
-        signOut({ kind: 'signed_out' });
-      } else if (!isCurrent(stamp)) {
-        return false;
-      }
+      deps.log('session fingerprint', error);
+      return undefined;
     }
-    userCheckedAt = -Infinity;
-    return false;
   }
 
-  async function dashboardData(): Promise<DashboardData> {
+  /** Whether a surface may read cached data: a tab in another cookie store never may. */
+  async function surfaceMayRead(tabId: number | undefined): Promise<boolean> {
+    if (tabId === undefined) return true;
+    try {
+      return await deps.surfaceUsesRequestStore(tabId);
+    } catch (error) {
+      deps.log('cookie store', error);
+      return false;
+    }
+  }
+
+  /** Confirms the fingerprint that was read just before a request, for the student of the cache. */
+  function recordUserCheck(fingerprint: string | null): void {
+    if (cache?.session == null || fingerprint === null) return;
+    const userId = cache.session.profile.id;
+    const previous = cache.userCheck?.userId === userId ? cache.userCheck.fingerprints : [];
+    cache = {
+      ...cache,
+      userCheck: {
+        userId,
+        at: clock.now(),
+        fingerprints: [...previous.filter((value) => value !== fingerprint), fingerprint].slice(
+          -CONFIRMED_FINGERPRINTS,
+        ),
+      },
+    };
+    persist();
+  }
+
+  function confirmedFingerprint(fingerprint: string): boolean {
+    return (
+      cache?.session != null &&
+      cache.userCheck?.userId === cache.session.profile.id &&
+      cache.userCheck.fingerprints.includes(fingerprint)
+    );
+  }
+
+  /**
+   * Whether a check may start. A failed check blocks the next one for 30 seconds, also after a
+   * restart, and no more than two checks start in 30 seconds, whoever asks. Retry skips both.
+   */
+  function checkAllowed(explicitRetry: boolean): boolean {
+    if (explicitRetry) return true;
+    const now = clock.now();
+    checkStarts = checkStarts.filter((start) => now - start < USER_CHECK_MS);
+    const failure = cache?.failure;
+    const failedAt = failure?.kind === 'stale' && failure.check ? failure.at : -Infinity;
+    return (
+      checkStarts.length < MAX_CHECKS_PER_WINDOW &&
+      now >= Math.max(retryAt, failedAt + USER_CHECK_MS)
+    );
+  }
+
+  /** Keeps the failure of a check, so the surfaces show it, and starts the wait. */
+  async function failCheck(failure: Failure & { kind: 'stale' }): Promise<void> {
+    if (cache === null) return;
+    retryAt = clock.now() + USER_CHECK_MS;
+    const known = cache.failure?.kind === 'stale' && cache.failure.check === true;
+    cache = { ...cache, failure: { ...failure, check: true } };
+    persist();
+    if (!known) await bump();
+  }
+
+  /** The one check in flight, shared by every reader. */
+  function startUserCheck(): Promise<boolean> {
+    if (userCheck !== null) return userCheck;
+    const check = checkCacheUser().finally(() => {
+      if (userCheck === check) userCheck = null;
+    });
+    userCheck = check;
+    track(check);
+    return check;
+  }
+
+  /**
+   * Whether the signed-in student is the student of the cache, checked before cached data goes
+   * out (decision 11). The fingerprint of the session cookie is read here, with no request:
+   * - no cookie: signed out, and the cache goes;
+   * - a confirmed fingerprint: the data goes out, and a check that is 30 seconds old runs in the
+   *   background;
+   * - any other fingerprint: a check asks Canvas who is signed in, and the reader reads the
+   *   cookie again. A reader gets one check and one follow-up. If the cookie still has not been
+   *   confirmed after that, the data does not go out and the next check waits 30 seconds.
+   */
+  async function signedInStudentOwnsCache(explicitRetry = false): Promise<boolean> {
+    if (cache?.session == null || knownOrigin === null) return false;
+    const stamp = writeStamp();
+    const origin = knownOrigin;
+    for (let checks = 0; ; checks++) {
+      const fingerprint = await readFingerprint(origin);
+      if (!isCurrent(stamp)) return false;
+      if (fingerprint === undefined) return false;
+      if (fingerprint === null) {
+        signOut({ kind: 'signed_out' });
+        return false;
+      }
+      if (confirmedFingerprint(fingerprint)) {
+        const age = clock.now() - (cache?.userCheck?.at ?? -Infinity);
+        if (
+          checks === 0 &&
+          age >= USER_CHECK_MS &&
+          userCheck === null &&
+          checkAllowed(explicitRetry)
+        ) {
+          startUserCheck();
+        }
+        return true;
+      }
+      if (checks === 2) {
+        await failCheck({ kind: 'stale', offline: false, cause: 'unknown', at: clock.now() });
+        return false;
+      }
+      if (userCheck === null && !checkAllowed(explicitRetry)) return false;
+      if (!(await startUserCheck())) return false;
+    }
+  }
+
+  /**
+   * Asks Canvas who is signed in. A good answer confirms the fingerprint read just before the
+   * request started, and no later one: the cookie can change while the request runs, and the
+   * answer says nothing about the new value.
+   */
+  async function checkCacheUser(): Promise<boolean> {
+    const stamp = writeStamp();
+    if (stamp.origin === null || stamp.userId === null) return false;
+    const fingerprint = await readFingerprint(stamp.origin);
+    if (!isCurrent(stamp) || fingerprint === undefined) return false;
+    if (fingerprint === null) {
+      signOut({ kind: 'signed_out' });
+      return false;
+    }
+    checkStarts.push(clock.now());
+    try {
+      const self = await apiFor(stamp.origin).checkCacheUser();
+      if (!isCurrent(stamp)) return false;
+      if (self.id !== stamp.userId) {
+        await dropUserData();
+        return false;
+      }
+      recordUserCheck(fingerprint);
+      if (cache?.failure?.kind === 'stale' && cache.failure.check) {
+        cache = { ...cache, failure: null };
+        persist();
+        await bump();
+      }
+      return true;
+    } catch (error) {
+      if (!isCurrent(stamp)) return false;
+      if (isCanvasError(error, 'unauthorized')) signOut({ kind: 'signed_out' });
+      else {
+        const failure = await failureFor(error, apiFor(stamp.origin), clock.now());
+        if (isCurrent(stamp) && failure.kind === 'stale') await failCheck(failure);
+      }
+      return false;
+    }
+  }
+
+  async function dashboardData(
+    checkedOrigin?: string | null,
+    tabId?: number,
+  ): Promise<DashboardData> {
     await ready();
-    const origin = await savedOrigin();
+    const origin = checkedOrigin === undefined ? await savedOrigin() : checkedOrigin;
     if (
       origin === null ||
+      origin !== knownOrigin ||
       cache === null ||
       cache.session === null ||
+      !(await surfaceMayRead(tabId)) ||
       !(await signedInStudentOwnsCache())
     ) {
       return { origin: origin ?? '', ready: false, courses: [], extras: [] };
     }
+    const stamp = writeStamp();
     const session = cache.session;
     const base = await viewContext(origin);
     // Every course shows, also one that the student hid from the weekly list: the widgets of
@@ -1940,7 +2117,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       ...base,
       settings: { ...base.settings, span: EXTRAS_SPAN, hiddenCourseIds: [] },
     };
-    if (cache === null || cache.session === null) {
+    if (cache === null || cache.session === null || !isCurrent(stamp)) {
       return { origin, ready: false, courses: [], extras: [] };
     }
     const result = viewFor(
@@ -2059,23 +2236,28 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
   }
 
-  async function announcementApi(): Promise<CanvasApi> {
-    await ready();
-    const origin = await savedOrigin();
+  async function announcementApi(origin: string | null): Promise<CanvasApi> {
     if (origin === null) throw new Error('No Canvas address is saved');
     return apiFor(origin);
   }
 
-  async function announcement(courseId: string, topicId: string): Promise<AnnouncementBody> {
-    const topic = await (await announcementApi()).getAnnouncement(courseId, topicId);
+  async function announcement(
+    courseId: string,
+    topicId: string,
+    origin: string | null,
+  ): Promise<AnnouncementBody> {
+    const topic = await (await announcementApi(origin)).getAnnouncement(courseId, topicId);
     return {
       title: String(topic.title ?? ''),
       message: String(topic.message ?? '').slice(0, MAX_MESSAGE_CHARS),
     };
   }
 
-  async function announcements(courseId: string): Promise<AnnouncementEntry[]> {
-    const api = await announcementApi();
+  async function announcements(
+    courseId: string,
+    origin: string | null,
+  ): Promise<AnnouncementEntry[]> {
+    const api = await announcementApi(origin);
     const end = clock.now();
     const topics = await api.listAnnouncements(courseId, {
       start: isoInstant(end - ANNOUNCEMENT_WINDOW_MS),
@@ -2321,13 +2503,29 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   // State
   // ---------------------------------------------------------------------------------------------
 
-  async function getState(request: SurfaceRequest): Promise<StateReply> {
+  async function getState(request: SurfaceRequest, tabId?: number): Promise<StateReply> {
     await ready();
     const origin = await savedOrigin();
     if (origin !== knownOrigin) await handleOrigin(origin);
     const offer = offerForSurface(await store.offer.getValue(), origin, request.surface);
     if (origin === null) return { kind: 'not_set_up', offer };
     if (!(await deps.hasAccess(origin))) return { kind: 'no_access', origin, offer };
+    if (cache === null) return { kind: 'loading' };
+    if (cache.session !== null) {
+      const cantLoad = (offline: boolean): StateReply => ({
+        kind: 'cant_load',
+        cacheCheckFailed: true,
+        origin,
+        offline,
+        offer,
+      });
+      if (!(await surfaceMayRead(tabId))) return cantLoad(false);
+      // A cache that the check cleared, for a sign-out or another student, falls through.
+      if (!(await signedInStudentOwnsCache()) && cache?.session != null) {
+        if (origin !== knownOrigin) return { kind: 'loading' };
+        return cantLoad(cache.failure?.kind === 'stale' && cache.failure.offline);
+      }
+    }
     if (cache === null) return { kind: 'loading' };
     const failure = cache.failure;
     const offline = failure?.kind === 'stale' && failure.offline;
@@ -2343,8 +2541,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     if (session.courses.length === 0) return { kind: 'no_courses', origin, offer, allCourses: [] };
 
+    const stamp = writeStamp();
     const context = await viewContext(origin);
-    if (cache === null) return { kind: 'loading' };
+    if (cache === null || !isCurrent(stamp)) return { kind: 'loading' };
     const range = plannerRangeForView(session, request.spanOffset, context);
     noteShown(session, request.spanOffset, range, context);
     loadView(session, request.spanOffset, context);
@@ -2361,6 +2560,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (result.exact) loadAround(session, request.spanOffset, context);
 
     const seenNotes = await store.seenNotes.getValue();
+    if (!isCurrent(stamp)) return { kind: 'loading' };
     return {
       kind: 'ready',
       origin,
@@ -2419,6 +2619,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           await bump();
           return NO_RETRY;
         case 'retry':
+          retryAt = -Infinity;
+          if (cache?.session != null && !(await signedInStudentOwnsCache(true))) return NO_RETRY;
           scheduleForcedFull();
           return NO_RETRY;
       }
@@ -2432,6 +2634,17 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       await ready();
       if (origin !== (await savedOrigin())) return;
       await applyTrigger('page_loaded');
+      // A page load is the first sign of a sign-out or of another student. A surface that shows
+      // the list asks again, and the cookie check ends the list when the cookie is not the one
+      // of the cache. This reads the cookie only and makes no request.
+      if (cache?.session != null) {
+        const fingerprint = await readFingerprint(origin);
+        if (
+          fingerprint === null ||
+          (fingerprint !== undefined && !confirmedFingerprint(fingerprint))
+        )
+          await bump();
+      }
     },
 
     canvasDetected(origin) {

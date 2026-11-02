@@ -193,9 +193,13 @@ export function App(props: AppProps) {
   const level = baseLevel(surface);
 
   let body: ComponentChildren;
+  // The Undo notice shows with the list, and it also stays when another state replaces the list.
+  let showDock = state.kind !== 'ready' && state.undo != null;
   if (minimized) {
+    showDock = false;
     body = <MinimizedBar status={barStatus(state)} onExpand={() => setMinimized(false)} />;
   } else if (settingsFrom !== null) {
+    showDock = false;
     body = (
       <SettingsPanel
         data={props.settings}
@@ -209,6 +213,7 @@ export function App(props: AppProps) {
       />
     );
   } else if (state.kind === 'ready' && state.view.scopeCourseHidden) {
+    showDock = false;
     // The note on the home page of a course the student hid (design decision 4).
     body = (
       <NoticeLine
@@ -219,6 +224,7 @@ export function App(props: AppProps) {
       />
     );
   } else if (state.kind === 'ready') {
+    showDock = false;
     body = (
       <ReadyView
         surface={surface}
@@ -291,6 +297,13 @@ export function App(props: AppProps) {
       ref={rootRef}
     >
       {body}
+      {showDock && (
+        <Dock
+          undo={state.undo ?? null}
+          onUndo={() => actions.undo()}
+          onClose={() => actions.dismissUndo()}
+        />
+      )}
     </div>
   );
 }

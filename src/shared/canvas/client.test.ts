@@ -751,7 +751,7 @@ describe('rate limit backoff', () => {
   function rateLimitedThenOk(failures: number, failure: () => Response) {
     const state = { calls: 0 };
     server.use(
-      http.get(api('/api/v1/users/self'), () => {
+      http.get(api('/api/v1/users/self/profile'), () => {
         state.calls += 1;
         return state.calls <= failures ? failure() : HttpResponse.json({ id: '1', name: 'Ada' });
       }),
@@ -765,7 +765,7 @@ describe('rate limit backoff', () => {
   it('retries a 429 after 1 s and then 2 s', async () => {
     useRetryFakeTimers();
     const state = rateLimitedThenOk(2, tooMany);
-    const result = testClient().getSelf();
+    const result = testClient().getProfile();
 
     await settleUntil(() => state.calls === 1);
     await vi.advanceTimersByTimeAsync(999);
@@ -788,7 +788,7 @@ describe('rate limit backoff', () => {
     const state = rateLimitedThenOk(1, () =>
       HttpResponse.text('403 Forbidden (Rate Limit Exceeded)\n', { status: 403 }),
     );
-    const result = testClient().getSelf();
+    const result = testClient().getProfile();
     await settleUntil(() => state.calls === 1);
     await vi.advanceTimersByTimeAsync(1000);
     await expect(result).resolves.toMatchObject({ id: '1' });
@@ -798,7 +798,7 @@ describe('rate limit backoff', () => {
   it('gives up after 3 retries', async () => {
     useRetryFakeTimers();
     const state = rateLimitedThenOk(10, tooMany);
-    const error = catchError(testClient().getSelf());
+    const error = catchError(testClient().getProfile());
     for (const [calls, wait] of [
       [1, 1000],
       [2, 2000],
@@ -813,7 +813,7 @@ describe('rate limit backoff', () => {
 
   it('does not retry a server error', async () => {
     const state = rateLimitedThenOk(1, () => HttpResponse.json({}, { status: 503 }));
-    await expect(testClient().getSelf()).rejects.toMatchObject({ kind: 'server' });
+    await expect(testClient().getProfile()).rejects.toMatchObject({ kind: 'server' });
     expect(state.calls).toBe(1);
   });
 
@@ -822,7 +822,7 @@ describe('rate limit backoff', () => {
     const state = rateLimitedThenOk(1, tooMany);
     let profileCalls = 0;
     server.use(
-      http.get(api('/api/v1/users/self/profile'), () => {
+      http.get(api('/api/v1/users/self/colors'), () => {
         profileCalls += 1;
         return HttpResponse.json({ id: '1', time_zone: 'America/New_York' });
       }),
@@ -832,8 +832,8 @@ describe('rate limit backoff', () => {
       getCsrfToken: () => Promise.resolve(null),
       maxConcurrency: 1,
     });
-    const self = client.getSelf();
-    const profile = client.getProfile();
+    const self = client.getProfile();
+    const profile = client.getColors();
 
     await settleUntil(() => state.calls === 1);
     await settle();
@@ -1144,4 +1144,35 @@ describe('widget grade visibility timers', () => {
       vi.useRealTimers();
     }
   });
+});
+
+it('retries a rate limit on the user request used by rounds', async () => {
+  useRetryFakeTimers();
+  let calls = 0;
+  server.use(
+    http.get(api('/api/v1/users/self'), () => {
+      calls++;
+      return calls === 1
+        ? HttpResponse.text('Rate Limit Exceeded', { status: 429 })
+        : HttpResponse.json({ id: '42' });
+    }),
+  );
+  const result = testClient().getSelf();
+  await settleUntil(() => calls === 1);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(await result).toMatchObject({ id: '42' });
+  expect(calls).toBe(2);
+});
+
+it('ends a hung cache check at ten seconds without an offline error', async () => {
+  vi.useFakeTimers();
+  const client = createCanvasClient({
+    origin: ORIGIN,
+    getCsrfToken: async () => null,
+    fetchImpl: () => new Promise(() => undefined),
+  });
+  const result = catchError(client.checkCacheUser());
+  await vi.advanceTimersByTimeAsync(9999);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(await result).toMatchObject({ kind: 'server', message: "Couldn't reach Canvas" });
 });

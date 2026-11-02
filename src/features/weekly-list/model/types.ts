@@ -341,7 +341,7 @@ export interface UndoInfo {
   target?: string;
 }
 
-export type SurfaceState =
+export type SurfaceState = { undo?: UndoInfo | null } & (
   | { kind: 'loading' }
   /**
    * No Canvas address is saved. The offer is a Canvas that the detector found and that the student
@@ -361,6 +361,7 @@ export type SurfaceState =
   /** A refresh failed and no data is cached. */
   | {
       kind: 'cant_load';
+      cacheCheckFailed?: boolean;
       origin: string;
       offline: boolean;
       offer: Offer | null;
@@ -385,4 +386,5 @@ export type SurfaceState =
        * `name` is the short label: the trimmed course code, else the course name.
        */
       skippedCourses: { id: string; name: string }[];
-    };
+    }
+);

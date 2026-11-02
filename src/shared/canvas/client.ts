@@ -112,9 +112,10 @@ function assignmentsPath(courseId: string): string {
 }
 
 /**
- * Creates the Canvas client. All requests share one queue with at most `maxConcurrency`
+ * Creates the Canvas client. Data requests share one queue with at most `maxConcurrency`
  * requests in flight, and each request retries on a rate limit. Requests go at `normal`
  * priority; `withPriority` gives the same calls at another priority on the same queue.
+ * Cache checks bypass the queue and rate limit retries. The data owner controls their rate.
  */
 export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
   const origin = toCanvasOrigin(options.origin);
@@ -232,6 +233,26 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
       },
 
       getSelf: async () => getObject<UserSelf>('/api/v1/users/self'),
+
+      checkCacheUser: async () => {
+        const url = '/api/v1/users/self';
+        const request = transport({ method: 'GET', url, signal: AbortSignal.timeout(10_000) });
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const response = await Promise.race([
+            request,
+            new Promise<never>((_, reject) => {
+              timeout = setTimeout(
+                () => reject(new CanvasError('server', "Couldn't reach Canvas")),
+                10_000,
+              );
+            }),
+          ]);
+          return expectObject<UserSelf>(response.data, url);
+        } finally {
+          clearTimeout(timeout);
+        }
+      },
 
       getProfile: async () => getObject<Profile>('/api/v1/users/self/profile'),
 
