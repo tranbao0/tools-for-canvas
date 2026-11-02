@@ -13,7 +13,12 @@ import path from 'node:path';
 import { runForTargets } from './lib/build-output.mjs';
 
 /** The built scripts that run in web pages. */
-export const PAGE_SCRIPTS = Object.freeze(['detector.js', 'inpage.js', 'dashboard.js', 'viewer.js']);
+export const PAGE_SCRIPTS = Object.freeze([
+  'detector.js',
+  'inpage.js',
+  'dashboard.js',
+  'viewer.js',
+]);
 
 /**
  * The storage API of the extension and the IndexedDB that holds the saved address on Firefox:

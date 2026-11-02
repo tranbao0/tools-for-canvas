@@ -185,7 +185,11 @@ The file viewer reads a file record with `GET /api/v1/files/:id` from your saved
 The record supplies the file name, content type, size, download address and course when known.
 The file viewer resolves a module item with `GET /api/v1/courses/:id/modules/:id/items/:id` to find its file id.
 The extension stores the open file ids in session storage for each browser tab.
-It removes them when the browser tab closes.
+It also stores a random secret there for each open pane, so that only the Canvas page script and the pane page can talk to each other.
+The secret is never shown or sent anywhere.
+It removes the file ids and the secret when the browser tab closes.
+The file viewer reads a record or bytes only while the session cookie of your Canvas is the one that the extension confirmed for your account, so it never shows the file of another account.
+If it cannot confirm it, the pane shows "Open in Canvas" and reads nothing.
 The file viewer switch and pane width stay in local settings.
 The file viewer reads the bytes of a PDF from your saved Canvas address, with your own Canvas session.
 Canvas answers with a redirect to its own file storage, and the extension follows it.

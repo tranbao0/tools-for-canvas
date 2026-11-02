@@ -4,7 +4,14 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, test } from './support/weekrow';
-import { openCoursePage, openFirstFile, pane, saveSetting } from './support/file-viewer';
+import {
+  FILE_META,
+  FILE_NAME,
+  openCoursePage,
+  openFirstFile,
+  pane,
+  saveSetting,
+} from './support/file-viewer';
 
 const HOST = '#tools-file-viewer';
 
@@ -16,9 +23,9 @@ async function openThree(page: Page, prepare?: () => Promise<void>): Promise<voi
   await openFirstFile(page, 'Read notes', prepare);
   for (const name of ['Lecture photo', 'Syllabus']) {
     await fileLink(page, name).click();
-    await expect(pane(page).getByRole('tab', { selected: true })).toBeVisible();
+    await expect((await pane(page)).getByRole('tab', { selected: true })).toBeVisible();
   }
-  await expect(pane(page).getByRole('tab')).toHaveCount(3);
+  await expect((await pane(page)).getByRole('tab')).toHaveCount(3);
 }
 
 test('two files make two tabs, and the keyboard moves between them', async ({
@@ -28,12 +35,14 @@ test('two files make two tabs, and the keyboard moves between them', async ({
 }) => {
   await openCoursePage(context, page, background);
   await openFirstFile(page, 'Read notes');
-  await expect(pane(page).getByRole('heading', { name: 'Course notes.pdf' })).toBeVisible();
+  await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
   await fileLink(page, 'Lecture photo').click();
-  const tabs = pane(page).getByRole('tab');
+  const tabs = (await pane(page)).getByRole('tab');
   await expect(tabs).toHaveCount(2);
   await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
-  await expect(pane(page).getByRole('heading', { level: 2 })).toContainText('Lecture photo');
+  await expect((await pane(page)).getByRole('heading', { level: 2 })).toContainText(
+    'Lecture photo',
+  );
   // The tab shows the file name with an ellipsis, and the whole name in its tooltip.
   await expect(tabs.nth(1)).toHaveAttribute('title', /^Lecture photo with a very long name/);
   const name = tabs.nth(1).locator('.fv-tab-name');
@@ -44,7 +53,7 @@ test('two files make two tabs, and the keyboard moves between them', async ({
   await page.keyboard.press('ArrowLeft');
   await expect(tabs.nth(0)).toBeFocused();
   await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
-  await expect(pane(page).getByRole('heading', { name: 'Course notes.pdf' })).toBeVisible();
+  await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
   await page.keyboard.press('ArrowLeft');
   await expect(tabs.nth(1)).toBeFocused();
   await page.keyboard.press('Home');
@@ -55,7 +64,10 @@ test('two files make two tabs, and the keyboard moves between them', async ({
   await expect(tabs.nth(0)).toBeFocused();
   // Only the chosen tab is in the tab order.
   await expect(tabs.nth(1)).toHaveAttribute('tabindex', '-1');
-  await expect(pane(page).getByRole('tabpanel')).toHaveAttribute('aria-labelledby', /fv-tab-42/);
+  await expect((await pane(page)).getByRole('tabpanel')).toHaveAttribute(
+    'aria-labelledby',
+    /fv-tab-42/,
+  );
 });
 
 test('closing a tab activates the next one, and the last tab closes the pane', async ({
@@ -65,24 +77,26 @@ test('closing a tab activates the next one, and the last tab closes the pane', a
 }) => {
   await openCoursePage(context, page, background);
   await openThree(page);
-  const tabs = pane(page).getByRole('tab');
+  const tabs = (await pane(page)).getByRole('tab');
   await tabs.nth(0).click();
   await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
-  await pane(page).getByRole('button', { name: 'Close Course notes.pdf' }).click();
+  await (await pane(page)).getByRole('button', { name: 'Close Course notes.pdf' }).click();
   await expect(tabs).toHaveCount(2);
   await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
   await expect(tabs.nth(0)).toBeFocused();
-  await expect(pane(page).locator('[data-part="card-name"]')).toContainText('Lecture photo');
+  await expect((await pane(page)).locator(FILE_NAME)).toContainText('Lecture photo');
   // The closed tab stays closed after another file opens.
   await fileLink(page, 'Syllabus').click();
   await expect(tabs).toHaveCount(2);
-  await expect(pane(page).locator('[data-part="card-name"]')).toHaveText('Syllabus.docx');
-  await pane(page).getByRole('button', { name: 'Close Syllabus.docx' }).click();
+  await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Syllabus.docx');
+  await (await pane(page)).getByRole('button', { name: 'Close Syllabus.docx' }).click();
   await expect(tabs).toHaveCount(1);
-  await expect(pane(page).locator('[data-part="card-name"]')).toContainText('Lecture photo');
+  await expect((await pane(page)).locator(FILE_NAME)).toContainText('Lecture photo');
   await expect(page.locator('html')).toHaveCSS('padding-right', '480px');
   // The pane frame goes away during the click, so the answer of the frame never arrives.
-  await pane(page)
+  await (
+    await pane(page)
+  )
     .getByRole('button', { name: /^Close Lecture photo/ })
     .evaluate((button: HTMLElement) => button.click())
     .catch(() => undefined);
@@ -93,16 +107,17 @@ test('closing a tab activates the next one, and the last tab closes the pane', a
 test('opening an open file activates its tab', async ({ context, page, background }) => {
   await openCoursePage(context, page, background);
   await openThree(page);
-  const tabs = pane(page).getByRole('tab');
+  const tabs = (await pane(page)).getByRole('tab');
   await expect(tabs.nth(2)).toHaveAttribute('aria-selected', 'true');
   await fileLink(page, 'Read notes').click();
   await expect(tabs).toHaveCount(3);
   await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
-  await expect(pane(page).locator('[data-part="card-name"]')).toHaveText('Course notes.pdf');
+  await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
   // The tabs come back after the page reloads.
   await page.reload();
-  await expect(tabs).toHaveCount(3);
-  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+  const restored = (await pane(page)).getByRole('tab');
+  await expect(restored).toHaveCount(3);
+  await expect(restored.nth(0)).toHaveAttribute('aria-selected', 'true');
 });
 
 test('the card shows the name, the type and the size, and links to Canvas', async ({
@@ -112,24 +127,28 @@ test('the card shows the name, the type and the size, and links to Canvas', asyn
 }) => {
   const canvas = await openCoursePage(context, page, background);
   await openThree(page);
-  const tabs = pane(page).getByRole('tab');
-  const card = pane(page);
+  const tabs = (await pane(page)).getByRole('tab');
+  const card = await pane(page);
   const links = async () => ({
-    download: await card.locator('[data-part="download"]').evaluate((a: HTMLAnchorElement) => ({
-      href: new URL(a.href),
-      target: a.target,
-      rel: a.rel,
-    })),
-    canvas: await card.locator('[data-part="open-in-canvas"]').evaluate((a: HTMLAnchorElement) => ({
-      href: new URL(a.href),
-      target: a.target,
-      rel: a.rel,
-    })),
+    download: await card
+      .locator('[data-part="download"]:visible')
+      .evaluate((a: HTMLAnchorElement) => ({
+        href: new URL(a.href),
+        target: a.target,
+        rel: a.rel,
+      })),
+    canvas: await card
+      .locator('[data-part="open-in-canvas"]:visible')
+      .evaluate((a: HTMLAnchorElement) => ({
+        href: new URL(a.href),
+        target: a.target,
+        rel: a.rel,
+      })),
   });
 
   await tabs.nth(0).click();
-  await expect(card.locator('[data-part="card-name"]')).toHaveText('Course notes.pdf');
-  await expect(card.locator('[data-part="card-meta"]')).toHaveText('PDF · 265 KB');
+  await expect(card.locator(FILE_NAME)).toHaveText('Course notes.pdf');
+  await expect(card.locator(FILE_META)).toHaveText('PDF · 265 KB');
   let found = await links();
   expect(found.download.href.origin).toBe(canvas.origin);
   expect(found.download.href.pathname).toBe('/files/42/download');
@@ -142,13 +161,13 @@ test('the card shows the name, the type and the size, and links to Canvas', asyn
 
   // No course id on the file, and none on the link: the plain file path.
   await tabs.nth(1).click();
-  await expect(card.locator('[data-part="card-meta"]')).toHaveText('Image · 2.4 MB');
+  await expect(card.locator(FILE_META)).toHaveText('Image · 2.4 MB');
   found = await links();
   expect(found.canvas.href.pathname).toBe('/files/43');
   expect(found.download.href.pathname).toBe('/files/43/download');
 
   await tabs.nth(2).click();
-  await expect(card.locator('[data-part="card-meta"]')).toHaveText('Word document · 20 KB');
+  await expect(card.locator(FILE_META)).toHaveText('Word document · 20 KB');
   expect((await links()).canvas.href.pathname).toBe('/courses/101/files/44');
   await expect(card.locator('[data-part="viewer-body"]')).toBeAttached();
   await expect(card.getByRole('button', { name: 'Allow access' })).toHaveCount(0);
@@ -169,17 +188,17 @@ test('a file that does not load shows the error with Retry', async ({
     api.fetch = () => Promise.reject(new TypeError('offline'));
   });
   await openFirstFile(page, 'Read notes');
-  await expect(pane(page).getByText("Couldn't load this file")).toBeVisible();
-  const open = pane(page).getByRole('link', { name: 'Open in Canvas' });
+  await expect((await pane(page)).getByText("Couldn't load this file")).toBeVisible();
+  const open = (await pane(page)).getByRole('link', { name: 'Open in Canvas' });
   // The record did not load, but the link that the student clicked names the course.
   await expect(open).toHaveAttribute('href', /\/courses\/101\/files\/42$/);
-  await expect(pane(page).getByRole('tab')).toHaveAttribute('title', 'Unavailable file');
+  await expect((await pane(page)).getByRole('tab')).toHaveAttribute('title', 'Unavailable file');
   await background.evaluate(() => {
     const api = globalThis as unknown as { fetch: typeof fetch; __realFetch?: typeof fetch };
     if (api.__realFetch) api.fetch = api.__realFetch;
   });
-  await pane(page).getByRole('button', { name: 'Retry' }).click();
-  await expect(pane(page).locator('[data-part="card-name"]')).toHaveText('Course notes.pdf');
+  await (await pane(page)).getByRole('button', { name: 'Retry' }).click();
+  await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
 });
 
 test('a withheld permission shows Allow access, which asks the browser and reloads the card', async ({
@@ -195,9 +214,9 @@ test('a withheld permission shows Allow access, which asks the browser and reloa
     api.permissions.contains = () => Promise.resolve(false);
   });
   await openFirstFile(page, 'Read notes');
-  const allow = pane(page).getByRole('button', { name: 'Allow access' });
+  const allow = (await pane(page)).getByRole('button', { name: 'Allow access' });
   await expect(allow).toBeVisible();
-  await expect(pane(page).getByRole('link', { name: 'Open in Canvas' })).toBeVisible();
+  await expect((await pane(page)).getByRole('link', { name: 'Open in Canvas' })).toBeVisible();
   const frame = page.frames().find((entry) => entry.url().includes('viewer.html'))!;
   await frame.evaluate(() => {
     const api = (
@@ -222,19 +241,23 @@ test('a withheld permission shows Allow access, which asks the browser and reloa
   expect(
     await frame.evaluate(() => (globalThis as unknown as { requests: unknown[] }).requests),
   ).toEqual([{ origins: [`${canvas.origin}/*`, 'https://*/*'] }]);
-  await expect(pane(page).locator('[data-part="card-name"]')).toHaveText('Course notes.pdf');
+  await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
 });
 
 /** The background color of the pane page and of the frame chrome, as numbers from 0 to 255. */
 async function paneColors(page: Page) {
-  const app = await pane(page)
+  const app = await (
+    await pane(page)
+  )
     .locator('#app')
     .evaluate((node) => getComputedStyle(node).backgroundColor);
-  const chrome = await page.locator(HOST).evaluate((host) => {
-    const root = host.shadowRoot!;
+  // The chrome of the frame sits in a closed shadow root, so it is read from the frame element.
+  const frameElement = await (await pane(page)).frameElement();
+  const chrome = await frameElement.evaluate((frame) => {
+    const root = frame.parentElement!;
     const style = (selector: string) => getComputedStyle(root.querySelector(selector)!);
     return {
-      section: style('section').backgroundColor,
+      section: getComputedStyle(root).backgroundColor,
       header: style('header').borderBottomColor,
       close: style('button').color,
     };
@@ -255,9 +278,9 @@ test.describe('theme', () => {
     await openCoursePage(context, page, background);
     await page.emulateMedia({ colorScheme: 'dark' });
     await openFirstFile(page, 'Read notes');
-    await expect(pane(page).locator('[data-part="card-name"]')).toBeVisible();
+    await expect((await pane(page)).locator(FILE_NAME)).toBeVisible();
     await expect(page.locator(HOST)).toHaveAttribute('data-theme', 'light');
-    await expect(pane(page).locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect((await pane(page)).locator('html')).toHaveAttribute('data-theme', 'light');
     const colors = await paneColors(page);
     expect(channels(colors.app)).toEqual([255, 255, 255]);
     expect(channels(colors.section)).toEqual([255, 255, 255]);
@@ -277,7 +300,7 @@ test.describe('theme', () => {
         document.body.style.background = '#1b1b1b';
       }),
     );
-    await expect(pane(page).locator('[data-part="card-name"]')).toBeVisible();
+    await expect((await pane(page)).locator(FILE_NAME)).toBeVisible();
     await expect(page.locator(HOST)).toHaveAttribute('data-theme', 'dark');
     const colors = await paneColors(page);
     expect(Math.max(...channels(colors.app))).toBeLessThan(60);
@@ -294,13 +317,13 @@ test.describe('theme', () => {
     await saveSetting(background, { theme: 'dark' });
     await page.reload();
     await openFirstFile(page, 'Read notes');
-    await expect(pane(page).locator('[data-part="card-name"]')).toBeVisible();
+    await expect((await pane(page)).locator(FILE_NAME)).toBeVisible();
     await expect(page.locator(HOST)).toHaveAttribute('data-theme', 'dark');
-    await expect(pane(page).locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect((await pane(page)).locator('html')).toHaveAttribute('data-theme', 'dark');
     // The open pane follows a change of the setting at once.
     await saveSetting(background, { theme: 'light' });
     await expect(page.locator(HOST)).toHaveAttribute('data-theme', 'light');
-    await expect(pane(page).locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect((await pane(page)).locator('html')).toHaveAttribute('data-theme', 'light');
     await saveSetting(background, { theme: 'auto' });
     await expect(page.locator(HOST)).toHaveAttribute('data-theme', 'light');
   });
@@ -318,7 +341,7 @@ for (const width of [1920, 1280]) {
           document.documentElement.style.background = '#1b1b1b';
         });
       });
-      await expect(pane(page).locator('[data-part="card-name"]')).toBeVisible();
+      await expect((await pane(page)).locator(FILE_NAME)).toBeVisible();
       await page.screenshot({ path: `screenshots/file-viewer-tabs-${width}-${scheme}.png` });
     });
   }

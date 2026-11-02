@@ -320,6 +320,16 @@ async function main() {
     }),
     contentType: 'application/json',
   };
+  // The first load of the list gives the cache its student, and the viewer reads wait for that.
+  const json = (value) => ({ body: JSON.stringify(value), contentType: 'application/json' });
+  const student = { id: '5501', name: 'Smoke Student', short_name: 'Smoke' };
+  files['/api/v1/users/self'] = json(student);
+  files['/api/v1/users/self/profile'] = json(student);
+  files['/api/v1/courses'] = json([]);
+  files['/api/v1/users/self/groups'] = json([]);
+  files['/api/v1/users/self/colors'] = json({ custom_colors: {} });
+  files['/api/v1/users/self/dashboard_positions'] = json({ dashboard_positions: {} });
+  files['/api/v1/planner/items'] = json([]);
   const driver = await startFirefox({
     firefoxBin,
     geckodriverBin,
@@ -356,23 +366,36 @@ async function main() {
     );
     if (saved?.error) throw new Error(saved.error);
     await driver.get(`${origin}/courses/101`);
+    // Canvas sets its session cookie, and the extension confirms it before the viewer reads.
+    await driver
+      .manage()
+      .addCookie({ name: 'canvas_session', value: 'smoke-session', path: '/', secure: true });
+    await driver.get(`${origin}/courses/101`);
     await driver.executeScript(
       `document.querySelector('a').addEventListener('click', event => event.preventDefault());`,
     );
-    const frame = await driver.wait(
-      async () =>
-        driver.executeScript(
-          'document.querySelector("a").click(); return document.querySelector("#tools-file-viewer")?.shadowRoot.querySelector("iframe") ?? null;',
-        ),
-      10_000,
-    );
-    if (!(await frame.getAttribute('src')).includes('/viewer.html#'))
+    // The frame sits in a closed shadow root, which only the driver can open.
+    const frame = await driver.wait(async () => {
+      await driver.executeScript('document.querySelector("a").click();');
+      const hosts = await driver.findElements(By.css('#tools-file-viewer'));
+      if (hosts.length === 0) return null;
+      const shadow = await hosts[0].getShadowRoot();
+      const frames = await shadow.findElements(By.css('iframe'));
+      return frames[0] ?? null;
+    }, 10_000);
+    if ((await frame.getAttribute('src')).includes('#'))
+      throw new Error('The pane address holds a hash');
+    if (!(await frame.getAttribute('src')).endsWith('/viewer.html'))
       throw new Error('Wrong pane page');
     await driver.switchTo().frame(frame);
+    // A file that opens before the list has loaded shows the error. Retry reads it again.
     await driver.wait(async () => {
-      const names = await driver.findElements(By.css('[data-part="card-name"]'));
-      return names.length === 1 && (await names[0].getText()) === 'Course notes.pdf';
-    }, 10_000);
+      const names = await driver.findElements(By.css('[data-part="pdf-name"]'));
+      if (names.length === 1) return (await names[0].getText()) === 'Course notes.pdf';
+      const retry = await driver.findElements(By.css('[data-part="card-error"] button'));
+      if (retry.length > 0) await retry[0].click();
+      return false;
+    }, 30_000);
     // The pane reads the PDF through the redirect, runs PDF.js and its worker from the files of
     // the extension, and draws page 1 of the fixture.
     const drawn = await driver.wait(async () => {

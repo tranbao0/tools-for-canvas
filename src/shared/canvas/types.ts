@@ -282,9 +282,7 @@ export interface CanvasClientOptions {
  * The Canvas calls the extension makes. Every list call follows `Link: rel="next"` to the end.
  */
 export interface CanvasApi {
-  getViewerFile(
-    fileId: string,
-  ): Promise<{
+  getViewerFile(fileId: string): Promise<{
     display_name: string;
     'content-type': string;
     size: number;
