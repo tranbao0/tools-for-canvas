@@ -62,6 +62,27 @@ export const SYLLABUS = {
   context_id: '101',
 };
 
+/**
+ * Waits until the first load of the list has finished, so the cache has its student. The viewer
+ * reads Canvas only for a confirmed student, and a read that comes sooner is refused.
+ */
+export async function waitForListLoaded(canvas: {
+  readonly requests: readonly { path: string; answeredAt: number | null }[];
+}): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        canvas.requests.some(
+          (request) =>
+            request.path.startsWith('/api/v1/planner/items') && request.answeredAt !== null,
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+  // The owner commits the answer a moment later.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+}
+
 /** The name and the type line of the visible file: the card, or the slim line of a PDF. */
 export const FILE_NAME = '[data-part="card-name"]:visible, [data-part="pdf-name"]:visible';
 export const FILE_META = '[data-part="card-meta"]:visible, [data-part="pdf-meta"]:visible';

@@ -163,4 +163,64 @@ describe('the page script', () => {
     await vi.waitFor(() => expect(sessionRequests()).toBe(2));
     await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
   });
+
+  it('ends with one live copy, one pane and the page padding, when two copies start together', async () => {
+    prepare();
+    document.documentElement.style.setProperty('padding-right', '13px');
+    await Promise.all([startViewer(), startViewer()]);
+    expect(addListener).toHaveBeenCalledTimes(2);
+    expect(removeListener).toHaveBeenCalledTimes(1);
+    click(true);
+    await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(sessionRequests()).toBe(1);
+    expect(document.querySelectorAll('#tools-file-viewer')).toHaveLength(1);
+    scope.__weekrowViewer?.();
+    expect(document.getElementById('tools-file-viewer')).toBeNull();
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
+    document.documentElement.style.removeProperty('padding-right');
+  });
+
+  it('leaves the padding of the page alone when it stops with no pane open', async () => {
+    prepare();
+    document.documentElement.style.setProperty('padding-right', '13px');
+    await startViewer();
+    scope.__weekrowViewer?.();
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
+    document.documentElement.style.removeProperty('padding-right');
+  });
+
+  it('takes a click before the settings and the tabs have loaded', async () => {
+    prepare();
+    let release: () => void = () => undefined;
+    const slow = new Promise<void>((resolve) => (release = resolve));
+    sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'viewer:tabs-get') await slow;
+      return reply(message);
+    });
+    const started = startViewer();
+    // The click comes while the tabs are still loading. The link must not be followed.
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    Object.defineProperty(event, 'isTrusted', { value: true });
+    document.getElementById('file')!.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(sessionRequests()).toBe(0);
+    release();
+    await started;
+    await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
+  });
+
+  it('writes the tabs with the token of the last read', async () => {
+    prepare();
+    sendMessage.mockImplementation(async (message: { type: string }) =>
+      message.type === 'viewer:tabs-get' ? { ids: [], active: null, token: '4:7' } : reply(message),
+    );
+    await startViewer();
+    click(true);
+    await vi.waitFor(() =>
+      expect(sendMessage.mock.calls.some(([m]) => m.type === 'viewer:tabs-set')).toBe(true),
+    );
+    const write = sendMessage.mock.calls.find(([m]) => m.type === 'viewer:tabs-set')![0];
+    expect(write).toMatchObject({ tabs: { ids: ['5'], active: '5' }, token: '4:7' });
+  });
 });

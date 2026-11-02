@@ -33,35 +33,40 @@ export function listenViewerHello(
 const HANDSHAKE_MS = 15_000;
 
 export async function startViewer(): Promise<void> {
-  // An earlier copy of this script, such as one that an update left behind, stops first. The
-  // marker is private to this script, so an element of the page cannot stop the viewer.
+  // An earlier copy of this script, such as one that an update left behind or one that starts at
+  // the same time, stops first. The marker is private to this script, so an element of the page
+  // cannot stop the viewer. The new copy sets its own teardown before it waits for anything.
   const scope = globalThis as typeof globalThis & { __weekrowViewer?: () => void };
   scope.__weekrowViewer?.();
   const lifetime = new AbortController();
   let live = true;
+  let enabled = false;
   const readContext = () =>
     browser.runtime.sendMessage({ type: 'weekrow:page-context' }) as Promise<
       { tools: ToolsSettings; settings?: { theme?: ThemeChoice } } | undefined
     >;
   // `null` when the background did not answer, such as before the first load of the list. The
-  // tabs in memory stay as they are then.
-  const readTabs = async (): Promise<Tabs | null> => {
+  // tabs in memory stay as they are then. The token comes with the tabs and goes back with a
+  // write, so the background can refuse a write for tabs that it has cleared since.
+  const readTabs = async (): Promise<{ tabs: Tabs; token: string | undefined } | null> => {
     const reply: unknown = await browser.runtime.sendMessage({ type: 'viewer:tabs-get' });
-    return typeof reply === 'object' && reply !== null ? normalizeTabs(reply) : null;
+    if (typeof reply !== 'object' || reply === null) return null;
+    const token = (reply as { token?: unknown }).token;
+    return { tabs: normalizeTabs(reply), token: typeof token === 'string' ? token : undefined };
   };
-  const context = await readContext();
-  if (!live || !context?.tools.fileViewer) return;
-  let tabs: Tabs = (await readTabs().catch(() => null)) ?? { ids: [], active: null };
-  if (!live) return;
+  const writeTabs = (next: Tabs) =>
+    browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs: next, token: tabsToken });
+  let tabs: Tabs = { ids: [], active: null };
+  let tabsToken: string | undefined;
   // The pane follows the Theme setting, and with Automatic it follows this Canvas page (decision 19).
-  let themeChoice: ThemeChoice = context.settings?.theme ?? 'auto';
+  let themeChoice: ThemeChoice = 'auto';
   const resolveTheme = () => inpageTheme(themeChoice, () => detectPageTheme(document));
   const applyTheme = () => {
     const theme = resolveTheme();
     host?.setAttribute('data-theme', theme);
     port?.postMessage({ type: 'theme', theme });
   };
-  let width = normalizeWidth(context.tools.fileViewerWidth, innerWidth);
+  let width = normalizeWidth(undefined, innerWidth);
   let host: HTMLDivElement | undefined;
   // The port of the pane once it proved the secret, and a port that waits for that proof.
   let port: MessagePort | undefined;
@@ -86,8 +91,12 @@ export async function startViewer(): Promise<void> {
       readContext().catch(() => undefined),
       readTabs().catch(() => null),
     ]);
+    if (!live) return;
     if (latest?.settings?.theme) themeChoice = latest.settings.theme;
-    tabs = stored ?? tabs;
+    if (stored) {
+      tabs = stored.tabs;
+      tabsToken = stored.token;
+    }
     applyTheme();
     const courseId = tabs.active === null ? undefined : courses.get(tabs.active);
     if (tabs.active)
@@ -106,18 +115,19 @@ export async function startViewer(): Promise<void> {
     handshake = undefined;
     removeHello?.();
     removeHello = undefined;
-    host?.remove();
-    host = undefined;
     pending?.close();
     pending = undefined;
     port?.close();
     port = undefined;
+    if (!host) return;
+    host.remove();
+    host = undefined;
     document.documentElement.style.setProperty('padding-right', padding, priority);
   };
   const close = () => {
     drop();
     tabs = { ids: [], active: null };
-    void browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs });
+    void writeTabs(tabs);
   };
   // A page can remove the host. Then no pane is open, and the next click opens a new one.
   const paneOpen = () => {
@@ -125,6 +135,7 @@ export async function startViewer(): Promise<void> {
     return host !== undefined;
   };
   const show = async () => {
+    if (!live) return;
     if (paneOpen()) {
       void send();
       return;
@@ -144,6 +155,8 @@ export async function startViewer(): Promise<void> {
     } finally {
       opening = false;
     }
+    if (!live) return;
+    lastHelloAt = -Infinity;
     padding = document.documentElement.style.getPropertyValue('padding-right');
     priority = document.documentElement.style.getPropertyPriority('padding-right');
     host = document.createElement('div');
@@ -168,7 +181,7 @@ export async function startViewer(): Promise<void> {
     const answerInTime = () => {
       clearTimeout(handshake);
       handshake = setTimeout(() => {
-        if (host && !port) close();
+        if (host && !port) drop();
       }, HANDSHAKE_MS);
     };
     removeHello = listenViewerHello(window, frame, browser.runtime.id, (origin) => {
@@ -209,7 +222,7 @@ export async function startViewer(): Promise<void> {
       const loadedAt = performance.now();
       clearTimeout(handshake);
       handshake = setTimeout(() => {
-        if (host && lastHelloAt < loadedAt - 2000) close();
+        if (host && lastHelloAt < loadedAt - 2000) drop();
       }, HANDSHAKE_MS);
     });
     render(h(CloseIcon, {}), root.querySelector('button')!);
@@ -269,6 +282,12 @@ export async function startViewer(): Promise<void> {
     );
   };
   browser.runtime.onMessage.addListener(onChanged);
+  scope.__weekrowViewer = () => {
+    live = false;
+    lifetime.abort();
+    browser.runtime.onMessage.removeListener(onChanged);
+    drop();
+  };
   document.addEventListener(
     'click',
     (event) => {
@@ -294,6 +313,14 @@ export async function startViewer(): Promise<void> {
       event.preventDefault();
       event.stopImmediatePropagation();
       void (async () => {
+        // The click is taken at once, even while the settings and the tabs are still loading.
+        await starting;
+        if (!live) return;
+        if (!enabled) {
+          // The viewer is off, so the click goes to the link after all.
+          location.assign(new URL(href, location.href));
+          return;
+        }
         const file =
           'fileId' in target
             ? target
@@ -312,18 +339,35 @@ export async function startViewer(): Promise<void> {
           });
           return;
         }
-        tabs = openFile((await readTabs().catch(() => null)) ?? tabs, file.fileId);
-        await browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs });
+        const stored = await readTabs().catch(() => null);
+        if (!live) return;
+        if (stored) tabsToken = stored.token;
+        tabs = openFile(stored?.tabs ?? tabs, file.fileId);
+        await writeTabs(tabs);
         await show();
       })().catch(() => undefined);
     },
     { capture: true, signal: lifetime.signal },
   );
-  scope.__weekrowViewer = () => {
-    live = false;
+  // The settings and the stored tabs load while the listeners above already work.
+  const starting = (async () => {
+    const context = await readContext();
+    if (!live || !context?.tools.fileViewer) return;
+    themeChoice = context.settings?.theme ?? 'auto';
+    width = normalizeWidth(context.tools.fileViewerWidth, innerWidth);
+    const stored = await readTabs().catch(() => null);
+    if (!live) return;
+    if (stored) {
+      tabs = stored.tabs;
+      tabsToken = stored.token;
+    }
+    enabled = true;
+  })().catch(() => undefined);
+  await starting;
+  if (live && !enabled) {
+    // The viewer is off. A click that came before this point still finds `live`, and follows its link.
     lifetime.abort();
     browser.runtime.onMessage.removeListener(onChanged);
-    drop();
-  };
-  if (tabs.active) void show();
+  }
+  if (live && enabled && tabs.active) void show();
 }

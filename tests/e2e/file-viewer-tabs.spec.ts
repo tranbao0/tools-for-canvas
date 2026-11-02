@@ -11,6 +11,7 @@ import {
   openFirstFile,
   pane,
   saveSetting,
+  waitForListLoaded,
 } from './support/file-viewer';
 
 const HOST = '#tools-file-viewer';
@@ -178,7 +179,8 @@ test('a file that does not load shows the error with Retry', async ({
   page,
   background,
 }) => {
-  await openCoursePage(context, page, background);
+  const canvas = await openCoursePage(context, page, background);
+  await waitForListLoaded(canvas);
   await background.evaluate(() => {
     const api = globalThis as unknown as {
       fetch: typeof fetch;

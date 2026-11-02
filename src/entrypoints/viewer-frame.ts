@@ -35,6 +35,8 @@ export default defineUnlistedScript(() => {
   document.head.append(style);
   const opens = createOpenSource();
   let port: MessagePort | undefined;
+  // The token that the last read of the tabs gave. A write carries it back.
+  let tabsToken: string | undefined;
 
   const host = (canvasOrigin: string): PaneHost => ({
     origin: canvasOrigin,
@@ -68,10 +70,15 @@ export default defineUnlistedScript(() => {
     },
     requestAccess: () => browser.permissions.request({ origins: accessOrigins(canvasOrigin) }),
     async getTabs() {
-      return normalizeTabs(await browser.runtime.sendMessage({ type: 'viewer:tabs-get' }));
+      const reply: unknown = await browser.runtime.sendMessage({ type: 'viewer:tabs-get' });
+      // A reply that is not an object is a refusal or an error. It is not "no tabs".
+      if (typeof reply !== 'object' || reply === null) throw new Error('The tabs did not load');
+      const token = (reply as { token?: unknown }).token;
+      tabsToken = typeof token === 'string' ? token : undefined;
+      return normalizeTabs(reply);
     },
     async setTabs(tabs: Tabs) {
-      await browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs });
+      await browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs, token: tabsToken });
     },
     closePane: () => port?.postMessage({ type: 'close' }),
   });
