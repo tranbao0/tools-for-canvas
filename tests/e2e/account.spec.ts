@@ -543,3 +543,56 @@ test('a first profile response never confirms the cookie from before that reques
   });
   expect(reply.kind === 'ready' && reply.userId === SECOND_USER_ID).toBe(false);
 });
+
+test('a change to the second session cookie checks the cached student', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const first = await serveScenario(context);
+  await addCsrfCookie(context, first.canvas.origin);
+  await context.addCookies([
+    {
+      name: '_normandy_session',
+      value: 'student-a',
+      url: first.canvas.origin,
+      secure: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  await saveAddress(background, first.canvas.origin);
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await expect(doneBox(page, QUIZ_3)).toBeVisible();
+  await settledList(page);
+  await context.route(`${first.canvas.origin}/api/v1/users/self`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(forSecondStudent(first.scenario.self)),
+    }),
+  );
+  await context.addCookies([
+    {
+      name: '_normandy_session',
+      value: 'student-b',
+      url: first.canvas.origin,
+      secure: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  const reply = await page.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        chrome: {
+          runtime: { sendMessage(message: unknown): Promise<{ kind: string; userId?: string }> };
+        };
+      }
+    ).chrome;
+    return api.runtime.sendMessage({
+      type: 'weekrow:get-state',
+      request: { surface: 'panel', spanOffset: 0, scopeCourseId: null },
+    });
+  });
+  expect(reply.kind === 'ready' && reply.userId === IDS.user).toBe(false);
+});
