@@ -257,14 +257,16 @@ async function paneColors(page: Page) {
   const frameElement = await (await pane(page)).frameElement();
   const chrome = await frameElement.evaluate((frame) => {
     const root = frame.parentElement!;
-    const style = (selector: string) => getComputedStyle(root.querySelector(selector)!);
     return {
       section: getComputedStyle(root).backgroundColor,
-      header: style('header').borderBottomColor,
-      close: style('button').color,
     };
   });
-  return { app, ...chrome };
+  const close = await (
+    await pane(page)
+  )
+    .getByRole('button', { name: 'Close file viewer', exact: true })
+    .evaluate((node) => getComputedStyle(node).color);
+  return { app, close, ...chrome };
 }
 
 function channels(color: string): number[] {

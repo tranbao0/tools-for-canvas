@@ -2364,9 +2364,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    * request started, and no later one: the cookie can change while the request runs, and the
    * answer says nothing about the new value.
    */
+  let viewerProof: { origin: string; gen: number; userId: string; fingerprint: string } | null =
+    null;
+
   async function checkCacheUser(): Promise<boolean> {
     const stamp = writeStamp();
-    if (stamp.origin === null || stamp.userId === null) return false;
+    if (stamp.origin === null) return false;
     const fingerprint = await readFingerprint(stamp.origin);
     if (!isCurrent(stamp) || fingerprint === undefined) return false;
     if (fingerprint === null) {
@@ -2377,6 +2380,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     try {
       const self = await apiFor(stamp.origin).checkCacheUser();
       if (!isCurrent(stamp)) return false;
+      if (stamp.userId === null && fingerprint !== null) {
+        viewerProof = { origin: stamp.origin, gen: generation, userId: self.id, fingerprint };
+        return true;
+      }
       if (self.id !== stamp.userId) {
         await dropUserData();
         return false;
@@ -2499,13 +2506,30 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       tabId === undefined ||
       origin === null ||
       origin !== knownOrigin ||
-      cache?.session == null ||
-      !(await surfaceMayRead(tabId)) ||
-      !(await signedInStudentOwnsCache())
-    ) {
+      !(await surfaceMayRead(tabId))
+    )
       return null;
-    }
+    if (cache?.session == null) {
+      if (!(await viewerProofHolds(origin))) {
+        if (userCheck === null && !checkAllowed(false)) return null;
+        if (!(await startUserCheck()) || !(await viewerProofHolds(origin))) return null;
+      }
+    } else if (!(await signedInStudentOwnsCache())) return null;
     return origin;
+  }
+
+  async function viewerProofHolds(origin: string): Promise<boolean> {
+    const proof = viewerProof;
+    const fingerprint = await readFingerprint(origin);
+    return (
+      proof !== null &&
+      proof === viewerProof &&
+      proof.origin === origin &&
+      proof.gen === generation &&
+      knownOrigin === origin &&
+      fingerprint === proof.fingerprint &&
+      (cache?.session == null || cache.session.profile.id === proof.userId)
+    );
   }
 
   async function viewerRead<T>(
@@ -2515,6 +2539,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   ): Promise<T> {
     const allowed = await viewerOrigin(origin, tabId);
     if (allowed === null) throw new Error('The cookie is not confirmed for the viewer');
+    if (cache?.session == null) {
+      const proof = viewerProof;
+      if (!(await viewerProofHolds(allowed))) throw new Error('The viewer cookie changed');
+      const response = await read(apiFor(allowed));
+      if (proof !== viewerProof || !(await viewerProofHolds(allowed)))
+        throw new Error('The viewer cookie changed');
+      return response;
+    }
     const response = await cookieBound(() => read(apiFor(allowed)));
     if (response === DROPPED) throw new Error('The cookie changed during the viewer read');
     return response;
@@ -2525,7 +2557,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     tabId: number | undefined,
   ): Promise<string | null> {
     if ((await viewerOrigin(origin, tabId)) === null) return null;
-    return cache?.session?.profile.id ?? null;
+    return cache?.session?.profile.id ?? viewerProof?.userId ?? null;
   }
 
   async function viewerMayFetch(

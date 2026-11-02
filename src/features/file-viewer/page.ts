@@ -1,5 +1,3 @@
-import { render, h } from 'preact';
-import { CloseIcon } from '../../shared/ui/icons';
 import { browser } from 'wxt/browser';
 import { acceptPaneHello, isViewerSecret, secretMessage, validPaneReady } from './channel';
 import {
@@ -168,10 +166,8 @@ export async function startViewer(): Promise<void> {
       :host{--bg:#fff;--text:#273540;--line:#e8eaec;--edge:#c7cdd1;--hover:#f2f4f4;--focus:#0374b5;color:var(--text)}
       :host([data-theme='dark']){--bg:#1b2330;--text:#fff;--line:#2e3e4e;--edge:#4a5b68;--hover:#253443;--focus:#5a9fd4}
       section{box-sizing:border-box;height:100%;background:var(--bg);border-left:1px solid var(--edge);display:flex;flex-direction:column;font-family:Lato,Arial,sans-serif}
-      header{flex:none;height:56px;display:flex;justify-content:flex-end;align-items:center;padding:0 12px;border-bottom:1px solid var(--line)}
-      button{width:38px;height:38px;border:0;border-radius:4px;background:transparent;color:inherit;font-size:18px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}button:hover{background:var(--hover)}button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
       iframe{border:0;width:100%;flex:1;min-height:0;background:transparent} .handle{position:absolute;left:-4px;top:0;width:8px;height:100%;cursor:ew-resize;touch-action:none}.handle:hover,.handle:focus-visible{background:var(--focus)} @media(max-width:899px){.handle{display:none}}
-      </style><section aria-label="File viewer"><div class="handle" role="separator" aria-label="Resize file viewer" aria-orientation="vertical" tabindex="0"></div><header><button aria-label="Close file viewer" title="Close"></button></header></section>`;
+      </style><section aria-label="File viewer"><div class="handle" role="separator" aria-label="Resize file viewer" aria-orientation="vertical" tabindex="0"></div></section>`;
     const frame = document.createElement('iframe');
     frame.title = 'File viewer';
     frame.src = browser.runtime.getURL('/viewer.html');
@@ -225,9 +221,7 @@ export async function startViewer(): Promise<void> {
         if (host && lastHelloAt < loadedAt - 2000) drop();
       }, HANDSHAKE_MS);
     });
-    render(h(CloseIcon, {}), root.querySelector('button')!);
     root.querySelector('section')!.append(frame);
-    root.querySelector('button')!.addEventListener('click', close);
     root.addEventListener('keydown', (event) => {
       if ((event as KeyboardEvent).key === 'Escape') close();
     });

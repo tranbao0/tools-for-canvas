@@ -8,6 +8,7 @@
 import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { MAX_FILE_BYTES } from '../../../shared/canvas/fileBytes';
+import { CloseIcon } from '../../../shared/ui/icons';
 import { t } from '../../../shared/ui/i18n';
 import { closeFile, openFile, type Tabs } from '../model';
 import { FileCard, type FileState, type PaneFile } from './FileCard';
@@ -261,7 +262,18 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   return (
     <div class="fv-app">
       {tabs.ids.length > 0 && (
-        <TabStrip tabs={tabs} items={items} onActivate={activate} onClose={close} />
+        <div class="fv-tab-row">
+          <TabStrip tabs={tabs} items={items} onActivate={activate} onClose={close} />
+          <button
+            type="button"
+            class="wr-icon-btn fv-pane-close"
+            aria-label="Close file viewer"
+            title="Close file viewer"
+            onClick={() => host.closePane()}
+          >
+            <CloseIcon />
+          </button>
+        </div>
       )}
       <div
         class="fv-panel"
