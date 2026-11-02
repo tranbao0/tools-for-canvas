@@ -176,6 +176,33 @@ describe('a task update, move or delete', () => {
     expect(h.canvas.callsOf('deleteNote')).toEqual([]);
   });
 
+  it('sends no DELETE for a task that Undo restored while the cookie check waited', async () => {
+    const h = await loaded();
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    // The cookie read of the DELETE waits, as when a refresh round holds the queue.
+    let releaseRead!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    // The read at the tap answers at once. The read of the guard is the second one.
+    let reads = 0;
+    vi.mocked(h.deps.sessionFingerprint).mockImplementation(async () => {
+      reads += 1;
+      if (reads > 1) await reading;
+      return 'session-a';
+    });
+    const sent = h.owner.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Undo wins: the DELETE has not started, so the task comes back.
+    await h.owner.act({ kind: 'cancelDelete', noteId: N.libraryBooksToday });
+    releaseRead();
+    await sent;
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('deleteNote')).toEqual([]);
+  });
+
   it('checks the cookie at the tap of a "send now" and leaves the delete to its timer', async () => {
     const h = await loaded();
     await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });

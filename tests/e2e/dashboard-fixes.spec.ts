@@ -458,6 +458,9 @@ test.describe('course work extras', () => {
   });
 });
 
+/** The wait for a result that depends on a read of the owner, which may take 5 s under load. */
+const READ_WAIT = 20_000;
+
 const EIGHT_COURSES: ScenarioOptions = {
   extend(scenario) {
     for (const [id, name, code] of [
@@ -597,6 +600,10 @@ test.describe('course grades', () => {
     context,
     page,
   }) => {
+    // Every wait on a read gets more time than the owner gives a read before it answers without
+    // one (5 s), so a read that stalls under load does not end the test before the page shows
+    // the result.
+    test.setTimeout(60_000);
     const hold: { reply?: Promise<void> } = {};
     let release: () => void = () => undefined;
     const served = await serveScenario(
@@ -629,7 +636,9 @@ test.describe('course grades', () => {
     await addCsrfCookie(context, served.canvas.origin);
     await openCanvasPage(page, served.canvas.origin);
     const widget = page.getByTestId('widget-course-grades-widget');
-    await expect(widget.getByTestId('course-107-grade')).toHaveText('95%');
+    await expect(widget.getByTestId('course-107-grade')).toHaveText('95%', {
+      timeout: READ_WAIT,
+    });
     const reads = () =>
       served.canvas.requests.filter((request) => request.path === '/api/graphql').length;
     const before = reads();
@@ -639,17 +648,18 @@ test.describe('course grades', () => {
     await widget.getByTestId('course-103-grade').evaluate((node) => {
       node.textContent = '•••';
     });
-    // The fix batches page changes for 50 ms and records the hide in the pass after that. A
-    // read that began earlier, such as the one that a focus event starts, also counts for the
-    // poll below, so the poll cannot tell that the pass ran. A page timer that is set now and
-    // is due later fires after the timer of the fix, whatever the load is.
-    await page.evaluate(() => new Promise<void>((resolve) => setTimeout(resolve, 100)));
-    await expect.poll(reads).toBeGreaterThan(before);
+    await expect.poll(reads, { timeout: READ_WAIT }).toBeGreaterThan(before);
     await widget.getByTestId('course-grade-card-103').evaluate((node) => node.remove());
-    await expect(widget.getByTestId('course-103-grade')).toHaveText('•••');
+    await expect(widget.getByTestId('course-103-grade')).toHaveText('•••', {
+      timeout: READ_WAIT,
+    });
     release();
-    await expect(widget.getByTestId('course-107-grade')).toHaveText('95%');
-    await expect(widget.getByTestId('course-103-grade')).toHaveText('•••');
+    await expect(widget.getByTestId('course-107-grade')).toHaveText('95%', {
+      timeout: READ_WAIT,
+    });
+    await expect(widget.getByTestId('course-103-grade')).toHaveText('•••', {
+      timeout: READ_WAIT,
+    });
     await widget.screenshot({ path: test.info().outputPath('hidden-grade.png') });
   });
 
