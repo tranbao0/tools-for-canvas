@@ -16,6 +16,25 @@ export function safeExternalUrl(value: unknown): string | null {
   }
 }
 
+/**
+ * Turns the internal links of a rendered annotation layer into links without an address. PDF.js
+ * gives them `href="#"` and scrolls on click, so a middle click or "Open in new tab" would open
+ * the pane page itself. Without an address the browser has no action to take, and the link keeps
+ * its role, its tab stop and the Enter key.
+ */
+export function makeInternalLinksInert(layer: ParentNode): void {
+  for (const link of layer.querySelectorAll<HTMLAnchorElement>('a[href="#"]')) {
+    link.removeAttribute('href');
+    link.setAttribute('role', 'link');
+    link.tabIndex = 0;
+    link.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      link.click();
+    });
+  }
+}
+
 /** What the link service needs from the viewer. */
 export interface LinkTarget {
   pageCount: number;

@@ -8,7 +8,7 @@
 import { t } from '../../../shared/ui/i18n';
 import { CSS_PER_POINT } from './zoom';
 import type { PdfDocument, PdfjsLib, PdfPage, PdfRenderTask } from './types';
-import type { PdfLinkService } from './linkService';
+import { makeInternalLinksInert, type PdfLinkService } from './linkService';
 
 /** The largest canvas, in pixels. A larger one is drawn smaller and stretched by CSS. */
 export const MAX_CANVAS_PIXELS = 16 * 1024 * 1024;
@@ -212,6 +212,7 @@ export class PageView {
       hasJSActions: false,
       enableAnnotationEditing: false,
     });
+    if (epoch === this.epoch) makeInternalLinksInert(annotationHost);
   }
 
   private cancelTask(): void {

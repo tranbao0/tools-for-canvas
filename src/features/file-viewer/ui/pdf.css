@@ -107,6 +107,49 @@
   }
 }
 
+/* The slim line with the file name, the type and the size, above the toolbar. */
+
+.pv-info {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  min-height: 36px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--wr-line);
+  background: var(--wr-bg);
+}
+
+.pv-info-icon {
+  flex: none;
+  color: var(--wr-text-2);
+  font-size: 20px;
+  line-height: 0;
+}
+
+.pv-info-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wr-text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv-info-meta {
+  flex: none;
+  color: var(--wr-text-2);
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.pv-info > .wr-btn {
+  flex: none;
+}
+
 /* Toolbar */
 
 .pv-toolbar,
@@ -138,6 +181,10 @@
 
 .pv-btn > .wr-icon {
   font-size: 16px;
+}
+
+.wr a.pv-link {
+  text-decoration: none;
 }
 
 .wr .pv-btn:hover:not(:disabled) {
@@ -515,6 +562,10 @@
   width: 100%;
   height: 100%;
   font-size: 1em;
+}
+
+.annotationLayer .linkAnnotation > a[role='link'] {
+  cursor: pointer;
 }
 
 .annotationLayer .linkAnnotation > a:hover {

@@ -12,8 +12,8 @@ afterEach(cleanup);
 const ORIGIN = 'https://school.instructure.com';
 const FILES: Record<string, PaneFile> = {
   '1': {
-    name: 'Notes.pdf',
-    contentType: 'application/pdf',
+    name: 'Notes.docx',
+    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     size: 271512,
     url: '/files/1/download',
     courseId: '7',
@@ -116,7 +116,7 @@ describe('pane tabs', () => {
       fireEvent.click(tabs()[0]!);
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Close Notes.pdf' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Close Notes.docx' }));
     });
     expect(tabs()).toHaveLength(2);
     expect(tabs()[0]!.getAttribute('aria-selected')).toBe('true');
@@ -127,9 +127,9 @@ describe('pane tabs', () => {
   it('closes the pane when the last tab closes', async () => {
     const { open, host } = setup();
     await open('1');
-    await screen.findByRole('heading', { name: 'Notes.pdf' });
+    await screen.findByRole('heading', { name: 'Notes.docx' });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Close Notes.pdf' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Close Notes.docx' }));
     });
     expect(host.closePane).toHaveBeenCalledOnce();
   });
@@ -147,7 +147,7 @@ describe('pane tabs', () => {
       fireEvent.click(screen.getAllByRole('button', { name: /^Close Unavailable file/ })[0]!);
     });
     await open('1');
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.pdf' })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.docx' })).toBeTruthy());
     expect(host.loadFile).toHaveBeenCalledTimes(3);
   });
 
@@ -197,8 +197,8 @@ describe('file card', () => {
   it('shows the name, the type and the size with both links', async () => {
     const { open } = setup();
     await open('1');
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.pdf' })).toBeTruthy());
-    expect(screen.getByText('PDF · 265 KB')).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.docx' })).toBeTruthy());
+    expect(screen.getByText('Word document · 265 KB')).toBeTruthy();
     const download = screen.getByRole('link', { name: 'Download' }) as HTMLAnchorElement;
     const canvas = screen.getByRole('link', { name: 'Open in Canvas' }) as HTMLAnchorElement;
     expect(download.href).toBe(`${ORIGIN}/files/1/download`);
@@ -241,7 +241,7 @@ describe('file card', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     });
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.pdf' })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.docx' })).toBeTruthy());
     expect(host.loadFile).toHaveBeenCalledTimes(2);
   });
 });
@@ -271,7 +271,7 @@ describe('site access', () => {
   it('hides Allow access when the permission is granted', async () => {
     const { open } = setup();
     await open('1');
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.pdf' })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.docx' })).toBeTruthy());
     expect(screen.queryByRole('button', { name: 'Allow access' })).toBeNull();
   });
 });

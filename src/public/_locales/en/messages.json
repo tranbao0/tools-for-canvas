@@ -854,6 +854,9 @@
   "pdfLoadError": {
     "message": "Couldn't load this PDF"
   },
+  "pdfUnconfirmed": {
+    "message": "Canvas can't confirm your sign-in for this file. Use Open in Canvas."
+  },
   "pdfBadFile": {
     "message": "This PDF can't be shown. Use Download or Open in Canvas."
   },

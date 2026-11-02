@@ -212,12 +212,16 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     if (state?.kind !== 'ready' || !isPdf(state.file.contentType)) continue;
     if (Number.isFinite(state.file.size) && state.file.size > MAX_FILE_BYTES) continue;
     const course = courseHints.current.get(fileId) ?? state.file.courseId;
-    const url = fileLinks(host.origin, fileId, course, state.file.url)?.download;
-    if (!url) continue;
+    const links = fileLinks(host.origin, fileId, course, state.file.url);
+    if (!links) continue;
     pdfTabs.push(
       <PdfTab
         key={fileId}
-        url={url}
+        url={links.download}
+        file={state.file}
+        links={links}
+        access={access}
+        onAllow={allow}
         host={host}
         active={fileId === active}
         attempt={attempts[fileId] ?? 0}
@@ -234,6 +238,15 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     activeState?.kind === 'ready' &&
     isPdf(activeState.file.contentType) &&
     !(Number.isFinite(activeState.file.size) && activeState.file.size > MAX_FILE_BYTES);
+  const activeLinks =
+    active !== null && activeState?.kind === 'ready'
+      ? fileLinks(
+          host.origin,
+          active,
+          courseHints.current.get(active) ?? activeState.file.courseId,
+          activeState.file.url,
+        )
+      : null;
   return (
     <div class="fv-app">
       {tabs.ids.length > 0 && (
@@ -245,16 +258,19 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
         role={active === null ? undefined : 'tabpanel'}
         aria-labelledby={active === null ? undefined : tabDomId(active)}
       >
-        <FileCard
-          key={active ?? 'none'}
-          fileId={active ?? ''}
-          state={(active !== null && files[active]) || { kind: 'loading' }}
-          origin={host.origin}
-          courseHint={active === null ? undefined : courseHints.current.get(active)}
-          access={access}
-          onRetry={() => active !== null && reload(active)}
-          onAllow={allow}
-        />
+        {/* A PDF has its own slim line and toolbar. Every other state keeps the card. */}
+        {!(activePdf && activeLinks) && (
+          <FileCard
+            key={active ?? 'none'}
+            fileId={active ?? ''}
+            state={(active !== null && files[active]) || { kind: 'loading' }}
+            origin={host.origin}
+            courseHint={active === null ? undefined : courseHints.current.get(active)}
+            access={access}
+            onRetry={() => active !== null && reload(active)}
+            onAllow={allow}
+          />
+        )}
         <div class="fv-body" data-part="viewer-body" data-kind={activePdf ? 'pdf' : undefined}>
           {pdfTabs}
         </div>
