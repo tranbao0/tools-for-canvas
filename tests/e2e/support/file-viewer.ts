@@ -125,7 +125,12 @@ async function paneBox(page: Page) {
 
 /** Clicks the close button of the pane frame, which sits in the closed shadow root. */
 export async function closePane(page: Page): Promise<void> {
-  await (await pane(page)).getByRole('button', { name: 'Close file viewer', exact: true }).click();
+  // The click removes the pane frame, so click through the page mouse, not the frame locator.
+  const button = (await pane(page)).getByRole('button', { name: 'Close file viewer', exact: true });
+  await expect(button).toBeVisible();
+  const box = await button.boundingBox();
+  if (!box) throw new Error('The close button has no box.');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 }
 
 /** Focuses the resize handle on the left edge of the pane. */

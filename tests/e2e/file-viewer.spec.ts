@@ -67,11 +67,8 @@ test('file pane channel, module resolution, padding and page changes', async ({
   await navigation;
   await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
   await (await pane(page)).getByRole('button', { name: 'Close file viewer', exact: true }).focus();
-  await (
-    await pane(page)
-  )
-    .getByRole('button', { name: 'Close file viewer', exact: true })
-    .press('Escape', { noWaitAfter: true });
+  // Escape removes the pane frame, so press it through the page keyboard, not the frame locator.
+  await page.keyboard.press('Escape');
   await expect(host).toHaveCount(0);
   await page.getByText('Read notes').first().click();
   await expect(page.locator('html')).toHaveCSS('padding-right', '480px');
