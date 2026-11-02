@@ -407,20 +407,67 @@ Run them on the classic dashboard in Card View, then in List View, then on a cou
     Open a message with a wide table or a wide image.
     Expect: the table scrolls sideways inside the row and the image fits the width.
 
+### PDF viewer
+
+These steps need a student account in a course with PDF files.
+Use a PDF of a few pages with text, a PDF with a scanned page (an image of text), a PDF with a link, and a PDF of about 20 MB or more.
+Use Firefox first, and then Chrome and Edge.
+
+49. Click a PDF link on a course page.
+    Expect: the pane opens with the card of the file, then a bar that shows the part read, then the toolbar and the first page.
+    Expect: the first page shows text and pictures, and the text looks the same as in the Canvas preview.
+50. Use Previous page, Next page and the page number input, then type `0`, `9999` and `abc` in the input.
+    Expect: `0` goes to page 1, `9999` goes to the last page, and `abc` shows the page in view again.
+    Click inside the pages, then press PageDown, PageUp, End and Home.
+    Expect: the page number follows each key.
+51. Press Ctrl+plus, Ctrl+minus and Ctrl+0 (Cmd on a Mac) with the focus in the pane, then open the zoom menu and choose "Fit page" and 200%.
+    Expect: the pages zoom each time, and the browser page does not zoom.
+    Make the pane wider and narrower by its handle.
+    Expect: with "Fit width", the pages follow the width and the position in the document stays.
+52. Press Ctrl+F (Cmd+F on a Mac) with the focus in the pane, and type a word that is on two pages.
+    Expect: the search bar shows "1 of N", and the matches show in yellow.
+    Press Enter and Shift+Enter.
+    Expect: the selected match, in orange, moves to the next and to the previous match, and the pane scrolls to it.
+    Press Escape.
+    Expect: the marks go, and the pane stays open.
+    Select a line of text with the mouse and copy it.
+    Expect: the copied text is the text of the page.
+53. Open the thumbnails.
+    Expect: each page has a thumbnail that draws as you scroll the list, and a click goes to the page.
+54. Click a link inside the PDF that goes to a web site, and a link that goes to another page of the PDF.
+    Expect: the web link opens in a new tab and the PDF stays; the other link scrolls to its page.
+55. Open a second PDF, scroll the first one to page 3, switch to the second tab and back.
+    Expect: the first tab shows page 3 again without a new bar, and the network tab of the developer tools shows no new request for it.
+    Close the second tab.
+    Expect: the first tab stays.
+56. Open the PDF with a scanned page, and a PDF that was made with a non-Latin font (for example Japanese or Arabic) if you have one.
+    Expect: the pages draw.
+    Write down any page with a missing image, a box in place of a letter, or a font that looks wrong (design decision 25, item 9, "Not shipped").
+57. Open the PDF of 20 MB or more on a slow connection, or throttle the connection in the developer tools.
+    Expect: the bar moves, and the pane stays usable while it loads.
+    Open a PDF that is larger than 100 MB if you have one.
+    Expect: the card shows with "Download" and "Open in Canvas", and no bar.
+58. Turn off "Allow access" for the Canvas site (Firefox: the permissions of the extension; Chrome and Edge: the site access of the extension), then open a PDF.
+    Expect: the card shows "Couldn't load this PDF" and "Allow access".
+    Click "Allow access" and allow it.
+    Expect: the PDF loads without a new click on the file.
+    Do this step with a theme set to Dark in the settings once.
+    Expect: the toolbar and the area around the pages are dark, and the pages stay white.
+
 ### Store listings
 
-49. Check the Chrome Web Store listing.
+59. Check the Chrome Web Store listing.
     Expect: the single purpose is "Show your Canvas coursework for the week as a to-do list.", the data usage ticks "Website content" processed only on the device, the account is a non-trader, and 2-Step Verification is on.
-50. Check the Edge Add-ons listing.
+60. Check the Edge Add-ons listing.
     Expect: the description has the license link and does not mention other browsers.
-51. Check the Firefox Add-ons listing.
+61. Check the Firefox Add-ons listing.
     Expect: the source zip and the lockfile are attached, the reviewer notes say that the only writes are done marks, skip marks, custom tasks and announcement read marks sent to the student's own Canvas at the student's request, and two-factor authentication is on.
-52. Check every listing.
+62. Check every listing.
     Expect: the privacy policy link opens `docs/privacy.md` on the project site.
     Expect: the description ends with the trademark notice at the end of the README.
-53. Sign in to the reviewer test account.
+63. Sign in to the reviewer test account.
     Expect: the planner, done marks and custom tasks work in its course.
-54. Before the first release only, run the final name check from design decision 17.
+64. Before the first release only, run the final name check from design decision 17.
 
 ## Part 3: File access check (Firefox test channel)
 

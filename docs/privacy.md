@@ -187,3 +187,11 @@ The file viewer resolves a module item with `GET /api/v1/courses/:id/modules/:id
 The extension stores the open file ids in session storage for each browser tab.
 It removes them when the browser tab closes.
 The file viewer switch and pane width stay in local settings.
+The file viewer reads the bytes of a PDF from your saved Canvas address, with your own Canvas session.
+Canvas answers with a redirect to its own file storage, and the extension follows it.
+The bytes stay in the memory of the pane and are freed when you close the tab of the file.
+The extension does not store, upload or share the file.
+PDF.js, the program that shows a PDF, is part of the extension.
+It runs on your device from the files of the extension, loads nothing from the internet, and runs no script from the PDF.
+The search in a PDF runs on your device and sends nothing.
+A link inside a PDF opens in a new tab only when you click it.
