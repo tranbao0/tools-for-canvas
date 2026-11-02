@@ -762,11 +762,24 @@ async function main() {
     await driver.findElement(By.css('[data-part="pdf-next"]')).click();
     await driver.findElement(By.css('[data-part="pdf-next"]')).click();
     await driver.wait(async () => {
+      // The positions live only in the vault of the extension, never in storage.local.
       const stored = await driver.executeAsyncScript(`
+        const done = arguments[arguments.length - 1];
+        const open = indexedDB.open('weekrow-trusted', 1);
+        open.onerror = () => done({});
+        open.onsuccess = () => {
+          const request = open.result.transaction('values').objectStore('values').get('viewerPositions');
+          request.onsuccess = () => done(request.result ?? {});
+          request.onerror = () => done({});
+        };
+      `);
+      const mirror = await driver.executeAsyncScript(`
         const done = arguments[arguments.length - 1];
         browser.storage.local.get('viewerPositions').then(done);
       `);
-      return Object.values(stored.viewerPositions ?? {}).some((value) => value.page === 3);
+      if ('viewerPositions' in mirror)
+        throw new Error('The positions have a copy in storage.local');
+      return Object.values(stored).some((value) => value.page === 3);
     }, 10_000);
     await driver.findElement(By.css('[aria-label="Close Course notes.pdf"]')).click();
     await driver.switchTo().defaultContent();

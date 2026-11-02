@@ -1122,7 +1122,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 - After each write, the background stores a change marker (a time stamp only) in `storage.local`.
   Every surface listens to `storage.onChanged` and refreshes.
   `runtime.sendMessage` does not reach content scripts, so it cannot do this job [24].
-- The extension stores only these items in `storage.local`: its settings, the switches of the small tools (decision 22), the Canvas address, the change marker, and which one-time notes the student has seen.
+- The extension stores only these items in `storage.local`: its settings, the switches of the small tools (decision 22), the Canvas address, the change marker, which one-time notes the student has seen, and on Chrome and Edge the saved PDF positions (decision 25).
 
 **Fallback:** Background fetches with the student's cookies have not been tested live.
 Firefox treats requests from extension pages with host permission as first-party [12].
@@ -2459,12 +2459,15 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
      A resize of the pane keeps the position in the document.
    - **Saved position.**
      Each PDF tab reads its saved page and zoom through the checked background routes.
+     Only the pane frame may ask. A page script of Canvas never reads or writes a position.
      After the document loads, the viewer applies the zoom first and then goes to the saved page, clamped to the page count.
+     The viewer waits at most three seconds for the read, and then it opens at the top.
      A scroll or zoom change saves after one second of idle time.
-     A save that still waits goes out at once when the pane page unloads, such as on a reload, or when the file tab in the pane closes.
+     A save that still waits goes out at once when the pane page unloads, such as on a reload or when the last file tab closes, or when one file tab in the pane closes.
      The background refuses a save from a browser tab that has already closed, because it cannot check the cookie store of that tab, so a browser tab that closes within the idle time loses the last move.
      The read gives a token that names the student and the clearing round, as the tabs of the pane do.
      A save must carry the token of its last read, so a pane that stays open cannot save its position for the next student, or after a clearing.
+     A save also removes the entries of other students and of other Canvas addresses, so a student who signs in after another, also after a browser restart, never leaves the earlier student's files on disk.
      A failed read or write does not block the viewer, and a viewer without a token does not save.
    - **Search.**
      The search bar opens under the toolbar.
@@ -2709,6 +2712,7 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
   The worker parses it in its own thread, and an error shows a message and leaves the pane working.
   A page of any size cannot make a larger canvas than the limits of item 9.
 - Saved page positions go through the trusted storage rules of decision 5.
+  On Firefox they live only in the IndexedDB vault, with no copy in `storage.local`, because they hold the student id and the ids of the files that the student opened, and content scripts can read `storage.local` there.
 
 **Size:**
 

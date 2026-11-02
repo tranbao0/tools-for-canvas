@@ -1,5 +1,11 @@
 import { expect, it } from 'vitest';
-import { normalizePositions, parsePositionReply, positionKey, validPosition } from './positions';
+import {
+  keepStudent,
+  normalizePositions,
+  parsePositionReply,
+  positionKey,
+  validPosition,
+} from './positions';
 
 it('keeps the newest 200 positions', () => {
   const stored = Object.fromEntries(
@@ -50,4 +56,15 @@ it('separates students, origins and files', () => {
       positionKey('https://school.edu', '1', '2'),
     ]).size,
   ).toBe(4);
+});
+
+it('keeps only the entries of one student at one Canvas', () => {
+  const mine = positionKey('https://school.edu', '1', '1');
+  const entry = { page: 2, zoom: 1, at: 1 };
+  const positions = {
+    [mine]: entry,
+    [positionKey('https://school.edu', '2', '1')]: entry,
+    [positionKey('https://other.edu', '1', '1')]: entry,
+  };
+  expect(keepStudent(positions, 'https://school.edu', '1')).toEqual({ [mine]: entry });
 });

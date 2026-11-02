@@ -1,4 +1,5 @@
 import {
+  keepStudent,
   normalizePositions,
   positionKey,
   validPosition,
@@ -184,6 +185,8 @@ export function routeViewerMessage(
     switch (request['type']) {
       case 'viewer:position-get':
       case 'viewer:position-set': {
+        // Only the pane frame keeps positions. A page script of Canvas never reads or writes them.
+        if (!fromPane || !isPaneFrame(sender)) throw new Error('Only the pane frame may ask');
         const writing = request['type'] === 'viewer:position-set';
         const fields = writing ? ['type', 'fileId', 'page', 'zoom', 'token'] : ['type', 'fileId'];
         if (
@@ -205,7 +208,7 @@ export function routeViewerMessage(
         return withPositions(async () => {
           if (epoch !== (await readEpoch(host))) throw new Error('The viewer session changed');
           const key = positionKey(origin, student, request['fileId'] as string);
-          const positions = await viewerPositionsItem.getValue();
+          const positions = keepStudent(await viewerPositionsItem.getValue(), origin, student);
           if (!writing) return { position: positions[key] ?? null, token };
           positions[key] = {
             page: request['page'] as number,
@@ -360,9 +363,13 @@ export async function clearViewerTabs(): Promise<void> {
   const epoch = typeof values[EPOCH_KEY] === 'number' ? values[EPOCH_KEY] : 0;
   // The new epoch comes first, so a write with an old token fails even while the keys go.
   await browser.storage.session.set({ [EPOCH_KEY]: epoch + 1 });
-  await withPositions(() => viewerPositionsItem.setValue({}));
   const keys = Object.keys(values).filter(
     (key) => key.startsWith('viewer:') && !key.startsWith(SESSION_PREFIX),
   );
-  if (keys.length > 0) await browser.storage.session.remove(keys);
+  // Both run, so a failure of one never leaves the other data of the old student behind.
+  const results = await Promise.allSettled([
+    withPositions(() => viewerPositionsItem.setValue({})),
+    keys.length > 0 ? browser.storage.session.remove(keys) : Promise.resolve(),
+  ]);
+  for (const result of results) if (result.status === 'rejected') throw result.reason;
 }

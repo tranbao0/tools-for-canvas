@@ -43,6 +43,10 @@ export function classifyPdfError(error: unknown): PdfFailure {
 }
 
 const SEARCH_DELAY_MS = 200;
+/** How long a viewer that has drawn waits for its saved position before it opens at the top. */
+const READ_WAIT_MS = 3000;
+/** The idle time after the last scroll or zoom change before the position is saved. */
+const SAVE_IDLE_MS = 1000;
 
 export function PdfViewer(props: {
   fileId: string;
@@ -118,7 +122,7 @@ export function PdfViewer(props: {
     const save = () => {
       if (!restored || token === '') return;
       clearTimeout(timer);
-      timer = setTimeout(send, 1000);
+      timer = setTimeout(send, SAVE_IDLE_MS);
     };
     // A save that waits for the idle time goes out at once when the pane closes or the tab ends.
     const flush = () => {
@@ -134,6 +138,18 @@ export function PdfViewer(props: {
         fileId: props.fileId,
       })
       .then(parsePositionReply, () => null);
+    // The reply may take long, such as while the background checks who is signed in. The viewer
+    // waits for it only a short time. A late reply gives the token for the saves, not a restore.
+    void saved.then((reply) => {
+      token = reply?.token ?? '';
+    });
+    let giveUp: ReturnType<typeof setTimeout> | undefined;
+    const waited = Promise.race([
+      saved,
+      new Promise<null>((resolve) => {
+        giveUp = setTimeout(() => resolve(null), READ_WAIT_MS);
+      }),
+    ]);
     PdfEngine.open({
       lib: props.lib,
       bytes,
@@ -156,9 +172,9 @@ export function PdfViewer(props: {
           return;
         }
         opened = created;
-        const reply = await saved;
+        const reply = await waited;
+        clearTimeout(giveUp);
         if (cancelled) return;
-        token = reply?.token ?? '';
         const position = reply?.position;
         if (position && validPosition(position.page, position.zoom)) {
           created.setZoom(
@@ -180,6 +196,7 @@ export function PdfViewer(props: {
     return () => {
       flush();
       cancelled = true;
+      clearTimeout(giveUp);
       container.removeEventListener('scroll', save);
       window.removeEventListener('pagehide', flush);
       abort.abort();
