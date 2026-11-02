@@ -107,7 +107,7 @@ declare global {
   }
 }
 
-test('a script that makes its own pane frame cannot open a file or read tab data', async ({
+test('Chromium refuses a pane frame that a script makes, and the ports that the script offers get no answer', async ({
   context,
   page,
   background,
@@ -153,15 +153,13 @@ test('a script that makes its own pane frame cannot open a file or read tab data
   // Nothing came back on any port: no tab data, and no answer that proves the secret.
   expect(spy.ports).toEqual([]);
   expect(spy.messages.join('')).not.toMatch(/[0-9a-f]{32}/);
-  // Chromium refuses the frame of a web page to this pane page. Where a browser loads it, it
-  // holds the same secret, and it must still open no tab and load no file.
-  const copy = page
-    .frames()
-    .find((frame) => frame !== real && frame.url().endsWith('/viewer.html'));
-  if (copy) {
-    await expect(copy.locator('.fv-tab')).toHaveCount(0);
-    await expect(copy.locator('[data-part="card-name"]')).toHaveCount(0);
-  }
+  // Chromium refuses a frame of the pane page that a script of the web page makes (the page is
+  // reachable only through its session address). So no copy of the pane loaded, and the frame
+  // ended on an error page. The Firefox smoke test covers a browser that does load the copy.
+  expect(
+    page.frames().filter((frame) => frame !== real && frame.url().endsWith('/viewer.html')),
+  ).toHaveLength(0);
+  expect(page.frames().some((frame) => frame.url().startsWith('chrome-error://'))).toBe(true);
   expect(canvas.requests.filter((request) => /\/files\/43/.test(request.path))).toEqual([]);
   // The real pane still works.
   await expect(real.locator(FILE_NAME)).toHaveText('Course notes.pdf');
