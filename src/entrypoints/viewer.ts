@@ -1,4 +1,5 @@
-import '@/features/file-viewer/model';
-import '@/features/file-viewer/channel';
+import { startViewer } from '@/features/file-viewer/page';
 
-export default defineUnlistedScript(() => {});
+export default defineUnlistedScript(() => {
+  void startViewer();
+});

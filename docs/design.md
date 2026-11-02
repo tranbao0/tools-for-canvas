@@ -2258,6 +2258,9 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - The page shrinks to make room, the same as with a browser side panel, so nothing in Canvas is hidden.
      The pane exists only while the student has a file open.
    - A handle on its left edge resizes it, from 360 px to 70 percent of the window, and the width is saved.
+   - The pane uses a fixed host and a shadow root, with an extension iframe inside.
+   - Only the `html` element receives right padding equal to the pane width.
+     Closing restores its exact inline value and priority.
    - The pane has a close button, and Escape closes it when focus is inside.
    - Below 900 px of window width, the pane covers the page instead, with the same close button.
 2. **Tabs.**
@@ -2266,6 +2269,8 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - The open tabs last while the Canvas tab is open, and they come back after a page change in the same Canvas tab.
 3. **Which clicks open the pane.**
    - A plain left click on a Canvas file link: `a.instructure_file_link`, links to `/courses/:id/files/:id` or `/files/:id`, file preview buttons, module items of the file type, and the student's own submission attachments.
+   - The page script listens on `document` in the capture phase and stops Canvas handlers only after a match.
+   - Links with `download` keep their normal action.
    - A click with Ctrl, Shift, Alt or Meta, a middle click, and "Open in new tab" keep the browser's normal action.
    - Module items are resolved to their file through `GET /api/v1/courses/:id/modules/:id/items/:id`.
 4. **Viewers by file type.**
@@ -2298,7 +2303,11 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
 **Implementation status:**
 
 The identity checks, the tab model, the channel validation and the viewer size limits are implemented.
-The pane, its background routes, its settings and its browser tests are not implemented yet.
+The background routes and settings are implemented.
+The pane frame and file-name placeholder have an initial implementation.
+The browser test opens the frame but fails to receive the file name through the channel.
+The remaining pane checks and visual checks are not complete.
+The full file UI is not implemented yet.
 The channel checks the saved Canvas origin, the parent window, the nonce and one transferred port before it accepts file identities.
 
 **Build order:**
