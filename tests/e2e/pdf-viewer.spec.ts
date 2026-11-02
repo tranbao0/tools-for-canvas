@@ -859,6 +859,8 @@ test('a saved position does not open for another student', async ({
   await openFirstFile(page, 'Read notes');
   frame = await pane(page);
   await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  // The controls work only after the viewer has the answer to its read of the position.
+  await expect(pageInput(frame)).toBeEnabled();
   await expect(pageInput(frame)).toHaveValue('1');
   await expect(frame.locator('[data-part="pdf-zoom-text"]')).not.toHaveText('150%');
   expect(
@@ -946,10 +948,20 @@ test('a closed tab leaves its saved page and zoom for the next tab', async ({
 /** Keeps the idle timers of the saves from firing, so only the unload or the close can save. */
 async function holdIdleSaves(frame: Frame): Promise<void> {
   await frame.evaluate(() => {
+    const held = { count: 0 };
+    (window as unknown as { __held: typeof held }).__held = held;
     const real = window.setTimeout.bind(window);
-    window.setTimeout = ((handler: TimerHandler, delay?: number, ...rest: unknown[]) =>
-      delay === 1000 ? 0 : real(handler, delay, ...rest)) as typeof window.setTimeout;
+    window.setTimeout = ((handler: TimerHandler, delay?: number, ...rest: unknown[]) => {
+      if (delay !== 1000) return real(handler, delay, ...rest);
+      held.count += 1;
+      return 0;
+    }) as typeof window.setTimeout;
   });
+}
+
+/** How many idle timers of the saves the pane held back. */
+function heldSaves(frame: Frame): Promise<number> {
+  return frame.evaluate(() => (window as unknown as { __held: { count: number } }).__held.count);
 }
 
 test('a reload right after a move saves the page and zoom', async ({
@@ -966,7 +978,8 @@ test('a reload right after a move saves the page and zoom', async ({
   await frame.getByRole('menuitemradio', { name: '150%' }).click();
   await expect(frame.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
   await expect(pageInput(frame)).toHaveValue('3');
-  // The idle save did not run. Only the unload can send the position.
+  // The idle save waits and did not run. Only the unload can send the position.
+  expect(await heldSaves(frame)).toBeGreaterThan(0);
   expect(await savedPositions(background)).toEqual({});
   await page.reload();
   await openFirstFile(page, 'Read notes');
@@ -992,6 +1005,7 @@ test('closing a file tab right after a move saves the page and zoom', async ({
   // A second file keeps the pane open, so the close of the first tab does not unload the pane.
   await page.locator('#content').getByRole('link', { name: 'Second notes' }).click();
   await expect(frame.getByRole('tab')).toHaveCount(2);
+  expect(await heldSaves(frame)).toBeGreaterThan(0);
   expect(await savedPositions(background)).toEqual({});
   await frame.getByRole('button', { name: 'Close Course notes.pdf' }).click();
   await expect

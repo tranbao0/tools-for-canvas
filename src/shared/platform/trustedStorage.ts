@@ -34,7 +34,7 @@ export interface TrustedItemOptions<T> {
   /**
    * Whether `storage.local` mirrors a vault item. The default is `true`. An item that content
    * scripts must not read sets `false`, and then only the vault holds it. Nothing can watch such
-   * an item in a browser with a vault.
+   * an item in a browser with a vault: `watch` does nothing.
    */
   mirror?: boolean;
 }
@@ -64,6 +64,9 @@ export function createTrustedItem<T>(
       if (mirror) await local.setValue(value);
     },
     watch(listener) {
+      // Nothing mirrors the item, so there is no change to see, and the repair below would copy
+      // the vault into `storage.local`.
+      if (!mirror) return () => undefined;
       // The value that the watcher knows. It starts as the vault's value, never the mirror's,
       // because a page can write the mirror.
       let known: T | undefined;

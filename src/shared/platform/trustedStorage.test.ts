@@ -134,6 +134,20 @@ describe('with a vault, as on Firefox', () => {
     expect(await fakeBrowser.storage.local.get(null)).toEqual({});
   });
 
+  it('does not copy an item without a mirror to storage.local when a page writes there', async () => {
+    const vault = memoryVault();
+    vault.values.set('canvasOrigin', SCHOOL);
+    const item = createTrustedItem({ ...ORIGIN, mirror: false }, vault);
+    const listener = vi.fn();
+    item.watch(listener);
+
+    await fakeBrowser.storage.local.set({ canvasOrigin: EVIL });
+    await Promise.resolve();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(await fakeBrowser.storage.local.get('canvasOrigin')).toEqual({ canvasOrigin: EVIL });
+  });
+
   it('keeps an object item in the vault', async () => {
     const vault = memoryVault();
     const item = createTrustedItem(SAMPLE, vault);
