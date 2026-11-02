@@ -1070,7 +1070,8 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 - A delayed task delete that waits in the queue when the queue is abandoned is parked, not sent again at once.
   It keeps its entry in `pendingDeletes` and has no timer.
   The owner sends it again when a reader or a check confirms a cookie for the student of the cache, and its request passes the guard like any write.
-  A DELETE counts as started, and Undo can no longer stop it, only after its guard passed.
+  A DELETE counts as started, and Undo can no longer stop it, only after its guard passed and its patch is still there.
+  An Undo that runs while the guard waits removes the patch, and then no DELETE goes out.
   The reply of an override write names its user.
   When it names another user than the student of the write, the owner writes the old flags back to that override (best effort, and a failure is only logged), and then drops the cache of the first student.
   An override that this write created goes back to not done and not skipped, because the other student had none before.
