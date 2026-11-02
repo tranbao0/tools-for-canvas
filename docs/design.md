@@ -980,8 +980,9 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 **How it works:**
 
 - The background service worker on Chrome and Edge, or the background page on Firefox, owns all Canvas requests.
-- Before the weekly list or the dashboard fixes serve cached data, the owner reads the Canvas session cookie (`canvas_session`, then `_normandy_session`) with `cookies.get` and compares a fingerprint of it.
-  The fingerprint is the SHA-256 of a random per-install salt and the cookie value.
+- Before the weekly list or the dashboard fixes serve cached data, the owner reads the Canvas session cookie (`canvas_session` and `_normandy_session`) with `cookies.get` and compares a fingerprint of it.
+  Each cookie gets the SHA-256 of a random per-install salt and its value.
+  When both cookies exist, the fingerprint includes both hashes in the order of the cookie names.
   The salt stays in trusted extension storage.
   The extension never stores or sends the cookie value.
   The cookie names are one ordered constant in `src/shared/canvas/session.ts`.
@@ -1682,7 +1683,8 @@ All four are on by default.
 The owner chose the list on 2026-10-30 (see `docs/roadmap.md`).
 The fixes run on the dashboard of the saved Canvas, next to the weekly list, and need not have the list turned on.
 The dashboard uses the origin that the router checks and shares the session fingerprint check in decision 11.
-The extension reads the session cookie there only to compare a salted fingerprint, and it never stores or sends the value.
+The extension reads both session cookies there to compare their salted fingerprints.
+It never stores or sends their values.
 
 | Switch | Fix |
 |---|---|

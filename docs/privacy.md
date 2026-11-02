@@ -40,8 +40,9 @@ The markers are one page element and the settings that Canvas writes in its inli
 The script looks at the text of inline scripts only to find those settings, and it keeps none of that text.
 It reads nothing else on the page.
 The detector does not read your cookies, your text input or your history.
-The extension reads the Canvas session cookie (`canvas_session`, then `_normandy_session`) only to compare a salted fingerprint.
+The extension reads the Canvas session cookie (`canvas_session` and `_normandy_session`) only to compare a salted fingerprint.
 It does this before it shows cached data, to know that the same student is signed in.
+When both cookies exist, the fingerprint includes both salted hashes.
 It stores up to three confirmed fingerprints with their cookie names, the user id and the check time in session storage.
 It stores a random per-install salt in trusted extension storage.
 It never stores or sends the session cookie value.

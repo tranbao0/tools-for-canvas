@@ -23,12 +23,18 @@ function stores(...list: { id: string; tabIds?: number[] }[]) {
 
 it('hashes the session value with a stable install salt and reads the default store', async () => {
   const { sessionFingerprint, SESSION_COOKIE_NAMES } = await load();
-  const cookie = vi.spyOn(browser.cookies, 'get').mockResolvedValue({ value: 'secret-a' } as never);
+  const cookie = vi
+    .spyOn(browser.cookies, 'get')
+    .mockImplementation(async (details) =>
+      details.name === 'canvas_session' ? ({ value: 'secret-a' } as never) : null,
+    );
   const first = await sessionFingerprint(ORIGIN);
   expect(first).toMatch(/^canvas_session:[a-f0-9]{64}$/);
   expect(await sessionFingerprint(ORIGIN)).toBe(first);
   expect(cookie).toHaveBeenCalledWith({ url: ORIGIN, name: SESSION_COOKIE_NAMES[0], storeId: '0' });
-  cookie.mockResolvedValue({ value: 'secret-b' } as never);
+  cookie.mockImplementation(async (details) =>
+    details.name === 'canvas_session' ? ({ value: 'secret-b' } as never) : null,
+  );
   expect(await sessionFingerprint(ORIGIN)).not.toBe(first);
   expect(JSON.stringify(await browser.storage.local.get(null))).not.toContain('secret-');
 });
@@ -44,7 +50,9 @@ it('reads the default store of Firefox, and never the list of stores', async () 
 
 it('tries the salt again after a failed read', async () => {
   const { sessionFingerprint } = await load();
-  vi.spyOn(browser.cookies, 'get').mockResolvedValue({ value: 'secret-a' } as never);
+  vi.spyOn(browser.cookies, 'get').mockImplementation(async (details) =>
+    details.name === 'canvas_session' ? ({ value: 'secret-a' } as never) : null,
+  );
   const read = vi
     .spyOn(browser.storage.local, 'get')
     .mockRejectedValueOnce(new Error('storage failed'));
@@ -80,16 +88,24 @@ it.each(['canvas_session', '_normandy_session'])('reads %s when it is present', 
   expect(await sessionFingerprint(ORIGIN)).toMatch(new RegExp(`^${name}:[a-f0-9]{64}$`));
 });
 
-it('prefers hosted Canvas and changes the fingerprint when only the name changes', async () => {
+it('hashes both session cookies and detects a change to either value', async () => {
   const { sessionFingerprint } = await load();
   const cookie = vi.spyOn(browser.cookies, 'get').mockResolvedValue({ value: 'same' } as never);
   const hosted = await sessionFingerprint(ORIGIN);
-  expect(cookie).toHaveBeenCalledTimes(1);
+  expect(cookie).toHaveBeenCalledTimes(2);
   expect(cookie).toHaveBeenCalledWith(expect.objectContaining({ name: 'canvas_session' }));
   cookie.mockImplementation(async (details) =>
     details.name === '_normandy_session' ? ({ value: 'same' } as never) : null,
   );
   const fallback = await sessionFingerprint(ORIGIN);
   expect(fallback).not.toBe(hosted);
-  expect(fallback?.split(':')[1]).toBe(hosted?.split(':')[1]);
+  expect(hosted).toBe(`canvas_session:${fallback?.split(':')[1]}|${fallback}`);
+  cookie.mockImplementation(
+    async (details) => ({ value: details.name === 'canvas_session' ? 'same' : 'changed' }) as never,
+  );
+  expect(await sessionFingerprint(ORIGIN)).not.toBe(hosted);
+  cookie.mockImplementation(
+    async (details) => ({ value: details.name === 'canvas_session' ? 'changed' : 'same' }) as never,
+  );
+  expect(await sessionFingerprint(ORIGIN)).not.toBe(hosted);
 });

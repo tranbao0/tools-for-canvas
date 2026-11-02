@@ -41,11 +41,12 @@ export async function surfaceUsesRequestStore(tabId: number): Promise<boolean> {
  * `null` when that store has no session cookie. The value of the cookie is never kept.
  */
 export async function sessionFingerprint(origin: string): Promise<string | null> {
+  const fingerprints: string[] = [];
   for (const name of SESSION_COOKIE_NAMES) {
     const cookie = await browser.cookies.get({ url: origin, name, storeId: REQUEST_STORE_ID });
-    if (cookie) return fingerprint(name, cookie.value);
+    if (cookie) fingerprints.push(await fingerprint(name, cookie.value));
   }
-  return null;
+  return fingerprints.length === 0 ? null : fingerprints.join('|');
 }
 
 /** The name stays with the hash in confirmed fingerprints, so a name change needs a check. */
