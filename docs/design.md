@@ -2303,6 +2303,9 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
    - A plain left click on a Canvas file link: `a.instructure_file_link`, links to `/courses/:id/files/:id` or `/files/:id`, file preview buttons, module items of the file type, and the student's own submission attachments.
    - The page script listens on `document` in the capture phase and stops Canvas handlers only after a match.
    - Links with `download` keep their normal action.
+     The one exception is a link to a file on an assignment page or a submission details page, because Canvas marks the student's own submission files as downloads.
+     Those links have the shape `/files/:id/download`, or `/courses/:id/assignments/:id/submissions/:id?download=:file`.
+     The pane takes only the file id from them and drops any `verifier`.
    - A click with Ctrl, Shift, Alt or Meta, a middle click, and "Open in new tab" keep the browser's normal action.
    - Only a click of the student counts (`event.isTrusted`).
      A script of the Canvas page can click any link, and such a click opens nothing, so a script cannot dispatch a click to open a file or replace the tabs.

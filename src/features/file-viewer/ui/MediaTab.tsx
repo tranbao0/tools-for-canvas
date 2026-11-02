@@ -21,7 +21,9 @@ export function MediaTab(props: {
   const [source, setSource] = useState('');
   const [ready, setReady] = useState(false);
   const [partial, setPartial] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<{ text: string; retry: boolean } | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const picture = useRef<HTMLImageElement>(null);
   const [zoom, setZoom] = useState<number | null>(null);
   const failed = useRef(props.onReadFailed);
   failed.current = props.onReadFailed;
@@ -29,14 +31,16 @@ export function MediaTab(props: {
   const mime = type?.mime;
   useEffect(() => {
     if (!begin || !kind || !mime) return;
-    if ((kind === 'audio' || kind === 'video') && !document.createElement(kind).canPlayType(mime))
+    if ((kind === 'audio' || kind === 'video') && !document.createElement(kind).canPlayType(mime)) {
+      setError({ text: "This browser can't play this file", retry: false });
       return;
+    }
     const abort = new AbortController();
     let live = true;
     let blob = '';
     setSource('');
     setReady(false);
-    setError('');
+    setError(null);
     void props.host
       .readFile(props.url, () => undefined, abort.signal)
       .then((bytes) => {
@@ -46,17 +50,23 @@ export function MediaTab(props: {
           setSource(decodeText(bytes));
           setPartial(bytes.length > MAX_TEXT_BYTES);
         } else {
-          blob = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mime }));
+          blob = URL.createObjectURL(new Blob([bytes as BlobPart], { type: mime }));
           setSource(blob);
         }
       })
       .catch((cause: unknown) => {
-        if (!live) return;
-        setError(
-          cause instanceof FileBytesError && cause.kind === 'unconfirmed'
-            ? "Canvas can't confirm your sign-in for this file"
-            : "Couldn't load this file",
-        );
+        if (!live || (cause instanceof FileBytesError && cause.kind === 'aborted')) return;
+        if (cause instanceof FileBytesError && cause.kind === 'too_large') {
+          // The record said the file was small, but the bytes are not. Reading again would not help.
+          setError({ text: 'This file is too large to show here', retry: false });
+          return;
+        }
+        if (cause instanceof FileBytesError && cause.kind === 'unconfirmed') {
+          // The permission is fine. Only the sign-in is not confirmed.
+          setError({ text: "Canvas can't confirm your sign-in for this file", retry: true });
+          return;
+        }
+        setError({ text: "Couldn't load this file", retry: true });
         failed.current();
       });
     return () => {
@@ -65,14 +75,28 @@ export function MediaTab(props: {
       if (blob) URL.revokeObjectURL(blob);
     };
   }, [begin, kind, mime, props.host, props.url, props.attempt]);
+  // A tab that is not shown must not keep playing.
+  useEffect(() => {
+    if (props.active) return;
+    root.current
+      ?.querySelectorAll<HTMLMediaElement>('audio,video')
+      .forEach((media) => media.pause());
+  }, [props.active, source]);
+  const scale = () => {
+    const image = picture.current;
+    const fitted = image && image.naturalWidth > 0 ? image.clientWidth / image.naturalWidth : 0;
+    return zoom ?? (fitted > 0 ? fitted : 1);
+  };
   return (
-    <div hidden={!props.active} class="fv-media">
+    <div ref={root} hidden={!props.active} class="fv-media">
       {error && (
         <div role="alert">
-          <p>{error}</p>
-          <button type="button" class="wr-btn" onClick={props.onRetry}>
-            Retry
-          </button>
+          <p>{error.text}</p>
+          {error.retry && (
+            <button type="button" class="wr-btn" onClick={props.onRetry}>
+              Retry
+            </button>
+          )}
         </div>
       )}
       {source && kind === 'image' && (
@@ -87,20 +111,21 @@ export function MediaTab(props: {
             <button
               type="button"
               class="wr-btn"
-              onClick={() => setZoom(Math.max(0.1, (zoom ?? 1) / 1.25))}
+              onClick={() => setZoom(Math.max(0.1, scale() / 1.25))}
             >
               Zoom out
             </button>
             <button
               type="button"
               class="wr-btn"
-              onClick={() => setZoom(Math.min(8, (zoom ?? 1) * 1.25))}
+              onClick={() => setZoom(Math.min(8, scale() * 1.25))}
             >
               Zoom in
             </button>
           </div>
           <div class="fv-image-scroll">
             <img
+              ref={picture}
               src={source}
               alt={props.name}
               style={

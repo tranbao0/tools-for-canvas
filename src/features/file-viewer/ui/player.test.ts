@@ -23,9 +23,26 @@ describe('passive file players', () => {
     expect(decodeText(new Uint8Array(MAX_TEXT_BYTES + 1).fill(65))).toHaveLength(MAX_TEXT_BYTES);
     expect(decodeText(new Uint8Array([0xe9]))).toBe('é');
   });
+  it('keeps UTF-8 when the limit cuts a character in half', () => {
+    const bytes = new Uint8Array(MAX_TEXT_BYTES + 2).fill(65);
+    bytes[0] = 0xc3;
+    bytes[1] = 0xbc;
+    bytes[MAX_TEXT_BYTES - 1] = 0xc3;
+    bytes[MAX_TEXT_BYTES] = 0xa9;
+    const text = decodeText(bytes);
+    expect(text.startsWith('\u00fcA')).toBe(true);
+    expect(text).toHaveLength(MAX_TEXT_BYTES - 2);
+  });
 });
 describe('submission attachment paths', () => {
   const origin = 'https://canvas.example';
+  it('takes the file of a submission download link', () => {
+    const href = '/courses/12/assignments/3/submissions/7?download=42';
+    expect(fileTarget(href, origin)).toEqual({ fileId: '42' });
+    expect(catchesDownload(href, origin, '/courses/12/assignments/3/submissions/7')).toBe(true);
+    expect(fileTarget('/courses/12/assignments/3/submissions/7?download=x', origin)).toBeNull();
+    expect(fileTarget('/courses/12/assignments/3?download=42', origin)).toBeNull();
+  });
   for (const href of [
     '/files/42/download?download_frd=1&verifier=secret',
     '/courses/12/files/42/download?verifier=secret',
