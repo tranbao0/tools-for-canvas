@@ -33,7 +33,10 @@ export const DETECTOR_ENTRY = 'detector.js';
  * @returns {number}
  */
 export function budgetFor(name) {
-  return name === DETECTOR_ENTRY ? DETECTOR_BUDGET_BYTES : BUDGET_BYTES;
+  if (name === DETECTOR_ENTRY) return DETECTOR_BUDGET_BYTES;
+  if (name === 'viewer.js') return 15_000;
+  if (name === 'viewer.html') return 1_500_000;
+  return BUDGET_BYTES;
 }
 
 const HTML_ASSET = /<(?:script|link)\b[^>]*?\b(?:src|href)\s*=\s*["']([^"']+)["']/gi;

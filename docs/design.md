@@ -2285,7 +2285,7 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
 
 - The pane page is in `web_accessible_resources` with `matches: ["https://*/*"]`, and `use_dynamic_url: true` on Chromium.
   `check-manifest` allows exactly this one page.
-- The page script and the pane talk through a `MessageChannel` set up with a random nonce; the pane accepts only file ids and Canvas paths of the saved Canvas origin, never a full URL to load.
+- The page script and the pane talk through a `MessageChannel` set up with a random nonce; the pane accepts only file ids and course ids, never a path or a full URL to load.
 - The pane fetches only `/api/v1/files/:id` and the `url` that it returns, through the existing fetch wrapper (decision 20), plus the redirect that Canvas chooses.
 - PDF.js runs with `isEvalSupported: false`, no PDF scripting, and links inside a PDF open in a new tab with `noopener`.
 - Saved page positions go through the trusted storage rules of decision 5.
@@ -2294,6 +2294,12 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
 
 - The page script that catches clicks and draws the pane frame is its own small script, like `dashboard.js`, so the in-page list keeps its 40 KB limit.
 - The pane page and PDF.js load only when a file opens, and they get their own limit of 1.5 MB gzip, because they load from the extension's files.
+
+**Implementation status:**
+
+The identity checks, the tab model, the channel validation and the viewer size limits are implemented.
+The pane, its background routes, its settings and its browser tests are not implemented yet.
+The channel checks the saved Canvas origin, the parent window, the nonce and one transferred port before it accepts file identities.
 
 **Build order:**
 
