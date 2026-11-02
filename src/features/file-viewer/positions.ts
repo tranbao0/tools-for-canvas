@@ -59,10 +59,32 @@ export function normalizePositions(stored: unknown): ViewerPositions {
   return Object.fromEntries(entries.slice(0, 200));
 }
 
+/**
+ * The entries of one student at one Canvas. The entries of other students and of other addresses
+ * go, so a student who signs in after another never leaves the earlier student's files on disk.
+ */
+export function keepStudent(
+  positions: ViewerPositions,
+  origin: string,
+  student: string,
+): ViewerPositions {
+  return Object.fromEntries(
+    Object.entries(positions).filter(([key]) => {
+      const [keyOrigin, keyStudent] = JSON.parse(key) as unknown[];
+      return keyOrigin === origin && keyStudent === student;
+    }),
+  );
+}
+
+/**
+ * The positions hold the student id and the ids of the files that the student opened. On Firefox
+ * the item has no copy in `storage.local`, because content scripts can read that area.
+ */
 export const viewerPositionsItem = createTrustedItem<ViewerPositions>({
   key: 'viewerPositions',
   fallback: () => ({}),
   normalize: normalizePositions,
+  mirror: false,
 });
 
 export interface PositionReply {

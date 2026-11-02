@@ -19,6 +19,7 @@ import {
   pane,
   saveSetting,
 } from './support/file-viewer';
+import { advanceBackgroundClock } from './support/clock';
 import { json } from './support/scenario-api';
 import { expect, test as base } from './support/weekrow';
 import { SCENARIO_NOW, buildScenario } from '../fixtures/scenario';
@@ -779,13 +780,55 @@ function studentCanvas() {
     first: scenario.self.id,
     routes: routesOfStudent,
     /** Signs in the other student: the cookie changes and Canvas names the other student. */
-    async switchStudent(context: Parameters<typeof openCoursePage>[0], origin: string) {
+    async switchStudent(
+      context: Parameters<typeof openCoursePage>[0],
+      background: Parameters<typeof openCoursePage>[2],
+      origin: string,
+    ) {
       signedIn = OTHER_STUDENT;
+      // The owner starts at most two sign-in checks in 30 seconds. The first student's open used
+      // some, so the clock moves on and the check of the new cookie can start.
+      await advanceBackgroundClock(background, 2 * 60_000);
       await context.addCookies([
         { name: 'canvas_session', value: 'student-b', url: origin, secure: true, sameSite: 'Lax' },
       ]);
     },
   };
+}
+
+/**
+ * Waits until the background has loaded the signed-in student. The viewer reads Canvas only for a
+ * confirmed student, and a read that comes sooner is refused. A side panel page asks, as it does
+ * for a student, and the reply names the student once the round is done.
+ */
+async function waitForStudent(
+  context: Parameters<typeof openCoursePage>[0],
+  extensionUrl: (file: string) => string,
+  id: string,
+): Promise<void> {
+  const panel = await context.newPage();
+  await panel.goto(extensionUrl('sidepanel.html'));
+  await expect
+    .poll(() =>
+      panel.evaluate(async () => {
+        const api = (
+          globalThis as unknown as {
+            chrome: {
+              runtime: {
+                sendMessage(message: unknown): Promise<{ kind: string; userId?: string }>;
+              };
+            };
+          }
+        ).chrome;
+        const reply = await api.runtime.sendMessage({
+          type: 'weekrow:get-state',
+          request: { surface: 'panel', spanOffset: 0, scopeCourseId: null },
+        });
+        return reply.kind === 'ready' ? reply.userId : reply.kind;
+      }),
+    )
+    .toBe(id);
+  await panel.close();
 }
 
 const studentOf = (key: string): unknown => (JSON.parse(key) as unknown[])[1];
@@ -794,6 +837,7 @@ test('a saved position does not open for another student', async ({
   context,
   page,
   background,
+  extensionUrl,
   fileHost,
 }) => {
   const student = studentCanvas();
@@ -809,7 +853,8 @@ test('a saved position does not open for another student', async ({
   expect(keys).toHaveLength(1);
   expect(studentOf(keys[0]!)).toBe(student.first);
 
-  await student.switchStudent(context, canvas.origin);
+  await student.switchStudent(context, background, canvas.origin);
+  await waitForStudent(context, extensionUrl, OTHER_STUDENT);
   await page.reload();
   await openFirstFile(page, 'Read notes');
   frame = await pane(page);
@@ -825,6 +870,7 @@ test('a pane that stayed open cannot save its position for the next student', as
   context,
   page,
   background,
+  extensionUrl,
   fileHost,
 }) => {
   const student = studentCanvas();
@@ -840,20 +886,22 @@ test('a pane that stayed open cannot save its position for the next student', as
   await frame.evaluate(() => {
     const runtime = (globalThis as unknown as { chrome: typeof browser }).chrome.runtime;
     const send = runtime.sendMessage.bind(runtime) as (message: unknown) => Promise<unknown>;
-    const replies: unknown[] = [];
+    const replies: { zoom: unknown; reply: unknown }[] = [];
     (globalThis as unknown as { __saves: unknown[] }).__saves = replies;
     (runtime as unknown as { sendMessage: unknown }).sendMessage = async (message: {
       type?: string;
+      zoom?: unknown;
     }) => {
       const reply = await send(message);
-      if (message.type === 'viewer:position-set') replies.push(reply ?? null);
+      if (message.type === 'viewer:position-set') replies.push({ zoom: message.zoom, reply });
       return reply;
     };
   });
 
   // The other student signs in, in another tab. That tab opens a file, so the background
   // confirms the other student.
-  await student.switchStudent(context, canvas.origin);
+  await student.switchStudent(context, background, canvas.origin);
+  await waitForStudent(context, extensionUrl, OTHER_STUDENT);
   const other = await context.newPage();
   await other.goto(page.url());
   await openFirstFile(other, 'Read notes');
@@ -862,11 +910,16 @@ test('a pane that stayed open cannot save its position for the next student', as
   // The first tab still shows the first student's pane. A zoom change there saves after a second.
   await frame.getByRole('button', { name: 'Zoom level' }).click();
   await frame.getByRole('menuitemradio', { name: '200%' }).click();
+  // The save of the 200 percent zoom reached the background and got its answer.
   await expect
     .poll(() =>
-      frame.evaluate(() => (globalThis as unknown as { __saves: unknown[] }).__saves.length),
+      frame.evaluate(() =>
+        (globalThis as unknown as { __saves: { zoom: unknown }[] }).__saves.some(
+          (save) => save.zoom === 2,
+        ),
+      ),
     )
-    .toBeGreaterThan(0);
+    .toBe(true);
   const stored = await savedPositions(background);
   expect(Object.keys(stored).filter((key) => studentOf(key) === OTHER_STUDENT)).toEqual([]);
   expect(Object.values(stored).filter((value) => value.zoom === 2)).toEqual([]);
@@ -890,23 +943,62 @@ test('a closed tab leaves its saved page and zoom for the next tab', async ({
   await expect(reopened.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
 });
 
-test('a reload right after a move still saves the page and zoom', async ({
+/** Keeps the idle timers of the saves from firing, so only the unload or the close can save. */
+async function holdIdleSaves(frame: Frame): Promise<void> {
+  await frame.evaluate(() => {
+    const real = window.setTimeout.bind(window);
+    window.setTimeout = ((handler: TimerHandler, delay?: number, ...rest: unknown[]) =>
+      delay === 1000 ? 0 : real(handler, delay, ...rest)) as typeof window.setTimeout;
+  });
+}
+
+test('a reload right after a move saves the page and zoom', async ({
   context,
   page,
   background,
   fileHost,
 }) => {
   const frame = await openPdf(context, page, background, fileHost);
+  await holdIdleSaves(frame);
   await pageInput(frame).fill('3');
   await pageInput(frame).press('Enter');
   await frame.getByRole('button', { name: 'Zoom level' }).click();
   await frame.getByRole('menuitemradio', { name: '150%' }).click();
   await expect(frame.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
   await expect(pageInput(frame)).toHaveValue('3');
-  // The idle time of the save has not passed. The unload must send the position.
+  // The idle save did not run. Only the unload can send the position.
+  expect(await savedPositions(background)).toEqual({});
   await page.reload();
   await openFirstFile(page, 'Read notes');
   const reopened = await pane(page);
   await expect(pageInput(reopened)).toHaveValue('3');
   await expect(reopened.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
+});
+
+test('closing a file tab right after a move saves the page and zoom', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost);
+  await holdIdleSaves(frame);
+  await pageInput(frame).fill('3');
+  await pageInput(frame).press('Enter');
+  await frame.getByRole('button', { name: 'Zoom level' }).click();
+  await frame.getByRole('menuitemradio', { name: '150%' }).click();
+  await expect(frame.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
+  await expect(pageInput(frame)).toHaveValue('3');
+  // A second file keeps the pane open, so the close of the first tab does not unload the pane.
+  await page.locator('#content').getByRole('link', { name: 'Second notes' }).click();
+  await expect(frame.getByRole('tab')).toHaveCount(2);
+  expect(await savedPositions(background)).toEqual({});
+  await frame.getByRole('button', { name: 'Close Course notes.pdf' }).click();
+  await expect
+    .poll(async () =>
+      Object.values(await savedPositions(background)).some(
+        (value) => value.page === 3 && value.zoom === 1.5,
+      ),
+    )
+    .toBe(true);
 });

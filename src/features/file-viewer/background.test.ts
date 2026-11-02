@@ -7,6 +7,7 @@ import {
   sessionKey,
   type ViewerHost,
 } from './background';
+import { positionKey, viewerPositionsItem } from './positions';
 
 function setup() {
   const api = {
@@ -383,6 +384,41 @@ describe('saved positions', () => {
     await expect(
       routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host),
     ).rejects.toThrow('cookie is not confirmed');
+  });
+
+  it('answers only the pane frame', async () => {
+    const { host, pane, sender } = setup();
+    const top = { ...sender, frameId: 0 };
+    const tab = { url: 'extension://x/viewer.html', frameId: 0, tab: { id: 7 } };
+    for (const from of [sender, top, tab]) {
+      await expect(
+        routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, from, host),
+      ).rejects.toThrow('Only the pane frame');
+    }
+    await expect(
+      routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host),
+    ).resolves.toMatchObject({ position: null });
+  });
+
+  it('drops the positions of other students when it saves', async () => {
+    const { host, pane } = setup();
+    await clearViewerTabs();
+    const get = () =>
+      routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host) as Promise<{
+        position: unknown;
+        token: string;
+      }>;
+    const set = (token: string) =>
+      routeViewerMessage(
+        { type: 'viewer:position-set', fileId: '1', page: 3, zoom: 1.5, token },
+        pane,
+        host,
+      );
+    await set((await get()).token);
+    vi.mocked(host.userId).mockResolvedValue('u2');
+    await set((await get()).token);
+    const stored = Object.keys(await viewerPositionsItem.getValue());
+    expect(stored).toEqual([positionKey('https://school.edu', 'u2', '1')]);
   });
 
   it('isolates students and clears positions with tabs', async () => {

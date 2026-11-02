@@ -123,6 +123,17 @@ describe('with a vault, as on Firefox', () => {
     expect(await fakeBrowser.storage.local.get(null)).toEqual({});
   });
 
+  it('leaves no copy in storage.local for an item without a mirror', async () => {
+    const vault = memoryVault();
+    const item = createTrustedItem({ ...ORIGIN, mirror: false }, vault);
+
+    await item.setValue(SCHOOL);
+
+    expect(vault.values.get('canvasOrigin')).toBe(SCHOOL);
+    expect(await item.getValue()).toBe(SCHOOL);
+    expect(await fakeBrowser.storage.local.get(null)).toEqual({});
+  });
+
   it('keeps an object item in the vault', async () => {
     const vault = memoryVault();
     const item = createTrustedItem(SAMPLE, vault);

@@ -31,6 +31,12 @@ export interface TrustedItemOptions<T> {
   fallback: () => T;
   /** Turns a stored value into a complete, valid one. */
   normalize?: (stored: unknown) => T;
+  /**
+   * Whether `storage.local` mirrors a vault item. The default is `true`. An item that content
+   * scripts must not read sets `false`, and then only the vault holds it. Nothing can watch such
+   * an item in a browser with a vault.
+   */
+  mirror?: boolean;
 }
 
 /**
@@ -41,7 +47,7 @@ export function createTrustedItem<T>(
   options: TrustedItemOptions<T>,
   vault: Vault | null = defaultVault,
 ): StorageItem<T> {
-  const { key, fallback, normalize } = options;
+  const { key, fallback, normalize, mirror = true } = options;
   const local = defineItem<T>(`local:${key}`, fallback, normalize);
   if (vault === null) return local;
   const clean = (value: unknown): T =>
@@ -55,7 +61,7 @@ export function createTrustedItem<T>(
     getValue: read,
     async setValue(value) {
       await vault.set(key, value);
-      await local.setValue(value);
+      if (mirror) await local.setValue(value);
     },
     watch(listener) {
       // The value that the watcher knows. It starts as the vault's value, never the mirror's,

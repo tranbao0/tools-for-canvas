@@ -209,8 +209,11 @@ SVG files appear only in image elements, and text files appear as plain text.
 
 ## Saved PDF positions
 
-The extension stores the page number, zoom mode or scale, and save time for each PDF in a trusted IndexedDB store of the extension, with a copy in local browser storage (`storage.local`).
+The extension stores the page number, zoom mode or scale, and save time for each PDF.
 Each entry uses the Canvas address, student ID and file ID as its key.
+On Chrome and Edge, the entries live in local browser storage (`storage.local`), which the browser locks to the extension.
+On Firefox, they live in an IndexedDB store of the extension, with no copy in `storage.local`.
 The store keeps at most 200 entries and removes the oldest entries first.
-The extension clears these entries on sign-out and when the signed-in student changes.
+The extension clears these entries on sign-out and when it finds that another student is signed in.
+It also removes the entries of other students and of other Canvas addresses each time it saves a position.
 These entries stay on your device.
