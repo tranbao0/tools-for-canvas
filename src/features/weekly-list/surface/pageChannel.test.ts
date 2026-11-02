@@ -7,6 +7,8 @@ import { createPageChannel, type PageChannelDeps } from './pageChannel';
 const SCHOOL = 'https://canvas.school.edu';
 const DARK: Settings = { ...DEFAULT_SETTINGS, theme: 'dark' };
 const COLORS_OFF: ToolsSettings = {
+  fileViewer: true,
+  fileViewerWidth: 480,
   dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
 };
 

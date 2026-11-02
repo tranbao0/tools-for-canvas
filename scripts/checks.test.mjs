@@ -80,6 +80,9 @@ async function runScript(script, args) {
 }
 
 const CHROME_MANIFEST = {
+  web_accessible_resources: [
+    { resources: ['viewer.html'], matches: ['https://*/*'], use_dynamic_url: true },
+  ],
   manifest_version: 3,
   name: '__MSG_extName__',
   default_locale: 'en',
@@ -93,6 +96,7 @@ const CHROME_MANIFEST = {
 };
 
 const FIREFOX_MANIFEST = {
+  web_accessible_resources: [{ resources: ['viewer.html'], matches: ['https://*/*'] }],
   manifest_version: 3,
   name: '__MSG_extName__',
   default_locale: 'en',
@@ -112,6 +116,7 @@ const FIREFOX_MANIFEST = {
 };
 
 const BUILT_FILES = new Set([
+  'viewer.html',
   'background.js',
   'sidepanel.html',
   'detector.js',
@@ -401,7 +406,7 @@ describe('check-manifest', () => {
     [
       'resources that pages can load',
       (m) => (m.web_accessible_resources = [{ resources: ['a.js'], matches: ['https://*/*'] }]),
-      /web_accessible_resources is set/,
+      /web_accessible_resources must expose/,
     ],
     [
       'a page that can message the extension',
@@ -549,10 +554,10 @@ describe('check-file-check', () => {
     const files = {
       'file-check.html': '',
       'chunks/file-probe-Xy12.js': '',
-      'manifest.json': '{"web_accessible_resources":[]}',
+      'manifest.json': '{"web_accessible_resources":[{"resources":["file-probe.html"]}]}',
     };
     const problems = await findCheckTraces(Object.keys(files), read(files));
-    assert.equal(problems.length, 3);
+    assert.equal(problems.length, 4);
   });
 
   test('fails on a build directory that holds the check', async () => {

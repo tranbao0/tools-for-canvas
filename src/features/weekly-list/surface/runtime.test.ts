@@ -29,6 +29,8 @@ const UNDO: UndoData = {
   entries: [{ key: 'assignment:1', previous: NOT_DONE }],
 };
 const COLORS_OFF: ToolsSettings = {
+  fileViewer: true,
+  fileViewerWidth: 480,
   dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
 };
 const DONE_INFO = { kind: 'done', count: 1 } as const;

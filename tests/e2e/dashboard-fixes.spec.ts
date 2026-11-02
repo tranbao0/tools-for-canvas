@@ -40,7 +40,10 @@ const ARTIFACTS = {
 type Worker = Parameters<typeof saveTools>[0];
 
 function tools(fixes: Partial<DashboardFixesSettings>) {
-  return { dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, ...fixes } };
+  return {
+    ...DEFAULT_TOOLS_SETTINGS,
+    dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, ...fixes },
+  };
 }
 
 async function open(

@@ -55,6 +55,8 @@ describe('wirePageSync', () => {
       'the tools settings',
       () =>
         toolsSettingsItem.setValue({
+          fileViewer: true,
+          fileViewerWidth: 480,
           dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
         }),
     ],
@@ -80,6 +82,8 @@ describe('wirePageSync', () => {
 
   it('sends one message to a tab for one change of the tools settings', async () => {
     await toolsSettingsItem.setValue({
+      fileViewer: true,
+      fileViewerWidth: 480,
       dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, allCourseGrades: false },
     });
     await settle();

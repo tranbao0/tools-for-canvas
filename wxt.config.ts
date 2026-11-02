@@ -46,7 +46,7 @@ const TEST_UPDATE_URL = process.env.FIREFOX_TEST_UPDATE_URL;
 /**
  * Whether a build includes the file access check (docs/design.md, decision 23). Only the Firefox
  * build of the test channel and the end-to-end build of any browser do. A store build never
- * does: it has no entry for the check pages, no web accessible resources and no code behind the
+ * does: it has no entry for the check pages, exposes only the viewer page and has no code behind the
  * `__FILE_CHECK__` switch. A Chrome or Edge build never has it, even when a shell has set
  * `FIREFOX_TEST_VERSION`.
  */
@@ -116,17 +116,22 @@ export default defineConfig({
     // Canvas. The match pattern cannot name the saved Canvas, so the background injects the
     // iframe into that origin only. Chromium gives the page a session address with
     // `use_dynamic_url`; Firefox already gives each install its own address.
-    ...(hasFileCheck(browser)
-      ? {
-          web_accessible_resources: [
+    web_accessible_resources: [
+      {
+        resources: ['viewer.html'],
+        matches: ['https://*/*'],
+        ...(browser === 'firefox' ? {} : { use_dynamic_url: true }),
+      },
+      ...(hasFileCheck(browser)
+        ? [
             {
               resources: ['file-probe.html'],
               matches: ['https://*/*'],
               ...(browser === 'firefox' ? {} : { use_dynamic_url: true }),
             },
-          ],
-        }
-      : {}),
+          ]
+        : []),
+    ],
     action: { default_title: '__MSG_actionTitle__' },
     commands: {
       _execute_action: { suggested_key: { default: 'Alt+Shift+W' } },

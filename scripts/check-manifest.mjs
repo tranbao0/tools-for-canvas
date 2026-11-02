@@ -107,10 +107,28 @@ function checkCommon(browser, manifest, fileExists) {
   } else if (manifest.action.default_popup !== undefined) {
     problems.push('action has a default_popup, but the toolbar button must have no popup');
   }
-  for (const field of ['web_accessible_resources', 'externally_connectable']) {
+  for (const field of ['externally_connectable']) {
     if (manifest[field] !== undefined) {
       problems.push(`${field} is set, but no page may reach the extension (decision 20)`);
     }
+  }
+  const resources = manifest.web_accessible_resources;
+  if (
+    !Array.isArray(resources) ||
+    resources.length !== 1 ||
+    !isExactList(resources[0]?.resources, ['viewer.html']) ||
+    !isExactList(resources[0]?.matches, [ALL_HTTPS]) ||
+    (browser === 'firefox'
+      ? resources[0]?.use_dynamic_url !== undefined
+      : resources[0]?.use_dynamic_url !== true) ||
+    Object.keys(resources[0] ?? {}).some(
+      (key) => !['resources', 'matches', 'use_dynamic_url'].includes(key),
+    ) ||
+    !fileExists('viewer.html')
+  ) {
+    problems.push(
+      'web_accessible_resources must expose only viewer.html with the browser URL rule',
+    );
   }
   problems.push(...checkContentScripts(manifest, fileExists));
   problems.push(...checkLocales(manifest, fileExists));
