@@ -100,6 +100,7 @@ test.describe('the switch', () => {
   test('is absent on the new widget dashboard, which sends no announcement request', async ({
     context,
     page,
+    background,
   }) => {
     const { canvas } = await open(context, page, { page: 'dashboard-widgets', width: 1920 });
     const list = inpageList(page);
@@ -107,7 +108,7 @@ test.describe('the switch', () => {
     await expect(list.getByRole('tab')).toHaveCount(0);
     // Wait until the page is quiet, so that a late request has come.
     await settledList(page);
-    await requestsQuiet(page, canvas.requests);
+    await requestsQuiet(page, canvas.requests, background);
     expect(canvas.requests.filter((r) => r.path.startsWith('/api/v1/announcements'))).toHaveLength(
       0,
     );
@@ -165,6 +166,7 @@ test.describe('the Announcements tab', () => {
   test('opens a message in place without marking it as read, and the sanitizer holds', async ({
     context,
     page,
+    background,
   }) => {
     const { canvas } = await open(context, page);
     const list = await openAnnouncements(page);
@@ -183,7 +185,7 @@ test.describe('the Announcements tab', () => {
     ).toBeUndefined();
 
     // Opening sends no read mark and loads no Canvas topic page.
-    await requestsQuiet(page, canvas.requests);
+    await requestsQuiet(page, canvas.requests, background);
     expect(writesTo(canvas, 'PUT')).toHaveLength(0);
     expect(writesTo(canvas, 'DELETE')).toHaveLength(0);
     expect(
@@ -202,6 +204,7 @@ test.describe('the Announcements tab', () => {
   test('"Mark as read" sends exactly one PUT, and the row leaves the list', async ({
     context,
     page,
+    background,
   }) => {
     const { canvas, state } = await open(context, page);
     const list = await openAnnouncements(page);
@@ -212,7 +215,7 @@ test.describe('the Announcements tab', () => {
     await expect(list.locator('.wr-toast')).toContainText('Marked as read');
     await expect(tab(list, /^Announcements/)).toHaveAccessibleName('Announcements, 2 unread');
     await settledList(page);
-    await requestsQuiet(page, canvas.requests);
+    await requestsQuiet(page, canvas.requests, background);
     const puts = writesTo(canvas, 'PUT');
     expect(puts).toHaveLength(1);
     expect(puts[0]?.path).toBe('/api/v1/courses/101/discussion_topics/31901/read');
