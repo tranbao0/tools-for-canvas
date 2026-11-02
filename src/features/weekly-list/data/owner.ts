@@ -1630,13 +1630,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   /**
    * The guard of a queued write. The client runs it once the request holds a slot of the queue,
    * right before each attempt and before each retry after a rate limit, so the cookie check
-   * happens just before the request leaves (decision 11). `onPass` runs at once after a pass.
+   * happens just before the request leaves (decision 11). `onPass` runs at once after a pass,
+   * with no wait between, and the request goes out only when it returns `true`.
    */
-  function writeGuard(stamp: WriteStamp, onPass?: () => void): RequestGuard {
+  function writeGuard(stamp: WriteStamp, onPass?: () => boolean): RequestGuard {
     return async () => {
       if (!(await cookieConfirmed(stamp))) return false;
-      onPass?.();
-      return true;
+      return onPass?.() ?? true;
     };
   }
 
@@ -1751,13 +1751,17 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const patch = findPatch(patchId);
     if (stamp.origin === null || patch === undefined || patch.kind !== 'note') return false;
     if (operation === 'delete' && patch.confirmedAt !== null) return false;
-    // A DELETE counts as started once its cookie check passed, because Undo can no longer stop it.
+    // A DELETE counts as started once its cookie check passed and its patch is still there,
+    // because Undo can no longer stop it. An Undo that ran while the check waited removed the
+    // patch, and then no DELETE goes out.
     const writer = apiFor(stamp.origin).withGuard(
       writeGuard(
         stamp,
         operation === 'delete'
           ? () => {
+              if (findDeletePatch(patch.noteId)?.id !== patch.id) return false;
               startedDeletes.add(patch.noteId);
+              return true;
             }
           : undefined,
       ),
@@ -1787,7 +1791,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       if (isCanvasError(error, 'refused')) {
         // The guard ended the queue before the request left. A DELETE waits for a confirmed
         // cookie, with its entry in `pendingDeletes`.
-        if (operation === 'delete') {
+        if (operation === 'delete' && findDeletePatch(patch.noteId)?.id === patch.id) {
           queuedDeletes.delete(patch.noteId);
           startedDeletes.delete(patch.noteId);
         }
