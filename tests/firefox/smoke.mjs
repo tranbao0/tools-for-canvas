@@ -303,25 +303,62 @@ async function checkHostilePaneFrame(driver, server) {
   await driver.switchTo().defaultContent();
   await driver.executeScript(`
     const target = document.getElementById('hostile');
-    for (const first of [null, { type: 'secret', secret: 'a'.repeat(64) }, { type: 'open-file', fileId: '43' }]) {
+    for (const first of [null, { type: 'secret', secret: 'a'.repeat(64) }, { type: 'open-file', fileId: '99' }]) {
       const channel = new MessageChannel();
       channel.port1.onmessage = (event) => window.__got.push(JSON.stringify(event.data));
       target.contentWindow.postMessage({ type: 'viewer-connect' }, '*', [channel.port2]);
       if (first) channel.port1.postMessage(first);
-      channel.port1.postMessage({ type: 'open-file', fileId: '43' });
+      channel.port1.postMessage({ type: 'open-file', fileId: '99' });
       channel.port1.postMessage({ type: 'theme', theme: 'dark' });
     }
   `);
   await driver.sleep(1500);
   const got = await driver.executeScript('return window.__got;');
   if (got.length !== 0) throw new Error(`A hostile port got an answer: ${got.join(' ')}`);
-  if (server.requests.some((request) => request.includes('/api/v1/files/43')))
+  if (server.requests.some((request) => request.includes('/api/v1/files/99')))
     throw new Error('A hostile frame opened another file');
   await driver.switchTo().frame(copy);
   const tabs = await driver.findElements(By.css('.fv-tab'));
   await driver.switchTo().defaultContent();
   if (tabs.length !== 0) throw new Error('A hostile frame opened a tab');
   console.log('Firefox pane channel: a page script cannot take the port of a frame of its own.');
+}
+
+/**
+ * Opens an image in the pane and checks that the image element has loaded the blob URL of the
+ * fetched bytes.
+ * @param {import('selenium-webdriver').WebDriver} driver
+ */
+async function checkImageTab(driver) {
+  await driver.executeScript(
+    `document.getElementById('photo').addEventListener('click', event => event.preventDefault());`,
+  );
+  const host = await driver.findElement(By.css('#tools-file-viewer'));
+  const frame = await driver.wait(async () => {
+    await driver
+      .actions()
+      .move({ origin: await driver.findElement(By.id('photo')) })
+      .click()
+      .perform();
+    const shadow = await host.getShadowRoot();
+    return (await shadow.findElements(By.css('iframe')))[0] ?? null;
+  }, 10_000);
+  await driver.switchTo().frame(frame);
+  const image = await driver.wait(async () => {
+    const images = await driver.findElements(By.css('.fv-media img'));
+    return images[0] ?? false;
+  }, 30_000);
+  const loaded = await driver.wait(async () => {
+    const result = await driver.executeScript(
+      'return { width: arguments[0].naturalWidth, source: arguments[0].src };',
+      image,
+    );
+    return result.width > 0 ? result : false;
+  }, 20_000);
+  if (!loaded.source.startsWith('blob:'))
+    throw new Error(`The image is not a blob: ${loaded.source}`);
+  await driver.switchTo().defaultContent();
+  console.log(`Firefox image viewer: the image loaded, ${loaded.width} px wide.`);
 }
 
 async function main() {
@@ -348,8 +385,17 @@ async function main() {
     contentType: 'application/pdf',
   };
   const origin = server.origin.replace('127.0.0.1', 'school.instructure.com');
+  files['/files/43/download'] = {
+    body: '',
+    contentType: 'text/plain',
+    location: `${server.origin}/inst-fs/image.png`,
+  };
+  files['/inst-fs/image.png'] = {
+    body: readFileSync(new URL('../fixtures/files/image.png', import.meta.url)),
+    contentType: 'image/png',
+  };
   files['/courses/101'] = {
-    body: '<html><head><script>INST={environment:\'production\'};ENV={current_user_id:\'5501\'};</script></head><body><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a></body></html>',
+    body: '<html><head><script>INST={environment:\'production\'};ENV={current_user_id:\'5501\'};</script></head><body><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a><a id="photo" class="instructure_file_link" href="/files/43">Lecture photo</a></body></html>',
     contentType: 'text/html',
   };
   files['/api/v1/files/42'] = {
@@ -360,6 +406,17 @@ async function main() {
       'content-type': 'application/pdf',
       size: 10,
       url: `${origin}/files/42/download`,
+    }),
+    contentType: 'application/json',
+  };
+  files['/api/v1/files/43'] = {
+    body: JSON.stringify({
+      id: 43,
+      display_name: 'Lecture photo.png',
+      filename: 'photo.png',
+      'content-type': 'image/png',
+      size: 1484,
+      url: `${origin}/files/43/download`,
     }),
     contentType: 'application/json',
   };
@@ -454,6 +511,7 @@ async function main() {
     if (count !== `of ${FIXTURE_PAGE_COUNT}`) throw new Error(`Wrong page count: ${count}`);
     console.log(`Firefox PDF viewer: page 1 drew ${drawn.ink} dark pixels, ${count}`);
     await driver.switchTo().defaultContent();
+    await checkImageTab(driver);
     await checkHostilePaneFrame(driver, server);
     console.log('Firefox store file pane: passed.');
     console.log('Firefox smoke test: passed.');
