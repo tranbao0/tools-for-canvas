@@ -56,22 +56,35 @@ export async function openInCanvasTab(url: string, origin: string): Promise<void
 
 /** The host for extension pages: the side panel and the welcome page. */
 export function extensionPageHost(): SurfaceHost {
-  const deletePorts = new Set<import('wxt/browser').Browser.runtime.Port>();
+  const deletePorts = new Map<string, import('wxt/browser').Browser.runtime.Port>();
   return {
     send(message) {
+      if (
+        message.type === 'weekrow:action' &&
+        (message.action.kind === 'cancelDelete' || message.action.kind === 'sendDelete')
+      ) {
+        const port = deletePorts.get(message.action.noteId);
+        const result = sendToBackground(message);
+        void result.then(
+          () => port?.disconnect(),
+          () => undefined,
+        );
+        return result;
+      }
       if (message.type !== 'weekrow:action' || message.action.kind !== 'deleteTask') {
         return sendToBackground(message);
       }
+      const noteId = message.action.noteId;
       // The browser closes this port even when pagehide cannot deliver a message.
-      const port = browser.runtime.connect({ name: `weekrow-delete:${message.action.noteId}` });
-      deletePorts.add(port);
+      const port = browser.runtime.connect({ name: `weekrow-delete:${noteId}` });
+      deletePorts.set(noteId, port);
       return new Promise((resolve, reject) => {
         port.onMessage.addListener((result: { reply?: unknown; error?: string }) => {
           if (result.error !== undefined) reject(new Error(result.error));
           else resolve(result.reply);
         });
         port.onDisconnect.addListener(() => {
-          deletePorts.delete(port);
+          if (deletePorts.get(noteId) === port) deletePorts.delete(noteId);
           reject(new Error('Delete connection closed'));
         });
       });

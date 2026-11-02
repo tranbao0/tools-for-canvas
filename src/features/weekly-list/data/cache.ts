@@ -208,6 +208,11 @@ function createSessionCacheItem() {
   let written = new Map<CachePart, unknown>();
 
   return {
+    async hasPendingDeletes(): Promise<boolean> {
+      const stored = await area().get(HEAD_KEY);
+      const head = stored[HEAD_KEY] as SessionCache | undefined;
+      return Object.keys(head?.pendingDeletes ?? {}).length > 0;
+    },
     async getValue(): Promise<SessionCache | null> {
       const stored: Record<string, unknown> = await area().get([
         HEAD_KEY,

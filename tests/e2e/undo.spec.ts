@@ -135,6 +135,9 @@ test.describe('the Undo notice', () => {
     await deleteTask(page, pastDue, 'Call financial aid office');
     await expect(toast).toContainText('Task deleted');
     expect(deletes()).toHaveLength(1);
+    await page.evaluate(() => {
+      window.addEventListener('pagehide', (event) => event.stopImmediatePropagation(), true);
+    });
     await page.close();
 
     await expect
@@ -147,4 +150,45 @@ test.describe('the Undo notice', () => {
     expect(state.note(NOTES.libraryBooksToday)?.deleted).toBe(true);
     expect(state.note(NOTES.financialAidYesterday)?.deleted).toBe(true);
   });
+});
+
+test('an old panel port does not send a newer delete', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const { canvas } = await openPanel(context, page, background, extensionUrl('sidepanel.html'));
+  const other = await context.newPage();
+  await openExtensionPage(other, extensionUrl('sidepanel.html'));
+  await settledList(other);
+  await page.evaluate(async (noteId) => {
+    const api = (
+      globalThis as unknown as {
+        chrome: {
+          runtime: {
+            connect(options: { name: string }): {
+              onMessage: { addListener(callback: () => void): void };
+            };
+            sendMessage(message: unknown): Promise<unknown>;
+          };
+        };
+      }
+    ).chrome;
+    await new Promise<void>((resolve) => {
+      const port = api.runtime.connect({ name: `weekrow-delete:${noteId}` });
+      port.onMessage.addListener(() => resolve());
+    });
+    await api.runtime.sendMessage({
+      type: 'weekrow:action',
+      action: { kind: 'cancelDelete', noteId },
+    });
+    window.addEventListener('pagehide', (event) => event.stopImmediatePropagation(), true);
+  }, NOTES.libraryBooksToday);
+  await expect(editButton(other, 'Return library books')).toBeVisible();
+  await deleteTask(other, group(other, 'today'), 'Return library books');
+  await page.close();
+  await other.keyboard.press('Control+z');
+  await expect(editButton(other, 'Return library books')).toBeVisible();
+  expect(writesTo(canvas, 'DELETE', '/api/v1/planner_notes')).toEqual([]);
 });

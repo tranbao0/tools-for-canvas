@@ -131,6 +131,7 @@ A lint rule forbids network calls anywhere else in the code, and a CI check scan
 | Permission | Why the extension needs it |
 |---|---|
 | Access to all `https://` sites | To find your Canvas on any school address, to check each page for the Canvas markers, and to read and write your data on your saved Canvas only |
+| `alarms` | To resume waiting task deletes after the background worker stops |
 | `storage` | To store the settings and the Canvas address listed above, and to hold Canvas data in memory |
 | `cookies` | To read the `_csrf_token` cookie that Canvas requires for a write, and to compare a salted fingerprint of the session cookie on the saved Canvas |
 | `scripting` | To run the Canvas check in the tabs that were open before you installed or updated the extension, and to show the list and the dashboard fixes in your saved Canvas |
