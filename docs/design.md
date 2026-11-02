@@ -52,6 +52,7 @@ This extension has no account, no server of its own and no telemetry.
 | 22 | New dashboard fixes | Four small fixes for the widgets of the new Canvas dashboard, each with its own switch, in a page script of their own |
 | 23 | File access check | A read-only check that runs on the owner's live Canvas in test builds only, and answers the open questions for the file viewer |
 | 24 | Announcements in the weekly list | A Tasks and Announcements switch under the rings on the classic dashboard, List View, course home pages and the side panel, with a read mark that only an explicit student action writes |
+| 25 | File viewer | Files open in a docked, resizable pane with tabs beside Canvas; PDFs in a bundled PDF.js viewer that saves the page, other types in the browser's own players or an "Open in Canvas" card |
 
 ## Decisions
 
@@ -2104,6 +2105,74 @@ If a later feature goes over the budget, the Announcements view can move to a sc
 - A student who opens an announcement in Canvas marks it as read there, so the row shows it as unread until the next load (at most 60 seconds, or the next change).
 - The read mark and the Undo are two writes.
   If the second one fails, Canvas keeps the first state, and the next load shows it.
+
+### 25. File viewer
+
+**Question:** How does a student read Canvas files without losing the rest of Canvas?
+
+**Problem:** Canvas opens a PDF in a full-window overlay that hides the page, shows one file at a time, and offers the student's own submitted files only as downloads.
+The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in the name.
+
+**Live facts (decision 23, owner's runs on sjsu.instructure.com, Firefox, 2026-10-30):**
+
+- `GET /api/v1/files/:id` answers with the content type, the size and a same-origin `url` (`/files/:id/download`).
+- That URL redirects to `cdn.inst-fs-iad-prod.inscloudgate.net`, which serves the PDF bytes.
+  The background and an extension page both read all 271,512 bytes, starting with `%PDF-`.
+- The first run failed with a `TypeError` while Firefox withheld the host permission, and worked after the owner granted it.
+- An extension page loads in an iframe inside Canvas.
+  Canvas sends only `frame-ancestors 'self' sjsu.instructure.com ...` and no other CSP.
+- Module lists link to module items (`/courses/:id/modules/items/:id`, hook `a.ig-title.title.item_link`), not to files.
+- The assignment page links the student's own submission files under `/courses/:id/assignments/:id/submissions/:id`.
+
+**Decision:**
+
+1. **The pane.**
+   - A file opens in a pane docked to the right edge of the window, at full window height.
+   - The page shrinks to make room, the same as with a browser side panel, so nothing in Canvas is hidden.
+     The pane exists only while the student has a file open.
+   - A handle on its left edge resizes it, from 360 px to 70 percent of the window, and the width is saved.
+   - The pane has a close button, and Escape closes it when focus is inside.
+   - Below 900 px of window width, the pane covers the page instead, with the same close button.
+2. **Tabs.**
+   - Each file opens in its own tab inside the pane, up to 8 tabs; the 9th file replaces the oldest tab that is not active.
+   - A file that is already open becomes the active tab.
+   - The open tabs last while the Canvas tab is open, and they come back after a page change in the same Canvas tab.
+3. **Which clicks open the pane.**
+   - A plain left click on a Canvas file link: `a.instructure_file_link`, links to `/courses/:id/files/:id` or `/files/:id`, file preview buttons, module items of the file type, and the student's own submission attachments.
+   - A click with Ctrl, Shift, Alt or Meta, a middle click, and "Open in new tab" keep the browser's normal action.
+   - Module items are resolved to their file through `GET /api/v1/courses/:id/modules/:id/items/:id`.
+4. **Viewers by file type.**
+   - PDF: a bundled PDF.js viewer with search, page thumbnails, zoom and keyboard paging.
+     The pane saves the page and the zoom of each file, keyed by Canvas origin, user and file id, for the last 200 files.
+   - Image, audio and video: the browser's own elements, from a blob URL of the fetched bytes.
+   - Plain text and code: shown as text, never rendered as HTML.
+   - Any other type, such as Word or PowerPoint: a short card with "Open in Canvas" and "Download", because Canvas converts those files on its own servers.
+   - Every tab has "Download" and "Open in Canvas".
+5. **Fetching.**
+   - The pane's extension page reads the file record, then fetches the bytes with the student's session through the redirect, as decision 23 proved.
+   - Files larger than 100 MB show the "Open in Canvas" card instead.
+   - When the host permission is withheld, the pane shows one "Allow access" button that calls `permissions.request`, and "Open in Canvas" next to it.
+6. **Settings.** A "File viewer" switch in the tools settings, on by default.
+
+**Security:**
+
+- The pane page is in `web_accessible_resources` with `matches: ["https://*/*"]`, and `use_dynamic_url: true` on Chromium.
+  `check-manifest` allows exactly this one page.
+- The page script and the pane talk through a `MessageChannel` set up with a random nonce; the pane accepts only file ids and Canvas paths of the saved Canvas origin, never a full URL to load.
+- The pane fetches only `/api/v1/files/:id` and the `url` that it returns, through the existing fetch wrapper (decision 20), plus the redirect that Canvas chooses.
+- PDF.js runs with `isEvalSupported: false`, no PDF scripting, and links inside a PDF open in a new tab with `noopener`.
+- Saved page positions go through the trusted storage rules of decision 5.
+
+**Size:**
+
+- The page script that catches clicks and draws the pane frame is its own small script, like `dashboard.js`, so the in-page list keeps its 40 KB limit.
+- The pane page and PDF.js load only when a file opens, and they get their own limit of 1.5 MB gzip, because they load from the extension's files.
+
+**Build order:**
+
+1. The pane, the tabs, the click catching for file links and module items, and the PDF viewer.
+2. Images, audio, video, text, the "Open in Canvas" card and the student's own submission files.
+3. Saved page and zoom per file.
 
 ## Open risks
 
