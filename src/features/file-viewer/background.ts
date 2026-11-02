@@ -3,9 +3,11 @@ import type { CanvasApi } from '../../shared/canvas/types';
 import { canvasOriginItem } from '../../shared/platform/storage';
 import { browserRouterHost, senderPageOrigin } from '../weekly-list/data/router';
 import type { DataOwner } from '../weekly-list/data/owner';
+import { injectSubmissionFrames } from '../../shared/platform/inject';
 import { logFailure } from '../../shared/platform/log';
 import { createViewerSecret, isViewerSecret } from './channel';
-import { normalizeTabs } from './model';
+import { FRAME_OPEN, TOP_OPEN } from './frame';
+import { isFileId, isSubmissionPage, normalizeTabs } from './model';
 
 type ViewerSender = Pick<Browser.runtime.MessageSender, 'url' | 'frameId'> & {
   tab?: { id?: number };
@@ -32,6 +34,12 @@ export interface ViewerHost {
   get(key: string): Promise<unknown>;
   set(key: string, value: unknown): Promise<void>;
   permission(origin: string): Promise<boolean>;
+  /** The address that a browser tab shows now, or `null` when it cannot be read. */
+  tabUrl(tabId: number): Promise<string | null>;
+  /** Puts the click catcher into the same-origin child frames of a tab that lists submission files. */
+  injectFrames(tabId: number, origin: string): Promise<void>;
+  /** Passes a file to the viewer script of the top frame. `true` when it took the file. */
+  openInTop(tabId: number, fileId: string): Promise<boolean>;
 }
 
 /** The session storage key of the secret of one browser tab. A closed tab clears it. */
@@ -81,6 +89,57 @@ function isPaneFrame(sender: ViewerSender): boolean {
   }
 }
 
+/**
+ * The origin of a child frame that sent a message, or `null` when the sender is not a frame of a
+ * tab. The top frame has the frame id 0 and is not a child frame.
+ */
+function childFrameOrigin(sender: ViewerSender): string | null {
+  if (sender.tab?.id === undefined || sender.frameId === undefined || sender.frameId === 0)
+    return null;
+  try {
+    const url = new URL(sender.url ?? '');
+    return isSubmissionPage(url.pathname) ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The click catcher of a child frame asks to open a file (decision 25, item 11). The frame must
+ * be a submission page of the saved Canvas, in a tab whose top frame shows a submission page of
+ * the saved Canvas too. The reply tells the catcher whether the pane took the file.
+ */
+async function openFromFrame(
+  request: Record<string, unknown>,
+  sender: ViewerSender,
+  host: ViewerHost,
+): Promise<{ opened: boolean }> {
+  const origin = await host.savedOrigin();
+  const tabId = sender.tab?.id;
+  if (!origin || tabId === undefined || childFrameOrigin(sender) !== origin)
+    throw new Error('Only a frame of the saved Canvas may open a file');
+  if (!isFileId(request['fileId'])) throw new Error('Invalid file id');
+  if (!(await topShowsSubmission(host, tabId, origin)))
+    throw new Error('The tab does not show a submission page of the saved Canvas');
+  return { opened: await host.openInTop(tabId, request['fileId']) };
+}
+
+/** Whether the top frame of a tab shows a submission details page of the origin. */
+async function topShowsSubmission(
+  host: ViewerHost,
+  tabId: number,
+  origin: string,
+): Promise<boolean> {
+  const url = await host.tabUrl(tabId);
+  if (url === null) return false;
+  try {
+    const top = new URL(url);
+    return top.origin === origin && isSubmissionPage(top.pathname);
+  } catch {
+    return false;
+  }
+}
+
 export function routeViewerMessage(
   message: unknown,
   sender: ViewerSender,
@@ -98,10 +157,13 @@ export function routeViewerMessage(
       'viewer:permission',
       'viewer:session',
       'viewer:fetch-allowed',
+      'viewer:inject-frames',
+      FRAME_OPEN,
     ].includes(String(message.type))
   )
     return null;
   const request = message as Record<string, unknown>;
+  if (request['type'] === FRAME_OPEN) return openFromFrame(request, sender, host);
   const run = async () => {
     const origin = await host.savedOrigin();
     const fromPane = host.isExtensionPage(sender);
@@ -126,6 +188,14 @@ export function routeViewerMessage(
         return host.permission(origin);
       case 'viewer:fetch-allowed':
         return host.mayFetch(origin, tabId);
+      case 'viewer:inject-frames': {
+        // Only the top frame of the saved Canvas asks, and only on a submission details page.
+        if (fromPane || tabId === undefined) throw new Error('Only the page script may ask');
+        if (!(await topShowsSubmission(host, tabId, origin)))
+          throw new Error('The tab does not show a submission page of the saved Canvas');
+        await host.injectFrames(tabId, origin);
+        return { ok: true };
+      }
       case 'viewer:session': {
         if (tabId === undefined) throw new Error('A browser tab is required');
         if (fromPane) {
@@ -201,6 +271,21 @@ export function wireViewerRouter(
     // File redirects can use hosts selected by Canvas, so check the full file host grant.
     permission: (origin) =>
       browser.permissions.contains({ origins: [`${origin}/*`, 'https://*/*'] }),
+    tabUrl: async (tabId) => (await browser.tabs.get(tabId).catch(() => undefined))?.url ?? null,
+    injectFrames: (tabId, origin) => injectSubmissionFrames(tabId, origin),
+    openInTop: async (tabId, fileId) => {
+      try {
+        const reply = (await browser.tabs.sendMessage(
+          tabId,
+          { type: TOP_OPEN, fileId },
+          { frameId: 0 },
+        )) as { opened?: unknown } | undefined;
+        return reply?.opened === true;
+      } catch {
+        // No viewer script listens in the top frame, such as when the viewer is off.
+        return false;
+      }
+    },
   };
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = routeViewerMessage(message, sender, host);

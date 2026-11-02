@@ -144,9 +144,17 @@ Canvas detection must not accept it.
 ### submission-details.html
 
 The submission details page at `/courses/101/assignments/7/submissions/5501`, as one complete page.
-It has the table of the files the student handed in (`table.file-upload-submission-table`), with two download links in the two shapes that the file pane takes: `?download=42` and `/files/42/download`.
-It also has a teacher's comment with an attachment (`.comment_attachments`), which must keep its download.
-In Canvas, this table is inside the preview frame of the page (`#preview_frame`), so the file pane cannot see it there until a live check shows otherwise (docs/live-checklist.md).
+It has the frame `iframe#preview_frame`, with the address of the page plus `?preview=1&rand=481516`, as `show.html.erb` writes it.
+It also has a teacher's comment with an attachment (`.comment_attachments`), which is in the top frame in Canvas and must keep its download.
+`tests/e2e/support/file-viewer.ts` serves both pages from one route, `submissionRoute`: the page, the frame document for the query `preview=1`, and an attachment for a query with `download=`.
+
+### submission-preview.html
+
+The document inside the preview frame, as `show_preview.html.erb` writes it for an upload.
+It has the table of the files the student handed in (`table.file-upload-submission-table`), with two rows.
+Each name is an `a.file-upload-submission-info__link` with `?download=:file` and no `download` attribute.
+The first row also has the Preview button `a.modal_preview_link`, which keeps its action.
+The file pane cannot see this table from the top frame, so a click catcher runs in the frame (docs/design.md, decision 25, item 11).
 
 ### assignment-submitted.html
 
@@ -157,6 +165,7 @@ Its right column has the Submission section (`#right-side .details > .content`) 
 ## files/
 
 The small files that the file pane tests serve as Canvas files: `image.png`, `notes.txt`, `hostile.svg`, `tone.wav` and `clip.webm`.
+`animatedGif()` in `tests/e2e/support/gif.mjs` builds a GIF of two solid frames, red and blue, that loops without end, for the tests of the image player.
 `notes.txt` is the text file of a submission. It holds a `script` tag on purpose, to check that text never runs.
 `hostile.svg` is an SVG that tries to run script in every way: an inline script, an `onload` handler, a `javascript:` link, and a `foreignObject` with a script, an error handler and a link. Each vector writes a `hostile-` key into `localStorage`, so a test can tell if one ran.
 `tone.wav` is 0.5 s of a 440 Hz sine wave.

@@ -1,14 +1,18 @@
-import { browser } from 'wxt/browser';
+import { browser, type Browser } from 'wxt/browser';
 import { t } from '../../shared/ui/i18n';
+import { TOP_OPEN } from './frame';
 import { acceptPaneHello, isViewerSecret, secretMessage, validPaneReady } from './channel';
 import {
   courseOfLink,
   fileTarget,
   catchesDownload,
+  isFileId,
+  isSubmissionPage,
   normalizeTabs,
   normalizeWidth,
   openFile,
   plainClick,
+  type FileTarget,
   type Tabs,
 } from './model';
 import type { ToolsSettings } from '../../shared/settings/tools';
@@ -85,7 +89,12 @@ export async function startViewer(): Promise<void> {
   };
   // The course the student opened each file from, for the "Open in Canvas" link.
   const courses = new Map<string, string>();
-  // Sends the active file. The pane changes the tabs too, so the stored tabs are read again.
+  // Whether the pane of the current port has been told what to open. The first open-file request
+  // makes the pane restore the stored tabs, and from then on the pane owns the tabs: a stored
+  // copy is older than the pane, so it never goes out again, or it would undo what the student
+  // did in the pane since.
+  let synced = false;
+  // Sends the active file to a pane that has not been told yet, and the theme to any pane.
   const send = async () => {
     const [latest, stored] = await Promise.all([
       readContext().catch(() => undefined),
@@ -99,12 +108,14 @@ export async function startViewer(): Promise<void> {
     }
     applyTheme();
     const courseId = tabs.active === null ? undefined : courses.get(tabs.active);
-    if (tabs.active)
-      port?.postMessage({
+    if (tabs.active && port && !synced) {
+      synced = true;
+      port.postMessage({
         type: 'open-file',
         fileId: tabs.active,
         ...(courseId ? { courseId } : {}),
       });
+    }
   };
   let removeHello: (() => void) | undefined;
   let handshake: ReturnType<typeof setTimeout> | undefined;
@@ -212,6 +223,7 @@ export async function startViewer(): Promise<void> {
           return;
         }
         port = candidate;
+        synced = false;
         earlyClose.hidden = true;
         clearTimeout(handshake);
         applyTheme();
@@ -273,26 +285,51 @@ export async function startViewer(): Promise<void> {
     answerInTime();
   };
   window.addEventListener('resize', layout, { signal: lifetime.signal });
-  // The background says when a setting changed, so the pane follows the Theme setting at once.
-  const onChanged = (message: unknown) => {
-    if ((message as { type?: unknown } | null)?.type !== 'weekrow:changed') return;
-    void readContext().then(
-      (latest) => {
-        const choice = latest?.settings?.theme;
-        if (choice && choice !== themeChoice) {
-          themeChoice = choice;
-          applyTheme();
-        }
-      },
-      () => undefined,
-    );
-  };
-  browser.runtime.onMessage.addListener(onChanged);
   scope.__weekrowViewer = () => {
     live = false;
     lifetime.abort();
-    browser.runtime.onMessage.removeListener(onChanged);
     drop();
+  };
+  // The opens run one after another. Each one reads the stored tabs, adds its file and writes them
+  // back, so two that ran side by side would both start from the same tabs and the second write
+  // would drop the file of the first. The tab order is also the order of the clicks.
+  let opens: Promise<unknown> = Promise.resolve();
+  const openTarget = (target: FileTarget, href: string): Promise<void> => {
+    const run = opens.then(() => openNow(target, href));
+    opens = run.catch(() => undefined);
+    return run;
+  };
+  /** Opens a file in the pane: resolves a module item to its file, then adds the tab. */
+  const openNow = async (target: FileTarget, href: string): Promise<void> => {
+    if (!paneOpen()) await show();
+    const file =
+      'fileId' in target
+        ? target
+        : ((await browser.runtime.sendMessage({ type: 'viewer:module-item', ...target })) as
+            { fileId: string } | undefined);
+    if (!file || !paneOpen()) return;
+    const courseId = 'courseId' in target ? target.courseId : courseOfLink(href, location.origin);
+    if (courseId) courses.set(file.fileId, courseId);
+    const open = () => {
+      // The pane is open and owns the tabs, so it opens the file and saves the tabs itself. This
+      // request also makes a pane that has not been told yet restore the stored tabs.
+      synced = true;
+      port?.postMessage({
+        type: 'open-file',
+        fileId: file.fileId,
+        ...(courseId ? { courseId } : {}),
+      });
+    };
+    if (paneOpen() && port) return open();
+    const stored = await readTabs().catch(() => null);
+    if (!live) return;
+    if (stored) tabsToken = stored.token;
+    tabs = openFile(stored?.tabs ?? tabs, file.fileId);
+    await writeTabs(tabs);
+    // The pane may have connected while the tabs were written. It owns them from then on, and
+    // it has not seen this file, so it gets the file as a request, never as a copy of the store.
+    if (paneOpen() && port) return open();
+    await show();
   };
   document.addEventListener(
     'click',
@@ -337,31 +374,7 @@ export async function startViewer(): Promise<void> {
           if (link.isConnected && link.getAttribute('href') === checkedHref) link.click();
           return;
         }
-        if (!paneOpen()) await show();
-        const file =
-          'fileId' in target
-            ? target
-            : ((await browser.runtime.sendMessage({ type: 'viewer:module-item', ...target })) as
-                { fileId: string } | undefined);
-        if (!file || !paneOpen()) return;
-        const courseId =
-          'courseId' in target ? target.courseId : courseOfLink(href, location.origin);
-        if (courseId) courses.set(file.fileId, courseId);
-        if (paneOpen() && port) {
-          // The pane is open and owns the tabs, so it opens the file and saves the tabs itself.
-          port.postMessage({
-            type: 'open-file',
-            fileId: file.fileId,
-            ...(courseId ? { courseId } : {}),
-          });
-          return;
-        }
-        const stored = await readTabs().catch(() => null);
-        if (!live) return;
-        if (stored) tabsToken = stored.token;
-        tabs = openFile(stored?.tabs ?? tabs, file.fileId);
-        await writeTabs(tabs);
-        await show();
+        await openTarget(target, href);
       })().catch(() => undefined);
     },
     { capture: true, signal: lifetime.signal },
@@ -380,11 +393,73 @@ export async function startViewer(): Promise<void> {
     }
     enabled = true;
   })().catch(() => undefined);
+  // The background sends two kinds of message to this script. It says when a setting changed, so
+  // the pane follows the Theme setting at once. And it passes on a file that the click catcher
+  // took in the frame of the submission details page, whose files list this script cannot see
+  // (frame.ts, decision 25, item 11).
+  const onBackground = (
+    message: unknown,
+    sender: Browser.runtime.MessageSender,
+    respond: (reply: { opened: boolean }) => void,
+  ): boolean | undefined => {
+    const request = message as { type?: unknown; fileId?: unknown } | null;
+    if (request?.type === 'weekrow:changed') {
+      void readContext().then(
+        (latest) => {
+          const choice = latest?.settings?.theme;
+          if (choice && choice !== themeChoice) {
+            themeChoice = choice;
+            applyTheme();
+          }
+        },
+        () => undefined,
+      );
+      return undefined;
+    }
+    if (request?.type !== TOP_OPEN) return undefined;
+    // A page cannot send a runtime message to a content script. The sender is the background.
+    if (sender.id !== browser.runtime.id || sender.tab !== undefined || !isFileId(request.fileId)) {
+      respond({ opened: false });
+      return undefined;
+    }
+    const fileId = request.fileId;
+    void (async () => {
+      await starting;
+      respond({ opened: live && enabled });
+      if (live && enabled) await openTarget({ fileId }, `/files/${fileId}`);
+    })().catch(() => undefined);
+    return true;
+  };
+  browser.runtime.onMessage.addListener(onBackground);
+  lifetime.signal.addEventListener(
+    'abort',
+    () => browser.runtime.onMessage.removeListener(onBackground),
+    { once: true },
+  );
   await starting;
   if (live && !enabled) {
     // The viewer is off. A click that came before this point still finds `live`, and follows its link.
     lifetime.abort();
-    browser.runtime.onMessage.removeListener(onChanged);
+  }
+  if (live && enabled && isSubmissionPage(location.pathname)) {
+    // Every load of the frame is a new document, which needs its own catcher. A script of the
+    // page can fire a load event, so only a trusted one counts.
+    const askForCatcher = () => {
+      void browser.runtime.sendMessage({ type: 'viewer:inject-frames' }).catch(() => undefined);
+    };
+    document.addEventListener(
+      'load',
+      (event) => {
+        if (
+          event.isTrusted &&
+          event.target instanceof HTMLIFrameElement &&
+          event.target.id === 'preview_frame'
+        )
+          askForCatcher();
+      },
+      { capture: true, signal: lifetime.signal },
+    );
+    askForCatcher();
   }
   if (live && enabled && tabs.active) void show();
 }

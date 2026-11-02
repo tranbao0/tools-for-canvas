@@ -6,11 +6,13 @@ import { isCanvasDocument } from './detectCanvas';
 import {
   DASHBOARD_FILE,
   DETECTOR_FILE,
+  FRAME_FILE,
   INPAGE_FILE,
   anyAutoSavedCanvasTab,
   injectDetectorIntoOpenTabs,
   injectInpage,
   injectInpageIntoOrigin,
+  injectSubmissionFrames,
 } from './inject';
 import { installFakeScripting, type FakeScripting } from './testing/fakes';
 
@@ -238,5 +240,77 @@ describe('anyAutoSavedCanvasTab', () => {
       ]),
     ).toBe(false);
     expect(await anyAutoSavedCanvasTab([])).toBe(false);
+  });
+});
+
+describe('injectSubmissionFrames', () => {
+  const ORIGIN = 'https://canvas.school.edu';
+  const SUBMISSION = `${ORIGIN}/courses/5/assignments/3/submissions/9`;
+  /** The answers of the probe, one for each frame of the tab. */
+  const probes = (...frames: { frameId: number; origin: string; path: string }[]) =>
+    frames.map(({ frameId, origin, path }) => ({ frameId, result: { origin, path } }));
+  const PATH = '/courses/5/assignments/3/submissions/9';
+
+  beforeEach(() => {
+    tabUrls.set(7, SUBMISSION);
+  });
+
+  it('puts the catcher into the same-origin child frames of a submission page, and no other frame', async () => {
+    scripting.executeScript.mockResolvedValueOnce(
+      probes(
+        { frameId: 0, origin: ORIGIN, path: PATH },
+        { frameId: 4, origin: ORIGIN, path: PATH },
+        { frameId: 5, origin: 'https://video.example', path: PATH },
+        { frameId: 6, origin: ORIGIN, path: '/courses/5/files/9' },
+        { frameId: 8, origin: ORIGIN, path: PATH },
+      ) as never,
+    );
+    await injectSubmissionFrames(7, ORIGIN);
+    expect(scripting.executeScript).toHaveBeenCalledTimes(2);
+    expect(scripting.executeScript.mock.calls[0]![0]).toMatchObject({
+      target: { tabId: 7, allFrames: true },
+    });
+    expect(scripting.executeScript).toHaveBeenLastCalledWith({
+      target: { tabId: 7, frameIds: [4, 8] },
+      files: [FRAME_FILE],
+    });
+  });
+
+  it('runs a probe that only reads the origin and the path of a frame', async () => {
+    scripting.executeScript.mockResolvedValueOnce([] as never);
+    await injectSubmissionFrames(7, ORIGIN);
+    const probe = (scripting.executeScript.mock.calls[0]![0] as unknown as { func: () => unknown })
+      .func;
+    vi.stubGlobal('location', { origin: ORIGIN, pathname: PATH, search: '?secret=1' });
+    try {
+      expect(probe()).toEqual({ origin: ORIGIN, path: PATH });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('injects nothing when no frame qualifies', async () => {
+    scripting.executeScript.mockResolvedValueOnce(
+      probes({ frameId: 0, origin: ORIGIN, path: PATH }) as never,
+    );
+    await injectSubmissionFrames(7, ORIGIN);
+    expect(scripting.executeScript).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a tab that no longer shows a submission page of the origin', async () => {
+    for (const url of [
+      `${ORIGIN}/courses/5`,
+      'https://other.school.edu/courses/5/assignments/3/submissions/9',
+    ]) {
+      tabUrls.set(7, url);
+      await expect(injectSubmissionFrames(7, ORIGIN)).rejects.toThrow('submission page');
+    }
+    expect(scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the file viewer is off', async () => {
+    await toolsSettingsItem.setValue({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+    await injectSubmissionFrames(7, ORIGIN);
+    expect(scripting.executeScript).not.toHaveBeenCalled();
   });
 });

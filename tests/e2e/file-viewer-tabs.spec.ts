@@ -22,11 +22,13 @@ const fileLink = (page: Page, name: string) => page.locator('#content').getByRol
 /** Clicks the three file links, so the pane has three tabs. */
 async function openThree(page: Page, prepare?: () => Promise<void>): Promise<void> {
   await openFirstFile(page, 'Read notes', prepare);
-  for (const name of ['Lecture photo', 'Syllabus']) {
+  for (const [index, name] of ['Lecture photo', 'Syllabus'].entries()) {
     await fileLink(page, name).click();
-    await expect((await pane(page)).getByRole('tab', { selected: true })).toBeVisible();
+    // The new file is a tab, and it is the chosen one, before the next click.
+    const tabs = (await pane(page)).getByRole('tab');
+    await expect(tabs).toHaveCount(index + 2);
+    await expect(tabs.nth(index + 1)).toHaveAttribute('aria-selected', 'true');
   }
-  await expect((await pane(page)).getByRole('tab')).toHaveCount(3);
 }
 
 test('two files make two tabs, and the keyboard moves between them', async ({

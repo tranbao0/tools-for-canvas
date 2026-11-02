@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { startFileHost } from '../e2e/support/file-host.ts';
+import { animatedGif } from '../e2e/support/gif.mjs';
 import { FIXTURE_PAGE_COUNT } from '../fixtures/pdf/fixture.ts';
 import { Builder, By } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
@@ -325,7 +326,8 @@ async function checkHostilePaneFrame(driver, server) {
 }
 
 /**
- * Opens an image in the pane and checks that it is drawn on a canvas.
+ * Opens a raster image in the pane and checks that it shows in an image element, with its blob
+ * URL already freed.
  * @param {import('selenium-webdriver').WebDriver} driver
  */
 async function checkImageTab(driver) {
@@ -344,19 +346,123 @@ async function checkImageTab(driver) {
   }, 10_000);
   await driver.switchTo().frame(frame);
   const image = await driver.wait(async () => {
-    const images = await driver.findElements(By.css('.fv-media canvas'));
+    const images = await driver.findElements(By.css('.fv-media img'));
     return images[0] ?? false;
   }, 30_000);
   const loaded = await driver.wait(async () => {
     const result = await driver.executeScript(
-      'return { width: arguments[0].width, images: document.querySelectorAll("img").length };',
+      'return { width: arguments[0].naturalWidth, canvases: document.querySelectorAll(".fv-media canvas").length };',
       image,
     );
     return result.width > 0 ? result : false;
   }, 20_000);
-  if (loaded.images !== 0) throw new Error('The pane holds an img element for the picture');
+  if (loaded.canvases !== 0) throw new Error('The pane draws a raster picture on a canvas');
   await driver.switchTo().defaultContent();
-  console.log(`Firefox image viewer: the image is drawn on a canvas, ${loaded.width} px wide.`);
+  console.log(`Firefox image viewer: the image shows in an element, ${loaded.width} px wide.`);
+}
+
+/**
+ * Opens an animated GIF in the pane. It must show in an image element, its blob URL must be freed
+ * once the element has loaded, and the picture must keep changing after that. A canvas would show
+ * the first frame only.
+ * @param {import('selenium-webdriver').WebDriver} driver
+ */
+async function checkAnimatedGif(driver) {
+  await driver.executeScript(
+    `document.getElementById('spin').addEventListener('click', event => event.preventDefault());`,
+  );
+  const host = await driver.findElement(By.css('#tools-file-viewer'));
+  const frame = (await (await host.getShadowRoot()).findElements(By.css('iframe')))[0];
+  await driver.switchTo().frame(frame);
+  await driver.executeScript(`
+    const log = { created: [], revoked: [] };
+    window.__blobs = log;
+    const create = URL.createObjectURL.bind(URL);
+    const revoke = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = (object) => {
+      const url = create(object);
+      log.created.push(url);
+      return url;
+    };
+    URL.revokeObjectURL = (url) => {
+      log.revoked.push(url);
+      revoke(url);
+    };
+  `);
+  await driver.switchTo().defaultContent();
+  await driver
+    .actions()
+    .move({ origin: await driver.findElement(By.id('spin')) })
+    .click()
+    .perform();
+  await driver.switchTo().frame(frame);
+  const picture = await driver.wait(async () => {
+    const found = await driver.findElements(By.css('.fv-media img[alt="spin.gif"]'));
+    return found[0] ?? false;
+  }, 30_000);
+  await driver.wait(async () => {
+    const log = await driver.executeScript('return JSON.parse(JSON.stringify(window.__blobs))');
+    return log.created.length === 1 && log.revoked.length === 1;
+  }, 20_000);
+  // The frames last 100 ms. The element screenshot must differ between two moments.
+  const seen = new Set();
+  await driver.wait(async () => {
+    seen.add(await picture.takeScreenshot());
+    return seen.size > 1;
+  }, 10_000);
+  await driver.switchTo().defaultContent();
+  console.log('Firefox animated GIF: plays in an element after its blob URL is freed.');
+}
+
+/** The path of the submission details page of the smoke test. */
+const SUBMISSION_PAGE = '/courses/101/assignments/7/submissions/5501';
+
+/**
+ * Clicks a file in the files list of the submission details page, which Canvas draws in the frame
+ * `#preview_frame`. The page script cannot see that frame, so a click catcher that the background
+ * injects must take the click, and the pane must open the file in the top frame.
+ * @param {import('selenium-webdriver').WebDriver} driver
+ * @param {string} origin
+ */
+async function checkSubmissionFrame(driver, origin) {
+  let host = null;
+  // The catcher is injected a moment after the frame loads, and an early click saves the file
+  // instead. Then the page loads again.
+  for (let attempt = 0; attempt < 6 && host === null; attempt += 1) {
+    await driver.get(`${origin}${SUBMISSION_PAGE}`);
+    const preview = await driver.wait(async () => {
+      const found = await driver.findElements(By.id('preview_frame'));
+      return found[0] ?? false;
+    }, 10_000);
+    await driver.switchTo().frame(preview);
+    const link = await driver.wait(async () => {
+      const found = await driver.findElements(By.css('a.file-upload-submission-info__link'));
+      return found[0] ?? false;
+    }, 10_000);
+    await driver.sleep(1500 * (attempt + 1));
+    await driver.actions().move({ origin: link }).click().perform();
+    await driver.switchTo().defaultContent();
+    try {
+      host = await driver.wait(async () => {
+        const hosts = await driver.findElements(By.css('#tools-file-viewer'));
+        return hosts[0] ?? false;
+      }, 4000);
+    } catch {
+      host = null;
+    }
+  }
+  if (host === null) throw new Error('A click in the preview frame did not open the pane');
+  const paneFrame = await driver.wait(async () => {
+    const frames = await (await host.getShadowRoot()).findElements(By.css('iframe'));
+    return frames[0] ?? false;
+  }, 10_000);
+  await driver.switchTo().frame(paneFrame);
+  await driver.wait(async () => {
+    const texts = await driver.findElements(By.css('.fv-media:not([hidden]) pre'));
+    return texts.length > 0 && (await texts[0].getText()) === 'File from the preview frame.';
+  }, 30_000);
+  await driver.switchTo().defaultContent();
+  console.log('Firefox submission frame: a click on a file in the preview frame opens the pane.');
 }
 
 /**
@@ -408,8 +514,8 @@ async function checkHostileSvg(driver) {
       width: arguments[0].width,
       height: arguments[0].height,
       role: arguments[0].getAttribute('role'),
-      images: document.querySelectorAll('img, object, embed').length,
-      blobAttributes: document.querySelectorAll('[src^="blob:"], [href^="blob:"]').length,
+      images: document.querySelectorAll('.fv-media:not([hidden]) img, object, embed').length,
+      blobAttributes: document.querySelectorAll('.fv-media:not([hidden]) [src^="blob:"], [href^="blob:"]').length,
       keys: Object.keys(localStorage).filter((key) => key.startsWith('hostile-')),
       blobs: JSON.parse(JSON.stringify(window.__blobs ?? null)),
     };`,
@@ -486,6 +592,46 @@ async function main() {
     body: readFileSync(new URL('../fixtures/files/hostile.svg', import.meta.url)),
     contentType: 'image/svg+xml',
   };
+  files['/files/45/download'] = {
+    body: '',
+    contentType: 'text/plain',
+    location: `${server.origin}/inst-fs/spin.gif`,
+  };
+  files['/inst-fs/spin.gif'] = { body: animatedGif(32), contentType: 'image/gif' };
+  files['/api/v1/files/45'] = {
+    body: JSON.stringify({
+      id: 45,
+      display_name: 'spin.gif',
+      filename: 'spin.gif',
+      'content-type': 'image/gif',
+      size: 600,
+      url: `${origin}/files/45/download`,
+    }),
+    contentType: 'application/json',
+  };
+  // The submission details page and its frame have the same path. The script chooses by the query.
+  files[SUBMISSION_PAGE] = {
+    body: `<html><head><script>INST={environment:'production'};ENV={current_user_id:'5501'};</script></head><body><script>
+      if (location.search.includes('preview=1')) {
+        document.body.innerHTML = '<table class="file-upload-submission-table"><tbody><tr class="file-upload-submission"><td class="file-upload-submission-info"><a class="text file-upload-submission-info__link" href="${SUBMISSION_PAGE}?download=46">Frame file</a></td></tr></tbody></table>';
+      } else {
+        document.body.innerHTML = '<iframe id="preview_frame" style="width:600px;height:200px" src="${SUBMISSION_PAGE}?preview=1&rand=481516"></iframe>';
+      }
+    </script></body></html>`,
+    contentType: 'text/html',
+  };
+  files['/files/46/download'] = { body: 'File from the preview frame.', contentType: 'text/plain' };
+  files['/api/v1/files/46'] = {
+    body: JSON.stringify({
+      id: 46,
+      display_name: 'frame.txt',
+      filename: 'frame.txt',
+      'content-type': 'text/plain',
+      size: 28,
+      url: `${origin}/files/46/download`,
+    }),
+    contentType: 'application/json',
+  };
   files['/api/v1/files/44'] = {
     body: JSON.stringify({
       id: 44,
@@ -498,7 +644,7 @@ async function main() {
     contentType: 'application/json',
   };
   files['/courses/101'] = {
-    body: '<html><head><script>INST={environment:\'production\'};ENV={current_user_id:\'5501\'};</script></head><body><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a><a id="photo" class="instructure_file_link" href="/files/43">Lecture photo</a><a id="hostile-link" class="instructure_file_link" href="/files/44">Hostile</a></body></html>',
+    body: '<html><head><script>INST={environment:\'production\'};ENV={current_user_id:\'5501\'};</script></head><body><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a><a id="photo" class="instructure_file_link" href="/files/43">Lecture photo</a><a id="hostile-link" class="instructure_file_link" href="/files/44">Hostile</a><a id="spin" class="instructure_file_link" href="/files/45">Spin</a></body></html>',
     contentType: 'text/html',
   };
   files['/api/v1/files/42'] = {
@@ -616,7 +762,9 @@ async function main() {
     await driver.switchTo().defaultContent();
     await checkImageTab(driver);
     await checkHostileSvg(driver);
+    await checkAnimatedGif(driver);
     await checkHostilePaneFrame(driver, server);
+    await checkSubmissionFrame(driver, origin);
     console.log('Firefox store file pane: passed.');
     console.log('Firefox smoke test: passed.');
     return 0;

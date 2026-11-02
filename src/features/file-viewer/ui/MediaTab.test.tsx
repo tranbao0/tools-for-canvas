@@ -13,19 +13,30 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+/** The first bytes of a PNG file. */
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+/** The first bytes of a GIF file. */
+const GIF = new Uint8Array([...'GIF89a'].map((char) => char.charCodeAt(0)));
+
 /** Makes `new Image()` load at once, with the size the browser would report. */
 function fakeImage(width: number, height: number) {
   const drawn: unknown[] = [];
-  class FakeImage {
-    naturalWidth = width;
-    naturalHeight = height;
-    onload: (() => void) | null = null;
-    onerror: (() => void) | null = null;
-    set src(_value: string) {
-      queueMicrotask(() => this.onload?.());
-    }
-  }
-  vi.stubGlobal('Image', FakeImage);
+  const sources: string[] = [];
+  vi.stubGlobal('Image', function FakeImage() {
+    const image = document.createElement('img');
+    Object.defineProperties(image, {
+      naturalWidth: { value: width },
+      naturalHeight: { value: height },
+      src: {
+        get: () => sources.at(-1) ?? '',
+        set: (value: string) => {
+          sources.push(value);
+          queueMicrotask(() => image.onload?.(new Event('load')));
+        },
+      },
+    });
+    return image;
+  });
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
     () => ({ drawImage: (...args: unknown[]) => drawn.push(args) }) as never,
   );
@@ -63,12 +74,74 @@ it('draws an SVG on a canvas and frees its URL as soon as it has loaded', async 
   expect(revoke).toHaveBeenCalledTimes(1);
 });
 
+it('shows a GIF in an element that plays it, and frees its URL once it has loaded', async () => {
+  const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:gif');
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  const drawn = fakeImage(16, 16);
+  const host = { readFile: vi.fn(async () => GIF), loadPdfjs: vi.fn() };
+  const view = render(
+    <MediaTab
+      {...base}
+      host={host as unknown as PdfHost}
+      name="spin.gif"
+      contentType="image/gif"
+      active
+    />,
+  );
+  const picture = (await screen.findByRole('img', { name: 'spin.gif' })) as HTMLImageElement;
+  expect(picture.tagName).toBe('IMG');
+  expect(document.querySelector('canvas')).toBeNull();
+  expect(drawn).toHaveLength(0);
+  expect((create.mock.calls[0]![0] as Blob).type).toBe('image/gif');
+  expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:gif');
+  view.unmount();
+  expect(revoke).toHaveBeenCalledTimes(1);
+});
+
+it('types the blob of a raster image by its first bytes, not by its name or header', async () => {
+  const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:typed');
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  fakeImage(8, 8);
+  const host = { readFile: vi.fn(async () => PNG), loadPdfjs: vi.fn() };
+  render(
+    <MediaTab
+      {...base}
+      host={host as unknown as PdfHost}
+      name="really-a-png.svg"
+      contentType="image/svg+xml"
+      active
+    />,
+  );
+  await screen.findByRole('img', { name: 'really-a-png.svg' });
+  expect((create.mock.calls[0]![0] as Blob).type).toBe('image/png');
+});
+
+it('gives markup that claims to be a raster image to no element', async () => {
+  const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:markup');
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  fakeImage(8, 8);
+  const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>');
+  const host = { readFile: vi.fn(async () => svg), loadPdfjs: vi.fn() };
+  render(
+    <MediaTab
+      {...base}
+      host={host as unknown as PdfHost}
+      name="fake.png"
+      contentType="image/png"
+      active
+    />,
+  );
+  expect((await screen.findByRole('alert')).textContent).toContain("Couldn't show this image");
+  expect(create).not.toHaveBeenCalled();
+  expect(document.querySelector('img,canvas')).toBeNull();
+});
+
 it('shows no picture for an image over the pixel limit, and still frees its URL', async () => {
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:big');
   const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   const drawn = fakeImage(4097, 4096);
   const failed = vi.fn();
-  const host = { readFile: vi.fn(async () => new Uint8Array([1])), loadPdfjs: vi.fn() };
+  const host = { readFile: vi.fn(async () => PNG), loadPdfjs: vi.fn() };
   render(
     <MediaTab
       {...base}
@@ -91,7 +164,7 @@ it('shows no picture for an image over 16,384 pixels on a side', async () => {
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:wide');
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   fakeImage(16385, 1);
-  const host = { readFile: vi.fn(async () => new Uint8Array([1])), loadPdfjs: vi.fn() };
+  const host = { readFile: vi.fn(async () => PNG), loadPdfjs: vi.fn() };
   render(
     <MediaTab
       {...base}
@@ -374,8 +447,8 @@ it('says so, and frees the URL, when the browser cannot draw the image', async (
     <MediaTab
       {...base}
       host={host as unknown as PdfHost}
-      name="x.png"
-      contentType="image/png"
+      name="x.svg"
+      contentType="image/svg+xml"
       active
       onReadFailed={failed}
     />,
@@ -386,11 +459,11 @@ it('says so, and frees the URL, when the browser cannot draw the image', async (
   expect(failed).not.toHaveBeenCalled();
 });
 
-it('frees the canvas of a large image while its tab is hidden, and draws it again on show', async () => {
+it('frees the picture of a large image while its tab is hidden, and shows it again on show', async () => {
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:img');
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   fakeImage(100, 100);
-  const host = { readFile: vi.fn(async () => new Uint8Array([1])), loadPdfjs: vi.fn() };
+  const host = { readFile: vi.fn(async () => PNG), loadPdfjs: vi.fn() };
   const small = {
     ...base,
     host: host as unknown as PdfHost,
@@ -401,17 +474,17 @@ it('frees the canvas of a large image while its tab is hidden, and draws it agai
   const view = render(<MediaTab {...small} active hiddenLimit={1000} />);
   await screen.findByRole('img', { name: 'p.png' });
   view.rerender(<MediaTab {...small} active={false} hiddenLimit={1000} />);
-  await waitFor(() => expect(document.querySelector('canvas')).toBeNull());
+  await waitFor(() => expect(document.querySelector('img')).toBeNull());
   view.rerender(<MediaTab {...small} active hiddenLimit={1000} />);
   await screen.findByRole('img', { name: 'p.png' });
   expect(host.readFile).toHaveBeenCalledTimes(2);
 });
 
-it('keeps the canvas of a small image while its tab is hidden', async () => {
+it('keeps the picture of a small image while its tab is hidden', async () => {
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:img2');
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   fakeImage(10, 10);
-  const host = { readFile: vi.fn(async () => new Uint8Array([1])), loadPdfjs: vi.fn() };
+  const host = { readFile: vi.fn(async () => PNG), loadPdfjs: vi.fn() };
   const small = {
     ...base,
     host: host as unknown as PdfHost,
@@ -423,6 +496,6 @@ it('keeps the canvas of a small image while its tab is hidden', async () => {
   view.rerender(<MediaTab {...small} active={false} />);
   view.rerender(<MediaTab {...small} active />);
   await new Promise((resolve) => setTimeout(resolve, 30));
-  expect(document.querySelector('canvas')).not.toBeNull();
+  expect(document.querySelector('img')).not.toBeNull();
   expect(host.readFile).toHaveBeenCalledTimes(1);
 });

@@ -26,6 +26,22 @@ export function playerType(
     return { kind: 'text', mime: 'text/plain' };
   return null;
 }
+/**
+ * The raster format that the first bytes of a file show, or `null` when they show none. A raster
+ * image cannot run script, so only these formats draw in an `img` element (decision 25, item 10).
+ * Anything else, such as SVG that a file claims to be a PNG, is never given to an element.
+ */
+export function sniffRaster(bytes: Uint8Array): string | null {
+  const at = (offset: number, text: string) =>
+    [...text].every((char, index) => bytes[offset + index] === char.charCodeAt(0));
+  const has = (...values: number[]) => values.every((value, index) => bytes[index] === value);
+  if (has(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return 'image/png';
+  if (has(0xff, 0xd8, 0xff)) return 'image/jpeg';
+  if (at(0, 'GIF87a') || at(0, 'GIF89a')) return 'image/gif';
+  if (at(0, 'RIFF') && at(8, 'WEBP')) return 'image/webp';
+  if (at(4, 'ftyp') && (at(8, 'avif') || at(8, 'avis'))) return 'image/avif';
+  return null;
+}
 export const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 /**
  * Text is read up to this many bytes: the shown part and a few bytes more, so that a character
