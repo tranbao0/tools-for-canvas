@@ -443,6 +443,9 @@ An earlier version used option B; schools on their own domain then needed an "Al
 - `manifest_version`: 3 for every browser.
 - `host_permissions`: `https://*/*`
 - `permissions`: `storage`, `cookies`, `scripting`, and `sidePanel` on Chrome and Edge
+  - `cookies` reads the `_csrf_token` value for a write.
+    It also reads the `canvas_session` or `_normandy_session` value for one job: to compare a salted fingerprint before cached data goes out (decision 11).
+    The extension never stores or sends that value.
 - `action`, with no popup
 - `side_panel` on Chrome and Edge, and `sidebar_action` on Firefox
 - One static content script, the Canvas detector, on `https://*/*` in the top frame only.
@@ -977,6 +980,76 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 **How it works:**
 
 - The background service worker on Chrome and Edge, or the background page on Firefox, owns all Canvas requests.
+- Before the weekly list or the dashboard fixes serve cached data, the owner reads the Canvas session cookie (`canvas_session`, then `_normandy_session`) with `cookies.get` and compares a fingerprint of it.
+  The fingerprint is the SHA-256 of a random per-install salt and the cookie value.
+  The salt stays in trusted extension storage.
+  The extension never stores or sends the cookie value.
+  The cookie names are one ordered constant in `src/shared/canvas/session.ts`.
+  The cookie comes from the store that the requests of the extension use: the default store of the browser (`0` on Chrome and Edge, `firefox-default` on Firefox).
+  The owner does not take the store from `getAllCookieStores`, because that list holds only stores with an open tab.
+  A tab in another store, such as a private window or a container, gets `cant_load` and never cached data.
+  It causes no check and no sign-out.
+  The router passes the tab of the sender, and the owner asks the browser which store lists the tab.
+  A surface without a tab, such as the side panel, uses the default store.
+- After each good user check, `storage.session` keeps the user id, the check time and the fingerprints that the checks confirmed, beside the cache.
+  Each fingerprint includes the cookie name, so a name change needs a new check.
+  The owner keeps the last three fingerprints that it confirmed for the current user.
+  A cookie that matches any of them may serve.
+- A reader acts on the cookie like this:
+  - No session cookie: the student is signed out, the cache goes and the reply is `signed_out`.
+  - A confirmed fingerprint and a check that is less than 30 seconds old: serve.
+  - A confirmed fingerprint and an older check: serve, and start one background check.
+    One check runs at a time.
+    A background check starts only when the last good check is 30 seconds old, so two are always more than 3 seconds apart.
+    A check that confirms the same user does not change the marker, unless it clears a failure.
+  - Any other fingerprint: run a check, as below.
+    The same user: serve.
+    Another user: the cache goes.
+    A 401: signed out.
+    A network error, a 5xx, a 429 or a timeout: `cant_load`, with the offline flag for a network error.
+    The cache never goes out without a confirmed fingerprint.
+- A check binds only to the fingerprint (F0) that the owner read just before the request started.
+  When the check returns the user, F0 becomes confirmed for that user.
+  A fingerprint that first appeared after the request started is never confirmed by it.
+  The round's own `GET /api/v1/users/self` is a check too, and it confirms the F0 that the owner read before the round.
+  A round that ends with another cookie than F0 confirms nothing, because its user request can wait in the queue or back off after a rate limit.
+  A round that loads the session confirms F0 only if the cookie is still F0 when the session has arrived.
+  After the response, the reader reads the cookie again (F1).
+  If F1 is confirmed, the reader serves.
+  If not, the reader runs one follow-up check with its own F0.
+  If the cookie is still not confirmed after the follow-up, the reply is `cant_load` with the "Couldn't check your Canvas sign-in" line, never the cache.
+- Checks are rare.
+  No more than two checks start in any 30 seconds, from all readers together.
+  After a failed check, or after a follow-up that sees a change, the next check waits 30 seconds, also after a restart of the worker.
+  The Retry button skips both limits.
+- A check uses its own client method.
+  It skips the request queue, has no retry, and ends after 10 seconds.
+  A timeout is `Couldn't reach Canvas`, not offline.
+  The user request of a round, of a task delete, of the check before a write and of the check after a 401 stays in the queue, with the retry after a rate limit.
+- A failed check keeps the last data with the stale or offline line when the cookie is confirmed, and a good check clears that line.
+  A line that a failed round set stays until a round succeeds.
+- A different user clears all cached data and invalidates pending work before either feature can serve it.
+- The Undo notice of a surface stays through any reply that is not `ready`, so a task delete never goes out early.
+  The owner sends the delete at its own time.
+  An Undo that restores overrides first passes the same cookie check, and it does nothing when the check fails.
+- A Canvas page load of the saved origin reads the cookie, and the owner wakes the open surfaces when the cookie is gone or not confirmed.
+  The surfaces then ask again, so a list on screen does not outlive a sign-out.
+  The page load makes no request.
+- Open risk: a round that spans a sign-in change can save answers that carried the new cookie.
+  The next good check for the new student drops the cache, but the check limits can delay that check.
+- Open risk: the open surfaces learn of a sign-out only from a Canvas page load, a focus change, a visibility change or the timer.
+  A sign-out that ends on another site, such as a single sign-on page, shows the list until one of them happens.
+  The ticket removed the cookie event listener on purpose.
+- Open risk: Firefox with "Never remember history" may send the requests of the extension with another store than `firefox-default`.
+  Then every read finds no cookie and shows the signed-out state.
+  The owner will check this live.
+- Live finding on 2026-10-30: the owner's browser on hosted Canvas at `sjsu.instructure.com` has `canvas_session`, `_csrf_token`, `_hp2_id.*`, `k5_observer*` and `log_session_id`, with no `_normandy_session`.
+  The extension reads `canvas_session` first, then the open-source default `_normandy_session`.
+  `GET /api/v1/users/self` sets `_csrf_token` and `log_session_id`, but does not set the session cookie.
+  This closes the renewal risk for the observed hosted Canvas: no session cookie renewal occurs on `users/self`.
+  Other deployments may still renew the cookie on each reply.
+  Continuous renewal ends in `cant_load` after the follow-up check until the cookie stops changing.
+- Open risk: a Canvas that uses neither supported name looks signed out.
 - Every light and full round also asks `GET /api/v1/users/self`, in parallel with the planner.
   When the user id differs from the cached one, the round drops everything it loaded and all cached data, and loads the new user from scratch.
   On a shared computer, one student must never see another student's work.
@@ -989,7 +1062,8 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 - The planner items, the assignment details, the undated work, the planner-off assignment lists and the announcements of the Announcements tab (`weekrowAnnouncements`, decision 24) each have their own key in `storage.session`.
   A write sends only the parts that changed.
   So a new week does not write every assignment detail again, and the change events that reach each extension page stay small.
-- The background keeps at most 3 requests in flight [10].
+- The shared request queue keeps at most 3 requests in flight [10].
+  The user check runs outside this queue.
   A free request slot goes first to the days of a span that a surface shows, then to the past-due range of that view, refresh rounds and writes (the same level), then to weeks that load ahead.
   A load for a view that the surface no longer shows drops to the lowest level.
 - After each write, the background stores a change marker (a time stamp only) in `storage.local`.
@@ -1082,7 +1156,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 
 | Data | Request | When |
 |---|---|---|
-| Sign-in check | `GET /api/v1/users/self` | Setup, every light and full round, and after any 401 |
+| Sign-in check | `GET /api/v1/users/self` | Setup, every light and full round, after any 401, and before cached data goes out when the session cookie is not a confirmed one |
 | Time zone and language | `GET /api/v1/users/self/profile` | Once per session |
 | Courses | `GET /api/v1/courses?enrollment_state=active&enrollment_type=student&include[]=term&include[]=total_scores&per_page=100` | Once per session |
 | Groups | `GET /api/v1/users/self/groups?per_page=100` | Once per session |
@@ -1607,6 +1681,8 @@ The owner asked for it after testing an early build: the list should feel like p
 All four are on by default.
 The owner chose the list on 2026-10-30 (see `docs/roadmap.md`).
 The fixes run on the dashboard of the saved Canvas, next to the weekly list, and need not have the list turned on.
+The dashboard uses the origin that the router checks and shares the session fingerprint check in decision 11.
+The extension reads the session cookie there only to compare a salted fingerprint, and it never stores or sends the value.
 
 | Switch | Fix |
 |---|---|
@@ -1831,8 +1907,10 @@ The page scripts of the fixes and of the weekly list share one sanitizer, `src/s
   The extension reads the color of the card to choose the colors of its pills.
 - The read filter and the course filter labels are English.
   A school with another language sees the filter act as "All", and "All Courses" as a course name that matches no course.
-- The dashboard data hold grades, so the background asks Canvas who is signed in (at most every 30 seconds) before it answers, and it drops the cache when another student signed in.
-  The weekly list keeps the 60-second limit of decision 11 for its own data.
+- The dashboard fixes and weekly list share the same session fingerprint check from decision 11.
+  A page of another cookie store gets no grades, and a page without a session cookie gets none either.
+  Announcement requests use the origin that the message router checked, without reading the saved address again.
+  The weekly list keeps the 60-second limit of decision 11 for full data refreshes.
 - The copies of the grade cards and the course list of the announcement filter keep the data of the session: a grade that Canvas posts later shows in the cards of the widget and in the copies after the next refresh of the courses.
 - An image in an announcement loads from the address that the teacher chose, as it does on the Canvas page, with no referrer for another origin.
 - The "Also due" section covers two weeks of pages and tasks, because the planner cache does.

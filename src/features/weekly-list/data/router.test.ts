@@ -73,6 +73,22 @@ describe('routeDataMessage', () => {
     host = fakeHost();
   });
 
+  it('passes the checked address even if storage changes after the check', async () => {
+    let saved = SAVED;
+    host.savedOrigin = async () => {
+      const checked = saved;
+      saved = 'https://other.instructure.com';
+      return checked;
+    };
+    await routeDataMessage(
+      owner,
+      { type: 'weekrow:announcement', courseId: '5', topicId: '9' },
+      CONTENT_SCRIPT,
+      host,
+    );
+    expect(owner.announcement).toHaveBeenCalledWith('5', '9', SAVED);
+  });
+
   it('answers a state request with the owner state', async () => {
     const reply = routeDataMessage(
       owner,
@@ -82,7 +98,7 @@ describe('routeDataMessage', () => {
     );
     await expect(reply).resolves.toEqual({ kind: 'loading' });
     // A content script is the in-page list, whichever surface its message names.
-    expect(owner.getState).toHaveBeenCalledWith({ ...REQUEST, surface: 'inpage' });
+    expect(owner.getState).toHaveBeenCalledWith({ ...REQUEST, surface: 'inpage' }, 3);
   });
 
   it('gives an extension page the surface that it asks for, and a content script never the offer', async () => {
@@ -93,7 +109,7 @@ describe('routeDataMessage', () => {
         EXTENSION_PAGE,
         host,
       );
-      expect(owner.getState).toHaveBeenLastCalledWith({ ...REQUEST, surface });
+      expect(owner.getState).toHaveBeenLastCalledWith({ ...REQUEST, surface }, undefined);
     }
     for (const surface of ['panel', 'page'] as const) {
       await routeDataMessage(
@@ -102,8 +118,13 @@ describe('routeDataMessage', () => {
         CONTENT_SCRIPT,
         host,
       );
-      expect(owner.getState).toHaveBeenLastCalledWith({ ...REQUEST, surface: 'inpage' });
+      expect(owner.getState).toHaveBeenLastCalledWith({ ...REQUEST, surface: 'inpage' }, 3);
     }
+  });
+
+  it('passes the tab of the sender, so the owner reads the cookie store of that tab', async () => {
+    await routeDataMessage(owner, { type: 'weekrow:dashboard-data' }, CONTENT_SCRIPT, host);
+    expect(owner.dashboardData).toHaveBeenLastCalledWith(SAVED, 3);
   });
 
   describe('the checked messages of the in-page script', () => {
@@ -274,8 +295,8 @@ describe('routeDataMessage', () => {
           ),
         ).resolves.toEqual([]);
       }
-      expect(owner.announcement).toHaveBeenCalledWith('101', '31901');
-      expect(owner.announcements).toHaveBeenCalledWith('101');
+      expect(owner.announcement).toHaveBeenCalledWith('101', '31901', SAVED);
+      expect(owner.announcements).toHaveBeenCalledWith('101', SAVED);
     });
 
     it.each([

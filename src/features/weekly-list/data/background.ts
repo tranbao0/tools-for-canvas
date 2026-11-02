@@ -3,6 +3,7 @@
  * events. See docs/design.md, decision 11, option A.
  */
 import { browser } from 'wxt/browser';
+import { sessionFingerprint, surfaceUsesRequestStore } from '../../../shared/canvas/session';
 import { createCanvasClient } from '../../../shared/canvas/client';
 import { csrfFromCookiesApi } from '../../../shared/canvas/csrf';
 import { BROWSER_KIND } from '../../../shared/platform/browserKind';
@@ -26,6 +27,8 @@ function backgroundDataDeps(): DataOwnerDeps {
   return {
     createApi: (origin) => createCanvasClient({ origin, getCsrfToken: csrfFromCookiesApi(origin) }),
     hasAccess,
+    sessionFingerprint,
+    surfaceUsesRequestStore,
     store: {
       origin: canvasOriginItem,
       settings: settingsItem,

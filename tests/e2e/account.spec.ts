@@ -116,13 +116,23 @@ function deletes(canvas: FakeCanvas): string[] {
   return canvas.requests.filter((r) => r.method === 'DELETE').map((r) => r.path);
 }
 
-test('a different student signs in between rounds, and nothing of the first student stays', async ({
+test('self-hosted Canvas: a different student signs in and nothing of the first student stays', async ({
   context,
   page,
   background,
   extensionUrl,
 }) => {
   const first = await serveScenario(context);
+  await context.clearCookies({ name: 'canvas_session' });
+  await context.addCookies([
+    {
+      name: '_normandy_session',
+      value: 'session-a',
+      url: first.canvas.origin,
+      secure: true,
+      sameSite: 'Lax',
+    },
+  ]);
   await addCsrfCookie(context, first.canvas.origin);
   await saveAddress(background, first.canvas.origin);
   await openExtensionPage(page, extensionUrl('sidepanel.html'));
@@ -195,4 +205,334 @@ test('a different student signs in between rounds, and nothing of the first stud
   // Ctrl+Z found no notice, so nothing was written with the second student's session.
   expect(second.requests.filter((r) => r.method !== 'GET').map((r) => r.path)).toEqual([]);
   expect(second.unmatched).toEqual([]);
+});
+
+for (const failure of ['network', '503'] as const) {
+  test(`cached work and Undo survive a ${failure} user check failure`, async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const first = await serveScenario(context);
+    await addCsrfCookie(context, first.canvas.origin);
+    await saveAddress(background, first.canvas.origin);
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await expect(doneBox(page, QUIZ_3)).toBeVisible();
+    await settledList(page);
+    await advanceBackgroundClock(background, 31_000);
+    await context.route(`${first.canvas.origin}/api/v1/users/self`, async (route) => {
+      if (failure === 'network') await route.abort('failed');
+      else await route.fulfill({ status: 503, body: 'Unavailable' });
+    });
+    await group(page, 'today')
+      .getByRole('button', { name: 'Edit task: Return library books', exact: true })
+      .click();
+    await page.getByRole('button', { name: 'Delete task' }).click();
+    await expect(page.locator('.wr-toast')).toContainText('Task deleted');
+    await expect(doneBox(page, QUIZ_3)).toBeVisible();
+    await expect(page.getByText(/Couldn't refresh/)).toBeVisible();
+    await page.locator('.wr-toast').getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(
+      group(page, 'today').getByRole('button', {
+        name: 'Edit task: Return library books',
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(deletes(first.canvas)).toEqual([]);
+  });
+}
+
+test('a changed session with a failed check never exposes cached work', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const first = await serveScenario(context);
+  await addCsrfCookie(context, first.canvas.origin);
+  await saveAddress(background, first.canvas.origin);
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await expect(doneBox(page, QUIZ_3)).toBeVisible();
+  await settledList(page);
+  await group(page, 'today')
+    .getByRole('button', { name: 'Edit task: Return library books', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Delete task' }).click();
+  await expect(page.locator('.wr-toast')).toContainText('Task deleted');
+  await context.route(`${first.canvas.origin}/api/v1/users/self`, (route) => route.abort('failed'));
+  await context.addCookies([
+    {
+      name: 'canvas_session',
+      value: 'student-b',
+      url: first.canvas.origin,
+      secure: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  await advanceBackgroundClock(background, 31_000);
+  await page.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        chrome: { storage: { local: { set(value: unknown): Promise<void> } } };
+      }
+    ).chrome;
+    await api.storage.local.set({ changeMarker: Date.now() });
+  });
+  await expect(page.getByText("Couldn't load your list", { exact: true })).toBeVisible();
+  await expect(doneBox(page, QUIZ_3)).toHaveCount(0);
+  await expect(page.locator('.wr-toast')).toContainText('Task deleted');
+  expect(deletes(first.canvas)).toEqual([]);
+  await page.screenshot({ path: '/tmp/a3-account-failed-check.png' });
+});
+
+for (const renew of [false, true]) {
+  test(
+    renew
+      ? 'reply cookie renewal gives a bounded result to each reader'
+      : 'sibling cookie writes do not start checks',
+    async ({ context, page, background, extensionUrl }) => {
+      const first = await serveScenario(context);
+      await saveAddress(background, first.canvas.origin);
+      await openExtensionPage(page, extensionUrl('sidepanel.html'));
+      await expect(doneBox(page, QUIZ_3)).toBeVisible();
+      await settledList(page);
+      const checks: number[] = [];
+      let elapsed = 0;
+      await context.route(`${first.canvas.origin}/api/v1/users/self`, async (route) => {
+        checks.push(elapsed);
+        if (renew)
+          await context.addCookies([
+            {
+              name: 'canvas_session',
+              value: `renew-${checks.length}`,
+              url: first.canvas.origin,
+              secure: true,
+              sameSite: 'Lax',
+            },
+          ]);
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(first.scenario.self),
+          headers: renew
+            ? {
+                'set-cookie': `canvas_session=renew-${checks.length}; Path=/; Secure; SameSite=Lax`,
+              }
+            : {},
+        });
+      });
+      for (elapsed = 0; elapsed < (renew ? 61_000 : 20_000); elapsed += 1000) {
+        if (!renew)
+          await context.addCookies([
+            {
+              name: 'canvas_session',
+              value: `sibling-${elapsed}`,
+              domain: '.instructure.com',
+              path: '/',
+              secure: true,
+              sameSite: 'Lax',
+            },
+          ]);
+        const reply = await page.evaluate(async () => {
+          const api = (
+            globalThis as unknown as {
+              chrome: { runtime: { sendMessage(message: unknown): Promise<{ kind: string }> } };
+            }
+          ).chrome;
+          return api.runtime.sendMessage({
+            type: 'weekrow:get-state',
+            request: { surface: 'panel', spanOffset: 0, scopeCourseId: null },
+          });
+        });
+        expect(renew ? ['ready', 'cant_load'] : ['ready']).toContain(reply.kind);
+        await advanceBackgroundClock(background, 1000);
+      }
+      if (!renew) expect(checks).toHaveLength(0);
+      else {
+        // Any two checks that are two apart in the list start 30 s or more apart. The loop
+        // counter can lag the clock of the background by one step, so the test allows 1 s.
+        for (let i = 2; i < checks.length; i++) {
+          expect(checks[i]! - checks[i - 2]!).toBeGreaterThanOrEqual(29_000);
+        }
+        expect(checks.length).toBeGreaterThan(0);
+      }
+    },
+  );
+}
+
+test('a round retries a rate limited user request', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const first = await serveScenario(context);
+  await addCsrfCookie(context, first.canvas.origin);
+  let calls = 0;
+  await context.route(`${first.canvas.origin}/api/v1/users/self`, async (route) => {
+    if (++calls === 1) await route.fulfill({ status: 429, body: 'Rate Limit Exceeded' });
+    else
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(first.scenario.self),
+      });
+  });
+  await saveAddress(background, first.canvas.origin);
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await expect(doneBox(page, QUIZ_3)).toBeVisible();
+  await settledList(page);
+  await page.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        chrome: { runtime: { sendMessage(message: unknown): Promise<unknown> } };
+      }
+    ).chrome;
+    await api.runtime.sendMessage({ type: 'weekrow:refresh', reason: 'retry' });
+  });
+  await expect.poll(() => calls).toBe(2);
+  await settledList(page);
+  await expect(doneBox(page, QUIZ_3)).toBeVisible();
+});
+
+test('an old user reply never confirms a new student cookie', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const first = await serveScenario(context);
+  await addCsrfCookie(context, first.canvas.origin);
+  await saveAddress(background, first.canvas.origin);
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await expect(doneBox(page, QUIZ_3)).toBeVisible();
+  await settledList(page);
+  const oldSelf = JSON.stringify(first.scenario.self);
+  let release!: () => void;
+  let started!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const entered = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let checks = 0;
+  await context.route(`${first.canvas.origin}/api/v1/users/self`, async (route) => {
+    if (++checks === 1) {
+      started();
+      await held;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: oldSelf });
+    } else {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(first.scenario.self),
+      });
+    }
+  });
+  const read = () =>
+    page.evaluate(async () => {
+      const api = (
+        globalThis as unknown as {
+          chrome: {
+            runtime: { sendMessage(message: unknown): Promise<{ kind: string; userId?: string }> };
+          };
+        }
+      ).chrome;
+      return api.runtime.sendMessage({
+        type: 'weekrow:get-state',
+        request: { surface: 'panel', spanOffset: 0, scopeCourseId: null },
+      });
+    });
+  await advanceBackgroundClock(background, 31_000);
+  await read();
+  await entered;
+  first.scenario.self = forSecondStudent(first.scenario.self);
+  first.scenario.profile = forSecondStudent(first.scenario.profile);
+  await context.addCookies([
+    {
+      name: 'canvas_session',
+      value: 'student-b',
+      url: first.canvas.origin,
+      secure: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  const pending = read();
+  release();
+  const reply = await pending;
+  expect(reply.kind === 'ready' && reply.userId === IDS.user).toBe(false);
+  expect(checks).toBeLessThanOrEqual(2);
+});
+
+test('a first profile response never confirms the cookie from before that request', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  let release!: () => void;
+  let entered!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const later: { profile?: Profile } = {};
+  let self!: UserSelf;
+  const first = await serveScenario(context, [
+    {
+      path: '/api/v1/users/self/profile',
+      respond: async () => {
+        entered();
+        await held;
+        return { body: json(later.profile) };
+      },
+    },
+    { path: '/api/v1/users/self', respond: () => ({ body: json(self) }) },
+  ]);
+  const originalSelf = { ...first.scenario.self };
+  later.profile = forSecondStudent(first.scenario.profile);
+  self = forSecondStudent(first.scenario.self);
+  await saveAddress(background, first.canvas.origin);
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await started;
+  await context.addCookies([
+    {
+      name: 'canvas_session',
+      value: 'student-b',
+      url: first.canvas.origin,
+      secure: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  release();
+  await expect(doneBox(page, QUIZ_3)).toBeVisible();
+  await settledList(page);
+  self = originalSelf;
+  await context.addCookies([
+    {
+      name: 'canvas_session',
+      value: 'session-a',
+      url: first.canvas.origin,
+      secure: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  const reply = await page.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        chrome: {
+          runtime: { sendMessage(message: unknown): Promise<{ kind: string; userId?: string }> };
+        };
+      }
+    ).chrome;
+    return api.runtime.sendMessage({
+      type: 'weekrow:get-state',
+      request: { surface: 'panel', spanOffset: 0, scopeCourseId: null },
+    });
+  });
+  expect(reply.kind === 'ready' && reply.userId === SECOND_USER_ID).toBe(false);
 });

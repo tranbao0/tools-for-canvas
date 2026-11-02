@@ -1314,6 +1314,28 @@ describe('notices', () => {
     expect(actions.undo).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ['loading', { kind: 'loading' }],
+    [
+      'cant_load',
+      { kind: 'cant_load', origin: 'https://school.instructure.com', offline: false, offer: null },
+    ],
+    [
+      'signed_out',
+      {
+        kind: 'signed_out',
+        origin: 'https://school.instructure.com',
+        isFirefox: false,
+        offer: null,
+      },
+    ],
+  ] as const)('keeps the Undo notice while the state is %s', (_name, state) => {
+    const { actions } = setup({ ...state, undo: { kind: 'deleted', count: 1 } });
+    expect(screen.getByText('Task deleted')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(actions.undo).toHaveBeenCalledTimes(1);
+  });
+
   it('closes the Undo notice with its close button', () => {
     const { actions } = setup(readyState({ undo: { kind: 'deleted', count: 1 } }));
     fireEvent.click(screen.getByRole('button', { name: 'Close notice' }));

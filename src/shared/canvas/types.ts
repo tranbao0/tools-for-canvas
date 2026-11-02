@@ -280,6 +280,7 @@ export interface CanvasApi {
    */
   withPriority(priority: () => RequestPriority): CanvasApi;
   getSelf(): Promise<UserSelf>;
+  checkCacheUser(): Promise<UserSelf>;
   getProfile(): Promise<Profile>;
   /** Active student enrollments, with `include[]=term`. */
   listCourses(): Promise<Course[]>;

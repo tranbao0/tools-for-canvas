@@ -326,6 +326,9 @@
   "tipClosed": {
     "message": "Canvas no longer accepts a hand-in."
   },
+  "cacheCheckFailed": {
+    "message": "Couldn't check your Canvas sign-in. Try again in a moment."
+  },
   "staleLine": {
     "message": "Couldn't refresh. Showing your list from $1."
   },

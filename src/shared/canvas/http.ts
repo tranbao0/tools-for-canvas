@@ -52,8 +52,10 @@ function isTypeError(error: unknown): boolean {
   );
 }
 
-/** Fetch rejects with a TypeError on a network failure. Other errors pass through unchanged. */
+/** A fetch failure means offline; a timeout means Canvas could not be reached. */
 function toNetworkError(error: unknown): unknown {
+  if (error instanceof DOMException && error.name === 'TimeoutError')
+    return new CanvasError('server', "Couldn't reach Canvas");
   if (!isTypeError(error)) return error;
   const detail = error instanceof Error ? error.message : 'fetch failed';
   return new CanvasError('network', `Network error: ${detail}`);

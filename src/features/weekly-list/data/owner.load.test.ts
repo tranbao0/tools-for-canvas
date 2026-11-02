@@ -477,7 +477,7 @@ describe('first load', () => {
     expect(Object.keys(session)).toContain('weekrowCache');
   });
 
-  it('shows the cached list after a service worker restart without asking Canvas', async () => {
+  it('keeps the last good check after a service worker restart', async () => {
     const h = await createHarness();
     const before = await loadReady(h);
     h.canvas.resetCalls();
@@ -487,7 +487,7 @@ describe('first load', () => {
     await restarted.settled();
 
     expect(after.view).toEqual(before.view);
-    expect(h.canvas.calls).toEqual([]);
+    expect(h.canvas.calls.map((call) => call.method)).toEqual([]);
   });
 
   it('starts from nothing when the stored cache belongs to another address', async () => {

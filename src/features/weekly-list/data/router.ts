@@ -10,6 +10,7 @@
  * is trusted only for the saved Canvas: its message must come from the top frame of a tab whose
  * page has the saved origin.
  */
+import { isUsableOrigin } from '../../../shared/platform/address';
 import { browser, type Browser } from 'wxt/browser';
 import type { ToolsSettings } from '../../../shared/settings/tools';
 import { toolsSettingsItem } from '../../../shared/settings/toolsItem';
@@ -114,13 +115,17 @@ async function answerDetection(
 }
 
 /** Resolves when the sender may use the data of the saved Canvas, and rejects otherwise. */
-async function checkSender(sender: SenderInfo, host: RouterHost): Promise<void> {
-  if (host.isExtensionPage(sender)) return;
+async function checkSender(sender: SenderInfo, host: RouterHost): Promise<string | null> {
+  if (host.isExtensionPage(sender)) {
+    const saved = await host.savedOrigin();
+    return saved !== null && isUsableOrigin(saved) ? saved : null;
+  }
   const origin = senderPageOrigin(sender);
   const saved = await host.savedOrigin();
-  if (origin === null || saved === null || origin !== saved) {
+  if (origin === null || saved === null || !isUsableOrigin(saved) || origin !== saved) {
     throw new Error('Only the saved Canvas may ask for its data');
   }
+  return saved;
 }
 
 /**
@@ -173,7 +178,7 @@ export function routeDataMessage(
       const request = host.isExtensionPage(sender)
         ? message.request
         : { ...message.request, surface: 'inpage' as const };
-      return allowed.then(() => owner.getState(request));
+      return allowed.then(() => owner.getState(request, sender.tab?.id));
     }
     case 'weekrow:announcement-feed': {
       // A content script is an in-page list, whatever it says.
@@ -192,17 +197,19 @@ export function routeDataMessage(
     case 'weekrow:save-tools':
       return allowed.then(() => host.saveTools(message.tools)).then(ok);
     case 'weekrow:dashboard-data':
-      return allowed.then(() =>
+      return allowed.then((origin) =>
         message.includeGradeVisibility === true
           ? owner.dashboardGradeVisibility(
               typeof message.readToken === 'string' ? message.readToken.slice(0, 64) : undefined,
             )
-          : owner.dashboardData(),
+          : owner.dashboardData(origin, sender.tab?.id),
       );
     case 'weekrow:announcement':
-      return allowed.then(() => owner.announcement(message.courseId, message.topicId));
+      return allowed.then((origin) =>
+        owner.announcement(message.courseId, message.topicId, origin),
+      );
     case 'weekrow:announcement-list':
-      return allowed.then(() => owner.announcements(message.courseId));
+      return allowed.then((origin) => owner.announcements(message.courseId, origin));
     case 'weekrow:mark-note-seen':
       return allowed.then(() => host.markNoteSeen(message.note)).then(ok);
     case 'weekrow:refresh':
@@ -221,7 +228,10 @@ export const browserRouterHost: RouterHost = {
   isExtensionPage(sender) {
     return sender.url?.startsWith(browser.runtime.getURL('/')) === true;
   },
-  savedOrigin: () => canvasOriginItem.getValue(),
+  savedOrigin: async () => {
+    const saved = await canvasOriginItem.getValue();
+    return saved !== null && isUsableOrigin(saved) ? saved : null;
+  },
   async openPage() {
     await browser.tabs.create({ url: browser.runtime.getURL('/welcome.html') });
   },

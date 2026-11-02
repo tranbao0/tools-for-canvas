@@ -39,7 +39,12 @@ It checks only for the page markers of Canvas.
 The markers are one page element and the settings that Canvas writes in its inline scripts.
 The script looks at the text of inline scripts only to find those settings, and it keeps none of that text.
 It reads nothing else on the page.
-It does not read your cookies, your text input or your history.
+The detector does not read your cookies, your text input or your history.
+The extension reads the Canvas session cookie (`canvas_session`, then `_normandy_session`) only to compare a salted fingerprint.
+It does this before it shows cached data, to know that the same student is signed in.
+It stores up to three confirmed fingerprints with their cookie names, the user id and the check time in session storage.
+It stores a random per-install salt in trusted extension storage.
+It never stores or sends the session cookie value.
 It does not announce itself to the page.
 It sends nothing to any server.
 On a page that is not Canvas, it stops at once and keeps nothing.
@@ -118,7 +123,7 @@ A lint rule forbids network calls anywhere else in the code, and a CI check scan
 |---|---|
 | Access to all `https://` sites | To find your Canvas on any school address, to check each page for the Canvas markers, and to read and write your data on your saved Canvas only |
 | `storage` | To store the settings and the Canvas address listed above, and to hold Canvas data in memory |
-| `cookies` | To read the `_csrf_token` cookie that Canvas requires for a write |
+| `cookies` | To read the `_csrf_token` cookie that Canvas requires for a write, and to compare a salted fingerprint of the session cookie on the saved Canvas |
 | `scripting` | To run the Canvas check in the tabs that were open before you installed or updated the extension, and to show the list and the dashboard fixes in your saved Canvas |
 | `sidePanel` (Chrome and Edge) | To show the list in the browser side panel |
 

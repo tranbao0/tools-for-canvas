@@ -1,0 +1,95 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { browser } from 'wxt/browser';
+
+const ORIGIN = 'https://school.instructure.com';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.doUnmock('../platform/browserKind');
+  vi.resetModules();
+});
+
+async function load(kind: 'chrome' | 'firefox' = 'chrome') {
+  vi.resetModules();
+  vi.doMock('../platform/browserKind', () => ({ BROWSER_KIND: kind }));
+  return import('./session');
+}
+
+function stores(...list: { id: string; tabIds?: number[] }[]) {
+  vi.spyOn(browser.cookies, 'getAllCookieStores').mockResolvedValue(
+    list.map((store) => ({ tabIds: [], ...store })) as never,
+  );
+}
+
+it('hashes the session value with a stable install salt and reads the default store', async () => {
+  const { sessionFingerprint, SESSION_COOKIE_NAMES } = await load();
+  const cookie = vi.spyOn(browser.cookies, 'get').mockResolvedValue({ value: 'secret-a' } as never);
+  const first = await sessionFingerprint(ORIGIN);
+  expect(first).toMatch(/^canvas_session:[a-f0-9]{64}$/);
+  expect(await sessionFingerprint(ORIGIN)).toBe(first);
+  expect(cookie).toHaveBeenCalledWith({ url: ORIGIN, name: SESSION_COOKIE_NAMES[0], storeId: '0' });
+  cookie.mockResolvedValue({ value: 'secret-b' } as never);
+  expect(await sessionFingerprint(ORIGIN)).not.toBe(first);
+  expect(JSON.stringify(await browser.storage.local.get(null))).not.toContain('secret-');
+});
+
+it('reads the default store of Firefox, and never the list of stores', async () => {
+  const { sessionFingerprint } = await load('firefox');
+  const list = vi.spyOn(browser.cookies, 'getAllCookieStores');
+  const cookie = vi.spyOn(browser.cookies, 'get').mockResolvedValue(undefined as never);
+  expect(await sessionFingerprint(ORIGIN)).toBeNull();
+  expect(cookie).toHaveBeenCalledWith(expect.objectContaining({ storeId: 'firefox-default' }));
+  expect(list).not.toHaveBeenCalled();
+});
+
+it('tries the salt again after a failed read', async () => {
+  const { sessionFingerprint } = await load();
+  vi.spyOn(browser.cookies, 'get').mockResolvedValue({ value: 'secret-a' } as never);
+  const read = vi
+    .spyOn(browser.storage.local, 'get')
+    .mockRejectedValueOnce(new Error('storage failed'));
+  await expect(sessionFingerprint(ORIGIN)).rejects.toThrow();
+  read.mockRestore();
+  expect(await sessionFingerprint(ORIGIN)).toMatch(/^canvas_session:[a-f0-9]{64}$/);
+});
+
+it('lets only a tab in the default store use cached data', async () => {
+  const { surfaceUsesRequestStore } = await load();
+  stores({ id: '0', tabIds: [4] }, { id: '1', tabIds: [9] });
+  expect(await surfaceUsesRequestStore(4)).toBe(true);
+  expect(await surfaceUsesRequestStore(9)).toBe(false);
+  expect(await surfaceUsesRequestStore(77)).toBe(false);
+});
+
+it('refuses a tab when the only store with a tab is a private one', async () => {
+  const { surfaceUsesRequestStore } = await load();
+  stores({ id: '1', tabIds: [9] });
+  expect(await surfaceUsesRequestStore(9)).toBe(false);
+  const firefox = await load('firefox');
+  stores({ id: 'firefox-container-1', tabIds: [9] });
+  expect(await firefox.surfaceUsesRequestStore(9)).toBe(false);
+  stores({ id: 'firefox-default', tabIds: [9] });
+  expect(await firefox.surfaceUsesRequestStore(9)).toBe(true);
+});
+
+it.each(['canvas_session', '_normandy_session'])('reads %s when it is present', async (name) => {
+  const { sessionFingerprint } = await load();
+  vi.spyOn(browser.cookies, 'get').mockImplementation(async (details) =>
+    details.name === name ? ({ value: 'secret' } as never) : null,
+  );
+  expect(await sessionFingerprint(ORIGIN)).toMatch(new RegExp(`^${name}:[a-f0-9]{64}$`));
+});
+
+it('prefers hosted Canvas and changes the fingerprint when only the name changes', async () => {
+  const { sessionFingerprint } = await load();
+  const cookie = vi.spyOn(browser.cookies, 'get').mockResolvedValue({ value: 'same' } as never);
+  const hosted = await sessionFingerprint(ORIGIN);
+  expect(cookie).toHaveBeenCalledTimes(1);
+  expect(cookie).toHaveBeenCalledWith(expect.objectContaining({ name: 'canvas_session' }));
+  cookie.mockImplementation(async (details) =>
+    details.name === '_normandy_session' ? ({ value: 'same' } as never) : null,
+  );
+  const fallback = await sessionFingerprint(ORIGIN);
+  expect(fallback).not.toBe(hosted);
+  expect(fallback?.split(':')[1]).toBe(hosted?.split(':')[1]);
+});

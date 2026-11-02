@@ -87,6 +87,8 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
   const log = vi.fn<(step: string, error: unknown) => void>();
   const deps: DataOwnerDeps = {
     createApi,
+    sessionFingerprint: vi.fn(async () => 'session-a'),
+    surfaceUsesRequestStore: vi.fn(async () => true),
     hasAccess,
     store: {
       origin: canvasOriginItem,
@@ -210,6 +212,7 @@ export const ART = '900';
  * the owner still holds the first student until a request finds the change.
  */
 export function signInOtherUser(h: Harness): void {
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
   const scenario = h.canvas.scenario;
   const [template] = scenario.courses;
   if (template === undefined) throw new Error('The scenario has no course');

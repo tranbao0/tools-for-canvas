@@ -36,6 +36,194 @@ function topic(id: string, patch: Partial<AnnouncementTopic> = {}): Announcement
   return { id, title: `Topic ${id}`, message: `<p>${id}</p>`, posted_at: null, ...patch };
 }
 
+it('does not serve the first student within the refresh limit', async () => {
+  const h = await loaded();
+  await h.owner.getState(PANEL);
+  await vi.advanceTimersByTimeAsync(31_000);
+  signInOtherUser(h);
+  const state = await h.owner.getState(PANEL);
+  expect(state.kind === 'ready' && state.userId === IDS.user).toBe(false);
+});
+
+it('checks immediately after the session fingerprint changes', async () => {
+  const h = await loaded();
+  await h.owner.getState(PANEL);
+  signInOtherUser(h);
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+  const state = await h.owner.getState(PANEL);
+  expect(state.kind === 'ready' && state.userId === IDS.user).toBe(false);
+});
+
+it('shares one user request across simultaneous cache readers', async () => {
+  const h = await loaded();
+  await vi.advanceTimersByTimeAsync(31_000);
+  const release = h.canvas.hold('getSelf');
+  const weekly = h.owner.getState(PANEL);
+  const dashboard = h.owner.dashboardData();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+  release();
+  await Promise.all([weekly, dashboard]);
+});
+
+it('uses the checked announcement origin without reading storage again', async () => {
+  const h = await createHarness({ origin: 'https://other.instructure.com' });
+  h.canvas.setAnnouncements(C.biology, [topic('11')]);
+  const readOrigin = vi.spyOn(h.deps.store.origin, 'getValue');
+  await h.owner.announcement(C.biology, '11', ORIGIN);
+  await h.owner.announcements(C.biology, ORIGIN);
+  expect(readOrigin).not.toHaveBeenCalled();
+  expect(h.createApi).toHaveBeenCalledWith(ORIGIN);
+  expect(h.createApi).not.toHaveBeenCalledWith('https://other.instructure.com');
+  readOrigin.mockRestore();
+});
+
+it.each(['network', 'server'] as const)(
+  'keeps cached data after a %s check failure',
+  async (kind) => {
+    const h = await loaded();
+    await h.owner.getState(PANEL);
+    await vi.advanceTimersByTimeAsync(31_000);
+    h.canvas.fail('getSelf', canvasError(kind));
+    const state = await h.owner.getState(PANEL);
+    expect(state.kind).toBe('ready');
+    await h.owner.settled();
+    expect(await h.owner.getState(PANEL)).toMatchObject({ stale: expect.anything() });
+  },
+);
+
+it('serves repeated reads without a network request while the fingerprint matches', async () => {
+  const h = await loaded();
+  for (let i = 0; i < 8; i++) await h.owner.getState(PANEL);
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
+});
+
+it('joins the check already in flight after a fingerprint change', async () => {
+  const h = await loaded();
+  await vi.advanceTimersByTimeAsync(31_000);
+  const release = h.canvas.hold('getSelf');
+  const first = h.owner.getState(PANEL);
+  await vi.advanceTimersByTimeAsync(0);
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+  const changed = Promise.resolve();
+  const reader = h.owner.getState(PANEL);
+  release();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(2);
+  await vi.advanceTimersByTimeAsync(3000);
+  await Promise.all([first, changed, reader]);
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(2);
+});
+
+it('does not check again after a successful first round', async () => {
+  const h = await loaded();
+  await h.owner.getState(PANEL);
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
+});
+
+it('keeps the last good check and stale data through a worker restart', async () => {
+  const h = await loaded();
+  expect((await sessionCacheItem.getValue())?.userCheck?.fingerprints).toContain('session-a');
+  await vi.advanceTimersByTimeAsync(31_000);
+  h.canvas.fail('getSelf', canvasError('network'));
+  const restarted = h.restart();
+  await restarted.getState(PANEL);
+  await restarted.settled();
+  expect(await restarted.getState(PANEL)).toMatchObject({
+    kind: 'ready',
+    stale: { offline: true },
+  });
+});
+
+it('serves a fresh matching fingerprint without a request', async () => {
+  const h = await loaded();
+  await h.owner.getState(PANEL);
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
+});
+
+it('drops a check result when the Canvas address changes during the request', async () => {
+  const h = await loaded();
+  await vi.advanceTimersByTimeAsync(31_000);
+  const release = h.canvas.hold('getSelf');
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+  const reply = h.owner.getState(PANEL);
+  await vi.advanceTimersByTimeAsync(0);
+  await h.owner.originChanged(null);
+  release();
+  expect(await reply).toEqual({ kind: 'loading' });
+});
+
+it.each(['dashboard', 'weekly', 'seenNotes'] as const)(
+  'drops the %s reply if the address changes during a storage read',
+  async (surface) => {
+    const h = await loaded();
+    const store = surface === 'seenNotes' ? h.deps.store.seenNotes : h.deps.store.settings;
+    const value = await store.getValue();
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    vi.spyOn(store, 'getValue').mockImplementationOnce(async () => {
+      entered();
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return value as never;
+    });
+    const reply = surface === 'dashboard' ? h.owner.dashboardData() : h.owner.getState(PANEL);
+    await waiting;
+    await h.owner.originChanged(null);
+    release();
+    expect(await reply).toMatchObject(
+      surface === 'dashboard' ? { ready: false, courses: [], extras: [] } : { kind: 'loading' },
+    );
+  },
+);
+
+it('rejects an old check after another origin has loaded the same student', async () => {
+  const h = await loaded();
+  await vi.advanceTimersByTimeAsync(31_000);
+  const release = h.canvas.hold('getSelf');
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+  const reply = h.owner.getState(PANEL);
+  await vi.advanceTimersByTimeAsync(0);
+  await h.deps.store.origin.setValue('https://other.instructure.com');
+  await h.owner.originChanged('https://other.instructure.com');
+  await vi.advanceTimersByTimeAsync(0);
+  release();
+  await h.owner.settled();
+  expect(await reply).toEqual({ kind: 'loading' });
+});
+
+it('does not check before a session exists', async () => {
+  const h = await createHarness();
+  await h.owner.dashboardData();
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
+});
+
+it('uses the first session identity while the rest of the round still loads', async () => {
+  const h = await createHarness();
+  const release = h.canvas.hold('listUndatedAssignments');
+  const round = h.owner.trigger('startup');
+  await vi.advanceTimersByTimeAsync(0);
+  const state = h.owner.getState(PANEL);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
+  release();
+  await state;
+  await round;
+});
+
+it('checks a changed fingerprint after a worker restart', async () => {
+  const h = await loaded();
+  const restarted = h.restart();
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+  await restarted.getState(PANEL);
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+});
+
 describe('dashboardData', () => {
   it('is not ready and empty before the session loads', async () => {
     const h = await createHarness();
@@ -102,7 +290,7 @@ describe('dashboardData', () => {
     await h.owner.dashboardData();
     await h.owner.settled();
 
-    expect(h.canvas.calls.slice(before).map((call) => call.method)).toEqual(['getSelf']);
+    expect(h.canvas.calls.slice(before).map((call) => call.method)).toEqual([]);
     await vi.advanceTimersByTimeAsync(31_000);
     h.canvas.resetCalls();
     await h.owner.dashboardData();
@@ -160,7 +348,7 @@ describe('announcement', () => {
       topic('11', { title: 'Lab moved', message: '<p>Hi</p>' }),
     ]);
 
-    expect(await h.owner.announcement(C.biology, '11')).toEqual({
+    expect(await h.owner.announcement(C.biology, '11', ORIGIN)).toEqual({
       title: 'Lab moved',
       message: '<p>Hi</p>',
     });
@@ -171,7 +359,7 @@ describe('announcement', () => {
     const h = await loaded();
     h.canvas.setAnnouncements(C.biology, [topic('11', { message: null })]);
 
-    expect(await h.owner.announcement(C.biology, '11')).toEqual({
+    expect(await h.owner.announcement(C.biology, '11', ORIGIN)).toEqual({
       title: 'Topic 11',
       message: '',
     });
@@ -185,17 +373,17 @@ describe('announcement', () => {
       topic('3', { message: 'c'.repeat(2_000_000) }),
     ]);
 
-    expect((await h.owner.announcement(C.biology, '1')).message).toHaveLength(500_000);
-    const cut = await h.owner.announcement(C.biology, '2');
+    expect((await h.owner.announcement(C.biology, '1', ORIGIN)).message).toHaveLength(500_000);
+    const cut = await h.owner.announcement(C.biology, '2', ORIGIN);
     expect(cut.message).toHaveLength(500_000);
     expect(cut.message).toBe('b'.repeat(500_000));
-    expect((await h.owner.announcement(C.biology, '3')).message).toHaveLength(500_000);
+    expect((await h.owner.announcement(C.biology, '3', ORIGIN)).message).toHaveLength(500_000);
   });
 
   it('rejects when no Canvas address is saved', async () => {
     const h = await createHarness({ origin: null });
 
-    await expect(h.owner.announcement(C.biology, '1')).rejects.toThrow('No Canvas address');
+    await expect(h.owner.announcement(C.biology, '1', null)).rejects.toThrow('No Canvas address');
     expect(h.canvas.calls).toEqual([]);
   });
 
@@ -203,7 +391,9 @@ describe('announcement', () => {
     const h = await loaded();
     h.canvas.fail('getAnnouncement', canvasError('not_found', 404), { times: 1 });
 
-    await expect(h.owner.announcement(C.biology, '1')).rejects.toMatchObject({ kind: 'not_found' });
+    await expect(h.owner.announcement(C.biology, '1', ORIGIN)).rejects.toMatchObject({
+      kind: 'not_found',
+    });
   });
 });
 
@@ -212,7 +402,7 @@ describe('announcements', () => {
     const h = await loaded();
     const now = Date.now();
 
-    await h.owner.announcements(C.biology);
+    await h.owner.announcements(C.biology, ORIGIN);
 
     expect(h.canvas.callsOf('listAnnouncements')).toEqual([
       [
@@ -244,7 +434,7 @@ describe('announcements', () => {
       topic('23', { message: null, read_state: undefined }),
     ]);
 
-    expect(await h.owner.announcements(C.biology)).toEqual([
+    expect(await h.owner.announcements(C.biology, ORIGIN)).toEqual([
       {
         id: '21',
         courseId: C.biology,
@@ -281,7 +471,7 @@ describe('announcements', () => {
       topic('1', { user_name: 'Named', author: { display_name: 'Other' } }),
     ]);
 
-    expect((await h.owner.announcements(C.biology))[0]?.author).toBe('Named');
+    expect((await h.owner.announcements(C.biology, ORIGIN))[0]?.author).toBe('Named');
   });
 
   it('keeps at most 10 announcements, the first ones', async () => {
@@ -291,7 +481,7 @@ describe('announcements', () => {
       Array.from({ length: 14 }, (_unused, index) => topic(String(index + 1))),
     );
 
-    const entries = await h.owner.announcements(C.biology);
+    const entries = await h.owner.announcements(C.biology, ORIGIN);
 
     expect(entries.map((entry) => entry.id)).toEqual(
       Array.from({ length: 10 }, (_unused, index) => String(index + 1)),
@@ -302,7 +492,7 @@ describe('announcements', () => {
     const h = await loaded();
     h.canvas.setAnnouncements(C.biology, [topic('1', { message: 'x'.repeat(9_000) })]);
 
-    const [entry] = await h.owner.announcements(C.biology);
+    const [entry] = await h.owner.announcements(C.biology, ORIGIN);
 
     expect(entry?.message).toBe('x'.repeat(4_000));
   });
@@ -310,13 +500,13 @@ describe('announcements', () => {
   it('gives an empty list for a course with no announcements', async () => {
     const h = await loaded();
 
-    expect(await h.owner.announcements(C.calculus)).toEqual([]);
+    expect(await h.owner.announcements(C.calculus, ORIGIN)).toEqual([]);
   });
 
   it('rejects when no Canvas address is saved', async () => {
     const h = await createHarness({ origin: null });
 
-    await expect(h.owner.announcements(C.biology)).rejects.toThrow('No Canvas address');
+    await expect(h.owner.announcements(C.biology, null)).rejects.toThrow('No Canvas address');
   });
 });
 
@@ -442,4 +632,304 @@ it('does not publish the late result of a read that a newer read replaced', asyn
   expect((await h.owner.dashboardData()).gradeVisibilities).toBeUndefined();
   finishes[1]!({ gradeVisibilities: { 'course-grades-widget': { '107': true } }, showGrades: {} });
   expect((await second).gradeVisibilities).toEqual({ 'course-grades-widget': { '107': true } });
+});
+
+it.each([
+  ['a new cookie', 'renewal-0', 0],
+  ['a confirmed cookie that is 31 seconds old', 'session-a', 31_000],
+])(
+  'makes at most two checks in any 30 seconds when every reply renews the cookie, from %s',
+  async (_name, first, wait) => {
+    const h = await loaded();
+    await vi.advanceTimersByTimeAsync(wait);
+    let cookie = first;
+    vi.mocked(h.deps.sessionFingerprint).mockImplementation(async () => cookie);
+    const original = h.canvas.checkCacheUser;
+    const starts: number[] = [];
+    h.canvas.checkCacheUser = async () => {
+      starts.push(Date.now());
+      const self = await original();
+      cookie = `renewal-${starts.length}`;
+      return self;
+    };
+    // Continuous cookie renewal ends in cant_load (decision 11).
+    for (let second = 0; second < 90; second++) {
+      const state = await h.owner.getState(PANEL);
+      expect(['ready', 'cant_load']).toContain(state.kind);
+      if (state.kind === 'ready') expect(state.userId).toBe(IDS.user);
+      await h.owner.settled();
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(starts.length).toBeGreaterThan(2);
+    for (let i = 2; i < starts.length; i++) {
+      expect(starts[i]! - starts[i - 2]!).toBeGreaterThanOrEqual(30_000);
+    }
+  },
+);
+
+it('serves again once the cookie stops changing and a check confirms it', async () => {
+  const h = await loaded();
+  let cookie = 'renewal-0';
+  vi.mocked(h.deps.sessionFingerprint).mockImplementation(async () => cookie);
+  const original = h.canvas.checkCacheUser;
+  let renewing = true;
+  h.canvas.checkCacheUser = async () => {
+    const self = await original();
+    if (renewing) cookie += 'x';
+    return self;
+  };
+  expect((await h.owner.getState(PANEL)).kind).toBe('cant_load');
+  renewing = false;
+  expect((await h.owner.getState(PANEL)).kind).toBe('cant_load');
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(2);
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect((await h.owner.getState(PANEL)).kind).toBe('ready');
+  expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'ready', stale: null });
+});
+
+it('does not read the cookie of a tab in another store, and does not sign out', async () => {
+  const h = await loaded();
+  vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
+  expect(await h.owner.getState(PANEL, 9)).toMatchObject({ kind: 'cant_load', offline: false });
+  expect(await h.owner.dashboardData(ORIGIN, 9)).toMatchObject({ ready: false, courses: [] });
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
+  expect(h.deps.surfaceUsesRequestStore).toHaveBeenCalledWith(9);
+  expect((await h.owner.getState(PANEL)).kind).toBe('ready');
+  vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(true);
+  expect((await h.owner.getState(PANEL, 4)).kind).toBe('ready');
+});
+
+it('refuses cached data, without signing out, when the store of the requests is unknown', async () => {
+  const h = await loaded();
+  vi.mocked(h.deps.sessionFingerprint).mockRejectedValue(new Error('no store'));
+  expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'cant_load' });
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-a');
+  expect((await h.owner.getState(PANEL)).kind).toBe('ready');
+});
+
+it('signs out, and drops the cache, when the session cookie is gone', async () => {
+  const h = await loaded();
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
+  expect((await h.owner.getState(PANEL)).kind).toBe('signed_out');
+  expect(await h.owner.dashboardData()).toMatchObject({ ready: false, courses: [] });
+  expect((await sessionCacheItem.getValue())?.session).toBeNull();
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
+});
+
+it('clears the stale line of a failed check when a later check works', async () => {
+  const h = await loaded();
+  await vi.advanceTimersByTimeAsync(31_000);
+  h.canvas.fail('getSelf', canvasError('network'), { times: 1 });
+  await h.owner.getState(PANEL);
+  await h.owner.settled();
+  expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'ready', stale: { offline: true } });
+  await vi.advanceTimersByTimeAsync(31_000);
+  await h.owner.getState(PANEL);
+  await h.owner.settled();
+  expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'ready', stale: null });
+  expect((await sessionCacheItem.getValue())?.failure).toBeNull();
+});
+
+it('keeps the stale line of a failed round when a check works', async () => {
+  const h = await loaded();
+  await h.owner.settled();
+  const cache = (await sessionCacheItem.getValue())!;
+  await sessionCacheItem.setValue({
+    ...cache,
+    failure: { kind: 'stale', offline: false, cause: 'server', at: Date.now() },
+  });
+  const restarted = h.restart();
+  await vi.advanceTimersByTimeAsync(31_000);
+  await restarted.getState(PANEL);
+  await restarted.settled();
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+  expect(await restarted.getState(PANEL)).toMatchObject({
+    kind: 'ready',
+    stale: { offline: false },
+  });
+});
+
+it('never serves a mismatched fingerprint after a failed check or a restart', async () => {
+  const h = await loaded();
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('student-b');
+  h.canvas.fail('getSelf', canvasError('network'));
+  expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'cant_load', offline: true });
+  expect(await h.owner.dashboardData()).toMatchObject({ ready: false, courses: [], extras: [] });
+  await h.owner.settled();
+  expect(await h.restart().getState(PANEL)).toMatchObject({ kind: 'cant_load', offline: true });
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+});
+
+it('does not bind an old user reply to a new student cookie', async () => {
+  const h = await loaded();
+  const firstUser = { ...h.canvas.scenario.self };
+  let release!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let calls = 0;
+  h.canvas.checkCacheUser = async () => {
+    if (++calls === 1) {
+      await waiting;
+      return firstUser;
+    }
+    return h.canvas.scenario.self;
+  };
+  await vi.advanceTimersByTimeAsync(31_000);
+  await h.owner.getState(PANEL);
+  signInOtherUser(h);
+  const reply = h.owner.getState(PANEL);
+  await vi.advanceTimersByTimeAsync(0);
+  release();
+  const state = await reply;
+  expect(state.kind === 'ready' && state.userId === IDS.user).toBe(false);
+});
+
+it('keeps only three confirmed fingerprints of the current student', async () => {
+  const h = await loaded();
+  for (const value of ['session-b', 'session-c', 'session-d']) {
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(value);
+    expect((await h.owner.getState(PANEL)).kind).toBe('ready');
+    await vi.advanceTimersByTimeAsync(16_000);
+  }
+  await h.owner.settled();
+  expect((await sessionCacheItem.getValue())?.userCheck?.fingerprints).toEqual([
+    'session-b',
+    'session-c',
+    'session-d',
+  ]);
+  h.canvas.resetCalls();
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+  expect((await h.owner.getState(PANEL)).kind).toBe('ready');
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-a');
+  expect((await h.owner.getState(PANEL)).kind).toBe('ready');
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+});
+
+it('allows explicit Retry before the failed check cooldown ends', async () => {
+  const h = await loaded();
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+  h.canvas.fail('getSelf', canvasError('network'), { times: 1 });
+  expect((await h.owner.getState(PANEL)).kind).toBe('cant_load');
+  expect((await h.owner.getState(PANEL)).kind).toBe('cant_load');
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+  await h.owner.refresh('retry');
+  expect((await h.owner.getState(PANEL)).kind).toBe('ready');
+});
+
+it('does not change the marker when a check confirms the same user', async () => {
+  const h = await loaded();
+  const marker = await h.deps.store.changeMarker.getValue();
+  await vi.advanceTimersByTimeAsync(31_000);
+  await h.owner.getState(PANEL);
+  await h.owner.settled();
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+  expect(await h.deps.store.changeMarker.getValue()).toBe(marker);
+});
+
+it('confirms the fingerprint that a round read before it started', async () => {
+  const h = await loaded();
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-after-round');
+  await vi.advanceTimersByTimeAsync(61_000);
+  await h.owner.trigger('focus');
+  await h.owner.settled();
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+  expect((await sessionCacheItem.getValue())?.userCheck?.fingerprints).toContain(
+    'session-after-round',
+  );
+  h.canvas.resetCalls();
+  expect((await h.owner.getState(PANEL)).kind).toBe('ready');
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
+});
+
+it('keeps the wait after a change that no check could confirm through a worker restart', async () => {
+  const h = await loaded();
+  let cookie = 'renewal-0';
+  vi.mocked(h.deps.sessionFingerprint).mockImplementation(async () => cookie);
+  let renewals = 0;
+  const original = h.canvas.checkCacheUser;
+  h.canvas.checkCacheUser = async () => {
+    const self = await original();
+    cookie = `renewal-${++renewals}`;
+    return self;
+  };
+  expect(await h.owner.getState(PANEL)).toMatchObject({
+    kind: 'cant_load',
+    cacheCheckFailed: true,
+  });
+  expect(renewals).toBe(2);
+  await vi.advanceTimersByTimeAsync(10_000);
+  const restarted = h.restart();
+  expect((await restarted.getState(PANEL)).kind).toBe('cant_load');
+  expect(renewals).toBe(2);
+  await vi.advanceTimersByTimeAsync(21_000);
+  await restarted.getState(PANEL);
+  expect(renewals).toBeGreaterThan(2);
+});
+
+describe('a Canvas page load', () => {
+  async function marker(h: Harness): Promise<number> {
+    await h.owner.settled();
+    return h.deps.store.changeMarker.getValue();
+  }
+
+  it('wakes the open surfaces when the session cookie is gone or not confirmed', async () => {
+    const h = await loaded();
+    let before = await marker(h);
+    await h.owner.pageLoaded(ORIGIN);
+    expect(await marker(h)).toBe(before);
+    for (const cookie of [null, 'another-student']) {
+      vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(cookie);
+      before = await marker(h);
+      await h.owner.pageLoaded(ORIGIN);
+      expect(await marker(h)).toBeGreaterThan(before);
+    }
+    expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
+  });
+});
+
+it('does not confirm the cookie of a round when the cookie changed before the round ended', async () => {
+  const h = await loaded();
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('round-start');
+  const original = h.canvas.getSelf;
+  h.canvas.getSelf = async () => {
+    const self = await original();
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('changed-during-round');
+    return self;
+  };
+  await vi.advanceTimersByTimeAsync(61_000);
+  await h.owner.trigger('focus');
+  await h.owner.settled();
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+  const confirmed = (await sessionCacheItem.getValue())?.userCheck?.fingerprints;
+  expect(confirmed).not.toContain('round-start');
+  expect(confirmed).not.toContain('changed-during-round');
+  h.canvas.resetCalls();
+  expect((await h.owner.getState(PANEL)).kind).toBe('ready');
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+});
+
+it('does not confirm the cookie of a first load when the cookie changed during the load', async () => {
+  const h = await createHarness();
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('load-start');
+  const original = h.canvas.getProfile;
+  h.canvas.getProfile = async () => {
+    const profile = await original();
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('changed-during-load');
+    return profile;
+  };
+  await loadReady(h);
+  const confirmed = (await sessionCacheItem.getValue())?.userCheck?.fingerprints ?? [];
+  // Only a check that read the new cookie before its own request can confirm it.
+  expect(confirmed).not.toContain('load-start');
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(1);
+});
+
+it('confirms the cookie of a first load that stays the same', async () => {
+  const h = await createHarness();
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('load-start');
+  await loadReady(h);
+  expect((await sessionCacheItem.getValue())?.userCheck?.fingerprints).toEqual(['load-start']);
+  expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
 });

@@ -220,6 +220,37 @@ describe('done marks', () => {
     expect((await item(h, QUIZ_3))?.state).toBe('open');
   });
 
+  it('does not undo for another student who signed in', async () => {
+    const h = await loaded();
+    const reply = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    await h.owner.settled();
+    h.canvas.resetCalls();
+    signInOtherUser(h);
+
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('updateOverride')).toEqual([]);
+    expect(h.canvas.callsOf('createOverride')).toEqual([]);
+  });
+
+  it('does not undo while the check of a new cookie fails, and undoes after a renewed cookie', async () => {
+    const h = await loaded();
+    const reply = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    await h.owner.settled();
+    h.canvas.resetCalls();
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('renewed');
+    h.canvas.fail('getSelf', canvasError('network'), { times: 1 });
+
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    expect(h.canvas.callsOf('updateOverride')).toEqual([]);
+
+    await advance(h, 31_000);
+    await h.owner.act(restoreOf(reply));
+    await h.owner.settled();
+    expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
+  });
+
   it('undoes however long the notice showed, because the surface keeps the data', async () => {
     const h = await loaded();
     const reply = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
@@ -636,6 +667,18 @@ describe('custom tasks', () => {
 
     expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday]]);
     expect(((await sessionCacheItem.getValue()) as SessionCache).pendingDeletes).toEqual({});
+  });
+
+  it('keeps Undo after a failed user check', async () => {
+    const h = await loaded();
+    await vi.advanceTimersByTimeAsync(31_000);
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    h.canvas.fail('getSelf', canvasError('network'));
+    expectReady(await h.owner.getState(PANEL));
+    expect(h.canvas.callsOf('deleteNote')).toEqual([]);
+    await h.owner.act({ kind: 'cancelDelete', noteId: N.libraryBooksToday });
+    await advance(h, MAX_DELETE_DELAY_MS);
+    expect(h.canvas.callsOf('deleteNote')).toEqual([]);
   });
 
   it('never sends DELETE when the delete is undone', async () => {

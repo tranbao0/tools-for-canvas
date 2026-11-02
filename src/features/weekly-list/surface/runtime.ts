@@ -242,7 +242,9 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   const stops: (() => void)[] = [];
 
   function current(): SurfaceState {
-    return base.kind === 'ready' ? { ...base, undo: notice?.info ?? null } : base;
+    return base.kind === 'ready' || notice !== null
+      ? { ...base, undo: notice?.info ?? null }
+      : base;
   }
 
   function emit(): void {
@@ -340,15 +342,12 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     ) {
       courseFilter = undefined;
     }
-    // The notice belongs to the ready state of one user on one Canvas. After a sign-out, an
-    // address change or another user's sign-in, Undo would write onto the wrong overrides, so
-    // the notice goes. The data owner dropped its own state for a task delete in the last two
-    // cases, so only a state that is not ready sends the delete.
-    if (notice !== null) {
-      if (reply.kind !== 'ready') dropNotice();
-      else if (reply.userId !== notice.data[0]?.userId || reply.origin !== notice.data[0]?.origin) {
-        notice = null;
-      }
+    if (
+      notice !== null &&
+      reply.kind === 'ready' &&
+      (reply.userId !== notice.data[0]?.userId || reply.origin !== notice.data[0]?.origin)
+    ) {
+      notice = null;
     }
     // The feed belongs to one student on one Canvas, like the notice. Another student, a
     // sign-out or another address drops it, and the new student starts with Tasks (decision 24).

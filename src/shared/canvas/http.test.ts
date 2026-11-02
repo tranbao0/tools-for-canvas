@@ -339,3 +339,29 @@ describe('createCanvasTransport', () => {
     });
   });
 });
+
+it('aborts a hung user check after ten seconds', async () => {
+  const controller = new AbortController();
+  const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => controller.signal);
+  const fetchImpl = vi.fn<typeof fetch>(
+    (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+      }),
+  );
+  try {
+    const result = kindOf(
+      canvasFetch(
+        ORIGIN,
+        '/api/v1/users/self',
+        { method: 'GET', signal: AbortSignal.timeout(10_000) },
+        fetchImpl,
+      ),
+    );
+    expect(timeout).toHaveBeenCalledWith(10_000);
+    controller.abort(new DOMException('Timed out', 'TimeoutError'));
+    expect(await result).toBe('server');
+  } finally {
+    timeout.mockRestore();
+  }
+});
