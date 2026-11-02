@@ -231,3 +231,34 @@ html:not([data-theme]) #app {
   flex: none;
   margin: 0 8px;
 }
+
+.fv-media {
+  height: 100%;
+  overflow: auto;
+}
+.fv-media[hidden] {
+  display: none;
+}
+.fv-image-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px;
+}
+.fv-image-scroll {
+  height: calc(100% - 60px);
+  overflow: auto;
+  text-align: center;
+}
+.fv-media video,
+.fv-media audio {
+  display: block;
+  max-width: 100%;
+  margin: auto;
+}
+.fv-media pre {
+  margin: 0;
+  padding: 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

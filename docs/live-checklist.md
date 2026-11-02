@@ -488,3 +488,13 @@ A store build or a build from `npm run build` does not.
    Read it once before you paste it.
 6. Repeat steps 2 to 5 for each kind of page: a rich content file link, a module file item, the assignment page of a submitted file, and the submission details page.
    To test one file, paste its id or its link in the field above "Run check".
+
+## File players
+
+- Open a submission attachment on an assignment page and on its submission details page.
+- Check that a plain click opens the pane even when Canvas marks the attachment as a download.
+- Check that Download in the pane still downloads the file in one click.
+- Open an image and check Zoom to fit, 100%, Zoom in and Zoom out.
+- Open audio and video files and check playback in each browser.
+- Open a text file with markup and check that the markup stays visible as text.
+- Open a Word file and check the Download and Open in Canvas card.

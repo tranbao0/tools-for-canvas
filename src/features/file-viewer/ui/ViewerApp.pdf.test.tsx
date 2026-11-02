@@ -168,7 +168,7 @@ describe('pdf tabs', () => {
     await waitFor(() => expect(unknown.host.readFile).toHaveBeenCalledOnce());
   });
 
-  it('reads only a PDF, by its content type', async () => {
+  it('loads PDF.js only for a PDF, by its content type', async () => {
     const { open, host } = setup({
       loadFile: vi.fn(async (id: string) =>
         id === '1' ? { ...PDF, contentType: 'application/pdf; charset=binary' } : FILES[id],
@@ -178,18 +178,18 @@ describe('pdf tabs', () => {
     await screen.findByRole('heading', { name: 'Photo.png' });
     await open('3');
     await screen.findByRole('heading', { name: 'Deck.pptx' });
-    expect(host.readFile).not.toHaveBeenCalled();
+    expect(host.loadPdfjs).not.toHaveBeenCalled();
     await open('1');
-    await waitFor(() => expect(host.readFile).toHaveBeenCalledOnce());
+    await waitFor(() => expect(host.loadPdfjs).toHaveBeenCalledOnce());
   });
 
   it('keeps the tab of a PDF in the document while another tab is active', async () => {
     const { open, host } = setup();
     await open('1');
-    await waitFor(() => expect(host.readFile).toHaveBeenCalledOnce());
+    await waitFor(() => expect(host.loadPdfjs).toHaveBeenCalledOnce());
     await open('2');
     await screen.findByRole('heading', { name: 'Photo.png' });
-    expect(host.readFile).toHaveBeenCalledOnce();
+    expect(host.loadPdfjs).toHaveBeenCalledOnce();
     const tab = document.querySelector<HTMLElement>('[data-part="pdf-tab"]');
     expect(tab?.hidden).toBe(true);
   });
@@ -199,11 +199,11 @@ describe('pdf tabs', () => {
     await open('2');
     await screen.findByRole('heading', { name: 'Photo.png' });
     await open('1');
-    await waitFor(() => expect(host.readFile).toHaveBeenCalledOnce());
+    await waitFor(() => expect(host.loadPdfjs).toHaveBeenCalledOnce());
     await open('3');
     await screen.findByRole('heading', { name: 'Deck.pptx' });
     // A second PDF behind the active tab waits until its tab opens.
-    expect(host.readFile).toHaveBeenCalledOnce();
+    expect(host.loadPdfjs).toHaveBeenCalledOnce();
   });
 
   it('shows the error with Retry when the read fails, and the slim line stays', async () => {
