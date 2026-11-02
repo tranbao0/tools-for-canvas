@@ -2571,9 +2571,12 @@ The store build smoke test checks the pane in Firefox.
 The layout checks use the course fixture at 1920 and 1280 px in light and dark, with three tabs.
 The PDF viewer of items 4, 5 and 9 is implemented, with its fetch, progress bar, toolbar, search, thumbnails, keys, links and per-tab document.
 The viewers for images, audio, video and text and the submission download exception are implemented.
-Build step 2 still needs audio and video fixtures, playback checks, the Firefox image smoke check and reviewed video screenshots.
+Audio and video have fixtures and playback checks in Chromium.
+The fixtures are WAV and WebM, which Chromium and Firefox play without a system codec.
+The Firefox smoke test opens an image in the pane and checks that it has loaded.
 Image zoom, tab URL cleanup, the Word card and passive submission text have browser checks.
-Image and text screenshots cover 1920 and 1280 px in light and dark.
+Image, text and video screenshots cover 1920 and 1280 px in light and dark.
+Build step 2 is built, except the live checks of the file players.
 Saving the page and the zoom is not implemented yet.
 The pane page uses the font stack of the list stylesheet, and Lato shows only where the system has it, because an extension page cannot use the web font of the Canvas page.
 The channel checks the saved Canvas origin, the parent window, one transferred port and the secret before it accepts file identities.
@@ -2581,7 +2584,7 @@ The channel checks the saved Canvas origin, the parent window, one transferred p
 **Build order:**
 
 1. The pane, the tabs, the click catching for file links and module items, and the PDF viewer (done, except the live checks).
-2. Images, audio, video, text, the "Open in Canvas" card and the student's own submission files.
+2. Images, audio, video, text, the "Open in Canvas" card and the student's own submission files (built, except the live checks).
 3. Saved page and zoom per file.
 
 ## Open risks

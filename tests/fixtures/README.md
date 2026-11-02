@@ -140,3 +140,14 @@ It has no right column, so the extension must inject nothing here.
 A university news page to serve at `https://news.northfield.edu/`.
 It has `with-right-side` on the body and a `#right-side` with a `.todo-list-header`, but no `#application.ic-app` and no `ENV`.
 Canvas detection must not accept it.
+
+## files/
+
+The small files that the file pane tests serve as Canvas files: `image.png`, `notes.txt`, `document.docx`, `tone.wav` and `clip.webm`.
+`tone.wav` is 0.5 s of a 440 Hz sine wave.
+`clip.webm` is 2 s of silent VP9 video at 320 by 180 pixels.
+Chromium and Firefox both play these two formats without a system codec.
+Run `node tests/fixtures/files/make-media.mjs` to write both files again.
+The script writes the wave itself, draws the video frames in Chromium and encodes them with the ffmpeg that Playwright ships.
+Set `FFMPEG_BIN` to use another ffmpeg that has the `libvpx-vp9` encoder.
+The files are original and have no outside license.
