@@ -104,9 +104,7 @@ async function answerDetection(
 ): Promise<OkReply> {
   const detection = await owner.canvasDetected(origin);
   if (detection === 'saved') {
-    await host
-      .injectInpage(sender.tabId, origin, sender.documentId)
-      .catch((error: unknown) => logFailure('in-page injection', error));
+    await host.injectInpage(sender.tabId, origin, sender.documentId);
   } else if (detection === 'confirm') {
     await host.openWelcomePrompt().catch((error: unknown) => logFailure('welcome page', error));
   }

@@ -462,6 +462,10 @@ An earlier version used option B; schools on their own domain then needed an "Al
   - It reads only Canvas markers in the page: `#application.ic-app`, or an inline script that sets both `ENV` and `INST`.
   - It reads no other page content, sends nothing anywhere, and stops at once on a page that is not Canvas.
   - On a Canvas page it asks the background to inject the full in-page script with `scripting.executeScript`, so other sites never load the list code.
+  - The detector accepts only a successful reply and retries a rejected, empty or unanswered report at most twice.
+    Each attempt waits at most 1.25 seconds, with delays of 250 and 500 milliseconds before the retries.
+    The background reports an injection failure to the detector so it can retry.
+    The existing guard retires any stale copy when a retry injects again.
   - A CI check keeps the detector under 2 KB gzip.
 
 **Seamless first run:**

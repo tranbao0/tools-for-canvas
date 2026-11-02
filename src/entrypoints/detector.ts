@@ -10,12 +10,27 @@ import { isCanvasDocument } from '@/shared/platform/detectCanvas';
  * It stays tiny and reads only the Canvas markers. On a Canvas page it tells the background the
  * page origin, and the background decides what happens next. On any other page it does nothing.
  */
-export default defineUnlistedScript(() => {
+export default defineUnlistedScript(async () => {
   if (!isCanvasDocument()) return;
   const message: CanvasDetectedMessage = {
     type: 'weekrow:canvas-detected',
     origin: location.origin,
   };
-  // The background may be updating. The next page load reports the page again.
-  browser.runtime.sendMessage(message).catch(() => undefined);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, attempt * 250));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const reply: unknown = await Promise.race([
+        browser.runtime.sendMessage(message),
+        new Promise((resolve) => {
+          timer = setTimeout(resolve, 1250);
+        }),
+      ]);
+      if (typeof reply === 'object' && reply !== null && 'ok' in reply && reply.ok === true) return;
+    } catch {
+      // A worker that cannot receive the report gets another bounded attempt.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 });

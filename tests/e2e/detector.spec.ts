@@ -503,3 +503,35 @@ test.describe('a second Canvas', () => {
     await expect(other.locator('#weekrow-inpage')).toHaveCount(0);
   });
 });
+
+test('a failed first injection retries without a page reload', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await serveScenario(context, [...DASHBOARD]);
+  await watchBackground(background);
+  await background.evaluate(() => {
+    const scope = globalThis as unknown as SpiedBackground;
+    const scripting = scope.chrome.scripting;
+    const original = scripting.executeScript.bind(scripting);
+    let failed = false;
+    scripting.executeScript = (details) => {
+      if (!failed && details.files?.includes('/inpage.js')) {
+        failed = true;
+        console.warn('Test: first in-page injection refuses');
+        return Promise.reject(new Error('Test: temporary injection failure'));
+      }
+      return original(details);
+    };
+  });
+  await openCanvasPage(page, canvas.origin);
+  await expect(inpageList(page)).toBeVisible();
+  const seen = await seenByBackground(background);
+  expect(
+    seen.messages.filter((message) => message.type === 'weekrow:canvas-detected'),
+  ).toHaveLength(2);
+  expect(
+    seen.injections.filter((injection) => injection.files.includes('/inpage.js')),
+  ).toHaveLength(1);
+});
