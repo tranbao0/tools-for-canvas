@@ -1,7 +1,24 @@
+import { render, h } from 'preact';
+import { CloseIcon } from '../../shared/ui/icons';
 import { browser } from 'wxt/browser';
 import { createViewerNonce } from './channel';
 import { fileTarget, normalizeTabs, normalizeWidth, openFile, plainClick } from './model';
 import type { ToolsSettings } from '../../shared/settings/tools';
+
+export function listenViewerHello(
+  sourceWindow: Pick<Window, 'addEventListener' | 'removeEventListener'>,
+  frame: HTMLIFrameElement,
+  nonce: string,
+  connect: (origin: string) => void,
+): () => void {
+  const hello = (event: MessageEvent) => {
+    if (event.source !== frame.contentWindow) return;
+    const data = event.data as { type?: unknown; nonce?: unknown } | null;
+    if (data?.type === 'viewer-hello' && data.nonce === nonce) connect(event.origin);
+  };
+  sourceWindow.addEventListener('message', hello);
+  return () => sourceWindow.removeEventListener('message', hello);
+}
 
 export async function startViewer(): Promise<void> {
   if (document.getElementById('tools-file-viewer')) return;
@@ -58,33 +75,27 @@ export async function startViewer(): Promise<void> {
     host.style.cssText = 'position:fixed;right:0;top:0;height:100vh;z-index:2147483647;';
     const root = host.attachShadow({ mode: 'open' });
     root.innerHTML = `<style>
-      :host{color-scheme:light dark}section{box-sizing:border-box;height:100%;background:light-dark(#fff,#262626);border-left:1px solid light-dark(#c7cdd1,#6a6f73);display:flex;flex-direction:column;font-family:Lato,Arial,sans-serif}
+      :host{color-scheme:light dark;color:light-dark(#273540,#e8eaec)}section{box-sizing:border-box;height:100%;background:light-dark(#fff,#262626);border-left:1px solid light-dark(#c7cdd1,#6a6f73);display:flex;flex-direction:column;font-family:Lato,Arial,sans-serif}
       header{height:56px;display:flex;justify-content:flex-end;align-items:center;padding:0 12px;border-bottom:1px solid light-dark(#c7cdd1,#6a6f73)}
-      button{width:38px;height:38px;border:0;border-radius:4px;background:transparent;color:inherit;font-size:28px;cursor:pointer}button:hover{background:light-dark(#f2f3f4,#394047)}button:focus-visible{outline:2px solid #0374b5;outline-offset:2px}
+      button{width:38px;height:38px;border:0;border-radius:4px;background:transparent;color:inherit;font-size:18px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}button:hover{background:light-dark(#f2f3f4,#394047)}button:focus-visible{outline:2px solid #0374b5;outline-offset:2px}
       iframe{border:0;width:100%;flex:1;min-height:0} .handle{position:absolute;left:-4px;top:0;width:8px;height:100%;cursor:ew-resize;touch-action:none}.handle:hover,.handle:focus-visible{background:#0374b5} @media(max-width:899px){.handle{display:none}}
-      </style><section aria-label="File viewer"><div class="handle" role="separator" aria-label="Resize file viewer" aria-orientation="vertical" tabindex="0"></div><header><button aria-label="Close file viewer" title="Close">×</button></header></section>`;
+      </style><section aria-label="File viewer"><div class="handle" role="separator" aria-label="Resize file viewer" aria-orientation="vertical" tabindex="0"></div><header><button aria-label="Close file viewer" title="Close"></button></header></section>`;
     const frame = document.createElement('iframe');
     frame.title = 'File viewer';
     frame.src = browser.runtime.getURL('/viewer.html') + `#${nonce}`;
     // The pane page says hello first, so the port goes to the origin the frame really has.
     // Chromium can load a web-accessible page under a dynamic address that differs from getURL.
-    const hello = (event: MessageEvent) => {
-      if (!host || event.source !== frame.contentWindow) return;
-      const data = event.data as { type?: unknown; nonce?: unknown } | null;
-      if (data?.type !== 'viewer-hello' || data.nonce !== nonce) return;
+    removeHello = listenViewerHello(window, frame, nonce, (origin) => {
       port?.close();
       const channel = new MessageChannel();
       port = channel.port1;
       port.onmessage = (message) => {
         if (message.data?.type === 'close' && message.data.nonce === nonce) close();
       };
-      frame.contentWindow?.postMessage({ type: 'viewer-connect', nonce }, event.origin, [
-        channel.port2,
-      ]);
+      frame.contentWindow?.postMessage({ type: 'viewer-connect', nonce }, origin, [channel.port2]);
       send(courseId);
-    };
-    window.addEventListener('message', hello);
-    removeHello = () => window.removeEventListener('message', hello);
+    });
+    render(h(CloseIcon, {}), root.querySelector('button')!);
     root.querySelector('section')!.append(frame);
     root.querySelector('button')!.addEventListener('click', close);
     root.addEventListener('keydown', (event) => {

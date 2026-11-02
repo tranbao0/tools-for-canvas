@@ -2291,6 +2291,10 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
 - The pane page is in `web_accessible_resources` with `matches: ["https://*/*"]`, and `use_dynamic_url: true` on Chromium.
   `check-manifest` allows exactly this one page.
 - The page script and the pane talk through a `MessageChannel` set up with a random nonce; the pane accepts only file ids and course ids, never a path or a full URL to load.
+- The pane sends `viewer-hello` to the saved Canvas origin before the page transfers a port.
+  The page checks the source window and nonce, then sends the port only to `event.origin`.
+  Chromium can load `use_dynamic_url` pages under an origin different from the address returned by `getURL`.
+  Each frame reload repeats the handshake.
 - The pane fetches only `/api/v1/files/:id` and the `url` that it returns, through the existing fetch wrapper (decision 20), plus the redirect that Canvas chooses.
 - PDF.js runs with `isEvalSupported: false`, no PDF scripting, and links inside a PDF open in a new tab with `noopener`.
 - Saved page positions go through the trusted storage rules of decision 5.
@@ -2305,8 +2309,10 @@ The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in th
 The identity checks, the tab model, the channel validation and the viewer size limits are implemented.
 The background routes and settings are implemented.
 The pane frame and file-name placeholder have an initial implementation.
-The browser test opens the frame but fails to receive the file name through the channel.
-The remaining pane checks and visual checks are not complete.
+The browser test receives the file name through the hello handshake.
+The pane checks cover modified clicks, the off switch, Escape, reload and rejected channel messages.
+The store build smoke test checks the pane in Firefox.
+The layout checks use the course fixture at 1920 and 1280 px in light and dark.
 The full file UI is not implemented yet.
 The channel checks the saved Canvas origin, the parent window, the nonce and one transferred port before it accepts file identities.
 
