@@ -1068,25 +1068,56 @@ async function openClassic(
   context: Parameters<typeof serveScenario>[0],
   page: Page,
   background: Parameters<typeof saveAddress>[0],
-  options: { shard?: boolean; newView?: boolean; empty?: boolean } = {},
+  options: {
+    shard?: boolean;
+    newView?: boolean;
+    empty?: boolean;
+    missing?: boolean;
+    paper?: boolean;
+    teacher?: boolean;
+    observer?: boolean;
+  } = {},
 ) {
   const course = options.shard ? '2~12' : '12';
   const id = options.shard ? '2~101' : '101';
   const copy = options.empty ? secondAssignment() : details();
-  copy.assignment.id = id;
+  copy.assignment.id = options.shard ? '20000000000101' : id;
+  if (options.missing) {
+    copy.assignment.due_at = '2020-01-01T00:00:00Z';
+    copy.assignment.submission_types = ['online_upload'];
+    copy.submission.missing = true;
+  }
+  if (options.paper) {
+    copy.assignment.submission_types = ['on_paper'];
+    copy.submission.submitted_at = null;
+    copy.submission.attempt = 0;
+    copy.submission.attachments = [];
+    copy.submission.submission_comments = [];
+  }
   const records = rawRecords(copy);
   const canvas = await serveScenario(context, [
     {
       path: `/courses/${course}/assignments/${id}`,
       contentType: 'text/html',
       body: options.newView
-        ? classicPage.replace('id="assignment_show"', 'id="new-student-view"')
-        : classicPage,
+        ? classicPage
+            .replace('id="assignment_show"', '')
+            .replace(
+              'Write an essay about one source.',
+              '<div id="assignment_show"><div class="description"></div><ul class="student-assignment-overview"></ul></div>',
+            )
+        : options.teacher
+          ? classicPage.replace(
+              'description user_content',
+              'description user_content teacher-version',
+            )
+          : classicPage,
     },
     { path: `/api/v1/courses/${course}/assignments/${id}`, body: json(records.assignment) },
     {
       path: `/api/v1/courses/${course}/assignments/${id}/submissions/self`,
-      body: json(records.submission),
+      body: options.observer ? json({ errors: [] }) : json(records.submission),
+      ...(options.observer ? { status: 404 } : {}),
     },
     ...FILE_ROUTES,
   ]);
@@ -1122,6 +1153,12 @@ test('classic assignment shows submission details below the description and foll
   await expect(panel.getByRole('heading', { name: 'Instructions' })).toHaveCount(0);
   await expect(panel.getByRole('button')).toHaveCount(0);
   await expect(panel.getByRole('link', { name: 'Open assignment' })).toHaveCount(0);
+  const descriptionBox = await page.locator('#assignment_show > .description').boundingBox();
+  for (const box of await panel.locator('.av-criterion, .av-comment').all()) {
+    const bounds = await box.boundingBox();
+    expect(bounds!.x).toBeCloseTo(descriptionBox!.x, 0);
+    expect(bounds!.x + bounds!.width).toBeCloseTo(descriptionBox!.x + descriptionBox!.width, 0);
+  }
   for (const theme of ['light', 'dark'] as const) {
     await saveSetting(background, { theme });
     await expect(page.locator('#av-submission')).toHaveAttribute('data-theme', theme);
@@ -1159,13 +1196,14 @@ test('classic assignment supports shard ids', async ({ context, page, background
   await expect(submissionPanel(page).locator('[data-assessed]')).toBeVisible();
   await expect(submissionPanel(page).getByRole('link', { name: 'essay.txt' })).toHaveAttribute(
     'href',
-    /courses\/2~12\/assignments\/2~101\/submissions/,
+    /courses\/2~12\/assignments\/20000000000101\/submissions/,
   );
 });
 
 test('new student view has no extra submission panel', async ({ context, page, background }) => {
   const canvas = await openClassic(context, page, background, { newView: true });
   await waitForListLoaded(canvas);
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
   await expect(page.locator('#av-submission')).toHaveCount(0);
 });
 
@@ -1179,3 +1217,23 @@ test('unsubmitted classic assignment shows one short score line', async ({
   await expect(submissionPanel(page).locator('.av-section')).toHaveCount(0);
   await expect(submissionPanel(page).getByText('Not graded yet')).toBeVisible();
 });
+
+test('missing unsubmitted work keeps its Missing chip', async ({ context, page, background }) => {
+  await openClassic(context, page, background, { empty: true, missing: true });
+  await expect(submissionPanel(page).getByText('Missing', { exact: true })).toBeVisible();
+});
+
+test('graded paper work keeps its score and rubric', async ({ context, page, background }) => {
+  await openClassic(context, page, background, { paper: true });
+  await expect(submissionPanel(page).getByText('5 / 10', { exact: true })).toBeVisible();
+  await expect(submissionPanel(page).locator('[data-assessed]')).toBeVisible();
+  await expect(submissionPanel(page).getByText('No submission yet')).toHaveCount(0);
+});
+
+for (const mode of ['teacher', 'observer'] as const) {
+  test(`${mode} gets no submission panel`, async ({ context, page, background }) => {
+    await openClassic(context, page, background, { [mode]: true });
+    await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+    await expect(page.locator('#av-submission')).toHaveCount(0);
+  });
+}

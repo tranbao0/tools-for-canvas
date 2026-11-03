@@ -423,7 +423,7 @@ test('a link with sharded course and file ids opens the file in the pane', async
       {
         path: '/api/v1/files/45~678',
         body: {
-          id: '45~678',
+          id: '450000000000678',
           display_name: 'Shard notes.pdf',
           filename: 'notes.pdf',
           'content-type': 'application/pdf',

@@ -1,4 +1,4 @@
-import { isCanvasId } from '../../shared/canvas/ids';
+import { isCanvasId, normalizeCanvasId } from '../../shared/canvas/ids';
 import type { AssignmentDetails } from './protocol';
 
 /**
@@ -57,7 +57,15 @@ export function slimAddress(
     return null;
   }
   if (page === null || current.origin !== page.origin) return null;
-  if (current.pathname !== page.pathname && current.pathname !== `${page.pathname}/`) return null;
+  const parts = /^\/courses\/(\d+(?:~\d+)?)\/assignments\/(\d+(?:~\d+)?)\/?$/.exec(
+    current.pathname,
+  );
+  if (
+    !parts ||
+    normalizeCanvasId(parts[1]!) !== normalizeCanvasId(courseId) ||
+    normalizeCanvasId(parts[2]!) !== normalizeCanvasId(assignmentId)
+  )
+    return null;
   if (current.searchParams.get('content_only') === '1') return null;
   current.searchParams.set('content_only', '1');
   return current.href;

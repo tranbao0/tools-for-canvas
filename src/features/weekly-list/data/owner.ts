@@ -73,7 +73,7 @@ import {
 } from './coverage';
 import { failureFor, isCanvasError } from './failures';
 import { ViewerUnconfirmedError } from '../../file-viewer/unconfirmed';
-import type { AssignmentDetailsReply } from '../../assignment-view/protocol';
+import type { NoSubmissionAccess, AssignmentDetailsReply } from '../../assignment-view/protocol';
 import { projectAssignmentView } from '../../assignment-view/project';
 import {
   applyPatch,
@@ -296,7 +296,7 @@ export interface DataOwner {
     assignmentId: string,
     origin: string | null,
     tabId: number | undefined,
-  ): Promise<AssignmentDetailsReply>;
+  ): Promise<AssignmentDetailsReply | NoSubmissionAccess>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
@@ -2632,14 +2632,17 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     assignmentId: string,
     origin: string | null,
     tabId: number | undefined,
-  ): Promise<AssignmentDetailsReply> {
+  ): Promise<AssignmentDetailsReply | NoSubmissionAccess> {
     const read = () =>
       viewerRead(origin, tabId, async (api) => {
         const [assignment, submission] = await Promise.all([
           api.getAssignmentRecord(courseId, assignmentId),
-          api.getOwnSubmissionRecord(courseId, assignmentId),
+          api.getOwnSubmissionRecord(courseId, assignmentId).catch((error: unknown) => {
+            if (isCanvasError(error, 'not_found')) return null;
+            throw error;
+          }),
         ]);
-        return projectAssignmentView(assignment, submission);
+        return submission === null ? null : projectAssignmentView(assignment, submission);
       });
     let details;
     try {
@@ -2650,6 +2653,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         throw error;
       details = await read();
     }
+    if (details === null) return { kind: 'no_submission_access' };
     const session = cache?.session ?? null;
     const timeZone =
       session !== null && origin !== null

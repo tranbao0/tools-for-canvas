@@ -161,3 +161,14 @@ describe('poll delay', () => {
     expect(nextPollDelay(delay, base, true)).toBe(base);
   });
 });
+
+it('keeps the turn-in frame slim across short and global shard ids', () => {
+  expect(
+    slimAddress(
+      ORIGIN + '/courses/20000000000012/assignments/20000000000101',
+      ORIGIN,
+      '2~12',
+      '2~101',
+    ),
+  ).toBe(ORIGIN + '/courses/20000000000012/assignments/20000000000101?content_only=1');
+});

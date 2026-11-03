@@ -151,6 +151,12 @@ export function renderPageDetails(
   const panel = node(doc, 'div', 'av-content');
   panel.append(summary(reply, context, true));
   if (
+    details.submission.score === null &&
+    !Object.keys(details.submission.rubric_assessment ?? {}).length &&
+    !assignmentTags(details, context.now(), timeZone).length &&
+    !details.assignment.submission_types?.some((type) =>
+      ['none', 'on_paper', 'not_graded'].includes(type),
+    ) &&
     !details.submission.submitted_at &&
     !(details.submission.attempt && details.submission.attempt >= 1) &&
     !details.submission.attachments?.length &&

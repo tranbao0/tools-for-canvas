@@ -386,3 +386,16 @@ describe('Submit and the read after a submission', () => {
     expect(refreshes()).toBe(2);
   });
 });
+
+it('accepts a global API id for a short shard row id', async () => {
+  document.body.innerHTML = PAGE.replaceAll('101', '2~101');
+  send.mockResolvedValue(reply('20000000000101'));
+  start();
+  document
+    .getElementById('submission_2~101')!
+    .querySelector<HTMLButtonElement>('[data-av-toggle]')!
+    .click();
+  await settle();
+  expect(shadow('2~101')?.querySelector('.av-rubric')).not.toBeNull();
+  expect(shadow('2~101')?.querySelector('[role=alert]')).toBeNull();
+});
