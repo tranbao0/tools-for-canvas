@@ -2821,7 +2821,7 @@ So a student switches pages to check the rubric while submitting, or to read fee
 
 **Build order:**
 
-1. The expand rows on the Grades page, with the read-only content (score, instructions, rubric, feedback, files). Built.
+1. Built: the expand rows on the Grades page, with the read-only content (score, instructions, rubric, feedback, files).
 2. The same rows on the Assignments list.
 3. "Submit" in the docked pane, and the refresh after a submission.
 
@@ -2842,7 +2842,7 @@ Step 2 (the Assignments list) and step 3 (Submit) are not built.
   - `assignment:details { courseId, assignmentId }` has strict Canvas id checks (`isAssignmentDetailsMessage`).
   - The data router accepts it only from the top frame of a tab whose page has the saved origin, and refuses extension pages.
   - The owner reads both records with the rules of the file viewer (`viewerRead`): the tab uses the cookie store of the requests, the address is the saved Canvas, and the cookie is confirmed for the student of the cache.
-  - Both requests run inside one `cookieBound` binding, so the reply is dropped when the cookie changes during them.
+  - Both requests run inside one read under those rules, so the reply is dropped when the cookie changes during them.
   - A cookie that is not confirmed yet waits for one check (`viewerConfirm`) and the read runs once more.
   - The background keeps only the fields of the view, with a limit on every text, in `projectAssignmentView`.
   - The reply holds the details and the time zone of the Canvas profile.
@@ -2932,6 +2932,7 @@ These items need a live check or an outside answer.
 16. The expand rows of the Grades page (decision 26, step 1) have run only against the fixture.
     The real title cell, the way Canvas finds its own comment and rubric rows after the extension row, and the field shapes of the assignment and submission records are known from canvas-lms source only.
     A comment attachment keeps its download, because the pane never takes an address with `comment_id`.
+    A submitted file on a course with a shard id (`12~345`) also keeps its download, because the matcher of decision 25 takes only plain ids.
     The text of a comment goes through the sanitizer, with line breaks kept, and it is not known whether Canvas escapes angle brackets in that field.
     The live checklist has the steps.
 

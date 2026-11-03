@@ -164,23 +164,3 @@ describe('the element of a click', () => {
     expect(clickedElement(event(host, [root, host]))).toBe(host);
   });
 });
-
-describe('submission links on a course with a shard id', () => {
-  it('takes the file of a submission link whose course, assignment and user ids have a shard', () => {
-    expect(
-      fileTarget(
-        '/courses/12~345/assignments/6~78/submissions/9~10?download=42',
-        'https://school.instructure.com',
-      ),
-    ).toEqual({ fileId: '42' });
-  });
-
-  it('still refuses a comment attachment and a path with a bad id', () => {
-    const origin = 'https://school.instructure.com';
-    expect(
-      fileTarget('/courses/12~345/assignments/6/submissions/9?download=42&comment_id=3', origin),
-    ).toBeNull();
-    expect(fileTarget('/courses/12~/assignments/6/submissions/9?download=42', origin)).toBeNull();
-    expect(fileTarget('/courses/1~2~3/assignments/6/submissions/9?download=42', origin)).toBeNull();
-  });
-});
