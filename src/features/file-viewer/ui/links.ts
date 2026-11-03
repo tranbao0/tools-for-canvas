@@ -1,4 +1,4 @@
-const ID = /^[1-9][0-9]{0,19}$/;
+const ID = /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/;
 
 export interface FileLinks {
   /** The file bytes on the saved Canvas. */

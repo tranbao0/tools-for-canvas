@@ -407,3 +407,32 @@ test('cold startup makes no sign-in check and a click shows a loading pane', asy
     release();
   }
 });
+
+test('a link with sharded course and file ids opens the file in the pane', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await openCoursePage(
+    context,
+    page,
+    background,
+    html.replace('/courses/101/files/42', '/courses/12~345/files/45~678/preview'),
+    [
+      {
+        path: '/api/v1/files/45~678',
+        body: {
+          id: '45~678',
+          display_name: 'Shard notes.pdf',
+          filename: 'notes.pdf',
+          'content-type': 'application/pdf',
+          size: 10,
+          url: '/files/42/download',
+        },
+      },
+    ],
+  );
+  await openFirstFile(page, 'Read notes', undefined, 'main');
+  await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Shard notes.pdf');
+  expect(canvas.requests.some((request) => request.path === '/api/v1/files/45~678')).toBe(true);
+});
