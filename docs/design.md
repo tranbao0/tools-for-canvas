@@ -397,7 +397,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     It sits inside the tab panel, after the day list, so the tab order is the day list, the bottom headers, and then the footer.
   - Each collapsed header keeps its chevron, name, count and warning text, with the count aligned with the day counts.
   - Only one bottom group opens at a time, and its items appear below its header.
-  - The bottom section grows to at most half the inner card height, and its items scroll with the same thin scroll bar as the day list.
+  - The item list of the open group takes at most half the inner card height and at least 64 px, about one row, and it scrolls with the same thin scroll bar as the day list.
     Only the item list of the open group shrinks.
     The headers, the closed groups and the footer keep their full height.
   - A bottom group that disappears also closes, so it does not come back open.
