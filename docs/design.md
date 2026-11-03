@@ -391,6 +391,13 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - The glance had a "N past due" summary line, "Show N more" links and a link for the rest of the span.
     These are gone.
   - The card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
+  - No due date, Done and the footer stay in a bottom section outside the day scroll region, with a thin border in the card line color.
+  - Each collapsed header keeps its chevron, name, count and warning text, with the count aligned with the day counts.
+  - Only one bottom group opens at a time, and its items appear below its header.
+  - The bottom section grows to at most half the inner card height, and its items scroll with the same thin scroll bar as the day list.
+  - The day list keeps at least 128 px, and its scroll position stays as before.
+  - Keyboard access, focus rings, aria-expanded, collapse memory, older and skipped lists, and Skip all older stay available.
+  - These rules also apply to the docked classic dashboard card, but do not affect the side panel or the minimized card.
     A short list leaves empty room at the bottom, so the card keeps its size from span to span.
   - The scroll bar of the groups sits in the side padding of the card, 4 px from its edge, so it never covers the day counts.
   - The header (the dates, Add task, the gear, the minimize button, the arrows, Today and the span picker), the notices and the rings stay at the top of the card.
