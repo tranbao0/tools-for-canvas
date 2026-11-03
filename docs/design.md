@@ -2822,22 +2822,23 @@ So a student switches pages to check the rubric while submitting, or to read fee
 **Build order:**
 
 1. Built: the expand rows on the Grades page, with the read-only content (score, instructions, rubric, feedback, files).
-2. The same rows on the Assignments list.
+2. Built: the same rows on the Assignments list.
 3. "Submit" in the docked pane, and the refresh after a submission.
 
 **Step 1 (built on feat/v1):**
 
 The Grades page now has the expand rows with the read-only content.
-Step 2 (the Assignments list) and step 3 (Submit) are not built.
+Step 2 (the Assignments list) is built.
+Step 3 (Submit) is not built.
 
 - **Script.**
   - The page script is `assignment-view.js`, which is its own small entry point like `dashboard.js`.
-  - The background injects it next to the list script, into the top frame of a Grades page of the saved Canvas (`/courses/:id/grades`, also with a shard id), and only while the switch is on.
+  - The background injects it next to the list script, into the top frame of a Grades or Assignments page of the saved Canvas (`/courses/:id/grades` or `/courses/:id/assignments`, also with a shard id), including while the switch is off so it can follow changes.
   - `/courses/:id/grades/:user` is another page and gets nothing.
   - A newer injection retires the copy of an earlier one, and a start removes the nodes that a destroyed copy left (every node and mark starts with `data-av-`).
   - The script follows the switch, the saved address and the Theme setting through the page channel.
   - Turning the switch off removes every control at once and forgets the loaded details.
-  - A switch that the student turns on works when the Grades page loads again, because the script is not injected while the switch is off.
+  - Turning the switch on adds the controls on an open Grades or Assignments page without a reload.
 - **Message.**
   - `assignment:details { courseId, assignmentId }` has strict Canvas id checks (`isAssignmentDetailsMessage`).
   - The data router accepts it only from the top frame of a tab whose page has the saved origin, and refuses extension pages.
@@ -2976,3 +2977,16 @@ These items need a live check or an outside answer.
 26. Browser color scheme behavior for extension pages: the W3C WebExtensions issue on preferred color schemes, the W3C CSS issue of December 2025 about Chrome's theme mode, and Mozilla's website appearance help page. https://github.com/w3c/webextensions/issues/242 and https://lists.w3.org/Archives/Public/public-css-archive/2025Dec/0569.html and https://support.mozilla.org/en-US/kb/change-website-appearance-settings-firefox
 27. Store searches on 2026-10-27 for plain names, through the Chrome Web Store search pages and the Firefox Add-ons search API. https://chromewebstore.google.com/search/tools%20for%20canvas and https://addons.mozilla.org/api/v5/addons/search/?q=tools%20for%20canvas
 28. canvas-lms source on the default branch, read on 2026-10-30: `AnnouncementsApiController#index`, `DiscussionTopicsApiController#mark_topic_read` and `#mark_topic_unread`, `Api::V1::DiscussionTopics#serialize_additional_topic_fields`, the routes for `discussion_topics/:topic_id/read`, and `UsersController#user_dashboard` with `DashboardHelper#show_planner?`. https://github.com/instructure/canvas-lms/blob/master/app/controllers/announcements_api_controller.rb and https://github.com/instructure/canvas-lms/blob/master/app/controllers/discussion_topics_api_controller.rb and https://github.com/instructure/canvas-lms/blob/master/lib/api/v1/discussion_topics.rb and https://github.com/instructure/canvas-lms/blob/master/config/routes.rb and https://github.com/instructure/canvas-lms/blob/master/app/controllers/users_controller.rb
+
+
+### Decision 26, step 2 (built)
+
+The Assignments list at `/courses/:id/assignments` uses the same buttons, panels and cache as Grades.
+The observer batches redraws and restores open panels by assignment id.
+The pinned Canvas source is `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
+`ui/features/assignment_index/backbone/views/AssignmentListItemView.jsx` sets the list item tag and imports the template.
+`ui/features/assignment_index/jst/AssignmentListItem.handlebars` defines `div.ig-row#assignment_<id>`, `.ig-row__layout`, `.ig-info` and `a.ig-title` with `href="{{htmlUrl}}"`.
+This row uses Backbone and Handlebars at that commit.
+The extension preserves the title link and all Canvas controls.
+The Assignments fixture follows this structure and tests replacement of the rows.
+File paths accept plain and sharded ids with strict checks on both parts.

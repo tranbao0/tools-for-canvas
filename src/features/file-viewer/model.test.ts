@@ -11,6 +11,8 @@ import {
   validRequest,
   plainClick,
   isSubmissionPage,
+  frameFileTarget,
+  catchesDownload,
 } from './model';
 
 describe('file targets', () => {
@@ -163,4 +165,44 @@ describe('the element of a click', () => {
     host.attachShadow({ mode: 'open' });
     expect(clickedElement(event(host, [root, host]))).toBe(host);
   });
+});
+
+describe('sharded ids', () => {
+  const origin = 'https://school.edu';
+  const path = '/courses/12~345/assignments/23~456/submissions/34~567';
+  it('matches file, course, module and submission identities', () => {
+    expect(fileTarget('/courses/12~345/files/45~678/preview', origin)).toEqual({
+      fileId: '45~678',
+    });
+    expect(courseOfLink('/courses/12~345/files/45~678', origin)).toBe('12~345');
+    expect(fileTarget('/courses/12~345/modules/items/34~567', origin, '23~456')).toEqual({
+      courseId: '12~345',
+      moduleId: '23~456',
+      itemId: '34~567',
+    });
+    expect(isSubmissionPage(path)).toBe(true);
+    expect(fileTarget(`${path}?download=45~678`, origin)).toEqual({ fileId: '45~678' });
+    document.body.innerHTML =
+      '<table class="file-upload-submission-table"><tr><td><a class="file-upload-submission-info__link">File</a></td></tr></table>';
+    expect(frameFileTarget(document.querySelector('a')!, '/files/45~678', origin, path)).toEqual({
+      fileId: '45~678',
+    });
+    document.body.innerHTML =
+      '<div id="right-side"><div class="details"><div class="content"><a download>File</a></div></div></div>';
+    expect(
+      catchesDownload(
+        document.querySelector('a')!,
+        '/files/45~678',
+        origin,
+        '/courses/12~345/assignments/23~456',
+      ),
+    ).toBe(true);
+  });
+  it.each(['12~', '~345', '12~345~678', '0~345', '12~0', '12~abc', '12%7E345'])(
+    'rejects invalid id %s',
+    (id) => {
+      expect(fileTarget(`/files/${id}`, origin)).toBeNull();
+      expect(isSubmissionPage(`/courses/${id}/assignments/23/submissions/34`)).toBe(false);
+    },
+  );
 });

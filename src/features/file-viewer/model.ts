@@ -10,8 +10,9 @@ export interface Tabs {
 }
 export type FileTarget =
   { fileId: string } | { courseId: string; moduleId: string; itemId: string };
-const ID = /^[1-9][0-9]{0,19}$/;
-const FILE = /^\/(?:courses\/[1-9][0-9]*\/)?files\/([1-9][0-9]*)(?:\/(?:download|preview))?$/;
+const ID = /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/;
+const FILE =
+  /^\/(?:courses\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/)?files\/([1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?)(?:\/(?:download|preview))?$/;
 /**
  * A left click of the student with no modifier key. A script of the Canvas page can dispatch a
  * click on any link, and such an event is not trusted, so it never opens a file.
@@ -57,12 +58,15 @@ export function fileTarget(href: string, origin: string, moduleId?: string): Fil
     download !== null &&
     !url.searchParams.has('comment_id') &&
     ID.test(download) &&
-    /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*\/(?:submissions\/[1-9][0-9]*|anonymous_submissions\/[A-Za-z0-9]+)$/.test(
+    /^\/courses\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/assignments\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/(?:submissions\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?|anonymous_submissions\/[A-Za-z0-9]+)$/.test(
       url.pathname,
     )
   )
     return { fileId: download };
-  const module = /^\/courses\/([1-9][0-9]*)\/modules\/items\/([1-9][0-9]*)$/.exec(url.pathname);
+  const module =
+    /^\/courses\/([1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?)\/modules\/items\/([1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?)$/.exec(
+      url.pathname,
+    );
   if (module?.[1] && module[2] && moduleId && ID.test(moduleId))
     return { courseId: module[1], moduleId, itemId: module[2] };
   return null;
@@ -72,7 +76,11 @@ export function courseOfLink(href: string, origin: string): string | null {
   try {
     const url = new URL(href, origin);
     if (url.origin !== origin) return null;
-    return /^\/courses\/([1-9][0-9]{0,19})\/(?:files|modules)\//.exec(url.pathname)?.[1] ?? null;
+    return (
+      /^\/courses\/([1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?)\/(?:files|modules)\//.exec(
+        url.pathname,
+      )?.[1] ?? null
+    );
   } catch {
     return null;
   }
@@ -140,7 +148,9 @@ export function catchesDownload(
   pagePath: string,
 ): boolean {
   return (
-    /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*\/?$/.test(pagePath) &&
+    /^\/courses\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/assignments\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/?$/.test(
+      pagePath,
+    ) &&
     link.closest(SUBMISSION_FILES) !== null &&
     link.closest(NOT_SUBMISSION_FILES) === null &&
     fileTarget(href, origin) !== null
@@ -149,7 +159,7 @@ export function catchesDownload(
 
 /** The submission details page, and the address of the frame in it that lists the files. */
 const SUBMISSION_PAGE =
-  /^\/courses\/[1-9][0-9]*\/assignments\/[1-9][0-9]*\/(?:submissions\/[1-9][0-9]*|anonymous_submissions\/[A-Za-z0-9]+)\/?$/;
+  /^\/courses\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/assignments\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/(?:submissions\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?|anonymous_submissions\/[A-Za-z0-9]+)\/?$/;
 export function isSubmissionPage(pagePath: string): boolean {
   return SUBMISSION_PAGE.test(pagePath);
 }
