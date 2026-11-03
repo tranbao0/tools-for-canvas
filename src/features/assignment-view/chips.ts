@@ -60,6 +60,8 @@ export function assignmentTags(
     plannableId: details.assignment.id,
     assignmentId: details.assignment.id,
     title: details.assignment.name,
+    points: null,
+    courseUrl: null,
     subtitleTag: null,
     courseId: null,
     contextLabel: '',

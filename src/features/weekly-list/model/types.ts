@@ -133,6 +133,10 @@ export interface Item {
   plannableId: string;
   assignmentId: string | null;
   title: string;
+  /** Points possible from the planner item, or `null` when Canvas sent no finite number. */
+  points: number | null;
+  /** Course home page on the saved Canvas origin, or `null` for notes, Personal and group items. */
+  courseUrl: string | null;
   /** For checkpoints: `reply_to_topic` or `reply_to_entry`. */
   subtitleTag: string | null;
   /** `null` for a custom task with no course. Group items of unknown courses use `group_<id>`. */
@@ -245,6 +249,8 @@ export interface Ring {
 }
 
 export interface WeekView {
+  /** The Canvas language, for number formats. */
+  locale: string;
   /** The span this view shows. */
   span: Span;
   /** First day of the shown span, plain date. */

@@ -1743,7 +1743,7 @@ input:checked + .wr-switch-track > .wr-switch-knob {
     column-gap: 8px;
   }
 
-  .wr-item > .wr-type {
+  .wr-item .wr-type {
     display: none;
   }
 
@@ -1806,5 +1806,137 @@ input:checked + .wr-switch-track > .wr-switch-knob {
 
   .wr-skel-bar {
     border: 1px solid GrayText;
+  }
+}
+
+/* Slot rows, as the items of Canvas's Course work widget: a solid block in the course color, the
+   text column, and the due pill. The parts below are hidden on every other surface. */
+
+.wr-type-block {
+  display: contents;
+}
+
+.wr-slot-only,
+.wr-points,
+.wr-points-only,
+.wr-slot-pill {
+  display: none;
+}
+
+/* The block is 80 px: a 32 px icon with 24 px padding. Rows sit 12 px apart. */
+:host([data-panel='slot']) .wr-item {
+  grid-template-columns: 20px 80px minmax(0, 1fr) auto;
+  column-gap: 12px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+:host([data-panel='slot']) .wr-type-block {
+  display: grid;
+  place-items: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 4px;
+  background: var(--wr-course);
+}
+
+:host([data-panel='slot']) .wr-type-block .wr-type {
+  margin: 0;
+  color: #fff;
+  font-size: 32px;
+}
+
+:host([data-panel='slot']) .wr-item-body {
+  display: flex;
+  flex-direction: column;
+}
+
+:host([data-panel='slot']) .wr-title {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 21px;
+}
+
+:host([data-panel='slot']) :is(.wr-course, .wr-points) {
+  font-size: 12px;
+  line-height: 18px;
+}
+
+:host([data-panel='slot']) .wr-course {
+  display: flex;
+}
+
+/* A long course name gets the ellipsis, and the link stays whole. */
+:host([data-panel='slot']) .wr-course-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:host([data-panel='slot']) .wr-slot-only {
+  display: block;
+  flex: none;
+  white-space: pre;
+}
+
+:host([data-panel='slot']) .wr-slot-only a {
+  color: var(--wr-link);
+  text-decoration: none;
+}
+
+:host([data-panel='slot']) .wr-slot-only a:hover {
+  color: var(--wr-link-hover);
+  text-decoration: underline;
+}
+
+:host([data-panel='slot']) .wr-item-tags {
+  display: flex;
+  order: 1;
+  margin-top: 0;
+}
+
+:host([data-panel='slot']) .wr-points {
+  display: block;
+  color: var(--wr-text-2);
+}
+
+:host([data-panel='slot']) .wr-due {
+  order: 2;
+}
+
+:host([data-panel='slot']) .wr-item-tip {
+  order: 3;
+}
+
+:host([data-panel='slot']) .wr-when {
+  display: none;
+}
+
+:host([data-panel='slot']) .wr-slot-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #e0ebf5;
+  color: #1a5a8e;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 12px;
+}
+
+:host([data-panel='slot']) .wr-slot-pill .wr-icon {
+  font-size: 18px;
+}
+
+/* Below 420 px the pill sits under the text, at the right. */
+@container wr (width < 420px) {
+  :host([data-panel='slot']) .wr-item {
+    grid-template-columns: 20px 80px minmax(0, 1fr);
+  }
+
+  :host([data-panel='slot']) .wr-slot-pill {
+    grid-column: 3;
+    justify-self: end;
   }
 }

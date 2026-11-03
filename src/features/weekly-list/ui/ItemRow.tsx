@@ -8,7 +8,7 @@ import type { TargetedMouseEvent } from 'preact';
 import { t } from '../../../shared/ui/i18n';
 import type { ItemView, WeekView } from '../model/types';
 import { formatDateTime, formatTime } from './format';
-import { CheckIcon, ChevronDownIcon, TypeIcon } from '../../../shared/ui/icons';
+import { CalendarIcon, CheckIcon, ChevronDownIcon, TypeIcon } from '../../../shared/ui/icons';
 import { newId } from '../../../shared/ui/parts';
 import { itemTags, type Tag } from './tags';
 
@@ -145,7 +145,9 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
           </span>
         )}
       </span>
-      <TypeIcon kind={item.kind} />
+      <span class="wr-type-block" aria-hidden="true">
+        <TypeIcon kind={item.kind} />
+      </span>
 
       <div class="wr-item-body">
         {isNote || item.url === null ? (
@@ -170,7 +172,25 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
             {item.title}
           </a>
         )}
-        {showCourse && <span class="wr-course">{courseLabel(item)}</span>}
+        {showCourse && (
+          <span class="wr-course">
+            <span class="wr-course-name">{courseLabel(item)}</span>
+            {item.courseUrl && (
+              <span class="wr-slot-only">
+                {' '}
+                |{' '}
+                <a
+                  href={item.courseUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={t('goToNamedCourse', courseLabel(item))}
+                >
+                  {t('goToCourse')}
+                </a>
+              </span>
+            )}
+          </span>
+        )}
         {(hasInfo || hasActions(item)) && (
           <div class="wr-due">
             {hasInfo && (
@@ -182,8 +202,13 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
             <ItemActions item={item} handlers={handlers} />
           </div>
         )}
-        {tags.length > 0 && (
-          <div class="wr-item-tags">
+        {(tags.length > 0 || item.points != null) && (
+          <div class={`wr-item-tags${tags.length === 0 ? ' wr-points-only' : ''}`}>
+            {item.points != null && (
+              <span class="wr-points">
+                {t('itemPoints', new Intl.NumberFormat(view.locale).format(item.points))}
+              </span>
+            )}
             {tags.map((tag) => (
               <TagView
                 key={tag.id}
@@ -201,6 +226,12 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
           </p>
         )}
       </div>
+      {whenLabel && (
+        <span class="wr-slot-pill">
+          <CalendarIcon />
+          {whenLabel}
+        </span>
+      )}
     </li>
   );
 }

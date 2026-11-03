@@ -41,6 +41,8 @@ function item(partial: Partial<Omit<Item, 'facts'>> & { facts?: Partial<CanvasFa
     plannableId: '1',
     assignmentId: '1',
     title: 'Essay',
+    points: null,
+    courseUrl: null,
     subtitleTag: null,
     courseId: '101',
     contextLabel: 'Biology',

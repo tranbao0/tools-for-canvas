@@ -516,6 +516,7 @@ function scenarioSpecs(now: string): ScenarioSpecs {
     id: A.bioLabReport2,
     courseId: C.biology,
     name: 'Lab report 2: Enzymes',
+    points: 20,
     due: due(-28),
     submissionTypes: ['online_upload'],
     submission: {
@@ -574,6 +575,7 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       id: A.bioQuiz2,
       courseId: C.biology,
       name: 'Quiz 2: Macromolecules',
+      points: 10,
       due: due(-14),
       submissionTypes: ['online_quiz'],
       quizId: IDS.quizzes.bioQuiz2,
@@ -763,6 +765,7 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       checkpoints: [
         {
           id: IDS.subAssignments.historyDebate2ReplyToTopic,
+          points: 5,
           tag: 'reply_to_topic',
           due: due(0),
           submission: {},

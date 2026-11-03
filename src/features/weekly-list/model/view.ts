@@ -383,6 +383,7 @@ export function buildWeekView(input: ModelInput): WeekView {
   const isLoading = loading.pastDue || loading.days.length > 0 || loading.incomplete === true;
 
   return {
+    locale,
     span: input.settings.span,
     spanStart: bounds.spanStart,
     spanEnd: bounds.spanEnd,
