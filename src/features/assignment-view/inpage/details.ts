@@ -2,6 +2,7 @@
  * The content of one open assignment, as inert DOM nodes for the shadow root of its row. See
  * docs/design.md, decision 26. Every text that a teacher wrote goes through the shared sanitizer.
  */
+import { submitLabel } from '../turnIn';
 import { assignmentTags } from '../chips';
 import { formatDateTime } from '../format';
 import type { AssignmentDetails, AssignmentDetailsReply } from '../protocol';
@@ -108,6 +109,13 @@ export function renderDetails(reply: AssignmentDetailsReply, context: DetailsCon
     renderFiles(details, { origin, courseId, doc }),
     node(doc, 'div', 'av-actions'),
   );
+  const label = submitLabel(details);
+  if (label !== null) {
+    const submit = node(doc, 'button', 'av-button', label);
+    submit.setAttribute('type', 'button');
+    submit.dataset['action'] = 'submit';
+    panel.lastElementChild?.append(submit);
+  }
   panel.lastElementChild?.append(open);
   return panel;
 }

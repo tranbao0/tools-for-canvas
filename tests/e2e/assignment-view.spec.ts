@@ -481,3 +481,116 @@ for (const width of [1920, 1280]) {
     });
   }
 }
+
+test('turn-in uses the docked pane and refreshes after a form redirect', async ({
+  context,
+  page,
+  background,
+}) => {
+  let submitted = false;
+  const copy = secondAssignment();
+  copy.assignment.id = '101';
+  copy.assignment.name = 'Essay';
+  copy.assignment.can_submit = true;
+  const canvas = await open(context, page, background, {
+    extra: [
+      {
+        path: '/courses/12/assignments/101',
+        method: 'POST',
+        respond: () => {
+          submitted = true;
+          return {
+            contentType: 'text/html',
+            body: '<script>location.replace("/courses/12/assignments/101?content_only=1")</script>',
+          };
+        },
+      },
+      {
+        path: '/courses/12/assignments/101',
+        respond: () => {
+          return {
+            contentType: 'text/html',
+            body: '<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>Essay</h1><p>Turn in your work.</p><form method="post"><button>Submit work</button></form></body></html>',
+          };
+        },
+      },
+      {
+        path: '/api/v1/courses/12/assignments/101',
+        respond: () => ({ body: json(rawRecords(copy).assignment) }),
+      },
+      {
+        path: '/api/v1/courses/12/assignments/101/submissions/self',
+        respond: () => {
+          const records = rawRecords(copy);
+          if (submitted)
+            Object.assign(records.submission, {
+              submitted_at: '2026-11-02T12:00:00Z',
+              workflow_state: 'submitted',
+              attempt: 1,
+            });
+          return { body: json(records.submission) };
+        },
+      },
+    ],
+  });
+  await expand(page, canvas, 'Essay');
+  const button = region(page, 'Essay').getByRole('button', { name: 'Submit', exact: true });
+  await button.evaluate((node) => (node as HTMLButtonElement).click());
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+  await button.click();
+  await expect(page.locator('#tools-file-viewer')).toBeVisible();
+  expect(
+    await page.locator('html').evaluate((node) => parseFloat(getComputedStyle(node).paddingRight)),
+  ).toBeGreaterThan(0);
+  await expect
+    .poll(
+      () =>
+        page.frames().find((frame) => frame.url().includes('/assignments/101?content_only=1')) !==
+        undefined,
+    )
+    .toBe(true);
+  const frame = page
+    .frames()
+    .find((frame) => frame.url().includes('/assignments/101?content_only=1'))!;
+  const plannerReads = canvas.requests.filter((request) =>
+    request.path.startsWith('/api/v1/planner/items'),
+  ).length;
+  await frame.getByRole('button', { name: 'Submit work' }).click();
+  await expect(
+    region(page, 'Essay').getByRole('button', { name: 'Re-submit', exact: true }),
+  ).toBeVisible();
+  await expect(region(page, 'Essay').getByText('Submitted', { exact: true })).toBeVisible();
+  await expect(frame.getByRole('button', { name: 'Submit work' })).toBeVisible();
+  await expect
+    .poll(
+      () =>
+        canvas.requests.filter((request) => request.path.startsWith('/api/v1/planner/items'))
+          .length,
+    )
+    .toBeGreaterThan(plannerReads);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  for (const theme of ['light', 'dark'] as const) {
+    await saveSetting(background, { theme });
+    await expect(page.locator('#tools-file-viewer')).toHaveAttribute('data-theme', theme);
+    await page.screenshot({ path: path.join(DIR, `turn-in-${theme}-1280.png`) });
+  }
+  await frame.getByRole('button', { name: 'Submit work' }).focus();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+  expect(
+    await page.locator('html').evaluate((node) => parseFloat(getComputedStyle(node).paddingRight)),
+  ).toBe(0);
+  await region(page, 'Essay').getByRole('button', { name: 'Re-submit', exact: true }).click();
+  await expect
+    .poll(() =>
+      page.frames().some((item) => item.url().includes('/assignments/101?content_only=1')),
+    )
+    .toBe(true);
+  const reopened = page
+    .frames()
+    .find((item) => item.url().includes('/assignments/101?content_only=1'))!;
+  await reopened.getByRole('button', { name: 'Submit work' }).focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+});

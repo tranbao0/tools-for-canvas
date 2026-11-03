@@ -1,3 +1,4 @@
+import { turnInScope, turnInUrl } from '../assignment-view/turnIn';
 import { browser, type Browser } from 'wxt/browser';
 import { t } from '../../shared/ui/i18n';
 import { TOP_OPEN } from './frame';
@@ -73,6 +74,18 @@ export async function startViewer(): Promise<void> {
   };
   let width = normalizeWidth(undefined, innerWidth);
   let host: HTMLDivElement | undefined;
+  let paneRoot: ShadowRoot | undefined;
+  let turnIn: HTMLIFrameElement | undefined;
+  let turnInHeader: HTMLElement | undefined;
+  let paneGeneration = 0;
+  const restoreFiles = () => {
+    turnIn?.remove();
+    turnInHeader?.remove();
+    turnIn = undefined;
+    turnInHeader = undefined;
+    const viewer = paneRoot?.querySelector<HTMLIFrameElement>('iframe');
+    if (viewer) viewer.style.display = '';
+  };
   // The port of the pane once it proved the secret, and a port that waits for that proof.
   let port: MessagePort | undefined;
   let pending: MessagePort | undefined;
@@ -122,6 +135,7 @@ export async function startViewer(): Promise<void> {
   let lastHelloAt = -Infinity;
   /** Removes the pane and gives the page its padding back. The stored tabs stay. */
   const drop = () => {
+    paneGeneration += 1;
     clearTimeout(handshake);
     handshake = undefined;
     removeHello?.();
@@ -130,12 +144,18 @@ export async function startViewer(): Promise<void> {
     pending = undefined;
     port?.close();
     port = undefined;
+    restoreFiles();
+    paneRoot = undefined;
     if (!host) return;
     host.remove();
     host = undefined;
     document.documentElement.style.setProperty('padding-right', padding, priority);
   };
   const close = () => {
+    if (turnIn && tabs.active) {
+      restoreFiles();
+      return;
+    }
     drop();
     tabs = { ids: [], active: null };
     void writeTabs(tabs);
@@ -179,6 +199,7 @@ export async function startViewer(): Promise<void> {
     host.style.cssText = 'position:fixed;right:0;top:0;height:100vh;z-index:2147483647;';
     // A closed root keeps a script of the Canvas page from reaching the frame element.
     const root = host.attachShadow({ mode: 'closed' });
+    paneRoot = root;
     root.innerHTML = `<style>
       :host{--bg:#fff;--text:#273540;--line:#e8eaec;--edge:#c7cdd1;--hover:#f2f4f4;--focus:#0374b5;color:var(--text)}
       :host([data-theme='dark']){--bg:#1b2330;--text:#fff;--line:#2e3e4e;--edge:#4a5b68;--hover:#253443;--focus:#5a9fd4}
@@ -250,9 +271,6 @@ export async function startViewer(): Promise<void> {
       }, HANDSHAKE_MS);
     });
     root.querySelector('section')!.append(frame);
-    root.addEventListener('keydown', (event) => {
-      if ((event as KeyboardEvent).key === 'Escape') close();
-    });
     const handle = root.querySelector<HTMLElement>('.handle')!;
     const save = async () => {
       const latest = (await browser.runtime.sendMessage({ type: 'weekrow:page-context' })) as {
@@ -288,10 +306,78 @@ export async function startViewer(): Promise<void> {
     layout();
     answerInTime();
   };
+  turnInScope.__toolsTurnIn = (request) => {
+    const url = turnInUrl(location.origin, request.courseId, request.assignmentId);
+    if (!request.event.isTrusted || !url || !live) return;
+    const generation = paneGeneration;
+    void (async () => {
+      await starting;
+      if (!live || generation !== paneGeneration) return;
+      await show();
+      const stored = await readTabs().catch(() => null);
+      if (!live || generation !== paneGeneration || !paneRoot) return;
+      if (stored) tabs = stored.tabs;
+      restoreFiles();
+      const viewer = paneRoot.querySelector<HTMLIFrameElement>('iframe');
+      if (viewer) viewer.style.display = 'none';
+      const header = document.createElement('header');
+      header.style.cssText =
+        'display:flex;align-items:center;gap:12px;min-height:44px;padding:0 12px;border-bottom:1px solid var(--edge);font-size:14px';
+      const title = document.createElement('span');
+      title.textContent = request.title;
+      title.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      const link = document.createElement('a');
+      link.textContent = 'Open in new tab';
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.style.color = 'var(--focus)';
+      const button = document.createElement('button');
+      button.textContent = '×';
+      button.setAttribute('aria-label', 'Close turn-in');
+      button.style.cssText =
+        'border:0;background:transparent;color:inherit;font-size:24px;cursor:pointer';
+      button.addEventListener('click', close);
+      header.append(title, link, button);
+      const frame = document.createElement('iframe');
+      frame.title = `Turn in ${request.title}`;
+      frame.style.background = '#fff';
+      let loads = 0;
+      let refresh = Promise.resolve();
+      frame.addEventListener('load', (event) => {
+        if (!event.isTrusted) return;
+        try {
+          frame.contentWindow?.addEventListener('keydown', (key) => {
+            if (key.isTrusted && key.key === 'Escape' && turnIn === frame) close();
+          });
+        } catch {
+          // An external tool can navigate the frame to another origin.
+        }
+        if (++loads === 1) return;
+        refresh = refresh
+          .then(async () => {
+            if (turnIn === frame) await request.reload();
+          })
+          .catch(() => undefined);
+      });
+      frame.src = url;
+      turnIn = frame;
+      turnInHeader = header;
+      paneRoot.querySelector('section')!.append(header, frame);
+    })().catch(() => undefined);
+  };
+  window.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key === 'Escape' && host) close();
+    },
+    { signal: lifetime.signal },
+  );
   window.addEventListener('resize', layout, { signal: lifetime.signal });
   scope.__weekrowViewer = () => {
     live = false;
     lifetime.abort();
+    delete turnInScope.__toolsTurnIn;
     drop();
   };
   // The opens run one after another. Each one reads the stored tabs, adds its file and writes them
@@ -308,6 +394,7 @@ export async function startViewer(): Promise<void> {
    * to whether the pane has the file or is about to get it.
    */
   const openNow = async (target: FileTarget, href: string): Promise<boolean> => {
+    restoreFiles();
     if (!paneOpen()) await show();
     const file =
       'fileId' in target
@@ -390,7 +477,7 @@ export async function startViewer(): Promise<void> {
   // The settings and the stored tabs load while the listeners above already work.
   const starting = (async () => {
     const context = await readContext();
-    if (!live || !context?.tools.fileViewer) return;
+    if (!live || !context || (!context.tools.fileViewer && !context.tools.assignmentView)) return;
     themeChoice = context.settings?.theme ?? 'auto';
     width = normalizeWidth(context.tools.fileViewerWidth, innerWidth);
     const stored = await readTabs().catch(() => null);
@@ -399,7 +486,7 @@ export async function startViewer(): Promise<void> {
       tabs = stored.tabs;
       tabsToken = stored.token;
     }
-    enabled = true;
+    enabled = context.tools.fileViewer;
   })().catch(() => undefined);
   // The background sends two kinds of message to this script. It says when a setting changed, so
   // the pane follows the Theme setting at once. And it passes on a file that the click catcher
@@ -411,6 +498,15 @@ export async function startViewer(): Promise<void> {
     respond: (reply: { opened: boolean }) => void,
   ): boolean | undefined => {
     const request = message as { type?: unknown; fileId?: unknown } | null;
+    if (
+      request?.type === 'viewer:reset' &&
+      sender.id === browser.runtime.id &&
+      sender.tab === undefined
+    ) {
+      paneGeneration += 1;
+      if (turnIn) drop();
+      return undefined;
+    }
     if (request?.type === 'weekrow:changed') {
       void readContext().then(
         (latest) => {
@@ -446,7 +542,7 @@ export async function startViewer(): Promise<void> {
     { once: true },
   );
   await starting;
-  if (live && !enabled) {
+  if (live && !enabled && !turnInScope.__toolsTurnIn) {
     // The viewer is off. A click that came before this point still finds `live`, and follows its link.
     lifetime.abort();
   }

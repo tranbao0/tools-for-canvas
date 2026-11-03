@@ -263,6 +263,7 @@ describe('injectSubmissionFrames', () => {
         { frameId: 4, origin: ORIGIN, path: PATH },
         { frameId: 5, origin: 'https://video.example', path: PATH },
         { frameId: 6, origin: ORIGIN, path: '/courses/5/files/9' },
+        { frameId: 7, origin: ORIGIN, path: '/courses/5/assignments/3' },
         { frameId: 8, origin: ORIGIN, path: PATH },
       ) as never,
     );
@@ -315,6 +316,7 @@ describe('injectSubmissionFrames', () => {
   it('refuses a tab that no longer shows a submission page of the origin', async () => {
     for (const url of [
       `${ORIGIN}/courses/5`,
+      `${ORIGIN}/courses/5/assignments/3?content_only=1`,
       'https://other.school.edu/courses/5/assignments/3/submissions/9',
     ]) {
       tabUrls.set(7, url);

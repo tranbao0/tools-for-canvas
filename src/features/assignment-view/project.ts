@@ -188,6 +188,7 @@ export function projectAssignmentView(
       user_id: userId,
       score: finite(submissionRecord['score']),
       grade: text(submissionRecord['grade'], 40),
+      attempt: finite(submissionRecord['attempt']),
       submitted_at: text(submissionRecord['submitted_at'], 40),
       workflow_state: plain(submissionRecord['workflow_state'], 40),
       excused: submissionRecord['excused'] === true,

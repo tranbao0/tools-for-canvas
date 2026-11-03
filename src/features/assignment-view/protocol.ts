@@ -64,6 +64,7 @@ export interface AssignmentDetails {
     user_id: string;
     score: number | null;
     grade: string | null;
+    attempt?: number | null;
     submitted_at?: string | null;
     workflow_state?: string;
     excused?: boolean | null;
