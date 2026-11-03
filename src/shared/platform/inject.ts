@@ -27,7 +27,7 @@ export const ASSIGNMENT_VIEW_FILE = '/assignment-view.js';
 const DASHBOARD_PATH = /^\/(?:dashboard\/?)?$/;
 
 /** The Grades page of the signed-in student. `/courses/:id/grades/:user` is another page. */
-const GRADES_PATH = /^\/courses\/\d+(?:~\d+)?\/(?:grades|assignments)\/?$/;
+const GRADES_PATH = /^\/courses\/\d+(?:~\d+)?\/(?:grades|assignments(?:\/\d+(?:~\d+)?)?)\/?$/;
 
 type PageScript = typeof INPAGE_FILE | typeof DASHBOARD_FILE | typeof ASSIGNMENT_VIEW_FILE;
 

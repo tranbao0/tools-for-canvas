@@ -13,11 +13,13 @@ import { inpageTheme } from '../../../shared/ui/theme';
 import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
 import type { DataMessage } from '../../weekly-list/data/protocol';
 import type { Settings } from '../../weekly-list/model/types';
+import { createAssignmentPage } from './page';
 import { createRowsEngine } from './rows';
 import { createTurnInPane, type TurnInPane } from './turnInPane';
 
-/** `/courses/:id/grades`: the Grades page of the signed-in student. */
-const GRADES_PATH = /^\/courses\/(\d+(?:~\d+)?)\/(?:grades|assignments)\/?$/;
+/** The Grades list, Assignments list and assignment page, including shard ids. */
+const ASSIGNMENT_VIEW_PATH =
+  /^\/courses\/(\d+(?:~\d+)?)\/(?:grades|assignments(?:\/(\d+(?:~\d+)?))?)\/?$/;
 
 /** The part of the page channel that the view uses. */
 export interface AssignmentViewChannel {
@@ -63,7 +65,7 @@ export async function startAssignmentView(
   const origin = options.origin ?? doc.defaultView?.location.origin ?? '';
   const pathname = options.pathname ?? doc.defaultView?.location.pathname ?? '';
   const { channel, signal } = options;
-  const courseId = GRADES_PATH.exec(pathname)?.[1];
+  const courseId = ASSIGNMENT_VIEW_PATH.exec(pathname)?.[1];
   let stopped = false;
   const stops: (() => void)[] = [];
   let engine: ReturnType<typeof createRowsEngine> | null = null;
@@ -96,15 +98,26 @@ export async function startAssignmentView(
     },
     reload: (assignmentId) => engine?.reload(assignmentId) ?? Promise.resolve(),
   });
-  const rows = createRowsEngine({
-    doc,
-    origin,
-    courseId,
-    send: channel.send,
-    theme,
-    openTurnIn: turnIn.open,
-    onOtherStudent: turnIn.reset,
-  });
+  const assignmentId = ASSIGNMENT_VIEW_PATH.exec(pathname)?.[2];
+  const rows =
+    assignmentId !== undefined
+      ? createAssignmentPage({
+          doc,
+          origin,
+          courseId,
+          assignmentId,
+          send: channel.send,
+          theme,
+        })
+      : createRowsEngine({
+          doc,
+          origin,
+          courseId,
+          send: channel.send,
+          theme,
+          openTurnIn: turnIn.open,
+          onOtherStudent: turnIn.reset,
+        });
   engine = rows;
   pane = turnIn;
 

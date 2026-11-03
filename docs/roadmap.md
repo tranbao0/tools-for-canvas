@@ -45,6 +45,7 @@ Each tool gets its own design decision in `docs/design.md` before it is built.
 - From Grades a student cannot turn anything in, and the submission details page holds only files and comments.
 - On both the Grades page and the Assignments list, each assignment row expands in place to show the instructions, the score, the rubric, the teacher's feedback and the student's own submitted files.
 - A "Submit" or "Re-submit" button opens Canvas's own turn-in page in the docked pane of the file viewer, so the student turns work in without leaving the list.
+- The classic assignment page shows the score, rubric, feedback and submitted files below its description.
 - The tool reuses the docked pane of the file viewer, so it comes after it.
 
 ## 5. Dark mode
