@@ -284,15 +284,12 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
     }) => {
       const { without, withList } = await openPair(context, page, width);
       const card = withList.card as Box;
-      if (withList.mode === 'area') {
-        expect(card.y).toBeCloseTo(without.firstCards[0]!.y, 0);
-        expect(card.width).toBeGreaterThanOrEqual(320);
-        expect(card.width).toBeLessThanOrEqual(400);
-        expect(withList.firstCards).toEqual(without.firstCards);
-      } else {
-        expect(withList.mode).toBe('stack');
-        expect(card.y + card.height).toBeLessThan(withList.firstCards[0]!.y);
-      }
+      expect(withList.mode).toBe('slot');
+      const original = without.firstCards[0]!;
+      expect(card.x).toBeCloseTo(original.x, 0);
+      expect(card.y).toBeCloseTo(original.y, 0);
+      expect(card.width).toBeCloseTo(original.width, 0);
+      expect(card.height).toBeCloseTo(Math.max(420, original.height), 0);
       expect(withList.header).toEqual(without.header);
       await page.screenshot({
         path: path.join(SHOTS, `top-${width}.png`),
@@ -301,7 +298,7 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
     });
   }
 
-  test('scrolls with the page, in the free area beside the grid', async ({ context, page }) => {
+  test('scrolls with the page, in the Course work slot', async ({ context, page }) => {
     await openPair(context, page, 1920);
     await page.evaluate(() => {
       const filler = document.createElement('div');
@@ -318,7 +315,7 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
       );
     expect(
       await page.evaluate(() => document.querySelector('weekrow-list')?.getAttribute('data-panel')),
-    ).toBe('area');
+    ).toBe('slot');
     const before = await pageTop();
     await page.evaluate(() => window.scrollTo(0, 1500));
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(1500);

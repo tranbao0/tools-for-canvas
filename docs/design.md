@@ -31,7 +31,7 @@ This extension has no account, no server of its own and no telemetry.
 | 1 | Version 1 scope | The core of the original, plus work Canvas hides |
 | 2 | Where done marks and custom tasks live | In Canvas, as planner overrides and planner notes |
 | 3 | What counts as a task | All work the student must do; no calendar events or announcements (announcements are not tasks, and have their own tab, see decision 24) |
-| 4 | Where the list appears | In the Canvas page: the right column of the classic dashboard and of course home pages, and a card beside the grid on the widget dashboard; an optional side panel for other pages. The Announcements tab shows everywhere except the widget dashboard (decision 24) |
+| 4 | Where the list appears | In the Canvas page: the right column of the classic dashboard and of course home pages, and a card in the Course work slot on the widget dashboard; an optional side panel for other pages. The Announcements tab shows everywhere except the widget dashboard (decision 24) |
 | 5 | Site access and onboarding | Access to all sites, a tiny Canvas detector, and no setup step |
 | 6 | List layout and item placement | Items are placed by date and done state only, each in one group |
 | 7 | Item status | One set of status chips, the same on every item in every view |
@@ -323,7 +323,18 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - On the dashboard, when the body has no `with-right-side` (the widget dashboard and List View [13]), mount at once, when the page has `#content`.
   The list does not add `with-right-side` and does not show `#right-side-wrapper`.
   It takes one of these places in the page content, and `layout.ts` decides which.
-  - **Beside the widget grid**, in the white area, one gutter right of the widget columns, when the viewport has room for a gutter, a card of at least 320 px and a 24 px right margin.
+  - **In the Course work slot**, replace the first single or combined Course work widget in document order.
+    Keep every other Course work widget, including summary widgets.
+    Copy the section's computed margin and fill its column without a fixed width.
+    Hide its wrapper with visibility while loading, then display none when the card takes its place.
+    Wait for the status filter or retry button before measuring the section's border-box height once, with a minimum of 420 px.
+    Keep that height for the page view through redraws, refetches and window resizing.
+    After ten seconds without settled data, use the slot with the viewport height rule.
+    In Customize dashboard, restore the widget and hide the card until Save or Cancel.
+    Follow the widget's new position and reuse the measured height.
+    Minimize to the header in the same flow, with no reserved space.
+    Release restores the wrapper's inline styles and removes its marker.
+  - **Beside the widget grid**, when no Course work slot exists, in the white area, one gutter right of the widget columns, when the viewport has room for a gutter, a card of at least 320 px and a 24 px right margin.
     The card is under `body`, outside the widget tray and outside every Canvas layout box, and it uses document coordinates.
     It grows to 400 px.
     Its left edge is one column gap past the real `widget-columns` box.
@@ -344,7 +355,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     So before React draws, the signal is an empty `#content` with none of the server content of the other dashboards (`#dashboard`, the header, the planner, the activity stream, the course cards).
     After React draws, the tabs, the tab panel or the grid are the signal.
     All these selectors are in `src/shared/canvas/widgetDashboard.ts`.
-  - On the widget dashboard, the card stays hidden until the grid exists, for up to 10 seconds.
+  - On the widget dashboard, the card stays hidden until the slot settles, or a grid without a slot exists, for up to 10 seconds.
     Missing tab panels use the grid or `#content` as the anchor.
   - Mark the body with `data-weekrow-column`.
     An observer of an older copy of the script stops at once when the marker is gone.
@@ -371,8 +382,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - Mount the list as a sibling before `#right-side`, inside `#right-side-wrapper`.
   Canvas replaces the contents of `#right-side`, so a node inside it would be lost [13].
   On the widget dashboard and in List View, the container starts there and then moves into the page content.
-- The card has the look of a Canvas widget card, measured from the widget styles of the test fixture: a 1 px border, 12 px corners, 20 px and 24 px of padding, and an 18 px bold heading.
-  The widget cards of the fixture have no shadow, so the card has none.
+- The card has the look of a Canvas widget card: no border, 8 px corners, the widget shadow, a white background in the light theme, and 24 px of padding.
 - Hide only the student To Do list (`.Sidebar__TodoListContainer`).
   Keep Coming Up, Recent Feedback and the other sidebar content.
 - A user who also has a teacher, TA or designer role gets the legacy teacher To Do list instead [13].
@@ -390,7 +400,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     "N older", "N skipped" and "Skip all older" work as in the side panel.
   - The glance had a "N past due" summary line, "Show N more" links and a link for the rest of the span.
     These are gone.
-  - The card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
+  - Outside the Course work slot, the card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
     A short list leaves empty room at the bottom, so the card keeps its size from span to span.
   - No due date, Done and the footer stay in a bottom section outside the day scroll region, with a thin border in the card line color.
     The section is a region with the label "Undated and done tasks".
@@ -1754,6 +1764,9 @@ The owner asked for it after testing an early build: the list should feel like p
 
 **Decision:** Four fixes, each with its own switch in one setting group, "New dashboard fixes".
 All four are on by default.
+Course work extras and course colors skip the widget whose wrapper has `data-weekrow-replaced`.
+They remove any extras and colors already added to that widget, and still apply to other Course work widgets.
+Both switches stay in settings.
 The owner chose the list on 2026-10-30 (see `docs/roadmap.md`).
 The fixes run on the dashboard of the saved Canvas, next to the weekly list, and need not have the list turned on.
 The dashboard uses the origin that the router checks and shares the session fingerprint check in decision 11.

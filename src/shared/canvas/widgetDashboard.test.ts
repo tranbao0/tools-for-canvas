@@ -5,6 +5,7 @@ import {
   findAnnouncementsWidgets,
   findCourseWorkIcons,
   findCourseWorkWidgets,
+  findCourseWorkSlot,
   findGradeWidgets,
   expectsWidgetDashboard,
   findWidgetGrid,
@@ -182,5 +183,39 @@ describe('telling the widget dashboard from the other dashboards', () => {
   it('needs #content', () => {
     document.body.innerHTML = '';
     expect(expectsWidgetDashboard(document)).toBe(false);
+  });
+});
+
+describe('Course work slots', () => {
+  it.each([
+    'course-work-widget',
+    'course-work-combined-widget',
+    'course_work-widget-uuid',
+    'course_work_combined-widget-uuid',
+  ])('finds %s before its data loads', (id) => {
+    document.body.innerHTML = `<div data-testid="widget-container-${id}"><section data-testid="widget-${id}"><div style="height:400px">Loading</div></section></div>`;
+    expect(findCourseWorkSlot(document)?.loaded).toBe(false);
+    document.querySelector('section')!.innerHTML =
+      '<input data-testid="submission-status-filter-select">';
+    expect(findCourseWorkSlot(document)?.loaded).toBe(true);
+    document.querySelector('section')!.innerHTML =
+      `<button data-testid="${id}-retry-button">Retry</button>`;
+    expect(findCourseWorkSlot(document)?.loaded).toBe(true);
+  });
+  it('skips summary ids and takes the first candidate in document order', () => {
+    document.body.innerHTML = [
+      'course-work-summary-widget',
+      'course_work_summary-widget-uuid',
+      'course_work-widget-first',
+      'course-work-combined-widget',
+    ]
+      .map(
+        (id) =>
+          `<div data-testid="widget-container-${id}"><section data-testid="widget-${id}"></section></div>`,
+      )
+      .join('');
+    expect(findCourseWorkSlot(document)?.widget.dataset.testid).toBe(
+      'widget-course_work-widget-first',
+    );
   });
 });

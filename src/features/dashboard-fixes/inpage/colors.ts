@@ -10,7 +10,7 @@
  * attribute with the course id on the box, and a rule of the fixes stylesheet reads the color.
  */
 import { isCanvasId } from '../../../shared/canvas/ids';
-import { findCourseWorkIcons } from '../../../shared/canvas/widgetDashboard';
+import { findCourseWorkIcons, isReplacedWidget } from '../../../shared/canvas/widgetDashboard';
 import type { Fix, FixContext } from './context';
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -35,7 +35,7 @@ export function courseColorsFix(): Fix {
           .join(''),
       );
       for (const { box, courseId } of findCourseWorkIcons(context.doc, context.origin)) {
-        if (!colors.has(courseId)) {
+        if (isReplacedWidget(box) || !colors.has(courseId)) {
           box.removeAttribute(ATTRIBUTE);
         } else if (box.getAttribute(ATTRIBUTE) !== courseId) {
           box.setAttribute(ATTRIBUTE, courseId);

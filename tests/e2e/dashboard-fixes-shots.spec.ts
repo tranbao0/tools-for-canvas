@@ -44,7 +44,7 @@ for (const width of [1920, 1280]) {
       });
       await addCsrfCookie(context, canvas.origin);
       await page.setViewportSize({ width, height: 1100 });
-      await openCanvasPage(page, canvas.origin);
+      await openCanvasPage(page, canvas.origin, '/?fixture_course_work=second');
       if (theme === 'dark') {
         await page.evaluate(() =>
           document.querySelector('.fixture-widget-app')?.setAttribute('data-fixture-dark', ''),

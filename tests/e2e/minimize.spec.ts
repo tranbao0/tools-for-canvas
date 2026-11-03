@@ -175,7 +175,8 @@ test.describe('the minimized list', () => {
       const expanded = await mode();
       const first = await page.evaluate(() => {
         const box = document
-          .querySelector('section[data-testid^="widget-"]')
+          .querySelector('#weekrow-inpage > weekrow-list')
+          ?.shadowRoot?.querySelector('.wr')
           ?.getBoundingClientRect();
         return box ? { top: box.top, left: box.left, width: box.width } : null;
       });
@@ -191,7 +192,11 @@ test.describe('the minimized list', () => {
       expect(box.height).toBeLessThan(80);
       expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
       expect(box.x).toBeGreaterThanOrEqual(0);
-      if (expanded === 'area') {
+      if (expanded === 'slot') {
+        expect(box.y).toBeCloseTo(first?.top ?? -99, 0);
+        expect(box.x).toBeCloseTo(first?.left ?? -99, 0);
+        expect(box.width).toBeCloseTo(first?.width ?? -99, 0);
+      } else if (expanded === 'area') {
         expect(Math.abs(box.y - (first?.top ?? -99))).toBeLessThanOrEqual(1);
         expect(box.x).toBeGreaterThan((first?.left ?? 0) + (first?.width ?? 0));
       } else if (expanded === 'column') {

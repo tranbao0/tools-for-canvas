@@ -96,7 +96,7 @@ export async function openExtensionPage(page: Page, url: string): Promise<void> 
 
 /** Opens a fake Canvas page as the active tab and waits until Canvas has filled it. */
 export async function openCanvasPage(page: Page, origin: string, path = '/'): Promise<void> {
-  await page.goto(`${origin}${path}?fixture_delay_ms=0`);
+  await page.goto(`${origin}${path}${path.includes('?') ? '&' : '?'}fixture_delay_ms=0`);
   await page.bringToFront();
   await page.locator(FIXTURE_READY_SELECTOR).waitFor({ state: 'attached' });
 }

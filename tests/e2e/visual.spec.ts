@@ -218,7 +218,7 @@ interface LayoutShot {
 }
 
 const LAYOUT_SHOTS: LayoutShot[] = [
-  { name: 'widgets-area', fixture: 'dashboard-widgets', width: 1920 },
+  { name: 'widgets-slot', fixture: 'dashboard-widgets', width: 1920 },
   { name: 'widgets-column', fixture: 'dashboard-widgets', width: 1280 },
   { name: 'widgets-edit', fixture: 'dashboard-widgets', width: 1920, edit: true },
   { name: 'widgets-edit', fixture: 'dashboard-widgets', width: 1280, edit: true },
