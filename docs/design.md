@@ -2823,13 +2823,13 @@ So a student switches pages to check the rubric while submitting, or to read fee
 
 1. Built: the expand rows on the Grades page, with the read-only content (score, instructions, rubric, feedback, files).
 2. Built: the same rows on the Assignments list.
-3. "Submit" in the docked pane, and the refresh after a submission.
+3. Built: "Submit" in the docked pane, and the refresh after a submission.
 
 **Step 1 (built on feat/v1):**
 
 The Grades page now has the expand rows with the read-only content.
 Step 2 (the Assignments list) is built.
-Step 3 (Submit) is not built.
+Step 3 (Submit) is built.
 
 - **Script.**
   - The page script is `assignment-view.js`, which is its own small entry point like `dashboard.js`.
@@ -2990,3 +2990,24 @@ This row uses Backbone and Handlebars at that commit.
 The extension preserves the title link and all Canvas controls.
 The Assignments fixture follows this structure and tests replacement of the rows.
 File paths accept plain and sharded ids with strict checks on both parts.
+
+### Decision 26, step 3 (built)
+
+Submit and Re-submit open the Canvas assignment in the docked pane.
+The turn-in frame is a sibling of the extension viewer frame inside the closed shadow root on the Canvas page.
+Turn-in replaces the visible file content while open.
+Closing turn-in restores the file tabs when a file is open; otherwise it closes the pane.
+Another Submit click replaces the turn-in frame.
+Only a trusted click in the assignment panel can open it, with validated course and assignment ids on the page origin.
+The frame receives no extension channel, secret or port.
+Each trusted load after the first reads assignment details without the page-view cache.
+A change in submitted_at, workflow_state or attempt updates the row and requests the existing weekrow:refresh channel.
+Clearing student data closes the pane through the viewer reset message.
+
+These source facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
+`ApplicationController#set_layout_options` in `app/controllers/application_controller.rb` handles embedded and no_headers, not display=borderless.
+`AssignmentsController#show` in `app/controllers/assignments_controller.rb` excludes display=borderless from the current A2 student view.
+The pane therefore uses content_only=1 rather than borderless.
+`ApplicationHelper#enable_content_view_if_requested` in `app/helpers/application_helper.rb` converts content_only to a boolean.
+`app/views/layouts/application.html.erb` calls that helper and omits the global header, breadcrumbs and course navigation for content-only pages.
+The parameter does not disable the assignment student view or its submission code.

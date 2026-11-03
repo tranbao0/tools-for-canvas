@@ -403,6 +403,13 @@ export function clearViewerTabs(): Promise<void> {
       (key) => key.startsWith('viewer:') && !key.startsWith(SESSION_PREFIX),
     );
     const results = await Promise.allSettled([
+      browser.tabs.query({}).then(async (tabs) => {
+        await Promise.allSettled(
+          tabs
+            .filter((tab) => tab.id !== undefined)
+            .map(async (tab) => browser.tabs.sendMessage(tab.id!, { type: 'viewer:reset' })),
+        );
+      }),
       clearPositions(),
       keys.length > 0 ? browser.storage.session.remove(keys) : Promise.resolve(),
     ]);

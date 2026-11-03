@@ -11,6 +11,8 @@
  * pass adds a button to each row that has none. The pass ignores the changes that this code makes
  * itself. Turning the view off removes everything it added.
  */
+import { submissionChanged, turnInScope } from '../turnIn';
+import type { DataMessage } from '../../weekly-list/data/protocol';
 import { logFailure } from '../../../shared/platform/log';
 import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
@@ -32,7 +34,7 @@ export interface RowsOptions {
   origin: string;
   /** The course of the Grades page. */
   courseId: string;
-  send(message: AssignmentDetailsMessage): Promise<unknown>;
+  send(message: AssignmentDetailsMessage | DataMessage): Promise<unknown>;
   now?: () => Temporal.Instant;
   /** The theme of the panels now. It is read when a panel opens, because the page can change. */
   theme?: () => PageTheme;
@@ -179,7 +181,27 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
   function onPanelClick(state: RowState, event: Event): void {
     const target = event.target instanceof Element ? event.target.closest('[data-action]') : null;
     const action = target?.getAttribute('data-action');
-    if (action === 'retry') {
+    if (action === 'submit' && event.isTrusted) {
+      turnInScope.__toolsTurnIn?.({
+        event,
+        courseId,
+        assignmentId: state.assignmentId,
+        title: state.title,
+        async reload() {
+          const previous = await loaded.get(state.assignmentId);
+          if (!active || stopped) return;
+          loaded.delete(state.assignmentId);
+          const next = await details(state.assignmentId);
+          if (!active || stopped) return;
+          if (previous && submissionChanged(previous.details.submission, next.details.submission)) {
+            for (const row of states.values()) {
+              if (row.assignmentId === state.assignmentId && row.details) draw(row);
+            }
+            await send({ type: 'weekrow:refresh', reason: 'retry' });
+          }
+        },
+      });
+    } else if (action === 'retry') {
       draw(state);
     } else if (action === 'more' && target) {
       const body = state.panel?.querySelector('.av-instructions .av-body');
