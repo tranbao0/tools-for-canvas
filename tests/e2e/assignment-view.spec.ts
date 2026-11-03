@@ -5,11 +5,19 @@
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { Locator, Page } from '@playwright/test';
+import type { Frame, Locator, Page } from '@playwright/test';
 import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import { ASSIGNMENT_DETAILS, rawRecords } from '../fixtures/assignment-view';
+import { SCENARIO_NOW, buildScenario } from '../fixtures/scenario';
 import type { FakeCanvasRoute } from './support/fake-canvas';
-import { pane, saveSetting, waitForListLoaded } from './support/file-viewer';
+import { advanceBackgroundClock } from './support/clock';
+import {
+  closePane,
+  pane,
+  pressEscapeToClosePane,
+  saveSetting,
+  waitForListLoaded,
+} from './support/file-viewer';
 import { json, saveAddress } from './support/scenario-api';
 import { addCsrfCookie, expect, saveTools, serveScenario, test } from './support/weekrow';
 
@@ -482,115 +490,440 @@ for (const width of [1920, 1280]) {
   }
 }
 
-test('turn-in uses the docked pane and refreshes after a form redirect', async ({
-  context,
-  page,
-  background,
-}) => {
-  let submitted = false;
-  const copy = secondAssignment();
-  copy.assignment.id = '101';
-  copy.assignment.name = 'Essay';
-  copy.assignment.can_submit = true;
+const TURN_IN = '#tools-turn-in';
+const FILE_PANE = '#tools-file-viewer';
+const ASSIGNMENT = '/courses/12/assignments/101';
+const OTHER_STUDENT = '9001';
+
+/**
+ * A Canvas with a turn-in page for the Essay row. A form post is a submission of the old view:
+ * Canvas redirects to the plain assignment page, with no content_only parameter. `quiet` posts
+ * without a page load, as the new student view does. Both change the submission record.
+ */
+async function openTurnInCanvas(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  background: Parameters<typeof saveAddress>[0],
+  options: { submitted?: boolean; width?: number; extra?: FakeCanvasRoute[] } = {},
+) {
+  const state = { submitted: false };
+  const copy = details((record) => {
+    record.assignment.can_submit = true;
+    if (options.submitted === false) {
+      // The teacher graded work that the student never handed in.
+      record.submission.submitted_at = null;
+      record.submission.attempt = null;
+      record.submission.attachments = [];
+    } else {
+      record.submission.attempt = 1;
+    }
+  });
   const canvas = await open(context, page, background, {
+    width: options.width,
     extra: [
+      ...(options.extra ?? []),
       {
-        path: '/courses/12/assignments/101',
+        path: ASSIGNMENT,
         method: 'POST',
         respond: () => {
-          submitted = true;
+          state.submitted = true;
           return {
             contentType: 'text/html',
-            body: '<script>location.replace("/courses/12/assignments/101?content_only=1")</script>',
+            body: `<script>location.replace("${ASSIGNMENT}")</script>`,
           };
         },
       },
       {
-        path: '/courses/12/assignments/101',
+        path: `${ASSIGNMENT}/quiet`,
+        method: 'POST',
         respond: () => {
-          return {
-            contentType: 'text/html',
-            body: '<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>Essay</h1><p>Turn in your work.</p><form method="post"><button>Submit work</button></form></body></html>',
-          };
+          state.submitted = true;
+          return { body: '{}', contentType: 'application/json' };
         },
       },
       {
-        path: '/api/v1/courses/12/assignments/101',
-        respond: () => ({ body: json(rawRecords(copy).assignment) }),
+        path: ASSIGNMENT,
+        respond: (request) => ({
+          contentType: 'text/html',
+          body: `<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>Essay</h1><p id="mode">${
+            request.path.includes('content_only=1') ? 'slim' : 'full'
+          }</p><input id="marker" aria-label="Draft"><form method="post"><button>Submit work</button></form><button type="button" id="quiet" onclick="fetch('${ASSIGNMENT}/quiet',{method:'POST'})">Submit quietly</button></body></html>`,
+        }),
       },
       {
         path: '/api/v1/courses/12/assignments/101/submissions/self',
         respond: () => {
           const records = rawRecords(copy);
-          if (submitted)
+          if (state.submitted) {
             Object.assign(records.submission, {
               submitted_at: '2026-11-02T12:00:00Z',
               workflow_state: 'submitted',
-              attempt: 1,
+              attempt: 2,
             });
+          }
           return { body: json(records.submission) };
         },
       },
     ],
   });
-  await expand(page, canvas, 'Essay');
-  const button = region(page, 'Essay').getByRole('button', { name: 'Submit', exact: true });
-  await button.evaluate((node) => (node as HTMLButtonElement).click());
-  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
-  await button.click();
-  await expect(page.locator('#tools-file-viewer')).toBeVisible();
-  expect(
-    await page.locator('html').evaluate((node) => parseFloat(getComputedStyle(node).paddingRight)),
-  ).toBeGreaterThan(0);
+  return { canvas, state };
+}
+
+/** The Canvas frame of the turn-in pane. It sits in a closed root, so a test finds it by address. */
+async function turnInFrame(page: Page) {
+  let found: Frame | undefined;
   await expect
-    .poll(
-      () =>
-        page.frames().find((frame) => frame.url().includes('/assignments/101?content_only=1')) !==
-        undefined,
-    )
+    .poll(() => {
+      found = page.frames().find((frame) => new URL(frame.url()).pathname === ASSIGNMENT);
+      return found !== undefined;
+    })
     .toBe(true);
-  const frame = page
-    .frames()
-    .find((frame) => frame.url().includes('/assignments/101?content_only=1'))!;
-  const plannerReads = canvas.requests.filter((request) =>
-    request.path.startsWith('/api/v1/planner/items'),
-  ).length;
+  return found!;
+}
+
+const submitButton = (page: Page, name: string) =>
+  region(page, 'Essay').getByRole('button', { name, exact: true });
+
+const essayFile = (page: Page) =>
+  region(page, 'Essay').locator('.av-file-list').getByRole('link', { name: 'essay.txt' });
+
+const paddingRight = (page: Page) =>
+  page.locator('html').evaluate((node) => parseFloat(getComputedStyle(node).paddingRight));
+
+/** Clicks the Submit button of the open row with a real click, as the student does. */
+async function openTurnIn(page: Page, name: string) {
+  await submitButton(page, name).click();
+  await expect(page.locator(TURN_IN)).toBeVisible();
+  return turnInFrame(page);
+}
+
+/** Clicks the file link until the file pane opens. A click that comes early follows the link. */
+async function openFilePane(page: Page) {
+  await expect(async () => {
+    await essayFile(page).click();
+    await expect(page.locator(FILE_PANE)).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 20_000 });
+  await expect((await pane(page)).locator('pre')).toHaveText(notes);
+}
+
+/** Clicks the close button of the turn-in pane, at the right end of its first line. */
+async function closeTurnIn(page: Page) {
+  const box = (await page.locator(TURN_IN).boundingBox())!;
+  await page.mouse.click(box.x + box.width - 22, 22);
+}
+
+test('Submit says Submit for graded work that was never handed in, and Re-submit after it', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await openTurnInCanvas(context, page, background, { submitted: false });
+  await expand(page, canvas, 'Essay');
+  await expect(submitButton(page, 'Submit')).toBeVisible();
+  await expect(region(page, 'Essay').locator('.av-value').getByText('5 / 10')).toBeVisible();
+  // A click that a page script makes opens nothing.
+  await submitButton(page, 'Submit').evaluate((node) => (node as HTMLButtonElement).click());
+  await expect(page.locator(TURN_IN)).toHaveCount(0);
+  const frame = await openTurnIn(page, 'Submit');
+  await expect(frame.locator('#mode')).toHaveText('slim');
+  expect(await paddingRight(page)).toBeGreaterThan(0);
+
   await frame.getByRole('button', { name: 'Submit work' }).click();
-  await expect(
-    region(page, 'Essay').getByRole('button', { name: 'Re-submit', exact: true }),
-  ).toBeVisible();
+  await expect(submitButton(page, 'Re-submit')).toBeVisible();
   await expect(region(page, 'Essay').getByText('Submitted', { exact: true })).toBeVisible();
-  await expect(frame.getByRole('button', { name: 'Submit work' })).toBeVisible();
-  await expect
-    .poll(
-      () =>
-        canvas.requests.filter((request) => request.path.startsWith('/api/v1/planner/items'))
-          .length,
-    )
-    .toBeGreaterThan(plannerReads);
+  // The redirect went to the plain address. The pane loaded the slim address once.
+  await expect(frame.locator('#mode')).toHaveText('slim');
+  const get = (path: string) =>
+    canvas.requests.filter((request) => request.method === 'GET' && request.path === path);
+  expect(get(ASSIGNMENT)).toHaveLength(1);
+  expect(get(`${ASSIGNMENT}?content_only=1`)).toHaveLength(2);
+  // Nothing loads again afterwards.
+  await page.waitForTimeout(500);
+  expect(get(ASSIGNMENT)).toHaveLength(1);
+  expect(get(`${ASSIGNMENT}?content_only=1`)).toHaveLength(2);
   await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => window.scrollTo(0, 0));
   for (const theme of ['light', 'dark'] as const) {
     await saveSetting(background, { theme });
-    await expect(page.locator('#tools-file-viewer')).toHaveAttribute('data-theme', theme);
+    await expect(page.locator(TURN_IN)).toHaveAttribute('data-theme', theme);
     await page.screenshot({ path: path.join(DIR, `turn-in-${theme}-1280.png`) });
   }
-  await frame.getByRole('button', { name: 'Submit work' }).focus();
+});
+
+test('the turn-in header matches the file pane header', async ({ context, page, background }) => {
+  const { canvas } = await openTurnInCanvas(context, page, background);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expand(page, canvas, 'Essay');
+  const frame = await openTurnIn(page, 'Re-submit');
+  const header = await frame.evaluate(() => {
+    const root = window.frameElement!.getRootNode() as ShadowRoot;
+    const box = (selector: string) => {
+      const rect = root.querySelector(selector)!.getBoundingClientRect();
+      return { width: rect.width, height: rect.height };
+    };
+    const link = root.querySelector('a.btn') as HTMLAnchorElement;
+    const style = getComputedStyle(link);
+    return {
+      bar: box('.bar'),
+      close: box('.icon-btn'),
+      closeIcon: box('.icon-btn svg'),
+      link: box('a.btn'),
+      linkIcon: box('a.btn svg'),
+      href: link.href,
+      decoration: style.textDecorationLine,
+      border: style.borderTopWidth,
+      label: link.textContent,
+      closeName: root.querySelector('.icon-btn')!.getAttribute('aria-label'),
+    };
+  });
+  // The tab row of the file pane is 47 px high: 44 px of tab and the 3 px of its underline.
+  expect(header.bar.height).toBe(47);
+  expect(header.close).toEqual({ width: 28, height: 28 });
+  expect(header.closeIcon).toEqual({ width: 16, height: 16 });
+  expect(header.link.height).toBe(28);
+  expect(header.linkIcon).toEqual({ width: 16, height: 16 });
+  expect(header.decoration).toBe('none');
+  expect(header.border).toBe('1px');
+  expect(header.label).toBe('Open in new tab');
+  expect(header.href).toBe(new URL(ASSIGNMENT, canvas.origin).href);
+  expect(header.closeName).toBe('Close turn-in');
+  // The pane has the dock position of the file pane: full height on the right edge.
+  const box = (await page.locator(TURN_IN).boundingBox())!;
+  expect(box.x + box.width).toBe(1280);
+  expect(box.y).toBe(0);
+  expect(box.height).toBe(900);
+  expect(await paddingRight(page)).toBe(box.width);
+});
+
+test('a Canvas frame cannot reach the root of the file pane', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await openTurnInCanvas(context, page, background);
+  await expand(page, canvas, 'Essay');
+  const frame = await openTurnIn(page, 'Re-submit');
+  const probe = () =>
+    frame.evaluate(() => {
+      const root = window.frameElement!.getRootNode() as ShadowRoot;
+      return {
+        host: root.host.id,
+        viewerFrames: root.querySelectorAll('iframe[src*="viewer.html"]').length,
+        sections: [...root.querySelectorAll('section')].map((node) => node.ariaLabel),
+      };
+    });
+  const own = { host: 'tools-turn-in', viewerFrames: 0, sections: ['Turn in'] };
+  expect(await probe()).toEqual(own);
+  // A file pane has its own host, so the root that the frame reaches never holds it.
+  await openFilePane(page);
+  expect(await probe()).toEqual(own);
+});
+
+test('Escape in the frame, a synthetic Escape and a stray Escape leave the turn-in alone', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await openTurnInCanvas(context, page, background);
+  await expand(page, canvas, 'Essay');
+  const frame = await openTurnIn(page, 'Re-submit');
+  await frame.locator('#marker').fill('half a draft');
+  await frame.locator('#marker').press('Escape');
   await page.keyboard.press('Escape');
-  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
-  expect(
-    await page.locator('html').evaluate((node) => parseFloat(getComputedStyle(node).paddingRight)),
-  ).toBe(0);
-  await region(page, 'Essay').getByRole('button', { name: 'Re-submit', exact: true }).click();
+  await page.evaluate(() => {
+    for (const target of [
+      window,
+      document,
+      document.body,
+      document.querySelector('#tools-turn-in'),
+    ])
+      target?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  await page.waitForTimeout(300);
+  await expect(page.locator(TURN_IN)).toBeVisible();
+  await expect(frame.locator('#marker')).toHaveValue('half a draft');
+  expect(await paddingRight(page)).toBeGreaterThan(0);
+});
+
+test('Escape on the page leaves a file pane open, and Escape inside it closes it', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background);
+  await expand(page, canvas, 'Essay');
+  await openFilePane(page);
+  // The focus is on the page, outside the pane.
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    for (const target of [
+      window,
+      document,
+      document.body,
+      document.querySelector('#tools-file-viewer'),
+    ])
+      target?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  await page.waitForTimeout(300);
+  await expect(page.locator(FILE_PANE)).toBeVisible();
+  // The stored tabs are still there, so a new page brings the pane back.
+  await page.reload();
+  await expect(page.locator(FILE_PANE)).toBeVisible();
+  await pressEscapeToClosePane(page);
+});
+
+test('a file click hides the turn-in, and closing the file pane shows the same frame again', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await openTurnInCanvas(context, page, background);
+  await expand(page, canvas, 'Essay');
+  const frame = await openTurnIn(page, 'Re-submit');
+  await frame.locator('#marker').fill('unsent words');
+  await openFilePane(page);
+  await expect(page.locator(TURN_IN)).toBeHidden();
+  await expect(page.locator(TURN_IN)).toHaveCount(1);
+  expect(await paddingRight(page)).toBe((await page.locator(FILE_PANE).boundingBox())!.width);
+  await closePane(page);
+  await expect(page.locator(FILE_PANE)).toHaveCount(0);
+  await expect(page.locator(TURN_IN)).toBeVisible();
+  // The frame is the one from before: nothing reloaded and the typed words are still there.
+  expect(await turnInFrame(page)).toBe(frame);
+  await expect(frame.locator('#marker')).toHaveValue('unsent words');
+  expect(await paddingRight(page)).toBe((await page.locator(TURN_IN).boundingBox())!.width);
+});
+
+test('Submit while a file pane is open shows the turn-in over it, and its close button shows the file pane', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await openTurnInCanvas(context, page, background);
+  await expand(page, canvas, 'Essay');
+  await openFilePane(page);
+  await submitButton(page, 'Re-submit').click();
+  await expect(page.locator(TURN_IN)).toBeVisible();
+  await expect(page.locator(FILE_PANE)).toBeHidden();
+  await expect(page.locator(FILE_PANE)).toHaveCount(1);
+  const frame = await turnInFrame(page);
+  // A click that the frame makes is not the click of a student.
+  await frame.evaluate(() => {
+    const root = window.frameElement!.getRootNode() as ShadowRoot;
+    (root.querySelector('.icon-btn') as HTMLButtonElement).click();
+  });
+  await page.waitForTimeout(300);
+  await expect(page.locator(TURN_IN)).toBeVisible();
+  await closeTurnIn(page);
+  await expect(page.locator(TURN_IN)).toHaveCount(0);
+  await expect(page.locator(FILE_PANE)).toBeVisible();
+  await expect((await pane(page)).locator('pre')).toHaveText(notes);
+});
+
+test('the close button of the turn-in removes it and gives the padding back', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await openTurnInCanvas(context, page, background);
+  await expand(page, canvas, 'Essay');
+  await openTurnIn(page, 'Re-submit');
+  await closeTurnIn(page);
+  await expect(page.locator(TURN_IN)).toHaveCount(0);
+  expect(await paddingRight(page)).toBe(0);
+});
+
+test('a submission without a page load updates the row within one 20 second read', async ({
+  context,
+  page,
+  background,
+}) => {
+  test.setTimeout(75_000);
+  const { canvas } = await openTurnInCanvas(context, page, background, { submitted: false });
+  await expand(page, canvas, 'Essay');
+  const frame = await openTurnIn(page, 'Submit');
+  const loads = () =>
+    canvas.requests.filter((request) => request.path.startsWith(`${ASSIGNMENT}?`)).length;
+  const before = loads();
+  await frame.getByRole('button', { name: 'Submit quietly' }).click();
+  await expect(submitButton(page, 'Re-submit')).toBeVisible({ timeout: 30_000 });
+  await expect(region(page, 'Essay').getByText('Submitted', { exact: true })).toBeVisible();
+  // The frame did not load a page.
+  expect(loads()).toBe(before);
+});
+
+test('the turn-in works with the File viewer switch off', async ({ context, page, background }) => {
+  const { canvas } = await openTurnInCanvas(context, page, background);
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+  await expand(page, canvas, 'Essay');
+  const frame = await openTurnIn(page, 'Re-submit');
+  await expect(frame.locator('#mode')).toHaveText('slim');
+  expect(await paddingRight(page)).toBeGreaterThan(0);
+  await expect(page.locator(FILE_PANE)).toHaveCount(0);
+  await closeTurnIn(page);
+  await expect(page.locator(TURN_IN)).toHaveCount(0);
+  expect(await paddingRight(page)).toBe(0);
+});
+
+test('the turn-in closes when another student signs in', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const scenario = buildScenario(SCENARIO_NOW);
+  let signedIn = scenario.self.id;
+  const { canvas } = await openTurnInCanvas(context, page, background, {
+    extra: [
+      {
+        path: '/api/v1/users/self/profile',
+        respond: () => ({ body: json({ ...scenario.profile, id: signedIn }) }),
+      },
+      {
+        path: '/api/v1/users/self',
+        respond: () => ({ body: json({ ...scenario.self, id: signedIn }) }),
+      },
+    ],
+  });
+  await expand(page, canvas, 'Essay');
+  await openTurnIn(page, 'Re-submit');
+  signedIn = OTHER_STUDENT;
+  // The owner starts at most two sign-in checks in 30 seconds, so the clock moves on.
+  await advanceBackgroundClock(background, 2 * 60_000);
+  await context.addCookies([
+    {
+      name: 'canvas_session',
+      value: 'student-b',
+      url: canvas.origin,
+      secure: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  // A side panel page asks for the state, which makes the owner check the new cookie.
+  const panel = await context.newPage();
+  await panel.goto(extensionUrl('sidepanel.html'));
   await expect
     .poll(() =>
-      page.frames().some((item) => item.url().includes('/assignments/101?content_only=1')),
+      panel.evaluate(async () => {
+        const api = (
+          globalThis as unknown as {
+            chrome: {
+              runtime: {
+                sendMessage(message: unknown): Promise<{ kind: string; userId?: string }>;
+              };
+            };
+          }
+        ).chrome;
+        const reply = await api.runtime.sendMessage({
+          type: 'weekrow:get-state',
+          request: { surface: 'panel', spanOffset: 0, scopeCourseId: null },
+        });
+        return reply.kind === 'ready' ? reply.userId : reply.kind;
+      }),
     )
-    .toBe(true);
-  const reopened = page
-    .frames()
-    .find((item) => item.url().includes('/assignments/101?content_only=1'))!;
-  await reopened.getByRole('button', { name: 'Submit work' }).focus();
-  await page.keyboard.press('Shift+Tab');
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+    .toBe(OTHER_STUDENT);
+  await panel.close();
+  await expect(page.locator(TURN_IN)).toHaveCount(0);
+  expect(await paddingRight(page)).toBe(0);
 });

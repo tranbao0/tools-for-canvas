@@ -29,6 +29,7 @@ function fakeChannel(saved: string | null = ORIGIN, tools = DEFAULT_TOOLS_SETTIN
     },
     tools: {
       getValue: async () => tools,
+      setValue: async () => undefined,
       watch: (listener) => {
         toolsListener = listener;
         return () => undefined;
@@ -130,5 +131,17 @@ describe('startAssignmentView', () => {
     expect(host?.getAttribute('data-theme')).toBe('light');
     channel.setSettings({ ...DEFAULT_SETTINGS, theme: 'dark' });
     expect(host?.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('listens for a student change while it runs, and stops listening on stop', async () => {
+    const remove = vi.fn();
+    const onStudentReset = vi.fn((listener: () => void) => {
+      void listener;
+      return remove;
+    });
+    const controller = await startAssignmentView(options(fakeChannel(), { onStudentReset }));
+    expect(onStudentReset).toHaveBeenCalledOnce();
+    controller.stop();
+    expect(remove).toHaveBeenCalledOnce();
   });
 });

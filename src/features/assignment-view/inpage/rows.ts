@@ -11,7 +11,7 @@
  * pass adds a button to each row that has none. The pass ignores the changes that this code makes
  * itself. Turning the view off removes everything it added.
  */
-import { submissionChanged, turnInScope } from '../turnIn';
+import { submissionChanged } from '../turnIn';
 import type { DataMessage } from '../../weekly-list/data/protocol';
 import { logFailure } from '../../../shared/platform/log';
 import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
@@ -35,6 +35,10 @@ export interface RowsOptions {
   /** The course of the Grades page. */
   courseId: string;
   send(message: AssignmentDetailsMessage | DataMessage): Promise<unknown>;
+  /** Called when the student presses Submit or Re-submit in an open row. */
+  openTurnIn?(request: { assignmentId: string; title: string }): void;
+  /** Called when a read of the details finds the submission of another student. */
+  onOtherStudent?(): void;
   now?: () => Temporal.Instant;
   /** The theme of the panels now. It is read when a panel opens, because the page can change. */
   theme?: () => PageTheme;
@@ -45,6 +49,12 @@ export interface RowsEngine {
   setActive(active: boolean): void;
   /** Reads the theme again, after the Theme setting changed. */
   refreshTheme(): void;
+  /**
+   * Reads the details of an assignment again, after a submission may have happened. A change of the
+   * submission draws the open rows again and asks the weekly list to refresh. A failed read leaves
+   * the details as they are and rejects.
+   */
+  reload(assignmentId: string): Promise<void>;
   /** Removes everything and stops. */
   stop(): void;
 }
@@ -181,31 +191,10 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
   function onPanelClick(state: RowState, event: Event): void {
     const target = event.target instanceof Element ? event.target.closest('[data-action]') : null;
     const action = target?.getAttribute('data-action');
-    if (action === 'submit' && event.isTrusted) {
-      turnInScope.__toolsTurnIn?.({
-        event,
-        courseId,
-        assignmentId: state.assignmentId,
-        title: state.title,
-        async reload() {
-          const previous = await loaded.get(state.assignmentId);
-          if (!active || stopped) return;
-          loaded.delete(state.assignmentId);
-          const next = await details(state.assignmentId).catch((error: unknown) => {
-            if (active && !stopped && previous && !loaded.has(state.assignmentId)) {
-              loaded.set(state.assignmentId, Promise.resolve(previous));
-            }
-            throw error;
-          });
-          if (!active || stopped) return;
-          if (previous && submissionChanged(previous.details.submission, next.details.submission)) {
-            for (const row of states.values()) {
-              if (row.assignmentId === state.assignmentId && row.details) draw(row);
-            }
-            await send({ type: 'weekrow:refresh', reason: 'retry' });
-          }
-        },
-      });
+    if (action === 'submit') {
+      // A page script can click the button, but only the student opens the turn-in.
+      if (event.isTrusted)
+        options.openTurnIn?.({ assignmentId: state.assignmentId, title: state.title });
     } else if (action === 'retry') {
       draw(state);
     } else if (action === 'more' && target) {
@@ -378,6 +367,29 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
     },
     refreshTheme() {
       for (const state of states.values()) state.host?.setAttribute('data-theme', theme());
+    },
+    async reload(assignmentId) {
+      const previous = await loaded.get(assignmentId);
+      if (!active || stopped) return;
+      loaded.delete(assignmentId);
+      const next = await details(assignmentId).catch((error: unknown) => {
+        if (active && !stopped && previous && !loaded.has(assignmentId)) {
+          loaded.set(assignmentId, Promise.resolve(previous));
+        }
+        throw error;
+      });
+      if (!active || stopped) return;
+      if (previous && previous.details.submission.user_id !== next.details.submission.user_id) {
+        options.onOtherStudent?.();
+        return;
+      }
+      if (previous && submissionChanged(previous.details.submission, next.details.submission)) {
+        for (const row of states.values()) {
+          if (row.assignmentId === assignmentId && row.details) draw(row);
+        }
+        // The visible refresh keeps the Canvas rate limit and the backoff of the weekly list.
+        await send({ type: 'weekrow:refresh', reason: 'visible' });
+      }
     },
     stop() {
       if (stopped) return;

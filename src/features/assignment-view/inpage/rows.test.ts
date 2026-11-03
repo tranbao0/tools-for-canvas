@@ -291,3 +291,84 @@ describe('turning the view off', () => {
     expect(document.querySelector('[data-av-own]')).toBeNull();
   });
 });
+
+describe('Submit and the read after a submission', () => {
+  it('opens the turn-in only for a trusted click', async () => {
+    const openTurnIn = vi.fn();
+    engine = createRowsEngine({
+      doc: document,
+      origin: ORIGIN,
+      courseId: '12',
+      send,
+      now: () => NOW,
+      openTurnIn,
+    });
+    engine.setActive(true);
+    button('101').click();
+    await settle();
+    const submit = shadow('101')!.querySelector<HTMLButtonElement>('[data-action=submit]')!;
+    expect(submit.textContent).toBe('Re-submit');
+    submit.click();
+    expect(openTurnIn).not.toHaveBeenCalled();
+  });
+
+  async function open(change: (details: typeof ASSIGNMENT_DETAILS) => void) {
+    let current = reply('101');
+    send = vi.fn(async (message) =>
+      message.type === 'assignment:details' ? current : { ok: true },
+    ) as typeof send;
+    const onOtherStudent = vi.fn();
+    engine = createRowsEngine({
+      doc: document,
+      origin: ORIGIN,
+      courseId: '12',
+      send,
+      now: () => NOW,
+      onOtherStudent,
+    });
+    engine.setActive(true);
+    button('101').click();
+    await settle();
+    current = reply('101', change);
+    return { onOtherStudent };
+  }
+
+  it('draws the row again and asks for a visible refresh when the submission changed', async () => {
+    await open((details) => {
+      details.submission.attempt = 2;
+      details.submission.submitted_at = '2026-11-02T12:00:00Z';
+    });
+    await engine.reload('101');
+    await settle();
+    expect(send).toHaveBeenCalledWith({ type: 'weekrow:refresh', reason: 'visible' });
+    expect(send).not.toHaveBeenCalledWith({ type: 'weekrow:refresh', reason: 'retry' });
+  });
+
+  it('asks for no refresh when the submission is the same', async () => {
+    await open((details) => {
+      details.submission.score = 9;
+    });
+    await engine.reload('101');
+    expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'weekrow:refresh' }));
+  });
+
+  it('tells when the details belong to another student', async () => {
+    const { onOtherStudent } = await open((details) => {
+      details.submission.user_id = '43';
+    });
+    await engine.reload('101');
+    expect(onOtherStudent).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'weekrow:refresh' }));
+  });
+
+  it('keeps the details and rejects when the read fails', async () => {
+    await open(() => undefined);
+    const ok = send.getMockImplementation()!;
+    send.mockImplementationOnce(async () => {
+      throw new Error('down');
+    });
+    await expect(engine.reload('101')).rejects.toThrow('down');
+    send.mockImplementation(ok);
+    expect(shadow('101')?.querySelector('.av-actions')).not.toBeNull();
+  });
+});

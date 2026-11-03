@@ -68,13 +68,7 @@ export async function injectInpage(
   await browser.scripting.executeScript({
     target:
       documentId === undefined ? { tabId, frameIds: [0] } : { tabId, documentIds: [documentId] },
-    files: [
-      ...pageScripts(tab.url),
-      ...(tools.fileViewer ||
-      (tools.assignmentView && GRADES_PATH.test(parseUrl(tab.url)?.pathname ?? ''))
-        ? (['/viewer.js'] as const)
-        : []),
-    ],
+    files: [...pageScripts(tab.url), ...(tools.fileViewer ? (['/viewer.js'] as const) : [])],
   });
 }
 
