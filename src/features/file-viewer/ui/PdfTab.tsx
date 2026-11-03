@@ -137,7 +137,7 @@ export function PdfTab(props: {
     console.error(details.report);
     setPhase({ kind: 'error', failure, details });
   };
-  const [pageDetails, setPageDetails] = useState('');
+  const [pageDetails, setPageDetails] = useState<{ reason: string; report: string } | null>(null);
   const [copyStatus, setCopyStatus] = useState('');
   const started = useRef(false);
   if (props.active) started.current = true;
@@ -150,7 +150,7 @@ export function PdfTab(props: {
     let live = true;
     let byteLength = 0;
     const abort = new AbortController();
-    setPageDetails('');
+    setPageDetails(null);
     setPhase({ kind: 'reading', loaded: 0, total: null });
     // The library loads while the bytes download.
     const library = host.loadPdfjs();
@@ -245,12 +245,13 @@ export function PdfTab(props: {
         </div>
       )}
       {phase.kind === 'viewer' && pageDetails && (
-        <div role="status">
+        <div class="pv-page-issue" role="status" data-part="pdf-page-issue">
+          <span>{pageDetails.reason}</span>
           <button
             type="button"
             class="wr-btn"
             onClick={() => {
-              void navigator.clipboard.writeText(pageDetails).then(
+              void navigator.clipboard.writeText(pageDetails.report).then(
                 () => setCopyStatus(t('pdfDetailsCopied')),
                 () => setCopyStatus(t('pdfDetailsCopyFailed')),
               );
@@ -278,7 +279,7 @@ export function PdfTab(props: {
               navigator.userAgent,
             );
             console.error(details.report);
-            setPageDetails(details.report);
+            setPageDetails({ reason: details.reason, report: details.report });
           }}
         />
       )}

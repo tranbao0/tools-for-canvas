@@ -41,6 +41,31 @@ describe('message shape', () => {
   ])('removes private spans: %s', (message) => {
     expect(messageShape(message)).toBe('[removed]');
   });
+  it.each([
+    ['Worker was terminated', 'Worker was terminated'],
+    [
+      "Cannot read properties of undefined (reading 'getContext')",
+      'Cannot read properties of undefined ([removed] [removed])',
+    ],
+    ['TypeError: ctx is null', 'TypeError: [removed] is null'],
+    ['out of memory', 'out of memory'],
+  ])('keeps engine words: %s', (message, shape) => {
+    expect(messageShape(message)).toBe(shape);
+  });
+  it('cuts a long input before the rules run', () => {
+    const started = performance.now();
+    expect(messageShape('a:'.repeat(40_000)).length).toBeLessThanOrEqual(80);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+  it.each([
+    ['too large', new FileBytesError('too_large', 'x'), false],
+    ['a password', { name: 'PasswordException' }, false],
+    ['a damaged file', { name: 'InvalidPDFException' }, false],
+    ['a sign-in page', new FileBytesError('not_a_file', 'x'), true],
+    ['a blocked origin', new FileBytesError('origin_blocked', 'x'), true],
+  ])('offers Retry for %s: %s', (_label, error, retry) => {
+    expect(pdfDetails(error, 'fetch', 0, '1', 'test').retry).toBe(retry);
+  });
   it('keeps useful words without leaking arbitrary text', () => {
     expect(messageShape('Invalid PDF structure. https://school.test/?token=secret')).toBe(
       'Invalid PDF structure. [removed]',
@@ -58,7 +83,8 @@ describe('failure reasons', () => {
       'test',
     );
     expect(details.reason).toBe(`Canvas answered with an error (${status})`);
-    expect(details.retry).toBe(status === 500);
+    // A new read can get a fresh redirect or a new session, so every HTTP error offers Retry.
+    expect(details.retry).toBe(true);
     expect(details.report).toContain(`HTTP status: ${status}`);
     expect(details.report).not.toMatch(/private|token=|https:/);
   });
