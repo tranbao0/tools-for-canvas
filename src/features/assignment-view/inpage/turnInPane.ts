@@ -99,6 +99,18 @@ export function createTurnInPane(options: TurnInPaneOptions): TurnInPane {
   let observer: MutationObserver | undefined;
   let stopped = false;
 
+  // One read at a time and one waiting for an assignment, whatever asks for it. A read that a
+  // close starts joins the reads of a turn-in that opens at once.
+  const readers = new Map<string, () => Promise<void>>();
+  const reader = (assignmentId: string): (() => Promise<void>) => {
+    let read = readers.get(assignmentId);
+    if (!read) {
+      read = createCoalescer(() => options.reload(assignmentId));
+      readers.set(assignmentId, read);
+    }
+    return read;
+  };
+
   /** The pane shows while a turn-in is open and no file pane covers it. */
   const sync = (): void => {
     if (!dock || !current) return;
@@ -134,8 +146,7 @@ export function createTurnInPane(options: TurnInPaneOptions): TurnInPane {
     frame.title = `Turn in ${request.title}`;
     frame.style.background = '#fff';
 
-    // One read at a time and one waiting, whatever asks for it.
-    const read = createCoalescer(() => options.reload(request.assignmentId));
+    const read = reader(request.assignmentId);
     let loads = 0;
     // The old submission view redirects to the plain assignment page. The frame then loads the
     // slim address once. The load after that one never loads it again, so a page that keeps

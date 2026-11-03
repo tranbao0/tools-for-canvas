@@ -111,9 +111,10 @@ export async function startAssignmentView(
   let saved: string | null = null;
   let enabled = false;
   const apply = (): void => {
-    const show = !stopped && enabled && saved === origin;
-    rows.setActive(show);
-    if (!show) turnIn.reset();
+    // An open turn-in may hold unsent work, so a switch or an address that a failed read made
+    // unknown never closes it. A change of student, a sign-out and a new address do, through
+    // `onStudentReset`.
+    rows.setActive(!stopped && enabled && saved === origin);
   };
   const follow = (next: Settings): void => {
     settings = next;

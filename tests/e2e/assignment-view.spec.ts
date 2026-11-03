@@ -641,13 +641,6 @@ test('Submit says Submit for graded work that was never handed in, and Re-submit
   await page.waitForTimeout(500);
   expect(get(ASSIGNMENT)).toHaveLength(1);
   expect(get(`${ASSIGNMENT}?content_only=1`)).toHaveLength(2);
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.evaluate(() => window.scrollTo(0, 0));
-  for (const theme of ['light', 'dark'] as const) {
-    await saveSetting(background, { theme });
-    await expect(page.locator(TURN_IN)).toHaveAttribute('data-theme', theme);
-    await page.screenshot({ path: path.join(DIR, `turn-in-${theme}-1280.png`) });
-  }
 });
 
 test('the turn-in header matches the file pane header', async ({ context, page, background }) => {
@@ -693,6 +686,14 @@ test('the turn-in header matches the file pane header', async ({ context, page, 
   expect(box.y).toBe(0);
   expect(box.height).toBe(900);
   expect(await paddingRight(page)).toBe(box.width);
+  // The open row and its table row agree: 5 / 10, submitted on Nov 1.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  for (const theme of ['light', 'dark'] as const) {
+    await saveSetting(background, { theme });
+    await expect(page.locator(TURN_IN)).toHaveAttribute('data-theme', theme);
+    await page.screenshot({ path: path.join(DIR, `turn-in-${theme}-1280.png`) });
+  }
 });
 
 test('a Canvas frame cannot reach the root of the file pane', async ({
@@ -926,4 +927,31 @@ test('the turn-in closes when another student signs in', async ({
   await panel.close();
   await expect(page.locator(TURN_IN)).toHaveCount(0);
   expect(await paddingRight(page)).toBe(0);
+});
+
+test('closing the turn-in reads the details at once', async ({ context, page, background }) => {
+  const { canvas } = await openTurnInCanvas(context, page, background, { submitted: false });
+  await expand(page, canvas, 'Essay');
+  const frame = await openTurnIn(page, 'Submit');
+  await frame.getByRole('button', { name: 'Submit quietly' }).click();
+  await closeTurnIn(page);
+  // The 20 second read has not come yet, so the read of the close shows the submission.
+  await expect(submitButton(page, 'Re-submit')).toBeVisible({ timeout: 8000 });
+  await expect(region(page, 'Essay').getByText('Submitted', { exact: true })).toBeVisible();
+});
+
+test('turning the assignment view off keeps an open turn-in and its unsent work', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await openTurnInCanvas(context, page, background);
+  await expand(page, canvas, 'Essay');
+  const frame = await openTurnIn(page, 'Re-submit');
+  await frame.locator('#marker').fill('unsent words');
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  await expect(page.locator('[data-av-toggle]')).toHaveCount(0);
+  await page.waitForTimeout(500);
+  await expect(page.locator(TURN_IN)).toBeVisible();
+  await expect(frame.locator('#marker')).toHaveValue('unsent words');
 });

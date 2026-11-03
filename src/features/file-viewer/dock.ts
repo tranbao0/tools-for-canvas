@@ -117,7 +117,8 @@ export function createDock(options: DockOptions): Dock {
   const host = doc.createElement('div');
   host.id = options.id;
   host.style.cssText = 'position:fixed;right:0;top:0;height:100vh;z-index:2147483647;';
-  // A closed root keeps a script of the Canvas page from reaching the frame element.
+  // A closed root keeps a script of the Canvas page from reaching the frame element. A frame of the
+  // Canvas origin inside the root still reaches the root, so such a frame belongs in a root of its own.
   const root = host.attachShadow({ mode: 'closed' });
   const style = doc.createElement('style');
   style.textContent = DOCK_CSS;
