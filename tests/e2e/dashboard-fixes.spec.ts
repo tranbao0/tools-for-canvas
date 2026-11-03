@@ -100,9 +100,14 @@ async function rerender(page: Page): Promise<void> {
     const step = document.querySelector('template[data-fixture-step]');
     const target = document.querySelector(step?.getAttribute('data-target') ?? '');
     if (step && target) {
-      const slot = document
-        .querySelector('[data-testid="widget-container-course_work-widget-first"]')
-        ?.cloneNode(true);
+      const first = document.querySelector(
+        '[data-testid="widget-container-course_work-widget-first"]',
+      );
+      const slot = first
+        ? (window as unknown as { fixtureFreshClone(node: Element): Element }).fixtureFreshClone(
+            first,
+          )
+        : null;
       target.innerHTML = step.innerHTML;
       if (slot)
         target

@@ -330,7 +330,11 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     Wait for the status filter or retry button before measuring the section's border-box height once, with a minimum of 420 px.
     Keep that height for the page view through redraws, refetches and window resizing.
     After ten seconds without settled data, use the slot with the viewport height rule.
-    In Customize dashboard, restore the widget and hide the card until Save or Cancel.
+    A slot that first shows up unsettled after those ten seconds, such as on the Dashboard tab after the Courses tab, has its own ten seconds: the card stays hidden until the slot settles or that wait ends.
+    Before the first measurement, the card also waits until the Course work extras are gone from the claimed widget, within the same ten seconds.
+    In Customize dashboard, restore the widget and hide the card until Save or Cancel, only when a slot is in use.
+    With no slot, the card keeps its place beside the grid or above it in Customize dashboard.
+    When Customize dashboard ends, the card takes the slot, and the wrapper is hidden, in the same frame, and the card keeps its scroll position.
     Follow the widget's new position and reuse the measured height.
     Minimize to the header in the same flow, with no reserved space.
     Release restores the wrapper's inline styles and removes its marker.

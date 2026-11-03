@@ -51,18 +51,27 @@ function readRecord(element: HTMLElement): StyleRecord {
 
 /**
  * Sets inline styles with `!important`. The attribute records what each property held before,
- * so `clearInlineStyles` gives the page its own inline values back.
+ * so `clearInlineStyles` gives the page its own inline values back. A property that already
+ * holds the value is not written again, so a pass that changes nothing makes no mutation record.
  */
 export function setInlineStyles(element: HTMLElement, styles: Record<string, string>): void {
   const record = readRecord(element);
+  let recorded = false;
   for (const [name, value] of Object.entries(styles)) {
-    record[name] ??= [
-      element.style.getPropertyValue(name),
-      element.style.getPropertyPriority(name),
-    ];
-    element.style.setProperty(name, value, 'important');
+    if (record[name] === undefined) {
+      record[name] = [
+        element.style.getPropertyValue(name),
+        element.style.getPropertyPriority(name),
+      ];
+      recorded = true;
+    }
+    if (
+      element.style.getPropertyValue(name) !== value ||
+      element.style.getPropertyPriority(name) !== 'important'
+    )
+      element.style.setProperty(name, value, 'important');
   }
-  element.setAttribute(STYLED_ATTRIBUTE, JSON.stringify(record));
+  if (recorded) element.setAttribute(STYLED_ATTRIBUTE, JSON.stringify(record));
 }
 
 /** Gives back the inline styles that `setInlineStyles` replaced, and removes the record. */
