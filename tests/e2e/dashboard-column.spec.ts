@@ -127,12 +127,12 @@ async function openPage(
 ): Promise<void> {
   const { canvas } = await serveScenario(context, [{ path: '/', page: pageName }]);
   await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
-  await openCanvasPage(page, canvas.origin);
+  await openCanvasPage(page, canvas.origin, '/?fixture_course_work=none');
   await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
   await settledList(page);
 }
 
-test.describe('the widget dashboard', () => {
+test.describe('the widget dashboard without Course work', () => {
   for (const width of [2088, 1920, 1760, 1600, 1440, 1280]) {
     test(`keeps Canvas intact at ${width} px through tab changes`, async ({ context, page }) => {
       await openPage(context, page, 'dashboard-widgets', width);
@@ -146,7 +146,7 @@ test.describe('the widget dashboard', () => {
       ]);
       const baseline = await baselineContext.newPage();
       await baseline.setViewportSize({ width, height: VIEWPORT_HEIGHT });
-      await openCanvasPage(baseline, canvas.origin);
+      await openCanvasPage(baseline, canvas.origin, '/?fixture_course_work=none');
       const before = await Promise.all(
         selectors.map(async (css) => (await boxes(baseline, css))[0]!),
       );
@@ -287,7 +287,7 @@ for (const width of [2088, 1760, 1280]) {
     await page.setViewportSize({ width, height: 800 });
     await auditPlacement(page);
     // Canvas draws the grid 4.5 s after the page loads, later than the old 3 s deadline.
-    await page.goto(`${canvas.origin}/?fixture_delay_ms=4500`);
+    await page.goto(`${canvas.origin}/?fixture_course_work=none&fixture_delay_ms=4500`);
     await page.bringToFront();
     await expect(page.locator('html')).toHaveAttribute('data-fixture-ready', 'true', {
       timeout: 20000,
@@ -337,7 +337,7 @@ test.describe('when the grid arrives after the wait', () => {
       await page.setViewportSize({ width, height: 800 });
       await auditPlacement(page);
       // The wait is 10 s and starts a moment after the page loads. Canvas draws the grid after 14 s.
-      await page.goto(`${canvas.origin}/?fixture_delay_ms=14000`);
+      await page.goto(`${canvas.origin}/?fixture_course_work=none&fixture_delay_ms=14000`);
       await page.bringToFront();
       await expect(page.locator('[data-testid="widget-columns"]')).toHaveCount(1, {
         timeout: 40000,

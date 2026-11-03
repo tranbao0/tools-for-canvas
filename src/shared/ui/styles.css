@@ -143,6 +143,10 @@
   overflow: hidden auto;
 }
 
+:host([data-panel='slot']) .wr[data-surface='inpage'] {
+  height: var(--wr-slot-height, max(420px, min(100vh - 48px, 760px)));
+}
+
 .wr[data-surface='inpage'] > * {
   flex: none;
 }

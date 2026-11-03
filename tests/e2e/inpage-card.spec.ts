@@ -28,6 +28,14 @@ function limit(windowHeight: number): number {
   return Math.max(420, Math.min(windowHeight - 48, 760));
 }
 
+async function slotHeight(page: Page): Promise<number> {
+  return page
+    .locator('#weekrow-inpage')
+    .evaluate((node) =>
+      parseFloat((node as HTMLElement).style.getPropertyValue('--wr-slot-height')),
+    );
+}
+
 async function open(
   context: Parameters<typeof serveScenario>[0],
   page: Page,
@@ -479,7 +487,7 @@ test.describe('the full list in the card', () => {
           document.querySelector('#weekrow-inpage > weekrow-list')?.getAttribute('data-panel'),
         ),
       )
-      .toBe('stack');
+      .toBe('slot');
     await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBe(120);
     await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'true');
   });
@@ -527,7 +535,7 @@ test.describe('the full list in the card', () => {
   });
 
   for (const windowHeight of [700, 1000]) {
-    test(`has a height of the window minus 48 px, at most 760 px and at least 420 px, in a ${windowHeight} px window`, async ({
+    test(`keeps the measured slot height in a ${windowHeight} px window`, async ({
       context,
       page,
       background,
@@ -535,13 +543,13 @@ test.describe('the full list in the card', () => {
       await open(context, page, background, { height: windowHeight });
       const full = await cardBox(page);
       // A Month span has more work than the card holds, so the card is as tall as its limit.
-      expect(full.card.height).toBeCloseTo(limit(windowHeight), 0);
+      expect(full.card.height).toBeCloseTo(await slotHeight(page), 0);
     });
   }
 
-  test('keeps 420 px in a low window', async ({ context, page, background }) => {
+  test('keeps the measured slot height in a low window', async ({ context, page, background }) => {
     await open(context, page, background, { height: 400 });
-    expect((await cardBox(page)).card.height).toBeCloseTo(420, 0);
+    expect((await cardBox(page)).card.height).toBeCloseTo(await slotHeight(page), 0);
   });
 
   test('keeps its fixed height when the content is short', async ({
@@ -556,7 +564,7 @@ test.describe('the full list in the card', () => {
     });
     const card = await cardBox(page);
     // The card keeps its size from span to span, so a short list leaves room at the bottom.
-    expect(card.card.height).toBeCloseTo(limit(1000), 0);
+    expect(card.card.height).toBeCloseTo(await slotHeight(page), 0);
   });
 
   test('keeps the scroll position over the settings, and starts a new span at the top', async ({
@@ -636,7 +644,7 @@ test.describe('the list in other places', () => {
     });
   }
 
-  test('keeps the scroll position when the card moves from the free area above the tab content', async ({
+  test('keeps the scroll position when the slot column resizes', async ({
     context,
     page,
     background,
@@ -653,7 +661,7 @@ test.describe('the list in other places', () => {
           document.querySelector('#weekrow-inpage > weekrow-list')?.getAttribute('data-panel'),
         ),
       )
-      .toBe('stack');
+      .toBe('slot');
     await expect.poll(async () => (await cardBox(page)).scroll.top).toBe(300);
   });
 
@@ -674,7 +682,7 @@ test.describe('the list in other places', () => {
             .querySelector('#weekrow-inpage > weekrow-list')
             ?.shadowRoot?.querySelector('.wr')
             ?.getBoundingClientRect();
-          return column && card ? card.left >= column.right - 1 : false;
+          return column && card ? card.right <= column.left + 1 : false;
         });
         return result;
       })

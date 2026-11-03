@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
+import { releaseLayout } from './layout';
+import { REPLACED_ATTRIBUTE } from '../../../shared/canvas/widgetDashboard';
 import { clearInlineStyles, setInlineStyles, STYLED_ATTRIBUTE } from './placement';
 
 describe('inline styles of the layout', () => {
@@ -36,4 +38,18 @@ describe('inline styles of the layout', () => {
     expect(() => clearInlineStyles(element)).not.toThrow();
     expect(element.hasAttribute(STYLED_ATTRIBUTE)).toBe(false);
   });
+});
+
+it('release restores a replaced widget and removes its marker', () => {
+  const wrapper = document.createElement('div');
+  wrapper.style.display = 'flex';
+  wrapper.setAttribute(REPLACED_ATTRIBUTE, '');
+  document.body.append(wrapper);
+  setInlineStyles(wrapper, { visibility: 'hidden', display: 'none' });
+  releaseLayout(document);
+  expect(wrapper.style.display).toBe('flex');
+  expect(wrapper.style.visibility).toBe('');
+  expect(wrapper.hasAttribute(REPLACED_ATTRIBUTE)).toBe(false);
+  expect(wrapper.hasAttribute(STYLED_ATTRIBUTE)).toBe(false);
+  wrapper.remove();
 });

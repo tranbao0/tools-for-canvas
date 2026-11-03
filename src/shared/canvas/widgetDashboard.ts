@@ -4,9 +4,9 @@
  *
  * The widget dashboard is a React package (`@instructure/platform-widget-dashboard`) that has
  * only test ids, no stable classes, and its markup changes with its releases. The placement of
- * the list beside the grid depends on these anchors. When Canvas changes its markup, this is the
- * one file to edit. The layout takes the free area beside the content, or the stack above it,
- * when the anchors are missing.
+ * the list in the Course work slot or beside the grid depends on these anchors. When Canvas changes
+ * its markup, this is the one file to edit. The layout takes the free area beside the content, or
+ * the stack above it, when the anchors are missing.
  *
  * As of package version 16.2.0, in `WidgetGrid`:
  * - `[data-testid="widget-columns"]` is a flex container with the columns as its children. On a
@@ -24,6 +24,14 @@
  * the finders at the end of this file. As of package version 16.2.0:
  * - Every widget is `section[data-testid="widget-<id>"]` (`TemplateWidget`). An added widget has
  *   another id than the default one, so the finders start from the test ids inside the content.
+ * - Slot ids are `course-work-widget` and `course-work-combined-widget`, or added ids
+ *   `course_work-widget-<uuid>` and `course_work_combined-widget-<uuid>`.
+ *   Summary ids `course-work-summary-widget` and `course_work_summary-widget-<uuid>` are excluded.
+ *   Added ids use `${type}-widget-${crypto.randomUUID()}`. Sections use `widget-<id>` and
+ *   wrappers use `widget-container-<id>`. A loading section has only a 400px spinner.
+ *   A settled section has the status filter or `<id>-retry-button` on error.
+ *   Only the combined empty message has a test id. Section margins are x-small (8px) or zero;
+ *   placement copies the computed margin.
  * - Course work (`CourseWorkWidget` and `CourseWorkCombinedWidget`): an item is
  *   `[data-testid="listed-course-work-item-<assignment id>"]`. It holds the link
  *   `course-work-item-link-<id>`, the icon box (the parent of the span that wraps the
@@ -40,6 +48,43 @@
  *   `-link`. The toggle shows `hide-all-grades-checkbox` while grades show and
  *   `show-all-grades-checkbox` while they are hidden.
  */
+
+/** The wrapper of the Course work widget that the weekly card replaces. */
+export const REPLACED_ATTRIBUTE = 'data-weekrow-replaced';
+
+export interface CourseWorkSlot {
+  widget: HTMLElement;
+  wrapper: HTMLElement;
+  loaded: boolean;
+}
+
+/** The first single or combined Course work widget, including its loading and error states. */
+export function findCourseWorkSlot(doc: Document): CourseWorkSlot | null {
+  for (const widget of doc.querySelectorAll<HTMLElement>('section[data-testid^="widget-"]')) {
+    const id = widget.getAttribute('data-testid')!.slice('widget-'.length);
+    if (
+      id !== 'course-work-widget' &&
+      id !== 'course-work-combined-widget' &&
+      !id.startsWith('course_work-widget-') &&
+      !id.startsWith('course_work_combined-widget-')
+    )
+      continue;
+    const wrapper = widget.closest<HTMLElement>('div[data-testid^="widget-container-"]');
+    if (wrapper?.getAttribute('data-testid') !== `widget-container-${id}`) continue;
+    const loaded =
+      widget.querySelector('[data-testid="submission-status-filter-select"]') !== null ||
+      [...widget.querySelectorAll('[data-testid]')].some(
+        (node) => node.getAttribute('data-testid') === `${id}-retry-button`,
+      );
+    return { widget, wrapper, loaded };
+  }
+  return null;
+}
+
+/** Whether the weekly card owns the widget's wrapper. */
+export function isReplacedWidget(element: Element): boolean {
+  return element.closest(`[${REPLACED_ATTRIBUTE}]`) !== null;
+}
 
 const COLUMNS = '[data-testid="widget-columns"]';
 const COLUMN_PREFIX = 'widget-column-';

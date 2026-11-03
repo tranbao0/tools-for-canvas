@@ -1,4 +1,4 @@
-/** Places the weekly card beside widget tabs or above their content without changing Canvas sizes. */
+/** Places the weekly card in the Course work slot, or beside or above the widget content. */
 import { MOUNT_CONTAINER_ID } from './adapters';
 import {
   AREA_MAX_PX,
@@ -7,6 +7,8 @@ import {
   SENTINEL_ID,
   SPACER_ID,
   clearAllInlineStyles,
+  clearInlineStyles,
+  setInlineStyles,
   keepCardScroll,
   moveContainer,
   restoreScrollPositions,
@@ -16,6 +18,9 @@ import {
 } from './placement';
 import {
   findWidgetGrid,
+  findCourseWorkSlot,
+  inEditMode,
+  REPLACED_ATTRIBUTE,
   findDashboardPanel,
   type WidgetGrid,
 } from '../../../shared/canvas/widgetDashboard';
@@ -29,9 +34,10 @@ export const GRID_WAIT_MS = 10_000;
 
 export interface LayoutOptions {
   /**
-   * The page is the widget dashboard. The card then stays hidden until the widget grid exists, or
-   * until `GRID_WAIT_MS` pass. The grid decides the position and the mode, and the fallback of the
-   * content column differs from it, so a card placed before the grid would jump when it arrives.
+   * The page is the widget dashboard. The card stays hidden until the slot settles, a grid
+   * without a slot exists, or `GRID_WAIT_MS` pass. The slot or the grid decides the position and
+   * the mode, and the fallback of the content column differs from them, so a card placed before
+   * they arrive would jump.
    */
   waitForGrid?: boolean;
 }
@@ -96,6 +102,16 @@ export function claimDashboardLayout(
   const positions = new Map<string, number>();
   let scrollRoot: ShadowRoot | null = null;
   let detached = false;
+  let slotHeight: number | null = null;
+  let slotUsed = false;
+
+  function giveWidgetsBack(except?: HTMLElement): void {
+    for (const wrapper of doc.querySelectorAll<HTMLElement>(`[${REPLACED_ATTRIBUTE}]`)) {
+      if (wrapper === except) continue;
+      clearInlineStyles(wrapper);
+      wrapper.removeAttribute(REPLACED_ATTRIBUTE);
+    }
+  }
 
   const sameKey = (a: unknown[], b: unknown[]): boolean =>
     a.length === b.length && a.every((value, index) => value === b[index]);
@@ -149,6 +165,24 @@ export function claimDashboardLayout(
 
   /** Places the card beside the tab panel or in the flow above it. */
   function arrangeWidget(grid: WidgetGrid | null, viewportWidth: number): void {
+    const slot = findCourseWorkSlot(doc);
+    if (slot?.wrapper.parentElement) {
+      slot.wrapper.setAttribute(REPLACED_ATTRIBUTE, '');
+      setInlineStyles(slot.wrapper, { visibility: 'hidden' });
+      if (!slotUsed && slot.loaded)
+        slotHeight = Math.max(420, slot.widget.getBoundingClientRect().height);
+      slotUsed = true;
+      const margin = view.getComputedStyle(slot.widget).margin;
+      setInlineStyles(slot.wrapper, { display: 'none' });
+      moveContainer(container, slot.wrapper.parentElement, slot.wrapper);
+      setContainerStyle(
+        container,
+        `margin:${margin};min-width:0;${slotHeight === null ? '' : `--wr-slot-height:${slotHeight}px`}`,
+      );
+      setPanelMode(container, 'slot');
+      return;
+    }
+    giveWidgetsBack();
     const content = doc.getElementById('content');
     const panel = findDashboardPanel(doc) ?? grid?.columns ?? content;
     if (!panel?.parentElement) return;
@@ -200,7 +234,24 @@ export function claimDashboardLayout(
 
   function place(force: boolean): void {
     const grid = findWidgetGrid(doc);
-    if (grid) endWait();
+    const slot = findCourseWorkSlot(doc);
+    if (inEditMode(doc)) {
+      giveWidgetsBack();
+      setContainerStyle(container, 'display:none');
+      applied = [];
+      return;
+    }
+    giveWidgetsBack(slot?.wrapper);
+    if (slot !== null) {
+      slot.wrapper.setAttribute(REPLACED_ATTRIBUTE, '');
+      setInlineStyles(slot.wrapper, { visibility: 'hidden' });
+    }
+    if (slot?.loaded || (grid && slot === null)) endWait();
+    // The fixes remove their extra section after the wrapper is claimed.
+    if (slot?.widget.querySelector('[data-wr-extra]')) {
+      setContainerStyle(container, 'display:none');
+      return;
+    }
     if (waiting) {
       setContainerStyle(container, 'display:none');
       return;
@@ -218,6 +269,10 @@ export function claimDashboardLayout(
   function keyOf(grid: WidgetGrid | null): unknown[] {
     return [
       grid?.columns,
+      findCourseWorkSlot(doc)?.wrapper,
+      findCourseWorkSlot(doc)?.widget,
+      findCourseWorkSlot(doc)?.loaded,
+      inEditMode(doc),
       ...(grid?.firstCards ?? []),
       findDashboardPanel(doc),
       doc.getElementById('content'),
@@ -308,7 +363,7 @@ export function claimDashboardLayout(
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['class', 'hidden', 'aria-selected', LAYOUT_ATTRIBUTE],
+    attributeFilter: ['class', 'hidden', 'aria-selected', 'data-testid', LAYOUT_ATTRIBUTE],
   });
   sizeObserver?.observe(doc.documentElement);
   view.addEventListener('resize', onSize);
@@ -326,6 +381,9 @@ export function claimDashboardLayout(
  */
 export function releaseLayout(doc: Document): void {
   clearAllInlineStyles(doc);
+  for (const wrapper of doc.querySelectorAll(`[${REPLACED_ATTRIBUTE}]`)) {
+    wrapper.removeAttribute(REPLACED_ATTRIBUTE);
+  }
   doc.getElementById(SENTINEL_ID)?.remove();
   doc.getElementById(SPACER_ID)?.remove();
   doc.body?.removeAttribute(LAYOUT_ATTRIBUTE);

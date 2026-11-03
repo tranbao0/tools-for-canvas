@@ -14,12 +14,13 @@ export const STYLED_ATTRIBUTE = 'data-weekrow-styled';
 /**
  * How the list sits on the page. The shadow stylesheet reads it from the `data-panel` attribute
  * of the host:
+ * - `slot`: a card in the flow in place of the first Course work widget.
  * - `area`: a card in the free area beside the widget grid, out of the flow, not sticky.
  * - `float`: a card that floats in the free area beside the content, sticky, in List View.
  * - `stack`: a card above the content, at the width of the content.
  * - `dock`: a card that floats in the right column after the column's items scrolled out of view.
  */
-export type PanelMode = 'area' | 'float' | 'stack' | 'dock';
+export type PanelMode = 'slot' | 'area' | 'float' | 'stack' | 'dock';
 
 /** The node at the bottom of the right column that the dock watches. */
 export const SENTINEL_ID = 'weekrow-sentinel';

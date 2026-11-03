@@ -215,7 +215,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
           subtree: true,
           // The inputs of the filters change their `value`, and the toggle of the grades its test id.
           attributes: true,
-          attributeFilter: ['value', 'data-testid'],
+          attributeFilter: ['value', 'data-testid', 'data-weekrow-replaced'],
         });
       }
     } else if (observer !== null) {

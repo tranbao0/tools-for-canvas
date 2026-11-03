@@ -62,7 +62,7 @@ async function open(
     await saveTools(options.background, tools(options.fixes));
   }
   await page.setViewportSize({ width: options.width ?? 1920, height: 1000 });
-  await openCanvasPage(page, served.canvas.origin);
+  await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
   if (options.fixes?.announcementsInPlace !== false) {
     await expect(page.locator(`${ANNOUNCEMENT} [data-wr-title]`)).toBeAttached();
   }
@@ -99,7 +99,16 @@ async function rerender(page: Page): Promise<void> {
   await page.evaluate(() => {
     const step = document.querySelector('template[data-fixture-step]');
     const target = document.querySelector(step?.getAttribute('data-target') ?? '');
-    if (step && target) target.innerHTML = step.innerHTML;
+    if (step && target) {
+      const slot = document
+        .querySelector('[data-testid="widget-container-course_work-widget-first"]')
+        ?.cloneNode(true);
+      target.innerHTML = step.innerHTML;
+      if (slot)
+        target
+          .querySelector('[data-testid="widget-container-course-work-combined-widget"]')
+          ?.before(slot);
+    }
   });
 }
 
@@ -168,7 +177,7 @@ test.describe('announcements in place', () => {
     // The widget's snippet and "Read more" give way to the message.
     await expect(page.locator(`${ANNOUNCEMENT} [data-wr-snippet]`)).toBeHidden();
     // No navigation and no reload.
-    expect(page.url()).toBe(`${canvas.origin}/?fixture_delay_ms=0`);
+    expect(page.url()).toBe(`${canvas.origin}/?fixture_course_work=second&fixture_delay_ms=0`);
     expect(navigations).toEqual([]);
     expect(await page.evaluate(() => (window as unknown as { __marker?: number }).__marker)).toBe(
       1,
@@ -238,7 +247,7 @@ test.describe('announcements in place', () => {
     await expect(message(page)).toHaveCount(0);
     await page.locator(`${ANNOUNCEMENT} [data-wr-title]`).click();
     await expect(message(page)).toContainText('Science Hall 214');
-    expect(page.url()).toBe(`${canvas.origin}/?fixture_delay_ms=0`);
+    expect(page.url()).toBe(`${canvas.origin}/?fixture_course_work=second&fixture_delay_ms=0`);
   });
 
   test('keep the message open when React draws the list again', async ({ context, page }) => {
@@ -542,7 +551,7 @@ test.describe('course grades', () => {
       EIGHT_COURSES,
     );
     await addCsrfCookie(context, served.canvas.origin);
-    await openCanvasPage(page, served.canvas.origin);
+    await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
     await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
     await expect(page.getByTestId('course-108-grade')).toHaveText('N/A');
     await expect(page.getByTestId('course-grade-card-107').getByRole('link').first()).toBeVisible();
@@ -595,7 +604,7 @@ test.describe('course grades', () => {
       EIGHT_COURSES,
     );
     await addCsrfCookie(context, served.canvas.origin);
-    await openCanvasPage(page, served.canvas.origin);
+    await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
     const widget = page.getByTestId('widget-course-grades-widget');
     await expect(page.locator('[data-wr-card]')).toHaveCount(2);
     await expect(widget.getByTestId('course-108-grade')).toHaveText('•••');
@@ -641,7 +650,7 @@ test.describe('course grades', () => {
       EIGHT_COURSES,
     );
     await addCsrfCookie(context, served.canvas.origin);
-    await openCanvasPage(page, served.canvas.origin);
+    await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
     const widget = page.getByTestId('widget-course-grades-widget');
     await expect(widget.getByTestId('course-107-grade')).toHaveText('95%', {
       timeout: READ_WAIT,
@@ -714,7 +723,7 @@ test.describe('course grades', () => {
       EIGHT_COURSES,
     );
     await addCsrfCookie(context, served.canvas.origin);
-    await openCanvasPage(page, served.canvas.origin);
+    await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
     const widget = page.getByTestId('widget-course-grades-widget');
     await expect(widget.getByTestId('course-107-grade')).toHaveText('95%');
     await saveTools(background, tools({ allCourseGrades: false }));

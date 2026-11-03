@@ -12,6 +12,8 @@
 import { render } from 'preact';
 import {
   findCourseWorkWidgets,
+  isReplacedWidget,
+  REPLACED_ATTRIBUTE,
   isDarkWidget,
   type CourseWorkWidget,
 } from '../../../shared/canvas/widgetDashboard';
@@ -184,7 +186,7 @@ export function courseWorkFix(): Fix {
     const { data } = context;
     const items = data === null ? [] : visibleExtras(data.extras, data.courses, widget);
     let section = widget.widget.querySelector<HTMLElement>('[data-wr-extra]');
-    if (items.length === 0 || data === null) {
+    if (isReplacedWidget(widget.widget) || items.length === 0 || data === null) {
       if (section !== null) render(null, section);
       section?.remove();
       return;
@@ -221,6 +223,12 @@ export function courseWorkFix(): Fix {
   return {
     apply(context) {
       doc = context.doc;
+      for (const section of doc.querySelectorAll<HTMLElement>(
+        `[${REPLACED_ATTRIBUTE}] [data-wr-extra]`,
+      )) {
+        render(null, section);
+        section.remove();
+      }
       for (const widget of findCourseWorkWidgets(context.doc)) draw(context, widget);
     },
     remove() {
