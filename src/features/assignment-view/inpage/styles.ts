@@ -51,6 +51,8 @@ box-sizing:border-box;margin:0;padding:16px 24px 20px 40px;background:var(--av-b
 .av-subheading{margin:0;font-size:14px;font-weight:700}
 .av-body{overflow-wrap:anywhere}
 .av-body[data-av-clamped]{max-height:15em;overflow:hidden}
+.av-body[data-av-cut]{mask-image:linear-gradient(#000 calc(100% - 3em),transparent)}
+.av [hidden]{display:none!important}
 .av-body>:first-child{margin-top:0}
 .av-body>:last-child{margin-bottom:0}
 .av-body p,.av-body ul,.av-body ol,.av-body blockquote,.av-body pre,.av-body table{margin:0 0 8px}

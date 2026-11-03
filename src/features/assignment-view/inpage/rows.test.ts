@@ -26,6 +26,7 @@ function reply(id: string, patch: (details: typeof ASSIGNMENT_DETAILS) => void =
 
 let send: ReturnType<typeof vi.fn<(message: AssignmentDetailsMessage) => Promise<unknown>>>;
 let engine: RowsEngine;
+let theme: 'light' | 'dark' = 'light';
 
 function start(): RowsEngine {
   engine = createRowsEngine({
@@ -34,6 +35,7 @@ function start(): RowsEngine {
     courseId: '12',
     send,
     now: () => NOW,
+    theme: () => theme,
   });
   engine.setActive(true);
   return engine;
@@ -48,6 +50,7 @@ const settle = () => vi.advanceTimersByTimeAsync(10);
 
 beforeEach(() => {
   vi.useFakeTimers();
+  theme = 'light';
   document.head.innerHTML = '';
   document.body.innerHTML = PAGE;
   send = vi.fn(async (message) => reply(message.assignmentId));
@@ -213,8 +216,14 @@ describe('opening a row', () => {
     const host = detailsRow('101')!.querySelector('[data-av-own]')!;
     expect(host.hasAttribute('data-weekrow-panel')).toBe(true);
     expect(host.getAttribute('data-theme')).toBe('light');
-    engine.setTheme('dark');
+    theme = 'dark';
+    engine.refreshTheme();
     expect(host.getAttribute('data-theme')).toBe('dark');
+    // A panel that opens again reads the theme again.
+    button('101').click();
+    theme = 'light';
+    button('101').click();
+    expect(host.getAttribute('data-theme')).toBe('light');
   });
 
   it('draws a hostile comment as inert text and links', async () => {
