@@ -476,3 +476,72 @@ describe('queued writes go through the cookie check just before they go out', ()
     expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([]);
   });
 });
+
+describe('a surface that reads before a round finishes', () => {
+  it('loads after a cookie change discards the first session', async () => {
+    const h = await createHarness();
+    const release = h.canvas.hold('getProfile');
+    let lastKind = 'loading';
+    const marker = h.deps.store.changeMarker;
+    const save = marker.setValue.bind(marker);
+    vi.spyOn(marker, 'setValue').mockImplementation(async (value) => {
+      await save(value);
+      lastKind = (await h.owner.getState(PANEL)).kind;
+    });
+    try {
+      await h.owner.getState(PANEL);
+      await vi.advanceTimersByTimeAsync(0);
+      vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+      release();
+      await h.owner.settled();
+      expect(lastKind).toBe('ready');
+    } finally {
+      release();
+      vi.mocked(marker.setValue).mockRestore();
+    }
+  });
+
+  it('shows the next student after a check clears the cached student', async () => {
+    const h = await loaded();
+    let last: Awaited<ReturnType<typeof h.owner.getState>> | null = null;
+    const marker = h.deps.store.changeMarker;
+    const save = marker.setValue.bind(marker);
+    vi.spyOn(marker, 'setValue').mockImplementation(async (value) => {
+      await save(value);
+      last = await h.owner.getState(PANEL);
+    });
+    try {
+      signInOtherUser(h);
+      await h.owner.getState(PANEL);
+      await h.owner.settled();
+      expect(last).toMatchObject({ kind: 'ready', refreshing: false });
+    } finally {
+      vi.mocked(marker.setValue).mockRestore();
+    }
+  });
+
+  it('restarts a discarded planner job after its cookie is confirmed', async () => {
+    const h = await createHarness();
+    await h.owner.getState(PANEL);
+    await h.owner.settled();
+    const release = h.canvas.hold('listPlannerItems');
+    await h.owner.getState(PANEL);
+    await vi.advanceTimersByTimeAsync(0);
+    let last = '';
+    const marker = h.deps.store.changeMarker;
+    const save = marker.setValue.bind(marker);
+    vi.spyOn(marker, 'setValue').mockImplementation(async (value) => {
+      await save(value);
+      last = JSON.stringify(await h.owner.getState(PANEL));
+    });
+    try {
+      vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+      release();
+      await h.owner.settled();
+      expect(last).toContain('Quiz 3: Cell membranes');
+    } finally {
+      release();
+      vi.mocked(marker.setValue).mockRestore();
+    }
+  });
+});

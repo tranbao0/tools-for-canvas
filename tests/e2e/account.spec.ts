@@ -9,7 +9,7 @@ import { CANVAS_ERRORS } from '../fixtures/errors';
 import { IDS, type Scenario } from '../fixtures/scenario';
 import type { WireAssignment } from '../fixtures/wire-types';
 import { errorReply } from './support/canvas-state';
-import { advanceBackgroundClock } from './support/clock';
+import { advanceBackgroundClock, freezeBackgroundClock } from './support/clock';
 import { serveFakeCanvas, type FakeCanvas, type FakeCanvasRoute } from './support/fake-canvas';
 import { json, saveAddress } from './support/scenario-api';
 import {
@@ -24,6 +24,12 @@ import {
   settledList,
   test,
 } from './support/weekrow';
+
+/** Waits for the session frame and its data before checking an account's items. */
+async function loadedAccountList(page: Page): Promise<void> {
+  await expect(page.getByRole('tabpanel', { name: 'Tasks', exact: true })).toBeVisible();
+  await settledList(page);
+}
 
 const QUIZ_3 = 'Quiz 3: Cell membranes';
 const LAB_7 = 'Lab 7: Titration notebook';
@@ -138,8 +144,8 @@ test('self-hosted Canvas: a different student signs in and nothing of the first 
   await addCsrfCookie(context, first.canvas.origin);
   await saveAddress(background, first.canvas.origin);
   await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await loadedAccountList(page);
   await expect(doneBox(page, QUIZ_3)).toBeVisible();
-  await settledList(page);
   expect(await sessionStorageText(page)).toContain(LAB_7);
   // The panel also loads the announcements of the first student, which must not outlive them.
   await expect.poll(() => sessionStorageText(page)).toContain(ANNOUNCEMENT_TITLE);
@@ -162,6 +168,7 @@ test('self-hosted Canvas: a different student signs in and nothing of the first 
 
   // The page load starts a round. Its sign-in check finds the new user, and the round loads the
   // second student from scratch. The in-page list shows in full beside the open panel page.
+  await loadedAccountList(canvasTab);
   await expect(doneBox(inpageList(canvasTab), SKETCHBOOK)).toBeVisible();
   for (const title of [QUIZ_3, LAB_7]) {
     await expect(inpageList(canvasTab).getByText(title)).toHaveCount(0);
@@ -170,8 +177,8 @@ test('self-hosted Canvas: a different student signs in and nothing of the first 
     .poll(() => second.requests.some((r) => r.path.startsWith('/api/v1/users/self/profile')))
     .toBe(true);
   await page.bringToFront();
+  await loadedAccountList(page);
   await expect(doneBox(page, SKETCHBOOK)).toBeVisible();
-  await settledList(page);
 
   await expect(toast).toHaveCount(0);
   for (const title of [QUIZ_3, LAB_7, 'Return library books']) {
@@ -220,8 +227,8 @@ for (const failure of ['network', '503'] as const) {
     await addCsrfCookie(context, first.canvas.origin);
     await saveAddress(background, first.canvas.origin);
     await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await loadedAccountList(page);
     await expect(doneBox(page, QUIZ_3)).toBeVisible();
-    await settledList(page);
     await advanceBackgroundClock(background, 31_000);
     await context.route(`${first.canvas.origin}/api/v1/users/self`, async (route) => {
       if (failure === 'network') await route.abort('failed');
@@ -255,8 +262,8 @@ test('a changed session with a failed check never exposes cached work', async ({
   await addCsrfCookie(context, first.canvas.origin);
   await saveAddress(background, first.canvas.origin);
   await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await loadedAccountList(page);
   await expect(doneBox(page, QUIZ_3)).toBeVisible();
-  await settledList(page);
   await group(page, 'today')
     .getByRole('button', { name: 'Edit task: Return library books', exact: true })
     .click();
@@ -297,8 +304,9 @@ for (const renew of [false, true]) {
       const first = await serveScenario(context);
       await saveAddress(background, first.canvas.origin);
       await openExtensionPage(page, extensionUrl('sidepanel.html'));
+      await loadedAccountList(page);
       await expect(doneBox(page, QUIZ_3)).toBeVisible();
-      await settledList(page);
+      await freezeBackgroundClock(background);
       const checks: number[] = [];
       let elapsed = 0;
       await context.route(`${first.canvas.origin}/api/v1/users/self`, async (route) => {
@@ -383,8 +391,8 @@ test('a round retries a rate limited user request', async ({
   });
   await saveAddress(background, first.canvas.origin);
   await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await loadedAccountList(page);
   await expect(doneBox(page, QUIZ_3)).toBeVisible();
-  await settledList(page);
   await page.evaluate(async () => {
     const api = (
       globalThis as unknown as {
@@ -408,8 +416,8 @@ test('an old user reply never confirms a new student cookie', async ({
   await addCsrfCookie(context, first.canvas.origin);
   await saveAddress(background, first.canvas.origin);
   await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await loadedAccountList(page);
   await expect(doneBox(page, QUIZ_3)).toBeVisible();
-  await settledList(page);
   const oldSelf = JSON.stringify(first.scenario.self);
   let release!: () => void;
   let started!: () => void;
@@ -518,8 +526,8 @@ test('a first profile response never confirms the cookie from before that reques
     },
   ]);
   release();
+  await loadedAccountList(page);
   await expect(doneBox(page, QUIZ_3)).toBeVisible();
-  await settledList(page);
   self = originalSelf;
   await context.addCookies([
     {
@@ -565,8 +573,8 @@ test('a change to the second session cookie checks the cached student', async ({
   ]);
   await saveAddress(background, first.canvas.origin);
   await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await loadedAccountList(page);
   await expect(doneBox(page, QUIZ_3)).toBeVisible();
-  await settledList(page);
   // Canvas answers every request as the second student from now on, as it does for the new
   // cookie. A route for the user request alone would leave the profile of the first student, and
   // the round that follows would load that profile for the new cookie.
@@ -596,8 +604,8 @@ test('a change to the second session cookie checks the cached student', async ({
     });
   });
   expect(reply.kind === 'ready' && reply.userId === IDS.user).toBe(false);
+  await loadedAccountList(page);
   await expect(doneBox(page, SKETCHBOOK)).toBeVisible();
-  await settledList(page);
   for (const title of [QUIZ_3, LAB_7]) await expect(page.getByText(title)).toHaveCount(0);
   expect(await sessionStorageText(page)).not.toContain(LAB_7);
 });
@@ -632,8 +640,8 @@ test('a refused Undo shows its notice again beside the error, and the next tap r
   await addCsrfCookie(context, first.canvas.origin);
   await saveAddress(background, first.canvas.origin);
   await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await loadedAccountList(page);
   await expect(doneBox(page, QUIZ_3)).toBeVisible();
-  await settledList(page);
   await doneBox(page, QUIZ_3).click();
   const toast = page.locator('.wr-toast');
   await expect(toast).toContainText('Marked done');
