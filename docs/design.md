@@ -2821,15 +2821,59 @@ So a student switches pages to check the rubric while submitting, or to read fee
 
 **Build order:**
 
-1. The expand rows on the Grades page, with the read-only content (score, instructions, rubric, feedback, files).
+1. The expand rows on the Grades page, with the read-only content (score, instructions, rubric, feedback, files). Built.
 2. The same rows on the Assignments list.
 3. "Submit" in the docked pane, and the refresh after a submission.
 
-**Step 1 checkpoint (not built):**
+**Step 1 (built on feat/v1):**
 
-The fixture and the isolated rubric and comment renderers are built.
-The Grades page does not load this feature yet.
-The route, cookie binding, row controls, settings and browser checks remain to be built.
+The Grades page now has the expand rows with the read-only content.
+Step 2 (the Assignments list) and step 3 (Submit) are not built.
+
+- **Script.**
+  - The page script is `assignment-view.js`, which is its own small entry point like `dashboard.js`.
+  - The background injects it next to the list script, into the top frame of a Grades page of the saved Canvas (`/courses/:id/grades`, also with a shard id), and only while the switch is on.
+  - `/courses/:id/grades/:user` is another page and gets nothing.
+  - A newer injection retires the copy of an earlier one, and a start removes the nodes that a destroyed copy left (every node and mark starts with `data-av-`).
+  - The script follows the switch, the saved address and the Theme setting through the page channel.
+  - Turning the switch off removes every control at once and forgets the loaded details.
+  - A switch that the student turns on works when the Grades page loads again, because the script is not injected while the switch is off.
+- **Message.**
+  - `assignment:details { courseId, assignmentId }` has strict Canvas id checks (`isAssignmentDetailsMessage`).
+  - The data router accepts it only from the top frame of a tab whose page has the saved origin, and refuses extension pages.
+  - The owner reads both records with the rules of the file viewer (`viewerRead`): the tab uses the cookie store of the requests, the address is the saved Canvas, and the cookie is confirmed for the student of the cache.
+  - Both requests run inside one `cookieBound` binding, so the reply is dropped when the cookie changes during them.
+  - A cookie that is not confirmed yet waits for one check (`viewerConfirm`) and the read runs once more.
+  - The background keeps only the fields of the view, with a limit on every text, in `projectAssignmentView`.
+  - The reply holds the details and the time zone of the Canvas profile.
+- **Rows.**
+  - A row counts when it is `tr.student_assignment` with the id `submission_<assignment id>` and no `hard_coded` class, so the group totals and the final grade get no button.
+  - The button is the first child of the `th.title` cell, so the columns keep their width.
+  - It has `aria-expanded`, `aria-controls` and the label "Show details for <title>".
+  - The details row follows the assignment row and spans all its columns.
+  - Canvas's own comment and rubric rows come after it, and Canvas finds them by id.
+  - Several rows may be open, and closing a row hides it, so it opens again from memory.
+  - The reply is cached for the page view, one request for each assignment at a time.
+  - A failed request is not cached, and the error state has Retry.
+  - One observer adds the button to a row that Canvas draws late, and ignores its own changes.
+- **Content.**
+  - The panel is in an open shadow root with the Canvas look: Lato, the Canvas colors and the InstUI chips and buttons.
+  - The Theme setting decides the theme, and with Automatic the background of the Canvas page does, read each time a panel opens.
+  - The top part shows the due date and the score in the Canvas time zone, and the chips of decision 7.
+  - The chips use the rules and the labels of the weekly list (`chips.ts`).
+    The names of teacher statuses are not read here, so a teacher status shows as "Teacher status".
+    A Past due chip shows for every open assignment past its date, because the Grades page lists past work.
+  - The instructions are sanitized, cut to about 10 lines with a fade, and have "Show more" only when text is cut.
+  - The rubric marks the rating of the student and shows the points, unless the rubric hides them.
+  - The comments come newest first, and comment text goes through the sanitizer.
+  - "Your files" lists the files that the student handed in, and "Open assignment" is a link to the Canvas page.
+- **Files.**
+  - A submitted file links as `/courses/:id/assignments/:id/submissions/:user?download=:file`, without a `download` attribute, so the pane matcher of decision 25 takes it.
+  - The click path is the one of the page script of the pane.
+    A click inside the open shadow root reaches the page as a click on the host, so the script reads the real element from the event path for a host with the attribute `data-weekrow-panel`, and for no other host.
+  - A comment attachment keeps its download, because the pane never takes an address with `comment_id` (decision 25, item 3).
+    So item 3 of this decision holds for the student's own files now, and a comment attachment is the open gap.
+- **Settings.** "One assignment view" is in the tools settings, on by default, in the same three places as the other settings.
 
 **Verified source facts for step 1:**
 
@@ -2853,7 +2897,7 @@ The renderer still applies the shared sanitizer to comment content as a further 
 The Grades template links comment attachments through the submission URL with `download` and `comment_id` parameters.
 `tests/fixtures/pages/grades.html` models these row hooks without copying the Canvas template.
 `tests/fixtures/assignment-view.ts` models the two API reply bodies.
-The fixture does not yet run in the browser test server.
+The fixtures run in the browser test server, through the Grades page route of `tests/e2e/assignment-view.spec.ts`.
 
 ## Open risks
 
@@ -2884,6 +2928,10 @@ These items need a live check or an outside answer.
 15. The real link shapes of the student's own submission files, and of comment attachments, are known only from canvas-lms source (decision 25, live facts).
     The submission details page keeps its file list in a same-origin frame, and the click catcher of item 11 handles it.
     That catcher has run only against the fixture.
+    The live checklist has the steps.
+16. The expand rows of the Grades page (decision 26, step 1) have run only against the fixture.
+    The real title cell, the way Canvas finds its own comment and rubric rows after the extension row, and the field shapes of the assignment and submission records are known from canvas-lms source only.
+    A comment attachment keeps its download, because the pane never takes an address with `comment_id`.
     The live checklist has the steps.
 
 ## Build order
