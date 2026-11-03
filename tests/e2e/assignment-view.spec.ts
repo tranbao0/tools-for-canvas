@@ -14,6 +14,7 @@ import { json, saveAddress } from './support/scenario-api';
 import { addCsrfCookie, expect, saveTools, serveScenario, test } from './support/weekrow';
 
 const gradesPage = readFileSync('tests/fixtures/pages/grades.html', 'utf8');
+const assignmentsPage = readFileSync('tests/fixtures/pages/assignments.html', 'utf8');
 const notes = readFileSync('tests/fixtures/files/notes.txt', 'utf8');
 const GRADES = '/courses/12/grades';
 const DIR = path.join(process.cwd(), 'screenshots', 'assignment-view');
@@ -107,11 +108,20 @@ async function open(
   context: Parameters<typeof serveScenario>[0],
   page: Page,
   background: Parameters<typeof saveAddress>[0],
-  options: { width?: number; extra?: FakeCanvasRoute[]; switchOff?: boolean } = {},
+  options: {
+    width?: number;
+    extra?: FakeCanvasRoute[];
+    switchOff?: boolean;
+    assignments?: boolean;
+  } = {},
 ) {
   const served = await serveScenario(context, [
     ...(options.extra ?? []),
-    { path: GRADES, contentType: 'text/html', body: gradesPage },
+    {
+      path: options.assignments ? '/courses/12/assignments' : GRADES,
+      contentType: 'text/html',
+      body: options.assignments ? assignmentsPage : gradesPage,
+    },
     ...viewRoutes('101', rawRecords(details())),
     ...viewRoutes('102', rawRecords(secondAssignment())),
     ...FILE_ROUTES,
@@ -122,7 +132,9 @@ async function open(
     await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
   }
   await page.setViewportSize({ width: options.width ?? 1920, height: 1000 });
-  await page.goto(`${served.canvas.origin}${GRADES}`);
+  await page.goto(
+    `${served.canvas.origin}${options.assignments ? '/courses/12/assignments' : GRADES}`,
+  );
   return served.canvas;
 }
 
@@ -323,7 +335,7 @@ test('an error shows Retry, and Retry loads the details', async ({ context, page
   await expect(reading.getByRole('alert')).toHaveCount(0);
 });
 
-test('with the switch off, the Grades page has no buttons and no script', async ({
+test('with the switch off, the Grades page has no controls', async ({
   context,
   page,
   background,
@@ -333,6 +345,8 @@ test('with the switch off, the Grades page has no buttons and no script', async 
   await waitForListLoaded(canvas);
   await expect(page.locator('[data-av-toggle], [data-av-own]')).toHaveCount(0);
   expect(detailRequests(canvas)).toHaveLength(0);
+  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  await expect(toggle(page, 'Essay')).toBeVisible();
 });
 
 test('the switch removes the buttons at once and adds them again', async ({
@@ -431,4 +445,39 @@ for (const [chip, color, change] of [
       .locator('#av-details-102')
       .screenshot({ path: path.join(DIR, `chip-${chip.replace(' ', '-').toLowerCase()}.png`) });
   });
+}
+
+for (const width of [1920, 1280]) {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`Assignments rows at ${width} in ${theme}`, async ({ context, page, background }) => {
+      await saveSetting(background, { theme });
+      const canvas = await open(context, page, background, {
+        width,
+        assignments: true,
+        switchOff: true,
+      });
+      await waitForListLoaded(canvas);
+      await expect(page.locator('[data-av-toggle]')).toHaveCount(0);
+      await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: true });
+      await expand(page, canvas, 'Essay');
+      await expect(region(page, 'Essay')).toBeVisible();
+      await page.screenshot({
+        path: path.join(DIR, `assignments-${width}-${theme}.png`),
+        animations: 'disabled',
+        fullPage: true,
+      });
+      await expand(page, canvas, 'Reading');
+      await page.evaluate(() => {
+        for (const row of document.querySelectorAll('.ig-row'))
+          row.replaceWith(row.cloneNode(true));
+        document.querySelectorAll('.ig-list [data-av-own]').forEach((node) => node.remove());
+      });
+      await expect(toggle(page, 'Essay')).toHaveAttribute('aria-expanded', 'true');
+      await expect(region(page, 'Essay')).toBeVisible();
+      await expect(region(page, 'Reading')).toBeVisible();
+      await expect(page.locator('[data-av-toggle]')).toHaveCount(2);
+      await page.locator('a.ig-title').first().click();
+      await expect(page).toHaveURL(`${canvas.origin}/courses/12/assignments/101`);
+    });
+  }
 }

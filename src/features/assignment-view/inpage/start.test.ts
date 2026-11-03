@@ -65,15 +65,20 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('startAssignmentView', () => {
-  it('adds the buttons on the Grades page of the saved Canvas, and removes them on stop', async () => {
-    const controller = await startAssignmentView(options(fakeChannel()));
+  it.each([
+    '/courses/12/grades',
+    '/courses/12/assignments',
+    '/courses/12~345/grades',
+    '/courses/12~345/assignments',
+  ])('adds buttons on %s and removes them on stop', async (pathname) => {
+    const controller = await startAssignmentView(options(fakeChannel(), { pathname }));
     expect(toggles()).toHaveLength(1);
     controller.stop();
     expect(toggles()).toHaveLength(0);
     expect(document.querySelector('[data-av-own]')).toBeNull();
   });
 
-  it.each(['/courses/12', '/courses/12/grades/42', '/courses/12/assignments', '/grades', '/'])(
+  it.each(['/courses/12', '/courses/12/grades/42', '/grades', '/'])(
     'does nothing on %s',
     async (pathname) => {
       await startAssignmentView(options(fakeChannel(), { pathname }));

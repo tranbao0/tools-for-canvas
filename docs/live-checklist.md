@@ -554,7 +554,7 @@ A store build or a build from `npm run build` does not.
 - Repeat the restore check in Firefox.
   Expect the saved page.
 
-## One assignment view, step 1
+## One assignment view, steps 1 and 2
 
 These steps need a student account with a course that has: a graded assignment with a rubric, a teacher comment with a file, a student comment, and a submitted file; an assignment with no rubric and no submission; an assignment whose instructions are longer than 10 lines; and an assignment that is handed in outside Canvas (Gradescope or on paper).
 Run them on the Grades page of the course (`/courses/:id/grades`).
@@ -597,7 +597,7 @@ Run them on the Grades page of the course (`/courses/:id/grades`).
    Expect: the details show.
 9. Turn off "One assignment view" in the settings.
    Expect: every chevron and open row on the open Grades page goes at once.
-   Turn it on again and reload the Grades page.
+   Turn it on again without reloading the Grades page.
    Expect: the chevrons are back.
 10. Sign out and sign in as another student on the same tab, then open the Grades page.
     Expect: no row shows details of the first student.
@@ -605,3 +605,17 @@ Run them on the Grades page of the course (`/courses/:id/grades`).
     Expect: the panel reads well, the text is not cut, and the colors follow the theme.
 12. Turn off the file viewer in the settings, then click the name of a submitted file.
     Expect: Canvas handles the link, and no pane opens.
+
+
+### Assignments list
+
+1. Open `/courses/:id/assignments` and expand one row.
+   Expect: the details panel shows under that row.
+2. Expand another row and change the list order or filter.
+   Expect: both panels stay open when both assignments remain in the list.
+3. Click the title link and use the Canvas controls.
+   Expect: each control keeps its Canvas action.
+4. Turn the switch off and then on without a reload.
+   Expect: the buttons go away and return.
+5. Check one open row at 1920 and 1280 pixels in light and dark themes.
+   Expect: the panel fits the list and each control is clear.

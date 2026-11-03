@@ -15,7 +15,7 @@ import type { Settings } from '../../weekly-list/model/types';
 import { createRowsEngine } from './rows';
 
 /** `/courses/:id/grades`: the Grades page of the signed-in student. */
-const GRADES_PATH = /^\/courses\/(\d+(?:~\d+)?)\/grades\/?$/;
+const GRADES_PATH = /^\/courses\/(\d+(?:~\d+)?)\/(?:grades|assignments)\/?$/;
 
 /** The part of the page channel that the view uses. */
 export interface AssignmentViewChannel {

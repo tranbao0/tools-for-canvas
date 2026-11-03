@@ -50,9 +50,9 @@ export interface RowsEngine {
 interface RowState {
   assignmentId: string;
   title: string;
-  row: HTMLTableRowElement;
+  row: HTMLElement;
   button: HTMLButtonElement;
-  details: HTMLTableRowElement | null;
+  details: HTMLElement | null;
   panel: HTMLElement | null;
   host: HTMLElement | null;
   resize: ResizeObserver | null;
@@ -73,11 +73,11 @@ export function removeStaleView(doc: Document = document): void {
 /** The assignment id of a row that the view may open, or `null`. Totals rows are not assignments. */
 function assignmentIdOf(row: Element): string | null {
   if (row.classList.contains('hard_coded')) return null;
-  return ROW_ID.exec(row.id)?.[1] ?? null;
+  return ROW_ID.exec(row.id)?.[1] ?? /^assignment_(\d+(?:~\d+)?)$/.exec(row.id)?.[1] ?? null;
 }
 
-function titleOf(row: HTMLTableRowElement, assignmentId: string): string {
-  const link = row.querySelector('th.title a, .title a');
+function titleOf(row: HTMLElement, assignmentId: string): string {
+  const link = row.querySelector('th.title a, .title a, a.ig-title');
   const text = link?.textContent?.trim();
   return text !== undefined && text !== '' ? text : `assignment ${assignmentId}`;
 }
@@ -110,8 +110,9 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
   let observer: MutationObserver | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let style: HTMLStyleElement | null = null;
-  const states = new Map<HTMLTableRowElement, RowState>();
+  const states = new Map<HTMLElement, RowState>();
   /** The requests of this page view, by assignment id. A failed request leaves the map. */
+  const openIds = new Set<string>();
   const loaded = new Map<string, Promise<AssignmentDetailsReply>>();
 
   function details(assignmentId: string): Promise<AssignmentDetailsReply> {
@@ -195,12 +196,14 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
   }
 
   function createDetails(state: RowState): void {
-    const row = doc.createElement('tr');
+    const table = state.row instanceof HTMLTableRowElement;
+    const row = doc.createElement(table ? 'tr' : 'div');
     row.id = `av-details-${state.assignmentId}`;
     row.setAttribute(OWN, '');
     row.setAttribute('data-av-details', '');
-    const cell = doc.createElement('td');
-    cell.colSpan = columnCount(state.row);
+    const cell = doc.createElement(table ? 'td' : 'div');
+    if (cell instanceof HTMLTableCellElement && state.row instanceof HTMLTableRowElement)
+      cell.colSpan = columnCount(state.row);
     const host = doc.createElement('div');
     host.setAttribute(OWN, '');
     // The file pane takes clicks on the links inside this host (decision 25).
@@ -226,6 +229,8 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
 
   function toggle(state: RowState): void {
     const opening = state.button.getAttribute('aria-expanded') !== 'true';
+    if (opening) openIds.add(state.assignmentId);
+    else openIds.delete(state.assignmentId);
     state.button.setAttribute('aria-expanded', String(opening));
     if (!opening) {
       if (state.details) state.details.hidden = true;
@@ -241,7 +246,7 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
     }
   }
 
-  function attach(row: HTMLTableRowElement, assignmentId: string): void {
+  function attach(row: HTMLElement, assignmentId: string): void {
     const title = titleOf(row, assignmentId);
     const button = doc.createElement('button');
     button.type = 'button';
@@ -262,8 +267,9 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
       load: 0,
     };
     button.addEventListener('click', () => toggle(state));
-    (row.querySelector('th.title') ?? row.cells[0] ?? row).prepend(button);
+    (row.querySelector('th.title, .ig-info') ?? row.firstElementChild ?? row).prepend(button);
     states.set(row, state);
+    if (openIds.has(assignmentId)) toggle(state);
   }
 
   function release(state: RowState): void {
@@ -276,13 +282,29 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
   function pass(): void {
     if (!active || stopped) return;
     for (const [row, state] of states) {
-      if (row.isConnected && state.button.isConnected) continue;
+      if (row.isConnected && state.button.isConnected) {
+        if (state.details && state.details.previousElementSibling !== row) row.after(state.details);
+        continue;
+      }
+      if (state.button.getAttribute('aria-expanded') === 'true') openIds.add(state.assignmentId);
       release(state);
       states.delete(row);
     }
-    for (const row of doc.querySelectorAll<HTMLTableRowElement>('tr.student_assignment')) {
+    for (const row of doc.querySelectorAll<HTMLElement>(
+      'tr.student_assignment, .ig-row[id^=assignment_]',
+    )) {
       const assignmentId = assignmentIdOf(row);
-      if (assignmentId !== null && !states.has(row)) attach(row, assignmentId);
+      if (assignmentId === null || states.has(row)) continue;
+      if (row.matches('.ig-row')) {
+        const link = row.querySelector<HTMLAnchorElement>('a.ig-title');
+        if (
+          !link ||
+          link.origin !== origin ||
+          link.pathname !== `/courses/${courseId}/assignments/${assignmentId}`
+        )
+          continue;
+      }
+      attach(row, assignmentId);
     }
   }
 
@@ -303,6 +325,7 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
     for (const state of states.values()) release(state);
     states.clear();
     loaded.clear();
+    openIds.clear();
     style?.remove();
     style = null;
   }

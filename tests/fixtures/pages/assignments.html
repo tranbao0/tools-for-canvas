@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Grades - fixture course</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root { --ic-brand-primary: #2B7ABC; --ic-link-color: #0E68B3; --ic-brand-font-color-dark: #273540; }
+      body { margin: 0; font-family: "Lato Extended", Lato, "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.5; color: var(--ic-brand-font-color-dark); background: #fff; }
+      a { color: var(--ic-link-color); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      #content { box-sizing: border-box; max-width: 1366px; margin: 0 auto; padding: 24px; }
+      h1 { margin: 0 0 24px; font-size: 28px; font-weight: 400; }
+      #grades_summary { width: 100%; border-collapse: collapse; font-size: 14px; }
+      #grades_summary thead th { padding: 8px 12px; border-bottom: 1px solid #c7cdd1; text-align: left; font-weight: 700; }
+      #grades_summary tbody th, #grades_summary tbody td { padding: 12px; border-bottom: 1px solid #e8eaec; text-align: left; vertical-align: top; }
+      #grades_summary tbody th.title { font-weight: 400; }
+      #grades_summary .context { color: #586874; font-size: 12px; }
+      #grades_summary tr.hard_coded th, #grades_summary tr.hard_coded td { font-weight: 700; background: #f5f5f5; }
+      #grades_summary tr.comments td, #grades_summary tr.rubric_assessments td { background: #fafafa; }
+      #grades_summary td a + a { margin-inline-start: 12px; }
+    </style>
+    <script>
+      INST = { environment: 'production' };
+      ENV = { current_user_id: '5501', current_user_roles: ['user', 'student'] };
+    </script>
+  </head>
+  <body>
+    <!-- canvas-lms 1c9f0bb: assignment_index/jst/AssignmentListItem.handlebars. -->
+    <main id="content"><h1>Assignments</h1><ul class="ig-list">
+      <li class="assignment"><div id="assignment_101" class="ig-row" data-item-id="101"><div class="ig-row__layout"><div class="ig-type-icon">▤</div><div class="ig-info"><a href="/courses/12/assignments/101" class="ig-title" aria-live="polite">Essay</a><div>Due Nov 3 | 10 points</div></div></div></div></li>
+      <li class="assignment"><div id="assignment_102" class="ig-row" data-item-id="102"><div class="ig-row__layout"><div class="ig-type-icon">▤</div><div class="ig-info"><a href="/courses/12/assignments/102" class="ig-title" aria-live="polite">Reading</a><div>Due Nov 4 | 10 points</div></div></div></div></li>
+    </ul></main>
+    <style>.ig-list{list-style:none;padding:0;border:1px solid #c7cdd1}.ig-row{padding:16px;border-bottom:1px solid #c7cdd1}.ig-row__layout{display:flex;gap:16px}.ig-info{flex:1}.ig-title{font-weight:700}.ig-info>div{font-size:12px;color:#586874}</style>
+  </body>
+</html>

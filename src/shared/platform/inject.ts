@@ -20,25 +20,25 @@ export const INPAGE_FILE = '/inpage.js';
 /** The fixes for the widget dashboard, which only a dashboard page needs (decision 22). */
 export const DASHBOARD_FILE = '/dashboard.js';
 
-/** The expand rows of the one assignment view, which only the Grades page needs (decision 26). */
+/** The expand rows of the one assignment view, for Grades and Assignments pages (decision 26). */
 export const ASSIGNMENT_VIEW_FILE = '/assignment-view.js';
 
 /** The dashboard is the root path of Canvas. `/dashboard` serves the same page. */
 const DASHBOARD_PATH = /^\/(?:dashboard\/?)?$/;
 
 /** The Grades page of the signed-in student. `/courses/:id/grades/:user` is another page. */
-const GRADES_PATH = /^\/courses\/\d+(?:~\d+)?\/grades\/?$/;
+const GRADES_PATH = /^\/courses\/\d+(?:~\d+)?\/(?:grades|assignments)\/?$/;
 
 type PageScript = typeof INPAGE_FILE | typeof DASHBOARD_FILE | typeof ASSIGNMENT_VIEW_FILE;
 
 /**
  * The page scripts for a tab: the list script, the fixes script on the dashboard, and the
- * assignment view script on the Grades page while its switch is on.
+ * assignment view script on Grades and Assignments pages to follow its switch.
  */
-function pageScripts(url: string, assignmentView: boolean): PageScript[] {
+function pageScripts(url: string): PageScript[] {
   const path = parseUrl(url)?.pathname ?? '';
   if (DASHBOARD_PATH.test(path)) return [INPAGE_FILE, DASHBOARD_FILE];
-  if (assignmentView && GRADES_PATH.test(path)) return [INPAGE_FILE, ASSIGNMENT_VIEW_FILE];
+  if (GRADES_PATH.test(path)) return [INPAGE_FILE, ASSIGNMENT_VIEW_FILE];
   return [INPAGE_FILE];
 }
 
@@ -68,10 +68,7 @@ export async function injectInpage(
   await browser.scripting.executeScript({
     target:
       documentId === undefined ? { tabId, frameIds: [0] } : { tabId, documentIds: [documentId] },
-    files: [
-      ...pageScripts(tab.url, tools.assignmentView),
-      ...(tools.fileViewer ? (['/viewer.js'] as const) : []),
-    ],
+    files: [...pageScripts(tab.url), ...(tools.fileViewer ? (['/viewer.js'] as const) : [])],
   });
 }
 

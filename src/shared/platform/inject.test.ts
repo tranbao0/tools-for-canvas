@@ -81,7 +81,7 @@ describe('injectInpage', () => {
     },
   );
 
-  it.each(['/courses/5', '/courses/5/assignments', '/calendar', '/dashboards'])(
+  it.each(['/courses/5', '/calendar', '/dashboards'])(
     'adds no dashboard fixes script on %s',
     async (path) => {
       tabUrls.set(7, `${ORIGIN}${path}`);
@@ -337,23 +337,25 @@ describe('the assignment view script', () => {
     expect(ASSIGNMENT_VIEW_FILE).toBe('/assignment-view.js');
   });
 
-  it.each(['/courses/5/grades', '/courses/5/grades/', '/courses/12~345/grades?x=1'])(
-    'is added on the Grades page %s while its switch is on',
-    async (path) => {
-      tabUrls.set(7, `https://canvas.school.edu${path}`);
-      await injectInpage(7, 'https://canvas.school.edu');
-      expect(scripting.executeScript).toHaveBeenCalledWith({
-        target: { tabId: 7, frameIds: [0] },
-        files: [INPAGE_FILE, ASSIGNMENT_VIEW_FILE, '/viewer.js'],
-      });
-    },
-  );
+  it.each([
+    '/courses/5/grades',
+    '/courses/5/grades/',
+    '/courses/5/assignments',
+    '/courses/12~345/assignments',
+    '/courses/12~345/grades?x=1',
+  ])('is added on the Grades page %s while its switch is on', async (path) => {
+    tabUrls.set(7, `https://canvas.school.edu${path}`);
+    await injectInpage(7, 'https://canvas.school.edu');
+    expect(scripting.executeScript).toHaveBeenCalledWith({
+      target: { tabId: 7, frameIds: [0] },
+      files: [INPAGE_FILE, ASSIGNMENT_VIEW_FILE, '/viewer.js'],
+    });
+  });
 
   it.each([
     '/courses/5',
     '/courses/5/grades/42',
     '/courses/5/gradebook',
-    '/courses/5/assignments',
     '/grades',
     '/courses/x/grades',
   ])('is not added on %s', async (path) => {
@@ -365,13 +367,13 @@ describe('the assignment view script', () => {
     });
   });
 
-  it('is left out when the switch is off', async () => {
+  it('is present to follow the switch when it is off', async () => {
     await toolsSettingsItem.setValue({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
     tabUrls.set(7, GRADES);
     await injectInpage(7, 'https://canvas.school.edu');
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 7, frameIds: [0] },
-      files: [INPAGE_FILE, '/viewer.js'],
+      files: [INPAGE_FILE, ASSIGNMENT_VIEW_FILE, '/viewer.js'],
     });
   });
 });
