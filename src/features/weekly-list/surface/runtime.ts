@@ -332,6 +332,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     // Replies can arrive out of order. Only a newer answer than the last shown one counts.
     if (stopped || seq <= appliedSeq || reply === undefined) return;
     appliedSeq = seq;
+    if (reply.kind === 'loading' && reply.retryAt !== undefined) scheduleRetry(reply.retryAt);
     // The data owner drops a course filter that no longer applies, for example after the rings
     // are turned off or the course left the list. The surface then forgets it too.
     if (

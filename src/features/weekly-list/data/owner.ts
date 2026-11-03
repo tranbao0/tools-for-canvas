@@ -758,7 +758,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         deferTimer = null;
         // A surface that asked again at the same time may already have run the round.
         const lastFull = cache?.limits.lastFullAt ?? null;
-        if (lastFull === null || lastFull + REFRESH_LIMIT_MS <= clock.now()) scheduleForcedFull();
+        if (clock.now() < at) {
+          deferFull(at);
+        } else if (lastFull === null || lastFull + REFRESH_LIMIT_MS <= clock.now()) {
+          scheduleForcedFull();
+        }
       },
       Math.max(0, at - requestedAt),
     );
@@ -1241,7 +1245,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       runJob(job, api, context, reloadDetails)
         .then(async (dropped) => {
           // A discarded chunk becomes available for another request only after the job leaves.
-          if (jobs.delete(job) && (dropped || job.shown)) await bump();
+          if (jobs.delete(job) && (dropped || job.shown || job.refresh)) await bump();
         })
         .finally(() => {
           jobs.delete(job);
@@ -1273,6 +1277,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const gen = generation;
     /** A planner request or a details request of this job failed. */
     let failed = false;
+    let refreshFailure: Failure | null = null;
     let dropped = false;
     /** A details request failed, so the later batches stay out. */
     let detailsFailed = false;
@@ -1286,10 +1291,25 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         plannerBackoff.push(
           ...intervals.map((interval) => ({ interval, until: clock.now() + 60_000 })),
         );
+        if (job.refresh) {
+          const at = clock.now() + 60_000;
+          const notify = (): void => {
+            if (gen !== generation) return;
+            if (clock.now() < at) timers.setTimeout(notify, at - clock.now());
+            else {
+              if (cache?.failure?.kind === 'stale' && cache.failure === refreshFailure) {
+                cache = { ...cache, failure: null };
+              }
+              track(bump());
+            }
+          };
+          timers.setTimeout(notify, 60_000);
+        }
       }
       if (failed) return;
       failed = true;
       await jobFailed(job, error, api, gen);
+      refreshFailure = cache?.failure ?? null;
     };
 
     /** Loads the details that the items of `parts` lack. A failure fails the job. */
@@ -1396,7 +1416,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     gen: number,
   ): Promise<void> {
     deps.log('planner load', error);
-    if (!job.shown || gen !== generation) return;
+    if ((!job.shown && !job.refresh) || gen !== generation) return;
     if (isCanvasError(error, 'forbidden')) {
       // The jobs of one view fail together, and one round finds out for all of them.
       if (cache?.limited !== true && !limitCheckPending) {
@@ -3050,7 +3070,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         else if (cache.limits.lastRoundAt !== null)
           deferFull(cache.limits.lastRoundAt + REFRESH_LIMIT_MS);
       }
-      return { kind: 'loading' };
+      if (running || anyPending() || cache.limits.lastRoundAt === null) return { kind: 'loading' };
+      return {
+        kind: 'loading',
+        retryAt: cache.limits.lastRoundAt + REFRESH_LIMIT_MS,
+      };
     }
     if (session.courses.length === 0) return { kind: 'no_courses', origin, offer, allCourses: [] };
 
