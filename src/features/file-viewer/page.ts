@@ -370,6 +370,18 @@ export async function startViewer(): Promise<void> {
     }
     enabled = true;
   })().catch(() => undefined);
+  // Canvas owns the overlay on direct routes; the pane also follows its preview address.
+  const openPreviewRoute = () => {
+    void starting
+      .then(async () => {
+        if (!live || !enabled || !/^\/courses\/[^/]+\/files$/.test(location.pathname)) return;
+        const target = fileTarget(location.href, location.origin);
+        if (target) await openTarget(target, location.href);
+      })
+      .catch(() => undefined);
+  };
+  window.addEventListener('popstate', openPreviewRoute, { signal: lifetime.signal });
+  openPreviewRoute();
   // The background sends two kinds of message to this script. It says when a setting changed, so
   // the pane follows the Theme setting at once. And it passes on a file that the click catcher
   // took in the frame of the submission details page, whose files list this script cannot see

@@ -128,7 +128,9 @@ describe('anonymous submission paths', () => {
     expect(isSubmissionPage(path)).toBe(true);
     expect(isSubmissionPage(path + '/')).toBe(true);
     expect(fileTarget(path + '?download=42', 'https://school.edu')).toEqual({ fileId: '42' });
-    expect(fileTarget(path + '?download=42&comment_id=1', 'https://school.edu')).toBeNull();
+    expect(fileTarget(path + '?download=42&comment_id=1', 'https://school.edu')).toEqual({
+      fileId: '42',
+    });
   });
   it('keeps numeric ids for named submissions and rejects extra path segments', () => {
     expect(isSubmissionPage('/courses/12/assignments/3/submissions/aB12z')).toBe(false);
@@ -205,4 +207,24 @@ describe('sharded ids', () => {
       expect(isSubmissionPage(`/courses/${id}/assignments/23/submissions/34`)).toBe(false);
     },
   );
+});
+
+describe('preview and comment routes', () => {
+  const origin = 'https://school.edu';
+  for (const route of [
+    '/courses/12~3/files?preview=45~6',
+    '/courses/12~3/assignments/7/submissions/8?download=45~6&comment_id=9~1',
+  ]) {
+    it(route, () => expect(fileTarget(route, origin)).toEqual({ fileId: '45~6' }));
+    for (const hostile of [
+      'https://other.edu' + route,
+      route.replace('/files?', '/files/extra?').replace('/submissions/8?', '/submissions/8/extra?'),
+      route.replace('45~6', 'abc'),
+    ])
+      it(hostile, () => expect(fileTarget(hostile, origin)).toBeNull());
+  }
+  it('rejects invalid comment ids', () =>
+    expect(
+      fileTarget('/courses/1/assignments/2/submissions/3?download=4&comment_id=abc', origin),
+    ).toBeNull());
 });

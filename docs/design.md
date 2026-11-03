@@ -2302,7 +2302,7 @@ At Canvas commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`, `ui/features/files/
 Its legacy handler calls `previewItem`, and `FilesApp.jsx` calls the page router with a preview query.
 `ui/shared/files/react/components/FilePreview.jsx` reads `props.query.preview` to select the file.
 `app/views/gradebooks/grade_summary.html.erb` links comment attachments with both `download` and `comment_id` on a submission address.
-The current parser excludes that comment attachment form.
+Ticket F2 accepts that comment attachment form with strict numeric ids, including shard ids.
 The exact Files link address from the owner's failing page and the original PDF are still needed to establish a reproduction.
 
 **Live facts (decision 23, owner's runs on sjsu.instructure.com, Firefox, 2026-10-30):**
@@ -2396,7 +2396,8 @@ The exact Files link address from the owner's failing page and the original PDF 
    - The files list of the submission details page is in a frame, and item 11 handles it.
      The pane takes only the file id from the address and drops any `verifier`.
    - A link without a `download` attribute opens the pane by its address alone.
-     The address of a comment attachment carries `comment_id`, and the pane never takes it, with or without a `download` attribute.
+     The address of a comment attachment carries numeric `comment_id` and `download` query parameters, and the pane takes the source-verified anchors on Grades and submission details pages.
+An explicit HTML `download` attribute keeps its download action.
    - When the viewer is off, no click is rerouted.
      The script takes a click at once, before the settings have loaded, and if the setting turns out to be off, it clicks the same link again from script.
      That click is not trusted, so the script ignores it, and the browser does what the link says: it follows the link, saves a download or opens a new tab.
@@ -2609,7 +2610,7 @@ The exact Files link address from the owner's failing page and the original PDF 
       It catches the same clicks as the page script: a trusted plain left click, with the same `plainClick` rule (`isTrusted`, the left button, no Ctrl, Shift, Alt or Meta).
       It catches only `a.file-upload-submission-info__link` inside `.file-upload-submission-table`, and never a link inside a description, user content or a comment (`frameFileTarget`).
       The Preview button of the row (`a.modal_preview_link`) keeps its action, because it opens the annotated copy in Canvas.
-      A comment attachment is in the top frame, so the catcher never sees one, and an address with `comment_id` never matches.
+      A comment attachment is in the top frame, where the page catcher accepts its validated submission address.
       The catcher stays off unless its own path is a submission details page and the top frame is of the same origin.
     - **Injection.**
       The page script of the top frame asks the background with `viewer:inject-frames`, once when it starts and again after each trusted `load` event of `iframe#preview_frame`, because each load is a new document.
@@ -2924,7 +2925,7 @@ Step 3 (Submit) is built.
   - A submitted file links as `/courses/:id/assignments/:id/submissions/:user?download=:file`, without a `download` attribute, so the pane matcher of decision 25 takes it.
   - The click path is the one of the page script of the pane.
     A click inside the open shadow root reaches the page as a click on the host, so the script reads the real element from the event path for a host with the attribute `data-weekrow-panel`, and for no other host.
-  - A comment attachment keeps its download, because the pane never takes an address with `comment_id` (decision 25, item 3).
+  - A comment attachment opens in the pane and keeps its one-click Download button (decision 25, item 3).
     So item 3 of this decision holds for the student's own files now, and a comment attachment is the open gap.
 - **Settings.** "One assignment view" is in the tools settings, on by default, in the same three places as the other settings.
 
@@ -2984,7 +2985,7 @@ These items need a live check or an outside answer.
     The live checklist has the steps.
 16. The expand rows of the Grades page (decision 26, step 1) have run only against the fixture.
     The real title cell, the way Canvas finds its own comment and rubric rows after the extension row, and the field shapes of the assignment and submission records are known from canvas-lms source only.
-    A comment attachment keeps its download, because the pane never takes an address with `comment_id`.
+    The comment attachment gap is closed by Ticket F2.
     A submitted file on a course with a shard id (`12~345`) also keeps its download, because the matcher of decision 25 takes only plain ids.
     The text of a comment goes through the sanitizer, with line breaks kept, and it is not known whether Canvas escapes angle brackets in that field.
     The live checklist has the steps.
@@ -3109,3 +3110,19 @@ The pane therefore uses content_only=1 rather than borderless.
 `ApplicationHelper#enable_content_view_if_requested` in `app/helpers/application_helper.rb` converts content_only to a boolean.
 `app/views/layouts/application.html.erb` calls that helper and omits the global header, breadcrumbs and course navigation for content-only pages.
 The parameter does not disable the assignment student view or its submission code.
+
+### Ticket F2: Files routes and comment attachments
+
+Verified against Canvas commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
+`ui/features/files/react/components/FolderChild.jsx` renders the name anchor with the model `url`, class `ef-name-col__link`, role `button`, and `preventDefault(this.handleFileLinkClick)`.
+`ui/features/files/legacy/components/FolderChild.jsx` calls `props.previewItem()` in that handler.
+`ui/features/files/react/components/FilesApp.jsx` calls `page()` with its preview route and query.
+`ui/shared/files/react/components/FilePreview.jsx` selects the file with `query.preview`, fetches it by id if needed, and renders `ef-file-preview-overlay`.
+`app/views/gradebooks/grade_summary.html.erb` uses a submission URL with `comment_id` and `download` for comment attachments.
+`lib/api/v1/attachment.rb` builds the model URL with `file_download_url` and `download=1&download_frd=1`, plus an optional verifier.
+The fixture uses that download URL for the name link and pushes the preview query through its click handler.
+The exact live model URL is still not supplied by the owner.
+The fixture also models the router push and direct preview route.
+Trusted plain clicks stop before the router, while explicit download links keep their action.
+Direct loads and history traversal open the pane but retain Canvas's overlay.
+No verified public close API is available for that overlay, so the extension does not remove React-owned nodes or alter Canvas router state.
