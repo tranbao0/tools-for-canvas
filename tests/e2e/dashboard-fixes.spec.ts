@@ -871,7 +871,7 @@ for (const frame of ['input', 'wrapper', 'none']) {
           content: `
         #ann-read { border: none; }
         .fx-field:has(#ann-read) { border:3px solid red; }
-        ${frame === 'wrapper' ? '.fx-select:has(#ann-read) { box-sizing:border-box;height:28px;border:1px solid var(--fx-input-line);border-radius:4px;background:var(--fx-input-bg); }' : ''}
+        ${frame === 'wrapper' ? '.fx-select:has(#ann-read) { box-sizing:border-box;height:36px;border:1px solid var(--fx-input-line);border-radius:6px;background:rgb(250, 248, 236); }' : ''}
       `,
         });
       }
@@ -890,9 +890,12 @@ for (const frame of ['input', 'wrapper', 'none']) {
       await expect
         .poll(() => styles(page.locator('[data-wr-filter] label')))
         .toEqual(await styles(page.locator('.fx-label-text')));
+      // In the wrapper case the frame, not the input, sets the height, so only the type is compared.
+      const type = async (locator: Locator) =>
+        (await styles(locator)).slice(0, frame === 'wrapper' ? 5 : 6);
       await expect
-        .poll(() => styles(page.locator('[data-wr-filter] select')))
-        .toEqual(await styles(page.locator('#ann-read')));
+        .poll(() => type(page.locator('[data-wr-filter] select')))
+        .toEqual(await type(page.locator('#ann-read')));
       const box = (locator: Locator) =>
         locator.evaluate((el) => {
           const css = getComputedStyle(el);
@@ -902,6 +905,7 @@ for (const frame of ['input', 'wrapper', 'none']) {
             css.borderTopStyle,
             css.borderTopColor,
             css.backgroundColor,
+            css.borderTopLeftRadius,
           ];
         });
       await expect
