@@ -8,8 +8,10 @@ import {
   courseOfLink,
   fileTarget,
   catchesDownload,
+  isCommentTab,
   isFileId,
   isSubmissionPage,
+  linkName,
   normalizeTabs,
   normalizeWidth,
   openFile,
@@ -79,6 +81,18 @@ export async function startViewer(): Promise<void> {
   let pending: MessagePort | undefined;
   // The course the student opened each file from, for the "Open in Canvas" link.
   const courses = new Map<string, string>();
+  // The text of the link of each comment attachment that the student opened, for its tab name.
+  const names = new Map<string, string>();
+  const openMessage = (fileId: string) => {
+    const courseId = courses.get(fileId);
+    const name = names.get(fileId);
+    return {
+      type: 'open-file' as const,
+      fileId,
+      ...(courseId ? { courseId } : {}),
+      ...(name ? { name } : {}),
+    };
+  };
   // Whether the pane of the current port has been told what to open. The first open-file request
   // makes the pane restore the stored tabs, and from then on the pane owns the tabs: a stored
   // copy is older than the pane, so it never goes out again, or it would undo what the student
@@ -97,14 +111,9 @@ export async function startViewer(): Promise<void> {
       tabsToken = stored.token;
     }
     applyTheme();
-    const courseId = tabs.active === null ? undefined : courses.get(tabs.active);
     if (tabs.active && port && !synced) {
       synced = true;
-      port.postMessage({
-        type: 'open-file',
-        fileId: tabs.active,
-        ...(courseId ? { courseId } : {}),
-      });
+      port.postMessage(openMessage(tabs.active));
     }
   };
   let removeHello: (() => void) | undefined;
@@ -290,11 +299,7 @@ export async function startViewer(): Promise<void> {
       // The pane is open and owns the tabs, so it opens the file and saves the tabs itself. This
       // request also makes a pane that has not been told yet restore the stored tabs.
       synced = true;
-      port?.postMessage({
-        type: 'open-file',
-        fileId: file.fileId,
-        ...(courseId ? { courseId } : {}),
-      });
+      port?.postMessage(openMessage(file.fileId));
       return true;
     };
     if (paneOpen() && port) return open();
@@ -338,6 +343,10 @@ export async function startViewer(): Promise<void> {
         return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      if ('fileId' in target && isCommentTab(target.fileId)) {
+        const name = linkName(link.textContent);
+        if (name) names.set(target.fileId, name);
+      }
       const checkedHref = link.getAttribute('href');
       void (async () => {
         // The click is taken at once, even while the settings and the tabs are still loading.
@@ -370,18 +379,6 @@ export async function startViewer(): Promise<void> {
     }
     enabled = true;
   })().catch(() => undefined);
-  // Canvas owns the overlay on direct routes; the pane also follows its preview address.
-  const openPreviewRoute = () => {
-    void starting
-      .then(async () => {
-        if (!live || !enabled || !/^\/courses\/[^/]+\/files$/.test(location.pathname)) return;
-        const target = fileTarget(location.href, location.origin);
-        if (target) await openTarget(target, location.href);
-      })
-      .catch(() => undefined);
-  };
-  window.addEventListener('popstate', openPreviewRoute, { signal: lifetime.signal });
-  openPreviewRoute();
   // The background sends two kinds of message to this script. It says when a setting changed, so
   // the pane follows the Theme setting at once. And it passes on a file that the click catcher
   // took in the frame of the submission details page, whose files list this script cannot see

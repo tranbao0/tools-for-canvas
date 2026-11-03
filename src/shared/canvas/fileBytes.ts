@@ -57,6 +57,8 @@ export interface FileBytesOptions {
    * viewer that shows the start of a file, such as plain text.
    */
   truncateAt?: number;
+  /** Called with the headers of the final answer, once the answer is a file. */
+  onHeaders?: (headers: Headers) => void;
   fetchImpl?: typeof fetch;
 }
 
@@ -123,6 +125,7 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
       await response.body?.cancel().catch(() => undefined);
       throw new FileBytesError('not_a_file', 'The answer is a web page, not a file');
     }
+    options.onHeaders?.(response.headers);
     const declared = declaredLength(response.headers);
     const truncateAt =
       options.truncateAt === undefined ? undefined : Math.min(options.truncateAt, maxBytes);

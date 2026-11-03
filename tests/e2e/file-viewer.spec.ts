@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import type { Page, Worker } from '@playwright/test';
 import { test, expect, serveScenario } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
 import {
@@ -437,61 +438,218 @@ test('a link with sharded course and file ids opens the file in the pane', async
   expect(canvas.requests.some((request) => request.path === '/api/v1/files/45~678')).toBe(true);
 });
 
-for (const source of ['classic', 'grades', 'submission']) {
-  test(`takes ${source} file clicks before Canvas`, async ({ context, page, background }) => {
-    const path =
-      source === 'classic'
-        ? '/courses/101/files'
-        : source === 'grades'
-          ? '/courses/101/grades'
-          : '/courses/101/assignments/7/submissions/5501';
-    const body =
-      source === 'classic'
-        ? readFileSync('tests/fixtures/pages/classic-files.html', 'utf8')
-        : html.replace(
-            '/courses/101/files/42',
-            '/courses/101/assignments/7/submissions/5501?comment_id=8&download=42',
-          );
-    const { canvas } = await serveScenario(context, [
-      { path, body, contentType: 'text/html' },
-      pdfDownloadRoute,
-      {
-        path: '/api/v1/files/42',
-        body: {
-          id: '42',
-          display_name: 'Course notes.pdf',
-          filename: 'notes.pdf',
-          'content-type': 'application/pdf',
-          size: 10,
-          url: '/files/42/download',
-        },
-      },
-    ]);
-    await saveAddress(background, canvas.origin);
-    await page.goto(`${canvas.origin}${path}`);
-    await page.getByText(source === 'classic' ? 'Classic notes' : 'Read notes').click();
-    await expect(page.locator('#tools-file-viewer')).toBeVisible();
+const classicFiles = readFileSync('tests/fixtures/pages/classic-files.html', 'utf8');
+const FILES_PATH = '/courses/101/files';
+/** The pages where Canvas pushes `?preview=` for a click on a file name. */
+const PREVIEW_VIEWS = {
+  files: { path: FILES_PATH, href: `${FILES_PATH}?preview=42` },
+  folder: {
+    path: `${FILES_PATH}/folder/week1/notes`,
+    href: `${FILES_PATH}/folder/week1/notes?preview=42`,
+  },
+  search: {
+    path: `${FILES_PATH}/search`,
+    href: `${FILES_PATH}/search?search_term=notes&preview=42`,
+  },
+} as const;
+const recordNotes = {
+  path: '/api/v1/files/42',
+  body: {
+    id: '42',
+    display_name: 'Course notes.pdf',
+    filename: 'notes.pdf',
+    'content-type': 'application/pdf',
+    size: 10,
+    url: '/files/42/download',
+  },
+};
+
+async function openFilesView(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  background: Worker,
+  view: keyof typeof PREVIEW_VIEWS,
+) {
+  const { path, href } = PREVIEW_VIEWS[view];
+  const body = classicFiles.replace(PREVIEW_VIEWS.files.href, href);
+  const { canvas } = await serveScenario(context, [
+    { path, body, contentType: 'text/html' },
+    pdfDownloadRoute,
+    recordNotes,
+  ]);
+  await saveAddress(background, canvas.origin);
+  await page.goto(`${canvas.origin}${path}`);
+  return { canvas, path };
+}
+
+/** Clicks the file name until the pane opens: a click before the script listens reaches Canvas. */
+async function clickName(page: Page): Promise<void> {
+  const url = page.url();
+  await expect(async () => {
+    if (page.url() !== url) await page.goto(url);
+    await page.getByText('Classic notes', { exact: true }).click();
+    await expect(page.locator('#tools-file-viewer')).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 20_000 });
+}
+
+for (const view of Object.keys(PREVIEW_VIEWS) as (keyof typeof PREVIEW_VIEWS)[]) {
+  test(`a click on a file name in the ${view} view opens the pane before Canvas`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    const { canvas, path } = await openFilesView(context, page, background, view);
+    const url = page.url();
+    await clickName(page);
     await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
+    // Canvas got no click: its router pushed nothing and its overlay is not drawn.
     await expect(page.locator('#native-preview')).toHaveCount(0);
-    await page.screenshot({ path: `test-results/f2-${source}.png` });
-    if (source === 'classic') {
-      await closePane(page);
-      await page.getByText('Preview route', { exact: true }).click();
-      await expect(page.locator('#tools-file-viewer')).toBeVisible();
-      await expect(page.locator('#native-preview')).toHaveCount(0);
-      await closePane(page);
-      await page.goto(`${canvas.origin}${path}?preview=42`);
-      await expect(page.locator('#tools-file-viewer')).toBeVisible();
-      await expect(page.locator('#native-preview')).toBeVisible();
-      await closePane(page);
-      await page.evaluate(() => {
-        history.pushState({}, '', location.pathname);
-        history.pushState({}, '', '?preview=42');
-        history.back();
-      });
-      await expect(page).toHaveURL(`${canvas.origin}${path}`);
-      await page.goForward();
-      await expect(page.locator('#tools-file-viewer')).toBeVisible();
-    }
+    expect(page.url()).toBe(url);
+    expect(new URL(page.url()).pathname).toBe(path);
+    expect(canvas.requests.some((request) => request.path === '/api/v1/files/42')).toBe(true);
+    // A download link keeps its action.
+    const saved = page.waitForEvent('download');
+    await page.getByRole('link', { name: 'Download' }).click();
+    await saved;
   });
 }
+
+test('a script cannot open the pane with history calls', async ({ context, page, background }) => {
+  const { canvas } = await openFilesView(context, page, background, 'files');
+  // A first open shows that the viewer is live. The attacks follow with the pane closed.
+  await clickName(page);
+  await closePane(page);
+  const filesRequests = () =>
+    canvas.requests.filter((request) => request.path === '/api/v1/files/42').length;
+  const before = filesRequests();
+  const idle = async () => {
+    await page.waitForTimeout(1000);
+    await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+    expect(filesRequests()).toBe(before);
+  };
+  // 1. A changed address with a synthetic popstate event.
+  await page.evaluate(() => {
+    history.replaceState({}, '', '?preview=42');
+    dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await expect(page.locator('#native-preview')).toBeVisible();
+  await idle();
+  // 2. A real, trusted popstate that a script makes with history.back().
+  await page.evaluate(() => {
+    history.replaceState({}, '', location.pathname);
+    history.pushState({}, '', '?preview=42');
+    history.pushState({}, '', location.pathname);
+    history.back();
+  });
+  await expect(page).toHaveURL(/preview=42/);
+  await expect(page.locator('#native-preview')).toBeVisible();
+  await idle();
+  // 3. A change of the fragment.
+  await page.evaluate(() => {
+    location.hash = '#again';
+  });
+  await expect(page).toHaveURL(/#again/);
+  await idle();
+  // 4. A direct load of the preview address keeps the overlay of Canvas.
+  await page.goto(`${canvas.origin}${PREVIEW_VIEWS.files.href}`);
+  await expect(page.locator('#native-preview')).toBeVisible();
+  await idle();
+});
+
+test('history changes leave the pane as the student left it', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openFilesView(context, page, background, 'files');
+  await clickName(page);
+  const tabs = (await pane(page)).getByRole('tab');
+  await expect(tabs).toHaveCount(1);
+  await page.evaluate(() => {
+    history.pushState({}, '', '?other=1');
+    history.back();
+  });
+  await expect(page).not.toHaveURL(/other=1/);
+  await page.waitForTimeout(500);
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(1);
+  await expect(tabs).toHaveCount(1);
+  await closePane(page);
+  await page.evaluate(() => {
+    history.pushState({}, '', '?preview=42');
+    history.back();
+  });
+  await expect(page).not.toHaveURL(/preview=42/);
+  await page.goForward();
+  await expect(page).toHaveURL(/preview=42/);
+  await page.waitForTimeout(500);
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+});
+
+const COMMENT_PAGE = '/courses/101/assignments/7/submissions/5501';
+const COMMENT_QUERY = 'comment_id=8&download=42';
+const commentHtml = html.replace(
+  '<a class="instructure_file_link" href="/courses/101/files/42">Read notes</a>',
+  `<a class="comment_attachment_link" href="${COMMENT_PAGE}?download=42&amp;comment_id=8">Teacher feedback.pdf</a>`,
+);
+
+/** A comment attachment that only the submission route serves. */
+async function openCommentPage(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  background: Worker,
+  status?: number,
+) {
+  const { canvas } = await serveScenario(context, [
+    { path: '/courses/101/pages/notes', body: commentHtml, contentType: 'text/html' },
+    {
+      path: COMMENT_PAGE,
+      respond: () => ({
+        ...(status === undefined ? {} : { status }),
+        body: readFileSync('tests/fixtures/pdf/fixture.pdf', 'latin1'),
+        contentType: 'application/pdf',
+      }),
+    },
+  ]);
+  await saveAddress(background, canvas.origin);
+  await page.goto(`${canvas.origin}/courses/101/pages/notes`);
+  return canvas;
+}
+
+test('a comment attachment opens in the pane through its submission route', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await openCommentPage(context, page, background);
+  await openFirstFile(page, 'Teacher feedback.pdf', undefined, 'main');
+  const frame = await pane(page);
+  await expect(frame.locator(FILE_NAME)).toHaveText('Teacher feedback.pdf');
+  await expect(frame.locator('[data-part="pdf-page-count"]')).toHaveText(/3/);
+  await expect(frame.locator('[data-part="open-in-canvas"]')).toHaveCount(0);
+  await expect(frame.locator('[data-part="download"]')).toHaveAttribute(
+    'href',
+    `${canvas.origin}${COMMENT_PAGE}?${COMMENT_QUERY}`,
+  );
+  expect(canvas.requests.some((request) => request.path.startsWith('/api/v1/files'))).toBe(false);
+  expect(canvas.requests.some((request) => request.path.includes(COMMENT_QUERY))).toBe(true);
+  expect(new URL(page.url()).pathname).toBe('/courses/101/pages/notes');
+  await page.screenshot({ path: 'test-results/f2b-comment-pdf.png' });
+});
+
+test('a comment attachment that does not load keeps a working Download button', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await openCommentPage(context, page, background, 403);
+  await openFirstFile(page, 'Teacher feedback.pdf', undefined, 'main');
+  const frame = await pane(page);
+  await expect(frame.locator('[data-part="card-error"]')).toBeVisible();
+  await expect(frame.getByRole('link', { name: 'Open in Canvas' })).toHaveCount(0);
+  await expect(frame.getByRole('link', { name: 'Download' })).toHaveAttribute(
+    'href',
+    `${canvas.origin}${COMMENT_PAGE}?${COMMENT_QUERY}`,
+  );
+  expect(canvas.requests.some((request) => request.path.startsWith('/api/v1/files'))).toBe(false);
+  await page.screenshot({ path: 'test-results/f2b-comment-error.png' });
+});

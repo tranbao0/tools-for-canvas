@@ -7,7 +7,8 @@ import {
   helloMessage,
   isViewerSecret,
 } from '@/features/file-viewer/channel';
-import { normalizeTabs, type Tabs } from '@/features/file-viewer/model';
+import { isCommentTab, normalizeTabs, type Tabs } from '@/features/file-viewer/model';
+import { loadCommentFile } from '@/features/file-viewer/ui/commentFile';
 import { createOpenSource } from '@/features/file-viewer/ui/openSource';
 import { ViewerApp, type PaneHost } from '@/features/file-viewer/ui/ViewerApp';
 import type { PaneFile } from '@/features/file-viewer/ui/FileCard';
@@ -38,9 +39,21 @@ export default defineUnlistedScript(() => {
   // The token that the last read of the tabs gave. A write carries it back.
   let tabsToken: string | undefined;
 
+  // The background says whether the cookie is confirmed for the student of the cache. Every read
+  // of file bytes asks it.
+  const confirmCookie = async () =>
+    (await browser.runtime.sendMessage({ type: 'viewer:fetch-allowed' })) === true;
+
   const host = (canvasOrigin: string): PaneHost => ({
     origin: canvasOrigin,
-    async loadFile(fileId) {
+    async loadFile(fileId, name) {
+      if (isCommentTab(fileId))
+        return loadCommentFile({
+          tabId: fileId,
+          name,
+          origin: canvasOrigin,
+          confirm: confirmCookie,
+        });
       const file: unknown = await browser.runtime.sendMessage({ type: 'viewer:file', fileId });
       if (!isPaneFile(file)) return undefined;
       return {
@@ -61,9 +74,7 @@ export default defineUnlistedScript(() => {
         onProgress,
         signal,
         ...(options?.truncateAt === undefined ? {} : { truncateAt: options.truncateAt }),
-        // The background says whether the cookie is confirmed for the student of the cache.
-        confirm: async () =>
-          (await browser.runtime.sendMessage({ type: 'viewer:fetch-allowed' })) === true,
+        confirm: confirmCookie,
       }),
     loadPdfjs,
     async hasAccess() {
@@ -107,6 +118,7 @@ export default defineUnlistedScript(() => {
         opens.emit({
           fileId: message.fileId,
           ...(message.courseId ? { courseId: message.courseId } : {}),
+          ...(message.name ? { name: message.name } : {}),
         });
       },
       bound() {

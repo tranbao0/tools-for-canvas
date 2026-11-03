@@ -26,16 +26,18 @@ function PdfActions(props: { links: FileLinks | null }) {
       >
         <DownloadIcon />
       </a>
-      <a
-        class="pv-btn pv-link"
-        href={links.canvas}
-        data-part="open-in-canvas"
-        aria-label={t('fileOpenInCanvas')}
-        title={t('fileOpenInCanvas')}
-        {...NEW_TAB}
-      >
-        <ExternalLinkIcon />
-      </a>
+      {links.canvas && (
+        <a
+          class="pv-btn pv-link"
+          href={links.canvas}
+          data-part="open-in-canvas"
+          aria-label={t('fileOpenInCanvas')}
+          title={t('fileOpenInCanvas')}
+          {...NEW_TAB}
+        >
+          <ExternalLinkIcon />
+        </a>
+      )}
     </>
   );
 }

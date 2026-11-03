@@ -90,9 +90,15 @@ const FILE_ROUTES: FakeCanvasRoute[] = [
   },
   { path: '/files/501/download', contentType: 'text/plain', body: notes },
   {
+    // The only place that serves a comment attachment: the submission route that Canvas links.
     path: '/courses/12/assignments/101/submissions/42',
-    contentType: 'text/html',
-    body: 'Submission',
+    respond: (request) =>
+      request.path.includes('comment_id=201&download=502')
+        ? {
+            contentType: 'application/pdf',
+            body: readFileSync('tests/fixtures/pdf/fixture.pdf', 'latin1'),
+          }
+        : { contentType: 'text/html', body: 'Submission' },
   },
 ];
 
@@ -299,10 +305,18 @@ test('a comment attachment opens in the file pane', async ({ context, page, back
   await expand(page, canvas, 'Essay');
   const link = region(page, 'Essay').getByRole('link', { name: 'feedback.pdf' });
   await expect(link).toHaveAttribute('href', /comment_id=201/);
-  await link.click();
-  await expect(page.locator('#tools-file-viewer')).toBeVisible();
+  await expect(async () => {
+    await link.click();
+    await expect(page.locator('#tools-file-viewer')).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 20_000 });
+  const frame = await pane(page);
+  await expect(frame.locator('[data-part="pdf-name"]')).toHaveText('feedback.pdf');
+  await expect(frame.locator('[data-part="pdf-page-count"]')).toHaveText(/3/);
+  await expect(frame.locator('[data-part="open-in-canvas"]')).toHaveCount(0);
   expect(new URL(page.url()).pathname).toBe(GRADES);
-  expect(canvas.requests.some((request) => request.path.includes('comment_id=201'))).toBe(false);
+  // The pane read the file through the submission route, never through the files API.
+  expect(canvas.requests.some((request) => request.path.includes('comment_id=201'))).toBe(true);
+  expect(canvas.requests.some((request) => request.path === '/api/v1/files/502')).toBe(false);
 });
 
 test('the Canvas links and toggles of the row keep working', async ({

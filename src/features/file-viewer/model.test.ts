@@ -6,6 +6,10 @@ import {
   PANEL_HOST_ATTRIBUTE,
   courseOfLink,
   fileTarget,
+  isCommentTab,
+  isTabId,
+  linkName,
+  normalizeTabs,
   openFile,
   normalizeWidth,
   validRequest,
@@ -129,7 +133,7 @@ describe('anonymous submission paths', () => {
     expect(isSubmissionPage(path + '/')).toBe(true);
     expect(fileTarget(path + '?download=42', 'https://school.edu')).toEqual({ fileId: '42' });
     expect(fileTarget(path + '?download=42&comment_id=1', 'https://school.edu')).toEqual({
-      fileId: '42',
+      fileId: path + '?comment_id=1&download=42',
     });
   });
   it('keeps numeric ids for named submissions and rejects extra path segments', () => {
@@ -209,22 +213,88 @@ describe('sharded ids', () => {
   );
 });
 
-describe('preview and comment routes', () => {
+describe('preview routes', () => {
   const origin = 'https://school.edu';
   for (const route of [
     '/courses/12~3/files?preview=45~6',
-    '/courses/12~3/assignments/7/submissions/8?download=45~6&comment_id=9~1',
+    '/courses/12~3/files/folder/week%201/notes?preview=45~6',
+    '/courses/12~3/files/folder?preview=45~6',
+    '/courses/12~3/files/search?search_term=a&preview=45~6',
   ]) {
     it(route, () => expect(fileTarget(route, origin)).toEqual({ fileId: '45~6' }));
     for (const hostile of [
       'https://other.edu' + route,
-      route.replace('/files?', '/files/extra?').replace('/submissions/8?', '/submissions/8/extra?'),
+      route.replace('/files', '/files/extra'),
+      route.replace('/files', '/groups/files'),
       route.replace('45~6', 'abc'),
+      route + '&preview=7',
     ])
       it(hostile, () => expect(fileTarget(hostile, origin)).toBeNull());
   }
-  it('rejects invalid comment ids', () =>
+});
+
+describe('comment attachment routes', () => {
+  const origin = 'https://school.edu';
+  const route = '/courses/12~3/assignments/7/submissions/8~1';
+  const tab = `${route}?comment_id=9~1&download=45~6`;
+  it('turns the link into its canonical route', () => {
+    expect(fileTarget(`${route}?download=45~6&comment_id=9~1&verifier=x`, origin)).toEqual({
+      fileId: tab,
+    });
     expect(
-      fileTarget('/courses/1/assignments/2/submissions/3?download=4&comment_id=abc', origin),
-    ).toBeNull());
+      fileTarget(
+        '/courses/1/assignments/2/anonymous_submissions/aB12z?comment_id=3&download=4',
+        origin,
+      ),
+    ).toEqual({
+      fileId: '/courses/1/assignments/2/anonymous_submissions/aB12z?comment_id=3&download=4',
+    });
+  });
+  it('names the route as a tab, and only that route', () => {
+    expect(isTabId(tab)).toBe(true);
+    expect(isCommentTab(tab)).toBe(true);
+    expect(isTabId('45~6')).toBe(true);
+    expect(isCommentTab('45~6')).toBe(false);
+    for (const bad of [
+      `https://evil.example${tab}`,
+      `${tab}&x=1`,
+      `${tab}#a`,
+      tab.replace('comment_id=9~1&download=45~6', 'download=45~6&comment_id=9~1'),
+      tab.replace('/submissions/8~1', '/submissions/8/extra'),
+      tab.replace('/courses/12~3', '/groups/12'),
+      tab.replace('comment_id=9~1', 'comment_id=x'),
+      tab.replace('download=45~6', 'download=0'),
+      `/files/45~6/download?comment_id=1&download=2`,
+      `${route}?comment_id=1&download=2\n`,
+    ])
+      expect(isTabId(bad)).toBe(false);
+  });
+  it('rejects links that are not a clean comment attachment', () => {
+    for (const bad of [
+      'https://other.edu' + tab,
+      `${route}/extra?download=4&comment_id=9`,
+      `${route}?download=abc&comment_id=9`,
+      `${route}?download=4&comment_id=abc`,
+      `${route}?download=4&comment_id=1&comment_id=2`,
+      `${route}?download=4&download=5&comment_id=1`,
+      `/courses/1/assignments/2/submissions/3?download=4&comment_id=${'9'.repeat(21)}`,
+    ])
+      expect(fileTarget(bad, origin)).toBeNull();
+  });
+  it('keeps only the text of a link as its name', () => {
+    expect(linkName('  Teacher\n feedback.pdf\u0000 ')).toBe('Teacher feedback.pdf');
+    expect(linkName('a'.repeat(300))).toHaveLength(200);
+    expect(linkName(' \n ')).toBeUndefined();
+    expect(linkName(null)).toBeUndefined();
+  });
+  it('keeps a comment tab in the stored tabs and drops other addresses', () => {
+    expect(
+      normalizeTabs({ ids: [tab, '5', 'https://evil.example/x', `${tab}&a=1`], active: tab }),
+    ).toEqual({
+      ids: [tab, '5'],
+      active: tab,
+    });
+    expect(openFile({ ids: [], active: null }, tab).active).toBe(tab);
+    expect(openFile({ ids: [], active: null }, `${tab}&a=1`).active).toBeNull();
+  });
 });

@@ -33,6 +33,17 @@ describe('fetchFileBytes', () => {
     );
   });
 
+  it('hands the headers of the final answer to the caller', async () => {
+    const seen: (string | null)[] = [];
+    await fetchFileBytes({
+      origin: ORIGIN,
+      url: '/courses/1/assignments/2/submissions/3?comment_id=4&download=5',
+      onHeaders: (headers) => seen.push(headers.get('content-type')),
+      fetchImpl: async () => reply([bytes(1)], { headers: { 'content-type': 'image/png' } }),
+    });
+    expect(seen).toEqual(['image/png']);
+  });
+
   it('reports the progress with the length of the answer, or null without one', async () => {
     const progress: [number, number | null][] = [];
     await fetchFileBytes({
