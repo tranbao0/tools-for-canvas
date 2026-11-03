@@ -525,6 +525,7 @@ test('a first profile response never confirms the cookie from before that reques
       sameSite: 'Lax',
     },
   ]);
+  await advanceBackgroundClock(background, AFTER_LIMIT_MS);
   release();
   await loadedAccountList(page);
   await expect(doneBox(page, QUIZ_3)).toBeVisible();

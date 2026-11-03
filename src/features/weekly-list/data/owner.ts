@@ -340,6 +340,8 @@ interface PlannerJob {
   priority: RequestPriority;
   /** A surface shows the week, so the list shows the refresh marker until the job ends. */
   shown: boolean;
+  /** Refreshes cached data in the background even when a surface shows the span. */
+  refresh?: boolean;
   /** `planner` until every chunk is in the cache, then `details`. */
   phase: 'planner' | 'details';
   /** Epoch milliseconds when the job started. */
@@ -756,7 +758,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         deferTimer = null;
         // A surface that asked again at the same time may already have run the round.
         const lastFull = cache?.limits.lastFullAt ?? null;
-        if (lastFull === null || lastFull < requestedAt) scheduleForcedFull();
+        if (lastFull === null || lastFull + REFRESH_LIMIT_MS <= clock.now()) scheduleForcedFull();
       },
       Math.max(0, at - requestedAt),
     );
@@ -1129,7 +1131,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     for (const job of jobs) {
       if (!job.all.some((chunk) => overlaps(chunk, interval))) continue;
       if (PRIORITY_RANK[job.priority] < PRIORITY_RANK[priority]) job.priority = priority;
-      job.shown = true;
+      if (!job.refresh) job.shown = true;
     }
   }
 
@@ -1214,7 +1216,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         waiting: [...chunks],
         undetailed: [],
         priority: 'normal',
-        shown: true,
+        shown: false,
+        refresh: true,
         phase: 'planner',
         startedAt: clock.now(),
       },
@@ -1278,14 +1281,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
     // The job stays in `jobs` until its last request ends, so a view that asks again meanwhile
     // does not start the same chunks a second time. Chunks that still arrive go into the cache.
-    const fail = async (error: unknown): Promise<void> => {
-      if (failed) return;
-      failed = true;
+    const fail = async (error: unknown, intervals: Interval[]): Promise<void> => {
       if (gen === generation && !job.shown) {
         plannerBackoff.push(
-          ...job.all.map((interval) => ({ interval, until: clock.now() + 60_000 })),
+          ...intervals.map((interval) => ({ interval, until: clock.now() + 60_000 })),
         );
       }
+      if (failed) return;
+      failed = true;
       await jobFailed(job, error, api, gen);
     };
 
@@ -1308,7 +1311,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       } catch (error) {
         ids.forEach((id) => detailsInFlight.delete(id));
         detailsFailed = true;
-        await fail(error);
+        await fail(
+          error,
+          parts.map((part) => part.interval),
+        );
         return;
       }
       ids.forEach((id) => detailsInFlight.delete(id));
@@ -1363,7 +1369,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         try {
           items = await cookieBound(() => api.listPlannerItems(toRange(chunk)));
         } catch (error) {
-          await fail(error);
+          await fail(error, [chunk]);
           return;
         }
         if (items === DROPPED) {
@@ -3037,7 +3043,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       if (blocksLoads(failure) && !(failure?.kind === 'stale' && failure.check))
         return { kind: 'cant_load', origin, offline, offer };
       // The first round loads the session. Every state request waits for it.
-      if (!running && !anyPending()) schedule('full');
+      if (!running && !anyPending()) {
+        const decision = decideRound('full', cache.limits, clock.now());
+        if (decision.kind === 'run') scheduleForcedFull();
+        else if (decision.kind === 'defer') deferFull(decision.at);
+        else if (cache.limits.lastRoundAt !== null)
+          deferFull(cache.limits.lastRoundAt + REFRESH_LIMIT_MS);
+      }
       return { kind: 'loading' };
     }
     if (session.courses.length === 0) return { kind: 'no_courses', origin, offer, allCourses: [] };
