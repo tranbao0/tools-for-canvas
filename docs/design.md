@@ -2265,11 +2265,15 @@ These tests do not prove that Waterfox applies the same restrictions or that the
 No PDF.js compatibility option changes ship without a reproduced cause.
 The Firefox smoke command includes all four profile sets.
 
-The error pane keeps Retry and adds a short reason and Copy details.
+The error pane adds a short reason and Copy details.
+It offers Retry for every failure except a file that is too large, has a password, has too many pages or is damaged, because reading the same bytes again cannot help those.
 The same plain-text report goes to `console.error` with the extension version, user agent, error name, sanitized message, stage, and byte count.
-Known safe messages and error names pass through an allowlist; unknown text is removed in full to exclude addresses, queries, cookies, and tokens, including tokens without a recognizable format.
+Known safe messages and error names pass through an allowlist, and any other message is removed in full.
+The report also has a message shape: the first 500 characters of the message, with quoted text, addresses, paths and long runs removed, and then every word that is not in a fixed list of engine words replaced, cut to 80 characters.
+No word in that list can name a person, a host or a file.
 The stage separates the library or worker start from document load and page render.
-Page render errors also reach the pane.
+A page that fails to draw shows its own error and Retry, and the rest of the document stays readable.
+A line above the pages then shows the reason and Copy details for that page.
 A fetch failure reports the last received byte count, or zero when no bytes arrive.
 The owner can send this report to locate the Waterfox failure before a compatibility fix is selected.
 

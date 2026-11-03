@@ -30,7 +30,9 @@ const names = [
 
 /** Keeps only diagnostic vocabulary after removing private spans, before truncation. */
 export function messageShape(message: string): string {
-  let decoded = message;
+  // The cut comes first, so the rules below never run on a long input. A word that the cut splits
+  // is not in the word list, so it is removed.
+  let decoded = message.slice(0, 500);
   for (let i = 0; i < 3; i++) {
     try {
       decoded = decodeURIComponent(decoded);
@@ -40,10 +42,13 @@ export function messageShape(message: string): string {
   }
   return decoded
     .replace(/(["'`]).*?\1/gs, '[removed]')
-    .replace(/(?:[a-z][a-z0-9+.-]*:|www\.|[/\\])\S*/gi, '[removed]')
+    .replace(
+      /(?:[a-z][a-z0-9+.-]*:\/\/|(?:data|blob|mailto|moz-extension|chrome-extension):|www\.|[/\\])\S*/gi,
+      '[removed]',
+    )
     .replace(/[a-z0-9+/_=-]{16,}/gi, '[removed]')
     .replace(/[\p{L}\p{N}_@.%+=-]+/gu, (word) =>
-      /^(removed|Invalid|PDF|structure|The|document|has|too|many|pages|Failed|to|fetch|NetworkError|when|attempting|resource|error|Error|Missing|header|offset|stream|object|font|image|canvas|worker|failed|start)$/i.test(
+      /^(removed|Invalid|PDF|structure|The|document|has|too|many|pages|Failed|to|fetch|NetworkError|when|attempting|resource|error|Error|Missing|header|offset|stream|object|font|image|canvas|worker|failed|start|is|not|null|undefined|of|cannot|read|properties|access|property|was|terminated|out|memory|defined|setting|up|fake|loading|module|operation|insecure|TypeError|RangeError|SecurityError|InternalError|DataCloneError|recursion|unknown|context|getContext|could|be|cloned|denied|allowed|blocked|script|load|unexpected|response|password|exception|abort|aborted|the|a|an|in|on|for|with|by|at|from|and|or|no|NaN|this)$/i.test(
         word.replace(/\.$/, ''),
       )
         ? word
@@ -124,12 +129,13 @@ export function pdfDetails(
   const shape = messageShape(String((error as { message?: unknown } | null)?.message ?? ''));
   return {
     reason,
+    // A read that fails for any reason offers Retry (decision 25), except where reading the same
+    // bytes again cannot help.
     retry:
-      kind === 'unconfirmed' ||
-      (kind === 'status' && status !== undefined && status >= 500) ||
-      kind === 'network' ||
-      (!file && stage === 'fetch') ||
-      stage === 'worker start',
+      kind !== 'too_large' &&
+      safe.name !== 'PasswordException' &&
+      !tooMany &&
+      !['InvalidPDFException', 'FormatError', 'MissingPDFException'].includes(safe.name),
     report: `Extension version: ${version}\nUser agent: ${agent}\nError name: ${safe.name}\nError message: ${safe.message}\nMessage shape: ${shape}\nFile error kind: ${kind ?? 'none'}\nHTTP status: ${status ?? 'none'}\nStage: ${stage}\nByte length: ${bytes}\nPDF.js version: 6.5.438\nOffscreenCanvas: ${typeof OffscreenCanvas !== 'undefined'}\nImageDecoder: ${'ImageDecoder' in globalThis}\nWebAssembly: ${typeof WebAssembly !== 'undefined'}\nModule workers: ${moduleWorkers()}`,
   };
 }
