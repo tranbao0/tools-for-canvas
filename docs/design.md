@@ -3036,6 +3036,7 @@ Submit and Re-submit open the Canvas assignment in a docked pane.
 - **Label.**
   The button says "Re-submit" only when the student really submitted: `submitted_at` is set, or the attempt is 1 or more.
   Work that a teacher graded without a submission shows "Submit".
+  A graded discussion has no button: `AssignmentsController#show` redirects its assignment page to the discussion page, where the student answers.
 - **Refresh.**
   - The new student view submits without a page load, so the details are read again on each trusted load of the frame after the first, when the pane closes, and every 20 seconds while the pane is open and the page is in view.
   - The reads join per assignment: at most one runs and at most one waits.

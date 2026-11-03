@@ -23,6 +23,12 @@ describe('turn-in', () => {
     details.submission.attempt = 1;
     expect(submitLabel(details)).toBe('Re-submit');
   });
+  it('has no turn-in for a graded discussion', () => {
+    const details = structuredClone(ASSIGNMENT_DETAILS);
+    details.assignment.can_submit = true;
+    details.assignment.submission_types = ['discussion_topic'];
+    expect(submitLabel(details)).toBeNull();
+  });
   it('says Submit for a work that a teacher graded without a submission', () => {
     const details = structuredClone(ASSIGNMENT_DETAILS);
     details.assignment.can_submit = true;
