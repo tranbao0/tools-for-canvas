@@ -48,3 +48,13 @@ export async function advanceBackgroundClock(worker: Worker, ms: number): Promis
 export function backgroundNow(worker: Worker): Promise<number> {
   return worker.evaluate(() => Date.now());
 }
+
+/** Stops real time while explicit clock steps continue to work. */
+export async function freezeBackgroundClock(worker: Worker): Promise<void> {
+  await worker.evaluate(() => {
+    const clock = (globalThis as ClockScope).__weekrowTestClock;
+    if (clock === undefined) throw new Error('Call setBackgroundClock first.');
+    const now = clock.real();
+    clock.real = () => now;
+  });
+}

@@ -698,6 +698,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         }
       } finally {
         running = false;
+        // Readers can start a replacement round only after this runner releases it.
+        if (cache !== null && (cache.session !== null || cache.failure === null)) await bump();
       }
     })();
   }
@@ -1223,7 +1225,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (origin === null) return;
     jobs.add(job);
     const api = apiFor(origin).withPriority(() => job.priority);
-    track(runJob(job, api, context, reloadDetails).finally(() => jobs.delete(job)));
+    track(
+      runJob(job, api, context, reloadDetails).finally(async () => {
+        // A discarded chunk becomes available for another request only after the job leaves.
+        if (jobs.delete(job)) await bump();
+      }),
+    );
   }
 
   /** Ids of the lookup that no other job is fetching. */
