@@ -515,7 +515,43 @@ describe('a surface that reads before a round finishes', () => {
     }
   });
 
-  it.each(['network', 'server', 'forbidden'] as const)(
+  it('loads a shown span immediately after its prefetch fails', async () => {
+    const h = await loaded();
+    await h.owner.getState(PANEL);
+    await h.owner.settled();
+    h.canvas.fail('listPlannerItems', canvasError('network'), { times: 1 });
+    await h.owner.getState({ ...PANEL, spanOffset: 1 });
+    await h.owner.settled();
+    h.canvas.resetCalls();
+
+    await h.owner.getState({ ...PANEL, spanOffset: 2 });
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('listPlannerItems').length).toBeGreaterThan(0);
+    const state = await h.owner.getState({ ...PANEL, spanOffset: 2 });
+    expect(state.kind).toBe('ready');
+    if (state.kind === 'ready') expect(state.refreshing).toBe(false);
+  });
+
+  it('loads a failed shown span after Retry succeeds', async () => {
+    const h = await loaded();
+    h.canvas.fail('listPlannerItems', canvasError('network'), { times: 1 });
+    await h.owner.getState({ ...PANEL, spanOffset: 3 });
+    await h.owner.settled();
+    await h.owner.refresh('retry');
+    await h.owner.settled();
+    h.canvas.resetCalls();
+
+    await h.owner.getState({ ...PANEL, spanOffset: 3 });
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('listPlannerItems').length).toBeGreaterThan(0);
+    const state = await h.owner.getState({ ...PANEL, spanOffset: 3 });
+    expect(state.kind).toBe('ready');
+    if (state.kind === 'ready') expect(state.refreshing).toBe(false);
+  });
+
+  it.each(['network', 'server', 'forbidden', 'rate_limited'] as const)(
     'does not restart a failed prefetch on marker reads: %s',
     async (kind) => {
       const h = await createHarness();

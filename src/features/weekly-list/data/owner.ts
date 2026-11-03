@@ -1004,6 +1004,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       return;
     }
     if (update !== null) {
+      plannerBackoff = [];
       cache = prune(settlePatches(commitUpdate(cache, update, clock.now()), startedAt), context);
       recordUserCheck(binding.fingerprint);
       loadStatusNames(context.settings, true);
@@ -1063,12 +1064,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   // Planner jobs
   // ---------------------------------------------------------------------------------------------
 
-  /** The intervals still loading or waiting for a retry after a failure. */
-  function pendingIntervals(): Interval[] {
+  /** The intervals still loading, with optional backoff for background requests. */
+  function pendingIntervals(includeBackoff = true): Interval[] {
     plannerBackoff = plannerBackoff.filter((entry) => entry.until > clock.now());
     return [
       ...[...jobs].flatMap((job) => job.waiting),
-      ...plannerBackoff.map((entry) => entry.interval),
+      ...(includeBackoff ? plannerBackoff.map((entry) => entry.interval) : []),
     ];
   }
 
@@ -1149,7 +1150,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     raiseJobs(plan.range, 'normal');
     raiseJobs(plan.near, 'high');
-    const gaps = gapsIn(coverage, plan.range, pendingIntervals());
+    const gaps = gapsIn(coverage, plan.range, pendingIntervals(false));
     const nearGaps = intersectIntervals(gaps, plan.near);
     const near = (plan.backward ? nearGaps.reverse() : nearGaps).flatMap((gap) =>
       nearChunks(gap, plan.backward, plan.addDays),
@@ -1280,7 +1281,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const fail = async (error: unknown): Promise<void> => {
       if (failed) return;
       failed = true;
-      if (gen === generation) {
+      if (gen === generation && !job.shown) {
         plannerBackoff.push(
           ...job.all.map((interval) => ({ interval, until: clock.now() + 60_000 })),
         );
@@ -3122,6 +3123,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           await bump();
           return NO_RETRY;
         case 'retry':
+          plannerBackoff = [];
           retryAt = -Infinity;
           if (cache?.session != null && !(await signedInStudentOwnsCache(true))) return NO_RETRY;
           scheduleForcedFull();
