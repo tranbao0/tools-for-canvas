@@ -275,6 +275,7 @@ test.describe('announcements in place', () => {
     expect(result.tags).toEqual([
       'a',
       'h1',
+      'h2',
       'img',
       'li',
       'p',
@@ -854,39 +855,93 @@ test.describe('the switches', () => {
   });
 });
 
-for (const dark of [false, true]) {
-  test(`announcement type matches Canvas (${dark ? 'dark' : 'light'})`, async ({
-    context,
-    page,
-  }) => {
-    await open(context, page, { width: 1280 });
-    if (dark)
+for (const frame of ['input', 'wrapper', 'none']) {
+  for (const dark of [false, true]) {
+    test(`announcement type matches Canvas (${dark ? 'dark' : 'light'}, ${frame})`, async ({
+      context,
+      page,
+    }) => {
+      await open(context, page, { width: 1280 });
+      if (dark)
+        await page
+          .locator('.fixture-widget-app')
+          .evaluate((el) => el.setAttribute('data-fixture-dark', ''));
+      if (frame !== 'input') {
+        await page.addStyleTag({
+          content: `
+        #ann-read { border: none; }
+        .fx-field:has(#ann-read) { border:3px solid red; }
+        ${frame === 'wrapper' ? '.fx-select:has(#ann-read) { box-sizing:border-box;height:28px;border:1px solid var(--fx-input-line);border-radius:4px;background:var(--fx-input-bg); }' : ''}
+      `,
+        });
+      }
+      const styles = async (locator: Locator) =>
+        locator.evaluate((el) => {
+          const css = getComputedStyle(el);
+          return [
+            css.fontFamily,
+            css.fontSize,
+            css.fontWeight,
+            css.lineHeight,
+            css.color,
+            el.getBoundingClientRect().height,
+          ];
+        });
+      await expect
+        .poll(() => styles(page.locator('[data-wr-filter] label')))
+        .toEqual(await styles(page.locator('.fx-label-text')));
+      await expect
+        .poll(() => styles(page.locator('[data-wr-filter] select')))
+        .toEqual(await styles(page.locator('#ann-read')));
+      const box = (locator: Locator) =>
+        locator.evaluate((el) => {
+          const css = getComputedStyle(el);
+          return [
+            css.height,
+            css.borderTopWidth,
+            css.borderTopStyle,
+            css.borderTopColor,
+            css.backgroundColor,
+          ];
+        });
+      await expect
+        .poll(() => box(page.locator('[data-wr-filter] select')))
+        .toEqual(
+          await box(page.locator(frame === 'wrapper' ? '.fx-select:has(#ann-read)' : '#ann-read')),
+        );
+      await page.locator(`${ANNOUNCEMENT} a[href*="discussion_topics"]`).click();
+      await expect(message(page).locator('h1')).toHaveCSS('font-size', '28.8px');
+      await expect(message(page)).toHaveCSS('font-size', '16px');
+      await expect(message(page)).toHaveCSS('line-height', '24px');
+      for (const heading of ['h1', 'h2']) {
+        await expect(message(page).locator(heading)).toHaveCSS('font-size', '28.8px');
+        await expect(message(page).locator(heading)).toHaveCSS('font-weight', '400');
+      }
+      for (const edge of ['top', 'bottom']) {
+        await expect(message(page).locator('p').first()).toHaveCSS(`margin-${edge}`, '12px');
+      }
+      for (const cell of await message(page).locator('td,th').all()) {
+        await expect(cell).toHaveCSS('border-top-width', '1px');
+        await expect(cell).toHaveCSS('border-top-style', 'solid');
+        await expect(cell).not.toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+      }
       await page
-        .locator('.fixture-widget-app')
-        .evaluate((el) => el.setAttribute('data-fixture-dark', ''));
-    const styles = async (locator: Locator) =>
-      locator.evaluate((el) => {
-        const css = getComputedStyle(el);
-        return [
-          css.fontFamily,
-          css.fontSize,
-          css.fontWeight,
-          css.lineHeight,
-          el.getBoundingClientRect().height,
-        ];
+        .locator('[data-wr-filter] select')
+        .selectOption({ label: 'BIO 110: Principles of Biology' });
+      const list = page.locator('[data-wr-list]');
+      await expect(list).toBeVisible();
+      await expect(list).toHaveCSS('line-height', '19.6px');
+      await expect(list.locator('.wr-x-meta').first()).toHaveCSS('opacity', '0.75');
+      await expect(list.locator('.wr-x-meta').first()).toHaveCSS(
+        'color',
+        dark ? 'rgb(255, 255, 255)' : 'rgb(39, 53, 64)',
+      );
+      await expect(list.locator('.wr-x-link').first()).toHaveCSS('font-size', '14px');
+      await page.locator('[data-wr-filter] select').selectOption({ label: 'All courses' });
+      await page.evaluate(() => document.fonts.ready);
+      await page.screenshot({
+        path: `screenshots/dashboard-fixes/announcement-fonts-1280-${dark ? 'dark' : 'light'}-${frame}.png`,
       });
-    await expect
-      .poll(() => styles(page.locator('[data-wr-filter] label')))
-      .toEqual(await styles(page.locator('.fx-label-text')));
-    expect(await styles(page.locator('[data-wr-filter] select'))).toEqual(
-      await styles(page.locator('#ann-read')),
-    );
-    await page.locator(`${ANNOUNCEMENT} a[href*="discussion_topics"]`).click();
-    await expect(message(page).locator('h1')).toHaveCSS('font-size', '28.8px');
-    await expect(message(page)).toHaveCSS('font-size', '16px');
-    await page.evaluate(() => document.fonts.ready);
-    await page.screenshot({
-      path: `screenshots/dashboard-fixes/announcement-fonts-1280-${dark ? 'dark' : 'light'}.png`,
     });
-  });
+  }
 }

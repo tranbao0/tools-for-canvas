@@ -155,13 +155,10 @@ export function announcementsFix(): Fix {
     context.again();
   }
 
-  /** The shadow host inherits the Canvas font and records the widget link type. */
+  /** The shadow host inherits the Canvas font. */
   function matchBodyType(host: HTMLElement, found: AnnouncementItem): void {
     const view = host.ownerDocument.defaultView;
     if (!view) return;
-    const link = view.getComputedStyle(found.link.firstElementChild ?? found.link);
-    host.style.setProperty('--wr-link-size', link.fontSize);
-    host.style.setProperty('--wr-link-line', link.lineHeight);
     host.style.fontFamily = view.getComputedStyle(found.item).fontFamily;
   }
 
@@ -350,12 +347,18 @@ export function announcementsFix(): Fix {
     }
     // InstUI paints the field border on a wrapper around its input.
     let box: HTMLElement = input;
-    while (
-      box.parentElement &&
-      box.parentElement !== widget.filterBlock &&
-      view.getComputedStyle(box).borderTopStyle === 'none'
-    )
-      box = box.parentElement;
+    for (
+      let candidate: HTMLElement | null = input;
+      candidate && candidate !== widget.filterBlock;
+      candidate = candidate.parentElement
+    ) {
+      if (candidate.contains(label)) break;
+      const style = view.getComputedStyle(candidate);
+      if (style.borderTopStyle !== 'none' && parseFloat(style.borderTopWidth) > 0) {
+        box = candidate;
+        break;
+      }
+    }
     const frame = view.getComputedStyle(box);
     for (const name of ['height', 'border-radius', 'background-color']) {
       select.style.setProperty(name, frame.getPropertyValue(name));
