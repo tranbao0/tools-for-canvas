@@ -1061,3 +1061,121 @@ test('a cancelled leave question keeps the first assignment, and an accepted one
       frameTitle: 'Turn in Reading',
     });
 });
+
+const classicPage = readFileSync('tests/fixtures/pages/assignment.html', 'utf8');
+
+async function openClassic(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  background: Parameters<typeof saveAddress>[0],
+  options: { shard?: boolean; newView?: boolean; empty?: boolean } = {},
+) {
+  const course = options.shard ? '2~12' : '12';
+  const id = options.shard ? '2~101' : '101';
+  const copy = options.empty ? secondAssignment() : details();
+  copy.assignment.id = id;
+  const records = rawRecords(copy);
+  const canvas = await serveScenario(context, [
+    {
+      path: `/courses/${course}/assignments/${id}`,
+      contentType: 'text/html',
+      body: options.newView
+        ? classicPage.replace('id="assignment_show"', 'id="new-student-view"')
+        : classicPage,
+    },
+    { path: `/api/v1/courses/${course}/assignments/${id}`, body: json(records.assignment) },
+    {
+      path: `/api/v1/courses/${course}/assignments/${id}/submissions/self`,
+      body: json(records.submission),
+    },
+    ...FILE_ROUTES,
+  ]);
+  await addCsrfCookie(context, canvas.canvas.origin);
+  await saveAddress(background, canvas.canvas.origin);
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await page.goto(`${canvas.canvas.origin}/courses/${course}/assignments/${id}`);
+  return canvas.canvas;
+}
+
+const submissionPanel = (page: Page) =>
+  page.getByRole('region', { name: 'Your submission', exact: true });
+
+test('classic assignment shows submission details below the description and follows the switch', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openClassic(context, page, background);
+  const panel = submissionPanel(page);
+  await expect(panel.locator('.av-value').getByText('5 / 10')).toBeVisible();
+  await expect(page.locator('#assignment_show > .description + #av-submission')).toHaveCount(1);
+  await expect(panel.locator('[data-assessed]')).toContainText('Your assessment');
+  await expect(panel.locator('.av-comment .av-subheading')).toHaveText([
+    'Student',
+    'Teacher',
+    'Teacher <img src=x onerror=alert(1)>',
+  ]);
+  await expect(panel.getByRole('heading', { name: 'Your files' })).toBeVisible();
+  await expect(
+    panel.locator('script, iframe, [onerror], [onclick], a[href^="javascript:"]'),
+  ).toHaveCount(0);
+  await expect(panel.getByRole('heading', { name: 'Instructions' })).toHaveCount(0);
+  await expect(panel.getByRole('button')).toHaveCount(0);
+  await expect(panel.getByRole('link', { name: 'Open assignment' })).toHaveCount(0);
+  for (const theme of ['light', 'dark'] as const) {
+    await saveSetting(background, { theme });
+    await expect(page.locator('#av-submission')).toHaveAttribute('data-theme', theme);
+    if (theme === 'dark') await dark(page);
+    await page.screenshot({
+      path: path.join(DIR, `assignment-page-${theme}-1280.png`),
+      fullPage: true,
+    });
+  }
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  await expect(panel).toHaveCount(0);
+  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  await expect(panel.locator('[data-assessed]')).toBeVisible();
+});
+
+for (const name of ['essay.txt', 'feedback.pdf']) {
+  test(`classic assignment opens ${name} in the file pane`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openClassic(context, page, background);
+    await expect(async () => {
+      await submissionPanel(page).getByRole('link', { name, exact: true }).click();
+      await expect(page.locator('#tools-file-viewer')).toBeVisible({ timeout: 1500 });
+    }).toPass({ timeout: 20_000 });
+    const frame = await pane(page);
+    if (name === 'essay.txt') await expect(frame.locator('pre')).toHaveText(notes);
+    else await expect(frame.locator('[data-part="pdf-name"]')).toHaveText(name);
+  });
+}
+
+test('classic assignment supports shard ids', async ({ context, page, background }) => {
+  await openClassic(context, page, background, { shard: true });
+  await expect(submissionPanel(page).locator('[data-assessed]')).toBeVisible();
+  await expect(submissionPanel(page).getByRole('link', { name: 'essay.txt' })).toHaveAttribute(
+    'href',
+    /courses\/2~12\/assignments\/2~101\/submissions/,
+  );
+});
+
+test('new student view has no extra submission panel', async ({ context, page, background }) => {
+  const canvas = await openClassic(context, page, background, { newView: true });
+  await waitForListLoaded(canvas);
+  await expect(page.locator('#av-submission')).toHaveCount(0);
+});
+
+test('unsubmitted classic assignment shows one short score line', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openClassic(context, page, background, { empty: true });
+  await expect(submissionPanel(page).getByText('No submission yet')).toBeVisible();
+  await expect(submissionPanel(page).locator('.av-section')).toHaveCount(0);
+  await expect(submissionPanel(page).getByText('Not graded yet')).toBeVisible();
+});

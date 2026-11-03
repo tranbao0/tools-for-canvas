@@ -2885,6 +2885,26 @@ The Grades page now has the expand rows with the read-only content.
 Step 2 (the Assignments list) is built.
 Step 3 (Submit) is built.
 
+**Step 4 (assignment page):**
+
+The classic student assignment page shows a permanent "Your submission" panel directly after the description in its main column.
+It reuses the score, status, submitted date, rubric assessment, comments and own files of step 1, without instructions or action buttons.
+An unsubmitted assignment with no comments shows the score and "No submission yet" on one line.
+The switch and Theme setting apply without a reload.
+A submission reloads Canvas and reads the panel again.
+The existing message, router, cookie binding, projection and sanitizer remain unchanged.
+The injection and page route checks accept `/courses/:c/assignments/:a`, including shard ids.
+
+Verified against canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`:
+
+- `app/views/assignments/show.html.erb` places `.description.user_content` directly in `#assignment_show` after the student overview.
+- The student branch renders `_student_assignment_overview.html.erb`, whose root is `ul.student-assignment-overview`, and the native submission button.
+- The teacher description has `.teacher-version`.
+- `ui/features/assignments_show_student/index.js` mounts the new student React view in a new div in `#content`, without the classic wrapper and overview.
+- The panel requires the classic wrapper, its direct student overview and its direct non-teacher description, so the new student view receives no panel.
+- The fixture retains those classic source hooks and supplies fixed course content and local styles for tests.
+
+
 - **Script.**
   - The page script is `assignment-view.js`, which is its own small entry point like `dashboard.js`.
   - The background injects it next to the list script, into the top frame of a Grades or Assignments page of the saved Canvas (`/courses/:id/grades` or `/courses/:id/assignments`, also with a shard id), including while the switch is off so it can follow changes.
