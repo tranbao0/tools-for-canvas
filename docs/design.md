@@ -2255,6 +2255,20 @@ If a later feature goes over the budget, the Announcements view can move to a sc
 **Problem:** Canvas opens a PDF in a full-window overlay that hides the page, shows one file at a time, and offers the student's own submitted files only as downloads.
 The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in the name.
 
+**F1 investigation (2026-11-02, incomplete):**
+
+The Firefox 159 Selenium test renders the existing three-page PDF through the fake Canvas redirect.
+The same test also passes with a PDF comment appended to make the response about 1.7 MB, using `.output-e2e/firefox-mv3`.
+This checks the response size but does not model the image encodings or structure of the owner's PDF.
+The reported Firefox failure is not reproduced, so its cause remains unverified.
+
+At Canvas commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`, `ui/features/files/react/components/FolderChild.jsx` renders `.ef-name-col__link` with `href={this.props.model.get('url')}` and a prevented click handler.
+Its legacy handler calls `previewItem`, and `FilesApp.jsx` calls the page router with a preview query.
+`ui/shared/files/react/components/FilePreview.jsx` reads `props.query.preview` to select the file.
+`app/views/gradebooks/grade_summary.html.erb` links comment attachments with both `download` and `comment_id` on a submission address.
+The current parser excludes that comment attachment form.
+The exact Files link address from the owner's failing page and the original PDF are still needed to establish a reproduction.
+
 **Live facts (decision 23, owner's runs on sjsu.instructure.com, Firefox, 2026-10-30):**
 
 - `GET /api/v1/files/:id` answers with the content type, the size and a same-origin `url` (`/files/:id/download`).
