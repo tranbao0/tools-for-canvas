@@ -14,11 +14,12 @@ export interface AnnouncementFixture extends AnnouncementTopic {
 /** HTML with every kind of trouble the sanitizer must handle, around some good content. */
 export const HOSTILE_MESSAGE = [
   '<h1>Dear Class,</h1>',
+  '<h2>Lab details</h2>',
   '<p>The lab section moves to <strong>Science Hall 214</strong> on Thursday.</p>',
   '<p>Read the <a href="/courses/101/pages/lab-safety">lab safety page</a> and the ',
   '<a href="https://example.org/map">building map</a> first.</p>',
   '<ul><li>Bring your goggles</li><li>Bring your notebook</li></ul>',
-  '<table><tr><th>Group</th><th>Room</th></tr><tr><td>A</td><td>214</td></tr></table>',
+  '<table border="1" cellspacing="0" cellpadding="4"><tr><th>Group</th><th>Room</th></tr><tr><td>A</td><td>214</td></tr></table>',
   '<script>window.__pwned = 1;</script>',
   '<img src="https://example.org/missing.png" onerror="window.__pwned = 2" alt="logo">',
   '<p onclick="window.__pwned = 3" style="position:fixed;top:0;left:0;width:9999px;height:9999px">',
