@@ -2255,6 +2255,24 @@ If a later feature goes over the budget, the Announcements view can move to a sc
 **Problem:** Canvas opens a PDF in a full-window overlay that hides the page, shows one file at a time, and offers the student's own submitted files only as downloads.
 The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in the name.
 
+**F3 investigation (2026-11-02):**
+
+The owner reports Waterfox 6.7.7 (Gecko 153.6.0, 64-bit), test channel 0.1.0.23.
+Stock Firefox 159 renders the three-page fixture padded to about 1.7 MB with each of four separate profile settings: `privacy.resistFingerprinting=true`, `privacy.fingerprintingProtection=true` with `privacy.fingerprintingProtection.overrides="+AllTargets"`, `javascript.options.wasm=false`, and `webgl.disabled=true`.
+All four pass fetch, worker start, document load, and page render, and restore page 3.
+The stock browser does not reproduce the owner's failure.
+These tests do not prove that Waterfox applies the same restrictions or that the owner's PDF uses the same image formats.
+No PDF.js compatibility option changes ship without a reproduced cause.
+The Firefox smoke command includes all four profile sets.
+
+The error pane keeps Retry and adds a short reason and Copy details.
+The same plain-text report goes to `console.error` with the extension version, user agent, error name, sanitized message, stage, and byte count.
+Known safe messages and error names pass through an allowlist; unknown text is removed in full to exclude addresses, queries, cookies, and tokens, including tokens without a recognizable format.
+The stage separates the library or worker start from document load and page render.
+Page render errors also reach the pane.
+A fetch failure reports the last received byte count, or zero when no bytes arrive.
+The owner can send this report to locate the Waterfox failure before a compatibility fix is selected.
+
 **F1 investigation (2026-11-02, incomplete):**
 
 The Firefox 159 Selenium test renders the existing three-page PDF through the fake Canvas redirect.

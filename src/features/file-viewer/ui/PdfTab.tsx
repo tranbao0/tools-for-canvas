@@ -3,6 +3,8 @@
  * and then shows the viewer. The tab starts when it first becomes the active tab. It keeps its
  * document and scroll position while the pane stays open, hidden when another tab is active.
  */
+import { browser } from 'wxt/browser';
+import { pdfDetails, type PdfStage } from '../pdf/failure';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { FileBytesError } from '../../../shared/canvas/fileBytes';
 import { t } from '../../../shared/ui/i18n';
@@ -30,7 +32,11 @@ export interface PdfHost {
 type Phase =
   | { kind: 'reading'; loaded: number; total: number | null }
   | { kind: 'viewer'; lib: PdfjsLib; source: PdfSource }
-  | { kind: 'error'; failure: PdfFailure | 'read' | 'large' | 'unconfirmed' };
+  | {
+      kind: 'error';
+      failure: PdfFailure | 'read' | 'large' | 'unconfirmed';
+      details: { reason: string; report: string };
+    };
 
 /** The part of the bytes read, from 0 to 1, or `null` when the length is not known. */
 export function progressFraction(loaded: number, total: number | null): number | null {
@@ -114,6 +120,24 @@ export function PdfTab(props: {
 }) {
   const { host } = props;
   const [phase, setPhase] = useState<Phase>({ kind: 'reading', loaded: 0, total: null });
+  const fail = (
+    failure: PdfFailure | 'read' | 'large' | 'unconfirmed',
+    error: unknown,
+    stage: PdfStage,
+    bytes: number,
+  ) => {
+    const details = pdfDetails(
+      error,
+      stage,
+      bytes,
+      browser.runtime.getManifest().version,
+      navigator.userAgent,
+    );
+    if (failure === 'large') details.reason = 'File too large';
+    console.error(details.report);
+    setPhase({ kind: 'error', failure, details });
+  };
+  const [copyStatus, setCopyStatus] = useState('');
   const started = useRef(false);
   if (props.active) started.current = true;
   const begin = started.current;
@@ -123,6 +147,7 @@ export function PdfTab(props: {
   useEffect(() => {
     if (!begin) return;
     let live = true;
+    let byteLength = 0;
     const abort = new AbortController();
     setPhase({ kind: 'reading', loaded: 0, total: null });
     // The library loads while the bytes download.
@@ -134,6 +159,7 @@ export function PdfTab(props: {
         bytes = await host.readFile(
           props.url,
           (loaded, total) => {
+            byteLength = loaded;
             if (live) setPhase({ kind: 'reading', loaded, total });
           },
           abort.signal,
@@ -142,23 +168,23 @@ export function PdfTab(props: {
         if (!live || (error instanceof FileBytesError && error.kind === 'aborted')) return;
         if (error instanceof FileBytesError && error.kind === 'too_large') {
           // The record said the file was small, but the bytes are not. Reading again would not help.
-          setPhase({ kind: 'error', failure: 'large' });
+          fail('large', error, 'fetch', byteLength);
           return;
         }
         if (error instanceof FileBytesError && error.kind === 'unconfirmed') {
           // The background has not confirmed the sign-in for this student. The permission is fine.
-          setPhase({ kind: 'error', failure: 'unconfirmed' });
+          fail('unconfirmed', error, 'fetch', byteLength);
           return;
         }
-        setPhase({ kind: 'error', failure: 'read' });
+        fail('read', error, 'fetch', byteLength);
         onReadFailed.current();
         return;
       }
       let lib: PdfjsLib;
       try {
         lib = await library;
-      } catch {
-        if (live) setPhase({ kind: 'error', failure: 'other' });
+      } catch (error) {
+        if (live) fail('other', error, 'worker start', bytes.byteLength);
         return;
       }
       if (live) setPhase({ kind: 'viewer', lib, source: { bytes } });
@@ -180,12 +206,29 @@ export function PdfTab(props: {
       {phase.kind === 'reading' && begin && <Progress loaded={phase.loaded} total={phase.total} />}
       {phase.kind === 'error' && (
         <div class="pv-error" data-part="pdf-error" role="alert">
-          <p>{failureText(phase.failure)}</p>
-          {(phase.failure === 'read' || phase.failure === 'unconfirmed') && (
+          <p>{t('pdfLoadError')}</p>
+          <p>{phase.details.reason}</p>
+          {(phase.failure === 'password' || phase.failure === 'unconfirmed') && (
+            <p>{failureText(phase.failure)}</p>
+          )}
+          <button
+            type="button"
+            class="wr-btn"
+            onClick={() => {
+              void navigator.clipboard.writeText(phase.details.report).then(
+                () => setCopyStatus('Details copied'),
+                () => setCopyStatus('Could not copy details. Use the Browser Console.'),
+              );
+            }}
+          >
+            Copy details
+          </button>
+          <span role="status">{copyStatus}</span>
+          {
             <button type="button" class="wr-btn" onClick={props.onRetry}>
               {t('fileRetry')}
             </button>
-          )}
+          }
           {phase.failure === 'unconfirmed' && props.links && (
             <a
               class="wr-btn"
@@ -205,7 +248,7 @@ export function PdfTab(props: {
           lib={phase.lib}
           source={phase.source}
           active={props.active}
-          onFailed={(failure) => setPhase({ kind: 'error', failure })}
+          onFailed={fail}
         />
       )}
     </div>

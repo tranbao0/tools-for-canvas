@@ -17,6 +17,7 @@ import {
   ZoomInIcon,
   ZoomOutIcon,
 } from '../../../shared/ui/icons';
+import type { PdfStage } from './failure';
 import { PdfEngine, type EngineState } from './engine';
 import { keyContextOf, pdfKeyAction } from './keys';
 import { pdfjsDecoderUrl } from './loader';
@@ -54,7 +55,7 @@ export function PdfViewer(props: {
   source: PdfSource;
   /** Whether the tab of this document is the active tab. */
   active: boolean;
-  onFailed(kind: PdfFailure): void;
+  onFailed(kind: PdfFailure, error: unknown, stage: PdfStage, bytes: number): void;
 }) {
   const overflow = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
@@ -97,6 +98,8 @@ export function PdfViewer(props: {
     const host = pages.current;
     if (!bytes || !container || !host) return;
     let cancelled = false;
+    const byteLength = bytes.byteLength;
+    let stage: PdfStage = 'worker start';
     let opened: PdfEngine | undefined;
     const abort = new AbortController();
     let restored = false;
@@ -151,6 +154,12 @@ export function PdfViewer(props: {
       }),
     ]);
     PdfEngine.open({
+      onStage: (next) => {
+        stage = next;
+      },
+      onPageError: (_index, error) => {
+        if (!cancelled) failed.current(classifyPdfError(error), error, 'page render', byteLength);
+      },
       lib: props.lib,
       bytes,
       wasmUrl: pdfjsDecoderUrl(),
@@ -190,7 +199,7 @@ export function PdfViewer(props: {
         setState(created.state);
       },
       (error: unknown) => {
-        if (!cancelled) failed.current(classifyPdfError(error));
+        if (!cancelled) failed.current(classifyPdfError(error), error, stage, byteLength);
       },
     );
     return () => {

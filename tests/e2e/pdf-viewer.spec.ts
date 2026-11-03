@@ -549,6 +549,26 @@ test('a failed read keeps the card, and Retry reads the file again', async ({
   await expect(frame.locator(FILE_NAME)).toHaveText('Course notes.pdf');
   await expect(frame.getByRole('button', { name: 'Allow access' })).toHaveCount(0);
   failing = false;
+  await expect(frame.getByRole('button', { name: 'Copy details' })).toBeVisible();
+  await expect(frame.getByText('Network error', { exact: true })).toBeVisible();
+  await page.screenshot({ path: 'test-results/f3-error-pane.png' });
+  await frame.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, 'writeText', {
+      value: async (text: string) => {
+        document.body.dataset.copiedDetails = text;
+      },
+      configurable: true,
+    });
+  });
+  await frame.getByRole('button', { name: 'Copy details' }).click();
+  await expect(frame.getByText('Details copied', { exact: true })).toBeVisible();
+  const report = await frame.locator('body').getAttribute('data-copied-details');
+  expect(report).toContain('Stage: fetch');
+  expect(report).toContain('Extension version:');
+  expect(report).toContain('User agent:');
+  expect(report).toContain('Byte length: 0');
+  expect(report).not.toMatch(/https?:|token=|school\.instructure/);
+
   await frame.getByRole('button', { name: 'Retry' }).click();
   await expect(frame.locator(VIEWER)).toBeVisible();
   await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
