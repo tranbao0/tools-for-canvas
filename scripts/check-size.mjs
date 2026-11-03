@@ -13,10 +13,10 @@ import { constants, gzipSync } from 'node:zlib';
 import { formatKb, listFiles, runForTargets } from './lib/build-output.mjs';
 
 /**
- * The gzip budget for one entry point: 40 KB, with 1 KB = 1000 bytes. Every entry point loads
+ * The gzip budget for one entry point: 45 KB, with 1 KB = 1000 bytes. Every entry point loads
  * from the extension's own files, not over the network.
  */
-export const BUDGET_BYTES = 40_000;
+export const BUDGET_BYTES = 45_000;
 
 /**
  * The gzip budget for the detector content script, in bytes. It runs on every https page

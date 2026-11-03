@@ -7,8 +7,8 @@ test('viewer budgets apply only to the three viewer entry points', () => {
   assert.equal(budgetFor('submission-frame.js'), 4_000);
   assert.equal(budgetFor('viewer.html'), 1_500_000);
   assert.equal(budgetFor('detector.js'), 2000);
-  assert.equal(budgetFor('sidepanel.html'), 40_000);
-  assert.equal(budgetFor('other/viewer.html'), 40_000);
+  assert.equal(budgetFor('sidepanel.html'), 45_000);
+  assert.equal(budgetFor('other/viewer.html'), 45_000);
 });
 
 test('the pane page counts the PDF.js files that it loads at run time', () => {

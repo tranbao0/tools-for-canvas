@@ -1381,9 +1381,10 @@ These sizes come from one test build of the same small app [19].
 - The in-page UI uses px units, because rem units follow the page's font size [19].
 - Plain CSS with custom properties for colors and spacing; no CSS framework.
 - No runtime dependencies besides Preact and `@preact/signals`.
-- Each entry point must stay under 40 KB after gzip, and the detector under 2 KB, because the detector runs on every https page.
+- Each entry point must stay under 45 KB after gzip, and the detector under 2 KB, because the detector runs on every https page.
   Every entry point loads from the extension's own files, not over the network.
   The limit was 30 KB until 2026-10-29, when the span feature and the dashboard column filled it.
+  The limit was 40 KB until 2026-11-03, when the Course work slot filled it.
   CI checks these limits.
   The extension pages load one shared chunk for all code under `src/shared` and `src/features`, because several small chunks cost more after gzip.
   A test build with Preact had a 9.3 KB content script [19].
@@ -2803,9 +2804,9 @@ The exact Files link address from the owner's failing page and the original PDF 
 
 **Size:**
 
-- The page script that catches clicks and draws the pane frame is its own small script, like `dashboard.js`, so the in-page list keeps its 40 KB limit.
+- The page script that catches clicks and draws the pane frame is its own small script, like `dashboard.js`, so the in-page list keeps its 45 KB limit.
 - The pane page and PDF.js load only when a file opens, and they get their own limit of 1.5 MB gzip, because they load from the extension's files.
-- `viewer-frame.js`, the pane page, stays under the 40 KB limit.
+- `viewer-frame.js`, the pane page, stays under the 45 KB limit.
   It holds the app, the toolbar, the engine and the style sheet, and imports PDF.js at run time.
 - PDF.js, its worker and its decoders count toward the 1.5 MB limit of `viewer.html`.
   `check-size` adds the files of `pdfjs/` to that page, because a scan of the code cannot see an address that the page builds at run time.
