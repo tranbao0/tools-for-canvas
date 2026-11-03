@@ -1,7 +1,7 @@
 # Privacy policy
 
 This policy covers the Tools for Canvas browser extension for Chrome, Microsoft Edge and Firefox.
-Last updated: 2026-10-30.
+Last updated: 2026-11-02.
 
 ## Summary
 
@@ -23,7 +23,9 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - the names of custom grade statuses in your courses;
 - your current grade and grade letter in each course, which Canvas sends with the course list, unless the course hides them;
 - the announcements of your courses: the title, author, date, read state and text of the announcements of the last 14 days of your shown courses, for the Announcements tab of the list (the extension keeps the first 1,500 characters of each text in memory);
-- the full text of an announcement that you open, and the recent announcements of a course that you choose in the announcements filter of the new dashboard.
+- the full text of an announcement that you open, and the recent announcements of a course that you choose in the announcements filter of the new dashboard;
+- the details of an assignment that you open on the Grades page: its instructions, its rubric, your own submission with your files and your rubric assessment, and the comments on it with their files.
+  The extension reads them only when you open the row, with two requests of your own Canvas: `GET /api/v1/courses/:id/assignments/:id` and `GET /api/v1/courses/:id/assignments/:id/submissions/self`.
 
 It reads the `_csrf_token` cookie of your Canvas site, because Canvas requires that token to accept a write.
 
@@ -63,7 +65,8 @@ Until you answer, the extension keeps the detected Canvas address in session sto
 Session storage stays in browser memory and the browser clears it when it closes.
 The extension opens its welcome page once per browser session when it finds a Canvas that waits for your answer.
 The extension shows its list only on the Canvas address that you saved.
-The list script and the script of the dashboard fixes run only there.
+The list script, the script of the dashboard fixes and the script of the one assignment view run only there.
+The script of the one assignment view runs only on the Grades page of that Canvas, and only while its switch is on.
 It sends no message and no event to the page.
 None of the page scripts can read or write the storage of the extension: the background answers them through checked messages.
 
@@ -96,6 +99,16 @@ The extension shows it only after it removes everything that could run code, loa
 The fixes read the grade of each course from the course list, in your browser, and show it only to you on your own dashboard.
 Each fix has a switch in the settings, and each is on by default.
 
+## What the one assignment view does
+
+The one assignment view works on the Grades page.
+It adds a button to each assignment row, and the button opens the assignment under its row.
+The row shows the due date, your score and status, the instructions, the rubric with your assessment, the comments and your submitted files.
+It only reads, and it keeps what it read in the memory of the open page until you close or reload the page.
+The instructions and the comments are written by your teacher.
+The extension shows them only after it removes everything that could run code, load a frame or send a form.
+The view has a switch in the settings, which is on by default.
+
 ## What the extension stores on your device
 
 The extension stores only these items in browser storage on your device:
@@ -104,7 +117,8 @@ The extension stores only these items in browser storage on your device:
 - the address of your Canvas site;
 - a change time stamp, so that open lists refresh after a write;
 - which one-time notes you have seen;
-- which small fixes for the new Canvas dashboard are on.
+- which small fixes for the new Canvas dashboard are on;
+- whether the one assignment view is on.
 
 The extension also keeps these items in browser memory (`storage.session`) for the browser session only: the announcements of the Announcements tab, the read marks that Canvas has not shown yet, and the tab (Tasks or Announcements) that each list shows.
 The browser clears them when it closes, and the extension drops them when another person signs in to Canvas.
@@ -120,7 +134,7 @@ The extension sends no data to the developer or to any third party.
 It has no analytics, no error reporting, no advertising and no remote configuration.
 It opens no web page on install or uninstall.
 All requests of the extension go to the one Canvas address that you saved.
-The one exception is an image in an announcement that you open in place: the browser loads it from the address that your teacher chose, with no referrer, as the Canvas page of the announcement does.
+The one exception is an image in an announcement, in the instructions of an assignment or in a comment that you open in place: the browser loads it from the address that your teacher chose, with no referrer, as the Canvas page does.
 
 The code enforces this.
 All network requests go through one function that allows only your Canvas address.
@@ -134,7 +148,7 @@ A lint rule forbids network calls anywhere else in the code, and a CI check scan
 | `alarms` | To resume waiting task deletes after the background worker stops |
 | `storage` | To store the settings and the Canvas address listed above, and to hold Canvas data in memory |
 | `cookies` | To read the `_csrf_token` cookie that Canvas requires for a write, and to compare a salted fingerprint of the session cookie on the saved Canvas |
-| `scripting` | To run the Canvas check in the tabs that were open before you installed or updated the extension, and to show the list and the dashboard fixes in your saved Canvas |
+| `scripting` | To run the Canvas check in the tabs that were open before you installed or updated the extension, and to show the list, the dashboard fixes and the one assignment view in your saved Canvas |
 | `sidePanel` (Chrome and Edge) | To show the list in the browser side panel |
 
 ## Sharing and sale

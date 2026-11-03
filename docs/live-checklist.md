@@ -554,15 +554,51 @@ A store build or a build from `npm run build` does not.
 - Repeat the restore check in Firefox.
   Expect the saved page.
 
-## One assignment view, step 1 (pending implementation)
+## One assignment view, step 1
 
-These checks wait for the Grades page integration of decision 26.
+These steps need a student account with a course that has: a graded assignment with a rubric, a teacher comment with a file, a student comment, and a submitted file; an assignment with no rubric and no submission; an assignment whose instructions are longer than 10 lines; and an assignment that is handed in outside Canvas (Gradescope or on paper).
+Run them on the Grades page of the course (`/courses/:id/grades`).
 
-1. Open a course Grades page with a graded assignment that has a rubric, comments and submitted files.
-2. Expand the assignment and compare the due date, score, rubric assessment and feedback with Canvas's own pages.
-3. Open a comment attachment and a submitted file in the file pane.
-4. Open two assignments and collapse one of them.
-5. Use the Canvas title link and its rubric and comment toggles.
-6. Turn off One assignment view and check that all added controls disappear.
-7. Repeat in light and dark themes at 1920 and 1280 px in Chrome, Edge and Firefox.
-8. Switch Canvas accounts and check that the earlier student's details do not remain visible.
+1. Look at the assignment rows.
+   Expect: each assignment row has a small chevron button before its title, and the group totals and the final grade row have none.
+   Expect: the columns keep their width, and the title link, the score and the Rubric and Comments links look as before.
+   Open the network tab of the browser's developer tools.
+   Expect: the extension sent no request to `/api/v1/courses/:id/assignments/:id` yet.
+2. Click the chevron of the graded assignment.
+   Expect: a row opens under it, with "Loading details" for a moment, then the due date and the score, the instructions, the rubric, the comments, "Your files" and "Open assignment".
+   Compare the due date, the score, the rubric assessment (the rating that Canvas marks as yours, and your points) and the comments with the submission details page of Canvas.
+   Expect: the dates are in the time zone of your Canvas profile, and the comments are newest first.
+   Expect: two requests went out: the assignment with `include[]=submission` and `include[]=can_submit`, and `submissions/self` with `include[]=submission_comments` and `include[]=rubric_assessment`.
+3. Look at the chips of an assignment that is missing, past due, extended or excused, and of the assignment that is handed in outside Canvas.
+   Expect: the chips are the ones of the weekly list for the same assignment, such as "Missing" in red, "Past due", "Extended", "Excused" and "Can't confirm: Gradescope".
+4. Open the assignment whose instructions are longer than 10 lines.
+   Expect: the text stops at about 10 lines with a fade, and "Show more" shows.
+   Click "Show more".
+   Expect: the whole text shows and the button reads "Show less".
+   Open an assignment with short instructions.
+   Expect: it has no "Show more".
+5. Click the name of a submitted file in "Your files".
+   Expect: the file opens in the file pane beside the page, and the Grades page stays.
+   Click the name of a file in a teacher comment.
+   Expect: the file keeps its download, as decision 26 describes for comment attachments.
+6. Open two assignments, then click the chevron of the first one again.
+   Expect: the first row closes, the second stays open, and the first opens again at once with no new request.
+7. Click the title link, then use Back.
+   Expect: the title link goes to the page that Canvas links.
+   Click "Rubric" and "Comments" of Canvas on an open row.
+   Expect: Canvas opens its own rubric and comment rows, and the extension rows stay where they are.
+   If Canvas shows its own rows in a different place than before, Canvas finds them by their position and the rows of the extension must move.
+8. Make the Canvas request fail, for example with the browser set to offline, and open another row.
+   Expect: the row shows "Can't load the details." with "Retry".
+   Go online and click "Retry".
+   Expect: the details show.
+9. Turn off "One assignment view" in the settings.
+   Expect: every chevron and open row on the open Grades page goes at once.
+   Turn it on again and reload the Grades page.
+   Expect: the chevrons are back.
+10. Sign out and sign in as another student on the same tab, then open the Grades page.
+    Expect: no row shows details of the first student.
+11. Repeat steps 2 and 5 in the light and the dark theme of the extension (Theme in the settings) and in a Canvas with a dark theme, at 1920 and 1280 px, in Chrome, Edge and Firefox.
+    Expect: the panel reads well, the text is not cut, and the colors follow the theme.
+12. Turn off the file viewer in the settings, then click the name of a submitted file.
+    Expect: Canvas handles the link, and no pane opens.
