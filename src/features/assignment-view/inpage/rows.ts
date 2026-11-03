@@ -12,6 +12,7 @@
  * itself. Turning the view off removes everything it added.
  */
 import { submissionChanged } from '../turnIn';
+import { createListRefresh } from './listRefresh';
 import type { DataMessage } from '../../weekly-list/data/protocol';
 import { logFailure } from '../../../shared/platform/log';
 import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
@@ -115,6 +116,7 @@ function isForeign(records: readonly MutationRecord[]): boolean {
 
 export function createRowsEngine(options: RowsOptions): RowsEngine {
   const { doc, origin, courseId, send } = options;
+  const listRefresh = createListRefresh(send);
   const now = options.now ?? (() => Temporal.Now.instant());
   const theme = options.theme ?? ((): PageTheme => 'light');
   let active = false;
@@ -388,11 +390,12 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
           if (row.assignmentId === assignmentId && row.details) draw(row);
         }
         // The visible refresh keeps the Canvas rate limit and the backoff of the weekly list.
-        await send({ type: 'weekrow:refresh', reason: 'visible' });
+        listRefresh.request();
       }
     },
     stop() {
       if (stopped) return;
+      listRefresh.stop();
       active = false;
       clear();
       stopped = true;

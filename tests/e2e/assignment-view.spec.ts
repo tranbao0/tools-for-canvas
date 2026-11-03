@@ -547,7 +547,14 @@ async function openTurnInCanvas(
           contentType: 'text/html',
           body: `<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>Essay</h1><p id="mode">${
             request.path.includes('content_only=1') ? 'slim' : 'full'
-          }</p><input id="marker" aria-label="Draft"><form method="post"><button>Submit work</button></form><button type="button" id="quiet" onclick="fetch('${ASSIGNMENT}/quiet',{method:'POST'})">Submit quietly</button></body></html>`,
+          }</p><input id="marker" aria-label="Draft"><script>addEventListener('beforeunload',(e)=>{if(document.getElementById('marker').value){e.preventDefault();e.returnValue='';}})</script><form method="post"><button>Submit work</button></form><button type="button" id="quiet" onclick="fetch('${ASSIGNMENT}/quiet',{method:'POST'})">Submit quietly</button></body></html>`,
+        }),
+      },
+      {
+        path: '/courses/12/assignments/102',
+        respond: () => ({
+          contentType: 'text/html',
+          body: '<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>Reading</h1><p id="mode">reading</p></body></html>',
         }),
       },
       {
@@ -954,4 +961,88 @@ test('turning the assignment view off keeps an open turn-in and its unsent work'
   await page.waitForTimeout(500);
   await expect(page.locator(TURN_IN)).toBeVisible();
   await expect(frame.locator('#marker')).toHaveValue('unsent words');
+});
+
+/** The header of the turn-in, read from inside the Canvas frame, as a hostile frame could. */
+const headerOf = (frame: Frame) =>
+  frame.evaluate(() => {
+    const root = window.frameElement!.getRootNode() as ShadowRoot;
+    return {
+      title: root.querySelector('.title')!.textContent,
+      href: (root.querySelector('a.btn') as HTMLAnchorElement).pathname,
+      frameTitle: window.frameElement!.getAttribute('title'),
+    };
+  });
+
+test('Submit on another assignment moves the same frame, and the header follows the load', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await openTurnInCanvas(context, page, background);
+  await expand(page, canvas, 'Essay');
+  await expand(page, canvas, 'Reading');
+  const frame = await openTurnIn(page, 'Re-submit');
+  expect(await headerOf(frame)).toEqual({
+    title: 'Essay',
+    href: ASSIGNMENT,
+    frameTitle: 'Turn in Essay',
+  });
+  const host = await page.locator(TURN_IN).elementHandle();
+  await region(page, 'Reading').getByRole('button', { name: 'Submit', exact: true }).click();
+  await expect(frame.locator('#mode')).toHaveText('reading');
+  await expect
+    .poll(() => headerOf(frame))
+    .toEqual({
+      title: 'Reading',
+      href: '/courses/12/assignments/102',
+      frameTitle: 'Turn in Reading',
+    });
+  // The host and the frame are the ones from before. Nothing was removed.
+  expect(await host!.evaluate((node) => node.isConnected)).toBe(true);
+  await expect(page.locator(TURN_IN)).toHaveCount(1);
+  expect(page.frames()).toContain(frame);
+  expect(new URL(frame.url()).pathname).toBe('/courses/12/assignments/102');
+});
+
+test('a cancelled leave question keeps the first assignment, and an accepted one moves the frame', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await openTurnInCanvas(context, page, background);
+  await expand(page, canvas, 'Essay');
+  await expand(page, canvas, 'Reading');
+  const frame = await openTurnIn(page, 'Re-submit');
+  await frame.locator('#marker').fill('half a draft');
+  const questions: string[] = [];
+  let answer = false;
+  page.on('dialog', (dialog) => {
+    questions.push(dialog.type());
+    void (answer ? dialog.accept() : dialog.dismiss());
+  });
+  const submitReading = () =>
+    region(page, 'Reading').getByRole('button', { name: 'Submit', exact: true }).click();
+  await submitReading();
+  await expect.poll(() => questions.length).toBe(1);
+  expect(questions).toEqual(['beforeunload']);
+  await page.waitForTimeout(500);
+  // The student said no: everything is still the first assignment, with the typed words.
+  expect(await headerOf(frame)).toEqual({
+    title: 'Essay',
+    href: ASSIGNMENT,
+    frameTitle: 'Turn in Essay',
+  });
+  await expect(frame.locator('#marker')).toHaveValue('half a draft');
+  // A second Submit asks again, and this time the student says yes.
+  answer = true;
+  await submitReading();
+  await expect(frame.locator('#mode')).toHaveText('reading');
+  await expect
+    .poll(() => headerOf(frame))
+    .toEqual({
+      title: 'Reading',
+      href: '/courses/12/assignments/102',
+      frameTitle: 'Turn in Reading',
+    });
 });

@@ -371,4 +371,18 @@ describe('Submit and the read after a submission', () => {
     send.mockImplementation(ok);
     expect(shadow('101')?.querySelector('.av-actions')).not.toBeNull();
   });
+
+  it('asks the weekly list again after the limit, since a skipped refresh names no time', async () => {
+    await open((details) => {
+      details.submission.attempt = 2;
+    });
+    await engine.reload('101');
+    const refreshes = () =>
+      send.mock.calls.filter(
+        ([message]) => (message as { type: string }).type === 'weekrow:refresh',
+      ).length;
+    expect(refreshes()).toBe(1);
+    await vi.advanceTimersByTimeAsync(62_000);
+    expect(refreshes()).toBe(2);
+  });
 });

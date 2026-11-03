@@ -21,7 +21,13 @@ import {
 import { CLOSE_PATH, EXTERNAL_LINK_PATH } from '../../../shared/ui/iconPaths';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { OWN } from './rows';
-import { assignmentPageUrl, createCoalescer, slimAddress, turnInUrl } from '../turnIn';
+import {
+  assignmentPageUrl,
+  createCoalescer,
+  nextPollDelay,
+  slimAddress,
+  turnInUrl,
+} from '../turnIn';
 
 /** How often the details are read again while the pane is open and the page is in view. */
 export const TURN_IN_POLL_MS = 20_000;
@@ -85,9 +91,18 @@ function icon(doc: Document, path: string): SVGElement {
 }
 
 interface Open {
-  assignmentId: string;
-  frame: HTMLIFrameElement;
+  readonly assignmentId: string;
+  /** Moves the frame to another assignment. The pane follows when that page has loaded. */
+  retarget(request: TurnInRequest): void;
   stop(): void;
+}
+
+/** What the pane shows now, or what it will show when a page that it asked for has loaded. */
+interface Target {
+  assignmentId: string;
+  title: string;
+  url: string;
+  pageUrl: string;
 }
 
 export function createTurnInPane(options: TurnInPaneOptions): TurnInPane {
@@ -101,8 +116,8 @@ export function createTurnInPane(options: TurnInPaneOptions): TurnInPane {
 
   // One read at a time and one waiting for an assignment, whatever asks for it. A read that a
   // close starts joins the reads of a turn-in that opens at once.
-  const readers = new Map<string, () => Promise<void>>();
-  const reader = (assignmentId: string): (() => Promise<void>) => {
+  const readers = new Map<string, () => Promise<boolean>>();
+  const reader = (assignmentId: string): (() => Promise<boolean>) => {
     let read = readers.get(assignmentId);
     if (!read) {
       read = createCoalescer(() => options.reload(assignmentId));
@@ -111,26 +126,54 @@ export function createTurnInPane(options: TurnInPaneOptions): TurnInPane {
     return read;
   };
 
-  /** The pane shows while a turn-in is open and no file pane covers it. */
+  /**
+   * The pane shows while a turn-in is open and no file pane covers it. A page can remove the
+   * host. The turn-in is then closed: it keeps no read and no room, and a file pane that it
+   * covered shows again.
+   */
   const sync = (): void => {
     if (!dock || !current) return;
+    if (!dock.host.isConnected) {
+      shut();
+      return;
+    }
     dock.setHidden(filePaneOpen());
   };
 
-  function build(request: TurnInRequest): Open | null {
+  function target(request: TurnInRequest): Target | null {
     const url = turnInUrl(origin, courseId, request.assignmentId);
     const pageUrl = assignmentPageUrl(origin, courseId, request.assignmentId);
-    if (url === null || pageUrl === null || !dock) return null;
+    return url === null || pageUrl === null ? null : { ...request, url, pageUrl };
+  }
+
+  /** Whether the frame shows the page of the target now. It reads only the address. */
+  function showsPage(frame: HTMLIFrameElement, page: Target): boolean {
+    try {
+      const shown = new URL(frame.contentWindow?.location.href ?? '');
+      const path = new URL(page.pageUrl).pathname;
+      return shown.origin === origin && (shown.pathname === path || shown.pathname === `${path}/`);
+    } catch {
+      return false;
+    }
+  }
+
+  function build(first: Target): Open | null {
+    if (!dock) return null;
+    let active = first;
+    // The page that a Submit on another assignment asked for. The pane keeps showing the
+    // assignment that it had until that page has loaded. A page of Canvas can keep the frame
+    // from leaving, with its own "leave this page" question, and a student can say no.
+    let pending: Target | null = null;
     const style = doc.createElement('style');
     style.textContent = PANE_CSS;
     const bar = doc.createElement('div');
     bar.className = 'bar';
     const title = doc.createElement('span');
     title.className = 'title';
-    title.textContent = request.title;
+    title.textContent = first.title;
     const link = doc.createElement('a');
     link.className = 'btn';
-    link.href = pageUrl;
+    link.href = first.pageUrl;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     link.append(doc.createTextNode('Open in new tab'), icon(doc, EXTERNAL_LINK_PATH));
@@ -143,10 +186,16 @@ export function createTurnInPane(options: TurnInPaneOptions): TurnInPane {
     bar.append(title, link, close);
 
     const frame = doc.createElement('iframe');
-    frame.title = `Turn in ${request.title}`;
+    frame.title = `Turn in ${first.title}`;
     frame.style.background = '#fff';
 
-    const read = reader(request.assignmentId);
+    let delay = TURN_IN_POLL_MS;
+    let ended = false;
+    // A failed read makes the next poll wait longer, and a good read starts over.
+    const read = async (assignmentId: string): Promise<void> => {
+      delay = nextPollDelay(delay, TURN_IN_POLL_MS, await reader(assignmentId)());
+    };
+
     let loads = 0;
     // The old submission view redirects to the plain assignment page. The frame then loads the
     // slim address once. The load after that one never loads it again, so a page that keeps
@@ -155,44 +204,80 @@ export function createTurnInPane(options: TurnInPaneOptions): TurnInPane {
     frame.addEventListener('load', (event) => {
       // A page script can fire a load event on the frame, so only a real load counts.
       if (!event.isTrusted) return;
+      let moved = false;
+      if (pending) {
+        const next = pending;
+        pending = null;
+        if (showsPage(frame, next)) {
+          const left = active;
+          active = next;
+          title.textContent = next.title;
+          link.href = next.pageUrl;
+          frame.title = `Turn in ${next.title}`;
+          moved = true;
+          slimming = false;
+          // The student may have submitted the assignment that the frame just left.
+          void read(left.assignmentId);
+        }
+      }
       if (slimming) {
         slimming = false;
       } else {
         try {
-          const next = slimAddress(
+          const slim = slimAddress(
             frame.contentWindow?.location.href ?? '',
             origin,
             courseId,
-            request.assignmentId,
+            active.assignmentId,
           );
-          if (next !== null) {
+          if (slim !== null) {
             slimming = true;
-            frame.contentWindow?.location.replace(next);
+            frame.contentWindow?.location.replace(slim);
           }
         } catch {
           // The frame went to another origin. Its address is not ours to read.
         }
       }
-      if (++loads > 1) void read();
+      // The first page of an assignment is no sign of a submission.
+      if (!moved && ++loads > 1) void read(active.assignmentId);
     });
     close.addEventListener('click', (event) => {
       // A frame of the Canvas page can reach this root, so only a real click counts.
       if (!event.isTrusted) return;
+      const { assignmentId } = active;
       shut();
-      void read();
+      void read(assignmentId);
     });
-    // The student can submit in the new student view without any page load.
-    const timer = win.setInterval(() => {
-      if (doc.visibilityState === 'visible') void read();
-    }, TURN_IN_POLL_MS);
+
+    // The student can submit in the new student view without any page load. The poll goes on
+    // while a file pane covers the turn-in, and waits while the page is not in view.
+    let poll: number | undefined;
+    const tick = (): void => {
+      poll = undefined;
+      if (ended) return;
+      const next = (): void => {
+        if (!ended) poll = win.setTimeout(tick, delay);
+      };
+      if (doc.visibilityState !== 'visible') next();
+      else void read(active.assignmentId).then(next);
+    };
+    poll = win.setTimeout(tick, delay);
 
     dock.section.append(style, bar, frame);
-    frame.src = url;
+    frame.src = first.url;
     return {
-      assignmentId: request.assignmentId,
-      frame,
+      get assignmentId() {
+        return active.assignmentId;
+      },
+      retarget(request) {
+        const next = target(request);
+        if (next === null || next.assignmentId === active.assignmentId) return;
+        pending = next;
+        frame.src = next.url;
+      },
       stop() {
-        win.clearInterval(timer);
+        ended = true;
+        win.clearTimeout(poll);
         style.remove();
         bar.remove();
         frame.remove();
@@ -219,12 +304,17 @@ export function createTurnInPane(options: TurnInPaneOptions): TurnInPane {
     },
     open(request) {
       if (stopped) return;
+      sync();
       if (current) {
-        // An open turn-in may hold unsent work, so a new click shows it and never replaces it.
+        // An open turn-in may hold unsent work, so a Submit shows it and never removes it. For
+        // another assignment, the same frame goes to that page, and Canvas can ask first.
         hideFilePane(true);
         sync();
+        current.retarget(request);
         return;
       }
+      const first = target(request);
+      if (first === null) return;
       const created = createDock({
         role: 'turn-in',
         id: TURN_IN_HOST_ID,
@@ -237,7 +327,7 @@ export function createTurnInPane(options: TurnInPaneOptions): TurnInPane {
       created.host.setAttribute(OWN, '');
       created.setTheme(options.theme());
       dock = created;
-      const made = build(request);
+      const made = build(first);
       if (made === null) {
         dock = undefined;
         return;
@@ -246,7 +336,7 @@ export function createTurnInPane(options: TurnInPaneOptions): TurnInPane {
       hideFilePane(true);
       created.open();
       stopWatching = watchFilePane(sync);
-      // A script of the page can remove the file pane host without a word.
+      // A script of the page can remove the file pane host or this one without a word.
       observer = new MutationObserver(sync);
       observer.observe(doc.body, { childList: true });
     },

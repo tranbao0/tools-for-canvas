@@ -73,15 +73,18 @@ export function submissionChanged(
 
 /**
  * Runs `read` at most once at a time and keeps at most one more run waiting. A call while a read is
- * running marks one more read. The returned promise ends when the read for that call has ended, and
- * a read that fails never stops the next one.
+ * running marks one more read. The returned promise ends when the read for that call has ended,
+ * with whether that read worked. A read that fails never stops the next one.
  */
-export function createCoalescer(read: () => Promise<void>): () => Promise<void> {
-  let running: Promise<void> | null = null;
-  let queued: Promise<void> | null = null;
-  const start = (): Promise<void> => {
+export function createCoalescer(read: () => Promise<void>): () => Promise<boolean> {
+  let running: Promise<boolean> | null = null;
+  let queued: Promise<boolean> | null = null;
+  const start = (): Promise<boolean> => {
     const run = read()
-      .catch(() => undefined)
+      .then(
+        () => true,
+        () => false,
+      )
       .finally(() => {
         running = null;
       });
@@ -96,4 +99,9 @@ export function createCoalescer(read: () => Promise<void>): () => Promise<void> 
     });
     return queued;
   };
+}
+
+/** The wait before the next read of a poll: it doubles after each failed read, up to 5 minutes. */
+export function nextPollDelay(current: number, base: number, worked: boolean): number {
+  return worked ? base : Math.min(current * 2, 5 * 60_000);
 }
