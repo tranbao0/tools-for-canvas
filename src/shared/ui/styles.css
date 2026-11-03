@@ -208,7 +208,7 @@
 }
 
 .wr-pinned .wr-group-open > .wr-group-body {
-  min-height: 48px;
+  min-height: 64px;
 }
 
 .wr-scroll:focus-visible {

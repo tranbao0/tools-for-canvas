@@ -35,6 +35,9 @@
   "scrollRegionLabel": {
     "message": "Tasks by day"
   },
+  "bottomRegionLabel": {
+    "message": "Undated and done tasks"
+  },
   "weekRange": {
     "message": "$1 - $2"
   },

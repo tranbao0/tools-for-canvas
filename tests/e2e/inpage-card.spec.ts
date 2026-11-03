@@ -405,6 +405,39 @@ test.describe('the full list in the card', () => {
     await expect(region).toBeVisible();
   });
 
+  test('limits the open Done list to half the inner card height', async ({
+    context,
+    page,
+    background,
+  }) => {
+    // Without the rings the day list floor does not limit the list first, so the half limit shows.
+    await open(context, page, background, {
+      width: LAYOUTS[0]!.width,
+      height: 1000,
+      completed: true,
+      settings: { ...MONTH, hiddenCourseIds: ['102'], showRings: false },
+    });
+    const list = inpageList(page);
+    const done = list.locator('.wr-pinned [data-group="done"]');
+    await toggleOf(done).click();
+    await expect(done.locator('[data-row-key]').first()).toBeVisible();
+    const sizes = await list.locator('.wr').evaluate((card) => {
+      const style = getComputedStyle(card);
+      const inner =
+        card.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      const body = card.querySelector('.wr-pinned [data-group="done"] .wr-group-body');
+      return {
+        inner,
+        body: body?.getBoundingClientRect().height ?? 0,
+        full: body?.scrollHeight ?? 0,
+      };
+    });
+    // The list holds more than half the card, so it stops at the limit.
+    expect(sizes.full).toBeGreaterThan(sizes.inner / 2);
+    expect(sizes.body).toBeLessThanOrEqual(sizes.inner / 2 + 1);
+    expect(sizes.body).toBeGreaterThan(sizes.inner / 2 - 8);
+  });
+
   test('closes Done when it comes back', async ({ context, page, background }) => {
     await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
     const list = inpageList(page);
@@ -681,6 +714,8 @@ test.describe('screenshots of the Month span', () => {
         await toggleOf(done).click();
         await expect(done.locator('[data-row-key]').first()).toBeVisible();
         const card = inpageList(page).locator('.wr');
+        // The mouse leaves the header, so no hover style shows in the shot.
+        await page.mouse.move(0, 0);
         await card.evaluate((element) => {
           element.scrollTop = 0;
         });

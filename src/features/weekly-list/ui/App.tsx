@@ -745,7 +745,7 @@ function ReadyView(props: {
           <div
             class="wr-pinned"
             role="region"
-            aria-label="Undated and done tasks"
+            aria-label={t('bottomRegionLabel')}
             aria-busy={state.refreshing}
           >
             <WeekList
