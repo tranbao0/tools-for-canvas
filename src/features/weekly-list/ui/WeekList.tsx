@@ -167,10 +167,13 @@ function GroupSection(props: {
   view: WeekView;
   level: HeadingLevel;
   handlers: ListHandlers;
+  open?: boolean;
+  onToggle?(): void;
 }) {
   const { group, view, handlers } = props;
   const collapsible = group.kind === 'no_due_date' || group.kind === 'done';
-  const [open, setOpen] = useState(!collapsible);
+  const [localOpen, setOpen] = useState(!collapsible);
+  const open = props.open ?? localOpen;
   const [id] = useState(() => newId('group'));
   const [bodyId] = useState(() => newId('body'));
   const rows = { view, when: whenMode(group.kind), handlers };
@@ -202,7 +205,7 @@ function GroupSection(props: {
             class="wr-group-toggle"
             aria-expanded={open}
             aria-controls={bodyId}
-            onClick={() => setOpen(!open)}
+            onClick={() => (props.onToggle ? props.onToggle() : setOpen(!open))}
           >
             <ChevronDownIcon />
             {headContent}
@@ -211,7 +214,7 @@ function GroupSection(props: {
           headContent
         )}
       </Heading>
-      <div id={bodyId}>
+      <div id={bodyId} class="wr-group-body">
         {open && (
           <>
             <ItemList {...rows} items={group.items} />
@@ -253,9 +256,21 @@ function GroupSection(props: {
  * Renders the groups in order. "Nothing due in these 7 days" takes the place of the day groups,
  * before No due date and Done. The side panel and the in-page list show every group in full.
  */
-export function WeekList(props: { view: WeekView; level: HeadingLevel; handlers: ListHandlers }) {
+export function WeekList(props: {
+  view: WeekView;
+  level: HeadingLevel;
+  handlers: ListHandlers;
+  part?: 'days' | 'bottom';
+  openGroup?: string | null;
+  onToggleGroup?(kind: string): void;
+}) {
   const { view } = props;
-  const live = view.groups.filter((group) => !isGroupEmpty(group));
+  const live = view.groups.filter(
+    (group) =>
+      !isGroupEmpty(group) &&
+      (props.part === undefined ||
+        (props.part === 'bottom') === (group.kind === 'done' || group.kind === 'no_due_date')),
+  );
   // The nearest day that still loads shows two bars, the later ones one, so a long span does not
   // fill the list with placeholders.
   const firstLoading = live.find((g) => g.loading === true && g.kind !== 'past_due');
@@ -274,11 +289,17 @@ export function WeekList(props: { view: WeekView; level: HeadingLevel; handlers:
         view={view}
         level={props.level}
         handlers={props.handlers}
+        open={props.onToggleGroup ? props.openGroup === group.kind : undefined}
+        onToggle={props.onToggleGroup ? () => props.onToggleGroup?.(group.kind) : undefined}
       />
     ),
   );
   // The chart says "Nothing due in these 7 days" itself when no class has work.
-  if (view.nothingDue && (!view.rings.length || view.rings.some((ring) => ring.total)))
+  if (
+    props.part !== 'bottom' &&
+    view.nothingDue &&
+    (!view.rings.length || view.rings.some((ring) => ring.total))
+  )
     nodes.splice(live[0]?.kind === 'past_due' ? 1 : 0, 0, <NothingDue span={view.span} />);
   return <div class="wr-list">{nodes}</div>;
 }

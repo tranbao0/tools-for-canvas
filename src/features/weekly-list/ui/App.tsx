@@ -425,6 +425,7 @@ function ReadyView(props: {
   const saved = props.settings;
   const level = baseLevel(surface);
   const [form, setForm] = useState<TaskFormMode | null>(null);
+  const [openBottom, setOpenBottom] = useState<string | null>(null);
   /** A new task waits for Canvas, or the last try to save one failed. */
   const [save, setSave] = useState<'idle' | 'saving' | 'failed'>('idle');
   const [notes, setNotes] = useState<OneTimeNote[]>([]);
@@ -598,11 +599,8 @@ function ReadyView(props: {
   if (view.limited)
     notices.push(<NoticeLine key="limited" id={limitedId} text={t('limitedLine')} />);
   const filter = filterText(view, state.taskCourses);
-  const groups = (
+  const footer = (
     <>
-      <div aria-busy={state.refreshing}>
-        <WeekList view={view} level={subLevel(level)} handlers={handlers} />
-      </div>
       {view.hiddenCourseCount > 0 && (
         <div class="wr-foot">
           <NoticeLine
@@ -613,6 +611,19 @@ function ReadyView(props: {
           />
         </div>
       )}
+    </>
+  );
+  const groups = (
+    <>
+      <div aria-busy={state.refreshing}>
+        <WeekList
+          view={view}
+          level={subLevel(level)}
+          handlers={handlers}
+          part={surface === 'inpage' ? 'days' : undefined}
+        />
+      </div>
+      {surface === 'panel' && footer}
     </>
   );
   /** Changing the tab keeps the scroll position of the tab that the student leaves. */
@@ -721,6 +732,19 @@ function ReadyView(props: {
         />
       )}
       {scrolling}
+      {surface === 'inpage' && tab === 'tasks' && (
+        <div class="wr-pinned" aria-busy={state.refreshing}>
+          <WeekList
+            view={view}
+            level={subLevel(level)}
+            handlers={handlers}
+            part="bottom"
+            openGroup={openBottom}
+            onToggleGroup={(kind) => setOpenBottom(openBottom === kind ? null : kind)}
+          />
+          {footer}
+        </div>
+      )}
       <Dock undo={state.undo} onUndo={undo} onClose={() => actions.dismissUndo()} />
     </>
   );

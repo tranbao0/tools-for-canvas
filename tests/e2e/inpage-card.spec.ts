@@ -7,6 +7,7 @@ import path from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/model/types';
 import {
+  addCsrfCookie,
   doneBox,
   expect,
   inpageList,
@@ -37,6 +38,7 @@ async function open(
     settings?: Settings;
     page?: string;
     only?: string[];
+    completed?: boolean;
   } = {},
 ): Promise<void> {
   await saveSettings(background, options.settings ?? MONTH);
@@ -46,6 +48,27 @@ async function open(
     [{ path: '/', page: options.page ?? 'dashboard-widgets' }],
     {
       extend(scenario) {
+        if (options.completed) {
+          const template = scenario.plannerOverrides[0]!;
+          scenario.plannerItems
+            .filter(
+              (item) => item.plannable_type === 'assignment' && item.plannable.title !== QUIZ_3,
+            )
+
+            .forEach((item, index) => {
+              const override = {
+                ...template,
+                id: String(99000 + index),
+                plannable_id: item.plannable_id,
+                assignment_id: item.plannable_id,
+                plannable_type: 'assignment' as const,
+                marked_complete: true,
+                dismissed: false,
+              };
+              item.planner_override = override;
+              scenario.plannerOverrides.push(override);
+            });
+        }
         if (keep === null) return;
         scenario.plannerItems = scenario.plannerItems.filter((item) =>
           keep.has(item.plannable.title),
@@ -55,6 +78,7 @@ async function open(
     },
   );
   await page.setViewportSize({ width: options.width ?? 1920, height: options.height ?? 800 });
+  await addCsrfCookie(context, canvas.origin);
   await openCanvasPage(page, canvas.origin);
   await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
   await settledList(page);
@@ -115,6 +139,60 @@ test.describe('the full list in the card', () => {
     await expect(panel.locator('[data-row-key]')).toHaveCount(inRegion);
     await expect(panel.getByRole('region', { name: 'Tasks by day' })).toHaveCount(0);
   });
+
+  for (const height of [700, 1000]) {
+    test(`pins bottom groups in a ${height} px window`, async ({ context, page, background }) => {
+      await open(context, page, background, {
+        height,
+        completed: true,
+        width: 1280,
+        settings: { ...MONTH, hiddenCourseIds: ['102'] },
+      });
+      const list = inpageList(page);
+      const bottom = list.locator('.wr-pinned');
+      const undated = bottom.locator('[data-group="no_due_date"]');
+      await expect(undated).toBeVisible();
+      await expect(list.locator('.wr-scroll [data-group="no_due_date"]')).toHaveCount(0);
+      await expect(bottom.locator('.wr-foot')).toBeVisible();
+      await undated.getByRole('button').first().click();
+      await expect(undated.getByRole('button').first()).toHaveAttribute('aria-expanded', 'true');
+      const done = bottom.locator('[data-group="done"]');
+      await done.getByRole('button').first().click();
+      await expect(done.getByRole('button').first()).toHaveAttribute('aria-expanded', 'true');
+      await expect(undated.getByRole('button').first()).toHaveAttribute('aria-expanded', 'false');
+      await expect(done.locator('[data-row-key]').first()).toBeVisible();
+      const geometry = await list.locator('.wr').evaluate((card) => {
+        const pinned = card.querySelector('.wr-pinned')!;
+        const scroll = card.querySelector('.wr-scroll')!;
+        const style = getComputedStyle(card);
+        const inner =
+          card.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+        const dayCount = scroll.querySelector('.wr-count')!.getBoundingClientRect();
+        const counts = [...pinned.querySelectorAll('.wr-count')].map(
+          (e) => e.getBoundingClientRect().right,
+        );
+        const body = pinned.querySelector('[data-group="done"] .wr-group-body')!;
+        return {
+          height: pinned.getBoundingClientRect().height,
+          bottom: pinned.getBoundingClientRect().bottom,
+          cardBottom: card.getBoundingClientRect().bottom,
+          inner,
+          days: scroll.clientHeight,
+          counts,
+          right: dayCount.right,
+          thin: getComputedStyle(body).scrollbarWidth,
+          overflow: body.scrollHeight > body.clientHeight,
+        };
+      });
+      expect(geometry.height).toBeLessThanOrEqual(geometry.inner / 2 + 1);
+      expect(geometry.bottom).toBeLessThanOrEqual(geometry.cardBottom);
+      expect(geometry.days).toBeGreaterThanOrEqual(128);
+      for (const right of geometry.counts)
+        expect(Math.abs(right - geometry.right)).toBeLessThanOrEqual(1);
+      expect(geometry.thin).toBe('thin');
+      expect(geometry.overflow).toBe(true);
+    });
+  }
 
   test('scrolls the groups while the header and the rings stay put', async ({
     context,
@@ -316,7 +394,7 @@ test.describe('screenshots of the Month span', () => {
         await open(context, page, background, {
           width,
           height: 1000,
-          settings: { ...MONTH, theme },
+          settings: { ...MONTH, theme, hiddenCourseIds: ['102'] },
         });
         if (theme === 'dark') {
           await page.evaluate(() =>
@@ -324,6 +402,14 @@ test.describe('screenshots of the Month span', () => {
           );
         }
         await page.screenshot({ path: path.join(SHOTS, `month-${width}-${theme}.png`) });
+        if (width === 1280) {
+          await inpageList(page)
+            .locator('.wr-pinned [data-group="done"]')
+            .getByRole('button')
+            .first()
+            .click();
+          await page.screenshot({ path: path.join(SHOTS, `month-${width}-${theme}-done.png`) });
+        }
       });
     }
   }

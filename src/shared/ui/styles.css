@@ -148,7 +148,7 @@
 }
 
 .wr[data-surface='inpage'] > .wr-scroll {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   /* In a low window the list keeps room for about one row, and the whole card scrolls instead. */
   min-height: 128px;
   /* The scroll bar sits in the side padding of the card, so it never covers the day counts. */
@@ -157,6 +157,40 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
+}
+
+/* Bottom headers and the footer stay outside the day scroll region. */
+.wr[data-surface='inpage'] > .wr-pinned {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  max-height: 50%;
+  min-height: 0;
+  border-top: 1px solid var(--wr-line);
+}
+
+.wr-pinned .wr-list,
+.wr-pinned .wr-group {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wr-pinned .wr-list {
+  flex: 1 1 auto;
+}
+
+.wr-pinned .wr-group-head,
+.wr-pinned .wr-foot {
+  flex: none;
+}
+
+.wr-pinned .wr-group-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  margin-inline-end: calc(4px - var(--wr-pad-x));
+  padding-inline-end: calc(var(--wr-pad-x) - 4px);
 }
 
 .wr-scroll:focus-visible {
