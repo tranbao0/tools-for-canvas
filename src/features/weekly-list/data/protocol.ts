@@ -36,7 +36,7 @@ export interface SurfaceRequest {
  * The reply to a state request. A ready reply also names the signed-in Canvas user, so a surface
  * can tell that the user changed under its Undo notice.
  */
-export type StateReply = SurfaceState & { userId?: string };
+export type StateReply = SurfaceState & { userId?: string; retryAt?: number };
 
 /**
  * Why a surface asks for a refresh.

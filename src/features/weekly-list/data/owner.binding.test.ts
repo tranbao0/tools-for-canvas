@@ -527,6 +527,25 @@ describe('a surface that reads before a round finishes', () => {
     }
   });
 
+  it('re-arms a discarded first round when the clock is two milliseconds behind', async () => {
+    const h = await createHarness();
+    const release = h.canvas.hold('getProfile');
+    await h.owner.getState(PANEL);
+    await vi.advanceTimersByTimeAsync(0);
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+    release();
+    await h.owner.settled();
+    const state = await h.owner.getState(PANEL);
+    expect(state).toMatchObject({ kind: 'loading', retryAt: Date.now() + 60_000 });
+    const now = h.deps.clock.now;
+    h.deps.clock.now = () => now() - 2;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(h.canvas.callsOf('getProfile')).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(2);
+    await h.owner.settled();
+    expect((await h.owner.getState(PANEL)).kind).toBe('ready');
+  });
+
   it('logs a failed notice after the round releases its work', async () => {
     const h = await createHarness();
     const marker = h.deps.store.changeMarker;
@@ -620,20 +639,81 @@ describe('a surface that reads before a round finishes', () => {
     await vi.advanceTimersByTimeAsync(61_000);
     await h.owner.refresh('visible');
     await h.owner.settled();
+    const notice = vi.spyOn(h.deps.store.changeMarker, 'setValue');
+    notice.mockClear();
     h.canvas.fail('listPlannerItems', canvasError('network'), { times: 1 });
     await h.owner.getState({ ...PANEL, spanOffset: 3 });
     await h.owner.settled();
-    h.canvas.resetCalls();
-    await h.owner.getState({ ...PANEL, spanOffset: 3 });
-    await h.owner.settled();
-    expect(h.canvas.callsOf('listPlannerItems')).toHaveLength(0);
-    await vi.advanceTimersByTimeAsync(60_001);
+    expect(notice).toHaveBeenCalled();
     const state = await h.owner.getState({ ...PANEL, spanOffset: 3 });
     expect(state.kind).toBe('ready');
-    if (state.kind === 'ready') expect(state.refreshing).toBe(true);
+    if (state.kind === 'ready') expect(state.stale).toMatchObject({ offline: true });
+    h.canvas.resetCalls();
+    const marker = vi.spyOn(h.deps.store.changeMarker, 'setValue');
+    marker.mockImplementation(async () => {
+      await h.owner.getState({ ...PANEL, spanOffset: 3 });
+    });
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(h.canvas.callsOf('listPlannerItems')).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(2);
     await h.owner.settled();
     expect(h.canvas.callsOf('listPlannerItems').length).toBeGreaterThan(0);
   });
+
+  it('checks the planner limit after a forbidden shown refresh', async () => {
+    const h = await loaded();
+    await loadReady(h, { ...PANEL, spanOffset: 3 });
+    await vi.advanceTimersByTimeAsync(61_000);
+    await h.owner.refresh('visible');
+    await h.owner.settled();
+    h.canvas.resetCalls();
+    h.canvas.fail('listPlannerItems', canvasError('forbidden'), { times: 1 });
+    await h.owner.getState({ ...PANEL, spanOffset: 3 });
+    await h.owner.settled();
+    expect(h.canvas.callsOf('listPlannerOverrides').length).toBeGreaterThan(0);
+  });
+
+  it.each([false, true])(
+    'backs off every failed chunk and leaves dropped chunks free: %s',
+    async (allFail) => {
+      const h = await createHarness({ settings: { span: { kind: 'custom', days: 60 } } });
+      await loadReady(h);
+      h.canvas.resetCalls();
+      const release = h.canvas.hold('listPlannerItems');
+      let index = 0;
+      const failedRanges: unknown[] = [];
+      h.canvas.failIf(
+        'listPlannerItems',
+        (args) => {
+          const fails = allFail || index++ === 0;
+          if (fails) failedRanges.push(args[0]);
+          return fails;
+        },
+        canvasError('network'),
+      );
+      await h.owner.getState({ ...PANEL, spanOffset: 1 });
+      await vi.advanceTimersByTimeAsync(0);
+      const ranges = h.canvas.callsOf('listPlannerItems').map(([range]) => range);
+      expect(ranges.length).toBeGreaterThan(1);
+      // Successful responses cannot commit while the cookie is absent.
+      vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
+      release();
+      await h.owner.settled();
+      vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-a');
+      h.canvas.resetCalls();
+      await h.owner.getState({ ...PANEL, spanOffset: 1 });
+      await h.owner.settled();
+      const retried = h.canvas.callsOf('listPlannerItems');
+      for (const range of failedRanges) expect(retried).not.toContainEqual([range]);
+      if (!allFail) {
+        for (const range of ranges.filter((range) => !failedRanges.includes(range))) {
+          expect(retried).toContainEqual([range]);
+        }
+      } else {
+        expect(failedRanges.length).toBeGreaterThan(1);
+      }
+    },
+  );
 
   it('ignores a failed prefetch from a released generation', async () => {
     const h = await loaded();

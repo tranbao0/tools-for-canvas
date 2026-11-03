@@ -1390,6 +1390,22 @@ describe('timers', () => {
     expect(fake.sent).toEqual([{ type: 'weekrow:refresh', reason: 'timer' }]);
   });
 
+  it('asks again at the retry time of a loading reply', async () => {
+    const fake = fakeHost();
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state'
+        ? { kind: 'loading', retryAt: Date.now() + 60_000 }
+        : { ok: true, retryAt: null };
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    fake.sent.length = 0;
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(fake.sent).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fake.sent).toEqual([{ type: 'weekrow:refresh', reason: 'timer' }]);
+  });
+
   it('drops the retry when the surface is hidden', async () => {
     const fake = fakeHost();
     fake.reply = (message) =>
