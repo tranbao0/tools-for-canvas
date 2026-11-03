@@ -6,10 +6,11 @@ import {
   PANEL_EDGE_GAP_PX,
   SENTINEL_ID,
   SPACER_ID,
-  cardOf,
   clearAllInlineStyles,
   keepCardScroll,
   moveContainer,
+  restoreScrollPositions,
+  scrollPartOf,
   setContainerStyle,
   setPanelMode,
 } from './placement';
@@ -91,8 +92,8 @@ export function claimDashboardLayout(
   /** A pass that a size change asked for measures again, even when no anchor changed. */
   let forced = false;
   let applied: unknown[] = [];
-  /** The scroll position of the card, kept for a card that the page removed and that comes back. */
-  let scrollTop = 0;
+  /** The scroll positions of the card, kept for a card that the page removed and that comes back. */
+  const positions = new Map<string, number>();
   let scrollRoot: ShadowRoot | null = null;
   let detached = false;
 
@@ -101,8 +102,8 @@ export function claimDashboardLayout(
 
   const onScroll = (event: Event): void => {
     const target = event.target as HTMLElement;
-    if (target.classList?.contains('wr') || target.classList?.contains('wr-scroll'))
-      scrollTop = target.scrollTop;
+    const part = scrollPartOf(target);
+    if (part !== null) positions.set(part, target.scrollTop);
   };
 
   function trackScroll(): void {
@@ -116,8 +117,7 @@ export function claimDashboardLayout(
   function restoreScroll(): void {
     if (!detached) return;
     detached = false;
-    const card = cardOf(container);
-    if (card) card.scrollTop = scrollTop;
+    restoreScrollPositions(container.firstElementChild?.shadowRoot, positions);
   }
 
   /** The distance from the right edge of the tab panel to the right edge of the grid, once measured. */
