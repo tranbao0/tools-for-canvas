@@ -434,6 +434,19 @@
   font-size: 14px;
 }
 
+.pv-page-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--pv-bg);
+  color: var(--wr-text-2);
+  font-size: 14px;
+}
+
 .pv-page {
   --user-unit: 1;
   --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));

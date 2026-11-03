@@ -192,6 +192,7 @@ export async function startViewer(): Promise<void> {
     created.section.append(earlyClose);
     const frame = document.createElement('iframe');
     frame.title = 'File viewer';
+    frame.allow = 'clipboard-write *';
     frame.src = browser.runtime.getURL('/viewer.html');
     // The pane page says hello first, so the port goes to the origin the frame really has.
     // Chromium can load a web-accessible page under a dynamic address that differs from getURL.

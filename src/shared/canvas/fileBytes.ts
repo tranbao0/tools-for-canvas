@@ -175,6 +175,7 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
   } catch (error) {
     if (error instanceof FileBytesError) throw error;
     if (isAbort(error, signal)) throw new FileBytesError('aborted', 'The read was cancelled');
+    if (error instanceof Error && error.name === 'SecurityError') throw error;
     throw new FileBytesError('network', error instanceof Error ? error.message : 'Network error');
   }
   await confirmed();

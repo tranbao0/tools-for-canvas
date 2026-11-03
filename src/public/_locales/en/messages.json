@@ -946,5 +946,53 @@
   },
   "pdfMoreControls": {
     "message": "More PDF controls"
+  },
+  "pdfHttpError": {
+    "message": "Canvas answered with an error ($1)"
+  },
+  "pdfSignInPage": {
+    "message": "Canvas sent a sign-in page instead of the file"
+  },
+  "pdfOriginBlocked": {
+    "message": "The file address is outside the saved Canvas"
+  },
+  "pdfTooLarge": {
+    "message": "File too large"
+  },
+  "pdfPasswordReason": {
+    "message": "This PDF has a password"
+  },
+  "pdfTooManyPages": {
+    "message": "This PDF has too many pages"
+  },
+  "pdfDamaged": {
+    "message": "This PDF is damaged"
+  },
+  "pdfDrawingBlocked": {
+    "message": "Drawing blocked by a browser privacy setting"
+  },
+  "pdfEngineStartError": {
+    "message": "PDF engine failed to start"
+  },
+  "pdfFetchBlocked": {
+    "message": "The browser blocked the file fetch"
+  },
+  "pdfNetworkError": {
+    "message": "Network error"
+  },
+  "pdfEngineError": {
+    "message": "PDF engine failed"
+  },
+  "pdfCopyDetails": {
+    "message": "Copy details"
+  },
+  "pdfDetailsCopied": {
+    "message": "Details copied"
+  },
+  "pdfDetailsCopyFailed": {
+    "message": "Could not copy details. Use the Browser Console."
+  },
+  "pdfPageError": {
+    "message": "Could not display this page."
   }
 }

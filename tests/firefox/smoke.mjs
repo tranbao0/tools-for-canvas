@@ -552,7 +552,7 @@ async function checkHostileSvg(driver) {
   console.log('Firefox hostile SVG: drawn on a canvas, nothing ran, no blob URL stays open.');
 }
 
-async function main(prefs = {}) {
+async function main(prefs = {}, mode = 'release') {
   // Selenium Manager must never download a browser or a driver during a test.
   process.env.SE_OFFLINE = 'true';
   const { firefoxBin, geckodriverBin } = findBrowserTools();
@@ -561,7 +561,7 @@ async function main(prefs = {}) {
     console.error('Run "npm run setup:firefox", or set FIREFOX_BIN and GECKODRIVER_BIN.');
     return 2;
   }
-  const extensionDir = ensureBuild('firefox', 'e2e');
+  const extensionDir = ensureBuild('firefox', mode);
   const addonId = readAddonId(extensionDir);
   const files = {};
   const server = await startFileHost(files);
@@ -833,7 +833,7 @@ async function main(prefs = {}) {
     await checkAnimatedGif(driver);
     await checkHostilePaneFrame(driver, server);
     await checkSubmissionFrame(driver, origin);
-    console.log('Firefox store file pane: passed.');
+    console.log(`Firefox ${mode === 'release' ? 'store' : 'e2e'} file pane: passed.`);
     console.log('Firefox smoke test: passed.');
     return 0;
   } finally {
@@ -859,7 +859,7 @@ if (
       { 'webgl.disabled': true },
     ]) {
       console.log('PDF privacy prefs:', JSON.stringify(prefs));
-      const code = await main(prefs);
+      const code = await main(prefs, 'e2e');
       if (code) process.exitCode = code;
     }
   } catch (error) {

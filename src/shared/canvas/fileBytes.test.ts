@@ -162,6 +162,19 @@ describe('fetchFileBytes', () => {
     ).rejects.toMatchObject({ kind: 'network' });
   });
 
+  it('preserves a fetch SecurityError for the diagnostic report', async () => {
+    const error = new DOMException('Blocked fetch', 'SecurityError');
+    await expect(
+      fetchFileBytes({
+        origin: ORIGIN,
+        url: '/files/1/download',
+        fetchImpl: async () => {
+          throw error;
+        },
+      }),
+    ).rejects.toBe(error);
+  });
+
   it('stops when the declared length is over the limit, before it reads a byte', async () => {
     const cancel = vi.fn();
     const body = new ReadableStream<Uint8Array>({ cancel });

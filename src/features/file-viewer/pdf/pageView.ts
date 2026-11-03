@@ -5,6 +5,7 @@
  * A page draws only while it is near the view. The engine tells it to release when it leaves,
  * and the page cancels its render task and frees its canvas and layers. The box keeps its size.
  */
+import type { PdfStage } from './failure';
 import { t } from '../../../shared/ui/i18n';
 import { CSS_PER_POINT } from './zoom';
 import type { PdfDocument, PdfjsLib, PdfPage, PdfRenderTask } from './types';
@@ -23,7 +24,7 @@ export interface PageContext {
   devicePixelRatio(): number;
   /** The page has a text layer, so the search can mark its matches. */
   onTextLayer(index: number): void;
-  onError(index: number, error: unknown): void;
+  onError(index: number, error: unknown, stage: PdfStage): void;
 }
 
 /**
@@ -51,6 +52,7 @@ export class PageView {
   /** The zoom of the canvas that the page shows, or 0 when it shows none. */
   renderedZoom = 0;
   zoom = 1;
+  private errorBox: HTMLDivElement | undefined;
   private visible = false;
   private generation = 0;
   /** Counts the releases. A pass that builds the layers stops when the page was released. */
@@ -96,7 +98,12 @@ export class PageView {
 
   /** Whether the page needs a render for its current zoom. */
   needsRender(): boolean {
-    return this.visible && this.renderedZoom !== this.zoom && this.renderingZoom !== this.zoom;
+    return (
+      !this.errorBox &&
+      this.visible &&
+      this.renderedZoom !== this.zoom &&
+      this.renderingZoom !== this.zoom
+    );
   }
 
   /** Draws the page at its zoom. A newer call or a release stops an older one. */
@@ -105,6 +112,7 @@ export class PageView {
     this.cancelTask();
     const zoom = this.zoom;
     this.renderingZoom = zoom;
+    let stage: PdfStage = 'page render';
     try {
       const proxy = (this.proxy ??= await this.context.doc.getPage(this.index + 1));
       if (generation !== this.generation) return;
@@ -125,6 +133,7 @@ export class PageView {
       this.showCanvas(canvas);
       this.renderedZoom = zoom;
       this.renderingZoom = 0;
+      stage = 'page layers';
       await this.buildLayers(proxy);
     } catch (error) {
       if (generation === this.generation) {
@@ -132,8 +141,29 @@ export class PageView {
         this.renderingZoom = 0;
       }
       if (isCancel(error)) return;
-      if (generation === this.generation) this.context.onError(this.index, error);
+      if (generation === this.generation) this.showError(error, stage);
     }
+  }
+
+  private showError(error: unknown, stage: PdfStage): void {
+    this.context.onError(this.index, error, stage);
+    this.errorBox?.remove();
+    const box = document.createElement('div');
+    box.className = 'pv-page-error';
+    box.setAttribute('role', 'alert');
+    const text = document.createElement('p');
+    text.textContent = t('pdfPageError');
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'wr-btn';
+    retry.textContent = t('fileRetry');
+    retry.addEventListener('click', () => {
+      this.release();
+      void this.render();
+    });
+    box.append(text, retry);
+    this.errorBox = box;
+    this.el.append(box);
   }
 
   private showCanvas(canvas: HTMLCanvasElement): void {
@@ -173,7 +203,7 @@ export class PageView {
     try {
       await textLayer.render();
     } catch (error) {
-      if (!isCancel(error)) this.context.onError(this.index, error);
+      if (!isCancel(error) && epoch === this.epoch) this.showError(error, 'page layers');
       return;
     }
     if (epoch !== this.epoch) return;
@@ -222,6 +252,8 @@ export class PageView {
 
   /** Cancels the render task and frees the canvas and the layers. The box keeps its size. */
   release(): void {
+    this.errorBox?.remove();
+    this.errorBox = undefined;
     this.generation += 1;
     this.epoch += 1;
     this.renderingZoom = 0;
