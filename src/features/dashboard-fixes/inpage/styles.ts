@@ -45,15 +45,26 @@ a.wr-x-title:hover{text-decoration:underline}
 .wr-x-link{all:unset;display:inline-block;margin-top:.25rem;font-size:.875rem;cursor:pointer;color:var(--ic-link-color,#0e68b3)}
 .wr-x-link:hover{text-decoration:underline}
 .wr-x-link:focus-visible,.wr-filter-select:focus-visible,.wr-body a:focus-visible{outline:.125rem solid var(--ic-brand-primary,#0374b5);outline-offset:.125rem}
-:host{display:block;margin-block:.5rem .25rem;font-size:var(--wr-fs,.875rem);line-height:var(--wr-lh,1.4);overflow-wrap:anywhere}
-.wr-body{max-height:30rem;overflow:auto}
-.wr-body>:first-child{margin-top:0}
-.wr-body p,.wr-body ul,.wr-body ol,.wr-body blockquote,.wr-body pre,.wr-body table{margin:0 0 .5rem}
-.wr-body>:last-child{margin-bottom:0}
-.wr-body ul,.wr-body ol{padding-inline-start:1.25rem}
-.wr-body img{display:block;max-width:100%;height:auto;margin:0 0 .5rem}
+:host{font-family:inherit;display:block;margin-block:.5rem .25rem;font-size:var(--wr-fs,.875rem);line-height:var(--wr-lh,1.4);overflow-wrap:anywhere}
+.wr-body{font-family:var(--ic-font-family,"Lato Extended","Lato","Helvetica Neue",Helvetica,Arial,sans-serif);font-size:16px;font-weight:400;line-height:1.5;max-height:30rem;overflow:auto}
+.wr-body p{margin:12px 0}
+.wr-body h1,.wr-body h2,.wr-body h3,.wr-body h4,.wr-body h5,.wr-body h6{margin:6px 0;font-family:inherit;font-weight:400;line-height:1.5}
+.wr-body h1,.wr-body h2{font-size:1.8em}
+.wr-body h3{font-size:1.5em}
+.wr-body h4{font-size:18px}
+.wr-body h5{font-size:16px}
+.wr-body h6{font-size:12px}
+.wr-body a{text-decoration:underline}
+.wr-body ul,.wr-body ol{padding:0;margin:0 0 6px 25px}
+.wr-body li>ul,.wr-body li>ol{margin-bottom:0}
+.wr-body img{max-width:100%;height:auto}
 .wr-body pre{white-space:pre-wrap}
-.wr-body table{border-collapse:collapse}
-.wr-body td,.wr-body th{border:.0625rem solid;padding:.25rem .5rem}
+.wr-body table{max-width:100%}
+.wr-body table:not([cellspacing]){border-collapse:collapse;border-spacing:0}
+.wr-body table:not([cellpadding]) td{padding:2px}
+:host([data-wr-own=ann]){line-height:1.5}
+:host([data-wr-own=ann]) .wr-x-meta{opacity:1;color:#586874}
+:host([data-wr-own=ann][data-wr-dark]) .wr-x-meta{color:#9ea6ad}
+:host .wr-x-link{font-size:var(--wr-link-size,.875rem);line-height:var(--wr-link-line,1.5)}
 .wr-item{padding-block:.5rem;border-bottom:.0625rem solid color-mix(in srgb,currentColor 20%,transparent)}
 `;

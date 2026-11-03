@@ -274,6 +274,7 @@ test.describe('announcements in place', () => {
     expect(result.pwned).toBeUndefined();
     expect(result.tags).toEqual([
       'a',
+      'h1',
       'img',
       'li',
       'p',
@@ -852,3 +853,40 @@ test.describe('the switches', () => {
     await expect(page.locator('[data-wr-extra]')).toBeVisible();
   });
 });
+
+for (const dark of [false, true]) {
+  test(`announcement type matches Canvas (${dark ? 'dark' : 'light'})`, async ({
+    context,
+    page,
+  }) => {
+    await open(context, page, { width: 1280 });
+    if (dark)
+      await page
+        .locator('.fixture-widget-app')
+        .evaluate((el) => el.setAttribute('data-fixture-dark', ''));
+    const styles = async (locator: Locator) =>
+      locator.evaluate((el) => {
+        const css = getComputedStyle(el);
+        return [
+          css.fontFamily,
+          css.fontSize,
+          css.fontWeight,
+          css.lineHeight,
+          el.getBoundingClientRect().height,
+        ];
+      });
+    await expect
+      .poll(() => styles(page.locator('[data-wr-filter] label')))
+      .toEqual(await styles(page.locator('.fx-label-text')));
+    expect(await styles(page.locator('[data-wr-filter] select'))).toEqual(
+      await styles(page.locator('#ann-read')),
+    );
+    await page.locator(`${ANNOUNCEMENT} a[href*="discussion_topics"]`).click();
+    await expect(message(page).locator('h1')).toHaveCSS('font-size', '28.8px');
+    await expect(message(page)).toHaveCSS('font-size', '16px');
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({
+      path: `screenshots/dashboard-fixes/announcement-fonts-1280-${dark ? 'dark' : 'light'}.png`,
+    });
+  });
+}

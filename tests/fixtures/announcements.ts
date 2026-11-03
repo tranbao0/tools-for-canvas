@@ -13,6 +13,7 @@ export interface AnnouncementFixture extends AnnouncementTopic {
 
 /** HTML with every kind of trouble the sanitizer must handle, around some good content. */
 export const HOSTILE_MESSAGE = [
+  '<h1>Dear Class,</h1>',
   '<p>The lab section moves to <strong>Science Hall 214</strong> on Thursday.</p>',
   '<p>Read the <a href="/courses/101/pages/lab-safety">lab safety page</a> and the ',
   '<a href="https://example.org/map">building map</a> first.</p>',
