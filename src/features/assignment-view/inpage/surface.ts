@@ -36,7 +36,13 @@ export async function startAssignmentViewSurface(ctx: PageScriptContext): Promis
   });
   ctx.signal.addEventListener('abort', channel.stop, { once: true });
   ctx.watchValidity(CONTEXT_CHECK_MS);
-  await startAssignmentView({ channel, signal: ctx.signal }).catch((error: unknown) =>
-    logFailure('assignment view', error),
-  );
+  await startAssignmentView({
+    channel,
+    signal: ctx.signal,
+    // The background tells every page when the student of the data changed or signed out.
+    onStudentReset: (listener) =>
+      listenToBackground((message) => {
+        if ((message as { type?: unknown } | null)?.type === 'viewer:reset') listener();
+      }),
+  }).catch((error: unknown) => logFailure('assignment view', error));
 }

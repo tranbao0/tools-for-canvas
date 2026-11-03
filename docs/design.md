@@ -2993,16 +2993,50 @@ File paths accept plain and sharded ids with strict checks on both parts.
 
 ### Decision 26, step 3 (built)
 
-Submit and Re-submit open the Canvas assignment in the docked pane.
-The turn-in frame is a sibling of the extension viewer frame inside the closed shadow root on the Canvas page.
-Turn-in replaces the visible file content while open.
-Closing turn-in restores the file tabs when a file is open; otherwise it closes the pane.
-Another Submit click replaces the turn-in frame.
-Only a trusted click in the assignment panel can open it, with validated course and assignment ids on the page origin.
-The frame receives no extension channel, secret or port.
-Each trusted load after the first reads assignment details without the page-view cache.
-A change in submitted_at, workflow_state or attempt updates the row and requests the existing weekrow:refresh channel.
-Clearing student data closes the pane through the viewer reset message.
+Submit and Re-submit open the Canvas assignment in a docked pane.
+
+- **Host.**
+  - The turn-in has its own host, owned by the assignment view script (`assignment-view.js`), so it works while the File viewer switch is off.
+  - The host is not the file pane host.
+    A frame of the Canvas origin can reach the closed shadow root that holds it, through `window.frameElement.getRootNode()`.
+    The closed root of the file pane therefore holds only extension content.
+    Every listener in the turn-in root accepts only trusted events.
+  - Both panes use one dock module (`src/features/file-viewer/dock.ts`): the position, the width, the resize handle and the `html` padding-right rule.
+    The width is the saved file viewer width.
+  - The two scripts run in one isolated world and share a small lease for the padding.
+    The first pane that takes room records the inline padding, and the last pane that gives room back restores it exactly.
+- **Frame.**
+  - The frame is `/courses/:c/assignments/:a?content_only=1` on the page origin, with validated ids.
+    The frame receives no extension channel, secret or port.
+  - The script never reads the DOM of the frame.
+    On a load it reads only the address of the frame.
+    When the address is the same course assignment path without `content_only=1`, the frame loads the same address with `content_only=1` once.
+    The old submission view redirects to that address after a submission.
+    The load after that rewrite never rewrites again.
+  - Only a trusted click on Submit or Re-submit in the open row opens the pane.
+- **Header.**
+  - The bar has the height of the tab row of the file pane, 47 px (44 px of tab and the 3 px of its underline), and the same 28 px close button with a 16 px icon.
+  - "Open in new tab" is a bordered button with an icon and no underline.
+    It opens the assignment address without `content_only`.
+- **Unsent work.**
+  - Only the close button of the pane (a trusted click) and a change of student remove the frame.
+    Escape inside the frame does nothing.
+  - The pane shows while a turn-in is open and the file pane is not in view.
+    A file click opens the file pane as usual, and the turn-in host is only hidden.
+    When the file pane closes, the turn-in shows again with its state.
+  - Submit while a file pane is open shows the turn-in over the file pane, which is hidden and keeps its tabs.
+    The close button of the turn-in shows the file pane again.
+  - A Submit click while a turn-in is open shows that turn-in and never replaces its frame.
+  - Escape on the page closes the file pane only when the focus is inside the pane, and only for a trusted key.
+- **Label.**
+  The button says "Re-submit" only when the student really submitted: `submitted_at` is set, or the attempt is 1 or more.
+  Work that a teacher graded without a submission shows "Submit".
+- **Refresh.**
+  - The new student view submits without a page load, so the details are read again on each trusted load of the frame after the first, when the pane closes, and every 20 seconds while the pane is open and the page is in view.
+  - The reads join: at most one runs and at most one waits.
+  - A change in `submitted_at`, `workflow_state` or `attempt` draws the open rows again and sends `weekrow:refresh` with the reason `visible`.
+    That reason keeps the 60-second round limit and the planner backoff.
+  - Details of another student close the pane, as does the `viewer:reset` message that the background sends when it clears the data of a student.
 
 These source facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 `ApplicationController#set_layout_options` in `app/controllers/application_controller.rb` handles embedded and no_headers, not display=borderless.

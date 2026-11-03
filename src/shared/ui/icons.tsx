@@ -1,3 +1,5 @@
+import { CLOSE_PATH, EXTERNAL_LINK_PATH } from './iconPaths';
+
 /**
  * Inline SVG icons. They draw with `currentColor`, take their size from the font size (1em), and
  * are hidden from screen readers.
@@ -78,9 +80,7 @@ export const ChevronDownIcon = () => (
   <Icon d="m0 36 11-12 49 49 49-49 11 12-60 60z" class="wr-chevron" />
 );
 
-export const CloseIcon = () => (
-  <Icon d="m60 52-33-33-8 8 33 33-33 33 8 8 33-33 33 33 8-8-33-33 33-33-8-8z" />
-);
+export const CloseIcon = () => <Icon d={CLOSE_PATH} />;
 
 export const CheckIcon = () => <Icon d="m109 17-65 64-33-33L0 59l44 44 76-75z" />;
 
@@ -168,9 +168,7 @@ export const DownloadIcon = () => (
   <Icon d="m112.9 92.7 5 5 -22.2 22.2H22.2L0 97.7l5 -5 20.1 20.1H92.8l20.1 -20.1ZM62.4 0v72.9l22.2 -22.2 5 5 -30.7 30.7L28.1 55.7l5 -5 22.2 22.2V0h7.1Z" />
 );
 
-export const ExternalLinkIcon = () => (
-  <Icon d="M76.7 16.7c5.5 0 10 4.5 10 10v26.7H80v-10H6.7v50C6.7 95.2 8.2 96.7 10 96.7h66.7c1.8 0 3.3 -1.5 3.3 -3.3v-13.3h6.7v13.3c0 5.5 -4.5 10 -10 10H10c-5.5 0 -10 -4.5 -10 -10V26.7c0 -5.5 4.5 -10 10 -10Zm22.4 27.6 20 20c1.3 1.3 1.3 3.4 0 4.7l-20 20 -4.7 -4.7 14.3 -14.3H56.7V63.4h52L94.3 49l4.7 -4.7Zm-22.4 -21H10c-1.8 0 -3.3 1.5 -3.3 3.3v10H80V26.7c0 -1.8 -1.5 -3.3 -3.3 -3.3Z" />
-);
+export const ExternalLinkIcon = () => <Icon d={EXTERNAL_LINK_PATH} />;
 
 /**
  * The icons of the PDF viewer toolbar. They are Instructure UI line icons from the same package,

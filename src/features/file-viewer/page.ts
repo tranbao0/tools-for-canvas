@@ -1,6 +1,6 @@
-import { turnInScope, turnInUrl } from '../assignment-view/turnIn';
 import { browser, type Browser } from 'wxt/browser';
 import { t } from '../../shared/ui/i18n';
+import { createDock, type Dock } from './dock';
 import { TOP_OPEN } from './frame';
 import { acceptPaneHello, isViewerSecret, secretMessage, validPaneReady } from './channel';
 import {
@@ -69,37 +69,14 @@ export async function startViewer(): Promise<void> {
   const resolveTheme = () => inpageTheme(themeChoice, () => detectPageTheme(document));
   const applyTheme = () => {
     const theme = resolveTheme();
-    host?.setAttribute('data-theme', theme);
+    dock?.setTheme(theme);
     port?.postMessage({ type: 'theme', theme });
   };
   let width = normalizeWidth(undefined, innerWidth);
-  let host: HTMLDivElement | undefined;
-  let paneRoot: ShadowRoot | undefined;
-  let turnIn: HTMLIFrameElement | undefined;
-  let turnInHeader: HTMLElement | undefined;
-  let paneGeneration = 0;
-  const restoreFiles = () => {
-    turnIn?.remove();
-    turnInHeader?.remove();
-    turnIn = undefined;
-    turnInHeader = undefined;
-    const viewer = paneRoot?.querySelector<HTMLIFrameElement>('iframe');
-    if (viewer) viewer.style.display = '';
-  };
+  let dock: Dock | undefined;
   // The port of the pane once it proved the secret, and a port that waits for that proof.
   let port: MessagePort | undefined;
   let pending: MessagePort | undefined;
-  let padding = '';
-  let priority = '';
-  const layout = () => {
-    if (!host) return;
-    host.style.width = innerWidth < 900 ? '100vw' : `${normalizeWidth(width, innerWidth)}px`;
-    if (innerWidth < 900) {
-      document.documentElement.style.setProperty('padding-right', padding, priority);
-    } else {
-      document.documentElement.style.setProperty('padding-right', host.style.width, 'important');
-    }
-  };
   // The course the student opened each file from, for the "Open in Canvas" link.
   const courses = new Map<string, string>();
   // Whether the pane of the current port has been told what to open. The first open-file request
@@ -135,7 +112,6 @@ export async function startViewer(): Promise<void> {
   let lastHelloAt = -Infinity;
   /** Removes the pane and gives the page its padding back. The stored tabs stay. */
   const drop = () => {
-    paneGeneration += 1;
     clearTimeout(handshake);
     handshake = undefined;
     removeHello?.();
@@ -144,26 +120,27 @@ export async function startViewer(): Promise<void> {
     pending = undefined;
     port?.close();
     port = undefined;
-    restoreFiles();
-    paneRoot = undefined;
-    if (!host) return;
-    host.remove();
-    host = undefined;
-    document.documentElement.style.setProperty('padding-right', padding, priority);
+    dock?.close();
+    dock = undefined;
+  };
+  const save = async () => {
+    const latest = (await browser.runtime.sendMessage({ type: 'weekrow:page-context' })) as {
+      tools: ToolsSettings;
+    };
+    await browser.runtime.sendMessage({
+      type: 'weekrow:save-tools',
+      tools: { ...latest.tools, fileViewerWidth: width },
+    });
   };
   const close = () => {
-    if (turnIn && tabs.active) {
-      restoreFiles();
-      return;
-    }
     drop();
     tabs = { ids: [], active: null };
     void writeTabs(tabs);
   };
   // A page can remove the host. Then no pane is open, and the next click opens a new one.
   const paneOpen = () => {
-    if (host && !host.isConnected) drop();
-    return host !== undefined;
+    if (dock && !dock.host.isConnected) drop();
+    return dock !== undefined;
   };
   // Opens the pane. A call while another one is in progress waits for the same open.
   let showing: Promise<void> | undefined;
@@ -192,20 +169,19 @@ export async function startViewer(): Promise<void> {
     }
     if (!live) return;
     lastHelloAt = -Infinity;
-    padding = document.documentElement.style.getPropertyValue('padding-right');
-    priority = document.documentElement.style.getPropertyPriority('padding-right');
-    host = document.createElement('div');
-    host.id = 'tools-file-viewer';
-    host.style.cssText = 'position:fixed;right:0;top:0;height:100vh;z-index:2147483647;';
-    // A closed root keeps a script of the Canvas page from reaching the frame element.
-    const root = host.attachShadow({ mode: 'closed' });
-    paneRoot = root;
-    root.innerHTML = `<style>
-      :host{--bg:#fff;--text:#273540;--line:#e8eaec;--edge:#c7cdd1;--hover:#f2f4f4;--focus:#0374b5;color:var(--text)}
-      :host([data-theme='dark']){--bg:#1b2330;--text:#fff;--line:#2e3e4e;--edge:#4a5b68;--hover:#253443;--focus:#5a9fd4}
-      section{box-sizing:border-box;height:100%;background:var(--bg);border-left:1px solid var(--edge);display:flex;flex-direction:column;font-family:Lato,Arial,sans-serif}
-      iframe{border:0;width:100%;flex:1;min-height:0;background:transparent} .handle{position:absolute;left:-4px;top:0;width:8px;height:100%;cursor:ew-resize;touch-action:none}.handle:hover,.handle:focus-visible{background:var(--focus)} @media(max-width:899px){.handle{display:none}}
-      </style><section aria-label="File viewer"><div class="handle" role="separator" aria-label="Resize file viewer" aria-orientation="vertical" tabindex="0"></div></section>`;
+    const created = createDock({
+      role: 'file',
+      id: 'tools-file-viewer',
+      label: 'File viewer',
+      resizeLabel: 'Resize file viewer',
+      width,
+      onResized(next) {
+        width = next;
+        void save();
+      },
+    });
+    dock = created;
+    const root = created.root;
     const earlyClose = document.createElement('button');
     earlyClose.type = 'button';
     earlyClose.textContent = '×';
@@ -213,7 +189,7 @@ export async function startViewer(): Promise<void> {
     earlyClose.style.cssText =
       'position:absolute;right:8px;top:4px;width:32px;height:32px;z-index:1;color:var(--text);background:var(--bg);border:0;cursor:pointer';
     earlyClose.addEventListener('click', close);
-    root.querySelector('section')!.append(earlyClose);
+    created.section.append(earlyClose);
     const frame = document.createElement('iframe');
     frame.title = 'File viewer';
     frame.src = browser.runtime.getURL('/viewer.html');
@@ -223,7 +199,7 @@ export async function startViewer(): Promise<void> {
     const answerInTime = () => {
       clearTimeout(handshake);
       handshake = setTimeout(() => {
-        if (host && !port) drop();
+        if (dock && !port) drop();
       }, HANDSHAKE_MS);
     };
     removeHello = listenViewerHello(window, frame, browser.runtime.id, (origin) => {
@@ -267,117 +243,21 @@ export async function startViewer(): Promise<void> {
       const loadedAt = performance.now();
       clearTimeout(handshake);
       handshake = setTimeout(() => {
-        if (host && lastHelloAt < loadedAt - 2000) drop();
+        if (dock && lastHelloAt < loadedAt - 2000) drop();
       }, HANDSHAKE_MS);
     });
-    root.querySelector('section')!.append(frame);
-    const handle = root.querySelector<HTMLElement>('.handle')!;
-    const save = async () => {
-      const latest = (await browser.runtime.sendMessage({ type: 'weekrow:page-context' })) as {
-        tools: ToolsSettings;
-      };
-      await browser.runtime.sendMessage({
-        type: 'weekrow:save-tools',
-        tools: { ...latest.tools, fileViewerWidth: width },
-      });
-    };
-    handle.addEventListener('pointerdown', (event) => {
-      handle.setPointerCapture(event.pointerId);
-      const move = (event: PointerEvent) => {
-        width = normalizeWidth(innerWidth - event.clientX, innerWidth);
-        layout();
-      };
-      const end = () => {
-        handle.removeEventListener('pointermove', move);
-        void save();
-      };
-      handle.addEventListener('pointermove', move);
-      handle.addEventListener('pointerup', end, { once: true });
+    created.section.append(frame);
+    root.addEventListener('keydown', (event) => {
+      // A frame of the Canvas page can reach this root, so only a real key counts.
+      if (event.isTrusted && (event as KeyboardEvent).key === 'Escape') close();
     });
-    handle.addEventListener('keydown', (event) => {
-      if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
-      event.preventDefault();
-      width = normalizeWidth(width + (event.key === 'ArrowLeft' ? 20 : -20), innerWidth);
-      layout();
-      void save();
-    });
-    document.body.append(host);
+    created.open();
     applyTheme();
-    layout();
     answerInTime();
   };
-  turnInScope.__toolsTurnIn = (request) => {
-    const url = turnInUrl(location.origin, request.courseId, request.assignmentId);
-    if (!request.event.isTrusted || !url || !live) return;
-    const generation = paneGeneration;
-    void (async () => {
-      await starting;
-      if (!live || generation !== paneGeneration) return;
-      await show();
-      const stored = await readTabs().catch(() => null);
-      if (!live || generation !== paneGeneration || !paneRoot) return;
-      if (stored) tabs = stored.tabs;
-      restoreFiles();
-      const viewer = paneRoot.querySelector<HTMLIFrameElement>('iframe');
-      if (viewer) viewer.style.display = 'none';
-      const header = document.createElement('header');
-      header.style.cssText =
-        'display:flex;align-items:center;gap:12px;min-height:44px;padding:0 12px;border-bottom:1px solid var(--edge);font-size:14px';
-      const title = document.createElement('span');
-      title.textContent = request.title;
-      title.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-      const link = document.createElement('a');
-      link.textContent = 'Open in new tab';
-      link.href = url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.style.color = 'var(--focus)';
-      const button = document.createElement('button');
-      button.textContent = '×';
-      button.setAttribute('aria-label', 'Close turn-in');
-      button.style.cssText =
-        'border:0;background:transparent;color:inherit;font-size:24px;cursor:pointer';
-      button.addEventListener('click', close);
-      header.append(title, link, button);
-      const frame = document.createElement('iframe');
-      frame.title = `Turn in ${request.title}`;
-      frame.style.background = '#fff';
-      let loads = 0;
-      let refresh = Promise.resolve();
-      frame.addEventListener('load', (event) => {
-        if (!event.isTrusted) return;
-        try {
-          frame.contentWindow?.addEventListener('keydown', (key) => {
-            if (key.isTrusted && key.key === 'Escape' && turnIn === frame) close();
-          });
-        } catch {
-          // An external tool can navigate the frame to another origin.
-        }
-        if (++loads === 1) return;
-        refresh = refresh
-          .then(async () => {
-            if (turnIn === frame) await request.reload();
-          })
-          .catch(() => undefined);
-      });
-      frame.src = url;
-      turnIn = frame;
-      turnInHeader = header;
-      paneRoot.querySelector('section')!.append(header, frame);
-    })().catch(() => undefined);
-  };
-  window.addEventListener(
-    'keydown',
-    (event) => {
-      if (event.key === 'Escape' && host) close();
-    },
-    { signal: lifetime.signal },
-  );
-  window.addEventListener('resize', layout, { signal: lifetime.signal });
   scope.__weekrowViewer = () => {
     live = false;
     lifetime.abort();
-    delete turnInScope.__toolsTurnIn;
     drop();
   };
   // The opens run one after another. Each one reads the stored tabs, adds its file and writes them
@@ -394,7 +274,8 @@ export async function startViewer(): Promise<void> {
    * to whether the pane has the file or is about to get it.
    */
   const openNow = async (target: FileTarget, href: string): Promise<boolean> => {
-    restoreFiles();
+    // A turn-in may have covered the pane. A file shows the pane again.
+    if (paneOpen()) dock?.setHidden(false);
     if (!paneOpen()) await show();
     const file =
       'fileId' in target
@@ -477,7 +358,7 @@ export async function startViewer(): Promise<void> {
   // The settings and the stored tabs load while the listeners above already work.
   const starting = (async () => {
     const context = await readContext();
-    if (!live || !context || (!context.tools.fileViewer && !context.tools.assignmentView)) return;
+    if (!live || !context?.tools.fileViewer) return;
     themeChoice = context.settings?.theme ?? 'auto';
     width = normalizeWidth(context.tools.fileViewerWidth, innerWidth);
     const stored = await readTabs().catch(() => null);
@@ -486,7 +367,7 @@ export async function startViewer(): Promise<void> {
       tabs = stored.tabs;
       tabsToken = stored.token;
     }
-    enabled = context.tools.fileViewer;
+    enabled = true;
   })().catch(() => undefined);
   // The background sends two kinds of message to this script. It says when a setting changed, so
   // the pane follows the Theme setting at once. And it passes on a file that the click catcher
@@ -498,15 +379,6 @@ export async function startViewer(): Promise<void> {
     respond: (reply: { opened: boolean }) => void,
   ): boolean | undefined => {
     const request = message as { type?: unknown; fileId?: unknown } | null;
-    if (
-      request?.type === 'viewer:reset' &&
-      sender.id === browser.runtime.id &&
-      sender.tab === undefined
-    ) {
-      paneGeneration += 1;
-      if (turnIn) drop();
-      return undefined;
-    }
     if (request?.type === 'weekrow:changed') {
       void readContext().then(
         (latest) => {
@@ -514,6 +386,11 @@ export async function startViewer(): Promise<void> {
           if (choice && choice !== themeChoice) {
             themeChoice = choice;
             applyTheme();
+          }
+          // The turn-in pane shares the width, and it may have saved a new one.
+          if (latest?.tools.fileViewerWidth !== undefined) {
+            width = normalizeWidth(latest.tools.fileViewerWidth, innerWidth);
+            dock?.setWidth(width);
           }
         },
         () => undefined,
@@ -542,7 +419,7 @@ export async function startViewer(): Promise<void> {
     { once: true },
   );
   await starting;
-  if (live && !enabled && !turnInScope.__toolsTurnIn) {
+  if (live && !enabled) {
     // The viewer is off. A click that came before this point still finds `live`, and follows its link.
     lifetime.abort();
   }
