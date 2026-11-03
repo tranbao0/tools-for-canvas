@@ -38,3 +38,25 @@ it('keeps the assessed rubric and score of unsubmitted paper work', () => {
   expect(panel.textContent).toContain('5 / 10');
   expect(panel.querySelector('[data-assessed]')).not.toBeNull();
 });
+
+it('never asks excused work for a submission', () => {
+  const details = structuredClone(ASSIGNMENT_DETAILS);
+  details.assignment.submission_types = ['online_upload'];
+  details.submission = {
+    user_id: '42',
+    score: null,
+    grade: null,
+    submitted_at: null,
+    excused: true,
+  };
+  const panel = renderPageDetails(
+    { details, timeZone: 'UTC' },
+    {
+      doc: document,
+      origin: 'https://canvas.test',
+      courseId: '12',
+      now: () => Temporal.Instant.from('2026-01-01T00:00:00Z'),
+    },
+  );
+  expect(panel.textContent).not.toContain('No submission yet');
+});
