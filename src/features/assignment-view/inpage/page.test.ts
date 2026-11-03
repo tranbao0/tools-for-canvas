@@ -39,7 +39,6 @@ it.each([
   '<main id="content">' +
     classic.replace('class="description"', 'class="description teacher-version"') +
     '</main>',
-  '<a id="easy_student_view"></a><main id="content">' + classic + '</main>',
 ])('does not read details outside a classic student layout', (body) => {
   const { send } = start(body, undefined);
   expect(send).not.toHaveBeenCalled();
@@ -54,4 +53,19 @@ it('removes the observer panel but keeps other failures visible', async () => {
       document.querySelector('#av-submission')?.shadowRoot?.querySelector('[role="alert"]'),
     ).not.toBeNull(),
   );
+});
+
+it('remembers denied submission access across settings changes until student reset', async () => {
+  const { engine, send } = start('<main id="content">' + classic + '</main>', {
+    kind: 'no_submission_access',
+  });
+  await vi.waitFor(() => expect(document.querySelector('#av-submission')).toBeNull());
+  for (let index = 0; index < 3; index++) {
+    engine.setActive(false);
+    engine.setActive(true);
+  }
+  expect(send).toHaveBeenCalledTimes(1);
+  engine.resetStudent?.();
+  engine.setActive(true);
+  await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
 });

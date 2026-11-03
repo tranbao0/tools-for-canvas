@@ -2891,7 +2891,9 @@ Step 3 (Submit) is built.
 
 The classic student assignment page shows a permanent "Your submission" panel directly after the description in its main column.
 It reuses the score, status, submitted date, rubric assessment, comments and own files of step 1, without instructions or action buttons.
-An unsubmitted assignment with no comments shows the score and "No submission yet" on one line.
+The summary always shows the score, status chips and submitted date, if any.
+An assignment that takes a submission shows "No submission yet" below the summary when the student has no submission.
+The rubric, comments and files sections appear only when they have content.
 The switch and Theme setting apply without a reload.
 A submission reloads Canvas and reads the panel again.
 The existing message, router, cookie binding, projection and sanitizer remain unchanged.
@@ -2903,7 +2905,8 @@ Verified against canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`:
 - The student branch renders `_student_assignment_overview.html.erb`, whose root is `ul.student-assignment-overview`, and the native submission button.
 - The teacher description has `.teacher-version`.
 - `ui/features/assignments_show_student/index.js` mounts the new student React view in a new div in `#content`, without the classic wrapper and overview.
-- The panel requires the classic wrapper, its direct student overview and its direct non-teacher description, so the new student view receives no panel.
+- The root is the first element from `document.getElementById('content')`; description content cannot supply another root.
+- The panel requires the classic wrapper as a direct child of that root, its direct student overview and its direct non-teacher description, so the new student view receives no panel.
 - The fixture retains those classic source hooks and supplies fixed course content and local styles for tests.
 
 

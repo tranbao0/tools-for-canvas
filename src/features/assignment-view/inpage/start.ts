@@ -147,7 +147,14 @@ export async function startAssignmentView(
     }),
     channel.settings.watch(follow),
   );
-  if (options.onStudentReset) stops.push(options.onStudentReset(turnIn.reset));
+  if (options.onStudentReset)
+    stops.push(
+      options.onStudentReset(() => {
+        turnIn.reset();
+        rows.resetStudent?.();
+        apply();
+      }),
+    );
   signal?.addEventListener('abort', controller.stop, { once: true });
   try {
     const [address, loadedTools, loadedSettings] = await Promise.all([

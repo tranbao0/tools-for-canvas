@@ -47,6 +47,7 @@ export interface RowsOptions {
 }
 
 export interface RowsEngine {
+  resetStudent?(): void;
   /** Shows the view on the page, or removes it. Removing it forgets the loaded details. */
   setActive(active: boolean): void;
   /** Reads the theme again, after the Theme setting changed. */
