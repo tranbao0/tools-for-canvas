@@ -2986,7 +2986,7 @@ These items need a live check or an outside answer.
 16. The expand rows of the Grades page (decision 26, step 1) have run only against the fixture.
     The real title cell, the way Canvas finds its own comment and rubric rows after the extension row, and the field shapes of the assignment and submission records are known from canvas-lms source only.
     The comment attachment gap is closed by Ticket F2.
-    A submitted file on a course with a shard id (`12~345`) also keeps its download, because the matcher of decision 25 takes only plain ids.
+    A submitted file on a course with a shard id (`12~345`) opens in the pane too, because the matchers of decision 25 take shard ids.
     The text of a comment goes through the sanitizer, with line breaks kept, and it is not known whether Canvas escapes angle brackets in that field.
     The live checklist has the steps.
 

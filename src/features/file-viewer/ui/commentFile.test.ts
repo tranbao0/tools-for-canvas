@@ -25,14 +25,44 @@ describe('content type of a comment attachment', () => {
 describe('loading a comment attachment', () => {
   const answer = (body: Uint8Array, headers: Record<string, string>) =>
     vi.fn(async () => new Response(body as BodyInit, { status: 200, headers }));
-  const load = (fetchImpl: typeof fetch, confirm = async () => true) =>
+  const load = (
+    fetchImpl: typeof fetch,
+    confirm = async () => true,
+    prepare: () => Promise<boolean> = async () => true,
+  ) =>
     loadCommentFile({
       tabId: TAB,
       name: 'Feedback.pdf',
       origin: ORIGIN,
+      prepare,
       confirm,
       fetchImpl,
     });
+
+  it('drops the probe when the cookie changes during the read', async () => {
+    const fetchImpl = answer(text('%PDF-1.7'), { 'content-type': 'application/pdf' });
+    const answers = [true, false];
+    const prepare = vi.fn(async () => true);
+    await expect(
+      load(fetchImpl, async () => answers.shift() ?? false, prepare),
+    ).rejects.toMatchObject({ kind: 'unconfirmed' });
+    // The check that may confirm a new student runs only once, before the read.
+    expect(prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads nothing when the cookie cannot be confirmed before the read', async () => {
+    const fetchImpl = answer(text('%PDF-1.7'), { 'content-type': 'application/pdf' });
+    await expect(
+      load(
+        fetchImpl,
+        async () => true,
+        async () => false,
+      ),
+    ).rejects.toMatchObject({
+      kind: 'unconfirmed',
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 
   it('reads only its submission route, with the name of the link and the type of the answer', async () => {
     const fetchImpl = answer(text('%PDF-1.7 and more bytes'), {
@@ -69,6 +99,7 @@ describe('loading a comment attachment', () => {
       tabId: TAB,
       name: undefined,
       origin: ORIGIN,
+      prepare: async () => true,
       confirm: async () => true,
       fetchImpl: answer(PNG, {}),
     });

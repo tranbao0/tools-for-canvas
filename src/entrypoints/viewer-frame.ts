@@ -52,9 +52,11 @@ export default defineUnlistedScript(() => {
           tabId: fileId,
           name,
           origin: canvasOrigin,
-          // Nothing has confirmed the cookie for this file yet, so the background may check it.
-          confirm: async () =>
+          // Nothing has confirmed the cookie for this file yet, so the background may check it
+          // once before the read. The read itself uses the strict check.
+          prepare: async () =>
             (await browser.runtime.sendMessage({ type: 'viewer:confirm-cookie' })) === true,
+          confirm: confirmCookie,
         });
       const file: unknown = await browser.runtime.sendMessage({ type: 'viewer:file', fileId });
       if (!isPaneFile(file)) return undefined;
