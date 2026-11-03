@@ -490,6 +490,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   const requested = new Map<string, ShownView>();
   /** Planner loads of views, prefetches and week refreshes that are running. */
   const jobs = new Set<PlannerJob>();
+  let plannerBackoff: { interval: Interval; until: number }[] = [];
   /** Assignment ids whose details a planner job is fetching now. */
   const detailsInFlight = new Set<string>();
   const pending: Record<RoundScope, boolean> = { full: false, light: false };
@@ -699,7 +700,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       } finally {
         running = false;
         // Readers can start a replacement round only after this runner releases it.
-        if (cache !== null && (cache.session !== null || cache.failure === null)) await bump();
+        if (cache !== null && (cache.session !== null || cache.failure === null)) {
+          await bump().catch((error: unknown) => deps.log('data task', error));
+        }
       }
     })();
   }
@@ -821,6 +824,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     limitCheckPending = false;
     // Running planner jobs finish without a trace, so their parts can load again.
     jobs.clear();
+    plannerBackoff = [];
     detailsInFlight.clear();
     announcementLoad = null;
   }
@@ -1059,9 +1063,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   // Planner jobs
   // ---------------------------------------------------------------------------------------------
 
-  /** The intervals that running jobs have not put into the cache yet. */
+  /** The intervals still loading or waiting for a retry after a failure. */
   function pendingIntervals(): Interval[] {
-    return [...jobs].flatMap((job) => job.waiting);
+    plannerBackoff = plannerBackoff.filter((entry) => entry.until > clock.now());
+    return [
+      ...[...jobs].flatMap((job) => job.waiting),
+      ...plannerBackoff.map((entry) => entry.interval),
+    ];
   }
 
   /**
@@ -1226,10 +1234,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     jobs.add(job);
     const api = apiFor(origin).withPriority(() => job.priority);
     track(
-      runJob(job, api, context, reloadDetails).finally(async () => {
-        // A discarded chunk becomes available for another request only after the job leaves.
-        if (jobs.delete(job)) await bump();
-      }),
+      runJob(job, api, context, reloadDetails)
+        .then(async (dropped) => {
+          // A discarded chunk becomes available for another request only after the job leaves.
+          if (jobs.delete(job) && (dropped || job.shown)) await bump();
+        })
+        .finally(() => {
+          jobs.delete(job);
+        }),
     );
   }
 
@@ -1253,10 +1265,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     api: CanvasApi,
     context: ViewContext,
     reloadDetails: boolean,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const gen = generation;
     /** A planner request or a details request of this job failed. */
     let failed = false;
+    let dropped = false;
     /** A details request failed, so the later batches stay out. */
     let detailsFailed = false;
     const wanted: FetchedPart[] = [];
@@ -1267,6 +1280,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const fail = async (error: unknown): Promise<void> => {
       if (failed) return;
       failed = true;
+      if (gen === generation) {
+        plannerBackoff.push(
+          ...job.all.map((interval) => ({ interval, until: clock.now() + 60_000 })),
+        );
+      }
       await jobFailed(job, error, api, gen);
     };
 
@@ -1297,6 +1315,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         // The cookie is not the one of the request, so the later batches stay out. The next round
         // loads the details again.
         detailsFailed = true;
+        if (gen === generation) dropped = true;
         return;
       }
       if (gen !== generation || cache?.session == null) return;
@@ -1347,14 +1366,15 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           return;
         }
         if (items === DROPPED) {
-          // The chunk stays a gap, and the surfaces ask again.
-          if (gen === generation) await bump();
+          // The chunk stays a gap until the job releases it.
+          if (gen === generation) dropped = true;
           return;
         }
         await arrive({ interval: chunk, items });
       }),
     );
     await batches;
+    return dropped;
   }
 
   /**
