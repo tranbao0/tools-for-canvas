@@ -8,6 +8,9 @@ import type { AssignmentDetails } from './protocol';
  */
 export function submitLabel(details: AssignmentDetails): string | null {
   if (details.assignment.can_submit !== true) return null;
+  // A graded discussion redirects from the assignment page to the discussion page, which the
+  // student answers there, so the pane has no turn-in for it.
+  if (details.assignment.submission_types?.includes('discussion_topic')) return null;
   const submission = details.submission;
   return submission.submitted_at || (submission.attempt ?? 0) >= 1 ? 'Re-submit' : 'Submit';
 }
