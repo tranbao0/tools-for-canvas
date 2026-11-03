@@ -103,6 +103,8 @@ function assessment(value: unknown): Assessment {
   const fields = record(value);
   if (fields === null) return result;
   for (const key of Object.keys(fields).slice(0, MAX_CRITERIA)) {
+    // `__proto__` would set the prototype of the result and is no criterion id.
+    if (key === '__proto__') continue;
     const entry = record(fields[key]);
     if (entry === null) continue;
     const ratingId = text(entry['rating_id'], 64);
