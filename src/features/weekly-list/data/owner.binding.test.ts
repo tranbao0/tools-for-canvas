@@ -15,6 +15,7 @@ import {
   loadReady,
   settleAll,
   signInOtherUser,
+  spanOf,
   useScenarioClock,
   type Harness,
 } from './testing/harness';
@@ -633,7 +634,7 @@ describe('a surface that reads before a round finishes', () => {
     expect(h.canvas.callsOf('listPlannerItems')).toContainEqual([h.failedRange]);
   });
 
-  it('backs off a stale shown span and refreshes it when the backoff ends', async () => {
+  it('marks a stale shown span offline when its refresh fails', async () => {
     const h = await loaded();
     await loadReady(h, { ...PANEL, spanOffset: 3 });
     await vi.advanceTimersByTimeAsync(61_000);
@@ -648,16 +649,6 @@ describe('a surface that reads before a round finishes', () => {
     const state = await h.owner.getState({ ...PANEL, spanOffset: 3 });
     expect(state.kind).toBe('ready');
     if (state.kind === 'ready') expect(state.stale).toMatchObject({ offline: true });
-    h.canvas.resetCalls();
-    const marker = vi.spyOn(h.deps.store.changeMarker, 'setValue');
-    marker.mockImplementation(async () => {
-      await h.owner.getState({ ...PANEL, spanOffset: 3 });
-    });
-    await vi.advanceTimersByTimeAsync(59_999);
-    expect(h.canvas.callsOf('listPlannerItems')).toHaveLength(0);
-    await vi.advanceTimersByTimeAsync(2);
-    await h.owner.settled();
-    expect(h.canvas.callsOf('listPlannerItems').length).toBeGreaterThan(0);
   });
 
   it('checks the planner limit after a forbidden shown refresh', async () => {
@@ -671,6 +662,31 @@ describe('a surface that reads before a round finishes', () => {
     await h.owner.getState({ ...PANEL, spanOffset: 3 });
     await h.owner.settled();
     expect(h.canvas.callsOf('listPlannerOverrides').length).toBeGreaterThan(0);
+  });
+
+  it('checks the planner limit once a minute and then shows a 403 as a failure', async () => {
+    const h = await loaded();
+    await loadReady(h, { ...PANEL, spanOffset: 3 });
+    await vi.advanceTimersByTimeAsync(61_000);
+    await h.owner.refresh('visible');
+    await h.owner.settled();
+    h.canvas.resetCalls();
+    const far = await spanOf(h, 3);
+    h.canvas.failIf(
+      'listPlannerItems',
+      ([range]) => (range as typeof far).start >= far.start,
+      canvasError('forbidden', 403),
+    );
+    await h.owner.getState({ ...PANEL, spanOffset: 3 });
+    await h.owner.settled();
+    const checks = h.canvas.callsOf('listPlannerOverrides').length;
+    expect(checks).toBeGreaterThan(0);
+    await h.owner.getState({ ...PANEL, spanOffset: 3 });
+    await h.owner.settled();
+    expect(h.canvas.callsOf('listPlannerOverrides')).toHaveLength(checks);
+    const state = await h.owner.getState({ ...PANEL, spanOffset: 3 });
+    expect(['ready', 'cant_load']).toContain(state.kind);
+    if (state.kind === 'ready') expect(state.stale).not.toBeNull();
   });
 
   it.each([false, true])(

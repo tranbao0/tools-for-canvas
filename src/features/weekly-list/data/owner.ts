@@ -340,8 +340,6 @@ interface PlannerJob {
   priority: RequestPriority;
   /** A surface shows the week, so the list shows the refresh marker until the job ends. */
   shown: boolean;
-  /** Refreshes cached data in the background even when a surface shows the span. */
-  refresh?: boolean;
   /** `planner` until every chunk is in the cache, then `details`. */
   phase: 'planner' | 'details';
   /** Epoch milliseconds when the job started. */
@@ -498,6 +496,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   const pending: Record<RoundScope, boolean> = { full: false, light: false };
   /** A full round is on its way to find out whether the school limits the planner. */
   let limitCheckPending = false;
+  /** When the last planner limit check started, so a 403 starts at most one check a minute. */
+  let lastLimitCheckAt: number | null = null;
   let running = false;
   let runner: Promise<void> = Promise.resolve();
   let deferTimer: unknown = null;
@@ -828,6 +828,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     statusesInFlight.clear();
     statusesFailed.clear();
     limitCheckPending = false;
+    lastLimitCheckAt = null;
     // Running planner jobs finish without a trace, so their parts can load again.
     jobs.clear();
     plannerBackoff = [];
@@ -1135,7 +1136,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     for (const job of jobs) {
       if (!job.all.some((chunk) => overlaps(chunk, interval))) continue;
       if (PRIORITY_RANK[job.priority] < PRIORITY_RANK[priority]) job.priority = priority;
-      if (!job.refresh) job.shown = true;
+      job.shown = true;
     }
   }
 
@@ -1220,8 +1221,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         waiting: [...chunks],
         undetailed: [],
         priority: 'normal',
-        shown: false,
-        refresh: true,
+        shown: true,
         phase: 'planner',
         startedAt: clock.now(),
       },
@@ -1245,7 +1245,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       runJob(job, api, context, reloadDetails)
         .then(async (dropped) => {
           // A discarded chunk becomes available for another request only after the job leaves.
-          if (jobs.delete(job) && (dropped || job.shown || job.refresh)) await bump();
+          if (jobs.delete(job) && (dropped || job.shown)) await bump();
         })
         .finally(() => {
           jobs.delete(job);
@@ -1277,7 +1277,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const gen = generation;
     /** A planner request or a details request of this job failed. */
     let failed = false;
-    let refreshFailure: Failure | null = null;
     let dropped = false;
     /** A details request failed, so the later batches stay out. */
     let detailsFailed = false;
@@ -1291,25 +1290,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         plannerBackoff.push(
           ...intervals.map((interval) => ({ interval, until: clock.now() + 60_000 })),
         );
-        if (job.refresh) {
-          const at = clock.now() + 60_000;
-          const notify = (): void => {
-            if (gen !== generation) return;
-            if (clock.now() < at) timers.setTimeout(notify, at - clock.now());
-            else {
-              if (cache?.failure?.kind === 'stale' && cache.failure === refreshFailure) {
-                cache = { ...cache, failure: null };
-              }
-              track(bump());
-            }
-          };
-          timers.setTimeout(notify, 60_000);
-        }
       }
       if (failed) return;
       failed = true;
       await jobFailed(job, error, api, gen);
-      refreshFailure = cache?.failure ?? null;
     };
 
     /** Loads the details that the items of `parts` lack. A failure fails the job. */
@@ -1416,14 +1400,17 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     gen: number,
   ): Promise<void> {
     deps.log('planner load', error);
-    if ((!job.shown && !job.refresh) || gen !== generation) return;
+    if (!job.shown || gen !== generation) return;
+    // The jobs of one view fail together, and one round finds out for all of them. A 403 after a
+    // recent check that found no limit is an ordinary failure, so the checks never repeat.
     if (isCanvasError(error, 'forbidden')) {
-      // The jobs of one view fail together, and one round finds out for all of them.
-      if (cache?.limited !== true && !limitCheckPending) {
+      if (cache?.limited === true || limitCheckPending) return;
+      if (lastLimitCheckAt === null || clock.now() - lastLimitCheckAt >= REFRESH_LIMIT_MS) {
         limitCheckPending = true;
+        lastLimitCheckAt = clock.now();
         scheduleForcedFull();
+        return;
       }
-      return;
     }
     const failure = await failureFor(error, api, clock.now());
     if (gen !== generation || cache === null) return;
