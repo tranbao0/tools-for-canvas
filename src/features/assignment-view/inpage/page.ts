@@ -11,6 +11,7 @@ export function createAssignmentPage(options: RowsOptions & { assignmentId: stri
   let host: HTMLElement | null = null;
   let generation = 0;
   let stopped = false;
+  let noSubmissionAccess = false;
   async function load(): Promise<void> {
     const token = ++generation;
     const panel = host?.shadowRoot?.querySelector('.av-content-slot');
@@ -19,7 +20,10 @@ export function createAssignmentPage(options: RowsOptions & { assignmentId: stri
     try {
       const reply = await send({ type: 'assignment:details', courseId, assignmentId });
       if (token !== generation) return;
-      if (isNoSubmissionAccess(reply)) return clear();
+      if (isNoSubmissionAccess(reply)) {
+        noSubmissionAccess = true;
+        return clear();
+      }
       if (
         !isDetailsReply(reply) ||
         normalizeCanvasId(reply.details.assignment.id) !== normalizeCanvasId(assignmentId)
@@ -45,14 +49,15 @@ export function createAssignmentPage(options: RowsOptions & { assignmentId: stri
   return {
     setActive(active) {
       if (!active) return clear();
-      if (stopped || host) return;
-      if (doc.querySelector('#content > div:not([id]):only-child, #easy_student_view')) return;
-      const description = doc.querySelector(
-        '#content > #assignment_show:not(.teacher-version) > .description:not(.teacher-version)',
+      if (stopped || host || noSubmissionAccess) return;
+      const root = doc.getElementById('content');
+      if (!root) return;
+      const description = root.querySelector(
+        ':scope > #assignment_show:not(.teacher-version) > .description:not(.teacher-version)',
       );
       if (
         !description ||
-        !doc.querySelector('#content > #assignment_show > .student-assignment-overview')
+        !root.querySelector(':scope > #assignment_show > .student-assignment-overview')
       )
         return;
       host = doc.createElement('div');
@@ -84,6 +89,10 @@ export function createAssignmentPage(options: RowsOptions & { assignmentId: stri
     },
     refreshTheme() {
       host?.setAttribute('data-theme', options.theme?.() ?? 'light');
+    },
+    resetStudent() {
+      noSubmissionAccess = false;
+      clear();
     },
     reload: load,
     stop() {

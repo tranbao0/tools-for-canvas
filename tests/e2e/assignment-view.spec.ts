@@ -11,6 +11,7 @@ import { ASSIGNMENT_DETAILS, rawRecords } from '../fixtures/assignment-view';
 import { SCENARIO_NOW, buildScenario } from '../fixtures/scenario';
 import type { FakeCanvasRoute } from './support/fake-canvas';
 import { advanceBackgroundClock } from './support/clock';
+import { CHROME_E2E_EXTENSION_DIR } from './support/extension';
 import {
   closePane,
   pane,
@@ -20,6 +21,8 @@ import {
 } from './support/file-viewer';
 import { json, saveAddress } from './support/scenario-api';
 import { addCsrfCookie, expect, saveTools, serveScenario, test } from './support/weekrow';
+
+test.use({ extensionDir: CHROME_E2E_EXTENSION_DIR });
 
 const gradesPage = readFileSync('tests/fixtures/pages/grades.html', 'utf8');
 const assignmentsPage = readFileSync('tests/fixtures/pages/assignments.html', 'utf8');
@@ -106,6 +109,7 @@ function secondAssignment() {
   const copy = structuredClone(ASSIGNMENT_DETAILS);
   copy.assignment.id = '102';
   copy.assignment.name = 'Reading';
+  copy.assignment.due_at = new Date(Date.now() + 7 * 86400000).toISOString();
   copy.assignment.description = '<p>Read chapter 3.</p>';
   copy.assignment.rubric = undefined;
   copy.submission.score = null;
@@ -454,7 +458,7 @@ for (const [chip, color, change] of [
 ] as const) {
   test(`the ${chip} chip shows in the open row`, async ({ context, page, background }) => {
     const reading = secondAssignment();
-    reading.assignment.due_at = '2026-10-01T20:00:00Z';
+    reading.assignment.due_at = new Date(Date.now() - 86400000).toISOString();
     change(reading);
     const canvas = await open(context, page, background, {
       width: 1280,
@@ -1076,6 +1080,9 @@ async function openClassic(
     paper?: boolean;
     teacher?: boolean;
     observer?: boolean;
+    pastDue?: boolean;
+    easy?: boolean;
+    fakeRoot?: boolean;
   } = {},
 ) {
   const course = options.shard ? '2~12' : '12';
@@ -1083,7 +1090,7 @@ async function openClassic(
   const copy = options.empty ? secondAssignment() : details();
   copy.assignment.id = options.shard ? '20000000000101' : id;
   if (options.missing) {
-    copy.assignment.due_at = '2020-01-01T00:00:00Z';
+    copy.assignment.due_at = new Date(Date.now() - 86400000).toISOString();
     copy.assignment.submission_types = ['online_upload'];
     copy.submission.missing = true;
   }
@@ -1094,6 +1101,21 @@ async function openClassic(
     copy.submission.attachments = [];
     copy.submission.submission_comments = [];
   }
+  if (options.pastDue) copy.assignment.due_at = new Date(Date.now() - 86400000).toISOString();
+  let body = classicPage;
+  if (options.easy)
+    body = body.replace(
+      'Write an essay about one source.',
+      '<div id="easy_student_view">Teacher text</div>',
+    );
+  if (options.fakeRoot)
+    body = body
+      .replace('id="assignment_show"', 'class="new-view"')
+      .replace('<div class="new-view">', '<aside>New view</aside><div class="new-view">')
+      .replace(
+        'Write an essay about one source.',
+        '<div id="content"><div id="assignment_show"><div class="description"></div><ul class="student-assignment-overview"></ul></div></div>',
+      );
   const records = rawRecords(copy);
   const canvas = await serveScenario(context, [
     {
@@ -1111,7 +1133,7 @@ async function openClassic(
               'description user_content',
               'description user_content teacher-version',
             )
-          : classicPage,
+          : body,
     },
     { path: `/api/v1/courses/${course}/assignments/${id}`, body: json(records.assignment) },
     {
@@ -1207,7 +1229,7 @@ test('new student view has no extra submission panel', async ({ context, page, b
   await expect(page.locator('#av-submission')).toHaveCount(0);
 });
 
-test('unsubmitted classic assignment shows one short score line', async ({
+test('unsubmitted classic assignment shows its summary and submission status', async ({
   context,
   page,
   background,
@@ -1237,3 +1259,53 @@ for (const mode of ['teacher', 'observer'] as const) {
     await expect(page.locator('#av-submission')).toHaveCount(0);
   });
 }
+
+test('past due work without a submission keeps the summary and omits empty sections', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openClassic(context, page, background, { empty: true, pastDue: true });
+  const panel = submissionPanel(page);
+  await expect(panel.getByText('Past due', { exact: true })).toBeVisible();
+  await expect(panel.getByText('No submission yet')).toBeVisible();
+  await expect(panel.getByText('Not graded yet')).toBeVisible();
+  await expect(panel.locator('.av-section')).toHaveCount(0);
+});
+
+test('teacher description can contain the easy student view id', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openClassic(context, page, background, { easy: true });
+  await expect(submissionPanel(page)).toBeVisible();
+});
+
+test('a content root inside the description cannot receive a panel', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openClassic(context, page, background, { fakeRoot: true });
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  await expect(page.locator('#av-submission')).toHaveCount(0);
+});
+
+test('observer settings saves do not repeat the submission read', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await openClassic(context, page, background, { observer: true });
+  const reads = () =>
+    canvas.requests.filter((request) => request.path.includes('/assignments/101/submissions/self'));
+  await expect.poll(() => reads().length).toBe(1);
+  await expect(page.locator('#av-submission')).toHaveCount(0);
+  for (let index = 0; index < 3; index++) {
+    await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+    await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  }
+  await page.waitForTimeout(500);
+  expect(reads()).toHaveLength(1);
+});

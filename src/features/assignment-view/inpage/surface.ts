@@ -45,10 +45,12 @@ export async function startAssignmentViewSurface(ctx: PageScriptContext): Promis
         if ((message as { type?: unknown } | null)?.type === 'viewer:reset') listener();
       }),
   }).catch((error: unknown) => logFailure('assignment view', error));
-  document.documentElement.setAttribute('data-av-started', '');
-  ctx.signal.addEventListener(
-    'abort',
-    () => document.documentElement.removeAttribute('data-av-started'),
-    { once: true },
-  );
+  if (import.meta.env.WXT_E2E === '1' && !ctx.signal.aborted) {
+    document.documentElement.setAttribute('data-av-started', '');
+    ctx.signal.addEventListener(
+      'abort',
+      () => document.documentElement.removeAttribute('data-av-started'),
+      { once: true },
+    );
+  }
 }

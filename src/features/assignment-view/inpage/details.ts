@@ -151,29 +151,19 @@ export function renderPageDetails(
   const panel = node(doc, 'div', 'av-content');
   panel.append(summary(reply, context, true));
   if (
-    details.submission.score === null &&
-    !Object.keys(details.submission.rubric_assessment ?? {}).length &&
-    !assignmentTags(details, context.now(), timeZone).length &&
     !details.assignment.submission_types?.some((type) =>
       ['none', 'on_paper', 'not_graded'].includes(type),
     ) &&
     !details.submission.submitted_at &&
     !(details.submission.attempt && details.submission.attempt >= 1) &&
-    !details.submission.attachments?.length &&
-    !details.submission.submission_comments?.length
+    !details.submission.attachments?.length
   ) {
-    const line = node(doc, 'div', 'av-summary');
-    line.append(
-      node(doc, 'span', 'av-value', scoreText(details)),
-      node(doc, 'span', 'av-empty', 'No submission yet'),
-    );
-    panel.replaceChildren(line);
-    return panel;
+    panel.append(node(doc, 'p', 'av-empty', 'No submission yet'));
   }
-  panel.append(
-    renderRubric(details, doc),
-    renderComments(details, { doc, origin, courseId, timeZone }),
-    renderFiles(details, { doc, origin, courseId }),
-  );
+  if (details.assignment.rubric?.length) panel.append(renderRubric(details, doc));
+  if (details.submission.submission_comments?.length)
+    panel.append(renderComments(details, { doc, origin, courseId, timeZone }));
+  if (details.submission.attachments?.length)
+    panel.append(renderFiles(details, { doc, origin, courseId }));
   return panel;
 }
