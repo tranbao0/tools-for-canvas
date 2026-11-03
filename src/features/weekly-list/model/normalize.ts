@@ -9,6 +9,7 @@ import type {
   PlannerItem,
   PlannerOverride,
 } from '../../../shared/canvas/types';
+import { isCanvasId } from '../../../shared/canvas/ids';
 import { GROUP_CONTEXT_PREFIX, PERSONAL_LABEL, ringColor } from './colors';
 import { classifyHandIn, type HandInInfo } from './handin';
 import { normalizeInstant } from './time';
@@ -297,6 +298,18 @@ export function itemFromPlannerItem(item: PlannerItem, deps: NormalizeDeps): Ite
     plannableId: item.plannable_id,
     assignmentId,
     title: item.plannable.title,
+    points:
+      typeof item.plannable.points_possible === 'number' &&
+      Number.isFinite(item.plannable.points_possible)
+        ? item.plannable.points_possible
+        : null,
+    courseUrl:
+      !isNote &&
+      item.context_type !== 'Group' &&
+      context.courseId !== null &&
+      isCanvasId(context.courseId)
+        ? absoluteUrl(deps.origin, `/courses/${context.courseId}`)
+        : null,
     subtitleTag:
       item.plannable_type === 'sub_assignment' ? (item.plannable.sub_assignment_tag ?? null) : null,
     courseId: context.courseId,
@@ -342,6 +355,10 @@ export function itemFromAssignment(
     plannableId: assignment.id,
     assignmentId: assignment.id,
     title: assignment.name,
+    points: null,
+    courseUrl: isCanvasId(assignment.course_id)
+      ? absoluteUrl(deps.origin, `/courses/${assignment.course_id}`)
+      : null,
     subtitleTag: null,
     courseId: assignment.course_id,
     contextLabel: deps.index.courses.get(assignment.course_id)?.name ?? '',

@@ -207,6 +207,7 @@ export interface TopicSpec {
 }
 
 export interface CheckpointSpec {
+  points?: number;
   /** The SubAssignment id. */
   id: string;
   tag: 'reply_to_topic' | 'reply_to_entry';
@@ -223,6 +224,7 @@ export interface PeerReviewSubSpec {
 }
 
 export interface AssignmentSpec {
+  points?: number;
   id: string;
   courseId: string;
   name: string;
@@ -434,7 +436,7 @@ export function assignmentPlannerItem(
     new_activity: feedbackIsNew(spec.submission),
     submissions,
     plannable_date: due,
-    plannable: { id: spec.id, title: spec.name },
+    plannable: { id: spec.id, title: spec.name, points_possible: spec.points },
     html_url: assignmentHtmlUrl(ctx, course.id, spec.id, submissions),
     context_name: course.contextName,
   };
@@ -462,7 +464,12 @@ export function quizPlannerItem(
     new_activity: feedbackIsNew(spec.submission),
     submissions: plannerSubmissions(spec.submission, facts),
     plannable_date: due,
-    plannable: { id: quizId, title: spec.name, assignment_id: spec.id },
+    plannable: {
+      id: quizId,
+      title: spec.name,
+      assignment_id: spec.id,
+      points_possible: spec.points,
+    },
     html_url: `/courses/${course.id}/quizzes/${quizId}`,
     context_name: course.contextName,
   };
@@ -528,7 +535,12 @@ export function subAssignmentPlannerItem(
     new_activity: topic.unreadCount > 0 || feedbackIsNew(checkpoint.submission),
     submissions,
     plannable_date: checkpoint.due,
-    plannable: { id: checkpoint.id, title: parent.name, sub_assignment_tag: checkpoint.tag },
+    plannable: {
+      id: checkpoint.id,
+      title: parent.name,
+      sub_assignment_tag: checkpoint.tag,
+      points_possible: checkpoint.points,
+    },
     html_url: assignmentHtmlUrl(ctx, course.id, parent.id, submissions),
     context_name: course.contextName,
   };

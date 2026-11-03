@@ -1000,5 +1000,14 @@
   },
   "pdfPageError": {
     "message": "Could not display this page."
+  },
+  "itemPoints": {
+    "message": "$1 pts"
+  },
+  "goToCourse": {
+    "message": "Go to course"
+  },
+  "goToNamedCourse": {
+    "message": "Go to course $1"
   }
 }

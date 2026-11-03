@@ -330,3 +330,11 @@ describe('chunks', () => {
     expect(roundChunks(emptyCoverage(), current, true)).toEqual([span(6, 7)]);
   });
 });
+
+it('keeps planner points through coverage storage', () => {
+  const row = item('assignment', '1', day(1));
+  row.plannable.points_possible = 0.5;
+  const coverage = mergeFetched(emptyCoverage(), [{ interval: span(0, 7), items: [row] }], 1);
+  const stored = JSON.parse(JSON.stringify(coverage)) as PlannerCoverage;
+  expect(stored.items['assignment:1']?.plannable.points_possible).toBe(0.5);
+});
