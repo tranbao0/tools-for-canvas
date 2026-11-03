@@ -14,6 +14,8 @@ export const DETECTOR_SCRIPT = 'detector.js';
 export const INPAGE_SCRIPT = 'inpage.js';
 /** The script of the dashboard fixes. The background injects it into a dashboard page only. */
 export const DASHBOARD_SCRIPT = 'dashboard.js';
+/** The script of the expand rows. The background injects it into the Grades page only. */
+export const ASSIGNMENT_VIEW_SCRIPT = 'assignment-view.js';
 const CHROMIUM_PERMISSIONS = ['storage', 'cookies', 'scripting', 'alarms', 'sidePanel'];
 const FIREFOX_PERMISSIONS = ['storage', 'cookies', 'scripting', 'alarms'];
 const GECKO_ID = /^(?:[^@\s]+@[^@\s]+|\{[0-9a-f-]{36}\})$/i;
@@ -170,7 +172,7 @@ function checkContentScripts(manifest, fileExists) {
       if (!fileExists(file)) problems.push(`content script file ${file} is missing`);
     }
   }
-  for (const script of [INPAGE_SCRIPT, DASHBOARD_SCRIPT]) {
+  for (const script of [INPAGE_SCRIPT, DASHBOARD_SCRIPT, ASSIGNMENT_VIEW_SCRIPT]) {
     if (!fileExists(script)) {
       problems.push(`${script} is missing from the build, but the background injects it`);
     }

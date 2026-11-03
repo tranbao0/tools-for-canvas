@@ -25,6 +25,8 @@ export const ASSIGNMENT_DETAILS: AssignmentDetails = {
     user_id: '42',
     score: 5,
     grade: '5',
+    submitted_at: '2026-11-01T10:00:00Z',
+    workflow_state: 'graded',
     rubric_assessment: {
       criterion_1: { rating_id: 'rating_2', points: 5, comments: 'Add sources.' },
     },
@@ -48,3 +50,29 @@ export const ASSIGNMENT_DETAILS: AssignmentDetails = {
     ],
   },
 };
+
+/**
+ * The two Canvas records for these details: the fields the view reads, and fields it must drop.
+ * The ids are strings, as the string-ids `Accept` header gives them.
+ */
+export function rawRecords(details: AssignmentDetails = ASSIGNMENT_DETAILS) {
+  const { assignment, submission } = details;
+  return {
+    assignment: {
+      ...assignment,
+      html_url: `/courses/12/assignments/${assignment.id}`,
+      course_id: '12',
+      secret_token: 'not for the page',
+      submission: { id: '9', score: submission.score },
+    },
+    submission: {
+      ...submission,
+      id: '9',
+      secret_token: 'not for the page',
+      submission_comments: submission.submission_comments?.map((comment) => ({
+        ...comment,
+        avatar_path: '/images/users/7',
+      })),
+    },
+  };
+}

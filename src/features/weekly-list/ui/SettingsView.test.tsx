@@ -43,6 +43,27 @@ describe('SettingsView', () => {
     expect(screen.getByText('school.instructure.com')).toBeTruthy();
   });
 
+  it('shows the One assignment view switch, on by default, and saves a change', () => {
+    const onToolsChange = vi.fn();
+    render(
+      <SettingsView
+        settings={DEFAULT_SETTINGS}
+        tools={DEFAULT_TOOLS_SETTINGS}
+        onToolsChange={onToolsChange}
+        courses={courses}
+        origin="https://school.instructure.com"
+        onChange={vi.fn()}
+      />,
+    );
+    const toggle = screen.getByRole('switch', { name: 'One assignment view' }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    fireEvent.click(toggle);
+    expect(onToolsChange).toHaveBeenLastCalledWith({
+      ...DEFAULT_TOOLS_SETTINGS,
+      assignmentView: false,
+    });
+  });
+
   it('ends with a quiet support link that opens in a new tab', () => {
     setup();
     const link = screen.getByRole('link', { name: 'Support on Ko-fi' }) as HTMLAnchorElement;

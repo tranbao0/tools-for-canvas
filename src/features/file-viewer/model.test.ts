@@ -1,6 +1,9 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import {
+  clickedElement,
   closeFile,
+  PANEL_HOST_ATTRIBUTE,
   courseOfLink,
   fileTarget,
   openFile,
@@ -129,5 +132,35 @@ describe('anonymous submission paths', () => {
     expect(isSubmissionPage('/courses/12/assignments/3/submissions/aB12z')).toBe(false);
     expect(isSubmissionPage(path + '/extra')).toBe(false);
     expect(isSubmissionPage(path + '-')).toBe(false);
+  });
+});
+
+describe('the element of a click', () => {
+  const root = document.createElement('div');
+  const inner = document.createElement('a');
+  const outer = document.createElement('p');
+  const event = (target: EventTarget | null, path: EventTarget[]) => ({
+    target,
+    composedPath: () => path,
+  });
+
+  it('is the target of a click outside any panel host', () => {
+    expect(clickedElement(event(outer, [inner]))).toBe(outer);
+    expect(clickedElement(event(null, []))).toBeNull();
+  });
+
+  it('is the first element of the path for a panel host with an open root', () => {
+    const host = document.createElement('div');
+    host.setAttribute(PANEL_HOST_ATTRIBUTE, '');
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.append(inner);
+    expect(clickedElement(event(host, [inner, shadow, host]))).toBe(inner);
+  });
+
+  it('stays the host when the path element is not inside its root', () => {
+    const host = document.createElement('div');
+    host.setAttribute(PANEL_HOST_ATTRIBUTE, '');
+    host.attachShadow({ mode: 'open' });
+    expect(clickedElement(event(host, [root, host]))).toBe(host);
   });
 });

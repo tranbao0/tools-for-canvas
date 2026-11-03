@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import { ASSIGNMENT_DETAILS } from '../../../tests/fixtures/assignment-view';
-import { renderComments, renderRubric } from './render';
+import { fileTarget } from '../file-viewer/model';
+import { renderComments, renderFiles, renderInstructions, renderRubric } from './render';
 import { isAssignmentDetailsMessage } from './protocol';
 
 const context = { origin: 'https://school.instructure.com', courseId: '12', doc: document };
@@ -73,4 +74,50 @@ it('sanitizes hostile comment HTML and renders author names as text', () => {
   expect(section.querySelector('script, iframe, img, [onclick], [href]')).toBeNull();
   expect(section.querySelector('p')?.textContent).toBe('Feedback');
   expect(section.querySelector('h4')?.textContent).toContain('<img');
+});
+
+describe('instructions and files', () => {
+  it('sanitizes the instructions and keeps the "Show more" button hidden until the page measures', () => {
+    const details = structuredClone(ASSIGNMENT_DETAILS);
+    details.assignment.description =
+      '<p>Read.</p><script>alert(1)</script><a href="javascript:1">x</a>';
+    const section = renderInstructions(details, context);
+    expect(section.querySelector('script, [href]')).toBeNull();
+    expect(section.querySelector('.av-body')?.textContent).toBe('Read.x');
+    const more = section.querySelector<HTMLButtonElement>('[data-action=more]');
+    expect(more?.hidden).toBe(true);
+    expect(more?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('says so when there are no instructions', () => {
+    const details = structuredClone(ASSIGNMENT_DETAILS);
+    details.assignment.description = null;
+    expect(renderInstructions(details, context).textContent).toContain('No instructions.');
+  });
+
+  it('links the submitted files in the shape that the file pane takes', () => {
+    const section = renderFiles(ASSIGNMENT_DETAILS, context);
+    const link = section.querySelector('a');
+    expect(link?.getAttribute('href')).toBe(
+      'https://school.instructure.com/courses/12/assignments/101/submissions/42?download=501',
+    );
+    // A link with a download attribute keeps its action, so this one has none.
+    expect(link?.hasAttribute('download')).toBe(false);
+    expect(link?.textContent).toBe('essay.pdf');
+    expect(fileTarget(link!.getAttribute('href')!, context.origin)).toEqual({ fileId: '501' });
+  });
+
+  it('says so when no file was submitted', () => {
+    const details = structuredClone(ASSIGNMENT_DETAILS);
+    details.submission.attachments = [];
+    expect(renderFiles(details, context).textContent).toContain('No files.');
+  });
+
+  it('shows comment times in the Canvas time zone', () => {
+    const section = renderComments(ASSIGNMENT_DETAILS, {
+      ...context,
+      timeZone: 'America/New_York',
+    });
+    expect(section.querySelector('time')?.textContent).toBe('Mon, Nov 2, 2026, 5:00 AM');
+  });
 });

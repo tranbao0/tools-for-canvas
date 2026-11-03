@@ -122,6 +122,7 @@ const BUILT_FILES = new Set([
   'detector.js',
   'inpage.js',
   'dashboard.js',
+  'assignment-view.js',
   '_locales/en/messages.json',
 ]);
 const exists = (/** @type {string} */ file) => BUILT_FILES.has(file);

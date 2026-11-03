@@ -58,6 +58,7 @@ describe('wirePageSync', () => {
           fileViewer: true,
           fileViewerWidth: 480,
           dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
+          assignmentView: true,
         }),
     ],
   ])(
@@ -85,6 +86,7 @@ describe('wirePageSync', () => {
       fileViewer: true,
       fileViewerWidth: 480,
       dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, allCourseGrades: false },
+      assignmentView: true,
     });
     await settle();
 

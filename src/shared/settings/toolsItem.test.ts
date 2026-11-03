@@ -28,6 +28,7 @@ describe('toolsSettingsItem', () => {
           announcementsInPlace: 'off',
           courseWorkExtras: 3,
         },
+        assignmentView: true,
         unknown: 1,
       },
     });
@@ -41,6 +42,7 @@ describe('toolsSettingsItem', () => {
         courseWorkExtras: true,
         allCourseGrades: true,
       },
+      assignmentView: true,
     });
   });
 
@@ -60,6 +62,7 @@ describe('toolsSettingsItem', () => {
         courseWorkExtras: true,
         allCourseGrades: false,
       },
+      assignmentView: true,
     };
 
     await toolsSettingsItem.setValue(tools);

@@ -73,6 +73,8 @@ import {
 } from './coverage';
 import { failureFor, isCanvasError } from './failures';
 import { ViewerUnconfirmedError } from '../../file-viewer/unconfirmed';
+import type { AssignmentDetailsReply } from '../../assignment-view/protocol';
+import { projectAssignmentView } from '../../assignment-view/project';
 import {
   applyPatch,
   matchesTarget,
@@ -283,6 +285,18 @@ export interface DataOwner {
    * is confirmed now.
    */
   viewerConfirm(origin: string | null, tabId: number | undefined): Promise<boolean>;
+  /**
+   * The details of one assignment for the one assignment view (decision 26), read live under the
+   * rules of `viewerRead`: a tab in the cookie store of the requests, the saved Canvas, and a
+   * cookie that is confirmed for the student of the cache. Both requests run inside one binding,
+   * so a reply never crosses students. Rejects when any of that fails.
+   */
+  assignmentDetails(
+    courseId: string,
+    assignmentId: string,
+    origin: string | null,
+    tabId: number | undefined,
+  ): Promise<AssignmentDetailsReply>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
@@ -2562,6 +2576,37 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return response;
   }
 
+  async function assignmentDetails(
+    courseId: string,
+    assignmentId: string,
+    origin: string | null,
+    tabId: number | undefined,
+  ): Promise<AssignmentDetailsReply> {
+    const read = () =>
+      viewerRead(origin, tabId, async (api) => {
+        const [assignment, submission] = await Promise.all([
+          api.getAssignmentRecord(courseId, assignmentId),
+          api.getOwnSubmissionRecord(courseId, assignmentId),
+        ]);
+        return projectAssignmentView(assignment, submission);
+      });
+    let details;
+    try {
+      details = await read();
+    } catch (error) {
+      // As in the viewer: a cookie that is not confirmed yet waits for one check and tries once more.
+      if (!(error instanceof ViewerUnconfirmedError) || !(await viewerConfirm(origin, tabId)))
+        throw error;
+      details = await read();
+    }
+    const session = cache?.session ?? null;
+    const timeZone =
+      session !== null && origin !== null
+        ? canvasTimeZone(session, await viewContext(origin))
+        : deps.browserTimeZone();
+    return { details, timeZone };
+  }
+
   async function viewerUserId(
     origin: string | null,
     tabId: number | undefined,
@@ -3126,6 +3171,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     announcements,
     announcementFeed,
     viewerRead,
+    assignmentDetails,
     viewerMayFetch,
     viewerUserId,
     viewerConfirm,

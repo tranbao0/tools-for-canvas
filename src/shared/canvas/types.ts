@@ -282,6 +282,16 @@ export interface CanvasClientOptions {
  * The Canvas calls the extension makes. Every list call follows `Link: rel="next"` to the end.
  */
 export interface CanvasApi {
+  /**
+   * One assignment with `include[]=submission` and `include[]=can_submit`, for the one assignment
+   * view. The record is checked field by field by `projectAssignmentView`.
+   */
+  getAssignmentRecord(courseId: string, assignmentId: string): Promise<Record<string, unknown>>;
+  /**
+   * The signed-in student's own submission with `include[]=submission_comments` and
+   * `include[]=rubric_assessment`.
+   */
+  getOwnSubmissionRecord(courseId: string, assignmentId: string): Promise<Record<string, unknown>>;
   getViewerFile(fileId: string): Promise<{
     display_name: string;
     'content-type': string;

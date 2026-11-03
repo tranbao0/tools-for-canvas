@@ -17,6 +17,7 @@ export const PAGE_SCRIPTS = Object.freeze([
   'detector.js',
   'inpage.js',
   'dashboard.js',
+  'assignment-view.js',
   'viewer.js',
   'submission-frame.js',
 ]);

@@ -5,6 +5,10 @@
  * Surfaces never fetch Canvas. They ask the background for their state, send refresh requests
  * and actions, and learn about new data from the change marker in `storage.local`.
  */
+import {
+  isAssignmentDetailsMessage,
+  type AssignmentDetailsMessage,
+} from '../../assignment-view/protocol';
 import { isFixMessage, type FixMessage } from '../../dashboard-fixes/protocol';
 import type { ToolsSettings } from '../../../shared/settings/tools';
 import { isSettings } from '../model/settings';
@@ -197,6 +201,7 @@ export type DataMessage =
   | MarkNoteSeenMessage
   | OpenPageMessage
   | CanvasDetectedMessage
+  | AssignmentDetailsMessage
   | FixMessage;
 
 export interface OkReply {
@@ -442,6 +447,7 @@ export function isDataMessage(value: unknown): value is DataMessage {
     isMarkNoteSeenMessage(value) ||
     isOpenPageMessage(value) ||
     isCanvasDetectedMessage(value) ||
+    isAssignmentDetailsMessage(value) ||
     isFixMessage(value)
   );
 }

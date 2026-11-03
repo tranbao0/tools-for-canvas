@@ -3,6 +3,7 @@ import { t } from '../../shared/ui/i18n';
 import { TOP_OPEN } from './frame';
 import { acceptPaneHello, isViewerSecret, secretMessage, validPaneReady } from './channel';
 import {
+  clickedElement,
   courseOfLink,
   fileTarget,
   catchesDownload,
@@ -342,10 +343,9 @@ export async function startViewer(): Promise<void> {
   document.addEventListener(
     'click',
     (event) => {
-      if (!plainClick(event) || !(event.target instanceof Element)) return;
-      const link = event.target.closest<HTMLElement>(
-        'a[href],button[data-file-id],button[data-url]',
-      );
+      const clicked = clickedElement(event);
+      if (!plainClick(event) || clicked === null) return;
+      const link = clicked.closest<HTMLElement>('a[href],button[data-file-id],button[data-url]');
       if (!link) return;
       const module = link.closest('[data-module-id],.context_module');
       const moduleId =

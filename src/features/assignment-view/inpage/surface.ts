@@ -1,0 +1,42 @@
+/**
+ * The one assignment view in its own page script. See docs/design.md, decisions 12 and 26.
+ *
+ * The script reads the saved address and the switches through the page channel, like the dashboard
+ * fixes do, and has no storage access. Its context ends when the extension goes away, which
+ * removes the view.
+ */
+import { browser, type Browser } from 'wxt/browser';
+import { logFailure } from '../../../shared/platform/log';
+import { sendFromContentScript } from '../../weekly-list/surface/inpageHost';
+import { createPageChannel } from '../../weekly-list/surface/pageChannel';
+import type { PageScriptContext } from '../../weekly-list/surface/pageScript';
+import { removeStaleView } from './rows';
+import { startAssignmentView } from './start';
+
+/** How often the script checks that its extension is still there (see pageScript.ts). */
+const CONTEXT_CHECK_MS = 5000;
+
+/** Passes the messages that the background sends to this page, and no others. */
+function listenToBackground(handler: (message: unknown) => void): () => void {
+  const listener = (message: unknown, sender: Browser.runtime.MessageSender): void => {
+    // A page cannot send a runtime message to a content script. The sender is the extension.
+    if (sender.id === browser.runtime.id && sender.tab === undefined) handler(message);
+  };
+  browser.runtime.onMessage.addListener(listener);
+  return () => browser.runtime.onMessage.removeListener(listener);
+}
+
+export async function startAssignmentViewSurface(ctx: PageScriptContext): Promise<void> {
+  // A copy that the browser destroyed, as Firefox does on an update, cannot clean up.
+  removeStaleView();
+  const channel = createPageChannel({
+    send: (message) => sendFromContentScript(message, ctx),
+    pageOrigin: window.location.origin,
+    listen: listenToBackground,
+  });
+  ctx.signal.addEventListener('abort', channel.stop, { once: true });
+  ctx.watchValidity(CONTEXT_CHECK_MS);
+  await startAssignmentView({ channel, signal: ctx.signal }).catch((error: unknown) =>
+    logFailure('assignment view', error),
+  );
+}

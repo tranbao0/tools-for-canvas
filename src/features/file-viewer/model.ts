@@ -1,4 +1,9 @@
 /** File identities and pane state contain no download addresses. */
+/**
+ * The attribute of a host that an extension panel draws into the Canvas page, with an open shadow
+ * root. The pane takes a file link inside it, which the page would see only as a click on the host.
+ */
+export const PANEL_HOST_ATTRIBUTE = 'data-weekrow-panel';
 export interface Tabs {
   ids: string[];
   active: string | null;
@@ -22,6 +27,18 @@ export function plainClick(
     !event.altKey &&
     !event.metaKey
   );
+}
+/**
+ * The element a click hit. A click inside the open shadow root of a panel host reaches the page as
+ * a click on the host, so the real element comes from the path of the event. Any other shadow root
+ * keeps its retargeted result.
+ */
+export function clickedElement(event: Pick<Event, 'target' | 'composedPath'>): Element | null {
+  const target = event.target;
+  if (!(target instanceof Element)) return null;
+  if (!target.hasAttribute(PANEL_HOST_ATTRIBUTE)) return target;
+  const inner = event.composedPath()[0];
+  return inner instanceof Element && target.shadowRoot?.contains(inner) ? inner : target;
 }
 export function fileTarget(href: string, origin: string, moduleId?: string): FileTarget | null {
   let url: URL;

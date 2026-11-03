@@ -1333,3 +1333,30 @@ it('reads viewer records through the Canvas request queue', async () => {
   ]);
   expect(() => client.getViewerFile('../other')).toThrow(CanvasError);
 });
+
+it('reads the assignment and the own submission with the includes of the one assignment view', async () => {
+  const seen = recordAll(() => ({ id: '8' }));
+  const client = testClient();
+  await client.getAssignmentRecord('12', '8');
+  await client.getOwnSubmissionRecord('12', '8');
+  expect(seen.map((request) => [request.method, request.path, request.params])).toEqual([
+    [
+      'GET',
+      '/api/v1/courses/12/assignments/8',
+      [
+        ['include[]', 'submission'],
+        ['include[]', 'can_submit'],
+      ],
+    ],
+    [
+      'GET',
+      '/api/v1/courses/12/assignments/8/submissions/self',
+      [
+        ['include[]', 'submission_comments'],
+        ['include[]', 'rubric_assessment'],
+      ],
+    ],
+  ]);
+  expect(() => client.getAssignmentRecord('12', '../8')).toThrow(CanvasError);
+  expect(() => client.getOwnSubmissionRecord('1/2', '8')).toThrow(CanvasError);
+});

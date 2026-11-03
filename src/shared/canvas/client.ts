@@ -184,6 +184,20 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
     };
 
     return {
+      getAssignmentRecord: (courseId, assignmentId) =>
+        getObject(
+          apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}`, [
+            ['include[]', 'submission'],
+            ['include[]', 'can_submit'],
+          ]),
+        ),
+      getOwnSubmissionRecord: (courseId, assignmentId) =>
+        getObject(
+          apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/self`, [
+            ['include[]', 'submission_comments'],
+            ['include[]', 'rubric_assessment'],
+          ]),
+        ),
       getViewerFile: (fileId) => getObject(`/api/v1/files/${pathId(fileId)}`),
       getViewerModuleItem: (courseId, moduleId, itemId) =>
         getObject(

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { isCanvasDocument } from './detectCanvas';
 import {
+  ASSIGNMENT_VIEW_FILE,
   DASHBOARD_FILE,
   DETECTOR_FILE,
   FRAME_FILE,
@@ -326,5 +327,51 @@ describe('injectSubmissionFrames', () => {
     await toolsSettingsItem.setValue({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
     await injectSubmissionFrames(7, ORIGIN);
     expect(scripting.executeScript).not.toHaveBeenCalled();
+  });
+});
+
+describe('the assignment view script', () => {
+  const GRADES = 'https://canvas.school.edu/courses/5/grades';
+
+  it('has the path WXT gives the assignment view script', () => {
+    expect(ASSIGNMENT_VIEW_FILE).toBe('/assignment-view.js');
+  });
+
+  it.each(['/courses/5/grades', '/courses/5/grades/', '/courses/12~345/grades?x=1'])(
+    'is added on the Grades page %s while its switch is on',
+    async (path) => {
+      tabUrls.set(7, `https://canvas.school.edu${path}`);
+      await injectInpage(7, 'https://canvas.school.edu');
+      expect(scripting.executeScript).toHaveBeenCalledWith({
+        target: { tabId: 7, frameIds: [0] },
+        files: [INPAGE_FILE, ASSIGNMENT_VIEW_FILE, '/viewer.js'],
+      });
+    },
+  );
+
+  it.each([
+    '/courses/5',
+    '/courses/5/grades/42',
+    '/courses/5/gradebook',
+    '/courses/5/assignments',
+    '/grades',
+    '/courses/x/grades',
+  ])('is not added on %s', async (path) => {
+    tabUrls.set(7, `https://canvas.school.edu${path}`);
+    await injectInpage(7, 'https://canvas.school.edu');
+    expect(scripting.executeScript).toHaveBeenCalledWith({
+      target: { tabId: 7, frameIds: [0] },
+      files: [INPAGE_FILE, '/viewer.js'],
+    });
+  });
+
+  it('is left out when the switch is off', async () => {
+    await toolsSettingsItem.setValue({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+    tabUrls.set(7, GRADES);
+    await injectInpage(7, 'https://canvas.school.edu');
+    expect(scripting.executeScript).toHaveBeenCalledWith({
+      target: { tabId: 7, frameIds: [0] },
+      files: [INPAGE_FILE, '/viewer.js'],
+    });
   });
 });
