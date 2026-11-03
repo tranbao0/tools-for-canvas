@@ -340,6 +340,8 @@ interface PlannerJob {
   priority: RequestPriority;
   /** A surface shows the week, so the list shows the refresh marker until the job ends. */
   shown: boolean;
+  /** A 403 waits for the planner limit check, whose round end tells the surfaces. */
+  awaitsCheck?: boolean;
   /** `planner` until every chunk is in the cache, then `details`. */
   phase: 'planner' | 'details';
   /** Epoch milliseconds when the job started. */
@@ -1205,7 +1207,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       toInterval(plannerRangeForView(session, 0, context)),
     ]);
     const lastRoundAt = limits.lastRoundAt;
-    const pending = pendingIntervals();
+    const pending = pendingIntervals(false);
     const stale = mergeIntervals(
       own.flatMap((part) => staleParts(coverage, part, lastRoundAt)),
     ).flatMap((part) => subtractIntervals(part, pending));
@@ -1245,7 +1247,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       runJob(job, api, context, reloadDetails)
         .then(async (dropped) => {
           // A discarded chunk becomes available for another request only after the job leaves.
-          if (jobs.delete(job) && (dropped || job.shown)) await bump();
+          if (jobs.delete(job) && (dropped || (job.shown && !job.awaitsCheck))) await bump();
         })
         .finally(() => {
           jobs.delete(job);
@@ -1404,8 +1406,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     // The jobs of one view fail together, and one round finds out for all of them. A 403 after a
     // recent check that found no limit is an ordinary failure, so the checks never repeat.
     if (isCanvasError(error, 'forbidden')) {
-      if (cache?.limited === true || limitCheckPending) return;
+      if (cache?.limited === true || limitCheckPending) {
+        job.awaitsCheck = true;
+        return;
+      }
       if (lastLimitCheckAt === null || clock.now() - lastLimitCheckAt >= REFRESH_LIMIT_MS) {
+        job.awaitsCheck = true;
         limitCheckPending = true;
         lastLimitCheckAt = clock.now();
         scheduleForcedFull();

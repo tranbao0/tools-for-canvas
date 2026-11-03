@@ -332,7 +332,8 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     // Replies can arrive out of order. Only a newer answer than the last shown one counts.
     if (stopped || seq <= appliedSeq || reply === undefined) return;
     appliedSeq = seq;
-    if (reply.kind === 'loading' && reply.retryAt !== undefined) scheduleRetry(reply.retryAt);
+    if (reply.kind === 'loading' && reply.retryAt !== undefined)
+      scheduleRetry(reply.retryAt, () => requestState().catch(report('deferred state')));
     // The data owner drops a course filter that no longer applies, for example after the rings
     // are turned off or the course left the list. The surface then forgets it too.
     if (
@@ -411,15 +412,19 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
 
   /**
    * Asks again when a full round that the 60-second limit put off can run. The background may
-   * stop before then and lose its own timer, so the visible surface keeps this one.
+   * stop before then and lose its own timer, so the visible surface keeps this one. A loading
+   * reply asks for the state again, which starts the first round.
    */
-  function scheduleRetry(at: number): void {
+  function scheduleRetry(
+    at: number,
+    retry: () => unknown = () => sendRefresh('timer').catch(report('deferred refresh')),
+  ): void {
     if (!started || !host.visibility.isVisible()) return;
     retryTimer = clearTimer(retryTimer);
     retryTimer = host.timers.setTimeout(
       () => {
         retryTimer = null;
-        sendRefresh('timer').catch(report('deferred refresh'));
+        retry();
       },
       Math.max(0, at - host.clock.now()),
     );

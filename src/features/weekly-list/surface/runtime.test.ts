@@ -1403,7 +1403,8 @@ describe('timers', () => {
     await vi.advanceTimersByTimeAsync(59_999);
     expect(fake.sent).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
-    expect(fake.sent).toEqual([{ type: 'weekrow:refresh', reason: 'timer' }]);
+    // A timer refresh would not start the first round, so the surface asks for the state.
+    expect(types(fake.sent)).toEqual(['weekrow:get-state']);
   });
 
   it('drops the retry when the surface is hidden', async () => {
