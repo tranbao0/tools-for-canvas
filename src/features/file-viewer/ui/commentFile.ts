@@ -1,4 +1,4 @@
-import { fetchFileBytes } from '../../../shared/canvas/fileBytes';
+import { FileBytesError, fetchFileBytes } from '../../../shared/canvas/fileBytes';
 import { t } from '../../../shared/ui/i18n';
 import type { PaneFile } from './FileCard';
 import { sniffRaster } from './player';
@@ -28,10 +28,17 @@ export async function loadCommentFile(options: {
   tabId: string;
   name: string | undefined;
   origin: string;
+  /**
+   * Runs once before the read: it may start the sign-in check of a cold start. It never runs
+   * after the read, so a cookie change during the read can never confirm the new student.
+   */
+  prepare: () => Promise<boolean>;
+  /** The strict check before and after the read, which starts no sign-in check. */
   confirm: () => Promise<boolean>;
   fetchImpl?: typeof fetch;
 }): Promise<PaneFile> {
   const url = new URL(options.tabId, options.origin).href;
+  if (!(await options.prepare())) throw new FileBytesError('unconfirmed', 'cookie not confirmed');
   let header: string | null = null;
   const head = await fetchFileBytes({
     origin: options.origin,
