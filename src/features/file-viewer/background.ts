@@ -16,7 +16,7 @@ import { injectSubmissionFrames } from '../../shared/platform/inject';
 import { logFailure } from '../../shared/platform/log';
 import { createViewerSecret, isViewerSecret } from './channel';
 import { FRAME_OPEN, TOP_OPEN } from './frame';
-import { isFileId, isSubmissionPage, normalizeTabs } from './model';
+import { isFileId, isSubmissionPage, isTabId, normalizeTabs } from './model';
 import { ViewerUnconfirmedError } from './unconfirmed';
 
 type ViewerSender = Pick<Browser.runtime.MessageSender, 'url' | 'frameId'> & {
@@ -174,6 +174,7 @@ export function routeViewerMessage(
       'viewer:permission',
       'viewer:session',
       'viewer:fetch-allowed',
+      'viewer:confirm-cookie',
       'viewer:inject-frames',
       FRAME_OPEN,
     ].includes(String(message.type))
@@ -197,7 +198,7 @@ export function routeViewerMessage(
         const fields = writing ? ['type', 'fileId', 'page', 'zoom', 'token'] : ['type', 'fileId'];
         if (
           Object.keys(request).some((key) => !fields.includes(key)) ||
-          !id(request['fileId']) ||
+          !isTabId(request['fileId']) ||
           (writing && (!validPosition(request['page'], request['zoom']) || !request['token']))
         )
           throw new Error('Invalid viewer position');
@@ -245,6 +246,12 @@ export function routeViewerMessage(
         return host.permission(origin);
       case 'viewer:fetch-allowed':
         return host.mayFetch(origin, tabId);
+      case 'viewer:confirm-cookie':
+        // A read of the bytes of a comment attachment comes before any read of the files API, so
+        // nothing has confirmed the cookie yet. A refusal here gets the check and one more try,
+        // as a read of a file record does.
+        if (!(await host.mayFetch(origin, tabId))) throw new ViewerUnconfirmedError();
+        return true;
       case 'viewer:inject-frames': {
         // Only the top frame of the saved Canvas asks, and only on a submission details page.
         if (fromPane || tabId === undefined) throw new Error('Only the page script may ask');

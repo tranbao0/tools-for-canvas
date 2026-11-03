@@ -135,8 +135,10 @@ export function linkName(text: string | null): string | undefined {
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 200);
+    .trimStart()
+    // The cut comes before the last trim, so a space at the cut does not stay.
+    .slice(0, 200)
+    .trimEnd();
   return name === '' ? undefined : name;
 }
 export function normalizeWidth(value: unknown, viewportWidth = 1920): number {

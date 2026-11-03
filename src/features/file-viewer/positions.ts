@@ -1,4 +1,5 @@
 import { createTrustedRecords } from '../../shared/platform/trustedStorage';
+import { isTabId } from './model';
 import { MIN_ZOOM, MAX_ZOOM } from './pdf/zoom';
 
 export type SavedZoom = 'fit-width' | 'fit-page' | number;
@@ -34,8 +35,7 @@ function validKey(key: string): boolean {
       new URL(origin).protocol === 'https:' &&
       typeof student === 'string' &&
       student.length > 0 &&
-      typeof file === 'string' &&
-      /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/.test(file)
+      isTabId(file)
     );
   } catch {
     return false;

@@ -11,6 +11,7 @@ import {
   validPaneReady,
   validTheme,
 } from './channel';
+import { linkName } from './model';
 
 const secret = 'a'.repeat(64);
 const open = { type: 'open-file', fileId: '42', courseId: '12' };
@@ -42,6 +43,11 @@ describe('viewer identities', () => {
     expect(validOpenFile({ type: 'open-file', fileId })).toBe(true);
     expect(validOpenFile({ type: 'open-file', fileId, name: 'Feedback.pdf' })).toBe(true);
     expect(validOpenFile({ type: 'open-file', fileId: '42', name: 'a.pdf' })).toBe(true);
+  });
+  it('takes the name that the page script makes from a long link text with a space at the cut', () => {
+    const name = linkName(`${'a'.repeat(199)} ${'b'.repeat(50)}`);
+    expect(name).toBeDefined();
+    expect(validOpenFile({ type: 'open-file', fileId: '42', name })).toBe(true);
   });
   it('rejects other routes, and names that are not clean', () => {
     const fileId = '/courses/12/assignments/7/submissions/8?comment_id=9&download=45';

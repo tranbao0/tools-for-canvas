@@ -587,10 +587,11 @@ test('history changes leave the pane as the student left it', async ({
 
 const COMMENT_PAGE = '/courses/101/assignments/7/submissions/5501';
 const COMMENT_QUERY = 'comment_id=8&download=42';
-const commentHtml = html.replace(
-  '<a class="instructure_file_link" href="/courses/101/files/42">Read notes</a>',
-  `<a class="comment_attachment_link" href="${COMMENT_PAGE}?download=42&amp;comment_id=8">Teacher feedback.pdf</a>`,
-);
+const commentHtml = (text: string) =>
+  html.replace(
+    '<a class="instructure_file_link" href="/courses/101/files/42">Read notes</a>',
+    `<a class="comment_attachment_link" href="${COMMENT_PAGE}?download=42&amp;comment_id=8">${text}</a>`,
+  );
 
 /** A comment attachment that only the submission route serves. */
 async function openCommentPage(
@@ -598,9 +599,10 @@ async function openCommentPage(
   page: Page,
   background: Worker,
   status?: number,
+  linkText = 'Teacher feedback.pdf',
 ) {
   const { canvas } = await serveScenario(context, [
-    { path: '/courses/101/pages/notes', body: commentHtml, contentType: 'text/html' },
+    { path: '/courses/101/pages/notes', body: commentHtml(linkText), contentType: 'text/html' },
     {
       path: COMMENT_PAGE,
       respond: () => ({
@@ -634,6 +636,17 @@ test('a comment attachment opens in the pane through its submission route', asyn
   expect(canvas.requests.some((request) => request.path.includes(COMMENT_QUERY))).toBe(true);
   expect(new URL(page.url()).pathname).toBe('/courses/101/pages/notes');
   await page.screenshot({ path: 'test-results/f2b-comment-pdf.png' });
+});
+
+test('a comment attachment with a long link text and a space at the cut opens in the pane', async ({
+  context,
+  page,
+  background,
+}) => {
+  const text = `${'a'.repeat(199)} ${'b'.repeat(50)}`;
+  await openCommentPage(context, page, background, undefined, text);
+  await openFirstFile(page, text, undefined, 'main');
+  await expect((await pane(page)).locator(FILE_NAME)).toHaveText('a'.repeat(199));
 });
 
 test('a comment attachment tab that comes back after a reload is read through its route again', async ({
