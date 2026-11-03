@@ -191,7 +191,12 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
           const previous = await loaded.get(state.assignmentId);
           if (!active || stopped) return;
           loaded.delete(state.assignmentId);
-          const next = await details(state.assignmentId);
+          const next = await details(state.assignmentId).catch((error: unknown) => {
+            if (active && !stopped && previous && !loaded.has(state.assignmentId)) {
+              loaded.set(state.assignmentId, Promise.resolve(previous));
+            }
+            throw error;
+          });
           if (!active || stopped) return;
           if (previous && submissionChanged(previous.details.submission, next.details.submission)) {
             for (const row of states.values()) {
