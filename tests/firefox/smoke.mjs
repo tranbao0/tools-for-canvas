@@ -93,7 +93,7 @@ export function readAddonId(extensionDir) {
 
 /**
  * Starts headless Firefox with the extension UUID pinned.
- * @param {{ firefoxBin: string, geckodriverBin: string, addonId: string, acceptInsecureCerts?: boolean, localDomains?: string }} setup
+ * @param {{ firefoxBin: string, geckodriverBin: string, addonId: string, acceptInsecureCerts?: boolean, localDomains?: string, prefs?: Record<string, boolean | string> }} setup
  */
 export async function startFirefox({
   firefoxBin,
@@ -101,6 +101,7 @@ export async function startFirefox({
   addonId,
   acceptInsecureCerts,
   localDomains,
+  prefs = {},
 }) {
   const options = new firefox.Options()
     .addArguments('-headless')
@@ -108,6 +109,7 @@ export async function startFirefox({
     .setPreference('extensions.webextensions.uuids', JSON.stringify({ [addonId]: EXTENSION_UUID }));
   if (acceptInsecureCerts !== undefined) options.setAcceptInsecureCerts(acceptInsecureCerts);
   if (localDomains !== undefined) options.setPreference('network.dns.localDomains', localDomains);
+  for (const [key, value] of Object.entries(prefs)) options.setPreference(key, value);
   // Firefox 153 and later open extension pages under geckodriver only with this flag.
   const service = new firefox.ServiceBuilder(geckodriverBin).addArguments('--allow-system-access');
   return new Builder()
@@ -550,7 +552,7 @@ async function checkHostileSvg(driver) {
   console.log('Firefox hostile SVG: drawn on a canvas, nothing ran, no blob URL stays open.');
 }
 
-async function main() {
+async function main(prefs = {}) {
   // Selenium Manager must never download a browser or a driver during a test.
   process.env.SE_OFFLINE = 'true';
   const { firefoxBin, geckodriverBin } = findBrowserTools();
@@ -688,6 +690,7 @@ async function main() {
     addonId,
     acceptInsecureCerts: true,
     localDomains: 'school.instructure.com',
+    prefs,
   });
   try {
     const capabilities = await driver.getCapabilities();
@@ -823,6 +826,7 @@ async function main() {
       return inputs.length && (await inputs[0].getAttribute('value')) === '3';
     }, 15_000);
     console.log('Firefox PDF saved page: page 3 restored');
+    if (Object.keys(prefs).length) return 0;
     await driver.switchTo().defaultContent();
     await checkImageTab(driver);
     await checkHostileSvg(driver);
@@ -845,6 +849,19 @@ if (
 ) {
   try {
     process.exitCode = await main();
+    for (const prefs of [
+      { 'privacy.resistFingerprinting': true },
+      {
+        'privacy.fingerprintingProtection': true,
+        'privacy.fingerprintingProtection.overrides': '+AllTargets',
+      },
+      { 'javascript.options.wasm': false },
+      { 'webgl.disabled': true },
+    ]) {
+      console.log('PDF privacy prefs:', JSON.stringify(prefs));
+      const code = await main(prefs);
+      if (code) process.exitCode = code;
+    }
   } catch (error) {
     console.error('Firefox smoke test: failed.');
     console.error(error);

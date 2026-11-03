@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { browser } from 'wxt/browser';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileBytesError } from '../../../shared/canvas/fileBytes';
@@ -40,6 +41,9 @@ const FILES: Record<string, PaneFile> = {
 const never = () => new Promise<Uint8Array>(() => undefined);
 
 function setup(overrides: Partial<PaneHost> = {}) {
+  vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '0.1.0' } as ReturnType<
+    typeof browser.runtime.getManifest
+  >);
   let saved: Tabs = { ids: [], active: null };
   const host: PaneHost = {
     origin: ORIGIN,
@@ -228,15 +232,15 @@ describe('pdf tabs', () => {
     expect(screen.queryByText("Couldn't load this PDF")).toBeNull();
   });
 
-  it('shows the card only, without Retry, when the bytes pass the limit', async () => {
+  it('shows details and Retry when the bytes pass the limit', async () => {
     const { open } = setup({
       readFile: vi.fn(async () => {
         throw new FileBytesError('too_large', 'The file is too large');
       }),
     });
     await open('1');
-    await screen.findByText("This PDF can't be shown. Use Download or Open in Canvas.");
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    await screen.findByText("Couldn't load this PDF");
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Download' })).toBeTruthy();
   });
 
@@ -281,7 +285,7 @@ describe('pdf tabs', () => {
     expect(screen.queryByRole('button', { name: 'Allow access' })).toBeNull();
   });
 
-  it('shows a message and no Retry when PDF.js cannot load', async () => {
+  it('shows details and Retry when PDF.js cannot load', async () => {
     const { open } = setup({
       readFile: vi.fn(async () => new Uint8Array([1])),
       loadPdfjs: vi.fn(async () => {
@@ -289,8 +293,8 @@ describe('pdf tabs', () => {
       }),
     });
     await open('1');
-    await screen.findByText("This PDF can't be shown. Use Download or Open in Canvas.");
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    await screen.findByText("Couldn't load this PDF");
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   it('tells the student about a PDF that needs a password', async () => {

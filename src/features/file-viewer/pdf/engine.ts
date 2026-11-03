@@ -5,6 +5,7 @@
  * The document runs in its own PDF.js worker, which the engine ends in `destroy`. Pages draw
  * lazily, when they come near the view, and release when they leave.
  */
+import type { PdfStage } from './failure';
 import { PdfLinkService } from './linkService';
 import { PageView, type PageContext } from './pageView';
 import {
@@ -58,6 +59,7 @@ export interface EngineOptions {
   signal?: AbortSignal;
   devicePixelRatio?: () => number;
   onChange(state: EngineState): void;
+  onStage?(stage: PdfStage): void;
   onPageError?(index: number, error: unknown): void;
 }
 
@@ -143,7 +145,15 @@ export class PdfEngine {
   /** Opens a document in its own worker. The bytes pass to the worker and are not kept. */
   static async open(options: EngineOptions): Promise<PdfEngine> {
     const { lib } = options;
+    options.onStage?.('worker start');
     const worker = new lib.PDFWorker();
+    try {
+      await worker.promise;
+    } catch (error) {
+      worker.destroy();
+      throw error;
+    }
+    options.onStage?.('document load');
     // PDF.js 6.5.438 has no eval path and no scripting option in `getDocument`, so it ignores
     // `isEvalSupported` and `enableScripting`. They state the intent. What keeps scripts out is
     // that the viewer never loads the scripting sandbox and draws link annotations only.
@@ -181,6 +191,7 @@ export class PdfEngine {
     }
     const engine = new PdfEngine(options, doc, worker);
     try {
+      options.onStage?.('page render');
       await engine.start();
     } catch (error) {
       engine.destroy();
