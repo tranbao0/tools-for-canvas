@@ -67,7 +67,12 @@ export function renderRubric(details: AssignmentDetails, doc: Document): HTMLEle
     if (criterion.long_description) {
       group.append(element(doc, 'p', 'av-note', criterion.long_description));
     }
-    const assessment = details.submission.rubric_assessment?.[criterion.id];
+    const assessments = details.submission.rubric_assessment;
+    // An own key only: a criterion id such as `constructor` must not find an inherited member.
+    const assessment =
+      assessments !== undefined && Object.hasOwn(assessments, criterion.id)
+        ? assessments[criterion.id]
+        : undefined;
     const ratings = element(doc, 'ul', 'av-ratings');
     for (const rating of criterion.ratings) {
       const item = element(doc, 'li', 'av-rating');

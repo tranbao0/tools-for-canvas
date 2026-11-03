@@ -2932,6 +2932,7 @@ These items need a live check or an outside answer.
 16. The expand rows of the Grades page (decision 26, step 1) have run only against the fixture.
     The real title cell, the way Canvas finds its own comment and rubric rows after the extension row, and the field shapes of the assignment and submission records are known from canvas-lms source only.
     A comment attachment keeps its download, because the pane never takes an address with `comment_id`.
+    The text of a comment goes through the sanitizer, with line breaks kept, and it is not known whether Canvas escapes angle brackets in that field.
     The live checklist has the steps.
 
 ## Build order

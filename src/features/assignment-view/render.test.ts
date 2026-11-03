@@ -121,3 +121,15 @@ describe('instructions and files', () => {
     expect(section.querySelector('time')?.textContent).toBe('Mon, Nov 2, 2026, 5:00 AM');
   });
 });
+
+describe('criterion ids that are names of Object.prototype', () => {
+  it('shows no assessment for a criterion with such an id and no assessment', () => {
+    const details = structuredClone(ASSIGNMENT_DETAILS);
+    const criterion = details.assignment.rubric![0]!;
+    criterion.id = 'constructor';
+    details.submission.rubric_assessment = {};
+    const section = renderRubric(details, document);
+    expect(section.textContent).not.toContain('Assessed');
+    expect(section.querySelector('[data-assessed]')).toBeNull();
+  });
+});

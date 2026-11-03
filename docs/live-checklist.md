@@ -568,6 +568,9 @@ Run them on the Grades page of the course (`/courses/:id/grades`).
    Expect: a row opens under it, with "Loading details" for a moment, then the due date and the score, the instructions, the rubric, the comments, "Your files" and "Open assignment".
    Compare the due date, the score, the rubric assessment (the rating that Canvas marks as yours, and your points) and the comments with the submission details page of Canvas.
    Expect: the dates are in the time zone of your Canvas profile, and the comments are newest first.
+   Post a comment on a test assignment with the text `Use <title> & <b>bold</b>`, a blank line and a second line.
+   Expect: the comment shows the same text and the same line break as Canvas shows.
+   If it loses the angle-bracket text, Canvas does not escape that field, and the comment text needs plain-text handling.
    Expect: two requests went out: the assignment with `include[]=submission` and `include[]=can_submit`, and `submissions/self` with `include[]=submission_comments` and `include[]=rubric_assessment`.
 3. Look at the chips of an assignment that is missing, past due, extended or excused, and of the assignment that is handed in outside Canvas.
    Expect: the chips are the ones of the weekly list for the same assignment, such as "Missing" in red, "Past due", "Extended", "Excused" and "Can't confirm: Gradescope".

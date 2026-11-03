@@ -113,3 +113,15 @@ describe('projectAssignmentView', () => {
     expect(details.submission.grade).toBe('5');
   });
 });
+
+it('skips a rubric assessment under the key __proto__', () => {
+  const { assignment, submission } = rawRecords();
+  const details = projectAssignmentView(assignment, {
+    ...submission,
+    rubric_assessment: JSON.parse(
+      '{"__proto__": {"rating_id": "x"}, "criterion_1": {"points": 3}}',
+    ),
+  });
+  expect(Object.keys(details.submission.rubric_assessment ?? {})).toEqual(['criterion_1']);
+  expect(Object.getPrototypeOf(details.submission.rubric_assessment)).toBe(Object.prototype);
+});
