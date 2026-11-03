@@ -390,7 +390,9 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     "N older", "N skipped" and "Skip all older" work as in the side panel.
   - The glance had a "N past due" summary line, "Show N more" links and a link for the rest of the span.
     These are gone.
-  - The card is as tall as its content, up to a limit: the window height minus 48 px, at most 760 px and at least 420 px.
+  - The card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
+    A short list leaves empty room at the bottom, so the card keeps its size from span to span.
+  - The scroll bar of the groups sits in the side padding of the card, 4 px from its edge, so it never covers the day counts.
   - The header (the dates, Add task, the gear, the minimize button, the arrows, Today and the span picker), the notices and the rings stay at the top of the card.
     The groups scroll below them in one element.
     The element has a thin native scroll bar and `overscroll-behavior: contain`.
