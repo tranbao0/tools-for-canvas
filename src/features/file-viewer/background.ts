@@ -91,7 +91,7 @@ export function createViewerOwner(host: ViewerHost, tabId: number | undefined) {
   };
 }
 const id = (value: unknown): value is string =>
-  typeof value === 'string' && /^[1-9][0-9]{0,19}$/.test(value);
+  typeof value === 'string' && /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/.test(value);
 
 /** Whether a sender is the pane: the frame of `viewer.html` inside a tab, never a tab of its own. */
 function isPaneFrame(sender: ViewerSender): boolean {

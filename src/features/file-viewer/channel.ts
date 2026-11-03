@@ -21,7 +21,7 @@ export interface ThemeMessage {
 
 export type PaneMessage = OpenFileMessage | ThemeMessage;
 
-const ID = /^[1-9][0-9]{0,19}$/;
+const ID = /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/;
 const SECRET = /^[0-9a-f]{64}$/;
 
 /** A random 256 bit secret as 64 hex characters. */

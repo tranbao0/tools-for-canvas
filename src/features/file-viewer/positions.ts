@@ -35,7 +35,7 @@ function validKey(key: string): boolean {
       typeof student === 'string' &&
       student.length > 0 &&
       typeof file === 'string' &&
-      /^[1-9][0-9]{0,19}$/.test(file)
+      /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/.test(file)
     );
   } catch {
     return false;

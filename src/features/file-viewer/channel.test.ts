@@ -19,10 +19,18 @@ describe('viewer identities', () => {
   it('accepts file and course ids', () => {
     expect(validOpenFile(open)).toBe(true);
     expect(validOpenFile({ type: 'open-file', fileId: '42' })).toBe(true);
+    expect(validOpenFile({ type: 'open-file', fileId: '45~678', courseId: '12~345' })).toBe(true);
   });
   it('rejects addresses and extra fields', () => {
     for (const field of ['fileId', 'courseId']) {
-      for (const value of ['https://school.edu/files/42', '//school.edu/files/42', '/files/42']) {
+      for (const value of [
+        'https://school.edu/files/42',
+        '//school.edu/files/42',
+        '/files/42',
+        '12~',
+        '~12',
+        '1~2~3',
+      ]) {
         expect(validOpenFile({ ...open, [field]: value })).toBe(false);
       }
     }
