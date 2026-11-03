@@ -2396,8 +2396,8 @@ The exact Files link address from the owner's failing page and the original PDF 
    - The files list of the submission details page is in a frame, and item 11 handles it.
      The pane takes only the file id from the address and drops any `verifier`.
    - A link without a `download` attribute opens the pane by its address alone.
-     The address of a comment attachment carries numeric `comment_id` and `download` query parameters, and the pane takes the source-verified anchors on Grades and submission details pages.
-An explicit HTML `download` attribute keeps its download action.
+     The address of a comment attachment carries numeric `comment_id` and `download` query parameters, and the pane takes it on the top frame of Grades and submission details pages (Ticket F2b).
+     An explicit HTML `download` attribute keeps its download action.
    - When the viewer is off, no click is rerouted.
      The script takes a click at once, before the settings have loaded, and if the setting turns out to be off, it clicks the same link again from script.
      That click is not trusted, so the script ignores it, and the browser does what the link says: it follows the link, saves a download or opens a new tab.
@@ -2610,7 +2610,8 @@ An explicit HTML `download` attribute keeps its download action.
       It catches the same clicks as the page script: a trusted plain left click, with the same `plainClick` rule (`isTrusted`, the left button, no Ctrl, Shift, Alt or Meta).
       It catches only `a.file-upload-submission-info__link` inside `.file-upload-submission-table`, and never a link inside a description, user content or a comment (`frameFileTarget`).
       The Preview button of the row (`a.modal_preview_link`) keeps its action, because it opens the annotated copy in Canvas.
-      A comment attachment is in the top frame, where the page catcher accepts its validated submission address.
+      A comment attachment is in the top frame, where the page script takes it.
+      The catcher never takes one, because it passes only a file id, which the pane reads through the files API (`frameFileTarget`).
       The catcher stays off unless its own path is a submission details page and the top frame is of the same origin.
     - **Injection.**
       The page script of the top frame asks the background with `viewer:inject-frames`, once when it starts and again after each trusted `load` event of `iframe#preview_frame`, because each load is a new document.
@@ -2925,8 +2926,7 @@ Step 3 (Submit) is built.
   - A submitted file links as `/courses/:id/assignments/:id/submissions/:user?download=:file`, without a `download` attribute, so the pane matcher of decision 25 takes it.
   - The click path is the one of the page script of the pane.
     A click inside the open shadow root reaches the page as a click on the host, so the script reads the real element from the event path for a host with the attribute `data-weekrow-panel`, and for no other host.
-  - A comment attachment opens in the pane and keeps its one-click Download button (decision 25, item 3).
-    So item 3 of this decision holds for the student's own files now, and a comment attachment is the open gap.
+  - A comment attachment opens in the pane through its submission route, and its error card keeps a Download button (Ticket F2b).
 - **Settings.** "One assignment view" is in the tools settings, on by default, in the same three places as the other settings.
 
 **Verified source facts for step 1:**
@@ -3124,5 +3124,38 @@ The fixture uses that download URL for the name link and pushes the preview quer
 The exact live model URL is still not supplied by the owner.
 The fixture also models the router push and direct preview route.
 Trusted plain clicks stop before the router, while explicit download links keep their action.
-Direct loads and history traversal open the pane but retain Canvas's overlay.
+A direct load of a preview address, and a move through the history to one, keep Canvas's own overlay and open no pane (F2b, item 1).
 No verified public close API is available for that overlay, so the extension does not remove React-owned nodes or alter Canvas router state.
+
+### Ticket F2b: Fixes after the review of Ticket F2
+
+1. **Only a trusted click opens the pane.**
+   The pane does not read `?preview=` from a direct load, a `popstate` event, a `hashchange` event or the history.
+   A review showed that a page script can open the pane without any user action by these routes: `replaceState` with a synthetic `PopStateEvent`, `pushState` with `history.back()` (which gives a trusted event), and a fragment change that reopened a closed pane.
+   A direct load of, or a move through the history to, a `?preview=` address keeps Canvas's own overlay.
+   After a history move the pane stays as the student left it.
+2. **A comment attachment is read through its own submission route.**
+   No proof exists that Canvas lets a student read the comment attachment of a teacher through `GET /api/v1/files/:id`.
+   The link of a comment attachment is `/courses/:id/assignments/:id/(submissions/:user|anonymous_submissions/:anon)?download=:file&comment_id=:comment`, the route that Canvas itself uses.
+   - The tab id of the file is that route, rebuilt in the fixed order `?comment_id=:comment&download=:file` from validated parts (`fileTarget`).
+     Each id is a plain or a sharded id, and an anonymous submission id is 1 to 64 letters and digits.
+     The same strict pattern (`isTabId`) checks the id again in the channel message, in the stored tabs and in the pane, so no address from the page is ever fetched as it is.
+     The stored tabs keep the route, so a pane that reloads still reads the file through the submission route and never through the files API.
+   - The pane reads the first 16 bytes of the route, under the same cookie binding as the other file reads, to get the response `Content-Type` and the first bytes.
+     A generic or missing type falls back to the format that the bytes show (PDF or a raster image).
+     The size stays unknown until the full read, and the full read keeps the size limit.
+   - The name is the text of the link: one line, no control characters, at most 200 characters.
+     It travels in the open message as a hint, like the course.
+     A tab that is restored from storage has no hint and shows "Comment attachment".
+   - If a read fails, the error card shows a Download button that uses the same route.
+     "Open in Canvas" is hidden for a comment attachment in the card, the error card, the PDF line and the PDF error, because a comment attachment has no `/files/:id` page that the student can open.
+   - The files frame catcher stays on plain files and takes no comment attachment.
+3. **Folder and search views.**
+   Canvas pushes `/courses/:id/files/folder/:splat?preview=:file` and `/courses/:id/files/search?...&preview=:file` (`FilesApp.jsx`, `FilePreview.jsx`).
+   A trusted click on a file name in these views opens the pane, as it does in the root view.
+   The matcher takes `/courses/:id/files`, `/courses/:id/files/folder/...` and `/courses/:id/files/search`, and no other path.
+4. **Tests.**
+   The classic click test uses the link form `/courses/:id/files?preview=:file` that only the preview matcher takes.
+   Click tests cover the files, folder and search views.
+   Tests prove that `replaceState` with a synthetic `popstate`, `pushState` with `history.back()`, a fragment change and a direct load open no pane, and that a history move leaves the pane open or closed as it was.
+   A comment attachment test serves the file only through the submission route and checks that the PDF shows in the pane.

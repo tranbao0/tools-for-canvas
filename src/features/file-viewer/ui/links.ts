@@ -1,16 +1,18 @@
+import { isCommentTab } from '../model';
+
 const ID = /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/;
 
 export interface FileLinks {
   /** The file bytes on the saved Canvas. */
   download: string;
-  /** The Canvas page of the file. */
-  canvas: string;
+  /** The Canvas page of the file, or `null` for a comment attachment, which has no such page. */
+  canvas: string | null;
 }
 
 /**
  * The two links of a file card. Both stay on the saved Canvas: a `url` from the file record that
  * points anywhere else is replaced by the standard download path. A course id that is not an id
- * is left out.
+ * is left out. A comment attachment downloads from its own submission route.
  */
 export function fileLinks(
   origin: string,
@@ -18,6 +20,7 @@ export function fileLinks(
   courseId: string | null | undefined,
   url: string | undefined,
 ): FileLinks | null {
+  if (isCommentTab(fileId)) return { download: new URL(fileId, origin).href, canvas: null };
   if (!ID.test(fileId)) return null;
   let download = new URL(`/files/${fileId}/download`, origin);
   if (typeof url === 'string' && url !== '') {

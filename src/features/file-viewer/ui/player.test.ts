@@ -91,9 +91,11 @@ describe('submission attachment paths', () => {
       }
     });
   }
-  it('takes a comment attachment address', () => {
-    const href = '/courses/12/assignments/3/submissions/7?comment_id=9&download=42';
-    expect(fileTarget(href, origin)).toEqual({ fileId: '42' });
+  it('takes a comment attachment as its own route', () => {
+    const href = '/courses/12/assignments/3/submissions/7?download=42&comment_id=9';
+    expect(fileTarget(href, origin)).toEqual({
+      fileId: '/courses/12/assignments/3/submissions/7?comment_id=9&download=42',
+    });
     expect(fileTarget('/courses/12/assignments/3/submissions/7?download=42', origin)).toEqual({
       fileId: '42',
     });
@@ -148,12 +150,10 @@ describe('files list in the submission frame', () => {
       frameFileTarget(linkIn(row(FILE), '.modal_preview_link'), href, origin, path),
     ).toBeNull();
   });
-  it('accepts a valid row but rejects links outside the list and other pages', () => {
+  it('takes no comment attachment, no link outside the list, and no other page', () => {
     const comment = `${path}?comment_id=9&download=42`;
     const attachment = `<a href="${comment}" class="file-upload-submission-info__link">f</a>`;
-    expect(frameFileTarget(linkIn(row(attachment)), comment, origin, path)).toEqual({
-      fileId: '42',
-    });
+    expect(frameFileTarget(linkIn(row(attachment)), comment, origin, path)).toBeNull();
     const outside = `<main><a href="${href}" class="file-upload-submission-info__link">f</a></main>`;
     expect(frameFileTarget(linkIn(outside), href, origin, path)).toBeNull();
     const inComment = `<div class="comments"><div class="comment_attachments">${row(FILE)}</div></div>`;

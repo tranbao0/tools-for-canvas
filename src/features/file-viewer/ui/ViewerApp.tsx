@@ -23,8 +23,11 @@ import { PANEL_ID, TabStrip, tabDomId, type TabItem } from './TabStrip';
 export interface PaneHost extends PdfHost {
   /** The saved Canvas address. */
   origin: string;
-  /** The record of a file, or `undefined` when it did not load. */
-  loadFile(fileId: string): Promise<PaneFile | undefined>;
+  /**
+   * The record of a file, or `undefined` when it did not load. The `fileId` is a tab id, and the
+   * name is the text of the link that opened a comment attachment, when the page gave one.
+   */
+  loadFile(fileId: string, name?: string): Promise<PaneFile | undefined>;
   /** Whether the browser lets the extension reach the files of the saved Canvas. */
   hasAccess(): Promise<boolean>;
   /** Asks the browser for that access. Call it directly inside a click handler. */
@@ -39,6 +42,7 @@ export interface PaneHost extends PdfHost {
 export interface OpenRequest {
   fileId: string;
   courseId?: string;
+  name?: string;
 }
 
 export interface OpenSource {
@@ -55,6 +59,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const tabsRef = useRef<Tabs>(EMPTY);
   const requested = useRef(new Set<string>());
   const courseHints = useRef(new Map<string, string>());
+  const nameHints = useRef(new Map<string, string>());
   const focusAfter = useRef<string | null>(null);
 
   // Counts the reads of each PDF. A change makes the tab read its file again.
@@ -101,7 +106,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     (fileId: string) => {
       setFiles((all) => ({ ...all, [fileId]: { kind: 'loading' } }));
       host
-        .loadFile(fileId)
+        .loadFile(fileId, nameHints.current.get(fileId))
         .then(
           (file): FileState => (file ? { kind: 'ready', file } : { kind: 'error' }),
           (): FileState => ({ kind: 'error' }),
@@ -129,6 +134,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     () =>
       props.opens.subscribe((request) => {
         if (request.courseId) courseHints.current.set(request.fileId, request.courseId);
+        if (request.name) nameHints.current.set(request.fileId, request.name);
         // The requests run one after another, so the first read of the stored tabs finishes
         // before the next request adds to the tabs.
         pending.current = pending.current

@@ -37,6 +37,25 @@ describe('viewer identities', () => {
     expect(validOpenFile({ ...open, url: 'https://school.edu/files/42' })).toBe(false);
     expect(validOpenFile({ ...open, nonce: 'x' })).toBe(false);
   });
+  it('accepts a comment attachment route and the clean name of its link', () => {
+    const fileId = '/courses/12~3/assignments/7/submissions/8?comment_id=9&download=45~6';
+    expect(validOpenFile({ type: 'open-file', fileId })).toBe(true);
+    expect(validOpenFile({ type: 'open-file', fileId, name: 'Feedback.pdf' })).toBe(true);
+    expect(validOpenFile({ type: 'open-file', fileId: '42', name: 'a.pdf' })).toBe(true);
+  });
+  it('rejects other routes, and names that are not clean', () => {
+    const fileId = '/courses/12/assignments/7/submissions/8?comment_id=9&download=45';
+    for (const bad of [
+      `https://school.edu${fileId}`,
+      `${fileId}&x=1`,
+      fileId.replace('/submissions/8', '/submissions/8/extra'),
+      fileId.replace('comment_id=9&download=45', 'download=45&comment_id=9'),
+    ])
+      expect(validOpenFile({ type: 'open-file', fileId: bad })).toBe(false);
+    for (const name of [' a', 'a\nb', 'a\u0000', 'a'.repeat(201), 7, '']) {
+      expect(validOpenFile({ type: 'open-file', fileId, name })).toBe(false);
+    }
+  });
   it('creates random 256 bit secrets', () => {
     const first = createViewerSecret();
     expect(first).toMatch(/^[0-9a-f]{64}$/);

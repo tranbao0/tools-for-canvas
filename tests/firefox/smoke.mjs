@@ -572,10 +572,7 @@ async function main(prefs = {}, mode = 'release') {
     location: `${server.origin}/inst-fs/fixture.pdf`,
   };
   files['/inst-fs/fixture.pdf'] = {
-    body: Buffer.concat([
-      readFileSync(new URL('../fixtures/pdf/fixture.pdf', import.meta.url)),
-      Buffer.from('\n%' + ' '.repeat(1_700_000) + '\n'),
-    ]),
+    body: readFileSync(new URL('../fixtures/pdf/fixture.pdf', import.meta.url)),
     contentType: 'application/pdf',
   };
   const origin = server.origin.replace('127.0.0.1', 'school.instructure.com');

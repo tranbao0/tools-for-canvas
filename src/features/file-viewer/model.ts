@@ -11,6 +11,23 @@ export interface Tabs {
 export type FileTarget =
   { fileId: string } | { courseId: string; moduleId: string; itemId: string };
 const ID = /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/;
+const ID_PART = '[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?';
+// The submission of a comment attachment: a user id, or the anonymous id of an anonymous grading.
+const SUBMISSION_PART = `(?:submissions/${ID_PART}|anonymous_submissions/[A-Za-z0-9]{1,64})`;
+const SUBMISSION_ROUTE = new RegExp(
+  `^/courses/${ID_PART}/assignments/${ID_PART}/${SUBMISSION_PART}$`,
+);
+/**
+ * The address of a comment attachment as the pane keeps it: the submission route of the saved
+ * Canvas with its two numeric parameters in a fixed order. A student may read the comment
+ * attachment of a teacher only through this route, so it is the tab id of the file. The id is
+ * built from validated parts and matched again at every hop, so no other address gets in.
+ */
+const COMMENT_TAB = new RegExp(
+  `^/courses/${ID_PART}/assignments/${ID_PART}/${SUBMISSION_PART}\\?comment_id=${ID_PART}&download=${ID_PART}$`,
+);
+/** The routes where Canvas pushes `?preview=`: the files, a folder of them, and a search. */
+const PREVIEW_PAGE = new RegExp(`^/courses/${ID_PART}/files(?:/folder(?:/[^/]*)*|/search)?/?$`);
 const FILE =
   /^\/(?:courses\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/)?files\/([1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?)(?:\/(?:download|preview))?$/;
 /**
@@ -51,7 +68,7 @@ export function fileTarget(href: string, origin: string, moduleId?: string): Fil
   if (url.origin !== origin) return null;
   const preview = url.searchParams.get('preview');
   if (
-    /^\/courses\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/files$/.test(url.pathname) &&
+    PREVIEW_PAGE.test(url.pathname) &&
     url.searchParams.getAll('preview').length === 1 &&
     preview !== null &&
     ID.test(preview)
@@ -60,20 +77,20 @@ export function fileTarget(href: string, origin: string, moduleId?: string): Fil
   const file = FILE.exec(url.pathname);
   if (file?.[1] && ID.test(file[1])) return { fileId: file[1] };
   // Canvas links a submission attachment as `/courses/:id/assignments/:id/submissions/:id?download=:file`.
-  // Comment attachments use the same route with a numeric comment id.
+  // A comment attachment adds `comment_id`, and its tab id is that route (see `COMMENT_TAB`).
   const download = url.searchParams.get('download');
+  const comments = url.searchParams.getAll('comment_id');
   if (
     download !== null &&
-    (url.searchParams.getAll('comment_id').length === 0 ||
-      (url.searchParams.getAll('comment_id').length === 1 &&
-        ID.test(url.searchParams.get('comment_id')!))) &&
     url.searchParams.getAll('download').length === 1 &&
     ID.test(download) &&
-    /^\/courses\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/assignments\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/(?:submissions\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?|anonymous_submissions\/[A-Za-z0-9]+)$/.test(
-      url.pathname,
-    )
-  )
-    return { fileId: download };
+    comments.length <= 1 &&
+    SUBMISSION_ROUTE.test(url.pathname)
+  ) {
+    if (comments.length === 0) return { fileId: download };
+    const tab = `${url.pathname}?comment_id=${comments[0]}&download=${download}`;
+    if (COMMENT_TAB.test(tab)) return { fileId: tab };
+  }
   const module =
     /^\/courses\/([1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?)\/modules\/items\/([1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?)$/.exec(
       url.pathname,
@@ -99,13 +116,34 @@ export function courseOfLink(href: string, origin: string): string | null {
 export function validRequest(value: unknown): value is string {
   return typeof value === 'string' && (ID.test(value) || FILE.test(value));
 }
+/** Whether a value names a tab: the id of a file, or the address of a comment attachment. */
+export function isTabId(value: unknown): value is string {
+  return typeof value === 'string' && (ID.test(value) || COMMENT_TAB.test(value));
+}
+/** Whether a tab id is a comment attachment, which the pane reads through its submission route. */
+export function isCommentTab(value: string): boolean {
+  return COMMENT_TAB.test(value);
+}
+/**
+ * The name of a comment attachment from the text of its link: one line without control
+ * characters, at most 200 characters. `undefined` when nothing is left.
+ */
+export function linkName(text: string | null): string | undefined {
+  const name = (text ?? '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200);
+  return name === '' ? undefined : name;
+}
 export function normalizeWidth(value: unknown, viewportWidth = 1920): number {
   const limit = Math.max(360, Math.floor(viewportWidth * 0.7));
   const width = typeof value === 'number' && Number.isFinite(value) ? value : 480;
   return Math.round(Math.max(360, Math.min(limit, width)));
 }
 export function openFile(state: Tabs, id: string): Tabs {
-  if (!ID.test(id)) return state;
+  if (!isTabId(id)) return state;
   const ids = [...state.ids];
   if (!ids.includes(id)) {
     if (ids.length >= 8)
@@ -120,9 +158,7 @@ export function openFile(state: Tabs, id: string): Tabs {
 export function normalizeTabs(value: unknown): Tabs {
   if (typeof value !== 'object' || value === null) return { ids: [], active: null };
   const raw = value as Partial<Tabs>;
-  const ids = Array.isArray(raw.ids)
-    ? [...new Set(raw.ids.filter((id) => typeof id === 'string' && ID.test(id)))].slice(0, 8)
-    : [];
+  const ids = Array.isArray(raw.ids) ? [...new Set(raw.ids.filter(isTabId))].slice(0, 8) : [];
   return {
     ids,
     active:
@@ -180,7 +216,7 @@ export function isSubmissionPage(pagePath: string): boolean {
  * is not one of the student's own files. Canvas draws that list as `table.file-upload-submission-table`
  * in the frame `#preview_frame`, with the links `a.file-upload-submission-info__link`. The
  * "Preview" button of the same row (`a.modal_preview_link`) opens the annotated copy, so it keeps
- * its action. Comment attachments normally appear in the top frame.
+ * its action. A comment attachment is in the top frame, and it never matches here.
  */
 export function frameFileTarget(
   link: Element,
@@ -196,7 +232,9 @@ export function frameFileTarget(
   )
     return null;
   const target = fileTarget(href, origin);
-  return target !== null && 'fileId' in target ? target : null;
+  // The frame passes a file id on, which the pane reads through the files API. A comment
+  // attachment is not one.
+  return target !== null && 'fileId' in target && isFileId(target.fileId) ? target : null;
 }
 
 /** Whether a value is the id of a file. */

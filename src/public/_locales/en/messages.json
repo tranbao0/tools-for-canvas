@@ -806,6 +806,9 @@
   "fileTabUnavailable": {
     "message": "Unavailable file"
   },
+  "fileCommentAttachment": {
+    "message": "Comment attachment"
+  },
   "fileMeta": {
     "message": "$1 · $2"
   },

@@ -231,7 +231,7 @@ export function PdfTab(props: {
               {t('fileRetry')}
             </button>
           )}
-          {phase.failure === 'unconfirmed' && props.links && (
+          {phase.failure === 'unconfirmed' && props.links?.canvas && (
             <a
               class="wr-btn"
               href={props.links.canvas}

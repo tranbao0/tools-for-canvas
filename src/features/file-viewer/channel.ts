@@ -6,12 +6,18 @@
  * and is trusted only after it carries the secret: the page script sends it first, and the pane
  * answers with it only after it has checked the first message.
  */
+import { isTabId, linkName } from './model';
 
-/** The pane receives identities only, never addresses to load. */
+/**
+ * The pane receives identities only, never addresses to load. The `fileId` is a tab id: a file
+ * id, or the submission address of a comment attachment, which every hop checks again. The
+ * `name` is the text of the link of a comment attachment.
+ */
 export interface OpenFileMessage {
   type: 'open-file';
   fileId: string;
   courseId?: string;
+  name?: string;
 }
 /** The resolved theme of the Canvas page, for the colors of the pane page. */
 export interface ThemeMessage {
@@ -39,10 +45,11 @@ export function validOpenFile(value: unknown): value is OpenFileMessage {
   if (typeof value !== 'object' || value === null) return false;
   const message = value as Record<string, unknown>;
   return (
-    Object.keys(message).every((key) => ['type', 'fileId', 'courseId'].includes(key)) &&
+    Object.keys(message).every((key) => ['type', 'fileId', 'courseId', 'name'].includes(key)) &&
     message['type'] === 'open-file' &&
-    typeof message['fileId'] === 'string' &&
-    ID.test(message['fileId']) &&
+    isTabId(message['fileId']) &&
+    (message['name'] === undefined ||
+      (typeof message['name'] === 'string' && linkName(message['name']) === message['name'])) &&
     (message['courseId'] === undefined ||
       (typeof message['courseId'] === 'string' && ID.test(message['courseId'])))
   );
