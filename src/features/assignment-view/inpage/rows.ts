@@ -34,13 +34,15 @@ export interface RowsOptions {
   courseId: string;
   send(message: AssignmentDetailsMessage): Promise<unknown>;
   now?: () => Temporal.Instant;
-  theme?: PageTheme;
+  /** The theme of the panels now. It is read when a panel opens, because the page can change. */
+  theme?: () => PageTheme;
 }
 
 export interface RowsEngine {
   /** Shows the view on the page, or removes it. Removing it forgets the loaded details. */
   setActive(active: boolean): void;
-  setTheme(theme: PageTheme): void;
+  /** Reads the theme again, after the Theme setting changed. */
+  refreshTheme(): void;
   /** Removes everything and stops. */
   stop(): void;
 }
@@ -102,7 +104,7 @@ function isForeign(records: readonly MutationRecord[]): boolean {
 export function createRowsEngine(options: RowsOptions): RowsEngine {
   const { doc, origin, courseId, send } = options;
   const now = options.now ?? (() => Temporal.Now.instant());
-  let theme: PageTheme = options.theme ?? 'light';
+  const theme = options.theme ?? ((): PageTheme => 'light');
   let active = false;
   let stopped = false;
   let observer: MutationObserver | null = null;
@@ -143,7 +145,9 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
     if (!body || !more || state.details?.hidden !== false) return;
     if (more.getAttribute('aria-expanded') === 'true') return;
     body.setAttribute('data-av-clamped', '');
-    more.hidden = body.scrollHeight <= body.clientHeight + 1;
+    const cut = body.scrollHeight > body.clientHeight + 1;
+    body.toggleAttribute('data-av-cut', cut);
+    more.hidden = !cut;
   }
 
   function draw(state: RowState): void {
@@ -181,8 +185,12 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
       const open = target.getAttribute('aria-expanded') !== 'true';
       target.setAttribute('aria-expanded', String(open));
       target.textContent = open ? 'Show less' : 'Show more';
-      if (open) body?.removeAttribute('data-av-clamped');
-      else body?.setAttribute('data-av-clamped', '');
+      if (open) {
+        body?.removeAttribute('data-av-clamped');
+        body?.removeAttribute('data-av-cut');
+      } else {
+        fitInstructions(state);
+      }
     }
   }
 
@@ -197,7 +205,7 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
     host.setAttribute(OWN, '');
     // The file pane takes clicks on the links inside this host (decision 25).
     host.setAttribute(PANEL_HOST_ATTRIBUTE, '');
-    host.setAttribute('data-theme', theme);
+    host.setAttribute('data-theme', theme());
     host.setAttribute('lang', 'en');
     const shadow = host.attachShadow({ mode: 'open' });
     const sheet = doc.createElement('style');
@@ -227,6 +235,7 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
       createDetails(state);
       draw(state);
     } else {
+      state.host?.setAttribute('data-theme', theme());
       state.details.hidden = false;
       fitInstructions(state);
     }
@@ -317,9 +326,8 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
       });
       observer.observe(doc.body, { childList: true, subtree: true });
     },
-    setTheme(next) {
-      theme = next;
-      for (const state of states.values()) state.host?.setAttribute('data-theme', next);
+    refreshTheme() {
+      for (const state of states.values()) state.host?.setAttribute('data-theme', theme());
     },
     stop() {
       if (stopped) return;

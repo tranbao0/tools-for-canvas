@@ -71,14 +71,23 @@ export async function startAssignmentView(
     },
   };
   if (signal?.aborted === true || courseId === undefined) return controller;
-  const rows = createRowsEngine({ doc, origin, courseId, send: channel.send });
+  let settings: Settings | null = null;
+  const rows = createRowsEngine({
+    doc,
+    origin,
+    courseId,
+    send: channel.send,
+    theme: () => inpageTheme(settings?.theme ?? 'auto', () => detectPageTheme(doc)),
+  });
   engine = rows;
 
   let saved: string | null = null;
   let enabled = false;
   const apply = (): void => rows.setActive(!stopped && enabled && saved === origin);
-  const theme = (settings: Settings): void =>
-    rows.setTheme(inpageTheme(settings.theme, () => detectPageTheme(doc)));
+  const follow = (next: Settings): void => {
+    settings = next;
+    rows.refreshTheme();
+  };
   stops.push(
     channel.choices.origin.watch((value) => {
       saved = value;
@@ -88,11 +97,11 @@ export async function startAssignmentView(
       enabled = tools.assignmentView;
       apply();
     }),
-    channel.settings.watch(theme),
+    channel.settings.watch(follow),
   );
   signal?.addEventListener('abort', controller.stop, { once: true });
   try {
-    const [address, tools, settings] = await Promise.all([
+    const [address, tools, loadedSettings] = await Promise.all([
       channel.choices.origin.getValue(),
       channel.tools.getValue(),
       channel.settings.getValue(),
@@ -100,7 +109,7 @@ export async function startAssignmentView(
     if (stopped) return controller;
     saved = address;
     enabled = tools.assignmentView;
-    theme(settings);
+    follow(loadedSettings);
     apply();
   } catch (error) {
     logFailure('assignment view', error);
