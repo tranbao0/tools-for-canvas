@@ -35,7 +35,7 @@ type Phase =
   | {
       kind: 'error';
       failure: PdfFailure | 'read' | 'large' | 'unconfirmed';
-      details: { reason: string; report: string };
+      details: { reason: string; report: string; retry: boolean };
     };
 
 /** The part of the bytes read, from 0 to 1, or `null` when the length is not known. */
@@ -133,10 +133,11 @@ export function PdfTab(props: {
       browser.runtime.getManifest().version,
       navigator.userAgent,
     );
-    if (failure === 'large') details.reason = 'File too large';
+    setCopyStatus('');
     console.error(details.report);
     setPhase({ kind: 'error', failure, details });
   };
+  const [pageDetails, setPageDetails] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
   const started = useRef(false);
   if (props.active) started.current = true;
@@ -149,6 +150,7 @@ export function PdfTab(props: {
     let live = true;
     let byteLength = 0;
     const abort = new AbortController();
+    setPageDetails('');
     setPhase({ kind: 'reading', loaded: 0, total: null });
     // The library loads while the bytes download.
     const library = host.loadPdfjs();
@@ -208,7 +210,7 @@ export function PdfTab(props: {
         <div class="pv-error" data-part="pdf-error" role="alert">
           <p>{t('pdfLoadError')}</p>
           <p>{phase.details.reason}</p>
-          {(phase.failure === 'password' || phase.failure === 'unconfirmed') && (
+          {['password', 'invalid', 'other', 'large'].includes(phase.failure) && (
             <p>{failureText(phase.failure)}</p>
           )}
           <button
@@ -216,19 +218,19 @@ export function PdfTab(props: {
             class="wr-btn"
             onClick={() => {
               void navigator.clipboard.writeText(phase.details.report).then(
-                () => setCopyStatus('Details copied'),
-                () => setCopyStatus('Could not copy details. Use the Browser Console.'),
+                () => setCopyStatus(t('pdfDetailsCopied')),
+                () => setCopyStatus(t('pdfDetailsCopyFailed')),
               );
             }}
           >
-            Copy details
+            {t('pdfCopyDetails')}
           </button>
           <span role="status">{copyStatus}</span>
-          {
+          {phase.details.retry && (
             <button type="button" class="wr-btn" onClick={props.onRetry}>
               {t('fileRetry')}
             </button>
-          }
+          )}
           {phase.failure === 'unconfirmed' && props.links && (
             <a
               class="wr-btn"
@@ -242,6 +244,23 @@ export function PdfTab(props: {
           )}
         </div>
       )}
+      {phase.kind === 'viewer' && pageDetails && (
+        <div role="status">
+          <button
+            type="button"
+            class="wr-btn"
+            onClick={() => {
+              void navigator.clipboard.writeText(pageDetails).then(
+                () => setCopyStatus(t('pdfDetailsCopied')),
+                () => setCopyStatus(t('pdfDetailsCopyFailed')),
+              );
+            }}
+          >
+            {t('pdfCopyDetails')}
+          </button>
+          <span>{copyStatus}</span>
+        </div>
+      )}
       {phase.kind === 'viewer' && (
         <PdfViewer
           fileId={props.fileId}
@@ -249,6 +268,18 @@ export function PdfTab(props: {
           source={phase.source}
           active={props.active}
           onFailed={fail}
+          onPageError={(error, bytes, stage) => {
+            setCopyStatus('');
+            const details = pdfDetails(
+              error,
+              stage,
+              bytes,
+              browser.runtime.getManifest().version,
+              navigator.userAgent,
+            );
+            console.error(details.report);
+            setPageDetails(details.report);
+          }}
         />
       )}
     </div>

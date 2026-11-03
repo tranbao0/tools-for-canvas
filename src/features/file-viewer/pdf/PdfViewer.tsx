@@ -55,6 +55,7 @@ export function PdfViewer(props: {
   source: PdfSource;
   /** Whether the tab of this document is the active tab. */
   active: boolean;
+  onPageError(error: unknown, bytes: number, stage: PdfStage): void;
   onFailed(kind: PdfFailure, error: unknown, stage: PdfStage, bytes: number): void;
 }) {
   const overflow = useRef<HTMLDetailsElement>(null);
@@ -89,6 +90,8 @@ export function PdfViewer(props: {
   live.current.engine = engine;
   const failed = useRef(props.onFailed);
   failed.current = props.onFailed;
+  const pageFailed = useRef(props.onPageError);
+  pageFailed.current = props.onPageError;
   const searched = useRef('');
 
   useEffect(() => {
@@ -157,8 +160,8 @@ export function PdfViewer(props: {
       onStage: (next) => {
         stage = next;
       },
-      onPageError: (_index, error) => {
-        if (!cancelled) failed.current(classifyPdfError(error), error, 'page render', byteLength);
+      onPageError: (_index, error, stage) => {
+        if (!cancelled) pageFailed.current(error, byteLength, stage);
       },
       lib: props.lib,
       bytes,

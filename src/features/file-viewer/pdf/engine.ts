@@ -60,7 +60,7 @@ export interface EngineOptions {
   devicePixelRatio?: () => number;
   onChange(state: EngineState): void;
   onStage?(stage: PdfStage): void;
-  onPageError?(index: number, error: unknown): void;
+  onPageError?(index: number, error: unknown, stage: PdfStage): void;
 }
 
 /** The space around the pages, in CSS pixels. The style sheet uses the same value. */
@@ -123,7 +123,7 @@ export class PdfEngine {
       linkService: this.linkService,
       devicePixelRatio: options.devicePixelRatio ?? (() => window.devicePixelRatio || 1),
       onTextLayer: (index) => this.applyHighlights(index),
-      onError: (index, error) => options.onPageError?.(index, error),
+      onError: (index, error, stage) => options.onPageError?.(index, error, stage),
     };
     this.observer = new IntersectionObserver(
       (entries) => {
@@ -147,9 +147,21 @@ export class PdfEngine {
     const { lib } = options;
     options.onStage?.('worker start');
     const worker = new lib.PDFWorker();
+    const loading: { task?: ReturnType<PdfjsLib['getDocument']> } = {};
+    const abort = () => {
+      void loading.task?.destroy().catch(() => undefined);
+      worker.destroy();
+    };
+    options.signal?.addEventListener('abort', abort, { once: true });
     try {
+      if (options.signal?.aborted) {
+        abort();
+        throw new Error('The open was cancelled');
+      }
       await worker.promise;
+      if (options.signal?.aborted) throw new Error('The open was cancelled');
     } catch (error) {
+      options.signal?.removeEventListener('abort', abort);
       worker.destroy();
       throw error;
     }
@@ -173,11 +185,7 @@ export class PdfEngine {
       stopAtErrors: false,
     };
     const task = lib.getDocument(params);
-    const abort = () => {
-      void task.destroy().catch(() => undefined);
-      worker.destroy();
-    };
-    options.signal?.addEventListener('abort', abort, { once: true });
+    loading.task = task;
     let doc: PdfDocument;
     try {
       doc = await task.promise;

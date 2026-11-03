@@ -232,7 +232,7 @@ describe('pdf tabs', () => {
     expect(screen.queryByText("Couldn't load this PDF")).toBeNull();
   });
 
-  it('shows details and Retry when the bytes pass the limit', async () => {
+  it('shows details without Retry when the bytes pass the limit', async () => {
     const { open } = setup({
       readFile: vi.fn(async () => {
         throw new FileBytesError('too_large', 'The file is too large');
@@ -240,7 +240,7 @@ describe('pdf tabs', () => {
     });
     await open('1');
     await screen.findByText("Couldn't load this PDF");
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Download' })).toBeTruthy();
   });
 

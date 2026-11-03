@@ -4,7 +4,7 @@
  * storage, and the host serves the fixture PDF (3 pages, a known word on page 2, an external
  * link and an internal link on page 1).
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import type { browser } from 'wxt/browser';
 import type { Frame, Locator, Page } from '@playwright/test';
 import type { FakeCanvasRoute } from './support/fake-canvas';
@@ -339,7 +339,7 @@ test('zoom in changes the width of the canvas, and the menu sets fit modes', asy
   const before = (await canvas.boundingBox())!.width;
   const pixelsBefore = await canvas.evaluate((node: HTMLCanvasElement) => node.width);
   await frame.getByRole('button', { name: 'Zoom in' }).click();
-  await expect.poll(async () => (await canvas.boundingBox())!.width).toBeGreaterThan(before);
+  await expect.poll(async () => (await canvas.boundingBox())?.width ?? 0).toBeGreaterThan(before);
   // The canvas draws again at the new size.
   await expect
     .poll(() =>
@@ -550,19 +550,15 @@ test('a failed read keeps the card, and Retry reads the file again', async ({
   await expect(frame.getByRole('button', { name: 'Allow access' })).toHaveCount(0);
   failing = false;
   await expect(frame.getByRole('button', { name: 'Copy details' })).toBeVisible();
-  await expect(frame.getByText('Network error', { exact: true })).toBeVisible();
+  await expect(
+    frame.getByText('Canvas answered with an error (500)', { exact: true }),
+  ).toBeVisible();
   await page.screenshot({ path: 'test-results/f3-error-pane.png' });
-  await frame.evaluate(() => {
-    Object.defineProperty(navigator.clipboard, 'writeText', {
-      value: async (text: string) => {
-        document.body.dataset.copiedDetails = text;
-      },
-      configurable: true,
-    });
-  });
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await frame.getByRole('button', { name: 'Copy details' }).click();
   await expect(frame.getByText('Details copied', { exact: true })).toBeVisible();
-  const report = await frame.locator('body').getAttribute('data-copied-details');
+  const report = await page.evaluate(() => navigator.clipboard.readText());
+  writeFileSync('test-results/pdf-error-500.txt', report);
   expect(report).toContain('Stage: fetch');
   expect(report).toContain('Extension version:');
   expect(report).toContain('User agent:');
@@ -1079,4 +1075,71 @@ test('closing a file tab right after a move saves the page and zoom', async ({
       ),
     )
     .toBe(true);
+});
+
+test('a page drawing error leaves the document open and copies safe details', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const frame = await openPdf(context, page, background, fileHost);
+  await frame.evaluate(() => {
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    let failed = false;
+    HTMLCanvasElement.prototype.getContext = function (
+      this: HTMLCanvasElement,
+      ...args: Parameters<typeof getContext>
+    ) {
+      if (!failed && this.width > 500 && location.pathname.endsWith('/viewer.html')) {
+        failed = true;
+        throw new DOMException(
+          'Drawing failed https://private.test/file?token=supersecrettoken123456 "Private notes.pdf"',
+          'SecurityError',
+        );
+      }
+      return getContext.apply(this, args);
+    } as typeof getContext;
+  });
+  await frame.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await expect(pageBox(frame, 1).getByText('Could not display this page.')).toBeVisible();
+  await expect(frame.locator(VIEWER)).toBeVisible();
+  await frame.getByRole('button', { name: 'Copy details' }).click();
+  await expect(frame.getByText('Details copied', { exact: true })).toBeVisible();
+  const report = await page.evaluate(() => navigator.clipboard.readText());
+  expect(report).toContain('Error name: SecurityError');
+  expect(report).toContain('Stage: page render');
+  expect(report).not.toMatch(/https:|private.test|supersecrettoken123456|Private notes.pdf/);
+  await page.screenshot({ path: 'test-results/f3-page-error.png' });
+  await pageBox(frame, 1).getByRole('button', { name: 'Retry' }).click();
+  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await frame.getByRole('button', { name: 'Next page', exact: true }).click();
+  await expect(pageBox(frame, 2).locator('canvas')).toBeVisible();
+});
+
+test('a broken PDF has safe details and no document Retry', async ({
+  context,
+  page,
+  background,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openCoursePage(context, page, background, html, [
+    {
+      path: '/files/42/download',
+      contentType: 'application/pdf',
+      body: 'not a PDF',
+    },
+  ]);
+  await openFirstFile(page, 'Read notes');
+  const frame = await pane(page);
+  await expect(frame.getByText('This PDF is damaged', { exact: true })).toBeVisible();
+  await expect(frame.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
+  await frame.getByRole('button', { name: 'Copy details' }).click();
+  await expect(frame.getByText('Details copied', { exact: true })).toBeVisible();
+  const report = await page.evaluate(() => navigator.clipboard.readText());
+  expect(report).toContain('Error name: InvalidPDFException');
+  expect(report).toContain('Stage: document load');
+  expect(report).not.toMatch(/https:|token=|notes.pdf/);
+  writeFileSync('test-results/pdf-error-broken.txt', report);
 });

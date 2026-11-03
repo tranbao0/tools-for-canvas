@@ -1,5 +1,8 @@
-/** Privacy-safe diagnostics for PDF failures. Unknown messages are removed in full. */
-export type PdfStage = 'fetch' | 'worker start' | 'document load' | 'page render';
+/** Privacy-safe diagnostics for PDF failures. */
+import { FileBytesError } from '../../../shared/canvas/fileBytes';
+import { t } from '../../../shared/ui/i18n';
+
+export type PdfStage = 'fetch' | 'worker start' | 'document load' | 'page render' | 'page layers';
 const messages = [
   'Invalid PDF structure.',
   'The document has too many pages',
@@ -12,12 +15,42 @@ const names = [
   'NetworkError',
   'SecurityError',
   'NotAllowedError',
+  'UnknownErrorException',
   'InvalidPDFException',
-  'FormatError',
   'MissingPDFException',
+  'UnexpectedResponseException',
   'PasswordException',
+  'AbortException',
+  'FormatError',
+  'RangeError',
+  'InternalError',
+  'DataCloneError',
   'FileBytesError',
 ];
+
+/** Keeps only diagnostic vocabulary after removing private spans, before truncation. */
+export function messageShape(message: string): string {
+  let decoded = message;
+  for (let i = 0; i < 3; i++) {
+    try {
+      decoded = decodeURIComponent(decoded);
+    } catch {
+      break;
+    }
+  }
+  return decoded
+    .replace(/(["'`]).*?\1/gs, '[removed]')
+    .replace(/(?:[a-z][a-z0-9+.-]*:|www\.|[/\\])\S*/gi, '[removed]')
+    .replace(/[a-z0-9+/_=-]{16,}/gi, '[removed]')
+    .replace(/[\p{L}\p{N}_@.%+=-]+/gu, (word) =>
+      /^(removed|Invalid|PDF|structure|The|document|has|too|many|pages|Failed|to|fetch|NetworkError|when|attempting|resource|error|Error|Missing|header|offset|stream|object|font|image|canvas|worker|failed|start)$/i.test(
+        word.replace(/\.$/, ''),
+      )
+        ? word
+        : '[removed]',
+    )
+    .slice(0, 80);
+}
 
 export function sanitizePdfError(error: unknown): { name: string; message: string } {
   const value = error as { name?: unknown; message?: unknown } | null;
@@ -36,22 +69,88 @@ export function pdfDetails(
   bytes: number,
   version: string,
   agent: string,
-): { reason: string; report: string } {
+): { reason: string; report: string; retry: boolean } {
   const safe = sanitizePdfError(error);
+  const file = error instanceof FileBytesError ? error : null;
+  const status =
+    file?.status !== undefined &&
+    Number.isInteger(file.status) &&
+    file.status >= 100 &&
+    file.status <= 599
+      ? file.status
+      : undefined;
+  const kind =
+    file &&
+    [
+      'origin_blocked',
+      'too_large',
+      'status',
+      'not_a_file',
+      'network',
+      'aborted',
+      'unconfirmed',
+    ].includes(file.kind)
+      ? file.kind
+      : undefined;
+  const tooMany = safe.message === 'The document has too many pages';
   const reason =
-    safe.name === 'SecurityError' || safe.name === 'NotAllowedError'
-      ? 'Drawing blocked by a browser privacy setting'
-      : safe.name === 'InvalidPDFException' ||
-          safe.name === 'FormatError' ||
-          safe.name === 'MissingPDFException'
-        ? 'This PDF is damaged'
-        : stage === 'fetch'
-          ? 'Network error'
-          : stage === 'worker start'
-            ? 'PDF engine failed to start'
-            : 'PDF engine failed';
+    kind === 'status'
+      ? t('pdfHttpError', String(status ?? 'unknown'))
+      : kind === 'not_a_file'
+        ? t('pdfSignInPage')
+        : kind === 'origin_blocked'
+          ? t('pdfOriginBlocked')
+          : kind === 'unconfirmed'
+            ? t('pdfUnconfirmed')
+            : kind === 'too_large'
+              ? t('pdfTooLarge')
+              : safe.name === 'PasswordException'
+                ? t('pdfPasswordReason')
+                : tooMany
+                  ? t('pdfTooManyPages')
+                  : ['InvalidPDFException', 'FormatError', 'MissingPDFException'].includes(
+                        safe.name,
+                      )
+                    ? t('pdfDamaged')
+                    : safe.name === 'SecurityError' && stage === 'page render'
+                      ? t('pdfDrawingBlocked')
+                      : stage === 'worker start'
+                        ? t('pdfEngineStartError')
+                        : safe.name === 'SecurityError' && stage === 'fetch'
+                          ? t('pdfFetchBlocked')
+                          : stage === 'fetch'
+                            ? t('pdfNetworkError')
+                            : t('pdfEngineError');
+  const shape = messageShape(String((error as { message?: unknown } | null)?.message ?? ''));
   return {
     reason,
-    report: `Extension version: ${version}\nUser agent: ${agent}\nError name: ${safe.name}\nError message: ${safe.message}\nStage: ${stage}\nByte length: ${bytes}`,
+    retry:
+      kind === 'unconfirmed' ||
+      (kind === 'status' && status !== undefined && status >= 500) ||
+      kind === 'network' ||
+      (!file && stage === 'fetch') ||
+      stage === 'worker start',
+    report: `Extension version: ${version}\nUser agent: ${agent}\nError name: ${safe.name}\nError message: ${safe.message}\nMessage shape: ${shape}\nFile error kind: ${kind ?? 'none'}\nHTTP status: ${status ?? 'none'}\nStage: ${stage}\nByte length: ${bytes}\nPDF.js version: 6.5.438\nOffscreenCanvas: ${typeof OffscreenCanvas !== 'undefined'}\nImageDecoder: ${'ImageDecoder' in globalThis}\nWebAssembly: ${typeof WebAssembly !== 'undefined'}\nModule workers: ${moduleWorkers()}`,
   };
+}
+
+/** Reads the module option without starting a worker or making a request. */
+function moduleWorkers(): boolean {
+  if (typeof Worker === 'undefined' || typeof URL.createObjectURL !== 'function') return false;
+  let supported = false;
+  const url = URL.createObjectURL(new Blob([''], { type: 'text/javascript' }));
+  try {
+    const worker = new Worker(url, {
+      get type() {
+        supported = true;
+        return 'module' as const;
+      },
+    });
+    worker.terminate();
+  } catch {
+    /* A policy can block worker creation after the option is read. */
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+  return supported;
 }
