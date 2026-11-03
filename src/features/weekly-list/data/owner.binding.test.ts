@@ -501,24 +501,50 @@ describe('a surface that reads before a round finishes', () => {
     }
   });
 
-  it('shows the next student after a check clears the cached student', async () => {
-    const h = await loaded();
-    let last: Awaited<ReturnType<typeof h.owner.getState>> | null = null;
+  it('logs a failed notice after the round releases its work', async () => {
+    const h = await createHarness();
     const marker = h.deps.store.changeMarker;
-    const save = marker.setValue.bind(marker);
-    vi.spyOn(marker, 'setValue').mockImplementation(async (value) => {
-      await save(value);
-      last = await h.owner.getState(PANEL);
-    });
+    const error = new Error('Marker write failed');
+    vi.spyOn(marker, 'setValue').mockRejectedValue(error);
     try {
-      signInOtherUser(h);
       await h.owner.getState(PANEL);
-      await h.owner.settled();
-      expect(last).toMatchObject({ kind: 'ready', refreshing: false });
+      await expect(h.owner.settled()).resolves.toBeUndefined();
+      expect(h.deps.log).toHaveBeenCalledWith('data task', error);
     } finally {
       vi.mocked(marker.setValue).mockRestore();
     }
   });
+
+  it.each(['network', 'server', 'forbidden'] as const)(
+    'does not restart a failed prefetch on marker reads: %s',
+    async (kind) => {
+      const h = await createHarness();
+      await loadReady(h);
+      await h.owner.getState(PANEL);
+      await h.owner.settled();
+      h.canvas.resetCalls();
+      h.canvas.fail('listPlannerItems', canvasError(kind), { times: 300 });
+      const marker = h.deps.store.changeMarker;
+      const save = marker.setValue.bind(marker);
+      let notices = 0;
+      vi.spyOn(marker, 'setValue').mockImplementation(async (value) => {
+        await save(value);
+        notices += 1;
+        if (notices < 10) await h.owner.getState({ ...PANEL, spanOffset: 1 });
+      });
+      try {
+        await h.owner.getState({ ...PANEL, spanOffset: 1 });
+        await h.owner.settled();
+        expect(h.canvas.callsOf('listPlannerItems').length).toBeLessThanOrEqual(2);
+        expect(notices).toBeLessThanOrEqual(1);
+        await h.owner.getState({ ...PANEL, spanOffset: 1 });
+        await h.owner.settled();
+        expect(h.canvas.callsOf('listPlannerItems').length).toBeLessThanOrEqual(2);
+      } finally {
+        vi.mocked(marker.setValue).mockRestore();
+      }
+    },
+  );
 
   it('restarts a discarded planner job after its cookie is confirmed', async () => {
     const h = await createHarness();
