@@ -3,6 +3,7 @@ import { ASSIGNMENT_DETAILS } from '../../../tests/fixtures/assignment-view';
 import {
   assignmentPageUrl,
   createCoalescer,
+  nextPollDelay,
   slimAddress,
   submissionChanged,
   submitLabel,
@@ -132,11 +133,25 @@ describe('read coalescer', () => {
     calls[2]!();
     await fourth;
   });
-  it('goes on after a read that failed', async () => {
+  it('goes on after a read that failed, and says whether each read worked', async () => {
     const read = vi.fn().mockRejectedValueOnce(new Error('down')).mockResolvedValue(undefined);
     const request = createCoalescer(read);
-    await request();
-    await request();
+    expect(await request()).toBe(false);
+    expect(await request()).toBe(true);
     expect(read).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('poll delay', () => {
+  it('doubles after a failed read up to 5 minutes, and a good read resets it', () => {
+    const base = 20_000;
+    let delay = base;
+    const seen: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      delay = nextPollDelay(delay, base, false);
+      seen.push(delay);
+    }
+    expect(seen).toEqual([40_000, 80_000, 160_000, 300_000, 300_000, 300_000]);
+    expect(nextPollDelay(delay, base, true)).toBe(base);
   });
 });

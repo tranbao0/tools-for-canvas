@@ -3026,16 +3026,27 @@ Submit and Re-submit open the Canvas assignment in a docked pane.
     When the file pane closes, the turn-in shows again with its state.
   - Submit while a file pane is open shows the turn-in over the file pane, which is hidden and keeps its tabs.
     The close button of the turn-in shows the file pane again.
-  - A Submit click while a turn-in is open shows that turn-in and never replaces its frame.
+  - A Submit click on another assignment while a turn-in is open moves the same frame to that slim address, and never removes the frame.
+    Canvas can then ask whether to leave the page, and the student can say no.
+    The title, the "Open in new tab" link, the frame title, the slim target and the reads move to the new assignment only when the frame has loaded that page.
+    A cancelled question leaves everything on the first assignment, and the next Submit asks again.
+  - A page that removes the turn-in host closes the turn-in: the poll stops, the room is given back, and a file pane that it covered shows again.
+  - An extension update removes an open turn-in, as it removes every page control.
   - Escape on the page closes the file pane only when the focus is inside the pane, and only for a trusted key.
 - **Label.**
   The button says "Re-submit" only when the student really submitted: `submitted_at` is set, or the attempt is 1 or more.
   Work that a teacher graded without a submission shows "Submit".
 - **Refresh.**
   - The new student view submits without a page load, so the details are read again on each trusted load of the frame after the first, when the pane closes, and every 20 seconds while the pane is open and the page is in view.
-  - The reads join: at most one runs and at most one waits.
+  - The reads join per assignment: at most one runs and at most one waits.
+  - The 20 second read goes on while a file pane covers the turn-in, and waits while the page is not in view.
+    After a failed read the next one waits twice as long, up to 5 minutes, and a good read starts over.
   - A change in `submitted_at`, `workflow_state` or `attempt` draws the open rows again and sends `weekrow:refresh` with the reason `visible`.
     That reason keeps the 60-second round limit and the planner backoff.
+  - The data layer skips a `visible` refresh with no answer when a round ran in the last 60 seconds, such as the round of a page load.
+    It names a time (`retryAt`) only for a full round that follows a light one.
+    No existing reason defers a light round, so the view keeps its own timer, like the weekly list surface.
+    It asks again at `retryAt` when the reply has one, and otherwise once more after 61 seconds, which the limit can no longer skip.
   - Details of another student close the pane, as does the `viewer:reset` message that the background sends when it clears the data of a student.
 
 These source facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.

@@ -157,4 +157,74 @@ describe('the turn-in pane', () => {
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('600px');
     file.close();
   });
+
+  it('closes when a page removes its host: no poll, no room, and the covered file pane returns', async () => {
+    document.documentElement.style.setProperty('padding-right', '13px');
+    const { pane, reload } = setup();
+    const file = fileDock();
+    file.open();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    host()!.remove();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pane.isOpen).toBe(false);
+    expect(file.host.style.display).toBe('');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('600px');
+    await vi.advanceTimersByTimeAsync(TURN_IN_POLL_MS * 3);
+    expect(reload).not.toHaveBeenCalled();
+    file.close();
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
+    // A new Submit opens a new pane.
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    expect(host()).not.toBeNull();
+  });
+
+  it('gives the padding back when the file host is removed while the turn-in covers it', async () => {
+    document.documentElement.style.setProperty('padding-right', '13px');
+    const { pane } = setup();
+    const file = fileDock();
+    file.open();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    file.host.remove();
+    await vi.advanceTimersByTimeAsync(0);
+    pane.reset();
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
+    file.close();
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
+  });
+
+  it('keeps reading while a file pane covers the turn-in', async () => {
+    const { pane, reload } = setup();
+    const file = fileDock();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    file.open();
+    expect(host()?.style.display).toBe('none');
+    await vi.advanceTimersByTimeAsync(TURN_IN_POLL_MS);
+    expect(reload).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(TURN_IN_POLL_MS);
+    expect(reload).toHaveBeenCalledTimes(2);
+  });
+
+  it('waits longer after each failed read, up to 5 minutes, and a good read starts over', async () => {
+    const { pane, reload } = setup();
+    reload.mockRejectedValue(new Error('down'));
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const at = async (ms: number) => {
+      await vi.advanceTimersByTimeAsync(ms);
+      return reload.mock.calls.length;
+    };
+    expect(await at(20_000)).toBe(1);
+    expect(await at(39_000)).toBe(1);
+    expect(await at(1000)).toBe(2);
+    expect(await at(79_000)).toBe(2);
+    expect(await at(1000)).toBe(3);
+    // 160 s, then 300 s, and 300 s again.
+    expect(await at(160_000)).toBe(4);
+    expect(await at(299_000)).toBe(4);
+    expect(await at(1000)).toBe(5);
+    expect(await at(300_000)).toBe(6);
+    reload.mockResolvedValue(undefined);
+    expect(await at(300_000)).toBe(7);
+    expect(await at(19_000)).toBe(7);
+    expect(await at(1000)).toBe(8);
+  });
 });

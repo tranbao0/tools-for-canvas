@@ -134,21 +134,24 @@ export function createDock(options: DockOptions): Dock {
   root.append(style, section);
 
   const page = doc.documentElement;
+  const prune = (state: Shared): void => {
+    for (const holder of state.holders) if (!holder.host.isConnected) state.holders.delete(holder);
+  };
+  // The padding that the page had before the first pane took room stays saved until the last
+  // pane leaves, even when a page removed the host of a pane that never gave its room back.
   const claim = (): void => {
     const state = shared();
-    for (const holder of state.holders) if (!holder.host.isConnected) state.holders.delete(holder);
-    if (state.holders.size === 0) {
-      state.saved = {
-        value: page.style.getPropertyValue('padding-right'),
-        priority: page.style.getPropertyPriority('padding-right'),
-      };
-    }
+    prune(state);
+    state.saved ??= {
+      value: page.style.getPropertyValue('padding-right'),
+      priority: page.style.getPropertyPriority('padding-right'),
+    };
     state.holders.add(dock);
   };
   const release = (): void => {
     const state = shared();
-    if (!state.holders.delete(dock)) return;
-    for (const holder of state.holders) if (!holder.host.isConnected) state.holders.delete(holder);
+    state.holders.delete(dock);
+    prune(state);
     if (state.holders.size === 0 && state.saved) {
       page.style.setProperty('padding-right', state.saved.value, state.saved.priority);
       state.saved = null;
@@ -228,6 +231,8 @@ export function createDock(options: DockOptions): Dock {
     },
     setHidden(next) {
       if (!opened || next === hidden) return;
+      // A page removed the host. It takes no room, and it never takes room again.
+      if (!host.isConnected) return;
       hidden = next;
       host.style.display = next ? 'none' : '';
       if (next) release();
