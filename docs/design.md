@@ -3120,9 +3120,8 @@ Verified against Canvas commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 `ui/shared/files/react/components/FilePreview.jsx` selects the file with `query.preview`, fetches it by id if needed, and renders `ef-file-preview-overlay`.
 `app/views/gradebooks/grade_summary.html.erb` uses a submission URL with `comment_id` and `download` for comment attachments.
 `lib/api/v1/attachment.rb` builds the model URL with `file_download_url` and `download=1&download_frd=1`, plus an optional verifier.
-The fixture uses that download URL for the name link and pushes the preview query through its click handler.
+The fixture name link uses the preview address and pushes it through its click handler, as the router does.
 The exact live model URL is still not supplied by the owner.
-The fixture also models the router push and direct preview route.
 Trusted plain clicks stop before the router, while explicit download links keep their action.
 A direct load of a preview address, and a move through the history to one, keep Canvas's own overlay and open no pane (F2b, item 1).
 No verified public close API is available for that overlay, so the extension does not remove React-owned nodes or alter Canvas router state.
