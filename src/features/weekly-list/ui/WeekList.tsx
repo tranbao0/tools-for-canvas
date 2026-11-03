@@ -197,7 +197,11 @@ function GroupSection(props: {
   );
 
   return (
-    <section class="wr-group" aria-labelledby={id} data-group={group.kind}>
+    <section
+      class={collapsible && open ? 'wr-group wr-group-open' : 'wr-group'}
+      aria-labelledby={id}
+      data-group={group.kind}
+    >
       <Heading level={props.level} class="wr-group-head" id={id} part="group-head" tabIndex={-1}>
         {collapsible ? (
           <button

@@ -114,26 +114,49 @@ export function moveContainer(container: HTMLElement, parent: Node, before: Node
   if (active !== null && active.isConnected) (active as HTMLElement).focus({ preventScroll: true });
 }
 
+const SCROLL_PARTS = '.wr, .wr-scroll, .wr-pinned .wr-group-body';
+
 /**
- * The element of the list that scrolls, when the list has rendered: the region of the groups, or
- * the whole card in a view that has no such region, such as the settings.
+ * The name of an element of the card that scrolls: the card, the day list, or the item list of a
+ * bottom group. Null for any other element.
  */
-export function cardOf(container: HTMLElement): HTMLElement | null {
-  const root = hostOf(container)?.shadowRoot;
-  return (
-    root?.querySelector<HTMLElement>('.wr-scroll') ??
-    root?.querySelector<HTMLElement>('.wr') ??
-    null
-  );
+export function scrollPartOf(element: Element): string | null {
+  if (!element.matches?.(SCROLL_PARTS)) return null;
+  if (element.classList.contains('wr-group-body'))
+    return `body:${element.closest('[data-group]')?.getAttribute('data-group') ?? ''}`;
+  return element.classList.contains('wr-scroll') ? 'scroll' : 'card';
+}
+
+/** The scroll positions of the parts of the card, by name. */
+function scrollPositions(root: ParentNode | null | undefined): Map<string, number> {
+  const positions = new Map<string, number>();
+  for (const element of root?.querySelectorAll<HTMLElement>(SCROLL_PARTS) ?? []) {
+    const part = scrollPartOf(element);
+    if (part !== null) positions.set(part, element.scrollTop);
+  }
+  return positions;
+}
+
+/** Puts back the scroll positions of the parts of the card that now differ. */
+export function restoreScrollPositions(
+  root: ParentNode | null | undefined,
+  positions: ReadonlyMap<string, number>,
+): void {
+  for (const element of root?.querySelectorAll<HTMLElement>(SCROLL_PARTS) ?? []) {
+    const part = scrollPartOf(element);
+    const top = part === null ? undefined : positions.get(part);
+    if (top !== undefined && element.scrollTop !== top) element.scrollTop = top;
+  }
 }
 
 /**
- * Runs a change of placement and keeps the scroll position of the card. A forced layout while the
- * card has no height limit resets its scroll position to the top, so the position comes back after.
+ * Runs a change of placement and keeps the scroll positions of the card: the card, the day list
+ * and the open bottom group. A forced layout while the card has no height limit resets its scroll
+ * position to the top, so the positions come back after.
  */
 export function keepCardScroll(container: HTMLElement, change: () => void): void {
-  const top = cardOf(container)?.scrollTop ?? 0;
+  const root = hostOf(container)?.shadowRoot;
+  const positions = scrollPositions(root);
   change();
-  const card = cardOf(container);
-  if (card !== null && top > 0 && card.scrollTop !== top) card.scrollTop = top;
+  restoreScrollPositions(root, positions);
 }

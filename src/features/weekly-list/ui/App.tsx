@@ -36,7 +36,7 @@ import { Rings } from './Rings';
 import { SettingsPanel } from './Settings';
 import { Spinner, StateBody } from './States';
 import { TaskForm, type TaskFormMode } from './TaskForm';
-import { groupCount, WeekList, type ListHandlers } from './WeekList';
+import { groupCount, isGroupEmpty, WeekList, type ListHandlers } from './WeekList';
 import { captureFocus, firstRowControl, restoreFocus, usable, type FocusSnapshot } from './focus';
 
 type ReadyState = Extract<SurfaceState, { kind: 'ready' }>;
@@ -425,7 +425,16 @@ function ReadyView(props: {
   const saved = props.settings;
   const level = baseLevel(surface);
   const [form, setForm] = useState<TaskFormMode | null>(null);
-  const [openBottom, setOpenBottom] = useState<string | null>(null);
+  const [openBottomKind, setOpenBottom] = useState<string | null>(null);
+  // A bottom group that disappears also closes, so it does not come back open.
+  const openBottom =
+    openBottomKind !== null &&
+    view.groups.some((group) => group.kind === openBottomKind && !isGroupEmpty(group))
+      ? openBottomKind
+      : null;
+  useLayoutEffect(() => {
+    if (openBottom !== openBottomKind) setOpenBottom(null);
+  }, [openBottom, openBottomKind]);
   /** A new task waits for Canvas, or the last try to save one failed. */
   const [save, setSave] = useState<'idle' | 'saving' | 'failed'>('idle');
   const [notes, setNotes] = useState<OneTimeNote[]>([]);
@@ -633,16 +642,10 @@ function ReadyView(props: {
     actions.setListTab(next);
   };
   const content =
-    ann === undefined ? (
-      groups
+    tab === 'announcements' && ann !== undefined ? (
+      <Announcements data={ann} view={view} origin={state.origin} actions={actions} />
     ) : (
-      <div role="tabpanel" id={tabIds.panel} aria-labelledby={tabId(tabIds, tab)}>
-        {tab === 'tasks' ? (
-          groups
-        ) : (
-          <Announcements data={ann} view={view} origin={state.origin} actions={actions} />
-        )}
-      </div>
+      groups
     );
   const scrolling = props.scrollMemory ? (
     <ScrollRegion
@@ -731,20 +734,32 @@ function ReadyView(props: {
           onSelect={selectTab}
         />
       )}
-      {scrolling}
-      {surface === 'inpage' && tab === 'tasks' && (
-        <div class="wr-pinned" aria-busy={state.refreshing}>
-          <WeekList
-            view={view}
-            level={subLevel(level)}
-            handlers={handlers}
-            part="bottom"
-            openGroup={openBottom}
-            onToggleGroup={(kind) => setOpenBottom(openBottom === kind ? null : kind)}
-          />
-          {footer}
-        </div>
-      )}
+      <div
+        class="wr-task-panel"
+        role={ann === undefined ? undefined : 'tabpanel'}
+        id={tabIds.panel}
+        aria-labelledby={ann === undefined ? undefined : tabId(tabIds, tab)}
+      >
+        {scrolling}
+        {surface === 'inpage' && tab === 'tasks' && (
+          <div
+            class="wr-pinned"
+            role="region"
+            aria-label="Undated and done tasks"
+            aria-busy={state.refreshing}
+          >
+            <WeekList
+              view={view}
+              level={subLevel(level)}
+              handlers={handlers}
+              part="bottom"
+              openGroup={openBottom}
+              onToggleGroup={(kind) => setOpenBottom(openBottom === kind ? null : kind)}
+            />
+            {footer}
+          </div>
+        )}
+      </div>
       <Dock undo={state.undo} onUndo={undo} onClose={() => actions.dismissUndo()} />
     </>
   );

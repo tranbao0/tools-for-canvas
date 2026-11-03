@@ -147,50 +147,68 @@
   flex: none;
 }
 
-.wr[data-surface='inpage'] > .wr-scroll {
+.wr[data-surface='inpage'] > .wr-task-panel > .wr-scroll {
   flex: 1 1 0;
   /* In a low window the list keeps room for about one row, and the whole card scrolls instead. */
   min-height: 128px;
+  /* The screen-reader text of the rows is absolute, so the region must contain it. */
+  position: relative;
   /* The scroll bar sits in the side padding of the card, so it never covers the day counts. */
   margin-inline-end: calc(4px - var(--wr-pad-x));
   padding-inline-end: calc(var(--wr-pad-x) - 4px);
+  /* The last row keeps some room above the line of the bottom section. */
+  padding-block-end: 8px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
 
-/* Bottom headers and the footer stay outside the day scroll region. */
-.wr[data-surface='inpage'] > .wr-pinned {
-  flex: 0 1 auto;
-  display: flex;
-  flex-direction: column;
-  max-height: 50%;
-  min-height: 0;
+.wr-task-panel {
+  display: contents;
+}
+
+/*
+ * The bottom section holds the headers of No due date and Done, the items of the open group and
+ * the footer. Its boxes are items of the card itself (display: contents), so that only the item
+ * list of the open group can shrink: the headers, the closed groups and the footer keep their full
+ * height. The item list takes the room that the day list leaves, at most half of the card and at
+ * least one row. When the card is too low for that and the 128px of the day list, the whole card
+ * scrolls instead.
+ */
+.wr-pinned,
+.wr-pinned > .wr-list,
+.wr-pinned .wr-group {
+  display: contents;
+}
+
+.wr-pinned::before {
+  content: '';
+  flex: none;
   border-top: 1px solid var(--wr-line);
 }
 
-.wr-pinned .wr-list,
-.wr-pinned .wr-group {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+.wr-pinned .wr-group-head {
+  flex: none;
+  margin-top: 10px;
 }
 
-.wr-pinned .wr-list {
-  flex: 1 1 auto;
-}
-
-.wr-pinned .wr-group-head,
 .wr-pinned .wr-foot {
   flex: none;
 }
 
 .wr-pinned .wr-group-body {
+  position: relative;
+  flex: 0 1 auto;
+  max-height: 50%;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   margin-inline-end: calc(4px - var(--wr-pad-x));
   padding-inline-end: calc(var(--wr-pad-x) - 4px);
+}
+
+.wr-pinned .wr-group-open > .wr-group-body {
+  min-height: 48px;
 }
 
 .wr-scroll:focus-visible {

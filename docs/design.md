@@ -391,14 +391,21 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - The glance had a "N past due" summary line, "Show N more" links and a link for the rest of the span.
     These are gone.
   - The card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
+    A short list leaves empty room at the bottom, so the card keeps its size from span to span.
   - No due date, Done and the footer stay in a bottom section outside the day scroll region, with a thin border in the card line color.
+    The section is a region with the label "Undated and done tasks".
+    It sits inside the tab panel, after the day list, so the tab order is the day list, the bottom headers, and then the footer.
   - Each collapsed header keeps its chevron, name, count and warning text, with the count aligned with the day counts.
   - Only one bottom group opens at a time, and its items appear below its header.
   - The bottom section grows to at most half the inner card height, and its items scroll with the same thin scroll bar as the day list.
+    Only the item list of the open group shrinks.
+    The headers, the closed groups and the footer keep their full height.
+  - A bottom group that disappears also closes, so it does not come back open.
+  - The scroll position of the open group stays when the card moves.
   - The day list keeps at least 128 px, and its scroll position stays as before.
+    When the card is too low for 128 px and the bottom section, the whole card scrolls instead.
   - Keyboard access, focus rings, aria-expanded, collapse memory, older and skipped lists, and Skip all older stay available.
   - These rules also apply to the docked classic dashboard card, but do not affect the side panel or the minimized card.
-    A short list leaves empty room at the bottom, so the card keeps its size from span to span.
   - The scroll bar of the groups sits in the side padding of the card, 4 px from its edge, so it never covers the day counts.
   - The header (the dates, Add task, the gear, the minimize button, the arrows, Today and the span picker), the notices and the rings stay at the top of the card.
     The groups scroll below them in one element.

@@ -114,6 +114,139 @@ async function cardBox(page: Page): Promise<CardBox> {
   });
 }
 
+interface BottomLayout {
+  name: string;
+  page: string;
+  width: number;
+  docked?: boolean;
+}
+
+/** The places of the card that have a bottom section: the widget dashboard and the classic one. */
+const LAYOUTS: BottomLayout[] = [
+  { name: 'the widget dashboard', page: 'dashboard-widgets', width: 1280 },
+  { name: 'the tabbed classic dashboard', page: 'dashboard-card-view', width: 1280 },
+  { name: 'the docked classic dashboard', page: 'dashboard-card-view', width: 1280, docked: true },
+];
+
+/** Makes the page long and scrolls until the card floats under the right column. */
+async function dockCard(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const cards = document.getElementById('DashboardCard_Container');
+    const activity = document.getElementById('dashboard-activity');
+    if (!cards || !activity) return;
+    cards.style.display = 'none';
+    activity.style.display = 'block';
+    const items = document.createElement('ul');
+    items.className = 'recent_activity';
+    for (let index = 1; index <= 70; index += 1) {
+      const item = document.createElement('li');
+      item.className = 'stream-category';
+      item.innerHTML = `<div class="category_name">Announcement ${index}</div><div class="details">BIO 110 - posted ${index} days ago</div>`;
+      items.append(item);
+    }
+    activity.replaceChildren(items);
+  });
+  const end = await page.evaluate(
+    () =>
+      (document.getElementById('weekrow-sentinel')?.getBoundingClientRect().top ?? 0) +
+      window.scrollY,
+  );
+  await page.evaluate((y) => window.scrollTo(0, y + 60), end);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.querySelector('#weekrow-inpage > weekrow-list')?.getAttribute('data-panel'),
+      ),
+    )
+    .toBe('dock');
+}
+
+/** A card with 10 or more done items and one hidden course, so the footer shows. */
+async function openBottomLayout(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  background: Parameters<typeof saveSettings>[0],
+  layout: BottomLayout,
+  height: number,
+): Promise<void> {
+  await open(context, page, background, {
+    page: layout.page,
+    width: layout.width,
+    height,
+    completed: true,
+    settings: { ...MONTH, hiddenCourseIds: ['102'] },
+  });
+  if (layout.docked) await dockCard(page);
+}
+
+/** The button that opens and closes a group. */
+function toggleOf(group: Locator): Locator {
+  return group.locator('.wr-group-toggle');
+}
+
+interface BottomBox {
+  name: 'head' | 'body' | 'foot';
+  top: number;
+  bottom: number;
+  height: number;
+  overflow: boolean;
+  thin: string;
+}
+
+interface BottomGeometry {
+  boxes: BottomBox[];
+  doneCount: number;
+  inner: number;
+  days: number;
+  dayRight: number;
+  counts: number[];
+  bottom: number;
+  cardBottom: number;
+  cardScrolls: boolean;
+}
+
+/** The boxes of the bottom section in page order, and the sizes that the rules limit. */
+async function bottomGeometry(card: Locator): Promise<BottomGeometry> {
+  return card.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const scroll = element.querySelector('.wr-scroll')!;
+    const parts = [
+      ...element.querySelectorAll(
+        '.wr-pinned .wr-group-head, .wr-pinned .wr-group-open > .wr-group-body, .wr-pinned .wr-foot',
+      ),
+    ];
+    const boxes = parts.map((part) => {
+      const box = part.getBoundingClientRect();
+      return {
+        name: part.classList.contains('wr-foot')
+          ? ('foot' as const)
+          : part.classList.contains('wr-group-body')
+            ? ('body' as const)
+            : ('head' as const),
+        top: box.top,
+        bottom: box.bottom,
+        height: box.height,
+        overflow: part.scrollHeight > part.clientHeight,
+        thin: getComputedStyle(part).scrollbarWidth,
+      };
+    });
+    const foot = element.querySelector('.wr-pinned .wr-foot')!.getBoundingClientRect();
+    return {
+      boxes,
+      doneCount: Number(element.querySelector('[data-group="done"] .wr-count')?.textContent),
+      inner: element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom),
+      days: scroll.clientHeight,
+      dayRight: scroll.querySelector('.wr-count')!.getBoundingClientRect().right,
+      counts: [...element.querySelectorAll('.wr-pinned .wr-count')].map(
+        (count) => count.getBoundingClientRect().right,
+      ),
+      bottom: foot.bottom,
+      cardBottom: element.getBoundingClientRect().bottom,
+      cardScrolls: element.scrollHeight > element.clientHeight + 1,
+    };
+  });
+}
+
 test.describe('the full list in the card', () => {
   test('has no link to the rest of the span, and every item of a Month span is in the scroll region', async ({
     context,
@@ -140,59 +273,183 @@ test.describe('the full list in the card', () => {
     await expect(panel.getByRole('region', { name: 'Tasks by day' })).toHaveCount(0);
   });
 
-  for (const height of [700, 1000]) {
-    test(`pins bottom groups in a ${height} px window`, async ({ context, page, background }) => {
-      await open(context, page, background, {
-        height,
-        completed: true,
-        width: 1280,
-        settings: { ...MONTH, hiddenCourseIds: ['102'] },
+  for (const layout of LAYOUTS) {
+    for (const height of [400, 500, 700, 800, 1000]) {
+      test(`pins bottom groups on ${layout.name} in a ${height} px window`, async ({
+        context,
+        page,
+        background,
+      }) => {
+        await openBottomLayout(context, page, background, layout, height);
+        const list = inpageList(page);
+        const root = list.locator('.wr');
+        const undated = list.locator('.wr-pinned [data-group="no_due_date"]');
+        const done = list.locator('.wr-pinned [data-group="done"]');
+        await expect(list.locator('.wr-scroll [data-group="no_due_date"]')).toHaveCount(0);
+
+        // A click on each header works, and only one group is open.
+        await toggleOf(undated).click();
+        await expect(toggleOf(undated)).toHaveAttribute('aria-expanded', 'true');
+        await toggleOf(done).click();
+        await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'true');
+        await expect(toggleOf(undated)).toHaveAttribute('aria-expanded', 'false');
+        await expect(done.locator('[data-row-key]').first()).toBeVisible();
+        // The hidden courses line and the Settings link take a click too.
+        await list
+          .locator('.wr-pinned .wr-foot')
+          .getByRole('button', { name: 'Settings' })
+          .click({ trial: true });
+
+        const geometry = await bottomGeometry(root);
+        expect(geometry.doneCount).toBeGreaterThanOrEqual(10);
+        // The headers, the items area and the footer follow each other without an overlap.
+        expect(geometry.boxes.map((box) => box.name)).toEqual(['head', 'head', 'body', 'foot']);
+        for (const box of geometry.boxes) {
+          if (box.name === 'head') expect(box.height).toBeGreaterThanOrEqual(24);
+        }
+        for (const [index, box] of geometry.boxes.entries()) {
+          if (index > 0)
+            expect(box.top).toBeGreaterThanOrEqual(geometry.boxes[index - 1]!.bottom - 0.5);
+        }
+        const body = geometry.boxes.find((box) => box.name === 'body')!;
+        expect(body.height).toBeGreaterThan(0);
+        expect(body.height).toBeLessThanOrEqual(geometry.inner / 2 + 1);
+        expect(body.overflow).toBe(true);
+        expect(body.thin).toBe('thin');
+        // The day list keeps 128 px. When the card is too low for that and the bottom section,
+        // the whole card scrolls and the footer is reached at its end.
+        expect(geometry.days).toBeGreaterThanOrEqual(127.5);
+        if (geometry.cardScrolls) {
+          expect(geometry.days).toBeLessThanOrEqual(128.5);
+          await root.evaluate((card) => {
+            card.scrollTop = card.scrollHeight;
+          });
+          // The end of the card is the footer, with no blank room under it.
+          const gap = await root.evaluate((card) => {
+            const foot = card.querySelector('.wr-foot')!.getBoundingClientRect();
+            return card.getBoundingClientRect().bottom - foot.bottom;
+          });
+          expect(gap).toBeGreaterThanOrEqual(0);
+          expect(gap).toBeLessThanOrEqual(32);
+        } else {
+          expect(geometry.bottom).toBeLessThanOrEqual(geometry.cardBottom + 0.5);
+        }
+        for (const right of geometry.counts)
+          expect(Math.abs(right - geometry.dayRight)).toBeLessThanOrEqual(1);
       });
-      const list = inpageList(page);
-      const bottom = list.locator('.wr-pinned');
-      const undated = bottom.locator('[data-group="no_due_date"]');
-      await expect(undated).toBeVisible();
-      await expect(list.locator('.wr-scroll [data-group="no_due_date"]')).toHaveCount(0);
-      await expect(bottom.locator('.wr-foot')).toBeVisible();
-      await undated.getByRole('button').first().click();
-      await expect(undated.getByRole('button').first()).toHaveAttribute('aria-expanded', 'true');
-      const done = bottom.locator('[data-group="done"]');
-      await done.getByRole('button').first().click();
-      await expect(done.getByRole('button').first()).toHaveAttribute('aria-expanded', 'true');
-      await expect(undated.getByRole('button').first()).toHaveAttribute('aria-expanded', 'false');
-      await expect(done.locator('[data-row-key]').first()).toBeVisible();
-      const geometry = await list.locator('.wr').evaluate((card) => {
-        const pinned = card.querySelector('.wr-pinned')!;
-        const scroll = card.querySelector('.wr-scroll')!;
-        const style = getComputedStyle(card);
-        const inner =
-          card.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
-        const dayCount = scroll.querySelector('.wr-count')!.getBoundingClientRect();
-        const counts = [...pinned.querySelectorAll('.wr-count')].map(
-          (e) => e.getBoundingClientRect().right,
-        );
-        const body = pinned.querySelector('[data-group="done"] .wr-group-body')!;
-        return {
-          height: pinned.getBoundingClientRect().height,
-          bottom: pinned.getBoundingClientRect().bottom,
-          cardBottom: card.getBoundingClientRect().bottom,
-          inner,
-          days: scroll.clientHeight,
-          counts,
-          right: dayCount.right,
-          thin: getComputedStyle(body).scrollbarWidth,
-          overflow: body.scrollHeight > body.clientHeight,
-        };
-      });
-      expect(geometry.height).toBeLessThanOrEqual(geometry.inner / 2 + 1);
-      expect(geometry.bottom).toBeLessThanOrEqual(geometry.cardBottom);
-      expect(geometry.days).toBeGreaterThanOrEqual(128);
-      for (const right of geometry.counts)
-        expect(Math.abs(right - geometry.right)).toBeLessThanOrEqual(1);
-      expect(geometry.thin).toBe('thin');
-      expect(geometry.overflow).toBe(true);
-    });
+    }
   }
+
+  test('opens and closes a bottom group with Enter and Space', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
+    const done = inpageList(page).locator('.wr-pinned [data-group="done"]');
+    await toggleOf(done).focus();
+    await page.keyboard.press('Enter');
+    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggleOf(done)).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('Space');
+    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Space');
+    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('keeps the tab order: day list, bottom headers, footer', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
+    const list = inpageList(page);
+    const undated = toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]'));
+    const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
+    const settings = list.locator('.wr-pinned .wr-foot').getByRole('button', { name: 'Settings' });
+    await undated.focus();
+    await page.keyboard.press('Tab');
+    await expect(done).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(settings).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(done).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(undated).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    const inScroll = await page.evaluate(() => {
+      const root = document.querySelector('#weekrow-inpage > weekrow-list')!.shadowRoot!;
+      return root.querySelector('.wr-scroll')!.contains(root.activeElement);
+    });
+    expect(inScroll).toBe(true);
+  });
+
+  test('puts the bottom section in the tab panel with a label', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openBottomLayout(context, page, background, LAYOUTS[1]!, 800);
+    const list = inpageList(page);
+    const region = list.getByRole('region', { name: 'Undated and done tasks' });
+    await expect(
+      list.getByRole('tabpanel').getByRole('region', { name: 'Undated and done tasks' }),
+    ).toBeVisible();
+    await expect(region.getByRole('button', { name: /^Done/ })).toBeVisible();
+    await expect(region.getByRole('button', { name: 'Settings' })).toBeVisible();
+    await list.getByRole('tab', { name: /^Announcements/ }).click();
+    await expect(region).toHaveCount(0);
+    await list.getByRole('tab', { name: 'Tasks' }).click();
+    await expect(region).toBeVisible();
+  });
+
+  test('closes Done when it comes back', async ({ context, page, background }) => {
+    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
+    const list = inpageList(page);
+    const done = list.locator('.wr-pinned [data-group="done"]');
+    await toggleOf(done).click();
+    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'true');
+    // A span far ahead has nothing done, so the group leaves the list.
+    for (let step = 0; step < 4; step += 1) {
+      await list.getByRole('button', { name: 'Next month' }).click();
+      await settledList(page);
+    }
+    await expect(done).toHaveCount(0);
+    for (let step = 0; step < 4; step += 1) {
+      await list.getByRole('button', { name: 'Previous month' }).click();
+      await settledList(page);
+    }
+    await expect(done).toBeVisible();
+    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('keeps the scroll of the open Done list when the card moves', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openBottomLayout(context, page, background, { ...LAYOUTS[0]!, width: 1920 }, 800);
+    const list = inpageList(page);
+    const done = list.locator('.wr-pinned [data-group="done"]');
+    await toggleOf(done).click();
+    const body = done.locator('.wr-group-body');
+    await body.evaluate((element) => {
+      element.scrollTop = 120;
+    });
+    await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBe(120);
+    await page.setViewportSize({ width: 1500, height: 800 });
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          document.querySelector('#weekrow-inpage > weekrow-list')?.getAttribute('data-panel'),
+        ),
+      )
+      .toBe('stack');
+    await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBe(120);
+    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'true');
+  });
 
   test('scrolls the groups while the header and the rings stay put', async ({
     context,
@@ -402,14 +659,41 @@ test.describe('screenshots of the Month span', () => {
           );
         }
         await page.screenshot({ path: path.join(SHOTS, `month-${width}-${theme}.png`) });
-        if (width === 1280) {
-          await inpageList(page)
-            .locator('.wr-pinned [data-group="done"]')
-            .getByRole('button')
-            .first()
-            .click();
-          await page.screenshot({ path: path.join(SHOTS, `month-${width}-${theme}-done.png`) });
+      });
+    }
+  }
+
+  for (const height of [800, 500]) {
+    for (const theme of ['light', 'dark'] as const) {
+      test(`with Done open at 1280x${height}, ${theme}`, async ({ context, page, background }) => {
+        await open(context, page, background, {
+          width: 1280,
+          height,
+          completed: true,
+          settings: { ...MONTH, theme, hiddenCourseIds: ['102'] },
+        });
+        if (theme === 'dark') {
+          await page.evaluate(() =>
+            document.querySelector('.fixture-widget-app')?.setAttribute('data-fixture-dark', ''),
+          );
         }
+        const done = inpageList(page).locator('.wr-pinned [data-group="done"]');
+        await toggleOf(done).click();
+        await expect(done.locator('[data-row-key]').first()).toBeVisible();
+        const card = inpageList(page).locator('.wr');
+        await card.evaluate((element) => {
+          element.scrollTop = 0;
+        });
+        await card.screenshot({
+          path: path.join(SHOTS, `month-1280x${height}-${theme}-done.png`),
+        });
+        // A low card scrolls as a whole: its end shows the bottom section.
+        await card.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+        await card.screenshot({
+          path: path.join(SHOTS, `month-1280x${height}-${theme}-done-end.png`),
+        });
       });
     }
   }
