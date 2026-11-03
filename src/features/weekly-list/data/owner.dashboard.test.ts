@@ -955,6 +955,9 @@ it('drops a first load when the cookie changed during the load and loads again f
       vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('changed-during-load');
     return profile;
   };
+  await h.owner.getState(PANEL);
+  await h.owner.settled();
+  await vi.advanceTimersByTimeAsync(60_001);
   await loadReady(h);
   const confirmed = (await sessionCacheItem.getValue())?.userCheck?.fingerprints ?? [];
   // Only a round that read the new cookie before its own requests can confirm it.

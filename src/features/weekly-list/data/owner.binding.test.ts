@@ -478,6 +478,30 @@ describe('queued writes go through the cookie check just before they go out', ()
 });
 
 describe('a surface that reads before a round finishes', () => {
+  it('bounds rounds when every profile reply renews the cookie', async () => {
+    const h = await createHarness();
+    vi.mocked(h.deps.sessionFingerprint).mockImplementation(async () =>
+      String(h.canvas.callsOf('getProfile').length),
+    );
+    const marker = h.deps.store.changeMarker;
+    const save = marker.setValue.bind(marker);
+    let notices = 0;
+    vi.spyOn(marker, 'setValue').mockImplementation(async (value) => {
+      await save(value);
+      notices += 1;
+      if (notices < 20) await h.owner.getState(PANEL);
+    });
+    try {
+      await h.owner.getState(PANEL);
+      await h.owner.settled();
+      await vi.advanceTimersByTimeAsync(59_000);
+      await h.owner.settled();
+      expect(h.canvas.callsOf('getProfile')).toHaveLength(1);
+    } finally {
+      vi.mocked(marker.setValue).mockRestore();
+    }
+  });
+
   it('loads after a cookie change discards the first session', async () => {
     const h = await createHarness();
     const release = h.canvas.hold('getProfile');
@@ -493,6 +517,8 @@ describe('a surface that reads before a round finishes', () => {
       await vi.advanceTimersByTimeAsync(0);
       vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
       release();
+      await h.owner.settled();
+      await vi.advanceTimersByTimeAsync(60_001);
       await h.owner.settled();
       expect(lastKind).toBe('ready');
     } finally {
@@ -533,22 +559,106 @@ describe('a surface that reads before a round finishes', () => {
     if (state.kind === 'ready') expect(state.refreshing).toBe(false);
   });
 
-  it('loads a failed shown span after Retry succeeds', async () => {
+  async function failedPrefetch() {
     const h = await loaded();
+    await h.owner.getState(PANEL);
+    await h.owner.settled();
+    h.canvas.resetCalls();
+    h.canvas.fail('listPlannerItems', canvasError('network'), { times: 1 });
+    await h.owner.getState({ ...PANEL, spanOffset: 1 });
+    await h.owner.settled();
+    const failedRange = h.canvas.callsOf('listPlannerItems')[0]?.[0];
+    h.canvas.resetCalls();
+    return { ...h, failedRange };
+  }
+
+  it('clears a failed prefetch on Retry before the round succeeds', async () => {
+    const h = await failedPrefetch();
+    const release = h.canvas.hold('listPlannerItems');
+    try {
+      await h.owner.refresh('retry');
+      await vi.advanceTimersByTimeAsync(0);
+      h.canvas.resetCalls();
+      await h.owner.getState({ ...PANEL, spanOffset: 1 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.canvas.callsOf('listPlannerItems')).toContainEqual([h.failedRange]);
+    } finally {
+      release();
+      await h.owner.settled();
+    }
+  });
+
+  it('clears a failed prefetch after a good round', async () => {
+    const h = await failedPrefetch();
+    // A write starts a full round without Retry and without advancing the clock.
+    await h.owner.act({
+      kind: 'setDone',
+      key: `assignment:${IDS.assignments.bioQuiz3Today}`,
+      done: true,
+    });
+    await h.owner.settled();
+    h.canvas.resetCalls();
+    await h.owner.getState({ ...PANEL, spanOffset: 1 });
+    await h.owner.settled();
+    expect(h.canvas.callsOf('listPlannerItems')).toContainEqual([h.failedRange]);
+  });
+
+  it('retries a failed prefetch after its backoff expires', async () => {
+    const h = await failedPrefetch();
+    await h.owner.getState({ ...PANEL, spanOffset: 1 });
+    await h.owner.settled();
+    expect(h.canvas.callsOf('listPlannerItems')).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(60_001);
+    await h.owner.getState({ ...PANEL, spanOffset: 1 });
+    await h.owner.settled();
+    expect(h.canvas.callsOf('listPlannerItems')).toContainEqual([h.failedRange]);
+  });
+
+  it('backs off a stale shown span and refreshes it when the backoff ends', async () => {
+    const h = await loaded();
+    await loadReady(h, { ...PANEL, spanOffset: 3 });
+    await vi.advanceTimersByTimeAsync(61_000);
+    await h.owner.refresh('visible');
+    await h.owner.settled();
     h.canvas.fail('listPlannerItems', canvasError('network'), { times: 1 });
     await h.owner.getState({ ...PANEL, spanOffset: 3 });
     await h.owner.settled();
-    await h.owner.refresh('retry');
-    await h.owner.settled();
     h.canvas.resetCalls();
-
     await h.owner.getState({ ...PANEL, spanOffset: 3 });
     await h.owner.settled();
-
-    expect(h.canvas.callsOf('listPlannerItems').length).toBeGreaterThan(0);
+    expect(h.canvas.callsOf('listPlannerItems')).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(60_001);
     const state = await h.owner.getState({ ...PANEL, spanOffset: 3 });
     expect(state.kind).toBe('ready');
-    if (state.kind === 'ready') expect(state.refreshing).toBe(false);
+    if (state.kind === 'ready') expect(state.refreshing).toBe(true);
+    await h.owner.settled();
+    expect(h.canvas.callsOf('listPlannerItems').length).toBeGreaterThan(0);
+  });
+
+  it('ignores a failed prefetch from a released generation', async () => {
+    const h = await loaded();
+    await h.owner.getState(PANEL);
+    await h.owner.settled();
+    let oldRange: unknown;
+    const release = h.canvas.holdIf('listPlannerItems', (args) => {
+      oldRange ??= args[0];
+      return args[0] === oldRange;
+    });
+    h.canvas.failIf('listPlannerItems', (args) => args[0] === oldRange, canvasError('network'));
+    await h.owner.getState({ ...PANEL, spanOffset: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    signInOtherUser(h);
+    await h.owner.getState(PANEL);
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await h.owner.getState(PANEL)).kind).toBe('ready');
+    release();
+    await h.owner.settled();
+    h.canvas.resetCalls();
+    await h.owner.getState({ ...PANEL, spanOffset: 1 });
+    await h.owner.settled();
+    await h.owner.getState({ ...PANEL, spanOffset: 1 });
+    await h.owner.settled();
+    expect(h.canvas.callsOf('listPlannerItems')).toContainEqual([oldRange]);
   });
 
   it.each(['network', 'server', 'forbidden', 'rate_limited'] as const)(
