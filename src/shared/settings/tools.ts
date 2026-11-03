@@ -27,6 +27,8 @@ export interface ToolsSettings {
   fileViewer: boolean;
   fileViewerWidth: number;
   dashboardFixes: DashboardFixesSettings;
+  /** The expand rows of the one assignment view on the Grades page (decision 26). */
+  assignmentView: boolean;
 }
 
 export const DASHBOARD_FIX_KEYS = [
@@ -45,6 +47,7 @@ export const DEFAULT_TOOLS_SETTINGS: ToolsSettings = {
     courseWorkExtras: true,
     allCourseGrades: true,
   },
+  assignmentView: true,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -67,6 +70,10 @@ export function normalizeToolsSettings(stored: unknown): ToolsSettings {
       isRecord(stored) && typeof stored['fileViewer'] === 'boolean' ? stored['fileViewer'] : true,
     fileViewerWidth: normalizeWidth(isRecord(stored) ? stored['fileViewerWidth'] : undefined),
     dashboardFixes: fixes,
+    assignmentView:
+      isRecord(stored) && typeof stored['assignmentView'] === 'boolean'
+        ? stored['assignmentView']
+        : true,
   };
 }
 

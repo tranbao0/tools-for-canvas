@@ -112,6 +112,7 @@ describe('startDashboardFixes', () => {
       fileViewer: true,
       fileViewerWidth: 480,
       dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseWorkExtras: false },
+      assignmentView: true,
     });
     await vi.advanceTimersByTimeAsync(120);
     expect(document.querySelector('[data-wr-extra]')).toBeNull();

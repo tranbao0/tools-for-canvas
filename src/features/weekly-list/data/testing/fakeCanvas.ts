@@ -56,6 +56,12 @@ export interface FakeCanvas extends CanvasApi {
   failIf(method: FakeMethod, match: (args: unknown[]) => boolean, error: unknown): void;
   /** Sets the announcements that Canvas lists for a course, and returns by id. */
   setAnnouncements(courseId: string, topics: AnnouncementTopic[]): void;
+  /** Sets the two records that Canvas gives for the one assignment view. */
+  setAssignmentView(
+    courseId: string,
+    assignmentId: string,
+    records: { assignment: Record<string, unknown>; submission: Record<string, unknown> },
+  ): void;
   /** Forgets the recorded calls. */
   resetCalls(): void;
   /** Overrides that Canvas holds now, as `GET /api/v1/planner/overrides` lists them. */
@@ -100,6 +106,10 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
   const overrides = new Map<string, PlannerOverride>();
   const notes = new Map<string, PlannerNote | null>();
   const announcements = new Map<string, AnnouncementTopic[]>();
+  const assignmentViews = new Map<
+    string,
+    { assignment: Record<string, unknown>; submission: Record<string, unknown> }
+  >();
   let nextId = 90001;
 
   for (const item of scenario.plannerItems) {
@@ -208,6 +218,30 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
     guard?: RequestGuard,
   ): Omit<CanvasApi, 'origin' | 'withPriority' | 'withGuard'> {
     return {
+      getAssignmentRecord: (courseId, assignmentId) =>
+        call(
+          'getAssignmentRecord',
+          [courseId, assignmentId],
+          () => {
+            const records = assignmentViews.get(`${courseId}/${assignmentId}`);
+            if (records === undefined) throw canvasError('not_found', 404);
+            return records.assignment;
+          },
+          priority,
+          guard,
+        ),
+      getOwnSubmissionRecord: (courseId, assignmentId) =>
+        call(
+          'getOwnSubmissionRecord',
+          [courseId, assignmentId],
+          () => {
+            const records = assignmentViews.get(`${courseId}/${assignmentId}`);
+            if (records === undefined) throw canvasError('not_found', 404);
+            return records.submission;
+          },
+          priority,
+          guard,
+        ),
       getViewerFile: async () => {
         throw new Error('No file fixture');
       },
@@ -423,6 +457,9 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
     },
     setAnnouncements(courseId, topics) {
       announcements.set(courseId, topics);
+    },
+    setAssignmentView(courseId, assignmentId, records) {
+      assignmentViews.set(`${courseId}/${assignmentId}`, records);
     },
     resetCalls() {
       calls.length = 0;

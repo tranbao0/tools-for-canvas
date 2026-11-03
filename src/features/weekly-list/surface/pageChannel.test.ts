@@ -10,6 +10,7 @@ const COLORS_OFF: ToolsSettings = {
   fileViewer: true,
   fileViewerWidth: 480,
   dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
+  assignmentView: true,
 };
 
 /** A background that answers the page-context message, and a way to push a message to the page. */

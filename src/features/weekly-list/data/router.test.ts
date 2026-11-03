@@ -34,6 +34,10 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
     announcement: vi.fn(async () => ({ title: 'Hello', message: '<p>Hi</p>' })),
     announcements: vi.fn(async () => []),
     announcementFeed: vi.fn(async () => ({ status: 'unavailable', tab: 'tasks' })),
+    assignmentDetails: vi.fn(async () => ({
+      details: { assignment: { id: '8' } },
+      timeZone: 'UTC',
+    })),
     dispose: vi.fn(),
   } as unknown as DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi.fn> };
 }
@@ -144,6 +148,7 @@ describe('routeDataMessage', () => {
         fileViewer: true,
         fileViewerWidth: 480,
         dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
+        assignmentView: true,
       };
       await routeDataMessage(owner, { type: 'weekrow:save-tools', tools }, CONTENT_SCRIPT, host);
       expect(host.saveTools).toHaveBeenCalledWith(tools);
@@ -280,6 +285,46 @@ describe('routeDataMessage', () => {
       ['a'.repeat(64), 3],
       [undefined, 3],
     ]);
+  });
+
+  describe('the assignment details message', () => {
+    const DETAILS = { type: 'assignment:details', courseId: '12', assignmentId: '8' };
+
+    it('asks the owner for the saved Canvas page, with the tab of the sender', async () => {
+      await expect(routeDataMessage(owner, DETAILS, CONTENT_SCRIPT, host)).resolves.toMatchObject({
+        timeZone: 'UTC',
+      });
+      expect(owner.assignmentDetails).toHaveBeenCalledWith('12', '8', SAVED, 3);
+    });
+
+    it.each([
+      ['another Canvas host', OTHER_CANVAS],
+      ['a frame inside the saved Canvas', { ...CONTENT_SCRIPT, frameId: 5 }],
+      ['a sender with no tab', { url: CONTENT_SCRIPT.url }],
+      ['an extension page', EXTENSION_PAGE],
+    ])('refuses %s', async (_name, sender) => {
+      await expect(routeDataMessage(owner, DETAILS, sender, host)).rejects.toThrow();
+      expect(owner.assignmentDetails).not.toHaveBeenCalled();
+    });
+
+    it('refuses a page of the saved Canvas when another address is saved', async () => {
+      await expect(
+        routeDataMessage(owner, DETAILS, CONTENT_SCRIPT, fakeHost('https://other.instructure.com')),
+      ).rejects.toThrow();
+      expect(owner.assignmentDetails).not.toHaveBeenCalled();
+    });
+
+    it('is no message of the protocol when an id is not a Canvas id', () => {
+      for (const bad of ['../users/self', '1/2', '', 5, null, '1~2~3']) {
+        expect(
+          routeDataMessage(owner, { ...DETAILS, courseId: bad }, CONTENT_SCRIPT, host),
+        ).toBeNull();
+        expect(
+          routeDataMessage(owner, { ...DETAILS, assignmentId: bad }, CONTENT_SCRIPT, host),
+        ).toBeNull();
+      }
+      expect(owner.assignmentDetails).not.toHaveBeenCalled();
+    });
   });
 
   describe('the messages of the dashboard fixes', () => {

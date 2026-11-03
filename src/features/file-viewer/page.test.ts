@@ -124,6 +124,35 @@ describe('the page script', () => {
     expect(sessionRequests()).toBe(1);
   });
 
+  // The browser retargets a click in a shadow root to its host and happy-dom does not, so the
+  // retargeting itself is covered by clickedElement in model.test.ts and by the end-to-end tests.
+  describe('a link inside the open shadow root of a host', () => {
+    function clickInside(hostAttribute: string | null): void {
+      const host = document.createElement('div');
+      if (hostAttribute !== null) host.setAttribute(hostAttribute, '');
+      const root = host.attachShadow({ mode: 'open' });
+      root.innerHTML =
+        '<a id="inner" href="/courses/5/assignments/7/submissions/9?download=42">file</a>';
+      document.body.append(host);
+      const event = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        button: 0,
+      });
+      Object.defineProperty(event, 'isTrusted', { value: true });
+      root.getElementById('inner')!.dispatchEvent(event);
+    }
+
+    it('opens the pane when the host is a marked panel host', async () => {
+      prepare();
+      await startViewer();
+      clickInside('data-weekrow-panel');
+      await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
+      expect(sessionRequests()).toBe(1);
+    });
+  });
+
   it('stops the copy before it when it starts again, so one click acts once', async () => {
     prepare();
     await startViewer();

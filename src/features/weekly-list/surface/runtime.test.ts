@@ -32,6 +32,7 @@ const COLORS_OFF: ToolsSettings = {
   fileViewer: true,
   fileViewerWidth: 480,
   dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
+  assignmentView: true,
 };
 const DONE_INFO = { kind: 'done', count: 1 } as const;
 const ALL_COURSES = readyState().allCourses;

@@ -44,7 +44,15 @@ export function SettingsFields(props: {
 }) {
   const { settings, courses } = props;
   const [ids] = useState(() =>
-    newIds('set', ['span', 'courses', 'rings', 'theme', 'themeHelp', 'fileViewer']),
+    newIds('set', [
+      'span',
+      'courses',
+      'rings',
+      'theme',
+      'themeHelp',
+      'fileViewer',
+      'assignmentView',
+    ]),
   );
   const update = (patch: Partial<Settings>) => props.onChange({ ...settings, ...patch });
 
@@ -128,6 +136,24 @@ export function SettingsFields(props: {
       {props.tools && props.onToolsChange && (
         <>
           <FixesSettings tools={props.tools} level={props.level} onChange={props.onToolsChange} />
+          <section class="wr-setting">
+            <Heading level={props.level} class="wr-setting-name">
+              {t('settingAssignmentView')}
+            </Heading>
+            <p class="wr-setting-help">{t('assignmentViewHelp')}</p>
+            <ul class="wr-course-list">
+              <li>
+                <label for={ids['assignmentView']}>{t('settingAssignmentView')}</label>
+                <Switch
+                  id={ids['assignmentView']!}
+                  checked={props.tools.assignmentView}
+                  onChange={(checked) =>
+                    props.onToolsChange?.({ ...props.tools!, assignmentView: checked })
+                  }
+                />
+              </li>
+            </ul>
+          </section>
           <section class="wr-setting">
             <Heading level={props.level} class="wr-setting-name">
               File viewer

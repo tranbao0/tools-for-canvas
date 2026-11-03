@@ -69,6 +69,7 @@ describe('check-storage', () => {
       'chrome-mv3/viewer.js': 'void 0',
       'chrome-mv3/submission-frame.js': 'void 0',
       'chrome-mv3/dashboard.js': 'chrome.runtime.sendMessage(m)',
+      'chrome-mv3/assignment-view.js': 'chrome.runtime.sendMessage(m)',
     });
     const result = await runCheck(['--out-dir', dir, 'chrome-mv3']);
     assert.equal(result.code, 0, result.output);
@@ -82,6 +83,7 @@ describe('check-storage', () => {
       'firefox-mv3/viewer.js': 'void 0',
       'firefox-mv3/submission-frame.js': 'void 0',
       'firefox-mv3/dashboard.js': 'indexedDB.open("x")',
+      'firefox-mv3/assignment-view.js': 'void 0',
       'firefox-mv3/background.js': 'browser.storage.local.get(null)',
     });
     const result = await runCheck(['--out-dir', dir, 'firefox-mv3']);

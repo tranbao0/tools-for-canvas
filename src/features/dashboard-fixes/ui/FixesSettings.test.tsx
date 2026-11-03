@@ -69,6 +69,7 @@ describe('FixesSettings', () => {
         courseWorkExtras: false,
         allCourseGrades: true,
       },
+      assignmentView: true,
     });
 
     expect(switchOf('Course colors on Course work icons').checked).toBe(false);
@@ -87,6 +88,7 @@ describe('FixesSettings', () => {
       fileViewer: true,
       fileViewerWidth: 480,
       dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, [key]: false },
+      assignmentView: true,
     });
   });
 
@@ -100,6 +102,7 @@ describe('FixesSettings', () => {
         courseWorkExtras: false,
         allCourseGrades: false,
       },
+      assignmentView: true,
     };
     const { onChange } = setup(allOff);
 
@@ -109,6 +112,7 @@ describe('FixesSettings', () => {
       fileViewer: true,
       fileViewerWidth: 480,
       dashboardFixes: { ...allOff.dashboardFixes, [key]: true },
+      assignmentView: true,
     });
   });
 

@@ -16,6 +16,7 @@ const ALL_OFF: ToolsSettings = {
     courseWorkExtras: false,
     allCourseGrades: false,
   },
+  assignmentView: true,
 };
 
 describe('DEFAULT_TOOLS_SETTINGS', () => {
@@ -67,6 +68,7 @@ describe('normalizeToolsSettings', () => {
         courseWorkExtras: true,
         allCourseGrades: true,
       },
+      assignmentView: true,
     });
   });
 
@@ -75,6 +77,7 @@ describe('normalizeToolsSettings', () => {
       fileViewer: true,
       fileViewerWidth: 480,
       dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, allCourseGrades: false },
+      assignmentView: true,
     });
   });
 
@@ -149,4 +152,13 @@ it('normalizes the viewer switch and saved width', () => {
     fileViewerWidth: 480,
   });
   expect(normalizeToolsSettings({ fileViewerWidth: 9000 }).fileViewerWidth).toBe(1344);
+});
+
+it('turns the one assignment view on by default and keeps only a real boolean', () => {
+  expect(DEFAULT_TOOLS_SETTINGS.assignmentView).toBe(true);
+  expect(normalizeToolsSettings(undefined).assignmentView).toBe(true);
+  expect(normalizeToolsSettings({ assignmentView: false }).assignmentView).toBe(false);
+  expect(normalizeToolsSettings({ assignmentView: 'no' }).assignmentView).toBe(true);
+  expect(isToolsSettings({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: false })).toBe(true);
+  expect(isToolsSettings({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: 0 })).toBe(false);
 });

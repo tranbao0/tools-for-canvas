@@ -20,13 +20,26 @@ export const INPAGE_FILE = '/inpage.js';
 /** The fixes for the widget dashboard, which only a dashboard page needs (decision 22). */
 export const DASHBOARD_FILE = '/dashboard.js';
 
+/** The expand rows of the one assignment view, which only the Grades page needs (decision 26). */
+export const ASSIGNMENT_VIEW_FILE = '/assignment-view.js';
+
 /** The dashboard is the root path of Canvas. `/dashboard` serves the same page. */
 const DASHBOARD_PATH = /^\/(?:dashboard\/?)?$/;
 
-/** The page scripts for a tab: the list script, and the fixes script on the dashboard. */
-function pageScripts(url: string): (typeof INPAGE_FILE | typeof DASHBOARD_FILE)[] {
-  const dashboard = DASHBOARD_PATH.test(parseUrl(url)?.pathname ?? '');
-  return dashboard ? [INPAGE_FILE, DASHBOARD_FILE] : [INPAGE_FILE];
+/** The Grades page of the signed-in student. `/courses/:id/grades/:user` is another page. */
+const GRADES_PATH = /^\/courses\/\d+(?:~\d+)?\/grades\/?$/;
+
+type PageScript = typeof INPAGE_FILE | typeof DASHBOARD_FILE | typeof ASSIGNMENT_VIEW_FILE;
+
+/**
+ * The page scripts for a tab: the list script, the fixes script on the dashboard, and the
+ * assignment view script on the Grades page while its switch is on.
+ */
+function pageScripts(url: string, assignmentView: boolean): PageScript[] {
+  const path = parseUrl(url)?.pathname ?? '';
+  if (DASHBOARD_PATH.test(path)) return [INPAGE_FILE, DASHBOARD_FILE];
+  if (assignmentView && GRADES_PATH.test(path)) return [INPAGE_FILE, ASSIGNMENT_VIEW_FILE];
+  return [INPAGE_FILE];
 }
 
 /** The tabs the detector runs in. The host permission lets `tabs.query` see their URLs. */
@@ -51,12 +64,13 @@ export async function injectInpage(
   if (tab.url === undefined || parseUrl(tab.url)?.origin !== origin) {
     throw new Error('The tab no longer shows the page that was reported');
   }
+  const tools = await toolsSettingsItem.getValue();
   await browser.scripting.executeScript({
     target:
       documentId === undefined ? { tabId, frameIds: [0] } : { tabId, documentIds: [documentId] },
     files: [
-      ...pageScripts(tab.url),
-      ...((await toolsSettingsItem.getValue()).fileViewer ? (['/viewer.js'] as const) : []),
+      ...pageScripts(tab.url, tools.assignmentView),
+      ...(tools.fileViewer ? (['/viewer.js'] as const) : []),
     ],
   });
 }
