@@ -129,9 +129,9 @@
 }
 
 /*
- * The list has a height limit, in a card and in the right column of the classic dashboard: the
- * window height minus 48px, at most 760px and at least 420px. A list with less content is as tall
- * as its content. The header and the rings stay at the top, and
+ * The list has a fixed height, in a card and in the right column of the classic dashboard: the
+ * window height minus 48px, at most 760px and at least 420px, whatever the length of the list, so
+ * the card keeps its size from span to span. The header and the rings stay at the top, and
  * the groups scroll in .wr-scroll. A view without that region, such as the settings, scrolls the
  * whole card.
  */
@@ -139,7 +139,7 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  max-height: max(420px, min(100vh - 48px, 760px));
+  height: max(420px, min(100vh - 48px, 760px));
   overflow: hidden auto;
 }
 
@@ -151,6 +151,9 @@
   flex: 1 1 auto;
   /* In a low window the list keeps room for about one row, and the whole card scrolls instead. */
   min-height: 128px;
+  /* The scroll bar sits in the side padding of the card, so it never covers the day counts. */
+  margin-inline-end: calc(4px - var(--wr-pad-x));
+  padding-inline-end: calc(var(--wr-pad-x) - 4px);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -168,6 +171,7 @@
 /* The minimized list: one header row high, with the look of a widget card. */
 .wr[data-surface='inpage'][data-minimized],
 :host([data-panel]) .wr[data-surface='inpage'][data-minimized] {
+  height: auto;
   padding: 0;
   overflow: hidden;
 }

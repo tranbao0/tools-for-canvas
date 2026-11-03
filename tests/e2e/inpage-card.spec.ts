@@ -176,7 +176,7 @@ test.describe('the full list in the card', () => {
     expect((await cardBox(page)).card.height).toBeCloseTo(420, 0);
   });
 
-  test('is as tall as its content when the content is short', async ({
+  test('keeps its fixed height when the content is short', async ({
     context,
     page,
     background,
@@ -187,9 +187,8 @@ test.describe('the full list in the card', () => {
       height: 1000,
     });
     const card = await cardBox(page);
-    expect(card.card.height).toBeLessThan(limit(1000) - 20);
-    // No empty space: the region holds exactly its content.
-    expect(Math.abs(card.scroll.height - card.scroll.client)).toBeLessThanOrEqual(1);
+    // The card keeps its size from span to span, so a short list leaves room at the bottom.
+    expect(card.card.height).toBeCloseTo(limit(1000), 0);
   });
 
   test('keeps the scroll position over the settings, and starts a new span at the top', async ({
