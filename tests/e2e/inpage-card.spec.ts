@@ -590,8 +590,13 @@ test.describe('the full list in the card', () => {
       filler.style.height = '3000px';
       document.getElementById('content')?.append(filler);
     });
-    const pageTop = async () =>
-      (await cardBox(page)).card.top + (await page.evaluate(() => window.scrollY));
+    // One read of both values: a widget that grows between two reads would move scrollY alone.
+    const pageTop = () =>
+      page.evaluate(() => {
+        const root = document.querySelector('#weekrow-inpage > weekrow-list')?.shadowRoot;
+        const card = root?.querySelector('.wr') as HTMLElement;
+        return card.getBoundingClientRect().top + window.scrollY;
+      });
     const before = await pageTop();
     await page.evaluate(() => window.scrollTo(0, 1500));
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(1000);
