@@ -20,6 +20,7 @@ import {
   findWidgetGrid,
   findCourseWorkSlot,
   inEditMode,
+  type CourseWorkSlot,
   REPLACED_ATTRIBUTE,
   findDashboardPanel,
   type WidgetGrid,
@@ -37,7 +38,8 @@ export interface LayoutOptions {
    * The page is the widget dashboard. The card stays hidden until the slot settles, a grid
    * without a slot exists, or `GRID_WAIT_MS` pass. The slot or the grid decides the position and
    * the mode, and the fallback of the content column differs from them, so a card placed before
-   * they arrive would jump.
+   * they arrive would jump. A slot that first shows up unsettled after this wait has its own wait
+   * of the same length.
    */
   waitForGrid?: boolean;
 }
@@ -85,15 +87,11 @@ export function claimDashboardLayout(
 ): () => void {
   const body = doc.body;
   const view = doc.defaultView ?? window;
-  let waiting = options.waitForGrid === true;
+  let waiting = false;
+  /** The wait ran out while the slot was still unsettled: the slot is used as it stands. */
+  let waitExpired = false;
   let stopped = false;
-  let deadline: number | undefined = waiting
-    ? view.setTimeout(() => {
-        deadline = undefined;
-        waiting = false;
-        schedule(true);
-      }, GRID_WAIT_MS)
-    : undefined;
+  let deadline: number | undefined;
   let frame: number | undefined;
   /** A pass that a size change asked for measures again, even when no anchor changed. */
   let forced = false;
@@ -102,8 +100,8 @@ export function claimDashboardLayout(
   const positions = new Map<string, number>();
   let scrollRoot: ShadowRoot | null = null;
   let detached = false;
+  /** The height of the slot widget, measured once its data settled. */
   let slotHeight: number | null = null;
-  let slotUsed = false;
 
   function giveWidgetsBack(except?: HTMLElement): void {
     for (const wrapper of doc.querySelectorAll<HTMLElement>(`[${REPLACED_ATTRIBUTE}]`)) {
@@ -163,15 +161,28 @@ export function claimDashboardLayout(
     return content ? contentColumnRight(content) : panel.getBoundingClientRect().right;
   }
 
-  /** Places the card beside the tab panel or in the flow above it. */
-  function arrangeWidget(grid: WidgetGrid | null, viewportWidth: number): void {
-    const slot = findCourseWorkSlot(doc);
-    if (slot?.wrapper.parentElement) {
+  /** Hides the widget the card replaces, and marks it. Writes only what is missing. */
+  function claim(slot: CourseWorkSlot): void {
+    if (!slot.wrapper.hasAttribute(REPLACED_ATTRIBUTE))
       slot.wrapper.setAttribute(REPLACED_ATTRIBUTE, '');
-      setInlineStyles(slot.wrapper, { visibility: 'hidden' });
-      if (!slotUsed && slot.loaded)
-        slotHeight = Math.max(420, slot.widget.getBoundingClientRect().height);
-      slotUsed = true;
+    setInlineStyles(slot.wrapper, { visibility: 'hidden' });
+  }
+
+  /** The border-box height of the widget, read even when its wrapper is not displayed. */
+  function measureSlot(slot: CourseWorkSlot): number {
+    slot.wrapper.style.removeProperty('display');
+    return Math.max(420, slot.widget.getBoundingClientRect().height);
+  }
+
+  /** Places the card in the slot, beside the tab panel, or in the flow above it. */
+  function arrangeWidget(
+    grid: WidgetGrid | null,
+    slot: CourseWorkSlot | null,
+    viewportWidth: number,
+  ): void {
+    if (slot?.wrapper.parentElement) {
+      claim(slot);
+      if (slotHeight === null && slot.loaded) slotHeight = measureSlot(slot);
       const margin = view.getComputedStyle(slot.widget).margin;
       setInlineStyles(slot.wrapper, { display: 'none' });
       moveContainer(container, slot.wrapper.parentElement, slot.wrapper);
@@ -220,10 +231,20 @@ export function claimDashboardLayout(
     setPanelMode(container, 'area');
   }
 
-  function arrange(grid: WidgetGrid | null): void {
-    keepCardScroll(container, () => arrangeWidget(grid, doc.documentElement.clientWidth));
+  function arrange(grid: WidgetGrid | null, slot: CourseWorkSlot | null): void {
+    keepCardScroll(container, () => arrangeWidget(grid, slot, doc.documentElement.clientWidth));
     trackScroll();
     restoreScroll();
+  }
+
+  function startWait(): void {
+    waiting = true;
+    deadline ??= view.setTimeout(() => {
+      deadline = undefined;
+      waiting = false;
+      waitExpired = true;
+      schedule(true);
+    }, GRID_WAIT_MS);
   }
 
   function endWait(): void {
@@ -235,30 +256,33 @@ export function claimDashboardLayout(
   function place(force: boolean): void {
     const grid = findWidgetGrid(doc);
     const slot = findCourseWorkSlot(doc);
-    if (inEditMode(doc)) {
+    if (slot === null) waitExpired = false;
+    // The student drags the widget in this mode, so the widget comes back and the card steps aside.
+    // Without a slot the card sits beside the grid or above it, where it is in nobody's way.
+    if (slot !== null && inEditMode(doc)) {
       giveWidgetsBack();
       setContainerStyle(container, 'display:none');
+      detached = true;
       applied = [];
       return;
     }
     giveWidgetsBack(slot?.wrapper);
-    if (slot !== null) {
-      slot.wrapper.setAttribute(REPLACED_ATTRIBUTE, '');
-      setInlineStyles(slot.wrapper, { visibility: 'hidden' });
-    }
-    if (slot?.loaded || (grid && slot === null)) endWait();
-    // The fixes remove their extra section after the wrapper is claimed.
-    if (slot?.widget.querySelector('[data-wr-extra]')) {
-      setContainerStyle(container, 'display:none');
-      return;
-    }
+    if (slot !== null) claim(slot);
+    // Before the first measurement the widget must be settled, and the fixes must have removed
+    // their extras from it after it was claimed, or the card would take the height of both.
+    const unsettled =
+      slot !== null &&
+      slotHeight === null &&
+      (!slot.loaded || slot.widget.querySelector('[data-wr-extra]') !== null);
+    if (unsettled && !waiting && !waitExpired) startWait();
+    else if (waiting && !unsettled && (slot !== null || grid !== null)) endWait();
     if (waiting) {
       setContainerStyle(container, 'display:none');
       return;
     }
-    if (!force && sameKey(keyOf(grid), applied)) return;
-    arrange(grid);
-    applied = keyOf(grid);
+    if (!force && sameKey(keyOf(grid, slot), applied)) return;
+    arrange(grid, slot);
+    applied = keyOf(grid, slot);
   }
 
   /**
@@ -266,12 +290,12 @@ export function claimDashboardLayout(
    * card again even when the pass is not forced. In the flow, the element after the card is part
    * of it, so a card that the page pushed away from its panel goes back.
    */
-  function keyOf(grid: WidgetGrid | null): unknown[] {
+  function keyOf(grid: WidgetGrid | null, slot: CourseWorkSlot | null): unknown[] {
     return [
       grid?.columns,
-      findCourseWorkSlot(doc)?.wrapper,
-      findCourseWorkSlot(doc)?.widget,
-      findCourseWorkSlot(doc)?.loaded,
+      slot?.wrapper,
+      slot?.widget,
+      slot?.loaded,
       inEditMode(doc),
       ...(grid?.firstCards ?? []),
       findDashboardPanel(doc),
@@ -298,6 +322,9 @@ export function claimDashboardLayout(
       records.some((record) => {
         if (record.target === container) return record.type === 'childList';
         if (container.contains(record.target)) return false;
+        // The nodes of the dashboard fixes redraw on their own and never move a Canvas box.
+        if (record.target instanceof Element && record.target.closest('[data-wr-own]'))
+          return false;
         if (record.type === 'attributes')
           return record.target === body || !!doc.getElementById('content')?.contains(record.target);
         return (
@@ -359,6 +386,7 @@ export function claimDashboardLayout(
   }
 
   body.setAttribute(LAYOUT_ATTRIBUTE, '');
+  if (options.waitForGrid === true) startWait();
   observer.observe(doc.documentElement, {
     childList: true,
     subtree: true,

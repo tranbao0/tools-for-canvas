@@ -290,6 +290,8 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
       expect(card.y).toBeCloseTo(original.y, 0);
       expect(card.width).toBeCloseTo(original.width, 0);
       expect(card.height).toBeCloseTo(Math.max(420, original.height), 0);
+      // Canvas boxes keep their size: the cards of the column the slot is not in stay as they were.
+      expect(withList.firstCards.slice(1)).toEqual(without.firstCards.slice(1));
       expect(withList.header).toEqual(without.header);
       await page.screenshot({
         path: path.join(SHOTS, `top-${width}.png`),

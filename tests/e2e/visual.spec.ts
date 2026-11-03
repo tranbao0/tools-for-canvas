@@ -308,10 +308,14 @@ for (const shot of LAYOUT_SHOTS) {
         await scrollPage(page, 1500);
         await page.screenshot({ path: `${prefix}-scrolled.png` });
       }
-      // In edit mode a card that would sit in a column hides, and a card beside the grid stays.
-      const hidden = shot.edit === true && shot.width < 1400;
-      if (hidden) expect(await panelMode(page)).toBeNull();
-      else expect(await panelMode(page)).not.toBeNull();
+      if (shot.fixture === 'dashboard-widgets') {
+        // The card takes the Course work slot, and in edit mode it hides so the student can drag
+        // the widget. The mode stays on the host, and the container is not displayed.
+        expect(await panelMode(page)).toBe('slot');
+        expect(await list.isVisible()).toBe(shot.edit !== true);
+      } else {
+        expect(await panelMode(page)).not.toBeNull();
+      }
     });
   }
 }

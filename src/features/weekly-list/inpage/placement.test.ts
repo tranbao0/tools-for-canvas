@@ -22,6 +22,26 @@ describe('inline styles of the layout', () => {
     expect(element.hasAttribute(STYLED_ATTRIBUTE)).toBe(false);
   });
 
+  it('makes no mutation record when a pass sets the same values again', async () => {
+    const element = document.createElement('div');
+    document.body.append(element);
+    setInlineStyles(element, { visibility: 'hidden' });
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((list) => records.push(...list));
+    observer.observe(element, { attributes: true });
+
+    setInlineStyles(element, { visibility: 'hidden' });
+    await Promise.resolve();
+    expect(records).toHaveLength(0);
+
+    element.style.setProperty('visibility', 'visible');
+    setInlineStyles(element, { visibility: 'hidden' });
+    expect(element.style.getPropertyValue('visibility')).toBe('hidden');
+    observer.disconnect();
+    clearInlineStyles(element);
+    expect(element.hasAttribute('style')).toBe(false);
+  });
+
   it('leaves no style attribute on an element that had none', () => {
     const element = document.createElement('div');
 
