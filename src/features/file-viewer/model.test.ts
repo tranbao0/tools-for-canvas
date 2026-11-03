@@ -284,6 +284,10 @@ describe('comment attachment routes', () => {
   it('keeps only the text of a link as its name', () => {
     expect(linkName('  Teacher\n feedback.pdf\u0000 ')).toBe('Teacher feedback.pdf');
     expect(linkName('a'.repeat(300))).toHaveLength(200);
+    // A space at the cut goes, so the name is still clean and the channel takes it.
+    const cut = linkName(`${'a'.repeat(199)} ${'b'.repeat(50)}`);
+    expect(cut).toBe('a'.repeat(199));
+    expect(linkName(cut ?? null)).toBe(cut);
     expect(linkName(' \n ')).toBeUndefined();
     expect(linkName(null)).toBeUndefined();
   });

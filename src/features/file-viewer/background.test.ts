@@ -88,6 +88,7 @@ describe('viewer router', () => {
     'viewer:permission',
     'viewer:session',
     'viewer:fetch-allowed',
+    'viewer:confirm-cookie',
     'viewer:inject-frames',
   ])('rejects an untrusted sender for %s', async (type) => {
     const { host, sender, api } = setup();
@@ -106,6 +107,23 @@ describe('viewer router', () => {
     );
     expect(read).toHaveBeenNthCalledWith(1, 'https://school.edu', 7, expect.any(Function));
     expect(read).toHaveBeenNthCalledWith(2, 'https://school.edu', 7, expect.any(Function));
+  });
+  it('confirms the cookie once for a comment attachment, as for a file record', async () => {
+    const { host, pane } = setup();
+    // The first check refuses because the new cookie is not confirmed yet.
+    vi.mocked(host.mayFetch).mockResolvedValueOnce(false);
+    vi.mocked(host.confirm).mockResolvedValue(true);
+    expect(await routeViewerMessage({ type: 'viewer:confirm-cookie' }, pane, host)).toBe(true);
+    expect(host.confirm).toHaveBeenCalledTimes(1);
+    expect(host.mayFetch).toHaveBeenCalledTimes(2);
+    // A check that does not confirm the cookie ends in a refusal, with no third try.
+    vi.mocked(host.mayFetch).mockReset();
+    vi.mocked(host.mayFetch).mockResolvedValue(false);
+    vi.mocked(host.confirm).mockResolvedValue(false);
+    await expect(routeViewerMessage({ type: 'viewer:confirm-cookie' }, pane, host)).rejects.toThrow(
+      'cookie is not confirmed',
+    );
+    expect(host.mayFetch).toHaveBeenCalledTimes(1);
   });
   it('refuses a read when the cookie rules refuse it', async () => {
     const { host, pane, api } = setup();
@@ -456,6 +474,29 @@ describe('saved positions', () => {
     await expect(
       routeViewerMessage({ type: 'viewer:position-get', fileId: '1' }, pane, host),
     ).rejects.toThrow('cookie is not confirmed');
+  });
+
+  it('saves the position of a comment attachment under its route', async () => {
+    const { host, pane } = setup();
+    await clearViewerTabs();
+    const fileId = '/courses/2/assignments/3/submissions/4?comment_id=5&download=6';
+    const { token } = (await routeViewerMessage(
+      { type: 'viewer:position-get', fileId },
+      pane,
+      host,
+    )) as { token: string };
+    await routeViewerMessage(
+      { type: 'viewer:position-set', fileId, page: 3, zoom: 'fit-width', token },
+      pane,
+      host,
+    );
+    expect(
+      await routeViewerMessage({ type: 'viewer:position-get', fileId }, pane, host),
+    ).toMatchObject({ position: { page: 3, zoom: 'fit-width' } });
+    expect(await storedPositionKeys()).toHaveLength(1);
+    await expect(
+      routeViewerMessage({ type: 'viewer:position-get', fileId: `${fileId}&x=1` }, pane, host),
+    ).rejects.toThrow('Invalid viewer position');
   });
 
   it('writes one small entry for each save', async () => {

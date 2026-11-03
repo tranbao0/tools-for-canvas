@@ -48,6 +48,22 @@ describe('loading a comment attachment', () => {
     });
     expect(Number.isNaN(file.size)).toBe(true);
   });
+  it('reads only the first bytes of a long file', async () => {
+    let pulled = 0;
+    const long = vi.fn(async () => {
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulled += 1;
+          if (pulled > 5000) controller.close();
+          else controller.enqueue(text('%PDF-1.7 '));
+        },
+      });
+      return new Response(body, { status: 200, headers: { 'content-type': 'application/pdf' } });
+    });
+    await load(long);
+    // A read of all 5000 chunks, or of a file of megabytes, would pull far more.
+    expect(pulled).toBeLessThan(10);
+  });
   it('uses a generic name when the page gave none', async () => {
     const file = await loadCommentFile({
       tabId: TAB,

@@ -3158,3 +3158,10 @@ No verified public close API is available for that overlay, so the extension doe
    Click tests cover the files, folder and search views.
    Tests prove that `replaceState` with a synthetic `popstate`, `pushState` with `history.back()`, a fragment change and a direct load open no pane, and that a history move leaves the pane open or closed as it was.
    A comment attachment test serves the file only through the submission route and checks that the PDF shows in the pane.
+
+### Ticket F2c: Follow-up to Ticket F2b
+
+1. The name of a comment attachment is cut to 200 characters before the last trim, so a space at the cut goes and the channel takes the name.
+2. A PDF of a comment attachment saves its page and zoom under its route id, with the same strict pattern as the tabs.
+3. The pane asks the background to confirm the cookie (`viewer:confirm-cookie`) before it reads a comment attachment, because no read of the files API comes first.
+   The background runs the cold-start check and one more try, as it does for `viewer:file`.
