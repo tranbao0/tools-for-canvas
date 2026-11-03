@@ -288,8 +288,8 @@ export interface DataOwner {
   /**
    * The details of one assignment for the one assignment view (decision 26), read live under the
    * rules of `viewerRead`: a tab in the cookie store of the requests, the saved Canvas, and a
-   * cookie that is confirmed for the student of the cache. Both requests run inside one binding,
-   * so a reply never crosses students. Rejects when any of that fails.
+   * cookie that is confirmed for the student of the cache. Both requests run inside one read
+   * under those rules, so a reply never crosses students. Rejects when any of that fails.
    */
   assignmentDetails(
     courseId: string,
