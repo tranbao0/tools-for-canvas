@@ -664,6 +664,43 @@ describe('a surface that reads before a round finishes', () => {
     expect(h.canvas.callsOf('listPlannerOverrides').length).toBeGreaterThan(0);
   });
 
+  it('tells the surfaces when a job outlives the limit check of its 403', async () => {
+    const h = await loaded();
+    const request = { ...PANEL, spanOffset: 6 };
+    const far = await spanOf(h, 6);
+    // The shown job loads the gap between the planner range and the span in two chunks: the
+    // first gets a 403, and the second outlives the limit check round.
+    const gapStart = new Date(Date.parse(far.start) - 28 * 86_400_000).toISOString();
+    let first = true;
+    const inSpan = ([range]: unknown[]) => {
+      const { start } = range as typeof far;
+      return start >= gapStart && start < far.start;
+    };
+    h.canvas.failIf(
+      'listPlannerItems',
+      (args) => {
+        if (!inSpan(args) || !first) return false;
+        first = false;
+        return true;
+      },
+      canvasError('forbidden', 403),
+    );
+    const release = h.canvas.holdIf('listPlannerItems', (args) => inSpan(args) && !first);
+    let last: Awaited<ReturnType<typeof h.owner.getState>> | null = null;
+    const setMarker = h.deps.store.changeMarker.setValue.bind(h.deps.store.changeMarker);
+    vi.spyOn(h.deps.store.changeMarker, 'setValue').mockImplementation(async (value) => {
+      await setMarker(value);
+      last = await h.owner.getState(request);
+    });
+    await h.owner.getState(request);
+    for (let turn = 0; turn < 20; turn++) await vi.advanceTimersByTimeAsync(0);
+    expect(h.canvas.callsOf('listPlannerOverrides').length).toBeGreaterThan(0);
+    release();
+    await h.owner.settled();
+    expect(last).not.toBeNull();
+    expect(last).toMatchObject({ kind: 'ready', refreshing: false });
+  });
+
   it('checks the planner limit once a minute and then shows a 403 as a failure', async () => {
     const h = await loaded();
     await loadReady(h, { ...PANEL, spanOffset: 3 });

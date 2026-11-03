@@ -340,7 +340,7 @@ interface PlannerJob {
   priority: RequestPriority;
   /** A surface shows the week, so the list shows the refresh marker until the job ends. */
   shown: boolean;
-  /** A 403 waits for the planner limit check, whose round end tells the surfaces. */
+  /** A 403 waits for the planner limit check. While the check runs, its round end tells the surfaces. */
   awaitsCheck?: boolean;
   /** `planner` until every chunk is in the cache, then `details`. */
   phase: 'planner' | 'details';
@@ -1247,7 +1247,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       runJob(job, api, context, reloadDetails)
         .then(async (dropped) => {
           // A discarded chunk becomes available for another request only after the job leaves.
-          if (jobs.delete(job) && (dropped || (job.shown && !job.awaitsCheck))) await bump();
+          if (
+            jobs.delete(job) &&
+            (dropped || (job.shown && (!job.awaitsCheck || !limitCheckPending)))
+          )
+            await bump();
         })
         .finally(() => {
           jobs.delete(job);
