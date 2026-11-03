@@ -49,14 +49,25 @@ export function fileTarget(href: string, origin: string, moduleId?: string): Fil
     return null;
   }
   if (url.origin !== origin) return null;
+  const preview = url.searchParams.get('preview');
+  if (
+    /^\/courses\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/files$/.test(url.pathname) &&
+    url.searchParams.getAll('preview').length === 1 &&
+    preview !== null &&
+    ID.test(preview)
+  )
+    return { fileId: preview };
   const file = FILE.exec(url.pathname);
   if (file?.[1] && ID.test(file[1])) return { fileId: file[1] };
   // Canvas links a submission attachment as `/courses/:id/assignments/:id/submissions/:id?download=:file`.
-  // A comment attachment adds `comment_id`. It is a file of someone else, so it keeps its action.
+  // Comment attachments use the same route with a numeric comment id.
   const download = url.searchParams.get('download');
   if (
     download !== null &&
-    !url.searchParams.has('comment_id') &&
+    (url.searchParams.getAll('comment_id').length === 0 ||
+      (url.searchParams.getAll('comment_id').length === 1 &&
+        ID.test(url.searchParams.get('comment_id')!))) &&
+    url.searchParams.getAll('download').length === 1 &&
     ID.test(download) &&
     /^\/courses\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/assignments\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/(?:submissions\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?|anonymous_submissions\/[A-Za-z0-9]+)$/.test(
       url.pathname,
@@ -169,7 +180,7 @@ export function isSubmissionPage(pagePath: string): boolean {
  * is not one of the student's own files. Canvas draws that list as `table.file-upload-submission-table`
  * in the frame `#preview_frame`, with the links `a.file-upload-submission-info__link`. The
  * "Preview" button of the same row (`a.modal_preview_link`) opens the annotated copy, so it keeps
- * its action. Comment attachments are not in this frame, and they never match.
+ * its action. Comment attachments normally appear in the top frame.
  */
 export function frameFileTarget(
   link: Element,

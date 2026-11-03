@@ -436,3 +436,62 @@ test('a link with sharded course and file ids opens the file in the pane', async
   await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Shard notes.pdf');
   expect(canvas.requests.some((request) => request.path === '/api/v1/files/45~678')).toBe(true);
 });
+
+for (const source of ['classic', 'grades', 'submission']) {
+  test(`takes ${source} file clicks before Canvas`, async ({ context, page, background }) => {
+    const path =
+      source === 'classic'
+        ? '/courses/101/files'
+        : source === 'grades'
+          ? '/courses/101/grades'
+          : '/courses/101/assignments/7/submissions/5501';
+    const body =
+      source === 'classic'
+        ? readFileSync('tests/fixtures/pages/classic-files.html', 'utf8')
+        : html.replace(
+            '/courses/101/files/42',
+            '/courses/101/assignments/7/submissions/5501?comment_id=8&download=42',
+          );
+    const { canvas } = await serveScenario(context, [
+      { path, body, contentType: 'text/html' },
+      pdfDownloadRoute,
+      {
+        path: '/api/v1/files/42',
+        body: {
+          id: '42',
+          display_name: 'Course notes.pdf',
+          filename: 'notes.pdf',
+          'content-type': 'application/pdf',
+          size: 10,
+          url: '/files/42/download',
+        },
+      },
+    ]);
+    await saveAddress(background, canvas.origin);
+    await page.goto(`${canvas.origin}${path}`);
+    await page.getByText(source === 'classic' ? 'Classic notes' : 'Read notes').click();
+    await expect(page.locator('#tools-file-viewer')).toBeVisible();
+    await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
+    await expect(page.locator('#native-preview')).toHaveCount(0);
+    await page.screenshot({ path: `test-results/f2-${source}.png` });
+    if (source === 'classic') {
+      await closePane(page);
+      await page.getByText('Preview route', { exact: true }).click();
+      await expect(page.locator('#tools-file-viewer')).toBeVisible();
+      await expect(page.locator('#native-preview')).toHaveCount(0);
+      await closePane(page);
+      await page.goto(`${canvas.origin}${path}?preview=42`);
+      await expect(page.locator('#tools-file-viewer')).toBeVisible();
+      await expect(page.locator('#native-preview')).toBeVisible();
+      await closePane(page);
+      await page.evaluate(() => {
+        history.pushState({}, '', location.pathname);
+        history.pushState({}, '', '?preview=42');
+        history.back();
+      });
+      await expect(page).toHaveURL(`${canvas.origin}${path}`);
+      await page.goForward();
+      await expect(page.locator('#tools-file-viewer')).toBeVisible();
+    }
+  });
+}

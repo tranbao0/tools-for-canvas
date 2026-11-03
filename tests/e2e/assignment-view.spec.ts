@@ -294,14 +294,15 @@ test('a submitted file opens in the file pane', async ({ context, page, backgrou
   expect(canvas.requests.some((request) => request.path.includes('download=501'))).toBe(false);
 });
 
-test('a comment attachment keeps its download', async ({ context, page, background }) => {
+test('a comment attachment opens in the file pane', async ({ context, page, background }) => {
   const canvas = await open(context, page, background);
   await expand(page, canvas, 'Essay');
   const link = region(page, 'Essay').getByRole('link', { name: 'feedback.pdf' });
   await expect(link).toHaveAttribute('href', /comment_id=201/);
   await link.click();
-  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
-  expect(canvas.requests.some((request) => request.path.includes('comment_id=201'))).toBe(true);
+  await expect(page.locator('#tools-file-viewer')).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe(GRADES);
+  expect(canvas.requests.some((request) => request.path.includes('comment_id=201'))).toBe(false);
 });
 
 test('the Canvas links and toggles of the row keep working', async ({

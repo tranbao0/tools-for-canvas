@@ -1,0 +1,17 @@
+<!doctype html><html><head><script>INST={environment:'production'};ENV={current_user_id:'5501'};</script></head><body>
+<h1>Files</h1>
+<a href="/courses/101/files?preview=42">Preview route</a><div class="ef-name-col"><a class="ef-name-col__link" href="/files/42/download?download=1&amp;download_frd=1" role="button">Classic notes</a></div>
+<a href="/files/42/download" download>Download</a>
+<script>
+function preview() {
+  document.querySelector('#native-preview')?.remove();
+  if (new URL(location.href).searchParams.has('preview')) {
+    const overlay = document.createElement('div'); overlay.id = 'native-preview'; overlay.textContent = 'Canvas preview'; document.body.append(overlay);
+  }
+}
+document.querySelector('.ef-name-col__link').addEventListener('click', event => {
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  event.preventDefault(); history.pushState({}, '', '?preview=42'); preview();
+});
+window.addEventListener('popstate', preview); preview();
+</script></body></html>
