@@ -15,7 +15,7 @@ const ID_PART = '[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?';
 // The submission of a comment attachment: a user id, or the anonymous id of an anonymous grading.
 const SUBMISSION_PART = `(?:submissions/${ID_PART}|anonymous_submissions/[A-Za-z0-9]{1,64})`;
 const SUBMISSION_ROUTE = new RegExp(
-  `^/courses/${ID_PART}/assignments/${ID_PART}/${SUBMISSION_PART}$`,
+  `^/courses/(${ID_PART})/assignments/(${ID_PART})/(${SUBMISSION_PART})$`,
 );
 /**
  * The address of a comment attachment as the pane keeps it: the submission route of the saved
@@ -80,15 +80,17 @@ export function fileTarget(href: string, origin: string, moduleId?: string): Fil
   // A comment attachment adds `comment_id`, and its tab id is that route (see `COMMENT_TAB`).
   const download = url.searchParams.get('download');
   const comments = url.searchParams.getAll('comment_id');
+  const route = SUBMISSION_ROUTE.exec(url.pathname);
   if (
     download !== null &&
     url.searchParams.getAll('download').length === 1 &&
     ID.test(download) &&
     comments.length <= 1 &&
-    SUBMISSION_ROUTE.test(url.pathname)
+    route !== null
   ) {
     if (comments.length === 0) return { fileId: download };
-    const tab = `${url.pathname}?comment_id=${comments[0]}&download=${download}`;
+    // The id is built from the checked parts, never from the address of the page.
+    const tab = `/courses/${route[1]}/assignments/${route[2]}/${route[3]}?comment_id=${comments[0]}&download=${download}`;
     if (COMMENT_TAB.test(tab)) return { fileId: tab };
   }
   const module =

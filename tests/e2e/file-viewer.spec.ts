@@ -636,6 +636,26 @@ test('a comment attachment opens in the pane through its submission route', asyn
   await page.screenshot({ path: 'test-results/f2b-comment-pdf.png' });
 });
 
+test('a comment attachment tab that comes back after a reload is read through its route again', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await openCommentPage(context, page, background);
+  await openFirstFile(page, 'Teacher feedback.pdf', undefined, 'main');
+  await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Teacher feedback.pdf');
+  const reads = () => canvas.requests.filter((r) => r.path.includes(COMMENT_QUERY)).length;
+  const before = reads();
+  await page.reload();
+  const frame = await pane(page);
+  // The page gives no link text after a reload, so the tab has the generic name.
+  await expect(frame.locator(FILE_NAME)).toHaveText('Comment attachment');
+  await expect(frame.locator('[data-part="pdf-page-count"]')).toHaveText(/3/);
+  await expect(frame.locator('[data-part="open-in-canvas"]')).toHaveCount(0);
+  expect(reads()).toBeGreaterThan(before);
+  expect(canvas.requests.some((request) => request.path.startsWith('/api/v1/files'))).toBe(false);
+});
+
 test('a comment attachment that does not load keeps a working Download button', async ({
   context,
   page,
