@@ -168,7 +168,21 @@ export function renderFixturePage(
   <title>${escapeText(page.title)}</title>
   <link rel="icon" href="data:,">
   <style>
-${readPagesFile('canvas-layout.css')}  </style>
+${readPagesFile('canvas-layout.css')}
+${
+  page.file === 'dashboard-widgets.html'
+    ? [
+        ['Regular', 400],
+        ['Bold', 700],
+      ]
+        .map(
+          ([name, weight]) =>
+            `@font-face { font-family: "Lato Extended"; font-weight: ${weight}; src: url(data:font/woff2;base64,${readFileSync(join(PAGES_DIR, 'fonts', `Lato-${name}.woff2`)).toString('base64')}) format("woff2"); }`,
+        )
+        .join('\n')
+    : ''
+}
+  </style>
   <script>
 ${GLOBALS_SCRIPT}
   </script>

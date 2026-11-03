@@ -155,14 +155,14 @@ export function announcementsFix(): Fix {
     context.again();
   }
 
-  /** The message takes the type size and the line height of the snippet that it replaces. */
+  /** The shadow host inherits the Canvas font and records the widget link type. */
   function matchBodyType(host: HTMLElement, found: AnnouncementItem): void {
-    let leaf: Element | null | undefined = found.snippet;
-    while (leaf?.firstElementChild) leaf = leaf.firstElementChild;
-    const style = leaf?.ownerDocument.defaultView?.getComputedStyle(leaf);
-    if (style === undefined) return;
-    host.style.setProperty('--wr-fs', style.fontSize);
-    host.style.setProperty('--wr-lh', style.lineHeight);
+    const view = host.ownerDocument.defaultView;
+    if (!view) return;
+    const link = view.getComputedStyle(found.link.firstElementChild ?? found.link);
+    host.style.setProperty('--wr-link-size', link.fontSize);
+    host.style.setProperty('--wr-link-line', link.lineHeight);
+    host.style.fontFamily = view.getComputedStyle(found.item).fontFamily;
   }
 
   /** Shows or removes the message of a native item, as the open set says. */
@@ -348,15 +348,29 @@ export function announcementsFix(): Fix {
     ]) {
       select.style.setProperty(name, native.getPropertyValue(name));
     }
+    // InstUI paints the field border on a wrapper around its input.
+    let box: HTMLElement = input;
+    while (
+      box.parentElement &&
+      box.parentElement !== widget.filterBlock &&
+      view.getComputedStyle(box).borderTopStyle === 'none'
+    )
+      box = box.parentElement;
+    const frame = view.getComputedStyle(box);
+    for (const name of ['height', 'border-radius', 'background-color']) {
+      select.style.setProperty(name, frame.getPropertyValue(name));
+    }
     // Longhands, because not every browser computes the border shorthands.
     for (const part of ['width', 'style', 'color']) {
-      select.style.setProperty(`border-${part}`, native.getPropertyValue(`border-top-${part}`));
+      select.style.setProperty(`border-${part}`, frame.getPropertyValue(`border-top-${part}`));
     }
     select.style.setProperty('--wr-option-ink', native.color);
     select.style.setProperty('--wr-option-background', native.backgroundColor);
     const text = field.querySelector('label');
     if (label !== null && text !== null) {
-      const own = view.getComputedStyle(label);
+      let leaf: Element = label;
+      while (leaf.firstElementChild) leaf = leaf.firstElementChild;
+      const own = view.getComputedStyle(leaf);
       for (const name of ['font-family', 'font-size', 'font-weight', 'line-height', 'color']) {
         text.style.setProperty(name, own.getPropertyValue(name));
       }
