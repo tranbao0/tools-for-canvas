@@ -79,13 +79,17 @@ describe('startAssignmentView', () => {
     expect(document.querySelector('[data-av-own]')).toBeNull();
   });
 
-  it.each(['/courses/12', '/courses/12/grades/42', '/grades', '/'])(
-    'does nothing on %s',
-    async (pathname) => {
-      await startAssignmentView(options(fakeChannel(), { pathname }));
-      expect(toggles()).toHaveLength(0);
-    },
-  );
+  it.each([
+    '/courses/12',
+    '/courses/12/grades/42',
+    '/courses/12/assignments/101/submissions',
+    '/courses/12/assignments/x',
+    '/grades',
+    '/',
+  ])('does nothing on %s', async (pathname) => {
+    await startAssignmentView(options(fakeChannel(), { pathname }));
+    expect(toggles()).toHaveLength(0);
+  });
 
   it('does nothing when the switch is off, and follows the switch in both directions', async () => {
     const channel = fakeChannel(ORIGIN, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
@@ -145,3 +149,19 @@ describe('startAssignmentView', () => {
     expect(remove).toHaveBeenCalledOnce();
   });
 });
+
+it.each(['/courses/12/assignments/101', '/courses/2~12/assignments/2~101/'])(
+  'parses the assignment page path %s',
+  async (pathname) => {
+    document.body.innerHTML =
+      '<main id="content"><div id="assignment_show"><div class="description"></div><ul class="student-assignment-overview"></ul></div></main>';
+    const channel = fakeChannel();
+    const controller = await startAssignmentView(options(channel, { pathname }));
+    expect(channel.send).toHaveBeenCalledWith({
+      type: 'assignment:details',
+      courseId: pathname.includes('~') ? '2~12' : '12',
+      assignmentId: pathname.includes('~') ? '2~101' : '101',
+    });
+    controller.stop();
+  },
+);

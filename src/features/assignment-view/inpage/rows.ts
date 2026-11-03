@@ -1,3 +1,4 @@
+import { normalizeCanvasId } from '../../../shared/canvas/ids';
 /**
  * The expand rows of the Grades page (design decision 26, item 1).
  *
@@ -134,7 +135,10 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
     if (request === undefined) {
       request = Promise.resolve(send({ type: 'assignment:details', courseId, assignmentId })).then(
         (reply) => {
-          if (!isDetailsReply(reply) || reply.details.assignment.id !== assignmentId) {
+          if (
+            !isDetailsReply(reply) ||
+            normalizeCanvasId(reply.details.assignment.id) !== normalizeCanvasId(assignmentId)
+          ) {
             throw new Error('The background gave no details');
           }
           return reply;
@@ -315,10 +319,14 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
       if (assignmentId === null || states.has(row)) continue;
       if (row.matches('.ig-row')) {
         const link = row.querySelector<HTMLAnchorElement>('a.ig-title');
+        const path =
+          link && /^\/courses\/(\d+(?:~\d+)?)\/assignments\/(\d+(?:~\d+)?)\/?$/.exec(link.pathname);
         if (
           !link ||
           link.origin !== origin ||
-          link.pathname !== `/courses/${courseId}/assignments/${assignmentId}`
+          !path ||
+          normalizeCanvasId(path[1]!) !== normalizeCanvasId(courseId) ||
+          normalizeCanvasId(path[2]!) !== normalizeCanvasId(assignmentId)
         )
           continue;
       }

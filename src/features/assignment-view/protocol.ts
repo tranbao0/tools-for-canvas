@@ -84,3 +84,16 @@ export interface AssignmentDetailsReply {
   /** The time zone of the Canvas profile, which the due date and the chips read. */
   timeZone: string;
 }
+
+/** A submission that the current viewer cannot read. */
+export interface NoSubmissionAccess {
+  kind: 'no_submission_access';
+}
+
+export function isNoSubmissionAccess(value: unknown): value is NoSubmissionAccess {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as Partial<NoSubmissionAccess>).kind === 'no_submission_access'
+  );
+}

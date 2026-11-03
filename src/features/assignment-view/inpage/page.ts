@@ -1,3 +1,5 @@
+import { isNoSubmissionAccess } from '../protocol';
+import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
 import { isDetailsReply, renderError, renderLoading, renderPageDetails } from './details';
 import { OWN, type RowsEngine, type RowsOptions } from './rows';
@@ -17,7 +19,11 @@ export function createAssignmentPage(options: RowsOptions & { assignmentId: stri
     try {
       const reply = await send({ type: 'assignment:details', courseId, assignmentId });
       if (token !== generation) return;
-      if (!isDetailsReply(reply) || reply.details.assignment.id !== assignmentId)
+      if (isNoSubmissionAccess(reply)) return clear();
+      if (
+        !isDetailsReply(reply) ||
+        normalizeCanvasId(reply.details.assignment.id) !== normalizeCanvasId(assignmentId)
+      )
         throw new Error('No assignment details');
       panel.replaceChildren(
         renderPageDetails(reply, {
@@ -40,10 +46,14 @@ export function createAssignmentPage(options: RowsOptions & { assignmentId: stri
     setActive(active) {
       if (!active) return clear();
       if (stopped || host) return;
+      if (doc.querySelector('#content > div:not([id]):only-child, #easy_student_view')) return;
       const description = doc.querySelector(
-        '#assignment_show > .description:not(.teacher-version)',
+        '#content > #assignment_show:not(.teacher-version) > .description:not(.teacher-version)',
       );
-      if (!description || !doc.querySelector('#assignment_show > .student-assignment-overview'))
+      if (
+        !description ||
+        !doc.querySelector('#content > #assignment_show > .student-assignment-overview')
+      )
         return;
       host = doc.createElement('div');
       host.setAttribute(OWN, '');
@@ -54,7 +64,7 @@ export function createAssignmentPage(options: RowsOptions & { assignmentId: stri
       const style = doc.createElement('style');
       style.textContent =
         PANEL_CSS +
-        '\n.av{padding:20px 0;background:var(--av-card);margin-top:24px}.av-title{font-size:20px;margin:0 0 16px}';
+        '\n.av-content{max-width:none}\n.av{padding:20px 0;background:var(--av-card);margin-top:24px}.av-title{font-size:20px;margin:0 0 16px}';
       const panel = doc.createElement('section');
       panel.className = 'av';
       panel.setAttribute('aria-label', 'Your submission');

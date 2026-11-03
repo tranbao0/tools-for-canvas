@@ -290,6 +290,20 @@ describe('routeDataMessage', () => {
   describe('the assignment details message', () => {
     const DETAILS = { type: 'assignment:details', courseId: '12', assignmentId: '8' };
 
+    it('passes through the fixed submission access reply', async () => {
+      vi.mocked(owner.assignmentDetails).mockResolvedValueOnce({ kind: 'no_submission_access' });
+      await expect(routeDataMessage(owner, DETAILS, CONTENT_SCRIPT, host)).resolves.toEqual({
+        kind: 'no_submission_access',
+      });
+    });
+
+    it('keeps other failures rejected', async () => {
+      vi.mocked(owner.assignmentDetails).mockRejectedValueOnce(new Error('offline'));
+      await expect(routeDataMessage(owner, DETAILS, CONTENT_SCRIPT, host)).rejects.toThrow(
+        'offline',
+      );
+    });
+
     it('asks the owner for the saved Canvas page, with the tab of the sender', async () => {
       await expect(routeDataMessage(owner, DETAILS, CONTENT_SCRIPT, host)).resolves.toMatchObject({
         timeZone: 'UTC',

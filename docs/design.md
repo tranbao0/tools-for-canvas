@@ -2864,7 +2864,9 @@ So a student switches pages to check the rubric while submitting, or to read fee
 5. **Data.**
    - The background reads one assignment with `GET /api/v1/courses/:id/assignments/:id?include[]=submission&include[]=can_submit` and the student's own submission with `GET /api/v1/courses/:id/assignments/:id/submissions/self?include[]=submission_comments&include[]=rubric_assessment`.
    - The rubric comes with the assignment record.
-   - It reads only when a row opens, and keeps the result for the page view.
+   - It reads when a row opens or the assignment page loads, and keeps the result for the page view.
+   - A comparison of a page id with an API id converts both to decimal global strings with BigInt: `s~l` becomes `s * 10^13 + l`.
+   - A 404 for the own submission returns `no_submission_access`; an observer gets no assignment page panel.
    - Every read follows the cookie binding of decision 11, so a reply never crosses students.
 6. **Settings.** A "One assignment view" switch in the tools settings, on by default.
 
@@ -2907,7 +2909,7 @@ Verified against canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`:
 
 - **Script.**
   - The page script is `assignment-view.js`, which is its own small entry point like `dashboard.js`.
-  - The background injects it next to the list script, into the top frame of a Grades or Assignments page of the saved Canvas (`/courses/:id/grades` or `/courses/:id/assignments`, also with a shard id), including while the switch is off so it can follow changes.
+  - The background injects it next to the list script, into the top frame of a Grades or Assignments page of the saved Canvas (`/courses/:id/grades`, `/courses/:id/assignments` or `/courses/:id/assignments/:assignmentId`, also with a shard id), including while the switch is off so it can follow changes.
   - `/courses/:id/grades/:user` is another page and gets nothing.
   - A newer injection retires the copy of an earlier one, and a start removes the nodes that a destroyed copy left (every node and mark starts with `data-av-`).
   - The script follows the switch, the saved address and the Theme setting through the page channel.
