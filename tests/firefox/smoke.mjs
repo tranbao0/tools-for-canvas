@@ -559,7 +559,7 @@ async function main() {
     console.error('Run "npm run setup:firefox", or set FIREFOX_BIN and GECKODRIVER_BIN.');
     return 2;
   }
-  const extensionDir = ensureBuild('firefox');
+  const extensionDir = ensureBuild('firefox', 'e2e');
   const addonId = readAddonId(extensionDir);
   const files = {};
   const server = await startFileHost(files);
@@ -570,7 +570,10 @@ async function main() {
     location: `${server.origin}/inst-fs/fixture.pdf`,
   };
   files['/inst-fs/fixture.pdf'] = {
-    body: readFileSync(new URL('../fixtures/pdf/fixture.pdf', import.meta.url)),
+    body: Buffer.concat([
+      readFileSync(new URL('../fixtures/pdf/fixture.pdf', import.meta.url)),
+      Buffer.from('\n%' + ' '.repeat(1_700_000) + '\n'),
+    ]),
     contentType: 'application/pdf',
   };
   const origin = server.origin.replace('127.0.0.1', 'school.instructure.com');
