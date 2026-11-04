@@ -245,13 +245,16 @@ export function claimDashboardLayout(
       );
     } else {
       clearInlineStyle(slot.widget, 'display');
+      // Canvas's form controls can make themselves visible inside a hidden wrapper, so the widget
+      // is also transparent, and the card sits above its positioned parts.
+      setInlineStyles(slot.widget, { opacity: '0' });
       setInlineStyles(wrapper, {
         'min-height': `${SLOT_MIN_HEIGHT_PX + pixels(marginTop, 0) + pixels(marginBottom, 0)}px`,
       });
       moveContainer(container, wrapper, first);
       setContainerStyle(
         container,
-        `position:absolute;inset:${marginTop} ${marginRight} ${marginBottom} ${marginLeft};min-width:0;visibility:visible`,
+        `position:absolute;inset:${marginTop} ${marginRight} ${marginBottom} ${marginLeft};z-index:2;min-width:0;visibility:visible`,
       );
     }
     setPanelMode(container, 'slot');
