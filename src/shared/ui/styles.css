@@ -206,6 +206,16 @@
   outline-offset: -2px;
 }
 
+/* Ahead of the general focus rule, which draws the ring outside. */
+.wr-pinned .wr-group-toggle:focus-visible {
+  outline-offset: -2px;
+}
+
+/* The dark list on a Canvas page has 12 px of room around its text, so the highlight uses 8. */
+:host([data-theme='dark']:not([data-panel])) .wr-pinned .wr-group-toggle {
+  --wr-bleed: 8px;
+}
+
 .wr-pinned .wr-group-toggle[aria-expanded='true'] {
   background: var(--wr-selected);
   color: var(--wr-selected-text);
