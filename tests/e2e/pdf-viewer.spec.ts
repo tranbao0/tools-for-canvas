@@ -1212,6 +1212,32 @@ test.describe('a run of bytes the repair scan could not bear', () => {
     });
   }
 
+  test('the report of the refusal names it, apart from a PDF.js failure', async ({
+    context,
+    page,
+    background,
+    fileHost,
+  }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await openCoursePage(
+      context,
+      page,
+      background,
+      html,
+      routes(fileHost, '/inst-fs/long-run-valid.pdf'),
+    );
+    await openFirstFile(page, 'Read notes');
+    const frame = await pane(page);
+    await frame.getByRole('button', { name: 'Copy details' }).click();
+    await expect(frame.getByText('Details copied', { exact: true })).toBeVisible();
+    const report = await page.evaluate(() => navigator.clipboard.readText());
+    expect(report).toContain('Error name: LineTooLongError');
+    expect(report).toContain('Error message: Refused: a line too long to read safely');
+    expect(report).toContain('Stage: document load');
+    expect(report).not.toContain('InvalidPDFException');
+    expect(report).not.toMatch(/https:|token=|notes.pdf/);
+  });
+
   test('a normal PDF still opens', async ({ context, page, background, fileHost }) => {
     const frame = await openPdf(context, page, background, fileHost);
     await expect(frame.getByText('This PDF is damaged', { exact: true })).toHaveCount(0);

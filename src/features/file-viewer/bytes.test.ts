@@ -339,3 +339,25 @@ it('reports a progress handler that throws as a network failure', async () => {
   });
   expect(port.disconnect).toHaveBeenCalledTimes(1);
 });
+
+it('settles with the result even when the port throws on disconnect', async () => {
+  const port = fakePort((message, p) => {
+    if (!('fileId' in message)) return;
+    p.emit({ total: 4 });
+    p.emit({ chunk: PDF });
+    p.emit({ done: true, mime: '' });
+  });
+  port.disconnect.mockImplementation(() => {
+    throw new Error('The port is closed');
+  });
+  connectTo(port);
+  expect(await readBackgroundBytes(read, SOURCE)).toEqual(PDF);
+  const failing = fakePort((message, p) => {
+    if ('fileId' in message) p.emit({ error: { kind: 'not_a_file' } });
+  });
+  failing.disconnect.mockImplementation(() => {
+    throw new Error('The port is closed');
+  });
+  connectTo(failing);
+  await expect(readBackgroundBytes(read, SOURCE)).rejects.toMatchObject({ kind: 'not_a_file' });
+});

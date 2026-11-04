@@ -57,10 +57,15 @@ export function readBackgroundBytes(
       if (settled) return;
       settled = true;
       options.signal?.removeEventListener('abort', abort);
-      // A disconnect makes the background cancel its read and stop sending.
-      port.disconnect();
       if (error) reject(error);
       else resolve(bytes!);
+      // A disconnect makes the background cancel its read and stop sending. A port that throws
+      // here must not undo the result.
+      try {
+        port.disconnect();
+      } catch {
+        /* The port is already closed. */
+      }
     };
     const fail = (kind: FileBytesError['kind'], message: string) =>
       finish(new FileBytesError(kind, message));

@@ -22,6 +22,7 @@ import { PdfEngine, type EngineState } from './engine';
 import { keyContextOf, pdfKeyAction } from './keys';
 import { pdfjsDecoderUrl } from './loader';
 import { parsePageInput } from './pageInput';
+import { REFUSED_NAME } from './repairGuard';
 import { Thumbnails } from './Thumbnails';
 import type { PdfjsLib } from './types';
 import { ZoomMenu } from './ZoomMenu';
@@ -37,7 +38,12 @@ export interface PdfSource {
 export function classifyPdfError(error: unknown): PdfFailure {
   const name = (error as { name?: unknown } | null)?.name;
   if (name === 'PasswordException') return 'password';
-  if (name === 'InvalidPDFException' || name === 'FormatError' || name === 'MissingPDFException') {
+  if (
+    name === 'InvalidPDFException' ||
+    name === 'FormatError' ||
+    name === 'MissingPDFException' ||
+    name === REFUSED_NAME
+  ) {
     return 'invalid';
   }
   return 'other';
