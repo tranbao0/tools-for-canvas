@@ -114,8 +114,24 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
    * watcher call. A field the page did not ask for takes the kept answer before a newer one.
    */
   const told: Partial<PageContext> = {};
+  /** The reads that a caller waits for, and the task that will tell the watchers. */
+  let waiting = 0;
+  let announcing: ReturnType<typeof setTimeout> | null = null;
 
-  /** Tells the watchers of each field where the newest answer differs from what the page knows. */
+  /**
+   * Tells the watchers of each field where the newest answer differs from what the page knows.
+   * It runs on a task of its own, and only while no caller waits for a read. So every caller
+   * applies its own answer first (a start reads the address, the switches and the settings at
+   * once), and the event then brings the newest value over it.
+   */
+  function scheduleAnnounce(): void {
+    if (announcing !== null) return;
+    announcing = setTimeout(() => {
+      announcing = null;
+      if (waiting === 0) announce();
+    }, 0);
+  }
+
   function announce(): void {
     if (last === null) return;
     if (told.origin !== undefined && told.origin !== last.origin) {
@@ -138,10 +154,12 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
   /**
    * Reads again and keeps the answer only when no newer read has been kept. A caller that waits
    * for a field (`wanted`) gets the answer of its own read, and the watchers then hear of any
-   * newer answer that differs from it, so a change during the first read is not lost.
+   * newer answer that differs from it, after the caller has applied it, so a change during the
+   * first read is not lost.
    */
   async function refresh(wanted?: keyof PageContext): Promise<PageContext> {
     const number = ++started;
+    if (wanted !== undefined) waiting += 1;
     const next = await read();
     if (number > kept) {
       kept = number;
@@ -152,8 +170,11 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
       }
       last = next;
     }
-    if (wanted !== undefined) Object.assign(told, { [wanted]: next[wanted] });
-    announce();
+    if (wanted !== undefined) {
+      Object.assign(told, { [wanted]: next[wanted] });
+      waiting -= 1;
+    }
+    scheduleAnnounce();
     return next;
   }
 
@@ -199,6 +220,10 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
     async markNoteSeen(note) {
       await deps.send({ type: 'weekrow:mark-note-seen', note });
     },
-    stop: stopListening,
+    stop() {
+      stopListening();
+      if (announcing !== null) clearTimeout(announcing);
+      announcing = null;
+    },
   };
 }
