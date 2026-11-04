@@ -369,7 +369,11 @@ describe('turning the view off', () => {
 
     it('keeps the padding while a pane of a live copy is on the page', () => {
       dieWithOpenPane('tools-feedback');
-      document.body.insertAdjacentHTML('beforeend', '<div id="tools-file-viewer"></div>');
+      // A live pane carries the mark of a dock, as every pane host does.
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        '<div id="tools-file-viewer" data-weekrow-dock></div>',
+      );
       removeStaleView(document, '/courses/12/assignments/101/submissions/42');
       expect(html.style.getPropertyValue('padding-right')).toBe('480px');
       document.getElementById('tools-file-viewer')!.remove();
