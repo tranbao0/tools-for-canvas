@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createDock } from './dock';
 import { listenViewerHello, startViewer } from './page';
 
 const SECRET = 'c'.repeat(64);
@@ -176,6 +177,64 @@ describe('the page script', () => {
     expect(removeListener).not.toHaveBeenCalled();
     click(true);
     await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
+  });
+
+  describe('a file pane that a dead copy left behind', () => {
+    const html = document.documentElement;
+    const DOCK = Symbol.for('tools-for-canvas.dock');
+    /** A copy that an update ended with its pane open: the host and the padding stay, the memory is gone. */
+    function dieWithOpenPane(): void {
+      const dock = createDock({
+        role: 'file',
+        id: 'tools-file-viewer',
+        label: 'File viewer',
+        resizeLabel: 'Resize file viewer',
+        width: 480,
+        onResized: () => undefined,
+      });
+      dock.open();
+      delete (globalThis as unknown as Record<symbol, unknown>)[DOCK];
+      delete scope.__weekrowViewer;
+    }
+    afterEach(() => {
+      html.removeAttribute('style');
+      html.removeAttribute('data-weekrow-room');
+      delete (globalThis as unknown as Record<symbol, unknown>)[DOCK];
+    });
+
+    it('is removed at the start, the padding of Canvas returns, and the next click opens one working pane', async () => {
+      prepare();
+      html.style.setProperty('padding-right', '13px');
+      dieWithOpenPane();
+      expect(html.style.getPropertyValue('padding-right')).toBe('480px');
+      await startViewer();
+      expect(document.querySelectorAll('#tools-file-viewer')).toHaveLength(0);
+      expect(html.style.getPropertyValue('padding-right')).toBe('13px');
+      click(true);
+      await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
+      expect(document.querySelectorAll('#tools-file-viewer')).toHaveLength(1);
+      expect(sessionRequests()).toBe(1);
+      expect(html.style.getPropertyValue('padding-right')).toBe('480px');
+    });
+
+    it('never removes an element of the page that only has the id', async () => {
+      prepare();
+      document.body.insertAdjacentHTML('beforeend', '<div id="tools-file-viewer">page</div>');
+      html.style.setProperty('padding-right', '13px');
+      await startViewer();
+      expect(document.getElementById('tools-file-viewer')!.textContent).toBe('page');
+      expect(html.style.getPropertyValue('padding-right')).toBe('13px');
+    });
+
+    it('ends with no pane and no extra padding when a second copy starts after the first opened one', async () => {
+      prepare();
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
+      await startViewer();
+      expect(document.querySelectorAll('#tools-file-viewer')).toHaveLength(0);
+      expect(html.style.getPropertyValue('padding-right')).toBe('');
+    });
   });
 
   it('opens the pane for a click of the student', async () => {
