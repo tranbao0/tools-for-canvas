@@ -930,10 +930,14 @@ test('the turn-in closes when another student signs in', async ({
 });
 
 test('closing the turn-in reads the details at once', async ({ context, page, background }) => {
-  const { canvas } = await openTurnInCanvas(context, page, background, { submitted: false });
+  const { canvas, state } = await openTurnInCanvas(context, page, background, {
+    submitted: false,
+  });
   await expand(page, canvas, 'Essay');
   const frame = await openTurnIn(page, 'Submit');
   await frame.getByRole('button', { name: 'Submit quietly' }).click();
+  // The close reads the record, so Canvas must have taken the submission first.
+  await expect.poll(() => state.submitted).toBe(true);
   await closeTurnIn(page);
   // The 20 second read has not come yet, so the read of the close shows the submission.
   await expect(submitButton(page, 'Re-submit')).toBeVisible({ timeout: 8000 });
