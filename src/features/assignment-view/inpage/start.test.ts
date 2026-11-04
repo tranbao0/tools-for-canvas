@@ -152,3 +152,65 @@ describe('startAssignmentView', () => {
     expect(remove).toHaveBeenCalledOnce();
   });
 });
+
+describe('on a Submission Details page', () => {
+  const PAGE = '/courses/12/assignments/101/submissions/42';
+
+  beforeEach(() => {
+    // happy-dom writes a line to stderr for each iframe that it does not load. The view needs no load.
+    const write = process.stderr.write.bind(process.stderr) as (chunk: unknown) => boolean;
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) =>
+      String(chunk).includes('Iframe page loading is disabled') ? true : write(chunk),
+    );
+    document.body.innerHTML =
+      '<div class="submission-details-container"><div class="submission-details-frame"><iframe id="preview_frame"></iframe></div><div class="submission-details-comments"></div></div>';
+  });
+
+  it('reads the details of the path and follows the switch', async () => {
+    const channel = fakeChannel();
+    vi.mocked(channel.send).mockResolvedValue({
+      details: {
+        assignment: {
+          id: '101',
+          name: 'Essay',
+          description: '<p>Text</p>',
+          due_at: null,
+          points_possible: 1,
+        },
+        submission: { user_id: '42', score: null, grade: null, submission_type: null },
+      },
+      timeZone: 'UTC',
+    });
+    await startAssignmentView(options(channel, { pathname: PAGE }));
+    await vi.advanceTimersByTimeAsync(5);
+    expect(channel.send).toHaveBeenCalledWith({
+      type: 'assignment:details',
+      courseId: '12',
+      assignmentId: '101',
+    });
+    expect(document.getElementById('av-submission-details')).not.toBeNull();
+    channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+    expect(document.querySelector('[data-av-own]')).toBeNull();
+    expect(toggles()).toHaveLength(0);
+  });
+
+  it('does nothing when the switch is off or the page is not the saved Canvas', async () => {
+    const off = fakeChannel(ORIGIN, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+    await startAssignmentView(options(off, { pathname: PAGE }));
+    const other = fakeChannel('https://other.instructure.com');
+    await startAssignmentView(options(other, { pathname: PAGE }));
+    await vi.advanceTimersByTimeAsync(5);
+    expect(off.send).not.toHaveBeenCalled();
+    expect(other.send).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    '/courses/12/assignments/101/anonymous_submissions/abc',
+    '/courses/12/assignments/101/submissions',
+  ])('does nothing on %s', async (pathname) => {
+    const channel = fakeChannel();
+    await startAssignmentView(options(channel, { pathname }));
+    await vi.advanceTimersByTimeAsync(5);
+    expect(channel.send).not.toHaveBeenCalled();
+  });
+});

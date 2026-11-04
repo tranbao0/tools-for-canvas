@@ -89,3 +89,30 @@ box-sizing:border-box;margin:0;padding:16px 24px 20px 40px;background:var(--av-b
 .av-button:focus-visible{outline:2px solid var(--av-ring);outline-offset:2px}
 @media (max-width:700px){.av{padding:12px 16px}.av-rating{max-width:none;flex:1 1 100%}}
 `;
+
+/**
+ * The Submission Details view, after the panel rules. It fills the slot of the files frame in the
+ * flex row beside the comments column, and reads 14 px text at a 1.65 line height.
+ */
+export const SUBMISSION_CSS = `
+:host{flex:1 1 0!important;min-width:0!important}
+.av-sub{padding:16px 18px 20px;border-top:0;background:var(--av-card);font-size:14px;line-height:1.65}
+.av-sub .av-heading{margin:0 0 8px;font-size:13px;font-weight:700;line-height:1.3}
+.av-sub .av-body p,.av-sub .av-body ul,.av-sub .av-body ol,.av-sub .av-body blockquote,.av-sub .av-body pre,.av-sub .av-body table{margin:0 0 10px}
+.av-sub .av-body ul,.av-sub .av-body ol{padding-inline-start:20px}
+.av-sub .av-body[data-av-clamped]{max-height:calc(15 * 1.65em)}
+.av-sub .av-body[data-av-cut]{mask-image:linear-gradient(#000 calc(100% - 3.3em),transparent)}
+.av-sub .av-link{margin-top:0;font-size:13px;line-height:1.65}
+.av-sub .av-files,.av-sub .av-submission{margin-top:18px;padding-top:12px;border-top:1px solid var(--av-soft)}
+.av-link-text{overflow-wrap:anywhere}
+.av-file-list{margin:0;padding:0;list-style:none}
+.av-file-row{display:flex;align-items:center;gap:8px;margin:0;padding:6px 0;font-size:13px;line-height:1.4}
+.av-file{font-weight:700;overflow-wrap:anywhere}
+.av-file-icon{flex:none;width:14px;height:14px;color:var(--av-text-2)}
+.av-file-pdf{color:light-dark(#c0392b,#f08a8d)}
+.av-size{flex:none;color:var(--av-text-2);font-size:12px;white-space:nowrap}
+.av-feedback{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;margin-inline-start:auto;padding-inline-start:8px;color:var(--av-link);font-size:13px;line-height:1.4;white-space:nowrap;cursor:pointer}
+.av-feedback:hover{text-decoration:underline}
+.av-feedback:focus-visible{outline:2px solid var(--av-ring);outline-offset:2px}
+.av-unread{flex:none;width:8px;height:8px;border-radius:50%;background:var(--av-ring)}
+`;

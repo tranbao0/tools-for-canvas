@@ -19,6 +19,8 @@ export function isAssignmentDetailsMessage(value: unknown): value is AssignmentD
 export interface AssignmentFile {
   id: string;
   display_name: string;
+  /** The size in bytes. */
+  size?: number;
 }
 
 export interface AssignmentCriterion {
@@ -72,6 +74,12 @@ export interface AssignmentDetails {
     late_policy_status?: 'late' | 'missing' | 'extended' | 'none' | null;
     custom_grade_status_id?: string | null;
     redo_request?: boolean;
+    /** `online_upload`, `online_text_entry`, `online_url`, `media_recording` and so on. */
+    submission_type?: string | null;
+    /** The HTML of a text entry. */
+    body?: string | null;
+    /** The address of a URL submission. */
+    url?: string | null;
     attachments?: AssignmentFile[];
     submission_comments?: AssignmentComment[];
     rubric_assessment?: Record<string, { rating_id?: string; points?: number; comments?: string }>;

@@ -64,7 +64,7 @@ export interface TurnInPane {
 }
 
 /** The bar is as high as the tab row of the file pane: 44 px of tab and the 3 px of its underline. */
-const PANE_CSS = `
+export const PANE_CSS = `
 .bar{box-sizing:border-box;display:flex;flex:none;align-items:center;gap:8px;height:47px;padding:0 0 0 14px;border-bottom:1px solid var(--line);color:var(--text);font-size:14px;line-height:20px}
 .title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .btn{box-sizing:border-box;display:inline-flex;flex:none;align-items:center;gap:8px;min-height:28px;padding:2px 8px;border:1px solid var(--btn-line);border-radius:4px;background:var(--hover);color:var(--text);font:inherit;font-size:14px;line-height:1.125;text-decoration:none;white-space:nowrap}
@@ -77,7 +77,7 @@ svg{display:block;flex:none;width:16px;height:16px}
 
 const SVG = 'http://www.w3.org/2000/svg';
 
-function icon(doc: Document, path: string): SVGElement {
+export function icon(doc: Document, path: string): SVGElement {
   const svg = doc.createElementNS(SVG, 'svg');
   svg.setAttribute('viewBox', '0 0 120 120');
   svg.setAttribute('fill', 'currentColor');
