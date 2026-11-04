@@ -13,6 +13,7 @@ const STORED: Settings = {
   showRings: false,
   minimized: true,
   theme: 'dark',
+  rowSize: 'comfortable',
 };
 
 describe('normalizeSettings', () => {
@@ -67,6 +68,9 @@ describe('normalizeSettings', () => {
     ['minimized', null],
     ['theme', 'neon'],
     ['theme', 1],
+    ['rowSize', 'tiny'],
+    ['rowSize', 1],
+    ['rowSize', null],
   ])('replaces a bad %s (%j) with its default, and changes nothing else', (field, bad) => {
     const result = normalizeSettings({ ...STORED, [field]: bad });
 
@@ -104,6 +108,16 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ ...STORED, weekStart: 'auto' })).toEqual(STORED);
     expect(normalizeSettings({ ...STORED, weekStart: 1 })).toEqual(STORED);
     expect(isSettings({ ...STORED, weekStart: 1 })).toBe(false);
+  });
+
+  it('reads Compact for settings stored without a row size, and for an unknown one', () => {
+    const { rowSize: _omit, ...old } = STORED;
+
+    expect(DEFAULT_SETTINGS.rowSize).toBe('compact');
+    expect(normalizeSettings(old).rowSize).toBe('compact');
+    expect(normalizeSettings({ ...STORED, rowSize: 'huge' }).rowSize).toBe('compact');
+    expect(normalizeSettings({ ...STORED, rowSize: 'comfortable' }).rowSize).toBe('comfortable');
+    expect(isSettings(old)).toBe(false);
   });
 
   it('keeps every kind of span and the limits of a custom span', () => {

@@ -593,6 +593,18 @@
   "themeHelp": {
     "message": "Automatic follows your browser or system. On Canvas pages, the list follows the page."
   },
+  "settingRowSize": {
+    "message": "Row size"
+  },
+  "rowSizeCompact": {
+    "message": "Compact"
+  },
+  "rowSizeComfortable": {
+    "message": "Comfortable"
+  },
+  "rowSizeHelp": {
+    "message": "Compact fits about twice as many tasks in the card."
+  },
   "settingAddress": {
     "message": "Canvas address"
   },

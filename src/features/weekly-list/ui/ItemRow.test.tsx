@@ -5,7 +5,7 @@ import { ItemRow } from './ItemRow';
 import { mkItem, mkView } from './testing/mocks';
 import { buildWeekView } from '../model/view';
 import { allItems, course, modelInput, plannerItem } from '../model/testing/builders';
-import { SlotModeContext } from './slotMode';
+import { RowSizeContext, SlotModeContext } from './slotMode';
 
 const now = '2026-10-27T12:00:00Z';
 afterEach(cleanup);
@@ -52,16 +52,24 @@ const HANDLERS = {
 
 function renderRow(
   item: ReturnType<typeof mkItem>,
-  options: { slot: boolean; locale?: string; when?: 'time' | 'datetime' | 'none'; scope?: string },
+  options: {
+    slot: boolean;
+    locale?: string;
+    when?: 'time' | 'datetime' | 'none';
+    scope?: string;
+    rows?: 'compact' | 'comfortable';
+  },
 ) {
   return render(
     <SlotModeContext.Provider value={options.slot}>
-      <ItemRow
-        item={item}
-        view={mkView({ locale: options.locale ?? 'en', scopeCourseId: options.scope ?? null })}
-        when={options.when ?? 'datetime'}
-        handlers={HANDLERS}
-      />
+      <RowSizeContext.Provider value={options.rows ?? 'compact'}>
+        <ItemRow
+          item={item}
+          view={mkView({ locale: options.locale ?? 'en', scopeCourseId: options.scope ?? null })}
+          when={options.when ?? 'datetime'}
+          handlers={HANDLERS}
+        />
+      </RowSizeContext.Provider>
     </SlotModeContext.Provider>,
   );
 }
@@ -82,6 +90,18 @@ it('renders the decorative block, points and due pill, with a named course link'
   expect(getByRole('link', { name: `Go to course ${item.contextLabel}` }).getAttribute('rel')).toBe(
     'noopener noreferrer',
   );
+});
+
+it('gives the whole title as hover text in a compact slot row only', () => {
+  const item = mkItem({ ...SLOT_ITEM, title: 'A title that is long enough to be cut' });
+  const compact = renderRow(item, { slot: true, rows: 'compact' });
+  expect(compact.getByRole('link', { name: item.title }).getAttribute('title')).toBe(item.title);
+  cleanup();
+  const comfortable = renderRow(item, { slot: true, rows: 'comfortable' });
+  expect(comfortable.getByRole('link', { name: item.title }).hasAttribute('title')).toBe(false);
+  cleanup();
+  const other = renderRow(item, { slot: false, rows: 'compact' });
+  expect(other.getByRole('link', { name: item.title }).hasAttribute('title')).toBe(false);
 });
 
 it('formats the points of a locale that Intl rejects with the English format', () => {

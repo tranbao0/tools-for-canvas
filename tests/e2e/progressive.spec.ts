@@ -34,6 +34,7 @@ const MONTH: Settings = {
   showRings: true,
   minimized: false,
   theme: 'auto',
+  rowSize: 'compact',
 };
 
 function title(page: Page, name: string): Locator {

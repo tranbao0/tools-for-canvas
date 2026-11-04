@@ -163,6 +163,7 @@ const settings: Settings = {
   showRings: true,
   minimized: false,
   theme: 'auto',
+  rowSize: 'compact',
 };
 
 const settingsData: AppProps['settings'] = {

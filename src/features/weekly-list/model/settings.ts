@@ -14,6 +14,7 @@ import {
 } from './types';
 
 const THEMES: readonly unknown[] = ['auto', 'light', 'dark'];
+const ROW_SIZES: readonly unknown[] = ['compact', 'comfortable'];
 
 /** The most courses a student can hide. A student has far fewer. */
 export const MAX_HIDDEN_COURSES = 1000;
@@ -51,6 +52,10 @@ function isTheme(value: unknown): value is Settings['theme'] {
   return THEMES.includes(value);
 }
 
+function isRowSize(value: unknown): value is Settings['rowSize'] {
+  return ROW_SIZES.includes(value);
+}
+
 function isCourseId(value: unknown): value is string {
   return typeof value === 'string' && value !== '' && value.length <= MAX_COURSE_ID_LENGTH;
 }
@@ -63,12 +68,13 @@ function isCourseIdList(value: unknown): value is string[] {
 export function isSettings(value: unknown): value is Settings {
   return (
     isRecord(value) &&
-    Object.keys(value).length === 5 &&
+    Object.keys(value).length === 6 &&
     isSpan(value['span']) &&
     isCourseIdList(value['hiddenCourseIds']) &&
     typeof value['showRings'] === 'boolean' &&
     typeof value['minimized'] === 'boolean' &&
-    isTheme(value['theme'])
+    isTheme(value['theme']) &&
+    isRowSize(value['rowSize'])
   );
 }
 
@@ -88,5 +94,6 @@ export function normalizeSettings(stored: unknown): Settings {
     showRings: typeof input['showRings'] === 'boolean' ? input['showRings'] : fallback.showRings,
     minimized: typeof input['minimized'] === 'boolean' ? input['minimized'] : fallback.minimized,
     theme: isTheme(input['theme']) ? input['theme'] : fallback.theme,
+    rowSize: isRowSize(input['rowSize']) ? input['rowSize'] : fallback.rowSize,
   };
 }

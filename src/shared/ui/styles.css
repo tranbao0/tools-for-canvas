@@ -1476,6 +1476,54 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   transform: translateX(14px);
 }
 
+/* A segmented control: real radio inputs, drawn as two joined buttons. The chosen one is filled. */
+
+.wr-segments {
+  display: inline-flex;
+  justify-self: start;
+  overflow: hidden;
+  border: 1px solid var(--wr-stroke);
+  border-radius: 6px;
+}
+
+.wr-segment {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  padding: 0 16px;
+  cursor: pointer;
+}
+
+.wr-segment + .wr-segment {
+  border-left: 1px solid var(--wr-stroke);
+}
+
+.wr-segment > input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.wr-segment:hover {
+  background: var(--wr-hover);
+}
+
+.wr-segment:has(input:checked) {
+  background: var(--wr-primary);
+  color: var(--wr-on-primary);
+  font-weight: 700;
+}
+
+.wr-segment:has(input:focus-visible) {
+  outline: 2px solid var(--wr-brand);
+  outline-offset: -3px;
+}
+
 /* The Tasks and Announcements tabs: text tabs on a line, the chosen one marked by a bar. */
 
 .wr-tabs {
@@ -1982,6 +2030,123 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   font-size: 18px;
 }
 
+/* Compact rows, the default (the Row size setting): the block is 36 px with an 18 px icon, the title
+   has one line, one 12 px meta line holds the course, the link, the points and the chips, and the
+   due pill is smaller. A row with no actions is 44 px high. The rules sit under `.wr[data-rows]`
+   and so win over the comfortable rules above, also in a narrow card. */
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-item {
+  grid-template-columns: 18px 36px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  padding: 4px 0;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-check {
+  width: 18px;
+  height: 18px;
+  margin-top: 9px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-check-input {
+  inset: -3px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-check-box {
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-type-block {
+  display: grid;
+  width: 36px;
+  height: 36px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-type-block .wr-type {
+  font-size: 18px;
+}
+
+/* The meta line is the second grid row: the course shrinks first, the points and the chips keep
+   their width. The title and the subtitle take a row of their own. */
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-slot-main {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) max-content;
+  align-content: center;
+  justify-content: start;
+  min-height: 36px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-title {
+  display: block;
+  grid-column: 1 / -1;
+  /* A zero width and a full minimum width keep a long title out of the size of the columns. */
+  width: 0;
+  min-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 18px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] :is(.wr-course, .wr-points) {
+  margin-top: 0;
+  line-height: 18px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-item-tags {
+  flex-wrap: nowrap;
+  gap: 0 4px;
+  white-space: nowrap;
+}
+
+/* The dot between the course part and the points. It is decoration, so it has no alternative
+   text. */
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-course + .wr-item-tags::before {
+  content: '\00b7' / '';
+  margin-inline: 4px 0;
+  color: var(--wr-text-2);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-chip {
+  min-height: 0;
+  padding: 0 7px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-tag-text {
+  white-space: nowrap;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-due {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-slot-side {
+  gap: 2px;
+  min-height: 36px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-slot-pill {
+  gap: 5px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  line-height: 12px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-slot-pill .wr-icon {
+  font-size: 14px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-slot-side .wr-link-btn {
+  min-height: 20px;
+  font-size: 12px;
+}
+
 /* The widget hides the block and stacks the item at a viewport of 639 px or less. On the widget
    dashboard the card is 527 px wide at 639 px and 528 px at 640 px. The query measures the content
    box of the card, which is the card width less 48 px of padding, so 479 px against 480 px. */
@@ -2020,5 +2185,82 @@ input:checked + .wr-switch-track > .wr-switch-knob {
      "Oct 26, 11:59 pm") with this padding and the 8 px column gap. */
   :host([data-panel='slot']) .wr-slot-pill {
     padding-inline: 6px;
+  }
+}
+
+/* A narrow card keeps the 36 px block of a compact row. The meta line wraps into the lines it
+   needs: the course with its link, then the points and the chips. The pill and the actions move to
+   a line under it, left-aligned with the text. */
+@container wr (width < 480px) {
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-item {
+    grid-template-columns: 18px 36px minmax(0, 1fr);
+    column-gap: 8px;
+  }
+
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-check {
+    margin-top: 9px;
+  }
+
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-type-block {
+    display: grid;
+  }
+
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-slot-main {
+    display: flex;
+    flex-flow: row wrap;
+    align-items: center;
+    align-content: center;
+    min-height: 36px;
+  }
+
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-title {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-course {
+    flex: 0 1 auto;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-due {
+    flex: 0 0 100%;
+  }
+
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-item-tags {
+    flex-wrap: wrap;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-course + .wr-item-tags::before {
+    content: none;
+  }
+
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-tag-text {
+    white-space: normal;
+  }
+
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-slot-side {
+    grid-column: 3;
+    flex-flow: row wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 2px 12px;
+    min-height: 0;
+  }
+}
+
+/* In the narrowest card, 160 px inside its padding, the text column holds about 90 px. The link
+   goes under the course name, and the line under the text starts at the block, because the due pill
+   of a past-due row is wider than the text column. */
+@container wr (width < 200px) {
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-course {
+    flex-wrap: wrap;
+  }
+
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-slot-side {
+    grid-column: 2 / -1;
   }
 }

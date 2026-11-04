@@ -210,6 +210,7 @@ describe('the messages of the in-page script', () => {
     showRings: true,
     minimized: true,
     theme: 'dark',
+    rowSize: 'compact',
   };
 
   it('accept settings of exactly the right shape', () => {
