@@ -437,14 +437,15 @@ export function announcementsFix(): Fix {
         win?.addEventListener('click', onClick, true);
         stopClicks = () => win?.removeEventListener('click', onClick, true);
       }
+      // A pass writes only what changed, so a pass with nothing to do leaves the page alone.
       for (const widget of findAnnouncementsWidgets(context.doc, context.origin)) {
-        widget.widget.setAttribute('data-wr-ann', '');
-        widget.bar.setAttribute('data-wr-bar', '');
-        widget.content?.setAttribute('data-wr-content', '');
+        widget.widget.toggleAttribute('data-wr-ann', true);
+        widget.bar.toggleAttribute('data-wr-bar', true);
+        widget.content?.toggleAttribute('data-wr-content', true);
         for (const found of widget.items) {
-          found.snippet?.setAttribute('data-wr-snippet', '');
-          found.linkRow?.setAttribute('data-wr-more', '');
-          found.title?.setAttribute('data-wr-title', '');
+          found.snippet?.toggleAttribute('data-wr-snippet', true);
+          found.linkRow?.toggleAttribute('data-wr-more', true);
+          found.title?.toggleAttribute('data-wr-title', true);
           expandNative(context, found);
         }
         if (context.data !== null) drawFilter(context, widget, context.data.courses);

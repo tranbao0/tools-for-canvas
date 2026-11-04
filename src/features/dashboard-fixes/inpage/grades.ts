@@ -49,7 +49,7 @@ export function gradesFix(
     const node = card.querySelector<HTMLElement>(`[data-testid="course-${id}-${suffix}"]`);
     if (node === null) return;
     if (text === null) node.parentElement?.remove();
-    else node.textContent = text;
+    else if (node.textContent !== text) node.textContent = text;
   }
 
   /** A copy of the template card for another course. */
@@ -125,7 +125,7 @@ export function gradesFix(
     const native = found.cards.filter((card) => !card.hasAttribute('data-wr-card'));
     const shown = new Set(native.map(cardCourseId));
     const missing = template === undefined ? [] : courses.filter((course) => !shown.has(course.id));
-    found.widget.setAttribute('data-wr-grades', '');
+    found.widget.toggleAttribute('data-wr-grades', true);
     const widgetId = (found.widget.getAttribute('data-testid') ?? '').replace(/^widget-/, '');
     const visibility = context.data?.gradeVisibilities;
     let overrides = observed.get(widgetId);

@@ -120,7 +120,8 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
       style.id = STYLE_ID;
       style.setAttribute('data-wr-own', 'style');
     }
-    style.textContent = [FIXES_CSS, ...blocks.values()].join('\n');
+    const css = [FIXES_CSS, ...blocks.values()].join('\n');
+    if (style.textContent !== css) style.textContent = css;
     if (!style.isConnected) (doc.head ?? doc.documentElement).append(style);
   }
 
