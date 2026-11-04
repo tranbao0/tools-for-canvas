@@ -1,3 +1,5 @@
+import { BYTES_PORT } from './bytes';
+import { fetchFileBytes, fileReadFacts, FileBytesError } from '../../shared/canvas/fileBytes';
 import {
   clearPositions,
   keepOnlyStudent,
@@ -22,6 +24,11 @@ import { ViewerUnconfirmedError } from './unconfirmed';
 type ViewerSender = Pick<Browser.runtime.MessageSender, 'url' | 'frameId'> & {
   tab?: { id?: number };
 };
+
+interface BytesRequest {
+  url?: unknown;
+  truncateAt?: unknown;
+}
 
 type ViewerApi = Pick<CanvasApi, 'getViewerFile' | 'getViewerModuleItem'>;
 
@@ -335,6 +342,73 @@ async function readEpoch(host: Pick<ViewerHost, 'get'>): Promise<number> {
   return typeof value === 'number' ? value : 0;
 }
 
+const BYTES_CHUNK = 192 * 1024;
+
+/** Reads a file for the pane over its private runtime port, which has no transfer list. */
+export function serveBytesPort(
+  port: Pick<Browser.runtime.Port, 'name' | 'sender' | 'disconnect' | 'postMessage'> & {
+    onDisconnect: Pick<Browser.runtime.Port['onDisconnect'], 'addListener'>;
+    onMessage: { addListener(listener: (message: BytesRequest) => void): void };
+  },
+  host: Pick<ViewerHost, 'savedOrigin' | 'isExtensionPage' | 'read'>,
+  fetchBytes: typeof fetchFileBytes = fetchFileBytes,
+): void {
+  if (port.name !== BYTES_PORT) return;
+  const sender = port.sender;
+  if (!sender || !host.isExtensionPage(sender) || !isPaneFrame(sender)) {
+    port.disconnect();
+    return;
+  }
+  const controller = new AbortController();
+  port.onDisconnect.addListener(() => controller.abort());
+  let started = false;
+  port.onMessage.addListener((message) => {
+    if (started) return;
+    started = true;
+    void (async () => {
+      try {
+        const origin = await host.savedOrigin();
+        const { url, truncateAt } = message;
+        if (!origin || typeof url !== 'string') throw new Error('Invalid file read');
+        if (
+          truncateAt !== undefined &&
+          (typeof truncateAt !== 'number' || !Number.isSafeInteger(truncateAt) || truncateAt <= 0)
+        )
+          throw new Error('Invalid file limit');
+        // viewerRead holds the same cookie binding before and after the complete byte read.
+        const bytes = await host.read(origin, sender.tab?.id, () =>
+          fetchBytes({
+            origin,
+            context: 'background',
+            url,
+            signal: controller.signal,
+            ...(truncateAt === undefined ? {} : { truncateAt }),
+          }),
+        );
+        if (controller.signal.aborted) return;
+        for (let offset = 0; offset < bytes.length; offset += BYTES_CHUNK) {
+          const part = bytes.subarray(offset, offset + BYTES_CHUNK);
+          let text = '';
+          for (let at = 0; at < part.length; at += 8192)
+            text += String.fromCharCode(...part.subarray(at, at + 8192));
+          port.postMessage({ chunk: btoa(text) });
+        }
+        port.postMessage({ done: true, facts: fileReadFacts.get(bytes) });
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        const file = error instanceof FileBytesError ? error : null;
+        port.postMessage({
+          error: {
+            kind: file?.kind ?? 'unconfirmed',
+            facts: file?.facts,
+            ...(file?.status === undefined ? {} : { status: file.status }),
+          },
+        });
+      }
+    })();
+  });
+}
+
 export function wireViewerRouter(
   owner: Pick<DataOwner, 'viewerRead' | 'viewerMayFetch' | 'viewerUserId' | 'viewerConfirm'>,
 ): void {
@@ -366,6 +440,7 @@ export function wireViewerRouter(
       }
     },
   };
+  browser.runtime.onConnect.addListener((port) => serveBytesPort(port, host));
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = routeViewerMessage(message, sender, host);
     if (reply === null) return undefined;

@@ -1,5 +1,9 @@
 /** Privacy-safe diagnostics for PDF failures. */
-import { FileBytesError } from '../../../shared/canvas/fileBytes';
+import {
+  safeContentType,
+  FileBytesError,
+  type FileReadFacts,
+} from '../../../shared/canvas/fileBytes';
 import { t } from '../../../shared/ui/i18n';
 
 export type PdfStage = 'fetch' | 'worker start' | 'document load' | 'page render' | 'page layers';
@@ -74,6 +78,7 @@ export function pdfDetails(
   bytes: number,
   version: string,
   agent: string,
+  readFacts?: FileReadFacts,
 ): { reason: string; report: string; retry: boolean } {
   const safe = sanitizePdfError(error);
   const file = error instanceof FileBytesError ? error : null;
@@ -97,6 +102,16 @@ export function pdfDetails(
     ].includes(file.kind)
       ? file.kind
       : undefined;
+  const facts = file?.facts ?? readFacts;
+  const responseFacts = facts
+    ? [
+        `Redirected: ${facts.redirected === true}`,
+        `Final origin class: ${['canvas', 'other'].includes(facts.originClass) ? facts.originClass : 'none'}`,
+        `Content type: ${safeContentType(facts.contentType)}`,
+        `Read context: ${facts.context === 'background' ? 'background' : 'pane'}`,
+        `Background retry: ${['failed', 'succeeded'].includes(facts.backgroundRetry) ? facts.backgroundRetry : 'not_run'}`,
+      ].join('\n')
+    : 'Redirected: unknown\nFinal origin class: none\nContent type: other\nRead context: pane\nBackground retry: not_run';
   const tooMany = safe.message === 'The document has too many pages';
   const reason =
     kind === 'status'
@@ -136,7 +151,7 @@ export function pdfDetails(
       safe.name !== 'PasswordException' &&
       !tooMany &&
       !['InvalidPDFException', 'FormatError', 'MissingPDFException'].includes(safe.name),
-    report: `Extension version: ${version}\nUser agent: ${agent}\nError name: ${safe.name}\nError message: ${safe.message}\nMessage shape: ${shape}\nFile error kind: ${kind ?? 'none'}\nHTTP status: ${status ?? 'none'}\nStage: ${stage}\nByte length: ${bytes}\nPDF.js version: 6.5.438\nOffscreenCanvas: ${typeof OffscreenCanvas !== 'undefined'}\nImageDecoder: ${'ImageDecoder' in globalThis}\nWebAssembly: ${typeof WebAssembly !== 'undefined'}\nModule workers: ${moduleWorkers()}`,
+    report: `Extension version: ${version}\nUser agent: ${agent}\nError name: ${safe.name}\nError message: ${safe.message}\nMessage shape: ${shape}\nFile error kind: ${kind ?? 'none'}\nHTTP status: ${status ?? 'none'}\n${responseFacts}\nStage: ${stage}\nByte length: ${bytes}\nPDF.js version: 6.5.438\nOffscreenCanvas: ${typeof OffscreenCanvas !== 'undefined'}\nImageDecoder: ${'ImageDecoder' in globalThis}\nWebAssembly: ${typeof WebAssembly !== 'undefined'}\nModule workers: ${moduleWorkers()}`,
   };
 }
 

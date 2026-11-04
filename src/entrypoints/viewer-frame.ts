@@ -12,7 +12,7 @@ import { loadCommentFile } from '@/features/file-viewer/ui/commentFile';
 import { createOpenSource } from '@/features/file-viewer/ui/openSource';
 import { ViewerApp, type PaneHost } from '@/features/file-viewer/ui/ViewerApp';
 import type { PaneFile } from '@/features/file-viewer/ui/FileCard';
-import { fetchFileBytes } from '@/shared/canvas/fileBytes';
+import { readPaneBytes } from '@/features/file-viewer/bytes';
 import { loadPdfjs } from '@/features/file-viewer/pdf/loader';
 import { APP_CSS } from '@/shared/ui/styles';
 import pdfCss from '@/features/file-viewer/ui/pdf.css?inline';
@@ -72,7 +72,7 @@ export default defineUnlistedScript(() => {
       };
     },
     readFile: (url, onProgress, signal, options) =>
-      fetchFileBytes({
+      readPaneBytes({
         origin: canvasOrigin,
         url,
         onProgress,

@@ -6,7 +6,11 @@
 import { browser } from 'wxt/browser';
 import { pdfDetails, type PdfStage } from '../pdf/failure';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { FileBytesError } from '../../../shared/canvas/fileBytes';
+import {
+  fileReadFacts,
+  type FileReadFacts,
+  FileBytesError,
+} from '../../../shared/canvas/fileBytes';
 import { t } from '../../../shared/ui/i18n';
 import { PdfViewer, type PdfFailure, type PdfSource } from '../pdf/PdfViewer';
 import type { PdfjsLib } from '../pdf/types';
@@ -120,6 +124,7 @@ export function PdfTab(props: {
 }) {
   const { host } = props;
   const [phase, setPhase] = useState<Phase>({ kind: 'reading', loaded: 0, total: null });
+  const readFacts = useRef<FileReadFacts | undefined>(undefined);
   const fail = (
     failure: PdfFailure | 'read' | 'large' | 'unconfirmed',
     error: unknown,
@@ -132,6 +137,7 @@ export function PdfTab(props: {
       bytes,
       browser.runtime.getManifest().version,
       navigator.userAgent,
+      readFacts.current,
     );
     setCopyStatus('');
     console.error(details.report);
@@ -149,6 +155,7 @@ export function PdfTab(props: {
     if (!begin) return;
     let live = true;
     let byteLength = 0;
+    readFacts.current = undefined;
     const abort = new AbortController();
     setPageDetails(null);
     setPhase({ kind: 'reading', loaded: 0, total: null });
@@ -166,6 +173,7 @@ export function PdfTab(props: {
           },
           abort.signal,
         );
+        readFacts.current = fileReadFacts.get(bytes);
       } catch (error) {
         if (!live || (error instanceof FileBytesError && error.kind === 'aborted')) return;
         if (error instanceof FileBytesError && error.kind === 'too_large') {
@@ -277,6 +285,7 @@ export function PdfTab(props: {
               bytes,
               browser.runtime.getManifest().version,
               navigator.userAgent,
+              readFacts.current,
             );
             console.error(details.report);
             setPageDetails({ reason: details.reason, report: details.report });

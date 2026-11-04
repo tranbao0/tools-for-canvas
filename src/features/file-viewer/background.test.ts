@@ -4,11 +4,14 @@ import {
   clearViewerTabs,
   createViewerOwner,
   routeViewerMessage,
+  serveBytesPort,
   sessionKey,
   type ViewerHost,
 } from './background';
 import { MAX_POSITIONS, positionKey } from './positions';
 import { ViewerUnconfirmedError } from './unconfirmed';
+import { BYTES_PORT } from './bytes';
+import { FileBytesError, fileReadFacts } from '../../shared/canvas/fileBytes';
 
 function setup() {
   const api = {
@@ -687,5 +690,142 @@ describe('saved positions', () => {
     store.set('viewer:session:epoch', 1);
     await expect(set(token)).rejects.toThrow('changed since it was read');
     expect((await get()).position).toBeNull();
+  });
+});
+
+describe('file bytes port', () => {
+  function port(sender: unknown, name = BYTES_PORT) {
+    const messages: Array<(message: unknown) => void> = [];
+    const disconnects: Array<() => void> = [];
+    return {
+      name,
+      sender,
+      disconnect: vi.fn(),
+      postMessage: vi.fn(),
+      onMessage: { addListener: (fn: (message: unknown) => void) => messages.push(fn) },
+      onDisconnect: { addListener: (fn: () => void) => disconnects.push(fn) },
+      send: (message: unknown) => messages.forEach((fn) => fn(message)),
+      close: () => disconnects.forEach((fn) => fn()),
+    };
+  }
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it.each([
+    ['a page of Canvas', { url: 'https://school.edu/courses/2', frameId: 3, tab: { id: 7 } }],
+    ['the top frame of the pane page', { url: 'extension://x/viewer.html', frameId: 0 }],
+    ['another extension page', { url: 'extension://x/other.html', frameId: 3 }],
+  ])('refuses %s', async (_name, sender) => {
+    const { host } = setup();
+    const fetchBytes = vi.fn();
+    const p = port(sender);
+    serveBytesPort(p as never, host, fetchBytes);
+    p.send({ url: '/files/1/download' });
+    await settle();
+    expect(p.disconnect).toHaveBeenCalled();
+    expect(fetchBytes).not.toHaveBeenCalled();
+  });
+
+  it('reads through the cookie-bound owner read and sends chunks with the facts', async () => {
+    const { host, pane, read } = setup();
+    const bytes = new Uint8Array(200 * 1024).map((_, at) => at % 251);
+    const facts = {
+      redirected: true,
+      originClass: 'other' as const,
+      contentType: 'application/pdf',
+      context: 'background' as const,
+      backgroundRetry: 'not_run' as const,
+    };
+    const fetchBytes = vi.fn(async () => {
+      fileReadFacts.set(bytes, facts);
+      return bytes;
+    });
+    const p = port(pane);
+    serveBytesPort(p as never, host, fetchBytes);
+    p.send({ url: '/files/1/download?download_frd=1' });
+    await settle();
+    expect(read).toHaveBeenCalledWith('https://school.edu', 7, expect.any(Function));
+    expect(fetchBytes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        origin: 'https://school.edu',
+        url: '/files/1/download?download_frd=1',
+        context: 'background',
+      }),
+    );
+    const sent = p.postMessage.mock.calls.map(([message]) => message);
+    expect(sent).toHaveLength(3);
+    const decoded = sent
+      .slice(0, 2)
+      .map((message) => Uint8Array.from(atob(message.chunk), (c) => c.charCodeAt(0)));
+    expect(decoded[0]).toHaveLength(192 * 1024);
+    expect(Uint8Array.from([...decoded[0]!, ...decoded[1]!])).toEqual(bytes);
+    expect(sent[2]).toEqual({ done: true, facts });
+  });
+
+  it('sends only the kind, status and facts of a failure', async () => {
+    const { host, pane } = setup();
+    const error = new FileBytesError(
+      'status',
+      'The file answered 403 for https://x/?token=SECRET',
+      403,
+    );
+    const fetchBytes = vi.fn(async () => {
+      throw error;
+    });
+    const p = port(pane);
+    serveBytesPort(p as never, host, fetchBytes);
+    p.send({ url: '/files/1/download' });
+    await settle();
+    expect(p.postMessage).toHaveBeenCalledTimes(1);
+    const message = p.postMessage.mock.calls[0]![0];
+    expect(message).toEqual({ error: { kind: 'status', facts: undefined, status: 403 } });
+    expect(JSON.stringify(message)).not.toContain('SECRET');
+  });
+
+  it('reports an unconfirmed cookie and ignores a second request', async () => {
+    const { host, pane } = setup();
+    host.read = vi.fn(async () => {
+      throw new ViewerUnconfirmedError();
+    }) as ViewerHost['read'];
+    const fetchBytes = vi.fn();
+    const p = port(pane);
+    serveBytesPort(p as never, host, fetchBytes);
+    p.send({ url: '/files/1/download' });
+    p.send({ url: '/files/2/download' });
+    await settle();
+    expect(p.postMessage).toHaveBeenCalledTimes(1);
+    expect(p.postMessage.mock.calls[0]![0]).toMatchObject({ error: { kind: 'unconfirmed' } });
+  });
+
+  it.each([
+    { url: 5 },
+    { url: '/files/1/download', truncateAt: -1 },
+    { url: '/f', truncateAt: '9' },
+  ])('rejects an invalid request %j', async (request) => {
+    const { host, pane } = setup();
+    const fetchBytes = vi.fn();
+    const p = port(pane);
+    serveBytesPort(p as never, host, fetchBytes);
+    p.send(request);
+    await settle();
+    expect(fetchBytes).not.toHaveBeenCalled();
+    expect(p.postMessage.mock.calls[0]![0]).toMatchObject({ error: { kind: 'unconfirmed' } });
+  });
+
+  it('cancels the read when the pane disconnects', async () => {
+    const { host, pane } = setup();
+    let signal: AbortSignal | undefined;
+    const fetchBytes = vi.fn(async (options: { signal?: AbortSignal }) => {
+      signal = options.signal;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return new Uint8Array([1]);
+    });
+    const p = port(pane);
+    serveBytesPort(p as never, host, fetchBytes as never);
+    p.send({ url: '/files/1/download' });
+    await settle();
+    p.close();
+    expect(signal?.aborted).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(p.postMessage).not.toHaveBeenCalled();
   });
 });

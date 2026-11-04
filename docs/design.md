@@ -2355,6 +2355,19 @@ If a later feature goes over the budget, the Announcements view can move to a sc
 
 ### 25. File viewer
 
+The embedded pane reads the file API URL with credentials included and follows Canvas redirects.
+Firefox cookie settings 1 and 5 withhold the session cookie from that frame in the session-gated download test, while setting 4 permits it.
+The test uses Firefox 159; the owner's Waterfox report shows the same HTML-answer failure, but does not prove which browser rule causes it.
+An HTML answer or HTTP 401/403 triggers one background read through the same cookie-bound owner read as the file API.
+The background checks the binding before and after the complete read and retains the 100 MB limit and HTML check.
+Only an extension pane frame can open the runtime port for that read.
+Runtime ports offer no transfer list in either engine, so the fallback sends bounded base64 chunks and cancels the read when the pane disconnects.
+The pane remains the first reader because it avoids serialization and extra buffers on successful reads.
+PDF.js already receives a complete byte buffer, so this choice preserves its current loading behavior and adds no streaming restriction.
+Failure details contain only the redirect flag, a final origin class, a fixed content type vocabulary, the read context and the retry result.
+The Firefox smoke tests cover cookie settings 1, 4 and 5 with a session-gated download redirect to another origin.
+Firefox's default setting is 5, so the plain smoke run already failed before the fallback.
+
 **Question:** How does a student read Canvas files without losing the rest of Canvas?
 
 **Problem:** Canvas opens a PDF in a full-window overlay that hides the page, shows one file at a time, and offers the student's own submitted files only as downloads.

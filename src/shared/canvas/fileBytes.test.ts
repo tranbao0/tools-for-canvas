@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FileBytesError, MAX_FILE_BYTES, declaredLength, fetchFileBytes } from './fileBytes';
+import {
+  FileBytesError,
+  MAX_FILE_BYTES,
+  declaredLength,
+  fetchFileBytes,
+  fileReadFacts,
+  safeContentType,
+} from './fileBytes';
 
 const ORIGIN = 'https://school.instructure.com';
 
@@ -348,5 +355,69 @@ describe('declaredLength', () => {
     expect(declaredLength(new Headers({ 'content-length': '-1' }))).toBeNull();
     expect(declaredLength(new Headers({ 'content-length': '1e3' }))).toBeNull();
     expect(declaredLength(new Headers({ 'content-length': 'abc' }))).toBeNull();
+  });
+});
+
+describe('read facts', () => {
+  const answer = (url: string, redirected: boolean, type: string, body = 'x') => {
+    const response = new Response(body, { headers: { 'content-type': type } });
+    Object.defineProperty(response, 'url', { value: url });
+    Object.defineProperty(response, 'redirected', { value: redirected });
+    return response;
+  };
+
+  it('records the redirect, a file host as other and a fixed content type', async () => {
+    const result = await fetchFileBytes({
+      origin: ORIGIN,
+      url: '/files/42/download',
+      fetchImpl: vi.fn(async () =>
+        answer('https://files.example/a?token=SECRET', true, 'application/pdf'),
+      ),
+    });
+    expect(fileReadFacts.get(result)).toEqual({
+      redirected: true,
+      originClass: 'other',
+      contentType: 'application/pdf',
+      context: 'pane',
+      backgroundRetry: 'not_run',
+    });
+    expect(JSON.stringify(fileReadFacts.get(result))).not.toMatch(/files\.example|SECRET/);
+  });
+
+  it('puts the facts of a sign-in page on the failure', async () => {
+    const error = await fetchFileBytes({
+      origin: ORIGIN,
+      url: '/files/42/download',
+      context: 'background',
+      fetchImpl: vi.fn(async () => answer(`${ORIGIN}/login`, true, 'text/html; charset=utf-8')),
+    }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(FileBytesError);
+    expect((error as FileBytesError).facts).toEqual({
+      redirected: true,
+      originClass: 'canvas',
+      contentType: 'text/html',
+      context: 'background',
+      backgroundRetry: 'not_run',
+    });
+  });
+
+  it('gives a network failure facts without an origin', async () => {
+    const error = await fetchFileBytes({
+      origin: ORIGIN,
+      url: '/files/42/download',
+      fetchImpl: vi.fn(async () => {
+        throw new TypeError('NetworkError');
+      }),
+    }).catch((caught: unknown) => caught);
+    expect((error as FileBytesError).facts).toMatchObject({
+      originClass: 'none',
+      redirected: false,
+    });
+  });
+
+  it('maps unknown or custom content types to other', () => {
+    expect(safeContentType('Text/HTML; charset=utf-8')).toBe('text/html');
+    expect(safeContentType('application/x-private-token-123')).toBe('other');
+    expect(safeContentType(null)).toBe('other');
   });
 });

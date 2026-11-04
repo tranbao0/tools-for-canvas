@@ -96,3 +96,46 @@ describe('failure reasons', () => {
     },
   );
 });
+
+it('keeps response facts free of hosts, tokens and custom content types', () => {
+  const error = new FileBytesError('not_a_file', 'The answer is a web page');
+  error.facts = {
+    redirected: true,
+    originClass: 'other',
+    contentType: 'text/html; token=SECRET',
+    context: 'background',
+    backgroundRetry: 'failed',
+  };
+  const { report } = pdfDetails(error, 'fetch', 0, '1', 'test');
+  expect(report).toContain('Redirected: true');
+  expect(report).toContain('Final origin class: other');
+  expect(report).toContain('Content type: text/html');
+  expect(report).toContain('Read context: background');
+  expect(report).toContain('Background retry: failed');
+  expect(report).not.toContain('SECRET');
+  error.facts.contentType = 'application/SECRET';
+  expect(pdfDetails(error, 'fetch', 0, '1', 'test').report).toContain('Content type: other');
+});
+
+it('drops invalid diagnostic values rather than reporting addresses', () => {
+  const error = new FileBytesError('not_a_file', 'The answer is a web page');
+  error.facts = Object.assign(
+    {
+      redirected: true,
+      originClass: 'canvas' as const,
+      contentType: 'text/html',
+      context: 'pane' as const,
+      backgroundRetry: 'not_run' as const,
+    },
+    {
+      originClass: 'https://private.example/login?token=SECRET',
+      contentType: 'https://private.example/?verifier=SECRET',
+      context: 'private.example',
+      backgroundRetry: 'SECRET',
+    },
+  );
+  const { report } = pdfDetails(error, 'fetch', 0, '1', 'test');
+  expect(report).toContain('Final origin class: none');
+  expect(report).toContain('Content type: other');
+  expect(report).not.toMatch(/private\.example|SECRET|verifier=|token=/);
+});
