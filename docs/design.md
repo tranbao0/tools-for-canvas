@@ -332,6 +332,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     After ten seconds without settled data, use the slot with the viewport height rule.
     A slot that first shows up unsettled after those ten seconds, such as on the Dashboard tab after the Courses tab, has its own ten seconds: the card stays hidden until the slot settles or that wait ends.
     Before the first measurement, the card also waits until the Course work extras are gone from the claimed widget, within the same ten seconds.
+    When a wait ends before the widget settles, or with extras still inside it, the card takes the viewport height rule and keeps it for the page view, also when the widget settles later.
     In Customize dashboard, restore the widget and hide the card until Save or Cancel, only when a slot is in use.
     With no slot, the card keeps its place beside the grid or above it in Customize dashboard.
     When Customize dashboard ends, the card takes the slot, and the wrapper is hidden, in the same frame, and the card keeps its scroll position.

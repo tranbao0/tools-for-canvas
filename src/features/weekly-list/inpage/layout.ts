@@ -102,6 +102,11 @@ export function claimDashboardLayout(
   let detached = false;
   /** The height of the slot widget, measured once its data settled. */
   let slotHeight: number | null = null;
+  /**
+   * The card has shown in the slot, so its height is decided for the page view: the measured
+   * height, or the height rule of the window when the wait ended before the widget settled.
+   */
+  let slotSized = false;
 
   function giveWidgetsBack(except?: HTMLElement): void {
     for (const wrapper of doc.querySelectorAll<HTMLElement>(`[${REPLACED_ATTRIBUTE}]`)) {
@@ -182,7 +187,9 @@ export function claimDashboardLayout(
   ): void {
     if (slot?.wrapper.parentElement) {
       claim(slot);
-      if (slotHeight === null && slot.loaded) slotHeight = measureSlot(slot);
+      if (!slotSized && slot.loaded && slot.widget.querySelector('[data-wr-extra]') === null)
+        slotHeight = measureSlot(slot);
+      slotSized = true;
       const margin = view.getComputedStyle(slot.widget).margin;
       setInlineStyles(slot.wrapper, { display: 'none' });
       moveContainer(container, slot.wrapper.parentElement, slot.wrapper);
@@ -272,7 +279,7 @@ export function claimDashboardLayout(
     // their extras from it after it was claimed, or the card would take the height of both.
     const unsettled =
       slot !== null &&
-      slotHeight === null &&
+      !slotSized &&
       (!slot.loaded || slot.widget.querySelector('[data-wr-extra]') !== null);
     if (unsettled && !waiting && !waitExpired) startWait();
     else if (waiting && !unsettled && (slot !== null || grid !== null)) endWait();
