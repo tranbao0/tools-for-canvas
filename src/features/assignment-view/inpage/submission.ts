@@ -262,7 +262,13 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       // A page script can click the button, but only the student opens the feedback.
       else if (action === 'feedback' && event.isTrusted) {
         const file = files[Number(target?.getAttribute('data-index'))];
-        if (file?.sessionUrl) options.openFeedback({ title: file.name, url: file.sessionUrl });
+        if (file?.sessionUrl) {
+          options.openFeedback({ title: file.name, url: file.sessionUrl });
+          // The session request marks the comments as read in Canvas, as its own dialog does.
+          file.unread = false;
+          target?.removeAttribute('title');
+          target?.querySelector('.av-unread')?.remove();
+        }
       }
     });
   }

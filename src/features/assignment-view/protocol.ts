@@ -97,11 +97,3 @@ export interface AssignmentDetailsReply {
 export interface NoSubmissionAccess {
   kind: 'no_submission_access';
 }
-
-export function isNoSubmissionAccess(value: unknown): value is NoSubmissionAccess {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    (value as Partial<NoSubmissionAccess>).kind === 'no_submission_access'
-  );
-}

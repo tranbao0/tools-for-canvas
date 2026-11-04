@@ -1,8 +1,8 @@
 /**
  * The styles of the one assignment view (design decisions 21 and 26). The look follows Canvas:
- * Lato, the Canvas colors and InstUI chips and buttons. Two sheets: one for the nodes in the
- * Canvas page (the toggle button), and one for the panel in its
- * shadow root. Every node and mark of the view starts with `data-av-`.
+ * Lato, the Canvas colors and InstUI chips and buttons. Three sheets: one for the nodes in the
+ * Canvas page (the toggle button), one for the panel in its shadow root, and one for the
+ * Submission Details view, which builds on the panel sheet. Every node and mark of the view starts with `data-av-`.
  */
 
 /** The toggle button in the info block of a row. */

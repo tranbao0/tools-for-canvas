@@ -573,7 +573,7 @@
     "message": "One assignment view"
   },
   "assignmentViewHelp": {
-    "message": "Open an assignment under its row on the Grades page. It shows the instructions, the rubric, the feedback and your files. A switch that you turn on works the next time the Grades page loads."
+    "message": "On the Submission Details page of your own work, the instructions and your files replace the files area of Canvas. On the Assignments list, open an assignment under its row. A change of this switch works without a reload."
   },
   "settingShowRings": {
     "message": "Show progress rings"

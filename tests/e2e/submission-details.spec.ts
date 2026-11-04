@@ -26,7 +26,7 @@ test.use({ extensionDir: CHROME_E2E_EXTENSION_DIR });
 
 const assignmentPage = readFileSync('tests/fixtures/pages/assignment.html', 'utf8');
 const pdf = readFileSync('tests/fixtures/pdf/fixture.pdf', 'latin1');
-const SHOTS = '/tmp/a2shots';
+const SHOTS = path.join(process.cwd(), 'screenshots', 'submission-details');
 const ASSIGNMENT = '/courses/12/assignments/101';
 const HOST = '#av-submission-details';
 const FEEDBACK = '#tools-feedback';
@@ -276,6 +276,7 @@ test('View Feedback shows the session of Canvas in the feedback pane, and the se
   await expect(button).toHaveAttribute('title', 'There are unread comments.');
   await button.click();
   await expect(page.locator(FEEDBACK)).toBeVisible();
+  await expect(button).not.toHaveAttribute('title', /.*/);
   const frame = await feedbackFrame(page);
   await expect(frame.locator('#notes')).toHaveText('Teacher notes on the paper');
   const session = canvas.requests.find((request) =>

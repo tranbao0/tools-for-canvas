@@ -88,7 +88,7 @@ function summary(reply: AssignmentDetailsReply, context: DetailsContext): HTMLEl
   return top;
 }
 
-/** The content of an open row, top to bottom as in decision 26, item 2. */
+/** The content of an open row of the Assignments list, top to bottom (decision 26). */
 export function renderDetails(reply: AssignmentDetailsReply, context: DetailsContext): HTMLElement {
   const { doc, origin, courseId } = context;
   const { details, timeZone } = reply;

@@ -82,7 +82,7 @@ export function assignmentTags(
   const view: ItemView = {
     ...item,
     state,
-    // The Grades page lists past work too, so a past due date always gets its chip here.
+    // The Assignments list shows past work too, so a past due date always gets its chip here.
     chip: statusChip(item, state, { now, showPastDueChip: true, gradeStatuses: undefined }),
     availability: availabilityFor(item, state, now),
     handInChip: handInChipFor(item),
