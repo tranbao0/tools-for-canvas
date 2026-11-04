@@ -589,6 +589,8 @@ An earlier version used option B; schools on their own domain then needed an "Al
     A caller gets the answer of its own read.
     A change during the first read reaches every caller after its own start value.
     The channel tells the watchers on a later task, and only when no caller still waits for a read, so a start value never covers a newer value.
+    A caller that waits for more than 2 seconds does not hold the watchers back any longer, and the read itself never times out.
+    A watcher hears of a newer value when it differs from what the watchers were last told, or from an answer that a caller got, because a caller may only read and never apply its answer.
 - The detector and the in-page script post no events and no messages to the page.
 - The install welcome and the custom-domain prompt use separate flags, so one does not stop the other.
 
