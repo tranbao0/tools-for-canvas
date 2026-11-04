@@ -53,25 +53,28 @@ const toggles = () => document.querySelectorAll('[data-av-toggle]');
 const options = (channel: Fake, extra: object = {}) => ({
   channel,
   origin: ORIGIN,
-  pathname: '/courses/12/grades',
+  pathname: '/courses/12/assignments',
   ...extra,
 });
+
+/** One list row for a course, with the absolute link that the row check reads. */
+function listOf(course: string): string {
+  return `<div class="ig-list"><div class="ig-row" id="assignment_101"><div class="ig-info"><a class="ig-title" href="${ORIGIN}/courses/${course}/assignments/101">Essay</a></div></div></div>`;
+}
 
 beforeEach(() => {
   vi.useFakeTimers();
   document.head.innerHTML = '';
-  document.body.innerHTML =
-    '<table><tr class="student_assignment" id="submission_101"><th class="title"><a href="/courses/12/assignments/101">Essay</a></th></tr></table>';
+  document.body.innerHTML = listOf('12');
 });
 afterEach(() => vi.useRealTimers());
 
 describe('startAssignmentView', () => {
   it.each([
-    '/courses/12/grades',
-    '/courses/12/assignments',
-    '/courses/12~345/grades',
-    '/courses/12~345/assignments',
-  ])('adds buttons on %s and removes them on stop', async (pathname) => {
+    ['/courses/12/assignments', '12'],
+    ['/courses/12~345/assignments', '12~345'],
+  ])('adds buttons on %s and removes them on stop', async (pathname, course) => {
+    document.body.innerHTML = listOf(course!);
     const controller = await startAssignmentView(options(fakeChannel(), { pathname }));
     expect(toggles()).toHaveLength(1);
     controller.stop();
@@ -81,8 +84,8 @@ describe('startAssignmentView', () => {
 
   it.each([
     '/courses/12',
-    '/courses/12/grades/42',
-    '/courses/12/assignments/101/submissions',
+    '/courses/12/grades',
+    '/courses/12/assignments/101',
     '/courses/12/assignments/x',
     '/grades',
     '/',
@@ -149,19 +152,3 @@ describe('startAssignmentView', () => {
     expect(remove).toHaveBeenCalledOnce();
   });
 });
-
-it.each(['/courses/12/assignments/101', '/courses/2~12/assignments/2~101/'])(
-  'parses the assignment page path %s',
-  async (pathname) => {
-    document.body.innerHTML =
-      '<main id="content"><div id="assignment_show"><div class="description"></div><ul class="student-assignment-overview"></ul></div></main>';
-    const channel = fakeChannel();
-    const controller = await startAssignmentView(options(channel, { pathname }));
-    expect(channel.send).toHaveBeenCalledWith({
-      type: 'assignment:details',
-      courseId: pathname.includes('~') ? '2~12' : '12',
-      assignmentId: pathname.includes('~') ? '2~101' : '101',
-    });
-    controller.stop();
-  },
-);

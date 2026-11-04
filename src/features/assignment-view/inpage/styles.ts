@@ -1,19 +1,17 @@
 /**
  * The styles of the one assignment view (design decisions 21 and 26). The look follows Canvas:
  * Lato, the Canvas colors and InstUI chips and buttons. Two sheets: one for the nodes in the
- * Canvas page (the toggle button and the row that holds the panel), and one for the panel in its
+ * Canvas page (the toggle button), and one for the panel in its
  * shadow root. Every node and mark of the view starts with `data-av-`.
  */
 
-/** The toggle button in the title cell, and the table row that holds the panel. */
+/** The toggle button in the info block of a row. */
 export const PAGE_CSS = `
 [data-av-toggle]{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-inline-end:6px;border-radius:4px;vertical-align:middle;color:inherit;cursor:pointer}
 [data-av-toggle]::before{content:'';width:7px;height:7px;margin-inline-start:-2px;border:solid currentColor;border-width:0 2px 2px 0;transform:rotate(-45deg);transition:transform .15s}
 [data-av-toggle][aria-expanded=true]::before{margin:-3px 0 0;transform:rotate(45deg)}
 [data-av-toggle]:hover{background:color-mix(in srgb,currentColor 12%,transparent)}
 [data-av-toggle]:focus-visible{outline:2px solid var(--ic-brand-primary,#0374b5);outline-offset:1px}
-tr[data-av-details]>td{padding:0!important;border:0!important;background:none!important}
-tr[data-av-details][hidden]{display:none!important}
 @media (prefers-reduced-motion:reduce){[data-av-toggle]::before{transition:none}}
 `;
 

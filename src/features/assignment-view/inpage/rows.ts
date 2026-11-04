@@ -1,12 +1,11 @@
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 /**
- * The expand rows of the Grades page (design decision 26, item 1).
+ * The expand rows of the Assignments list (design decision 26, item 5).
  *
- * Each assignment row gets a toggle button at the start of its title cell. The button opens a
+ * Each assignment row gets a toggle button at the start of its info block. The button opens a
  * row under it that holds the details in a shadow root, and a second click closes it. The rows
  * stay open while the page stays open, and the details load on the first open and stay in memory
- * for the page view. Canvas draws its own comment and rubric rows after the assignment row, and
- * this code leaves them and the title link as they are.
+ * for the page view. This code leaves the title link and Canvas's own controls as they are.
  *
  * One observer watches the page, because Canvas can draw rows late. After a batch of changes, one
  * pass adds a button to each row that has none. The pass ignores the changes that this code makes
@@ -27,14 +26,14 @@ export const OWN = 'data-av-own';
 const STYLE_ID = 'av-styles';
 /** How long a batch of page changes waits for the next one. */
 const BATCH_MS = 50;
-/** The id of an assignment row: `submission_<assignment id>`. */
-const ROW_ID = /^submission_(\d+(?:~\d+)?)$/;
+/** The id of an assignment row: `assignment_<assignment id>`. */
+const ROW_ID = /^assignment_(\d+(?:~\d+)?)$/;
 
 export interface RowsOptions {
   doc: Document;
   /** The origin of the page, which is the saved Canvas. */
   origin: string;
-  /** The course of the Grades page. */
+  /** The course of the page. */
   courseId: string;
   send(message: AssignmentDetailsMessage | DataMessage): Promise<unknown>;
   /** Called when the student presses Submit or Re-submit in an open row. */
@@ -85,22 +84,10 @@ export function removeStaleView(doc: Document = document): void {
   }
 }
 
-/** The assignment id of a row that the view may open, or `null`. Totals rows are not assignments. */
-function assignmentIdOf(row: Element): string | null {
-  if (row.classList.contains('hard_coded')) return null;
-  return ROW_ID.exec(row.id)?.[1] ?? /^assignment_(\d+(?:~\d+)?)$/.exec(row.id)?.[1] ?? null;
-}
-
 function titleOf(row: HTMLElement, assignmentId: string): string {
-  const link = row.querySelector('th.title a, .title a, a.ig-title');
+  const link = row.querySelector('a.ig-title');
   const text = link?.textContent?.trim();
   return text !== undefined && text !== '' ? text : `assignment ${assignmentId}`;
-}
-
-function columnCount(row: HTMLTableRowElement): number {
-  let count = 0;
-  for (const cell of row.cells) count += cell.colSpan;
-  return Math.max(count, 1);
 }
 
 /** Whether a batch of changes is more than the view's own nodes. */
@@ -219,14 +206,10 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
   }
 
   function createDetails(state: RowState): void {
-    const table = state.row instanceof HTMLTableRowElement;
-    const row = doc.createElement(table ? 'tr' : 'div');
+    const row = doc.createElement('div');
     row.id = `av-details-${state.assignmentId}`;
     row.setAttribute(OWN, '');
     row.setAttribute('data-av-details', '');
-    const cell = doc.createElement(table ? 'td' : 'div');
-    if (cell instanceof HTMLTableCellElement && state.row instanceof HTMLTableRowElement)
-      cell.colSpan = columnCount(state.row);
     const host = doc.createElement('div');
     host.setAttribute(OWN, '');
     // The file pane takes clicks on the links inside this host (decision 25).
@@ -242,8 +225,7 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
     panel.setAttribute('aria-label', `Details of ${state.title}`);
     shadow.append(sheet, panel);
     shadow.addEventListener('click', (event) => onPanelClick(state, event));
-    cell.append(host);
-    row.append(cell);
+    row.append(host);
     state.row.after(row);
     state.details = row;
     state.host = host;
@@ -290,7 +272,7 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
       load: 0,
     };
     button.addEventListener('click', () => toggle(state));
-    (row.querySelector('th.title, .ig-info') ?? row.firstElementChild ?? row).prepend(button);
+    (row.querySelector('.ig-info') ?? row.firstElementChild ?? row).prepend(button);
     states.set(row, state);
     if (openIds.has(assignmentId)) toggle(state);
   }
@@ -313,24 +295,20 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
       release(state);
       states.delete(row);
     }
-    for (const row of doc.querySelectorAll<HTMLElement>(
-      'tr.student_assignment, .ig-row[id^=assignment_]',
-    )) {
-      const assignmentId = assignmentIdOf(row);
-      if (assignmentId === null || states.has(row)) continue;
-      if (row.matches('.ig-row')) {
-        const link = row.querySelector<HTMLAnchorElement>('a.ig-title');
-        const path =
-          link && /^\/courses\/(\d+(?:~\d+)?)\/assignments\/(\d+(?:~\d+)?)\/?$/.exec(link.pathname);
-        if (
-          !link ||
-          link.origin !== origin ||
-          !path ||
-          normalizeCanvasId(path[1]!) !== normalizeCanvasId(courseId) ||
-          normalizeCanvasId(path[2]!) !== normalizeCanvasId(assignmentId)
-        )
-          continue;
-      }
+    for (const row of doc.querySelectorAll<HTMLElement>('.ig-row[id^=assignment_]')) {
+      const assignmentId = ROW_ID.exec(row.id)?.[1];
+      if (assignmentId === undefined || states.has(row)) continue;
+      const link = row.querySelector<HTMLAnchorElement>('a.ig-title');
+      const path =
+        link && /^\/courses\/(\d+(?:~\d+)?)\/assignments\/(\d+(?:~\d+)?)\/?$/.exec(link.pathname);
+      if (
+        !link ||
+        link.origin !== origin ||
+        !path ||
+        normalizeCanvasId(path[1]!) !== normalizeCanvasId(courseId) ||
+        normalizeCanvasId(path[2]!) !== normalizeCanvasId(assignmentId)
+      )
+        continue;
       attach(row, assignmentId);
     }
   }
