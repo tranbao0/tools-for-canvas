@@ -2067,12 +2067,11 @@ input:checked + .wr-switch-track > .wr-switch-knob {
 }
 
 /* The meta line is the second grid row: the course shrinks first, the points and the chips keep
-   their width. The title and the subtitle take a row of their own. */
+   their width. The title and the subtitle take a row of their own, as wide as the text column. */
 :host([data-panel='slot']) .wr[data-rows='compact'] .wr-slot-main {
   display: grid;
-  grid-template-columns: minmax(0, max-content) max-content;
+  grid-template-columns: minmax(0, max-content) minmax(max-content, 1fr);
   align-content: center;
-  justify-content: start;
   min-height: 36px;
 }
 
@@ -2210,6 +2209,7 @@ input:checked + .wr-switch-track > .wr-switch-knob {
     flex-flow: row wrap;
     align-items: center;
     align-content: center;
+    justify-content: flex-start;
     min-height: 36px;
   }
 

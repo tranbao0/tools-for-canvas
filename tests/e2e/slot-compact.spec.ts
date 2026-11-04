@@ -210,6 +210,21 @@ test('a long title has one line with an ellipsis and its full text on hover', as
   );
 });
 
+test('a title that fits the text column shows whole, also with a short meta line', async ({
+  context,
+  page,
+  background,
+}) => {
+  const list = await openSlot(context, page, {}, background);
+  const title = list.locator('.wr-title', { hasText: 'Call financial aid office' }).first();
+  await expect(title).toBeVisible();
+  expect(await title.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  const body = (await title
+    .locator('xpath=ancestor::*[contains(@class,"wr-item-body")]')
+    .boundingBox())!;
+  expect((await title.boundingBox())!.width).toBeCloseTo(body.width, 0);
+});
+
 test('the course name shrinks first, and the points and the chips keep their width', async ({
   context,
   page,
@@ -413,6 +428,10 @@ for (const width of [320, 400, 600]) {
           const pillBox = pill.getBoundingClientRect();
           const bodyBox = body.getBoundingClientRect();
           const meta = row.querySelector('.wr-course, .wr-item-tags');
+          // The meta line starts at the left edge of the text column.
+          const course = row.querySelector('.wr-course');
+          if (course && Math.abs(course.getBoundingClientRect().left - bodyBox.left) > 0.5)
+            found.push(`${name}: meta not at left`);
           const lowest = Math.max(
             ...[...row.querySelectorAll('.wr-course, .wr-item-tags')].map(
               (el) => el.getBoundingClientRect().bottom,
@@ -429,5 +448,31 @@ for (const width of [320, 400, 600]) {
     expect(card.x + card.width).toBeLessThanOrEqual(width + 0.5);
     if (width === 400) await shot(page, 'compact-400');
     if (width === 320) await shot(page, 'compact-320');
+  });
+}
+
+// Screenshots for a visual check by eye. They are taken only when R1_SHOTS names a directory.
+for (const theme of ['light', 'dark'] as const) {
+  test(`screenshots of the slot card, ${theme}`, async ({ context, page, background }) => {
+    test.skip(SHOTS === '', 'set R1_SHOTS to take screenshots');
+    const options = theme === 'dark' ? { theme } : {};
+    const list = await openSlot(context, page, options, background);
+    await page.locator(HOST).screenshot({ path: `${SHOTS}/card-compact-${theme}.png` });
+    await gear(list).click();
+    await expect(list.getByRole('radiogroup', { name: 'Row size' })).toBeVisible();
+    await page.locator(HOST).screenshot({ path: `${SHOTS}/settings-${theme}.png` });
+    await list.getByRole('radio', { name: 'Comfortable' }).check();
+    await list.getByRole('button', { name: 'Back' }).click();
+    await expect(list.locator('.wr-type-block').first()).toHaveCSS('width', '80px');
+    await page.locator(HOST).screenshot({ path: `${SHOTS}/card-comfortable-${theme}.png` });
+    await saveSettings(background, {
+      ...DEFAULT_SETTINGS,
+      rowSize: 'compact',
+      ...(theme === 'dark' ? { theme } : {}),
+    });
+    await page.setViewportSize({ width: 400, height: 900 });
+    await expect(list.locator('.wr-type-block').first()).toHaveCSS('width', '36px');
+    await page.locator(HOST).scrollIntoViewIfNeeded();
+    await page.locator(HOST).screenshot({ path: `${SHOTS}/card-compact-400-${theme}.png` });
   });
 }
