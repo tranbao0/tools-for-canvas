@@ -34,6 +34,7 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
     announcement: vi.fn(async () => ({ title: 'Hello', message: '<p>Hi</p>' })),
     announcements: vi.fn(async () => []),
     announcementFeed: vi.fn(async () => ({ status: 'unavailable', tab: 'tasks' })),
+    markRubricRead: vi.fn(async () => undefined),
     assignmentDetails: vi.fn(async () => ({
       details: { assignment: { id: '8' } },
       timeZone: 'UTC',
@@ -373,6 +374,48 @@ describe('routeDataMessage', () => {
         ).toBeNull();
       }
       expect(owner.assignmentDetails).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the rubric read message', () => {
+    const READ = {
+      type: 'assignment:rubric-read',
+      courseId: '12',
+      assignmentId: '8',
+      userId: '42',
+    };
+
+    it('asks the owner for the saved Canvas page, with the tab of the sender', async () => {
+      await expect(routeDataMessage(owner, READ, CONTENT_SCRIPT, host)).resolves.toEqual({
+        ok: true,
+      });
+      expect(owner.markRubricRead).toHaveBeenCalledWith('12', '8', '42', SAVED, 3);
+    });
+
+    it('keeps a refusal of the owner rejected', async () => {
+      vi.mocked(owner.markRubricRead).mockRejectedValueOnce(new Error('offline'));
+      await expect(routeDataMessage(owner, READ, CONTENT_SCRIPT, host)).rejects.toThrow('offline');
+    });
+
+    it.each([
+      ['another Canvas host', OTHER_CANVAS],
+      ['a frame inside the saved Canvas', { ...CONTENT_SCRIPT, frameId: 5 }],
+      ['a sender with no tab', { url: CONTENT_SCRIPT.url }],
+      ['an extension page', EXTENSION_PAGE],
+    ])('refuses %s', async (_name, sender) => {
+      await expect(routeDataMessage(owner, READ, sender, host)).rejects.toThrow();
+      expect(owner.markRubricRead).not.toHaveBeenCalled();
+    });
+
+    it('is no message of the protocol when an id is not a Canvas id', () => {
+      for (const bad of ['../users/self', '1/2', '', 5, null]) {
+        for (const field of ['courseId', 'assignmentId', 'userId']) {
+          expect(
+            routeDataMessage(owner, { ...READ, [field]: bad }, CONTENT_SCRIPT, host),
+          ).toBeNull();
+        }
+      }
+      expect(owner.markRubricRead).not.toHaveBeenCalled();
     });
   });
 

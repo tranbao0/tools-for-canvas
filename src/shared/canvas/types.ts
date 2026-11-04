@@ -298,6 +298,11 @@ export interface CanvasApi {
     courseId: string,
     assignmentId: string,
   ): Promise<Record<string, unknown>>;
+  /**
+   * Marks the rubric comments of the user's own submission as read: the `PUT` that Canvas's page
+   * sends when "Show Rubric" opens the rubric. Canvas refuses it for any other user.
+   */
+  markRubricCommentsRead(courseId: string, assignmentId: string, userId: string): Promise<void>;
   getViewerFile(fileId: string): Promise<{
     display_name: string;
     'content-type': string;

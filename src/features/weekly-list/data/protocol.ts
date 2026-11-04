@@ -10,6 +10,8 @@ import {
   isAssignmentOwnerMessage,
   type AssignmentDetailsMessage,
   type AssignmentOwnerMessage,
+  isRubricReadMessage,
+  type RubricReadMessage,
 } from '../../assignment-view/protocol';
 import { isFixMessage, type FixMessage } from '../../dashboard-fixes/protocol';
 import type { ToolsSettings } from '../../../shared/settings/tools';
@@ -205,6 +207,7 @@ export type DataMessage =
   | CanvasDetectedMessage
   | AssignmentDetailsMessage
   | AssignmentOwnerMessage
+  | RubricReadMessage
   | FixMessage;
 
 export interface OkReply {
@@ -452,6 +455,7 @@ export function isDataMessage(value: unknown): value is DataMessage {
     isCanvasDetectedMessage(value) ||
     isAssignmentDetailsMessage(value) ||
     isAssignmentOwnerMessage(value) ||
+    isRubricReadMessage(value) ||
     isFixMessage(value)
   );
 }

@@ -25,6 +25,7 @@ import type {
   AnnouncementEntry,
   DashboardData,
 } from '../../dashboard-fixes/protocol';
+import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { assignmentIdsToLookup } from '../model/normalize';
 import {
   DEFAULT_LIST_TABS,
@@ -313,6 +314,18 @@ export interface DataOwner {
     origin: string | null,
     tabId: number | undefined,
   ): Promise<AssignmentOwnerReply | NoSubmissionAccess>;
+  /**
+   * Marks the rubric comments of the student's own submission as read, the request that Canvas's
+   * page sends when the student opens the rubric (decision 26). It runs under the rules of
+   * `viewerRead` and only for the student whom the check confirms. Rejects when any of that fails.
+   */
+  markRubricRead(
+    courseId: string,
+    assignmentId: string,
+    userId: string,
+    origin: string | null,
+    tabId: number | undefined,
+  ): Promise<void>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
@@ -2704,6 +2717,68 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return userId === null ? { kind: 'no_submission_access' } : { userId };
   }
 
+  /**
+   * The guard of the read mark, with the cookie rules of the other writes (decision 11). The client
+   * runs it once the request holds a slot, right before each attempt and each retry after a rate
+   * limit. It passes only while the tab, the saved Canvas and the cookie still hold for the student
+   * that the read started with: the cache student when a session exists, and the viewer proof of
+   * the read when it does not.
+   */
+  function readMarkGuard(
+    origin: string | null,
+    tabId: number | undefined,
+    stamp: WriteStamp,
+    proof: typeof viewerProof,
+    userId: string,
+  ): RequestGuard {
+    return async () => {
+      if (origin === null || origin !== knownOrigin || tabId === undefined) return false;
+      // The student of the read must still be the one of the path.
+      const student = stamp.userId ?? proof?.userId ?? null;
+      if (student === null || normalizeCanvasId(student) !== normalizeCanvasId(userId))
+        return false;
+      if (!(await surfaceMayRead(tabId))) return false;
+      // The check reads the cookie and asks Canvas for nothing: it runs inside a slot of the queue.
+      if (stamp.userId !== null) {
+        const fingerprint = await readFingerprint(origin);
+        return isCurrent(stamp) && fingerprint != null && confirmedFingerprint(fingerprint);
+      }
+      return (
+        proof !== null &&
+        proof === viewerProof &&
+        cache?.session == null &&
+        viewerProofHolds(origin)
+      );
+    };
+  }
+
+  async function markRubricRead(
+    courseId: string,
+    assignmentId: string,
+    userId: string,
+    origin: string | null,
+    tabId: number | undefined,
+  ): Promise<void> {
+    const send = () =>
+      viewerRead(origin, tabId, async (api) => {
+        // Canvas refuses another user's path, and the request is not even sent for one. A shard
+        // student's page writes `2~123` where Canvas's profile writes the global id.
+        const viewer = await viewerUserId(origin, tabId);
+        if (viewer === null || normalizeCanvasId(viewer) !== normalizeCanvasId(userId))
+          throw new Error('Not the signed-in student');
+        const guard = readMarkGuard(origin, tabId, writeStamp(), viewerProof, userId);
+        await api.withGuard(guard).markRubricCommentsRead(courseId, assignmentId, userId);
+      });
+    try {
+      await send();
+    } catch (error) {
+      // As in the details read: a cookie that is not confirmed yet waits for one check and tries once more.
+      if (!(error instanceof ViewerUnconfirmedError) || !(await viewerConfirm(origin, tabId)))
+        throw error;
+      await send();
+    }
+  }
+
   async function viewerUserId(
     origin: string | null,
     tabId: number | undefined,
@@ -3281,6 +3356,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     viewerRead,
     assignmentDetails,
     assignmentOwner,
+    markRubricRead,
     viewerMayFetch,
     viewerUserId,
     viewerConfirm,

@@ -12,7 +12,13 @@
  * recording, quiz, LTI tool, student annotation, discussion), and for a frame that holds more than
  * the view can show: a file row that does not match, a preview button with no usable session
  * address, a similarity report, the snapshot of a URL, or a frame that cannot be read once it has
- * loaded. Nothing else of the page is touched, no node of Canvas gets an attribute or a style, and
+ * loaded. A style element in the head carries the rules of the mode: the hidden frame, and the rules
+ * for Canvas's own rubric when the view shows it (`rubric.ts`). Canvas's rubric holder is moved,
+ * under the files in the host or, where the frame stays, into a wrapper inside the frame area after
+ * the frame, and goes back to its place when the view goes. The header's "Show Rubric" and its
+ * unread mark are hidden by those rules. After the request that marks the rubric comments read
+ * succeeds, the unread mark gets `display: none` and the link a blank title, as Canvas's own click
+ * does. Nothing else of the page is touched, no node of Canvas gets another attribute or style, and
  * the frame is never moved, because a moved frame reloads.
  *
  * The view changes the page only for the signed-in student's own submission: the user of the path
@@ -25,11 +31,26 @@ import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
 import { sanitizeHtml } from '../../../shared/ui/sanitize';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { logFailure } from '../../../shared/platform/log';
-import type { AssignmentDetailsMessage, AssignmentDetailsReply } from '../protocol';
+import type {
+  AssignmentDetailsMessage,
+  AssignmentDetailsReply,
+  RubricReadMessage,
+} from '../protocol';
 import { renderInstructions, submissionFileUrl } from '../render';
 import { isDetailsReply } from './details';
 import type { FeedbackRequest } from './feedbackPane';
 import { fitInstructions, toggleInstructions } from './instructions';
+import {
+  findRubric,
+  focusIsOnRubricLink,
+  focusRubric,
+  RUBRIC_CSS,
+  rubricIsShown,
+  takeRubric,
+  unreadRubricMark,
+  whenRubricOnScreen,
+  whenRubricReady,
+} from './rubric';
 import { OWN } from './rows';
 import { filesFromDetails, readFrame, type FrameFile } from './submissionFrame';
 import { PANEL_CSS, SUBMISSION_CSS } from './styles';
@@ -64,7 +85,7 @@ export interface SubmissionViewOptions {
   assignmentId: string;
   /** The user of the path. */
   userId: string;
-  send(message: AssignmentDetailsMessage): Promise<unknown>;
+  send(message: AssignmentDetailsMessage | RubricReadMessage): Promise<unknown>;
   theme?(): PageTheme;
   openFeedback(request: FeedbackRequest): void;
   closeFeedback(): void;
@@ -151,16 +172,27 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   let host: HTMLElement | null = null;
   let stopFrame: (() => void) | null = null;
   let resize: ResizeObserver | null = null;
+  let stopRubricWait: (() => void) | null = null;
+  let restoreRubric: (() => void) | null = null;
+  let stopOnScreen: (() => void) | null = null;
+  /** Whether the request that marks the rubric comments read went out. It goes out once per page. */
+  let readSent = false;
 
   /** The files whose feedback the student opened. Canvas still marks them unread until a reload. */
   const opened = new Set<string>();
   const known = (file: FrameFile): FrameFile =>
     opened.has(file.fileId) && file.unread ? { ...file, unread: false } : file;
 
-  /** Takes the host, the style and the feedback pane away. The frame is as Canvas drew it. */
+  /** Takes the host, the style and the feedback pane away. The page is as Canvas drew it. */
   function unmount(): void {
     resize?.disconnect();
     resize = null;
+    stopRubricWait?.();
+    stopRubricWait = null;
+    stopOnScreen?.();
+    stopOnScreen = null;
+    restoreRubric?.();
+    restoreRubric = null;
     host?.remove();
     host = null;
     style?.remove();
@@ -210,6 +242,79 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     return null;
   }
 
+  /**
+   * Marks the rubric comments read, as Canvas's page does when "Show Rubric" opens the rubric: one
+   * request, only while Canvas shows an unread mark, and only when the student can see the rubric:
+   * the page is visible and the holder is at least partly in view. A failure shows nothing and is
+   * not repeated. A success clears the mark, as Canvas's page does.
+   */
+  function markRubricRead(holder: HTMLElement): void {
+    if (readSent || !unreadRubricMark(doc)) return;
+    stopOnScreen = whenRubricOnScreen(doc, holder, () => {
+      // The mark can go while the rubric waits for the screen: Canvas's own click, or another copy.
+      const mark = unreadRubricMark(doc);
+      if (readSent || !mark || !rubricIsShown(holder)) return;
+      readSent = true;
+      send({
+        type: 'assignment:rubric-read',
+        courseId: options.courseId,
+        assignmentId: options.assignmentId,
+        userId: options.userId,
+      }).then(
+        (reply) => {
+          if (
+            typeof reply !== 'object' ||
+            reply === null ||
+            (reply as { ok?: unknown }).ok !== true
+          )
+            return;
+          mark.style.display = 'none';
+          doc
+            .querySelector('.submission-details-header .assess_submission_link')
+            ?.setAttribute('title', '');
+        },
+        (error: unknown) => logFailure('rubric comments read', error),
+      );
+    });
+  }
+
+  /**
+   * Shows Canvas's own rubric once its script has set it up and the holder is at rest: under the
+   * files in the host, or, where the frame stays, under the frame. A page with no rubric, or none
+   * that Canvas offers, is left as it is. A pop-up that Canvas has open is left alone until Canvas
+   * closes it.
+   */
+  function placeRubric(
+    created: HTMLElement,
+    panel: HTMLElement,
+    anchors: Anchors,
+    replace: boolean,
+    addRules: (css: string) => void,
+  ): void {
+    const holder = findRubric(doc);
+    if (!holder) return;
+    stopRubricWait = whenRubricReady(doc, holder, () => {
+      if (host !== created) return;
+      const wrapper = doc.createElement('div');
+      wrapper.setAttribute(OWN, '');
+      // Canvas's `closeRubric` leaves the focus on "Show Rubric", which the rules hide.
+      const focusWasOnLink = focusIsOnRubricLink(doc);
+      restoreRubric = takeRubric(doc, holder, wrapper);
+      addRules(RUBRIC_CSS);
+      if (replace) {
+        const section = node(doc, 'div', 'av-section av-rubric');
+        section.append(doc.createElement('slot'));
+        panel.append(section);
+        // The holder is a child of the host, so the slot shows it.
+        created.append(wrapper);
+      } else {
+        anchors.box.append(wrapper);
+      }
+      if (focusWasOnLink) focusRubric(holder, wrapper);
+      markRubricRead(holder);
+    });
+  }
+
   /** Draws the host. The returned function sets the files of an `online_upload` submission. */
   function mount(
     reply: AssignmentDetailsReply,
@@ -219,12 +324,15 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   ): (next: readonly FrameFile[]) => void {
     const { details } = reply;
     const replace = mode === 'replace';
-    if (replace) {
-      style = doc.createElement('style');
-      style.setAttribute(OWN, '');
-      style.textContent = HIDE_FRAME;
-      doc.head.append(style);
-    }
+    const addRules = (css: string): void => {
+      if (!style) {
+        style = doc.createElement('style');
+        style.setAttribute(OWN, '');
+        doc.head.append(style);
+      }
+      style.textContent += css;
+    };
+    if (replace) addRules(HIDE_FRAME);
 
     const created = doc.createElement('div');
     created.id = 'av-submission-details';
@@ -281,13 +389,18 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     const drawFiles = (): void => {
       panel.querySelector('.av-files')?.remove();
       const section = filesSection();
-      if (section) panel.append(section);
+      if (!section) return;
+      const rubric = panel.querySelector('.av-rubric');
+      if (rubric) rubric.before(section);
+      else panel.append(section);
     };
     panel.append(instructions);
     if (replace) {
       if (submitted) panel.append(submitted);
       drawFiles();
     }
+
+    placeRubric(created, panel, anchors, replace, addRules);
 
     fitInstructions(panel);
     const body = panel.querySelector('.av-instructions .av-body');

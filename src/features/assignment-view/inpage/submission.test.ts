@@ -7,7 +7,7 @@ import {
   frameRows,
 } from '../../../../tests/fixtures/submission-frame';
 import { submissionDetailsPage } from '../../../../tests/fixtures/submission-page';
-import type { AssignmentDetailsMessage } from '../protocol';
+import type { AssignmentDetailsMessage, RubricReadMessage } from '../protocol';
 import type { FeedbackRequest } from './feedbackPane';
 import { createSubmissionView, type SubmissionView } from './submission';
 
@@ -47,7 +47,9 @@ const FILE_ROW = frameRows(PAGE, [
   { fileId: '501', name: 'essay.pdf', size: '118 KB', button: 'View Feedback', unread: true },
 ]);
 
-let send: ReturnType<typeof vi.fn<(message: AssignmentDetailsMessage) => Promise<unknown>>>;
+let send: ReturnType<
+  typeof vi.fn<(message: AssignmentDetailsMessage | RubricReadMessage) => Promise<unknown>>
+>;
 let view: SubmissionView;
 let openFeedback: ReturnType<typeof vi.fn<(request: FeedbackRequest) => void>>;
 let closeFeedback: ReturnType<typeof vi.fn<() => void>>;
@@ -625,5 +627,166 @@ describe('a change of student', () => {
     start();
     await settle();
     expect(host()?.getAttribute('data-theme')).toBe('light');
+  });
+});
+
+describe('the rubric comments read mark', () => {
+  let intersect: ((entries: { isIntersecting: boolean }[]) => void) | null = null;
+  let visibility = 'visible';
+  let observers: { disconnect: ReturnType<typeof vi.fn> }[] = [];
+  const readMessages = () =>
+    send.mock.calls.filter(([message]) => message.type === 'assignment:rubric-read');
+  const dot = () => document.querySelector<HTMLElement>('.rubric_comment.unread_indicator');
+
+  beforeEach(() => {
+    intersect = null;
+    visibility = 'visible';
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => visibility,
+    });
+    observers = [];
+    class FakeObserver {
+      disconnect = vi.fn();
+      constructor(callback: (entries: { isIntersecting: boolean }[]) => void) {
+        intersect = callback;
+        observers.push(this);
+      }
+      observe = vi.fn();
+    }
+    Object.defineProperty(window, 'IntersectionObserver', {
+      configurable: true,
+      value: FakeObserver,
+    });
+    load(submissionDetailsPage({ rubric: true, rubricUnread: true }));
+    showInFrame(FILE_ROW);
+    // Canvas's script has set the page up, and the holder is in the layout once it is placed.
+    container().setAttribute('data-hide_from_rubric', 'true');
+    document.getElementById('rubric_holder')!.getClientRects = () => [{}] as unknown as DOMRectList;
+    send = vi.fn(async (message: AssignmentDetailsMessage | RubricReadMessage) =>
+      message.type === 'assignment:rubric-read' ? { ok: true } : reply(),
+    );
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(document, 'visibilityState');
+    Reflect.deleteProperty(window, 'IntersectionObserver');
+  });
+
+  it('sends one request when the rubric is in view, and clears the mark after the answer', async () => {
+    start();
+    await settle();
+    expect(readMessages()).toHaveLength(0);
+    intersect!([{ isIntersecting: true }]);
+    await settle();
+    expect(readMessages()).toEqual([
+      [{ type: 'assignment:rubric-read', courseId: '12', assignmentId: '101', userId: '42' }],
+    ]);
+    expect(dot()!.style.display).toBe('none');
+    expect(document.querySelector('.assess_submission_link')!.getAttribute('title')).toBe('');
+  });
+
+  it('sends nothing while the rubric is out of view or the page is hidden', async () => {
+    visibility = 'hidden';
+    start();
+    await settle();
+    intersect!([{ isIntersecting: true }]);
+    await settle();
+    expect(readMessages()).toHaveLength(0);
+    visibility = 'visible';
+    document.dispatchEvent(new Event('visibilitychange'));
+    await settle();
+    expect(readMessages()).toHaveLength(1);
+  });
+
+  it('sends nothing when Canvas already hid the mark, and nothing from a copy that starts later', async () => {
+    start();
+    await settle();
+    intersect!([{ isIntersecting: true }]);
+    await settle();
+    expect(readMessages()).toHaveLength(1);
+    view.stop();
+    start();
+    await settle();
+    intersect?.([{ isIntersecting: true }]);
+    await settle();
+    expect(readMessages()).toHaveLength(1);
+  });
+
+  it('sends nothing when the mark goes while the rubric waits for the screen', async () => {
+    start();
+    await settle();
+    dot()!.style.display = 'none';
+    intersect!([{ isIntersecting: true }]);
+    await settle();
+    expect(readMessages()).toHaveLength(0);
+  });
+
+  it('leaves the mark and sends no second request when the request fails', async () => {
+    send = vi.fn(async (message: AssignmentDetailsMessage | RubricReadMessage) => {
+      if (message.type === 'assignment:rubric-read') throw new Error('offline');
+      return reply();
+    });
+    start();
+    await settle();
+    intersect!([{ isIntersecting: true }]);
+    await settle();
+    intersect!([{ isIntersecting: true }]);
+    await settle();
+    expect(readMessages()).toHaveLength(1);
+    expect(dot()!.style.display).toBe('');
+  });
+
+  describe('watching the screen', () => {
+    const visibilityListeners = (spy: { mock: { calls: unknown[][] } }) =>
+      spy.mock.calls.filter((call) => call[0] === 'visibilitychange').length;
+
+    it.each([
+      ['the switch is turned off', () => view.setActive(false)],
+      ['the student changes', () => view.resetStudent()],
+      ['the view stops', () => view.stop()],
+    ])('disconnects the observer and removes the listener when %s', async (_name, leave) => {
+      const added = vi.spyOn(document, 'addEventListener');
+      const removed = vi.spyOn(document, 'removeEventListener');
+      start();
+      await settle();
+      expect(observers).toHaveLength(1);
+      expect(observers[0]!.disconnect).not.toHaveBeenCalled();
+      expect(visibilityListeners(added)).toBe(1);
+      leave();
+      expect(observers[0]!.disconnect).toHaveBeenCalled();
+      expect(visibilityListeners(removed)).toBe(1);
+    });
+
+    it('disconnects the observer and removes the listener once the request went out', async () => {
+      const removed = vi.spyOn(document, 'removeEventListener');
+      start();
+      await settle();
+      intersect!([{ isIntersecting: true }]);
+      await settle();
+      expect(observers[0]!.disconnect).toHaveBeenCalled();
+      expect(visibilityListeners(removed)).toBe(1);
+    });
+
+    it('disconnects the observer of a placement that a change of mode takes away', async () => {
+      showInFrame(
+        frameRows(PAGE, [
+          {
+            fileId: '501',
+            name: 'essay.pdf',
+            size: '118 KB',
+            button: 'View Feedback',
+            score: TURNITIN_SCORE,
+          },
+        ]),
+      );
+      const removed = vi.spyOn(document, 'removeEventListener');
+      start();
+      await settle();
+      // The first placement was under the files, the second is under the frame.
+      expect(observers.length).toBeGreaterThanOrEqual(2);
+      expect(observers[0]!.disconnect).toHaveBeenCalled();
+      expect(observers[observers.length - 1]!.disconnect).not.toHaveBeenCalled();
+      expect(visibilityListeners(removed)).toBe(observers.length - 1);
+    });
   });
 });

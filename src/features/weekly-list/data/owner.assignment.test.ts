@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { canvasError } from './testing/fakeCanvas';
 import { rawRecords } from '../../../../tests/fixtures/assignment-view';
+import { buildScenario } from '../../../../tests/fixtures/scenario';
 import {
   ORIGIN,
   createHarness,
@@ -166,5 +167,79 @@ describe('assignment details', () => {
       submission: records.submission,
     });
     await expect(h.owner.assignmentDetails('12', '102', ORIGIN, TAB)).rejects.toThrow();
+  });
+});
+
+describe('rubric comments read', () => {
+  const OWN = '5501';
+
+  it('marks them read for the confirmed signed-in student, in the saved Canvas', async () => {
+    const h = await loaded();
+    await h.owner.markRubricRead('12', '101', OWN, ORIGIN, TAB);
+    expect(h.canvas.callsOf('markRubricCommentsRead')).toEqual([['12', '101', OWN]]);
+  });
+
+  it('sends nothing for another user, another address, no tab or a tab in another cookie store', async () => {
+    const h = await loaded();
+    await expect(h.owner.markRubricRead('12', '101', '7777', ORIGIN, TAB)).rejects.toThrow();
+    await expect(h.owner.markRubricRead('12', '101', OWN, ORIGIN, undefined)).rejects.toThrow();
+    await expect(
+      h.owner.markRubricRead('12', '101', OWN, 'https://other.edu', TAB),
+    ).rejects.toThrow();
+    await expect(h.owner.markRubricRead('12', '101', OWN, null, TAB)).rejects.toThrow();
+    vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
+    await expect(h.owner.markRubricRead('12', '101', OWN, ORIGIN, TAB)).rejects.toThrow();
+    expect(h.canvas.callsOf('markRubricCommentsRead')).toHaveLength(0);
+  });
+
+  it('compares the ids with the shard rules', async () => {
+    const scenario = buildScenario(new Date(Date.now()).toISOString());
+    scenario.profile = { ...scenario.profile, id: '20000000000123' };
+    scenario.self = { ...scenario.self, id: '20000000000123' };
+    const h = await createHarness({ scenario });
+    await loadReady(h);
+    await h.owner.markRubricRead('2~12', '2~101', '2~123', ORIGIN, TAB);
+    expect(h.canvas.callsOf('markRubricCommentsRead')).toEqual([['2~12', '2~101', '2~123']]);
+    await expect(h.owner.markRubricRead('2~12', '2~101', '2~124', ORIGIN, TAB)).rejects.toThrow();
+  });
+
+  it('sends nothing when the student changes between the wait in the queue and the attempt', async () => {
+    const h = await createHarness({ maxConcurrency: 1 });
+    await loadReady(h);
+    h.canvas.setAssignmentView('12', '101', rawRecords());
+    const release = h.canvas.hold('getOwnSubmissionRecord');
+    const details = h.owner.assignmentDetails('12', '101', ORIGIN, TAB).catch(() => undefined);
+    await vi.waitFor(() => expect(h.canvas.callsOf('getOwnSubmissionRecord')).toHaveLength(1));
+    const marked = expect(h.owner.markRubricRead('12', '101', OWN, ORIGIN, TAB)).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(50);
+    signInOtherUser(h);
+    release();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await marked;
+    await details;
+    expect(h.canvas.callsOf('markRubricCommentsRead')).toHaveLength(0);
+  });
+
+  it('sends nothing when a cold viewer cookie changes between the wait in the queue and the attempt', async () => {
+    const h = await createHarness({ maxConcurrency: 1 });
+    h.canvas.setAssignmentView('12', '101', rawRecords());
+    const release = h.canvas.hold('getOwnSubmissionRecord');
+    const details = h.owner.assignmentDetails('12', '101', ORIGIN, TAB).catch(() => undefined);
+    await vi.waitFor(() => expect(h.canvas.callsOf('getOwnSubmissionRecord')).toHaveLength(1));
+    const marked = expect(h.owner.markRubricRead('12', '101', OWN, ORIGIN, TAB)).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(50);
+    signInOtherUser(h);
+    release();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await marked;
+    await details;
+    expect(h.canvas.callsOf('markRubricCommentsRead')).toHaveLength(0);
+  });
+
+  it('rejects when Canvas refuses, and does not send again', async () => {
+    const h = await loaded();
+    h.canvas.fail('markRubricCommentsRead', canvasError('forbidden', 403), { times: 1 });
+    await expect(h.owner.markRubricRead('12', '101', OWN, ORIGIN, TAB)).rejects.toThrow();
+    expect(h.canvas.callsOf('markRubricCommentsRead')).toHaveLength(1);
   });
 });

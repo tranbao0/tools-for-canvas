@@ -3072,6 +3072,7 @@ So a student switches pages to read the instructions next to the feedback on a f
        "Your files" and "Your submission" do not show for these types.
        The owner decided this on 2026-11-03: the view cannot show these types safely, and the instructions belong at the top of every Submission Details page.
      - Everything else on the page stays Canvas's own and untouched: the "Submission Details" header, the grade, "Show Rubric", the title, "submitted ...", "Re-submit Assignment" and the comments column on the right.
+       Only when the view shows Canvas's own rubric (RB1), the header's "Show Rubric" and its unread mark are hidden, and the rubric holder moves under the files.
    - **Assignment page (`/courses/:id/assignments/:id`).**
      - The extension adds no panel.
      - Canvas's own "Submission" sidebar lists each submitted file as a link `Download NAME`.
@@ -3110,10 +3111,13 @@ So a student switches pages to read the instructions next to the feedback on a f
    - The files frame stays visible until the read has finished, so a page that stays as it is never flickers.
 4. **How the page changes.**
    - When the view replaces the frame: one `style` element in the head hides `.submission-details-container>.submission-details-frame`, and one host element is added after that frame, in the same flex row, with the comments column on its right.
-   - In the fallback mode of item 5: no style is added, and the host is added right before `.submission-details-container`, so it sits above the frame and the comments column.
-     Canvas's frame and comments are not changed in any way.
-   - No node of Canvas gets an attribute or a style, and the frame is never moved, because a moved frame reloads.
-   - Turning the switch off removes the style, the host and an open feedback pane, so the content area is the same as Canvas drew it.
+   - In the fallback mode of item 5: the hide-frame rule is not added, and the host is added right before `.submission-details-container`, so it sits above the frame and the comments column.
+     The frame iframe and the comments column are not moved or changed.
+     When the page has a rubric that the view shows (RB1), the one style element still exists, with the rubric rules, and the rubric wrapper `div#av-rubric` is added inside `div.submission-details-frame` after the iframe, so that node of Canvas gets a new child.
+     The iframe itself does not move.
+   - Apart from the moved rubric holder, and the mark and the title after a successful read request (see "The rubric in the view"), no node of Canvas gets an attribute or a style, and the frame is never moved, because a moved frame reloads.
+   - Turning the switch off removes the style, the host, the rubric wrapper and an open feedback pane, and puts the rubric holder back, so the content area is the same as Canvas drew it.
+     One exception stays: after a successful read request for the rubric comments, the unread mark keeps `display: none` and the link keeps its blank title, as they are after Canvas's own click, because the comments are read in Canvas.
 5. **Where the files come from.**
    - The rows come from the same-origin files frame `iframe#preview_frame`, once its document is the preview page and has loaded: `tr.file-upload-submission`, the file link, the size text, the label of the button and the unread mark.
    - A link counts only when it is a file of the submission of this page.
@@ -3187,6 +3191,7 @@ So a student switches pages to read the instructions next to the feedback on a f
   - Turning the switch on adds the controls on an open page without a reload.
 - **Message.**
   - `assignment:details { courseId, assignmentId }` has strict Canvas id checks (`isAssignmentDetailsMessage`).
+  - `assignment:rubric-read { courseId, assignmentId, userId }` marks the rubric comments read (see "The rubric in the view").
   - The data router accepts it only from the top frame of a tab whose page has the saved origin, and refuses extension pages.
   - The owner reads both records with the rules of the file viewer (`viewerRead`): the tab uses the cookie store of the requests, the address is the saved Canvas, and the cookie is confirmed for the student of the cache.
   - Both requests run inside one read under those rules, so the reply is dropped when the cookie changes during them.
@@ -3276,16 +3281,96 @@ The renderer still applies the shared sanitizer to comment content as a further 
 `tests/fixtures/assignment-view.ts` models the two API reply bodies.
 The fixtures run in the browser test server, through the Assignments list route of `tests/e2e/assignment-view.spec.ts`.
 
+**Verified source facts for the rubric on the Submission Details page:**
+
+These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
+- `app/views/submissions/show.html.erb`, lines 186-203: "Show Rubric" is `a.assess_submission_link` in `div.submission-details-header__rubric`, with an unread dot `span.rubric_comment.unread_indicator`.
+  Canvas draws it only when the assignment has an active rubric association and one of these holds: the user can read the grade, can assess, did assess, or can read the rubric.
+- Same file, lines 275-322: `div#rubric_holder` is on the server-rendered page for every assignment with an active rubric association, with no condition on the grade.
+  It sits between `div.submission-details-header` and `div.submission-details-container`.
+  Its inline style is `position: absolute; right: 0px; padding: 5px; background-color: #fff; border: 1px solid #aaa; border-right-width: 0; display: none;`.
+  It holds `a.hide_rubric_link`, `#rubric_assessments_list` with `select#rubric_assessments_select`, the rubric partial `div.rubric.rubric_container` (`app/views/shared/_rubric.html.erb`, `_rubric_criterion.html.erb`), `.button-container` and a hidden `a.update_rubric_assessment_url`.
+  The rubric is therefore server-rendered, and a click does not draw it.
+- `ui/features/submissions/jquery/index.tsx`, lines 646 and 661-683: when the page is ready, Canvas's script calls `makeRubricAccessible` on the holder and then `.change()` on `#rubric_assessments_select`.
+  That handler fills the rubric with the assessment of the first option (`populateNewRubric`, with `ENV.rubricAssessments`), so the assessment of the student is in the holder on load, with no click.
+- Same file, lines 651-660 and 230-236: the click on `.assess_submission_link` calls `.change()` again, sends the "mark rubric comments read" `PUT` when `ENV.mark_rubric_comments_read_url` exists, then runs `openRubric`.
+  `openRubric` is a `fadeIn` of the holder, `toggleRubric` and a focus move to `.hide_rubric_link`.
+  So the click only shows the holder and adds the read mark.
+- Same file, lines 177-219 and 220-228: `makeRubricAccessible` treats the holder as a modal.
+  It binds Tab on the first and last tabbable to wrap the focus inside the holder, and Escape on every tabbable to click `.hide_rubric_link`.
+  It sets `data-hide_from_rubric` on the siblings of the holder and on the siblings of its ancestors up to `#application`.
+  `toggleRubric` sets `aria-hidden` on those nodes from `$rubric.is(':visible')`, and `closeRubric` fades the holder out and focuses `.assess_submission_link`.
+- Same file, line 315: the window resize handler sets `max-height`, `overflow` and `z-index` inline on the holder.
+- Same file, lines 744-745: the hash `#rubric` clicks `.assess_submission_link:visible:first`.
+- `app/models/rubric_association.rb`, lines 196-209: a student can assess for `user_can_assess_for?` only as the assessor of a peer review request, or in a self assessment, so a student's own page has no "Save Comment" button in the holder in the normal case.
+
+**The rubric in the view (RB1):**
+
+- The view shows Canvas's own holder, not a copy.
+  `rubric.ts` moves the same node (so the script of Canvas keeps its handlers) into a wrapper `div#av-rubric` and leaves a comment mark `av-rubric-home` where the holder was.
+  The wrapper is a child of the host, and a slot of the host shows it under "Your files".
+  Where the frame stays (the instructions-above case), the wrapper goes after the frame inside `div.submission-details-frame`, and the frame itself does not move.
+  So the order of the page is: title, Re-submit, instructions, files, rubric, comments.
+- The holder gets no attribute and no style of its own.
+  A rule in the page sheet (`!important`, scoped by `#av-rubric>#rubric_holder`) shows it in the flow, with no absolute place, no maximum height and a transparent background, so it takes the colors of the page.
+  The same sheet hides `div.submission-details-header__rubric` (the link and its unread dot) and `a.hide_rubric_link`, because a close button has no use in the page.
+- Switching off, or a change of mode, puts the holder back at the mark, with its own style unchanged, so its `display: none` hides it again.
+- The view shows the rubric only when the holder has a `.rubric`, `a.assess_submission_link` is in the header, Canvas's script has set the page up (an element with `data-hide_from_rubric` exists), and the holder is at rest.
+  The view waits up to 5 s for the setup.
+  Without a rubric, without the link (Canvas draws the holder for an unposted grade without the link), or when the setup never comes, nothing changes.
+- The holder is at rest when its inline `display` is `none`, it is at its home place (not in the wrapper), and none of its marked neighbors has `aria-hidden="true"`.
+  The neighbors are the siblings of the holder with `data-hide_from_rubric`, and `.submission-details-container`: the nodes that `toggleRubric` changes next to the holder.
+  Canvas's setup marks the siblings of every ancestor up to `#application` too (`index.tsx` lines 211-217), and the layout has a node there that is `aria-hidden` all the time (`#main > div.ic-Layout-watermark[aria-hidden="true"]`, in `app/views/layouts/application.html.erb`), so the rule never checks the whole document.
+  The setup counts as done when one of the neighbors has `data-hide_from_rubric`.
+  Canvas's pop-up is open after a click on "Show Rubric", and on a page that opens with `#rubric` (`index.tsx` lines 744-745), and then the holder shows and `toggleRubric` hides the neighbors from screen readers.
+  The view does not take the holder then.
+  It waits, with no time limit, until Canvas closes the pop-up (`closeRubric` sets `display: none`, then `toggleRubric` clears `aria-hidden`), and then takes it, so no content stays `aria-hidden`.
+  The wait watches only the holder (its `style`) and the neighbors (`aria-hidden` and `data-hide_from_rubric`), not the whole document.
+- `closeRubric` also moves the focus to `a.assess_submission_link`, which the view hides.
+  When the focus is on that link or inside `.submission-details-header__rubric` at the take, the view moves it into the rubric: the first control that shows, or the wrapper, named "Rubric", when the rubric has none.
+  The page does not scroll.
+- The script of Canvas does not know that the holder is not a modal.
+  A listener in the capture phase on the wrapper stops Tab and Escape before the handlers of Canvas see them, and does not cancel the keys.
+  So Tab leaves the rubric for the next control, and Escape does not close the holder or set `aria-hidden` on the page.
+- A click is not used: the click handler also sets `aria-hidden` on the whole page, moves the focus and scrolls, and a trigger that avoids this does not exist.
+- The view marks the rubric comments read itself (RB1b), as Canvas does when "Show Rubric" opens the rubric.
+  - Canvas sends the request only when the comments are unread: `show.html.erb` lines 193-200 draw `span.rubric_comment.unread_indicator` and set `ENV.mark_rubric_comments_read_url` only then, and the click handler (`index.tsx` lines 654-658) sends the request only when that value exists.
+    The same handler hides the unread dot and clears the title of the link.
+  - The address is `api_v1_course_submission_rubric_assessments_mark_read_url(course, assignment, submission user)`: `PUT /api/v1/courses/:c/assignments/:a/submissions/:user/rubric_assessments/read` (`config/routes.rb` line 1544, `submissions_api#mark_rubric_assessments_read`).
+    The action refuses any user but the current one (`return render_unauthorized_action unless @user == @current_user`), marks the rubric assessments read and answers `{"read": true}` (`submissions_api_controller.rb` lines 1588-1593).
+  - Canvas's script sends it with `$.ajaxJSON(url, 'PUT', {}, ...)` (`ui/shared/jquery/jquery.ajaxJSON.js` lines 36-50): a form `POST` with `_method=PUT` and `authenticity_token` from the CSRF cookie, with the cookies of the page.
+    The view does not copy that form.
+    It sends a real `PUT` with the `X-CSRF-Token` header, the same cookie and no body, through the checked write path that the extension already has (the Canvas client of the background).
+    The API documents this form (`curl -X PUT ... -H "Content-Length: 0"`).
+  - The in-page script makes no Canvas request of its own, and every request goes through the background, which holds the session binding. So it sends `assignment:rubric-read { courseId, assignmentId, userId }` (strict Canvas id checks) and the background does the write.
+    The router accepts it only from the top frame of a tab whose page has the saved origin.
+    The owner runs it under the rules of `viewerRead` (decision 11): the tab uses the cookie store of the requests, the address is the saved Canvas, the cookie is confirmed for the student, and a cookie that is not confirmed yet waits for one check and the request runs once more.
+    It sends nothing unless the user of the path is the signed-in student (the guard checks it again for each attempt), and it compares the two ids as decimal global ids (`normalizeCanvasId`), because a shard student's page writes `2~123` where the profile writes `20000000000123`.
+  - The request has the guard of the other writes (decision 11).
+    The client runs the guard once the request holds a slot of the queue, right before each attempt and before each retry after a rate limit (HTTP 429, or HTTP 403 with the text "Rate Limit Exceeded"), so every attempt has its own check.
+    The guard passes only while the tab uses the cookie store of the requests, the address is still the saved Canvas, and the cookie still holds for the student that the read started with: the cookie is confirmed for the cache student when a session exists, and `viewerProofHolds` holds for the proof of the read when it does not.
+    The guard reads the cookie and asks Canvas for nothing, because it runs inside a slot of the queue.
+    A sign-out or a change of student between the wait in the queue and the attempt sends nothing.
+  - The script sends it once per page, only when the unread mark is in Canvas's header and is not hidden (`style.display` is not `none`; Canvas's own click and the view's own success hide it), and only when the student can see the rubric: after the rubric is in place and in the layout, `document.visibilityState` is `visible`, and an `IntersectionObserver` reports that the holder is at least partly in view.
+    A rubric below the fold, or a page in a background tab, waits until it is on screen.
+    A page with no unread mark, a teacher or another student's page (no view), and a page with the switch off send nothing.
+    A copy of the script that starts later on the same page finds the mark hidden after a success and sends nothing.
+  - On a reply `ok`, the view hides the unread dot and clears the title of the link, as Canvas's click does.
+    On a failure it shows nothing, logs one line and does not send again.
+    The shared client retries only a rate limit answer, as for every request, and each retry runs the guard first.
+- `removeStaleView` puts a holder back from the wrapper of an earlier copy of the script before it removes the old view.
+
 **Fixtures and tests:**
 
 - `tests/fixtures/submission-page.ts` and `tests/fixtures/submission-frame.ts` model the page and the files frame on that markup.
-  The page fixture has a student and a teacher variant.
+  The page fixture has a student and a teacher variant, and a rubric variant with the link, the holder and a small copy of the script of Canvas that handles the holder.
 - `tests/fixtures/pages/assignment.html` has the sidebar of the assignment page.
 - `tests/e2e/submission-details.spec.ts` covers the replacement, the file click, the feedback pane, the instructions above an untouched frame for a media recording, the unchanged pages and the switch.
 
 **Live checks for the owner:**
 
-1. Open a graded submission on sjsu.instructure.com: the left area shows "Instructions" and "Your files", and the header, grade, "Show Rubric", "Re-submit Assignment" and comments look as before.
+1. Open a graded submission on sjsu.instructure.com: the left area shows "Instructions" and "Your files", and the header, grade, "Re-submit Assignment" and comments look as before.
+   Canvas's own rubric shows open under "Your files", and "Show Rubric" is gone.
    If a page shows Canvas's own files area with the instructions above it instead, a fallback case of item 5 applies (for example a similarity score).
    Tell me which one, so the case can get its own display.
 2. Click the file name: the file opens in the pane.
@@ -3295,6 +3380,9 @@ The fixtures run in the browser test server, through the Assignments list route 
 5. A text entry, a URL submission and a media recording: the first two show in "Your submission", and the media recording keeps Canvas's own area with the instructions above it.
 6. Turn the switch off: the page is as Canvas drew it, without a reload.
 7. On the assignment page, click the download link of the Submission sidebar: the file opens in the pane.
+8. On an assignment with a rubric, the rubric shows with the assessment of the teacher marked, Tab leaves it for the next control, and Escape does nothing.
+   If the rubric had unread comments, the dot is gone, and after a reload with the switch off Canvas shows no unread dot on "Show Rubric".
+   Turn the switch off: "Show Rubric" is back and the rubric is hidden again.
 
 ## Open risks
 
