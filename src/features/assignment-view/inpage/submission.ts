@@ -25,7 +25,13 @@ import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
 import { sanitizeHtml } from '../../../shared/ui/sanitize';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { logFailure } from '../../../shared/platform/log';
-import type { AssignmentDetailsMessage, AssignmentDetailsReply } from '../protocol';
+import { SESSION_REFUSALS } from '../../../shared/platform/refusals';
+import { rateLimitDelayMs } from '../../../shared/canvas/retry';
+import type {
+  AssignmentDetailsMessage,
+  AssignmentDetailsReply,
+  NoSubmissionAccess,
+} from '../protocol';
 import { renderInstructions, submissionFileUrl } from '../render';
 import { isDetailsReply } from './details';
 import type { FeedbackRequest } from './feedbackPane';
@@ -45,6 +51,9 @@ const SHOWN_TYPES: ReadonlySet<string | null | undefined> = new Set([
   'online_text_entry',
   'online_url',
 ]);
+
+/** How often a failed read of the details is asked again, after 1 s, 2 s and 4 s. */
+const READ_RETRIES = 3;
 
 /** How long a frame may stay blank, and how long the report cells of the frame are watched. */
 const FRAME_WAIT_MS = 10_000;
@@ -83,6 +92,10 @@ interface Anchors {
   container: Element;
   box: Element;
   frame: HTMLIFrameElement;
+}
+
+function isNoSubmissionAccess(value: unknown): value is NoSubmissionAccess {
+  return (value as Partial<NoSubmissionAccess> | null)?.kind === 'no_submission_access';
 }
 
 function sameFiles(a: readonly FrameFile[], b: readonly FrameFile[]): boolean {
@@ -151,6 +164,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   let host: HTMLElement | null = null;
   let stopFrame: (() => void) | null = null;
   let resize: ResizeObserver | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** The files whose feedback the student opened. Canvas still marks them unread until a reload. */
   const opened = new Set<string>();
@@ -170,6 +184,8 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
 
   function clear(): void {
     ++generation;
+    if (retryTimer !== null) clearTimeout(retryTimer);
+    retryTimer = null;
     opened.clear();
     stopFrame?.();
     stopFrame = null;
@@ -410,21 +426,53 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     if (readFrame(anchors.frame, origin, pathname).state === 'ready') watchReports();
   }
 
+  /** Waits for the next try. Resolves with `false` when the view moved on while it waited. */
+  function pause(ms: number, token: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        resolve(token === generation && !stopped && active);
+      }, ms);
+    });
+  }
+
+  /**
+   * Asks the background for the details. A read that fails is asked again after 1 s, 2 s and 4 s,
+   * unless the background refused it for the session of the student or the answer is the typed
+   * refusal of the submission. Resolves with `null` when no reply is left to use.
+   */
+  async function readDetails(token: number): Promise<unknown> {
+    for (let retry = 0; ; retry += 1) {
+      let reply: unknown;
+      let failure: unknown = null;
+      try {
+        reply = await send({
+          type: 'assignment:details',
+          courseId: options.courseId,
+          assignmentId: options.assignmentId,
+        });
+      } catch (error) {
+        failure = error ?? new Error('The read failed');
+        if (error instanceof Error && SESSION_REFUSALS.has(error.message)) {
+          logFailure('submission details', error);
+          return null;
+        }
+      }
+      if (token !== generation || stopped || !active) return null;
+      if (failure === null && (isDetailsReply(reply) || isNoSubmissionAccess(reply))) return reply;
+      if (retry >= READ_RETRIES) {
+        logFailure('submission details', failure ?? new Error('The reply holds no details'));
+        return null;
+      }
+      if (!(await pause(rateLimitDelayMs(retry), token))) return null;
+    }
+  }
+
   async function start(): Promise<void> {
     const token = ++generation;
     if (!findAnchors(doc)) return;
-    let reply: unknown;
-    try {
-      reply = await send({
-        type: 'assignment:details',
-        courseId: options.courseId,
-        assignmentId: options.assignmentId,
-      });
-    } catch (error) {
-      logFailure('submission details', error);
-      return;
-    }
-    if (token !== generation || stopped || !active) return;
+    const reply = await readDetails(token);
+    if (reply === null) return;
     // A refusal, an error and the record of another user all leave Canvas's page as it is.
     if (
       !isDetailsReply(reply) ||

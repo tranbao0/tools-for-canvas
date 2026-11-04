@@ -163,17 +163,10 @@ async function open(
 
 const host = (page: Page) => page.locator(HOST);
 
-/**
- * Turns the switch on for a page that loaded with it off. The page script subscribes to the
- * setting a moment after it starts, so a change in that moment is not seen. The change is made
- * again until the view shows.
- */
+/** Turns the switch on for a page that loaded with it off, and waits for the view. */
 async function turnOn(page: Page, background: Parameters<typeof saveAddress>[0]): Promise<void> {
-  await expect(async () => {
-    await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
-    await saveTools(background, DEFAULT_TOOLS_SETTINGS);
-    await expect(host(page)).toBeAttached({ timeout: 3000 });
-  }).toPass({ timeout: 20_000 });
+  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  await expect(host(page)).toBeAttached();
 }
 const paddingRight = (page: Page) =>
   page.locator('html').evaluate((node) => parseFloat(getComputedStyle(node).paddingRight));
