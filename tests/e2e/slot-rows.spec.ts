@@ -1,32 +1,38 @@
 /**
  * The rows of the card in the Course work widget slot have the look of that widget's items: a
- * block in the course color, the text column, and the due pill. The sizes are those of
- * @instructure/platform-widget-dashboard 16.2.0 and the InstUI theme tokens.
+ * block in the course color, the text column, and a right column with the due pill and the row
+ * actions. The sizes are those of @instructure/platform-widget-dashboard 16.2.0 and the InstUI
+ * theme tokens. Every other surface keeps its rows.
  */
-import type { Locator } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import {
   addCsrfCookie,
   doneBox,
   expect,
   inpageList,
   openCanvasPage,
+  openExtensionPage,
   serveScenario,
   settledList,
   test,
 } from './support/weekrow';
+import { saveAddress } from './support/scenario-api';
+import { IDS } from '../fixtures/scenario';
 
 const HOST = '#weekrow-inpage > weekrow-list';
+const QUIZ_3 = 'Quiz 3: Cell membranes';
 
 async function openSlot(
   context: Parameters<typeof serveScenario>[0],
-  page: Parameters<typeof openCanvasPage>[0],
+  page: Page,
+  width = 1440,
 ): Promise<Locator> {
   const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width, height: 900 });
   await addCsrfCookie(context, canvas.origin);
   await openCanvasPage(page, canvas.origin);
   await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot');
-  await expect(doneBox(inpageList(page), 'Quiz 3: Cell membranes')).toBeVisible();
+  await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
   await settledList(page);
   return inpageList(page);
 }
@@ -56,7 +62,6 @@ test('slot rows have the Course work widget parts and sizes', async ({ context, 
   await expect(link).toHaveAttribute('href', /\/courses\/\d+$/);
   await expect(link).toHaveAttribute('target', '_blank');
   await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-  await expect(row.locator('.wr-points')).toBeVisible();
   await expect(row.locator('.wr-points')).toHaveText('5 pts');
 
   const pill = row.locator('.wr-slot-pill');
@@ -68,74 +73,240 @@ test('slot rows have the Course work widget parts and sizes', async ({ context, 
   await expect(pill).toHaveCSS('column-gap', '6px');
   await expect(pill).toHaveCSS('font-size', '12px');
   await expect(pill).toHaveCSS('font-weight', '700');
+  await expect(pill).toHaveCSS('white-space', 'nowrap');
   await expect(pill.locator('svg')).toHaveCSS('width', '18px');
   await expect(pill).toHaveText(/\d/);
+  // The title link is as wide as its text, not as the text column.
+  const titleBox = (await row.locator('.wr-title').boundingBox())!;
+  const bodyBox = (await row.locator('.wr-item-body').boundingBox())!;
+  expect(titleBox.width).toBeLessThan(bodyBox.width - 40);
 
-  const box = (await block.boundingBox())!;
   const rowBox = (await row.boundingBox())!;
-  expect(rowBox.height).toBeCloseTo(92, 0);
   const pillBox = (await pill.boundingBox())!;
+  expect(Math.abs(rowBox.height - 92)).toBeLessThan(0.5);
   expect(pillBox.x + pillBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 0.5);
-  expect(box.x).toBeGreaterThan(rowBox.x);
+  expect((await block.boundingBox())!.x).toBeGreaterThan(rowBox.x);
 });
 
 test('slot rows sit 92 px apart and grow with long titles', async ({ context, page }) => {
   const list = await openSlot(context, page);
   const rows = list.locator('.wr-item');
-  const tops = await rows.evaluateAll((els) =>
-    els
-      .map((el) => {
-        const { top, height } = el.getBoundingClientRect();
-        return { top, height, parent: el.parentElement };
-      })
-      .map(({ top, height }) => ({ top, height })),
+  const boxes = await rows.evaluateAll((els) =>
+    els.map((el) => {
+      const { top, height } = el.getBoundingClientRect();
+      return { top, height };
+    }),
   );
   const steps: number[] = [];
-  for (let i = 1; i < tops.length; i++) {
-    const step = tops[i]!.top - tops[i - 1]!.top;
-    if (tops[i - 1]!.height === 92 && step > 0 && step < 200) steps.push(step);
+  for (let i = 1; i < boxes.length; i++) {
+    const step = boxes[i]!.top - boxes[i - 1]!.top;
+    if (Math.abs(boxes[i - 1]!.height - 92) < 0.5 && step > 0 && step < 200) steps.push(step);
   }
-  expect(steps).toContain(92);
+  expect(steps.length).toBeGreaterThan(0);
+  expect(steps.some((step) => Math.abs(step - 92) < 0.5)).toBe(true);
 
   const first = rows.first();
   await first.locator('.wr-title').evaluate((el) => {
     el.textContent = `${'A very long assignment title '.repeat(8)}end`;
   });
-  expect((await first.boundingBox())!.height).toBeGreaterThan(92);
+  expect((await first.boundingBox())!.height).toBeGreaterThan(92.5);
 });
 
-test('slot rows fit a 320 px card', async ({ context, page }) => {
+test('a slot row with actions keeps the 92 px step, and the actions sit under the pill', async ({
+  context,
+  page,
+}) => {
   const list = await openSlot(context, page);
-  await list.evaluate((el) => {
-    const card = el.firstElementChild!.shadowRoot!.querySelector('.wr') as HTMLElement;
-    card.style.width = '320px';
-  });
-  const rows = list.locator('.wr-item');
-  const count = await rows.count();
-  expect(count).toBeGreaterThan(0);
-  for (let i = 0; i < count; i++) {
-    const fits = await rows
-      .nth(i)
-      .evaluate(
-        (el) => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().width <= 320,
-      );
-    expect(fits).toBe(true);
+  const row = list.locator('.wr-item', { hasText: 'Homework 7' });
+  const skip = row.getByRole('button', { name: /^Skip/ });
+  await expect(skip).toBeVisible();
+  const rowBox = (await row.boundingBox())!;
+  expect(Math.abs(rowBox.height - 92)).toBeLessThan(0.5);
+  const pillBox = (await row.locator('.wr-slot-pill').boundingBox())!;
+  const skipBox = (await skip.boundingBox())!;
+  expect(skipBox.y).toBeGreaterThanOrEqual(pillBox.y + pillBox.height - 0.5);
+  expect(skipBox.x + skipBox.width).toBeCloseTo(pillBox.x + pillBox.width, 0);
+});
+
+test('Tab visits a slot row in reading order', async ({ context, page }) => {
+  const list = await openSlot(context, page);
+  const row = list.locator('.wr-item', { hasText: 'Homework 7' });
+  await row.locator('[data-part="check"]').focus();
+  const seen: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    seen.push(
+      await row.evaluate((el) => {
+        const active = (el.getRootNode() as ShadowRoot).activeElement as HTMLElement | null;
+        if (!active || !el.contains(active)) return 'outside';
+        return (
+          active.dataset['part'] ?? active.getAttribute('aria-label') ?? active.textContent ?? ''
+        );
+      }),
+    );
+    await page.keyboard.press('Tab');
   }
-  await expect(rows.first().locator('.wr-slot-pill')).toBeVisible();
+  expect(seen[0]).toBe('check');
+  expect(seen[1]).toBe('title');
+  expect(seen[2]).toMatch(/^Go to course /);
+  expect(seen[3]).toMatch(/confirm/i);
+  expect(seen[4]).toBe('skip');
 });
 
-test('rows outside slot mode keep their layout', async ({ context, page }) => {
+test('opening a tip moves nothing above it', async ({ context, page }) => {
   const list = await openSlot(context, page);
-  const row = list.locator('.wr-item').first();
-  const slot = await row.evaluate((el) => getComputedStyle(el).gridTemplateColumns);
-  await page.getByRole('tab', { name: 'Courses', exact: true }).click();
+  const row = list.locator('.wr-item', { hasText: 'Homework 7' });
+  const tops = () =>
+    row.evaluate((el) => {
+      const top = (selector: string) => el.querySelector(selector)!.getBoundingClientRect().top;
+      return {
+        check: top('.wr-check'),
+        block: top('.wr-type-block'),
+        title: top('.wr-title'),
+        chip: top('.wr-chip, .wr-marker'),
+        pill: top('.wr-slot-pill'),
+        skip: top('[data-part="skip"]'),
+      };
+    });
+  const before = await tops();
+  await row.getByRole('button', { name: /confirm/i }).click();
+  await expect(row.locator('.wr-item-tip')).toBeVisible();
+  const after = await tops();
+  for (const key of Object.keys(before) as (keyof typeof before)[]) {
+    expect(Math.abs(after[key] - before[key]), key).toBeLessThan(0.5);
+  }
+  // The tip comes after the parts of the text column.
+  const tip = (await row.locator('.wr-item-tip').boundingBox())!;
+  const chip = (await row.locator('.wr-chip, .wr-marker').first().boundingBox())!;
+  expect(tip.y).toBeGreaterThanOrEqual(chip.y + chip.height - 0.5);
+});
+
+test('the due pill follows the dark theme', async ({ context, page }) => {
+  const list = await openSlot(context, page);
+  await page.locator(HOST).evaluate((host: HTMLElement) => {
+    host.setAttribute('data-theme', 'dark');
+    host.shadowRoot!.querySelectorAll('[data-theme]').forEach((el) => {
+      el.setAttribute('data-theme', 'dark');
+    });
+  });
+  const pill = list.locator('.wr-slot-pill').first();
+  await expect(pill).toHaveCSS('background-color', 'rgb(37, 52, 67)');
+  await expect(pill).toHaveCSS('color', 'rgb(127, 180, 241)');
+});
+
+// The widget hides the block and stacks the item at a viewport of 639 px or less.
+for (const width of [320, 400, 600]) {
+  test(`slot rows fit a ${width} px viewport, with no block and the pill under the text`, async ({
+    context,
+    page,
+  }) => {
+    const list = await openSlot(context, page, width);
+    const rows = list.locator('.wr-item');
+    expect(await rows.count()).toBeGreaterThan(0);
+    const problems = await rows.evaluateAll((els) => {
+      const found: string[] = [];
+      for (const row of els) {
+        const rowBox = row.getBoundingClientRect();
+        const name = row.querySelector('.wr-title')?.textContent ?? '?';
+        if (getComputedStyle(row.querySelector('.wr-type-block')!).display !== 'none')
+          found.push(`${name}: block visible`);
+        for (const el of row.querySelectorAll<HTMLElement>('*')) {
+          // The course name has its ellipsis by design, and the check box has a larger hit area.
+          if (el.matches('.wr-course-name, .wr-sr') || el.closest('.wr-check')) continue;
+          const box = el.getBoundingClientRect();
+          if (box.width === 0 && box.height === 0) continue;
+          const label = `${name}: ${el.className || el.tagName}`;
+          if (el.scrollWidth > el.clientWidth + 0.5 && getComputedStyle(el).display !== 'inline')
+            found.push(`${label} clipped (${el.scrollWidth} > ${el.clientWidth})`);
+          if (box.left < rowBox.left - 0.5 || box.right > rowBox.right + 0.5)
+            found.push(`${label} leaves the row`);
+        }
+        for (const text of row.querySelectorAll('.wr-tag-text, .wr-points, .wr-link-btn')) {
+          if (text.getClientRects().length > 1) found.push(`${name}: ${text.className} wraps`);
+        }
+        const pill = row.querySelector('.wr-slot-pill');
+        const body = row.querySelector('.wr-item-body');
+        if (pill && body) {
+          const pillBox = pill.getBoundingClientRect();
+          const bodyBox = body.getBoundingClientRect();
+          if (pillBox.top < bodyBox.bottom - 0.5) found.push(`${name}: pill not under the text`);
+          if (Math.abs(pillBox.left - bodyBox.left) > 0.5) found.push(`${name}: pill not at left`);
+        }
+      }
+      return found;
+    });
+    expect(problems).toEqual([]);
+    const card = (await page.locator(HOST).boundingBox())!;
+    expect(card.x + card.width).toBeLessThanOrEqual(width + 0.5);
+  });
+}
+
+test('the block shows from a 640 px viewport', async ({ context, page }) => {
+  const list = await openSlot(context, page, 640);
+  await expect(list.locator('.wr-type-block').first()).toBeVisible();
+});
+
+// Rows on every other surface keep the grid and the height they had before the slot rows. The
+// numbers are those of the rows at commit 8b7ae7f.
+const OTHER_SURFACES_PARTS = [
+  '.wr-slot-pill',
+  '.wr-points',
+  '.wr-type-block',
+  '.wr-course-link',
+  '.wr-slot-side',
+  '.wr-slot-main',
+];
+
+async function expectPlainRows(list: Locator, columns: string, height: number): Promise<void> {
+  const row = list.locator('.wr-item', { has: list.page().getByText(QUIZ_3, { exact: true }) });
+  await expect(row).toBeVisible();
+  expect(await row.evaluate((el) => getComputedStyle(el).gridTemplateColumns)).toBe(columns);
+  expect(Math.abs((await row.boundingBox())!.height - height)).toBeLessThan(0.05);
+  for (const part of OTHER_SURFACES_PARTS) expect(await list.locator(part).count(), part).toBe(0);
+}
+
+async function openPlain(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  pageName: 'dashboard-card-view' | 'dashboard-list-view' | 'course-home',
+  path = '/',
+): Promise<Locator> {
+  const { canvas } = await serveScenario(context, [{ path, page: pageName }]);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await addCsrfCookie(context, canvas.origin);
+  await openCanvasPage(page, canvas.origin, path);
+  await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+  await settledList(page);
+  return inpageList(page);
+}
+
+test('rows of the classic right column are unchanged', async ({ context, page }) => {
+  const list = await openPlain(context, page, 'dashboard-card-view');
+  await expectPlainRows(list, '20px 16px 186px', 64.1875);
+});
+
+test('rows of a course home page are unchanged', async ({ context, page }) => {
+  const list = await openPlain(context, page, 'course-home', `/courses/${IDS.courses.biology}`);
+  await expectPlainRows(list, '20px 16px 186px', 46.1875);
+});
+
+test('rows of List View are unchanged', async ({ context, page }) => {
+  const list = await openPlain(context, page, 'dashboard-list-view');
   await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'stack');
-  await expect(row.locator('.wr-slot-pill')).toBeHidden();
-  await expect(row.locator('.wr-points')).toBeHidden();
-  await expect(row.locator('.wr-slot-only')).toBeHidden();
-  await expect(row.locator('.wr-type')).toHaveCSS('width', '16px');
-  expect(await row.evaluate((el) => getComputedStyle(el).gridTemplateColumns)).not.toBe(slot);
-  expect(await row.evaluate((el) => getComputedStyle(el).gridTemplateColumns)).toMatch(
-    /^20px 16px /,
-  );
+  await expectPlainRows(list, '20px 16px 1254px', 64.1875);
+});
+
+test('rows of the side panel are unchanged', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const setup = await serveScenario(context);
+  await addCsrfCookie(context, setup.canvas.origin);
+  await saveAddress(background, setup.canvas.origin);
+  await page.setViewportSize({ width: 360, height: 900 });
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await expect(page.getByText(QUIZ_3, { exact: true })).toBeVisible();
+  await settledList(page);
+  await expectPlainRows(page.locator('body'), '20px 16px 306px', 64.1875);
 });

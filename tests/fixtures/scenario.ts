@@ -641,6 +641,7 @@ function scenarioSpecs(now: string): ScenarioSpecs {
     // Calculus: Gradescope work, New Quizzes, an extension, a locked missing item and a skip.
     {
       ...tool(C.calculus, A.mathHomework3, 'Homework 3', due(-30), GRADESCOPE_URL),
+      points: 10,
       submission: { latePolicyStatus: 'missing' },
       override: {
         id: O.mathHomework3,
@@ -725,6 +726,7 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       id: A.historyDebate1,
       courseId: C.history,
       name: 'Debate 1: Who built the Atlantic economy?',
+      points: 10,
       due: null,
       submissionTypes: ['discussion_topic'],
       topic: {

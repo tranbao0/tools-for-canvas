@@ -121,6 +121,7 @@ describe('toAssignmentData', () => {
       due_at: '2026-10-28T03:59:59Z',
       lock_at: null,
       unlock_at: null,
+      points_possible: 10,
       submission_types: ['external_tool'],
       is_quiz_lti_assignment: false,
       html_url: 'https://school.instructure.com/courses/101/assignments/5',

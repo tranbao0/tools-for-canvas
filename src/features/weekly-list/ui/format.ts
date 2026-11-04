@@ -167,3 +167,12 @@ export function hostOf(origin: string): string {
     return origin;
   }
 }
+
+/** A number in the Canvas language. A tag that `Intl` rejects, such as `en_US`, falls back to English. */
+export function formatNumber(value: number, locale: string): string {
+  try {
+    return new Intl.NumberFormat(locale).format(value);
+  } catch {
+    return new Intl.NumberFormat('en').format(value);
+  }
+}

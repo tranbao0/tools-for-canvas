@@ -281,6 +281,11 @@ function contextColor(courseId: string | null, deps: NormalizeDeps): string {
   return ringColor(courseId, deps.colors, deps.userId);
 }
 
+/** The points of an item, or `null` when Canvas sent no finite number. */
+function finitePoints(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 /** Normalizes a planner item. Returns `null` for calendar events, announcements and items with no valid date. */
 export function itemFromPlannerItem(item: PlannerItem, deps: NormalizeDeps): Item | null {
   const { kind } = ruleFor(item.plannable_type);
@@ -298,11 +303,7 @@ export function itemFromPlannerItem(item: PlannerItem, deps: NormalizeDeps): Ite
     plannableId: item.plannable_id,
     assignmentId,
     title: item.plannable.title,
-    points:
-      typeof item.plannable.points_possible === 'number' &&
-      Number.isFinite(item.plannable.points_possible)
-        ? item.plannable.points_possible
-        : null,
+    points: finitePoints(item.plannable.points_possible),
     courseUrl:
       !isNote &&
       item.context_type !== 'Group' &&
@@ -355,7 +356,7 @@ export function itemFromAssignment(
     plannableId: assignment.id,
     assignmentId: assignment.id,
     title: assignment.name,
-    points: null,
+    points: finitePoints(assignment.points_possible),
     courseUrl: isCanvasId(assignment.course_id)
       ? absoluteUrl(deps.origin, `/courses/${assignment.course_id}`)
       : null,

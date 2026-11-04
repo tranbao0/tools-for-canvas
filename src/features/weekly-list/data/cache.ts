@@ -133,6 +133,7 @@ const ASSIGNMENT_FIELDS = [
   'submission_types',
   'is_quiz_lti_assignment',
   'has_sub_assignments',
+  'points_possible',
   'html_url',
 ] as const satisfies readonly (keyof AssignmentData)[];
 
