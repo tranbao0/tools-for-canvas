@@ -31,11 +31,19 @@ function limit(windowHeight: number): number {
 /** The page without a Course work widget, where the card sits beside the grid or above it. */
 const NO_COURSE_WORK = '/?fixture_course_work=none';
 
-/** The border-box height of the Course work widget when Canvas drew it, before the card took its place. */
+/**
+ * The border-box height of the Course work widget just before the card took its place. The card
+ * height is compared with it to 1 px, the same rule as the edges of the slot.
+ */
 async function widgetHeight(page: Page): Promise<number> {
   return page.evaluate(
     () => (window as unknown as { widgetAudit: { height: number } }).widgetAudit.height,
   );
+}
+
+/** The card is as tall as the widget it replaced, and at least 420 px. */
+function expectSlotHeight(card: number, widget: number): void {
+  expect(Math.abs(card - Math.max(420, widget))).toBeLessThanOrEqual(1);
 }
 
 async function open(
@@ -94,10 +102,14 @@ async function open(
   await page.addInitScript(() => {
     const audit = { height: 0 };
     Object.assign(window, { widgetAudit: audit });
+    // The last height while the widget still takes part in the layout: the card measures it at
+    // about that moment, and a busy page can still settle its layout after the first draw.
     new MutationObserver(() => {
       const section = document.querySelector('[data-testid="widget-course-work-combined-widget"]');
-      if (audit.height === 0 && section) audit.height = section.getBoundingClientRect().height;
-    }).observe(document, { subtree: true, childList: true });
+      const wrapper = section?.parentElement;
+      if (section && wrapper && getComputedStyle(wrapper).display !== 'none')
+        audit.height = section.getBoundingClientRect().height;
+    }).observe(document, { subtree: true, childList: true, attributes: true });
   });
   await openCanvasPage(page, canvas.origin, options.query);
   await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
@@ -565,7 +577,7 @@ test.describe('the full list in the card', () => {
       await open(context, page, background, { height: windowHeight });
       const full = await cardBox(page);
       // The window does not change the height: the card is as tall as the widget it replaced.
-      expect(full.card.height).toBeCloseTo(Math.max(420, await widgetHeight(page)), 0);
+      expectSlotHeight(full.card.height, await widgetHeight(page));
     });
 
     test(`has a height of the window minus 48 px, at most 760 px and at least 420 px, in a ${windowHeight} px window without a Course work widget`, async ({
@@ -586,10 +598,7 @@ test.describe('the full list in the card', () => {
     background,
   }) => {
     await open(context, page, background, { height: 400 });
-    expect((await cardBox(page)).card.height).toBeCloseTo(
-      Math.max(420, await widgetHeight(page)),
-      0,
-    );
+    expectSlotHeight((await cardBox(page)).card.height, await widgetHeight(page));
   });
 
   test('keeps 420 px in a low window without a Course work widget', async ({
@@ -613,10 +622,7 @@ test.describe('the full list in the card', () => {
     };
     await open(context, page, background, short);
     // The card keeps its size from span to span, so a short list leaves room at the bottom.
-    expect((await cardBox(page)).card.height).toBeCloseTo(
-      Math.max(420, await widgetHeight(page)),
-      0,
-    );
+    expectSlotHeight((await cardBox(page)).card.height, await widgetHeight(page));
   });
 
   test('keeps its fixed height when the content is short, without a Course work widget', async ({

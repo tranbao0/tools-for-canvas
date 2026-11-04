@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
+import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import {
   addCsrfCookie,
   expect,
@@ -8,6 +9,7 @@ import {
   inpageList,
   openCanvasPage,
   saveSettings,
+  saveTools,
   serveScenario,
   settledList,
   test,
@@ -206,6 +208,58 @@ for (const state of ['delayed', 'error', 'loading', 'none']) {
     }
   });
 }
+
+test('keeps the height of the window after the wait, when the widget loads later', async ({
+  context,
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
+  await addCsrfCookie(context, canvas.origin);
+  await page.setViewportSize({ width: 2088, height: 900 });
+  await page.goto(`${canvas.origin}/?fixture_delay_ms=0&fixture_course_work=loading`);
+  await page.bringToFront();
+  await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot', { timeout: 15_000 });
+  const card = inpageList(page).locator('.wr');
+  // The window rule: 900 - 48 px, at most 760 px.
+  expect((await card.boundingBox())!.height).toBeCloseTo(760, 0);
+  await page.locator(SECTION).evaluate((node) => {
+    node.innerHTML =
+      '<input data-testid="submission-status-filter-select"><div style="height:1200px">Loaded</div>';
+  });
+  await frames(page, 5);
+  expect((await card.boundingBox())!.height).toBeCloseTo(760, 0);
+});
+
+test('takes the height of the window when extras stay inside the widget after the wait', async ({
+  context,
+  page,
+  background,
+}) => {
+  test.setTimeout(60_000);
+  const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
+  await addCsrfCookie(context, canvas.origin);
+  // With the extras fix off, nothing removes an extra section that is already in the widget.
+  await saveTools(background, {
+    ...DEFAULT_TOOLS_SETTINGS,
+    dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseWorkExtras: false },
+  });
+  await page.setViewportSize({ width: 2088, height: 900 });
+  await page.goto(`${canvas.origin}/?fixture_delay_ms=0&fixture_course_work=loading`);
+  await page.bringToFront();
+  await expect(page.locator(WRAPPER)).toHaveAttribute('data-weekrow-replaced', '');
+  await expect(page.locator('#weekrow-inpage')).toBeHidden();
+  // The widget loads with an extra section inside it that stays.
+  await page.locator(SECTION).evaluate((node) => {
+    node.innerHTML =
+      '<input data-testid="submission-status-filter-select"><div style="height:700px">Loaded</div>' +
+      '<section data-wr-extra style="height:300px">Also due</section>';
+  });
+  await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot', { timeout: 15_000 });
+  await expect(page.locator('#weekrow-inpage')).toBeVisible();
+  // The window rule: 900 - 48 px, at most 760 px.
+  expect((await inpageList(page).locator('.wr').boundingBox())!.height).toBeCloseTo(760, 0);
+});
 
 async function openFixture(
   context: Parameters<typeof serveScenario>[0],
