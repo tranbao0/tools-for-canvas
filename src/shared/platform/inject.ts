@@ -20,25 +20,29 @@ export const INPAGE_FILE = '/inpage.js';
 /** The fixes for the widget dashboard, which only a dashboard page needs (decision 22). */
 export const DASHBOARD_FILE = '/dashboard.js';
 
-/** The expand rows of the one assignment view, for Grades and Assignments pages (decision 26). */
+/** The one assignment view, for the Assignments list and the Submission Details page (decision 26). */
 export const ASSIGNMENT_VIEW_FILE = '/assignment-view.js';
 
 /** The dashboard is the root path of Canvas. `/dashboard` serves the same page. */
 const DASHBOARD_PATH = /^\/(?:dashboard\/?)?$/;
 
-/** The Grades page of the signed-in student. `/courses/:id/grades/:user` is another page. */
-const GRADES_PATH = /^\/courses\/\d+(?:~\d+)?\/(?:grades|assignments(?:\/\d+(?:~\d+)?)?)\/?$/;
+/**
+ * The Assignments list, and the Submission Details page of a student. The page of an anonymous
+ * submission (`anonymous_submissions/:id`) is no page of the student's own submission.
+ */
+const ASSIGNMENT_VIEW_PATH =
+  /^\/courses\/\d+(?:~\d+)?\/assignments(?:\/\d+(?:~\d+)?\/submissions\/\d+(?:~\d+)?)?\/?$/;
 
 type PageScript = typeof INPAGE_FILE | typeof DASHBOARD_FILE | typeof ASSIGNMENT_VIEW_FILE;
 
 /**
  * The page scripts for a tab: the list script, the fixes script on the dashboard, and the
- * assignment view script on Grades and Assignments pages to follow its switch.
+ * assignment view script on the Assignments list and a Submission Details page to follow its switch.
  */
 function pageScripts(url: string): PageScript[] {
   const path = parseUrl(url)?.pathname ?? '';
   if (DASHBOARD_PATH.test(path)) return [INPAGE_FILE, DASHBOARD_FILE];
-  if (GRADES_PATH.test(path)) return [INPAGE_FILE, ASSIGNMENT_VIEW_FILE];
+  if (ASSIGNMENT_VIEW_PATH.test(path)) return [INPAGE_FILE, ASSIGNMENT_VIEW_FILE];
   return [INPAGE_FILE];
 }
 

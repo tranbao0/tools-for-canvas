@@ -333,21 +333,20 @@ describe('injectSubmissionFrames', () => {
 });
 
 describe('the assignment view script', () => {
-  const GRADES = 'https://canvas.school.edu/courses/5/grades';
+  const LIST = 'https://canvas.school.edu/courses/5/assignments';
 
   it('has the path WXT gives the assignment view script', () => {
     expect(ASSIGNMENT_VIEW_FILE).toBe('/assignment-view.js');
   });
 
   it.each([
-    '/courses/5/grades',
-    '/courses/5/grades/',
     '/courses/5/assignments',
+    '/courses/5/assignments/',
     '/courses/12~345/assignments',
-    '/courses/5/assignments/3',
-    '/courses/12~345/assignments/7~89/',
-    '/courses/12~345/grades?x=1',
-  ])('is added on the Grades page %s while its switch is on', async (path) => {
+    '/courses/12~345/assignments?x=1',
+    '/courses/5/assignments/3/submissions/9',
+    '/courses/12~345/assignments/7~89/submissions/2~42/',
+  ])('is added on the page %s while its switch is on', async (path) => {
     tabUrls.set(7, `https://canvas.school.edu${path}`);
     await injectInpage(7, 'https://canvas.school.edu');
     expect(scripting.executeScript).toHaveBeenCalledWith({
@@ -358,12 +357,15 @@ describe('the assignment view script', () => {
 
   it.each([
     '/courses/5',
+    '/courses/5/grades',
     '/courses/5/grades/42',
     '/courses/5/gradebook',
-    '/courses/5/assignments/3/submissions/9',
+    '/courses/5/assignments/3',
+    '/courses/5/assignments/3/submissions',
+    '/courses/5/assignments/3/anonymous_submissions/abc',
     '/courses/5/assignments/not-an-id',
-    '/grades',
-    '/courses/x/grades',
+    '/assignments',
+    '/courses/x/assignments',
   ])('is not added on %s', async (path) => {
     tabUrls.set(7, `https://canvas.school.edu${path}`);
     await injectInpage(7, 'https://canvas.school.edu');
@@ -375,7 +377,7 @@ describe('the assignment view script', () => {
 
   it('is present to follow the switch when it is off', async () => {
     await toolsSettingsItem.setValue({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
-    tabUrls.set(7, GRADES);
+    tabUrls.set(7, LIST);
     await injectInpage(7, 'https://canvas.school.edu');
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 7, frameIds: [0] },

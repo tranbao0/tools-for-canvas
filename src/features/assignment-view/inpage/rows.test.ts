@@ -8,14 +8,13 @@ const ORIGIN = 'https://school.instructure.com';
 const NOW = Temporal.Instant.from('2026-10-27T18:00:00Z');
 
 const PAGE = `
-<table id="grades_summary"><tbody>
-<tr class="student_assignment" id="submission_101"><th class="title" scope="row"><a href="/courses/12/assignments/101/submissions/42">Essay</a></th><td>Nov 3</td><td colspan="2">5 / 10</td></tr>
-<tr id="comments_thread_101" hidden><td colspan="4">Canvas comments</td></tr>
-<tr class="student_assignment" id="submission_102"><th class="title" scope="row"><a href="/courses/12/assignments/102">Reading</a></th><td>Nov 4</td><td>- / 10</td><td></td></tr>
-<tr class="student_assignment hard_coded group_total" id="submission_final-grade"><th class="title">Total</th><td></td><td></td><td></td></tr>
-<tr class="student_assignment hard_coded" id="submission_500"><th class="title">Group total</th><td></td><td></td><td></td></tr>
-<tr class="other" id="submission_103"><th class="title"><a>Not an assignment row</a></th></tr>
-</tbody></table>`;
+<div class="ig-list">
+<div class="ig-row" id="assignment_101"><div class="ig-info"><a class="ig-title" href="${ORIGIN}/courses/12/assignments/101">Essay</a></div><button class="canvas-menu">Options</button></div>
+<div class="ig-row" id="assignment_102"><div class="ig-info"><a class="ig-title" href="${ORIGIN}/courses/12/assignments/102">Reading</a></div></div>
+<div class="ig-row" id="assignment_103"><div class="ig-info"><a class="ig-title" href="${ORIGIN}/courses/12/assignments/999">Another assignment</a></div></div>
+<div class="ig-row" id="assignment_104"><div class="ig-info"><a class="ig-title" href="https://evil.example/courses/12/assignments/104">Another site</a></div></div>
+<div class="ig-row" id="other_105"><div class="ig-info"><a class="ig-title" href="${ORIGIN}/courses/12/assignments/105">Not an assignment row</a></div></div>
+</div>`;
 
 function reply(id: string, patch: (details: typeof ASSIGNMENT_DETAILS) => void = () => undefined) {
   const details = structuredClone(ASSIGNMENT_DETAILS);
@@ -42,7 +41,7 @@ function start(): RowsEngine {
 }
 
 const button = (id: string) =>
-  document.querySelector<HTMLButtonElement>(`#submission_${id} [data-av-toggle]`)!;
+  document.querySelector<HTMLButtonElement>(`#assignment_${id} [data-av-toggle]`)!;
 const detailsRow = (id: string) => document.getElementById(`av-details-${id}`);
 const shadow = (id: string) =>
   detailsRow(id)?.querySelector<HTMLElement>('[data-av-own]')?.shadowRoot;
@@ -61,52 +60,48 @@ afterEach(() => {
 });
 
 describe('the toggle buttons', () => {
-  it('go at the start of the title cell of each assignment row, and of no other row', () => {
+  it('go at the start of the info block of each assignment row, and of no other row', () => {
     start();
-    const toggles = document.querySelectorAll('[data-av-toggle]');
-    expect(toggles).toHaveLength(2);
+    expect(document.querySelectorAll('[data-av-toggle]')).toHaveLength(2);
     const first = button('101');
-    expect(first.parentElement?.matches('th.title')).toBe(true);
+    expect(first.parentElement?.matches('.ig-info')).toBe(true);
     expect(first.parentElement?.firstElementChild).toBe(first);
     expect(first.getAttribute('aria-label')).toBe('Show details for Essay');
     expect(first.getAttribute('aria-expanded')).toBe('false');
     expect(first.type).toBe('button');
-    expect(document.querySelector('#submission_final-grade [data-av-toggle]')).toBeNull();
-    expect(document.querySelector('#submission_500 [data-av-toggle]')).toBeNull();
-    expect(document.querySelector('#submission_103 [data-av-toggle]')).toBeNull();
+    // The title links to another assignment or another site, and the id is not an assignment id.
+    expect(document.querySelector('#assignment_103 [data-av-toggle]')).toBeNull();
+    expect(document.querySelector('#assignment_104 [data-av-toggle]')).toBeNull();
+    expect(document.querySelector('#other_105 [data-av-toggle]')).toBeNull();
   });
 
-  it('leave the title link and the rows of Canvas as they are', () => {
-    const before = document.querySelector('#submission_101 a')?.outerHTML;
+  it('leave the title link and the controls of Canvas as they are', () => {
+    const before = document.querySelector('#assignment_101 a')?.outerHTML;
+    const menu = document.querySelector('#assignment_101 .canvas-menu')?.outerHTML;
     start();
-    expect(document.querySelector('#submission_101 a')?.outerHTML).toBe(before);
-    expect(document.getElementById('comments_thread_101')?.hidden).toBe(true);
-    expect(document.getElementById('comments_thread_101')?.previousElementSibling?.id).toBe(
-      'submission_101',
-    );
+    expect(document.querySelector('#assignment_101 a')?.outerHTML).toBe(before);
+    expect(document.querySelector('#assignment_101 .canvas-menu')?.outerHTML).toBe(menu);
   });
 
   it('add a button to a row that Canvas draws later', async () => {
     start();
-    const late = document.createElement('tr');
-    late.className = 'student_assignment';
-    late.id = 'submission_104';
-    late.innerHTML =
-      '<th class="title"><a href="/courses/12/assignments/104">Quiz</a></th><td></td>';
-    document.querySelector('tbody')!.append(late);
+    const late = document.createElement('div');
+    late.className = 'ig-row';
+    late.id = 'assignment_106';
+    late.innerHTML = `<div class="ig-info"><a class="ig-title" href="${ORIGIN}/courses/12/assignments/106">Quiz</a></div>`;
+    document.querySelector('.ig-list')!.append(late);
     await vi.advanceTimersByTimeAsync(200);
-    expect(button('104').getAttribute('aria-label')).toBe('Show details for Quiz');
+    expect(button('106').getAttribute('aria-label')).toBe('Show details for Quiz');
   });
 });
 
 describe('opening a row', () => {
-  it('puts a details row right after the assignment row that spans all its columns', async () => {
+  it('puts a details row right after the assignment row', async () => {
     start();
     button('101').click();
     await settle();
     const row = detailsRow('101');
-    expect(row?.previousElementSibling?.id).toBe('submission_101');
-    expect(row?.querySelector('td')?.colSpan).toBe(4);
+    expect(row?.previousElementSibling?.id).toBe('assignment_101');
     expect(button('101').getAttribute('aria-expanded')).toBe('true');
     expect(button('101').getAttribute('aria-controls')).toBe('av-details-101');
   });
@@ -274,7 +269,7 @@ describe('turning the view off', () => {
 
   it('removes the nodes of an earlier copy of the script', () => {
     document.body.insertAdjacentHTML('beforeend', '<div data-av-own><span>old</span></div>');
-    document.querySelector('#submission_101')?.setAttribute('data-av-mark', '');
+    document.querySelector('#assignment_101')?.setAttribute('data-av-mark', '');
     removeStaleView(document);
     expect(document.querySelector('[data-av-own]')).toBeNull();
     expect(document.querySelector('[data-av-mark]')).toBeNull();
@@ -392,7 +387,7 @@ it('accepts a global API id for a short shard row id', async () => {
   send.mockResolvedValue(reply('20000000000101'));
   start();
   document
-    .getElementById('submission_2~101')!
+    .getElementById('assignment_2~101')!
     .querySelector<HTMLButtonElement>('[data-av-toggle]')!
     .click();
   await settle();

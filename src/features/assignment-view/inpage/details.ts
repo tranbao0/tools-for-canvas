@@ -53,20 +53,15 @@ function fact(doc: Document, label: string, value: string): HTMLElement {
   return group;
 }
 
-function summary(
-  reply: AssignmentDetailsReply,
-  context: DetailsContext,
-  page = false,
-): HTMLElement {
+function summary(reply: AssignmentDetailsReply, context: DetailsContext): HTMLElement {
   const { doc } = context;
   const { details, timeZone } = reply;
   const top = node(doc, 'div', 'av-summary');
   const facts = node(doc, 'dl', 'av-facts');
   facts.append(fact(doc, 'Score', scoreText(details)));
-  if (!page)
-    facts.prepend(
-      fact(doc, 'Due', formatDateTime(details.assignment.due_at, timeZone) ?? 'No due date'),
-    );
+  facts.prepend(
+    fact(doc, 'Due', formatDateTime(details.assignment.due_at, timeZone) ?? 'No due date'),
+  );
   const submitted = formatDateTime(details.submission.submitted_at, timeZone);
   if (submitted !== null) facts.append(fact(doc, 'Submitted', submitted));
   top.append(facts);
@@ -139,33 +134,4 @@ export function renderError(doc: Document): HTMLElement {
   retry.dataset['action'] = 'retry';
   wrap.append(node(doc, 'span', 'av-error-text', "Can't load the details."), retry);
   return wrap;
-}
-
-/** The classic assignment page already holds the instructions and submission controls. */
-export function renderPageDetails(
-  reply: AssignmentDetailsReply,
-  context: DetailsContext,
-): HTMLElement {
-  const { doc, origin, courseId } = context;
-  const { details, timeZone } = reply;
-  const panel = node(doc, 'div', 'av-content');
-  panel.append(summary(reply, context, true));
-  if (
-    !details.assignment.submission_types?.some((type) =>
-      ['none', 'on_paper', 'not_graded'].includes(type),
-    ) &&
-    // Excused work is done, so it never asks for a submission.
-    !details.submission.excused &&
-    !details.submission.submitted_at &&
-    !(details.submission.attempt && details.submission.attempt >= 1) &&
-    !details.submission.attachments?.length
-  ) {
-    panel.append(node(doc, 'p', 'av-empty', 'No submission yet'));
-  }
-  if (details.assignment.rubric?.length) panel.append(renderRubric(details, doc));
-  if (details.submission.submission_comments?.length)
-    panel.append(renderComments(details, { doc, origin, courseId, timeZone }));
-  if (details.submission.attachments?.length)
-    panel.append(renderFiles(details, { doc, origin, courseId }));
-  return panel;
 }
