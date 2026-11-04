@@ -25,7 +25,6 @@ import {
   type CourseWorkSlot,
   REPLACED_ATTRIBUTE,
   findDashboardPanel,
-  widgetsBeside,
   type WidgetGrid,
 } from '../../../shared/canvas/widgetDashboard';
 
@@ -228,21 +227,6 @@ export function claimDashboardLayout(
    * wrapper. A minimized card is in the flow instead and the widget is not displayed, so the
    * column closes up.
    */
-  /**
-   * The height of the widgets that start beside the slot in the other columns, so the card ends
-   * where they end and the rows below line up. Canvas lays out each column on its own, so the
-   * replaced widget does not line up with them by itself.
-   */
-  function rowHeight(wrapper: HTMLElement): number {
-    const top = wrapper.getBoundingClientRect().top;
-    let height = 0;
-    for (const other of widgetsBeside(wrapper)) {
-      const box = other.getBoundingClientRect();
-      if (Math.abs(box.top - top) <= 2) height = Math.max(height, box.height);
-    }
-    return height;
-  }
-
   function arrangeSlot(slot: CourseWorkSlot): void {
     const { wrapper } = slot;
     claim(slot);
@@ -265,10 +249,7 @@ export function claimDashboardLayout(
       // is also transparent, and the card sits above its positioned parts.
       setInlineStyles(slot.widget, { opacity: '0' });
       setInlineStyles(wrapper, {
-        'min-height': `${Math.max(
-          SLOT_MIN_HEIGHT_PX + pixels(marginTop, 0) + pixels(marginBottom, 0),
-          rowHeight(wrapper),
-        )}px`,
+        'min-height': `${SLOT_MIN_HEIGHT_PX + pixels(marginTop, 0) + pixels(marginBottom, 0)}px`,
       });
       moveContainer(container, wrapper, first);
       setContainerStyle(
@@ -481,7 +462,6 @@ export function claimDashboardLayout(
       doc.getElementById('content'),
       doc.getElementById('content-wrapper'),
       findWidgetGrid(doc)?.columns,
-      ...widgetsBeside(findCourseWorkSlot(doc)?.wrapper ?? doc.body),
     ]) {
       if (element) sizeObserver?.observe(element);
     }
