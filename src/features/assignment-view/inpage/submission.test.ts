@@ -159,6 +159,9 @@ describe('the own submission', () => {
       title: 'essay.pdf',
       url: `${ORIGIN}${SESSION_PATH}`,
     });
+    // The unread dot goes, as it does in Canvas after a click.
+    expect(button.querySelector('.av-unread')).toBeNull();
+    expect(button.hasAttribute('title')).toBe(false);
   });
 
   it('keeps the session address out of the page', async () => {

@@ -29,7 +29,7 @@ export interface ToolsSettings {
   fileViewer: boolean;
   fileViewerWidth: number;
   dashboardFixes: DashboardFixesSettings;
-  /** The expand rows of the one assignment view on the Grades page (decision 26). */
+  /** The Submission Details view and the expand rows of the Assignments list (decision 26). */
   assignmentView: boolean;
 }
 

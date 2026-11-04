@@ -1,6 +1,6 @@
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 /**
- * The expand rows of the Assignments list (design decision 26, item 5).
+ * The expand rows of the Assignments list (design decision 26, "The Assignments list rows").
  *
  * Each assignment row gets a toggle button at the start of its info block. The button opens a
  * row under it that holds the details in a shadow root, and a second click closes it. The rows
@@ -47,7 +47,6 @@ export interface RowsOptions {
 }
 
 export interface RowsEngine {
-  resetStudent?(): void;
   /** Shows the view on the page, or removes it. Removing it forgets the loaded details. */
   setActive(active: boolean): void;
   /** Reads the theme again, after the Theme setting changed. */

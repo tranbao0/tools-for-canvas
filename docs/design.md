@@ -3031,9 +3031,19 @@ So a student switches pages to read the instructions next to the feedback on a f
    - Canvas answers the address with a redirect to DocViewer, so the script cannot read the address of the frame, and it cannot tell that DocViewer refused to be framed.
      So "Open in new tab" is always in the bar.
    - The pane steps aside for the file pane and shows again when it closes.
+   - The session request itself marks the file's comments as read in Canvas, so the unread dot of the button goes after a click.
+   - The pane does not send the inline-view ping (`attachment_view_inline_ping_url`) that Canvas's own dialog sends, because that would be a new write.
 7. **Settings.** The "One assignment view" switch in the tools settings turns all of this on and off at once, without a reload.
    - Off gives the page back exactly as Canvas drew it.
    - The sidebar click of the assignment page follows the "File viewer" switch instead, because it is a file click.
+
+8. **Data.**
+   - The background reads one assignment with `GET /api/v1/courses/:id/assignments/:id?include[]=submission&include[]=can_submit` and the student's own submission with `GET /api/v1/courses/:id/assignments/:id/submissions/self?include[]=submission_comments&include[]=rubric_assessment`.
+   - The rubric comes with the assignment record.
+   - It reads when a row opens or the Submission Details page loads, and keeps the result for the page view.
+   - A comparison of a page id with an API id converts both to decimal global strings with BigInt: `s~l` becomes `s * 10^13 + l`.
+   - A 404 for the own submission returns `no_submission_access`; the Submission Details page then stays as Canvas drew it.
+   - Every read follows the cookie binding of decision 11, so a reply never crosses students.
 
 **The Assignments list rows (steps 2 and 3, as built):**
 
@@ -3110,6 +3120,7 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c` (20
     The unread mark is `span.submission_annotation.unread_indicator`.
   - A text entry is `#submission_preview.paper.user_content`, and other types draw their own blocks.
 - `app/helpers/attachment_helper.rb`, `doc_preview_attributes`: the link carries `data-canvadoc_session_url`, `data-attachment_id`, `data-attachment_name`, `data-mimetype` and more.
+- `app/controllers/canvadoc_sessions_controller.rb`: for the file's owner, the session request calls `mark_submission_annotations_read!` when annotations are enabled, then redirects to DocViewer.
 - `app/models/attachment.rb`, `canvadoc_url`: `/api/v1/canvadoc_session?blob=...&hmac=...`, signed with `Canvas::Security.hmac_sha1`, so the value is a relative path.
 - `ui/features/submissions_show_preview_upload/index.js`: `$(document).on('click', '.modal_preview_link', ...)` opens a jQuery UI dialog and calls `loadDocPreview(dialog[0], $.extend({height: '100%'}, $(this).data()))`.
 - `packages/canvas-rce/src/enhance-user-content/doc_previews.jsx`, `loadDocPreview`: with `canvadoc_session_url`, it builds an `iframe` whose `src` is that URL after `sanitizeUrl`.
@@ -3117,6 +3128,22 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c` (20
   - Inside `#sidebar_content > .details > .content`, an `online_upload` file is `<div><a href="/courses/:c/assignments/:a/submissions/:user?download=:file">Download NAME</a></div>`, with no class, no id and no `download` attribute.
   - The view is inside a Rails fragment cache.
 - The viewer script (decision 25) takes any link that `fileTarget` accepts, and a link without a `download` attribute needs no exception, so the sidebar link opens the pane with no new code.
+
+**Verified source facts for the data of the rows and the details:**
+
+These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
+`lib/api/v1/assignment.rb` returns the description through `api_user_content` and returns criteria and ratings from an active rubric association.
+Each criterion and rating has its own id, description and points.
+The rubric settings include `hide_points` and `hide_score_total`.
+`app/controllers/assignments_api_controller.rb`, method `show`, handles the submission and can-submit includes.
+The assignment serializer includes the submission and computes `can_submit` only when requested and applicable.
+`app/controllers/submissions_api_controller.rb`, method `show`, passes the requested includes to the submission serializer after its read authorization check.
+`lib/api/v1/submission.rb` includes published comments when `submission_comments` is requested and includes the rubric assessment only when the student can read the grade.
+`lib/api/v1/rubric_assessment.rb`, method `indexed_rubric_assessment_json`, keys the assessment by criterion id and returns `rating_id`, comments and points.
+`lib/api/v1/submission_comment.rb` returns author fields, a creation time and attachments, and strips HTML from the default comment field.
+The renderer still applies the shared sanitizer to comment content as a further check.
+`tests/fixtures/assignment-view.ts` models the two API reply bodies.
+The fixtures run in the browser test server, through the Assignments list route of `tests/e2e/assignment-view.spec.ts`.
 
 **Fixtures and tests:**
 

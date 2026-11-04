@@ -6,7 +6,6 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { canvasError } from './testing/fakeCanvas';
-import { isNoSubmissionAccess } from '../../assignment-view/protocol';
 import { rawRecords } from '../../../../tests/fixtures/assignment-view';
 import {
   ORIGIN,
@@ -37,7 +36,7 @@ describe('assignment details', () => {
   it('reads both records for a confirmed cookie and answers in the Canvas time zone', async () => {
     const h = await loaded();
     const reply = await h.owner.assignmentDetails('12', '101', ORIGIN, TAB);
-    if (isNoSubmissionAccess(reply)) throw new Error('Expected details');
+    if ('kind' in reply) throw new Error('Expected details');
     expect(reply.details.assignment.name).toBe('Essay');
     expect(reply.details.submission.user_id).toBe('42');
     expect(reply.timeZone).toBe(h.canvas.scenario.profile.time_zone);
@@ -78,7 +77,7 @@ describe('assignment details', () => {
     const h = await loaded();
     signInOtherUser(h);
     const reply = await h.owner.assignmentDetails('12', '101', ORIGIN, TAB);
-    if (isNoSubmissionAccess(reply)) throw new Error('Expected details');
+    if ('kind' in reply) throw new Error('Expected details');
     expect(reply.details.assignment.id).toBe('101');
   });
 
