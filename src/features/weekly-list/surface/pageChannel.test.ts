@@ -247,6 +247,116 @@ describe('what the background pushes', () => {
   });
 });
 
+describe('a change that comes before the first read finishes', () => {
+  const OFF: ToolsSettings = { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false };
+  const ON: ToolsSettings = { ...DEFAULT_TOOLS_SETTINGS, assignmentView: true };
+
+  /**
+   * A background whose answers can be held back. Each read answers with the value stored when
+   * the read started, as a real background does, and finishes only when the test says so.
+   */
+  function slowSetup(initial: ToolsSettings) {
+    let stored = initial;
+    const finishers: (() => void)[] = [];
+    let handler: (message: unknown) => void = () => undefined;
+    const channel = createPageChannel({
+      pageOrigin: SCHOOL,
+      send(message) {
+        if (message.type !== 'weekrow:page-context') return Promise.resolve({ ok: true });
+        const snapshot = structuredClone(stored);
+        return new Promise((resolve) => {
+          finishers.push(() => resolve({ settings: DEFAULT_SETTINGS, tools: snapshot }));
+        });
+      },
+      listen(next) {
+        handler = next;
+        return () => undefined;
+      },
+    });
+    return {
+      channel,
+      change(next: ToolsSettings) {
+        stored = next;
+        handler({ type: 'weekrow:changed' });
+      },
+      /** Finishes the reads with these numbers (0 is the first read that started). */
+      finish: async (...order: number[]) => {
+        for (const index of order) finishers[index]?.();
+        await settle();
+      },
+    };
+  }
+
+  it('reaches the watcher when the newer read finishes first', async () => {
+    const { channel, change, finish } = slowSetup(OFF);
+    const onTools = vi.fn();
+    channel.tools.watch(onTools);
+    const start = channel.tools.getValue();
+
+    change(ON);
+    await finish(1, 0);
+
+    expect(await start).toEqual(OFF);
+    expect(onTools).toHaveBeenCalledTimes(1);
+    expect(onTools).toHaveBeenCalledWith(ON);
+  });
+
+  it('reaches the watcher when the newer read finishes after the first one', async () => {
+    const { channel, change, finish } = slowSetup(OFF);
+    const onTools = vi.fn();
+    channel.tools.watch(onTools);
+    const start = channel.tools.getValue();
+
+    change(ON);
+    await finish(0, 1);
+
+    expect(await start).toEqual(OFF);
+    expect(onTools).toHaveBeenCalledTimes(1);
+    expect(onTools).toHaveBeenCalledWith(ON);
+  });
+
+  it('never lets an older reply overwrite a newer value', async () => {
+    const { channel, change, finish } = slowSetup(OFF);
+    const onTools = vi.fn();
+    channel.tools.watch(onTools);
+    const start = channel.tools.getValue();
+    change(ON);
+    await finish(1, 0);
+    await start;
+    expect(onTools).toHaveBeenCalledTimes(1);
+
+    // The next change reads the same value again. If the older reply had been kept, this read
+    // would look like a change from OFF to ON and tell the watcher a second time.
+    change(ON);
+    await finish(2);
+    expect(onTools).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells each watcher only of the field that the start value missed', async () => {
+    const { channel, change, finish } = slowSetup(OFF);
+    const onTools = vi.fn();
+    const onSettings = vi.fn();
+    const onOrigin = vi.fn();
+    channel.tools.watch(onTools);
+    channel.settings.watch(onSettings);
+    channel.choices.origin.watch(onOrigin);
+    const start = Promise.all([
+      channel.choices.origin.getValue(),
+      channel.tools.getValue(),
+      channel.settings.getValue(),
+    ]);
+
+    change(ON);
+    await finish(3, 0, 1, 2);
+    await start;
+
+    expect(onTools).toHaveBeenCalledTimes(1);
+    expect(onTools).toHaveBeenCalledWith(ON);
+    expect(onSettings).not.toHaveBeenCalled();
+    expect(onOrigin).not.toHaveBeenCalled();
+  });
+});
+
 describe('the writes of the page', () => {
   it('send the settings and the seen note as checked messages', async () => {
     const { channel, sent } = setup();
