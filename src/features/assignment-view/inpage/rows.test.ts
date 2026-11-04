@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ASSIGNMENT_DETAILS } from '../../../../tests/fixtures/assignment-view';
 import type { AssignmentDetailsMessage, AssignmentDetailsReply } from '../protocol';
+import { createDock } from '../../file-viewer/dock';
 import { FEEDBACK_HOST_ID } from './feedbackPane';
 import { createRowsEngine, removeStaleView, STALE_PANE_IDS, type RowsEngine } from './rows';
 import { TURN_IN_HOST_ID } from './turnInPane';
@@ -303,6 +304,84 @@ describe('turning the view off', () => {
       expect(document.getElementById('tools-file-viewer')).not.toBeNull();
     },
   );
+
+  describe('the padding that a dead copy left for its dock', () => {
+    const html = document.documentElement;
+    /** A copy that died with its pane open: the pane and the padding stay, the state of the copy is gone. */
+    function dieWithOpenPane(id: string): void {
+      const dock = createDock({
+        role: id === 'tools-turn-in' ? 'turn-in' : 'feedback',
+        id,
+        label: 'Pane',
+        resizeLabel: 'Resize',
+        width: 480,
+        onResized: () => undefined,
+      });
+      dock.host.setAttribute('data-av-own', '');
+      dock.open();
+      delete (globalThis as unknown as Record<symbol, unknown>)[
+        Symbol.for('tools-for-canvas.dock')
+      ];
+    }
+    afterEach(() => {
+      html.removeAttribute('style');
+      html.removeAttribute('data-weekrow-room');
+      delete (globalThis as unknown as Record<symbol, unknown>)[
+        Symbol.for('tools-for-canvas.dock')
+      ];
+    });
+
+    it.each([
+      ['/courses/12/assignments/101/submissions/42', 'tools-feedback'],
+      ['/courses/12/assignments', 'tools-turn-in'],
+    ])('is given back on %s, to what the page had before', (pathname, id) => {
+      html.style.setProperty('padding-right', '13px');
+      dieWithOpenPane(id);
+      expect(html.style.getPropertyValue('padding-right')).toBe('480px');
+      removeStaleView(document, pathname);
+      expect(document.getElementById(id)).toBeNull();
+      expect(html.style.getPropertyValue('padding-right')).toBe('13px');
+      expect(html.style.getPropertyPriority('padding-right')).toBe('');
+      expect(html.hasAttribute('data-weekrow-room')).toBe(false);
+    });
+
+    it('is given back with no padding when the page had none', () => {
+      dieWithOpenPane('tools-feedback');
+      removeStaleView(document, '/courses/12/assignments/101/submissions/42');
+      expect(html.style.getPropertyValue('padding-right')).toBe('');
+    });
+
+    it('is given back with the priority that the page had', () => {
+      html.style.setProperty('padding-right', '9px', 'important');
+      dieWithOpenPane('tools-turn-in');
+      removeStaleView(document, '/courses/12/assignments');
+      expect(html.style.getPropertyValue('padding-right')).toBe('9px');
+      expect(html.style.getPropertyPriority('padding-right')).toBe('important');
+    });
+
+    it('never changes the padding of Canvas, which no copy of the extension set', () => {
+      html.style.setProperty('padding-right', '13px');
+      removeStaleView(document, '/courses/12/assignments');
+      removeStaleView(document, '/courses/12/assignments/101/submissions/42');
+      removeStaleView(document, '/courses/12/assignments/101');
+      expect(html.style.getPropertyValue('padding-right')).toBe('13px');
+    });
+
+    it('keeps the padding while a pane of a live copy is on the page', () => {
+      dieWithOpenPane('tools-feedback');
+      document.body.insertAdjacentHTML('beforeend', '<div id="tools-file-viewer"></div>');
+      removeStaleView(document, '/courses/12/assignments/101/submissions/42');
+      expect(html.style.getPropertyValue('padding-right')).toBe('480px');
+      document.getElementById('tools-file-viewer')!.remove();
+    });
+
+    it('ignores a record that is no padding', () => {
+      html.style.setProperty('padding-right', '480px', 'important');
+      html.setAttribute('data-weekrow-room', '{"value":"url(x)","priority":"important"}');
+      removeStaleView(document, '/courses/12/assignments');
+      expect(html.style.getPropertyValue('padding-right')).toBe('480px');
+    });
+  });
 
   it('keeps a page element that only has the id of a pane', () => {
     document.body.insertAdjacentHTML(
