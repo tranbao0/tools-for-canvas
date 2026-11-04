@@ -85,6 +85,23 @@ interface Anchors {
   frame: HTMLIFrameElement;
 }
 
+function sameFiles(a: readonly FrameFile[], b: readonly FrameFile[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((file, index) => {
+      const other = b[index]!;
+      return (
+        file.fileId === other.fileId &&
+        file.name === other.name &&
+        file.size === other.size &&
+        file.feedbackLabel === other.feedbackLabel &&
+        file.unread === other.unread &&
+        file.sessionUrl === other.sessionUrl
+      );
+    })
+  );
+}
+
 function node(doc: Document, tag: string, className: string, text?: string): HTMLElement {
   const made = doc.createElement(tag);
   made.className = className;
@@ -135,6 +152,11 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   let stopFrame: (() => void) | null = null;
   let resize: ResizeObserver | null = null;
 
+  /** The files whose feedback the student opened. Canvas still marks them unread until a reload. */
+  const opened = new Set<string>();
+  const known = (file: FrameFile): FrameFile =>
+    opened.has(file.fileId) && file.unread ? { ...file, unread: false } : file;
+
   /** Takes the host, the style and the feedback pane away. The frame is as Canvas drew it. */
   function unmount(): void {
     resize?.disconnect();
@@ -148,6 +170,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
 
   function clear(): void {
     ++generation;
+    opened.clear();
     stopFrame?.();
     stopFrame = null;
     unmount();
@@ -222,7 +245,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     else anchors.container.before(created);
 
     // The checked session addresses stay in this list. They never become attributes of the page.
-    let files: readonly FrameFile[] = first;
+    let files: readonly FrameFile[] = first.map(known);
     const instructions = renderInstructions(details, { origin, doc });
     const submitted = renderSubmission(reply);
     const filesSection = (): HTMLElement | null => {
@@ -285,6 +308,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
           options.openFeedback({ title: file.name, url: file.sessionUrl });
           // The session request marks the comments as read in Canvas, as its own dialog does.
           file.unread = false;
+          opened.add(file.fileId);
           target?.removeAttribute('title');
           target?.querySelector('.av-unread')?.remove();
         }
@@ -292,7 +316,10 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     });
     return (next) => {
       if (host !== created || !replace) return;
-      files = next;
+      const merged = next.map(known);
+      // The same files draw nothing again, so the focus in the list and the read dots stay.
+      if (sameFiles(files, merged)) return;
+      files = merged;
       drawFiles();
     };
   }

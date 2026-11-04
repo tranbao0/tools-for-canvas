@@ -11,6 +11,8 @@ export interface FrameRow {
   /** The label of the preview button, or `null` when Canvas draws none. */
   button: 'View Feedback' | 'Preview' | null;
   unread?: boolean;
+  /** The classes of the button, when Canvas renamed them. */
+  buttonClass?: string;
   /** The value of `data-canvadoc_session_url`. */
   session?: string;
   /** What Canvas draws in the originality cell: a Turnitin or VeriCite score and report link. */
@@ -39,7 +41,7 @@ export function frameRows(path: string, rows: readonly FrameRow[]): string {
           <td class="file-upload-submission-attachment">${
             row.button === null
               ? ''
-              : `<a href=${path}?download=${row.fileId} data-tooltip title="Preview your submission" class="modal_preview_link Button--link" role="button" data-attachment_id="${row.fileId}" data-submission_id="9" data-dialog-title="${row.name}" data-canvadoc_session_url="${row.session ?? SESSION_PATH}" data-attachment_name="${row.name}" data-attachment_id="${row.fileId}">${row.button}</a>${
+              : `<a href=${path}?download=${row.fileId} data-tooltip title="Preview your submission" class="${row.buttonClass ?? 'modal_preview_link Button--link'}" role="button" data-attachment_id="${row.fileId}" data-submission_id="9" data-dialog-title="${row.name}" data-canvadoc_session_url="${row.session ?? SESSION_PATH}" data-attachment_name="${row.name}" data-attachment_id="${row.fileId}">${row.button}</a>${
                   row.unread === true
                     ? '<span class="submission_annotation unread_indicator" aria-hidden="true"></span>'
                     : ''

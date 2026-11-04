@@ -531,6 +531,24 @@ test('a session address with an extra access token keeps the frame of Canvas', a
   });
 });
 
+test('a preview button that Canvas renamed, with the session attribute, keeps the frame', async ({
+  context,
+  page,
+  background,
+}) => {
+  await checkKept(context, page, background, {
+    rows: [
+      {
+        fileId: '501',
+        name: FILE_NAME,
+        size: '118 KB',
+        button: 'View Feedback',
+        buttonClass: 'preview_button Button--link',
+      },
+    ],
+  });
+});
+
 test('file rows that do not match the page keep the frame of Canvas', async ({
   context,
   page,

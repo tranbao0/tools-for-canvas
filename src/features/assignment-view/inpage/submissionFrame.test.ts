@@ -148,6 +148,24 @@ describe('readFrame', () => {
     }
   });
 
+  it('is incomplete when a button that carries the session address has another class', () => {
+    const renamed = frameRows(PAGE, [
+      {
+        fileId: '501',
+        name: 'a.pdf',
+        size: '1 KB',
+        button: 'View Feedback',
+        buttonClass: 'preview_button Button--link',
+      },
+    ]);
+    const read = ready(frame(renamed));
+    expect(read.complete).toBe(false);
+    // The view did not find the button, so it offers none.
+    expect(read.files[0]?.feedbackLabel).toBeNull();
+    const outside = `<table class="file-upload-submission-table"><tbody><tr class="file-upload-submission"><td><a href="${PAGE}?download=501" class="file-upload-submission-info__link">a.pdf</a></td><td><span data-canvadoc_session_url="${SESSION_PATH}">View</span></td></tr></tbody></table>`;
+    expect(ready(frame(outside)).complete).toBe(false);
+  });
+
   it('is incomplete when a row does not match', () => {
     const other = frameRows('/courses/12/assignments/101/submissions/43', [
       { fileId: '501', name: 'a.pdf', size: '1 KB', button: null },
