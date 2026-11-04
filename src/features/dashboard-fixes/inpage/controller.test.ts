@@ -14,6 +14,7 @@ const OFF: DashboardFixesSettings = {
   announcementsInPlace: false,
   courseWorkExtras: false,
   allCourseGrades: false,
+  steadyPager: false,
 };
 const DATA = { ...dashboardData([extra({ key: 'u', title: 'Undated work' })]), userId: '5' };
 

@@ -20,7 +20,7 @@
  *   `[data-testid="cancel-customize-button"]` and `[data-testid="save-customize-button"]`, and
  *   the grid shows `[data-testid="add-widget-placeholder-<col>-<row>"]` drop zones.
  *
- * The dashboard fixes (src/features/dashboard-fixes) read the content of three widgets through
+ * The dashboard fixes (src/features/dashboard-fixes) read the content of the widgets through
  * the finders at the end of this file. As of package version 16.2.0:
  * - Every widget is `section[data-testid="widget-<id>"]` (`TemplateWidget`). An added widget has
  *   another id than the default one, so the finders start from the test ids inside the content.
@@ -47,6 +47,16 @@
  *   `course-<id>-grade`, `-name`, `-code`, `-term`, `-last-updated`, `-gradebook-link` and
  *   `-link`. The toggle shows `hide-all-grades-checkbox` while grades show and
  *   `show-all-grades-checkbox` while they are hidden.
+ * - Paged widgets (`TemplateWidget` with `pagination`, shown when it has more than one page): the
+ *   pager is `div[data-testid="pagination-container"]` after the content. It holds an optional
+ *   small loading spinner and the InstUI `Pagination` (`@instructure/ui-pagination` 11.7.4, the
+ *   `compact` variant) as `nav[aria-label]`. In the nav, each page button is a `button` in a
+ *   `li` of the only `ul`, the current one has `aria-current="page"` and no click handler, and the
+ *   text of a button is the page number. A skipped range is a `li` with "…" and no button. The
+ *   first and the last page always show, with the page before and after the current one. With
+ *   more than 5 pages the nav also has the previous and next arrow buttons (outside the `ul`,
+ *   with `data-direction` "prev" and "next"), and an arrow that cannot be used is not drawn. React draws the nav and its buttons again on
+ *   each page change, so a finder reads them at the time of each use.
  */
 
 /** The wrapper of the Course work widget that the weekly card replaces. */
@@ -389,6 +399,65 @@ export function isDarkWidget(widget: HTMLElement): boolean {
     }
   }
   return false;
+}
+
+export interface PagedWidget {
+  widget: HTMLElement;
+  /** The container of the pager that Canvas draws. */
+  container: HTMLElement;
+  /** The accessible name of Canvas's pager. */
+  label: string;
+  current: number;
+  total: number;
+  /** Canvas's button for each page it shows, except the current one. */
+  buttons: Map<number, HTMLButtonElement>;
+  /** Canvas's arrow buttons. An arrow that cannot be used is not drawn, so it is missing. */
+  arrows: Map<'prev' | 'next', HTMLButtonElement>;
+}
+
+/**
+ * The widgets that show a page navigator, except the Course work widget that the weekly card
+ * replaces. A pager that Canvas has not finished drawing is skipped.
+ */
+export function findPagedWidgets(doc: Document): PagedWidget[] {
+  const found: PagedWidget[] = [];
+  for (const widget of widgetsWith(doc, PAGER)) {
+    if (isReplacedWidget(widget)) continue;
+    const container = widget.querySelector<HTMLElement>(PAGER);
+    const nav = container?.querySelector<HTMLElement>('nav, [role="navigation"]');
+    if (container === undefined || container === null || nav === null || nav === undefined) {
+      continue;
+    }
+    let current = 0;
+    let total = 0;
+    const buttons = new Map<number, HTMLButtonElement>();
+    for (const button of nav.querySelectorAll<HTMLButtonElement>('ul button')) {
+      const text = button.textContent?.trim() ?? '';
+      if (!/^\d{1,6}$/.test(text)) continue;
+      const page = Number(text);
+      total = Math.max(total, page);
+      if (button.getAttribute('aria-current') === 'page') current = page;
+      else buttons.set(page, button);
+    }
+    if (current === 0 || total < 2) continue;
+    const arrows = new Map<'prev' | 'next', HTMLButtonElement>();
+    for (const button of nav.querySelectorAll<HTMLButtonElement>('button[data-direction]')) {
+      const direction = button.getAttribute('data-direction');
+      if ((direction === 'prev' || direction === 'next') && button.closest('ul') === null) {
+        arrows.set(direction, button);
+      }
+    }
+    found.push({
+      widget,
+      container,
+      label: nav.getAttribute('aria-label') ?? '',
+      current,
+      total,
+      buttons,
+      arrows,
+    });
+  }
+  return found;
 }
 
 /** The active dashboard tab panel. */

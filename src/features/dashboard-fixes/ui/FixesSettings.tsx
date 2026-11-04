@@ -12,6 +12,7 @@ const SWITCHES: readonly [keyof DashboardFixesSettings, MessageKey][] = [
   ['announcementsInPlace', 'fixAnnouncements'],
   ['courseWorkExtras', 'fixCourseWork'],
   ['allCourseGrades', 'fixCourseGrades'],
+  ['steadyPager', 'fixSteadyPager'],
 ];
 
 export function FixesSettings(props: {

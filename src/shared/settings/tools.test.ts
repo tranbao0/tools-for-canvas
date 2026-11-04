@@ -15,6 +15,7 @@ const ALL_OFF: ToolsSettings = {
     announcementsInPlace: false,
     courseWorkExtras: false,
     allCourseGrades: false,
+    steadyPager: false,
   },
   assignmentView: true,
 };
@@ -56,6 +57,7 @@ describe('normalizeToolsSettings', () => {
         announcementsInPlace: 'no',
         courseWorkExtras: 0,
         allCourseGrades: null,
+        steadyPager: 'yes',
       },
     };
 
@@ -67,9 +69,18 @@ describe('normalizeToolsSettings', () => {
         announcementsInPlace: true,
         courseWorkExtras: true,
         allCourseGrades: true,
+        steadyPager: true,
       },
       assignmentView: true,
     });
+  });
+
+  it('turns the fix on for a group stored before the fix existed', () => {
+    const { steadyPager: _removed, ...before } = ALL_OFF.dashboardFixes;
+
+    expect(normalizeToolsSettings({ dashboardFixes: before }).dashboardFixes.steadyPager).toBe(
+      true,
+    );
   });
 
   it('takes the default for a missing field', () => {

@@ -209,6 +209,7 @@ const NO_FIXES: ToolsSettings = {
     announcementsInPlace: false,
     courseWorkExtras: false,
     allCourseGrades: false,
+    steadyPager: false,
   },
 };
 

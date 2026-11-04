@@ -22,6 +22,7 @@ import { courseColorsFix } from './colors';
 import { isFixNode, type Fix, type FixContext } from './context';
 import { courseWorkFix } from './courseWork';
 import { gradesFix, type GradeVisibilityStore } from './grades';
+import { pagerFix } from './pager';
 import { findGradeWidgets } from '../../../shared/canvas/widgetDashboard';
 import { FIXES_CSS } from './styles';
 
@@ -70,6 +71,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     announcementsInPlace: announcementsFix(),
     courseWorkExtras: courseWorkFix(),
     allCourseGrades: gradesFix(gradeStore),
+    steadyPager: pagerFix(),
   };
   const keys = Object.keys(fixes) as FixKey[];
   let settings: DashboardFixesSettings | null = null;
@@ -213,9 +215,10 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         observer.observe(doc.body ?? doc.documentElement, {
           childList: true,
           subtree: true,
-          // The inputs of the filters change their `value`, and the toggle of the grades its test id.
+          // The inputs of the filters change their `value`, the toggle of the grades its test id,
+          // and a pager moves `aria-current` to another page button.
           attributes: true,
-          attributeFilter: ['value', 'data-testid', 'data-weekrow-replaced'],
+          attributeFilter: ['value', 'data-testid', 'data-weekrow-replaced', 'aria-current'],
         });
       }
     } else if (observer !== null) {
