@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import {
   clearViewerTabs,
@@ -10,7 +10,7 @@ import {
 } from './background';
 import { MAX_POSITIONS, positionKey } from './positions';
 import { ViewerUnconfirmedError } from './unconfirmed';
-import { BYTES_CHUNK, BYTES_PORT, BYTES_WINDOW } from './bytes';
+import { ACK_TIMEOUT_MS, BYTES_CHUNK, BYTES_PORT, BYTES_WINDOW } from './bytes';
 import { FileBytesError, fileReadFacts } from '../../shared/canvas/fileBytes';
 
 function setup() {
@@ -928,5 +928,60 @@ describe('file bytes port', () => {
     p.send({ ack: 99 });
     await settle();
     expect(p.postMessage.mock.calls).toHaveLength(before);
+  });
+
+  describe('a pane that stops acknowledging', () => {
+    afterEach(() => vi.useRealTimers());
+    const flush = () => vi.advanceTimersByTimeAsync(0);
+
+    async function stalled() {
+      vi.useFakeTimers();
+      const { host, pane } = setup();
+      const bytes = new Uint8Array(BYTES_CHUNK * 10);
+      let signal: AbortSignal | undefined;
+      const fetchBytes = vi.fn(async (options: { signal?: AbortSignal }) => {
+        signal = options.signal;
+        return bytes;
+      });
+      const p = port(pane);
+      serveBytesPort(p as never, host, fetchBytes as never, true);
+      p.send({ fileId: '1' });
+      await flush();
+      expect(p.postMessage).toHaveBeenCalledTimes(1 + BYTES_WINDOW);
+      return { p, signal: () => signal };
+    }
+
+    it('disconnects and stops after the timeout without an acknowledgement', async () => {
+      const { p, signal } = await stalled();
+      await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS - 1);
+      expect(p.disconnect).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(p.disconnect).toHaveBeenCalledTimes(1);
+      expect(signal()?.aborted).toBe(true);
+      // A late acknowledgement starts nothing, and the transfer sent no more.
+      p.send({ ack: 99 });
+      await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS);
+      expect(p.postMessage).toHaveBeenCalledTimes(1 + BYTES_WINDOW);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('waits another timeout after each acknowledgement', async () => {
+      const { p } = await stalled();
+      await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS - 1);
+      p.send({ ack: 1 });
+      await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS - 1);
+      expect(p.disconnect).not.toHaveBeenCalled();
+      expect(p.postMessage).toHaveBeenCalledTimes(2 + BYTES_WINDOW);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(p.disconnect).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps no timer when the pane closes first', async () => {
+      const { p } = await stalled();
+      p.close();
+      await flush();
+      expect(vi.getTimerCount()).toBe(0);
+      expect(p.disconnect).not.toHaveBeenCalled();
+    });
   });
 });

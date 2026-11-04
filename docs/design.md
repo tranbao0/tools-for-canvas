@@ -2385,6 +2385,21 @@ A line above the pages then shows the reason and Copy details for that page.
 A fetch failure reports the last received byte count, or zero when no bytes arrive.
 The owner can send this report to locate the Waterfox failure before a compatibility fix is selected.
 
+**A guard for the repair scan.**
+When the cross-reference table of a PDF does not parse, the PDF.js worker always retries in repair mode (`pdf.worker.mjs`, no `getDocument` option turns it off).
+The repair scan (`indexObjects`, `readToken`) builds a string one character at a time until it meets a line feed (0x0A), a carriage return (0x0D) or `<` (0x3C).
+A body without those bytes becomes one huge string, about 37 to 41 times the length of the run in memory.
+Measured: 8 MB of such bytes after a valid `%PDF-1.7` header added about 330 MB, 16 MB about 590 MB, and 99 MB about 4 GB.
+Anyone who can upload a file that the student opens (a teacher, or a student in a discussion or a group) can make one, and in Firefox the worker likely runs in the shared extension process.
+Before `getDocument`, `assertRepairable` (`pdf/repairGuard.ts`) makes one pass over the bytes and finds the longest run with none of the three bytes.
+A run longer than 2 MB (`MAX_LINE_RUN`) fails like a damaged file (`InvalidPDFException`): "This PDF is damaged" and no Retry.
+The card keeps "Download" and "Open in Canvas", and the browser's "Open in new tab" on the Canvas link still works.
+The pass runs on every file, not only on a file whose table fails, because a check that follows the parser would need the parser's own verdict.
+The vendored PDF.js files stay as they are (the vendor hash rule).
+Trade-off: a rare valid PDF with a single-line stream longer than 2 MB does not open in the pane.
+Real PDFs pass: the fixtures, and a file padded with a run of 1.7 MB.
+The pass runs on the main thread of the pane: it takes about 190 ms for 100 MB on the test machine under load (about 50 ms for 25 MB), and a typical file takes a few milliseconds.
+
 **F1 investigation (2026-11-02, incomplete):**
 
 The Firefox 159 Selenium test renders the existing three-page PDF through the fake Canvas redirect.
@@ -2546,6 +2561,9 @@ With the pane read alone, the default run of the test failed before the fix.
        Firefox ports clone typed arrays, so the chunks are `Uint8Array`s.
        The ports of Chromium send JSON, so there the chunks are base64 text.
        When the pane closes or cancels, the port disconnects, and the background stops the read and the transfer.
+       The background also ends the transfer when the pane takes no chunk for 30 seconds (`ACK_TIMEOUT_MS`): it aborts the read, disconnects the port and drops the bytes.
+       A message that the pane cannot handle (a chunk that is not base64, or a throw from the code of the page) fails the read with `network`, disconnects the port and acknowledges nothing more.
+       So a transfer cannot wait for ever on either side.
      - A comment attachment has no file record, so its head read (16 bytes, to find the type) uses the same route.
        The background returns the media type of its answer only when it has the syntax of one, and the pane then keeps the type as strict as before.
      - The background stays the second reader and not the only one.
