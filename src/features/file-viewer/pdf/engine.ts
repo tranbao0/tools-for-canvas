@@ -170,7 +170,8 @@ export class PdfEngine {
     try {
       // The repair scan of the worker cannot be turned off, so a file it could not bear never
       // reaches it.
-      assertRepairable(options.bytes);
+      await assertRepairable(options.bytes);
+      if (options.signal?.aborted) throw new Error('The open was cancelled');
     } catch (error) {
       options.signal?.removeEventListener('abort', abort);
       worker.destroy();

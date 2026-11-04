@@ -6,6 +6,7 @@ import {
   type FileReadFacts,
 } from '../../../shared/canvas/fileBytes';
 import { t } from '../../../shared/ui/i18n';
+import { REFUSED_MESSAGE, REFUSED_NAME } from './repairGuard';
 
 const pick = <T extends string>(allowed: readonly T[], value: unknown, otherwise: string) =>
   allowed.find((item) => item === value) ?? otherwise;
@@ -45,6 +46,7 @@ const messages = [
   'The document has too many pages',
   'Failed to fetch',
   'NetworkError when attempting to fetch resource.',
+  REFUSED_MESSAGE,
 ];
 const names = [
   'Error',
@@ -63,7 +65,10 @@ const names = [
   'InternalError',
   'DataCloneError',
   'FileBytesError',
+  REFUSED_NAME,
 ];
+/** The errors of a file whose bytes cannot be shown, so reading them again cannot help. */
+const DAMAGED = ['InvalidPDFException', 'FormatError', 'MissingPDFException', REFUSED_NAME];
 
 /** Keeps only diagnostic vocabulary after removing private spans, before truncation. */
 export function messageShape(message: string): string {
@@ -152,9 +157,7 @@ export function pdfDetails(
                 ? t('pdfPasswordReason')
                 : tooMany
                   ? t('pdfTooManyPages')
-                  : ['InvalidPDFException', 'FormatError', 'MissingPDFException'].includes(
-                        safe.name,
-                      )
+                  : DAMAGED.includes(safe.name)
                     ? t('pdfDamaged')
                     : safe.name === 'SecurityError' && stage === 'page render'
                       ? t('pdfDrawingBlocked')
@@ -174,7 +177,7 @@ export function pdfDetails(
       kind !== 'too_large' &&
       safe.name !== 'PasswordException' &&
       !tooMany &&
-      !['InvalidPDFException', 'FormatError', 'MissingPDFException'].includes(safe.name),
+      !DAMAGED.includes(safe.name),
     report: `Extension version: ${version}\nUser agent: ${agent}\nError name: ${safe.name}\nError message: ${safe.message}\nMessage shape: ${shape}\nFile error kind: ${kind ?? 'none'}\nHTTP status: ${status ?? 'none'}\n${responseFacts}\nStage: ${stage}\nByte length: ${bytes}\nPDF.js version: 6.5.438\nOffscreenCanvas: ${typeof OffscreenCanvas !== 'undefined'}\nImageDecoder: ${'ImageDecoder' in globalThis}\nWebAssembly: ${typeof WebAssembly !== 'undefined'}\nModule workers: ${moduleWorkers()}`,
   };
 }

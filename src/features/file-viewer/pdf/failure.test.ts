@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FileBytesError } from '../../../shared/canvas/fileBytes';
 import { messageShape, pdfDetails, sanitizePdfError } from './failure';
+import { REFUSED_MESSAGE, REFUSED_NAME } from './repairGuard';
 
 describe('PDF diagnostic sanitizer', () => {
   it('keeps only known safe error text', () => {
@@ -182,4 +183,36 @@ it('reports the pane answer and the background answer apart', () => {
     'Background answer: redirected false, origin class other, content type other',
   );
   expect(report).not.toContain('SECRET');
+});
+
+describe('the refusal of a line too long to read safely', () => {
+  const refusal = () => {
+    const error = new Error(REFUSED_MESSAGE);
+    error.name = REFUSED_NAME;
+    return error;
+  };
+  it('keeps its own name and message in the report, apart from a PDF.js failure', () => {
+    expect(sanitizePdfError(refusal())).toEqual({ name: REFUSED_NAME, message: REFUSED_MESSAGE });
+    const refused = pdfDetails(refusal(), 'document load', 5, '1.0', 'agent');
+    expect(refused.report).toContain(`Error name: ${REFUSED_NAME}`);
+    expect(refused.report).toContain(`Error message: ${REFUSED_MESSAGE}`);
+    const broken = new Error('Invalid PDF structure.');
+    broken.name = 'InvalidPDFException';
+    const damaged = pdfDetails(broken, 'document load', 5, '1.0', 'agent');
+    expect(damaged.report).toContain('Error name: InvalidPDFException');
+    expect(damaged.report).not.toContain(REFUSED_NAME);
+  });
+  it('shows the text of a damaged file and offers no Retry', () => {
+    const refused = pdfDetails(refusal(), 'document load', 5, '1.0', 'agent');
+    const broken = new Error('Invalid PDF structure.');
+    broken.name = 'InvalidPDFException';
+    expect(refused.reason).toBe(pdfDetails(broken, 'document load', 5, '1.0', 'agent').reason);
+    expect(refused.retry).toBe(false);
+  });
+  it('does not let other text use the allowed message or name', () => {
+    expect(sanitizePdfError({ name: 'Error', message: `${REFUSED_MESSAGE} secret` })).toEqual({
+      name: 'Error',
+      message: '[message removed for privacy]',
+    });
+  });
 });

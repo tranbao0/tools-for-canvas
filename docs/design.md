@@ -2391,14 +2391,34 @@ The repair scan (`indexObjects`, `readToken`) builds a string one character at a
 A body without those bytes becomes one huge string, about 37 to 41 times the length of the run in memory.
 Measured: 8 MB of such bytes after a valid `%PDF-1.7` header added about 330 MB, 16 MB about 590 MB, and 99 MB about 4 GB.
 Anyone who can upload a file that the student opens (a teacher, or a student in a discussion or a group) can make one, and in Firefox the worker likely runs in the shared extension process.
-Before `getDocument`, `assertRepairable` (`pdf/repairGuard.ts`) makes one pass over the bytes and finds the longest run with none of the three bytes.
-A run longer than 2 MB (`MAX_LINE_RUN`) fails like a damaged file (`InvalidPDFException`): "This PDF is damaged" and no Retry.
+**What the guard refuses.**
+Before `getDocument`, `assertRepairable` (`pdf/repairGuard.ts`) scans the bytes of every file, not only those whose table fails, because a check that follows the parser would need the verdict of the parser.
+The rule is one rule: the pane refuses any file that holds a run of more than 2 MB (`MAX_LINE_RUN`) with no LF, CR or `<`, anywhere in the file.
+The run can lie in a stream, a comment or a string, and the file does not need to be broken: the E2E file `long-run-valid.pdf` has a valid table and is refused.
+The scan goes in slices of 4 MB and carries the open run from slice to slice.
+Between slices it yields with a message channel task, so a 100 MB file does not hold the pane for 100 to 190 ms.
+It stops as soon as a run passes the cap.
+
+**How the pane shows the refusal.**
+The refusal has its own error (`LineTooLongError`, message "Refused: a line too long to read safely"), and the failure report allows exactly that name and message.
+"Copy details" therefore tells a refusal from a PDF.js failure.
+The student sees the text of a damaged file, "This PDF is damaged", with no Retry, because reading the same bytes again cannot help.
 The card keeps "Download" and "Open in Canvas", and the browser's "Open in new tab" on the Canvas link still works.
-The pass runs on every file, not only on a file whose table fails, because a check that follows the parser would need the parser's own verdict.
 The vendored PDF.js files stay as they are (the vendor hash rule).
-Trade-off: a rare valid PDF with a single-line stream longer than 2 MB does not open in the pane.
+Trade-off: a valid PDF with a single-line stream longer than 2 MB does not open in the pane.
+
+**What the guard does not stop.**
+It stops junk and flat bodies, such as a zero-filled upload or a body with no line breaks.
+It does not stop a crafted file.
+The reviewer measured two bypasses:
+- A file in repair mode whose trailer holds a 16 MB literal string with an LF every 1 MB: about 559 MB of memory.
+- A 16 KB file whose FlateDecode page content holds a 16 MB string: about 515 MB.
+
+`Lexer.getString` and `getHexString` grow until `)` or `>`, and a compressed stream hides its content from any check of the bytes.
+No cheap complete fix exists.
+A complete one would need limits inside the vendored PDF.js, which the vendor hash rule forbids, or a memory limit of the worker, which the browsers do not offer.
+The risk stays Low: it costs availability only, it needs a real click of the student on the file, and the student recovers by closing the tab or the browser.
 Real PDFs pass: the fixtures, and a file padded with a run of 1.7 MB.
-The pass runs on the main thread of the pane: it takes about 190 ms for 100 MB on the test machine under load (about 50 ms for 25 MB), and a typical file takes a few milliseconds.
 
 **F1 investigation (2026-11-02, incomplete):**
 
