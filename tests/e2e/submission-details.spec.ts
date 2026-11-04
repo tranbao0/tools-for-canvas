@@ -974,7 +974,8 @@ async function openSidebar(
 const sidebarOf = (page: Page) => page.locator('#sidebar_content .details .content');
 
 /** Waits until the view has changed the box, which is when Canvas's text moved into the hidden node. */
-const treated = (page: Page) => expect(page.locator('[data-av-original]')).toHaveCount(1);
+const treated = (page: Page) =>
+  expect(page.locator('#sidebar_content a[href*="download="] > [data-av-original]')).toHaveCount(1);
 
 test('the submitted file of the assignment page reads "View NAME" with an icon, and a click opens the file pane', async ({
   context,
@@ -1124,17 +1125,28 @@ for (const mode of ['on', 'assignmentView off', 'fileViewer off'] as const) {
       await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
     if (mode === 'fileViewer off')
       await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
-    const html = assignmentPage.replace(
-      '<p>Write an essay about one source.</p>',
-      `<p>Write an essay about one source.</p>${MARKED_DESCRIPTION}`,
-    );
+    // Canvas's comments hold text of other people, in the box and beside it.
+    const comment = (id: string) =>
+      `<div class="comments" id="${id}"><div data-av-original="" data-av-own=""><a href="/y"><span data-av-original="" data-av-own="">kept</span></a></div></div>`;
+    const html = assignmentPage
+      .replace(
+        '<p>Write an essay about one source.</p>',
+        `<p>Write an essay about one source.</p>${MARKED_DESCRIPTION}`,
+      )
+      .replace('<div class="module">', `${comment('comment-in')}<div class="module">`)
+      .replace('</aside>', `${comment('comment-beside')}</aside>`);
     expect(html).toContain('id="marked"');
+    expect(html).toContain('id="comment-in"');
+    expect(html).toContain('id="comment-beside"');
     await openSidebar(context, page, background, { html });
     const marked = page.locator('#marked');
     await expect(marked).toBeAttached();
     // The script has started and its stale copy cleanup has run when the box is settled.
     if (mode === 'on') await treated(page);
     else await page.waitForTimeout(1200);
+    const comments = page.locator('.comments');
+    const commentsBefore = await comments.evaluateAll((nodes) => nodes.map((n) => n.outerHTML));
+    expect(commentsBefore).toHaveLength(2);
     const before = await marked.evaluate((node) => node.outerHTML);
     expect(before).toBe(MARKED_DESCRIPTION.replace('hidden>', 'hidden="">'));
     // Switching either switch live changes nothing in the description.
@@ -1143,8 +1155,13 @@ for (const mode of ['on', 'assignmentView off', 'fileViewer off'] as const) {
     await saveTools(background, DEFAULT_TOOLS_SETTINGS);
     await treated(page);
     await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
-    await expect(page.locator('#sidebar_content [data-av-own]')).toHaveCount(0);
+    await expect(
+      page.locator('#sidebar_content [data-av-own]:not(.comments [data-av-own])'),
+    ).toHaveCount(0);
     expect(await marked.evaluate((node) => node.outerHTML)).toBe(before);
+    expect(await comments.evaluateAll((nodes) => nodes.map((n) => n.outerHTML))).toEqual(
+      commentsBefore,
+    );
   });
 }
 

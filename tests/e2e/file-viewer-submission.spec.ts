@@ -261,6 +261,40 @@ test('the file downloads as before when the top frame does not take it', async (
   await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
 });
 
+test('a click in the frame downloads the file after the File viewer switch goes off, and no pane opens', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await serveScenario(context, [
+    submissionRoute,
+    textFile('42', 'submission.txt'),
+    { path: '/files/42/download', contentType: 'text/plain', body: notes },
+  ]);
+  await saveAddress(background, canvas.origin);
+  await countFrameInjections(background);
+  await page.goto(`${canvas.origin}${SUBMISSION_PATH}`);
+  await catcherReady(background);
+  const link = previewFrame(page).locator('body').getByRole('link', { name: 'Submission text' });
+  await expect(link).toBeVisible();
+  // The switch goes off. The catcher of the top page ends, and the catcher of the frame stays
+  // until the next load. The frame asks the top page, gets no answer, and the link downloads.
+  await background.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        chrome: { storage: { local: { set(value: unknown): Promise<void> } } };
+      }
+    ).chrome;
+    await api.storage.local.set({ toolsSettings: { fileViewer: false } });
+  });
+  await page.waitForTimeout(1500);
+  const saved = page.waitForEvent('download');
+  await link.click();
+  await saved;
+  await page.waitForTimeout(500);
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+});
+
 test('a page with the viewer off gets no catcher in its frame', async ({
   context,
   page,

@@ -137,6 +137,36 @@ describe('the page script', () => {
     expect(document.getElementById('tools-file-viewer')).toBeNull();
   });
 
+  it('ends at its start when the settings say the switch is off, and follows a click that came early', async () => {
+    prepare();
+    sendMessage.mockImplementation(async (message: { type: string }) =>
+      message.type === 'weekrow:page-context'
+        ? { tools: { fileViewer: false, fileViewerWidth: 480 }, settings: {} }
+        : reply(message),
+    );
+    const followed = vi.fn();
+    document.getElementById('file')!.addEventListener('click', (event) => {
+      if (!event.isTrusted) followed();
+    });
+    const starting = startViewer();
+    click(true);
+    await starting;
+    await vi.waitFor(() => expect(followed).toHaveBeenCalledTimes(1));
+    expect(scope.__weekrowViewer).toBeUndefined();
+    expect(sessionRequests()).toBe(0);
+    expect(document.getElementById('tools-file-viewer')).toBeNull();
+  });
+
+  it('does not end when the read of the settings fails', async () => {
+    prepare();
+    sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'weekrow:page-context') throw new Error('no answer');
+      return reply(message);
+    });
+    await startViewer();
+    expect(scope.__weekrowViewer).toBeDefined();
+  });
+
   it('keeps working when a change leaves the File viewer switch on', async () => {
     prepare();
     await startViewer();

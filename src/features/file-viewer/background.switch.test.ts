@@ -12,11 +12,13 @@ let scripting: FakeScripting;
 beforeEach(async () => {
   fakeBrowser.reset();
   scripting = installFakeScripting();
+  const tabs = [
+    { id: 1, url: `${ORIGIN}/courses/5/assignments/3` },
+    { id: 2, url: 'https://news.example.com/' },
+  ];
   Object.assign(fakeBrowser.tabs, {
-    query: vi.fn(async () => [
-      { id: 1, url: `${ORIGIN}/courses/5/assignments/3` },
-      { id: 2, url: 'https://news.example.com/' },
-    ]),
+    query: vi.fn(async () => tabs),
+    get: vi.fn(async (id: number) => tabs.find((entry) => entry.id === id)),
   });
   // The fake browser has no port events, which `wireViewerRouter` also wires.
   Object.assign(fakeBrowser.runtime, { onConnect: { addListener: vi.fn() } });

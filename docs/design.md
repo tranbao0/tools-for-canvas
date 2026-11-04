@@ -2652,7 +2652,9 @@ With the pane read alone, the default run of the test failed before the fix.
      When it goes on, the background runs the click catcher (`viewer.js`) in the open tabs of the saved Canvas.
      When it goes off, the catcher of each page ends itself when the page hears the change, so it takes no more clicks and the pane closes.
      The assignment page reads the same switch for its sidebar, so a label "View NAME" always has a catcher behind it.
-     The catcher of a frame of the Submission Details page (item 11) is not part of this and follows its own page load.
+     The catcher of a frame of the Submission Details page (item 11) does not end by itself when the switch goes off, and it stays until the next load of the frame.
+     It needs the pane of the top page to take a file, so it asks the top page, gets no answer, and the browser saves the file as it would without the extension.
+     So after the switch goes off, a click on a file in that frame downloads it and opens no pane.
 7. **The card of a file, and the header of a PDF.**
    - The card of the active tab shows an icon, the file name, and a line with the type and the size, such as "Word document · 265 KB".
      The size uses units of 1024 bytes.
@@ -3174,7 +3176,8 @@ So a student switches pages to read the instructions next to the feedback on a f
   - An assignment page (`/courses/:id/assignments/:id`) gets it too, for the Submission box.
   - The Grades list and the page of an anonymous submission (`anonymous_submissions/:id`) get nothing.
   - A newer injection retires the copy of an earlier one, and a start removes the nodes that a destroyed copy left (every node and mark starts with `data-av-`).
-    The removal looks only in the parts that the view of the page owns: the Submission box on the assignment page, the head and the host on the Submission Details page, and the head and the lists of rows on the Assignments list.
+    The removal looks only in the parts that the view of the page owns: the content of the Submission box (`#sidebar_content .details .content`, never its `.comments`) on the assignment page, the head and the host on the Submission Details page, and the head and the lists of rows on the Assignments list.
+    A pane that an earlier copy docked in the body (`#tools-feedback`, `#tools-turn-in`) is removed by its id when it has `data-av-own`, on the Submission Details page and on the Assignments list.
     A description or a comment of another author can hold such marks, and the removal never reaches it.
     A holder of Canvas's nodes is given back only when it has `data-av-own` and is a direct child of a link in the box.
   - The script follows the switch, the saved address and the Theme setting through the page channel.
