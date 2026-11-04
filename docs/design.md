@@ -2355,19 +2355,6 @@ If a later feature goes over the budget, the Announcements view can move to a sc
 
 ### 25. File viewer
 
-The embedded pane reads the file API URL with credentials included and follows Canvas redirects.
-Firefox cookie settings 1 and 5 withhold the session cookie from that frame in the session-gated download test, while setting 4 permits it.
-The test uses Firefox 159; the owner's Waterfox report shows the same HTML-answer failure, but does not prove which browser rule causes it.
-An HTML answer or HTTP 401/403 triggers one background read through the same cookie-bound owner read as the file API.
-The background checks the binding before and after the complete read and retains the 100 MB limit and HTML check.
-Only an extension pane frame can open the runtime port for that read.
-Runtime ports offer no transfer list in either engine, so the fallback sends bounded base64 chunks and cancels the read when the pane disconnects.
-The pane remains the first reader because it avoids serialization and extra buffers on successful reads.
-PDF.js already receives a complete byte buffer, so this choice preserves its current loading behavior and adds no streaming restriction.
-Failure details contain only the redirect flag, a final origin class, a fixed content type vocabulary, the read context and the retry result.
-The Firefox smoke tests cover cookie settings 1, 4 and 5 with a session-gated download redirect to another origin.
-Firefox's default setting is 5, so the plain smoke run already failed before the fallback.
-
 **Question:** How does a student read Canvas files without losing the rest of Canvas?
 
 **Problem:** Canvas opens a PDF in a full-window overlay that hides the page, shows one file at a time, and offers the student's own submitted files only as downloads.
@@ -2408,6 +2395,18 @@ Its legacy handler calls `previewItem`, and `FilesApp.jsx` calls the page router
 `app/views/gradebooks/grade_summary.html.erb` links comment attachments with both `download` and `comment_id` on a submission address.
 Ticket F2 accepts that comment attachment form with strict numeric ids, including shard ids.
 The exact Files link address from the owner's failing page and the original PDF are still needed to establish a reproduction.
+
+**F4 investigation (2026-11-03):**
+
+The owner's "Copy details" report for a 1.7 MB PDF from the classic Files page showed `not_a_file` at the fetch stage with no HTTP status and zero bytes.
+So the pane got a web page, most likely the sign-in page, in place of the file.
+The pane page is a `moz-extension:` frame inside the Canvas page.
+In the Firefox 159 test with a fake Canvas, `/files/:id/download?download_frd=1` redirects to a sign-in page without the session cookie and to a file host on another origin with the cookie or a verifier.
+`network.cookie.cookieBehavior` 1 and 5 (5 is the Firefox default) withhold the cookie from the pane frame, so the pane gets the sign-in page once.
+Setting 4 sends the cookie, so the pane read works.
+The test does not prove which rule applies in Waterfox 6.7.7, but the report shows the same answer.
+The Firefox smoke test covers settings 1, 4 and 5, for a file and for a comment attachment.
+With the pane read alone, the default run of the test failed before the fix.
 
 **Live facts (decision 23, owner's runs on sjsu.instructure.com, Firefox, 2026-10-30):**
 
@@ -2526,7 +2525,28 @@ The exact Files link address from the owner's failing page and the original PDF 
    - Any other type, such as Word or PowerPoint: a short card with "Open in Canvas" and "Download", because Canvas converts those files on its own servers.
    - Every tab has "Download" and "Open in Canvas".
 5. **Fetching.**
-   - The pane's extension page reads the file record, then fetches the bytes with the student's session through the redirect, as decision 23 proved.
+   - The pane's extension page reads the file record from the background, then fetches the bytes with the student's session through the redirect, as decision 23 proved.
+     The pane reads first, because a successful pane read needs no serialization and no extra copy of the bytes.
+   - **Background read.**
+     When the pane read gets a web page (`not_a_file`) or an HTTP 401 or 403, the browser may have withheld the cookie from the pane frame.
+     The pane then asks the background to read the same file once, because the background runs as the extension itself and gets the first-party cookie.
+     The background offers no other read for the pane.
+     - The request names a file id, checked like the id of `viewer:file`, or the comment attachment route, checked with `isCommentTab`.
+       It never holds an address.
+       The background builds the address inside the cookie-bound read: the `url` of the file record, or the route on the saved Canvas.
+     - The read uses the same rules as the other viewer reads (decision 11): the check before and after the complete read, the 100 MB limit and the web page check.
+       The pane checks the cookie again after the read and drops the bytes when the answer changed.
+     - A runtime port carries the bytes.
+       Ports have no transfer list, so the bytes are copied.
+       The background sends the total length first, then chunks of 256 KB, with at most four chunks that the pane has not acknowledged.
+       The pane writes each chunk straight into one buffer of the announced length.
+       Firefox ports clone typed arrays, so the chunks are `Uint8Array`s.
+       The ports of Chromium send JSON, so there the chunks are base64 text.
+       When the pane closes or cancels, the port disconnects, and the background stops the read and the transfer.
+     - A comment attachment has no file record, so its head read (16 bytes, to find the type) uses the same route.
+       The background returns the media type of its answer only when it has the syntax of one, and the pane then keeps the type as strict as before.
+     - The background stays the second reader and not the only one.
+       Every successful read would pay the cost of the copy and of a second buffer, and the pane has no streaming need: PDF.js already gets the complete buffer.
    - Files larger than 100 MB show the card instead, with "Download" and "Open in Canvas".
      The pane checks the size of the file record before it fetches.
      It also stops the read when `Content-Length` or the bytes read pass 100 MB, because a header can be wrong.
@@ -2535,7 +2555,7 @@ The exact Files link address from the owner's failing page and the original PDF 
      When the answer is no, the pane shows "Canvas can't confirm your sign-in for this file" with "Retry" and "Open in Canvas".
      This failure does not ask for the host permission again.
    - A PDF uses the same `url` that the card uses for "Download": the `url` of the record when it is on the saved Canvas, and `/files/:id/download` otherwise.
-     The pane page fetches it with the student's session and follows the redirect, through `src/shared/canvas/fileBytes.ts`.
+     The pane page fetches it with the student's session and follows the redirect, through `src/shared/canvas/fileBytes.ts`, and reads it again in the background as the bullet above says.
    - While the bytes of a PDF, an image, audio, video or text load, a progress bar shows the part read, from `Content-Length`.
      The players share the bar of the PDF tab, with the label "Loading file".
      The value is clamped to 100 percent, because a compressed answer can differ from its length.
@@ -2867,10 +2887,14 @@ The exact Files link address from the owner's failing page and the original PDF 
   Only `http` and `https` addresses open.
   Any other scheme, such as `javascript:`, `data:` or `file:`, leaves the link without an address.
 - The search marks the text layer with DOM text nodes and `span` elements, never with markup from the PDF.
-- The pane page is the second place that reads bytes with `fetch`, next to the background script.
+- The pane page and the background script both read bytes with `fetch`, the background only for a file id or a comment attachment route that the pane names on its private port.
   `scripts/check-fetch.mjs` allows `fetch` in `background.js` and `viewer-frame.js`, and in no other script or page.
   The read keeps the start rule of the wrapper (an https address on the saved Canvas) and follows the redirect that Canvas chooses, as decision 23 proved.
   It stops at 100 MB.
+- The failure report of a read holds these facts and nothing else about the answer: whether the answer was redirected, the origin class of the final address (`canvas`, `other` or `none`), a content type from a fixed list (any other type reads `other`), the context that read it (pane or background), and the result of the background read.
+  The report keeps the facts of the pane answer and the facts of the background answer apart.
+  It prints `unknown` where nothing was measured.
+  It never holds an address, a host, a query or a token.
 - The PDF.js files come from the package without change.
   `scripts/vendor-hashes.json` holds their SHA-256 hashes.
   `check-urls` and `check-fetch` skip a built file in `pdfjs/` only when its hash matches, so a changed copy is scanned and fails.

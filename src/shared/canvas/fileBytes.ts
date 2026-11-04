@@ -21,17 +21,29 @@ export type FileBytesFailure =
   /** The background did not confirm the sign-in cookie for the student of the cache. */
   | 'unconfirmed';
 
-export interface FileReadFacts {
-  redirected: boolean;
+/** What one answer of Canvas shows. `null` means that nothing was measured. */
+export interface AnswerFacts {
+  redirected: boolean | null;
   originClass: 'canvas' | 'other' | 'none';
-  contentType: string;
+  contentType: string | null;
+}
+
+/** Safe facts of a file read for the failure report. They hold no address, host or token. */
+export interface FileReadFacts extends AnswerFacts {
+  /** The context that made the last read. */
   context: 'pane' | 'background';
   backgroundRetry: 'not_run' | 'failed' | 'succeeded';
+  /** The answer of the background read, when that read ran. */
+  retry?: AnswerFacts;
 }
+
+/** The facts of an attempt that got no answer. */
+export const NO_ANSWER: AnswerFacts = { redirected: null, originClass: 'none', contentType: null };
 
 /** Content types use a fixed vocabulary so custom header values cannot disclose private data. */
 export function safeContentType(value: string | null): string {
-  const type = value?.split(';')[0]?.trim().toLowerCase() ?? '';
+  if (value === null) return 'unknown';
+  const type = value.split(';')[0]?.trim().toLowerCase() ?? '';
   return [
     'text/html',
     'application/pdf',
@@ -41,9 +53,19 @@ export function safeContentType(value: string | null): string {
     'image/jpeg',
     'image/gif',
     'image/svg+xml',
+    'other',
+    'unknown',
   ].includes(type)
     ? type
     : 'other';
+}
+
+const MIME_TYPE = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$/;
+
+/** The media type of a `Content-Type` header when it has the syntax of one, else the empty string. */
+export function checkedMime(value: string | null): string {
+  const type = value?.split(';')[0]?.trim().toLowerCase() ?? '';
+  return MIME_TYPE.test(type) ? type : '';
 }
 
 export class FileBytesError extends Error {
@@ -245,9 +267,7 @@ async function readFileBytes(options: FileBytesOptions): Promise<Uint8Array> {
       error instanceof Error ? error.message : 'Network error',
     );
     failure.facts = facts ?? {
-      redirected: false,
-      originClass: 'none',
-      contentType: 'other',
+      ...NO_ANSWER,
       context: options.context ?? 'pane',
       backgroundRetry: 'not_run',
     };

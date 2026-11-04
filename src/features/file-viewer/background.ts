@@ -1,5 +1,11 @@
-import { BYTES_PORT } from './bytes';
-import { fetchFileBytes, fileReadFacts, FileBytesError } from '../../shared/canvas/fileBytes';
+import { BYTES_CHUNK, BYTES_PORT, BYTES_WINDOW } from './bytes';
+import {
+  checkedMime,
+  fetchFileBytes,
+  fileReadFacts,
+  FileBytesError,
+} from '../../shared/canvas/fileBytes';
+import { BROWSER_KIND } from '../../shared/platform/browserKind';
 import {
   clearPositions,
   keepOnlyStudent,
@@ -18,17 +24,13 @@ import { injectSubmissionFrames } from '../../shared/platform/inject';
 import { logFailure } from '../../shared/platform/log';
 import { createViewerSecret, isViewerSecret } from './channel';
 import { FRAME_OPEN, TOP_OPEN } from './frame';
-import { isFileId, isSubmissionPage, isTabId, normalizeTabs } from './model';
+import { isCommentTab, isFileId, isSubmissionPage, isTabId, normalizeTabs } from './model';
 import { ViewerUnconfirmedError } from './unconfirmed';
+import { fileLinks } from './ui/links';
 
 type ViewerSender = Pick<Browser.runtime.MessageSender, 'url' | 'frameId'> & {
   tab?: { id?: number };
 };
-
-interface BytesRequest {
-  url?: unknown;
-  truncateAt?: unknown;
-}
 
 type ViewerApi = Pick<CanvasApi, 'getViewerFile' | 'getViewerModuleItem'>;
 
@@ -342,9 +344,15 @@ async function readEpoch(host: Pick<ViewerHost, 'get'>): Promise<number> {
   return typeof value === 'number' ? value : 0;
 }
 
-const BYTES_CHUNK = 192 * 1024;
+/** What the pane may ask on the bytes port: a file id or a comment attachment, never an address. */
+interface BytesRequest {
+  fileId?: unknown;
+  commentTab?: unknown;
+  truncateAt?: unknown;
+  ack?: unknown;
+}
 
-/** Reads a file for the pane over its private runtime port, which has no transfer list. */
+/** Reads a file for the pane over its private runtime port (see `readBackgroundBytes`). */
 export function serveBytesPort(
   port: Pick<Browser.runtime.Port, 'name' | 'sender' | 'disconnect' | 'postMessage'> & {
     onDisconnect: Pick<Browser.runtime.Port['onDisconnect'], 'addListener'>;
@@ -352,6 +360,8 @@ export function serveBytesPort(
   },
   host: Pick<ViewerHost, 'savedOrigin' | 'isExtensionPage' | 'read'>,
   fetchBytes: typeof fetchFileBytes = fetchFileBytes,
+  /** The port clones typed arrays (Firefox). Other ports send JSON, so the bytes go as base64. */
+  binary: boolean = BROWSER_KIND === 'firefox',
 ): void {
   if (port.name !== BYTES_PORT) return;
   const sender = port.sender;
@@ -360,40 +370,71 @@ export function serveBytesPort(
     return;
   }
   const controller = new AbortController();
-  port.onDisconnect.addListener(() => controller.abort());
+  let acked = 0;
+  let wake: (() => void) | undefined;
+  port.onDisconnect.addListener(() => {
+    controller.abort();
+    wake?.();
+  });
   let started = false;
   port.onMessage.addListener((message) => {
-    if (started) return;
+    if (started) {
+      // After the request, the pane only acknowledges chunks.
+      if (typeof message.ack === 'number' && Number.isSafeInteger(message.ack)) {
+        acked = Math.max(acked, message.ack);
+        wake?.();
+      }
+      return;
+    }
     started = true;
     void (async () => {
       try {
         const origin = await host.savedOrigin();
-        const { url, truncateAt } = message;
-        if (!origin || typeof url !== 'string') throw new Error('Invalid file read');
+        const { fileId, commentTab, truncateAt } = message;
+        if (
+          Object.keys(message).some((key) => !['fileId', 'commentTab', 'truncateAt'].includes(key))
+        )
+          throw new Error('Invalid file read');
+        const fileRead = id(fileId) && commentTab === undefined;
+        const commentRead =
+          typeof commentTab === 'string' && isCommentTab(commentTab) && fileId === undefined;
+        if (!origin || (!fileRead && !commentRead)) throw new Error('Invalid file read');
         if (
           truncateAt !== undefined &&
           (typeof truncateAt !== 'number' || !Number.isSafeInteger(truncateAt) || truncateAt <= 0)
         )
           throw new Error('Invalid file limit');
-        // viewerRead holds the same cookie binding before and after the complete byte read.
-        const bytes = await host.read(origin, sender.tab?.id, () =>
+        let mime = '';
+        // The address is built inside the cookie-bound read, as `viewer:file` builds it. The read
+        // holds the same binding before and after the complete byte read.
+        const bytes = await host.read(origin, sender.tab?.id, async (api) =>
           fetchBytes({
             origin,
             context: 'background',
-            url,
+            url: fileRead
+              ? fileDownload(origin, fileId, (await api.getViewerFile(fileId)).url)
+              : new URL(commentTab as string, origin).href,
             signal: controller.signal,
+            onHeaders: (headers) => {
+              mime = checkedMime(headers.get('content-type'));
+            },
             ...(truncateAt === undefined ? {} : { truncateAt }),
           }),
         );
         if (controller.signal.aborted) return;
+        port.postMessage({ total: bytes.length });
+        let sent = 0;
         for (let offset = 0; offset < bytes.length; offset += BYTES_CHUNK) {
-          const part = bytes.subarray(offset, offset + BYTES_CHUNK);
-          let text = '';
-          for (let at = 0; at < part.length; at += 8192)
-            text += String.fromCharCode(...part.subarray(at, at + 8192));
-          port.postMessage({ chunk: btoa(text) });
+          // At most a few chunks wait for the pane. A closed pane ends the transfer.
+          while (sent - acked >= BYTES_WINDOW && !controller.signal.aborted)
+            await new Promise<void>((resolve) => (wake = resolve));
+          if (controller.signal.aborted) return;
+          // `slice` copies, because a clone of a view holds its whole buffer.
+          const part = bytes.slice(offset, offset + BYTES_CHUNK);
+          port.postMessage({ chunk: binary ? part : toBase64(part) });
+          sent += 1;
         }
-        port.postMessage({ done: true, facts: fileReadFacts.get(bytes) });
+        port.postMessage({ done: true, mime, facts: fileReadFacts.get(bytes) });
       } catch (error) {
         if (controller.signal.aborted) return;
         const file = error instanceof FileBytesError ? error : null;
@@ -407,6 +448,20 @@ export function serveBytesPort(
       }
     })();
   });
+}
+
+/** The address the pane reads for a file: the same links as the card (`fileLinks`) give. */
+function fileDownload(origin: string, fileId: string, url: string | undefined): string {
+  const links = fileLinks(origin, fileId, null, url);
+  if (links === null) throw new Error('Invalid file id');
+  return links.download;
+}
+
+function toBase64(part: Uint8Array): string {
+  let text = '';
+  for (let at = 0; at < part.length; at += 8192)
+    text += String.fromCharCode(...part.subarray(at, at + 8192));
+  return btoa(text);
 }
 
 export function wireViewerRouter(

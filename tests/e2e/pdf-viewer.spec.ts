@@ -156,6 +156,65 @@ test('a click opens the pane, page 1 has pixels, and the document has 3 pages', 
   expect(Math.abs(sizes.pixels - sizes.css * sizes.ratio)).toBeLessThan(2);
 });
 
+test('a first answer that is the sign-in page is read again through the background', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  let answers = 0;
+  // The first request, the one of the pane, gets the sign-in page. The next one is the background
+  // read, which gets the redirect to the file host.
+  const gated: FakeCanvasRoute = {
+    path: '/files/42/download',
+    respond: () => {
+      answers += 1;
+      return answers === 1
+        ? { status: 200, body: '<html>Sign in</html>', contentType: 'text/html' }
+        : {
+            status: 302,
+            headers: { location: `${fileHost.origin}/inst-fs/fixture.pdf?token=abc` },
+          };
+    },
+  };
+  await openCoursePage(context, page, background, html, [gated]);
+  await openFirstFile(page, 'Read notes');
+  const frame = await pane(page);
+  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await expect.poll(() => inkOf(pageBox(frame, 1).locator('canvas'))).toBeGreaterThan(1000);
+  await expect(frame.locator('[data-part="pdf-page-count"]')).toHaveText('of 3');
+  expect(answers).toBe(2);
+  expect(fileHost.requests).toEqual(['/inst-fs/fixture.pdf?token=abc']);
+});
+
+test('a sign-in page for the background read too shows the error with both answers in the report', async ({
+  context,
+  page,
+  background,
+}) => {
+  const reports: string[] = [];
+  page.on('console', (message) => {
+    if (message.text().includes('Error name')) reports.push(message.text());
+  });
+  const signIn: FakeCanvasRoute = {
+    path: '/files/42/download',
+    respond: () => ({ status: 200, body: '<html>Sign in</html>', contentType: 'text/html' }),
+  };
+  await openCoursePage(context, page, background, html, [signIn]);
+  await openFirstFile(page, 'Read notes');
+  const frame = await pane(page);
+  await expect(frame.locator('[data-part="pdf-error"]')).toBeVisible();
+  await expect.poll(() => reports.length).toBeGreaterThan(0);
+  const report = reports[0]!;
+  expect(report).toContain('File error kind: not_a_file');
+  expect(report).toContain('Read context: background');
+  expect(report).toContain('Background retry: failed');
+  expect(report).toContain(
+    'Background answer: redirected false, origin class canvas, content type text/html',
+  );
+  expect(report).not.toMatch(/https?:|127\.0\.0\.1|token=/);
+});
+
 test('a scanned-page image in fax coding draws', async ({
   context,
   page,

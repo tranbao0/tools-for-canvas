@@ -10,7 +10,7 @@ import {
 } from './background';
 import { MAX_POSITIONS, positionKey } from './positions';
 import { ViewerUnconfirmedError } from './unconfirmed';
-import { BYTES_PORT } from './bytes';
+import { BYTES_CHUNK, BYTES_PORT, BYTES_WINDOW } from './bytes';
 import { FileBytesError, fileReadFacts } from '../../shared/canvas/fileBytes';
 
 function setup() {
@@ -709,6 +709,7 @@ describe('file bytes port', () => {
     };
   }
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const COMMENT = '/courses/12/assignments/7/submissions/8?comment_id=9&download=45';
 
   it.each([
     ['a page of Canvas', { url: 'https://school.edu/courses/2', frameId: 3, tab: { id: 7 } }],
@@ -719,15 +720,101 @@ describe('file bytes port', () => {
     const fetchBytes = vi.fn();
     const p = port(sender);
     serveBytesPort(p as never, host, fetchBytes);
-    p.send({ url: '/files/1/download' });
+    p.send({ fileId: '1' });
     await settle();
     expect(p.disconnect).toHaveBeenCalled();
     expect(fetchBytes).not.toHaveBeenCalled();
   });
 
-  it('reads through the cookie-bound owner read and sends chunks with the facts', async () => {
+  it('builds the address of a file from its record inside the cookie-bound read', async () => {
+    const { host, pane, read, api } = setup();
+    const fetchBytes = vi.fn(async () => new Uint8Array([1]));
+    const p = port(pane);
+    serveBytesPort(p as never, host, fetchBytes, false);
+    p.send({ fileId: '1' });
+    await settle();
+    expect(read).toHaveBeenCalledWith('https://school.edu', 7, expect.any(Function));
+    expect(api.getViewerFile).toHaveBeenCalledWith('1');
+    expect(fetchBytes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        origin: 'https://school.edu',
+        url: 'https://school.edu/files/1/download',
+        context: 'background',
+      }),
+    );
+  });
+
+  it('reads the address of the card links: the standard path for a record of another host', async () => {
+    const { host, pane, api } = setup();
+    api.getViewerFile.mockResolvedValueOnce({
+      display_name: 'Notes',
+      'content-type': 'text/plain',
+      size: 10,
+      url: 'https://evil.example/files/1/download',
+      context_type: 'Course',
+      context_id: '2',
+    });
+    const fetchBytes = vi.fn(async () => new Uint8Array([1]));
+    const p = port(pane);
+    serveBytesPort(p as never, host, fetchBytes, false);
+    p.send({ fileId: '1' });
+    await settle();
+    expect(fetchBytes).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'https://school.edu/files/1/download' }),
+    );
+  });
+
+  it('builds the address of a comment attachment from its submission route', async () => {
+    const { host, pane, api } = setup();
+    const fetchBytes = vi.fn(async () => new Uint8Array([1]));
+    const p = port(pane);
+    serveBytesPort(p as never, host, fetchBytes, false);
+    p.send({ commentTab: COMMENT, truncateAt: 16 });
+    await settle();
+    expect(api.getViewerFile).not.toHaveBeenCalled();
+    expect(fetchBytes).toHaveBeenCalledWith(
+      expect.objectContaining({ url: `https://school.edu${COMMENT}`, truncateAt: 16 }),
+    );
+  });
+
+  it.each([
+    [{ url: '/files/1/download' }],
+    [{ url: 'https://evil.example/x', fileId: '1' }],
+    [{ fileId: 'abc' }],
+    [{ fileId: 5 }],
+    [{ fileId: '1', commentTab: COMMENT }],
+    [{ commentTab: '/courses/12/files/1/download' }],
+    [
+      {
+        commentTab:
+          'https://evil.example/courses/12/assignments/7/submissions/8?comment_id=9&download=45',
+      },
+    ],
+    [{ fileId: '1', truncateAt: -1 }],
+    [{ fileId: '1', truncateAt: '9' }],
+    [{}],
+  ])('refuses the request %j without any read', async (request) => {
     const { host, pane, read } = setup();
-    const bytes = new Uint8Array(200 * 1024).map((_, at) => at % 251);
+    const fetchBytes = vi.fn();
+    const p = port(pane);
+    serveBytesPort(p as never, host, fetchBytes);
+    p.send(request);
+    await settle();
+    expect(read).not.toHaveBeenCalled();
+    expect(fetchBytes).not.toHaveBeenCalled();
+    expect(p.postMessage.mock.calls[0]![0]).toMatchObject({ error: { kind: 'unconfirmed' } });
+  });
+
+  async function drain(p: ReturnType<typeof port>, count: number) {
+    for (let at = 0; at < count; at += 1) {
+      p.send({ ack: at + 1 });
+      await settle();
+    }
+  }
+
+  it('sends the length, then base64 chunks within a window of acknowledged ones', async () => {
+    const { host, pane } = setup();
+    const bytes = new Uint8Array(BYTES_CHUNK * 7 + 5).map((_, at) => at % 251);
     const facts = {
       redirected: true,
       originClass: 'other' as const,
@@ -735,30 +822,43 @@ describe('file bytes port', () => {
       context: 'background' as const,
       backgroundRetry: 'not_run' as const,
     };
-    const fetchBytes = vi.fn(async () => {
+    const fetchBytes = vi.fn(async (options: { onHeaders?: (headers: Headers) => void }) => {
+      options.onHeaders?.(new Headers({ 'content-type': 'Application/PDF; x=1' }));
       fileReadFacts.set(bytes, facts);
       return bytes;
     });
     const p = port(pane);
-    serveBytesPort(p as never, host, fetchBytes);
-    p.send({ url: '/files/1/download?download_frd=1' });
+    serveBytesPort(p as never, host, fetchBytes as never, false);
+    p.send({ fileId: '1' });
     await settle();
-    expect(read).toHaveBeenCalledWith('https://school.edu', 7, expect.any(Function));
-    expect(fetchBytes).toHaveBeenCalledWith(
-      expect.objectContaining({
-        origin: 'https://school.edu',
-        url: '/files/1/download?download_frd=1',
-        context: 'background',
-      }),
-    );
+    // The window holds back everything past the first chunks until the pane acknowledges.
+    expect(p.postMessage.mock.calls).toHaveLength(1 + BYTES_WINDOW);
+    expect(p.postMessage.mock.calls[0]![0]).toEqual({ total: bytes.length });
+    await drain(p, 8);
     const sent = p.postMessage.mock.calls.map(([message]) => message);
-    expect(sent).toHaveLength(3);
-    const decoded = sent
-      .slice(0, 2)
-      .map((message) => Uint8Array.from(atob(message.chunk), (c) => c.charCodeAt(0)));
-    expect(decoded[0]).toHaveLength(192 * 1024);
-    expect(Uint8Array.from([...decoded[0]!, ...decoded[1]!])).toEqual(bytes);
-    expect(sent[2]).toEqual({ done: true, facts });
+    const chunks = sent.filter((message) => 'chunk' in message);
+    expect(chunks).toHaveLength(8);
+    const joined = Buffer.concat(chunks.map((message) => Buffer.from(message.chunk, 'base64')));
+    expect(joined.equals(Buffer.from(bytes))).toBe(true);
+    expect(sent.at(-1)).toEqual({ done: true, mime: 'application/pdf', facts });
+  });
+
+  it('sends the bytes as typed arrays where the port clones them', async () => {
+    const { host, pane } = setup();
+    const bytes = new Uint8Array(BYTES_CHUNK + 1).fill(7);
+    const p = port(pane);
+    serveBytesPort(p as never, host, vi.fn(async () => bytes) as never, true);
+    p.send({ fileId: '1' });
+    await settle();
+    await drain(p, 2);
+    const chunks = p.postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => 'chunk' in message);
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0].chunk).toBeInstanceOf(Uint8Array);
+    // A clone of a view holds its whole buffer, so each chunk owns a buffer of its own size.
+    expect(chunks[0].chunk.buffer.byteLength).toBe(BYTES_CHUNK);
+    expect(chunks[1].chunk).toEqual(new Uint8Array([7]));
   });
 
   it('sends only the kind, status and facts of a failure', async () => {
@@ -773,7 +873,7 @@ describe('file bytes port', () => {
     });
     const p = port(pane);
     serveBytesPort(p as never, host, fetchBytes);
-    p.send({ url: '/files/1/download' });
+    p.send({ fileId: '1' });
     await settle();
     expect(p.postMessage).toHaveBeenCalledTimes(1);
     const message = p.postMessage.mock.calls[0]![0];
@@ -789,25 +889,10 @@ describe('file bytes port', () => {
     const fetchBytes = vi.fn();
     const p = port(pane);
     serveBytesPort(p as never, host, fetchBytes);
-    p.send({ url: '/files/1/download' });
-    p.send({ url: '/files/2/download' });
+    p.send({ fileId: '1' });
+    p.send({ fileId: '2' });
     await settle();
     expect(p.postMessage).toHaveBeenCalledTimes(1);
-    expect(p.postMessage.mock.calls[0]![0]).toMatchObject({ error: { kind: 'unconfirmed' } });
-  });
-
-  it.each([
-    { url: 5 },
-    { url: '/files/1/download', truncateAt: -1 },
-    { url: '/f', truncateAt: '9' },
-  ])('rejects an invalid request %j', async (request) => {
-    const { host, pane } = setup();
-    const fetchBytes = vi.fn();
-    const p = port(pane);
-    serveBytesPort(p as never, host, fetchBytes);
-    p.send(request);
-    await settle();
-    expect(fetchBytes).not.toHaveBeenCalled();
     expect(p.postMessage.mock.calls[0]![0]).toMatchObject({ error: { kind: 'unconfirmed' } });
   });
 
@@ -821,11 +906,27 @@ describe('file bytes port', () => {
     });
     const p = port(pane);
     serveBytesPort(p as never, host, fetchBytes as never);
-    p.send({ url: '/files/1/download' });
+    p.send({ fileId: '1' });
     await settle();
     p.close();
     expect(signal?.aborted).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(p.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('stops sending chunks when the pane closes during the transfer', async () => {
+    const { host, pane } = setup();
+    const bytes = new Uint8Array(BYTES_CHUNK * 10);
+    const p = port(pane);
+    serveBytesPort(p as never, host, vi.fn(async () => bytes) as never, true);
+    p.send({ fileId: '1' });
+    await settle();
+    const before = p.postMessage.mock.calls.length;
+    expect(before).toBe(1 + BYTES_WINDOW);
+    p.close();
+    await settle();
+    p.send({ ack: 99 });
+    await settle();
+    expect(p.postMessage.mock.calls).toHaveLength(before);
   });
 });

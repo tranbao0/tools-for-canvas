@@ -416,6 +416,57 @@ async function checkAnimatedGif(driver) {
   console.log('Firefox animated GIF: plays in an element after its blob URL is freed.');
 }
 
+/** The submission route of the comment attachment of the smoke test. */
+const COMMENT_ROUTE = '/courses/101/assignments/7/submissions/5502';
+
+/**
+ * Opens a comment attachment from the course page. The pane reads it through its submission
+ * route, and under a cookie setting that withholds the cookie from the pane frame, the first
+ * answer is the sign-in page, so the read must go through the background.
+ * @param {import('selenium-webdriver').WebDriver} driver
+ * @param {{ requests: readonly string[] }} server
+ * @param {Record<string, boolean | string | number>} prefs
+ */
+async function checkCommentAttachment(driver, server, prefs) {
+  const behavior = prefs['network.cookie.cookieBehavior'] ?? 5;
+  const logins = () => server.requests.filter((url) => url === '/login').length;
+  const before = logins();
+  await driver.findElement(By.css('[aria-label="Close Course notes.pdf"]')).click();
+  await driver.switchTo().defaultContent();
+  const frame = await driver.wait(async () => {
+    await driver
+      .actions()
+      .move({ origin: await driver.findElement(By.id('comment')) })
+      .click()
+      .perform();
+    const hosts = await driver.findElements(By.css('#tools-file-viewer'));
+    if (hosts.length === 0) return null;
+    const frames = await (await hosts[0].getShadowRoot()).findElements(By.css('iframe'));
+    return frames[0] ?? null;
+  }, 10_000);
+  await driver.switchTo().frame(frame);
+  await driver.wait(async () => {
+    const names = await driver.findElements(By.css('[data-part="pdf-name"]'));
+    return names.length === 1 && (await names[0].getText()) === 'Teacher feedback.pdf';
+  }, 30_000);
+  const drawn = await driver.wait(async () => {
+    const result = await driver.executeScript(PAGE_ONE_INK);
+    return result?.ink > 1000 ? result : false;
+  }, 20_000);
+  const count = await driver.findElement(By.css('[data-part="pdf-page-count"]')).getText();
+  if (count !== `of ${FIXTURE_PAGE_COUNT}`) throw new Error(`Wrong page count: ${count}`);
+  // The head read and the full read each meet the sign-in page once when the cookie is withheld.
+  const meetings = logins() - before;
+  if ([1, 5].includes(behavior) && meetings < 1)
+    throw new Error(`Expected a sign-in redirect for the comment attachment; got ${meetings}`);
+  if (behavior === 4 && meetings !== 0)
+    throw new Error(`Expected no sign-in redirect for the comment attachment; got ${meetings}`);
+  await driver.switchTo().defaultContent();
+  console.log(
+    `Firefox comment attachment: ${meetings} sign-in redirects, page 1 drew ${drawn.ink} dark pixels.`,
+  );
+}
+
 /** The path of the submission details page of the smoke test. */
 const SUBMISSION_PAGE = '/courses/101/assignments/7/submissions/5501';
 
@@ -552,7 +603,7 @@ async function checkHostileSvg(driver) {
   console.log('Firefox hostile SVG: drawn on a canvas, nothing ran, no blob URL stays open.');
 }
 
-export async function main(prefs = {}, mode = 'release') {
+async function main(prefs = {}, mode = 'release') {
   // Selenium Manager must never download a browser or a driver during a test.
   process.env.SE_OFFLINE = 'true';
   const { firefoxBin, geckodriverBin } = findBrowserTools();
@@ -573,6 +624,13 @@ export async function main(prefs = {}, mode = 'release') {
     requireSession: true,
   };
   files['/login'] = { body: '<html>Sign in</html>', contentType: 'text/html' };
+  // A comment attachment of a teacher: the submission route answers the file itself, behind the
+  // same sign-in rule as the download address.
+  files[COMMENT_ROUTE] = {
+    body: readFileSync(new URL('../fixtures/pdf/fixture.pdf', import.meta.url)),
+    contentType: 'application/pdf',
+    requireSession: true,
+  };
   files['/inst-fs/fixture.pdf'] = {
     body: Buffer.concat([
       readFileSync(new URL('../fixtures/pdf/fixture.pdf', import.meta.url)),
@@ -651,7 +709,10 @@ export async function main(prefs = {}, mode = 'release') {
     contentType: 'application/json',
   };
   files['/courses/101'] = {
-    body: '<html><head><script>INST={environment:\'production\'};ENV={current_user_id:\'5501\'};</script></head><body><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a><a id="photo" class="instructure_file_link" href="/files/43">Lecture photo</a><a id="hostile-link" class="instructure_file_link" href="/files/44">Hostile</a><a id="spin" class="instructure_file_link" href="/files/45">Spin</a></body></html>',
+    body:
+      '<html><head><script>INST={environment:\'production\'};ENV={current_user_id:\'5501\'};</script></head><body><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a><a id="photo" class="instructure_file_link" href="/files/43">Lecture photo</a><a id="hostile-link" class="instructure_file_link" href="/files/44">Hostile</a><a id="spin" class="instructure_file_link" href="/files/45">Spin</a><a id="comment" class="comment_attachment_link" href="' +
+      COMMENT_ROUTE +
+      '?download=47&amp;comment_id=9">Teacher feedback.pdf</a></body></html>',
     contentType: 'text/html',
   };
   files['/api/v1/files/42'] = {
@@ -835,6 +896,7 @@ export async function main(prefs = {}, mode = 'release') {
       return inputs.length && (await inputs[0].getAttribute('value')) === '3';
     }, 15_000);
     console.log('Firefox PDF saved page: page 3 restored');
+    await checkCommentAttachment(driver, server, prefs);
     if (Object.keys(prefs).length) return 0;
     await driver.switchTo().defaultContent();
     await checkImageTab(driver);

@@ -2,9 +2,42 @@
 import {
   safeContentType,
   FileBytesError,
+  type AnswerFacts,
   type FileReadFacts,
 } from '../../../shared/canvas/fileBytes';
 import { t } from '../../../shared/ui/i18n';
+
+const pick = <T extends string>(allowed: readonly T[], value: unknown, otherwise: string) =>
+  allowed.find((item) => item === value) ?? otherwise;
+
+/** One answer as `redirected`, `origin class` and `content type` text. Nothing measured is "unknown". */
+function answerText(facts: AnswerFacts | undefined): [string, string, string] {
+  if (!facts) return ['unknown', 'unknown', 'unknown'];
+  return [
+    facts.redirected === true || facts.redirected === false ? String(facts.redirected) : 'unknown',
+    pick(['canvas', 'other', 'none'], facts.originClass, 'none'),
+    typeof facts.contentType === 'string' ? safeContentType(facts.contentType) : 'unknown',
+  ];
+}
+
+/** The report lines about the read. They never hold an address, a host, a query or a token. */
+function readFactLines(facts: FileReadFacts | undefined): string {
+  const [redirected, origin, type] = answerText(facts);
+  const lines = [
+    `Redirected: ${redirected}`,
+    `Final origin class: ${origin}`,
+    `Content type: ${type}`,
+    `Read context: ${pick(['pane', 'background'], facts?.context, 'unknown')}`,
+    `Background retry: ${pick(['not_run', 'failed', 'succeeded'], facts?.backgroundRetry, 'unknown')}`,
+  ];
+  if (facts?.retry) {
+    const [again, againOrigin, againType] = answerText(facts.retry);
+    lines.push(
+      `Background answer: redirected ${again}, origin class ${againOrigin}, content type ${againType}`,
+    );
+  }
+  return lines.join('\n');
+}
 
 export type PdfStage = 'fetch' | 'worker start' | 'document load' | 'page render' | 'page layers';
 const messages = [
@@ -102,16 +135,7 @@ export function pdfDetails(
     ].includes(file.kind)
       ? file.kind
       : undefined;
-  const facts = file?.facts ?? readFacts;
-  const responseFacts = facts
-    ? [
-        `Redirected: ${facts.redirected === true}`,
-        `Final origin class: ${['canvas', 'other'].includes(facts.originClass) ? facts.originClass : 'none'}`,
-        `Content type: ${safeContentType(facts.contentType)}`,
-        `Read context: ${facts.context === 'background' ? 'background' : 'pane'}`,
-        `Background retry: ${['failed', 'succeeded'].includes(facts.backgroundRetry) ? facts.backgroundRetry : 'not_run'}`,
-      ].join('\n')
-    : 'Redirected: unknown\nFinal origin class: none\nContent type: other\nRead context: pane\nBackground retry: not_run';
+  const responseFacts = readFactLines(file?.facts ?? readFacts);
   const tooMany = safe.message === 'The document has too many pages';
   const reason =
     kind === 'status'

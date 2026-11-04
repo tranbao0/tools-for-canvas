@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   FileBytesError,
   MAX_FILE_BYTES,
+  checkedMime,
   declaredLength,
   fetchFileBytes,
   fileReadFacts,
@@ -358,6 +359,24 @@ describe('declaredLength', () => {
   });
 });
 
+describe('checked media type', () => {
+  it('keeps a type with the syntax of one and drops the rest', () => {
+    expect(checkedMime('Application/PDF; charset=x')).toBe('application/pdf');
+    expect(checkedMime('video/mp4')).toBe('video/mp4');
+    for (const bad of [
+      null,
+      '',
+      'pdf',
+      'text/',
+      'text/ht ml',
+      '/x',
+      'a/b/c',
+      `a/${'b'.repeat(200)}`,
+    ])
+      expect(checkedMime(bad)).toBe('');
+  });
+});
+
 describe('read facts', () => {
   const answer = (url: string, redirected: boolean, type: string, body = 'x') => {
     const response = new Response(body, { headers: { 'content-type': type } });
@@ -411,13 +430,13 @@ describe('read facts', () => {
     }).catch((caught: unknown) => caught);
     expect((error as FileBytesError).facts).toMatchObject({
       originClass: 'none',
-      redirected: false,
+      redirected: null,
     });
   });
 
   it('maps unknown or custom content types to other', () => {
     expect(safeContentType('Text/HTML; charset=utf-8')).toBe('text/html');
     expect(safeContentType('application/x-private-token-123')).toBe('other');
-    expect(safeContentType(null)).toBe('other');
+    expect(safeContentType(null)).toBe('unknown');
   });
 });

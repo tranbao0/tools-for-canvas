@@ -139,3 +139,47 @@ it('drops invalid diagnostic values rather than reporting addresses', () => {
   expect(report).toContain('Content type: other');
   expect(report).not.toMatch(/private\.example|SECRET|verifier=|token=/);
 });
+
+it('prints unknown where nothing was measured, never a default false', () => {
+  const none = new FileBytesError('network', 'offline');
+  const { report } = pdfDetails(none, 'fetch', 0, '1', 'test');
+  expect(report).toContain('Redirected: unknown');
+  expect(report).toContain('Content type: unknown');
+  expect(report).toContain('Read context: unknown');
+  expect(report).toContain('Background retry: unknown');
+  expect(report).not.toContain('Redirected: false');
+  const noAnswer = new FileBytesError('network', 'offline');
+  noAnswer.facts = {
+    redirected: null,
+    originClass: 'none',
+    contentType: null,
+    context: 'pane',
+    backgroundRetry: 'not_run',
+  };
+  const text = pdfDetails(noAnswer, 'fetch', 0, '1', 'test').report;
+  expect(text).toContain('Redirected: unknown');
+  expect(text).toContain('Final origin class: none');
+  expect(text).toContain('Content type: unknown');
+  expect(text).toContain('Background retry: not_run');
+  expect(text).not.toContain('Background answer');
+});
+
+it('reports the pane answer and the background answer apart', () => {
+  const error = new FileBytesError('not_a_file', 'The answer is a web page');
+  error.facts = {
+    redirected: true,
+    originClass: 'canvas',
+    contentType: 'text/html',
+    context: 'background',
+    backgroundRetry: 'failed',
+    retry: { redirected: false, originClass: 'other', contentType: 'application/SECRET' },
+  };
+  const { report } = pdfDetails(error, 'fetch', 0, '1', 'test');
+  expect(report).toContain('Redirected: true');
+  expect(report).toContain('Final origin class: canvas');
+  expect(report).toContain('Background retry: failed');
+  expect(report).toContain(
+    'Background answer: redirected false, origin class other, content type other',
+  );
+  expect(report).not.toContain('SECRET');
+});
