@@ -120,6 +120,18 @@ function row(seen: Seen[]): string[] {
   });
 }
 
+/** Waits until the page query of Canvas has ended, so the pager is at rest. */
+async function idle(page: Page, widget: string): Promise<void> {
+  await expect(
+    page.getByTestId(widget).locator('[data-testid="pagination-container"]'),
+  ).not.toHaveAttribute('data-fx-busy');
+}
+
+/** Waits until the navigator shows the row, which needs the new page and the new total. */
+async function showsRow(nav: Locator, cells: string[], message: string): Promise<void> {
+  await expect.poll(async () => row(await places(nav)), { message }).toEqual(cells);
+}
+
 async function settled(nav: Locator, current: number): Promise<void> {
   await expect(placeOf(nav, 'current')).toHaveText(String(current));
 }
@@ -147,9 +159,8 @@ test.describe('the layout', () => {
     let firstNav: unknown = null;
     for (const [number, cells] of Object.entries(expected)) {
       await setPager(page, ANNOUNCEMENTS, Number(number), 141);
-      await settled(nav, Number(number));
+      await showsRow(nav, cells, `page ${number}`);
       const seen = await places(nav);
-      expect(row(seen), `page ${number}`).toEqual(cells);
       // The current page is in the middle place, with the look of Canvas's current page.
       expect(seen[4]?.place).toBe('current');
       const box = (await nav.boundingBox())!;
@@ -205,9 +216,8 @@ test.describe('the layout', () => {
       let first: Seen[] | null = null;
       for (const [number, cells] of Object.entries(expected[total]!)) {
         await setPager(page, ANNOUNCEMENTS, Number(number), total);
-        await settled(nav, Number(number));
+        await showsRow(nav, cells, `page ${number} of ${total}`);
         const seen = await places(nav);
-        expect(row(seen), `page ${number} of ${total}`).toEqual(cells);
         first ??= seen;
         seen.forEach((place, index) => {
           for (const key of ['x', 'y', 'width', 'height'] as const) {
@@ -271,6 +281,8 @@ test.describe('clicks', () => {
     page,
     background,
   }) => {
+    // Six page changes, each with a load of Canvas, take a while on a loaded host.
+    test.setTimeout(90_000);
     await open(context, page, background);
     const nav = navOf(page, ANNOUNCEMENTS);
     await setPager(page, ANNOUNCEMENTS, 70, 141);
@@ -300,7 +312,7 @@ test.describe('clicks', () => {
       expect(seen.at(-1)).toMatchObject({ page: target });
       // An arrow clicks Canvas's own arrow, and every other place a page button.
       expect(seen.at(-1)?.direction).toBe(via);
-      await page.waitForTimeout(450);
+      await idle(page, ANNOUNCEMENTS);
       if (place === 'first' || place === 'last') continue;
       // Go back to the middle of the range for the next case.
       await setPager(page, ANNOUNCEMENTS, 70, 141);
@@ -314,7 +326,7 @@ test.describe('clicks', () => {
     await placeOf(nav, 'current').click();
     await placeOf(nav, 'prev').click({ force: true });
     await placeOf(nav, 'arrow-prev').click({ force: true });
-    await page.waitForTimeout(600);
+    await idle(page, ANNOUNCEMENTS);
     expect(await canvasPage(page, ANNOUNCEMENTS)).toBe(1);
     expect(
       await page.evaluate(
@@ -344,7 +356,7 @@ test.describe('clicks', () => {
     expect(await color(next)).toBe('rgb(199, 205, 209)');
     expect(await color(prev)).toBe('rgb(39, 53, 64)');
     await next.click({ force: true });
-    await page.waitForTimeout(600);
+    await idle(page, ANNOUNCEMENTS);
     expect(await canvasPage(page, ANNOUNCEMENTS)).toBe(141);
   });
 });
@@ -374,13 +386,13 @@ test.describe('the keyboard and the accessibility tree', () => {
     await page.keyboard.press('Enter');
     await expect.poll(() => canvasPage(page, ANNOUNCEMENTS)).toBe(4);
     await settled(nav, 4);
-    await page.waitForTimeout(450);
+    await idle(page, ANNOUNCEMENTS);
     expect(await focused()).toBe('next');
     // Space does the same.
     await page.keyboard.press('Space');
     await expect.poll(() => canvasPage(page, ANNOUNCEMENTS)).toBe(5);
     await settled(nav, 5);
-    await page.waitForTimeout(450);
+    await idle(page, ANNOUNCEMENTS);
     expect(await focused()).toBe('next');
   });
 
@@ -404,7 +416,7 @@ test.describe('the keyboard and the accessibility tree', () => {
     // The next arrow on page 140 leads to the last page the same way.
     await setPager(page, ANNOUNCEMENTS, 140, 141);
     await settled(nav, 140);
-    await page.waitForTimeout(450);
+    await idle(page, ANNOUNCEMENTS);
     await placeOf(nav, 'arrow-next').focus();
     await page.keyboard.press('Enter');
     await expect.poll(() => canvasPage(page, ANNOUNCEMENTS)).toBe(141);
@@ -495,9 +507,12 @@ test.describe('while Canvas loads', () => {
                 }),
               ]),
             );
-            if (widget.querySelector('[aria-label="Loading"]')) spinner = true;
-            if (performance.now() - start < 900) requestAnimationFrame(tick);
-            else resolve({ boxes: [...boxes], spinner });
+            const showing = widget.querySelector('[aria-label="Loading"]') !== null;
+            if (showing) spinner = true;
+            // Watches until the spinner has come and gone, with a generous cap.
+            if (!(spinner && !showing) && performance.now() - start < 20_000) {
+              requestAnimationFrame(tick);
+            } else resolve({ boxes: [...boxes], spinner });
           };
           tick();
         }),
@@ -525,6 +540,16 @@ test.describe('every paged widget', () => {
     await setPager(page, GRADES, 2, 2);
     await expect(placeOf(navOf(page, GRADES), 'current')).toHaveText('2');
     await expect(placeOf(navOf(page, ANNOUNCEMENTS), 'current')).toHaveText('1');
+    // The student customizes the dashboard: the header swaps its button for Save and Cancel.
+    await page.evaluate(() => {
+      const header = document.querySelector('.fixture-widget-header')!;
+      for (const name of ['cancel', 'save']) {
+        const button = document.createElement('button');
+        button.dataset['testid'] = `${name}-customize-button`;
+        button.textContent = name;
+        header.append(button);
+      }
+    });
     // A widget is added: a copy with another id, as Canvas gives an added widget.
     await page.evaluate(() => {
       const wrapper = document.querySelector(
@@ -665,6 +690,10 @@ test('stops writing to the page when nothing changes', async ({ context, page, b
   await open(context, page, background, {
     fixes: DEFAULT_TOOLS_SETTINGS.dashboardFixes,
   });
+  // The other fixes draw after the data arrives, so wait for each of them.
+  await expect(page.locator('[data-wr-title]').first()).toBeAttached({ timeout: 20_000 });
+  await expect(page.locator('[data-wr-extra]')).toBeAttached({ timeout: 20_000 });
+  await expect(page.locator('[data-wr-cc]').first()).toBeAttached({ timeout: 20_000 });
   await pageQuiet(page, 6, 400);
   const records = await page.evaluate(
     () =>
