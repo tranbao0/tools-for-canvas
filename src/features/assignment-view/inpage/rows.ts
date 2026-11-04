@@ -117,7 +117,10 @@ export const STALE_PANE_IDS: readonly string[] = ['tools-feedback', 'tools-turn-
  */
 function ownedRoots(doc: Document, pathname: string): Element[] {
   if (ASSIGNMENT_PAGE.test(pathname)) {
-    return [...doc.querySelectorAll('#sidebar_content .details .content')];
+    // A comment can hold its own `.content` inside `.details`: only the box's own counts.
+    return [...doc.querySelectorAll('#sidebar_content .details .content')].filter(
+      (root) => root.closest('.comments') === null,
+    );
   }
   for (const id of STALE_PANE_IDS) {
     const pane = doc.getElementById(id);

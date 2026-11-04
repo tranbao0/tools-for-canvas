@@ -124,7 +124,9 @@ export function giveBackRoom(doc: Document = document): void {
   const page = doc.documentElement;
   const state = shared();
   for (const holder of state.holders) if (!holder.host.isConnected) state.holders.delete(holder);
-  if (state.holders.size > 0 || HOST_IDS.some((id) => doc.getElementById(id) !== null)) return;
+  // Only a pane host counts, by its id and its mark: a page element with the id alone does not.
+  const paneOnPage = HOST_IDS.some((id) => doc.getElementById(id)?.hasAttribute(DOCK_ATTRIBUTE));
+  if (state.holders.size > 0 || paneOnPage) return;
   const saved = state.saved ?? readRecord(page);
   state.saved = null;
   page.removeAttribute(ROOM_ATTRIBUTE);

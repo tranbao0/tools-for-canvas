@@ -67,6 +67,19 @@ describe('the record of the room on the page', () => {
     expect(padding()).toBe('13px');
     expect(html.hasAttribute(ROOM_ATTRIBUTE)).toBe(false);
   });
+
+  it('gives the room back when a page element only shares the id of a pane', () => {
+    html.style.setProperty('padding-right', '13px');
+    const turnIn = dock('turn-in', 480);
+    turnIn.open();
+    turnIn.host.remove();
+    const lookalike = document.createElement('div');
+    lookalike.id = 'tools-turn-in';
+    document.body.append(lookalike);
+    giveBackRoom(document);
+    expect(padding()).toBe('13px');
+    lookalike.remove();
+  });
 });
 
 describe('the room of the docks', () => {
