@@ -217,13 +217,7 @@ describe('on a Submission Details page', () => {
 
 describe('on an assignment page', () => {
   const PAGE = '/courses/12/assignments/101';
-  const answer = {
-    details: {
-      assignment: { id: '101', name: 'Essay', description: null },
-      submission: { user_id: '42', score: null, grade: null, submission_type: 'online_upload' },
-    },
-    timeZone: 'UTC',
-  };
+  const answer = { userId: '42' };
 
   beforeEach(() => {
     document.body.innerHTML =

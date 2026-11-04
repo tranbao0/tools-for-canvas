@@ -242,6 +242,18 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
           priority,
           guard,
         ),
+      getOwnSubmissionUserRecord: (courseId, assignmentId) =>
+        call(
+          'getOwnSubmissionUserRecord',
+          [courseId, assignmentId],
+          () => {
+            const records = assignmentViews.get(`${courseId}/${assignmentId}`);
+            if (records === undefined) throw canvasError('not_found', 404);
+            return records.submission;
+          },
+          priority,
+          guard,
+        ),
       getViewerFile: async () => {
         throw new Error('No file fixture');
       },

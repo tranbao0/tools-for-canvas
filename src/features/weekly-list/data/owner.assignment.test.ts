@@ -32,6 +32,67 @@ async function loaded(): Promise<Harness> {
   return h;
 }
 
+describe('assignment owner', () => {
+  it('reads one record with no include, and no assignment record', async () => {
+    const h = await loaded();
+    await expect(h.owner.assignmentOwner('12', '101', ORIGIN, TAB)).resolves.toEqual({
+      userId: '42',
+    });
+    expect(h.canvas.callsOf('getOwnSubmissionUserRecord')).toEqual([['12', '101']]);
+    expect(h.canvas.callsOf('getOwnSubmissionRecord')).toHaveLength(0);
+    expect(h.canvas.callsOf('getAssignmentRecord')).toHaveLength(0);
+  });
+
+  it('answers with a fixed reply only for a submission 404, and keeps other errors', async () => {
+    const h = await loaded();
+    h.canvas.fail('getOwnSubmissionUserRecord', canvasError('not_found', 404), { times: 1 });
+    await expect(h.owner.assignmentOwner('12', '101', ORIGIN, TAB)).resolves.toEqual({
+      kind: 'no_submission_access',
+    });
+    h.canvas.fail('getOwnSubmissionUserRecord', canvasError('forbidden', 403), { times: 1 });
+    await expect(h.owner.assignmentOwner('12', '101', ORIGIN, TAB)).rejects.toThrow();
+  });
+
+  it('refuses a sender without a tab, another address and a tab in another cookie store', async () => {
+    const h = await loaded();
+    await expect(h.owner.assignmentOwner('12', '101', ORIGIN, undefined)).rejects.toThrow();
+    await expect(h.owner.assignmentOwner('12', '101', 'https://other.edu', TAB)).rejects.toThrow();
+    await expect(h.owner.assignmentOwner('12', '101', null, TAB)).rejects.toThrow();
+    vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
+    await expect(h.owner.assignmentOwner('12', '101', ORIGIN, TAB)).rejects.toThrow();
+    expect(h.canvas.callsOf('getOwnSubmissionUserRecord')).toHaveLength(0);
+  });
+
+  it('confirms the cookie of a new student once, and then reads for that student', async () => {
+    const h = await loaded();
+    signInOtherUser(h);
+    await expect(h.owner.assignmentOwner('12', '101', ORIGIN, TAB)).resolves.toMatchObject({
+      userId: expect.any(String),
+    });
+  });
+
+  it('drops the reply when the cookie changes during the request', async () => {
+    const h = await loaded();
+    const release = h.canvas.hold('getOwnSubmissionUserRecord');
+    const pending = h.owner.assignmentOwner('12', '101', ORIGIN, TAB);
+    const failed = expect(pending).rejects.toThrow();
+    await vi.waitFor(() => expect(h.canvas.callsOf('getOwnSubmissionUserRecord')).toHaveLength(1));
+    signInOtherUser(h);
+    release();
+    await failed;
+  });
+
+  it('rejects a record with no user id', async () => {
+    const h = await loaded();
+    const records = rawRecords();
+    h.canvas.setAssignmentView('12', '102', {
+      assignment: { ...records.assignment, id: '102' },
+      submission: { ...records.submission, user_id: 42 },
+    });
+    await expect(h.owner.assignmentOwner('12', '102', ORIGIN, TAB)).rejects.toThrow();
+  });
+});
+
 describe('assignment details', () => {
   it('reads both records for a confirmed cookie and answers in the Canvas time zone', async () => {
     const h = await loaded();

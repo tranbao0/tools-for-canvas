@@ -79,20 +79,56 @@ interface RowState {
   load: number;
 }
 
-/** Puts the nodes of Canvas back in the place of the own nodes that hold them. */
-export function giveBackOriginals(doc: Document): void {
-  doc
-    .querySelectorAll(`[${ORIGINAL}]`)
+/**
+ * Puts the nodes of Canvas back in the place of the own nodes that hold them. Only a holder that
+ * is a direct child of a link, inside the root, counts: that is where the sidebar view puts it.
+ */
+export function giveBackOriginals(root: ParentNode): void {
+  root
+    .querySelectorAll(`a[href] > [${ORIGINAL}][${OWN}]`)
     .forEach((holder) => holder.replaceWith(...holder.childNodes));
 }
 
-/** Removes what an earlier copy of this script left on the page. */
-export function removeStaleView(doc: Document = document): void {
-  giveBackOriginals(doc);
-  doc.querySelectorAll(`[${OWN}]`).forEach((node) => node.remove());
-  for (const element of doc.querySelectorAll('*')) {
-    for (const name of element.getAttributeNames()) {
-      if (name.startsWith('data-av-')) element.removeAttribute(name);
+/** The assignment page, with its Submission box in the right column. */
+const ASSIGNMENT_PAGE = /^\/courses\/\d+(?:~\d+)?\/assignments\/\d+(?:~\d+)?\/?$/;
+const SUBMISSION_PAGE = /^\/courses\/\d+(?:~\d+)?\/assignments\/\d+(?:~\d+)?\/submissions\//;
+
+/**
+ * The parts of the page where the view of this page puts its nodes, and nothing else. The text of
+ * other authors (a description, a comment) sits elsewhere, so a sweep never reaches it:
+ * - the assignment page: the Submission box, `#sidebar_content`;
+ * - the Submission Details page: the head, which holds the style, and the host, by its id;
+ * - the Assignments list: the head, and the lists that hold the rows and their detail rows.
+ */
+function ownedRoots(doc: Document, pathname: string): Element[] {
+  if (ASSIGNMENT_PAGE.test(pathname)) {
+    const box = doc.getElementById('sidebar_content');
+    return box ? [box] : [];
+  }
+  const roots = new Set<Element>([doc.head]);
+  if (SUBMISSION_PAGE.test(pathname)) {
+    const host = doc.getElementById('av-submission-details');
+    if (host?.hasAttribute(OWN)) host.remove();
+    return [...roots];
+  }
+  for (const row of doc.querySelectorAll('.ig-row[id^=assignment_],[data-av-details]')) {
+    if (row.parentElement) roots.add(row.parentElement);
+  }
+  return [...roots];
+}
+
+/** Removes what an earlier copy of this script left in the parts of the page that the view owns. */
+export function removeStaleView(
+  doc: Document = document,
+  pathname: string = doc.defaultView?.location.pathname ?? '',
+): void {
+  for (const root of ownedRoots(doc, pathname)) {
+    giveBackOriginals(root);
+    root.querySelectorAll(`[${OWN}]`).forEach((node) => node.remove());
+    for (const element of [root, ...root.querySelectorAll('*')]) {
+      for (const name of element.getAttributeNames()) {
+        if (name.startsWith('data-av-')) element.removeAttribute(name);
+      }
     }
   }
 }

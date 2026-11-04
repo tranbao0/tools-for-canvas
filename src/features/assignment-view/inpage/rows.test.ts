@@ -267,12 +267,34 @@ describe('turning the view off', () => {
     expect(send).toHaveBeenCalledTimes(2);
   });
 
-  it('removes the nodes of an earlier copy of the script', () => {
-    document.body.insertAdjacentHTML('beforeend', '<div data-av-own><span>old</span></div>');
+  it('removes the nodes of an earlier copy of the script from the list and the head', () => {
+    const list = document.querySelector('#assignment_101')!.parentElement!;
+    list.insertAdjacentHTML('beforeend', '<div data-av-own><span>old</span></div>');
+    document.head.insertAdjacentHTML('beforeend', '<style data-av-own>.x{}</style>');
     document.querySelector('#assignment_101')?.setAttribute('data-av-mark', '');
-    removeStaleView(document);
+    removeStaleView(document, '/courses/12/assignments');
     expect(document.querySelector('[data-av-own]')).toBeNull();
     expect(document.querySelector('[data-av-mark]')).toBeNull();
+  });
+
+  it('leaves the marks of other authors alone outside the parts that the view owns', () => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<div class="user_content" data-av-mark><p data-av-own>text</p></div>',
+    );
+    const before = document.body.innerHTML;
+    removeStaleView(document, '/courses/12/assignments');
+    expect(document.body.innerHTML).toBe(before);
+  });
+
+  it('removes the host of an earlier copy on a Submission Details page, and no comment mark', () => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<div id="av-submission-details" data-av-own></div><div class="submission-details-comments"><p data-av-own>teacher</p></div>',
+    );
+    removeStaleView(document, '/courses/12/assignments/101/submissions/42');
+    expect(document.getElementById('av-submission-details')).toBeNull();
+    expect(document.querySelector('.submission-details-comments p[data-av-own]')).not.toBeNull();
   });
 
   it('ignores an answer that arrives after the view stopped', async () => {

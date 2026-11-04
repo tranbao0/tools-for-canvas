@@ -16,6 +16,39 @@ export function isAssignmentDetailsMessage(value: unknown): value is AssignmentD
   );
 }
 
+/**
+ * Asks only whose submission the signed-in student has for an assignment. The Submission box of
+ * the assignment page needs nothing more, so the read has no comments, rubric or assignment record.
+ */
+export interface AssignmentOwnerMessage {
+  type: 'assignment:owner';
+  courseId: string;
+  assignmentId: string;
+}
+
+export function isAssignmentOwnerMessage(value: unknown): value is AssignmentOwnerMessage {
+  if (typeof value !== 'object' || value === null) return false;
+  const fields = value as Record<string, unknown>;
+  return (
+    fields['type'] === 'assignment:owner' &&
+    isCanvasId(fields['courseId']) &&
+    isCanvasId(fields['assignmentId'])
+  );
+}
+
+/** The reply to an `assignment:owner` message: the user of the submission record. */
+export interface AssignmentOwnerReply {
+  userId: string;
+}
+
+export function isOwnerReply(value: unknown): value is AssignmentOwnerReply {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    isCanvasId((value as Partial<AssignmentOwnerReply>).userId)
+  );
+}
+
 export interface AssignmentFile {
   id: string;
   display_name: string;

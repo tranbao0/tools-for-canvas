@@ -38,6 +38,7 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
       details: { assignment: { id: '8' } },
       timeZone: 'UTC',
     })),
+    assignmentOwner: vi.fn(async () => ({ userId: '42' })),
     dispose: vi.fn(),
   } as unknown as DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi.fn> };
 }
@@ -285,6 +286,40 @@ describe('routeDataMessage', () => {
       ['a'.repeat(64), 3],
       [undefined, 3],
     ]);
+  });
+
+  describe('the assignment owner message', () => {
+    const OWNER = { type: 'assignment:owner', courseId: '12', assignmentId: '8' };
+
+    it('asks the owner for the saved Canvas page, with the tab of the sender', async () => {
+      await expect(routeDataMessage(owner, OWNER, CONTENT_SCRIPT, host)).resolves.toEqual({
+        userId: '42',
+      });
+      expect(owner.assignmentOwner).toHaveBeenCalledWith('12', '8', SAVED, 3);
+      expect(owner.assignmentDetails).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['another Canvas host', OTHER_CANVAS],
+      ['a frame inside the saved Canvas', { ...CONTENT_SCRIPT, frameId: 5 }],
+      ['a sender with no tab', { url: CONTENT_SCRIPT.url }],
+      ['an extension page', EXTENSION_PAGE],
+    ])('refuses %s', async (_name, sender) => {
+      await expect(routeDataMessage(owner, OWNER, sender, host)).rejects.toThrow();
+      expect(owner.assignmentOwner).not.toHaveBeenCalled();
+    });
+
+    it('is no message of the protocol when an id is not a Canvas id', () => {
+      for (const bad of ['../users/self', '1/2', '', 5, null, '1~2~3']) {
+        expect(
+          routeDataMessage(owner, { ...OWNER, courseId: bad }, CONTENT_SCRIPT, host),
+        ).toBeNull();
+        expect(
+          routeDataMessage(owner, { ...OWNER, assignmentId: bad }, CONTENT_SCRIPT, host),
+        ).toBeNull();
+      }
+      expect(owner.assignmentOwner).not.toHaveBeenCalled();
+    });
   });
 
   describe('the assignment details message', () => {

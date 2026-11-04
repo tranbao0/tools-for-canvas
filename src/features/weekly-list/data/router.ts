@@ -217,6 +217,12 @@ export function routeDataMessage(
       return allowed.then((origin) =>
         owner.assignmentDetails(message.courseId, message.assignmentId, origin, sender.tab?.id),
       );
+    case 'assignment:owner':
+      // Only the in-page script of a tab asks, as for the details.
+      if (host.isExtensionPage(sender)) return reject('Only the page of the saved Canvas may ask');
+      return allowed.then((origin) =>
+        owner.assignmentOwner(message.courseId, message.assignmentId, origin, sender.tab?.id),
+      );
     case 'weekrow:mark-note-seen':
       return allowed.then(() => host.markNoteSeen(message.note)).then(ok);
     case 'weekrow:refresh':

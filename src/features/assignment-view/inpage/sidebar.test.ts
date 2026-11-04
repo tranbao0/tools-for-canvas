@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AssignmentDetailsMessage } from '../protocol';
+import type { AssignmentOwnerMessage } from '../protocol';
 import { removeStaleView } from './rows';
 import { createSidebarEngine, type SidebarEngine } from './sidebar';
 
@@ -20,17 +20,11 @@ function box(links: string): string {
 const link = (user: string, file: string, name: string) =>
   `<div><a href="${FILE(user, file)}">Download ${name}</a></div>`;
 
-function reply(user: string, assignment = '101') {
-  return {
-    details: {
-      assignment: { id: assignment, name: 'Essay', description: null },
-      submission: { user_id: user, score: null, grade: null, submission_type: 'online_upload' },
-    },
-    timeZone: 'UTC',
-  };
+function reply(user: string) {
+  return { userId: user };
 }
 
-let send: ReturnType<typeof vi.fn<(message: AssignmentDetailsMessage) => Promise<unknown>>>;
+let send: ReturnType<typeof vi.fn<(message: AssignmentOwnerMessage) => Promise<unknown>>>;
 let engine: SidebarEngine;
 
 function start(answer: unknown = reply('42')): SidebarEngine {
@@ -57,7 +51,7 @@ describe('the Submission box of the assignment page', () => {
     start().setActive(true);
     await vi.waitFor(() => expect(document.querySelector('[data-av-original]')).not.toBeNull());
     expect(send).toHaveBeenCalledWith({
-      type: 'assignment:details',
+      type: 'assignment:owner',
       courseId: '12',
       assignmentId: '101',
     });
@@ -92,8 +86,38 @@ describe('the Submission box of the assignment page', () => {
     const before = sidebar().outerHTML;
     start().setActive(true);
     await vi.waitFor(() => expect(document.querySelector('[data-av-original]')).not.toBeNull());
-    removeStaleView(document);
+    removeStaleView(document, '/courses/12/assignments/101');
     expect(sidebar().outerHTML).toBe(before);
+  });
+
+  it('is not touched by a stale cleanup of marks outside the box, nor are they by the view', async () => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<div id="desc"><div data-av-original data-av-own><p>text</p></div><a href="/x"><span data-av-original data-av-own>kept</span></a></div>',
+    );
+    const description = document.getElementById('desc')!.outerHTML;
+    removeStaleView(document, '/courses/12/assignments/101');
+    expect(document.getElementById('desc')!.outerHTML).toBe(description);
+    start().setActive(true);
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll('#sidebar_content a[download]')).toHaveLength(1),
+    );
+    engine.setActive(false);
+    expect(document.getElementById('desc')!.outerHTML).toBe(description);
+  });
+
+  it('keeps no line of the view for a link that Canvas took out', async () => {
+    start().setActive(true);
+    await vi.waitFor(() => expect(document.querySelectorAll('a[download]')).toHaveLength(1));
+    sidebar().querySelector('a[href*="download=501"]')!.parentElement!.remove();
+    sidebar()
+      .querySelector('.content')!
+      .insertAdjacentHTML('beforeend', link('42', '502', 'late.pdf'));
+    await vi.waitFor(() =>
+      expect(
+        [...document.querySelectorAll('a[download]')].map((a) => a.getAttribute('aria-label')),
+      ).toEqual(['Download late.pdf']),
+    );
   });
 
   it('treats every file', async () => {
@@ -112,7 +136,7 @@ describe('the Submission box of the assignment page', () => {
   });
 
   it.each([
-    ['a record of another assignment', reply('42', '999')],
+    ['a record with no user', {}],
     ['a refusal', { error: 'no' }],
     ['no answer', null],
   ])('leaves the box alone for %s', async (_name, answer) => {
