@@ -2,38 +2,62 @@
 <html lang="en" dir="ltr">
   <head>
     <meta charset="utf-8" />
-    <title>Grades - fixture course</title>
+    <title>Essay - fixture course</title>
     <link rel="icon" href="data:," />
     <style>
       :root { --ic-brand-primary: #2B7ABC; --ic-link-color: #0E68B3; --ic-brand-font-color-dark: #273540; }
       body { margin: 0; font-family: "Lato Extended", Lato, "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.5; color: var(--ic-brand-font-color-dark); background: #fff; }
       a { color: var(--ic-link-color); text-decoration: none; }
       a:hover { text-decoration: underline; }
-      #content { box-sizing: border-box; max-width: 1366px; margin: 0 auto; padding: 24px; }
+      #application { display: flex; max-width: 1366px; margin: 0 auto; }
+      #content { box-sizing: border-box; flex: 1; min-width: 0; padding: 24px 48px; }
+      #right-side-wrapper { flex: 0 0 288px; padding: 24px 12px; }
+      #right-side .details h2 { margin: 0 0 8px; font-size: 16px; }
+      #right-side .details .content > div { margin: 4px 0; font-size: 14px; }
       h1 { margin: 0 0 24px; font-size: 28px; font-weight: 400; }
-      #grades_summary { width: 100%; border-collapse: collapse; font-size: 14px; }
-      #grades_summary thead th { padding: 8px 12px; border-bottom: 1px solid #c7cdd1; text-align: left; font-weight: 700; }
-      #grades_summary tbody th, #grades_summary tbody td { padding: 12px; border-bottom: 1px solid #e8eaec; text-align: left; vertical-align: top; }
-      #grades_summary tbody th.title { font-weight: 400; }
-      #grades_summary .context { color: #586874; font-size: 12px; }
-      #grades_summary tr.hard_coded th, #grades_summary tr.hard_coded td { font-weight: 700; background: #f5f5f5; }
-      #grades_summary tr.comments td, #grades_summary tr.rubric_assessments td { background: #fafafa; }
-      #grades_summary td a + a { margin-inline-start: 12px; }
+      .assignment-title { display: flex; justify-content: space-between; }
+      .student-assignment-overview { display: flex; gap: 24px; list-style: none; padding: 16px 0; border-block: 1px solid #c7cdd1; }
+      .description { padding-top: 12px; }
+      button { font: inherit; padding: 8px 14px; border: 1px solid #c7cdd1; border-radius: 3px; background: #f5f5f5; color: #273540; }
     </style>
     <script>
       INST = { environment: 'production' };
       ENV = { current_user_id: '5501', current_user_roles: ['user', 'student'] };
     </script>
   </head>
-  <body>
+  <body class="with-right-side">
     <!-- Structure from canvas-lms 1c9f0bb8013ed69c4f2efe11fd483025469b7e6c:
-         app/views/assignments/show.html.erb and _student_assignment_overview.html.erb. -->
-    <main id="content"><div id="assignment_show" class="assignment content_underline_links" data-lti-page-content="true">
-      <div class="assignment-title"><div class="title-content"><h1 class="title">Essay</h1></div><div class="assignment-buttons"><button>Start Assignment</button></div></div>
-      <ul class="student-assignment-overview"><li><span class="title">Due</span> <span class="value">Nov 3</span></li><li><span class="title">Points</span> <span class="value">10</span></li><li><span class="title">Submitting</span> <span class="value">a file upload</span></li></ul>
-      <div class="clear"></div>
-      <div class="description user_content" data-resource-type="assignment.body" data-resource-id="101"><p>Write an essay about one source.</p></div>
-    </div></main>
-    <style>#content{max-width:1100px;padding:24px 48px}.assignment-title{display:flex;justify-content:space-between}.student-assignment-overview{display:flex;gap:24px;list-style:none;padding:16px 0;border-block:1px solid #c7cdd1}.description{padding-top:12px}button{font:inherit;padding:8px 14px;border:1px solid #c7cdd1;border-radius:3px;background:#f5f5f5;color:#273540}</style>
+         app/views/assignments/show.html.erb and _student_assignment_overview.html.erb for the main
+         column, _assignment_sidebar.html.erb and _submission_sidebar.html.erb for the sidebar. -->
+    <div id="application" class="ic-app">
+      <div id="content" class="ic-Layout-contentMain" role="main">
+        <div id="assignment_show" class="assignment content_underline_links" data-lti-page-content="true">
+          <div class="assignment-title"><div class="title-content"><h1 class="title">Essay</h1></div><div class="assignment-buttons"><button>Start Assignment</button></div></div>
+          <ul class="student-assignment-overview"><li><span class="title">Due</span> <span class="value">Nov 3</span></li><li><span class="title">Points</span> <span class="value">10</span></li><li><span class="title">Submitting</span> <span class="value">a file upload</span></li></ul>
+          <div class="clear"></div>
+          <div class="description user_content" data-resource-type="assignment.body" data-resource-id="101"><p>Write an essay about one source.</p></div>
+        </div>
+      </div>
+      <div id="right-side-wrapper">
+        <aside id="right-side">
+          <div id="sidebar_content">
+            <div class="details">
+              <h2>Submission</h2>
+              <div class="header"><i class="icon-check" aria-hidden="true"></i> Submitted!</div>
+              <div class="content">
+                <span class="">Nov 1 at 10am</span>
+                <div><a href="/courses/12/assignments/101/submissions/42">Submission Details</a></div>
+                <div><a href="/courses/12/assignments/101/submissions/42?download=501">Download ENGR195A - Reflection Paper #2-1.pdf</a></div>
+                <span class="assignment_presenter_for_submission" style="display: none;">success</span>
+                <span class="react_pill_container"></span>
+                <div class="module">
+                  <a href="/courses/12/assignments/101/submissions/42#rubric" class="Submission__Link--has-icon"><i class="icon-rubric" aria-hidden="true"></i> View Rubric Evaluation</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
   </body>
 </html>
