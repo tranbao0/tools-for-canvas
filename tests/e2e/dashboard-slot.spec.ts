@@ -291,6 +291,8 @@ for (const state of ['default', 'second', 'pair']) {
           const observer = new MutationObserver((list) => {
             for (const record of list) {
               const target = record.target as Element;
+              // The fixes write their own stylesheet on each pass; Canvas's nodes must stay quiet.
+              if (target.matches?.('style[data-wr-own]')) continue;
               seen.push(
                 `${record.type} ${record.attributeName ?? ''} ${target.nodeName} ${target.getAttribute?.('data-testid') ?? ''}`,
               );
