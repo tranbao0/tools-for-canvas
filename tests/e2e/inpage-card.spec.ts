@@ -384,7 +384,8 @@ test.describe('the full list in the card', () => {
           expect(area.overscroll).toBe('contain');
           // The list scrolls when its rows are taller than the area, and not otherwise. Done holds
           // 10 or more items: taller than the area with Comfortable rows, shorter with Compact
-          // rows in the tall slot of the widget dashboard.
+          // rows in the slot of the widget dashboard, whose list area is 509 px high, the height
+          // of the covered widget in the fixture.
           if (group === done) {
             const rows = await groupArea(list).evaluate((element) => {
               const boxes = [...element.querySelectorAll('[data-row-key]')].map((row) =>
@@ -570,7 +571,7 @@ test.describe('the full list in the card', () => {
   });
 
   // The group list must be taller than its area to scroll, which the 10 Done rows are with
-  // Comfortable rows but not with Compact rows in the tall slot.
+  // Comfortable rows but not with Compact rows in the slot.
   const SCROLLING_LAYOUTS = LAYOUTS.slice(0, 2).map((layout) =>
     layout.rowSize ? { ...layout, rowSize: 'comfortable' as const } : layout,
   );
