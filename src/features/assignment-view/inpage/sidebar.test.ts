@@ -121,6 +121,18 @@ describe('the Submission box of the assignment page', () => {
     expect(document.querySelector('.comments')!.outerHTML).toBe(comment);
   });
 
+  it('leaves a comment that has its own content block inside the details as it is', () => {
+    document
+      .querySelector('#sidebar_content .details')!
+      .insertAdjacentHTML(
+        'beforeend',
+        '<div class="comments"><div class="content" data-av-mark data-av-x="1">note</div></div>',
+      );
+    const comment = document.querySelector('.comments')!.outerHTML;
+    removeStaleView(document, '/courses/12/assignments/101');
+    expect(document.querySelector('.comments')!.outerHTML).toBe(comment);
+  });
+
   it('keeps no line of the view for a link that Canvas took out', async () => {
     start().setActive(true);
     await vi.waitFor(() => expect(document.querySelectorAll('a[download]')).toHaveLength(1));
