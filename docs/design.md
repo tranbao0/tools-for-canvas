@@ -2405,7 +2405,7 @@ The refusal has its own error (`LineTooLongError`, message "Refused: a line too 
 The student sees the text of a damaged file, "This PDF is damaged", with no Retry, because reading the same bytes again cannot help.
 The card keeps "Download" and "Open in Canvas", and the browser's "Open in new tab" on the Canvas link still works.
 The vendored PDF.js files stay as they are (the vendor hash rule).
-Trade-off: a valid PDF with a single-line stream longer than 2 MB does not open in the pane.
+Trade-off: a valid PDF with any run of more than 2 MB that has no line break and no `<`, such as a long single-line stream or raw image data, does not open in the pane.
 
 **What the guard does not stop.**
 It stops junk and flat bodies, such as a zero-filled upload or a body with no line breaks.
