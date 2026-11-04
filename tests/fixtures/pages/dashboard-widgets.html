@@ -609,10 +609,15 @@
       : direction === 'next' ? Math.min(current + 1, total)
       : Number(button.textContent);
     window.fixturePagerClicks.push({ widget: widget.dataset.testid, page: target, direction: direction || 'page' });
+    // data-fx-busy stands for the page query that runs, and a test waits for it to end.
+    container.dataset.fxBusy = 'true';
     setTimeout(function () {
       container.dataset.fxPage = String(target);
       draw(container, true);
-      setTimeout(function () { draw(container, false); }, SETTLE_MS);
+      setTimeout(function () {
+        draw(container, false);
+        delete container.dataset.fxBusy;
+      }, SETTLE_MS);
     }, LOAD_MS);
   });
 })();

@@ -733,7 +733,8 @@ test.describe('course grades', () => {
     await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
     const widget = page.getByTestId('widget-course-grades-widget');
     await expect(widget.getByTestId('course-107-grade')).toHaveText('95%');
-    await saveTools(background, tools({ allCourseGrades: false }));
+    // The page navigator would hide the pager of Canvas, which this test drives.
+    await saveTools(background, tools({ allCourseGrades: false, steadyPager: false }));
     await expect(page.locator('[data-wr-card]')).toHaveCount(0);
     await expect(widget.getByTestId('pagination-container')).toBeVisible();
     // The pager of Canvas turns the card of History into the card of Psychology, which the

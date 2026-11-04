@@ -1786,7 +1786,7 @@ The cache writes of the weekly list follow the cookie rule of decision 11, and t
 | Announcements in place | "Read more" and the title open the whole message in the card, and a course filter joins the read filter |
 | Course work extras | An "Also due" section under the Course work list |
 | All course grades | A grade card for every course, not only six |
-| Steady page buttons | The paged widgets get one page navigator with nine places that never move, in place of the pager of Canvas, which shows other buttons on each page and wraps in a narrow column |
+| Steady page buttons | One page navigator with nine fixed places for the paged widgets |
 
 **Facts.**
 They come from the source of the widget package `@instructure/platform-widget-dashboard`, version 16.2.0, and from canvas-lms at commit 1c9f0bb [10] [13].
@@ -1872,6 +1872,8 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
   The container is a flex row that holds an optional `Spinner` (`size: "x-small"`, only while `pagination.isLoading`) and then the `Pagination` with `as: "nav"`, `variant: "compact"`, `currentPage`, `totalPageNumber`, `onPageChange` and `aria-label`.
   The label is a widget text, such as "Announcements pagination", "Course grades pagination" and "Course work pagination".
   A page change of the Announcements and Course work widgets shows a separate `loadingOverlay`, and the pager stays in the page.
+  Their queries use `placeholderData: keepPreviousData`, so `isLoading` (`isFetching && !data` for the Announcements, the `isLoading` of the query for Course work) stays false on a page change and only `isPaginationLoading` turns on.
+  The Course grades widget reads its cards from `ENV` and has `isLoading: false` always, and the page index is a state that changes at once.
   The widget passes no `withFirstAndLastButton`, no `showDisabledButtons`, no `screenReaderLabelPageButton`, no `labelPrev` and no `labelNext`.
 - The `Pagination` root is `nav[role="navigation"]` (the `View` with `as="nav"`, `data-cid="Pagination"`) around a span (`pagination__pages`, inline flex).
   The span holds the previous arrow, one `ul`, and the next arrow.
