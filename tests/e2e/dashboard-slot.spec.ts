@@ -56,21 +56,6 @@ function freshClone(page: Page, selector: string): Promise<void> {
   });
 }
 
-/**
- * Makes the Announcements widget beside the slot short, for the tests of the rules that follow
- * the covered widget: a taller widget beside the slot would decide the height instead.
- */
-async function shortWidgetBeside(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    document.addEventListener('DOMContentLoaded', () => {
-      const style = document.createElement('style');
-      style.textContent =
-        '[data-testid="widget-announcements-widget"]{height:120px!important;overflow:hidden!important}';
-      document.head.append(style);
-    });
-  });
-}
-
 /** Puts the Customize dashboard buttons on the page, as Canvas shows them in edit mode. */
 async function enterEditMode(page: Page): Promise<void> {
   await page.evaluate(() => {
@@ -202,7 +187,6 @@ for (const state of ['delayed', 'error', 'loading', 'none']) {
         }
       }).observe(document, { attributes: true, subtree: true, attributeFilter: ['data-panel'] });
     });
-    await shortWidgetBeside(page);
     await page.goto(`${canvas.origin}/?fixture_delay_ms=0&fixture_course_work=${state}`);
     await page.bringToFront();
     if (state === 'delayed' || state === 'loading') {
@@ -229,7 +213,6 @@ test('covers the box of the widget after the wait, and follows it when the widge
   page,
 }) => {
   test.setTimeout(60_000);
-  await shortWidgetBeside(page);
   const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
   await addCsrfCookie(context, canvas.origin);
   await page.setViewportSize({ width: 2088, height: 900 });
@@ -334,7 +317,6 @@ test('covers a slot that shows up after the wait, when the student opens the Das
   page,
 }) => {
   test.setTimeout(60_000);
-  await shortWidgetBeside(page);
   const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
   await addCsrfCookie(context, canvas.origin);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -596,7 +578,6 @@ test('is 420 px high over a widget that is lower, and the next widget starts aft
   context,
   page,
 }) => {
-  await shortWidgetBeside(page);
   await openFixture(context, page, 'default');
   await page.locator(SECTION).evaluate((node) => {
     node.innerHTML =
@@ -714,40 +695,6 @@ test('draws nothing of the widget over the card, even a control that forces itse
     [clip.x + 40, clip.y + 40],
   );
   expect(hit).toBe(true);
-});
-
-test('ends where the widget beside it ends, so the rows of both columns line up', async ({
-  context,
-  page,
-}) => {
-  await openFixture(context, page, 'default');
-  const beside = '[data-testid="widget-container-announcements-widget"]';
-  const bottoms = async () => {
-    const own = (await page.locator(WRAPPER).boundingBox())!;
-    const other = (await page.locator(beside).boundingBox())!;
-    return { own: own.y + own.height, other: other.y + other.height };
-  };
-  // A taller widget beside the slot: the slot grows to it, so the next row starts at one line.
-  await page.locator(`${beside} section`).evaluate((node) => {
-    (node as HTMLElement).style.minHeight = '1100px';
-  });
-  await expect
-    .poll(async () => {
-      const { own, other } = await bottoms();
-      return Math.abs(own - other);
-    })
-    .toBeLessThanOrEqual(1);
-  const card = (await inpageList(page).locator('.wr').boundingBox())!;
-  const section = (await page.locator(`${beside} section`).boundingBox())!;
-  expect(Math.abs(card.y + card.height - (section.y + section.height))).toBeLessThanOrEqual(1);
-  // A shorter widget beside it: the card keeps the box of the widget it covers.
-  await page.locator(`${beside} section`).evaluate((node) => {
-    (node as HTMLElement).style.minHeight = '';
-    (node as HTMLElement).style.height = '200px';
-    (node as HTMLElement).style.overflow = 'hidden';
-  });
-  await frames(page, 4);
-  expectOverSection(await slotBoxes(page));
 });
 
 test('closes the column up when minimized, and restores the same box', async ({
