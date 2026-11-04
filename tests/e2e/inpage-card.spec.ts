@@ -151,12 +151,14 @@ interface BottomLayout {
   page: string;
   width: number;
   docked?: boolean;
+  /** The card has the Tasks and Announcements tabs. */
+  tabs?: boolean;
 }
 
 /** The places of the card that have a bottom section: the widget dashboard and the classic one. */
 const LAYOUTS: BottomLayout[] = [
   { name: 'the widget dashboard', page: 'dashboard-widgets', width: 1280 },
-  { name: 'the tabbed classic dashboard', page: 'dashboard-card-view', width: 1280 },
+  { name: 'the tabbed classic dashboard', page: 'dashboard-card-view', width: 1280, tabs: true },
   { name: 'the docked classic dashboard', page: 'dashboard-card-view', width: 1280, docked: true },
 ];
 
@@ -347,7 +349,8 @@ test.describe('the full list in the card', () => {
         expect(sizes.days).toBeGreaterThanOrEqual(127.5);
         for (const right of sizes.counts)
           expect(Math.abs(right - sizes.dayRight)).toBeLessThanOrEqual(1);
-        if (!sizes.cardScrolls) expect(sizes.bottom).toBeLessThanOrEqual(sizes.cardBottom + 0.5);
+        if (sizes.cardScrolls) expect(sizes.days).toBeLessThanOrEqual(128.5);
+        else expect(sizes.bottom).toBeLessThanOrEqual(sizes.cardBottom + 0.5);
 
         for (const group of [undated, done]) {
           await toggleOf(group).click();
@@ -356,9 +359,33 @@ test.describe('the full list in the card', () => {
           await expect(dayList(list)).toBeHidden();
           await expect(groupArea(list).locator('[data-row-key]').first()).toBeVisible();
           expectSameBar(await barState(root), closed);
-          // The list area is as tall as the day list was.
-          const area = await groupArea(list).evaluate((element) => element.clientHeight);
-          expect(Math.abs(area - sizes.days)).toBeLessThanOrEqual(0.5);
+          // The list area is as tall as the day list was, so it keeps the same 128 px floor.
+          const area = await groupArea(list).evaluate((element) => ({
+            height: element.clientHeight,
+            thin: getComputedStyle(element).scrollbarWidth,
+            overscroll: getComputedStyle(element).overscrollBehaviorY,
+            overflow: element.scrollHeight > element.clientHeight,
+          }));
+          expect(Math.abs(area.height - sizes.days)).toBeLessThanOrEqual(0.5);
+          expect(area.height).toBeGreaterThanOrEqual(127.5);
+          expect(area.thin).toBe('thin');
+          expect(area.overscroll).toBe('contain');
+          // Done holds 10 or more items, so its list scrolls.
+          if (group === done) expect(area.overflow).toBe(true);
+          // When the card is too low for 128 px and the bar, the whole card scrolls and the
+          // footer is reached at its end, with no blank room under it.
+          if (sizes.cardScrolls) {
+            expect(area.height).toBeLessThanOrEqual(128.5);
+            await root.evaluate((card) => {
+              card.scrollTop = card.scrollHeight;
+            });
+            const gap = await root.evaluate((card) => {
+              const foot = card.querySelector('.wr-pinned .wr-foot')!.getBoundingClientRect();
+              return card.getBoundingClientRect().bottom - foot.bottom;
+            });
+            expect(gap).toBeGreaterThanOrEqual(0);
+            expect(gap).toBeLessThanOrEqual(32);
+          }
 
           await backOf(list).click();
           await expect(dayList(list)).toBeVisible();
@@ -519,39 +546,138 @@ test.describe('the full list in the card', () => {
     await expect(region).toBeVisible();
   });
 
-  test('keeps the scroll of the days while a group is open, and starts a group at the top', async ({
+  for (const layout of LAYOUTS.slice(0, 2)) {
+    test(`keeps the scroll of the days while a group is open on ${layout.name}, and starts a group at the top`, async ({
+      context,
+      page,
+      background,
+    }) => {
+      await openBottomLayout(context, page, background, layout, 800);
+      const list = inpageList(page);
+      const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
+      const days = list.locator('.wr-scroll');
+      await days.evaluate((element) => {
+        element.scrollTop = 150;
+      });
+      await expect.poll(() => days.evaluate((element) => element.scrollTop)).toBe(150);
+
+      await done.click();
+      const area = groupArea(list);
+      await expect(area.locator('[data-row-key]').first()).toBeVisible();
+      await area.evaluate((element) => {
+        element.scrollTop = 120;
+      });
+      await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(120);
+      await backOf(list).click();
+      await expect(dayList(list)).toBeVisible();
+      await expect.poll(() => days.evaluate((element) => element.scrollTop)).toBe(150);
+
+      if (layout.tabs === true) {
+        // A round trip through the other tab, with the group open, keeps the day position.
+        await done.click();
+        await expect(groupArea(list)).toBeVisible();
+        await list.getByRole('tab', { name: /^Announcements/ }).click();
+        await expect(groupArea(list)).toBeHidden();
+        await list.getByRole('tab', { name: 'Tasks' }).click();
+        await expect(groupArea(list)).toBeVisible();
+        await backOf(list).click();
+        await expect(dayList(list)).toBeVisible();
+        await expect.poll(() => days.evaluate((element) => element.scrollTop)).toBe(150);
+      }
+
+      // A group opens at the top, also when it was scrolled before.
+      await done.click();
+      await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(0);
+      await area.evaluate((element) => {
+        element.scrollTop = 120;
+      });
+      await toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]')).click();
+      await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(0);
+    });
+  }
+
+  test('keeps focus in the open group when its last open row moves away', async ({
     context,
     page,
     background,
   }) => {
-    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
+    await openBottomLayout(context, page, background, LAYOUTS[0]!, 900);
     const list = inpageList(page);
-    const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
-    const days = list.locator('.wr-scroll');
-    await days.evaluate((element) => {
-      element.scrollTop = 150;
-    });
-    await expect.poll(() => days.evaluate((element) => element.scrollTop)).toBe(150);
-
-    await done.click();
+    const undated = toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]'));
+    await undated.click();
     const area = groupArea(list);
-    await expect(area.locator('[data-row-key]').first()).toBeVisible();
-    await area.evaluate((element) => {
-      element.scrollTop = 120;
-    });
-    await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(120);
-    await backOf(list).click();
-    await expect(dayList(list)).toBeVisible();
-    await expect.poll(() => days.evaluate((element) => element.scrollTop)).toBe(150);
+    const boxes = area.getByRole('checkbox');
+    const count = await boxes.count();
+    expect(count).toBeGreaterThan(1);
+    // Each mark moves its row into the closed "N done" line. The last one leaves no row.
+    for (let left = count; left > 0; left -= 1) {
+      await boxes.last().focus();
+      await page.keyboard.press('Space');
+      await expect(boxes).toHaveCount(left - 1);
+      const inside = await area.evaluate((element) => {
+        const root = element.getRootNode() as ShadowRoot;
+        return root.activeElement !== null && element.contains(root.activeElement);
+      });
+      expect(inside, `focus after the mark with ${left - 1} rows left`).toBe(true);
+    }
+    await expect(area.getByRole('heading', { name: 'No due date' })).toBeFocused();
+  });
 
-    // A group opens at the top, also when it was scrolled before.
-    await done.click();
-    await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(0);
-    await area.evaluate((element) => {
-      element.scrollTop = 120;
-    });
+  test('names only the open group as a region, not the bar header', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openBottomLayout(context, page, background, LAYOUTS[0]!, 900);
+    const list = inpageList(page);
     await toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]')).click();
-    await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(0);
+    await expect(list.getByRole('region', { name: /^No due date/ })).toHaveCount(1);
+    await expect(groupArea(list).getByRole('region', { name: /^No due date/ })).toHaveCount(1);
+    await expect(list.getByRole('region', { name: 'Undated and done tasks' })).toBeVisible();
+    await backOf(list).click();
+    await expect(list.getByRole('region', { name: /^(No due date|Done)/ })).toHaveCount(0);
+  });
+
+  test('keeps the highlight of the open header inside the card where it has no side padding', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openBottomLayout(context, page, background, LAYOUTS[1]!, 800);
+    const list = inpageList(page);
+    const toggle = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
+    await toggle.click();
+    const sizes = await list.locator('.wr').evaluate((card) => {
+      const style = getComputedStyle(card);
+      const content = card.getBoundingClientRect();
+      const left = content.left + parseFloat(style.paddingLeft);
+      const right = content.right - parseFloat(style.paddingRight);
+      const open = card.querySelector('.wr-pinned [aria-expanded="true"]')!;
+      const box = open.getBoundingClientRect();
+      const day = card.querySelector('.wr-scroll .wr-count, .wr-group-area .wr-count');
+      const count = open.querySelector('.wr-count')!.getBoundingClientRect();
+      return {
+        padding: parseFloat(style.paddingLeft),
+        insideLeft: box.left - left,
+        insideRight: right - box.right,
+        radius: getComputedStyle(open).borderTopLeftRadius,
+        outline: getComputedStyle(open).outlineOffset,
+        countRight: count.right,
+        contentRight: right,
+        day: day === null,
+      };
+    });
+    expect(sizes.padding).toBeLessThan(8);
+    expect(sizes.insideLeft).toBeGreaterThanOrEqual(-0.5);
+    expect(sizes.insideRight).toBeGreaterThanOrEqual(-0.5);
+    expect(sizes.radius).toBe('6px');
+    // The count stays at the right edge of the content, in line with the day counts.
+    expect(Math.abs(sizes.countRight - sizes.contentRight)).toBeLessThanOrEqual(1);
+    await toggle.focus();
+    // The focus ring is drawn inside the toggle, so no edge clips it.
+    expect(await toggle.evaluate((element) => getComputedStyle(element).outlineOffset)).toBe(
+      '-2px',
+    );
   });
 
   test('shows the days again when the span steps', async ({ context, page, background }) => {

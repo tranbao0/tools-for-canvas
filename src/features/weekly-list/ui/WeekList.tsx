@@ -239,7 +239,12 @@ function GroupSection(props: {
   );
 
   return (
-    <section class="wr-group" aria-labelledby={id} data-group={group.kind}>
+    <section
+      class="wr-group"
+      // In the bottom bar a group is only a header: the open group is the region, in the list area.
+      aria-labelledby={props.bar === true ? undefined : id}
+      data-group={group.kind}
+    >
       <Heading level={props.level} class="wr-group-head" id={id} part="group-head" tabIndex={-1}>
         {collapsible ? (
           <button

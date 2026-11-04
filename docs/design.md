@@ -435,7 +435,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The groups scroll below them in one element.
     The element has a thin native scroll bar and `overscroll-behavior: contain`.
     It is a region with the label "Tasks by day" and `tabindex="0"`, so the keyboard reaches it and scrolls it, and it shows a focus ring.
-  - The scroll position stays over a redraw, a data refresh, the settings and the task form, while the page stays open.
+  - The scroll position stays over a redraw, a data refresh, the settings, the task form, a change of tab and a minimize, while the page stays open.
     A new span starts at the top.
   - The card scrolls with the page, and it is not sticky.
     The docked card of the classic dashboard keeps its sticky 24 px gap, with the same height limit and scroll region.
@@ -1642,7 +1642,7 @@ It has a minimize button instead (see below).
     A change that comes from another tab leaves focus alone.
   - The state is saved as the field `minimized` of the stored settings (a boolean, false by default).
     It holds on every Canvas page and in every tab, and it stays after a reload.
-    An expanded card starts at the top.
+    An expanded card keeps the scroll positions that it had before the minimize, while the page stays open.
   - The side panel has no minimize button and ignores the field.
   - The page channel accepts `minimized` in `weekrow:save-settings`, and it rejects any other shape.
     Stored settings from an earlier version that hold `showOnCanvasPages` read without it, and the field is dropped.

@@ -175,9 +175,6 @@ export function App(props: AppProps) {
    */
   const pendingFocus = useRef<{ value: boolean; until: number } | null>(null);
   const setMinimized = (value: boolean) => {
-    // An expanded list starts at the top, and so does a list that goes to the bar.
-    scrollMemory.current.top = 0;
-    announcementsScroll.current.top = 0;
     pendingFocus.current = { value, until: Date.now() + FOCUS_FOLLOW_MS };
     if (saved) actions.saveSettings({ ...saved, minimized: value });
   };
@@ -669,10 +666,14 @@ function ReadyView(props: {
       {surface === 'panel' && footer}
     </>
   );
-  /** Changing the tab keeps the scroll position of the tab that the student leaves. */
+  /**
+   * Changing the tab keeps the scroll position of the tab that the student leaves. A hidden day
+   * list, under an open bottom group, has no position to read: its memory is already right.
+   */
   const selectTab = (next: ListTab) => {
     const region = rootRef.current?.querySelector<HTMLElement>('.wr-scroll');
-    if (props.scrollMemory !== null && region) props.scrollMemory[tab].top = region.scrollTop;
+    if (props.scrollMemory !== null && region && !region.hidden)
+      props.scrollMemory[tab].top = region.scrollTop;
     actions.setListTab(next);
   };
   const content =
