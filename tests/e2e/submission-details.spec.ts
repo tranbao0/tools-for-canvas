@@ -75,6 +75,17 @@ interface Options {
   shard?: boolean;
   switchOff?: boolean;
   width?: number;
+  /** An assignment with a rubric, and the student's assessment. */
+  rubric?: boolean;
+  /** The holder of the rubric is on the page, but Canvas draws no "Show Rubric". */
+  rubricWithoutLink?: boolean;
+  /** Canvas draws its unread mark for the rubric comments. */
+  rubricUnread?: boolean;
+  /** The answer of Canvas to the request that marks the rubric comments read. */
+  readStatus?: number;
+  /** The fragment of the address, such as `#rubric`, which opens Canvas's rubric on load. */
+  hash?: string;
+  height?: number;
 }
 
 async function open(
@@ -140,6 +151,9 @@ async function open(
               assignment,
               user,
               teacher: options.teacher,
+              rubric: options.rubric,
+              rubricWithoutLink: options.rubricWithoutLink,
+              rubricUnread: options.rubricUnread,
               frameSrc: `${full}?preview=1&rand=481516`,
             }),
       }),
@@ -150,6 +164,27 @@ async function open(
       path: `/api/v1/courses/${course}/assignments/${assignment}/submissions/self`,
       body: json(records.submission),
     },
+    // The signed-in student is the one of the page, as on a real page of one's own submission.
+    ...(options.rubricUnread
+      ? [
+          {
+            path: '/api/v1/users/self/profile',
+            body: {
+              id: options.shard ? '20000000000123' : user,
+              name: 'Bao Tran',
+              time_zone: 'America/Los_Angeles',
+              locale: null,
+              effective_locale: 'en',
+            },
+          },
+        ]
+      : []),
+    {
+      method: 'PUT',
+      path: `/api/v1/courses/${course}/assignments/${assignment}/submissions/${user}/rubric_assessments/read`,
+      status: options.readStatus ?? 200,
+      body: options.readStatus === undefined ? { read: true } : { errors: [{ message: 'no' }] },
+    },
     ...files,
   ]);
   await addCsrfCookie(context, served.canvas.origin);
@@ -157,8 +192,8 @@ async function open(
   if (options.switchOff) {
     await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
   }
-  await page.setViewportSize({ width: options.width ?? 1440, height: 900 });
-  await page.goto(`${served.canvas.origin}${route}`);
+  await page.setViewportSize({ width: options.width ?? 1440, height: options.height ?? 900 });
+  await page.goto(`${served.canvas.origin}${route}${options.hash ?? ''}`);
   return served.canvas;
 }
 
@@ -332,14 +367,13 @@ test("the files area gives way to the instructions and the files, and the rest o
   await expect(host(page).getByText('118 KB')).toBeVisible();
   await expect(host(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
 
-  // The header, the grade, Show Rubric, the title, Re-submit and the comments are Canvas's own.
+  // The header, the grade, the title, Re-submit and the comments are Canvas's own.
   const shown = await canvasParts(page);
   expect(shown.header).toBe(original.header);
   expect(shown.action).toBe(original.action);
   expect(shown.comments).toBe(original.comments);
   await expect(page.getByRole('heading', { name: 'Submission Details' })).toBeVisible();
   await expect(page.getByText('40').first()).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Show Rubric' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Re-submit Assignment' })).toBeVisible();
   await expect(page.getByText('Bao Tran submitted Sep 13 at 9:30pm')).toBeVisible();
   await expect(page.getByText('You selected an interesting and ambitious topic')).toBeVisible();
@@ -1274,3 +1308,488 @@ for (const width of [1440, 1100]) {
     });
   }
 }
+
+const RUBRIC = '#rubric_holder';
+const RUBRIC_SHOTS = '/tmp/rb1shots';
+
+/** The facts about the rubric holder that the tests read. */
+async function rubricState(page: Page) {
+  return page.evaluate(() => {
+    const holder = document.getElementById('rubric_holder')!;
+    const rect = holder.getBoundingClientRect();
+    const link = document.querySelector('.assess_submission_link')!;
+    const files = document
+      .getElementById('av-submission-details')
+      ?.shadowRoot?.querySelector('.av-files')
+      ?.getBoundingClientRect();
+    return {
+      parent: holder.parentElement?.id ?? holder.parentElement?.className,
+      shown: getComputedStyle(holder).display !== 'none' && rect.height > 0,
+      position: getComputedStyle(holder).position,
+      inline: holder.getAttribute('style'),
+      linkShown: link ? link.getClientRects().length > 0 : null,
+      top: rect.top,
+      left: rect.left,
+      filesBottom: files?.bottom ?? null,
+      ariaHidden: document.querySelectorAll(
+        '[aria-hidden="true"][data-hide_from_rubric]:not(.ic-Layout-watermark)',
+      ).length,
+      opened: (window as unknown as { __canvasRubric: { opened: number } }).__canvasRubric.opened,
+      closed: (window as unknown as { __canvasRubric: { closed: number } }).__canvasRubric.closed,
+    };
+  });
+}
+
+test("Canvas's own rubric shows open under the files with no click, and the page is exact again when the view is off", async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { switchOff: true, rubric: true });
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  const original = await page.evaluate(() => ({
+    content: document.getElementById('content')!.outerHTML,
+    holder: document.getElementById('rubric_holder')!.outerHTML,
+  }));
+  await expect(page.locator(RUBRIC)).toBeHidden();
+
+  await turnOn(page, background);
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  const state = await rubricState(page);
+  // The same node, in the host under the files, shown by the page sheet and not by its own style.
+  expect(state.parent).toBe('av-rubric');
+  expect(state.inline).toBe(
+    await page.evaluate(() => document.getElementById('rubric_holder')!.getAttribute('style')),
+  );
+  expect(state.inline).toContain('display: none');
+  expect(state.position).toBe('static');
+  expect(state.filesBottom).not.toBeNull();
+  expect(state.top).toBeGreaterThanOrEqual(state.filesBottom!);
+  // Canvas's own link is hidden, and no click happened.
+  expect(state.linkShown).toBe(false);
+  expect(state.opened).toBe(0);
+  expect(state.closed).toBe(0);
+  // The assessment of the student is in it, with the markup and names of Canvas.
+  await expect(page.locator(`${RUBRIC} .rating.selected`)).toHaveCount(2);
+  await expect(page.getByRole('heading', { name: 'Rubric', includeHidden: true })).toHaveCount(1);
+  await expect(page.locator(`${RUBRIC} .hide_rubric_link`)).toBeHidden();
+  expect(await page.evaluate(() => document.getElementById('av-rubric')!.parentElement?.id)).toBe(
+    'av-submission-details',
+  );
+
+  // Turned off, the content area is exactly what Canvas drew, and the holder is hidden again.
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  await expect(host(page)).toHaveCount(0);
+  await expect(page.locator('[data-av-own]')).toHaveCount(0);
+  await expect(page.locator(RUBRIC)).toBeHidden();
+  await expect(page.getByRole('link', { name: 'Show Rubric' })).toBeVisible();
+  expect(await page.evaluate(() => document.getElementById('content')!.outerHTML)).toBe(
+    original.content,
+  );
+  expect(await page.evaluate(() => document.getElementById('rubric_holder')!.outerHTML)).toBe(
+    original.holder,
+  );
+  // And on again, without a reload.
+  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  await expect(page.locator(RUBRIC)).toBeVisible();
+});
+
+const markReads = (canvas: {
+  requests: readonly { method: string; path: string; headers: Readonly<Record<string, string>> }[];
+}) =>
+  canvas.requests.filter(
+    (request) => request.method === 'PUT' && request.path.endsWith('/rubric_assessments/read'),
+  );
+
+test('unread rubric comments are marked read once, with the CSRF token, after the rubric shows', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, { rubric: true, rubricUnread: true });
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  await expect.poll(() => markReads(canvas).length).toBe(1);
+  const request = markReads(canvas)[0]!;
+  expect(request.path).toBe(
+    '/api/v1/courses/12/assignments/101/submissions/42/rubric_assessments/read',
+  );
+  expect(request.headers['x-csrf-token']).toBeTruthy();
+  // Canvas's own click clears the mark and the title of the link, and so does the view.
+  await expect(page.locator('.rubric_comment.unread_indicator')).toBeHidden();
+  await expect(page.locator('.assess_submission_link')).toHaveAttribute('title', '');
+  // A switch off and on again sends nothing more.
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  await expect(host(page)).toHaveCount(0);
+  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(markReads(canvas)).toHaveLength(1);
+});
+
+test('no read mark goes out when Canvas shows nothing unread', async ({
+  context,
+  page,
+  background,
+}) => {
+  const none = await open(context, page, background, { rubric: true });
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  await settled(page, none);
+  expect(markReads(none)).toHaveLength(0);
+});
+
+test('no read mark goes out on the page of a teacher', async ({ context, page, background }) => {
+  const canvas = await open(context, page, background, {
+    teacher: true,
+    rubric: true,
+    rubricUnread: true,
+    change: (copy) => {
+      copy.submission.user_id = '7';
+    },
+  });
+  await settled(page, canvas);
+  expect(markReads(canvas)).toHaveLength(0);
+  await expect(page.locator('.rubric_comment.unread_indicator')).toHaveCount(1);
+  await expect(page.locator('.rubric_comment.unread_indicator')).not.toHaveAttribute(
+    'style',
+    /display/,
+  );
+});
+
+test('no read mark goes out with the switch off', async ({ context, page, background }) => {
+  const canvas = await open(context, page, background, {
+    switchOff: true,
+    rubric: true,
+    rubricUnread: true,
+  });
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  await page.waitForTimeout(800);
+  expect(markReads(canvas)).toHaveLength(0);
+  await expect(page.locator('.rubric_comment.unread_indicator')).toHaveCount(1);
+});
+
+test('a failed read mark shows nothing, leaves the unread mark and is not repeated', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    rubric: true,
+    rubricUnread: true,
+    readStatus: 500,
+  });
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  await expect.poll(() => markReads(canvas).length).toBeGreaterThanOrEqual(1);
+  await page.waitForTimeout(1000);
+  const sent = markReads(canvas).length;
+  expect(sent).toBe(1);
+  // The page is as before: the rubric shows, and the mark stays in Canvas's header.
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  await expect(page.locator('.rubric_comment.unread_indicator')).toHaveCount(1);
+  await expect(page.locator('.rubric_comment.unread_indicator')).not.toHaveAttribute(
+    'style',
+    /display/,
+  );
+  await page.waitForTimeout(500);
+  expect(markReads(canvas).length).toBe(sent);
+});
+
+/** The nodes that Canvas's script hid from screen readers while its rubric pop-up is open. */
+const hiddenFromReaders = (page: Page) =>
+  page.locator('[data-hide_from_rubric][aria-hidden="true"]:not(.ic-Layout-watermark)').count();
+
+test("Canvas's open rubric pop-up keeps the rubric until Canvas closes it, and no content stays aria-hidden", async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    switchOff: true,
+    rubric: true,
+    rubricUnread: true,
+  });
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  await page.getByRole('link', { name: 'Show Rubric' }).click();
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  expect(await hiddenFromReaders(page)).toBeGreaterThan(0);
+  await turnOn(page, background);
+  await settled(page, canvas);
+  // The holder stays where Canvas put it, open, and the view adds nothing to it.
+  expect(
+    await page.evaluate(() => document.getElementById('rubric_holder')!.parentElement?.id),
+  ).toBe('content');
+  await expect(page.locator('#av-rubric')).toHaveCount(0);
+  await expect(page.locator('.assess_submission_link')).toBeVisible();
+  expect(await hiddenFromReaders(page)).toBeGreaterThan(0);
+  // Canvas closes its pop-up, and the view takes the holder.
+  await page.getByRole('button', { name: 'Hide Rubric' }).click();
+  await expect(page.locator('#av-rubric')).toHaveCount(1);
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  expect(await hiddenFromReaders(page)).toBe(0);
+  // Canvas moved the focus to its "Show Rubric" link, which the view hides, so the focus goes into
+  // the rubric and not to the page body.
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.closest('#av-rubric') !== null))
+    .toBe(true);
+  expect(
+    await page
+      .locator('[data-hide_from_rubric][aria-hidden]')
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-hidden'))),
+  ).not.toContain('true');
+});
+
+test('a page that opens with #rubric keeps the pop-up of Canvas until it is closed', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    rubric: true,
+    hash: '#rubric',
+  });
+  await settled(page, canvas);
+  await expect(host(page)).toBeAttached();
+  expect(
+    await page.evaluate(() => document.getElementById('rubric_holder')!.parentElement?.id),
+  ).toBe('content');
+  await expect(page.locator('#av-rubric')).toHaveCount(0);
+  expect(await hiddenFromReaders(page)).toBeGreaterThan(0);
+  await page.getByRole('button', { name: 'Hide Rubric' }).click();
+  await expect(page.locator('#av-rubric')).toHaveCount(1);
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  expect(await hiddenFromReaders(page)).toBe(0);
+});
+
+test("a click on Canvas's own Show Rubric first marks the comments read there, so the view sends no PUT", async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    switchOff: true,
+    rubric: true,
+    rubricUnread: true,
+  });
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  await page.getByRole('link', { name: 'Show Rubric' }).click();
+  await page.getByRole('button', { name: 'Hide Rubric' }).click();
+  await turnOn(page, background);
+  await expect(page.locator('#av-rubric')).toHaveCount(1);
+  await page.waitForTimeout(800);
+  expect(markReads(canvas)).toHaveLength(0);
+});
+
+test('a student on another shard gets the read mark, with the ids as the page writes them', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    shard: true,
+    rubric: true,
+    rubricUnread: true,
+  });
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  await expect.poll(() => markReads(canvas).length).toBe(1);
+  expect(markReads(canvas)[0]!.path).toBe(
+    '/api/v1/courses/2~12/assignments/2~101/submissions/2~123/rubric_assessments/read',
+  );
+});
+
+test('no read mark goes out while the rubric is below the fold, and one goes out when it is scrolled into view', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    rubric: true,
+    rubricUnread: true,
+    height: 400,
+    change: (copy) => {
+      copy.assignment.description = DESCRIPTION + LONG_DESCRIPTION;
+    },
+  });
+  await expect(page.locator(RUBRIC)).toBeAttached();
+  await settled(page, canvas);
+  expect(
+    await page.evaluate(
+      () => document.getElementById('rubric_holder')!.getBoundingClientRect().top,
+    ),
+  ).toBeGreaterThan(400);
+  await page.waitForTimeout(800);
+  expect(markReads(canvas)).toHaveLength(0);
+  await page.locator(RUBRIC).scrollIntoViewIfNeeded();
+  await expect.poll(() => markReads(canvas).length).toBe(1);
+});
+
+test('the keyboard leaves the rubric in the page: Tab does not wrap, and Escape closes nothing', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { rubric: true });
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  const select = page.locator('#rubric_assessments_select');
+  await select.focus();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Tab');
+  // Canvas's handlers would have wrapped the focus to the same control.
+  expect(await page.evaluate(() => document.activeElement?.id)).not.toBe(
+    'rubric_assessments_select',
+  );
+  await select.focus();
+  await page.keyboard.press('Shift+Tab');
+  expect(await page.evaluate(() => document.activeElement?.id)).not.toBe(
+    'rubric_assessments_select',
+  );
+  const state = await rubricState(page);
+  expect(state.shown).toBe(true);
+  expect(state.closed).toBe(0);
+  expect(state.ariaHidden).toBe(0);
+  // The order of the page: title, Re-submit, instructions, files, rubric, comments.
+  const order = await page.evaluate(() => {
+    const at = (node: Node | null | undefined) => node!;
+    const all = [...document.querySelectorAll('*')];
+    const index = (node: Node | null | undefined) => all.indexOf(at(node) as Element);
+    const hostNode = document.getElementById('av-submission-details')!;
+    return [
+      index(document.querySelector('h1.submission_header')),
+      index(document.querySelector('.ic-Action-header__Secondary a')),
+      index(hostNode),
+      index(document.getElementById('av-rubric')),
+      index(document.querySelector('.submission-details-comments')),
+    ];
+  });
+  expect([...order].sort((a, b) => a - b)).toEqual(order);
+});
+
+test('with the frame kept, the rubric shows under the frame, and the frame itself is not moved', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    switchOff: true,
+    rubric: true,
+    preview: previewWithMedia(),
+    change: (copy) => {
+      copy.submission.submission_type = 'media_recording';
+      copy.submission.attachments = [];
+    },
+  });
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  const original = await page.evaluate(() => document.getElementById('content')!.outerHTML);
+  await turnOn(page, background);
+  await settled(page, canvas);
+  await expect(page.locator('#preview_frame')).toBeVisible();
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  const state = await page.evaluate(() => {
+    const holder = document.getElementById('rubric_holder')!.getBoundingClientRect();
+    const frame = document.getElementById('preview_frame')!;
+    return {
+      parent: document.getElementById('av-rubric')!.parentElement?.className,
+      after: frame.nextElementSibling?.id,
+      holderTop: holder.top,
+      frameBottom: frame.getBoundingClientRect().bottom,
+      linkShown: document.querySelector('.assess_submission_link')!.getClientRects().length > 0,
+    };
+  });
+  expect(state.parent).toBe('submission-details-frame');
+  expect(state.after).toBe('av-rubric');
+  expect(state.holderTop).toBeGreaterThanOrEqual(state.frameBottom);
+  expect(state.linkShown).toBe(false);
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  await expect(host(page)).toHaveCount(0);
+  await expect(page.locator('[data-av-own]')).toHaveCount(0);
+  expect(await page.evaluate(() => document.getElementById('content')!.outerHTML)).toBe(original);
+});
+
+test('a frame that turns out to hold more moves the rubric from the host to the frame area', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    rubric: true,
+    rows: [
+      {
+        fileId: '501',
+        name: FILE_NAME,
+        size: '118 KB',
+        button: 'View Feedback',
+        score: TURNITIN_SCORE,
+      },
+    ],
+  });
+  await settled(page, canvas);
+  await expect(page.locator('#preview_frame')).toBeVisible();
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  expect(
+    await page.evaluate(() => document.getElementById('av-rubric')!.parentElement?.className),
+  ).toBe('submission-details-frame');
+  await expect(page.locator('#rubric_holder')).toHaveCount(1);
+});
+
+test('an assignment with no rubric is left as it is', async ({ context, page, background }) => {
+  const canvas = await open(context, page, background, { switchOff: true });
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  await turnOn(page, background);
+  await settled(page, canvas);
+  await expect(page.locator('#av-rubric')).toHaveCount(0);
+  await expect(page.locator('#rubric_holder')).toHaveCount(0);
+  expect(await page.locator('head style[data-av-own]').count()).toBe(1);
+  expect(await page.locator('head style[data-av-own]').textContent()).not.toContain('rubric');
+});
+
+test('a rubric that Canvas offers no link for stays hidden where Canvas put it', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, { rubricWithoutLink: true });
+  await settled(page, canvas);
+  await expect(host(page)).toBeAttached();
+  await expect(page.locator('#av-rubric')).toHaveCount(0);
+  await expect(page.locator(RUBRIC)).toBeHidden();
+  expect(
+    await page.evaluate(() => document.getElementById('rubric_holder')!.parentElement?.id),
+  ).toBe('content');
+});
+
+test('the page of a teacher with a rubric stays as Canvas drew it', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    teacher: true,
+    rubric: true,
+    change: (copy) => {
+      copy.submission.user_id = '7';
+    },
+  });
+  await settled(page, canvas);
+  await expect(host(page)).toHaveCount(0);
+  await expect(page.locator('[data-av-own]')).toHaveCount(0);
+  await expect(page.locator(RUBRIC)).toBeHidden();
+  await expect(page.getByRole('link', { name: 'Show Rubric' })).toBeVisible();
+});
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`screenshot of the rubric at 1440 px, ${theme}`, async ({ context, page, background }) => {
+    await saveSetting(background, { theme });
+    await open(context, page, background, { rubric: true });
+    await expect(page.locator(RUBRIC)).toBeVisible();
+    if (theme === 'dark') {
+      await page.addStyleTag({
+        content:
+          'body{background:#1b2330!important;color:#fff!important}a{color:#5a9fd4!important}.submission-details-header__heading-and-grades{border-color:#4a5b68!important}.submission-details-container{border-color:#2e3e4e!important}.Button--primary{background:#0374b5!important;color:#fff!important}.rubric_table th,.rubric_table td,.rubric_table .rating{border-color:#4a5b68!important}.rubric_table .rating.selected{background:#253443!important}',
+      });
+    }
+    await page.screenshot({
+      path: path.join(RUBRIC_SHOTS, `rubric-1440-${theme}.png`),
+      animations: 'disabled',
+      fullPage: true,
+    });
+  });
+}
+

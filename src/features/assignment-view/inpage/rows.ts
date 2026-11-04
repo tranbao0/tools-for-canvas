@@ -21,6 +21,7 @@ import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import type { AssignmentDetailsMessage, AssignmentDetailsReply } from '../protocol';
 import { isDetailsReply, renderDetails, renderError, renderLoading } from './details';
+import { RUBRIC_WRAPPER_ID, restoreStaleRubric } from './rubric';
 import { PAGE_CSS, PANEL_CSS } from './styles';
 
 /** Marks every node that the view adds, so the observer and the cleanup can tell them. */
@@ -143,6 +144,10 @@ export function removeStaleView(
   doc: Document = document,
   pathname: string = doc.defaultView?.location.pathname ?? '',
 ): void {
+  // Canvas's rubric goes back home first, while the wrapper that holds it is still on the page.
+  restoreStaleRubric(doc);
+  const rubric = doc.getElementById(RUBRIC_WRAPPER_ID);
+  if (rubric?.hasAttribute(OWN)) rubric.remove();
   const roots = ownedRoots(doc, pathname);
   // The hosts of dead panes are gone now, so the room that they took goes back.
   giveBackRoom(doc);

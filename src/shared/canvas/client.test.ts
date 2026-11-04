@@ -1334,6 +1334,22 @@ it('reads viewer records through the Canvas request queue', async () => {
   expect(() => client.getViewerFile('../other')).toThrow(CanvasError);
 });
 
+it('marks the rubric comments read with a PUT, the CSRF token and no body', async () => {
+  const seen = recordAll(() => ({ read: true }));
+  await testClient().markRubricCommentsRead('12', '8', '42');
+  expect(seen).toEqual([
+    {
+      method: 'PUT',
+      path: '/api/v1/courses/12/assignments/8/submissions/42/rubric_assessments/read',
+      params: [],
+      csrf: CSRF_TOKEN,
+      contentType: null,
+      body: undefined,
+    },
+  ]);
+  expect(() => testClient().markRubricCommentsRead('12', '8', '../42')).toThrow(CanvasError);
+});
+
 it('reads the assignment and the own submission with the includes of the one assignment view', async () => {
   const seen = recordAll(() => ({ id: '8' }));
   const client = testClient();

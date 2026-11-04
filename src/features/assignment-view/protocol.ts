@@ -49,6 +49,25 @@ export function isOwnerReply(value: unknown): value is AssignmentOwnerReply {
   );
 }
 
+/** The student's own rubric comments are now on the page: Canvas marks them read. */
+export interface RubricReadMessage {
+  type: 'assignment:rubric-read';
+  courseId: string;
+  assignmentId: string;
+  userId: string;
+}
+
+export function isRubricReadMessage(value: unknown): value is RubricReadMessage {
+  if (typeof value !== 'object' || value === null) return false;
+  const fields = value as Record<string, unknown>;
+  return (
+    fields['type'] === 'assignment:rubric-read' &&
+    isCanvasId(fields['courseId']) &&
+    isCanvasId(fields['assignmentId']) &&
+    isCanvasId(fields['userId'])
+  );
+}
+
 export interface AssignmentFile {
   id: string;
   display_name: string;

@@ -223,6 +223,19 @@ export function routeDataMessage(
       return allowed.then((origin) =>
         owner.assignmentOwner(message.courseId, message.assignmentId, origin, sender.tab?.id),
       );
+    case 'assignment:rubric-read':
+      if (host.isExtensionPage(sender)) return reject('Only the page of the saved Canvas may ask');
+      return allowed
+        .then((origin) =>
+          owner.markRubricRead(
+            message.courseId,
+            message.assignmentId,
+            message.userId,
+            origin,
+            sender.tab?.id,
+          ),
+        )
+        .then(ok);
     case 'weekrow:mark-note-seen':
       return allowed.then(() => host.markNoteSeen(message.note)).then(ok);
     case 'weekrow:refresh':

@@ -230,6 +230,14 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
           priority,
           guard,
         ),
+      markRubricCommentsRead: (courseId, assignmentId, userId) =>
+        call(
+          'markRubricCommentsRead',
+          [courseId, assignmentId, userId],
+          () => undefined,
+          priority,
+          guard,
+        ),
       getOwnSubmissionRecord: (courseId, assignmentId) =>
         call(
           'getOwnSubmissionRecord',
