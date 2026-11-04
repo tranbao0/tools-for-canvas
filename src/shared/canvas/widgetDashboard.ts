@@ -93,6 +93,21 @@ export function findCourseWorkSlot(doc: Document): CourseWorkSlot | null {
   return null;
 }
 
+/**
+ * The widget wrappers of the other Canvas columns, for a wrapper in the grid. Canvas lays out each
+ * column on its own, so a widget lines up with the ones beside it only when the layout makes it.
+ */
+export function widgetsBeside(wrapper: HTMLElement): HTMLElement[] {
+  const column = wrapper.parentElement?.closest<HTMLElement>(`[data-testid^="${COLUMN_PREFIX}"]`);
+  const columns = column?.parentElement;
+  if (!column || !columns || columns.getAttribute('data-testid') !== 'widget-columns') return [];
+  return [...columns.children]
+    .filter((other) => other !== column)
+    .flatMap((other) => [
+      ...other.querySelectorAll<HTMLElement>('div[data-testid^="widget-container-"]'),
+    ]);
+}
+
 /** Whether the weekly card owns the widget's wrapper. */
 export function isReplacedWidget(element: Element): boolean {
   return element.closest(`[${REPLACED_ATTRIBUTE}]`) !== null;
