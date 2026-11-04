@@ -1,8 +1,10 @@
 /**
- * Starts the one assignment view (design decision 26) on the Assignments list and on the
- * Submission Details page of the student's own submission.
+ * Starts the one assignment view (design decision 26) on the Assignments list, on the
+ * Submission Details page of the student's own submission, and on the assignment page, where it
+ * changes the file links of the Submission box.
  *
- * The view runs on these pages of the saved Canvas while its switch is on. The script reads
+ * The view runs on these pages of the saved Canvas while its switch is on. The file links of the
+ * assignment page also need the switch of the file viewer, because the pane opens them. The script reads
  * the saved address, the switch and the theme through the page channel, like the dashboard fixes,
  * and follows their changes. Turning the switch off, or leaving the saved Canvas, removes the
  * view at once.
@@ -16,11 +18,15 @@ import type { DataMessage } from '../../weekly-list/data/protocol';
 import type { Settings } from '../../weekly-list/model/types';
 import { createFeedbackPane, type FeedbackPane } from './feedbackPane';
 import { createRowsEngine, type RowsEngine } from './rows';
+import { createSidebarEngine } from './sidebar';
 import { createSubmissionView } from './submission';
 import { createTurnInPane, type TurnInPane } from './turnInPane';
 
 /** The Assignments list, including a shard id. */
 const LIST_PATH = /^\/courses\/(\d+(?:~\d+)?)\/assignments\/?$/;
+
+/** An assignment page: course and assignment. */
+const ASSIGNMENT_PATH = /^\/courses\/(\d+(?:~\d+)?)\/assignments\/(\d+(?:~\d+)?)\/?$/;
 
 /** The Submission Details page of a student: course, assignment and user. */
 const SUBMISSION_PATH =
@@ -90,7 +96,8 @@ export async function startAssignmentView(
   const { channel, signal } = options;
   const list = LIST_PATH.exec(pathname);
   const submission = SUBMISSION_PATH.exec(pathname);
-  const courseId = list?.[1] ?? submission?.[1];
+  const assignment = ASSIGNMENT_PATH.exec(pathname);
+  const courseId = list?.[1] ?? submission?.[1] ?? assignment?.[1];
   let stopped = false;
   const stops: (() => void)[] = [];
   let engine: ViewEngine | null = null;
@@ -137,6 +144,15 @@ export async function startAssignmentView(
       reset: feedback.close,
       stop: feedback.close,
     };
+  } else if (assignment?.[2] !== undefined) {
+    engine = createSidebarEngine({
+      doc,
+      origin,
+      courseId,
+      assignmentId: assignment[2],
+      send: channel.send,
+    });
+    pane = { setWidth() {}, refreshTheme() {}, reset() {}, stop() {} };
   } else {
     const rows: RowsEngine = createRowsEngine({
       doc,
@@ -162,6 +178,9 @@ export async function startAssignmentView(
   const view = engine;
   const dock = pane;
 
+  /** Whether the switches that the page needs are on. */
+  const wanted = (next: ToolsSettings): boolean =>
+    next.assignmentView && (assignment === null || next.fileViewer);
   let saved: string | null = null;
   let enabled = false;
   const apply = (): void => {
@@ -182,7 +201,7 @@ export async function startAssignmentView(
     }),
     channel.tools.watch((next) => {
       tools = next;
-      enabled = next.assignmentView;
+      enabled = wanted(next);
       dock.setWidth(next.fileViewerWidth);
       apply();
     }),
@@ -206,7 +225,7 @@ export async function startAssignmentView(
     if (stopped) return controller;
     saved = address;
     tools = loadedTools;
-    enabled = loadedTools.assignmentView;
+    enabled = wanted(loadedTools);
     follow(loadedSettings);
     apply();
   } catch (error) {

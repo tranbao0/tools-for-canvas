@@ -920,14 +920,23 @@ test('a short text has no "Show more", and the look follows the mockup', async (
   expect(look.feedbackRight).toBe(0);
 });
 
-test('the assignment page has no "Your submission" panel, and the download link of its Submission sidebar opens the file pane', async ({
-  context,
-  page,
-  background,
-}) => {
+const SIDEBAR_FILE = 'ENGR195A - Reflection Paper #2-1.pdf';
+const SIDEBAR_HREF = `${ASSIGNMENT}/submissions/42?download=501`;
+const SECOND_FILE = 'Appendix.pdf';
+const SECOND_HREF = `${ASSIGNMENT}/submissions/42?download=502`;
+const SIDEBAR_SHOTS = '/tmp/sb1shots';
+
+/** The assignment page with Canvas's Submission box, for the student of the saved Canvas. */
+async function openSidebar(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  background: Parameters<typeof saveAddress>[0],
+  options: { html?: string; user?: string; settle?: boolean; width?: number } = {},
+) {
   const records = rawRecords(details());
+  records.submission.user_id = options.user ?? '42';
   const served = await serveScenario(context, [
-    { path: ASSIGNMENT, contentType: 'text/html', body: assignmentPage },
+    { path: ASSIGNMENT, contentType: 'text/html', body: options.html ?? assignmentPage },
     {
       path: '/courses/12/assignments/101/submissions/42',
       contentType: 'text/html',
@@ -950,14 +959,35 @@ test('the assignment page has no "Your submission" panel, and the download link 
   ]);
   await addCsrfCookie(context, served.canvas.origin);
   await saveAddress(background, served.canvas.origin);
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize({ width: options.width ?? 1280, height: 900 });
   await page.goto(`${served.canvas.origin}${ASSIGNMENT}`);
-  const sidebar = page.locator('#sidebar_content .details .content');
-  const link = sidebar.getByRole('link', { name: 'Download ENGR195A - Reflection Paper #2-1.pdf' });
+  return served;
+}
+
+const sidebarOf = (page: Page) => page.locator('#sidebar_content .details .content');
+
+/** Waits until the view has changed the box, which is when Canvas's text moved into the hidden node. */
+const treated = (page: Page) => expect(page.locator('[data-av-original]')).toHaveCount(1);
+
+test('the submitted file of the assignment page reads "View NAME" with an icon, and a click opens the file pane', async ({
+  context,
+  page,
+  background,
+}) => {
+  const served = await openSidebar(context, page, background);
+  const sidebar = sidebarOf(page);
+  const link = sidebar.getByRole('link', { name: `View ${SIDEBAR_FILE}` });
   await expect(link).toBeVisible();
-  await page.waitForTimeout(500);
+  await treated(page);
   await expect(page.getByRole('region', { name: 'Your submission' })).toHaveCount(0);
-  await expect(page.locator('[data-av-own]')).toHaveCount(0);
+  // Canvas's anchor stays, with its address, and it shows the icon and the new words.
+  await expect(link).toHaveAttribute('href', SIDEBAR_HREF);
+  await expect(link).toHaveText(`View ${SIDEBAR_FILE}`, { useInnerText: true });
+  await expect(link.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+  const icon = await link.locator('svg').boundingBox();
+  expect(icon?.width).toBe(16);
+  expect(icon?.height).toBe(16);
+  await expect(sidebar.getByRole('link', { name: `Download ${SIDEBAR_FILE}` })).toHaveCount(1);
   await expect(async () => {
     await link.click();
     await expect(page.locator(FILE_PANE)).toBeVisible({ timeout: 1500 });
@@ -971,6 +1001,124 @@ test('the assignment page has no "Your submission" panel, and the download link 
   await sidebar.getByRole('link', { name: 'Submission Details' }).click();
   await expect(page).toHaveURL(`${served.canvas.origin}${ASSIGNMENT}/submissions/42`);
 });
+
+test('the small Download link of the Submission box saves the file and the pane does not take it', async ({
+  context,
+  page,
+  background,
+}) => {
+  const served = await openSidebar(context, page, background);
+  const download = sidebarOf(page).getByRole('link', { name: `Download ${SIDEBAR_FILE}` });
+  await expect(download).toBeVisible();
+  await treated(page);
+  await expect(download).toHaveText('Download');
+  await expect(download).toHaveAttribute('href', SIDEBAR_HREF);
+  await expect(download).toHaveAttribute('download', '');
+  await expect(download).toHaveAttribute('data-av-own', '');
+  const small = await download.evaluate((node) => ({
+    font: getComputedStyle(node).fontSize,
+    icon: [...node.querySelectorAll('svg')].map((svg) => svg.getBoundingClientRect().width),
+  }));
+  expect(small.font).toBe('14px');
+  expect(small.icon).toEqual([14]);
+  // The click is checked after the page script and the pane script have had time to start.
+  await page.waitForTimeout(500);
+  const saved = page.waitForEvent('download');
+  await download.click();
+  expect((await saved).url()).toBe(`${served.canvas.origin}${SIDEBAR_HREF}`);
+  await page.waitForTimeout(800);
+  await expect(page.locator(FILE_PANE)).toHaveCount(0);
+  expect(new URL(page.url()).pathname).toBe(ASSIGNMENT);
+});
+
+test('both files of the Submission box get the treatment', async ({
+  context,
+  page,
+  background,
+}) => {
+  const html = assignmentPage.replace(
+    /(<div><a href="[^"]*download=501">[^<]*<\/a><\/div>)/,
+    `$1\n                <div><a href="${SECOND_HREF}">Download ${SECOND_FILE}</a></div>`,
+  );
+  expect(html).toContain(SECOND_HREF);
+  await openSidebar(context, page, background, { html });
+  const sidebar = sidebarOf(page);
+  await expect(sidebar.getByRole('link', { name: `View ${SECOND_FILE}` })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: `View ${SIDEBAR_FILE}` })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: `Download ${SECOND_FILE}` })).toHaveAttribute(
+    'href',
+    SECOND_HREF,
+  );
+  await expect(sidebar.getByRole('link', { name: `Download ${SIDEBAR_FILE}` })).toHaveAttribute(
+    'href',
+    SIDEBAR_HREF,
+  );
+  await expect(page.locator('a[download]')).toHaveCount(2);
+});
+
+test('the Submission box of another user is unchanged', async ({ context, page, background }) => {
+  const served = await openSidebar(context, page, background, { user: '77' });
+  await expect(page.locator('#sidebar_content a[href$="download=501"]')).toBeVisible();
+  await page.waitForTimeout(1000);
+  await expect(page.locator('[data-av-own]')).toHaveCount(0);
+  await expect(page.locator('#sidebar_content a', { hasText: 'Download' })).toHaveText(
+    `Download ${SIDEBAR_FILE}`,
+  );
+  expect(served.canvas.requests.some((request) => request.path.includes('submissions/self'))).toBe(
+    true,
+  );
+});
+
+for (const off of ['assignmentView', 'fileViewer'] as const) {
+  test(`switching ${off} off gives #sidebar_content back exactly, and on changes it again`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    // The page loads with the switch off, so the box is Canvas's own.
+    await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, [off]: false });
+    await openSidebar(context, page, background);
+    const box = page.locator('#sidebar_content');
+    await expect(page.locator('#sidebar_content a[href$="download=501"]')).toHaveText(
+      `Download ${SIDEBAR_FILE}`,
+    );
+    await page.waitForTimeout(1000);
+    await expect(page.locator('[data-av-own]')).toHaveCount(0);
+    const canvas = await box.evaluate((node) => node.outerHTML);
+    await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+    await treated(page);
+    expect(await box.evaluate((node) => node.outerHTML)).not.toBe(canvas);
+    await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, [off]: false });
+    await expect(page.locator('[data-av-own]')).toHaveCount(0);
+    expect(await box.evaluate((node) => node.outerHTML)).toBe(canvas);
+    await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+    await treated(page);
+  });
+}
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`screenshot of the Submission box at 1440 px, ${theme}`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    await saveSetting(background, { theme });
+    await openSidebar(context, page, background, { width: 1440 });
+    await treated(page);
+    if (theme === 'dark') {
+      await page.addStyleTag({
+        content:
+          'body,#right-side{background:#1b2330!important;color:#fff!important}a{color:#5a9fd4!important}',
+      });
+    }
+    await page.waitForTimeout(300);
+    const box = page.locator('#right-side');
+    await box.screenshot({
+      path: path.join(SIDEBAR_SHOTS, `sidebar-1440-${theme}.png`),
+      animations: 'disabled',
+    });
+  });
+}
 
 /** Screenshots for the eye, with the text long enough to show "Show more". */
 for (const width of [1440, 1100]) {

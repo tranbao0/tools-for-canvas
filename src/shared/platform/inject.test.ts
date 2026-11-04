@@ -344,6 +344,9 @@ describe('the assignment view script', () => {
     '/courses/5/assignments/',
     '/courses/12~345/assignments',
     '/courses/12~345/assignments?x=1',
+    '/courses/5/assignments/3',
+    '/courses/5/assignments/3/',
+    '/courses/12~345/assignments/7~89',
     '/courses/5/assignments/3/submissions/9',
     '/courses/12~345/assignments/7~89/submissions/2~42/',
   ])('is added on the page %s while its switch is on', async (path) => {
@@ -360,7 +363,6 @@ describe('the assignment view script', () => {
     '/courses/5/grades',
     '/courses/5/grades/42',
     '/courses/5/gradebook',
-    '/courses/5/assignments/3',
     '/courses/5/assignments/3/submissions',
     '/courses/5/assignments/3/anonymous_submissions/abc',
     '/courses/5/assignments/not-an-id',

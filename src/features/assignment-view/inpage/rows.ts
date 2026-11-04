@@ -24,6 +24,11 @@ import { PAGE_CSS, PANEL_CSS } from './styles';
 
 /** Marks every node that the view adds, so the observer and the cleanup can tell them. */
 export const OWN = 'data-av-own';
+/**
+ * Marks an own node that holds nodes of Canvas, which the view moved into it. Giving the nodes
+ * back must come before any removal of own nodes.
+ */
+export const ORIGINAL = 'data-av-original';
 const STYLE_ID = 'av-styles';
 /** How long a batch of page changes waits for the next one. */
 const BATCH_MS = 50;
@@ -74,8 +79,16 @@ interface RowState {
   load: number;
 }
 
+/** Puts the nodes of Canvas back in the place of the own nodes that hold them. */
+export function giveBackOriginals(doc: Document): void {
+  doc
+    .querySelectorAll(`[${ORIGINAL}]`)
+    .forEach((holder) => holder.replaceWith(...holder.childNodes));
+}
+
 /** Removes what an earlier copy of this script left on the page. */
 export function removeStaleView(doc: Document = document): void {
+  giveBackOriginals(doc);
   doc.querySelectorAll(`[${OWN}]`).forEach((node) => node.remove());
   for (const element of doc.querySelectorAll('*')) {
     for (const name of element.getAttributeNames()) {

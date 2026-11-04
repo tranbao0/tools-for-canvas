@@ -5,6 +5,7 @@ import { TOP_OPEN } from './frame';
 import { acceptPaneHello, isViewerSecret, secretMessage, validPaneReady } from './channel';
 import {
   clickedElement,
+  KEEP_ACTION_ATTRIBUTE,
   courseOfLink,
   fileTarget,
   catchesDownload,
@@ -320,7 +321,7 @@ export async function startViewer(): Promise<void> {
       const clicked = clickedElement(event);
       if (!plainClick(event) || clicked === null) return;
       const link = clicked.closest<HTMLElement>('a[href],button[data-file-id],button[data-url]');
-      if (!link) return;
+      if (!link || link.closest(`[${KEEP_ACTION_ATTRIBUTE}]`) !== null) return;
       const module = link.closest('[data-module-id],.context_module');
       const moduleId =
         module?.getAttribute('data-module-id') ?? module?.id.replace('context_module_', '');
