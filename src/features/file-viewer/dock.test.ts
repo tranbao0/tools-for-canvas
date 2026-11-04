@@ -1,6 +1,14 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createDock, filePaneOpen, hideFilePane, type Dock, type DockRole } from './dock';
+import {
+  createDock,
+  filePaneOpen,
+  giveBackRoom,
+  hideFilePane,
+  ROOM_ATTRIBUTE,
+  type Dock,
+  type DockRole,
+} from './dock';
 
 const padding = () => document.documentElement.style.getPropertyValue('padding-right');
 const docks: Dock[] = [];
@@ -25,6 +33,40 @@ beforeEach(() => {
 afterEach(() => {
   for (const made of docks.splice(0)) made.close();
   document.body.innerHTML = '';
+});
+
+describe('the record of the room on the page', () => {
+  const html = document.documentElement;
+
+  it('holds the padding of the page while a dock has room, and goes with the room', () => {
+    html.style.setProperty('padding-right', '13px', 'important');
+    const file = dock('file', 600);
+    file.open();
+    expect(JSON.parse(html.getAttribute(ROOM_ATTRIBUTE)!)).toEqual({
+      value: '13px',
+      priority: 'important',
+    });
+    file.close();
+    expect(html.hasAttribute(ROOM_ATTRIBUTE)).toBe(false);
+    expect(padding()).toBe('13px');
+  });
+
+  it('is not rewritten by a second dock, which keeps the first record', () => {
+    html.style.setProperty('padding-right', '13px');
+    dock('file', 600).open();
+    dock('turn-in', 480).open();
+    expect(JSON.parse(html.getAttribute(ROOM_ATTRIBUTE)!).value).toBe('13px');
+  });
+
+  it('gives the room back from the state in memory when no record is left', () => {
+    html.style.setProperty('padding-right', '13px');
+    const turnIn = dock('turn-in', 480);
+    turnIn.open();
+    turnIn.host.remove();
+    giveBackRoom(document);
+    expect(padding()).toBe('13px');
+    expect(html.hasAttribute(ROOM_ATTRIBUTE)).toBe(false);
+  });
 });
 
 describe('the room of the docks', () => {

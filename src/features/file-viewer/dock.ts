@@ -65,6 +65,51 @@ interface Shared {
 
 const SHARED = Symbol.for('tools-for-canvas.dock');
 
+/**
+ * The attribute of the `html` element that records the inline padding the page had before the
+ * first pane took room, as JSON. The state in memory dies with the script, so this record is what
+ * a later copy reads to give the padding back after an update. The record is removed with the room.
+ */
+export const ROOM_ATTRIBUTE = 'data-weekrow-room';
+
+/** The ids of the hosts of the three panes. */
+const HOST_IDS = ['tools-file-viewer', 'tools-turn-in', 'tools-feedback'];
+
+/** A saved padding is empty or a plain length, with no function, so a forged record sets nothing odd. */
+const PLAIN_PADDING = /^(?:\d{1,5}(?:\.\d{1,3})?(?:px|em|rem|%|vw)?)?$/;
+
+function readRecord(page: Element): Saved | null {
+  const raw = page.getAttribute(ROOM_ATTRIBUTE);
+  if (raw === null) return null;
+  try {
+    const record = JSON.parse(raw) as Partial<Saved> | null;
+    return typeof record?.value === 'string' &&
+      PLAIN_PADDING.test(record.value) &&
+      (record.priority === '' || record.priority === 'important')
+      ? { value: record.value, priority: record.priority }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Gives back the room that a copy of the script took and could not give back, such as one that
+ * an update ended with a pane open. It acts only on what a dock recorded: the padding returns to
+ * the recorded value, and a page that never had a dock keeps its own padding. A pane that is still
+ * on the page keeps its room. Call it after the host of a dead pane has been removed.
+ */
+export function giveBackRoom(doc: Document = document): void {
+  const page = doc.documentElement;
+  const state = shared();
+  for (const holder of state.holders) if (!holder.host.isConnected) state.holders.delete(holder);
+  if (state.holders.size > 0 || HOST_IDS.some((id) => doc.getElementById(id) !== null)) return;
+  const saved = state.saved ?? readRecord(page);
+  state.saved = null;
+  page.removeAttribute(ROOM_ATTRIBUTE);
+  if (saved) page.style.setProperty('padding-right', saved.value, saved.priority);
+}
+
 function shared(): Shared {
   const scope = globalThis as unknown as Record<symbol, Shared | undefined>;
   return (scope[SHARED] ??= { holders: new Set(), saved: null, file: null, watchers: new Set() });
@@ -142,10 +187,13 @@ export function createDock(options: DockOptions): Dock {
   const claim = (): void => {
     const state = shared();
     prune(state);
-    state.saved ??= {
-      value: page.style.getPropertyValue('padding-right'),
-      priority: page.style.getPropertyPriority('padding-right'),
-    };
+    if (!state.saved) {
+      state.saved = {
+        value: page.style.getPropertyValue('padding-right'),
+        priority: page.style.getPropertyPriority('padding-right'),
+      };
+      page.setAttribute(ROOM_ATTRIBUTE, JSON.stringify(state.saved));
+    }
     state.holders.add(dock);
   };
   const release = (): void => {
@@ -154,6 +202,7 @@ export function createDock(options: DockOptions): Dock {
     prune(state);
     if (state.holders.size === 0 && state.saved) {
       page.style.setProperty('padding-right', state.saved.value, state.saved.priority);
+      page.removeAttribute(ROOM_ATTRIBUTE);
       state.saved = null;
     }
   };

@@ -16,6 +16,7 @@ import { createListRefresh } from './listRefresh';
 import { fitInstructions, toggleInstructions } from './instructions';
 import type { DataMessage } from '../../weekly-list/data/protocol';
 import { logFailure } from '../../../shared/platform/log';
+import { giveBackRoom } from '../../file-viewer/dock';
 import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import type { AssignmentDetailsMessage, AssignmentDetailsReply } from '../protocol';
@@ -139,7 +140,10 @@ export function removeStaleView(
   doc: Document = document,
   pathname: string = doc.defaultView?.location.pathname ?? '',
 ): void {
-  for (const root of ownedRoots(doc, pathname)) {
+  const roots = ownedRoots(doc, pathname);
+  // The hosts of dead panes are gone now, so the room that they took goes back.
+  giveBackRoom(doc);
+  for (const root of roots) {
     giveBackOriginals(root);
     for (const node of inOwnedPart(root, `[${OWN}]`)) node.remove();
     for (const element of [root, ...inOwnedPart(root, '*')]) {
