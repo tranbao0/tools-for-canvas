@@ -8,6 +8,7 @@
 import type { PdfStage } from './failure';
 import { PdfLinkService } from './linkService';
 import { PageView, type PageContext } from './pageView';
+import { assertRepairable } from './repairGuard';
 import {
   findInDocument,
   firstMatchFrom,
@@ -166,6 +167,15 @@ export class PdfEngine {
       throw error;
     }
     options.onStage?.('document load');
+    try {
+      // The repair scan of the worker cannot be turned off, so a file it could not bear never
+      // reaches it.
+      assertRepairable(options.bytes);
+    } catch (error) {
+      options.signal?.removeEventListener('abort', abort);
+      worker.destroy();
+      throw error;
+    }
     // PDF.js 6.5.438 has no eval path and no scripting option in `getDocument`, so it ignores
     // `isEvalSupported` and `enableScripting`. They state the intent. What keeps scripts out is
     // that the viewer never loads the scripting sandbox and draws link annotations only.

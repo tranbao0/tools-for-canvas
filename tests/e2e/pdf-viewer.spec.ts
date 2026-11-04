@@ -32,6 +32,21 @@ import {
 } from '../fixtures/pdf/fixture';
 
 const FIXTURE = readFileSync('tests/fixtures/pdf/fixture.pdf');
+const MB = 1024 * 1024;
+/** A header, one run of 3 MB with no line feed, carriage return or `<`, and lines to 5 MB. */
+const LONG_RUN = Buffer.concat([
+  Buffer.from('%PDF-1.7\n'),
+  Buffer.alloc(3 * MB, 'A'),
+  Buffer.from('\n'),
+  Buffer.from(`${'B'.repeat(59)}\n`.repeat(Math.ceil((2 * MB) / 60))),
+]);
+/** A PDF with a table that parses, then a run of 3 MB, then the end of the file again. */
+const LONG_RUN_VALID = Buffer.concat([
+  FIXTURE,
+  Buffer.from('\n%'),
+  Buffer.alloc(3 * MB, 'A'),
+  Buffer.from('\nstartxref\n2268\n%%EOF\n'),
+]);
 
 interface HostFixtures {
   fileHost: FileHost;
@@ -43,6 +58,8 @@ const test = base.extend<HostFixtures>({
       '/inst-fs/fixture.pdf': { body: FIXTURE, contentType: 'application/pdf' },
       '/inst-fs/lecture.pdf': { body: lecturePdf(), contentType: 'application/pdf' },
       '/inst-fs/hostile.pdf': { body: hostilePdf(), contentType: 'application/pdf' },
+      '/inst-fs/long-run.pdf': { body: LONG_RUN, contentType: 'application/pdf' },
+      '/inst-fs/long-run-valid.pdf': { body: LONG_RUN_VALID, contentType: 'application/pdf' },
       '/inst-fs/slow.pdf': { body: FIXTURE, contentType: 'application/pdf', delay: 2500 },
       '/inst-fs/chunked.pdf': {
         body: FIXTURE,
@@ -1175,6 +1192,30 @@ test('a page drawing error leaves the document open and copies safe details', as
   await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
   await frame.getByRole('button', { name: 'Next page', exact: true }).click();
   await expect(pageBox(frame, 2).locator('canvas')).toBeVisible();
+});
+
+test.describe('a run of bytes the repair scan could not bear', () => {
+  for (const target of ['/inst-fs/long-run.pdf', '/inst-fs/long-run-valid.pdf']) {
+    test(`${target} shows the damaged file and no Retry`, async ({
+      context,
+      page,
+      background,
+      fileHost,
+    }) => {
+      await openCoursePage(context, page, background, html, routes(fileHost, target));
+      await openFirstFile(page, 'Read notes');
+      const frame = await pane(page);
+      await expect(frame.getByText('This PDF is damaged', { exact: true })).toBeVisible();
+      await expect(frame.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
+      await expect(frame.getByRole('button', { name: 'Copy details' })).toBeVisible();
+      await expect(frame.locator(VIEWER)).toHaveCount(0);
+    });
+  }
+
+  test('a normal PDF still opens', async ({ context, page, background, fileHost }) => {
+    const frame = await openPdf(context, page, background, fileHost);
+    await expect(frame.getByText('This PDF is damaged', { exact: true })).toHaveCount(0);
+  });
 });
 
 test('a broken PDF has safe details and no document Retry', async ({

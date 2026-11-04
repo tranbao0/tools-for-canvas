@@ -1,4 +1,4 @@
-import { BYTES_CHUNK, BYTES_PORT, BYTES_WINDOW } from './bytes';
+import { ACK_TIMEOUT_MS, BYTES_CHUNK, BYTES_PORT, BYTES_WINDOW } from './bytes';
 import {
   checkedMime,
   fetchFileBytes,
@@ -425,9 +425,24 @@ export function serveBytesPort(
         port.postMessage({ total: bytes.length });
         let sent = 0;
         for (let offset = 0; offset < bytes.length; offset += BYTES_CHUNK) {
-          // At most a few chunks wait for the pane. A closed pane ends the transfer.
-          while (sent - acked >= BYTES_WINDOW && !controller.signal.aborted)
-            await new Promise<void>((resolve) => (wake = resolve));
+          // At most a few chunks wait for the pane. A closed pane ends the transfer, and so does a
+          // pane that takes no chunk for `ACK_TIMEOUT_MS`: the read stops, the port closes and
+          // the bytes go out of scope.
+          while (sent - acked >= BYTES_WINDOW && !controller.signal.aborted) {
+            const stalled = await new Promise<boolean>((resolve) => {
+              const timer = setTimeout(() => resolve(true), ACK_TIMEOUT_MS);
+              wake = () => {
+                clearTimeout(timer);
+                resolve(false);
+              };
+            });
+            wake = undefined;
+            if (stalled) {
+              controller.abort();
+              port.disconnect();
+              return;
+            }
+          }
           if (controller.signal.aborted) return;
           // `slice` copies, because a clone of a view holds its whole buffer.
           const part = bytes.slice(offset, offset + BYTES_CHUNK);

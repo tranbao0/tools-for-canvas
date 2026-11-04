@@ -17,6 +17,8 @@ export const BYTES_PORT = 'viewer:file-bytes';
 export const BYTES_CHUNK = 256 * 1024;
 /** Chunks the background sends before the pane has taken the first of them. */
 export const BYTES_WINDOW = 4;
+/** How long the background waits for an acknowledgement before it ends the transfer. */
+export const ACK_TIMEOUT_MS = 30_000;
 
 /**
  * What the background reads for the pane. The background builds the address itself: from the
@@ -64,7 +66,7 @@ export function readBackgroundBytes(
       finish(new FileBytesError(kind, message));
     const abort = () => fail('aborted', 'The read was cancelled');
     port.onDisconnect.addListener(() => fail('network', 'The background read disconnected'));
-    port.onMessage.addListener((message: BytesMessage) => {
+    const handle = (message: BytesMessage) => {
       if (settled) return;
       if ('error' in message) {
         const error = new FileBytesError(
@@ -108,6 +110,15 @@ export function readBackgroundBytes(
           options.onHeaders(new Headers({ 'content-type': message.mime }));
         if (message.facts) fileReadFacts.set(target, message.facts);
         finish(undefined, target);
+      }
+    };
+    // A throw from a bad chunk or from the code of the page ends the read. Without this, the read
+    // would wait for messages that never come.
+    port.onMessage.addListener((message: BytesMessage) => {
+      try {
+        handle(message);
+      } catch {
+        fail('network', 'The background read could not be handled');
       }
     });
     options.signal?.addEventListener('abort', abort, { once: true });

@@ -294,3 +294,48 @@ it('stops at once when the read is cancelled and ignores later messages', async 
   expect(port.postMessage).not.toHaveBeenCalledWith({ ack: 1 });
   expect(port.disconnect).toHaveBeenCalledTimes(1);
 });
+
+it.each([
+  ['a chunk that is no base64', [{ total: 4 }, { chunk: '***' }]],
+  ['a chunk whose bytes cannot be read', [{ total: 4 }, { chunk: { length: 4 } }]],
+  [
+    'a headers handler of the page',
+    [{ total: 3 }, { chunk: btoa('abc') }, { done: true, mime: 'application/pdf' }],
+  ],
+])(
+  'reports a handler that throws on %s as a network failure and acks nothing more',
+  async (_name, messages) => {
+    const port = fakePort(() => undefined);
+    connectTo(port);
+    const onHeaders = vi.fn(() => {
+      throw new Error('A handler of the page threw');
+    });
+    const pending = readBackgroundBytes({ ...read, onHeaders }, SOURCE);
+    const settled = pending.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(() => messages.forEach((message) => port.emit(message))).not.toThrow();
+    expect(await settled).toMatchObject({ kind: 'network' });
+    expect(port.disconnect).toHaveBeenCalledTimes(1);
+    const acks = () => port.postMessage.mock.calls.filter(([message]) => 'ack' in message).length;
+    const before = acks();
+    port.emit({ total: 3 });
+    port.emit({ chunk: btoa('abc') });
+    expect(acks()).toBe(before);
+  },
+);
+
+it('reports a progress handler that throws as a network failure', async () => {
+  const port = fakePort((message, p) => {
+    if ('fileId' in message) p.emit({ total: 3 });
+  });
+  connectTo(port);
+  const onProgress = vi.fn(() => {
+    throw new Error('A handler of the page threw');
+  });
+  await expect(readBackgroundBytes({ ...read, onProgress }, SOURCE)).rejects.toMatchObject({
+    kind: 'network',
+  });
+  expect(port.disconnect).toHaveBeenCalledTimes(1);
+});
