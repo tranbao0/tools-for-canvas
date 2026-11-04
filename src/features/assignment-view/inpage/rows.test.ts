@@ -2,7 +2,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ASSIGNMENT_DETAILS } from '../../../../tests/fixtures/assignment-view';
 import type { AssignmentDetailsMessage, AssignmentDetailsReply } from '../protocol';
-import { createRowsEngine, removeStaleView, type RowsEngine } from './rows';
+import { FEEDBACK_HOST_ID } from './feedbackPane';
+import { createRowsEngine, removeStaleView, STALE_PANE_IDS, type RowsEngine } from './rows';
+import { TURN_IN_HOST_ID } from './turnInPane';
 
 const ORIGIN = 'https://school.instructure.com';
 const NOW = Temporal.Instant.from('2026-10-27T18:00:00Z');
@@ -285,6 +287,35 @@ describe('turning the view off', () => {
     const before = document.body.innerHTML;
     removeStaleView(document, '/courses/12/assignments');
     expect(document.body.innerHTML).toBe(before);
+  });
+
+  it.each(['/courses/12/assignments/101/submissions/42', '/courses/12/assignments'])(
+    'removes the feedback pane and the turn-in pane of an earlier copy on %s',
+    (pathname) => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        '<div id="tools-feedback" data-av-own></div><div id="tools-turn-in" data-av-own></div><div id="tools-file-viewer"></div>',
+      );
+      removeStaleView(document, pathname);
+      expect(document.getElementById('tools-feedback')).toBeNull();
+      expect(document.getElementById('tools-turn-in')).toBeNull();
+      // The file pane is no node of this view.
+      expect(document.getElementById('tools-file-viewer')).not.toBeNull();
+    },
+  );
+
+  it('keeps a page element that only has the id of a pane', () => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<div id="tools-feedback"></div><div id="tools-turn-in"></div>',
+    );
+    removeStaleView(document, '/courses/12/assignments');
+    expect(document.getElementById('tools-feedback')).not.toBeNull();
+    expect(document.getElementById('tools-turn-in')).not.toBeNull();
+  });
+
+  it('names the same ids as the two panes', () => {
+    expect(STALE_PANE_IDS).toEqual([FEEDBACK_HOST_ID, TURN_IN_HOST_ID]);
   });
 
   it('removes the host of an earlier copy on a Submission Details page, and no comment mark', () => {

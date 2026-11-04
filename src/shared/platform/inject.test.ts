@@ -177,6 +177,19 @@ describe('injectViewerIntoOrigin', () => {
     ]);
   });
 
+  it('skips a tab that moved to another origin since the query', async () => {
+    query.mockResolvedValue([
+      tab(1, 'https://canvas.school.edu/courses/5'),
+      tab(3, 'https://canvas.school.edu/courses/5'),
+    ]);
+    tabUrls.set(1, 'https://elsewhere.example.com/');
+    tabUrls.set(3, 'https://canvas.school.edu/courses/5/assignments/3');
+    await injectViewerIntoOrigin('https://canvas.school.edu');
+    expect(scripting.executeScript.mock.calls.map(([details]) => details.target.tabId)).toEqual([
+      3,
+    ]);
+  });
+
   it('injects nothing when the switch went off again before the injection', async () => {
     query.mockResolvedValue([tab(1, 'https://canvas.school.edu/')]);
     await toolsSettingsItem.setValue({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });

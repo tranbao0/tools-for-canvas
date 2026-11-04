@@ -95,8 +95,13 @@ export async function injectViewerIntoOrigin(origin: string): Promise<number[]> 
     (tab) => tab.url !== undefined && parseUrl(tab.url)?.origin === origin,
   );
   const injected = await runInTabs(onOrigin, 'viewer injection', async (tabId) => {
-    // The switch may have gone off again since the change that started this.
+    // The switch may have gone off again since the change that started this, and the tab may have
+    // moved to another page since the query.
     if (!(await toolsSettingsItem.getValue()).fileViewer) return;
+    const current = await browser.tabs.get(tabId);
+    if (current.url === undefined || parseUrl(current.url)?.origin !== origin) {
+      throw new Error('The tab no longer shows a page of the saved Canvas');
+    }
     await browser.scripting.executeScript({
       target: { tabId, frameIds: [0] },
       files: [VIEWER_FILE],

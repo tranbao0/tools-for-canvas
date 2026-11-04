@@ -106,6 +106,21 @@ describe('the Submission box of the assignment page', () => {
     expect(document.getElementById('desc')!.outerHTML).toBe(description);
   });
 
+  it.each([
+    ['inside the box', '#sidebar_content .content'],
+    ['beside the box', '#sidebar_content'],
+  ])('leaves a comment of Canvas %s with the marks of the view as it is', (_name, where) => {
+    document
+      .querySelector(where)!
+      .insertAdjacentHTML(
+        'beforeend',
+        '<div class="comments"><div id="c" data-av-original data-av-own data-av-mark><a href="/x"><span data-av-original data-av-own>kept</span></a></div></div>',
+      );
+    const comment = document.querySelector('.comments')!.outerHTML;
+    removeStaleView(document, '/courses/12/assignments/101');
+    expect(document.querySelector('.comments')!.outerHTML).toBe(comment);
+  });
+
   it('keeps no line of the view for a link that Canvas took out', async () => {
     start().setActive(true);
     await vi.waitFor(() => expect(document.querySelectorAll('a[download]')).toHaveLength(1));

@@ -79,14 +79,21 @@ interface RowState {
   load: number;
 }
 
+/** The text of other people that Canvas shows in the Submission box. A sweep never goes into it. */
+const COMMENTS = '.comments';
+
+/** The nodes of the root that match, except those in the comments of Canvas. */
+function inOwnedPart(root: ParentNode, selector: string): Element[] {
+  return [...root.querySelectorAll(selector)].filter((node) => node.closest(COMMENTS) === null);
+}
+
 /**
  * Puts the nodes of Canvas back in the place of the own nodes that hold them. Only a holder that
  * is a direct child of a link, inside the root, counts: that is where the sidebar view puts it.
  */
 export function giveBackOriginals(root: ParentNode): void {
-  root
-    .querySelectorAll(`a[href] > [${ORIGINAL}][${OWN}]`)
-    .forEach((holder) => holder.replaceWith(...holder.childNodes));
+  for (const holder of inOwnedPart(root, `a[href] > [${ORIGINAL}][${OWN}]`))
+    holder.replaceWith(...holder.childNodes);
 }
 
 /** The assignment page, with its Submission box in the right column. */
@@ -94,16 +101,26 @@ const ASSIGNMENT_PAGE = /^\/courses\/\d+(?:~\d+)?\/assignments\/\d+(?:~\d+)?\/?$
 const SUBMISSION_PAGE = /^\/courses\/\d+(?:~\d+)?\/assignments\/\d+(?:~\d+)?\/submissions\//;
 
 /**
+ * The ids of the two panes that this view docks in the body: the feedback pane and the turn-in
+ * pane. An earlier copy of the script can leave one behind when it dies with its pane open.
+ */
+export const STALE_PANE_IDS: readonly string[] = ['tools-feedback', 'tools-turn-in'];
+
+/**
  * The parts of the page where the view of this page puts its nodes, and nothing else. The text of
  * other authors (a description, a comment) sits elsewhere, so a sweep never reaches it:
- * - the assignment page: the Submission box, `#sidebar_content`;
+ * - the assignment page: the content of the Submission box, `#sidebar_content .details .content`;
  * - the Submission Details page: the head, which holds the style, and the host, by its id;
  * - the Assignments list: the head, and the lists that hold the rows and their detail rows.
+ * The panes in the body go by their ids on the pages that dock them.
  */
 function ownedRoots(doc: Document, pathname: string): Element[] {
   if (ASSIGNMENT_PAGE.test(pathname)) {
-    const box = doc.getElementById('sidebar_content');
-    return box ? [box] : [];
+    return [...doc.querySelectorAll('#sidebar_content .details .content')];
+  }
+  for (const id of STALE_PANE_IDS) {
+    const pane = doc.getElementById(id);
+    if (pane?.hasAttribute(OWN)) pane.remove();
   }
   const roots = new Set<Element>([doc.head]);
   if (SUBMISSION_PAGE.test(pathname)) {
@@ -124,8 +141,8 @@ export function removeStaleView(
 ): void {
   for (const root of ownedRoots(doc, pathname)) {
     giveBackOriginals(root);
-    root.querySelectorAll(`[${OWN}]`).forEach((node) => node.remove());
-    for (const element of [root, ...root.querySelectorAll('*')]) {
+    for (const node of inOwnedPart(root, `[${OWN}]`)) node.remove();
+    for (const element of [root, ...inOwnedPart(root, '*')]) {
       for (const name of element.getAttributeNames()) {
         if (name.startsWith('data-av-')) element.removeAttribute(name);
       }
