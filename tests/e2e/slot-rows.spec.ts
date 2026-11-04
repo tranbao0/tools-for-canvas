@@ -220,8 +220,12 @@ for (const width of [320, 400, 600]) {
           if (box.left < rowBox.left - 0.5 || box.right > rowBox.right + 0.5)
             found.push(`${label} leaves the row`);
         }
-        for (const text of row.querySelectorAll('.wr-tag-text, .wr-points, .wr-link-btn')) {
-          if (text.getClientRects().length > 1) found.push(`${name}: ${text.className} wraps`);
+        // A long chip may take two lines in a narrow card, and stays readable. Points and the
+        // action buttons stay on one line: a box of one line is less than two line heights tall.
+        for (const text of row.querySelectorAll<HTMLElement>('.wr-points, .wr-link-btn')) {
+          const line = parseFloat(getComputedStyle(text).lineHeight);
+          if (text.getBoundingClientRect().height >= line * 1.9)
+            found.push(`${name}: ${text.className} wraps`);
         }
         const pill = row.querySelector('.wr-slot-pill');
         const body = row.querySelector('.wr-item-body');
@@ -278,6 +282,30 @@ async function openPlain(
   await settledList(page);
   return inpageList(page);
 }
+
+test('keeps the focus on the same control of the same row when the layout changes', async ({
+  context,
+  page,
+}) => {
+  const list = await openSlot(context, page);
+  const title = list.getByRole('link', { name: QUIZ_3, exact: true });
+  await title.focus();
+  const focused = () =>
+    page.evaluate(() => {
+      const root = document.querySelector('#weekrow-inpage > weekrow-list')!.shadowRoot!;
+      const active = root.activeElement as HTMLElement | null;
+      return [
+        active?.closest<HTMLElement>('[data-row-key]')?.dataset.rowKey ?? null,
+        active?.dataset.part ?? null,
+      ];
+    });
+  const before = await focused();
+  expect(before[1]).toBe('title');
+  for (const mode of ['stack', 'slot']) {
+    await page.locator(HOST).evaluate((host, next) => host.setAttribute('data-panel', next), mode);
+    await expect.poll(focused).toEqual(before);
+  }
+});
 
 test('rows of the classic right column are unchanged', async ({ context, page }) => {
   const list = await openPlain(context, page, 'dashboard-card-view');
