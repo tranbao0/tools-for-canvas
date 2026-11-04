@@ -315,6 +315,7 @@ export function assignmentJson(
     locked_for_user: lockedForUser(ctx.now, unlockAt, lockAt),
     submission: submissionJson(spec, submissionId, ctx.now),
   };
+  if (spec.points !== undefined) json.points_possible = spec.points;
   if (spec.newQuiz === true) json.is_quiz_lti_assignment = true;
   if (spec.tool !== undefined) json.external_tool_tag_attributes = { url: spec.tool };
   if (options.includeCheckpoints === true)

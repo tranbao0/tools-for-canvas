@@ -123,7 +123,7 @@ A `testing` folder holds the helpers that several tests of one folder share.
 | `npm test`               | Unit tests with Vitest                                                                |
 | `npm run test:scripts`   | Tests for the build checks                                                            |
 | `npm run check`          | Builds all browsers, then runs the four build checks below                            |
-| `npm run check:size`     | Fails if an entry point is over its gzip limit (40 KB, or 2 KB for the detector)      |
+| `npm run check:size`     | Fails if an entry point is over its gzip limit (45 KB, or 2 KB for the detector)      |
 | `npm run check:urls`     | Fails if the build contains a URL that is not in `scripts/url-allowlist.json`         |
 | `npm run check:manifest` | Checks the permissions and browser settings in each built manifest                    |
 | `npm run check:fetch`    | Fails if a built bundle other than the background script calls `fetch`                |

@@ -11,6 +11,7 @@ import { findWidgetGrid } from '../../../shared/canvas/widgetDashboard';
 import { detectPageTheme } from '../../../shared/ui/pageTheme';
 import { logFailure } from '../../../shared/platform/log';
 import { App } from '../ui/App';
+import { SlotModeContext, watchSlotMode } from '../ui/slotMode';
 import { APP_CSS } from '../../../shared/ui/styles';
 import { inpageHost, sendFromContentScript } from './inpageHost';
 import { createPageChannel, type PageChannel } from './pageChannel';
@@ -28,6 +29,8 @@ interface InpageView {
   /** Renders the current state into the container and updates the native To Do. */
   draw(): void;
   setContainer(container: HTMLElement | null): void;
+  /** Whether the card sits in the Course work slot, which gives its rows the slot layout. */
+  setSlot(slot: boolean): void;
 }
 
 interface InpageViewOptions {
@@ -46,17 +49,20 @@ export function createInpageView(
 ): InpageView {
   const doc = options.doc ?? document;
   let container: HTMLElement | null = null;
+  let slot = false;
   const draw = (): void => {
     if (container === null) return;
     const state = runtime.state();
     render(
-      <App
-        surface="inpage"
-        state={state}
-        actions={runtime.actions}
-        settings={runtime.settings()}
-        announcements={runtime.announcements()}
-      />,
+      <SlotModeContext.Provider value={slot}>
+        <App
+          surface="inpage"
+          state={state}
+          actions={runtime.actions}
+          settings={runtime.settings()}
+          announcements={runtime.announcements()}
+        />
+      </SlotModeContext.Provider>,
       container,
     );
     syncNativeTodo(state, doc);
@@ -66,6 +72,11 @@ export function createInpageView(
     setContainer(next) {
       if (container !== null && next === null) render(null, container);
       container = next;
+      draw();
+    },
+    setSlot(next) {
+      if (next === slot) return;
+      slot = next;
       draw();
     },
   };
@@ -99,6 +110,7 @@ export function mountInpageList(mount: InpageMount, deps: InpageListDeps): () =>
   );
   const view = createInpageView(runtime, { doc });
   view.setContainer(ui.root);
+  const stopSlotWatch = watchSlotMode(ui.host, (slot) => view.setSlot(slot));
   const stopDrawing = runtime.subscribe(() => view.draw());
   runtime.start();
   let removed = false;
@@ -107,6 +119,7 @@ export function mountInpageList(mount: InpageMount, deps: InpageListDeps): () =>
     removed = true;
     // The page comes back first: in an orphaned content script, extension calls can throw.
     stopDrawing();
+    stopSlotWatch();
     attempt('in-page list removal', () => view.setContainer(null));
     ui.remove();
     mount.release();

@@ -3,13 +3,14 @@
  * title in the link color, the course name as quiet text, the due line with the row actions, then
  * pills.
  */
-import { useState } from 'preact/hooks';
+import { useContext, useState } from 'preact/hooks';
 import type { TargetedMouseEvent } from 'preact';
 import { t } from '../../../shared/ui/i18n';
 import type { ItemView, WeekView } from '../model/types';
-import { formatDateTime, formatTime } from './format';
+import { formatDateTime, formatNumber, formatTime } from './format';
 import { CalendarIcon, CheckIcon, ChevronDownIcon, TypeIcon } from '../../../shared/ui/icons';
 import { newId } from '../../../shared/ui/parts';
+import { SlotModeContext } from './slotMode';
 import { itemTags, type Tag } from './tags';
 
 /** How the due time shows: the time only, the date and time, or nothing. */
@@ -93,6 +94,7 @@ function TagView(props: { tag: Tag; tipId: string; open: boolean; onToggle(): vo
 }
 
 export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
+  const slot = useContext(SlotModeContext);
   const [ids] = useState(() => ({ tip: newId('tip'), redo: newId('redo') }));
   const [openTip, setOpenTip] = useState<string | null>(null);
   const tags = itemTags(item, view.timeZone);
@@ -119,78 +121,146 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
     .filter(Boolean)
     .join(' ');
 
-  return (
-    <li class={rowClass} data-row-key={item.key} style={{ '--wr-course': item.color }}>
-      <span class="wr-check" title={item.checkboxDisabled ? t('redoTip') : undefined}>
-        <input
-          type="checkbox"
-          class="wr-check-input"
-          data-part="check"
-          checked={done}
-          disabled={item.checkboxDisabled}
-          aria-label={t('doneCheckbox', item.title)}
-          aria-describedby={item.checkboxDisabled ? ids.redo : undefined}
-          onChange={(event) => {
-            // The box shows the state from props; the runtime updates it.
-            event.currentTarget.checked = done;
-            handlers.onToggleDone(item, !done);
-          }}
-        />
-        <span class="wr-check-box" aria-hidden="true">
-          <CheckIcon />
+  const check = (
+    <span class="wr-check" title={item.checkboxDisabled ? t('redoTip') : undefined}>
+      <input
+        type="checkbox"
+        class="wr-check-input"
+        data-part="check"
+        checked={done}
+        disabled={item.checkboxDisabled}
+        aria-label={t('doneCheckbox', item.title)}
+        aria-describedby={item.checkboxDisabled ? ids.redo : undefined}
+        onChange={(event) => {
+          // The box shows the state from props; the runtime updates it.
+          event.currentTarget.checked = done;
+          handlers.onToggleDone(item, !done);
+        }}
+      />
+      <span class="wr-check-box" aria-hidden="true">
+        <CheckIcon />
+      </span>
+      {item.checkboxDisabled && (
+        <span id={ids.redo} class="wr-sr">
+          {t('redoTip')}
         </span>
-        {item.checkboxDisabled && (
-          <span id={ids.redo} class="wr-sr">
-            {t('redoTip')}
-          </span>
-        )}
-      </span>
-      <span class="wr-type-block" aria-hidden="true">
-        <TypeIcon kind={item.kind} />
-      </span>
+      )}
+    </span>
+  );
 
-      <div class="wr-item-body">
-        {isNote || item.url === null ? (
-          <button
-            type="button"
-            class="wr-title"
-            data-part="title"
-            aria-label={isNote ? t('editTaskItem', item.title) : undefined}
-            onClick={onTitleClick}
-          >
-            {item.title}
-          </button>
-        ) : (
-          <a
-            class="wr-title"
-            data-part="title"
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={onTitleClick}
-          >
-            {item.title}
-          </a>
-        )}
-        {showCourse && (
-          <span class="wr-course">
-            <span class="wr-course-name">{courseLabel(item)}</span>
-            {item.courseUrl && (
-              <span class="wr-slot-only">
-                {' '}
-                |{' '}
-                <a
-                  href={item.courseUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={t('goToNamedCourse', courseLabel(item))}
-                >
-                  {t('goToCourse')}
-                </a>
+  const title =
+    isNote || item.url === null ? (
+      <button
+        type="button"
+        class="wr-title"
+        data-part="title"
+        aria-label={isNote ? t('editTaskItem', item.title) : undefined}
+        onClick={onTitleClick}
+      >
+        {item.title}
+      </button>
+    ) : (
+      <a
+        class="wr-title"
+        data-part="title"
+        href={item.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={onTitleClick}
+      >
+        {item.title}
+      </a>
+    );
+
+  const tagViews = tags.map((tag) => (
+    <TagView
+      key={tag.id}
+      tag={tag}
+      tipId={ids.tip}
+      open={openTip === tag.id}
+      onToggle={() => setOpenTip(openTip === tag.id ? null : tag.id)}
+    />
+  ));
+
+  const tip = shownTip && (
+    <p id={ids.tip} class="wr-item-tip">
+      {shownTip.tip}
+    </p>
+  );
+
+  if (slot) {
+    const showActions = hasActions(item);
+    return (
+      <li class={rowClass} data-row-key={item.key} style={{ '--wr-course': item.color }}>
+        {check}
+        <span class="wr-type-block" aria-hidden="true">
+          <TypeIcon kind={item.kind} />
+        </span>
+        <div class="wr-item-body">
+          <div class="wr-slot-main">
+            {title}
+            {showCourse && (
+              <span class="wr-course">
+                <span class="wr-course-name">{courseLabel(item)}</span>
+                {item.courseUrl && (
+                  <span class="wr-course-link">
+                    {' '}
+                    |{' '}
+                    <a
+                      href={item.courseUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={t('goToNamedCourse', courseLabel(item))}
+                    >
+                      {t('goToCourse')}
+                    </a>
+                  </span>
+                )}
               </span>
             )}
-          </span>
+            {(tags.length > 0 || item.points != null) && (
+              <div class="wr-item-tags">
+                {item.points != null && (
+                  <span class="wr-points">
+                    {t('itemPoints', formatNumber(item.points, view.locale))}
+                  </span>
+                )}
+                {tagViews}
+              </div>
+            )}
+            {subtitle && (
+              <div class="wr-due">
+                <span class="wr-info">
+                  <span class="wr-subtitle">{subtitle}</span>
+                </span>
+              </div>
+            )}
+          </div>
+          {tip}
+        </div>
+        {(whenLabel || showActions) && (
+          <div class="wr-slot-side">
+            {whenLabel && (
+              <span class="wr-slot-pill">
+                <CalendarIcon />
+                {whenLabel}
+              </span>
+            )}
+            <ItemActions item={item} handlers={handlers} />
+          </div>
         )}
+      </li>
+    );
+  }
+
+  return (
+    <li class={rowClass} data-row-key={item.key} style={{ '--wr-course': item.color }}>
+      {check}
+      <TypeIcon kind={item.kind} />
+
+      <div class="wr-item-body">
+        {title}
+        {showCourse && <span class="wr-course">{courseLabel(item)}</span>}
         {(hasInfo || hasActions(item)) && (
           <div class="wr-due">
             {hasInfo && (
@@ -202,36 +272,9 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
             <ItemActions item={item} handlers={handlers} />
           </div>
         )}
-        {(tags.length > 0 || item.points != null) && (
-          <div class={`wr-item-tags${tags.length === 0 ? ' wr-points-only' : ''}`}>
-            {item.points != null && (
-              <span class="wr-points">
-                {t('itemPoints', new Intl.NumberFormat(view.locale).format(item.points))}
-              </span>
-            )}
-            {tags.map((tag) => (
-              <TagView
-                key={tag.id}
-                tag={tag}
-                tipId={ids.tip}
-                open={openTip === tag.id}
-                onToggle={() => setOpenTip(openTip === tag.id ? null : tag.id)}
-              />
-            ))}
-          </div>
-        )}
-        {shownTip && (
-          <p id={ids.tip} class="wr-item-tip">
-            {shownTip.tip}
-          </p>
-        )}
+        {tags.length > 0 && <div class="wr-item-tags">{tagViews}</div>}
+        {tip}
       </div>
-      {whenLabel && (
-        <span class="wr-slot-pill">
-          <CalendarIcon />
-          {whenLabel}
-        </span>
-      )}
     </li>
   );
 }

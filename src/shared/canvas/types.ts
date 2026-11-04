@@ -108,6 +108,7 @@ export interface Assignment {
   submission_types: string[];
   is_quiz_lti_assignment?: boolean;
   has_sub_assignments?: boolean;
+  points_possible?: number | null;
   html_url: string;
   external_tool_tag_attributes?: { url?: string | null } | null;
   submission?: Submission;

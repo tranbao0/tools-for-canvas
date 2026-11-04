@@ -1743,7 +1743,7 @@ input:checked + .wr-switch-track > .wr-switch-knob {
     column-gap: 8px;
   }
 
-  .wr-item .wr-type {
+  .wr-item > .wr-type {
     display: none;
   }
 
@@ -1810,25 +1810,19 @@ input:checked + .wr-switch-track > .wr-switch-knob {
 }
 
 /* Slot rows, as the items of Canvas's Course work widget: a solid block in the course color, the
-   text column, and the due pill. The parts below are hidden on every other surface. */
+   text column, and a right column with the due pill and the row actions. */
 
-.wr-type-block {
-  display: contents;
-}
-
-.wr-slot-only,
-.wr-points,
-.wr-points-only,
-.wr-slot-pill {
-  display: none;
-}
-
-/* The block is 80 px: a 32 px icon with 24 px padding. Rows sit 12 px apart. */
+/* The block is 80 px: a 32 px icon with 24 px padding. Rows sit 12 px apart. The check box and the
+   block stay at the top of the row, so an opened tip moves nothing above it. */
 :host([data-panel='slot']) .wr-item {
   grid-template-columns: 20px 80px minmax(0, 1fr) auto;
   column-gap: 12px;
-  align-items: center;
+  align-items: start;
   padding: 6px 0;
+}
+
+:host([data-panel='slot']) .wr-check {
+  margin-top: 30px;
 }
 
 :host([data-panel='slot']) .wr-type-block {
@@ -1846,12 +1840,17 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   font-size: 32px;
 }
 
-:host([data-panel='slot']) .wr-item-body {
+/* The text column is at least as high as the block, and its lines sit in the middle of that. */
+:host([data-panel='slot']) .wr-slot-main {
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  min-height: 80px;
 }
 
 :host([data-panel='slot']) .wr-title {
+  align-self: flex-start;
+  max-width: 100%;
   font-size: 14px;
   font-weight: 700;
   line-height: 21px;
@@ -1864,6 +1863,8 @@ input:checked + .wr-switch-track > .wr-switch-knob {
 
 :host([data-panel='slot']) .wr-course {
   display: flex;
+  /* The focus ring of "Go to course" reaches outside the line. */
+  overflow: visible;
 }
 
 /* A long course name gets the ellipsis, and the link stays whole. */
@@ -1873,43 +1874,42 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   text-overflow: ellipsis;
 }
 
-:host([data-panel='slot']) .wr-slot-only {
-  display: block;
+:host([data-panel='slot']) .wr-course-link {
   flex: none;
   white-space: pre;
 }
 
-:host([data-panel='slot']) .wr-slot-only a {
+:host([data-panel='slot']) .wr-course-link a {
   color: var(--wr-link);
   text-decoration: none;
 }
 
-:host([data-panel='slot']) .wr-slot-only a:hover {
+:host([data-panel='slot']) .wr-course-link a:hover {
   color: var(--wr-link-hover);
   text-decoration: underline;
 }
 
 :host([data-panel='slot']) .wr-item-tags {
-  display: flex;
-  order: 1;
   margin-top: 0;
 }
 
 :host([data-panel='slot']) .wr-points {
-  display: block;
   color: var(--wr-text-2);
 }
 
-:host([data-panel='slot']) .wr-due {
-  order: 2;
+/* The right column: the due pill, and the row actions right-aligned under it. */
+:host([data-panel='slot']) .wr-slot-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  min-height: 80px;
 }
 
-:host([data-panel='slot']) .wr-item-tip {
-  order: 3;
-}
-
-:host([data-panel='slot']) .wr-when {
-  display: none;
+:host([data-panel='slot']) .wr-slot-side .wr-item-actions {
+  justify-content: flex-end;
+  margin-left: 0;
 }
 
 :host([data-panel='slot']) .wr-slot-pill {
@@ -1918,25 +1918,55 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   gap: 6px;
   padding: 8px;
   border-radius: 8px;
-  background: #e0ebf5;
-  color: #1a5a8e;
+  background: light-dark(#e0ebf5, #253443);
+  color: light-dark(#1a5a8e, #7fb4f1);
   font-size: 12px;
   font-weight: 700;
   line-height: 12px;
+  white-space: nowrap;
 }
 
 :host([data-panel='slot']) .wr-slot-pill .wr-icon {
   font-size: 18px;
 }
 
-/* Below 420 px the pill sits under the text, at the right. */
-@container wr (width < 420px) {
+/* The widget hides the block and stacks the item at a viewport of 639 px or less. On the widget
+   dashboard the card is 527 px wide at 639 px and 528 px at 640 px. The query measures the content
+   box of the card, which is the card width less 48 px of padding, so 479 px against 480 px. */
+@container wr (width < 480px) {
   :host([data-panel='slot']) .wr-item {
-    grid-template-columns: 20px 80px minmax(0, 1fr);
+    grid-template-columns: 20px minmax(0, 1fr);
+    column-gap: 8px;
   }
 
+  :host([data-panel='slot']) .wr-check {
+    margin-top: 0;
+  }
+
+  :host([data-panel='slot']) .wr-type-block {
+    display: none;
+  }
+
+  :host([data-panel='slot']) .wr-slot-main {
+    min-height: 0;
+  }
+
+  :host([data-panel='slot']) .wr-slot-side {
+    grid-column: 2;
+    flex-flow: row wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px 12px;
+    min-height: 0;
+  }
+
+  :host([data-panel='slot']) .wr-slot-side .wr-item-actions {
+    justify-content: flex-start;
+  }
+
+  /* The narrowest card, 160 px inside its padding, holds the pill of a past-due row (icon and
+     "Oct 26, 11:59 pm") with this padding and the 8 px column gap. */
   :host([data-panel='slot']) .wr-slot-pill {
-    grid-column: 3;
-    justify-self: end;
+    padding-inline: 6px;
   }
 }

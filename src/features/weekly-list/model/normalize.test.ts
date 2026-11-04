@@ -343,6 +343,19 @@ describe('absoluteUrl', () => {
 });
 
 describe('itemFromAssignment', () => {
+  it.each([
+    [12, 12],
+    [0, 0],
+    [0.5, 0.5],
+    [null, null],
+    [undefined, null],
+    [Number.NaN, null],
+  ])('takes the points of an assignment from the API: %s', (points, expected) => {
+    const api = { ...assignment({ id: '1', courseId: '101', types: ['on_paper'] }) };
+    if (points !== undefined) api.points_possible = points;
+    expect(itemFromAssignment(api, deps(), undefined).points).toBe(expected);
+  });
+
   it('maps submission facts the same way as the planner', () => {
     const graded = itemFromAssignment(
       assignment({
