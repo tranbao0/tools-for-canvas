@@ -2140,7 +2140,7 @@ input:checked + .wr-switch-track > .wr-switch-knob {
 :host([data-panel='slot']) .wr[data-rows='compact'] .wr-course:has(+ .wr-item-tags)::after {
   content: '\00b7' / '';
   flex: none;
-  margin-inline: 4px 0;
+  margin-inline: 4px;
   color: var(--wr-text-2);
 }
 
