@@ -207,3 +207,76 @@ describe.each(CALLERS)('the start of $name', (caller) => {
     });
   });
 });
+
+/**
+ * The assignment view reads the tools once more when the student drags the width of a pane, only
+ * to write the width back (`saveWidth`), and never applies the answer. Such a read, and a read
+ * that never ends, must not hide a change from the watchers.
+ */
+describe('the assignment view after its start', () => {
+  const [view] = CALLERS as [Caller];
+  const on = (): Store => view.store(true, true);
+  const off = (): Store => view.store(false, true);
+
+  /** A page whose start has ended with the view shown (reads 0 to 2). */
+  async function started(mode: 'atSend' | 'atFinish') {
+    view.draw();
+    const page = background(mode, on(), view.other);
+    const controller = view.start(page.channel);
+    await page.finish(0, 1, 2);
+    await controller;
+    expect(view.shown()).toBe(true);
+    return { ...page, controller };
+  }
+
+  it('hears a switch change that a read-only read saw first, then the change read', async () => {
+    const page = await started('atFinish');
+    // The read 3 is the read of `saveWidth`. The switch goes off before it ends, and the change
+    // read 4 starts.
+    const width = page.channel.tools.getValue();
+    page.change(off());
+    await page.finish(3);
+    await width;
+    await page.finish(4);
+    expect(view.shown()).toBe(false);
+    (await page.controller).stop();
+  });
+
+  it('hears it when the change read ends first', async () => {
+    const page = await started('atFinish');
+    const width = page.channel.tools.getValue();
+    page.change(off());
+    await page.finish(4);
+    await page.finish(3);
+    await width;
+    expect(view.shown()).toBe(false);
+    (await page.controller).stop();
+  });
+
+  it('hears a withdrawn address while a read never ends, after the bound of 2 s', async () => {
+    const page = await started('atFinish');
+    // The read 3 never ends.
+    void page.channel.tools.getValue();
+    page.change({ ...on(), saved: false });
+    await page.finish(4);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(view.shown()).toBe(true);
+    await vi.advanceTimersByTimeAsync(1_200);
+    expect(view.shown()).toBe(false);
+    (await page.controller).stop();
+  });
+
+  it('corrects a start read that ends after the bound with an old answer', async () => {
+    view.draw();
+    const page = background('atSend', off(), view.other);
+    const controller = view.start(page.channel);
+    await page.finish(0, 2);
+    // The switch goes on. The tools read of the start (1) still holds the old answer.
+    page.change(on());
+    await page.finish(3);
+    await vi.advanceTimersByTimeAsync(2_200);
+    await page.finish(1);
+    expect(view.shown()).toBe(true);
+    (await controller).stop();
+  });
+});

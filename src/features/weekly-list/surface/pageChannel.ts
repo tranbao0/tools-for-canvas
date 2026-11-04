@@ -110,45 +110,64 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
   let started = 0;
   let kept = 0;
   /**
-   * What the page was told last, field by field: by a read that a caller waited for, or by a
-   * watcher call. A field the page did not ask for takes the kept answer before a newer one.
+   * What the watchers know, field by field: the value of their last call, or, before the first
+   * call, the first answer that a caller got (the start value of the page) or the kept answer that
+   * a newer one replaced. An answer to a `getValue` caller does not change it, because the caller
+   * may only read, and a watcher still needs to hear of a change that this answer shows.
    */
-  const told: Partial<PageContext> = {};
-  /** The reads that a caller waits for, and the task that will tell the watchers. */
+  const heard: Partial<PageContext> = {};
+  /** The answers that `getValue` callers got since the last announce, field by field. */
+  const given: { origin: (string | null)[]; settings: Settings[]; tools: ToolsSettings[] } = {
+    origin: [],
+    settings: [],
+    tools: [],
+  };
+  /** The reads that a caller waits for, and the timers that will tell the watchers. */
   let waiting = 0;
   let announcing: ReturnType<typeof setTimeout> | null = null;
+  let forced: ReturnType<typeof setTimeout> | null = null;
+
+  /** How long a caller that waits for a read may hold back the watchers. */
+  const HOLD_MS = 2_000;
 
   /**
-   * Tells the watchers of each field where the newest answer differs from what the page knows.
-   * It runs on a task of its own, and only while no caller waits for a read. So every caller
-   * applies its own answer first (a start reads the address, the switches and the settings at
-   * once), and the event then brings the newest value over it.
+   * Tells the watchers of each field where the newest answer differs from what the watchers know
+   * or from an answer that a caller got. It runs on a task of its own, and not while a caller
+   * waits for a read. So every caller of a start (it reads the address, the switches and the
+   * settings at once) applies its own answer first, and the event then brings the newest value
+   * over it. A caller that waits longer than `HOLD_MS` does not hold the watchers back further;
+   * when its answer comes late, it schedules the next announce itself.
    */
   function scheduleAnnounce(): void {
     if (announcing !== null) return;
     announcing = setTimeout(() => {
       announcing = null;
       if (waiting === 0) announce();
+      else forced ??= setTimeout(announce, HOLD_MS);
     }, 0);
   }
 
-  function announce(): void {
+  function announceField<K extends keyof PageContext>(
+    key: K,
+    answers: PageContext[K][],
+    listeners: Set<(value: PageContext[K]) => void>,
+  ): void {
     if (last === null) return;
-    if (told.origin !== undefined && told.origin !== last.origin) {
-      told.origin = last.origin;
-      for (const l of [...originListeners]) l(last.origin);
-    }
-    if (
-      told.settings !== undefined &&
-      JSON.stringify(told.settings) !== JSON.stringify(last.settings)
-    ) {
-      told.settings = last.settings;
-      for (const l of [...settingsListeners]) l(last.settings);
-    }
-    if (told.tools !== undefined && JSON.stringify(told.tools) !== JSON.stringify(last.tools)) {
-      told.tools = last.tools;
-      for (const l of [...toolsListeners]) l(last.tools);
-    }
+    const now = last[key];
+    const earlier = heard[key];
+    const known = earlier === undefined ? answers.splice(0) : [earlier, ...answers.splice(0)];
+    if (known.length === 0) return;
+    heard[key] = now;
+    const same = (value: PageContext[K]): boolean => JSON.stringify(value) === JSON.stringify(now);
+    if (!known.every(same)) for (const listener of [...listeners]) listener(now);
+  }
+
+  function announce(): void {
+    if (forced !== null) clearTimeout(forced);
+    forced = null;
+    announceField('origin', given.origin, originListeners);
+    announceField('settings', given.settings, settingsListeners);
+    announceField('tools', given.tools, toolsListeners);
   }
 
   /**
@@ -164,14 +183,16 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
     if (number > kept) {
       kept = number;
       if (last !== null) {
-        if (told.origin === undefined) told.origin = last.origin;
-        if (told.settings === undefined) told.settings = last.settings;
-        if (told.tools === undefined) told.tools = last.tools;
+        if (heard.origin === undefined) heard.origin = last.origin;
+        if (heard.settings === undefined) heard.settings = last.settings;
+        if (heard.tools === undefined) heard.tools = last.tools;
       }
       last = next;
     }
     if (wanted !== undefined) {
-      Object.assign(told, { [wanted]: next[wanted] });
+      if (wanted === 'origin') given.origin.push(next.origin);
+      else if (wanted === 'settings') given.settings.push(next.settings);
+      else given.tools.push(next.tools);
       waiting -= 1;
     }
     scheduleAnnounce();
@@ -223,7 +244,9 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
     stop() {
       stopListening();
       if (announcing !== null) clearTimeout(announcing);
+      if (forced !== null) clearTimeout(forced);
       announcing = null;
+      forced = null;
     },
   };
 }
