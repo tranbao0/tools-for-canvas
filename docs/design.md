@@ -3082,6 +3082,9 @@ So a student switches pages to read the instructions next to the feedback on a f
    - The view replaces Canvas's files frame only when it can show everything that the frame shows.
      In every other case the frame stays, and the view adds only the instructions above it: the fallback rule of item 5.
    - The files frame stays visible until the read has finished, so a page that stays as it is never flickers.
+   - A failed read of `assignment:details` is asked again after 1 s, 2 s and 4 s, which are the waits of `rateLimitDelayMs`, and then the page stays as Canvas drew it.
+     The page does not ask again for the typed `no_submission_access` reply, for a record of another user or assignment, or for a refusal for the session of the student (the reasons in `shared/platform/refusals.ts`).
+     A turned-off switch, a stop, a change of student or a page that is left ends the waiting.
 4. **How the page changes.**
    - When the view replaces the frame: one `style` element in the head hides `.submission-details-container>.submission-details-frame`, and one host element is added after that frame, in the same flex row, with the comments column on its right.
    - In the fallback mode of item 5: no style is added, and the host is added right before `.submission-details-container`, so it sits above the frame and the comments column.
