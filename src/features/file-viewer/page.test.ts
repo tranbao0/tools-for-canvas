@@ -116,6 +116,38 @@ describe('the page script', () => {
     expect(document.getElementById('tools-file-viewer')).toBeNull();
   });
 
+  it('ends when the File viewer switch goes off, so a click follows its link, and closes the pane', async () => {
+    prepare();
+    await startViewer();
+    click(true);
+    await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
+    const listener = addListener.mock.calls[0]![0] as (message: unknown, sender: unknown) => void;
+    sendMessage.mockImplementation(async (message: { type: string }) =>
+      message.type === 'weekrow:page-context'
+        ? { tools: { fileViewer: false, fileViewerWidth: 480 }, settings: {} }
+        : reply(message),
+    );
+    listener({ type: 'weekrow:changed' }, { id: 'my-extension' });
+    await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).toBeNull());
+    expect(removeListener).toHaveBeenCalledTimes(1);
+    const before = sessionRequests();
+    click(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(sessionRequests()).toBe(before);
+    expect(document.getElementById('tools-file-viewer')).toBeNull();
+  });
+
+  it('keeps working when a change leaves the File viewer switch on', async () => {
+    prepare();
+    await startViewer();
+    const listener = addListener.mock.calls[0]![0] as (message: unknown, sender: unknown) => void;
+    listener({ type: 'weekrow:changed' }, { id: 'my-extension' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(removeListener).not.toHaveBeenCalled();
+    click(true);
+    await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
+  });
+
   it('opens the pane for a click of the student', async () => {
     prepare();
     await startViewer();

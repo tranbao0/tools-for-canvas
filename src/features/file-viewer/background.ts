@@ -20,7 +20,8 @@ import type { CanvasApi } from '../../shared/canvas/types';
 import { canvasOriginItem } from '../../shared/platform/storage';
 import { browserRouterHost, senderPageOrigin } from '../weekly-list/data/router';
 import type { DataOwner } from '../weekly-list/data/owner';
-import { injectSubmissionFrames } from '../../shared/platform/inject';
+import { injectSubmissionFrames, injectViewerIntoOrigin } from '../../shared/platform/inject';
+import { toolsSettingsItem } from '../../shared/settings/toolsItem';
 import { logFailure } from '../../shared/platform/log';
 import { createViewerSecret, isViewerSecret } from './channel';
 import { FRAME_OPEN, TOP_OPEN } from './frame';
@@ -519,6 +520,16 @@ export function wireViewerRouter(
       sendResponse(undefined);
     });
     return true;
+  });
+  // A page that loaded while the File viewer switch was off has no click catcher. When the
+  // switch goes on, the open pages of the saved Canvas take it, so no reload is needed. When it
+  // goes off, the catcher of each page ends itself (see page.ts).
+  toolsSettingsItem.watch((next, previous) => {
+    if (!next.fileViewer || previous.fileViewer) return;
+    canvasOriginItem
+      .getValue()
+      .then((origin) => (origin === null ? [] : injectViewerIntoOrigin(origin)))
+      .catch((error: unknown) => logFailure('viewer injection', error));
   });
   browser.tabs.onRemoved.addListener((tabId) => {
     void browser.storage.session
