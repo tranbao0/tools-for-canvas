@@ -97,7 +97,7 @@ test.describe('the minimized list', () => {
     await expect(bar(page)).toContainText('Weekly list');
   });
 
-  test('expands on a click and on Enter and Space, with the card at the top', async ({
+  test('expands on a click and on Enter and Space, with the day list where it was', async ({
     context,
     page,
   }) => {
@@ -114,7 +114,7 @@ test.describe('the minimized list', () => {
     await expect(minimize(page)).toBeFocused();
     await expect(minimize(page)).toHaveAttribute('aria-expanded', 'true');
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-    expect(await region(page).evaluate((element) => element.scrollTop)).toBe(0);
+    await expect.poll(() => region(page).evaluate((element) => element.scrollTop)).toBe(250);
 
     for (const key of ['Enter', 'Space']) {
       await minimize(page).click();

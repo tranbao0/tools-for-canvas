@@ -191,12 +191,19 @@
   min-height: 34px;
 }
 
-/* The selected look reaches 8px past the text on both sides. */
+/*
+ * The selected look reaches 8px past the text on both sides, as far as the side padding of the
+ * card allows: a card with no side padding keeps the look inside its edges. The focus ring is
+ * drawn inside, so no edge clips it.
+ */
 .wr-pinned .wr-group-toggle {
+  --wr-bleed: min(8px, var(--wr-pad-x, 0px));
+
   min-height: 34px;
-  margin-inline: -8px;
-  padding-inline: 8px;
+  margin-inline: calc(-1 * var(--wr-bleed));
+  padding-inline: var(--wr-bleed);
   border-radius: 6px;
+  outline-offset: -2px;
 }
 
 .wr-pinned .wr-group-toggle[aria-expanded='true'] {

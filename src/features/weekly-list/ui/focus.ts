@@ -56,8 +56,18 @@ export function hasFocusIn(root: HTMLElement | null): boolean {
   return active !== null && root.contains(active);
 }
 
+/** Whether `element` is not under a `hidden` ancestor, such as the day list under an open group. */
+function shown(element: Element): boolean {
+  return element.closest('[hidden]') === null;
+}
+
+/** The rows that the student can see. */
 function rowsOf(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>(ROW));
+  return Array.from(root.querySelectorAll<HTMLElement>(ROW)).filter(shown);
+}
+
+function togglesOf(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(TOGGLE)).filter(shown);
 }
 
 function partOf(element: Element): string | null {
@@ -72,7 +82,7 @@ export function captureFocus(root: HTMLElement | null): FocusSnapshot | null {
   const row = active.closest<HTMLElement>(ROW);
   const key = row?.dataset.rowKey;
   if (!row || key === undefined) return { kind: 'control', part: partOf(active) };
-  const toggles = Array.from(root.querySelectorAll(TOGGLE));
+  const toggles = togglesOf(root);
   const list = row.closest('ul');
   return {
     kind: 'row',
@@ -159,7 +169,7 @@ function listTarget(
     ? root.querySelector<HTMLElement>(`[id="${snapshot.group}"]`)
     : null;
   if (heading) return heading.querySelector<HTMLElement>(TOGGLE) ?? heading;
-  const toggles = root.querySelectorAll<HTMLElement>(TOGGLE);
+  const toggles = togglesOf(root);
   return toggles[Math.min(snapshot.toggles, toggles.length - 1)] ?? null;
 }
 
