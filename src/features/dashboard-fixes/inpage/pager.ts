@@ -117,17 +117,19 @@ export function pagerFix(): Fix {
 
   /** Clicks Canvas's own button for the place, as found at this moment. */
   function go(widget: HTMLElement, view: View, place: Place): void {
-    const page = view.layout[place];
-    if (page === null || isGap(place) || place === 'current') return;
+    if (view.layout[place] === null || isGap(place) || place === 'current') return;
     const paged = doc === null ? undefined : findPagedWidgets(doc).find((p) => p.widget === widget);
     if (paged === undefined) return;
     // Canvas draws its arrows only with more than 5 pages. Without them, the button of the page
-    // that the arrow leads to does the same.
+    // that the arrow leads to does the same. That page comes from Canvas's current page at the
+    // click, so a second quick click goes one page further, like Canvas's own arrow.
     const arrow = place === 'arrow-prev' ? 'prev' : place === 'arrow-next' ? 'next' : null;
-    (arrow === null
-      ? paged.buttons.get(page)
-      : (paged.arrows.get(arrow) ?? paged.buttons.get(page))
-    )?.click();
+    const target =
+      arrow === null
+        ? paged.buttons.get(view.layout[place] as number)
+        : (paged.arrows.get(arrow) ??
+          paged.buttons.get(paged.current + (arrow === 'next' ? 1 : -1)));
+    target?.click();
   }
 
   function fill(view: View, paged: PagedWidget): void {
