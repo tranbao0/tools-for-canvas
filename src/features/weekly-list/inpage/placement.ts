@@ -124,16 +124,15 @@ export function moveContainer(container: HTMLElement, parent: Node, before: Node
   if (active !== null && active.isConnected) (active as HTMLElement).focus({ preventScroll: true });
 }
 
-const SCROLL_PARTS = '.wr, .wr-scroll, .wr-pinned .wr-group-body';
+const SCROLL_PARTS = '.wr, .wr-scroll, .wr-group-area';
 
 /**
- * The name of an element of the card that scrolls: the card, the day list, or the item list of a
- * bottom group. Null for any other element.
+ * The name of an element of the card that scrolls: the card, the day list, or the list area that
+ * shows a bottom group. Null for any other element.
  */
 export function scrollPartOf(element: Element): string | null {
   if (!element.matches?.(SCROLL_PARTS)) return null;
-  if (element.classList.contains('wr-group-body'))
-    return `body:${element.closest('[data-group]')?.getAttribute('data-group') ?? ''}`;
+  if (element.classList.contains('wr-group-area')) return 'group';
   return element.classList.contains('wr-scroll') ? 'scroll' : 'card';
 }
 
@@ -161,7 +160,7 @@ export function restoreScrollPositions(
 
 /**
  * Runs a change of placement and keeps the scroll positions of the card: the card, the day list
- * and the open bottom group. A forced layout while the card has no height limit resets its scroll
+ * and the list area of an open bottom group. A forced layout while the card has no height limit resets its scroll
  * position to the top, so the positions come back after.
  */
 export function keepCardScroll(container: HTMLElement, change: () => void): void {

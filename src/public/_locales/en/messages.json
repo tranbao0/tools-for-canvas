@@ -38,6 +38,9 @@
   "bottomRegionLabel": {
     "message": "Undated and done tasks"
   },
+  "backToDays": {
+    "message": "Back to days"
+  },
   "weekRange": {
     "message": "$1 - $2"
   },

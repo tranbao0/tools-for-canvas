@@ -689,6 +689,21 @@ describe('in-page list', () => {
       fireEvent.click(toggle);
       expect(regionOf(toggle)?.querySelector('li')).not.toBeNull();
     });
+
+    it('show an open bottom group in the list area, and Back to days returns to its header', () => {
+      setup(stateOf(mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) })), 'inpage');
+      const toggle = screen.getByRole('button', { name: /^No due date/ });
+      const area = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+      expect(area?.hidden).toBe(true);
+      fireEvent.click(toggle);
+      expect(area?.hidden).toBe(false);
+      expect(area?.contains(screen.getByText('Undated one'))).toBe(true);
+      expect(toggle.closest('section')?.querySelector('li')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Back to days' }));
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      expect(area?.hidden).toBe(true);
+      expect(document.activeElement).toBe(toggle);
+    });
   });
 
   describe('past due', () => {

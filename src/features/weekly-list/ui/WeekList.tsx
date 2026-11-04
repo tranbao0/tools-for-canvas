@@ -9,6 +9,9 @@ import { ItemRow, type ItemHandlers, type WhenMode } from './ItemRow';
 import { Heading, newId, type HeadingLevel } from '../../../shared/ui/parts';
 import { NothingDue } from './Rings';
 
+/** The groups that sit in the bottom bar of the in-page list. */
+export type BottomKind = 'no_due_date' | 'done';
+
 export interface ListHandlers extends ItemHandlers {
   onSkipAllOlder(): void;
 }
@@ -162,6 +165,44 @@ function LoadingGroup(props: { group: ListGroup; level: HeadingLevel; bars: numb
   );
 }
 
+/** The rows of a group, then its sub-lists such as "10 done" and "1 skipped". */
+function GroupBody(props: { group: ListGroup; view: WeekView; handlers: ListHandlers }) {
+  const { group, view, handlers } = props;
+  const rows = { view, when: whenMode(group.kind), handlers };
+  return (
+    <>
+      <ItemList {...rows} items={group.items} />
+      {group.kind === 'past_due' && (
+        <SubList
+          {...rows}
+          label={tp('olderCount', group.older.length)}
+          items={group.older}
+          action={
+            <button
+              type="button"
+              class="wr-link-btn"
+              data-part="skip-older"
+              onClick={handlers.onSkipAllOlder}
+            >
+              {t('skipAllOlder')}
+            </button>
+          }
+        />
+      )}
+      <SubList
+        {...rows}
+        label={tp('doneCount', group.doneUndated.length)}
+        items={group.doneUndated}
+      />
+      <SubList {...rows} label={tp('skippedCount', group.skipped.length)} items={group.skipped} />
+    </>
+  );
+}
+
+/**
+ * One group. In the bottom bar of the in-page list (`bar`) the group is only its header, a tab
+ * that opens the group in the list area (`controls`): the bar never changes size.
+ */
 function GroupSection(props: {
   group: ListGroup;
   view: WeekView;
@@ -169,6 +210,8 @@ function GroupSection(props: {
   handlers: ListHandlers;
   open?: boolean;
   onToggle?(): void;
+  bar?: boolean;
+  controls?: string;
 }) {
   const { group, view, handlers } = props;
   const collapsible = group.kind === 'no_due_date' || group.kind === 'done';
@@ -176,7 +219,6 @@ function GroupSection(props: {
   const open = props.open ?? localOpen;
   const [id] = useState(() => newId('group'));
   const [bodyId] = useState(() => newId('body'));
-  const rows = { view, when: whenMode(group.kind), handlers };
   const { kind, date } = group;
   const count = groupCount(group);
 
@@ -197,18 +239,14 @@ function GroupSection(props: {
   );
 
   return (
-    <section
-      class={collapsible && open ? 'wr-group wr-group-open' : 'wr-group'}
-      aria-labelledby={id}
-      data-group={group.kind}
-    >
+    <section class="wr-group" aria-labelledby={id} data-group={group.kind}>
       <Heading level={props.level} class="wr-group-head" id={id} part="group-head" tabIndex={-1}>
         {collapsible ? (
           <button
             type="button"
             class="wr-group-toggle"
             aria-expanded={open}
-            aria-controls={bodyId}
+            aria-controls={props.bar ? props.controls : bodyId}
             onClick={() => (props.onToggle ? props.onToggle() : setOpen(!open))}
           >
             <ChevronDownIcon />
@@ -218,40 +256,41 @@ function GroupSection(props: {
           headContent
         )}
       </Heading>
-      <div id={bodyId} class="wr-group-body">
-        {open && (
-          <>
-            <ItemList {...rows} items={group.items} />
-            {group.kind === 'past_due' && (
-              <SubList
-                {...rows}
-                label={tp('olderCount', group.older.length)}
-                items={group.older}
-                action={
-                  <button
-                    type="button"
-                    class="wr-link-btn"
-                    data-part="skip-older"
-                    onClick={handlers.onSkipAllOlder}
-                  >
-                    {t('skipAllOlder')}
-                  </button>
-                }
-              />
-            )}
-            <SubList
-              {...rows}
-              label={tp('doneCount', group.doneUndated.length)}
-              items={group.doneUndated}
-            />
-            <SubList
-              {...rows}
-              label={tp('skippedCount', group.skipped.length)}
-              items={group.skipped}
-            />
-          </>
-        )}
+      {props.bar !== true && (
+        <div id={bodyId} class="wr-group-body">
+          {open && <GroupBody group={group} view={view} handlers={handlers} />}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The open bottom group, in the list area in place of the day list: its name, a way back to the
+ * days, its rows and its sub-lists.
+ */
+export function GroupView(props: {
+  view: WeekView;
+  kind: BottomKind;
+  level: HeadingLevel;
+  handlers: ListHandlers;
+  onBack(): void;
+}) {
+  const group = props.view.groups.find((g) => g.kind === props.kind);
+  const [id] = useState(() => newId('group'));
+  if (group === undefined) return null;
+  return (
+    <section class="wr-group" aria-labelledby={id} data-group={props.kind}>
+      <div class="wr-group-view-head">
+        <Heading level={props.level} class="wr-group-head" id={id} part="group-head" tabIndex={-1}>
+          <span class="wr-group-name">{t(GROUP_NAMES[props.kind])}</span>
+        </Heading>
+        <button type="button" class="wr-link-btn wr-back" data-part="back" onClick={props.onBack}>
+          <ChevronDownIcon />
+          {t('backToDays')}
+        </button>
       </div>
+      <GroupBody group={group} view={props.view} handlers={props.handlers} />
     </section>
   );
 }
@@ -265,8 +304,10 @@ export function WeekList(props: {
   level: HeadingLevel;
   handlers: ListHandlers;
   part?: 'days' | 'bottom';
-  openGroup?: string | null;
-  onToggleGroup?(kind: string): void;
+  openGroup?: BottomKind | null;
+  onToggleGroup?(kind: BottomKind): void;
+  /** The id of the list area that shows an open bottom group. */
+  controls?: string;
 }) {
   const { view } = props;
   const live = view.groups.filter(
@@ -294,7 +335,11 @@ export function WeekList(props: {
         level={props.level}
         handlers={props.handlers}
         open={props.onToggleGroup ? props.openGroup === group.kind : undefined}
-        onToggle={props.onToggleGroup ? () => props.onToggleGroup?.(group.kind) : undefined}
+        onToggle={
+          props.onToggleGroup ? () => props.onToggleGroup?.(group.kind as BottomKind) : undefined
+        }
+        bar={props.part === 'bottom'}
+        controls={props.controls}
       />
     ),
   );

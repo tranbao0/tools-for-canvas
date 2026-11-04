@@ -43,6 +43,7 @@
   --wr-error: light-dark(#c71f23, #f08a8d);
   --wr-on: light-dark(#03893d, #6fcf8a);
   --wr-selected: light-dark(#e0ebf5, #253443);
+  --wr-selected-text: light-dark(#1a5a8e, #7fb4f1);
 
   margin: 0;
   background: var(--wr-bg);
@@ -132,8 +133,8 @@
  * The list has a fixed height, in a card and in the right column of the classic dashboard: the
  * window height minus 48px, at most 760px and at least 420px, whatever the length of the list, so
  * the card keeps its size from span to span. The header and the rings stay at the top, and
- * the groups scroll in .wr-scroll. A view without that region, such as the settings, scrolls the
- * whole card.
+ * the groups scroll in .wr-scroll, or in .wr-group-area while No due date or Done is open. A view
+ * without those regions, such as the settings, scrolls the whole card.
  */
 .wr[data-surface='inpage'] {
   display: flex;
@@ -151,7 +152,7 @@
   flex: none;
 }
 
-.wr[data-surface='inpage'] > .wr-task-panel > .wr-scroll {
+.wr[data-surface='inpage'] > .wr-task-panel > :is(.wr-scroll, .wr-group-area) {
   flex: 1 1 0;
   /* In a low window the list keeps room for about one row, and the whole card scrolls instead. */
   min-height: 128px;
@@ -172,47 +173,60 @@
 }
 
 /*
- * The bottom section holds the headers of No due date and Done, the items of the open group and
- * the footer. Its boxes are items of the card itself (display: contents), so that only the item
- * list of the open group can shrink: the headers, the closed groups and the footer keep their full
- * height. The item list takes the room that the day list leaves, at most half of the card and at
- * least one row. When the card is too low for that and the 128px of the day list, the whole card
- * scrolls instead.
+ * The bottom bar holds the headers of No due date and Done and the footer. It never moves and
+ * never changes size: an open group shows in the list area above, in place of the day list, and
+ * its header only gets the selected look.
  */
-.wr-pinned,
-.wr-pinned > .wr-list,
-.wr-pinned .wr-group {
-  display: contents;
-}
-
-.wr-pinned::before {
-  content: '';
+.wr-pinned {
   flex: none;
+  padding-top: 6px;
   border-top: 1px solid var(--wr-line);
 }
 
+.wr-pinned .wr-group {
+  margin-top: 0;
+}
+
 .wr-pinned .wr-group-head {
-  flex: none;
-  margin-top: 10px;
+  min-height: 34px;
+}
+
+/* The selected look reaches 8px past the text on both sides. */
+.wr-pinned .wr-group-toggle {
+  min-height: 34px;
+  margin-inline: -8px;
+  padding-inline: 8px;
+  border-radius: 6px;
+}
+
+.wr-pinned .wr-group-toggle[aria-expanded='true'] {
+  background: var(--wr-selected);
+  color: var(--wr-selected-text);
+}
+
+.wr-pinned .wr-group-toggle[aria-expanded='true'] :is(.wr-count, .wr-warn) {
+  color: inherit;
+}
+
+/* An open group points up, toward the list that shows it. */
+.wr-pinned .wr-group-toggle[aria-expanded='true'] > .wr-chevron {
+  transform: rotate(180deg);
 }
 
 .wr-pinned .wr-foot {
-  flex: none;
+  margin-top: 6px;
 }
 
-.wr-pinned .wr-group-body {
-  position: relative;
-  flex: 0 1 auto;
-  max-height: 50%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  margin-inline-end: calc(4px - var(--wr-pad-x));
-  padding-inline-end: calc(var(--wr-pad-x) - 4px);
+/* The open group: its name at the left, the way back to the days at the right. */
+.wr-group-view-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.wr-pinned .wr-group-open > .wr-group-body {
-  min-height: 64px;
+.wr-back > .wr-chevron {
+  transform: rotate(90deg);
 }
 
 .wr-scroll:focus-visible {
