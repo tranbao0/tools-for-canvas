@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import {
@@ -25,6 +25,25 @@ async function frames(page: Page, count = 3): Promise<void> {
   await page.evaluate(async (n) => {
     for (let i = 0; i < n; i += 1) await new Promise((r) => requestAnimationFrame(r));
   }, count);
+}
+
+/**
+ * Scrolls a region of the card to `top`, and waits until the scroll holds for two frames. A list
+ * that is still loading draws its region late and can redraw it, which resets the scroll, so the
+ * scroll is set again until it holds.
+ */
+async function scrollTo(region: Locator, top: number): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        region.evaluate(async (element, value) => {
+          element.scrollTop = value;
+          for (let i = 0; i < 2; i += 1) await new Promise((r) => requestAnimationFrame(r));
+          return element.scrollTop;
+        }, top),
+      { timeout: 20_000 },
+    )
+    .toBe(top);
 }
 
 /** What React draws when it replaces a node: a copy without what the extension set on it. */
@@ -55,26 +74,6 @@ for (const size of [
   { width: 1100, height: 800 },
 ]) {
   test(`replaces the widget at ${size.width}x${size.height}`, async ({ context, page }) => {
-    await page.addInitScript(() => {
-      const audit = {
-        box: null as null | { left: number; right: number; top: number; height: number },
-        modes: [] as string[],
-      };
-      Object.assign(window, { slotAudit: audit });
-      new MutationObserver(() => {
-        const section = document.querySelector(
-          '[data-testid="widget-course-work-combined-widget"]',
-        );
-        if (!audit.box && section) {
-          const { left, right, top, height } = section.getBoundingClientRect();
-          audit.box = { left, right, top, height };
-        }
-        const mode = document
-          .querySelector('#weekrow-inpage > weekrow-list')
-          ?.getAttribute('data-panel');
-        if (mode && audit.modes.at(-1) !== mode) audit.modes.push(mode);
-      }).observe(document, { subtree: true, childList: true, attributes: true });
-    });
     const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
     await page.setViewportSize(size);
     await openCanvasPage(page, canvas.origin);
@@ -82,19 +81,10 @@ for (const size of [
     await expect(doneBox(inpageList(page), 'Quiz 3: Cell membranes')).toBeVisible();
     await settledList(page);
     const card = inpageList(page).locator('.wr');
-    const measured = await page.evaluate(
-      () =>
-        (
-          window as unknown as {
-            slotAudit: { box: { left: number; right: number; top: number; height: number } };
-          }
-        ).slotAudit.box,
-    );
-    const box = await card.boundingBox();
-    expect(box!.x).toBeCloseTo(measured.left, 0);
-    expect(box!.x + box!.width).toBeCloseTo(measured.right, 0);
-    expect(box!.y).toBeCloseTo(measured.top, 0);
-    expect(box!.height).toBeCloseTo(Math.max(420, measured.height), 0);
+    // The card lies over the live box of the widget, which keeps its place in the layout.
+    const first = await slotBoxes(page);
+    expectOverSection(first);
+    expectColumnLayout(first);
     await expect(page.locator(WRAPPER)).toBeHidden();
     expect(
       await page.locator(WRAPPER).evaluate((node) => {
@@ -113,36 +103,43 @@ for (const size of [
     await page.screenshot({
       path: path.resolve(`screenshots/m1-slot-${size.width}x${size.height}.png`),
     });
-    const height = box!.height;
+    const height = first.card.height;
     await page.getByRole('tab', { name: 'Courses', exact: true }).click();
     await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'stack');
     await page.getByRole('tab', { name: 'Dashboard', exact: true }).click();
     await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot');
-    // A fresh section inside the wrapper: the wrapper stays claimed, and the new section is not
-    // measured again.
+    // A fresh section inside the wrapper: the wrapper stays claimed, and the card covers the new
+    // section.
     await freshClone(page, SECTION);
     await expect(page.locator(WRAPPER)).toBeHidden();
     await expect(page.locator(WRAPPER)).toHaveAttribute('data-weekrow-replaced', '');
+    await frames(page);
+    expectOverSection(await slotBoxes(page));
     expect((await card.boundingBox())!.height).toBeCloseTo(height, 0);
+    // The card follows the box of the widget when Canvas changes it.
     await page.locator(SECTION).evaluate((node) => {
       (node as HTMLElement).style.height = '1200px';
     });
     await page.setViewportSize({ width: size.width - 50, height: 600 });
     await frames(page);
-    expect((await card.boundingBox())!.height).toBeCloseTo(height, 0);
-    // A fresh wrapper: it shows until the placement runs, then it is claimed and hidden again.
+    expectOverSection(await slotBoxes(page));
+    expect((await card.boundingBox())!.height).toBeCloseTo(1200, 0);
+    // A fresh wrapper: it shows until the placement runs, then it is claimed and hidden again, and
+    // the card is its first child.
     await freshClone(page, WRAPPER);
     await expect(page.locator(WRAPPER)).toBeHidden();
     await expect(page.locator(WRAPPER)).toHaveAttribute('data-weekrow-replaced', '');
     await expect
       .poll(() =>
         page
-          .locator('#weekrow-inpage')
-          .evaluate((node) => node.nextElementSibling?.getAttribute('data-testid')),
+          .locator(WRAPPER)
+          .evaluate((node) => node.firstElementChild?.getAttribute('id') ?? null),
       )
-      .toBe('widget-container-course-work-combined-widget');
-    expect((await card.boundingBox())!.height).toBeCloseTo(height, 0);
-    const next = page.locator('#weekrow-inpage').locator('..').locator(':scope > div').last();
+      .toBe('weekrow-inpage');
+    await frames(page);
+    expectOverSection(await slotBoxes(page));
+    expect((await card.boundingBox())!.height).toBeCloseTo(1200, 0);
+    const next = page.locator('[data-testid="widget-container-course-grades-widget"]');
     const before = (await next.boundingBox())!.y;
     await inpageList(page).getByRole('button', { name: 'Minimize list' }).click();
     await expect.poll(async () => (await card.boundingBox())!.height).toBeLessThan(80);
@@ -150,7 +147,7 @@ for (const size of [
     await inpageList(page)
       .getByRole('button', { name: /^Weekly list/ })
       .click();
-    await expect.poll(async () => (await card.boundingBox())!.height).toBeCloseTo(height, 0);
+    await expect.poll(async () => (await card.boundingBox())!.height).toBeCloseTo(1200, 0);
     await enterEditMode(page);
     await expect(page.locator(WRAPPER)).toBeVisible();
     await expect(page.locator('#weekrow-inpage')).toBeHidden();
@@ -160,17 +157,19 @@ for (const size of [
     await leaveEditMode(page);
     await expect(page.locator(WRAPPER)).toBeHidden();
     await expect(page.locator(HOST)).toBeVisible();
-    // The card follows the widget to its new place.
+    // The card moves with the widget to its new place, inside the wrapper.
     expect(
       await page.locator('#weekrow-inpage').evaluate((node) => ({
         parent: node.parentElement?.getAttribute('data-testid'),
-        next: node.nextElementSibling?.getAttribute('data-testid'),
+        column: node.parentElement?.parentElement?.getAttribute('data-testid'),
       })),
     ).toEqual({
-      parent: 'widget-column-2',
-      next: 'widget-container-course-work-combined-widget',
+      parent: 'widget-container-course-work-combined-widget',
+      column: 'widget-column-2',
     });
-    expect((await card.boundingBox())!.height).toBeCloseTo(height, 0);
+    await frames(page);
+    expectOverSection(await slotBoxes(page));
+    expect((await card.boundingBox())!.height).toBeCloseTo(1200, 0);
   });
 }
 
@@ -209,7 +208,7 @@ for (const state of ['delayed', 'error', 'loading', 'none']) {
   });
 }
 
-test('keeps the height of the window after the wait, when the widget loads later', async ({
+test('covers the box of the widget after the wait, and follows it when the widget loads later', async ({
   context,
   page,
 }) => {
@@ -221,17 +220,19 @@ test('keeps the height of the window after the wait, when the widget loads later
   await page.bringToFront();
   await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot', { timeout: 15_000 });
   const card = inpageList(page).locator('.wr');
-  // The window rule: 900 - 48 px, at most 760 px.
-  expect((await card.boundingBox())!.height).toBeCloseTo(760, 0);
+  // The widget still shows its loading box, so the card covers it.
+  expectOverSection(await slotBoxes(page));
+  expect((await card.boundingBox())!.height).toBeGreaterThanOrEqual(420);
   await page.locator(SECTION).evaluate((node) => {
     node.innerHTML =
       '<input data-testid="submission-status-filter-select"><div style="height:1200px">Loaded</div>';
   });
   await frames(page, 5);
-  expect((await card.boundingBox())!.height).toBeCloseTo(760, 0);
+  expectOverSection(await slotBoxes(page));
+  expect((await card.boundingBox())!.height).toBeGreaterThan(1200);
 });
 
-test('takes the height of the window when extras stay inside the widget after the wait', async ({
+test('covers the box of the widget with its extras still inside, after the wait', async ({
   context,
   page,
   background,
@@ -257,8 +258,10 @@ test('takes the height of the window when extras stay inside the widget after th
   });
   await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot', { timeout: 15_000 });
   await expect(page.locator('#weekrow-inpage')).toBeVisible();
-  // The window rule: 900 - 48 px, at most 760 px.
-  expect((await inpageList(page).locator('.wr').boundingBox())!.height).toBeCloseTo(760, 0);
+  // The card covers the whole box of the widget, extras included.
+  const boxes = await slotBoxes(page);
+  expectOverSection(boxes);
+  expect(boxes.card.height).toBeGreaterThan(1000);
 });
 
 async function openFixture(
@@ -309,7 +312,7 @@ for (const state of ['default', 'second', 'pair']) {
   });
 }
 
-test('measures a slot that shows up after the wait, when the student opens the Dashboard tab', async ({
+test('covers a slot that shows up after the wait, when the student opens the Dashboard tab', async ({
   context,
   page,
 }) => {
@@ -325,7 +328,7 @@ test('measures a slot that shows up after the wait, when the student opens the D
   await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'stack', { timeout: 15_000 });
   await tab('Dashboard').click();
   await expect(page.locator(WRAPPER)).toHaveAttribute('data-weekrow-replaced', '');
-  // The slot is still loading, so the card waits and does not take a height of its own.
+  // The slot is still loading, so the card waits and does not show.
   await frames(page, 5);
   await expect(page.locator('#weekrow-inpage')).toBeHidden();
   const widgetHeight = await page.locator(SECTION).evaluate((node) => {
@@ -363,7 +366,7 @@ test('swaps the card and the widget in one frame when edit mode ends', async ({
         let frame = 0;
         // This runs after the placement of the frame: the callback registers after its own.
         const sample = (): void => {
-          const hiddenWrapper = getComputedStyle(wrapper).display === 'none';
+          const hiddenWrapper = getComputedStyle(wrapper).visibility === 'hidden';
           const hiddenCard = getComputedStyle(container).display === 'none';
           seen.push(
             `${frame} wrapper:${hiddenWrapper ? 'hidden' : 'shown'} card:${hiddenCard ? 'hidden' : 'shown'}`,
@@ -385,10 +388,7 @@ test('keeps the scroll position of the day list over edit mode', async ({
   await saveSettings(background, { ...DEFAULT_SETTINGS, span: { kind: 'month', days: 30 } });
   await openFixture(context, page, 'default');
   const region = inpageList(page).locator('.wr-scroll');
-  await region.evaluate((element) => {
-    element.scrollTop = 300;
-  });
-  await expect.poll(() => region.evaluate((element) => element.scrollTop)).toBe(300);
+  await scrollTo(region, 300);
   await enterEditMode(page);
   await expect(page.locator('#weekrow-inpage')).toBeHidden();
   await leaveEditMode(page);
@@ -467,4 +467,255 @@ test.describe('with two loaded Course work widgets', () => {
     await expect(page.locator(`${FIRST_WRAPPER} [data-wr-cc]`)).toHaveCount(0);
     await expect(page.locator(`${WRAPPER} [data-wr-extra]`)).toHaveCount(1);
   });
+});
+
+interface Rect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  height: number;
+}
+
+interface SlotBoxes {
+  card: Rect;
+  section: Rect;
+  wrapper: Rect;
+  /** The widget that follows the slot in column 1. */
+  next: Rect;
+  /** The gap between the widgets of column 1, as Canvas lays it out. */
+  gap: number;
+  announcements: Rect;
+}
+
+/** The boxes of the card, of the widget it covers, and of the widgets around it. */
+function slotBoxes(page: Page): Promise<SlotBoxes> {
+  return page.evaluate(() => {
+    const rect = (element: Element): Rect => {
+      const { left, top, right, bottom, height } = element.getBoundingClientRect();
+      return { left, top, right, bottom, height };
+    };
+    const get = (selector: string): Element => document.querySelector(selector)!;
+    const card = get('#weekrow-inpage > weekrow-list').shadowRoot!.querySelector('.wr')!;
+    return {
+      card: rect(card),
+      section: rect(get('[data-testid="widget-course-work-combined-widget"]')),
+      wrapper: rect(get('[data-testid="widget-container-course-work-combined-widget"]')),
+      next: rect(get('[data-testid="widget-container-course-grades-widget"]')),
+      gap: Number.parseFloat(getComputedStyle(get('[data-testid="widget-column-1"]')).rowGap),
+      announcements: rect(get('[data-testid="widget-announcements-widget"]')),
+    };
+  });
+}
+
+/** The card is over the box of the section, to half a pixel. */
+function expectOverSection(boxes: SlotBoxes): void {
+  for (const side of ['left', 'top', 'right', 'bottom'] as const)
+    expect(Math.abs(boxes.card[side] - boxes.section[side]), side).toBeLessThanOrEqual(0.5);
+}
+
+/**
+ * The widgets below the slot lie where they would with the widget showing: the wrapper holds the
+ * section and its margin, and the gap to the next widget is the gap of the column.
+ */
+function expectColumnLayout(boxes: SlotBoxes): void {
+  expect(Math.abs(boxes.next.top - boxes.wrapper.bottom - boxes.gap)).toBeLessThanOrEqual(0.5);
+}
+
+/** Opens the dashboard with a status filter that appears and a section that grows after it. */
+async function openGrowing(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  size = { width: 1440, height: 900 },
+): Promise<void> {
+  await page.addInitScript(() => {
+    const watcher = new MutationObserver(() => {
+      const section = document.querySelector('[data-testid="widget-course-work-combined-widget"]');
+      if (!section?.querySelector('[data-testid="submission-status-filter-select"]')) return;
+      watcher.disconnect();
+      // The summary counts arrive after the filters.
+      setTimeout(() => {
+        const block = document.createElement('div');
+        block.id = 'grown';
+        block.style.height = '60px';
+        section.append(block);
+      }, 300);
+    });
+    watcher.observe(document, { subtree: true, childList: true });
+  });
+  await openFixture(context, page, 'default', size);
+  await expect(page.locator(`${SECTION} #grown`)).toBeAttached();
+  await frames(page, 5);
+}
+
+test('follows a widget that grows after its status filter shows', async ({ context, page }) => {
+  await openGrowing(context, page);
+  const boxes = await slotBoxes(page);
+  expectOverSection(boxes);
+  expectColumnLayout(boxes);
+});
+
+for (const size of [
+  { width: 1440, height: 900 },
+  { width: 1920, height: 1080 },
+  { width: 1100, height: 800 },
+]) {
+  test(`covers the box of the widget at ${size.width}x${size.height}`, async ({
+    context,
+    page,
+  }) => {
+    await openFixture(context, page, 'default', size);
+    const boxes = await slotBoxes(page);
+    expectOverSection(boxes);
+    expectColumnLayout(boxes);
+    expect(boxes.card.height).toBeGreaterThan(420);
+  });
+}
+
+test('is 420 px high over a widget that is lower, and the next widget starts after it', async ({
+  context,
+  page,
+}) => {
+  await openFixture(context, page, 'default');
+  await page.locator(SECTION).evaluate((node) => {
+    node.innerHTML =
+      '<input data-testid="submission-status-filter-select"><div style="height:80px">Few</div>';
+  });
+  await expect.poll(async () => (await slotBoxes(page)).card.height).toBeCloseTo(420, 0);
+  const boxes = await slotBoxes(page);
+  expect(boxes.section.height).toBeLessThan(420);
+  expect(boxes.card.top).toBeCloseTo(boxes.section.top, 0);
+  expect(boxes.next.top).toBeGreaterThanOrEqual(boxes.card.bottom);
+  expectColumnLayout(boxes);
+});
+
+test('keeps its box when its content changes', async ({ background, context, page }) => {
+  await openFixture(context, page, 'default');
+  const rows = inpageList(page).locator('.wr-scroll [data-row-key]');
+  const first = await rows.count();
+  const before = await slotBoxes(page);
+  await saveSettings(background, { ...DEFAULT_SETTINGS, span: { kind: 'month', days: 30 } });
+  await expect.poll(() => rows.count()).toBeGreaterThan(first);
+  await settledList(page);
+  const undated = inpageList(page).locator(
+    '.wr-pinned [data-group="no_due_date"] .wr-group-toggle',
+  );
+  await undated.click();
+  await expect(undated).toHaveAttribute('aria-expanded', 'true');
+  await frames(page, 5);
+  const after = await slotBoxes(page);
+  // The page may scroll for the click, so the boxes are compared by size and by place in the column.
+  const shape = (boxes: SlotBoxes) => ({
+    card: boxes.card.height,
+    cardOffset: boxes.card.top - boxes.wrapper.top,
+    wrapper: boxes.wrapper.height,
+    nextOffset: boxes.next.top - boxes.wrapper.top,
+  });
+  expect(shape(after)).toEqual(shape(before));
+});
+
+test('hides the widget from sight, the tab order and the accessibility tree, and takes no clicks', async ({
+  context,
+  page,
+}) => {
+  await openFixture(context, page, 'default');
+  await expect(page.locator(WRAPPER)).toBeHidden();
+  expect(await page.locator(WRAPPER).ariaSnapshot()).toBe('');
+  const widget = await page.locator(WRAPPER).evaluate((node) => {
+    const input = node.querySelector<HTMLInputElement>('input')!;
+    input.focus();
+    const visible = [...node.querySelectorAll('input, button, a[href]')].filter(
+      (element) => getComputedStyle(element).visibility !== 'hidden',
+    );
+    return { focused: document.activeElement === input, reachable: visible.length };
+  });
+  expect(widget).toEqual({ focused: false, reachable: 0 });
+  const hit = await page.evaluate(() => {
+    const box = document
+      .querySelector('[data-testid="submission-status-filter-select"]')!
+      .getBoundingClientRect();
+    const element = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return element?.closest('#weekrow-inpage') !== null;
+  });
+  expect(hit).toBe(true);
+});
+
+test('closes the column up when minimized, and restores the same box', async ({
+  context,
+  page,
+}) => {
+  await openFixture(context, page, 'default');
+  const before = await slotBoxes(page);
+  await inpageList(page).getByRole('button', { name: 'Minimize list' }).click();
+  await expect.poll(async () => (await slotBoxes(page)).card.height).toBeLessThan(80);
+  const small = await slotBoxes(page);
+  expect(small.card.top).toBeCloseTo(before.card.top, 0);
+  expect(small.next.top).toBeLessThan(before.next.top - 100);
+  // No empty space is left: the next widget follows the bar after one margin and one gap.
+  expect(small.next.top - small.card.bottom).toBeCloseTo(
+    before.next.top - before.wrapper.bottom + 8,
+    0,
+  );
+  await inpageList(page)
+    .getByRole('button', { name: /^Weekly list/ })
+    .click();
+  await expect
+    .poll(async () => (await slotBoxes(page)).card.height)
+    .toBeCloseTo(before.card.height, 0);
+  const restored = await slotBoxes(page);
+  expect(restored.card).toEqual(before.card);
+  expect(restored.next).toEqual(before.next);
+});
+
+test('keeps the scroll positions of the card when the page moves it', async ({
+  background,
+  context,
+  page,
+}) => {
+  await saveSettings(background, { ...DEFAULT_SETTINGS, span: { kind: 'month', days: 30 } });
+  await openFixture(context, page, 'default');
+  const region = inpageList(page).locator('.wr-scroll');
+  await scrollTo(region, 250);
+  await freshClone(page, WRAPPER);
+  await frames(page, 5);
+  await expect(inpageList(page)).toBeVisible();
+  await expect.poll(() => region.evaluate((element) => element.scrollTop)).toBe(250);
+  await freshClone(page, SECTION);
+  await frames(page, 5);
+  await expect.poll(() => region.evaluate((element) => element.scrollTop)).toBe(250);
+});
+
+test('puts the card back first in the wrapper when the page removes it or inserts before it', async ({
+  background,
+  context,
+  page,
+}) => {
+  await saveSettings(background, { ...DEFAULT_SETTINGS, span: { kind: 'month', days: 30 } });
+  await openFixture(context, page, 'default');
+  const region = inpageList(page).locator('.wr-scroll');
+  await scrollTo(region, 250);
+  const first = () =>
+    page.locator(WRAPPER).evaluate((node) => node.firstElementChild?.getAttribute('id') ?? null);
+  // A node in front of the card: the card goes back to the first place.
+  await page.locator(WRAPPER).evaluate((node) => {
+    const stray = document.createElement('div');
+    stray.id = 'stray';
+    node.prepend(stray);
+  });
+  await expect.poll(first).toBe('weekrow-inpage');
+  await frames(page);
+  expectOverSection(await slotBoxes(page));
+  await expect.poll(() => region.evaluate((element) => element.scrollTop)).toBe(250);
+  // The page redraws all children of the wrapper: the card is removed and comes back.
+  await page.locator(WRAPPER).evaluate((node) => {
+    const section = node.querySelector('section')!;
+    const fresh = (
+      window as unknown as { fixtureFreshClone(node: Element): Element }
+    ).fixtureFreshClone(section);
+    node.replaceChildren(fresh);
+  });
+  await expect.poll(first).toBe('weekrow-inpage');
+  await frames(page);
+  expectOverSection(await slotBoxes(page));
+  await expect.poll(() => region.evaluate((element) => element.scrollTop)).toBe(250);
 });

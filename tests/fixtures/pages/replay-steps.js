@@ -54,7 +54,7 @@
 // test that acts like a React re-render clones through this.
 window.fixtureFreshClone = function (node) {
   const copy = node.cloneNode(true);
-  copy.querySelectorAll('[data-wr-own]').forEach((own) => own.remove());
+  copy.querySelectorAll('[data-wr-own], #weekrow-inpage').forEach((own) => own.remove());
   for (const element of [copy, ...copy.querySelectorAll('*')]) {
     if (element.hasAttribute('data-weekrow-styled')) element.removeAttribute('style');
     for (const name of element.getAttributeNames()) {
@@ -71,7 +71,6 @@ document.addEventListener('click', (event) => {
   if (!panel) return;
   if (window.fixtureDashboardHTML === undefined) {
     const copy = window.fixtureFreshClone(panel);
-    copy.querySelector('#weekrow-inpage')?.remove();
     window.fixtureDashboardHTML = copy.innerHTML;
   }
   panel.innerHTML = tab.dataset.testid === 'tab-courses'

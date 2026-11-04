@@ -1,4 +1,4 @@
-/** Places the weekly card in the Course work slot, or beside or above the widget content. */
+/** Places the weekly card over the Course work slot, or beside or above the widget content. */
 import { MOUNT_CONTAINER_ID } from './adapters';
 import {
   AREA_MAX_PX,
@@ -6,7 +6,9 @@ import {
   PANEL_EDGE_GAP_PX,
   SENTINEL_ID,
   SPACER_ID,
+  STYLED_ATTRIBUTE,
   clearAllInlineStyles,
+  clearInlineStyle,
   clearInlineStyles,
   setInlineStyles,
   keepCardScroll,
@@ -28,6 +30,8 @@ import {
 
 /** Set on the body while a list owns the layout. Every release removes it. */
 const LAYOUT_ATTRIBUTE = 'data-weekrow-column';
+/** The card over the slot is this high at least, whatever the box of the widget it covers. */
+const SLOT_MIN_HEIGHT_PX = 420;
 /** The gutter when the page has no widget grid to measure it in. */
 const FALLBACK_GUTTER_PX = 24;
 /** How long the card waits for the widget grid on the widget dashboard, before it uses the fallback. */
@@ -100,17 +104,17 @@ export function claimDashboardLayout(
   const positions = new Map<string, number>();
   let scrollRoot: ShadowRoot | null = null;
   let detached = false;
-  /** The height of the slot widget, measured once its data settled. */
-  let slotHeight: number | null = null;
   /**
-   * The card has shown in the slot, so its height is decided for the page view: the measured
-   * height, or the height rule of the window when the wait ended before the widget settled.
+   * The card has shown in the slot. From then on a widget that is loading again, such as a
+   * redrawn one, does not hide the card: the card follows the box of the widget.
    */
-  let slotSized = false;
+  let slotShown = false;
 
   function giveWidgetsBack(except?: HTMLElement): void {
     for (const wrapper of doc.querySelectorAll<HTMLElement>(`[${REPLACED_ATTRIBUTE}]`)) {
       if (wrapper === except) continue;
+      for (const widget of wrapper.querySelectorAll<HTMLElement>(`[${STYLED_ATTRIBUTE}]`))
+        clearInlineStyles(widget);
       clearInlineStyles(wrapper);
       wrapper.removeAttribute(REPLACED_ATTRIBUTE);
     }
@@ -121,23 +125,49 @@ export function claimDashboardLayout(
 
   const onScroll = (event: Event): void => {
     const target = event.target as HTMLElement;
+    // A card that left the page or is not displayed loses its scroll offset, and the scroll event
+    // of that reset comes after the change. It must not replace the position that comes back.
+    if (target.getClientRects().length === 0) return;
     const part = scrollPartOf(target);
     // A part that is hidden reports no position of its own.
     if (part !== null && !target.hidden) positions.set(part, target.scrollTop);
   };
 
-  function trackScroll(): void {
-    const root = container.firstElementChild?.shadowRoot ?? null;
+  function cardRoot(): ShadowRoot | null {
+    return container.firstElementChild?.shadowRoot ?? null;
+  }
+
+  /** The student minimized the card to its header bar. */
+  function isMinimized(): boolean {
+    return cardRoot()?.querySelector('.wr[data-minimized]') != null;
+  }
+
+  // A minimized card leaves the overlay and closes the column up, so a change of the state in the
+  // card places it again.
+  let minimizedSeen = false;
+  const minimizeObserver = new MutationObserver(() => {
+    if (isMinimized() !== minimizedSeen) schedule(false);
+  });
+
+  function trackCard(): void {
+    const root = cardRoot();
     if (root === null || root === scrollRoot) return;
     scrollRoot?.removeEventListener('scroll', onScroll, true);
     scrollRoot = root;
     root.addEventListener('scroll', onScroll, true);
+    minimizeObserver.disconnect();
+    minimizeObserver.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-minimized'],
+    });
   }
 
   function restoreScroll(): void {
     if (!detached) return;
     detached = false;
-    restoreScrollPositions(container.firstElementChild?.shadowRoot, positions);
+    restoreScrollPositions(cardRoot(), positions);
   }
 
   /** The distance from the right edge of the tab panel to the right edge of the grid, once measured. */
@@ -174,31 +204,50 @@ export function claimDashboardLayout(
     setInlineStyles(slot.wrapper, { visibility: 'hidden' });
   }
 
-  /** The border-box height of the widget, read even when its wrapper is not displayed. */
-  function measureSlot(slot: CourseWorkSlot): number {
-    slot.wrapper.style.removeProperty('display');
-    return Math.max(420, slot.widget.getBoundingClientRect().height);
+  /**
+   * Puts the card over the box of the widget: the widget keeps its place in the page layout,
+   * invisible, so Canvas's columns lay out as if it showed, and the card is the first child of its
+   * wrapper. A minimized card is in the flow instead and the widget is not displayed, so the
+   * column closes up.
+   */
+  function arrangeSlot(slot: CourseWorkSlot): void {
+    const { wrapper } = slot;
+    claim(slot);
+    slotShown = true;
+    const { marginTop, marginRight, marginBottom, marginLeft } = view.getComputedStyle(slot.widget);
+    setInlineStyles(wrapper, { position: 'relative' });
+    const first = wrapper.firstChild === container ? container.nextSibling : wrapper.firstChild;
+    minimizedSeen = isMinimized();
+    if (minimizedSeen) {
+      clearInlineStyle(wrapper, 'min-height');
+      setInlineStyles(slot.widget, { display: 'none' });
+      moveContainer(container, wrapper, first);
+      setContainerStyle(
+        container,
+        `margin:${marginTop} ${marginRight} ${marginBottom} ${marginLeft};min-width:0;visibility:visible`,
+      );
+    } else {
+      clearInlineStyle(slot.widget, 'display');
+      setInlineStyles(wrapper, {
+        'min-height': `${SLOT_MIN_HEIGHT_PX + pixels(marginTop, 0) + pixels(marginBottom, 0)}px`,
+      });
+      moveContainer(container, wrapper, first);
+      setContainerStyle(
+        container,
+        `position:absolute;inset:${marginTop} ${marginRight} ${marginBottom} ${marginLeft};min-width:0;visibility:visible`,
+      );
+    }
+    setPanelMode(container, 'slot');
   }
 
-  /** Places the card in the slot, beside the tab panel, or in the flow above it. */
+  /** Places the card over the slot, beside the tab panel, or in the flow above it. */
   function arrangeWidget(
     grid: WidgetGrid | null,
     slot: CourseWorkSlot | null,
     viewportWidth: number,
   ): void {
-    if (slot?.wrapper.parentElement) {
-      claim(slot);
-      if (!slotSized && slot.loaded && slot.widget.querySelector('[data-wr-extra]') === null)
-        slotHeight = measureSlot(slot);
-      slotSized = true;
-      const margin = view.getComputedStyle(slot.widget).margin;
-      setInlineStyles(slot.wrapper, { display: 'none' });
-      moveContainer(container, slot.wrapper.parentElement, slot.wrapper);
-      setContainerStyle(
-        container,
-        `margin:${margin};min-width:0;${slotHeight === null ? '' : `--wr-slot-height:${slotHeight}px`}`,
-      );
-      setPanelMode(container, 'slot');
+    if (slot !== null) {
+      arrangeSlot(slot);
       return;
     }
     giveWidgetsBack();
@@ -241,7 +290,7 @@ export function claimDashboardLayout(
 
   function arrange(grid: WidgetGrid | null, slot: CourseWorkSlot | null): void {
     keepCardScroll(container, () => arrangeWidget(grid, slot, doc.documentElement.clientWidth));
-    trackScroll();
+    trackCard();
     restoreScroll();
   }
 
@@ -276,11 +325,12 @@ export function claimDashboardLayout(
     }
     giveWidgetsBack(slot?.wrapper);
     if (slot !== null) claim(slot);
-    // Before the first measurement the widget must be settled, and the fixes must have removed
-    // their extras from it after it was claimed, or the card would take the height of both.
+    // Before the first show the widget must be settled, and the fixes must have removed their
+    // extras from it after it was claimed, so the card does not show over a box that still changes
+    // with the first data.
     const unsettled =
       slot !== null &&
-      !slotSized &&
+      !slotShown &&
       (!slot.loaded || slot.widget.querySelector('[data-wr-extra]') !== null);
     if (unsettled && !waiting && !waitExpired) startWait();
     else if (waiting && !unsettled && (slot !== null || grid !== null)) endWait();
@@ -303,7 +353,10 @@ export function claimDashboardLayout(
       grid?.columns,
       slot?.wrapper,
       slot?.widget,
+      // The card is the first child of the wrapper, so a node that the page puts before it counts.
+      slot?.wrapper.firstElementChild,
       slot?.loaded,
+      slot !== null && isMinimized(),
       inEditMode(doc),
       ...(grid?.firstCards ?? []),
       findDashboardPanel(doc),
@@ -362,6 +415,7 @@ export function claimDashboardLayout(
     stopped = true;
     endWait();
     scrollRoot?.removeEventListener('scroll', onScroll, true);
+    minimizeObserver.disconnect();
     observer.disconnect();
     sizeObserver?.disconnect();
     view.removeEventListener('resize', onSize);
