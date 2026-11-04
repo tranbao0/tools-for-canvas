@@ -1768,8 +1768,8 @@ The owner asked for it after testing an early build: the list should feel like p
 
 **Question:** How does the extension fix the gaps of the new Canvas widget dashboard (roadmap item 2)?
 
-**Decision:** Four fixes, each with its own switch in one setting group, "New dashboard fixes".
-All four are on by default.
+**Decision:** Five fixes, each with its own switch in one setting group, "New dashboard fixes".
+All five are on by default.
 Course work extras and course colors skip the widget whose wrapper has `data-weekrow-replaced`.
 They remove any extras and colors already added to that widget, and still apply to other Course work widgets.
 Both switches stay in settings.
@@ -1786,6 +1786,7 @@ The cache writes of the weekly list follow the cookie rule of decision 11, and t
 | Announcements in place | "Read more" and the title open the whole message in the card, and a course filter joins the read filter |
 | Course work extras | An "Also due" section under the Course work list |
 | All course grades | A grade card for every course, not only six |
+| Steady page buttons | The paged widgets get one page navigator with nine places that never move, in place of the pager of Canvas, which shows other buttons on each page and wraps in a narrow column |
 
 **Facts.**
 They come from the source of the widget package `@instructure/platform-widget-dashboard`, version 16.2.0, and from canvas-lms at commit 1c9f0bb [10] [13].
@@ -1863,6 +1864,36 @@ I read each of them in the package source.
   The read mark of decision 24 uses `PUT` and `DELETE` on `/api/v1/courses/:id/discussion_topics/:id/read` (`mark_topic_read` and `mark_topic_unread`), which change only the read state of the topic.
   A page that the student opens on Canvas, such as with Ctrl+click on "Read more", marks the topic as read by Canvas, as it does without the extension.
 
+**Facts about the pager (the fifth fix).**
+They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`, `TemplateWidget`) and from `@instructure/ui-pagination@11.7.4` (`src/Pagination/v1`, the version that its root export `.` gives, read from the npm package in a temporary folder, never a dependency).
+
+- `TemplateWidget` draws the pager only when `pagination.totalPages > 1` and the widget is not loading or in error.
+  It is `div[data-testid="pagination-container"]` after the content.
+  The container is a flex row that holds an optional `Spinner` (`size: "x-small"`, only while `pagination.isLoading`) and then the `Pagination` with `as: "nav"`, `variant: "compact"`, `currentPage`, `totalPageNumber`, `onPageChange` and `aria-label`.
+  The label is a widget text, such as "Announcements pagination", "Course grades pagination" and "Course work pagination".
+  A page change of the Announcements and Course work widgets shows a separate `loadingOverlay`, and the pager stays in the page.
+  The widget passes no `withFirstAndLastButton`, no `showDisabledButtons`, no `screenReaderLabelPageButton`, no `labelPrev` and no `labelNext`.
+- The `Pagination` root is `nav[role="navigation"]` (the `View` with `as="nav"`, `data-cid="Pagination"`) around a span (`pagination__pages`, inline flex).
+  The span holds the previous arrow, one `ul`, and the next arrow.
+- Each page is `li` (`style="all: unset"`) with one `button` (`BaseButton`, `data-cid="PaginationButton"`).
+  The text of the button is the page number, and it has no `aria-label`, so the page number is its accessible name.
+  The current page is the same kind of button with `aria-current="page"`, a background and a border, and it has no click handler (`PaginationButton` leaves out `onClick` and `href` for it).
+- A skipped range is a bare `li` with "…" (`ellipsis`), with no button and no `aria-hidden` on the default path.
+- The compact list (`renderDefaultPages`, `siblingCount` 1, `boundaryCount` 1) is: with 3 pages or fewer, every page; with more, the first page, then "…" and the page before the current one when the current page is above 3, the current page, then the page after it, "…" and the last page when the current page is below the total minus 2.
+  The last page and the first page always show, as does each neighbor of the current page.
+  So the total is the largest number among the page buttons, and each place of the navigator has a button of Canvas.
+- The arrows are `IconButton` with a screen reader label ("Previous Page", "Next Page" by default, and the widget does not translate them) and `data-direction="prev"` or `"next"` on the button, outside the `ul`.
+  They draw only when the total is above 5 (`propsHaveCompactView`).
+  A disabled arrow is not drawn at all (`shouldEnableIcon || showDisabledButtons`).
+  With 5 pages or fewer there are no arrows, so the navigator clicks the page button that the arrow leads to.
+- `componentDidUpdate` moves the focus to the current page button when `currentPage` changes and the focus is not on an arrow, and `getSnapshotBeforeUpdate` keeps the focus on an arrow.
+  A hidden pager (`display: none`) takes no focus, because `findTabbable` finds nothing in it.
+- React keys each page button by its number, inside arrays that stand at fixed places of the list.
+  A page change adds and removes buttons and moves `aria-current`, and the `Pagination` and its `nav` stay mounted while the widget shows its content.
+  A widget that leaves its loading, error or one-page state draws the container again.
+  So the fix finds the pager again in each pass and at each click, and it never keeps a button of Canvas.
+  The observer also watches `aria-current`, because a list of 3 pages or fewer keeps all its buttons and changes only that attribute.
+
 **Where the code lives.**
 
 - The feature is in `src/features/dashboard-fixes`.
@@ -1874,6 +1905,8 @@ I read each of them in the package source.
   A course home page has no widgets, so it should not load the code of the fixes.
   The script has no storage access and reads the saved address and the switches through the same checked messages as the list script.
   `scripts/check-storage.mjs`, `check-fetch.mjs` and `check-size.mjs` check it like the list script, and each script has its own size budget.
+- Steady page buttons is in `inpage/pager.ts`.
+  `findPagedWidgets` in `src/shared/canvas/widgetDashboard.ts` finds each pager, its current page, its total and its buttons, and skips the widget whose wrapper has `data-weekrow-replaced`.
 - One `MutationObserver` serves the whole feature.
   It watches the content of the page, and a batch of changes (50 ms) runs one pass of the enabled fixes.
   The observer ignores the nodes that the fixes add, so a pass never starts another.
@@ -1958,6 +1991,25 @@ I read each of them in the package source.
    Normal data change notices do not read them again.
    Cached dashboard data never waits for this read.
    Copies hide their grades while preferences are unknown.
+5. **Steady page buttons.**
+   The navigator is a `nav` of nine places of equal width in one row, with the same accessible name as the pager of Canvas.
+   The places are the previous arrow, the first page, a gap, the page before the current one, the current page, the page after it, a gap, the last page and the next arrow.
+   The current page always stands in the middle place, with the look of the current page of Canvas (a filled dark blue square and a white bold number).
+   A place that does not apply stays empty and keeps its box (`visibility: hidden`), so no place moves.
+   A gap shows "…" only when a page lies in it.
+   Arrows always show, and one that cannot be used is light gray with `aria-disabled="true"` and no tab stop.
+   The owner approved the design on 2026-11-03 with a mockup of pages 1, 2, 3, 4, 5, 139 and 141 of 141.
+   Each place maps to a button that Canvas draws, and a click clicks that button, so Canvas changes the page and loads its data.
+   An arrow clicks the arrow of Canvas when it draws one, and else the page button that the arrow leads to.
+   The navigator reads the current page and the total from Canvas after each change and draws again.
+   Its nodes stay in place and change their text, so the focus stays on the place that it was on.
+   When that place is not usable any more (for example "Next Page" on the last page), the focus goes to the current page.
+   The pager of Canvas, with its spinner, stays in the page and takes no room: one rule of the stylesheet, scoped to the widget mark `data-wr-paged`, hides it with `display: none`.
+   So it is out of the accessibility tree and the tab order, and Canvas does not move the focus into it.
+   The navigator has `data-wr-own`, so the observer ignores it.
+   Another fix that hides the pager (the grade cards, and the course filter of the announcements) hides the navigator too.
+   The navigator follows the dark theme of the widget, with the link color `#5A9FD4`, the ink `#FFFFFF` and the disabled color `#4A5B68` of the package, and the current page keeps its blue square.
+   A widget with one page has no pager of Canvas, so it has no navigator.
 
 **Settings.**
 The switches are the tools settings, a trusted item (`toolsSettings`) under decision 5: the storage lock on Chrome and Edge, the vault on Firefox, and a check of each field when it is read.

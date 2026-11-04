@@ -306,9 +306,18 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
 .fixture-widget-app[data-fixture-dark] .fx-c-orange { color: #f0a87a; }
 .fixture-widget-app[data-fixture-dark] .fx-c-green { color: #6fcf8a; }
 .fixture-widget-app[data-fixture-dark] .fx-c-grey { color: #9ea6ad; }
-.fx-pager { padding: 0.25rem 0; text-align: center; }
-.fx-page { display: inline-block; min-width: 2rem; padding: 0.25rem; font-size: 0.875rem; color: var(--fx-link); }
-.fx-page-on { font-weight: 700; color: var(--fx-ink); }
+.fx-pager { padding: 0.5rem 0; text-align: center; }
+.fx-pg-row { display: flex; justify-content: center; align-items: center; gap: 0.75rem; }
+.fx-pg { margin: 0.5rem; text-align: center; }
+.fx-pg-pages { display: inline-flex; align-items: center; }
+.fx-pg-list { all: unset; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.25rem; }
+.fx-pg-btn, .fx-pg-arrow { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; min-width: 2.25rem; height: 2.25rem; margin: 0; padding: 0 0.5rem; font: inherit; font-size: 1rem; color: var(--fx-link); background: none; border: 1px solid transparent; border-radius: 0.25rem; cursor: pointer; }
+.fx-pg-btn[aria-current="page"] { color: #fff; background: #0b5cad; border-color: #0a4f94; cursor: default; }
+.fx-pg-arrow { padding: 0; color: var(--fx-ink); }
+.fx-pg-arrow svg { font-size: 0.75rem; }
+.fx-pg-spinner { flex: none; animation: fx-spin 1s linear infinite; }
+.fx-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@keyframes fx-spin { to { transform: rotate(360deg); } }
 .fx-ann { padding: 0.25rem 0; border-bottom: 0.0625rem solid var(--fx-line); width: 100%; }
 .fx-avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: 50%; background: var(--fx-card-2); font-size: 0.8125rem; font-weight: 700; }
 .fx-iconbtn { flex: none; width: 2rem; height: 2rem; padding: 0; color: var(--fx-secondary); background: transparent; border: 0; border-radius: 0.25rem; cursor: pointer; }

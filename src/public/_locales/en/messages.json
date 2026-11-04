@@ -554,6 +554,18 @@
   "fixCourseGrades": {
     "message": "All course grades"
   },
+  "fixSteadyPager": {
+    "message": "Steady page buttons"
+  },
+  "pagerPage": {
+    "message": "Page $1"
+  },
+  "pagerPrevious": {
+    "message": "Previous Page"
+  },
+  "pagerNext": {
+    "message": "Next Page"
+  },
   "settingAssignmentView": {
     "message": "One assignment view"
   },

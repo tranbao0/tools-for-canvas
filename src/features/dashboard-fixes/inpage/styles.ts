@@ -13,6 +13,25 @@ export const FIXES_CSS = `
 [data-wr-title]{cursor:pointer}
 [data-wr-title]:hover{text-decoration:underline}
 [data-wr-open] [data-wr-snippet],[data-wr-open] [data-wr-more],[data-wr-grades] [data-testid=pagination-container],[data-wr-filtered] [data-wr-content],[data-wr-filtered] [data-testid=pagination-container]{display:none!important}
+[data-wr-paged] [data-testid=pagination-container]{display:none!important}
+[data-wr-grades] [data-wr-own=pager],[data-wr-filtered] [data-wr-own=pager]{display:none!important}
+.wr-pg{box-sizing:border-box;display:grid;grid-template-columns:repeat(9,minmax(0,2.25rem));justify-content:center;width:100%;margin:.5rem 0;padding:.5rem 0;font-size:.875rem;line-height:1;color:#273540;font-variant-numeric:tabular-nums}
+.wr-pg button{all:unset;box-sizing:border-box;display:grid;place-items:center;height:2.25rem;min-width:0;border-radius:.25rem;color:#2b7abc;white-space:nowrap;cursor:pointer}
+.wr-pg-gap{display:grid;place-items:center;height:2.25rem}
+.wr-pg button[aria-current=page]{background:#0b5cad;color:#fff;font-weight:700;cursor:default}
+.wr-pg .wr-pg-arrow-prev,.wr-pg .wr-pg-arrow-next{color:#273540}
+.wr-pg .wr-pg-arrow-prev::before,.wr-pg .wr-pg-arrow-next::before{content:"";box-sizing:border-box;width:.5rem;height:.5rem;border:solid currentColor;transform:rotate(45deg)}
+.wr-pg .wr-pg-arrow-prev::before{border-width:0 0 .125rem .125rem;margin-left:.1875rem}
+.wr-pg .wr-pg-arrow-next::before{border-width:.125rem .125rem 0 0;margin-right:.1875rem}
+.wr-pg button[aria-disabled=true]{color:#c7cdd1;cursor:default}
+.wr-pg .wr-pg-empty{visibility:hidden}
+.wr-pg button:focus-visible{outline:.125rem solid #0b5cad;outline-offset:-.125rem}
+.wr-pg[data-wr-dark]{color:#fff}
+.wr-pg[data-wr-dark] button{color:#5a9fd4}
+.wr-pg[data-wr-dark] button[aria-current=page]{color:#fff}
+.wr-pg[data-wr-dark] .wr-pg-arrow-prev,.wr-pg[data-wr-dark] .wr-pg-arrow-next{color:#fff}
+.wr-pg[data-wr-dark] button[aria-disabled=true]{color:#4a5b68}
+.wr-pg[data-wr-dark] button:focus-visible{outline-color:#5a9fd4}
 [data-wr-bar]{flex-flow:row wrap!important;align-items:flex-end!important;column-gap:.75rem}
 [data-wr-bar]>[data-wr-content],[data-wr-bar]>[data-wr-list]{flex:1 1 100%!important;min-width:0}
 .wr-filter-label{display:block;margin-bottom:.25rem}

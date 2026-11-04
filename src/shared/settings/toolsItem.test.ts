@@ -41,6 +41,7 @@ describe('toolsSettingsItem', () => {
         announcementsInPlace: true,
         courseWorkExtras: true,
         allCourseGrades: true,
+        steadyPager: true,
       },
       assignmentView: true,
     });
@@ -61,6 +62,7 @@ describe('toolsSettingsItem', () => {
         announcementsInPlace: false,
         courseWorkExtras: true,
         allCourseGrades: false,
+        steadyPager: false,
       },
       assignmentView: true,
     };

@@ -15,6 +15,7 @@ const LABELS: readonly [keyof DashboardFixesSettings, string][] = [
   ['announcementsInPlace', 'Announcements in place'],
   ['courseWorkExtras', 'Course work extras'],
   ['allCourseGrades', 'All course grades'],
+  ['steadyPager', 'Steady page buttons'],
 ];
 
 function setup(tools: ToolsSettings = DEFAULT_TOOLS_SETTINGS) {
@@ -42,7 +43,7 @@ describe('FixesSettings', () => {
   it('shows four switches with the labels of the fixes', () => {
     setup();
 
-    expect(screen.getAllByRole('switch')).toHaveLength(4);
+    expect(screen.getAllByRole('switch')).toHaveLength(5);
     for (const [, label] of LABELS) expect(switchOf(label)).toBeTruthy();
   });
 
@@ -68,6 +69,7 @@ describe('FixesSettings', () => {
         announcementsInPlace: true,
         courseWorkExtras: false,
         allCourseGrades: true,
+        steadyPager: true,
       },
       assignmentView: true,
     });
@@ -76,6 +78,7 @@ describe('FixesSettings', () => {
     expect(switchOf('Announcements in place').checked).toBe(true);
     expect(switchOf('Course work extras').checked).toBe(false);
     expect(switchOf('All course grades').checked).toBe(true);
+    expect(switchOf('Steady page buttons').checked).toBe(true);
   });
 
   it.each(LABELS)('turns off %s alone and gives the full settings', (key, label) => {
@@ -101,6 +104,7 @@ describe('FixesSettings', () => {
         announcementsInPlace: false,
         courseWorkExtras: false,
         allCourseGrades: false,
+        steadyPager: false,
       },
       assignmentView: true,
     };

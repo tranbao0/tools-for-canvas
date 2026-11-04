@@ -29,12 +29,14 @@ const OFF: DashboardFixesSettings = {
   announcementsInPlace: false,
   courseWorkExtras: false,
   allCourseGrades: false,
+  steadyPager: false,
 };
 const ARTIFACTS = {
   courseColors: '[data-wr-cc]',
   announcementsInPlace: '[data-wr-filter]',
   courseWorkExtras: '[data-wr-extra]',
   allCourseGrades: '[data-wr-grades]',
+  steadyPager: '[data-wr-own="pager"]',
 } as const;
 
 type Worker = Parameters<typeof saveTools>[0];
@@ -791,7 +793,7 @@ test.describe('the switches', () => {
       if (key === 'allCourseGrades') {
         await expect(page.locator('[data-wr-card]')).toHaveCount(0);
         await expect(
-          page.getByTestId('widget-course-grades-widget').getByTestId('pagination-container'),
+          page.getByTestId('widget-course-grades-widget').locator('[data-wr-own="pager"]'),
         ).toBeVisible();
       }
       if (key === 'announcementsInPlace') {

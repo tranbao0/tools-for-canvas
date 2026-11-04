@@ -21,6 +21,8 @@ export interface DashboardFixesSettings {
   courseWorkExtras: boolean;
   /** A grade card for every course in the Course grades widget. */
   allCourseGrades: boolean;
+  /** One fixed page navigator for the paged widgets. */
+  steadyPager: boolean;
 }
 
 export interface ToolsSettings {
@@ -36,6 +38,7 @@ export const DASHBOARD_FIX_KEYS = [
   'announcementsInPlace',
   'courseWorkExtras',
   'allCourseGrades',
+  'steadyPager',
 ] as const satisfies readonly (keyof DashboardFixesSettings)[];
 
 export const DEFAULT_TOOLS_SETTINGS: ToolsSettings = {
@@ -46,6 +49,7 @@ export const DEFAULT_TOOLS_SETTINGS: ToolsSettings = {
     announcementsInPlace: true,
     courseWorkExtras: true,
     allCourseGrades: true,
+    steadyPager: true,
   },
   assignmentView: true,
 };

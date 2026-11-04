@@ -31,6 +31,7 @@ test.beforeEach(async ({ background }) => {
       announcementsInPlace: false,
       courseWorkExtras: false,
       allCourseGrades: false,
+      steadyPager: false,
     },
   });
 });
