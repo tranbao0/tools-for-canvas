@@ -11,6 +11,7 @@ import { findWidgetGrid } from '../../../shared/canvas/widgetDashboard';
 import { detectPageTheme } from '../../../shared/ui/pageTheme';
 import { logFailure } from '../../../shared/platform/log';
 import { App } from '../ui/App';
+import { activeElementIn } from '../ui/focus';
 import { SlotModeContext, watchSlotMode } from '../ui/slotMode';
 import { APP_CSS } from '../../../shared/ui/styles';
 import { inpageHost, sendFromContentScript } from './inpageHost';
@@ -77,7 +78,18 @@ export function createInpageView(
     setSlot(next) {
       if (next === slot) return;
       slot = next;
+      // The two row layouts give some controls another parent, so the focused one is drawn anew.
+      // The same control of the same row takes the focus back.
+      const active = container === null ? null : activeElementIn(container);
+      const row = active?.closest<HTMLElement>('[data-row-key]');
+      const part = active?.closest<HTMLElement>('[data-part]')?.dataset.part;
+      const key = row?.dataset.rowKey;
       draw();
+      if (container === null || key === undefined || part === undefined) return;
+      const same = container.querySelector<HTMLElement>(
+        `[data-row-key="${CSS.escape(key)}"] [data-part="${CSS.escape(part)}"]`,
+      );
+      if (same !== null && activeElementIn(container) !== same) same.focus({ preventScroll: true });
     },
   };
 }
