@@ -1,6 +1,6 @@
 import { browser, type Browser } from 'wxt/browser';
 import { t } from '../../shared/ui/i18n';
-import { createDock, type Dock } from './dock';
+import { createDock, FILE_HOST_ID, removeStaleFilePane, type Dock } from './dock';
 import { TOP_OPEN } from './frame';
 import { acceptPaneHello, isViewerSecret, secretMessage, validPaneReady } from './channel';
 import {
@@ -47,6 +47,9 @@ export async function startViewer(): Promise<void> {
   // cannot stop the viewer. The new copy sets its own teardown before it waits for anything.
   const scope = globalThis as typeof globalThis & { __weekrowViewer?: () => void };
   scope.__weekrowViewer?.();
+  // A copy that an update ended with its pane open left a host and the room beside it. This copy
+  // has no pane yet, so any host with the mark of a dock is stale.
+  removeStaleFilePane();
   const lifetime = new AbortController();
   let live = true;
   let enabled = false;
@@ -181,7 +184,7 @@ export async function startViewer(): Promise<void> {
     lastHelloAt = -Infinity;
     const created = createDock({
       role: 'file',
-      id: 'tools-file-viewer',
+      id: FILE_HOST_ID,
       label: 'File viewer',
       resizeLabel: 'Resize file viewer',
       width,

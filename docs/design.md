@@ -2652,6 +2652,8 @@ With the pane read alone, the default run of the test failed before the fix.
      When it goes on, the background runs the click catcher (`viewer.js`) in the open tabs of the saved Canvas.
      When it goes off, the catcher of each page ends itself when the page hears the change, so it takes no more clicks and the pane closes.
      The assignment page reads the same switch for its sidebar, so a label "View NAME" always has a catcher behind it.
+     A copy that an update ended with its pane open leaves the host and the room beside it, and the next copy has no reference to them.
+     So a starting copy first removes a `#tools-file-viewer` host that carries the mark of a dock (`data-weekrow-dock`), never an element that only has the id, and gives the page padding back from the record that the dock keeps on the `html` element (`data-weekrow-room`).
      The catcher of a frame of the Submission Details page (item 11) does not end by itself when the switch goes off, and it stays until the next load of the frame.
      It needs the pane of the top page to take a file, so it asks the top page, gets no answer, and the browser saves the file as it would without the extension.
      So after the switch goes off, a click on a file in that frame downloads it and opens no pane.

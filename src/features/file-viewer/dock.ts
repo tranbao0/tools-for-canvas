@@ -72,8 +72,17 @@ const SHARED = Symbol.for('tools-for-canvas.dock');
  */
 export const ROOM_ATTRIBUTE = 'data-weekrow-room';
 
+/** The id of the host of the file pane. */
+export const FILE_HOST_ID = 'tools-file-viewer';
+
 /** The ids of the hosts of the three panes. */
-const HOST_IDS = ['tools-file-viewer', 'tools-turn-in', 'tools-feedback'];
+const HOST_IDS = [FILE_HOST_ID, 'tools-turn-in', 'tools-feedback'];
+
+/**
+ * The attribute that every dock puts on its host, so a later copy of the script can tell a host
+ * that an earlier copy made from an element that a page gave the same id.
+ */
+export const DOCK_ATTRIBUTE = 'data-weekrow-dock';
 
 /** A saved padding is empty or a plain length, with no function, so a forged record sets nothing odd. */
 const PLAIN_PADDING = /^(?:\d{1,5}(?:\.\d{1,3})?(?:px|em|rem|%|vw)?)?$/;
@@ -91,6 +100,18 @@ function readRecord(page: Element): Saved | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Removes the file pane that an earlier copy of the script left on the page, and gives its room
+ * back. An update can end a copy with its pane open, and the new copy has no reference to it. Only
+ * a host that carries the mark of a dock goes, never an element that a page gave the id. Call it
+ * at the start of a copy, before the copy makes a pane of its own.
+ */
+export function removeStaleFilePane(doc: Document = document): void {
+  for (const host of doc.querySelectorAll(`[id="${FILE_HOST_ID}"][${DOCK_ATTRIBUTE}]`))
+    host.remove();
+  giveBackRoom(doc);
 }
 
 /**
@@ -161,6 +182,7 @@ export function createDock(options: DockOptions): Dock {
 
   const host = doc.createElement('div');
   host.id = options.id;
+  host.setAttribute(DOCK_ATTRIBUTE, '');
   host.style.cssText = 'position:fixed;right:0;top:0;height:100vh;z-index:2147483647;';
   // A closed root keeps a script of the Canvas page from reaching the frame element. A frame of the
   // Canvas origin inside the root still reaches the root, so such a frame belongs in a root of its own.
