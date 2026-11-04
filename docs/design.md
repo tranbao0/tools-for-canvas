@@ -2982,6 +2982,10 @@ So a student switches pages to read the instructions next to the feedback on a f
        The button opens the DocViewer session of Canvas in a docked feedback pane.
      - A text entry shows its text, and a URL submission shows its link, under "Your submission".
        A submission with no files has no "Your files" heading.
+     - A submission of another type (media recording, quiz, LTI tool, student annotation, discussion) keeps Canvas's own left area, visible and untouched.
+       The extension adds only the "Instructions" block, with the same look and the same "Show more" rule, above the whole content area.
+       "Your files" and "Your submission" do not show for these types.
+       The owner decided this on 2026-11-03: the view cannot show these types safely, and the instructions belong at the top of every Submission Details page.
      - Everything else on the page stays Canvas's own and untouched: the "Submission Details" header, the grade, "Show Rubric", the title, "submitted ...", "Re-submit Assignment" and the comments column on the right.
    - **Assignment page (`/courses/:id/assignments/:id`).**
      - The extension adds nothing.
@@ -3002,15 +3006,16 @@ So a student switches pages to read the instructions next to the feedback on a f
    - The page is the own submission when the user in the path is the user of the record that the background reads with `submissions/self`.
      The two ids are compared as decimal global ids with BigInt, like `normalizeCanvasId`: `s~l` becomes `s * 10^13 + l`.
    - A teacher, an observer, another student, a refused read, a failed read and a record of another assignment all leave the page as Canvas drew it.
-   - The page also stays as it is when an anchor is missing, and for a submission type that the view cannot show in full.
-     The types that it shows are no submission, `online_upload`, `online_text_entry` and `online_url`.
-     A media recording, a quiz, an LTI tool, a student annotation and a discussion keep Canvas's own area.
+   - The page also stays as it is when an anchor is missing.
+   - The view replaces Canvas's files frame for no submission, `online_upload`, `online_text_entry` and `online_url`.
+     For every other type the frame stays, and the view adds only the instructions above it (item 4).
    - The files frame stays visible until the read has finished, so a page that stays as it is never flickers.
 4. **How the page changes.**
-   - One `style` element in the head hides `.submission-details-container>.submission-details-frame`.
-   - One host element is added after that frame, in the same flex row, with the comments column on its right.
+   - When the view replaces the frame: one `style` element in the head hides `.submission-details-container>.submission-details-frame`, and one host element is added after that frame, in the same flex row, with the comments column on its right.
+   - For any other type: no style is added, and the host is added right before `.submission-details-container`, so it sits above the frame and the comments column.
+     Canvas's frame and comments are not changed in any way.
    - No node of Canvas gets an attribute or a style, and the frame is never moved, because a moved frame reloads.
-   - Turning the switch off removes the style, the host and an open feedback pane, so the container is the same as Canvas drew it.
+   - Turning the switch off removes the style, the host and an open feedback pane, so the content area is the same as Canvas drew it.
 5. **Where the files come from.**
    - The rows come from the same-origin files frame `iframe#preview_frame`, once its document is the preview page and has loaded: `tr.file-upload-submission`, the file link, the size text, the label of the button and the unread mark.
    - A link counts only when it is a file of the submission of this page.
@@ -3150,7 +3155,7 @@ The fixtures run in the browser test server, through the Assignments list route 
 - `tests/fixtures/submission-page.ts` and `tests/fixtures/submission-frame.ts` model the page and the files frame on that markup.
   The page fixture has a student and a teacher variant.
 - `tests/fixtures/pages/assignment.html` has the sidebar of the assignment page.
-- `tests/e2e/submission-details.spec.ts` covers the replacement, the file click, the feedback pane, the unchanged pages and the switch.
+- `tests/e2e/submission-details.spec.ts` covers the replacement, the file click, the feedback pane, the instructions above an untouched frame for a media recording, the unchanged pages and the switch.
 
 **Live checks for the owner:**
 
@@ -3159,7 +3164,7 @@ The fixtures run in the browser test server, through the Assignments list route 
 3. Click "View Feedback" on an annotated PDF: the pane shows the teacher's notes.
    If DocViewer refuses the frame, use "Open in new tab" and report it.
 4. Open the same page as a teacher, if possible: nothing changes.
-5. A text entry, a URL submission and a media recording: the first two show in "Your submission", and the media recording keeps Canvas's own area.
+5. A text entry, a URL submission and a media recording: the first two show in "Your submission", and the media recording keeps Canvas's own area with the instructions above it.
 6. Turn the switch off: the page is as Canvas drew it, without a reload.
 7. On the assignment page, click the download link of the Submission sidebar: the file opens in the pane.
 

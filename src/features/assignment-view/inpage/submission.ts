@@ -4,10 +4,13 @@
  * Canvas draws the page with the header, the grade and "Show Rubric", the title and the submit
  * button, and a content area of two columns: the files frame `div.submission-details-frame` on the
  * left and the comments `div.submission-details-comments` on the right
- * (`app/views/submissions/show.html.erb`). This view hides the files frame and puts a host of its
- * own beside the comments column. The host shows the instructions, the text or address of the
- * submission and the files. Nothing else of the page is touched, no node of Canvas gets an
- * attribute or a style, and the frame is never moved, because a moved frame reloads.
+ * (`app/views/submissions/show.html.erb`). For a submission that the view can show in full, it
+ * hides the files frame and puts a host of its own beside the comments column. The host shows the
+ * instructions, the text or address of the submission and the files. For any other submission type
+ * (media recording, quiz, LTI tool, student annotation, discussion) the frame stays visible and
+ * untouched, and the host holds only the instructions, above the whole content area. Nothing else
+ * of the page is touched, no node of Canvas gets an attribute or a style, and the frame is never
+ * moved, because a moved frame reloads.
  *
  * The view changes the page only for the signed-in student's own submission: the user of the path
  * must be the user of the `submissions/self` record that the background reads. A teacher, an
@@ -28,7 +31,10 @@ import { OWN } from './rows';
 import { filesFromDetails, readFrameFiles, type FrameFile } from './submissionFrame';
 import { PANEL_CSS, SUBMISSION_CSS } from './styles';
 
-/** The submission types that this view can show in full. Canvas keeps its own area for the rest. */
+/**
+ * The submission types that this view can show in full, in place of Canvas's files frame. Canvas
+ * keeps its own area for the rest, and the view adds only the instructions above it.
+ */
 const SHOWN_TYPES: ReadonlySet<string | null | undefined> = new Set([
   null,
   undefined,
@@ -66,6 +72,7 @@ export interface SubmissionView {
 }
 
 interface Anchors {
+  container: Element;
   box: Element;
   frame: HTMLIFrameElement;
 }
@@ -105,7 +112,7 @@ function findAnchors(doc: Document): Anchors | null {
     child.classList.contains('submission-details-comments'),
   );
   const frame = box?.querySelector<HTMLIFrameElement>('iframe#preview_frame');
-  return box && comments && frame ? { box, frame } : null;
+  return container && box && comments && frame ? { container, box, frame } : null;
 }
 
 export function createSubmissionView(options: SubmissionViewOptions): SubmissionView {
@@ -169,10 +176,14 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
 
   function mount(reply: AssignmentDetailsReply, anchors: Anchors): void {
     const { details } = reply;
-    style = doc.createElement('style');
-    style.setAttribute(OWN, '');
-    style.textContent = HIDE_FRAME;
-    doc.head.append(style);
+    // A type that the view cannot show keeps Canvas's frame, and the host holds the instructions.
+    const replace = SHOWN_TYPES.has(details.submission.submission_type);
+    if (replace) {
+      style = doc.createElement('style');
+      style.setAttribute(OWN, '');
+      style.textContent = HIDE_FRAME;
+      doc.head.append(style);
+    }
 
     const created = doc.createElement('div');
     created.id = 'av-submission-details';
@@ -184,12 +195,13 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     const shadow = created.attachShadow({ mode: 'open' });
     const sheet = doc.createElement('style');
     sheet.textContent = PANEL_CSS + SUBMISSION_CSS;
-    const panel = node(doc, 'div', 'av av-sub');
+    const panel = node(doc, 'div', replace ? 'av av-sub' : 'av av-sub av-sub-above');
     panel.setAttribute('role', 'region');
-    panel.setAttribute('aria-label', 'Instructions and your files');
+    panel.setAttribute('aria-label', replace ? 'Instructions and your files' : 'Instructions');
     shadow.append(sheet, panel);
     host = created;
-    anchors.box.after(created);
+    if (replace) anchors.box.after(created);
+    else anchors.container.before(created);
 
     // The checked session addresses stay in this list. They never become attributes of the page.
     let files: FrameFile[] = [];
@@ -242,10 +254,12 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       drawFiles();
     };
     panel.append(instructions);
-    if (submitted) panel.append(submitted);
-    readFiles();
-    anchors.frame.addEventListener('load', readFiles);
-    stopFrame = () => anchors.frame.removeEventListener('load', readFiles);
+    if (replace) {
+      if (submitted) panel.append(submitted);
+      readFiles();
+      anchors.frame.addEventListener('load', readFiles);
+      stopFrame = () => anchors.frame.removeEventListener('load', readFiles);
+    }
 
     fitInstructions(panel);
     const body = panel.querySelector('.av-instructions .av-body');
@@ -292,8 +306,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     if (
       !isDetailsReply(reply) ||
       normalizeCanvasId(reply.details.assignment.id) !== normalizeCanvasId(options.assignmentId) ||
-      normalizeCanvasId(reply.details.submission.user_id) !== normalizeCanvasId(options.userId) ||
-      !SHOWN_TYPES.has(reply.details.submission.submission_type)
+      normalizeCanvasId(reply.details.submission.user_id) !== normalizeCanvasId(options.userId)
     )
       return;
     const anchors = findAnchors(doc);
