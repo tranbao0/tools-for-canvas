@@ -1642,7 +1642,7 @@ It has a minimize button instead (see below).
     A change that comes from another tab leaves focus alone.
   - The state is saved as the field `minimized` of the stored settings (a boolean, false by default).
     It holds on every Canvas page and in every tab, and it stays after a reload.
-    An expanded card keeps the scroll positions that it had before the minimize, while the page stays open.
+    An expanded card keeps the scroll positions of its day list and of its Announcements list from before the minimize, while the page stays open; the card itself starts at its top, and an open No due date or Done group closes.
   - The side panel has no minimize button and ignores the field.
   - The page channel accepts `minimized` in `weekrow:save-settings`, and it rejects any other shape.
     Stored settings from an earlier version that hold `showOnCanvasPages` read without it, and the field is dropped.

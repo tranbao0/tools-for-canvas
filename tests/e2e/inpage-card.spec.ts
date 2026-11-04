@@ -673,11 +673,15 @@ test.describe('the full list in the card', () => {
     expect(sizes.radius).toBe('6px');
     // The count stays at the right edge of the content, in line with the day counts.
     expect(Math.abs(sizes.countRight - sizes.contentRight)).toBeLessThanOrEqual(1);
-    await toggle.focus();
+    // Keyboard focus: away and back, so the ring shows as it does for a keyboard user.
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    const ring = await toggle.evaluate((element) => ({
+      visible: element.matches(':focus-visible'),
+      offset: getComputedStyle(element).outlineOffset,
+    }));
     // The focus ring is drawn inside the toggle, so no edge clips it.
-    expect(await toggle.evaluate((element) => getComputedStyle(element).outlineOffset)).toBe(
-      '-2px',
-    );
+    expect(ring).toEqual({ visible: true, offset: '-2px' });
   });
 
   test('shows the days again when the span steps', async ({ context, page, background }) => {
