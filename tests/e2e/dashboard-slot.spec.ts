@@ -278,7 +278,10 @@ async function openFixture(
 for (const state of ['default', 'second', 'pair']) {
   test(`stops writing to the page when nothing changes (${state})`, async ({ context, page }) => {
     await openFixture(context, page, state);
-    // The fixes draw their extras after the data arrives and the card is placed.
+    // The fixes draw after their data arrives, which on a busy machine can be after the card is
+    // placed: the window starts once every fix of the fixture has drawn.
+    await expect(page.locator('[data-wr-ann]').first()).toBeAttached();
+    await expect(page.locator('[data-wr-grades]').first()).toBeAttached();
     if (state !== 'default') await expect(page.locator('[data-wr-extra]').first()).toBeAttached();
     await page.waitForTimeout(500);
     const records = await page.evaluate(
