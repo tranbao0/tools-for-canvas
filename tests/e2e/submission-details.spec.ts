@@ -273,11 +273,12 @@ test('a switch saved while the page script starts still shows the view when the 
     globalThis.__held = held;
   })()`);
 
-  // The script starts. Its three start reads are held, so the start cannot end.
+  // The script starts. Its three start reads are held (a push of the background can add one), so
+  // the start cannot end.
   await background.evaluate(() =>
     (globalThis as unknown as { __injecting: { open(): void } }).__injecting.open(),
   );
-  await expect.poll(() => script.evaluate('globalThis.__held.held')).toBe(3);
+  await expect.poll(() => script.evaluate('globalThis.__held.held')).toBeGreaterThanOrEqual(3);
   await expect(page.locator('html')).not.toHaveAttribute('data-av-started');
 
   // The student turns the switch on now. The read that the change starts is not held, and it
