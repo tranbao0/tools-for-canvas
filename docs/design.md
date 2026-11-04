@@ -53,7 +53,7 @@ This extension has no account, no server of its own and no telemetry.
 | 23 | File access check | A read-only check that runs on the owner's live Canvas in test builds only, and answers the open questions for the file viewer |
 | 24 | Announcements in the weekly list | A Tasks and Announcements switch under the rings on the classic dashboard, List View, course home pages and the side panel, with a read mark that only an explicit student action writes |
 | 25 | File viewer | Files open in a docked, resizable pane with tabs beside Canvas; PDFs in a bundled PDF.js viewer that saves the page, other types in the browser's own players or an "Open in Canvas" card |
-| 26 | One assignment view | Grades and Assignments rows expand in place to show the score, instructions, rubric, feedback and files; Submit opens Canvas's own turn-in page in the docked pane |
+| 26 | One assignment view | The Submission Details page of the student's own submission shows the instructions and the files in place of Canvas's files frame, with a feedback pane for View Feedback; the Assignments list rows expand in place, and Submit opens Canvas's own turn-in page in the docked pane |
 
 ## Decisions
 
@@ -2962,94 +2962,89 @@ The channel checks the saved Canvas origin, the parent window, one transferred p
 
 ### 26. One assignment view
 
-**Question:** How does a student see an assignment's instructions, grade, rubric, feedback and turn-in in one place?
+**Question:** How does a student see an assignment's instructions next to the work that they handed in?
 
 **Problem:** Canvas splits one assignment over several pages.
-The owner showed this on 2026-10-30 with screenshots of sjsu.instructure.com:
-
-- The Grades page (`/courses/:id/grades`) lists every assignment with its score, a rubric toggle and comment icons, but a student cannot turn anything in from it.
-- The submission details page (`/courses/:id/assignments/:id/submissions/:id`) holds only the files, the comments and "Re-submit Assignment".
-- The Assignments list and the assignment page hold the instructions and the turn-in.
-
-So a student switches pages to check the rubric while submitting, or to read feedback next to the instructions.
+The owner showed this on 2026-10-30 with screenshots of sjsu.instructure.com.
+The Submission Details page (`/courses/:id/assignments/:id/submissions/:user`) holds the files, the comments and "Re-submit Assignment", but not the instructions.
+So a student switches pages to read the instructions next to the feedback on a file.
 
 **Decision:**
 
-1. **Where it shows.**
-   - Each assignment row on the Grades page and on the Assignments list gets a small expand button at its start.
-   - A click on the button opens the assignment in place under its row; a second click closes it.
-   - The row's own link still opens the Canvas assignment page as before.
-   - Several rows may be open at once, and the open rows last while the page stays open.
-2. **What the open row shows,** top to bottom:
-   - The due date, the score and the same status chips as the weekly list (decision 7).
-   - The instructions, shortened to about 10 lines with "Show more".
-   - The rubric: each criterion with its ratings and points, with the student's own assessment marked when there is one.
-   - The teacher's feedback: comments newest first, with their attachments.
-   - The student's own submitted files and comment attachments.
-   - Two buttons: "Submit" (or "Re-submit" after a submission) and "Open assignment".
-3. **Files** in the open row open in the file viewer pane (decision 25).
-4. **Turn-in.**
-   - "Submit" opens Canvas's own assignment page in the docked pane of decision 25, as a Canvas-origin frame inside the pane host on the Canvas page.
-   - Canvas allows this, because its `frame-ancestors 'self'` lets a Canvas page frame its own pages.
-   - The extension never builds its own upload, so every Canvas submission type, plagiarism tool and LTI tool keeps working.
-   - After a submission, the open row and the weekly list read again.
-5. **Data.**
-   - The background reads one assignment with `GET /api/v1/courses/:id/assignments/:id?include[]=submission&include[]=can_submit` and the student's own submission with `GET /api/v1/courses/:id/assignments/:id/submissions/self?include[]=submission_comments&include[]=rubric_assessment`.
-   - The rubric comes with the assignment record.
-   - It reads when a row opens or the assignment page loads, and keeps the result for the page view.
-   - A comparison of a page id with an API id converts both to decimal global strings with BigInt: `s~l` becomes `s * 10^13 + l`.
-   - A 404 for the own submission returns `no_submission_access`; an observer gets no assignment page panel.
-   - Every read follows the cookie binding of decision 11, so a reply never crosses students.
-6. **Settings.** A "One assignment view" switch in the tools settings, on by default.
+1. **What shows where.**
+   - **Submission Details page, own submission.**
+     - Canvas's left content area is hidden: the files frame with the "Files" table, which the owner crossed out on 2026-11-03.
+     - In its place the extension shows "Instructions" and "Your files".
+     - "Instructions" is the assignment description, sanitized, in full, with "Show more" only when it is longer than about 15 lines.
+     - "Your files" lists each submitted file with its name and size.
+       A click on a file name opens the file in the file viewer pane (decision 25).
+       A file that Canvas can preview has a "View Feedback" button (or "Preview" when the teacher left no notes), right-aligned, with Canvas's own label and its unread dot.
+       The button opens the DocViewer session of Canvas in a docked feedback pane.
+     - A text entry shows its text, and a URL submission shows its link, under "Your submission".
+       A submission with no files has no "Your files" heading.
+     - Everything else on the page stays Canvas's own and untouched: the "Submission Details" header, the grade, "Show Rubric", the title, "submitted ...", "Re-submit Assignment" and the comments column on the right.
+   - **Assignment page (`/courses/:id/assignments/:id`).**
+     - The extension adds nothing.
+     - A click on the submitted file's download link in Canvas's own "Submission" sidebar opens the file in the file pane, because the pane takes any `/submissions/:user?download=:file` link (decision 25).
+       Canvas's other sidebar links stay as they are.
+   - **Assignments list (`/courses/:id/assignments`).**
+     - Each row has an expand button that opens the score, instructions, rubric, feedback and files in place, and "Submit" opens Canvas's own turn-in page in the docked pane (steps 2 and 3 below).
+     - A later topic will decide what to do with these rows.
+   - **Grades list (`/courses/:id/grades`).**
+     - Canvas's own look.
+2. **What was removed and why.**
+   - The owner tested the first build on sjsu.instructure.com on 2026-11-03.
+   - The expanded rows of the Grades list made very long stacks, and the owner said the native Grades list "looks fine".
+     The expand buttons and rows there are gone.
+   - The "Your submission" panel of the classic assignment page showed a second rubric next to Canvas's own.
+     It is gone.
+3. **Only for the signed-in student's own submission.**
+   - The page is the own submission when the user in the path is the user of the record that the background reads with `submissions/self`.
+     The two ids are compared as decimal global ids with BigInt, like `normalizeCanvasId`: `s~l` becomes `s * 10^13 + l`.
+   - A teacher, an observer, another student, a refused read, a failed read and a record of another assignment all leave the page as Canvas drew it.
+   - The page also stays as it is when an anchor is missing, and for a submission type that the view cannot show in full.
+     The types that it shows are no submission, `online_upload`, `online_text_entry` and `online_url`.
+     A media recording, a quiz, an LTI tool, a student annotation and a discussion keep Canvas's own area.
+   - The files frame stays visible until the read has finished, so a page that stays as it is never flickers.
+4. **How the page changes.**
+   - One `style` element in the head hides `.submission-details-container>.submission-details-frame`.
+   - One host element is added after that frame, in the same flex row, with the comments column on its right.
+   - No node of Canvas gets an attribute or a style, and the frame is never moved, because a moved frame reloads.
+   - Turning the switch off removes the style, the host and an open feedback pane, so the container is the same as Canvas drew it.
+5. **Where the files come from.**
+   - The rows come from the same-origin files frame `iframe#preview_frame`, once its document is the preview page and has loaded: `tr.file-upload-submission`, the file link, the size text, the label of the button and the unread mark.
+   - A link counts only when it is a file of the submission of this page.
+   - A frame that cannot be read, or that has no file rows, falls back to the files of the details (`attachments` with `display_name` and `size`) with no "View Feedback" button.
+   - The size of the details is written like Rails `number_to_human_size`: base 1024, three significant digits, for example "118 KB".
+6. **The feedback pane.**
+   - Canvas opens "View Feedback" in a dialog inside the files frame, which the view hides.
+     The dialog needs only the data attributes of the link: its handler calls `loadDocPreview` with `$(this).data()`, and that builds an iframe from `canvadoc_session_url`.
+   - The view reads that attribute from the link in the frame and opens the same address in a feedback pane.
+     The pane is a frame on the Canvas page in a host of its own, in the dock of decision 25.
+     It has a bar with the file name, "Open in new tab" and a close button.
+   - The address is strict.
+     It must be on the saved Canvas, with the path `/api/v1/canvadoc_session`, with `blob` and `hmac` once each and no other parameter.
+     Any other value counts as absent, and the file has no button.
+   - The address is signed for one student and acts like a secret.
+     It stays in a closure of the script and in the closed root of the pane.
+     It is never an attribute of the page or of the open root of the view, and no code logs it.
+   - Canvas answers the address with a redirect to DocViewer, so the script cannot read the address of the frame, and it cannot tell that DocViewer refused to be framed.
+     So "Open in new tab" is always in the bar.
+   - The pane steps aside for the file pane and shows again when it closes.
+7. **Settings.** The "One assignment view" switch in the tools settings turns all of this on and off at once, without a reload.
+   - Off gives the page back exactly as Canvas drew it.
+   - The sidebar click of the assignment page follows the "File viewer" switch instead, because it is a file click.
 
-**Security:**
-
-- Instructions and comments are teacher HTML, so they go through the shared sanitizer of decision 22.
-- The turn-in frame is a Canvas page in the Canvas origin, not an extension page, so it gets no extension rights.
-
-**Build order:**
-
-1. Built: the expand rows on the Grades page, with the read-only content (score, instructions, rubric, feedback, files).
-2. Built: the same rows on the Assignments list.
-3. Built: "Submit" in the docked pane, and the refresh after a submission.
-
-**Step 1 (built on feat/v1):**
-
-The Grades page now has the expand rows with the read-only content.
-Step 2 (the Assignments list) is built.
-Step 3 (Submit) is built.
-
-**Step 4 (assignment page):**
-
-The classic student assignment page shows a permanent "Your submission" panel directly after the description in its main column.
-It reuses the score, status, submitted date, rubric assessment, comments and own files of step 1, without instructions or action buttons.
-The summary always shows the score, status chips and submitted date, if any.
-An assignment that takes a submission shows "No submission yet" below the summary when the student has no submission.
-The rubric, comments and files sections appear only when they have content.
-The switch and Theme setting apply without a reload.
-A submission reloads Canvas and reads the panel again.
-The existing message, router, cookie binding, projection and sanitizer remain unchanged.
-The injection and page route checks accept `/courses/:c/assignments/:a`, including shard ids.
-
-Verified against canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`:
-
-- `app/views/assignments/show.html.erb` places `.description.user_content` directly in `#assignment_show` after the student overview.
-- The student branch renders `_student_assignment_overview.html.erb`, whose root is `ul.student-assignment-overview`, and the native submission button.
-- The teacher description has `.teacher-version`.
-- `ui/features/assignments_show_student/index.js` mounts the new student React view in a new div in `#content`, without the classic wrapper and overview.
-- The root is the first element from `document.getElementById('content')`; description content cannot supply another root.
-- The panel requires the classic wrapper as a direct child of that root, its direct student overview and its direct non-teacher description, so the new student view receives no panel.
-- The fixture retains those classic source hooks and supplies fixed course content and local styles for tests.
-
+**The Assignments list rows (steps 2 and 3, as built):**
 
 - **Script.**
   - The page script is `assignment-view.js`, which is its own small entry point like `dashboard.js`.
-  - The background injects it next to the list script, into the top frame of a Grades or Assignments page of the saved Canvas (`/courses/:id/grades`, `/courses/:id/assignments` or `/courses/:id/assignments/:assignmentId`, also with a shard id), including while the switch is off so it can follow changes.
-  - `/courses/:id/grades/:user` is another page and gets nothing.
+  - The background injects it next to the list script, into the top frame of the Assignments list (`/courses/:id/assignments`) or a Submission Details page (`/courses/:id/assignments/:assignment/submissions/:user`) of the saved Canvas, also with shard ids, including while the switch is off so it can follow changes.
+  - The Grades list, the assignment page and the page of an anonymous submission (`anonymous_submissions/:id`) get nothing.
   - A newer injection retires the copy of an earlier one, and a start removes the nodes that a destroyed copy left (every node and mark starts with `data-av-`).
   - The script follows the switch, the saved address and the Theme setting through the page channel.
   - Turning the switch off removes every control at once and forgets the loaded details.
-  - Turning the switch on adds the controls on an open Grades or Assignments page without a reload.
+  - Turning the switch on adds the controls on an open page without a reload.
 - **Message.**
   - `assignment:details { courseId, assignmentId }` has strict Canvas id checks (`isAssignmentDetailsMessage`).
   - The data router accepts it only from the top frame of a tab whose page has the saved origin, and refuses extension pages.
@@ -3058,12 +3053,13 @@ Verified against canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`:
   - A cookie that is not confirmed yet waits for one check (`viewerConfirm`) and the read runs once more.
   - The background keeps only the fields of the view, with a limit on every text, in `projectAssignmentView`.
   - The reply holds the details and the time zone of the Canvas profile.
+  - The Submission Details page uses the same message and reply.
+    The projection keeps the size of each file and, for the submission, its type, text and address, with the same limits.
 - **Rows.**
-  - A row counts when it is `tr.student_assignment` with the id `submission_<assignment id>` and no `hard_coded` class, so the group totals and the final grade get no button.
-  - The button is the first child of the `th.title` cell, so the columns keep their width.
+  - A row counts when it is `div.ig-row` with the id `assignment_<assignment id>` and a title link `a.ig-title` to the same course and assignment on the saved Canvas.
+  - The button is the first child of the `.ig-info` block.
   - It has `aria-expanded`, `aria-controls` and the label "Show details for <title>".
-  - The details row follows the assignment row and spans all its columns.
-  - Canvas's own comment and rubric rows come after it, and Canvas finds them by id.
+  - The details row follows the assignment row.
   - Several rows may be open, and closing a row hides it, so it opens again from memory.
   - The reply is cached for the page view, one request for each assignment at a time.
   - A failed request is not cached, and the error state has Retry.
@@ -3074,7 +3070,7 @@ Verified against canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`:
   - The top part shows the due date and the score in the Canvas time zone, and the chips of decision 7.
   - The chips use the rules and the labels of the weekly list (`chips.ts`).
     The names of teacher statuses are not read here, so a teacher status shows as "Teacher status".
-    A Past due chip shows for every open assignment past its date, because the Grades page lists past work.
+    A Past due chip shows for every open assignment past its date, because the Assignments list shows past work.
   - The instructions are sanitized, cut to about 10 lines with a fade, and have "Show more" only when text is cut.
   - The rubric marks the rating of the student and shows the points, unless the rubric hides them.
   - The comments come newest first, and comment text goes through the sanitizer.
@@ -3086,29 +3082,59 @@ Verified against canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`:
   - A comment attachment opens in the pane through its submission route, and its error card keeps a Download button (Ticket F2b).
 - **Settings.** "One assignment view" is in the tools settings, on by default, in the same three places as the other settings.
 
-**Verified source facts for step 1:**
+**Security:**
 
-These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
-`app/views/gradebooks/grade_summary.html.erb` renders assignment rows with `id="submission_<assignment id>"` and a `th.title` cell.
-`app/presenters/grade_summary_assignment_presenter.rb`, method `classes`, adds `student_assignment`.
-The title can link to the assignment page, submission details or peer reviews, so the extension must preserve the existing link.
-The comments row has `id="comments_thread_<assignment id>"` and the rubric row has `id="rubric_<assignment id>"`.
-The controls use `toggle_comments_link` and `toggle_rubric_assessments_link`.
-The rubric row renders `app/views/shared/_rubric.html.erb` when the non-scoring rubric feature is off.
-`lib/api/v1/assignment.rb` returns the description through `api_user_content` and returns criteria and ratings from an active rubric association.
-Each criterion and rating has its own id, description and points.
-The rubric settings include `hide_points` and `hide_score_total`.
-`app/controllers/assignments_api_controller.rb`, method `show`, handles the submission and can-submit includes.
-The assignment serializer includes the submission and computes `can_submit` only when requested and applicable.
-`app/controllers/submissions_api_controller.rb`, method `show`, passes the requested includes to the submission serializer after its read authorization check.
-`lib/api/v1/submission.rb` includes published comments when `submission_comments` is requested and includes the rubric assessment only when the student can read the grade.
-`lib/api/v1/rubric_assessment.rb`, method `indexed_rubric_assessment_json`, keys the assessment by criterion id and returns `rating_id`, comments and points.
-`lib/api/v1/submission_comment.rb` returns author fields, a creation time and attachments, and strips HTML from the default comment field.
-The renderer still applies the shared sanitizer to comment content as a further check.
-The Grades template links comment attachments through the submission URL with `download` and `comment_id` parameters.
-`tests/fixtures/pages/grades.html` models these row hooks without copying the Canvas template.
-`tests/fixtures/assignment-view.ts` models the two API reply bodies.
-The fixtures run in the browser test server, through the Grades page route of `tests/e2e/assignment-view.spec.ts`.
+- The description, a text entry and the comments are teacher or student HTML, so they go through the shared sanitizer of decision 22.
+  A URL submission is a link only for `http` and `https`, with `rel="noopener noreferrer"`.
+- The data comes through the existing `assignment:details` message and its checks (see "Message" below).
+  The reply has three more fields: the submission type, the text and the address of the submission, and the size of a file.
+  No new message path exists.
+- The feedback address is handled as in item 6.
+- A frame of the Canvas origin can reach the closed root that holds it, so the feedback frame has a host of its own, and every listener in it accepts only trusted events.
+
+**Verified source facts:**
+
+These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c` (2026-11-03).
+- `app/views/submissions/show.html.erb`:
+  - The content area is `div.submission-details-container` with two children: `div.submission-details-frame` (left, holding `div#asset_report_modal` and `iframe#preview_frame`) and `div.submission-details-comments` (right).
+  - The frame is `submission_preview_frame_url`: the same page with `preview=1` and a random number.
+  - The header is `div.submission-details-header`, with `h1.submission-details-header__heading`, `a.assess_submission_link` for "Show Rubric", `h2.submission-details-header__heading` for the title and `span.submission-details-header__time`.
+  - "Re-submit Assignment" is `a.Button.Button--primary` in `.ic-Action-header__Secondary`, only for `@current_user == @submission.user`.
+  - The page has no DOM marker for the own submission, a teacher or an observer.
+  - The user id is only in `ENV.SUBMISSION`, which a content script cannot read.
+- `app/stylesheets/bundles/submission.scss`: the container is a flex row at the desktop breakpoint, the frame has `flex: 1` and the comments column `flex: 0 0 280px`.
+- `app/views/submissions/show_preview.html.erb`, branch `online_upload`:
+  - `table.file-upload-submission-table`, one `tr.file-upload-submission` for each file.
+  - The file link is `a.file-upload-submission-info__link` with the href `/courses/:c/assignments/:a/submissions/:user?download=:file`, and `span.file-upload-submission-info__filesize` holds the size.
+  - `td.file-upload-submission-attachment` holds `a.modal_preview_link`, which says "View Feedback" when `attachment.canvadoc.has_annotations?` and "Preview" when only `canvadocable?`.
+    The unread mark is `span.submission_annotation.unread_indicator`.
+  - A text entry is `#submission_preview.paper.user_content`, and other types draw their own blocks.
+- `app/helpers/attachment_helper.rb`, `doc_preview_attributes`: the link carries `data-canvadoc_session_url`, `data-attachment_id`, `data-attachment_name`, `data-mimetype` and more.
+- `app/models/attachment.rb`, `canvadoc_url`: `/api/v1/canvadoc_session?blob=...&hmac=...`, signed with `Canvas::Security.hmac_sha1`, so the value is a relative path.
+- `ui/features/submissions_show_preview_upload/index.js`: `$(document).on('click', '.modal_preview_link', ...)` opens a jQuery UI dialog and calls `loadDocPreview(dialog[0], $.extend({height: '100%'}, $(this).data()))`.
+- `packages/canvas-rce/src/enhance-user-content/doc_previews.jsx`, `loadDocPreview`: with `canvadoc_session_url`, it builds an `iframe` whose `src` is that URL after `sanitizeUrl`.
+- `app/views/assignments/_submission_sidebar.html.erb`:
+  - Inside `#sidebar_content > .details > .content`, an `online_upload` file is `<div><a href="/courses/:c/assignments/:a/submissions/:user?download=:file">Download NAME</a></div>`, with no class, no id and no `download` attribute.
+  - The view is inside a Rails fragment cache.
+- The viewer script (decision 25) takes any link that `fileTarget` accepts, and a link without a `download` attribute needs no exception, so the sidebar link opens the pane with no new code.
+
+**Fixtures and tests:**
+
+- `tests/fixtures/submission-page.ts` and `tests/fixtures/submission-frame.ts` model the page and the files frame on that markup.
+  The page fixture has a student and a teacher variant.
+- `tests/fixtures/pages/assignment.html` has the sidebar of the assignment page.
+- `tests/e2e/submission-details.spec.ts` covers the replacement, the file click, the feedback pane, the unchanged pages and the switch.
+
+**Live checks for the owner:**
+
+1. Open a graded submission on sjsu.instructure.com: the left area shows "Instructions" and "Your files", and the header, grade, "Show Rubric", "Re-submit Assignment" and comments look as before.
+2. Click the file name: the file opens in the pane.
+3. Click "View Feedback" on an annotated PDF: the pane shows the teacher's notes.
+   If DocViewer refuses the frame, use "Open in new tab" and report it.
+4. Open the same page as a teacher, if possible: nothing changes.
+5. A text entry, a URL submission and a media recording: the first two show in "Your submission", and the media recording keeps Canvas's own area.
+6. Turn the switch off: the page is as Canvas drew it, without a reload.
+7. On the assignment page, click the download link of the Submission sidebar: the file opens in the pane.
 
 ## Open risks
 
@@ -3140,12 +3166,13 @@ These items need a live check or an outside answer.
     The submission details page keeps its file list in a same-origin frame, and the click catcher of item 11 handles it.
     That catcher has run only against the fixture.
     The live checklist has the steps.
-16. The expand rows of the Grades page (decision 26, step 1) have run only against the fixture.
-    The real title cell, the way Canvas finds its own comment and rubric rows after the extension row, and the field shapes of the assignment and submission records are known from canvas-lms source only.
-    The comment attachment gap is closed by Ticket F2.
-    A submitted file on a course with a shard id (`12~345`) opens in the pane too, because the matchers of decision 25 take shard ids.
+16. The Submission Details view (decision 26) has run only against fixtures that follow the canvas-lms source.
+    The real files frame, the signed session address, and whether DocViewer lets the feedback pane frame it are known from source only.
+    The text entry and URL data come from the `submissions/self` record, not from the page.
+    The live checklist of decision 26 has the steps.
+17. The expand rows of the Assignments list have run only against the fixture.
+    The real row markup, which Backbone draws again, and the field shapes of the assignment and submission records are known from canvas-lms source only.
     The text of a comment goes through the sanitizer, with line breaks kept, and it is not known whether Canvas escapes angle brackets in that field.
-    The live checklist has the steps.
 
 ## Build order
 
@@ -3191,7 +3218,7 @@ These items need a live check or an outside answer.
 
 ### Decision 26, step 2 (built)
 
-The Assignments list at `/courses/:id/assignments` uses the same buttons, panels and cache as Grades.
+The Assignments list at `/courses/:id/assignments` has the expand buttons, panels and cache.
 The observer batches redraws and restores open panels by assignment id.
 The pinned Canvas source is `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 `ui/features/assignment_index/backbone/views/AssignmentListItemView.jsx` sets the list item tag and imports the template.
