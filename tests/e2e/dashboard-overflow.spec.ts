@@ -39,6 +39,8 @@ test.beforeEach(async ({ background }) => {
 const QUIZ_3 = 'Quiz 3: Cell membranes';
 const CANVAS_COLUMNS = '[data-testid="widget-columns"] > [data-testid^="widget-column-"]';
 const WIDGETS = '[data-testid^="widget-container-"]';
+/** The widget that the card replaces: the card lies inside its wrapper, over its box. */
+const SLOT_WIDGET = '[data-testid="widget-container-course-work-combined-widget"]';
 const CARDS = 'section[data-testid^="widget-"]';
 const VIEWPORT_HEIGHT = 800;
 const TOLERANCE = 1;
@@ -88,7 +90,7 @@ interface Measure {
 
 async function measure(page: Page): Promise<Measure> {
   return page.evaluate(
-    ({ columnsCss, widgetsCss, cardsCss }) => {
+    ({ columnsCss, widgetsCss, cardsCss, slotCss }) => {
       /** The viewport y of the baseline of the first line of an element, from a zero-height probe. */
       const baseline = (element: Element): number => {
         const probe = document.createElement('span');
@@ -148,7 +150,9 @@ async function measure(page: Page): Promise<Measure> {
             }
           : null,
         columns: columns.map((column) => column.getBoundingClientRect().width),
-        widgets: [...document.querySelectorAll(widgetsCss)].map((widget) => rect(widget) as Box),
+        widgets: [...document.querySelectorAll(widgetsCss)]
+          .filter((widget) => !widget.matches(slotCss))
+          .map((widget) => rect(widget) as Box),
         sections: [...document.querySelectorAll(cardsCss)].map((card) => rect(card) as Box),
         firstCards,
         baselines: headings,
@@ -164,6 +168,7 @@ async function measure(page: Page): Promise<Measure> {
       columnsCss: CANVAS_COLUMNS,
       widgetsCss: WIDGETS,
       cardsCss: CARDS,
+      slotCss: SLOT_WIDGET,
     },
   );
 }
@@ -196,6 +201,19 @@ function problems(without: Measure, withList: Measure): string[] {
   if (withList.visiblePoints < 3) broken.push('part of the card is hidden by the page');
   for (const widget of withList.widgets) {
     if (overlap(widget, card)) broken.push('card overlaps a widget');
+  }
+  // The replaced widget keeps its place in the layout, so every other widget lies where it does
+  // without the extension.
+  if (mode === 'slot') {
+    withList.widgets.forEach((widget, index) => {
+      const before = without.widgets[index];
+      if (
+        before === undefined ||
+        Math.abs(widget.y - before.y) > TOLERANCE ||
+        Math.abs(widget.height - before.height) > TOLERANCE
+      )
+        broken.push(`widget ${index + 1} moved or changed height`);
+    });
   }
   if (withList.columns.length !== without.columns.length) broken.push('column count changed');
   withList.columns.forEach((width, index) => {

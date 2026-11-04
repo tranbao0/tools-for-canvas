@@ -325,20 +325,28 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   It takes one of these places in the page content, and `layout.ts` decides which.
   - **In the Course work slot**, replace the first single or combined Course work widget in document order.
     Keep every other Course work widget, including summary widgets.
-    Copy the section's computed margin and fill its column without a fixed width.
-    Hide its wrapper with visibility while loading, then display none when the card takes its place.
-    Wait for the status filter or retry button before measuring the section's border-box height once, with a minimum of 420 px.
-    Keep that height for the page view through redraws, refetches and window resizing.
-    After ten seconds without settled data, use the slot with the viewport height rule.
+    The widget keeps its place in the page layout, invisible: its wrapper gets `visibility: hidden` and never `display: none` while the card is in the slot.
+    So Canvas lays out its columns as if the widget showed, and the widgets below stay where Canvas puts them.
+    The card container is the first child of the wrapper, with `position: absolute` over the section.
+    Its inset is the section's computed margin, copied and not fixed, and its own `visibility` is visible.
+    The wrapper gets `position: relative`.
+    The card is as tall as the section's box through CSS, with no measurement: it follows the box of the widget when Canvas changes it, for example when the summary counts arrive or a web font loads.
+    It never changes its box because of its own content.
+    The card is 420 px high at least: a section that is lower gets a wrapper `min-height` of 420 px plus the two vertical margins, so the column makes room.
+    The hidden widget is out of the tab order and the accessibility tree, and takes no pointer events.
+    Wait for the status filter or retry button before the card shows for the first time, so it does not appear over a box that changes with the first data.
+    After ten seconds without settled data, the card shows over whatever box the widget has.
     A slot that first shows up unsettled after those ten seconds, such as on the Dashboard tab after the Courses tab, has its own ten seconds: the card stays hidden until the slot settles or that wait ends.
-    Before the first measurement, the card also waits until the Course work extras are gone from the claimed widget, within the same ten seconds.
-    When a wait ends before the widget settles, or with extras still inside it, the card takes the viewport height rule and keeps it for the page view, also when the widget settles later.
+    Before the first show, the card also waits until the Course work extras are gone from the claimed widget, within the same ten seconds.
+    Once the card has shown, a widget that loads again does not hide it.
     In Customize dashboard, restore the widget and hide the card until Save or Cancel, only when a slot is in use.
     With no slot, the card keeps its place beside the grid or above it in Customize dashboard.
     When Customize dashboard ends, the card takes the slot, and the wrapper is hidden, in the same frame, and the card keeps its scroll position.
-    Follow the widget's new position and reuse the measured height.
-    Minimize to the header in the same flow, with no reserved space.
-    Release restores the wrapper's inline styles and removes its marker.
+    If Canvas replaces the wrapper or the section, the card moves into the new wrapper and keeps its scroll positions.
+    Minimize to the header in the same flow, with no reserved space: the card leaves the overlay and stays in the flow of the wrapper, and the section is not displayed, so the column closes up.
+    Restoring the card goes back to the overlay.
+    Release restores the inline styles of the wrapper and the section and removes the marker.
+    The scroll regions of the card turn the browser's scroll anchoring off, and the layout code ignores the scroll event of a card that is not rendered, so a move of the card keeps the scroll positions.
   - **Beside the widget grid**, when no Course work slot exists, in the white area, one gutter right of the widget columns, when the viewport has room for a gutter, a card of at least 320 px and a 24 px right margin.
     The card is under `body`, outside the widget tray and outside every Canvas layout box, and it uses document coordinates.
     It grows to 400 px.

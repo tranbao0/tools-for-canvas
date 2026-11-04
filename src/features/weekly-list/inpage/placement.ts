@@ -14,7 +14,8 @@ export const STYLED_ATTRIBUTE = 'data-weekrow-styled';
 /**
  * How the list sits on the page. The shadow stylesheet reads it from the `data-panel` attribute
  * of the host:
- * - `slot`: a card in the flow in place of the first Course work widget.
+ * - `slot`: a card over the box of the first Course work widget, which keeps its place in the
+ *   layout, invisible. A minimized card is in the flow instead, and the widget is not displayed.
  * - `area`: a card in the free area beside the widget grid, out of the flow, not sticky.
  * - `float`: a card that floats in the free area beside the content, sticky, in List View.
  * - `stack`: a card above the content, at the width of the content.
@@ -74,14 +75,32 @@ export function setInlineStyles(element: HTMLElement, styles: Record<string, str
   if (recorded) element.setAttribute(STYLED_ATTRIBUTE, JSON.stringify(record));
 }
 
+function restoreProperty(element: HTMLElement, name: string, [value, priority]: [string, string]) {
+  if (value === '') element.style.removeProperty(name);
+  else element.style.setProperty(name, value, priority);
+}
+
 /** Gives back the inline styles that `setInlineStyles` replaced, and removes the record. */
 export function clearInlineStyles(element: HTMLElement): void {
-  for (const [name, [value, priority]] of Object.entries(readRecord(element))) {
-    if (value === '') element.style.removeProperty(name);
-    else element.style.setProperty(name, value, priority);
-  }
+  for (const [name, previous] of Object.entries(readRecord(element)))
+    restoreProperty(element, name, previous);
   element.removeAttribute(STYLED_ATTRIBUTE);
   if (element.getAttribute('style') === '') element.removeAttribute('style');
+}
+
+/** Gives back one inline property that `setInlineStyles` replaced, and keeps the others. */
+export function clearInlineStyle(element: HTMLElement, name: string): void {
+  const record = readRecord(element);
+  const previous = record[name];
+  if (previous === undefined) return;
+  restoreProperty(element, name, previous);
+  delete record[name];
+  if (Object.keys(record).length > 0)
+    element.setAttribute(STYLED_ATTRIBUTE, JSON.stringify(record));
+  else {
+    element.removeAttribute(STYLED_ATTRIBUTE);
+    if (element.getAttribute('style') === '') element.removeAttribute('style');
+  }
 }
 
 /** Removes the inline styles of every element that has some, in the whole document. */

@@ -31,7 +31,9 @@
  *   wrappers use `widget-container-<id>`. A loading section has only a 400px spinner.
  *   A settled section has the status filter or `<id>-retry-button` on error.
  *   Only the combined empty message has a test id. Section margins are x-small (8px) or zero;
- *   placement copies the computed margin.
+ *   placement copies the computed margin. A wrapper is a flex item of its column (a `Flex`
+ *   with `direction="column"`), so it holds the margin of its section, and the card lies over the
+ *   section with the margin as its inset.
  * - Course work (`CourseWorkWidget` and `CourseWorkCombinedWidget`): an item is
  *   `[data-testid="listed-course-work-item-<assignment id>"]`. It holds the link
  *   `course-work-item-link-<id>`, the icon box (the parent of the span that wraps the
