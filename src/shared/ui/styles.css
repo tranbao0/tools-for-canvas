@@ -291,6 +291,11 @@
   z-index: 3;
 }
 
+/* The card has no top padding: the header of the list brings it, and so does the settings view. */
+:host([data-panel]) .wr-settings-panel {
+  padding-top: var(--wr-pad-y);
+}
+
 :host([data-panel]) .wr-head {
   margin-bottom: 8px;
   padding-bottom: 0;
