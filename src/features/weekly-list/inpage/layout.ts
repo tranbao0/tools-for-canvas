@@ -28,6 +28,17 @@ import {
   type WidgetGrid,
 } from '../../../shared/canvas/widgetDashboard';
 
+/** Set on a widget that the card made inert, so a release takes back only what the card set. */
+const INERT_ATTRIBUTE = 'data-weekrow-inert';
+
+/** Takes back the inert state that the card set on the widgets inside `root`. */
+function releaseInert(root: ParentNode): void {
+  for (const widget of root.querySelectorAll<HTMLElement>(`[${INERT_ATTRIBUTE}]`)) {
+    widget.inert = false;
+    widget.removeAttribute(INERT_ATTRIBUTE);
+  }
+}
+
 /** Set on the body while a list owns the layout. Every release removes it. */
 const LAYOUT_ATTRIBUTE = 'data-weekrow-column';
 /** The card over the slot is this high at least, whatever the box of the widget it covers. */
@@ -116,6 +127,7 @@ export function claimDashboardLayout(
       for (const widget of wrapper.querySelectorAll<HTMLElement>(`[${STYLED_ATTRIBUTE}]`))
         clearInlineStyles(widget);
       clearInlineStyles(wrapper);
+      releaseInert(wrapper);
       wrapper.removeAttribute(REPLACED_ATTRIBUTE);
     }
   }
@@ -202,6 +214,11 @@ export function claimDashboardLayout(
     if (!slot.wrapper.hasAttribute(REPLACED_ATTRIBUTE))
       slot.wrapper.setAttribute(REPLACED_ATTRIBUTE, '');
     setInlineStyles(slot.wrapper, { visibility: 'hidden' });
+    // A control of the widget that makes itself visible must still take no focus or clicks.
+    if (!slot.widget.inert) {
+      slot.widget.inert = true;
+      slot.widget.setAttribute(INERT_ATTRIBUTE, '');
+    }
   }
 
   /**
@@ -471,6 +488,7 @@ export function claimDashboardLayout(
  */
 export function releaseLayout(doc: Document): void {
   clearAllInlineStyles(doc);
+  releaseInert(doc);
   for (const wrapper of doc.querySelectorAll(`[${REPLACED_ATTRIBUTE}]`)) {
     wrapper.removeAttribute(REPLACED_ATTRIBUTE);
   }

@@ -352,6 +352,8 @@ test('swaps the card and the widget in one frame when edit mode ends', async ({
   await openFixture(context, page, 'default');
   await enterEditMode(page);
   await expect(page.locator(WRAPPER)).toBeVisible();
+  // In edit mode the widget is Canvas's again: no longer inert.
+  expect(await page.locator(SECTION).evaluate((node) => (node as HTMLElement).inert)).toBe(false);
   // In edit mode the widget is Canvas's again, so the fixes add their extras to it.
   await expect(page.locator(`${WRAPPER} [data-wr-extra]`)).toBeAttached();
   const states = await page.evaluate(
@@ -630,6 +632,16 @@ test('hides the widget from sight, the tab order and the accessibility tree, and
     return { focused: document.activeElement === input, reachable: visible.length };
   });
   expect(widget).toEqual({ focused: false, reachable: 0 });
+  // A control that makes itself visible still takes no focus, because the widget is inert.
+  const forced = await page.locator(WRAPPER).evaluate((node) => {
+    const input = node.querySelector<HTMLInputElement>('input')!;
+    input.style.visibility = 'visible';
+    input.focus();
+    const focused = document.activeElement === input;
+    input.style.removeProperty('visibility');
+    return { inert: node.querySelector('section')!.inert, focused };
+  });
+  expect(forced).toEqual({ inert: true, focused: false });
   const hit = await page.evaluate(() => {
     const box = document
       .querySelector('[data-testid="submission-status-filter-select"]')!

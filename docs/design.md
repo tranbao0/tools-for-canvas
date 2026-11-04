@@ -326,6 +326,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - **In the Course work slot**, replace the first single or combined Course work widget in document order.
     Keep every other Course work widget, including summary widgets.
     The widget keeps its place in the page layout, invisible: its wrapper gets `visibility: hidden` and never `display: none` while the card is in the slot.
+    Its section is also `inert`, so a control of the widget that makes itself visible still takes no focus, clicks or screen reader attention; a release takes back only the `inert` that the card set.
     So Canvas lays out its columns as if the widget showed, and the widgets below stay where Canvas puts them.
     The card container is the first child of the wrapper, with `position: absolute` over the section.
     Its inset is the section's computed margin, copied and not fixed, and its own `visibility` is visible.
