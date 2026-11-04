@@ -21,7 +21,33 @@ export type FileBytesFailure =
   /** The background did not confirm the sign-in cookie for the student of the cache. */
   | 'unconfirmed';
 
+export interface FileReadFacts {
+  redirected: boolean;
+  originClass: 'canvas' | 'other' | 'none';
+  contentType: string;
+  context: 'pane' | 'background';
+  backgroundRetry: 'not_run' | 'failed' | 'succeeded';
+}
+
+/** Content types use a fixed vocabulary so custom header values cannot disclose private data. */
+export function safeContentType(value: string | null): string {
+  const type = value?.split(';')[0]?.trim().toLowerCase() ?? '';
+  return [
+    'text/html',
+    'application/pdf',
+    'application/octet-stream',
+    'text/plain',
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/svg+xml',
+  ].includes(type)
+    ? type
+    : 'other';
+}
+
 export class FileBytesError extends Error {
+  facts?: FileReadFacts;
   constructor(
     readonly kind: FileBytesFailure,
     message: string,
@@ -59,6 +85,8 @@ export interface FileBytesOptions {
   truncateAt?: number;
   /** Called with the headers of the final answer, once the answer is a file. */
   onHeaders?: (headers: Headers) => void;
+  context?: 'pane' | 'background';
+  onResponse?: (facts: FileReadFacts) => void;
   fetchImpl?: typeof fetch;
 }
 
@@ -80,8 +108,23 @@ function isAbort(error: unknown, signal: AbortSignal | undefined): boolean {
   );
 }
 
+export const fileReadFacts = new WeakMap<Uint8Array, FileReadFacts>();
+
 /** Fetches the file with the student's session, follows the redirect and returns all bytes. */
 export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Array> {
+  let facts: FileReadFacts | undefined;
+  const bytes = await readFileBytes({
+    ...options,
+    onResponse: (value) => {
+      facts = value;
+      options.onResponse?.(value);
+    },
+  });
+  if (facts) fileReadFacts.set(bytes, facts);
+  return bytes;
+}
+
+async function readFileBytes(options: FileBytesOptions): Promise<Uint8Array> {
   const { signal, onProgress } = options;
   const maxBytes = options.maxBytes ?? MAX_FILE_BYTES;
   const fetchImpl = options.fetchImpl ?? globalFetch;
@@ -110,6 +153,7 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
   let target: Uint8Array | null = null;
   let chunks: Uint8Array[] = [];
   let loaded = 0;
+  let facts: FileReadFacts | undefined;
   try {
     const response = await fetchImpl(start.href, {
       method: 'GET',
@@ -117,6 +161,20 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
       redirect: 'follow',
       ...(signal ? { signal } : {}),
     });
+    let originClass: FileReadFacts['originClass'] = 'none';
+    try {
+      originClass = new URL(response.url).origin === start.origin ? 'canvas' : 'other';
+    } catch {
+      /* No final address is available. */
+    }
+    facts = {
+      redirected: response.redirected,
+      originClass,
+      contentType: safeContentType(response.headers.get('content-type')),
+      context: options.context ?? 'pane',
+      backgroundRetry: 'not_run',
+    };
+    options.onResponse?.(facts);
     if (!response.ok) {
       throw new FileBytesError('status', `The file answered ${response.status}`, response.status);
     }
@@ -176,10 +234,24 @@ export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Ar
       }
     }
   } catch (error) {
-    if (error instanceof FileBytesError) throw error;
+    if (error instanceof FileBytesError) {
+      if (facts) error.facts = facts;
+      throw error;
+    }
     if (isAbort(error, signal)) throw new FileBytesError('aborted', 'The read was cancelled');
     if (error instanceof Error && error.name === 'SecurityError') throw error;
-    throw new FileBytesError('network', error instanceof Error ? error.message : 'Network error');
+    const failure = new FileBytesError(
+      'network',
+      error instanceof Error ? error.message : 'Network error',
+    );
+    failure.facts = facts ?? {
+      redirected: false,
+      originClass: 'none',
+      contentType: 'other',
+      context: options.context ?? 'pane',
+      backgroundRetry: 'not_run',
+    };
+    throw failure;
   }
   await confirmed();
   if (target !== null) return loaded === target.length ? target : target.slice(0, loaded);

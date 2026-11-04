@@ -31,6 +31,8 @@ export interface HostedFile {
   contentType: string;
   /** Redirects to this address instead of serving the body. */
   location?: string;
+  /** Requires the test session cookie or a verifier before a redirect. */
+  requireSession?: boolean;
   /** Sends the body in two parts, and waits this many milliseconds between them. */
   delay?: number;
   /** Leaves out `Content-Length`, so the body uses chunked transfer. Needs {@link delay}. */
@@ -66,6 +68,16 @@ export async function startFileHost(
       const file = files[url.pathname];
       if (file === undefined) {
         response.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
+        return;
+      }
+      if (
+        file.requireSession &&
+        !request.headers.cookie
+          ?.split(';')
+          .some((part) => part.trim() === 'canvas_session=smoke-session') &&
+        url.searchParams.get('verifier') !== 'SECRET'
+      ) {
+        response.writeHead(302, { location: '/login' }).end();
         return;
       }
       if (file.location !== undefined) {

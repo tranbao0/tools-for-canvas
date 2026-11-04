@@ -93,7 +93,7 @@ export function readAddonId(extensionDir) {
 
 /**
  * Starts headless Firefox with the extension UUID pinned.
- * @param {{ firefoxBin: string, geckodriverBin: string, addonId: string, acceptInsecureCerts?: boolean, localDomains?: string, prefs?: Record<string, boolean | string> }} setup
+ * @param {{ firefoxBin: string, geckodriverBin: string, addonId: string, acceptInsecureCerts?: boolean, localDomains?: string, prefs?: Record<string, boolean | string | number> }} setup
  */
 export async function startFirefox({
   firefoxBin,
@@ -552,7 +552,7 @@ async function checkHostileSvg(driver) {
   console.log('Firefox hostile SVG: drawn on a canvas, nothing ran, no blob URL stays open.');
 }
 
-async function main(prefs = {}, mode = 'release') {
+export async function main(prefs = {}, mode = 'release') {
   // Selenium Manager must never download a browser or a driver during a test.
   process.env.SE_OFFLINE = 'true';
   const { firefoxBin, geckodriverBin } = findBrowserTools();
@@ -570,7 +570,9 @@ async function main(prefs = {}, mode = 'release') {
     body: '',
     contentType: 'text/plain',
     location: `${server.origin}/inst-fs/fixture.pdf`,
+    requireSession: true,
   };
+  files['/login'] = { body: '<html>Sign in</html>', contentType: 'text/html' };
   files['/inst-fs/fixture.pdf'] = {
     body: Buffer.concat([
       readFileSync(new URL('../fixtures/pdf/fixture.pdf', import.meta.url)),
@@ -659,7 +661,7 @@ async function main(prefs = {}, mode = 'release') {
       filename: 'notes.pdf',
       'content-type': 'application/pdf',
       size: 10,
-      url: `${origin}/files/42/download`,
+      url: `${origin}/files/42/download?download_frd=1`,
     }),
     contentType: 'application/json',
   };
@@ -762,6 +764,13 @@ async function main(prefs = {}, mode = 'release') {
       const result = await driver.executeScript(PAGE_ONE_INK);
       return result?.ink > 1000 ? result : false;
     }, 20_000);
+    if (prefs['network.cookie.cookieBehavior'] !== undefined) {
+      const behavior = prefs['network.cookie.cookieBehavior'];
+      const loginCount = server.requests.filter((url) => url === '/login').length;
+      if ([1, 5].includes(behavior) && loginCount !== 1)
+        throw new Error(`Expected one pane login redirect; got ${loginCount}`);
+      console.log(`Cookie setting ${behavior}: ${loginCount} login redirects, PDF drawn`);
+    }
     const count = await driver.findElement(By.css('[data-part="pdf-page-count"]')).getText();
     if (count !== `of ${FIXTURE_PAGE_COUNT}`) throw new Error(`Wrong page count: ${count}`);
     console.log(`Firefox PDF viewer: page 1 drew ${drawn.ink} dark pixels, ${count}`);
@@ -850,6 +859,7 @@ if (
   try {
     process.exitCode = await main();
     for (const prefs of [
+      ...[1, 4, 5].map((value) => ({ 'network.cookie.cookieBehavior': value })),
       { 'privacy.resistFingerprinting': true },
       {
         'privacy.fingerprintingProtection': true,
