@@ -585,6 +585,8 @@ An earlier version used option B; schools on their own domain then needed an "Al
   - `page-context` returns the settings and the week the list needs.
   - `save-settings` and `mark-note-seen` change only the fields the in-page list can change, with size limits.
   - The background sends `changed` to the Canvas tab when the data or the settings change.
+  - The page channel numbers its reads and keeps only the newest answer, so an older reply never overwrites a newer value.
+    When a read finishes, the watchers hear of any newer answer that differs from what the page was told, so a change during the first read of a page script is not lost.
 - The detector and the in-page script post no events and no messages to the page.
 - The install welcome and the custom-domain prompt use separate flags, so one does not stop the other.
 

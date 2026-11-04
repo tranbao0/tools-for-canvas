@@ -106,20 +106,54 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
     };
   }
 
-  /** Reads again, remembers the answer and tells the watchers of what changed. */
-  async function refresh(): Promise<PageContext> {
-    const previous = last;
-    const next = await read();
-    last = next;
-    if (previous !== null) {
-      if (previous.origin !== next.origin) for (const l of [...originListeners]) l(next.origin);
-      if (JSON.stringify(previous.settings) !== JSON.stringify(next.settings)) {
-        for (const l of [...settingsListeners]) l(next.settings);
-      }
-      if (JSON.stringify(previous.tools) !== JSON.stringify(next.tools)) {
-        for (const l of [...toolsListeners]) l(next.tools);
-      }
+  /** The numbers of the reads that started and of the newest one whose answer was kept. */
+  let started = 0;
+  let kept = 0;
+  /**
+   * What the page was told last, field by field: by a read that a caller waited for, or by a
+   * watcher call. A field the page did not ask for takes the kept answer before a newer one.
+   */
+  const told: Partial<PageContext> = {};
+
+  /** Tells the watchers of each field where the newest answer differs from what the page knows. */
+  function announce(): void {
+    if (last === null) return;
+    if (told.origin !== undefined && told.origin !== last.origin) {
+      told.origin = last.origin;
+      for (const l of [...originListeners]) l(last.origin);
     }
+    if (
+      told.settings !== undefined &&
+      JSON.stringify(told.settings) !== JSON.stringify(last.settings)
+    ) {
+      told.settings = last.settings;
+      for (const l of [...settingsListeners]) l(last.settings);
+    }
+    if (told.tools !== undefined && JSON.stringify(told.tools) !== JSON.stringify(last.tools)) {
+      told.tools = last.tools;
+      for (const l of [...toolsListeners]) l(last.tools);
+    }
+  }
+
+  /**
+   * Reads again and keeps the answer only when no newer read has been kept. A caller that waits
+   * for a field (`wanted`) gets the answer of its own read, and the watchers then hear of any
+   * newer answer that differs from it, so a change during the first read is not lost.
+   */
+  async function refresh(wanted?: keyof PageContext): Promise<PageContext> {
+    const number = ++started;
+    const next = await read();
+    if (number > kept) {
+      kept = number;
+      if (last !== null) {
+        if (told.origin === undefined) told.origin = last.origin;
+        if (told.settings === undefined) told.settings = last.settings;
+        if (told.tools === undefined) told.tools = last.tools;
+      }
+      last = next;
+    }
+    if (wanted !== undefined) Object.assign(told, { [wanted]: next[wanted] });
+    announce();
     return next;
   }
 
@@ -136,7 +170,7 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
   }
 
   const settings: PageChannel['settings'] = {
-    getValue: async () => (await refresh()).settings,
+    getValue: async () => (await refresh('settings')).settings,
     async setValue(next) {
       await deps.send({ type: 'weekrow:save-settings', settings: next });
     },
@@ -144,7 +178,7 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
   };
 
   const tools: PageChannel['tools'] = {
-    getValue: async () => (await refresh()).tools,
+    getValue: async () => (await refresh('tools')).tools,
     async setValue(next) {
       await deps.send({ type: 'weekrow:save-tools', tools: next });
     },
@@ -156,7 +190,7 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
     send: deps.send,
     choices: {
       origin: {
-        getValue: async () => (await refresh()).origin,
+        getValue: async () => (await refresh('origin')).origin,
         watch: (listener) => subscribe(originListeners, listener),
       },
     },
