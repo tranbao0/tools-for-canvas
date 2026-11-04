@@ -151,6 +151,11 @@ export function readFrame(frame: HTMLIFrameElement, origin: string, pagePath: st
       );
       // A button that the view cannot offer would hide the notes of the teacher.
       if (preview && session === null) complete = false;
+      // Canvas's own handler reads `data-canvadoc_session_url`, so a button that the expected
+      // selector missed, such as a renamed class, still hides the notes.
+      for (const other of row.querySelectorAll('[data-canvadoc_session_url],.modal_preview_link')) {
+        if (other !== preview) complete = false;
+      }
       files.push({
         fileId: target.fileId,
         name: trimmed(link.textContent),

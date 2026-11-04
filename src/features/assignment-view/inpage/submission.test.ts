@@ -172,6 +172,55 @@ describe('the own submission', () => {
     expect(button.hasAttribute('title')).toBe(false);
   });
 
+  it('keeps the unread dot off after View Feedback, through the re-reads of the frame', async () => {
+    const frame = showInFrame(FILE_ROW);
+    start();
+    await settle();
+    const button = root()!.querySelector<HTMLButtonElement>('[data-action=feedback]')!;
+    const event = new MouseEvent('click', { bubbles: true, composed: true });
+    Object.defineProperty(event, 'isTrusted', { value: true });
+    button.dispatchEvent(event);
+    expect(root()?.querySelector('.av-unread')).toBeNull();
+    // Canvas still marks the file unread in its frame, and the frame loads or changes again.
+    frame.dispatchEvent(new Event('load'));
+    await vi.advanceTimersByTimeAsync(200);
+    const cell = frame.contentDocument!.querySelector('td.file-upload-submission-turnitin')!;
+    cell.innerHTML = '';
+    await vi.advanceTimersByTimeAsync(200);
+    expect(root()?.querySelector('.av-unread')).toBeNull();
+    expect(root()?.querySelector('[data-action=feedback]')?.hasAttribute('title')).toBe(false);
+  });
+
+  it('does not draw the files again when a re-read finds the same files, so the focus stays', async () => {
+    const frame = showInFrame(FILE_ROW);
+    start();
+    await settle();
+    const list = root()!.querySelector('.av-file-list')!;
+    const link = root()!.querySelector<HTMLAnchorElement>('.av-file')!;
+    link.focus();
+    expect(root()!.activeElement).toBe(link);
+    frame.dispatchEvent(new Event('load'));
+    await vi.advanceTimersByTimeAsync(200);
+    expect(root()!.querySelector('.av-file-list')).toBe(list);
+    expect(root()!.querySelector('.av-file')).toBe(link);
+    expect(root()!.activeElement).toBe(link);
+  });
+
+  it('draws the files again when they changed', async () => {
+    const frame = showInFrame(FILE_ROW);
+    start();
+    await settle();
+    const list = root()!.querySelector('.av-file-list')!;
+    showInFrame(
+      frameRows(PAGE, [
+        { fileId: '501', name: 'essay.pdf', size: '119 KB', button: 'View Feedback', unread: true },
+      ]),
+    );
+    frame.dispatchEvent(new Event('load'));
+    expect(root()!.querySelector('.av-file-list')).not.toBe(list);
+    expect(root()!.querySelector('.av-size')?.textContent).toBe('119 KB');
+  });
+
   it('keeps the session address out of the page', async () => {
     start();
     await settle();

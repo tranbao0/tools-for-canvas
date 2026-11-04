@@ -3027,12 +3027,18 @@ So a student switches pages to read the instructions next to the feedback on a f
      - The frame cannot be read, is on another origin, or does not show the preview page of this submission within 10 seconds.
      - An upload has attachments in the details but no file row of the frame matches.
      - A file row does not match: no file link, another submission, or an id that is no file id.
-     - A file row has a preview button (`a.modal_preview_link`) whose session address fails the strict check, for example with an extra `access_token`.
+     - A file row has a preview button (`td.file-upload-submission-attachment a.modal_preview_link`) whose session address fails the strict check, for example with an extra `access_token`.
+     - A file row holds any `[data-canvadoc_session_url]` or `.modal_preview_link` that the selector above did not find, such as a button with a renamed class.
+       Canvas's own `loadDocPreview` reads the data attribute, so the attribute is the stable signal.
      - The frame shows a similarity report: `.turnitin_score_container`, `.turnitin_similarity_score`, `.vericite_score_container_caret`, or content in `td.file-upload-submission-turnitin` or `td.asset-report-status-container`.
        Canvas fills the report status cell with a script after the load, so the view watches the frame for 10 seconds after each load and uses the mode when the cell fills.
        Marks inside the student's own text entry are no report.
      - A URL submission whose frame shows a snapshot image.
      The view returns to the replacing mode if a later load of the frame shows nothing of this.
+     When Canvas draws a report after the view has shown, the page switches to Canvas's frame, and an open feedback pane may close with the view's host, because Canvas's own button is then visible.
+     The owner accepts this (2026-11-03).
+   - A re-read of the frame draws the list of files again only when the files changed.
+     So the keyboard focus in "Your files" stays, and a file whose feedback the student opened keeps its unread dot off until the page reloads.
    - The size of the details is written like Rails `number_to_human_size`: base 1024, three significant digits, for example "118 KB".
 6. **The feedback pane.**
    - Canvas opens "View Feedback" in a dialog inside the files frame, which the view hides.
