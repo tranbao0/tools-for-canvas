@@ -107,7 +107,7 @@ export const SUBMISSION_CSS = `
 .av-link-text{overflow-wrap:anywhere}
 .av-file-list{margin:0;padding:0;list-style:none}
 .av-file-row{display:flex;align-items:center;gap:8px;margin:0;padding:6px 0;font-size:13px;line-height:1.4}
-.av-file{font-weight:700;overflow-wrap:anywhere}
+.av-file{font-weight:700;overflow-wrap:anywhere;text-decoration:none}
 .av-file-icon{flex:none;width:14px;height:14px;color:var(--av-text-2)}
 .av-file-pdf{color:light-dark(#c0392b,#f08a8d)}
 .av-size{flex:none;color:var(--av-text-2);font-size:12px;white-space:nowrap}

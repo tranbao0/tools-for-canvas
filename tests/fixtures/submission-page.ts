@@ -30,7 +30,7 @@ const STYLE = `
 .ic-Action-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
 .ic-Action-header__Primary h2 { font-size: 20px; line-height: 1.3; margin: 0 0 4px; }
 .submission-details-header__info { font-size: 14px; }
-.Button { display: inline-block; padding: 8px 12px; border: 1px solid #c7cdd1; border-radius: 3px; font-size: 14px; background: #f5f5f5; color: #273540; }
+.Button { display: inline-block; white-space: nowrap; padding: 8px 12px; border: 1px solid #c7cdd1; border-radius: 3px; font-size: 14px; background: #f5f5f5; color: #273540; }
 .Button--primary { background: #0374b5; border-color: #0374b5; color: #fff; font-weight: 700; }
 .Button--link { background: none; border: 0; color: #0e68b3; padding: 0; }
 .submission-details-container { border: 1px solid #e8eaec; box-sizing: border-box; display: flex; margin-top: 12px; }
