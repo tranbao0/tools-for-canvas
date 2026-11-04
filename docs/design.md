@@ -360,16 +360,19 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
       The title has one line, bold, with an ellipsis when it is too long.
       Its full text is the accessible name, and the `title` attribute shows it on hover.
       One 12 px muted meta line follows: "<course name> | Go to course · <points> <chips>".
-      The course name shrinks first with an ellipsis.
-      The link, the points and the chips keep their width.
+      The meta line stays on one line when it fits.
+      When it does not fit, the points and the chips go to a second line under the course, at every width, and the dot ends the first line.
+      The course name shrinks first with an ellipsis, down to about 6 characters, and the link keeps its full width.
+      No part overlaps another or leaves the text column.
       A subtitle, such as "Reply to topic", takes its own 12 px line under the meta line.
       The due pill has 12 px bold text, 6 px corners, 3 px 6 px padding and a 14 px icon, in the same colors.
       The actions are 12 px.
       A row without actions is 44 px high, with 10 px between its parts, so the card holds more than twice as many such rows as with Comfortable.
     - In a card narrower than 480 px (the content box), the Comfortable rows hide the block.
       The Compact rows keep it at 36 px.
-      The meta line wraps into the course with its link and then the points and the chips, and the pill and the actions go to a line under the meta line, left-aligned with the text.
-      In a card narrower than 200 px, the course link goes under the course name, and that last line starts at the block, because the pill is wider than the text column.
+      The pill and the actions go to a line under the text, left-aligned with it.
+      In a card narrower than 220 px, the course link goes under the course name.
+      In a card narrower than 200 px, the line under the text starts at the block, because the pill is wider than the text column.
   - **Beside the widget grid**, when no Course work slot exists, in the white area, one gutter right of the widget columns, when the viewport has room for a gutter, a card of at least 320 px and a 24 px right margin.
     The card is under `body`, outside the widget tray and outside every Canvas layout box, and it uses document coordinates.
     It grows to 400 px.
@@ -1681,6 +1684,8 @@ It has a minimize button instead (see below).
 - "Row size" has two choices, Compact and Comfortable, as a segmented control with the hint "Compact fits about twice as many tasks in the card."
   - It is a group of two real radio inputs, with the role `radiogroup` and the name "Row size".
     The arrow keys move between the choices.
+    The focus ring goes around the group, outside it, as the ring of a switch goes around its track.
+    In forced colors, the chosen segment uses the system highlight colors.
   - It is stored as the field `rowSize` (`compact` or `comfortable`).
     A missing or unknown value reads as Compact, so settings stored before the field existed read as Compact.
   - A change applies at once, in every open Canvas tab, with no reload.

@@ -1481,7 +1481,6 @@ input:checked + .wr-switch-track > .wr-switch-knob {
 .wr-segments {
   display: inline-flex;
   justify-self: start;
-  overflow: hidden;
   border: 1px solid var(--wr-stroke);
   border-radius: 6px;
 }
@@ -1493,6 +1492,16 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   min-height: 36px;
   padding: 0 16px;
   cursor: pointer;
+}
+
+/* The group does not clip its segments, so its focus ring can sit outside it. The end segments
+   round their own corners, one pixel inside the border. */
+.wr-segment:first-child {
+  border-radius: 5px 0 0 5px;
+}
+
+.wr-segment:last-child {
+  border-radius: 0 5px 5px 0;
 }
 
 .wr-segment + .wr-segment {
@@ -1519,9 +1528,11 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   font-weight: 700;
 }
 
-.wr-segment:has(input:focus-visible) {
+/* The arrow keys check the focused segment, so its fill hides any ring inside it. The ring goes
+   around the group, as the ring of the switch goes around its track. */
+.wr-segments:has(input:focus-visible) {
   outline: 2px solid var(--wr-brand);
-  outline-offset: -3px;
+  outline-offset: 2px;
 }
 
 /* The Tasks and Announcements tabs: text tabs on a line, the chosen one marked by a bar. */
@@ -1894,7 +1905,8 @@ input:checked + .wr-switch-track > .wr-switch-knob {
 
 @media (forced-colors: active) {
   .wr-check-input:checked + .wr-check-box,
-  input:checked + .wr-switch-track {
+  input:checked + .wr-switch-track,
+  .wr-segment:has(input:checked) {
     background: Highlight;
     border-color: Highlight;
     color: HighlightText;
@@ -2066,46 +2078,63 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   font-size: 18px;
 }
 
-/* The meta line is the second grid row: the course shrinks first, the points and the chips keep
-   their width. The title and the subtitle take a row of their own, as wide as the text column. */
+/* The text column wraps like lines of text: the title takes a line, the meta line holds the course
+   with its link and then the points and the chips, and a subtitle takes the last line. The points
+   and the chips go to a line under the course when they do not fit beside it, at every width. The
+   course name shrinks first, down to about 6 characters, and the link keeps its width. */
 :host([data-panel='slot']) .wr[data-rows='compact'] .wr-slot-main {
-  display: grid;
-  grid-template-columns: minmax(0, max-content) minmax(max-content, 1fr);
+  flex-flow: row wrap;
+  align-items: center;
   align-content: center;
+  justify-content: flex-start;
   min-height: 36px;
 }
 
 :host([data-panel='slot']) .wr[data-rows='compact'] .wr-title {
   display: block;
-  grid-column: 1 / -1;
-  /* A zero width and a full minimum width keep a long title out of the size of the columns. */
-  width: 0;
-  min-width: 100%;
+  flex: 0 0 100%;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 18px;
 }
 
-:host([data-panel='slot']) .wr[data-rows='compact'] :is(.wr-course, .wr-points) {
+/* The base size of the course is its smallest size, so the points and the chips share its line
+   whenever the course can shrink enough to let them. It then grows to its full text and no more.
+   The smallest size is 6 characters of the name, then the link and the dot, which measure 77 px
+   and 7 px at 12 px: 7.5em leaves a little room for another font. */
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-course {
+  flex: 1 1 0;
+  min-width: 6ch;
+  max-width: max-content;
+  margin-top: 0;
+  line-height: 18px;
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-course:has(.wr-course-link) {
+  min-width: calc(6ch + 7.5em);
+}
+
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-points {
   margin-top: 0;
   line-height: 18px;
 }
 
 :host([data-panel='slot']) .wr[data-rows='compact'] .wr-item-tags {
-  flex-wrap: nowrap;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
   gap: 0 4px;
-  white-space: nowrap;
+  max-width: 100%;
 }
 
-/* The dot between the course part and the points. It is decoration, so it has no alternative
-   text. */
-:host([data-panel='slot']) .wr[data-rows='compact'] .wr-course + .wr-item-tags::before {
+/* The dot between the course part and the points ends the course part, so a line that wraps there
+   ends with it. It is decoration, so it has no alternative text. */
+:host([data-panel='slot']) .wr[data-rows='compact'] .wr-course:has(+ .wr-item-tags)::after {
   content: '\00b7' / '';
+  flex: none;
   margin-inline: 4px 0;
   color: var(--wr-text-2);
-  font-size: 12px;
-  line-height: 18px;
 }
 
 :host([data-panel='slot']) .wr[data-rows='compact'] .wr-chip {
@@ -2115,12 +2144,8 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   line-height: 16px;
 }
 
-:host([data-panel='slot']) .wr[data-rows='compact'] .wr-tag-text {
-  white-space: nowrap;
-}
-
 :host([data-panel='slot']) .wr[data-rows='compact'] .wr-due {
-  grid-column: 1 / -1;
+  flex: 0 0 100%;
   font-size: 12px;
   line-height: 18px;
 }
@@ -2187,9 +2212,8 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   }
 }
 
-/* A narrow card keeps the 36 px block of a compact row. The meta line wraps into the lines it
-   needs: the course with its link, then the points and the chips. The pill and the actions move to
-   a line under it, left-aligned with the text. */
+/* A narrow card keeps the 36 px block of a compact row. The pill and the actions move to a line
+   under the text, left-aligned with it. */
 @container wr (width < 480px) {
   :host([data-panel='slot']) .wr[data-rows='compact'] .wr-item {
     grid-template-columns: 18px 36px minmax(0, 1fr);
@@ -2205,41 +2229,7 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   }
 
   :host([data-panel='slot']) .wr[data-rows='compact'] .wr-slot-main {
-    display: flex;
-    flex-flow: row wrap;
-    align-items: center;
-    align-content: center;
-    justify-content: flex-start;
     min-height: 36px;
-  }
-
-  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-title {
-    flex: 0 0 100%;
-    max-width: 100%;
-  }
-
-  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-course {
-    flex: 0 1 auto;
-    max-width: 100%;
-    min-width: 0;
-  }
-
-  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-due {
-    flex: 0 0 100%;
-  }
-
-  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-item-tags {
-    flex-wrap: wrap;
-    max-width: 100%;
-    white-space: normal;
-  }
-
-  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-course + .wr-item-tags::before {
-    content: none;
-  }
-
-  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-tag-text {
-    white-space: normal;
   }
 
   :host([data-panel='slot']) .wr[data-rows='compact'] .wr-slot-side {
@@ -2252,14 +2242,19 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   }
 }
 
-/* In the narrowest card, 160 px inside its padding, the text column holds about 90 px. The link
-   goes under the course name, and the line under the text starts at the block, because the due pill
-   of a past-due row is wider than the text column. */
-@container wr (width < 200px) {
-  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-course {
+/* A text column under about 140 px cannot hold 6 characters of the name and the link side by side,
+   so the link goes under the name. */
+@container wr (width < 220px) {
+  :host([data-panel='slot']) .wr[data-rows='compact'] .wr-course:has(.wr-course-link) {
+    flex: 1 1 100%;
     flex-wrap: wrap;
+    min-width: 0;
   }
+}
 
+/* In the narrowest card, 160 px inside its padding, the text column holds about 90 px, and the
+   due pill of a past-due row is wider, so the line under the text starts at the block. */
+@container wr (width < 200px) {
   :host([data-panel='slot']) .wr[data-rows='compact'] .wr-slot-side {
     grid-column: 2 / -1;
   }

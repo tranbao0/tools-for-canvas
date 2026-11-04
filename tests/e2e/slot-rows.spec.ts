@@ -143,29 +143,35 @@ test('a slot row with actions keeps the 92 px step, and the actions sit under th
   expect(skipBox.x + skipBox.width).toBeCloseTo(pillBox.x + pillBox.width, 0);
 });
 
-test('Tab visits a slot row in reading order', async ({ context, page, background }) => {
-  const list = await openSlot(context, page, background);
-  const row = list.locator('.wr-item', { hasText: 'Homework 7' });
-  await row.locator('[data-part="check"]').focus();
-  const seen: string[] = [];
-  for (let i = 0; i < 5; i++) {
-    seen.push(
-      await row.evaluate((el) => {
-        const active = (el.getRootNode() as ShadowRoot).activeElement as HTMLElement | null;
-        if (!active || !el.contains(active)) return 'outside';
-        return (
-          active.dataset['part'] ?? active.getAttribute('aria-label') ?? active.textContent ?? ''
-        );
-      }),
-    );
-    await page.keyboard.press('Tab');
-  }
-  expect(seen[0]).toBe('check');
-  expect(seen[1]).toBe('title');
-  expect(seen[2]).toMatch(/^Go to course /);
-  expect(seen[3]).toMatch(/confirm/i);
-  expect(seen[4]).toBe('skip');
-});
+for (const rowSize of ['comfortable', 'compact'] as const) {
+  test(`Tab visits a slot row in reading order with ${rowSize} rows`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    const list = await openSlot(context, page, background, rowSize);
+    const row = list.locator('.wr-item', { hasText: 'Homework 7' });
+    await row.locator('[data-part="check"]').focus();
+    const seen: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      seen.push(
+        await row.evaluate((el) => {
+          const active = (el.getRootNode() as ShadowRoot).activeElement as HTMLElement | null;
+          if (!active || !el.contains(active)) return 'outside';
+          return (
+            active.dataset['part'] ?? active.getAttribute('aria-label') ?? active.textContent ?? ''
+          );
+        }),
+      );
+      await page.keyboard.press('Tab');
+    }
+    expect(seen[0]).toBe('check');
+    expect(seen[1]).toBe('title');
+    expect(seen[2]).toMatch(/^Go to course /);
+    expect(seen[3]).toMatch(/confirm/i);
+    expect(seen[4]).toBe('skip');
+  });
+}
 
 test('opening a tip moves nothing above it', async ({ context, page, background }) => {
   const list = await openSlot(context, page, background);
@@ -302,30 +308,34 @@ async function openPlain(
   return inpageList(page);
 }
 
-test('keeps the focus on the same control of the same row when the layout changes', async ({
-  context,
-  page,
-  background,
-}) => {
-  const list = await openSlot(context, page, background);
-  const title = list.getByRole('link', { name: QUIZ_3, exact: true });
-  await title.focus();
-  const focused = () =>
-    page.evaluate(() => {
-      const root = document.querySelector('#weekrow-inpage > weekrow-list')!.shadowRoot!;
-      const active = root.activeElement as HTMLElement | null;
-      return [
-        active?.closest<HTMLElement>('[data-row-key]')?.dataset.rowKey ?? null,
-        active?.dataset.part ?? null,
-      ];
-    });
-  const before = await focused();
-  expect(before[1]).toBe('title');
-  for (const mode of ['stack', 'slot']) {
-    await page.locator(HOST).evaluate((host, next) => host.setAttribute('data-panel', next), mode);
-    await expect.poll(focused).toEqual(before);
-  }
-});
+for (const rowSize of ['comfortable', 'compact'] as const) {
+  test(`keeps the focus on the same control of the same row when the layout changes with ${rowSize} rows`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    const list = await openSlot(context, page, background, rowSize);
+    const title = list.getByRole('link', { name: QUIZ_3, exact: true });
+    await title.focus();
+    const focused = () =>
+      page.evaluate(() => {
+        const root = document.querySelector('#weekrow-inpage > weekrow-list')!.shadowRoot!;
+        const active = root.activeElement as HTMLElement | null;
+        return [
+          active?.closest<HTMLElement>('[data-row-key]')?.dataset.rowKey ?? null,
+          active?.dataset.part ?? null,
+        ];
+      });
+    const before = await focused();
+    expect(before[1]).toBe('title');
+    for (const mode of ['stack', 'slot']) {
+      await page
+        .locator(HOST)
+        .evaluate((host, next) => host.setAttribute('data-panel', next), mode);
+      await expect.poll(focused).toEqual(before);
+    }
+  });
+}
 
 // The Row size setting changes only the card in the Course work slot.
 for (const rowSize of ['compact', 'comfortable'] as const) {

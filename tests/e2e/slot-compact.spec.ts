@@ -50,15 +50,38 @@ async function shot(page: Page, name: string): Promise<void> {
   if (SHOTS !== '') await page.screenshot({ path: `${SHOTS}/${name}.png` });
 }
 
-/** How many rows lie wholly inside the scroll region of the card. */
-async function rowsInView(list: Locator): Promise<number> {
-  return list.locator('.wr-scroll').evaluate((region) => {
+/**
+ * Scrolls the groups so that a row of plain work (no actions, tip or subtitle) is at the top, and
+ * counts the rows that lie wholly inside the scroll region from there. `from` names the first row
+ * (by key), so both sizes count the same rows; without it the first run of four plain rows starts.
+ */
+async function plainRowsInView(
+  list: Locator,
+  from?: string,
+): Promise<{ key: string; count: number }> {
+  return list.locator('.wr-scroll').evaluate((region, start) => {
+    const rows = [...region.querySelectorAll<HTMLElement>('.wr-item')];
+    const plain = (row: HTMLElement) =>
+      row.querySelector('.wr-item-actions, .wr-item-tip, .wr-due') === null;
+    const first =
+      start !== undefined
+        ? rows.find((row) => row.dataset['rowKey'] === start)
+        : rows.find(
+            (_, i) => rows.slice(i, i + 4).length === 4 && rows.slice(i, i + 4).every(plain),
+          );
+    if (!first) throw new Error('no run of plain rows');
+    region.scrollTop += first.getBoundingClientRect().top - region.getBoundingClientRect().top;
     const view = region.getBoundingClientRect();
-    return [...region.querySelectorAll('.wr-item')].filter((row) => {
+    const count = rows.filter((row) => {
       const box = row.getBoundingClientRect();
-      return box.top >= view.top - 0.5 && box.bottom <= view.bottom + 0.5;
+      return (
+        rows.indexOf(row) >= rows.indexOf(first) &&
+        box.top >= view.top - 0.5 &&
+        box.bottom <= view.bottom + 0.5
+      );
     }).length;
-  });
+    return { key: first.dataset['rowKey']!, count };
+  }, from);
 }
 
 function gear(list: Locator): Locator {
@@ -170,18 +193,18 @@ test('a row without actions is 44 px high, and Compact fits 1.7 times the rows',
     expect(box.y, part).toBeGreaterThanOrEqual(rowBox.y - 0.5);
     expect(box.y + box.height, part).toBeLessThanOrEqual(rowBox.y + rowBox.height + 0.5);
   }
-  const compactInView = await rowsInView(list);
+  const compactInView = await plainRowsInView(list);
 
   await chooseRows(list, 'Comfortable');
   const comfortable = await plainRowCapacity(list);
   expect(Math.abs(comfortable.height - 92)).toBeLessThan(0.5);
-  const comfortableInView = await rowsInView(list);
+  const comfortableInView = await plainRowsInView(list, compactInView.key);
 
   console.log(
-    `plain row ${compact.height} px, fits ${compact.fit}; comfortable ${comfortable.height} px, fits ${comfortable.fit}; in view ${compactInView} against ${comfortableInView}`,
+    `plain row ${compact.height} px, fits ${compact.fit}; comfortable ${comfortable.height} px, fits ${comfortable.fit}; in view from the same row ${compactInView.count} against ${comfortableInView.count}`,
   );
   expect(compact.fit / comfortable.fit).toBeGreaterThanOrEqual(1.7);
-  expect(compactInView).toBeGreaterThan(comfortableInView);
+  expect(compactInView.count / comfortableInView.count).toBeGreaterThanOrEqual(1.7);
 });
 
 test('a long title has one line with an ellipsis and its full text on hover', async ({
@@ -368,7 +391,13 @@ test('the choice survives a reload and applies in a second open tab', async ({
   await second.close();
 });
 
-test('a saved Comfortable setting is read at the start, and a stored object without it is Compact', async ({
+test('a saved Comfortable setting is read at the start', async ({ context, page, background }) => {
+  const list = await openSlot(context, page, { rowSize: 'comfortable' }, background);
+  await expect(list.locator('.wr[data-rows]')).toHaveAttribute('data-rows', 'comfortable');
+  await expect(list.locator('.wr-type-block').first()).toHaveCSS('width', '80px');
+});
+
+test('stored settings without a row size read as Compact', async ({
   context,
   page,
   background,
@@ -438,7 +467,9 @@ for (const width of [320, 400, 600]) {
             ),
           );
           if (meta && pillBox.top < lowest - 0.5) found.push(`${name}: pill not under the meta`);
-          if (pillBox.left < bodyBox.left - 0.5 - 60) found.push(`${name}: pill not at left`);
+          // The pill line starts at the text column, or at the block in the narrowest card.
+          const edge = viewport < 360 ? block.left : bodyBox.left;
+          if (Math.abs(pillBox.left - edge) > 1) found.push(`${name}: pill not at the left edge`);
         }
       }
       return found;
@@ -474,5 +505,178 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(list.locator('.wr-type-block').first()).toHaveCSS('width', '36px');
     await page.locator(HOST).scrollIntoViewIfNeeded();
     await page.locator(HOST).screenshot({ path: `${SHOTS}/card-compact-400-${theme}.png` });
+  });
+}
+
+function luminance(color: string): number {
+  const [r, g, b] = (color.match(/[\d.]+/g) ?? []).slice(0, 3).map((v) => {
+    const c = Number(v) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrast(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * The focus ring of the focused Row size radio: the outline that its segment or its group draws,
+ * and the color behind the ring (the segment's own fill for an inside ring, the card for an
+ * outside ring).
+ */
+async function focusRing(list: Locator): Promise<{
+  visible: boolean;
+  focusVisible: boolean;
+  ring: string;
+  behind: string;
+}> {
+  return list.locator('.wr-segments').evaluate((group) => {
+    const radio = group.querySelector<HTMLInputElement>('input:focus-visible');
+    const segment = radio?.closest<HTMLElement>('.wr-segment') ?? null;
+    const opaque = (start: Element | null): string => {
+      for (let el = start; el; el = el.parentElement) {
+        const color = getComputedStyle(el).backgroundColor;
+        if (!/rgba\(.*,\s*0\)|transparent/.test(color)) return color;
+      }
+      return 'rgb(255, 255, 255)';
+    };
+    for (const owner of [segment, group] as (HTMLElement | null)[]) {
+      if (!owner) continue;
+      const style = getComputedStyle(owner);
+      if (style.outlineStyle === 'none' || parseFloat(style.outlineWidth) === 0) continue;
+      const inside = parseFloat(style.outlineOffset) < 0;
+      return {
+        visible: true,
+        focusVisible: radio !== null,
+        ring: style.outlineColor,
+        behind: inside ? opaque(owner) : opaque(owner.parentElement),
+      };
+    }
+    return { visible: false, focusVisible: radio !== null, ring: '', behind: '' };
+  });
+}
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`the focus ring of the Row size control shows after Tab and after an arrow key, ${theme}`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    const list = await openSlot(context, page, theme === 'dark' ? { theme } : {}, background);
+    await gear(list).click();
+    const group = list.getByRole('radiogroup', { name: 'Row size' });
+    await expect(group).toBeVisible();
+    // Tab from the Theme select into the group.
+    await list.getByLabel('Theme', { exact: true }).focus();
+    await page.keyboard.press('Tab');
+    await expect(group.getByRole('radio', { name: 'Compact' })).toBeFocused();
+    for (const step of ['Tab', 'ArrowRight', 'ArrowLeft']) {
+      if (step !== 'Tab') await page.keyboard.press(step);
+      const ring = await focusRing(list);
+      expect(ring.focusVisible, step).toBe(true);
+      expect(ring.visible, step).toBe(true);
+      expect(
+        contrast(ring.ring, ring.behind),
+        `${step}: ${ring.ring} on ${ring.behind}`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+    await shot(page, `row-size-focus-${theme}`);
+  });
+}
+
+test('the checked Row size segment uses the system highlight in forced colors', async ({
+  context,
+  page,
+  background,
+}) => {
+  const list = await openSlot(context, page, {}, background);
+  await page.emulateMedia({ forcedColors: 'active' });
+  await gear(list).click();
+  const group = list.getByRole('radiogroup', { name: 'Row size' });
+  await expect(group).toBeVisible();
+  const segments = await group.locator('.wr-segment').evaluateAll((els) => {
+    const probe = (property: 'backgroundColor' | 'color', value: string) => {
+      const el = document.createElement('span');
+      el.style[property] = value;
+      els[0]!.append(el);
+      const color = getComputedStyle(el)[property];
+      el.remove();
+      return color;
+    };
+    return {
+      highlight: probe('backgroundColor', 'Highlight'),
+      highlightText: probe('color', 'HighlightText'),
+      fills: els.map((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color]),
+    };
+  });
+  expect(segments.fills[0]).toEqual([segments.highlight, segments.highlightText]);
+  expect(segments.fills[1]![0]).not.toBe(segments.highlight);
+});
+
+// The meta line stays on one line when it fits. When it does not, the points and the chips go to
+// a line under the course. No part overlaps another or leaves the text column.
+for (const width of [640, 680, 720, 760, 1440]) {
+  test(`a Compact row with points and two long chips has no overlap at ${width} px`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    const list = await openSlot(context, page, { width }, background);
+    const row = list.locator('.wr-item', { hasText: 'Homework 7' });
+    await row.evaluate((el) => {
+      const tags = el.querySelector('.wr-item-tags')!;
+      if (!tags.querySelector('.wr-points')) {
+        const points = document.createElement('span');
+        points.className = 'wr-points';
+        points.textContent = '100 pts';
+        tags.prepend(points);
+      }
+      const chip = tags.querySelector('.wr-chip')!;
+      const second = chip.cloneNode(true) as HTMLElement;
+      second.querySelector('.wr-tag-text')!.textContent = 'Available until Oct 30, 11:59 pm';
+      tags.append(second);
+    });
+    if (SHOTS !== '') await row.screenshot({ path: `${SHOTS}/meta-wrap-${width}.png` });
+    const found = await row.evaluate((el) => {
+      const body = el.querySelector('.wr-item-body')!.getBoundingClientRect();
+      const parts = [
+        ...el.querySelectorAll<HTMLElement>(
+          '.wr-course-name, .wr-course-link, .wr-points, .wr-chip, .wr-marker',
+        ),
+      ].map((part) => ({ part, box: part.getBoundingClientRect() }));
+      const problems: string[] = [];
+      const label = (part: HTMLElement) => part.className.split(' ')[0] + ':' + part.textContent;
+      for (const { part, box } of parts) {
+        if (box.left < body.left - 0.5 || box.right > body.right + 0.5)
+          problems.push(`${label(part)} leaves the text column`);
+      }
+      for (let i = 0; i < parts.length; i++) {
+        for (let j = i + 1; j < parts.length; j++) {
+          const a = parts[i]!.box;
+          const b = parts[j]!.box;
+          if (
+            a.left < b.right - 0.5 &&
+            b.left < a.right - 0.5 &&
+            a.top < b.bottom - 0.5 &&
+            b.top < a.bottom - 0.5
+          )
+            problems.push(`${label(parts[i]!.part)} overlaps ${label(parts[j]!.part)}`);
+        }
+      }
+      const name = el.querySelector<HTMLElement>('.wr-course-name')!;
+      const link = el.querySelector<HTMLElement>('.wr-course-link')!;
+      return {
+        problems,
+        name: name.getBoundingClientRect().width,
+        nameFull: name.scrollWidth,
+        linkClipped: link.scrollWidth > link.clientWidth + 0.5,
+      };
+    });
+    expect(found.problems).toEqual([]);
+    // The course name shrinks first, and keeps about 6 characters.
+    expect(found.name).toBeGreaterThanOrEqual(Math.min(found.nameFull, 36));
+    expect(found.linkClipped).toBe(false);
   });
 }
