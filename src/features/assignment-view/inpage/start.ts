@@ -1,7 +1,8 @@
 /**
- * Starts the one assignment view on the Assignments list (design decision 26).
+ * Starts the one assignment view (design decision 26) on the Assignments list and on the
+ * Submission Details page of the student's own submission.
  *
- * The view runs on the Assignments list of the saved Canvas while its switch is on. The script reads
+ * The view runs on these pages of the saved Canvas while its switch is on. The script reads
  * the saved address, the switch and the theme through the page channel, like the dashboard fixes,
  * and follows their changes. Turning the switch off, or leaving the saved Canvas, removes the
  * view at once.
@@ -13,11 +14,35 @@ import { inpageTheme } from '../../../shared/ui/theme';
 import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
 import type { DataMessage } from '../../weekly-list/data/protocol';
 import type { Settings } from '../../weekly-list/model/types';
-import { createRowsEngine } from './rows';
+import { createFeedbackPane, type FeedbackPane } from './feedbackPane';
+import { createRowsEngine, type RowsEngine } from './rows';
+import { createSubmissionView } from './submission';
 import { createTurnInPane, type TurnInPane } from './turnInPane';
 
 /** The Assignments list, including a shard id. */
-const ASSIGNMENT_VIEW_PATH = /^\/courses\/(\d+(?:~\d+)?)\/assignments\/?$/;
+const LIST_PATH = /^\/courses\/(\d+(?:~\d+)?)\/assignments\/?$/;
+
+/** The Submission Details page of a student: course, assignment and user. */
+const SUBMISSION_PATH =
+  /^\/courses\/(\d+(?:~\d+)?)\/assignments\/(\d+(?:~\d+)?)\/submissions\/(\d+(?:~\d+)?)\/?$/;
+
+/** What both panes offer to the script. */
+interface PaneControl {
+  setWidth(width: number): void;
+  refreshTheme(): void;
+  /** Removes the frame, for example when the student switched. */
+  reset(): void;
+  stop(): void;
+}
+
+/** What both views offer to the script. */
+interface ViewEngine {
+  /** Shows the view on the page, or gives the page back as Canvas drew it. */
+  setActive(active: boolean): void;
+  refreshTheme(): void;
+  resetStudent?(): void;
+  stop(): void;
+}
 
 /** The part of the page channel that the view uses. */
 export interface AssignmentViewChannel {
@@ -63,11 +88,14 @@ export async function startAssignmentView(
   const origin = options.origin ?? doc.defaultView?.location.origin ?? '';
   const pathname = options.pathname ?? doc.defaultView?.location.pathname ?? '';
   const { channel, signal } = options;
-  const courseId = ASSIGNMENT_VIEW_PATH.exec(pathname)?.[1];
+  const list = LIST_PATH.exec(pathname);
+  const submission = SUBMISSION_PATH.exec(pathname);
+  const courseId = list?.[1] ?? submission?.[1];
   let stopped = false;
   const stops: (() => void)[] = [];
-  let engine: ReturnType<typeof createRowsEngine> | null = null;
-  let pane: TurnInPane | null = null;
+  let engine: ViewEngine | null = null;
+  /** The pane of the page: the turn-in on the list, the feedback on the submission page. */
+  let pane: PaneControl | null = null;
   const controller: AssignmentViewController = {
     stop() {
       if (stopped) return;
@@ -81,32 +109,58 @@ export async function startAssignmentView(
   let settings: Settings | null = null;
   let tools: ToolsSettings | null = null;
   const theme = () => inpageTheme(settings?.theme ?? 'auto', () => detectPageTheme(doc));
-  const turnIn = createTurnInPane({
-    doc,
-    origin,
-    courseId,
-    theme,
-    width: () => tools?.fileViewerWidth ?? DEFAULT_TOOLS_SETTINGS.fileViewerWidth,
-    saveWidth(width) {
-      // The width is shared with the file pane, so it goes through the same setting.
-      void channel.tools
-        .getValue()
-        .then((latest) => channel.tools.setValue({ ...latest, fileViewerWidth: width }))
-        .catch((error: unknown) => logFailure('turn-in width', error));
-    },
-    reload: (assignmentId) => engine?.reload(assignmentId) ?? Promise.resolve(),
-  });
-  const rows = createRowsEngine({
-    doc,
-    origin,
-    courseId,
-    send: channel.send,
-    theme,
-    openTurnIn: turnIn.open,
-    onOtherStudent: turnIn.reset,
-  });
-  engine = rows;
-  pane = turnIn;
+  const width = () => tools?.fileViewerWidth ?? DEFAULT_TOOLS_SETTINGS.fileViewerWidth;
+  const saveWidth = (next: number): void => {
+    // The width is shared with the file pane, so it goes through the same setting.
+    void channel.tools
+      .getValue()
+      .then((latest) => channel.tools.setValue({ ...latest, fileViewerWidth: next }))
+      .catch((error: unknown) => logFailure('pane width', error));
+  };
+  if (submission?.[2] !== undefined && submission[3] !== undefined) {
+    const feedback: FeedbackPane = createFeedbackPane({ doc, theme, width, saveWidth });
+    engine = createSubmissionView({
+      doc,
+      origin,
+      pathname,
+      courseId,
+      assignmentId: submission[2],
+      userId: submission[3],
+      send: channel.send,
+      theme,
+      openFeedback: feedback.open,
+      closeFeedback: feedback.close,
+    });
+    pane = {
+      setWidth: feedback.setWidth,
+      refreshTheme: feedback.refreshTheme,
+      reset: feedback.close,
+      stop: feedback.close,
+    };
+  } else {
+    const rows: RowsEngine = createRowsEngine({
+      doc,
+      origin,
+      courseId,
+      send: channel.send,
+      theme,
+      openTurnIn: (request) => turnIn.open(request),
+      onOtherStudent: () => turnIn.reset(),
+    });
+    const turnIn: TurnInPane = createTurnInPane({
+      doc,
+      origin,
+      courseId,
+      theme,
+      width,
+      saveWidth,
+      reload: (assignmentId) => rows.reload(assignmentId),
+    });
+    engine = rows;
+    pane = turnIn;
+  }
+  const view = engine;
+  const dock = pane;
 
   let saved: string | null = null;
   let enabled = false;
@@ -114,12 +168,12 @@ export async function startAssignmentView(
     // An open turn-in may hold unsent work, so a switch or an address that a failed read made
     // unknown never closes it. A change of student, a sign-out and a new address do, through
     // `onStudentReset`.
-    rows.setActive(!stopped && enabled && saved === origin);
+    view.setActive(!stopped && enabled && saved === origin);
   };
   const follow = (next: Settings): void => {
     settings = next;
-    rows.refreshTheme();
-    turnIn.refreshTheme();
+    view.refreshTheme();
+    dock.refreshTheme();
   };
   stops.push(
     channel.choices.origin.watch((value) => {
@@ -129,7 +183,7 @@ export async function startAssignmentView(
     channel.tools.watch((next) => {
       tools = next;
       enabled = next.assignmentView;
-      turnIn.setWidth(next.fileViewerWidth);
+      dock.setWidth(next.fileViewerWidth);
       apply();
     }),
     channel.settings.watch(follow),
@@ -137,8 +191,8 @@ export async function startAssignmentView(
   if (options.onStudentReset)
     stops.push(
       options.onStudentReset(() => {
-        turnIn.reset();
-        rows.resetStudent?.();
+        dock.reset();
+        view.resetStudent?.();
         apply();
       }),
     );

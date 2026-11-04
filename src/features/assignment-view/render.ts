@@ -4,7 +4,7 @@ import type { AssignmentDetails } from './protocol';
 
 /** Builds inert content nodes for the shadow root of an expanded assignment. */
 
-interface RenderContext {
+export interface RenderContext {
   origin: string;
   courseId: string;
   doc: Document;
@@ -24,7 +24,7 @@ function section(doc: Document, className: string, title: string): HTMLElement {
 }
 
 /** The address of one file of a submission, in the shape that the file pane takes (decision 25). */
-function submissionFileUrl(
+export function submissionFileUrl(
   details: AssignmentDetails,
   context: RenderContext,
   fileId: string,

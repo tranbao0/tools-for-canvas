@@ -13,6 +13,7 @@ import { normalizeCanvasId } from '../../../shared/canvas/ids';
  */
 import { submissionChanged } from '../turnIn';
 import { createListRefresh } from './listRefresh';
+import { fitInstructions, toggleInstructions } from './instructions';
 import type { DataMessage } from '../../weekly-list/data/protocol';
 import { logFailure } from '../../../shared/platform/log';
 import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
@@ -146,15 +147,8 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
   }
 
   /** Cuts the instructions to about 10 lines and shows the button only when text is cut. */
-  function fitInstructions(state: RowState): void {
-    const body = state.panel?.querySelector<HTMLElement>('.av-instructions .av-body');
-    const more = state.panel?.querySelector<HTMLElement>('[data-action="more"]');
-    if (!body || !more || state.details?.hidden !== false) return;
-    if (more.getAttribute('aria-expanded') === 'true') return;
-    body.setAttribute('data-av-clamped', '');
-    const cut = body.scrollHeight > body.clientHeight + 1;
-    body.toggleAttribute('data-av-cut', cut);
-    more.hidden = !cut;
+  function fitInstructionsOf(state: RowState): void {
+    if (state.details?.hidden === false) fitInstructions(state.panel);
   }
 
   function draw(state: RowState): void {
@@ -164,13 +158,13 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
       (reply) => {
         if (stopped || state.load !== token || !state.row.isConnected) return;
         showIn(state, renderDetails(reply, { doc, origin, courseId, now }));
-        fitInstructions(state);
+        fitInstructionsOf(state);
         const body = state.panel?.querySelector('.av-instructions .av-body');
         // An image that loads later changes the height.
         state.resize?.disconnect();
         state.resize = null;
         if (body && typeof ResizeObserver !== 'undefined') {
-          state.resize = new ResizeObserver(() => fitInstructions(state));
+          state.resize = new ResizeObserver(() => fitInstructionsOf(state));
           state.resize.observe(body);
         }
       },
@@ -192,16 +186,7 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
     } else if (action === 'retry') {
       draw(state);
     } else if (action === 'more' && target) {
-      const body = state.panel?.querySelector('.av-instructions .av-body');
-      const open = target.getAttribute('aria-expanded') !== 'true';
-      target.setAttribute('aria-expanded', String(open));
-      target.textContent = open ? 'Show less' : 'Show more';
-      if (open) {
-        body?.removeAttribute('data-av-clamped');
-        body?.removeAttribute('data-av-cut');
-      } else {
-        fitInstructions(state);
-      }
+      toggleInstructions(state.panel, target);
     }
   }
 
@@ -247,7 +232,7 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
     } else {
       state.host?.setAttribute('data-theme', theme());
       state.details.hidden = false;
-      fitInstructions(state);
+      fitInstructionsOf(state);
     }
   }
 

@@ -48,6 +48,31 @@ describe('projectAssignmentView', () => {
     });
   });
 
+  it('keeps the size of a file, the type, the text and the address of a submission', () => {
+    const { assignment, submission } = rawRecords();
+    const details = projectAssignmentView(assignment, {
+      ...submission,
+      submission_type: 'online_url',
+      body: '<p>Text</p>',
+      url: 'https://example.com/work',
+      attachments: [
+        { id: '501', display_name: 'essay.pdf', size: 120_832, 'content-type': 'x' },
+        { id: '502', display_name: 'odd.pdf', size: -4 },
+        { id: '503', display_name: 'none.pdf' },
+      ],
+    });
+    expect(details.submission).toMatchObject({
+      submission_type: 'online_url',
+      body: '<p>Text</p>',
+      url: 'https://example.com/work',
+    });
+    expect(details.submission.attachments).toEqual([
+      { id: '501', display_name: 'essay.pdf', size: 120_832 },
+      { id: '502', display_name: 'odd.pdf' },
+      { id: '503', display_name: 'none.pdf' },
+    ]);
+  });
+
   it('limits every text and every list', () => {
     const { assignment, submission } = rawRecords();
     const criteria = Array.from({ length: 80 }, (_, index) => ({

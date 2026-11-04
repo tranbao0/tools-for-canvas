@@ -13,6 +13,7 @@ import type {
 
 const MAX_HTML = 200_000;
 const MAX_TEXT = 2000;
+const MAX_URL = 2000;
 const MAX_CRITERIA = 50;
 const MAX_RATINGS = 20;
 const MAX_COMMENTS = 200;
@@ -60,9 +61,11 @@ function files(value: unknown): AssignmentFile[] {
     const fields = record(entry);
     const fileId = id(fields?.['id']);
     if (fields !== null && fileId !== null) {
+      const size = finite(fields['size']);
       result.push({
         id: fileId,
         display_name: plain(fields['display_name'] ?? fields['filename']),
+        ...(size !== null && size >= 0 ? { size } : {}),
       });
     }
   }
@@ -196,6 +199,9 @@ export function projectAssignmentView(
       late_policy_status: latePolicy(submissionRecord['late_policy_status']),
       custom_grade_status_id: id(submissionRecord['custom_grade_status_id']),
       redo_request: submissionRecord['redo_request'] === true,
+      submission_type: text(submissionRecord['submission_type'], 40),
+      body: text(submissionRecord['body'], MAX_HTML),
+      url: text(submissionRecord['url'], MAX_URL),
       attachments: files(submissionRecord['attachments']),
       submission_comments: comments(submissionRecord['submission_comments']),
       rubric_assessment: assessment(submissionRecord['rubric_assessment']),

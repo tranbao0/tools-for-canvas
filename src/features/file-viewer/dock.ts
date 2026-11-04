@@ -1,10 +1,10 @@
 /**
  * The dock on the right edge of a Canvas page (design decisions 25 and 26): a fixed host with a
  * closed shadow root, a resize handle on its left edge, and the right padding of the `html` element
- * that makes room for it. The file pane and the turn-in pane both use it, so they sit in the same
- * place with the same width.
+ * that makes room for it. The file pane, the turn-in pane and the feedback pane all use it, so they
+ * sit in the same place with the same width.
  *
- * The two panes run in separate scripts of the same isolated world. They share only the room
+ * The panes run in separate scripts of the same isolated world. They share only the room
  * lease below, which keeps the page padding right when one pane hides while the other shows.
  */
 import { normalizeWidth } from './model';
@@ -12,7 +12,7 @@ import { normalizeWidth } from './model';
 /** Below this window width the dock covers the page instead of making room beside it. */
 const NARROW_PX = 900;
 
-export type DockRole = 'file' | 'turn-in';
+export type DockRole = 'file' | 'turn-in' | 'feedback';
 
 export interface DockOptions {
   role: DockRole;
