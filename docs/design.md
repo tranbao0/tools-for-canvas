@@ -45,7 +45,7 @@ This extension has no account, no server of its own and no telemetry.
 | 15 | Publishing and privacy | Three stores, one privacy policy, no data collection |
 | 16 | License | GPL-3.0-only, with DCO sign-off for contributions |
 | 17 | Name | Tools for Canvas |
-| 18 | Settings | Four settings, also shown inside the panel and the in-page list, and a minimize button on the in-page list |
+| 18 | Settings | Five settings, also shown inside the panel and the in-page list, and a minimize button on the in-page list |
 | 19 | Accessibility, language and theme | WCAG 2.2 AA, English text, a Theme setting with Automatic, Light and Dark |
 | 20 | No-telemetry guarantee | One fetch wrapper that only reaches the student's Canvas |
 | 21 | Visual design | Looks like a native part of Canvas, not an add-on sidebar |
@@ -351,6 +351,25 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     Restoring the card goes back to the overlay.
     Release restores the inline styles of the wrapper and the section and removes the marker.
     The scroll regions of the card turn the browser's scroll anchoring off, and the layout code ignores the scroll event of a card that is not rendered, so a move of the card keeps the scroll positions.
+  - **The rows of the slot card** have the look of the items of the Course work widget: the check box, a block in the course color with the type icon, the text column, and a right column with the due pill and the row actions (Skip, Undo skip, Move to today) under it.
+    The Row size setting (decision 18) picks the size.
+    The rows of the card are the only rows that it changes.
+    - Comfortable: an 80 px block with a 32 px icon, a title of 14 px bold, the course name with "| Go to course", the points and the chips on their own lines, and a due pill with 8 px padding and 8 px corners.
+      A row without actions is 92 px high, so rows sit 92 px apart.
+    - Compact, the default: a 36 px block with 4 px corners and an 18 px white icon, and an 18 px check box.
+      The title has one line, bold, with an ellipsis when it is too long.
+      Its full text is the accessible name, and the `title` attribute shows it on hover.
+      One 12 px muted meta line follows: "<course name> | Go to course · <points> <chips>".
+      The course name shrinks first with an ellipsis.
+      The link, the points and the chips keep their width.
+      A subtitle, such as "Reply to topic", takes its own 12 px line under the meta line.
+      The due pill has 12 px bold text, 6 px corners, 3 px 6 px padding and a 14 px icon, in the same colors.
+      The actions are 12 px.
+      A row without actions is 44 px high, with 10 px between its parts, so the card holds more than twice as many such rows as with Comfortable.
+    - In a card narrower than 480 px (the content box), the Comfortable rows hide the block.
+      The Compact rows keep it at 36 px.
+      The meta line wraps into the course with its link and then the points and the chips, and the pill and the actions go to a line under the meta line, left-aligned with the text.
+      In a card narrower than 200 px, the course link goes under the course name, and that last line starts at the block, because the pill is wider than the text column.
   - **Beside the widget grid**, when no Course work slot exists, in the white area, one gutter right of the widget columns, when the viewport has room for a gutter, a card of at least 320 px and a 24 px right margin.
     The card is under `body`, outside the widget tray and outside every Canvas layout box, and it uses document coordinates.
     It grows to 400 px.
@@ -1623,7 +1642,7 @@ The owner chose it on 2026-10-27.
 
 **Question:** Which settings does version 1 have?
 
-**Decision:** Four settings.
+**Decision:** Five settings.
 
 | Setting | Default |
 |---|---|
@@ -1631,6 +1650,7 @@ The owner chose it on 2026-10-27.
 | Show in my list | On for every course, so all active student courses show |
 | Show progress rings | On |
 | Theme | Automatic (see decision 19) |
+| Row size | Compact |
 
 The list on the Canvas page has no switch.
 It has a minimize button instead (see below).
@@ -1658,6 +1678,14 @@ It has a minimize button instead (see below).
   - The side panel has no minimize button and ignores the field.
   - The page channel accepts `minimized` in `weekrow:save-settings`, and it rejects any other shape.
     Stored settings from an earlier version that hold `showOnCanvasPages` read without it, and the field is dropped.
+- "Row size" has two choices, Compact and Comfortable, as a segmented control with the hint "Compact fits about twice as many tasks in the card."
+  - It is a group of two real radio inputs, with the role `radiogroup` and the name "Row size".
+    The arrow keys move between the choices.
+  - It is stored as the field `rowSize` (`compact` or `comfortable`).
+    A missing or unknown value reads as Compact, so settings stored before the field existed read as Compact.
+  - A change applies at once, in every open Canvas tab, with no reload.
+  - It changes only the rows of the card in the Course work slot (decision 4).
+    Every other surface keeps its rows, and the settings show the control on every surface.
 - The settings page also shows the Canvas address, with a way to change it.
 
 **Why:**
@@ -1671,7 +1699,7 @@ It has a minimize button instead (see below).
   The No due date group starts collapsed, and Skip clears single items.
 
 The small tools have their own switches, one group for each tool (decision 22).
-They show in the same three places, below Theme, and they are stored apart from these four settings.
+They show in the same three places, below Row size, and they are stored apart from these five settings.
 
 **Left out from the original:** the three-day view, list length, theme color, confetti, streaks, the Announcements tab, repeat-weekly custom tasks, Gradescope data, teacher mode and the 12-hour or 24-hour setting [9].
 
