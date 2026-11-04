@@ -1,3 +1,4 @@
+import { NOT_SAVED_CANVAS } from '../../shared/platform/refusals';
 import { ACK_TIMEOUT_MS, BYTES_CHUNK, BYTES_PORT, BYTES_WINDOW } from './bytes';
 import {
   checkedMime,
@@ -195,7 +196,7 @@ export function routeViewerMessage(
     const origin = await host.savedOrigin();
     const fromPane = host.isExtensionPage(sender);
     if (!origin || (!fromPane && senderPageOrigin(sender) !== origin))
-      throw new Error('Only the saved Canvas may ask for its data');
+      throw new Error(NOT_SAVED_CANVAS);
     const tabId = sender.tab?.id;
     const owner = createViewerOwner(host, tabId);
     switch (request['type']) {
