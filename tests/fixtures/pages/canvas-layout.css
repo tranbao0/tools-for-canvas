@@ -235,6 +235,9 @@ body:not(.full-width) .ic-Layout-wrapper { max-width: 1366px; }
 .fixture-widget-app { margin-left: 12px; margin-right: 12px; }
 .fixture-widget-grid { padding: 24px; }
 [data-testid="widget-columns"] { display: flex; align-items: flex-start; gap: 24px; }
+/* A column is a flex column, as in the package (Flex direction="column" gap="medium"), so a
+   widget wrapper is a flex item and holds the margin of its section. */
+[data-testid^="widget-column-"] { display: flex; flex-direction: column; gap: 1.5rem; }
 [data-testid="widget-column-1"] { flex: 1 1 auto; width: 66%; min-width: 0; }
 [data-testid="widget-column-2"] { flex: 1 1 auto; width: 33%; min-width: 0; }
 @media (max-width: 1379px) {
