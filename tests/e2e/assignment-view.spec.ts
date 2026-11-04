@@ -1,11 +1,11 @@
 /**
- * The one assignment view on the Grades page (design decision 26, build step 1), on the Grades
- * fixture through the fake Canvas server. The details are in an open shadow root, which the
- * Playwright locators look into.
+ * The one assignment view (design decision 26): the expand rows and the turn-in pane of the
+ * Assignments list, on the Assignments fixture through the fake Canvas server. The details are in
+ * an open shadow root, which the Playwright locators look into.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { Frame, Locator, Page } from '@playwright/test';
+import type { Frame, Page } from '@playwright/test';
 import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import { ASSIGNMENT_DETAILS, rawRecords } from '../fixtures/assignment-view';
 import { SCENARIO_NOW, buildScenario } from '../fixtures/scenario';
@@ -24,10 +24,9 @@ import { addCsrfCookie, expect, saveTools, serveScenario, test } from './support
 
 test.use({ extensionDir: CHROME_E2E_EXTENSION_DIR });
 
-const gradesPage = readFileSync('tests/fixtures/pages/grades.html', 'utf8');
 const assignmentsPage = readFileSync('tests/fixtures/pages/assignments.html', 'utf8');
 const notes = readFileSync('tests/fixtures/files/notes.txt', 'utf8');
-const GRADES = '/courses/12/grades';
+const LIST = '/courses/12/assignments';
 const DIR = path.join(process.cwd(), 'screenshots', 'assignment-view');
 
 const LONG_INSTRUCTIONS = Array.from(
@@ -130,15 +129,14 @@ async function open(
     width?: number;
     extra?: FakeCanvasRoute[];
     switchOff?: boolean;
-    assignments?: boolean;
   } = {},
 ) {
   const served = await serveScenario(context, [
     ...(options.extra ?? []),
     {
-      path: options.assignments ? '/courses/12/assignments' : GRADES,
+      path: LIST,
       contentType: 'text/html',
-      body: options.assignments ? assignmentsPage : gradesPage,
+      body: assignmentsPage,
     },
     ...viewRoutes('101', rawRecords(details())),
     ...viewRoutes('102', rawRecords(secondAssignment())),
@@ -150,9 +148,7 @@ async function open(
     await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
   }
   await page.setViewportSize({ width: options.width ?? 1920, height: 1000 });
-  await page.goto(
-    `${served.canvas.origin}${options.assignments ? '/courses/12/assignments' : GRADES}`,
-  );
+  await page.goto(`${served.canvas.origin}${LIST}`);
   return served.canvas;
 }
 
@@ -180,7 +176,6 @@ test('a row opens in place with every section, and the detail requests wait for 
   const canvas = await open(context, page, background);
   await expect(toggle(page, 'Essay')).toBeVisible();
   await expect(toggle(page, 'Reading')).toBeVisible();
-  // The totals rows are no assignments.
   await expect(page.locator('[data-av-toggle]')).toHaveCount(2);
   expect(detailRequests(canvas)).toHaveLength(0);
 
@@ -284,8 +279,8 @@ test('two rows can be open at once', async ({ context, page, background }) => {
   await expect(region(page, 'Reading').getByText('No files.')).toBeVisible();
   await expect(region(page, 'Essay')).toBeVisible();
   // Each details row sits right under its own assignment row.
-  await expect(page.locator('#submission_101 + #av-details-101')).toHaveCount(1);
-  await expect(page.locator('#submission_102 + #av-details-102')).toHaveCount(1);
+  await expect(page.locator('#assignment_101 + #av-details-101')).toHaveCount(1);
+  await expect(page.locator('#assignment_102 + #av-details-102')).toHaveCount(1);
 });
 
 test('a submitted file opens in the file pane', async ({ context, page, background }) => {
@@ -299,8 +294,8 @@ test('a submitted file opens in the file pane', async ({ context, page, backgrou
     await expect(page.locator('#tools-file-viewer')).toBeVisible({ timeout: 1500 });
   }).toPass({ timeout: 20_000 });
   await expect((await pane(page)).locator('pre')).toHaveText(notes);
-  // The page did not leave the Grades page, and the file did not download.
-  expect(new URL(page.url()).pathname).toBe(GRADES);
+  // The page did not leave the list, and the file did not download.
+  expect(new URL(page.url()).pathname).toBe(LIST);
   expect(canvas.requests.some((request) => request.path.includes('download=501'))).toBe(false);
 });
 
@@ -317,27 +312,21 @@ test('a comment attachment opens in the file pane', async ({ context, page, back
   await expect(frame.locator('[data-part="pdf-name"]')).toHaveText('feedback.pdf');
   await expect(frame.locator('[data-part="pdf-page-count"]')).toHaveText(/3/);
   await expect(frame.locator('[data-part="open-in-canvas"]')).toHaveCount(0);
-  expect(new URL(page.url()).pathname).toBe(GRADES);
+  expect(new URL(page.url()).pathname).toBe(LIST);
   // The pane read the file through the submission route, never through the files API.
   expect(canvas.requests.some((request) => request.path.includes('comment_id=201'))).toBe(true);
   expect(canvas.requests.some((request) => request.path === '/api/v1/files/502')).toBe(false);
 });
 
-test('the Canvas links and toggles of the row keep working', async ({
+test('the title link of the row still goes to its assignment page', async ({
   context,
   page,
   background,
 }) => {
   const canvas = await open(context, page, background);
   await expand(page, canvas, 'Essay');
-  // Canvas's own comments row still opens from its own link.
-  await page.getByRole('link', { name: 'Read comments', exact: true }).click();
-  await expect(page.locator('#comments_thread_101')).toBeVisible();
-  await page.getByRole('link', { name: 'See rubric results', exact: true }).click();
-  await expect(page.locator('#rubric_101')).toBeVisible();
-  // The row link still goes to the page that Canvas links.
-  await page.locator('#submission_101 th.title a').click();
-  await expect(page).toHaveURL(`${canvas.origin}/courses/12/assignments/101/submissions/42`);
+  await page.locator('#assignment_101 a.ig-title').click();
+  await expect(page).toHaveURL(`${canvas.origin}/courses/12/assignments/101`);
 });
 
 test('an error shows Retry, and Retry loads the details', async ({ context, page, background }) => {
@@ -362,13 +351,13 @@ test('an error shows Retry, and Retry loads the details', async ({ context, page
   await expect(reading.getByRole('alert')).toHaveCount(0);
 });
 
-test('with the switch off, the Grades page has no controls', async ({
+test('with the switch off, the Assignments list has no controls', async ({
   context,
   page,
   background,
 }) => {
   const canvas = await open(context, page, background, { switchOff: true });
-  await expect(page.locator('#submission_101 th.title a')).toBeVisible();
+  await expect(page.locator('#assignment_101 a.ig-title')).toBeVisible();
   await waitForListLoaded(canvas);
   await expect(page.locator('[data-av-toggle], [data-av-own]')).toHaveCount(0);
   expect(detailRequests(canvas)).toHaveLength(0);
@@ -390,53 +379,30 @@ test('the switch removes the buttons at once and adds them again', async ({
   await expect(toggle(page, 'Essay')).toHaveAttribute('aria-expanded', 'false');
 });
 
-test('another course page and another student page get no buttons', async ({
+test('the Grades list and the assignment page get no buttons', async ({
   context,
   page,
   background,
 }) => {
+  const grades = readFileSync('tests/fixtures/pages/grades.html', 'utf8');
   const canvas = await open(context, page, background, {
     extra: [
-      { path: '/courses/12/grades/42', contentType: 'text/html', body: gradesPage },
-      { path: '/courses/12', contentType: 'text/html', body: gradesPage },
+      { path: '/courses/12/grades', contentType: 'text/html', body: grades },
+      { path: '/courses/12/assignments/101', contentType: 'text/html', body: assignmentsPage },
     ],
   });
   await expect(toggle(page, 'Essay')).toBeVisible();
-  for (const other of ['/courses/12/grades/42', '/courses/12']) {
-    await page.goto(`${canvas.origin}${other}`);
-    await expect(page.locator('#submission_101 th.title a')).toBeVisible();
-    await waitForListLoaded(canvas);
-    await expect(page.locator('[data-av-toggle]')).toHaveCount(0);
-  }
+  await page.goto(`${canvas.origin}/courses/12/grades`);
+  await expect(page.locator('#submission_101 th.title a')).toBeVisible();
+  await waitForListLoaded(canvas);
+  // Canvas's own list: no expand button, no extension node, no read of the details.
+  await expect(page.locator('[data-av-toggle], [data-av-own], [data-av-details]')).toHaveCount(0);
+  await page.goto(`${canvas.origin}/courses/12/assignments/101`);
+  await expect(page.locator('#assignment_101 a.ig-title')).toBeVisible();
+  await waitForListLoaded(canvas);
+  await expect(page.locator('[data-av-toggle], [data-av-own]')).toHaveCount(0);
+  expect(detailRequests(canvas)).toHaveLength(0);
 });
-
-/** Screenshots for the eye, at 1920 and 1280 px, light and dark, with one row open. */
-async function dark(page: Page): Promise<void> {
-  // A dark Canvas page: the body background decides the Automatic theme.
-  await page.addStyleTag({
-    content:
-      'body{background:#1b2330!important;color:#fff!important}a{color:#5a9fd4!important}#grades_summary thead th{border-color:#4a5b68!important}#grades_summary tbody th,#grades_summary tbody td{border-color:#2e3e4e!important}#grades_summary tr.hard_coded th,#grades_summary tr.hard_coded td{background:#253443!important}#grades_summary .context{color:#9ea6ad!important}',
-  });
-}
-
-for (const width of [1920, 1280]) {
-  for (const theme of ['light', 'dark'] as const) {
-    test(`screenshots at ${width} px, ${theme}`, async ({ context, page, background }) => {
-      const canvas = await open(context, page, background, { width });
-      if (theme === 'dark') await dark(page);
-      await expand(page, canvas, 'Essay');
-      const essay = region(page, 'Essay');
-      await expect(essay.getByRole('link', { name: 'Open assignment' })).toBeVisible();
-      await expect(essay).toHaveCSS(
-        'background-color',
-        theme === 'dark' ? 'rgb(31, 45, 61)' : 'rgb(245, 245, 245)',
-      );
-      const table: Locator = page.locator('#grades_summary');
-      await table.screenshot({ path: path.join(DIR, `grades-open-${width}-${theme}.png`) });
-      await page.screenshot({ path: path.join(DIR, `page-${width}-${theme}.png`), fullPage: true });
-    });
-  }
-}
 
 test('the Theme setting wins over the page background', async ({ context, page, background }) => {
   await saveSetting(background, { theme: 'dark' });
@@ -480,7 +446,6 @@ for (const width of [1920, 1280]) {
       await saveSetting(background, { theme });
       const canvas = await open(context, page, background, {
         width,
-        assignments: true,
         switchOff: true,
       });
       await waitForListLoaded(canvas);
@@ -595,12 +560,21 @@ async function openTurnInCanvas(
   return { canvas, state };
 }
 
+/** The path of a frame, or `null` while the frame has no address yet: a new frame reads as empty. */
+function framePath(frame: Frame): string | null {
+  try {
+    return new URL(frame.url()).pathname;
+  } catch {
+    return null;
+  }
+}
+
 /** The Canvas frame of the turn-in pane. It sits in a closed root, so a test finds it by address. */
 async function turnInFrame(page: Page) {
   let found: Frame | undefined;
   await expect
     .poll(() => {
-      found = page.frames().find((frame) => new URL(frame.url()).pathname === ASSIGNMENT);
+      found = page.frames().find((frame) => framePath(frame) === ASSIGNMENT);
       return found !== undefined;
     })
     .toBe(true);
@@ -1021,7 +995,7 @@ test('Submit on another assignment moves the same frame, and the header follows 
   expect(await host!.evaluate((node) => node.isConnected)).toBe(true);
   await expect(page.locator(TURN_IN)).toHaveCount(1);
   expect(page.frames()).toContain(frame);
-  expect(new URL(frame.url()).pathname).toBe('/courses/12/assignments/102');
+  expect(framePath(frame)).toBe('/courses/12/assignments/102');
 });
 
 test('a cancelled leave question keeps the first assignment, and an accepted one moves the frame', async ({
@@ -1064,248 +1038,4 @@ test('a cancelled leave question keeps the first assignment, and an accepted one
       href: '/courses/12/assignments/102',
       frameTitle: 'Turn in Reading',
     });
-});
-
-const classicPage = readFileSync('tests/fixtures/pages/assignment.html', 'utf8');
-
-async function openClassic(
-  context: Parameters<typeof serveScenario>[0],
-  page: Page,
-  background: Parameters<typeof saveAddress>[0],
-  options: {
-    shard?: boolean;
-    newView?: boolean;
-    empty?: boolean;
-    missing?: boolean;
-    paper?: boolean;
-    teacher?: boolean;
-    observer?: boolean;
-    pastDue?: boolean;
-    easy?: boolean;
-    fakeRoot?: boolean;
-  } = {},
-) {
-  const course = options.shard ? '2~12' : '12';
-  const id = options.shard ? '2~101' : '101';
-  const copy = options.empty ? secondAssignment() : details();
-  copy.assignment.id = options.shard ? '20000000000101' : id;
-  if (options.missing) {
-    copy.assignment.due_at = new Date(Date.now() - 86400000).toISOString();
-    copy.assignment.submission_types = ['online_upload'];
-    copy.submission.missing = true;
-  }
-  if (options.paper) {
-    copy.assignment.submission_types = ['on_paper'];
-    copy.submission.submitted_at = null;
-    copy.submission.attempt = 0;
-    copy.submission.attachments = [];
-    copy.submission.submission_comments = [];
-  }
-  if (options.pastDue) copy.assignment.due_at = new Date(Date.now() - 86400000).toISOString();
-  let body = classicPage;
-  if (options.easy)
-    body = body.replace(
-      'Write an essay about one source.',
-      '<div id="easy_student_view">Teacher text</div>',
-    );
-  if (options.fakeRoot)
-    body = body
-      .replace('id="assignment_show"', 'class="new-view"')
-      .replace('<div class="new-view">', '<aside>New view</aside><div class="new-view">')
-      .replace(
-        'Write an essay about one source.',
-        '<div id="content"><div id="assignment_show"><div class="description"></div><ul class="student-assignment-overview"></ul></div></div>',
-      );
-  const records = rawRecords(copy);
-  const canvas = await serveScenario(context, [
-    {
-      path: `/courses/${course}/assignments/${id}`,
-      contentType: 'text/html',
-      body: options.newView
-        ? classicPage
-            .replace('id="assignment_show"', '')
-            .replace(
-              'Write an essay about one source.',
-              '<div id="assignment_show"><div class="description"></div><ul class="student-assignment-overview"></ul></div>',
-            )
-        : options.teacher
-          ? classicPage.replace(
-              'description user_content',
-              'description user_content teacher-version',
-            )
-          : body,
-    },
-    { path: `/api/v1/courses/${course}/assignments/${id}`, body: json(records.assignment) },
-    {
-      path: `/api/v1/courses/${course}/assignments/${id}/submissions/self`,
-      body: options.observer ? json({ errors: [] }) : json(records.submission),
-      ...(options.observer ? { status: 404 } : {}),
-    },
-    ...FILE_ROUTES,
-  ]);
-  await addCsrfCookie(context, canvas.canvas.origin);
-  await saveAddress(background, canvas.canvas.origin);
-  await page.setViewportSize({ width: 1280, height: 1000 });
-  await page.goto(`${canvas.canvas.origin}/courses/${course}/assignments/${id}`);
-  return canvas.canvas;
-}
-
-const submissionPanel = (page: Page) =>
-  page.getByRole('region', { name: 'Your submission', exact: true });
-
-test('classic assignment shows submission details below the description and follows the switch', async ({
-  context,
-  page,
-  background,
-}) => {
-  await openClassic(context, page, background);
-  const panel = submissionPanel(page);
-  await expect(panel.locator('.av-value').getByText('5 / 10')).toBeVisible();
-  await expect(page.locator('#assignment_show > .description + #av-submission')).toHaveCount(1);
-  await expect(panel.locator('[data-assessed]')).toContainText('Your assessment');
-  await expect(panel.locator('.av-comment .av-subheading')).toHaveText([
-    'Student',
-    'Teacher',
-    'Teacher <img src=x onerror=alert(1)>',
-  ]);
-  await expect(panel.getByRole('heading', { name: 'Your files' })).toBeVisible();
-  await expect(
-    panel.locator('script, iframe, [onerror], [onclick], a[href^="javascript:"]'),
-  ).toHaveCount(0);
-  await expect(panel.getByRole('heading', { name: 'Instructions' })).toHaveCount(0);
-  await expect(panel.getByRole('button')).toHaveCount(0);
-  await expect(panel.getByRole('link', { name: 'Open assignment' })).toHaveCount(0);
-  const descriptionBox = await page.locator('#assignment_show > .description').boundingBox();
-  for (const box of await panel.locator('.av-criterion, .av-comment').all()) {
-    const bounds = await box.boundingBox();
-    expect(bounds!.x).toBeCloseTo(descriptionBox!.x, 0);
-    expect(bounds!.x + bounds!.width).toBeCloseTo(descriptionBox!.x + descriptionBox!.width, 0);
-  }
-  for (const theme of ['light', 'dark'] as const) {
-    await saveSetting(background, { theme });
-    await expect(page.locator('#av-submission')).toHaveAttribute('data-theme', theme);
-    if (theme === 'dark') await dark(page);
-    await page.screenshot({
-      path: path.join(DIR, `assignment-page-${theme}-1280.png`),
-      fullPage: true,
-    });
-  }
-  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
-  await expect(panel).toHaveCount(0);
-  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
-  await expect(panel.locator('[data-assessed]')).toBeVisible();
-});
-
-for (const name of ['essay.txt', 'feedback.pdf']) {
-  test(`classic assignment opens ${name} in the file pane`, async ({
-    context,
-    page,
-    background,
-  }) => {
-    await openClassic(context, page, background);
-    await expect(async () => {
-      await submissionPanel(page).getByRole('link', { name, exact: true }).click();
-      await expect(page.locator('#tools-file-viewer')).toBeVisible({ timeout: 1500 });
-    }).toPass({ timeout: 20_000 });
-    const frame = await pane(page);
-    if (name === 'essay.txt') await expect(frame.locator('pre')).toHaveText(notes);
-    else await expect(frame.locator('[data-part="pdf-name"]')).toHaveText(name);
-  });
-}
-
-test('classic assignment supports shard ids', async ({ context, page, background }) => {
-  await openClassic(context, page, background, { shard: true });
-  await expect(submissionPanel(page).locator('[data-assessed]')).toBeVisible();
-  await expect(submissionPanel(page).getByRole('link', { name: 'essay.txt' })).toHaveAttribute(
-    'href',
-    /courses\/2~12\/assignments\/20000000000101\/submissions/,
-  );
-});
-
-test('new student view has no extra submission panel', async ({ context, page, background }) => {
-  const canvas = await openClassic(context, page, background, { newView: true });
-  await waitForListLoaded(canvas);
-  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
-  await expect(page.locator('#av-submission')).toHaveCount(0);
-});
-
-test('unsubmitted classic assignment shows its summary and submission status', async ({
-  context,
-  page,
-  background,
-}) => {
-  await openClassic(context, page, background, { empty: true });
-  await expect(submissionPanel(page).getByText('No submission yet')).toBeVisible();
-  await expect(submissionPanel(page).locator('.av-section')).toHaveCount(0);
-  await expect(submissionPanel(page).getByText('Not graded yet')).toBeVisible();
-});
-
-test('missing unsubmitted work keeps its Missing chip', async ({ context, page, background }) => {
-  await openClassic(context, page, background, { empty: true, missing: true });
-  await expect(submissionPanel(page).getByText('Missing', { exact: true })).toBeVisible();
-});
-
-test('graded paper work keeps its score and rubric', async ({ context, page, background }) => {
-  await openClassic(context, page, background, { paper: true });
-  await expect(submissionPanel(page).getByText('5 / 10', { exact: true })).toBeVisible();
-  await expect(submissionPanel(page).locator('[data-assessed]')).toBeVisible();
-  await expect(submissionPanel(page).getByText('No submission yet')).toHaveCount(0);
-});
-
-for (const mode of ['teacher', 'observer'] as const) {
-  test(`${mode} gets no submission panel`, async ({ context, page, background }) => {
-    await openClassic(context, page, background, { [mode]: true });
-    await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
-    await expect(page.locator('#av-submission')).toHaveCount(0);
-  });
-}
-
-test('past due work without a submission keeps the summary and omits empty sections', async ({
-  context,
-  page,
-  background,
-}) => {
-  await openClassic(context, page, background, { empty: true, pastDue: true });
-  const panel = submissionPanel(page);
-  await expect(panel.getByText('Past due', { exact: true })).toBeVisible();
-  await expect(panel.getByText('No submission yet')).toBeVisible();
-  await expect(panel.getByText('Not graded yet')).toBeVisible();
-  await expect(panel.locator('.av-section')).toHaveCount(0);
-});
-
-test('teacher description can contain the easy student view id', async ({
-  context,
-  page,
-  background,
-}) => {
-  await openClassic(context, page, background, { easy: true });
-  await expect(submissionPanel(page)).toBeVisible();
-});
-
-test('a content root inside the description cannot receive a panel', async ({
-  context,
-  page,
-  background,
-}) => {
-  await openClassic(context, page, background, { fakeRoot: true });
-  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
-  await expect(page.locator('#av-submission')).toHaveCount(0);
-});
-
-test('observer settings saves do not repeat the submission read', async ({
-  context,
-  page,
-  background,
-}) => {
-  const canvas = await openClassic(context, page, background, { observer: true });
-  const reads = () =>
-    canvas.requests.filter((request) => request.path.includes('/assignments/101/submissions/self'));
-  await expect.poll(() => reads().length).toBe(1);
-  await expect(page.locator('#av-submission')).toHaveCount(0);
-  for (let index = 0; index < 3; index++) {
-    await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
-    await saveTools(background, DEFAULT_TOOLS_SETTINGS);
-  }
-  await page.waitForTimeout(500);
-  expect(reads()).toHaveLength(1);
 });
