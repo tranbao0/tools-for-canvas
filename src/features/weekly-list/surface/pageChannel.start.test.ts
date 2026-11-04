@@ -280,3 +280,96 @@ describe('the assignment view after its start', () => {
     (await controller).stop();
   });
 });
+
+/**
+ * The start pattern of a page script with a slow last read: the hold bound announces while a
+ * caller still waits, and that caller applies its older answer afterwards. The next announce
+ * must still bring the newest value over it.
+ */
+describe('a start whose last read outlasts the hold bound', () => {
+  const SCHOOL = 'https://school.instructure.com';
+
+  function setup(reads: 'assignment' | 'dashboard') {
+    let stored: ToolsSettings = { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false };
+    const finishers: (() => void)[] = [];
+    let handler: (message: unknown) => void = () => undefined;
+    const channel = createPageChannel({
+      pageOrigin: SCHOOL,
+      send(message: DataMessage) {
+        if (message.type !== 'weekrow:page-context') return Promise.resolve({ ok: true });
+        return new Promise((resolve) =>
+          finishers.push(() =>
+            resolve({ settings: DEFAULT_SETTINGS, tools: structuredClone(stored) }),
+          ),
+        );
+      },
+      listen(next: (message: unknown) => void) {
+        handler = next;
+        return () => undefined;
+      },
+    });
+    const state = { enabled: false };
+    channel.choices.origin.watch(() => undefined);
+    channel.tools.watch((tools) => {
+      state.enabled = tools.assignmentView;
+    });
+    channel.settings.watch(() => undefined);
+    const pending =
+      reads === 'assignment'
+        ? [channel.choices.origin.getValue(), channel.tools.getValue(), channel.settings.getValue()]
+        : [channel.tools.getValue(), channel.choices.origin.getValue()];
+    const toolsAt = reads === 'assignment' ? 1 : 0;
+    const start = Promise.all(pending).then((values) => {
+      state.enabled = (values[toolsAt] as ToolsSettings).assignmentView;
+    });
+    const settle = async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(0);
+    };
+    return {
+      state,
+      start,
+      settle,
+      async finish(index: number) {
+        finishers[index]!();
+        await settle();
+      },
+      turnOn() {
+        stored = { ...stored, assignmentView: true };
+        handler({ type: 'weekrow:changed' });
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('keeps a switch turned on during the start of the assignment view (H)', async () => {
+    const page = setup('assignment');
+    await page.finish(0);
+    await page.finish(1);
+    page.turnOn();
+    await page.finish(3);
+    await vi.advanceTimersByTimeAsync(2200);
+    await page.finish(2);
+    await page.start;
+    await page.settle();
+    expect(page.state.enabled).toBe(true);
+  });
+
+  it('keeps a switch turned on during the start of the dashboard fixes (H-dash)', async () => {
+    const page = setup('dashboard');
+    await page.finish(0);
+    page.turnOn();
+    await page.finish(2);
+    await vi.advanceTimersByTimeAsync(2200);
+    await page.finish(1);
+    await page.start;
+    await page.settle();
+    expect(page.state.enabled).toBe(true);
+  });
+});

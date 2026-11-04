@@ -143,7 +143,7 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
     announcing = setTimeout(() => {
       announcing = null;
       if (waiting === 0) announce();
-      else forced ??= setTimeout(announce, HOLD_MS);
+      else forced ??= setTimeout(() => announce(false), HOLD_MS);
     }, 0);
   }
 
@@ -151,23 +151,27 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
     key: K,
     answers: PageContext[K][],
     listeners: Set<(value: PageContext[K]) => void>,
+    consume: boolean,
   ): void {
     if (last === null) return;
     const now = last[key];
     const earlier = heard[key];
-    const known = earlier === undefined ? answers.splice(0) : [earlier, ...answers.splice(0)];
+    const known = earlier === undefined ? [...answers] : [earlier, ...answers];
+    // A forced announce keeps the answers: a caller that still waits for another read applies
+    // its answer later, and the next announce must still compare against it.
+    if (consume) answers.length = 0;
     if (known.length === 0) return;
     heard[key] = now;
     const same = (value: PageContext[K]): boolean => JSON.stringify(value) === JSON.stringify(now);
     if (!known.every(same)) for (const listener of [...listeners]) listener(now);
   }
 
-  function announce(): void {
+  function announce(consume = true): void {
     if (forced !== null) clearTimeout(forced);
     forced = null;
-    announceField('origin', given.origin, originListeners);
-    announceField('settings', given.settings, settingsListeners);
-    announceField('tools', given.tools, toolsListeners);
+    announceField('origin', given.origin, originListeners, consume);
+    announceField('settings', given.settings, settingsListeners, consume);
+    announceField('tools', given.tools, toolsListeners, consume);
   }
 
   /**
