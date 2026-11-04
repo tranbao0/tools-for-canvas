@@ -3064,9 +3064,16 @@ So a student switches pages to read the instructions next to the feedback on a f
        The owner decided this on 2026-11-03: the view cannot show these types safely, and the instructions belong at the top of every Submission Details page.
      - Everything else on the page stays Canvas's own and untouched: the "Submission Details" header, the grade, "Show Rubric", the title, "submitted ...", "Re-submit Assignment" and the comments column on the right.
    - **Assignment page (`/courses/:id/assignments/:id`).**
-     - The extension adds nothing.
-     - A click on the submitted file's download link in Canvas's own "Submission" sidebar opens the file in the file pane, because the pane takes any `/submissions/:user?download=:file` link (decision 25).
-       Canvas's other sidebar links stay as they are.
+     - The extension adds no panel.
+     - Canvas's own "Submission" sidebar lists each submitted file as a link `Download NAME`.
+       The extension keeps that link and its address, and shows a file icon and "View NAME" in it.
+       A click opens the file in the file pane, because the pane takes any `/submissions/:user?download=:file` link (decision 25).
+       Canvas's text moves into a hidden node of the extension, and it goes back when a switch goes off.
+     - Under the link the extension adds a small "Download" link with the same address and a `download` attribute.
+       The pane never takes it, so the browser saves the file.
+     - This happens only for the own submission, and only while the "Assignment view" switch and the "File viewer" switch are on.
+       With the "File viewer" switch off, Canvas's link stays as it is.
+     - Canvas's other sidebar links stay as they are.
    - **Assignments list (`/courses/:id/assignments`).**
      - Each row has an expand button that opens the score, instructions, rubric, feedback and files in place, and "Submit" opens Canvas's own turn-in page in the docked pane (steps 2 and 3 below).
      - A later topic will decide what to do with these rows.
