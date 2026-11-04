@@ -12,6 +12,7 @@ import { ASSIGNMENT_DETAILS, rawRecords } from '../fixtures/assignment-view';
 import { SESSION_PATH, type FrameRow } from '../fixtures/submission-frame';
 import {
   previewWithFiles,
+  previewWithMedia,
   previewWithNothing,
   previewWithText,
   submissionDetailsPage,
@@ -454,20 +455,57 @@ test('a student with no submission sees the instructions and no files heading', 
   await expect(page.getByRole('heading', { name: 'Your submission' })).toHaveCount(0);
 });
 
-test('Canvas keeps its own area for a submission type that the view cannot show in full', async ({
+test('a media recording keeps the frame of Canvas, with the instructions above it', async ({
   context,
   page,
   background,
 }) => {
   const canvas = await open(context, page, background, {
+    switchOff: true,
+    preview: previewWithMedia(),
     change: (copy) => {
       copy.submission.submission_type = 'media_recording';
       copy.submission.attachments = [];
     },
   });
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  await expect(frameLink(page)).toHaveCount(0);
+  const original = await page.evaluate(() => ({
+    content: document.getElementById('content')!.outerHTML,
+    frame: document.querySelector('.submission-details-frame')!.outerHTML,
+  }));
+
+  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  await expect(host(page)).toBeAttached();
   await settled(page, canvas);
-  await expect(host(page)).toHaveCount(0);
+  // The instructions show, and "Your files" does not.
+  await expect(page.getByRole('heading', { name: 'Instructions' })).toBeVisible();
+  await expect(host(page).getByText('Choose one industry or technology')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your files' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Your submission' })).toHaveCount(0);
+  // The frame is visible and untouched, and the instructions sit above it.
   await expect(page.locator('#preview_frame')).toBeVisible();
+  const shown = await page.evaluate(() => ({
+    frame: document.querySelector('.submission-details-frame')!.outerHTML,
+    host: document.getElementById('av-submission-details')!.getBoundingClientRect().bottom,
+    frameTop: document.querySelector('.submission-details-frame')!.getBoundingClientRect().top,
+    styles: document.querySelectorAll('head style[data-av-own]').length,
+  }));
+  await page.screenshot({ path: path.join(SHOTS, 'submission-media-1440-light.png') });
+  expect(shown.frame).toBe(original.frame);
+  expect(shown.host).toBeLessThanOrEqual(shown.frameTop);
+  expect(shown.styles).toBe(0);
+  await expect(
+    page.frameLocator('#preview_frame').getByRole('link', { name: /media recording/ }),
+  ).toBeVisible();
+
+  // Turned off, the page is exactly what Canvas drew.
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  await expect(host(page)).toHaveCount(0);
+  await expect(page.locator('[data-av-own]')).toHaveCount(0);
+  expect(await page.evaluate(() => document.getElementById('content')!.outerHTML)).toBe(
+    original.content,
+  );
 });
 
 test('the page of a teacher stays as Canvas drew it', async ({ context, page, background }) => {

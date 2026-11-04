@@ -104,6 +104,7 @@ export const SUBMISSION_CSS = `
 .av-sub .av-body[data-av-cut]{mask-image:linear-gradient(#000 calc(100% - 3.3em),transparent)}
 .av-sub .av-link{margin-top:0;font-size:13px;line-height:1.65}
 .av-sub .av-files,.av-sub .av-submission{margin-top:18px;padding-top:12px;border-top:1px solid var(--av-soft)}
+.av-sub-above{margin-bottom:12px;border:1px solid var(--av-soft)}
 .av-link-text{overflow-wrap:anywhere}
 .av-file-list{margin:0;padding:0;list-style:none}
 .av-file-row{display:flex;align-items:center;gap:8px;margin:0;padding:6px 0;font-size:13px;line-height:1.4}

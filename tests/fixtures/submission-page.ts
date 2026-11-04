@@ -119,6 +119,13 @@ export function previewWithNothing(): string {
   );
 }
 
+/** The files frame of a media recording (`submission_type == 'media_recording'`). */
+export function previewWithMedia(): string {
+  return previewDocument(
+    `<div><a href="#" class="play_media_recording_link" data-media_comment_id="m-1" data-media_comment_type="video">This submission is a media recording. click here to view.</a></div><div style="width: 400px; margin: 10px auto;" id="media_recording_box"><div id="box_content" class="box_content"></div></div><div class="media_comment_id" style="display: none;">m-1</div>`,
+  );
+}
+
 function previewDocument(body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Preview</title><style>body{margin:0;font-family:Lato,Arial,sans-serif;font-size:14px}.file-upload-submission-table{width:100%;border-collapse:collapse}.file-upload-submission-table th,.file-upload-submission-table td{padding:8px;text-align:left;border-bottom:1px solid #e8eaec}.modal_preview_link{color:#0e68b3}</style></head><body>${body}</body></html>`;
 }

@@ -331,22 +331,6 @@ describe('every page that is not the own submission', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it.each([
-    'media_recording',
-    'online_quiz',
-    'basic_lti_launch',
-    'student_annotation',
-    'discussion_topic',
-  ])('keeps the area of Canvas for a submission of type %s', async (type) => {
-    send.mockResolvedValue(
-      reply((details) => {
-        details.submission.submission_type = type;
-      }),
-    );
-    start();
-    await untouched();
-  });
-
   it('does not hide the frame while the read runs', async () => {
     let answer!: (value: unknown) => void;
     send.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
@@ -366,6 +350,59 @@ describe('every page that is not the own submission', () => {
     answer(reply());
     await settle();
     expect(host()).toBeNull();
+  });
+});
+
+describe('a submission type that the view cannot show in full', () => {
+  it.each([
+    'media_recording',
+    'online_quiz',
+    'basic_lti_launch',
+    'student_annotation',
+    'discussion_topic',
+  ])(
+    'keeps the frame of Canvas and adds only the instructions above it, for type %s',
+    async (type) => {
+      send.mockResolvedValue(
+        reply((details) => {
+          details.submission.submission_type = type;
+        }),
+      );
+      const frameBox = document.querySelector('.submission-details-frame')!;
+      const frameBefore = frameBox.outerHTML;
+      const commentsBefore = document.querySelector('.submission-details-comments')!.outerHTML;
+      const contentBefore = document.getElementById('content')?.outerHTML;
+      start();
+      await settle();
+      // The host sits right before the content area, so it is above the frame.
+      expect(host()?.nextElementSibling).toBe(container());
+      expect(document.head.querySelector('style')).toBeNull();
+      expect(frameBox.outerHTML).toBe(frameBefore);
+      expect(document.querySelector('.submission-details-comments')!.outerHTML).toBe(
+        commentsBefore,
+      );
+      expect(root()?.querySelector('.av-instructions h3')?.textContent).toBe('Instructions');
+      expect(root()?.querySelector('.av-instructions')?.textContent).toContain(
+        'Choose one industry.',
+      );
+      expect(root()?.querySelector('.av-files, .av-submission, [data-action=feedback]')).toBeNull();
+      view.setActive(false);
+      expect(host()).toBeNull();
+      expect(document.getElementById('content')?.outerHTML).toBe(contentBefore);
+    },
+  );
+
+  it('keeps the same rule for the "Show more" fold', async () => {
+    send.mockResolvedValue(
+      reply((details) => {
+        details.submission.submission_type = 'media_recording';
+      }),
+    );
+    start();
+    await settle();
+    expect(
+      root()?.querySelector('.av-instructions .av-body')?.hasAttribute('data-av-clamped'),
+    ).toBe(true);
   });
 });
 
