@@ -214,3 +214,55 @@ describe('on a Submission Details page', () => {
     expect(channel.send).not.toHaveBeenCalled();
   });
 });
+
+describe('on an assignment page', () => {
+  const PAGE = '/courses/12/assignments/101';
+  const answer = {
+    details: {
+      assignment: { id: '101', name: 'Essay', description: null },
+      submission: { user_id: '42', score: null, grade: null, submission_type: 'online_upload' },
+    },
+    timeZone: 'UTC',
+  };
+
+  beforeEach(() => {
+    document.body.innerHTML =
+      '<div id="sidebar_content"><div class="details"><div class="content"><div><a href="/courses/12/assignments/101/submissions/42?download=501">Download essay.pdf</a></div></div></div></div>';
+  });
+
+  const changed = () => document.querySelector('[data-av-own]') !== null;
+
+  it('changes the file links while both switches are on, and gives them back when either goes off', async () => {
+    const channel = fakeChannel();
+    vi.mocked(channel.send).mockResolvedValue(answer);
+    await startAssignmentView(options(channel, { pathname: PAGE }));
+    await vi.advanceTimersByTimeAsync(5);
+    expect(changed()).toBe(true);
+    channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+    expect(changed()).toBe(false);
+    channel.setTools(DEFAULT_TOOLS_SETTINGS);
+    await vi.advanceTimersByTimeAsync(5);
+    expect(changed()).toBe(true);
+    channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+    expect(changed()).toBe(false);
+  });
+
+  it.each([
+    ['the Assignment view switch is off', { assignmentView: false }],
+    ['the File viewer switch is off', { fileViewer: false }],
+  ])('does nothing while %s', async (_name, change) => {
+    const channel = fakeChannel(ORIGIN, { ...DEFAULT_TOOLS_SETTINGS, ...change });
+    vi.mocked(channel.send).mockResolvedValue(answer);
+    await startAssignmentView(options(channel, { pathname: PAGE }));
+    await vi.advanceTimersByTimeAsync(5);
+    expect(channel.send).not.toHaveBeenCalled();
+    expect(changed()).toBe(false);
+  });
+
+  it('does nothing on a Canvas that is not the saved one', async () => {
+    const channel = fakeChannel('https://other.instructure.com');
+    await startAssignmentView(options(channel, { pathname: PAGE }));
+    await vi.advanceTimersByTimeAsync(5);
+    expect(channel.send).not.toHaveBeenCalled();
+  });
+});
