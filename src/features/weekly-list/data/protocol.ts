@@ -7,7 +7,9 @@
  */
 import {
   isAssignmentDetailsMessage,
+  isAssignmentOwnerMessage,
   type AssignmentDetailsMessage,
+  type AssignmentOwnerMessage,
 } from '../../assignment-view/protocol';
 import { isFixMessage, type FixMessage } from '../../dashboard-fixes/protocol';
 import type { ToolsSettings } from '../../../shared/settings/tools';
@@ -202,6 +204,7 @@ export type DataMessage =
   | OpenPageMessage
   | CanvasDetectedMessage
   | AssignmentDetailsMessage
+  | AssignmentOwnerMessage
   | FixMessage;
 
 export interface OkReply {
@@ -448,6 +451,7 @@ export function isDataMessage(value: unknown): value is DataMessage {
     isOpenPageMessage(value) ||
     isCanvasDetectedMessage(value) ||
     isAssignmentDetailsMessage(value) ||
+    isAssignmentOwnerMessage(value) ||
     isFixMessage(value)
   );
 }

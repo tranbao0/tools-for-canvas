@@ -293,6 +293,11 @@ export interface CanvasApi {
    * `include[]=rubric_assessment`.
    */
   getOwnSubmissionRecord(courseId: string, assignmentId: string): Promise<Record<string, unknown>>;
+  /** The same record with no include: its user, and nothing that the student wrote or was graded on. */
+  getOwnSubmissionUserRecord(
+    courseId: string,
+    assignmentId: string,
+  ): Promise<Record<string, unknown>>;
   getViewerFile(fileId: string): Promise<{
     display_name: string;
     'content-type': string;

@@ -939,8 +939,15 @@ async function openSidebar(
     { path: ASSIGNMENT, contentType: 'text/html', body: options.html ?? assignmentPage },
     {
       path: '/courses/12/assignments/101/submissions/42',
-      contentType: 'text/html',
-      body: 'Details',
+      // Canvas answers a file link of the box with the file as an attachment.
+      respond: (request) =>
+        request.path.includes('download=')
+          ? {
+              contentType: 'application/pdf',
+              headers: { 'content-disposition': 'attachment; filename="paper.pdf"' },
+              body: pdf,
+            }
+          : { contentType: 'text/html', body: 'Details' },
     },
     { path: `/api/v1/courses/12/assignments/101`, body: json(records.assignment) },
     { path: `/api/v1/courses/12/assignments/101/submissions/self`, body: json(records.submission) },
@@ -988,6 +995,13 @@ test('the submitted file of the assignment page reads "View NAME" with an icon, 
   expect(icon?.width).toBe(16);
   expect(icon?.height).toBe(16);
   await expect(sidebar.getByRole('link', { name: `Download ${SIDEBAR_FILE}` })).toHaveCount(1);
+  // The box reads only whose submission it is: one request with no include, and nothing else.
+  const api = served.canvas.requests.filter((request) =>
+    request.path.startsWith('/api/v1/courses/12/assignments/101'),
+  );
+  expect(api.map((request) => request.path)).toEqual([
+    '/api/v1/courses/12/assignments/101/submissions/self',
+  ]);
   await expect(async () => {
     await link.click();
     await expect(page.locator(FILE_PANE)).toBeVisible({ timeout: 1500 });
@@ -1095,6 +1109,103 @@ for (const off of ['assignmentView', 'fileViewer'] as const) {
     await treated(page);
   });
 }
+
+/** A teacher's description that holds the marks of the view, as a page of another author can. */
+const MARKED_DESCRIPTION =
+  '<div id="marked" data-av-original="" data-av-mark="x"><p data-av-own="">Teacher text</p><span data-av-own="" hidden>Kept hidden text</span><a href="/x" data-av-own="">link</a></div>';
+
+for (const mode of ['on', 'assignmentView off', 'fileViewer off'] as const) {
+  test(`a description with the marks of the view stays untouched, with the switches ${mode}`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    if (mode === 'assignmentView off')
+      await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+    if (mode === 'fileViewer off')
+      await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+    const html = assignmentPage.replace(
+      '<p>Write an essay about one source.</p>',
+      `<p>Write an essay about one source.</p>${MARKED_DESCRIPTION}`,
+    );
+    expect(html).toContain('id="marked"');
+    await openSidebar(context, page, background, { html });
+    const marked = page.locator('#marked');
+    await expect(marked).toBeAttached();
+    // The script has started and its stale copy cleanup has run when the box is settled.
+    if (mode === 'on') await treated(page);
+    else await page.waitForTimeout(1200);
+    const before = await marked.evaluate((node) => node.outerHTML);
+    expect(before).toBe(MARKED_DESCRIPTION.replace('hidden>', 'hidden="">'));
+    // Switching either switch live changes nothing in the description.
+    await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+    await page.waitForTimeout(300);
+    await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+    await treated(page);
+    await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+    await expect(page.locator('#sidebar_content [data-av-own]')).toHaveCount(0);
+    expect(await marked.evaluate((node) => node.outerHTML)).toBe(before);
+  });
+}
+
+test('the File viewer switch is live in both directions for the Submission box and the pane', async ({
+  context,
+  page,
+  background,
+}) => {
+  // The page loads with the File viewer off: Canvas's link, and no click catcher in the page.
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+  const served = await openSidebar(context, page, background);
+  const canvasLink = page.locator('#sidebar_content a[href$="download=501"]');
+  await expect(canvasLink).toHaveText(`Download ${SIDEBAR_FILE}`);
+  await page.waitForTimeout(800);
+  await expect(page.locator('[data-av-own]')).toHaveCount(0);
+
+  // The switch goes on. The box reads "View NAME", and the click opens the pane at once.
+  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  const view = sidebarOf(page).getByRole('link', { name: `View ${SIDEBAR_FILE}` });
+  await expect(view).toBeVisible();
+  await view.click();
+  await expect(page.locator(FILE_PANE)).toBeVisible({ timeout: 10_000 });
+  await expect((await pane(page)).locator('[data-part="pdf-name"]')).toHaveText(FILE_NAME);
+
+  // The switch goes off. Canvas's link is back, the pane is gone, and the link downloads.
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+  await expect(page.locator('[data-av-own]')).toHaveCount(0);
+  await expect(canvasLink).toHaveText(`Download ${SIDEBAR_FILE}`);
+  await expect(page.locator(FILE_PANE)).toHaveCount(0);
+  const saved = page.waitForEvent('download');
+  await canvasLink.click();
+  expect((await saved).url()).toBe(`${served.canvas.origin}${SIDEBAR_HREF}`);
+  await page.waitForTimeout(800);
+  await expect(page.locator(FILE_PANE)).toHaveCount(0);
+
+  // And on again: the catcher comes back without a reload.
+  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  const again = sidebarOf(page).getByRole('link', { name: `View ${SIDEBAR_FILE}` });
+  await expect(again).toBeVisible();
+  await again.click();
+  await expect(page.locator(FILE_PANE)).toBeVisible({ timeout: 10_000 });
+});
+
+test("a click on Canvas's link downloads the file at once after the File viewer switch goes off", async ({
+  context,
+  page,
+  background,
+}) => {
+  const served = await openSidebar(context, page, background);
+  await treated(page);
+  await page.waitForTimeout(500);
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+  await expect(page.locator('[data-av-own]')).toHaveCount(0);
+  const canvasLink = page.locator('#sidebar_content a[href$="download=501"]');
+  await expect(canvasLink).toHaveText(`Download ${SIDEBAR_FILE}`);
+  const saved = page.waitForEvent('download');
+  await canvasLink.click();
+  expect((await saved).url()).toBe(`${served.canvas.origin}${SIDEBAR_HREF}`);
+  await page.waitForTimeout(800);
+  await expect(page.locator(FILE_PANE)).toHaveCount(0);
+});
 
 for (const theme of ['light', 'dark'] as const) {
   test(`screenshot of the Submission box at 1440 px, ${theme}`, async ({

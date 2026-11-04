@@ -10,6 +10,7 @@ import type { WidgetGradePreferences } from '../../../shared/canvas/types';
  * runs. The background uses it today; a panel page or a content script could host it instead.
  */
 import type { RequestPriority } from '../../../shared/canvas/limiter';
+import { isCanvasId } from '../../../shared/canvas/ids';
 import type {
   CanvasApi,
   PlannerItem,
@@ -73,7 +74,11 @@ import {
 } from './coverage';
 import { failureFor, isCanvasError } from './failures';
 import { ViewerUnconfirmedError } from '../../file-viewer/unconfirmed';
-import type { NoSubmissionAccess, AssignmentDetailsReply } from '../../assignment-view/protocol';
+import type {
+  AssignmentDetailsReply,
+  AssignmentOwnerReply,
+  NoSubmissionAccess,
+} from '../../assignment-view/protocol';
 import { projectAssignmentView } from '../../assignment-view/project';
 import {
   applyPatch,
@@ -297,6 +302,17 @@ export interface DataOwner {
     origin: string | null,
     tabId: number | undefined,
   ): Promise<AssignmentDetailsReply | NoSubmissionAccess>;
+  /**
+   * Whose submission the signed-in student has for one assignment, under the same rules as
+   * `assignmentDetails`, with one request that has no include: no comments, no rubric, and no
+   * assignment record. The Submission box of the assignment page needs only the user.
+   */
+  assignmentOwner(
+    courseId: string,
+    assignmentId: string,
+    origin: string | null,
+    tabId: number | undefined,
+  ): Promise<AssignmentOwnerReply | NoSubmissionAccess>;
   /** The saved address changed in storage. */
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
@@ -2627,32 +2643,40 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return response;
   }
 
+  /** A live read for the assignment view. A cookie that is not confirmed yet waits for one check. */
+  async function readForAssignmentView<T>(
+    origin: string | null,
+    tabId: number | undefined,
+    read: (api: CanvasApi) => Promise<T | null>,
+  ): Promise<T | null> {
+    try {
+      return await viewerRead(origin, tabId, read);
+    } catch (error) {
+      // As in the viewer: a cookie that is not confirmed yet waits for one check and tries once more.
+      if (!(error instanceof ViewerUnconfirmedError) || !(await viewerConfirm(origin, tabId)))
+        throw error;
+      return viewerRead(origin, tabId, read);
+    }
+  }
+
+  const notFoundIsNull = (error: unknown): null => {
+    if (isCanvasError(error, 'not_found')) return null;
+    throw error;
+  };
+
   async function assignmentDetails(
     courseId: string,
     assignmentId: string,
     origin: string | null,
     tabId: number | undefined,
   ): Promise<AssignmentDetailsReply | NoSubmissionAccess> {
-    const read = () =>
-      viewerRead(origin, tabId, async (api) => {
-        const [assignment, submission] = await Promise.all([
-          api.getAssignmentRecord(courseId, assignmentId),
-          api.getOwnSubmissionRecord(courseId, assignmentId).catch((error: unknown) => {
-            if (isCanvasError(error, 'not_found')) return null;
-            throw error;
-          }),
-        ]);
-        return submission === null ? null : projectAssignmentView(assignment, submission);
-      });
-    let details;
-    try {
-      details = await read();
-    } catch (error) {
-      // As in the viewer: a cookie that is not confirmed yet waits for one check and tries once more.
-      if (!(error instanceof ViewerUnconfirmedError) || !(await viewerConfirm(origin, tabId)))
-        throw error;
-      details = await read();
-    }
+    const details = await readForAssignmentView(origin, tabId, async (api) => {
+      const [assignment, submission] = await Promise.all([
+        api.getAssignmentRecord(courseId, assignmentId),
+        api.getOwnSubmissionRecord(courseId, assignmentId).catch(notFoundIsNull),
+      ]);
+      return submission === null ? null : projectAssignmentView(assignment, submission);
+    });
     if (details === null) return { kind: 'no_submission_access' };
     const session = cache?.session ?? null;
     const timeZone =
@@ -2660,6 +2684,24 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         ? canvasTimeZone(session, await viewContext(origin))
         : deps.browserTimeZone();
     return { details, timeZone };
+  }
+
+  async function assignmentOwner(
+    courseId: string,
+    assignmentId: string,
+    origin: string | null,
+    tabId: number | undefined,
+  ): Promise<AssignmentOwnerReply | NoSubmissionAccess> {
+    const userId = await readForAssignmentView(origin, tabId, async (api) => {
+      const record = await api
+        .getOwnSubmissionUserRecord(courseId, assignmentId)
+        .catch(notFoundIsNull);
+      if (record === null) return null;
+      const user = record['user_id'];
+      if (typeof user !== 'string' || !isCanvasId(user)) throw new Error('Not a submission record');
+      return user;
+    });
+    return userId === null ? { kind: 'no_submission_access' } : { userId };
   }
 
   async function viewerUserId(
@@ -3238,6 +3280,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     announcementFeed,
     viewerRead,
     assignmentDetails,
+    assignmentOwner,
     viewerMayFetch,
     viewerUserId,
     viewerConfirm,

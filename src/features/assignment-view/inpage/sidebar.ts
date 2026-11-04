@@ -10,22 +10,30 @@
  * address and a `download` attribute, which the pane never takes.
  *
  * The view changes the box only for the signed-in student's own submission: the user in the file
- * address must be the user of the `submissions/self` record that the background reads. A teacher
- * or another user sees Canvas's box as it is. A link that does not read "Download NAME" stays as
+ * address must be the user of the `submissions/self` record that the background reads, with no
+ * include, because the box needs only that user. A teacher or another user sees Canvas's box as it is. A link that does not read "Download NAME" stays as
  * it is.
  */
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { logFailure } from '../../../shared/platform/log';
 import { KEEP_ACTION_ATTRIBUTE } from '../../file-viewer/model';
-import type { AssignmentDetailsMessage } from '../protocol';
-import { isDetailsReply } from './details';
-import { giveBackOriginals, ORIGINAL, OWN } from './rows';
+import { isOwnerReply, type AssignmentOwnerMessage } from '../protocol';
+import { ORIGINAL, OWN } from './rows';
 
 const BOX = '#sidebar_content .details .content';
 const ID = '\\d+(?:~\\d+)?';
 /** The address of a submitted file: `/courses/:course/assignments/:assignment/submissions/:user`. */
 const FILE_PATH = new RegExp(`^/courses/(${ID})/assignments/(${ID})/submissions/(${ID})$`);
 const FILE_ID = /^[1-9]\d*(?:~\d+)?$/;
+/** The nodes that the view added for one file link of Canvas. */
+interface Treatment {
+  anchor: HTMLAnchorElement;
+  /** The own node that holds the nodes of Canvas that the anchor had. */
+  held: HTMLElement;
+  view: HTMLElement;
+  line: HTMLElement;
+}
+
 /** How long a batch of changes of the box waits for the next one. */
 const BATCH_MS = 50;
 
@@ -35,7 +43,7 @@ export interface SidebarOptions {
   origin: string;
   courseId: string;
   assignmentId: string;
-  send(message: AssignmentDetailsMessage): Promise<unknown>;
+  send(message: AssignmentOwnerMessage): Promise<unknown>;
 }
 
 export interface SidebarEngine {
@@ -114,10 +122,20 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
   let observer: MutationObserver | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
+  /** The treatments of this copy. The view touches no other node of the page. */
+  const treatments: Treatment[] = [];
+
+  /** Takes one treatment away. The nodes of Canvas go back into the link if it is still there. */
+  function release(treatment: Treatment): void {
+    const { held, view, line } = treatment;
+    if (held.parentNode === treatment.anchor) held.replaceWith(...held.childNodes);
+    view.remove();
+    line.remove();
+  }
+
   /** Gives the box back as Canvas drew it. */
   function undo(): void {
-    giveBackOriginals(doc);
-    doc.querySelectorAll(`${BOX} [${OWN}]`).forEach((node) => node.remove());
+    for (const treatment of treatments.splice(0)) release(treatment);
   }
 
   function treat(anchor: HTMLAnchorElement): void {
@@ -149,14 +167,20 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     line.append(download);
     const parent = anchor.parentElement;
     (parent !== null && parent.matches(BOX) ? anchor : (parent ?? anchor)).after(line);
+    treatments.push({ anchor, held, view, line });
   }
 
   /** Treats the file links that are not treated yet, for the student's own files only. */
   function render(): void {
     if (stopped || !active || student === null) return;
     observer?.disconnect();
+    // A link that Canvas took out of the page leaves no line of the view behind.
+    for (const treatment of treatments.filter((entry) => !entry.anchor.isConnected)) {
+      release(treatment);
+      treatments.splice(treatments.indexOf(treatment), 1);
+    }
     for (const anchor of doc.querySelectorAll<HTMLAnchorElement>(`${BOX} a[href]`)) {
-      if (anchor.closest(`[${OWN}]`) !== null || anchor.querySelector(`[${ORIGINAL}]`)) continue;
+      if (anchor.hasAttribute(OWN) || treatments.some((entry) => entry.anchor === anchor)) continue;
       const user = linkUser(anchor, options);
       if (user !== null && normalizeCanvasId(user) === student) treat(anchor);
     }
@@ -195,7 +219,7 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     let reply: unknown;
     try {
       reply = await options.send({
-        type: 'assignment:details',
+        type: 'assignment:owner',
         courseId: options.courseId,
         assignmentId: options.assignmentId,
       });
@@ -204,13 +228,9 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
       return;
     }
     if (token !== generation || stopped || !active) return;
-    // A refusal, an error and the record of another assignment all leave the box as it is.
-    if (
-      !isDetailsReply(reply) ||
-      normalizeCanvasId(reply.details.assignment.id) !== normalizeCanvasId(options.assignmentId)
-    )
-      return;
-    student = normalizeCanvasId(reply.details.submission.user_id);
+    // A refusal and an error leave the box as it is.
+    if (!isOwnerReply(reply)) return;
+    student = normalizeCanvasId(reply.userId);
     render();
   }
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ASSIGNMENT_DETAILS } from '../../../tests/fixtures/assignment-view';
 import { fileTarget } from '../file-viewer/model';
 import { renderComments, renderFiles, renderInstructions, renderRubric } from './render';
-import { isAssignmentDetailsMessage } from './protocol';
+import { isAssignmentDetailsMessage, isAssignmentOwnerMessage, isOwnerReply } from './protocol';
 
 const context = { origin: 'https://school.instructure.com', courseId: '12', doc: document };
 
@@ -30,6 +30,31 @@ describe('assignment details boundary', () => {
         }),
       ).toBe(false);
     }
+  });
+});
+
+describe('assignment owner boundary', () => {
+  it('accepts Canvas ids and rejects other values', () => {
+    expect(
+      isAssignmentOwnerMessage({ type: 'assignment:owner', courseId: '12~1', assignmentId: '101' }),
+    ).toBe(true);
+    for (const id of [101, null, '', '../1', '1/2', '1?x=2', '1~2~3']) {
+      expect(
+        isAssignmentOwnerMessage({ type: 'assignment:owner', courseId: id, assignmentId: '101' }),
+      ).toBe(false);
+      expect(
+        isAssignmentOwnerMessage({ type: 'assignment:owner', courseId: '12', assignmentId: id }),
+      ).toBe(false);
+    }
+    expect(
+      isAssignmentOwnerMessage({ type: 'assignment:details', courseId: '1', assignmentId: '1' }),
+    ).toBe(false);
+  });
+
+  it('reads the reply as a user id only', () => {
+    expect(isOwnerReply({ userId: '42' })).toBe(true);
+    for (const bad of [null, {}, { userId: 42 }, { userId: '../x' }, 'x'])
+      expect(isOwnerReply(bad)).toBe(false);
   });
 });
 
