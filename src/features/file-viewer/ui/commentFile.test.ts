@@ -25,10 +25,14 @@ describe('content type of a comment attachment', () => {
 describe('loading a comment attachment', () => {
   const answer = (body: Uint8Array, headers: Record<string, string>) =>
     vi.fn(async () => new Response(body as BodyInit, { status: 200, headers }));
+  const noBackground = async (): Promise<Uint8Array> => {
+    throw new FileBytesError('not_a_file', 'The background read failed');
+  };
   const load = (
     fetchImpl: typeof fetch,
     confirm = async () => true,
     prepare: () => Promise<boolean> = async () => true,
+    retry: NonNullable<Parameters<typeof loadCommentFile>[0]['retry']> = noBackground,
   ) =>
     loadCommentFile({
       tabId: TAB,
@@ -37,6 +41,7 @@ describe('loading a comment attachment', () => {
       prepare,
       confirm,
       fetchImpl,
+      retry,
     });
 
   it('drops the probe when the cookie changes during the read', async () => {
@@ -120,6 +125,65 @@ describe('loading a comment attachment', () => {
     ).rejects.toMatchObject({
       kind: 'not_a_file',
     });
+  });
+});
+
+describe('a comment attachment whose pane read gets the sign-in page', () => {
+  const signIn = () =>
+    vi.fn(
+      async () =>
+        new Response('Sign in', { status: 200, headers: { 'content-type': 'text/html' } }),
+    );
+
+  it('reads the head in the background and takes the checked type it gives', async () => {
+    const retry = vi.fn(async (options: { onHeaders?: (headers: Headers) => void }) => {
+      options.onHeaders?.(new Headers({ 'content-type': 'application/pdf' }));
+      return text('%PDF-1.7');
+    });
+    const file = await loadCommentFile({
+      tabId: TAB,
+      name: 'Feedback.pdf',
+      origin: ORIGIN,
+      prepare: async () => true,
+      confirm: async () => true,
+      fetchImpl: signIn(),
+      retry,
+    });
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(retry).toHaveBeenCalledWith(
+      expect.objectContaining({ url: `${ORIGIN}${TAB}`, truncateAt: 16 }),
+      { commentTab: TAB },
+    );
+    expect(file.contentType).toBe('application/pdf');
+  });
+
+  it('reads the first bytes when the background gives no type', async () => {
+    const file = await loadCommentFile({
+      tabId: TAB,
+      name: 'Feedback.pdf',
+      origin: ORIGIN,
+      prepare: async () => true,
+      confirm: async () => true,
+      fetchImpl: signIn(),
+      retry: async () => text('%PDF-1.7'),
+    });
+    expect(file.contentType).toBe('application/pdf');
+  });
+
+  it('fails when the background read fails too', async () => {
+    await expect(
+      loadCommentFile({
+        tabId: TAB,
+        name: 'Feedback.pdf',
+        origin: ORIGIN,
+        prepare: async () => true,
+        confirm: async () => true,
+        fetchImpl: signIn(),
+        retry: async () => {
+          throw new FileBytesError('not_a_file', 'The background read failed');
+        },
+      }),
+    ).rejects.toMatchObject({ kind: 'not_a_file' });
   });
 });
 

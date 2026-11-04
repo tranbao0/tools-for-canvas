@@ -12,7 +12,8 @@ import { loadCommentFile } from '@/features/file-viewer/ui/commentFile';
 import { createOpenSource } from '@/features/file-viewer/ui/openSource';
 import { ViewerApp, type PaneHost } from '@/features/file-viewer/ui/ViewerApp';
 import type { PaneFile } from '@/features/file-viewer/ui/FileCard';
-import { readPaneBytes } from '@/features/file-viewer/bytes';
+import { readPaneBytes, type ByteSource } from '@/features/file-viewer/bytes';
+import { fileLinks } from '@/features/file-viewer/ui/links';
 import { loadPdfjs } from '@/features/file-viewer/pdf/loader';
 import { APP_CSS } from '@/shared/ui/styles';
 import pdfCss from '@/features/file-viewer/ui/pdf.css?inline';
@@ -44,11 +45,15 @@ export default defineUnlistedScript(() => {
   const confirmCookie = async () =>
     (await browser.runtime.sendMessage({ type: 'viewer:fetch-allowed' })) === true;
 
+  // What the background reads when the pane read of an address fails for a missing cookie. It
+  // reads the file of the id or the comment attachment, never an address of the pane.
+  const sources = new Map<string, ByteSource>();
+
   const host = (canvasOrigin: string): PaneHost => ({
     origin: canvasOrigin,
     async loadFile(fileId, name) {
-      if (isCommentTab(fileId))
-        return loadCommentFile({
+      if (isCommentTab(fileId)) {
+        const comment = await loadCommentFile({
           tabId: fileId,
           name,
           origin: canvasOrigin,
@@ -58,8 +63,14 @@ export default defineUnlistedScript(() => {
             (await browser.runtime.sendMessage({ type: 'viewer:confirm-cookie' })) === true,
           confirm: confirmCookie,
         });
+        sources.set(comment.url, { commentTab: fileId });
+        return comment;
+      }
       const file: unknown = await browser.runtime.sendMessage({ type: 'viewer:file', fileId });
       if (!isPaneFile(file)) return undefined;
+      // The tab reads the address of the card links, which the background builds the same way.
+      const download = fileLinks(canvasOrigin, fileId, null, file.url);
+      if (download !== null) sources.set(download.download, { fileId });
       return {
         name: file.name,
         contentType: file.contentType,
@@ -72,14 +83,17 @@ export default defineUnlistedScript(() => {
       };
     },
     readFile: (url, onProgress, signal, options) =>
-      readPaneBytes({
-        origin: canvasOrigin,
-        url,
-        onProgress,
-        signal,
-        ...(options?.truncateAt === undefined ? {} : { truncateAt: options.truncateAt }),
-        confirm: confirmCookie,
-      }),
+      readPaneBytes(
+        {
+          origin: canvasOrigin,
+          url,
+          onProgress,
+          signal,
+          ...(options?.truncateAt === undefined ? {} : { truncateAt: options.truncateAt }),
+          confirm: confirmCookie,
+        },
+        sources.get(url),
+      ),
     loadPdfjs,
     async hasAccess() {
       return (await browser.runtime.sendMessage({ type: 'viewer:permission' })) !== false;

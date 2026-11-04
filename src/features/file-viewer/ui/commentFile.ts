@@ -1,4 +1,5 @@
-import { FileBytesError, fetchFileBytes } from '../../../shared/canvas/fileBytes';
+import { FileBytesError } from '../../../shared/canvas/fileBytes';
+import { readPaneBytes } from '../bytes';
 import { t } from '../../../shared/ui/i18n';
 import type { PaneFile } from './FileCard';
 import { sniffRaster } from './player';
@@ -36,20 +37,29 @@ export async function loadCommentFile(options: {
   /** The strict check before and after the read, which starts no sign-in check. */
   confirm: () => Promise<boolean>;
   fetchImpl?: typeof fetch;
+  /** Reads the head in the background when the pane read shows a missing cookie. */
+  retry?: Parameters<typeof readPaneBytes>[2];
 }): Promise<PaneFile> {
   const url = new URL(options.tabId, options.origin).href;
   if (!(await options.prepare())) throw new FileBytesError('unconfirmed', 'cookie not confirmed');
   let header: string | null = null;
-  const head = await fetchFileBytes({
-    origin: options.origin,
-    url,
-    truncateAt: HEAD_BYTES,
-    confirm: options.confirm,
-    onHeaders: (headers) => {
-      header = headers.get('content-type');
+  // The head read falls back to the background like the full read. The background gives the media
+  // type of its answer only when it has the syntax of one (`checkedMime`), so the type check is
+  // as strict as the one of the pane read.
+  const head = await readPaneBytes(
+    {
+      origin: options.origin,
+      url,
+      truncateAt: HEAD_BYTES,
+      confirm: options.confirm,
+      onHeaders: (headers) => {
+        header = headers.get('content-type');
+      },
+      ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
     },
-    ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
-  });
+    { commentTab: options.tabId },
+    options.retry,
+  );
   return {
     name: options.name ?? t('fileCommentAttachment'),
     contentType: sniffContentType(header, head),
