@@ -2648,6 +2648,11 @@ With the pane read alone, the default run of the test failed before the fix.
      Then the pane checks the permission again and loads the active card and every card that failed.
      The button shows also when a file does not load, because a withheld permission makes the first fetch fail.
 6. **Settings.** A "File viewer" switch in the tools settings, on by default.
+   - The switch works without a reload, in both directions.
+     When it goes on, the background runs the click catcher (`viewer.js`) in the open tabs of the saved Canvas.
+     When it goes off, the catcher of each page ends itself when the page hears the change, so it takes no more clicks and the pane closes.
+     The assignment page reads the same switch for its sidebar, so a label "View NAME" always has a catcher behind it.
+     The catcher of a frame of the Submission Details page (item 11) is not part of this and follows its own page load.
 7. **The card of a file, and the header of a PDF.**
    - The card of the active tab shows an icon, the file name, and a line with the type and the size, such as "Word document · 265 KB".
      The size uses units of 1024 bytes.
@@ -3072,7 +3077,13 @@ So a student switches pages to read the instructions next to the feedback on a f
      - Under the link the extension adds a small "Download" link with the same address and a `download` attribute.
        The pane never takes it, so the browser saves the file.
      - This happens only for the own submission, and only while the "Assignment view" switch and the "File viewer" switch are on.
-       With the "File viewer" switch off, Canvas's link stays as it is.
+       With the "File viewer" switch off, Canvas's link stays as it is, because the pane cannot open the file.
+       Both switches work without a reload: the label and the click catcher change together (decision 25, item 6).
+     - The own submission is known from one read: `GET /api/v1/courses/:id/assignments/:id/submissions/self` with no include.
+       The box needs only the `user_id` of that record to compare it with the user in the file link.
+       So this page does not ask for the assignment record, the comments or the rubric, which the other pages read (item 8).
+     - Known limit: with an expired Canvas session, the `download` attribute of the small "Download" link saves the login page of Canvas as a file, because the browser saves whatever the address answers.
+       The attribute stays, so the link always saves and never opens a page.
      - Canvas's other sidebar links stay as they are.
    - **Assignments list (`/courses/:id/assignments`).**
      - Each row has an expand button that opens the score, instructions, rubric, feedback and files in place, and "Submit" opens Canvas's own turn-in page in the docked pane (steps 2 and 3 below).
@@ -3144,12 +3155,13 @@ So a student switches pages to read the instructions next to the feedback on a f
    - The pane does not send the inline-view ping (`attachment_view_inline_ping_url`) that Canvas's own dialog sends, because that would be a new write.
 7. **Settings.** The "One assignment view" switch in the tools settings turns all of this on and off at once, without a reload.
    - Off gives the page back exactly as Canvas drew it.
-   - The sidebar click of the assignment page follows the "File viewer" switch instead, because it is a file click.
+   - The sidebar of the assignment page needs the "File viewer" switch too (see "Assignment page" in item 1).
 
 8. **Data.**
    - The background reads one assignment with `GET /api/v1/courses/:id/assignments/:id?include[]=submission&include[]=can_submit` and the student's own submission with `GET /api/v1/courses/:id/assignments/:id/submissions/self?include[]=submission_comments&include[]=rubric_assessment`.
    - The rubric comes with the assignment record.
    - It reads when a row opens or the Submission Details page loads, and keeps the result for the page view.
+   - The assignment page reads only the own submission with no include, to learn its user (item 1).
    - A comparison of a page id with an API id converts both to decimal global strings with BigInt: `s~l` becomes `s * 10^13 + l`.
    - A 404 for the own submission returns `no_submission_access`; the Submission Details page then stays as Canvas drew it.
    - Every read follows the cookie binding of decision 11, so a reply never crosses students.
@@ -3159,8 +3171,12 @@ So a student switches pages to read the instructions next to the feedback on a f
 - **Script.**
   - The page script is `assignment-view.js`, which is its own small entry point like `dashboard.js`.
   - The background injects it next to the list script, into the top frame of the Assignments list (`/courses/:id/assignments`) or a Submission Details page (`/courses/:id/assignments/:assignment/submissions/:user`) of the saved Canvas, also with shard ids, including while the switch is off so it can follow changes.
-  - The Grades list, the assignment page and the page of an anonymous submission (`anonymous_submissions/:id`) get nothing.
+  - An assignment page (`/courses/:id/assignments/:id`) gets it too, for the Submission box.
+  - The Grades list and the page of an anonymous submission (`anonymous_submissions/:id`) get nothing.
   - A newer injection retires the copy of an earlier one, and a start removes the nodes that a destroyed copy left (every node and mark starts with `data-av-`).
+    The removal looks only in the parts that the view of the page owns: the Submission box on the assignment page, the head and the host on the Submission Details page, and the head and the lists of rows on the Assignments list.
+    A description or a comment of another author can hold such marks, and the removal never reaches it.
+    A holder of Canvas's nodes is given back only when it has `data-av-own` and is a direct child of a link in the box.
   - The script follows the switch, the saved address and the Theme setting through the page channel.
   - Turning the switch off removes every control at once and forgets the loaded details.
   - Turning the switch on adds the controls on an open page without a reload.
