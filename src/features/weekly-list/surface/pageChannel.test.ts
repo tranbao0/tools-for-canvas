@@ -51,9 +51,10 @@ function setup(initial: Settings | 'refuse' = DEFAULT_SETTINGS) {
   };
 }
 
-/** Lets the reads that a push starts finish. */
+/** Lets the reads that a push starts finish, and the watchers hear of the answers. */
 async function settle(): Promise<void> {
   for (let index = 0; index < 5; index += 1) await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('the choices of the page', () => {
@@ -273,87 +274,120 @@ describe('a change that comes before the first read finishes', () => {
         return () => undefined;
       },
     });
+    /** What a page script shows: the start value first, and then each value that a watcher gets. */
+    const shown: { tools: ToolsSettings | null; calls: ToolsSettings[] } = {
+      tools: null,
+      calls: [],
+    };
+    channel.tools.watch((next) => {
+      shown.tools = next;
+      shown.calls.push(next);
+    });
+    const start = channel.tools.getValue().then((next) => {
+      shown.tools = next;
+    });
     return {
       channel,
+      shown,
+      start,
       change(next: ToolsSettings) {
         stored = next;
         handler({ type: 'weekrow:changed' });
       },
       /** Finishes the reads with these numbers (0 is the first read that started). */
       finish: async (...order: number[]) => {
-        for (const index of order) finishers[index]?.();
-        await settle();
+        for (const index of order) {
+          finishers[index]?.();
+          await settle();
+        }
       },
     };
   }
 
-  it('reaches the watcher when the newer read finishes first', async () => {
-    const { channel, change, finish } = slowSetup(OFF);
-    const onTools = vi.fn();
-    channel.tools.watch(onTools);
-    const start = channel.tools.getValue();
+  it('ends on the newer value when the newer read finishes first', async () => {
+    const { shown, start, change, finish } = slowSetup(OFF);
 
-    change(ON);
-    await finish(1, 0);
-
-    expect(await start).toEqual(OFF);
-    expect(onTools).toHaveBeenCalledTimes(1);
-    expect(onTools).toHaveBeenCalledWith(ON);
-  });
-
-  it('reaches the watcher when the newer read finishes after the first one', async () => {
-    const { channel, change, finish } = slowSetup(OFF);
-    const onTools = vi.fn();
-    channel.tools.watch(onTools);
-    const start = channel.tools.getValue();
-
-    change(ON);
-    await finish(0, 1);
-
-    expect(await start).toEqual(OFF);
-    expect(onTools).toHaveBeenCalledTimes(1);
-    expect(onTools).toHaveBeenCalledWith(ON);
-  });
-
-  it('never lets an older reply overwrite a newer value', async () => {
-    const { channel, change, finish } = slowSetup(OFF);
-    const onTools = vi.fn();
-    channel.tools.watch(onTools);
-    const start = channel.tools.getValue();
     change(ON);
     await finish(1, 0);
     await start;
-    expect(onTools).toHaveBeenCalledTimes(1);
+
+    expect(shown.tools).toEqual(ON);
+  });
+
+  it('ends on the newer value when the newer read finishes after the first one', async () => {
+    const { shown, start, change, finish } = slowSetup(OFF);
+
+    change(ON);
+    await finish(0, 1);
+    await start;
+
+    expect(shown.tools).toEqual(ON);
+  });
+
+  it('brings the newer value after the start value, never before it', async () => {
+    const { shown, start, change, finish } = slowSetup(OFF);
+    change(ON);
+
+    // The newer read finishes first, but no event comes before the first read has finished.
+    await finish(1);
+    expect(shown.calls).toEqual([]);
+    await finish(0);
+    await start;
+
+    expect(shown.calls).toEqual([ON]);
+  });
+
+  it('never lets an older reply overwrite a newer value', async () => {
+    const { shown, start, change, finish } = slowSetup(OFF);
+    change(ON);
+    await finish(1, 0);
+    await start;
+    expect(shown.tools).toEqual(ON);
 
     // The next change reads the same value again. If the older reply had been kept, this read
     // would look like a change from OFF to ON and tell the watcher a second time.
     change(ON);
     await finish(2);
-    expect(onTools).toHaveBeenCalledTimes(1);
+    expect(shown.calls).toEqual([ON]);
+    expect(shown.tools).toEqual(ON);
   });
 
   it('tells each watcher only of the field that the start value missed', async () => {
     const { channel, change, finish } = slowSetup(OFF);
-    const onTools = vi.fn();
     const onSettings = vi.fn();
     const onOrigin = vi.fn();
-    channel.tools.watch(onTools);
     channel.settings.watch(onSettings);
     channel.choices.origin.watch(onOrigin);
     const start = Promise.all([
       channel.choices.origin.getValue(),
-      channel.tools.getValue(),
       channel.settings.getValue(),
+      channel.tools.getValue(),
     ]);
 
     change(ON);
-    await finish(3, 0, 1, 2);
+    // The reads 1, 2 and 3 are the start reads of the settings, the origin and the tools.
+    await finish(4, 1, 2, 3);
     await start;
 
-    expect(onTools).toHaveBeenCalledTimes(1);
-    expect(onTools).toHaveBeenCalledWith(ON);
     expect(onSettings).not.toHaveBeenCalled();
     expect(onOrigin).not.toHaveBeenCalled();
+  });
+
+  it('waits for every caller of a start before it tells the watchers', async () => {
+    const { channel, shown, start, change, finish } = slowSetup(OFF);
+    // The read 0 is the tools read of the setup. The reads 1 and 2 are two more callers.
+    const more = Promise.all([channel.choices.origin.getValue(), channel.settings.getValue()]);
+
+    change(ON);
+    // The change read finishes first, and the start reads one by one: no event may come while a
+    // caller still waits, or the start value of that caller would cover it.
+    await finish(3, 0, 1);
+    expect(shown.calls).toEqual([]);
+    await finish(2);
+    await Promise.all([start, more]);
+
+    expect(shown.calls).toEqual([ON]);
+    expect(shown.tools).toEqual(ON);
   });
 });
 

@@ -586,7 +586,9 @@ An earlier version used option B; schools on their own domain then needed an "Al
   - `save-settings` and `mark-note-seen` change only the fields the in-page list can change, with size limits.
   - The background sends `changed` to the Canvas tab when the data or the settings change.
   - The page channel numbers its reads and keeps only the newest answer, so an older reply never overwrites a newer value.
-    When a read finishes, the watchers hear of any newer answer that differs from what the page was told, so a change during the first read of a page script is not lost.
+    A caller gets the answer of its own read.
+    A change during the first read reaches every caller after its own start value.
+    The channel tells the watchers on a later task, and only when no caller still waits for a read, so a start value never covers a newer value.
 - The detector and the in-page script post no events and no messages to the page.
 - The install welcome and the custom-domain prompt use separate flags, so one does not stop the other.
 

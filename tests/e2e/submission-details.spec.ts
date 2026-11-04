@@ -18,6 +18,7 @@ import {
   submissionDetailsPage,
 } from '../fixtures/submission-page';
 import type { FakeCanvasRoute } from './support/fake-canvas';
+import { contentScriptWorld } from './support/content-script';
 import { CHROME_E2E_EXTENSION_DIR } from './support/extension';
 import { closePane, pane, saveSetting } from './support/file-viewer';
 import { json, saveAddress } from './support/scenario-api';
@@ -218,6 +219,87 @@ async function feedbackFrame(page: Page): Promise<Frame> {
     .toBe(true);
   return found!;
 }
+
+test('a switch saved while the page script starts still shows the view when the start ends', async ({
+  context,
+  page,
+  background,
+}) => {
+  // The background waits before it injects the assignment view script, so the test can hold the
+  // answers of the page-context reads in the world of the content scripts first.
+  await background.evaluate(() => {
+    const scripting = (
+      globalThis as unknown as {
+        chrome: { scripting: { executeScript(injection: { files?: string[] }): Promise<unknown> } };
+      }
+    ).chrome.scripting;
+    const real = scripting.executeScript.bind(scripting);
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const injecting = { waiting: 0, open };
+    (globalThis as unknown as { __injecting: typeof injecting }).__injecting = injecting;
+    scripting.executeScript = (injection) => {
+      if (!injection.files?.includes('/assignment-view.js')) return real(injection);
+      injecting.waiting += 1;
+      return gate.then(() => real(injection));
+    };
+  });
+  await open(context, page, background, { switchOff: true });
+  await expect
+    .poll(() =>
+      background.evaluate(
+        () => (globalThis as unknown as { __injecting: { waiting: number } }).__injecting.waiting,
+      ),
+    )
+    .toBe(1);
+  const script = await contentScriptWorld(page);
+
+  // From now on, the background answers a page-context read of the assignment view at once, and
+  // the content script gets the reply when `release` runs. The reads of the other scripts pass.
+  await script.evaluate(`(() => {
+    const held = { gate: null, release: null, holding: true, held: 0, passed: 0, done: 0 };
+    held.gate = new Promise((resolve) => (held.release = resolve));
+    const real = chrome.runtime.sendMessage.bind(chrome.runtime);
+    chrome.runtime.sendMessage = (message) => {
+      const fromView = new Error().stack.includes('/assignment-view.js');
+      if (message?.type !== 'weekrow:page-context' || !fromView) return real(message);
+      if (!held.holding) {
+        held.passed += 1;
+        return real(message).finally(() => (held.done += 1));
+      }
+      held.held += 1;
+      return real(message).then((reply) => held.gate.then(() => reply));
+    };
+    globalThis.__held = held;
+  })()`);
+
+  // The script starts. Its three start reads are held, so the start cannot end.
+  await background.evaluate(() =>
+    (globalThis as unknown as { __injecting: { open(): void } }).__injecting.open(),
+  );
+  await expect.poll(() => script.evaluate('globalThis.__held.held')).toBe(3);
+  await expect(page.locator('html')).not.toHaveAttribute('data-av-started');
+
+  // The student turns the switch on now. The read that the change starts is not held, and it
+  // answers before the start reads do.
+  await script.evaluate('globalThis.__held.holding = false');
+  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  await expect
+    .poll(() =>
+      script.evaluate(
+        'globalThis.__held.passed > 0 && globalThis.__held.done === globalThis.__held.passed',
+      ),
+    )
+    .toBe(true);
+  await expect(page.locator('html')).not.toHaveAttribute('data-av-started');
+  await expect(host(page)).toHaveCount(0);
+
+  // The start ends with the old switch, and the change that came during it brings the view.
+  await script.evaluate('globalThis.__held.release()');
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  await expect(host(page)).toBeAttached();
+  await expect(page.locator('#preview_frame')).toBeHidden();
+});
 
 test("the files area gives way to the instructions and the files, and the rest of the page stays Canvas's own", async ({
   context,
