@@ -13,6 +13,8 @@ import {
   injectDetectorIntoOpenTabs,
   injectInpage,
   injectInpageIntoOrigin,
+  injectViewerIntoOrigin,
+  VIEWER_FILE,
   injectSubmissionFrames,
 } from './inject';
 import { installFakeScripting, type FakeScripting } from './testing/fakes';
@@ -153,6 +155,37 @@ describe('injectInpageIntoOrigin', () => {
 
   it('asks about nothing for text that is not an origin', async () => {
     expect(await injectInpageIntoOrigin('nope')).toEqual([]);
+    expect(query).not.toHaveBeenCalled();
+  });
+});
+
+describe('injectViewerIntoOrigin', () => {
+  it('runs the click catcher alone in the top frame of the open tabs of exactly that origin', async () => {
+    query.mockResolvedValue([
+      tab(1, 'https://canvas.school.edu/courses/5'),
+      tab(2, 'https://canvas.school.edu:8443/courses/5'),
+      tab(3, 'https://canvas.school.edu/courses/5/assignments/3'),
+      tab(4, 'https://canvas.school.edu/', true),
+    ]);
+
+    expect(VIEWER_FILE).toBe('/viewer.js');
+    expect(await injectViewerIntoOrigin('https://canvas.school.edu')).toEqual([1, 3]);
+
+    expect(scripting.executeScript.mock.calls.map(([details]) => details)).toEqual([
+      { target: { tabId: 1, frameIds: [0] }, files: ['/viewer.js'] },
+      { target: { tabId: 3, frameIds: [0] }, files: ['/viewer.js'] },
+    ]);
+  });
+
+  it('injects nothing when the switch went off again before the injection', async () => {
+    query.mockResolvedValue([tab(1, 'https://canvas.school.edu/')]);
+    await toolsSettingsItem.setValue({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+    await injectViewerIntoOrigin('https://canvas.school.edu');
+    expect(scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  it('asks about nothing for text that is not an origin', async () => {
+    expect(await injectViewerIntoOrigin('nope')).toEqual([]);
     expect(query).not.toHaveBeenCalled();
   });
 });

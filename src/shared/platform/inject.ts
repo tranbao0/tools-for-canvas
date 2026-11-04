@@ -23,6 +23,9 @@ export const DASHBOARD_FILE = '/dashboard.js';
 /** The one assignment view, for the Assignments list, the assignment page and the Submission Details page (decision 26). */
 export const ASSIGNMENT_VIEW_FILE = '/assignment-view.js';
 
+/** The pane's click catcher, which only a page with the File viewer switch on needs (decision 25). */
+export const VIEWER_FILE = '/viewer.js';
+
 /** The dashboard is the root path of Canvas. `/dashboard` serves the same page. */
 const DASHBOARD_PATH = /^\/(?:dashboard\/?)?$/;
 
@@ -73,8 +76,33 @@ export async function injectInpage(
   await browser.scripting.executeScript({
     target:
       documentId === undefined ? { tabId, frameIds: [0] } : { tabId, documentIds: [documentId] },
-    files: [...pageScripts(tab.url), ...(tools.fileViewer ? (['/viewer.js'] as const) : [])],
+    files: [...pageScripts(tab.url), ...(tools.fileViewer ? ([VIEWER_FILE] as const) : [])],
   });
+}
+
+/**
+ * Runs the pane's click catcher in every open tab whose page has exactly this origin, for the
+ * moment the File viewer switch goes on. A tab that loaded while the switch was off has no
+ * catcher. A tab that has one stops the older copy first, so no click acts twice. The catcher on
+ * a Submission Details page asks for the frame catcher itself. Resolves to the ids of the tabs
+ * that took it.
+ */
+export async function injectViewerIntoOrigin(origin: string): Promise<number[]> {
+  const pattern = originMatchPattern(origin);
+  if (pattern === null) return [];
+  const tabs = await browser.tabs.query({ url: pattern });
+  const onOrigin = tabs.filter(
+    (tab) => tab.url !== undefined && parseUrl(tab.url)?.origin === origin,
+  );
+  const injected = await runInTabs(onOrigin, 'viewer injection', async (tabId) => {
+    // The switch may have gone off again since the change that started this.
+    if (!(await toolsSettingsItem.getValue()).fileViewer) return;
+    await browser.scripting.executeScript({
+      target: { tabId, frameIds: [0] },
+      files: [VIEWER_FILE],
+    });
+  });
+  return injected.map((tab) => tab.id);
 }
 
 /** The click catcher for the files list in the frame of the submission details page. */

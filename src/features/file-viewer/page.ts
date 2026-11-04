@@ -266,11 +266,12 @@ export async function startViewer(): Promise<void> {
     applyTheme();
     answerInTime();
   };
-  scope.__weekrowViewer = () => {
+  const teardown = () => {
     live = false;
     lifetime.abort();
     drop();
   };
+  scope.__weekrowViewer = teardown;
   // The opens run one after another. Each one reads the stored tabs, adds its file and writes them
   // back, so two that ran side by side would both start from the same tabs and the second write
   // would drop the file of the first. The tab order is also the order of the clicks.
@@ -381,7 +382,7 @@ export async function startViewer(): Promise<void> {
     enabled = true;
   })().catch(() => undefined);
   // The background sends two kinds of message to this script. It says when a setting changed, so
-  // the pane follows the Theme setting at once. And it passes on a file that the click catcher
+  // the pane follows the Theme setting at once, and the script ends when the File viewer switch goes off. And it passes on a file that the click catcher
   // took in the frame of the submission details page, whose files list this script cannot see
   // (frame.ts, decision 25, item 11).
   const onBackground = (
@@ -393,6 +394,13 @@ export async function startViewer(): Promise<void> {
     if (request?.type === 'weekrow:changed') {
       void readContext().then(
         (latest) => {
+          // The File viewer switch went off. The catcher stops at once, so a click follows the
+          // link as Canvas drew it, and the pane closes. The background starts a new copy of
+          // this script when the switch goes on again.
+          if (latest?.tools.fileViewer === false) {
+            teardown();
+            return;
+          }
           const choice = latest?.settings?.theme;
           if (choice && choice !== themeChoice) {
             themeChoice = choice;
