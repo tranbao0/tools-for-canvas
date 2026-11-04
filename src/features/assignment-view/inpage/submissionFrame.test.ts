@@ -1,7 +1,17 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { SESSION_PATH, frameRows } from '../../../../tests/fixtures/submission-frame';
-import { filesFromDetails, humanSize, readFrameFiles, sessionUrl } from './submissionFrame';
+import {
+  SESSION_PATH,
+  TURNITIN_SCORE,
+  frameRows,
+} from '../../../../tests/fixtures/submission-frame';
+import {
+  filesFromDetails,
+  humanSize,
+  readFrame,
+  sameSubmissionPath,
+  sessionUrl,
+} from './submissionFrame';
 
 const ORIGIN = 'https://school.instructure.com';
 const PAGE = '/courses/12/assignments/101/submissions/42';
@@ -40,7 +50,38 @@ function frame(html: string, href = `${ORIGIN}${PAGE}?preview=1&rand=1`, ready =
   } as unknown as HTMLIFrameElement;
 }
 
-describe('readFrameFiles', () => {
+describe('sameSubmissionPath', () => {
+  it.each([
+    [PAGE, PAGE],
+    [PAGE, `${PAGE}/`],
+    [
+      '/courses/2~12/assignments/2~101/submissions/2~123',
+      '/courses/20000000000012/assignments/20000000000101/submissions/20000000000123',
+    ],
+    [
+      '/courses/12/assignments/101/submissions/2~123',
+      '/courses/12/assignments/101/submissions/20000000000123',
+    ],
+  ])('takes %s and %s as one page', (a, b) => {
+    expect(sameSubmissionPath(a!, b!)).toBe(true);
+  });
+
+  it.each([
+    [PAGE, '/courses/12/assignments/101/submissions/43'],
+    [PAGE, '/courses/12/assignments/102/submissions/42'],
+    [PAGE, '/courses/13/assignments/101/submissions/42'],
+    [PAGE, '/courses/12/assignments/101/anonymous_submissions/abc'],
+    [PAGE, '/courses/12/assignments/101/submissions/42/extra'],
+    [
+      '/courses/2~12/assignments/101/submissions/42',
+      '/courses/3~12/assignments/101/submissions/42',
+    ],
+  ])('takes %s and %s as two pages', (a, b) => {
+    expect(sameSubmissionPath(a!, b!)).toBe(false);
+  });
+});
+
+describe('readFrame', () => {
   const rows = frameRows(PAGE, [
     {
       fileId: '501',
@@ -52,8 +93,16 @@ describe('readFrameFiles', () => {
     { fileId: '502', name: 'notes.txt', size: '2.5 KB', button: null },
   ]);
 
+  const ready = (subject: HTMLIFrameElement, path = PAGE) => {
+    const read = readFrame(subject, ORIGIN, path);
+    if (read.state !== 'ready') throw new Error(`The frame is ${read.state}.`);
+    return read;
+  };
+
   it('reads the name, size, button label, unread mark and checked session of each row', () => {
-    expect(readFrameFiles(frame(rows), ORIGIN, PAGE)).toEqual([
+    const read = ready(frame(rows));
+    expect(read.complete).toBe(true);
+    expect(read.files).toEqual([
       {
         fileId: '501',
         name: 'ENGR195A - Reflection Paper #1.pdf',
@@ -73,26 +122,76 @@ describe('readFrameFiles', () => {
     ]);
   });
 
-  it('drops a session address that does not pass the check, and keeps the row', () => {
-    const bad = frameRows(PAGE, [
-      {
-        fileId: '501',
-        name: 'a.pdf',
-        size: '1 KB',
-        button: 'Preview',
-        session: 'https://evil.example/api/v1/canvadoc_session?blob=a&hmac=b',
-      },
+  it('matches the frame of a shard student, which writes the ids in full', () => {
+    const page = '/courses/2~12/assignments/2~101/submissions/2~123';
+    const long = '/courses/20000000000012/assignments/20000000000101/submissions/20000000000123';
+    const shard = frameRows(long, [
+      { fileId: '501', name: 'a.pdf', size: '1 KB', button: 'View Feedback' },
     ]);
-    expect(readFrameFiles(frame(bad), ORIGIN, PAGE)?.[0]).toMatchObject({
-      feedbackLabel: 'Preview',
-      sessionUrl: null,
-    });
+    const read = ready(frame(shard, `${ORIGIN}${long}?preview=1&rand=1`), page);
+    expect(read.complete).toBe(true);
+    expect(read.files).toHaveLength(1);
+    expect(read.files[0]?.sessionUrl).toBe(`${ORIGIN}${SESSION_PATH}`);
   });
 
-  it('is empty for a page without file rows', () => {
-    expect(
-      readFrameFiles(frame('<div class="file-upload-submission">No files</div>'), ORIGIN, PAGE),
-    ).toEqual([]);
+  it('is incomplete when a preview button has a session address that fails the check', () => {
+    for (const session of [
+      'https://evil.example/api/v1/canvadoc_session?blob=a&hmac=b',
+      `${SESSION_PATH}&access_token=t`,
+    ]) {
+      const bad = frameRows(PAGE, [
+        { fileId: '501', name: 'a.pdf', size: '1 KB', button: 'Preview', session },
+      ]);
+      const read = ready(frame(bad));
+      expect(read.complete).toBe(false);
+      expect(read.files[0]).toMatchObject({ feedbackLabel: 'Preview', sessionUrl: null });
+    }
+  });
+
+  it('is incomplete when a row does not match', () => {
+    const other = frameRows('/courses/12/assignments/101/submissions/43', [
+      { fileId: '501', name: 'a.pdf', size: '1 KB', button: null },
+    ]);
+    const read = ready(frame(other));
+    expect(read.files).toEqual([]);
+    expect(read.complete).toBe(false);
+    const noLink =
+      '<table class="file-upload-submission-table"><tbody><tr class="file-upload-submission"><td>Changed markup</td></tr></tbody></table>';
+    expect(ready(frame(noLink)).complete).toBe(false);
+  });
+
+  it.each([
+    ['a Turnitin score', { score: TURNITIN_SCORE }],
+    [
+      'a report status that the script of Canvas drew',
+      { report: '<div><a href="#">Report</a></div>' },
+    ],
+    ['a report status with text', { report: '<span>Processing</span>' }],
+  ])('is incomplete with %s in a row', (_name, extra) => {
+    const withReport = frameRows(PAGE, [
+      { fileId: '501', name: 'a.pdf', size: '1 KB', button: null, ...extra },
+    ]);
+    expect(ready(frame(withReport)).complete).toBe(false);
+  });
+
+  it('is complete with empty originality cells, and ignores report marks in user content', () => {
+    const empty = frameRows(PAGE, [{ fileId: '501', name: 'a.pdf', size: '1 KB', button: null }]);
+    expect(ready(frame(empty)).complete).toBe(true);
+    const text = `<div id="submission_preview" class="paper user_content"><span class="turnitin_score_container">Mine</span></div>`;
+    expect(ready(frame(text)).complete).toBe(true);
+    const score = `<div style="text-align:right">${TURNITIN_SCORE}</div><div id="submission_preview" class="paper user_content">Text</div>`;
+    expect(ready(frame(score)).complete).toBe(false);
+  });
+
+  it('tells a snapshot image of a URL submission', () => {
+    expect(ready(frame('<div><img src="/x.png" alt="URL Preview"></div>')).snapshot).toBe(true);
+    expect(ready(frame(rows)).snapshot).toBe(false);
+  });
+
+  it('is empty and complete for a page without file rows', () => {
+    const read = ready(frame('<div class="file-upload-submission">No files</div>'));
+    expect(read.files).toEqual([]);
+    expect(read.complete).toBe(true);
   });
 
   it.each([
@@ -100,6 +199,11 @@ describe('readFrameFiles', () => {
     ['the blank page before the load', frame(rows, 'about:blank')],
     ['another path', frame(rows, `${ORIGIN}/courses/12/assignments/101/submissions/43?preview=1`)],
     ['a page without the preview parameter', frame(rows, `${ORIGIN}${PAGE}`)],
+  ])('is pending for %s', (_name, subject) => {
+    expect(readFrame(subject, ORIGIN, PAGE)).toEqual({ state: 'pending' });
+  });
+
+  it.each([
     ['another origin', frame(rows, `https://evil.example${PAGE}?preview=1`)],
     [
       'a frame that cannot be read',
@@ -110,15 +214,12 @@ describe('readFrameFiles', () => {
         contentWindow: null,
       } as unknown as HTMLIFrameElement,
     ],
-  ])('gives nothing for %s', (_name, subject) => {
-    expect(readFrameFiles(subject, ORIGIN, PAGE)).toBeNull();
-  });
-
-  it('skips a link that is no file of this submission', () => {
-    const other = frameRows('/courses/12/assignments/101/submissions/43', [
-      { fileId: '501', name: 'a.pdf', size: '1 KB', button: null },
-    ]);
-    expect(readFrameFiles(frame(other), ORIGIN, PAGE)).toEqual([]);
+    [
+      'a frame with no document',
+      { contentDocument: null, contentWindow: null } as unknown as HTMLIFrameElement,
+    ],
+  ])('has failed for %s', (_name, subject) => {
+    expect(readFrame(subject, ORIGIN, PAGE)).toEqual({ state: 'failed' });
   });
 });
 

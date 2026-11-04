@@ -13,6 +13,10 @@ export interface FrameRow {
   unread?: boolean;
   /** The value of `data-canvadoc_session_url`. */
   session?: string;
+  /** What Canvas draws in the originality cell: a Turnitin or VeriCite score and report link. */
+  score?: string;
+  /** What the script of Canvas draws in the report status cell, a moment after the load. */
+  report?: string;
 }
 
 /** A signed session path as `Attachment#canvadoc_url` builds it. */
@@ -30,8 +34,8 @@ export function frameRows(path: string, rows: readonly FrameRow[]): string {
             </a>
             <span class="file-upload-submission-info__filesize">${row.size}</span>
           </td>
-          <td class="file-upload-submission-turnitin"></td>
-          <td class="asset-report-status-container" data-attachment-id="${row.fileId}"></td>
+          <td class="file-upload-submission-turnitin">${row.score ?? ''}</td>
+          <td class="asset-report-status-container" data-attachment-id="${row.fileId}" data-submission-id="9" data-submission-type="online_upload">${row.report ?? ''}</td>
           <td class="file-upload-submission-attachment">${
             row.button === null
               ? ''
@@ -48,3 +52,7 @@ export function frameRows(path: string, rows: readonly FrameRow[]): string {
       <thead><tr><th class="file-info-header">Files</th><th></th><th></th><th></th></tr></thead>
       <tbody>${body}</tbody></table>`;
 }
+
+/** A Turnitin score as `_originality_score.html.erb` draws it, in the classic icon form. */
+export const TURNITIN_SCORE =
+  '<span class="turnitin_score_container"><span class="turnitin_score_container_caret warning_score"></span><a href="/courses/12/assignments/101/submissions/42/turnitin/attachment_1" target="_blank" title="Similarity score -- more information" class="not_external turnitin_similarity_score warning_score">23%</a></span>';

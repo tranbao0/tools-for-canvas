@@ -3007,19 +3007,32 @@ So a student switches pages to read the instructions next to the feedback on a f
      The two ids are compared as decimal global ids with BigInt, like `normalizeCanvasId`: `s~l` becomes `s * 10^13 + l`.
    - A teacher, an observer, another student, a refused read, a failed read and a record of another assignment all leave the page as Canvas drew it.
    - The page also stays as it is when an anchor is missing.
-   - The view replaces Canvas's files frame for no submission, `online_upload`, `online_text_entry` and `online_url`.
-     For every other type the frame stays, and the view adds only the instructions above it (item 4).
+   - The view replaces Canvas's files frame only when it can show everything that the frame shows.
+     In every other case the frame stays, and the view adds only the instructions above it: the fallback rule of item 5.
    - The files frame stays visible until the read has finished, so a page that stays as it is never flickers.
 4. **How the page changes.**
    - When the view replaces the frame: one `style` element in the head hides `.submission-details-container>.submission-details-frame`, and one host element is added after that frame, in the same flex row, with the comments column on its right.
-   - For any other type: no style is added, and the host is added right before `.submission-details-container`, so it sits above the frame and the comments column.
+   - In the fallback mode of item 5: no style is added, and the host is added right before `.submission-details-container`, so it sits above the frame and the comments column.
      Canvas's frame and comments are not changed in any way.
    - No node of Canvas gets an attribute or a style, and the frame is never moved, because a moved frame reloads.
    - Turning the switch off removes the style, the host and an open feedback pane, so the content area is the same as Canvas drew it.
 5. **Where the files come from.**
    - The rows come from the same-origin files frame `iframe#preview_frame`, once its document is the preview page and has loaded: `tr.file-upload-submission`, the file link, the size text, the label of the button and the unread mark.
    - A link counts only when it is a file of the submission of this page.
-   - A frame that cannot be read, or that has no file rows, falls back to the files of the details (`attachments` with `display_name` and `size`) with no "View Feedback" button.
+     The page path and the path of the link are compared segment by segment as decimal global ids, because a shard student's page can write `2~123` where the frame writes `20000000000123`.
+   - Until the frame has loaded, an upload shows the files of the details (`attachments` with `display_name` and `size`) with no "View Feedback" button, and the frame is hidden.
+   - **The fallback rule.**
+     When the view cannot show everything that the frame shows, it uses the mode of item 4 for "any other type": the instructions above `.submission-details-container`, the frame visible and untouched, no hide style.
+     The mode applies to a submission type that the view does not show (media recording, quiz, LTI tool, student annotation, discussion, and any other type), and to these cases once the frame has loaded:
+     - The frame cannot be read, is on another origin, or does not show the preview page of this submission within 10 seconds.
+     - An upload has attachments in the details but no file row of the frame matches.
+     - A file row does not match: no file link, another submission, or an id that is no file id.
+     - A file row has a preview button (`a.modal_preview_link`) whose session address fails the strict check, for example with an extra `access_token`.
+     - The frame shows a similarity report: `.turnitin_score_container`, `.turnitin_similarity_score`, `.vericite_score_container_caret`, or content in `td.file-upload-submission-turnitin` or `td.asset-report-status-container`.
+       Canvas fills the report status cell with a script after the load, so the view watches the frame for 10 seconds after each load and uses the mode when the cell fills.
+       Marks inside the student's own text entry are no report.
+     - A URL submission whose frame shows a snapshot image.
+     The view returns to the replacing mode if a later load of the frame shows nothing of this.
    - The size of the details is written like Rails `number_to_human_size`: base 1024, three significant digits, for example "118 KB".
 6. **The feedback pane.**
    - Canvas opens "View Feedback" in a dialog inside the files frame, which the view hides.
@@ -3029,10 +3042,12 @@ So a student switches pages to read the instructions next to the feedback on a f
      It has a bar with the file name, "Open in new tab" and a close button.
    - The address is strict.
      It must be on the saved Canvas, with the path `/api/v1/canvadoc_session`, with `blob` and `hmac` once each and no other parameter.
-     Any other value counts as absent, and the file has no button.
+     Any other value counts as absent, and the view uses the fallback mode (item 5), so the notes of the teacher stay reachable through Canvas's own button.
    - The address is signed for one student and acts like a secret.
-     It stays in a closure of the script and in the closed root of the pane.
+     The view keeps it in a closure of the script, and the feedback pane keeps it in its closed root.
      It is never an attribute of the page or of the open root of the view, and no code logs it.
+     It is also in Canvas's own markup: the `data-canvadoc_session_url` attribute of the link in the same-origin files frame, which Canvas's scripts and any script of the Canvas page can read.
+     The view neither adds nor widens that exposure.
    - Canvas answers the address with a redirect to DocViewer, so the script cannot read the address of the frame, and it cannot tell that DocViewer refused to be framed.
      So "Open in new tab" is always in the bar.
    - The pane steps aside for the file pane and shows again when it closes.
@@ -3105,6 +3120,7 @@ So a student switches pages to read the instructions next to the feedback on a f
   The reply has three more fields: the submission type, the text and the address of the submission, and the size of a file.
   No new message path exists.
 - The feedback address is handled as in item 6.
+  It is also in Canvas's own frame DOM, so the secrecy of the view's copies protects only the view's own nodes.
 - A frame of the Canvas origin can reach the closed root that holds it, so the feedback frame has a host of its own, and every listener in it accepts only trusted events.
 
 **Verified source facts:**
@@ -3160,6 +3176,8 @@ The fixtures run in the browser test server, through the Assignments list route 
 **Live checks for the owner:**
 
 1. Open a graded submission on sjsu.instructure.com: the left area shows "Instructions" and "Your files", and the header, grade, "Show Rubric", "Re-submit Assignment" and comments look as before.
+   If a page shows Canvas's own files area with the instructions above it instead, a fallback case of item 5 applies (for example a similarity score).
+   Tell me which one, so the case can get its own display.
 2. Click the file name: the file opens in the pane.
 3. Click "View Feedback" on an annotated PDF: the pane shows the teacher's notes.
    If DocViewer refuses the frame, use "Open in new tab" and report it.
