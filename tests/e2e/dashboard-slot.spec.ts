@@ -337,22 +337,43 @@ test('keeps the scroll position of the day list over edit mode', async ({
   await expect.poll(() => region.evaluate((element) => element.scrollTop)).toBe(300);
 });
 
-test('keeps the card beside the grid in edit mode when the page has no Course work widget', async ({
-  context,
-  page,
-}) => {
-  const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
-  await page.setViewportSize({ width: 2088, height: 900 });
-  await openCanvasPage(page, canvas.origin, '/?fixture_course_work=none');
-  await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'area');
-  await enterEditMode(page);
-  await frames(page, 5);
-  await expect(page.locator('#weekrow-inpage')).toBeVisible();
-  await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'area');
-  await leaveEditMode(page);
-  await frames(page, 5);
-  await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'area');
-});
+for (const { width, mode } of [
+  { width: 2088, mode: 'area' },
+  { width: 1280, mode: 'stack' },
+]) {
+  test(`keeps the card in the ${mode} in edit mode at ${width} px when the page has no Course work widget`, async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
+    await page.setViewportSize({ width, height: 900 });
+    await openCanvasPage(page, canvas.origin, '/?fixture_course_work=none');
+    await expect(page.locator(HOST)).toHaveAttribute('data-panel', mode);
+    await enterEditMode(page);
+    await frames(page, 5);
+    await expect(page.locator('#weekrow-inpage')).toBeVisible();
+    await expect(page.locator(HOST)).toHaveAttribute('data-panel', mode);
+    // One writer places the card: nothing changes while the page stands still.
+    await page.waitForTimeout(500);
+    const records = await page.evaluate(
+      () =>
+        new Promise<number>((resolve) => {
+          let count = 0;
+          const observer = new MutationObserver((list) => (count += list.length));
+          observer.observe(document, { subtree: true, childList: true, attributes: true });
+          setTimeout(() => {
+            observer.disconnect();
+            resolve(count);
+          }, 1000);
+        }),
+    );
+    expect(records).toBe(0);
+    await leaveEditMode(page);
+    await frames(page, 5);
+    await expect(page.locator('#weekrow-inpage')).toBeVisible();
+    await expect(page.locator(HOST)).toHaveAttribute('data-panel', mode);
+  });
+}
 
 test.describe('with two loaded Course work widgets', () => {
   test('replaces the first one and leaves the extras and colors on the second', async ({

@@ -734,7 +734,39 @@ test.describe('the list in other places', () => {
     });
   }
 
-  test('does not cover an empty widget column', async ({ context, page, background }) => {
+  test('does not cover an empty widget column, beside the grid', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background, { query: NO_COURSE_WORK });
+    await page.evaluate(() => {
+      const first = document.querySelector('[data-testid="widget-column-1"]');
+      const second = document.querySelector('[data-testid="widget-column-2"]');
+      while (second?.firstElementChild) first?.append(second.firstElementChild);
+    });
+    await expect
+      .poll(async () => {
+        const result = await page.evaluate(() => {
+          const column = document
+            .querySelector('[data-testid="widget-column-2"]')
+            ?.getBoundingClientRect();
+          const card = document
+            .querySelector('#weekrow-inpage > weekrow-list')
+            ?.shadowRoot?.querySelector('.wr')
+            ?.getBoundingClientRect();
+          return column && card ? card.left >= column.right - 1 : false;
+        });
+        return result;
+      })
+      .toBe(true);
+  });
+
+  test('does not cover an empty widget column, in the slot', async ({
+    context,
+    page,
+    background,
+  }) => {
     await open(context, page, background);
     await page.evaluate(() => {
       const first = document.querySelector('[data-testid="widget-column-1"]');
