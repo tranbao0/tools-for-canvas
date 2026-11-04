@@ -613,6 +613,27 @@ test('the checked Row size segment uses the system highlight in forced colors', 
   });
   expect(segments.fills[0]).toEqual([segments.highlight, segments.highlightText]);
   expect(segments.fills[1]![0]).not.toBe(segments.highlight);
+  // The label can be read: it opts out of the backplate that the browser draws behind text, and
+  // its own box shows the fill, not a white plate.
+  const label = group.locator('.wr-segment').first().locator('span').first();
+  expect(await label.evaluate((el) => getComputedStyle(el).forcedColorAdjust)).toBe('none');
+  const image = (await label.screenshot()).toString('base64');
+  const light = await page.evaluate(async (data) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${data}`;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(img, 0, 0);
+    const pixels = context.getImageData(0, 0, img.width, img.height).data;
+    let bright = 0;
+    for (let index = 0; index < pixels.length; index += 4)
+      if (pixels[index]! > 230 && pixels[index + 1]! > 230 && pixels[index + 2]! > 230) bright += 1;
+    return bright / (pixels.length / 4);
+  }, image);
+  expect(light).toBeLessThan(0.5);
 });
 
 // The meta line stays on one line when it fits. When it does not, the points and the chips go to

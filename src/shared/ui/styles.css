@@ -1912,6 +1912,13 @@ input:checked + .wr-switch-track > .wr-switch-knob {
     color: HighlightText;
   }
 
+  /* The browser draws a backplate in Canvas color behind text in forced colors, which would hide
+     the HighlightText label on the Highlight fill. */
+  .wr-segment:has(input:checked) > span {
+    forced-color-adjust: none;
+    color: HighlightText;
+  }
+
   .wr-legend-row[aria-pressed='true'] {
     outline: 2px solid Highlight;
   }
