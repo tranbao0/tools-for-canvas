@@ -36,7 +36,14 @@ import { Rings } from './Rings';
 import { SettingsPanel } from './Settings';
 import { Spinner, StateBody } from './States';
 import { TaskForm, type TaskFormMode } from './TaskForm';
-import { groupCount, isGroupEmpty, WeekList, type ListHandlers } from './WeekList';
+import {
+  groupCount,
+  GroupView,
+  type BottomKind,
+  isGroupEmpty,
+  WeekList,
+  type ListHandlers,
+} from './WeekList';
 import { captureFocus, firstRowControl, restoreFocus, usable, type FocusSnapshot } from './focus';
 
 type ReadyState = Extract<SurfaceState, { kind: 'ready' }>;
@@ -59,30 +66,50 @@ function ScrollRegion(props: {
   memory: ScrollMemory;
   resetKey: string;
   label: string;
+  /** The region keeps its position while it is hidden, and shows it again when it returns. */
+  hidden?: boolean;
   children: ComponentChildren;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const { memory } = props;
   useLayoutEffect(() => {
     const element = ref.current;
-    if (element === null) return;
+    if (element === null || props.hidden === true) return;
     if (memory.key !== props.resetKey) {
       memory.key = props.resetKey;
       memory.top = 0;
     }
     if (element.scrollTop !== memory.top) element.scrollTop = memory.top;
-  }, [memory, props.resetKey]);
+  }, [memory, props.resetKey, props.hidden]);
   return (
     <div
       ref={ref}
       class="wr-scroll"
+      hidden={props.hidden}
       role="region"
       tabIndex={0}
       aria-label={props.label}
       onScroll={(event) => {
-        memory.top = event.currentTarget.scrollTop;
+        if (!event.currentTarget.hidden) memory.top = event.currentTarget.scrollTop;
       }}
     >
+      {props.children}
+    </div>
+  );
+}
+
+/**
+ * The list area that shows the open bottom group in place of the day list. The element stays in
+ * the card, so the headers of the bottom bar can name it; it is hidden while no group is open. A
+ * group starts at the top.
+ */
+function GroupArea(props: { id: string; kind: string | null; children: ComponentChildren }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (ref.current !== null) ref.current.scrollTop = 0;
+  }, [props.kind]);
+  return (
+    <div ref={ref} id={props.id} class="wr-group-area" hidden={props.kind === null}>
       {props.children}
     </div>
   );
@@ -425,7 +452,7 @@ function ReadyView(props: {
   const saved = props.settings;
   const level = baseLevel(surface);
   const [form, setForm] = useState<TaskFormMode | null>(null);
-  const [openBottomKind, setOpenBottom] = useState<string | null>(null);
+  const [openBottomKind, setOpenBottom] = useState<BottomKind | null>(null);
   // A bottom group that disappears also closes, so it does not come back open.
   const openBottom =
     openBottomKind !== null &&
@@ -439,6 +466,7 @@ function ReadyView(props: {
   const [save, setSave] = useState<'idle' | 'saving' | 'failed'>('idle');
   const [notes, setNotes] = useState<OneTimeNote[]>([]);
   const [limitedId] = useState(() => newId('limited'));
+  const [areaId] = useState(() => newId('area'));
   const [tabIds] = useState(() => newIds('tab', ['tasks', 'announcements', 'panel'] as const));
   const ann = props.announcements;
   const tab: ListTab = ann?.tab ?? 'tasks';
@@ -520,6 +548,12 @@ function ReadyView(props: {
     setSave('saving');
     if (await actions.createTask(input)) closeForm(null);
     else setSave('failed');
+  };
+  /** Shows the days again. Focus goes to the header of the group that was open, if any. */
+  const closeGroup = (focusHeader: boolean) => {
+    if (focusHeader && openBottom !== null)
+      returnFocus.current = `.wr-pinned [data-group="${openBottom}"] .wr-group-toggle`;
+    setOpenBottom(null);
   };
   /** Closes the form and focuses the control that opened it, or the Add button. */
   const closeForm = (focusKey: string | null) => {
@@ -647,8 +681,11 @@ function ReadyView(props: {
     ) : (
       groups
     );
+  /** The bottom group that fills the list area, in place of the days. */
+  const shownGroup = surface === 'inpage' && tab === 'tasks' ? openBottom : null;
   const scrolling = props.scrollMemory ? (
     <ScrollRegion
+      hidden={shownGroup !== null}
       memory={props.scrollMemory[tab]}
       resetKey={
         tab === 'tasks' ? `${view.span.kind}:${view.span.days}:${view.spanStart}` : 'announcements'
@@ -696,9 +733,22 @@ function ReadyView(props: {
         addDisabledReason={view.limited ? t('limitedLine') : null}
         addDescribedBy={limitedId}
         span={saved?.span ?? view.span}
-        onSpan={saved ? (span) => actions.saveSettings({ ...saved, span }) : null}
-        onStep={(delta) => actions.stepSpan(delta)}
-        onToday={() => actions.goToSpan(0)}
+        onSpan={
+          saved
+            ? (span) => {
+                closeGroup(false);
+                actions.saveSettings({ ...saved, span });
+              }
+            : null
+        }
+        onStep={(delta) => {
+          closeGroup(false);
+          actions.stepSpan(delta);
+        }}
+        onToday={() => {
+          closeGroup(false);
+          actions.goToSpan(0);
+        }}
         onAdd={() => openForm({ kind: 'new' })}
         onSettings={() => props.onSettings('gear')}
         onMinimize={props.onMinimize}
@@ -742,6 +792,20 @@ function ReadyView(props: {
       >
         {scrolling}
         {surface === 'inpage' && tab === 'tasks' && (
+          <GroupArea id={areaId} kind={shownGroup}>
+            {shownGroup !== null && (
+              <GroupView
+                key={shownGroup}
+                view={view}
+                kind={shownGroup}
+                level={subLevel(level)}
+                handlers={handlers}
+                onBack={() => closeGroup(true)}
+              />
+            )}
+          </GroupArea>
+        )}
+        {surface === 'inpage' && tab === 'tasks' && (
           <div
             class="wr-pinned"
             role="region"
@@ -755,6 +819,7 @@ function ReadyView(props: {
               part="bottom"
               openGroup={openBottom}
               onToggleGroup={(kind) => setOpenBottom(openBottom === kind ? null : kind)}
+              controls={areaId}
             />
             {footer}
           </div>

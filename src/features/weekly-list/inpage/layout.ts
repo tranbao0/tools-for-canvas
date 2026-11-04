@@ -122,7 +122,8 @@ export function claimDashboardLayout(
   const onScroll = (event: Event): void => {
     const target = event.target as HTMLElement;
     const part = scrollPartOf(target);
-    if (part !== null) positions.set(part, target.scrollTop);
+    // A part that is hidden reports no position of its own.
+    if (part !== null && !target.hidden) positions.set(part, target.scrollTop);
   };
 
   function trackScroll(): void {

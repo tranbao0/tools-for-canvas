@@ -407,18 +407,27 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     These are gone.
   - Outside the Course work slot, the card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
     A short list leaves empty room at the bottom, so the card keeps its size from span to span.
-  - No due date, Done and the footer stay in a bottom section outside the day scroll region, with a thin border in the card line color.
-    The section is a region with the label "Undated and done tasks".
+  - No due date, Done and the footer stay in a bottom bar outside the day scroll region, with a thin border in the card line color.
+    The bar is a region with the label "Undated and done tasks".
     It sits inside the tab panel, after the day list, so the tab order is the day list, the bottom headers, and then the footer.
-  - Each collapsed header keeps its chevron, name, count and warning text, with the count aligned with the day counts.
-  - Only one bottom group opens at a time, and its items appear below its header.
-  - The item list of the open group takes at most half the inner card height and at least 64 px, about one row, and it scrolls with the same thin scroll bar as the day list.
-    Only the item list of the open group shrinks.
-    The headers, the closed groups and the footer keep their full height.
-  - A bottom group that disappears also closes, so it does not come back open.
-  - The scroll position of the open group stays when the card moves.
-  - The day list keeps at least 128 px, and its scroll position stays as before.
-    When the card is too low for 128 px and the bottom section, the whole card scrolls instead.
+  - The bar never moves and never changes size, whether a group is open or not.
+    The headers work like tabs.
+  - Each header keeps its arrow, name, count and warning text, with the count aligned with the day counts.
+    The arrow is the chevron icon of the sub-lists: it points right when the group is closed and up when it is open.
+  - Only one bottom group opens at a time.
+    The open group shows in the list area, in place of the day list: a heading line with the group name at the left and a "Back to days" link button at the right, then the rows of the group and its sub-lists such as "10 done" and "1 skipped".
+    The list area has the height of the day list, so the card keeps its height, and it scrolls with the same thin scroll bar.
+  - The header of the open group has a selected look: the light blue background and the dark blue text of the Canvas selected state (a dark pair in the dark theme), rounded corners, and 8 px of room past the text on both sides.
+  - "Back to days", a second click on the open header, and a click on the other header (which switches the group) are the ways out.
+    Stepping the span with the arrows, Today or the span picker shows the days again.
+  - A bottom group that disappears or becomes empty also closes, so the days show again and the group does not come back open.
+  - Focus stays on the header button when it opens or closes a group.
+    "Back to days" moves focus to the header of the group that was open.
+  - A group starts at the top of the list area.
+    The day list keeps its scroll position while a group is open and gets it back on "Back to days".
+    The scroll positions stay when the card moves.
+  - The day list keeps at least 128 px.
+    When the card is too low for 128 px and the bottom bar, the whole card scrolls instead.
   - Keyboard access, focus rings, aria-expanded, collapse memory, older and skipped lists, and Skip all older stay available.
   - These rules also apply to the docked classic dashboard card, but do not affect the side panel or the minimized card.
   - The scroll bar of the groups sits in the side padding of the card, 4 px from its edge, so it never covers the day counts.
