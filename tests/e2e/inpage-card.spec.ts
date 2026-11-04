@@ -153,13 +153,21 @@ interface BottomLayout {
   docked?: boolean;
   /** The card has the Tasks and Announcements tabs. */
   tabs?: boolean;
+  /** The Row size setting. The rows of the card in the Course work slot change with it. */
+  rowSize?: Settings['rowSize'];
 }
 
 /** The places of the card that have a bottom section: the widget dashboard and the classic one. */
 const LAYOUTS: BottomLayout[] = [
-  { name: 'the widget dashboard', page: 'dashboard-widgets', width: 1280 },
+  { name: 'the widget dashboard', page: 'dashboard-widgets', width: 1280, rowSize: 'compact' },
   { name: 'the tabbed classic dashboard', page: 'dashboard-card-view', width: 1280, tabs: true },
   { name: 'the docked classic dashboard', page: 'dashboard-card-view', width: 1280, docked: true },
+];
+
+/** The layouts of the bottom bar tests: the widget dashboard once for each Row size. */
+const BAR_LAYOUTS: BottomLayout[] = [
+  ...LAYOUTS,
+  { ...LAYOUTS[0]!, name: 'the widget dashboard with Comfortable rows', rowSize: 'comfortable' },
 ];
 
 /** Makes the page long and scrolls until the card floats under the right column. */
@@ -210,7 +218,11 @@ async function openBottomLayout(
     width: layout.width,
     height,
     completed: true,
-    settings: { ...MONTH, hiddenCourseIds: ['102'] },
+    settings: {
+      ...MONTH,
+      hiddenCourseIds: ['102'],
+      ...(layout.rowSize ? { rowSize: layout.rowSize } : {}),
+    },
   });
   if (layout.docked) await dockCard(page);
 }
@@ -315,7 +327,7 @@ test.describe('the full list in the card', () => {
     await expect(panel.getByRole('region', { name: 'Tasks by day' })).toHaveCount(0);
   });
 
-  for (const layout of LAYOUTS) {
+  for (const layout of BAR_LAYOUTS) {
     for (const height of [400, 500, 700, 800, 1000]) {
       test(`keeps the bottom bar still on ${layout.name} in a ${height} px window`, async ({
         context,
@@ -370,8 +382,19 @@ test.describe('the full list in the card', () => {
           expect(area.height).toBeGreaterThanOrEqual(127.5);
           expect(area.thin).toBe('thin');
           expect(area.overscroll).toBe('contain');
-          // Done holds 10 or more items, so its list scrolls.
-          if (group === done) expect(area.overflow).toBe(true);
+          // The list scrolls when its rows are taller than the area, and not otherwise. Done holds
+          // 10 or more items: taller than the area with Comfortable rows, shorter with Compact
+          // rows in the tall slot of the widget dashboard.
+          if (group === done) {
+            const rows = await groupArea(list).evaluate((element) => {
+              const boxes = [...element.querySelectorAll('[data-row-key]')].map((row) =>
+                row.getBoundingClientRect(),
+              );
+              return boxes.at(-1)!.bottom - boxes[0]!.top;
+            });
+            expect(area.overflow).toBe(rows > area.height + 0.5);
+            if (layout.rowSize !== 'compact') expect(area.overflow).toBe(true);
+          }
           // When the card is too low for 128 px and the bar, the whole card scrolls and the
           // footer is reached at its end, with no blank room under it.
           if (sizes.cardScrolls) {
@@ -546,7 +569,12 @@ test.describe('the full list in the card', () => {
     await expect(region).toBeVisible();
   });
 
-  for (const layout of LAYOUTS.slice(0, 2)) {
+  // The group list must be taller than its area to scroll, which the 10 Done rows are with
+  // Comfortable rows but not with Compact rows in the tall slot.
+  const SCROLLING_LAYOUTS = LAYOUTS.slice(0, 2).map((layout) =>
+    layout.rowSize ? { ...layout, rowSize: 'comfortable' as const } : layout,
+  );
+  for (const layout of SCROLLING_LAYOUTS) {
     test(`keeps the scroll of the days while a group is open on ${layout.name}, and starts a group at the top`, async ({
       context,
       page,
