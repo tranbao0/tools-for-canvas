@@ -652,6 +652,51 @@ test('hides the widget from sight, the tab order and the accessibility tree, and
   expect(hit).toBe(true);
 });
 
+test('draws nothing of the widget over the card, even a control that forces itself visible', async ({
+  context,
+  page,
+}) => {
+  await openFixture(context, page, 'default');
+  const card = inpageList(page).locator('.wr');
+  const box = (await card.boundingBox())!;
+  const clip = { x: box.x + 16, y: box.y + 16, width: 360, height: 120 };
+  const before = await page.screenshot({ clip });
+  // Canvas's form controls can set their own visibility and position, as the filters and the
+  // summary toggle of the Course work widget do on the live page.
+  await page.locator(SECTION).evaluate((section) => {
+    const control = document.createElement('div');
+    control.style.cssText =
+      'visibility:visible;position:relative;z-index:1;width:300px;height:80px;background:#c00;color:#fff';
+    control.textContent = 'Course filter';
+    section.prepend(control);
+  });
+  await frames(page, 3);
+  const after = await page.screenshot({ clip });
+  // The red control would turn thousands of pixels red; a few may differ in their smoothing.
+  const red = await page.evaluate(async (data) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${data}`;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(img, 0, 0);
+    const pixels = context.getImageData(0, 0, img.width, img.height).data;
+    let count = 0;
+    for (let index = 0; index < pixels.length; index += 4)
+      if (pixels[index]! > 150 && pixels[index + 1]! < 60 && pixels[index + 2]! < 60) count += 1;
+    return count;
+  }, after.toString('base64'));
+  expect(red).toBe(0);
+  expect(before.length).toBeGreaterThan(0);
+  const hit = await page.evaluate(
+    ([x, y]) => document.elementFromPoint(x!, y!)?.closest('#weekrow-inpage') !== null,
+    [clip.x + 40, clip.y + 40],
+  );
+  expect(hit).toBe(true);
+});
+
 test('closes the column up when minimized, and restores the same box', async ({
   context,
   page,

@@ -56,7 +56,16 @@ window.fixtureFreshClone = function (node) {
   const copy = node.cloneNode(true);
   copy.querySelectorAll('[data-wr-own], #weekrow-inpage').forEach((own) => own.remove());
   for (const element of [copy, ...copy.querySelectorAll('*')]) {
-    if (element.hasAttribute('data-weekrow-styled')) element.removeAttribute('style');
+    // The extension records what each inline property held before it set it: React draws the
+    // node again with those values only.
+    const record = element.getAttribute('data-weekrow-styled');
+    if (record !== null) {
+      for (const [name, [value, priority]] of Object.entries(JSON.parse(record))) {
+        if (value === '') element.style.removeProperty(name);
+        else element.style.setProperty(name, value, priority);
+      }
+      if (element.getAttribute('style') === '') element.removeAttribute('style');
+    }
     for (const name of element.getAttributeNames()) {
       if (name.startsWith('data-weekrow-') || name.startsWith('data-wr-')) element.removeAttribute(name);
     }
