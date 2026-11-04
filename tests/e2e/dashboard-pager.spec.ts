@@ -320,6 +320,38 @@ test.describe('clicks', () => {
     }
   });
 
+  test('an arrow with 5 pages or fewer goes from the page Canvas shows at the click', async ({
+    context,
+    page,
+    background,
+  }) => {
+    test.setTimeout(90_000);
+    await open(context, page, background);
+    const nav = navOf(page, ANNOUNCEMENTS);
+    await setPager(page, ANNOUNCEMENTS, 1, 5);
+    await settled(nav, 1);
+    // The second press comes the moment Canvas shows page 2, before the navigator's next pass.
+    await page.evaluate((id) => {
+      const widget = document.querySelector(`[data-testid="${id}"]`)!;
+      const next = () =>
+        widget.querySelector<HTMLElement>('[data-wr-own="pager"] [data-place="arrow-next"]')!;
+      const observer = new MutationObserver(() => {
+        const container = widget.querySelector<HTMLElement>('[data-testid="pagination-container"]');
+        if (container?.dataset['fxPage'] !== '2') return;
+        observer.disconnect();
+        next().click();
+      });
+      observer.observe(widget, { subtree: true, childList: true, attributes: true });
+      next().click();
+    }, ANNOUNCEMENTS);
+    await expect.poll(() => canvasPage(page, ANNOUNCEMENTS)).toBe(3);
+    await settled(nav, 3);
+    await idle(page, ANNOUNCEMENTS);
+    await placeOf(nav, 'arrow-prev').click();
+    await expect.poll(() => canvasPage(page, ANNOUNCEMENTS)).toBe(2);
+    await settled(nav, 2);
+  });
+
   test('the current page and an empty place do nothing', async ({ context, page, background }) => {
     await open(context, page, background);
     const nav = navOf(page, ANNOUNCEMENTS);

@@ -25,7 +25,7 @@ export const FIXES_CSS = `
 .wr-pg .wr-pg-arrow-next::before{border-width:.125rem .125rem 0 0;margin-right:.1875rem}
 .wr-pg button[aria-disabled=true]{color:#c7cdd1;cursor:default}
 .wr-pg .wr-pg-empty{visibility:hidden}
-.wr-pg button:focus-visible{outline:.125rem solid #0b5cad;outline-offset:-.125rem}
+.wr-pg button:focus-visible{outline:.125rem solid #0b5cad;outline-offset:.125rem}
 .wr-pg[data-wr-dark]{color:#fff}
 .wr-pg[data-wr-dark] button{color:#5a9fd4}
 .wr-pg[data-wr-dark] button[aria-current=page]{color:#fff}
