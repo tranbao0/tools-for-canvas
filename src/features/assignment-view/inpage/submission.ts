@@ -4,13 +4,16 @@
  * Canvas draws the page with the header, the grade and "Show Rubric", the title and the submit
  * button, and a content area of two columns: the files frame `div.submission-details-frame` on the
  * left and the comments `div.submission-details-comments` on the right
- * (`app/views/submissions/show.html.erb`). For a submission that the view can show in full, it
- * hides the files frame and puts a host of its own beside the comments column. The host shows the
- * instructions, the text or address of the submission and the files. For any other submission type
- * (media recording, quiz, LTI tool, student annotation, discussion) the frame stays visible and
- * untouched, and the host holds only the instructions, above the whole content area. Nothing else
- * of the page is touched, no node of Canvas gets an attribute or a style, and the frame is never
- * moved, because a moved frame reloads.
+ * (`app/views/submissions/show.html.erb`). When the view can show everything that the frame
+ * shows, it hides the files frame and puts a host of its own beside the comments column. The host
+ * shows the instructions, the text or address of the submission and the files. In every other case
+ * the frame stays visible and untouched, and the host holds only the instructions, above the whole
+ * content area. That is the case for a submission type that the view does not show (media
+ * recording, quiz, LTI tool, student annotation, discussion), and for a frame that holds more than
+ * the view can show: a file row that does not match, a preview button with no usable session
+ * address, a similarity report, the snapshot of a URL, or a frame that cannot be read once it has
+ * loaded. Nothing else of the page is touched, no node of Canvas gets an attribute or a style, and
+ * the frame is never moved, because a moved frame reloads.
  *
  * The view changes the page only for the signed-in student's own submission: the user of the path
  * must be the user of the `submissions/self` record that the background reads. A teacher, an
@@ -28,7 +31,7 @@ import { isDetailsReply } from './details';
 import type { FeedbackRequest } from './feedbackPane';
 import { fitInstructions, toggleInstructions } from './instructions';
 import { OWN } from './rows';
-import { filesFromDetails, readFrameFiles, type FrameFile } from './submissionFrame';
+import { filesFromDetails, readFrame, type FrameFile } from './submissionFrame';
 import { PANEL_CSS, SUBMISSION_CSS } from './styles';
 
 /**
@@ -42,6 +45,11 @@ const SHOWN_TYPES: ReadonlySet<string | null | undefined> = new Set([
   'online_text_entry',
   'online_url',
 ]);
+
+/** How long a frame may stay blank, and how long the report cells of the frame are watched. */
+const FRAME_WAIT_MS = 10_000;
+
+type Mode = 'replace' | 'above';
 
 const HIDE_FRAME =
   '.submission-details-container>.submission-details-frame{display:none!important}';
@@ -127,10 +135,8 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   let stopFrame: (() => void) | null = null;
   let resize: ResizeObserver | null = null;
 
-  function clear(): void {
-    ++generation;
-    stopFrame?.();
-    stopFrame = null;
+  /** Takes the host, the style and the feedback pane away. The frame is as Canvas drew it. */
+  function unmount(): void {
     resize?.disconnect();
     resize = null;
     host?.remove();
@@ -138,6 +144,13 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     style?.remove();
     style = null;
     options.closeFeedback();
+  }
+
+  function clear(): void {
+    ++generation;
+    stopFrame?.();
+    stopFrame = null;
+    unmount();
   }
 
   /** The "Your submission" part of a text entry or a URL submission. */
@@ -174,10 +187,15 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     return null;
   }
 
-  function mount(reply: AssignmentDetailsReply, anchors: Anchors): void {
+  /** Draws the host. The returned function sets the files of an `online_upload` submission. */
+  function mount(
+    reply: AssignmentDetailsReply,
+    anchors: Anchors,
+    mode: Mode,
+    first: readonly FrameFile[],
+  ): (next: readonly FrameFile[]) => void {
     const { details } = reply;
-    // A type that the view cannot show keeps Canvas's frame, and the host holds the instructions.
-    const replace = SHOWN_TYPES.has(details.submission.submission_type);
+    const replace = mode === 'replace';
     if (replace) {
       style = doc.createElement('style');
       style.setAttribute(OWN, '');
@@ -204,7 +222,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     else anchors.container.before(created);
 
     // The checked session addresses stay in this list. They never become attributes of the page.
-    let files: FrameFile[] = [];
+    let files: readonly FrameFile[] = first;
     const instructions = renderInstructions(details, { origin, doc });
     const submitted = renderSubmission(reply);
     const filesSection = (): HTMLElement | null => {
@@ -242,23 +260,10 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       const section = filesSection();
       if (section) panel.append(section);
     };
-    const readFiles = (): void => {
-      if (host !== created) return;
-      // Only an upload has files. A text entry and a URL show their own content.
-      if (details.submission.submission_type !== 'online_upload') return;
-      const rows = readFrameFiles(anchors.frame, origin, pathname);
-      files =
-        rows !== null && rows.length > 0
-          ? rows
-          : filesFromDetails(details.submission.attachments ?? []);
-      drawFiles();
-    };
     panel.append(instructions);
     if (replace) {
       if (submitted) panel.append(submitted);
-      readFiles();
-      anchors.frame.addEventListener('load', readFiles);
-      stopFrame = () => anchors.frame.removeEventListener('load', readFiles);
+      drawFiles();
     }
 
     fitInstructions(panel);
@@ -285,6 +290,97 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
         }
       }
     });
+    return (next) => {
+      if (host !== created || !replace) return;
+      files = next;
+      drawFiles();
+    };
+  }
+
+  /**
+   * Shows the page for the details and keeps watching the frame. The frame is hidden only while the
+   * view can show everything that it shows. Until the frame has loaded, an upload shows the files
+   * of the details. Once it has loaded and the read failed, or the frame holds more than the view
+   * shows, the frame stays visible and the view adds only the instructions.
+   */
+  function show(reply: AssignmentDetailsReply, anchors: Anchors, token: number): void {
+    const { submission } = reply.details;
+    const type = submission.submission_type;
+    const attachments = submission.attachments ?? [];
+    let mode: Mode = SHOWN_TYPES.has(type) ? 'replace' : 'above';
+    const fallback = type === 'online_upload' ? filesFromDetails(attachments) : [];
+    let setFiles = mount(reply, anchors, mode, fallback);
+    // A submission type that the view does not show, and no submission at all, need no frame read.
+    if (mode === 'above' || type === null || type === undefined) return;
+
+    let loaded = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let watching: MutationObserver | null = null;
+    let watchEnds: ReturnType<typeof setTimeout> | null = null;
+    const assess = (): void => {
+      if (token !== generation || stopped || !active) return;
+      const read = readFrame(anchors.frame, origin, pathname);
+      let next: Mode = 'replace';
+      let files: readonly FrameFile[] = fallback;
+      if (read.state === 'ready') {
+        const incomplete =
+          !read.complete ||
+          (type === 'online_url' && read.snapshot) ||
+          (type === 'online_upload' && read.files.length === 0 && attachments.length > 0);
+        if (incomplete) next = 'above';
+        else files = type === 'online_upload' ? read.files : [];
+      } else if (read.state === 'failed' || loaded) {
+        next = 'above';
+      }
+      if (next !== mode) {
+        mode = next;
+        unmount();
+        setFiles = mount(reply, anchors, mode, files);
+      } else {
+        setFiles(files);
+      }
+    };
+    const watchReports = (): void => {
+      stopWatching();
+      const body = anchors.frame.contentDocument?.body;
+      if (!body || typeof MutationObserver === 'undefined') return;
+      // Canvas fills the report status cells with a script a moment after the load.
+      let pending: ReturnType<typeof setTimeout> | null = null;
+      watching = new MutationObserver(() => {
+        pending ??= setTimeout(() => {
+          pending = null;
+          assess();
+        }, 50);
+      });
+      watching.observe(body, { childList: true, subtree: true, characterData: true });
+      watchEnds = setTimeout(stopWatching, FRAME_WAIT_MS);
+    };
+    const stopWatching = (): void => {
+      watching?.disconnect();
+      watching = null;
+      if (watchEnds !== null) clearTimeout(watchEnds);
+      watchEnds = null;
+    };
+    const onLoad = (): void => {
+      loaded = true;
+      assess();
+      watchReports();
+    };
+    // A frame that never shows the preview page is read as failed after a while.
+    timer = setTimeout(() => {
+      timer = null;
+      loaded = true;
+      assess();
+    }, FRAME_WAIT_MS);
+    anchors.frame.addEventListener('load', onLoad);
+    stopFrame = () => {
+      anchors.frame.removeEventListener('load', onLoad);
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      stopWatching();
+    };
+    assess();
+    if (readFrame(anchors.frame, origin, pathname).state === 'ready') watchReports();
   }
 
   async function start(): Promise<void> {
@@ -310,7 +406,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     )
       return;
     const anchors = findAnchors(doc);
-    if (anchors) mount(reply, anchors);
+    if (anchors) show(reply, anchors, token);
   }
 
   return {

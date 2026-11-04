@@ -9,7 +9,7 @@ import path from 'node:path';
 import type { Frame, Page } from '@playwright/test';
 import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import { ASSIGNMENT_DETAILS, rawRecords } from '../fixtures/assignment-view';
-import { SESSION_PATH, type FrameRow } from '../fixtures/submission-frame';
+import { SESSION_PATH, TURNITIN_SCORE, type FrameRow } from '../fixtures/submission-frame';
 import {
   previewWithFiles,
   previewWithMedia,
@@ -70,6 +70,8 @@ interface Options {
   /** The user in the path of the page. */
   pathUser?: string;
   teacher?: boolean;
+  /** A shard student: the page writes `2~123`, and the frame writes the ids in full. */
+  shard?: boolean;
   switchOff?: boolean;
   width?: number;
 }
@@ -80,10 +82,32 @@ async function open(
   background: Parameters<typeof saveAddress>[0],
   options: Options = {},
 ) {
-  const user = options.pathUser ?? '42';
-  const route = `${ASSIGNMENT}/submissions/${user}`;
-  const records = rawRecords(details(options.change));
-  const preview = options.preview ?? previewWithFiles('12', '101', user, options.rows ?? ONE_FILE);
+  const course = options.shard ? '2~12' : '12';
+  const assignment = options.shard ? '2~101' : '101';
+  const user = options.pathUser ?? (options.shard ? '2~123' : '42');
+  const route = `/courses/${course}/assignments/${assignment}/submissions/${user}`;
+  const full = options.shard
+    ? '/courses/20000000000012/assignments/20000000000101/submissions/20000000000123'
+    : route;
+  const records = rawRecords(
+    details((copy) => {
+      if (options.shard) {
+        copy.assignment.id = '20000000000101';
+        copy.submission.user_id = '20000000000123';
+      }
+      options.change?.(copy);
+    }),
+  );
+  const preview =
+    options.preview ??
+    (options.shard
+      ? previewWithFiles(
+          '20000000000012',
+          '20000000000101',
+          '20000000000123',
+          options.rows ?? ONE_FILE,
+        )
+      : previewWithFiles('12', '101', user, options.rows ?? ONE_FILE));
   const files: FakeCanvasRoute[] = [
     {
       path: '/api/v1/files/501',
@@ -110,11 +134,21 @@ async function open(
         contentType: 'text/html',
         body: request.path.includes('preview=1')
           ? preview
-          : submissionDetailsPage({ user, teacher: options.teacher }),
+          : submissionDetailsPage({
+              course,
+              assignment,
+              user,
+              teacher: options.teacher,
+              frameSrc: `${full}?preview=1&rand=481516`,
+            }),
       }),
     },
-    { path: `/api/v1/courses/12/assignments/101`, body: json(records.assignment) },
-    { path: `/api/v1/courses/12/assignments/101/submissions/self`, body: json(records.submission) },
+    ...(full === route ? [] : [{ path: full, contentType: 'text/html', body: preview }]),
+    { path: `/api/v1/courses/${course}/assignments/${assignment}`, body: json(records.assignment) },
+    {
+      path: `/api/v1/courses/${course}/assignments/${assignment}/submissions/self`,
+      body: json(records.submission),
+    },
     ...files,
   ]);
   await addCsrfCookie(context, served.canvas.origin);
@@ -128,6 +162,19 @@ async function open(
 }
 
 const host = (page: Page) => page.locator(HOST);
+
+/**
+ * Turns the switch on for a page that loaded with it off. The page script subscribes to the
+ * setting a moment after it starts, so a change in that moment is not seen. The change is made
+ * again until the view shows.
+ */
+async function turnOn(page: Page, background: Parameters<typeof saveAddress>[0]): Promise<void> {
+  await expect(async () => {
+    await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+    await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+    await expect(host(page)).toBeAttached({ timeout: 3000 });
+  }).toPass({ timeout: 20_000 });
+}
 const paddingRight = (page: Page) =>
   page.locator('html').evaluate((node) => parseFloat(getComputedStyle(node).paddingRight));
 const frameLink = (page: Page) =>
@@ -191,7 +238,7 @@ test("the files area gives way to the instructions and the files, and the rest o
   const original = await canvasParts(page);
   await expect(host(page)).toHaveCount(0);
 
-  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  await turnOn(page, background);
   await expect(host(page)).toBeAttached();
   // The frame is hidden, and the host takes its place between the frame and the comments.
   await expect(page.locator('#preview_frame')).toBeHidden();
@@ -380,12 +427,64 @@ test('a submission with two files lists both, and only a file that Canvas can pr
   await expect(host(page).locator('.av-file-row').nth(1).getByRole('button')).toHaveCount(0);
 });
 
-test('a session address that is not the one of this Canvas gives no button', async ({
+/**
+ * The frame stays visible and untouched, and the instructions sit above it: the page keeps what
+ * Canvas shows that the view cannot show.
+ */
+async function expectFrameKept(page: Page, original: { frame: string; content: string }) {
+  // The read of the details may wait for the cookie check of the background.
+  await expect(host(page)).toBeAttached({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Instructions' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your files' })).toHaveCount(0);
+  await expect(host(page).getByRole('button', { name: /Feedback|Preview/ })).toHaveCount(0);
+  await expect(page.locator('#preview_frame')).toBeVisible();
+  const shown = await page.evaluate(() => ({
+    frame: document.querySelector('.submission-details-frame')!.outerHTML,
+    host: document.getElementById('av-submission-details')!.getBoundingClientRect().bottom,
+    frameTop: document.querySelector('.submission-details-frame')!.getBoundingClientRect().top,
+    styles: document.querySelectorAll('head style[data-av-own]').length,
+  }));
+  expect(shown.frame).toBe(original.frame);
+  expect(shown.host).toBeLessThanOrEqual(shown.frameTop);
+  expect(shown.styles).toBe(0);
+}
+
+/** The content area as Canvas drew it, taken while the switch is off. */
+async function canvasOriginal(page: Page) {
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  return page.evaluate(() => ({
+    content: document.getElementById('content')!.outerHTML,
+    frame: document.querySelector('.submission-details-frame')!.outerHTML,
+  }));
+}
+
+/** Opens the page with the switch off, turns it on, and checks the frame is kept, then the switch off. */
+async function checkKept(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  background: Parameters<typeof saveAddress>[0],
+  options: Options,
+) {
+  await open(context, page, background, { ...options, switchOff: true });
+  const original = await canvasOriginal(page);
+  await turnOn(page, background);
+  await expectFrameKept(page, original);
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  await expect(host(page)).toHaveCount(0);
+  expect(await page.evaluate(() => document.getElementById('content')!.outerHTML)).toBe(
+    original.content,
+  );
+}
+
+const withScript = (html: string, script: string) =>
+  html.replace('</body>', `<script>${script}</script></body>`);
+
+test('a session address that is not the one of this Canvas keeps the frame of Canvas', async ({
   context,
   page,
   background,
 }) => {
-  await open(context, page, background, {
+  await checkKept(context, page, background, {
     rows: [
       {
         fileId: '501',
@@ -396,8 +495,113 @@ test('a session address that is not the one of this Canvas gives no button', asy
       },
     ],
   });
-  await expect(host(page).getByRole('link', { name: FILE_NAME })).toBeVisible();
-  await expect(host(page).getByRole('button')).toHaveCount(0);
+});
+
+test('a shard student, whose frame writes the ids in full, gets the view and View Feedback', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { shard: true });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  const button = host(page).getByRole('button', { name: 'View Feedback' });
+  await expect(button).toBeVisible();
+  await button.click();
+  await expect(page.locator(FEEDBACK)).toBeVisible();
+  await expect((await feedbackFrame(page)).locator('#notes')).toHaveText(
+    'Teacher notes on the paper',
+  );
+});
+
+test('a session address with an extra access token keeps the frame of Canvas', async ({
+  context,
+  page,
+  background,
+}) => {
+  await checkKept(context, page, background, {
+    rows: [
+      {
+        fileId: '501',
+        name: FILE_NAME,
+        size: '118 KB',
+        button: 'View Feedback',
+        session: `${SESSION_PATH}&access_token=t`,
+      },
+    ],
+  });
+});
+
+test('file rows that do not match the page keep the frame of Canvas', async ({
+  context,
+  page,
+  background,
+}) => {
+  await checkKept(context, page, background, {
+    preview: previewWithFiles('12', '101', '43', ONE_FILE),
+  });
+});
+
+test('a frame with changed markup keeps the frame of Canvas', async ({
+  context,
+  page,
+  background,
+}) => {
+  await checkKept(context, page, background, {
+    preview: previewWithText('<ul><li><a href="#">a file list that Canvas redrew</a></li></ul>'),
+  });
+});
+
+test('a similarity score in a file row keeps the frame of Canvas', async ({
+  context,
+  page,
+  background,
+}) => {
+  await checkKept(context, page, background, {
+    rows: [
+      {
+        fileId: '501',
+        name: FILE_NAME,
+        size: '118 KB',
+        button: 'View Feedback',
+        score: TURNITIN_SCORE,
+      },
+    ],
+  });
+});
+
+test('a report status that the script of Canvas draws after the load keeps the frame', async ({
+  context,
+  page,
+  background,
+}) => {
+  const preview = withScript(
+    previewWithFiles('12', '101', '42', ONE_FILE),
+    "setTimeout(function(){document.querySelector('td.asset-report-status-container').innerHTML='<div><a href=\"#\">Similarity report</a></div>'},1500)",
+  );
+  await open(context, page, background, { preview, switchOff: true });
+  const original = await canvasOriginal(page);
+  await turnOn(page, background);
+  // The view first shows the files, and moves aside when the report appears.
+  await expectFrameKept(page, original);
+  await expect(
+    page.frameLocator('#preview_frame').getByRole('link', { name: 'Similarity report' }),
+  ).toBeVisible();
+});
+
+test('the snapshot of a URL submission keeps the frame of Canvas', async ({
+  context,
+  page,
+  background,
+}) => {
+  await checkKept(context, page, background, {
+    change: (copy) => {
+      copy.submission.submission_type = 'online_url';
+      copy.submission.url = 'https://example.com/my-work';
+      copy.submission.attachments = [];
+    },
+    preview:
+      '<!doctype html><html><body><div style="text-align:center"><a href="https://example.com/my-work">https://example.com/my-work</a><img alt="URL Preview" width="120" height="80" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></div></body></html>',
+  });
 });
 
 test('a text entry shows its text as "Your submission", and no "Your files" heading', async ({
@@ -475,7 +679,7 @@ test('a media recording keeps the frame of Canvas, with the instructions above i
     frame: document.querySelector('.submission-details-frame')!.outerHTML,
   }));
 
-  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  await turnOn(page, background);
   await expect(host(page)).toBeAttached();
   await settled(page, canvas);
   // The instructions show, and "Your files" does not.

@@ -7,6 +7,7 @@
  * for a document that Canvas can preview, a `a.modal_preview_link` button whose data attributes
  * carry the signed address of the DocViewer session.
  */
+import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { fileTarget, isFileId } from '../../file-viewer/model';
 import type { AssignmentFile } from '../protocol';
 
@@ -50,49 +51,106 @@ function trimmed(value: string | null | undefined, max = MAX_TEXT): string {
   return (value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
-function samePath(path: string, page: string): boolean {
-  return path.replace(/\/$/, '') === page.replace(/\/$/, '');
+/** `/courses/:c/assignments/:a/submissions/:user`, each id plain or with a shard. */
+const SUBMISSION_PATH =
+  /^\/courses\/(\d+(?:~\d+)?)\/assignments\/(\d+(?:~\d+)?)\/submissions\/(\d+(?:~\d+)?)\/?$/;
+
+/**
+ * Whether two paths are the Submission Details page of the same course, assignment and user. The
+ * page can write an id as `2~123` while the frame writes it as `20000000000123`, so the ids are
+ * compared segment by segment as decimal global ids.
+ */
+export function sameSubmissionPath(a: string, b: string): boolean {
+  const first = SUBMISSION_PATH.exec(a);
+  const second = SUBMISSION_PATH.exec(b);
+  if (!first || !second) return false;
+  return [1, 2, 3].every((index) => {
+    return normalizeCanvasId(first[index]!) === normalizeCanvasId(second[index]!);
+  });
+}
+
+/** The marks of a similarity report in the file rows: Turnitin, VeriCite and plagiarism platforms. */
+const SCORE_MARKS =
+  '.turnitin_score_container,.turnitin_similarity_score,.vericite_score_container_caret';
+
+/** Whether a cell holds anything that Canvas drew: text, a link, an image or an icon. */
+function hasContent(cell: Element): boolean {
+  return (
+    (cell.textContent ?? '').trim() !== '' ||
+    cell.querySelector('a,img,svg,[class*=score]') !== null
+  );
 }
 
 /**
- * The files list of the frame, or `null` when the frame does not show the page yet or cannot be
- * read. An empty list means that the page has loaded and has no file rows. A link counts only
- * when it is a file of the submission of this page.
+ * Whether the frame shows a similarity score or report link that the view would hide. Canvas draws
+ * the originality cell with the page, and fills the report status cell with a script a moment later.
  */
-export function readFrameFiles(
-  frame: HTMLIFrameElement,
-  origin: string,
-  pagePath: string,
-): FrameFile[] | null {
+function hasOriginality(doc: Document): boolean {
+  for (const mark of doc.querySelectorAll(SCORE_MARKS)) {
+    // A text entry is user content, and its markup is no report.
+    if (mark.closest('#submission_preview,.user_content') === null) return true;
+  }
+  for (const cell of doc.querySelectorAll(
+    'td.file-upload-submission-turnitin,td.asset-report-status-container',
+  )) {
+    if (hasContent(cell)) return true;
+  }
+  return false;
+}
+
+/**
+ * What the frame holds, read after it has loaded:
+ * - `pending`: it does not show the preview page yet, such as the blank page before the load.
+ * - `failed`: it cannot be read, such as a frame that went to another origin.
+ * - `ready`: the file rows, and what the view cannot show of the frame. `complete` is false when a
+ *   file row does not match, a preview button has no usable session address, or a similarity report
+ *   shows. `snapshot` is true when the frame holds an image, such as the snapshot of a URL.
+ */
+export type FrameRead =
+  | { state: 'pending' }
+  | { state: 'failed' }
+  | { state: 'ready'; files: FrameFile[]; complete: boolean; snapshot: boolean };
+
+export function readFrame(frame: HTMLIFrameElement, origin: string, pagePath: string): FrameRead {
   try {
     const win = frame.contentWindow;
     const doc = frame.contentDocument;
-    if (!win || !doc || doc.readyState !== 'complete') return null;
+    if (!win || !doc) return { state: 'failed' };
+    if (doc.readyState !== 'complete') return { state: 'pending' };
+    // The blank page that a frame shows before its first navigation.
+    if (win.location.href === 'about:blank') return { state: 'pending' };
     const shown = new URL(win.location.href);
-    if (
-      shown.origin !== origin ||
-      !samePath(shown.pathname, pagePath) ||
-      shown.searchParams.get('preview') !== '1'
-    )
-      return null;
+    if (shown.origin !== origin) return { state: 'failed' };
+    if (!sameSubmissionPath(shown.pathname, pagePath) || shown.searchParams.get('preview') !== '1')
+      return { state: 'pending' };
     const files: FrameFile[] = [];
+    let complete = !hasOriginality(doc);
     for (const row of doc.querySelectorAll(
       'table.file-upload-submission-table tr.file-upload-submission',
     )) {
       const link = row.querySelector('a.file-upload-submission-info__link');
       const href = link?.getAttribute('href');
-      if (!link || href == null) continue;
-      const target = fileTarget(href, origin);
+      const target = href == null ? null : fileTarget(href, origin);
       if (
+        !link ||
+        href == null ||
         target === null ||
         !('fileId' in target) ||
         !isFileId(target.fileId) ||
-        !samePath(new URL(href, origin).pathname, pagePath)
-      )
+        !sameSubmissionPath(new URL(href, origin).pathname, pagePath)
+      ) {
+        complete = false;
         continue;
+      }
       const preview = row.querySelector(
         'td.file-upload-submission-attachment a.modal_preview_link',
       );
+      const session = sessionUrl(
+        preview?.getAttribute('data-canvadoc_session_url') ?? null,
+        origin,
+      );
+      // A button that the view cannot offer would hide the notes of the teacher.
+      if (preview && session === null) complete = false;
       files.push({
         fileId: target.fileId,
         name: trimmed(link.textContent),
@@ -101,12 +159,12 @@ export function readFrameFiles(
           null,
         feedbackLabel: preview ? trimmed(preview.textContent, 40) || null : null,
         unread: row.querySelector('.submission_annotation.unread_indicator') !== null,
-        sessionUrl: sessionUrl(preview?.getAttribute('data-canvadoc_session_url') ?? null, origin),
+        sessionUrl: session,
       });
     }
-    return files;
+    return { state: 'ready', files, complete, snapshot: doc.querySelector('img') !== null };
   } catch {
-    return null;
+    return { state: 'failed' };
   }
 }
 

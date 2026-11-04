@@ -1,7 +1,11 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ASSIGNMENT_DETAILS } from '../../../../tests/fixtures/assignment-view';
-import { SESSION_PATH, frameRows } from '../../../../tests/fixtures/submission-frame';
+import {
+  SESSION_PATH,
+  TURNITIN_SCORE,
+  frameRows,
+} from '../../../../tests/fixtures/submission-frame';
 import { submissionDetailsPage } from '../../../../tests/fixtures/submission-page';
 import type { AssignmentDetailsMessage } from '../protocol';
 import type { FeedbackRequest } from './feedbackPane';
@@ -23,10 +27,14 @@ function reply(change: (details: Details) => void = () => undefined) {
 }
 
 /** Gives the frame of the page the document that Canvas serves in it. */
-function showInFrame(html: string, href = `${ORIGIN}${PAGE}?preview=1&rand=1`): HTMLIFrameElement {
+function showInFrame(
+  html: string,
+  href = `${ORIGIN}${PAGE}?preview=1&rand=1`,
+  readyState = 'complete',
+): HTMLIFrameElement {
   const frame = document.querySelector<HTMLIFrameElement>('#preview_frame')!;
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
-  Object.defineProperty(doc, 'readyState', { value: 'complete', configurable: true });
+  Object.defineProperty(doc, 'readyState', { value: readyState, configurable: true });
   Object.defineProperty(frame, 'contentDocument', { value: doc, configurable: true });
   Object.defineProperty(frame, 'contentWindow', {
     value: { location: { href } },
@@ -51,12 +59,12 @@ function load(html = submissionDetailsPage()): void {
     .replace(/(<iframe id="preview_frame") src="[^"]*"/, '$1');
 }
 
-function start(user = '42', assignment = '101'): SubmissionView {
+function start(user = '42', assignment = '101', course = '12'): SubmissionView {
   view = createSubmissionView({
     doc: document,
     origin: ORIGIN,
-    pathname: `/courses/12/assignments/${assignment}/submissions/${user}`,
-    courseId: '12',
+    pathname: `/courses/${course}/assignments/${assignment}/submissions/${user}`,
+    courseId: course,
     assignmentId: assignment,
     userId: user,
     send,
@@ -172,31 +180,40 @@ describe('the own submission', () => {
     expect(root()?.innerHTML).not.toContain('hmac');
   });
 
-  it('shows the files of the details with no feedback when the frame cannot be read', async () => {
-    Object.defineProperty(document.querySelector('#preview_frame'), 'contentDocument', {
-      get() {
-        throw new Error('blocked');
-      },
-      configurable: true,
-    });
+  it('shows the files of the details until the frame has loaded, then reads its rows', async () => {
+    const frame = showInFrame(FILE_ROW, 'about:blank', 'loading');
     start();
     await settle();
+    // The frame is hidden, and the details give the file with no button.
     expect(root()?.querySelector('.av-file')?.textContent).toBe('essay.pdf');
     expect(root()?.querySelector('.av-size')?.textContent).toBe('118 KB');
     expect(root()?.querySelector('[data-action=feedback]')).toBeNull();
-  });
-
-  it('reads the rows again when the frame loads', async () => {
-    document.querySelector('#preview_frame')!.remove();
-    load();
-    const frame = document.querySelector<HTMLIFrameElement>('#preview_frame')!;
-    Object.defineProperty(frame, 'contentDocument', { value: null, configurable: true });
-    start();
-    await settle();
-    expect(root()?.querySelector('[data-action=feedback]')).toBeNull();
+    expect(document.head.querySelector('style')).not.toBeNull();
     showInFrame(FILE_ROW);
     frame.dispatchEvent(new Event('load'));
     expect(root()?.querySelector('[data-action=feedback]')).not.toBeNull();
+    expect(root()?.querySelector('.av-size')?.textContent).toBe('118 KB');
+  });
+
+  it('shows View Feedback for a shard student whose frame writes the ids in full', async () => {
+    const long = '/courses/20000000000012/assignments/20000000000101/submissions/20000000000123';
+    load(submissionDetailsPage({ course: '2~12', assignment: '2~101', user: '2~123' }));
+    showInFrame(
+      frameRows(long, [
+        { fileId: '501', name: 'essay.pdf', size: '118 KB', button: 'View Feedback' },
+      ]),
+      `${ORIGIN}${long}?preview=1&rand=1`,
+    );
+    send.mockResolvedValue(
+      reply((details) => {
+        details.assignment.id = '20000000000101';
+        details.submission.user_id = '20000000000123';
+      }),
+    );
+    start('2~123', '2~101', '2~12');
+    await settle();
+    expect(root()?.querySelector('[data-action=feedback]')).not.toBeNull();
+    expect(document.head.querySelector('style')).not.toBeNull();
   });
 
   it('shows no "Your files" heading for a submission with no file', async () => {
@@ -403,6 +420,138 @@ describe('a submission type that the view cannot show in full', () => {
     expect(
       root()?.querySelector('.av-instructions .av-body')?.hasAttribute('data-av-clamped'),
     ).toBe(true);
+  });
+});
+
+describe('a frame that holds more than the view can show', () => {
+  /** The frame stays, and the host holds only the instructions above the content area. */
+  async function expectAbove(): Promise<void> {
+    await settle();
+    expect(host()?.nextElementSibling).toBe(container());
+    expect(document.head.querySelector('style')).toBeNull();
+    expect(root()?.querySelector('.av-instructions')).not.toBeNull();
+    expect(root()?.querySelector('.av-files, .av-submission, [data-action=feedback]')).toBeNull();
+  }
+
+  it('keeps the frame when a session address has an extra access token', async () => {
+    const frameBefore = document.querySelector('.submission-details-frame')!.outerHTML;
+    showInFrame(
+      frameRows(PAGE, [
+        {
+          fileId: '501',
+          name: 'essay.pdf',
+          size: '118 KB',
+          button: 'View Feedback',
+          session: `${SESSION_PATH}&access_token=t`,
+        },
+      ]),
+    );
+    start();
+    await expectAbove();
+    expect(document.querySelector('.submission-details-frame')!.outerHTML).toBe(frameBefore);
+  });
+
+  it('keeps the frame when its file rows do not match the page', async () => {
+    showInFrame(
+      frameRows('/courses/12/assignments/101/submissions/43', [
+        { fileId: '501', name: 'essay.pdf', size: '118 KB', button: 'View Feedback' },
+      ]),
+    );
+    start();
+    await expectAbove();
+  });
+
+  it('keeps the frame when the markup of the rows changed', async () => {
+    showInFrame('<ul class="files"><li><a href="#">essay.pdf</a></li></ul>');
+    start();
+    await expectAbove();
+  });
+
+  it('keeps the frame when a row shows a similarity score', async () => {
+    showInFrame(
+      frameRows(PAGE, [
+        {
+          fileId: '501',
+          name: 'essay.pdf',
+          size: '118 KB',
+          button: 'View Feedback',
+          score: TURNITIN_SCORE,
+        },
+      ]),
+    );
+    start();
+    await expectAbove();
+  });
+
+  it('keeps the frame when a report status shows only after the load', async () => {
+    const frame = showInFrame(FILE_ROW);
+    start();
+    await settle();
+    expect(root()?.querySelector('[data-action=feedback]')).not.toBeNull();
+    const cell = frame.contentDocument!.querySelector('td.asset-report-status-container')!;
+    cell.innerHTML = '<div><a href="#">Similarity report</a></div>';
+    await vi.advanceTimersByTimeAsync(200);
+    await expectAbove();
+  });
+
+  it('keeps the frame when it cannot be read once it has loaded', async () => {
+    Object.defineProperty(document.querySelector('#preview_frame'), 'contentDocument', {
+      get() {
+        throw new Error('blocked');
+      },
+      configurable: true,
+    });
+    start();
+    await expectAbove();
+  });
+
+  it('keeps the frame when it never shows the preview page', async () => {
+    showInFrame(FILE_ROW, 'about:blank', 'loading');
+    start();
+    await settle();
+    expect(document.head.querySelector('style')).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expectAbove();
+  });
+
+  it('keeps the frame of a URL submission that has a snapshot image', async () => {
+    send.mockResolvedValue(
+      reply((details) => {
+        details.submission.submission_type = 'online_url';
+        details.submission.url = 'https://example.com/work';
+        details.submission.attachments = [];
+      }),
+    );
+    showInFrame('<div><img src="/snapshot.png" alt="URL Preview"></div>');
+    start();
+    await expectAbove();
+  });
+
+  it('keeps the frame when the details list files that the frame does not show', async () => {
+    showInFrame('<div class="file-upload-submission">No files were uploaded</div>');
+    start();
+    await expectAbove();
+  });
+
+  it('gives the page back exactly when turned off, and shows the view again when it is turned on', async () => {
+    showInFrame(
+      frameRows(PAGE, [
+        {
+          fileId: '501',
+          name: 'essay.pdf',
+          size: '118 KB',
+          button: 'Preview',
+          score: TURNITIN_SCORE,
+        },
+      ]),
+    );
+    const before = document.getElementById('content')!.outerHTML;
+    start();
+    await expectAbove();
+    view.setActive(false);
+    expect(document.getElementById('content')!.outerHTML).toBe(before);
+    view.setActive(true);
+    await expectAbove();
   });
 });
 
