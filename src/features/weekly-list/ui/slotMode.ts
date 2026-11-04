@@ -4,8 +4,12 @@
  * because a slot row renders its parts in another order than a row on any other surface.
  */
 import { createContext } from 'preact';
+import { DEFAULT_SETTINGS, type Settings } from '../model/types';
 
 export const SlotModeContext = createContext(false);
+
+/** The Row size setting, which the rows of the slot card read for their hover text. */
+export const RowSizeContext = createContext<Settings['rowSize']>(DEFAULT_SETTINGS.rowSize);
 
 /** Calls `onChange` with the mode now and after every change of the host's `data-panel`. */
 export function watchSlotMode(host: HTMLElement, onChange: (slot: boolean) => void): () => void {

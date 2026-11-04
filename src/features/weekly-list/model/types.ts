@@ -88,6 +88,11 @@ export interface Settings {
    * then follows the Canvas page. `light` and `dark` apply to every surface (decision 19).
    */
   theme: 'auto' | 'light' | 'dark';
+  /**
+   * How high the rows of the card in the Course work slot are. Other surfaces keep their rows.
+   * `compact` is the default, also for settings stored before the field existed.
+   */
+  rowSize: 'compact' | 'comfortable';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -96,6 +101,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showRings: true,
   minimized: false,
   theme: 'auto',
+  rowSize: 'compact',
 };
 
 export type ItemKind =

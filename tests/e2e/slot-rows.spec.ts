@@ -5,6 +5,7 @@
  * theme tokens. Every other surface keeps its rows.
  */
 import type { Locator, Page } from '@playwright/test';
+import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/model/types';
 import {
   addCsrfCookie,
   doneBox,
@@ -12,6 +13,7 @@ import {
   inpageList,
   openCanvasPage,
   openExtensionPage,
+  saveSettings,
   serveScenario,
   settledList,
   test,
@@ -22,11 +24,15 @@ import { IDS } from '../fixtures/scenario';
 const HOST = '#weekrow-inpage > weekrow-list';
 const QUIZ_3 = 'Quiz 3: Cell membranes';
 
+/** The rows of the slot card are Compact by default. These tests check the Comfortable rows. */
 async function openSlot(
   context: Parameters<typeof serveScenario>[0],
   page: Page,
+  background: Parameters<typeof saveSettings>[0],
+  rowSize: Settings['rowSize'] = 'comfortable',
   width = 1440,
 ): Promise<Locator> {
+  await saveSettings(background, { ...DEFAULT_SETTINGS, rowSize });
   const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
   await page.setViewportSize({ width, height: 900 });
   await addCsrfCookie(context, canvas.origin);
@@ -37,8 +43,12 @@ async function openSlot(
   return inpageList(page);
 }
 
-test('slot rows have the Course work widget parts and sizes', async ({ context, page }) => {
-  const list = await openSlot(context, page);
+test('slot rows have the Course work widget parts and sizes', async ({
+  context,
+  page,
+  background,
+}) => {
+  const list = await openSlot(context, page, background);
   const row = list.locator('.wr-item', { hasText: 'Reply to topic' });
   await expect(row).toBeVisible();
 
@@ -88,8 +98,12 @@ test('slot rows have the Course work widget parts and sizes', async ({ context, 
   expect((await block.boundingBox())!.x).toBeGreaterThan(rowBox.x);
 });
 
-test('slot rows sit 92 px apart and grow with long titles', async ({ context, page }) => {
-  const list = await openSlot(context, page);
+test('slot rows sit 92 px apart and grow with long titles', async ({
+  context,
+  page,
+  background,
+}) => {
+  const list = await openSlot(context, page, background);
   const rows = list.locator('.wr-item');
   const boxes = await rows.evaluateAll((els) =>
     els.map((el) => {
@@ -115,8 +129,9 @@ test('slot rows sit 92 px apart and grow with long titles', async ({ context, pa
 test('a slot row with actions keeps the 92 px step, and the actions sit under the pill', async ({
   context,
   page,
+  background,
 }) => {
-  const list = await openSlot(context, page);
+  const list = await openSlot(context, page, background);
   const row = list.locator('.wr-item', { hasText: 'Homework 7' });
   const skip = row.getByRole('button', { name: /^Skip/ });
   await expect(skip).toBeVisible();
@@ -128,8 +143,8 @@ test('a slot row with actions keeps the 92 px step, and the actions sit under th
   expect(skipBox.x + skipBox.width).toBeCloseTo(pillBox.x + pillBox.width, 0);
 });
 
-test('Tab visits a slot row in reading order', async ({ context, page }) => {
-  const list = await openSlot(context, page);
+test('Tab visits a slot row in reading order', async ({ context, page, background }) => {
+  const list = await openSlot(context, page, background);
   const row = list.locator('.wr-item', { hasText: 'Homework 7' });
   await row.locator('[data-part="check"]').focus();
   const seen: string[] = [];
@@ -152,8 +167,8 @@ test('Tab visits a slot row in reading order', async ({ context, page }) => {
   expect(seen[4]).toBe('skip');
 });
 
-test('opening a tip moves nothing above it', async ({ context, page }) => {
-  const list = await openSlot(context, page);
+test('opening a tip moves nothing above it', async ({ context, page, background }) => {
+  const list = await openSlot(context, page, background);
   const row = list.locator('.wr-item', { hasText: 'Homework 7' });
   const tops = () =>
     row.evaluate((el) => {
@@ -180,8 +195,8 @@ test('opening a tip moves nothing above it', async ({ context, page }) => {
   expect(tip.y).toBeGreaterThanOrEqual(chip.y + chip.height - 0.5);
 });
 
-test('the due pill follows the dark theme', async ({ context, page }) => {
-  const list = await openSlot(context, page);
+test('the due pill follows the dark theme', async ({ context, page, background }) => {
+  const list = await openSlot(context, page, background);
   await page.locator(HOST).evaluate((host: HTMLElement) => {
     host.setAttribute('data-theme', 'dark');
     host.shadowRoot!.querySelectorAll('[data-theme]').forEach((el) => {
@@ -198,8 +213,9 @@ for (const width of [320, 400, 600]) {
   test(`slot rows fit a ${width} px viewport, with no block and the pill under the text`, async ({
     context,
     page,
+    background,
   }) => {
-    const list = await openSlot(context, page, width);
+    const list = await openSlot(context, page, background, 'comfortable', width);
     const rows = list.locator('.wr-item');
     expect(await rows.count()).toBeGreaterThan(0);
     const problems = await rows.evaluateAll((els) => {
@@ -244,8 +260,8 @@ for (const width of [320, 400, 600]) {
   });
 }
 
-test('the block shows from a 640 px viewport', async ({ context, page }) => {
-  const list = await openSlot(context, page, 640);
+test('the block shows from a 640 px viewport', async ({ context, page, background }) => {
+  const list = await openSlot(context, page, background, 'comfortable', 640);
   await expect(list.locator('.wr-type-block').first()).toBeVisible();
 });
 
@@ -271,9 +287,12 @@ async function expectPlainRows(list: Locator, columns: string, height: number): 
 async function openPlain(
   context: Parameters<typeof serveScenario>[0],
   page: Page,
+  background: Parameters<typeof saveSettings>[0],
+  rowSize: Settings['rowSize'],
   pageName: 'dashboard-card-view' | 'dashboard-list-view' | 'course-home',
   path = '/',
 ): Promise<Locator> {
+  await saveSettings(background, { ...DEFAULT_SETTINGS, rowSize });
   const { canvas } = await serveScenario(context, [{ path, page: pageName }]);
   await page.setViewportSize({ width: 1440, height: 900 });
   await addCsrfCookie(context, canvas.origin);
@@ -286,8 +305,9 @@ async function openPlain(
 test('keeps the focus on the same control of the same row when the layout changes', async ({
   context,
   page,
+  background,
 }) => {
-  const list = await openSlot(context, page);
+  const list = await openSlot(context, page, background);
   const title = list.getByRole('link', { name: QUIZ_3, exact: true });
   await title.focus();
   const focused = () =>
@@ -307,34 +327,57 @@ test('keeps the focus on the same control of the same row when the layout change
   }
 });
 
-test('rows of the classic right column are unchanged', async ({ context, page }) => {
-  const list = await openPlain(context, page, 'dashboard-card-view');
-  await expectPlainRows(list, '20px 16px 186px', 64.1875);
-});
+// The Row size setting changes only the card in the Course work slot.
+for (const rowSize of ['compact', 'comfortable'] as const) {
+  test(`rows of the classic right column are unchanged with ${rowSize} rows`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    const list = await openPlain(context, page, background, rowSize, 'dashboard-card-view');
+    await expectPlainRows(list, '20px 16px 186px', 64.1875);
+  });
 
-test('rows of a course home page are unchanged', async ({ context, page }) => {
-  const list = await openPlain(context, page, 'course-home', `/courses/${IDS.courses.biology}`);
-  await expectPlainRows(list, '20px 16px 186px', 46.1875);
-});
+  test(`rows of a course home page are unchanged with ${rowSize} rows`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    const list = await openPlain(
+      context,
+      page,
+      background,
+      rowSize,
+      'course-home',
+      `/courses/${IDS.courses.biology}`,
+    );
+    await expectPlainRows(list, '20px 16px 186px', 46.1875);
+  });
 
-test('rows of List View are unchanged', async ({ context, page }) => {
-  const list = await openPlain(context, page, 'dashboard-list-view');
-  await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'stack');
-  await expectPlainRows(list, '20px 16px 1254px', 64.1875);
-});
+  test(`rows of List View are unchanged with ${rowSize} rows`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    const list = await openPlain(context, page, background, rowSize, 'dashboard-list-view');
+    await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'stack');
+    await expectPlainRows(list, '20px 16px 1254px', 64.1875);
+  });
 
-test('rows of the side panel are unchanged', async ({
-  context,
-  page,
-  background,
-  extensionUrl,
-}) => {
-  const setup = await serveScenario(context);
-  await addCsrfCookie(context, setup.canvas.origin);
-  await saveAddress(background, setup.canvas.origin);
-  await page.setViewportSize({ width: 360, height: 900 });
-  await openExtensionPage(page, extensionUrl('sidepanel.html'));
-  await expect(page.getByText(QUIZ_3, { exact: true })).toBeVisible();
-  await settledList(page);
-  await expectPlainRows(page.locator('body'), '20px 16px 306px', 64.1875);
-});
+  test(`rows of the side panel are unchanged with ${rowSize} rows`, async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    await saveSettings(background, { ...DEFAULT_SETTINGS, rowSize });
+    const setup = await serveScenario(context);
+    await addCsrfCookie(context, setup.canvas.origin);
+    await saveAddress(background, setup.canvas.origin);
+    await page.setViewportSize({ width: 360, height: 900 });
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await expect(page.getByText(QUIZ_3, { exact: true })).toBeVisible();
+    await settledList(page);
+    await expectPlainRows(page.locator('body'), '20px 16px 306px', 64.1875);
+  });
+}

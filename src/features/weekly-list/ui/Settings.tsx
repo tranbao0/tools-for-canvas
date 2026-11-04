@@ -1,5 +1,5 @@
 /**
- * The settings (design decision 18). The same four settings show in three places: in the side
+ * The settings (design decision 18). The same settings show in three places: in the side
  * panel and in the in-page list, where the gear opens them in place with a Back button, and on
  * the extension's own settings page (SettingsView), which also shows the Canvas address.
  */
@@ -22,6 +22,11 @@ const THEMES: [Settings['theme'], MessageKey][] = [
   ['dark', 'themeDark'],
 ];
 
+const ROW_SIZES: [Settings['rowSize'], MessageKey][] = [
+  ['compact', 'rowSizeCompact'],
+  ['comfortable', 'rowSizeComfortable'],
+];
+
 export function parseTheme(value: string): Settings['theme'] {
   return value === 'light' || value === 'dark' ? value : 'auto';
 }
@@ -32,7 +37,7 @@ export function toggleHidden(hidden: string[], courseId: string, hide: boolean):
   return hide ? [...without, courseId] : without;
 }
 
-/** The four settings. `level` is the heading level of the settings that have a heading. */
+/** The settings. `level` is the heading level of the settings that have a heading. */
 export function SettingsFields(props: {
   settings: Settings;
   courses: { id: string; name: string }[];
@@ -50,6 +55,8 @@ export function SettingsFields(props: {
       'rings',
       'theme',
       'themeHelp',
+      'rowSize',
+      'rowSizeHelp',
       'fileViewer',
       'assignmentView',
     ]),
@@ -130,6 +137,34 @@ export function SettingsFields(props: {
         </select>
         <p class="wr-setting-help" id={ids.themeHelp}>
           {t('themeHelp')}
+        </p>
+      </div>
+
+      <div class="wr-setting">
+        <span class="wr-setting-name" id={ids['rowSize']}>
+          {t('settingRowSize')}
+        </span>
+        <div
+          class="wr-segments"
+          role="radiogroup"
+          aria-labelledby={ids['rowSize']}
+          aria-describedby={ids['rowSizeHelp']}
+        >
+          {ROW_SIZES.map(([value, label]) => (
+            <label key={value} class="wr-segment">
+              <input
+                type="radio"
+                name={ids['rowSize']}
+                value={value}
+                checked={settings.rowSize === value}
+                onChange={() => update({ rowSize: value })}
+              />
+              <span>{t(label)}</span>
+            </label>
+          ))}
+        </div>
+        <p class="wr-setting-help" id={ids['rowSizeHelp']}>
+          {t('rowSizeHelp')}
         </p>
       </div>
 

@@ -7,6 +7,7 @@ import type { ComponentChildren, RefObject } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { t, tp } from '../../../shared/ui/i18n';
 import {
+  DEFAULT_SETTINGS,
   DEFAULT_SPAN,
   type ItemView,
   type Settings,
@@ -15,6 +16,7 @@ import {
 } from '../model/types';
 import type { Actions, AppProps, SurfaceKind, TaskInput } from './contract';
 import { Header } from './Header';
+import { RowSizeContext } from './slotMode';
 import {
   Dock,
   filterText,
@@ -167,6 +169,7 @@ export function App(props: AppProps) {
   /** The scroll position of the Announcements tab. Each tab keeps its own (decision 24). */
   const announcementsScroll = useRef<ScrollMemory>({ top: 0, key: '' });
   const saved = props.settings?.value;
+  const rowSize = saved?.rowSize ?? DEFAULT_SETTINGS.rowSize;
   const minimized = surface === 'inpage' && saved?.minimized === true;
   /**
    * The state that the student asked for, and until when focus follows it. The page can draw the
@@ -316,11 +319,12 @@ export function App(props: AppProps) {
     <div
       class="wr"
       data-surface={surface}
+      data-rows={rowSize}
       data-minimized={minimized ? '' : undefined}
       aria-busy={settingsFrom === null && state.kind === 'loading' ? true : undefined}
       ref={rootRef}
     >
-      {body}
+      <RowSizeContext.Provider value={rowSize}>{body}</RowSizeContext.Provider>
       {showDock && (
         <Dock
           undo={state.undo ?? null}

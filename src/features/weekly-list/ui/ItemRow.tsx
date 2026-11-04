@@ -10,7 +10,7 @@ import type { ItemView, WeekView } from '../model/types';
 import { formatDateTime, formatNumber, formatTime } from './format';
 import { CalendarIcon, CheckIcon, ChevronDownIcon, TypeIcon } from '../../../shared/ui/icons';
 import { newId } from '../../../shared/ui/parts';
-import { SlotModeContext } from './slotMode';
+import { RowSizeContext, SlotModeContext } from './slotMode';
 import { itemTags, type Tag } from './tags';
 
 /** How the due time shows: the time only, the date and time, or nothing. */
@@ -95,6 +95,8 @@ function TagView(props: { tag: Tag; tipId: string; open: boolean; onToggle(): vo
 
 export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
   const slot = useContext(SlotModeContext);
+  // A compact title has one line, and its hover text gives the whole title.
+  const compact = useContext(RowSizeContext) === 'compact' && slot;
   const [ids] = useState(() => ({ tip: newId('tip'), redo: newId('redo') }));
   const [openTip, setOpenTip] = useState<string | null>(null);
   const tags = itemTags(item, view.timeZone);
@@ -155,6 +157,7 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
         class="wr-title"
         data-part="title"
         aria-label={isNote ? t('editTaskItem', item.title) : undefined}
+        title={compact ? item.title : undefined}
         onClick={onTitleClick}
       >
         {item.title}
@@ -166,6 +169,7 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
         href={item.url}
         target="_blank"
         rel="noopener noreferrer"
+        title={compact ? item.title : undefined}
         onClick={onTitleClick}
       >
         {item.title}

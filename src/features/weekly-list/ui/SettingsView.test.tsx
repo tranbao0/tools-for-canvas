@@ -33,7 +33,7 @@ function setup(
 }
 
 describe('SettingsView', () => {
-  it('shows the four settings and the address', () => {
+  it('shows the settings and the address', () => {
     setup();
     expect(screen.getByLabelText('Shown span')).toBeTruthy();
     expect(screen.queryByLabelText('First day of the week')).toBeNull();
@@ -78,6 +78,38 @@ describe('SettingsView', () => {
     expect(select.value).toBe('light');
     fireEvent.change(select, { target: { value: 'auto' } });
     expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, theme: 'auto' });
+  });
+
+  it('shows Row size as a radio group of Compact and Comfortable, Compact by default', () => {
+    setup();
+    const group = screen.getByRole('radiogroup', { name: 'Row size' });
+    const radios = screen.getAllByRole('radio') as HTMLInputElement[];
+    expect(radios.map((radio) => radio.parentElement?.textContent)).toEqual([
+      'Compact',
+      'Comfortable',
+    ]);
+    expect(radios.map((radio) => radio.checked)).toEqual([true, false]);
+    expect(group.contains(radios[0]!)).toBe(true);
+    expect(group.contains(radios[1]!)).toBe(true);
+    expect(radios[0]!.name).toBe(radios[1]!.name);
+    expect(group.getAttribute('aria-describedby')).toBeTruthy();
+    expect(screen.getByText('Compact fits about twice as many tasks in the card.')).toBeTruthy();
+  });
+
+  it('changes the row size', () => {
+    const { onChange } = setup();
+    fireEvent.click(screen.getByRole('radio', { name: 'Comfortable' }));
+    expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, rowSize: 'comfortable' });
+  });
+
+  it('shows the saved Comfortable row size as the chosen one', () => {
+    setup({ ...DEFAULT_SETTINGS, rowSize: 'comfortable' });
+    expect((screen.getByRole('radio', { name: 'Comfortable' }) as HTMLInputElement).checked).toBe(
+      true,
+    );
+    expect((screen.getByRole('radio', { name: 'Compact' }) as HTMLInputElement).checked).toBe(
+      false,
+    );
   });
 
   it('shows every course in my list by default: each switch is on', () => {

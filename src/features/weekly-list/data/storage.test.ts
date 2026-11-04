@@ -59,6 +59,7 @@ describe('settings defaults', () => {
       showRings: true,
       minimized: false,
       theme: 'auto',
+      rowSize: 'compact',
     });
     expect(DEFAULT_SETTINGS.hiddenCourseIds).toEqual([]);
   });
@@ -74,6 +75,7 @@ describe('settings defaults', () => {
       showRings: false,
       minimized: false,
       theme: 'auto',
+      rowSize: 'compact',
     });
   });
 
@@ -152,6 +154,7 @@ describe('the settings item', () => {
       showRings: false,
       minimized: true,
       theme: 'dark',
+      rowSize: 'compact',
     });
   });
 });
