@@ -1,7 +1,3 @@
-import {
-  VIEWER_COOKIE_CHANGED,
-  VIEWER_READ_COOKIE_CHANGED,
-} from '../../../shared/platform/refusals';
 import type { WidgetGradePreferences } from '../../../shared/canvas/types';
 /**
  * The single data owner. See docs/design.md, decisions 2, 5, 6, 9, 10 and 11.
@@ -2620,14 +2616,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (allowed === null) throw new ViewerUnconfirmedError();
     if (cache?.session == null) {
       const proof = viewerProof;
-      if (!(await viewerProofHolds(allowed))) throw new Error(VIEWER_COOKIE_CHANGED);
+      if (!(await viewerProofHolds(allowed))) throw new Error('The viewer cookie changed');
       const response = await read(apiFor(allowed));
       if (proof !== viewerProof || !(await viewerProofHolds(allowed)))
-        throw new Error(VIEWER_COOKIE_CHANGED);
+        throw new Error('The viewer cookie changed');
       return response;
     }
     const response = await cookieBound(() => read(apiFor(allowed)));
-    if (response === DROPPED) throw new Error(VIEWER_READ_COOKIE_CHANGED);
+    if (response === DROPPED) throw new Error('The cookie changed during the viewer read');
     return response;
   }
 

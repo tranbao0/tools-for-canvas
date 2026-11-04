@@ -10,7 +10,6 @@
  * is trusted only for the saved Canvas: its message must come from the top frame of a tab whose
  * page has the saved origin.
  */
-import { NOT_SAVED_CANVAS } from '../../../shared/platform/refusals';
 import { isUsableOrigin } from '../../../shared/platform/address';
 import { browser, type Browser } from 'wxt/browser';
 import type { ToolsSettings } from '../../../shared/settings/tools';
@@ -122,7 +121,7 @@ async function checkSender(sender: SenderInfo, host: RouterHost): Promise<string
   const origin = senderPageOrigin(sender);
   const saved = await host.savedOrigin();
   if (origin === null || saved === null || !isUsableOrigin(saved) || origin !== saved) {
-    throw new Error(NOT_SAVED_CANVAS);
+    throw new Error('Only the saved Canvas may ask for its data');
   }
   return saved;
 }
