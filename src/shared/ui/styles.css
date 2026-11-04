@@ -291,8 +291,11 @@
   z-index: 3;
 }
 
-/* The card has no top padding: the header of the list brings it, and so does the settings view. */
-:host([data-panel]) .wr-settings-panel {
+/*
+ * The card has no top padding: the header of the list brings it, and so do the settings view and
+ * the bar of a state without a week.
+ */
+:host([data-panel]) :is(.wr-settings-panel, .wr-bar) {
   padding-top: var(--wr-pad-y);
 }
 

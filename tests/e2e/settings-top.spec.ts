@@ -139,3 +139,29 @@ test('puts the settings heading at the top of the side panel like the list headi
   await settledList(panel);
   await expectSettingsAtListTop(panel.locator('.wr'), panel);
 });
+
+test('puts the heading of a state without a week at the top of the slot card like the settings heading', async ({
+  context,
+  page,
+}) => {
+  // The settings heading sits where the list heading sits (the tests above), so it is the
+  // reference for a card that has no week to show.
+  const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }], {
+    extend: (scenario) => {
+      scenario.courses = [];
+    },
+  });
+  await addCsrfCookie(context, canvas.origin);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openCanvasPage(page, canvas.origin);
+  const list = inpageList(page);
+  await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot');
+  await expect(list.getByText('No active courses', { exact: true })).toBeVisible();
+  const card = list.locator('.wr');
+  const state = await layoutOf(card);
+  await list.getByTitle('Settings', { exact: true }).click();
+  await expect(list.getByRole('button', { name: 'Back' })).toBeVisible();
+  const settings = await layoutOf(card);
+  expect(Math.abs(state.top - settings.top)).toBeLessThanOrEqual(1);
+  expect(Math.abs(state.left - settings.left)).toBeLessThanOrEqual(1);
+});
