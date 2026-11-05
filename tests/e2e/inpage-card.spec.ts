@@ -984,13 +984,16 @@ test.describe('the full list in the card', () => {
       await page.reload();
       await page.locator('html[data-fixture-ready="true"]').waitFor({ state: 'attached' });
       await expect(done).toHaveAttribute('aria-expanded', 'true');
+      if (layout.docked) await dockCard(page);
       await expect(groupArea(list).locator('[data-row-key]').first()).toBeVisible();
       await expect(dayList(list)).toBeHidden();
 
       // A second tab shows it open, and closing it there closes it in the first tab.
       const other = await context.newPage();
+      await other.setViewportSize({ width: layout.width, height: 800 });
       await openCanvasPage(other, new URL(page.url()).origin, layout.path);
       const otherList = inpageList(other);
+      if (layout.docked) await dockCard(other);
       const otherDone = toggleOf(otherList.locator('.wr-pinned [data-group="done"]'));
       await expect(otherDone).toHaveAttribute('aria-expanded', 'true');
       await backOf(otherList).click();

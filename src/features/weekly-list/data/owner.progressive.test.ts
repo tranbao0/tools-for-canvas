@@ -227,6 +227,11 @@ describe('a load that fails', () => {
     expect(state.stale).not.toBeNull();
     expect(state.view.groups.some((group) => group.kind === 'past_due')).toBe(false);
     expect(state.view.groups.some((group) => group.kind === 'today')).toBe(true);
+    // Nothing is on its way, so the view is not loading; it is incomplete, and it does not claim
+    // that the span holds nothing.
+    expect(state.view.loading).toBe(false);
+    expect(state.view.incomplete).toBe(true);
+    expect(state.view.nothingDue).toBe(false);
   });
 });
 

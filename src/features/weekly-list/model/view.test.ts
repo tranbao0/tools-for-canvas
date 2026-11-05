@@ -1444,6 +1444,15 @@ describe('days and Past due that are still loading', () => {
     expect(buildWeekView(input(none)).incomplete).toBe(false);
   });
 
+  it('marks a span as incomplete, not loading, when only Past due is missing and nothing is on its way', () => {
+    const none = { plannerItems: [], assignmentDetails: {} };
+    const failed = buildWeekView(
+      input({ ...none, loading: { days: [], pastDue: true, unavailable: true } }),
+    );
+    expect(failed).toMatchObject({ loading: false, incomplete: true, nothingDue: false });
+    expect(failed.groups.some((group) => group.kind === 'past_due')).toBe(false);
+  });
+
   it('shows Past due as one loading group with none of its items, and counts no late item yet', () => {
     const shown = buildWeekView(input({ ...withItems, loading: { days: [], pastDue: true } }));
 
