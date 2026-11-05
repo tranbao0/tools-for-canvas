@@ -123,6 +123,8 @@ export interface AssignmentDetails {
     workflow_state?: string;
     excused?: boolean | null;
     missing?: boolean;
+    /** Whether Canvas counts the submission as late. */
+    late?: boolean;
     late_policy_status?: 'late' | 'missing' | 'extended' | 'none' | null;
     custom_grade_status_id?: string | null;
     redo_request?: boolean;
