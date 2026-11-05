@@ -20,18 +20,13 @@ import type {
   TimeRange,
 } from '../../../shared/canvas/types';
 import { dashboardCourses, extrasFromView } from '../../dashboard-fixes/data/dashboardData';
-import {
-  MAX_LIST_MESSAGE_CHARS,
-  rowFromNode,
-  rowFromTopic,
-} from '../../dashboard-fixes/data/announcementRows';
+import { rowFromNode, rowFromTopic } from '../../dashboard-fixes/data/announcementRows';
 import {
   ANNOUNCEMENT_PAGE_SIZES,
   MAX_ANNOUNCEMENT_OFFSET,
   MAX_RANGE_ROWS,
   isCalendarDate,
   type AnnouncementBody,
-  type AnnouncementListRow,
   type AnnouncementMarkReply,
   type AnnouncementPageMessage,
   type AnnouncementPageReply,
