@@ -1416,6 +1416,63 @@ test('the score of a file with a long name stands under the name, lined up with 
   await sidebar.screenshot({ path: path.join(SHOTS, 'sidebar-score-long-name-1280-light.png') });
 });
 
+test('on a right-to-left Canvas the score keeps its gap from the link, on the side that faces the link', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openSidebar(context, page, background, {
+    html: assignmentPage
+      .replace(SIDEBAR_FILE, 'essay.pdf')
+      .replace('<html lang="en" dir="ltr">', '<html lang="ar" dir="rtl">'),
+    change: (copy) => {
+      copy.submission.reports = [REPORT];
+    },
+  });
+  await treated(page);
+  const sidebar = sidebarOf(page);
+  const score = sidebar.getByRole('link', { name: '5.0%' });
+  await expect(score).toBeVisible();
+  const link = sidebar.getByRole('link', { name: 'View essay.pdf' });
+  const [linkBox, scoreBox] = [await link.boundingBox(), await score.boundingBox()];
+  // The score follows the link to its left, and 8 px stand between them.
+  expect(linkBox!.x - (scoreBox!.x + scoreBox!.width)).toBeGreaterThanOrEqual(7);
+  expect(linkBox!.x - (scoreBox!.x + scoreBox!.width)).toBeLessThan(10);
+});
+
+test('the score of a file measures again when the box gets wider or narrower', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openSidebar(context, page, background, {
+    change: (copy) => {
+      copy.submission.reports = [REPORT];
+    },
+  });
+  await treated(page);
+  const sidebar = sidebarOf(page);
+  const score = sidebar.getByRole('link', { name: '5.0%' });
+  const link = sidebar.getByRole('link', { name: `View ${SIDEBAR_FILE}` });
+  const stands = async () => {
+    const [linkBox, scoreBox] = [await link.boundingBox(), await score.boundingBox()];
+    return scoreBox!.y >= linkBox!.y + linkBox!.height - 1 ? 'under' : 'beside';
+  };
+  await expect(score).toBeVisible();
+  expect(await stands()).toBe('under');
+  // A window or a menu that makes the box wide enough for the name: the score goes beside the link.
+  await page.addStyleTag({ content: '#sidebar_content .details .content { width: 900px; }' });
+  await expect.poll(stands).toBe('beside');
+  expect(await score.evaluate((node) => getComputedStyle(node).marginTop)).toBe('0px');
+  expect(await score.evaluate((node) => getComputedStyle(node).marginInlineStart)).toBe('8px');
+  // And narrow again: it goes under the name, lined up with its text.
+  await page.addStyleTag({ content: '#sidebar_content .details .content { width: 240px; }' });
+  await expect.poll(stands).toBe('under');
+  const text = link.locator('span:not([hidden]) > span');
+  const [textBox, scoreBox] = [await text.boundingBox(), await score.boundingBox()];
+  expect(Math.abs(scoreBox!.x - textBox!.x)).toBeLessThan(1);
+});
+
 test('both files of the Submission box get the treatment', async ({
   context,
   page,

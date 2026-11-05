@@ -150,6 +150,10 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
   let owner: AssignmentOwnerReply | null = null;
   let observer: MutationObserver | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  /** The box whose width is watched, the watcher, and the last width it saw. */
+  let sized: Element | null = null;
+  let sizeWatcher: ResizeObserver | null = null;
+  let lastWidth: number | null = null;
 
   /** The treatments of this copy. The view touches no other node of the page. */
   const treatments: Treatment[] = [];
@@ -173,7 +177,7 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     const link = own(
       doc,
       'a',
-      `display:inline-block;margin-left:${GAP}px;border-radius:3px;padding:2px 4px;background:${background};color:${color};font-size:.75rem;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap`,
+      `display:inline-block;margin-inline-start:${GAP}px;border-radius:3px;padding:2px 4px;background:${background};color:${color};font-size:.75rem;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap`,
     );
     link.textContent = report.text;
     link.setAttribute('href', report.url);
@@ -182,6 +186,51 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     link.setAttribute('title', 'Similarity score');
     if (report.state !== null) link.setAttribute('data-state', report.state);
     return link;
+  }
+
+  /**
+   * Puts the score in its place. The gap and the offset are on the side of the text direction, so a
+   * right-to-left Canvas keeps the gap between the link and the score. A name that wraps fills the
+   * width of the box, so the score lands under it, and it then lines up with the text of the name,
+   * after the icon and its gap. The place is measured from the plain position every time, so a
+   * wider box takes the score back to the line of the name.
+   */
+  function placeScore(score: HTMLElement, view: HTMLElement): void {
+    score.style.marginInlineStart = `${GAP}px`;
+    score.style.marginTop = '';
+    if (score.getBoundingClientRect().top >= view.getBoundingClientRect().bottom - 1) {
+      score.style.marginInlineStart = `${ICON_SIZE + GAP}px`;
+      score.style.marginTop = '4px';
+    }
+  }
+
+  /** Measures the place of every score again, after the box changed its width. */
+  function placeScores(): void {
+    for (const { score, view } of treatments) {
+      if (score !== null && score.isConnected) placeScore(score, view);
+    }
+  }
+
+  /** Watches the width of the box, because a resize of the window or a menu changes how a name wraps. */
+  function watchSize(): void {
+    const box = doc.querySelector(BOX);
+    if (box === null || box === sized || typeof ResizeObserver === 'undefined') return;
+    stopSize();
+    sized = box;
+    sizeWatcher = new ResizeObserver((entries) => {
+      const width = entries[entries.length - 1]?.contentRect.width;
+      if (width === undefined || width === lastWidth) return;
+      lastWidth = width;
+      placeScores();
+    });
+    sizeWatcher.observe(box);
+  }
+
+  function stopSize(): void {
+    sizeWatcher?.disconnect();
+    sizeWatcher = null;
+    sized = null;
+    lastWidth = null;
   }
 
   function treat(anchor: HTMLAnchorElement, fileId: string, path: string): void {
@@ -216,12 +265,7 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     const score = report === null ? null : scoreLink(report);
     if (score !== null) {
       anchor.after(score);
-      // A name that wraps fills the width of the box, so the score lands under it. It then lines up
-      // with the text of the name, after the icon and its gap.
-      if (score.getBoundingClientRect().top >= view.getBoundingClientRect().bottom - 1) {
-        score.style.marginLeft = `${ICON_SIZE + GAP}px`;
-        score.style.marginTop = '4px';
-      }
+      placeScore(score, view);
     }
 
     treatments.push({ anchor, held, view, score });
@@ -242,6 +286,7 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
       if (link !== null && normalizeCanvasId(link.user) === student)
         treat(anchor, link.fileId, link.path);
     }
+    watchSize();
     watch();
   }
 
@@ -267,6 +312,7 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
   function clear(): void {
     ++generation;
     stopWatching();
+    stopSize();
     student = null;
     owner = null;
     undo();
