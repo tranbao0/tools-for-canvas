@@ -619,3 +619,8 @@ Run them on the Grades page of the course (`/courses/:id/grades`).
    Expect: the buttons go away and return.
 5. Check one open row at 1920 and 1280 pixels in light and dark themes.
    Expect: the panel fits the list and each control is clear.
+
+## Firefox for Android
+
+1. Install the Firefox build on a phone with Firefox 142 or later, and open the in-page list on a Canvas page.
+   Expect: it works, and you write down every control that does not.
