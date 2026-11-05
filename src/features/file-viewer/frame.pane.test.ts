@@ -128,4 +128,35 @@ describe('the frame catcher in the frame of the assignment pane', () => {
     startFrameCatcher();
     expect(click('plain').defaultPrevented).toBe(false);
   });
+
+  it('checks the page again at each click, so a frame moved with history.replaceState forwards nothing', async () => {
+    openPage(PANE_PATH);
+    startFrameCatcher();
+    expect(click('plain').defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    sendMessage.mockClear();
+    // The page moves without a load: the frame is no direct child of the pane page rules any more.
+    window.history.replaceState({}, '', `${PANE_PATH}?content_only=0`);
+    expect(click('plain').defaultPrevented).toBe(false);
+    window.history.replaceState({}, '', `/courses/5/assignments/3?content_only=1`);
+    expect(click('plain').defaultPrevented).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(sendMessage).not.toHaveBeenCalled();
+    // The page comes back to one that the rules serve, and the click works again.
+    window.history.replaceState({}, '', `${PANE_PATH}?content_only=1`);
+    expect(click('plain').defaultPrevented).toBe(true);
+  });
+
+  it('checks the top frame again at each click', async () => {
+    const top = { location: { origin: location.origin, pathname: '/courses/2/assignments' } };
+    openPage(PANE_PATH, '?content_only=1', top);
+    startFrameCatcher();
+    expect(click('plain').defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    sendMessage.mockClear();
+    top.location.pathname = '/courses/2/modules';
+    expect(click('plain').defaultPrevented).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
 });
