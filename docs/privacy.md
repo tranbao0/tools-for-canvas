@@ -235,6 +235,7 @@ The file viewer reads a record or bytes only while the session cookie of your Ca
 If it cannot confirm it, the pane shows "Open in Canvas" and reads nothing.
 The file viewer switch and pane width stay in local settings.
 With the File viewer on, it also reads the address of the file link that you click in a frame of the assignment pane, to open that file in the file pane, and it reads nothing else of those frames.
+It reads the same address in the frame of a submission page, also on an anonymous submission page.
 The file viewer reads the bytes of a PDF from your saved Canvas address, with your own Canvas session.
 Canvas answers with a redirect to its own file storage, and the extension follows it.
 The bytes stay in the memory of the pane and are freed when you close the tab of the file.
