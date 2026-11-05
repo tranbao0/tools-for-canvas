@@ -43,9 +43,7 @@ export type PaneMessage = OpenFileMessage | ThemeMessage | FullViewMessage;
  * view on or off.
  */
 export type PaneRequest =
-  | { type: 'close' }
-  | { type: 'escape' }
-  | { type: 'full-view'; on: boolean };
+  { type: 'close' } | { type: 'escape' } | { type: 'full-view'; on: boolean };
 
 const ID = /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/;
 const SECRET = /^[0-9a-f]{64}$/;

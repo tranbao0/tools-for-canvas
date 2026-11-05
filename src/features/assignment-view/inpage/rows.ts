@@ -74,7 +74,10 @@ function visibleText(node: Node): string {
   if (node.nodeType === 3) return node.nodeValue ?? '';
   if (node.nodeType !== 1) return '';
   const element = node as Element;
-  if (element.classList.contains('screenreader-only') || /^(?:script|style)$/i.test(element.tagName))
+  if (
+    element.classList.contains('screenreader-only') ||
+    /^(?:script|style)$/i.test(element.tagName)
+  )
     return '';
   let text = '';
   const children = element.childNodes;
