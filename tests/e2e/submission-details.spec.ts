@@ -53,14 +53,9 @@ type Details = typeof ASSIGNMENT_DETAILS;
 
 function details(change: (copy: Details) => void = () => undefined): Details {
   const copy = structuredClone(ASSIGNMENT_DETAILS);
-  copy.assignment.name = 'Reflection Paper #1';
   copy.assignment.description = DESCRIPTION;
-  copy.assignment.points_possible = 50;
-  copy.submission.score = 40;
-  copy.submission.grade = '40';
   copy.submission.submission_type = 'online_upload';
   copy.submission.attachments = [{ id: '501', display_name: FILE_NAME, size: 120_832 }];
-  copy.submission.submission_comments = [];
   change(copy);
   return copy;
 }
@@ -72,6 +67,8 @@ const ONE_FILE: FrameRow[] = [
 interface Options {
   change?: (copy: Details) => void;
   rows?: FrameRow[];
+  /** Routes that answer before the standard ones. */
+  extra?: FakeCanvasRoute[];
   /** The document of the files frame. */
   preview?: string;
   /** The user in the path of the page. */
@@ -158,6 +155,7 @@ async function open(
     },
   ];
   const served = await serveScenario(context, [
+    ...(options.extra ?? []),
     {
       path: route,
       respond: (request) => ({
@@ -1114,11 +1112,18 @@ async function openSidebar(
   context: Parameters<typeof serveScenario>[0],
   page: Page,
   background: Parameters<typeof saveAddress>[0],
-  options: { html?: string; user?: string; settle?: boolean; width?: number } = {},
+  options: {
+    html?: string;
+    user?: string;
+    settle?: boolean;
+    width?: number;
+    extra?: FakeCanvasRoute[];
+  } = {},
 ) {
   const records = rawRecords(details());
   records.submission.user_id = options.user ?? '42';
   const served = await serveScenario(context, [
+    ...(options.extra ?? []),
     { path: ASSIGNMENT, contentType: 'text/html', body: options.html ?? assignmentPage },
     {
       path: '/courses/12/assignments/101/submissions/42',
@@ -2339,4 +2344,103 @@ test('the rubric in the instructions host keeps the direction and the language o
       };
     }),
   ).toEqual({ direction: 'rtl', lang: 'ar' });
+});
+
+/**
+ * The retry of a failed read, through the real data router. A failed read is a 500 of Canvas: the
+ * owner throws, and the router answers `undefined`, which Chrome delivers to the page as `null`.
+ */
+const RETRY_GAP_MS = { min: 1500, max: 6000 };
+
+/** The route of a Canvas record that fails with a 500 for its first `failures` reads. */
+function failingRoute(
+  path: string,
+  body: unknown,
+  failures: number,
+): { route: FakeCanvasRoute; times: number[] } {
+  const times: number[] = [];
+  const route: FakeCanvasRoute = {
+    path,
+    respond: () => {
+      times.push(Date.now());
+      return times.length <= failures
+        ? { status: 500, body: { errors: [{ message: 'down' }] } }
+        : { body: json(body) };
+    },
+  };
+  return { route, times };
+}
+
+test('the Submission Details page reads again after 2 seconds when the first read fails', async ({
+  context,
+  page,
+  background,
+}) => {
+  const records = rawRecords(details());
+  const { route, times } = failingRoute(
+    '/api/v1/courses/12/assignments/101',
+    records.assignment,
+    1,
+  );
+  await open(context, page, background, { extra: [route] });
+  await expect(host(page)).toBeAttached({ timeout: 15_000 });
+  expect(times).toHaveLength(2);
+  const gap = times[1]! - times[0]!;
+  expect(gap).toBeGreaterThan(RETRY_GAP_MS.min);
+  expect(gap).toBeLessThan(RETRY_GAP_MS.max);
+});
+
+test('the Submission Details page stops after two failed reads', async ({
+  context,
+  page,
+  background,
+}) => {
+  const records = rawRecords(details());
+  const { route, times } = failingRoute(
+    '/api/v1/courses/12/assignments/101',
+    records.assignment,
+    99,
+  );
+  await open(context, page, background, { extra: [route] });
+  await expect.poll(() => times.length).toBe(2);
+  await page.waitForTimeout(5000);
+  expect(times).toHaveLength(2);
+  await expect(host(page)).toHaveCount(0);
+});
+
+test('the Submission box reads again after 2 seconds when the first read fails', async ({
+  context,
+  page,
+  background,
+}) => {
+  const records = rawRecords(details());
+  records.submission.user_id = '42';
+  const { route, times } = failingRoute(
+    '/api/v1/courses/12/assignments/101/submissions/self',
+    records.submission,
+    1,
+  );
+  await openSidebar(context, page, background, { extra: [route] });
+  await treated(page);
+  expect(times).toHaveLength(2);
+  const gap = times[1]! - times[0]!;
+  expect(gap).toBeGreaterThan(RETRY_GAP_MS.min);
+  expect(gap).toBeLessThan(RETRY_GAP_MS.max);
+});
+
+test('the Submission box stops after two failed reads', async ({ context, page, background }) => {
+  const records = rawRecords(details());
+  records.submission.user_id = '42';
+  const { route, times } = failingRoute(
+    '/api/v1/courses/12/assignments/101/submissions/self',
+    records.submission,
+    99,
+  );
+  await openSidebar(context, page, background, { extra: [route] });
+  await expect.poll(() => times.length).toBe(2);
+  await page.waitForTimeout(5000);
+  expect(times).toHaveLength(2);
+  await expect(
+    page.locator('#sidebar_content a[href*="download="] > [data-av-original]'),
+  ).toHaveCount(0);
 });

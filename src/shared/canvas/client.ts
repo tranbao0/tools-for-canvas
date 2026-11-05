@@ -206,6 +206,11 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
         ]),
       );
 
+    const ownSubmission = (courseId: string, assignmentId: string) =>
+      getObject<Record<string, unknown>>(
+        apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/self`, []),
+      );
+
     const listStatusBatch = async (
       courseIds: readonly string[],
     ): Promise<Record<string, CustomGradeStatus[]>> => {
@@ -219,28 +224,14 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
 
     return {
       getAssignmentRecord: (courseId, assignmentId) =>
-        getObject(
-          apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}`, [
-            ['include[]', 'submission'],
-            ['include[]', 'can_submit'],
-          ]),
-        ),
+        getObject(apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}`, [])),
       markRubricCommentsRead: (courseId, assignmentId, userId) => {
         const url = `${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/${pathId(userId)}/rubric_assessments/read`;
         // Canvas's page sends this once and drops it on a failure, so one retry is enough.
         return write('PUT', url, undefined, RUBRIC_READ_RETRIES).then(() => undefined);
       },
-      getOwnSubmissionRecord: (courseId, assignmentId) =>
-        getObject(
-          apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/self`, [
-            ['include[]', 'submission_comments'],
-            ['include[]', 'rubric_assessment'],
-          ]),
-        ),
-      getOwnSubmissionUserRecord: (courseId, assignmentId) =>
-        getObject(
-          apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/self`, []),
-        ),
+      getOwnSubmissionRecord: ownSubmission,
+      getOwnSubmissionUserRecord: ownSubmission,
       getViewerFile: (fileId) => getObject(`/api/v1/files/${pathId(fileId)}`),
       getViewerModuleItem: (courseId, moduleId, itemId) =>
         getObject(

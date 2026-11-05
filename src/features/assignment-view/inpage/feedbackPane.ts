@@ -21,8 +21,8 @@ import {
 } from '../../file-viewer/dock';
 import { CLOSE_PATH, EXTERNAL_LINK_PATH } from '../../../shared/ui/iconPaths';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
-import { OWN } from './rows';
-import { PANE_CSS, icon } from './turnInPane';
+import { OWN } from './own';
+import { PANE_CSS, icon } from './paneParts';
 
 export const FEEDBACK_HOST_ID = 'tools-feedback';
 

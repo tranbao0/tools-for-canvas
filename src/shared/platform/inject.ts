@@ -8,7 +8,11 @@
 import { toolsSettingsItem } from '../settings/toolsItem';
 import { browser, type Browser } from 'wxt/browser';
 import { canAutoSaveOrigin, originMatchPattern, parseUrl } from './address';
-import { isSubmissionPage } from '../../features/file-viewer/model';
+import {
+  isAssignmentsList,
+  isPaneCoursePage,
+  isSubmissionPage,
+} from '../../features/file-viewer/model';
 import { isCanvasDocument } from './detectCanvas';
 import { logFailure } from './log';
 
@@ -110,7 +114,7 @@ export async function injectViewerIntoOrigin(origin: string): Promise<number[]> 
   return injected.map((tab) => tab.id);
 }
 
-/** The click catcher for the files list in the frame of the submission details page. */
+/** The click catcher for the file links in the frames of the submission details page and the assignment pane. */
 export const FRAME_FILE = '/submission-frame.js';
 
 /** What a probe reports about a frame. It reads two strings and changes nothing. */
@@ -121,30 +125,42 @@ interface FrameProbe {
 
 /**
  * Runs the click catcher in the same-origin child frames of a tab that shows a submission details
- * page of `origin` (decision 25, item 11). Canvas draws the student's file list in such a frame.
+ * page, or the Assignments list, of `origin` (decision 25, item 11). Canvas draws the student's
+ * file list of a submission page in such a frame, and the assignment pane of the list holds a
+ * Canvas page in one.
  *
  * `scripting.executeScript` cannot name a frame by its origin, and the `webNavigation` permission
  * would add a browser history warning, so a probe asks every frame of the tab for its origin and
- * path. The probe only reads those two strings. The catcher goes into the frames of the saved
- * origin whose path is a submission page, and into no other frame. The frame can still move
- * between the probe and the injection, so the catcher checks its own page again.
+ * path. The probe only reads those two strings. On a submission page, the catcher goes into the
+ * frames of the saved origin whose path is a submission page. On the list, it goes into the frames
+ * of the saved origin whose path is in the course of the list. It goes into no other frame. The
+ * frame can still move between the probe and the injection, and the catcher needs `content_only=1`
+ * in the pane, which the probe does not read. So the catcher checks its own page again.
  */
-export async function injectSubmissionFrames(tabId: number, origin: string): Promise<void> {
+export async function injectFrameCatchers(tabId: number, origin: string): Promise<void> {
   if (!(await toolsSettingsItem.getValue()).fileViewer) return;
   const top = await browser.tabs.get(tabId);
   const topUrl = top.url === undefined ? null : parseUrl(top.url);
-  if (topUrl?.origin !== origin || !isSubmissionPage(topUrl.pathname))
-    throw new Error('The tab does not show a submission page of the saved Canvas');
+  const onList = topUrl !== null && isAssignmentsList(topUrl.pathname);
+  if (topUrl?.origin !== origin || !(onList || isSubmissionPage(topUrl.pathname)))
+    throw new Error(
+      'The tab does not show a submission page or the Assignments list of the saved Canvas',
+    );
   const probes = await browser.scripting.executeScript({
     target: { tabId, allFrames: true },
+    // Without this, the call waits for the document of every frame to be idle, and a hidden pane
+    // frame that still loads would hold the catcher back from the frame that shows.
+    injectImmediately: true,
     // `self.origin` is the origin of the document, which is "null" for a sandboxed frame.
     func: (): FrameProbe => ({ origin: self.origin, path: location.pathname }),
   });
+  const served = (path: string): boolean =>
+    onList ? isPaneCoursePage(topUrl.pathname, path) : isSubmissionPage(path);
   const found = probes.filter(
     (probe) =>
       probe.frameId !== 0 &&
       (probe.result as FrameProbe | undefined)?.origin === origin &&
-      isSubmissionPage((probe.result as FrameProbe).path),
+      served((probe.result as FrameProbe).path),
   );
   if (found.length === 0) return;
   // A document id names the document that was probed, so a frame that moved on since gets
@@ -158,6 +174,7 @@ export async function injectSubmissionFrames(tabId: number, origin: string): Pro
         ? { tabId, documentIds }
         : { tabId, frameIds: found.map((probe) => probe.frameId) },
     files: [FRAME_FILE],
+    injectImmediately: true,
   });
 }
 

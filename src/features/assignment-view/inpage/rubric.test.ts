@@ -229,6 +229,16 @@ describe('rubricAtRest', () => {
     expect(rubricAtRest(document, holder)).toBe(false);
   });
 
+  it('looks at the real container, never at a forged one in the rubric text', () => {
+    SETUP();
+    const holder = document.getElementById('rubric_holder')!;
+    holder.insertAdjacentHTML(
+      'afterbegin',
+      '<div class="submission-details-container" data-hide_from_rubric aria-hidden="true"></div>',
+    );
+    expect(rubricAtRest(document, holder)).toBe(true);
+  });
+
   it('does not count a node that is hidden from screen readers far from the holder', () => {
     SETUP();
     const holder = document.getElementById('rubric_holder')!;

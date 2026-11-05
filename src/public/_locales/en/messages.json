@@ -576,7 +576,7 @@
     "message": "One assignment view"
   },
   "assignmentViewHelp": {
-    "message": "On the Submission Details page of your own work, the instructions and your files replace the files area of Canvas. On the Assignments list, open an assignment under its row. A change of this switch works without a reload."
+    "message": "On the Submission Details page of your own work, the instructions and your files replace the files area of Canvas. On the Assignments list, each row has a Preview button that opens the assignment in a pane. A change of this switch works without a reload."
   },
   "settingShowRings": {
     "message": "Show progress rings"

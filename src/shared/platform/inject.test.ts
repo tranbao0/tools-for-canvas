@@ -15,7 +15,7 @@ import {
   injectInpageIntoOrigin,
   injectViewerIntoOrigin,
   VIEWER_FILE,
-  injectSubmissionFrames,
+  injectFrameCatchers,
 } from './inject';
 import { installFakeScripting, type FakeScripting } from './testing/fakes';
 
@@ -290,7 +290,7 @@ describe('anyAutoSavedCanvasTab', () => {
   });
 });
 
-describe('injectSubmissionFrames', () => {
+describe('injectFrameCatchers', () => {
   const ORIGIN = 'https://canvas.school.edu';
   const SUBMISSION = `${ORIGIN}/courses/5/assignments/3/submissions/9`;
   /** The answers of the probe, one for each frame of the tab. */
@@ -313,14 +313,16 @@ describe('injectSubmissionFrames', () => {
         { frameId: 8, origin: ORIGIN, path: PATH },
       ) as never,
     );
-    await injectSubmissionFrames(7, ORIGIN);
+    await injectFrameCatchers(7, ORIGIN);
     expect(scripting.executeScript).toHaveBeenCalledTimes(2);
     expect(scripting.executeScript.mock.calls[0]![0]).toMatchObject({
       target: { tabId: 7, allFrames: true },
+      injectImmediately: true,
     });
     expect(scripting.executeScript).toHaveBeenLastCalledWith({
       target: { tabId: 7, frameIds: [4, 8] },
       files: [FRAME_FILE],
+      injectImmediately: true,
     });
   });
 
@@ -330,16 +332,17 @@ describe('injectSubmissionFrames', () => {
       { frameId: 4, documentId: 'doc-4', result: { origin: ORIGIN, path: PATH } },
       { frameId: 5, documentId: 'doc-5', result: { origin: 'null', path: PATH } },
     ] as never);
-    await injectSubmissionFrames(7, ORIGIN);
+    await injectFrameCatchers(7, ORIGIN);
     expect(scripting.executeScript).toHaveBeenLastCalledWith({
       target: { tabId: 7, documentIds: ['doc-4'] },
       files: [FRAME_FILE],
+      injectImmediately: true,
     });
   });
 
   it('runs a probe that only reads the origin and the path of a frame', async () => {
     scripting.executeScript.mockResolvedValueOnce([] as never);
-    await injectSubmissionFrames(7, ORIGIN);
+    await injectFrameCatchers(7, ORIGIN);
     const probe = (scripting.executeScript.mock.calls[0]![0] as unknown as { func: () => unknown })
       .func;
     vi.stubGlobal('self', { origin: ORIGIN });
@@ -351,11 +354,67 @@ describe('injectSubmissionFrames', () => {
     }
   });
 
+  describe('on the Assignments list', () => {
+    const LIST = `${ORIGIN}/courses/5/assignments`;
+
+    beforeEach(() => {
+      tabUrls.set(7, `${LIST}?x=1`);
+    });
+
+    it('puts the catcher into the child frames of the course of the list, and no other frame', async () => {
+      scripting.executeScript.mockResolvedValueOnce(
+        probes(
+          { frameId: 0, origin: ORIGIN, path: '/courses/5/assignments' },
+          { frameId: 4, origin: ORIGIN, path: '/courses/5/assignments/3' },
+          { frameId: 5, origin: ORIGIN, path: '/courses/5/discussion_topics/8' },
+          { frameId: 6, origin: 'https://video.example', path: '/courses/5/assignments/3' },
+          { frameId: 7, origin: ORIGIN, path: '/courses/6/assignments/3' },
+          { frameId: 8, origin: ORIGIN, path: '/files/9' },
+          { frameId: 9, origin: 'null', path: '/courses/5/assignments/3' },
+        ) as never,
+      );
+      await injectFrameCatchers(7, ORIGIN);
+      expect(scripting.executeScript).toHaveBeenLastCalledWith({
+        target: { tabId: 7, frameIds: [4, 5] },
+        files: [FRAME_FILE],
+        injectImmediately: true,
+      });
+    });
+
+    it('names the probed documents, and compares a shard id as a global id', async () => {
+      tabUrls.set(7, `${ORIGIN}/courses/5~120/assignments`);
+      scripting.executeScript.mockResolvedValueOnce([
+        {
+          frameId: 4,
+          documentId: 'doc-4',
+          result: { origin: ORIGIN, path: '/courses/50000000000120/assignments/3' },
+        },
+        {
+          frameId: 5,
+          documentId: 'doc-5',
+          result: { origin: ORIGIN, path: '/courses/6/assignments/3' },
+        },
+      ] as never);
+      await injectFrameCatchers(7, ORIGIN);
+      expect(scripting.executeScript).toHaveBeenLastCalledWith({
+        target: { tabId: 7, documentIds: ['doc-4'] },
+        files: [FRAME_FILE],
+        injectImmediately: true,
+      });
+    });
+
+    it('does nothing when the file viewer is off', async () => {
+      await toolsSettingsItem.setValue({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+      await injectFrameCatchers(7, ORIGIN);
+      expect(scripting.executeScript).not.toHaveBeenCalled();
+    });
+  });
+
   it('injects nothing when no frame qualifies', async () => {
     scripting.executeScript.mockResolvedValueOnce(
       probes({ frameId: 0, origin: ORIGIN, path: PATH }) as never,
     );
-    await injectSubmissionFrames(7, ORIGIN);
+    await injectFrameCatchers(7, ORIGIN);
     expect(scripting.executeScript).toHaveBeenCalledTimes(1);
   });
 
@@ -366,14 +425,14 @@ describe('injectSubmissionFrames', () => {
       'https://other.school.edu/courses/5/assignments/3/submissions/9',
     ]) {
       tabUrls.set(7, url);
-      await expect(injectSubmissionFrames(7, ORIGIN)).rejects.toThrow('submission page');
+      await expect(injectFrameCatchers(7, ORIGIN)).rejects.toThrow('submission page');
     }
     expect(scripting.executeScript).not.toHaveBeenCalled();
   });
 
   it('does nothing when the file viewer is off', async () => {
     await toolsSettingsItem.setValue({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
-    await injectSubmissionFrames(7, ORIGIN);
+    await injectFrameCatchers(7, ORIGIN);
     expect(scripting.executeScript).not.toHaveBeenCalled();
   });
 });

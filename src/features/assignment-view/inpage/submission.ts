@@ -51,14 +51,14 @@ import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
 import { sanitizeHtml } from '../../../shared/ui/sanitize';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { logFailure } from '../../../shared/platform/log';
-import type {
-  AssignmentDetailsMessage,
-  AssignmentDetailsReply,
-  RubricReadMessage,
+import {
+  isDetailsReply,
+  type AssignmentDetailsMessage,
+  type AssignmentDetailsReply,
+  type RubricReadMessage,
 } from '../protocol';
 import { renderInstructions } from '../render';
 import { COMMENTS_CSS, findComments, takeComments } from './comments';
-import { isDetailsReply } from './details';
 import type { FeedbackRequest } from './feedbackPane';
 import { fitInstructions, toggleInstructions } from './instructions';
 import {
@@ -72,7 +72,7 @@ import {
   whenRubricOnScreen,
   whenRubricReady,
 } from './rubric';
-import { OWN, actionTarget, rightColumn } from './own';
+import { OWN, actionTarget, realContainer, rightColumn } from './own';
 import { createBox, type Box } from './submissionBox';
 import { filesFromDetails, readFrame, type FrameFile } from './submissionFrame';
 import { PANEL_CSS, SUBMISSION_CSS } from './styles';
@@ -91,6 +91,8 @@ const SHOWN_TYPES: ReadonlySet<string | null | undefined> = new Set([
 
 /** How long a frame may stay blank, and how long the report cells of the frame are watched. */
 const FRAME_WAIT_MS = 10_000;
+/** How long the view waits before it asks again after a read that failed. It asks once. */
+const RETRY_MS = 2000;
 
 type Mode = 'replace' | 'above';
 
@@ -158,7 +160,7 @@ function node(doc: Document, tag: string, className: string, text?: string): HTM
 
 /** The anchors that the server renders. Both columns, the frame and the right column must be there. */
 function findAnchors(doc: Document): Anchors | null {
-  const container = doc.querySelector('.submission-details-container');
+  const container = realContainer(doc);
   const children = [...(container?.children ?? [])];
   const box = children.find((child) => child.classList.contains('submission-details-frame'));
   const comments = children.find((child) =>
@@ -603,7 +605,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     if (readFrame(anchors.frame, origin, pathname).state === 'ready') watchReports();
   }
 
-  async function start(): Promise<void> {
+  async function start(retry = true): Promise<void> {
     const token = ++generation;
     if (!findAnchors(doc)) return;
     let reply: unknown;
@@ -613,8 +615,18 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
         courseId: options.courseId,
         assignmentId: options.assignmentId,
       });
+      // The router answers every error of the owner with `undefined`, which Chrome delivers as
+      // `null` and Firefox as `undefined`. Either one is a failed read, not a refusal.
+      if (reply == null) throw new Error('The background gave no reply');
     } catch (error) {
       logFailure('submission details', error);
+      // A read that failed gets one more try. A switch-off, a new start or a change of student
+      // in the meantime changes the generation and ends it.
+      if (retry) {
+        setTimeout(() => {
+          if (token === generation && !stopped && active) void start(false);
+        }, RETRY_MS);
+      }
       return;
     }
     if (token !== generation || stopped || !active) return;

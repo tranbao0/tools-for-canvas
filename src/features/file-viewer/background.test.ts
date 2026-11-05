@@ -411,6 +411,73 @@ describe('files list frame', () => {
     }
     expect(host.openInTop).not.toHaveBeenCalled();
   });
+  describe('in the assignment pane of the Assignments list', () => {
+    const LIST = 'https://school.edu/courses/2/assignments';
+    const pane = {
+      url: 'https://school.edu/courses/2/assignments/3?content_only=1',
+      frameId: 5,
+      tab: { id: 7 },
+    };
+
+    it('passes the file of a frame with a page of the course and content_only=1 to the top frame', async () => {
+      const { host } = setup();
+      vi.mocked(host.tabUrl).mockResolvedValue(LIST);
+      expect(await routeViewerMessage(open, pane, host)).toEqual({ opened: true });
+      expect(host.openInTop).toHaveBeenCalledWith(7, '42');
+      const discussion = {
+        ...pane,
+        url: 'https://school.edu/courses/2/discussion_topics/9?content_only=1',
+      };
+      expect(await routeViewerMessage(open, discussion, host)).toEqual({ opened: true });
+    });
+    it.each([
+      [
+        'a page without content_only',
+        { ...pane, url: 'https://school.edu/courses/2/assignments/3' },
+      ],
+      [
+        'a page of another course',
+        { ...pane, url: 'https://school.edu/courses/9/assignments/3?content_only=1' },
+      ],
+      [
+        'a page of another site',
+        { ...pane, url: 'https://other.edu/courses/2/assignments/3?content_only=1' },
+      ],
+      ['the top frame', { ...pane, frameId: 0 }],
+    ])('refuses %s', async (_name, sender) => {
+      const { host } = setup();
+      vi.mocked(host.tabUrl).mockResolvedValue(LIST);
+      await expect(routeViewerMessage(open, sender, host)).rejects.toThrow();
+      expect(host.openInTop).not.toHaveBeenCalled();
+    });
+    it('refuses a frame when the top frame shows another course page, and the assignment pane frame under a submission page', async () => {
+      const { host } = setup();
+      for (const url of [
+        'https://school.edu/courses/2/modules',
+        'https://school.edu/courses/2/assignments/3',
+        'https://school.edu/courses/2/assignments/3?content_only=1',
+      ]) {
+        vi.mocked(host.tabUrl).mockResolvedValue(url);
+        await expect(routeViewerMessage(open, pane, host)).rejects.toThrow('submission page');
+      }
+      vi.mocked(host.tabUrl).mockResolvedValue(
+        'https://school.edu/courses/2/assignments/3/submissions/4',
+      );
+      await expect(routeViewerMessage(open, pane, host)).rejects.toThrow();
+      expect(host.openInTop).not.toHaveBeenCalled();
+    });
+    it('injects the catcher for the top frame of the list, and for no other course page', async () => {
+      const { host, sender } = setup();
+      vi.mocked(host.tabUrl).mockResolvedValue(LIST);
+      await routeViewerMessage({ type: 'viewer:inject-frames' }, { ...sender, url: LIST }, host);
+      expect(host.injectFrames).toHaveBeenCalledWith(7, 'https://school.edu');
+      vi.mocked(host.tabUrl).mockResolvedValue('https://school.edu/courses/2/assignments/3');
+      await expect(
+        routeViewerMessage({ type: 'viewer:inject-frames' }, { ...sender, url: LIST }, host),
+      ).rejects.toThrow('submission page');
+      expect(host.injectFrames).toHaveBeenCalledTimes(1);
+    });
+  });
   it('injects the catcher only for the top frame of a submission page of the saved Canvas', async () => {
     const { host, sender } = setup();
     const top = { ...sender, url: 'https://school.edu/courses/2/assignments/3/submissions/4' };

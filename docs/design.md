@@ -53,7 +53,7 @@ This extension has no account, no server of its own and no telemetry.
 | 23 | File access check | A read-only check that runs on the owner's live Canvas in test builds only, and answers the open questions for the file viewer |
 | 24 | Announcements in the weekly list | A Tasks and Announcements switch under the rings on the classic dashboard, List View, course home pages and the side panel, with a read mark that only an explicit student action writes |
 | 25 | File viewer | Files open in a docked, resizable pane with tabs beside Canvas (the weekly list dock steps aside while it is open); PDFs in a bundled PDF.js viewer that saves the page, other types in the browser's own players or an "Open in Canvas" card |
-| 26 | One assignment view | The Submission Details page of the student's own submission shows the instructions and the files in place of Canvas's files frame, with a feedback pane for View Feedback; the Assignments list rows expand in place, and Submit opens Canvas's own turn-in page in the docked pane |
+| 26 | One assignment view | The Submission Details page of the student's own submission shows the instructions and the files in place of Canvas's files frame, with a feedback pane for View Feedback; each row of the Assignments list has a Preview button that opens Canvas's own assignment page in the docked pane |
 
 ## Decisions
 
@@ -1417,6 +1417,8 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | Course order | `GET /api/v1/users/self/dashboard_positions` | Once per session |
 | Week items | `GET /api/v1/planner/items?start_date=...&end_date=...&per_page=100` | The parts of a view's range that the cache lacks, the days of the span first; the weeks before and after a shown view, ahead of time; the cached parts of the current-week range in each light and full round, in up to 3 chunks |
 | Assignment details | `GET /api/v1/courses/:id/assignments?assignment_ids[]=...&include[]=submission&per_page=100` | New planner items, after they show, per course with assignment items; the current-week items in each full round; a shown week's items after a full round |
+| Assignment (decision 26) | `GET /api/v1/courses/:id/assignments/:id` | The assignment pane shows an assignment, on each later read of the pane (each trusted load of a frame after the first, the assignment that the pane just left when it shows another, each assignment of its frames when it closes, every 20 seconds while it is open and the page is in view), and the Submission Details page loads |
+| Own submission (decision 26) | `GET /api/v1/courses/:id/assignments/:id/submissions/self` | With each assignment read above; alone, to learn the user of the submission, when an assignment page loads |
 | Teacher status names | `POST /api/graphql` with `customGradeStatusesConnection` for each course | Once per session, when a teacher status appears |
 | All assignments (planner turned off only) | `GET /api/v1/courses/:id/assignments?include[]=submission&per_page=100` | Instead of the planner, per course |
 | Undated work | `GET /api/v1/courses/:id/assignments?bucket=undated&...` | 5-minute timer, per course |
@@ -3040,7 +3042,7 @@ With the pane read alone, the default run of the test failed before the fix.
       A small file stays.
       A hidden tab pauses its media.
 
-11. **The files list of the submission details page.**
+11. **The files list of the submission details page, and the frame of the assignment pane.**
     - **The problem.**
       The page script runs only in the top frame (`frameIds: [0]`), and Canvas draws the student's file list in the frame `#preview_frame` (live facts).
       A click on a file there never reaches the page script, so the browser saves the file.
@@ -3052,6 +3054,38 @@ With the pane read alone, the default run of the test failed before the fix.
       A comment attachment is in the top frame, where the page script takes it.
       The catcher never takes one, because it passes only a file id, which the pane reads through the files API (`frameFileTarget`).
       The catcher stays off unless its own path is a submission details page and the top frame is of the same origin.
+    - **The frame of the assignment pane.**
+      The assignment pane of the Assignments list (decision 26, step 3) holds a Canvas page in a same-origin frame for each assignment that the student previewed, and a file link in any of them must open in the file pane too.
+      The catcher serves this frame as well, in a second mode.
+      - The mode needs all of these: the top frame is a same-origin Assignments list of a course (`/courses/:id/assignments`), the frame is a direct child of the top frame, its path is a page of the same course (`/courses/:id` or any path under it, with the ids compared as decimal global ids), and its address has `content_only=1`.
+        The pane loads its frame with that parameter, and it loads every other page of the course that the frame reaches (a graded discussion, a quiz or a page) with the parameter too (decision 26, "Frames").
+        A page that has the parameter but no course of the list, and a page of the course without the parameter, get no catcher.
+      - The catcher takes the links that the top frame takes, for a file id only (`paneFileTarget`): a plain `/files/:id`, a `?preview=:id` of the files page, and a submission route with `?download=:id`.
+        It never takes a comment attachment, a module item, a link of another origin, or a link with a `download` attribute except the student's own submission files in the Submission box (`catchesDownload`).
+        It reads the address that the browser resolved for the link, so a relative link means what it means in the page.
+        It keeps the trusted click, the same file id check and the repeat click of the submission mode.
+      - **Injection.**
+        The assignment view script of the top frame asks the background with `viewer:inject-frames` after each trusted `load` of the pane frame, except a load that starts a rewrite to `content_only=1`, and once when the File viewer switch goes on while a pane is open.
+        It asks one at a time, and for one more after it when a load came meanwhile, like the viewer script on a submission page.
+        The background answers when the top frame shows a submission details page or an Assignments list of the saved Canvas, and the File viewer switch is on.
+        The probe is the same, and it still returns only the origin and the path.
+        On a list, the catcher goes into the frames of the saved origin whose path is in the course of the list, named by their document ids where the browser has them.
+        The probe does not read the query, so the catcher checks its own address again, with `content_only=1`, the parent frame and the top frame, before it takes any click.
+      - **Forwarding.**
+        The background accepts `viewer:frame-open` from a child frame only when the top frame shows a submission page and the frame is a submission page, or the top frame shows an Assignments list and the address of the frame is a page of its course with `content_only=1`.
+        The reply, the file id check, and the message to the top frame are as before.
+      - **A frame inside the frame of the pane.**
+        The student can follow a link in the pane to a submission details page, which holds its own `#preview_frame`.
+        That frame is not a direct child of the top frame, so it gets the catcher in the submission mode.
+        The background refuses its message, because the top frame shows an Assignments list and the address of the frame is no page of the course with `content_only=1`.
+        The catcher then clicks the link again from script, and the browser follows the link.
+      - **The File viewer switch.**
+        Nothing is injected while the switch is off, and a catcher that is in a frame when the switch goes off finds no pane to open the file, so it clicks the link again from script and the browser follows the link.
+      - **Covering.**
+        A file that opens this way covers the assignment pane, which is only hidden, and closing the file gives the assignment pane back with its state.
+      - **Tests.**
+        `src/features/file-viewer/frame.pane.test.ts`, `model.pane.test.ts`, `background.test.ts` and `src/shared/platform/inject.test.ts` hold the unit tests.
+        `tests/e2e/assignment-view.spec.ts` clicks a file link in the pane of the assignment page and of a graded discussion, and `tests/firefox/assignments-preview.mjs` does it in real Firefox.
     - **Injection.**
       The page script of the top frame asks the background with `viewer:inject-frames`, once when it starts and again after each trusted `load` event of `iframe#preview_frame`, because each load is a new document.
       The viewer must be on, and the page must be a submission details page of the saved Canvas.
@@ -3174,11 +3208,11 @@ With the pane read alone, the default run of the test failed before the fix.
   On a profile that has no confirmed student yet, the viewer runs the shared `users/self` check with its existing limits before reading.
   The viewer binds that proof to the cookie, origin and generation without loading the weekly list.
 - **The frame catcher.**
-  - It is injected only into the same-origin child frames of the saved Canvas on a submission details page (item 11).
+  - It is injected only into the same-origin child frames of the saved Canvas on a submission details page, and into the frame of the assignment pane on the Assignments list (item 11).
     The probe that finds the frames runs in every frame of the tab, including frames of other sites such as video players and LTI tools, but it reads two strings and returns them.
     The catcher never runs in a frame of another origin.
   - A trusted click is required, so a script of the Canvas page cannot make the catcher open a file.
-  - The background accepts the forward only from a child frame whose URL is on the saved origin, in a tab whose top frame is on the saved origin, and it sends to the top frame of that tab only.
+  - The background accepts the forward only from a child frame whose URL is on the saved origin and that the page of the top frame serves, in a tab whose top frame is on the saved origin, and it sends to the top frame of that tab only.
     The page script of the top frame accepts the message only from the background.
   - The file id is the only data that crosses.
     It is a number that the page already shows in the link, and the pane reads the file with the same cookie rules as for any click.
@@ -3334,11 +3368,14 @@ So a student switches pages to read the instructions next to the feedback on a f
        Both switches work without a reload: the label and the click catcher change together (decision 25, item 6).
      - The own submission is known from one read: `GET /api/v1/courses/:id/assignments/:id/submissions/self` with no include.
        The box needs only the `user_id` of that record to compare it with the user in the file link.
-       So this page does not ask for the assignment record, the comments or the rubric, which the other pages read (item 8).
+       So this page does not ask for the assignment record, which the other pages read (item 8).
      - Canvas's other sidebar links stay as they are.
    - **Assignments list (`/courses/:id/assignments`).**
-     - Each row has an expand button that opens the score, instructions, rubric, feedback and files in place, and "Submit" opens Canvas's own turn-in page in the docked pane (steps 2 and 3 below).
-     - A later topic will decide what to do with these rows.
+     - Each row keeps Canvas's own markup and gets a "Preview" button as the last child of its layout.
+       The button opens Canvas's own assignment page in the docked pane (steps 2 and 3 below).
+       No row opens in place, and no row has a Submit button, because Canvas's own "Start Assignment" or "Re-submit" button works inside the pane.
+     - The owner approved a mockup of this on 2026-11-05.
+       The owner's words: the control of the row opens the panel instead of the dropdown, the dropdown goes, the control must not look like an arrow, and it helps students check which assignment is which, because teachers name them badly.
    - **Grades list (`/courses/:id/grades`).**
      - Canvas's own look.
 2. **What was removed and why.**
@@ -3347,6 +3384,9 @@ So a student switches pages to read the instructions next to the feedback on a f
      The expand buttons and rows there are gone.
    - The "Your submission" panel of the classic assignment page showed a second rubric next to Canvas's own.
      It is gone.
+   - The owner decided on 2026-11-05 that the rows of the Assignments list no longer expand in place.
+     The expand arrow, the details row, its cache and reads, the chips and the Submit and Re-submit button are gone.
+     The pane that shows Canvas's own assignment page does what they did, with Canvas's own data and buttons.
 3. **Only for the signed-in student's own submission.**
    - The page is the own submission when the user in the path is the user of the record that the background reads with `submissions/self`.
      The two ids are compared as decimal global ids with BigInt, like `normalizeCanvasId`: `s~l` becomes `s * 10^13 + l`.
@@ -3486,15 +3526,18 @@ So a student switches pages to read the instructions next to the feedback on a f
    - On the Submission Details page, the "File viewer" switch changes only the label of the file links in the box ("View NAME" or "Download NAME"), and it does not turn the view off.
 
 8. **Data.**
-   - The background reads one assignment with `GET /api/v1/courses/:id/assignments/:id?include[]=submission&include[]=can_submit` and the student's own submission with `GET /api/v1/courses/:id/assignments/:id/submissions/self?include[]=submission_comments&include[]=rubric_assessment`.
-   - The rubric comes with the assignment record.
-   - It reads when a row opens or the Submission Details page loads, and keeps the result for the page view.
+   - The background reads one assignment with `GET /api/v1/courses/:id/assignments/:id` and the student's own submission with `GET /api/v1/courses/:id/assignments/:id/submissions/self`, both with no include.
+   - The assignment request asks for no `include[]=submission`: the view takes the submission from the second request, and the included one would only add the grade.
+   - The reply keeps only what the Submission Details page and the refresh of the pane read (see "Message" below).
+    The score, the rubric, the comments and the due dates are not in it, because Canvas shows them itself.
+   - It reads when the assignment pane shows an assignment, on each later read of the pane (step 3 below), and when the Submission Details page loads.
+    The first read of an assignment in the pane is the baseline, and the pane keeps only the last good reply of each assignment, to compare the next one with it.
    - The assignment page reads only the own submission with no include, to learn its user (item 1).
    - A comparison of a page id with an API id converts both to decimal global strings with BigInt: `s~l` becomes `s * 10^13 + l`.
    - A 404 for the own submission returns `no_submission_access`; the Submission Details page then stays as Canvas drew it.
    - Every read follows the cookie binding of decision 11, so a reply never crosses students.
 
-**The Assignments list rows (steps 2 and 3, as built):**
+**The Assignments list (steps 2 and 3, as built):**
 
 - **Script.**
   - The page script is `assignment-view.js`, which is its own small entry point like `dashboard.js`.
@@ -3510,7 +3553,8 @@ So a student switches pages to read the instructions next to the feedback on a f
     A description or a comment of another author can hold such marks, and the removal never reaches it.
     A holder of Canvas's nodes is given back only when it has `data-av-own` and is a direct child of a link in the box.
   - The script follows the switch, the saved address and the Theme setting through the page channel.
-  - Turning the switch off removes every control at once and forgets the loaded details.
+  - Turning the switch off removes every control and mark at once and forgets the baselines of the pane.
+    An open assignment pane stays, with its unsent work.
   - Turning the switch on adds the controls on an open page without a reload.
 - **Message.**
   - `assignment:details { courseId, assignmentId }` has strict Canvas id checks (`isAssignmentDetailsMessage`).
@@ -3520,34 +3564,35 @@ So a student switches pages to read the instructions next to the feedback on a f
   - Both requests run inside one read under those rules, so the reply is dropped when the cookie changes during them.
   - A cookie that is not confirmed yet waits for one check (`viewerConfirm`) and the read runs once more.
   - The background keeps only the fields of the view, with a limit on every text, in `projectAssignmentView`.
+    For the assignment, these are the id, the description (the instructions) and the submission types.
+    For the submission, these are the user, the attempt, the time, the workflow state, the excused and late marks, the type, the text, the address and the files with their sizes.
   - The reply holds the details and the time zone of the Canvas profile.
-  - The Submission Details page uses the same message and reply.
-    The projection keeps the size of each file and, for the submission, its type, text and address, with the same limits.
+  - The Submission Details page and the Submission box of the assignment page try a failed read once more after 2 seconds.
+    A failed read is a message that the messaging rejects, or a reply of `null` or `undefined`, because the data router answers every error of the owner with `undefined`, which Chrome delivers as `null` and Firefox as `undefined`.
+    A refusal (`no_submission_access`) is no failed read and gets no second try.
+  - The Submission Details page uses the same message and reply, and so does the refresh of the pane, which compares `submitted_at`, `workflow_state` and `attempt`.
 - **Rows.**
-  - A row counts when it is `div.ig-row` with the id `assignment_<assignment id>` and a title link `a.ig-title` to the same course and assignment on the saved Canvas.
-  - The button is the first child of the `.ig-info` block.
-  - It has `aria-expanded`, `aria-controls` and the label "Show details for <title>".
-  - The details row follows the assignment row.
-  - Several rows may be open, and closing a row hides it, so it opens again from memory.
-  - The reply is cached for the page view, one request for each assignment at a time.
-  - A failed request is not cached, and the error state has Retry.
-  - One observer adds the button to a row that Canvas draws late, and ignores its own changes.
-- **Content.**
-  - The panel is in an open shadow root with the Canvas look: Lato, the Canvas colors and the InstUI chips and buttons.
-  - The Theme setting decides the theme, and with Automatic the background of the Canvas page does, read each time a panel opens.
-  - The top part shows the due date and the score in the Canvas time zone, and the chips of decision 7.
-  - The chips use the rules and the labels of the weekly list (`chips.ts`).
-    The names of teacher statuses are not read here, so a teacher status shows as "Teacher status".
-    A Past due chip shows for every open assignment past its date, because the Assignments list shows past work.
-  - The instructions are sanitized, cut to about 10 lines with a fade, and have "Show more" only when text is cut.
-  - The rubric marks the rating of the student and shows the points, unless the rubric hides them.
-  - The comments come newest first, and comment text goes through the sanitizer.
-  - "Your files" lists the files that the student handed in, and "Open assignment" is a link to the Canvas page.
+  - A row counts when it is `div.ig-row` with the id `assignment_<assignment id>`, a layout `.ig-row__layout`, and a title link `a.ig-title` to the same course and assignment on the saved Canvas.
+  - The button is the last child of `.ig-row__layout`.
+    It has the text "Preview", the label "Preview <title>" and `aria-pressed`.
+    The title keeps its link to the assignment page.
+  - The look follows the approved mockup: 30 px high, a 1 px border of #c7cdd1, a 4 px radius, a white background, 13 px text, and a 16 px side panel icon before the text.
+    On a row under the mouse the border and the text take the link color (`--ic-link-color`), and the hover background of Canvas stays.
+    The row of the assignment that the pane shows has the background #e0ebf5 and a 3 px bar of the brand color (`--ic-brand-primary`) at its left edge, made with an inset shadow.
+    Its button is filled with the brand color, has white text, and has the right part of its icon filled.
+  - The marks are the attribute `data-av-open` on the row, and `aria-pressed` on the button.
+    They show the assignment that the pane shows, also after the close button of the pane, and after Canvas draws the rows again.
+    A pane that a file pane covers shows no row, so the click on its row brings it back over the file pane.
+  - A click on Preview needs to be trusted.
+    It shows the frame of that assignment, or makes it, when the pane shows another assignment or none, and closes the pane and removes every frame when the pane shows this one (step 3).
+  - One observer adds the button to a row that Canvas draws late or draws again, keeps the button last in its layout, and ignores its own changes.
+  - A row in a copy, import or migration state has no layout and no title link, and gets no button.
 - **Files.**
   - A submitted file links as `/courses/:id/assignments/:id/submissions/:user?download=:file`, without a `download` attribute, so the pane matcher of decision 25 takes it.
   - The click path is the one of the page script of the pane.
     A click inside the open shadow root reaches the page as a click on the host, so the script reads the real element from the event path for a host with the attribute `data-weekrow-panel`, and for no other host.
-  - A comment attachment opens in the pane through its submission route.
+    The Submission box of the Submission Details page is such a host.
+  - A comment attachment opens in the pane through its submission route, from the comments of the Submission Details page.
   - The error card of every file keeps a Download button, so a file that fails in the pane can still be saved.
   - A comment attachment has no "Open in Canvas" there, because it has no Canvas page (Ticket F2b).
 - **Settings.** "One assignment view" is in the tools settings, on by default, in the same three places as the other settings.
@@ -3833,9 +3878,9 @@ These items need a live check or an outside answer.
     The real files frame, the signed session address, and whether DocViewer lets the feedback pane frame it are known from source only.
     The text entry and URL data come from the `submissions/self` record, not from the page.
     The live checklist of decision 26 has the steps.
-17. The expand rows of the Assignments list have run only against the fixture.
-    The real row markup, which Backbone draws again, and the field shapes of the assignment and submission records are known from canvas-lms source only.
-    The text of a comment goes through the sanitizer, with line breaks kept, and it is not known whether Canvas escapes angle brackets in that field.
+17. The Preview buttons and the assignment pane of the Assignments list have run only against the fixture and the fake Canvas.
+    The real row markup, which Backbone draws again, and the pages that Canvas shows in the pane are known from canvas-lms source only.
+    The live checklist has the steps.
 
 ## Build order
 
@@ -3881,26 +3926,38 @@ These items need a live check or an outside answer.
 
 ### Decision 26, step 2 (built)
 
-The Assignments list at `/courses/:id/assignments` has the expand buttons, panels and cache.
-The observer batches redraws and restores open panels by assignment id.
+The Assignments list at `/courses/:id/assignments` has a Preview button in each row.
+The observer adds the button to each row that has none, and restores the mark of the open row after Canvas draws the rows again.
 The pinned Canvas source is `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
+`ui/features/assignment_index/jst/AssignmentGroupListItem.handlebars` defines `div.assignment_group` with `div.assignment-list` and `ul.collectionViewItems.ig-list`, and its view makes `li.item-group-condensed`.
 `ui/features/assignment_index/backbone/views/AssignmentListItemView.jsx` sets the list item tag and imports the template.
 `ui/features/assignment_index/jst/AssignmentListItem.handlebars` defines `div.ig-row#assignment_<id>`, `.ig-row__layout`, `.ig-info` and `a.ig-title` with `href="{{htmlUrl}}"`.
 This row uses Backbone and Handlebars at that commit.
-The extension preserves the title link and all Canvas controls.
-The Assignments fixture follows this structure and tests replacement of the rows.
+The extension preserves the title link and all Canvas controls, and adds only the button at the end of the layout and the marks of the open row.
+The Assignments fixture follows this structure and the production rules of `common.css` for the list (`.ig-list .ig-row:hover`, `.ig-info`, `.ig-details` and the condensed group), and tests that the buttons come back after the rows are drawn again.
 File paths accept plain and sharded ids with strict checks on both parts.
 
 ### Decision 26, step 3 (built)
 
-Submit and Re-submit open the Canvas assignment in a docked pane.
+A click on Preview opens Canvas's own assignment page in a docked pane.
 
+- **Click.**
+  - Only a trusted click on a Preview button counts.
+  - With no pane, the click opens the pane with a new frame of the assignment of the row.
+    A pane that the close button or this click closed keeps no frame, so the next click starts fresh, as a new tab does.
+  - With a pane that shows another assignment, the click shows the frame of the assignment of the row as it was, or makes the frame when the assignment has none, and hides the frame that showed.
+  - With a pane that shows this assignment, the click closes the pane, as the close button does.
+  - The marks of the row (decision 26, "Rows") follow what the pane shows.
+    While a file pane covers the pane, the pane shows no assignment, so no row has the marks.
+    A click on Preview then shows the pane over the file pane, whatever row it is.
 - **Host.**
-  - The turn-in has its own host, owned by the assignment view script (`assignment-view.js`), so it works while the File viewer switch is off.
+  - The pane has its own host, owned by the assignment view script (`assignment-view.js`), so it works while the File viewer switch is off.
+    The id of the host is `tools-turn-in`, from the first name of the pane, because the cleanup of a dead copy finds the host by it.
   - The host is not the file pane host.
     A frame of the Canvas origin can reach the closed shadow root that holds it, through `window.frameElement.getRootNode()`.
     The closed root of the file pane therefore holds only extension content.
-    Every listener in the turn-in root accepts only trusted events.
+    Every listener in the pane root accepts only trusted events.
+  - The region is named "Assignment".
   - Both panes, and the weekly list dock of decision 4, use one dock module (`src/features/file-viewer/dock.ts`): the position, the width, the resize handle and the `html` padding-right rule.
     The ids that the stale cleanup knows are the hosts `tools-file-viewer`, `tools-turn-in`, `tools-feedback` and `tools-weekly`.
     The tab of the minimized weekly list (`tools-weekly-tab`) holds 38 px of room with the same lease, so the stale cleanup knows its id as well, and the cleanup of the weekly dock removes it with the dock.
@@ -3909,50 +3966,77 @@ Submit and Re-submit open the Canvas assignment in a docked pane.
     The first pane that takes room records the inline padding, and the last pane that gives room back restores it exactly.
     The tab of the weekly list is a holder of the lease too (`leaseRoom`).
     A file pane script reports to the dock module when it has decided whether a pane opens (`reportFilePane`), so the weekly dock can wait for it.
-- **Frame.**
-  - The frame is `/courses/:c/assignments/:a?content_only=1` on the page origin, with validated ids.
-    The frame receives no extension channel, secret or port.
-  - The script never reads the DOM of the frame.
+- **Frames.**
+  - The pane keeps one frame for each assignment that the student previewed since the pane opened, in one wrapper, and shows one at a time.
+    A frame is `/courses/:c/assignments/:a?content_only=1` on the page origin, with validated ids.
+    A frame receives no extension channel, secret or port.
+  - A frame never goes to another assignment.
+    Three review rounds showed why: a frame that goes to another page can make Canvas ask whether to leave, a declined question fires no event, and no rule on loads, addresses or key presses can tell what the frame shows afterwards.
+    Each rule that was tried lost the work of the student or showed the title of the wrong assignment.
+    With one frame for each assignment, a Preview click never makes Canvas ask, and the title, "Open in new tab", the frame title, the pressed row and the poll always belong to the assignment of the frame that shows.
+    A redirect inside a frame, for example to a discussion or to a page of a group, changes nothing in the header, because the header belongs to the row.
+  - A frame that does not show has `display: none` on its own element.
+    The script never moves a frame in the DOM, because a moved frame reloads and loses its page, its scroll position and its typed work.
+    A Preview click on another row, on an assignment that has a frame, shows the frame as it was.
+  - The pane keeps at most 6 frames (`MAX_PREVIEW_FRAMES`), because each frame is a whole Canvas page with its own scripts and memory.
+    A seventh Preview click removes the frame that was shown longest ago.
+  - The frames sit in a white wrapper with the padding `0 8px 0 24px`.
+    So the text of the page does not touch the edge of the pane, and the scroll bar of the frame stays near the edge.
+  - The script never reads the DOM of a frame.
     On a load it reads only the address of the frame.
-    When the address is the same course assignment path without `content_only=1`, the frame loads the same address with `content_only=1` once.
-    The old submission view redirects to that address after a submission.
-    The load after that rewrite never rewrites again.
-  - Only a trusted click on Submit or Re-submit in the open row opens the pane.
+  - When the frame lands on a page of the same course on the saved origin without `content_only=1`, the frame loads that address with `content_only=1`, once.
+    The old submission view redirects to the plain assignment page after a submission.
+    A graded discussion, a quiz and a graded page redirect away from their assignment page to the page of the discussion, the quiz or the page, which has no parameter (`AssignmentsController#show`, `redirect_to` with `context_discussion_topic_url`, `context_quiz_url` and `context_wiki_page_url`).
+    The course and the path use the same strict id rules as before: a plain or a sharded id on both sides, compared as decimal global ids.
+    A page that is not of this course, or not on this origin, stays as it is, because "Open in new tab" is always in the bar.
+    The load after a rewrite never rewrites again.
+    The rewrite, the request for the file catcher after each trusted load, and the read after each trusted load but the first belong to the frame.
+    A frame gets its address before it joins the page, because Chromium fires a load for the blank page of a frame that joins with no address, and that load would use up the first load.
+    So one Preview makes one read, and a row that redirects makes one more, for the load after the slim rewrite.
+  - A load that a script of the page fires is not a load: only a trusted `load` event counts.
 - **Header.**
-  - The bar has the height of the tab row of the file pane, 47 px (44 px of tab and the 3 px of its underline), and the same 28 px close button with a 16 px icon.
+  - The bar has the height of the tab row of the file pane, 47 px (44 px of tab and the 3 px of its underline), a left padding of 24 px, a bold 14 px title with an ellipsis, and the same 28 px close button with a 16 px icon.
   - "Open in new tab" is a bordered button with an icon and no underline.
     It opens the assignment address without `content_only`.
 - **Unsent work.**
-  - Only the close button of the pane (a trusted click) and a change of student remove the frame.
-    Escape inside the frame does nothing.
-  - The pane shows while a turn-in is open and the file pane is not in view.
-    A file click opens the file pane as usual, and the turn-in host is only hidden.
-    When the file pane closes, the turn-in shows again with its state.
-  - Submit while a file pane is open shows the turn-in over the file pane, which is hidden and keeps its tabs.
-    The close button of the turn-in shows the file pane again.
-  - A Submit click on another assignment while a turn-in is open moves the same frame to that slim address, and never removes the frame.
-    Canvas can then ask whether to leave the page, and the student can say no.
-    The title, the "Open in new tab" link, the frame title, the slim target and the reads move to the new assignment only when the frame has loaded that page.
-    A cancelled question leaves everything on the first assignment, and the next Submit asks again.
-  - A page that removes the turn-in host closes the turn-in: the poll stops, the room is given back, and a file pane that it covered shows again.
-  - An extension update removes an open turn-in, as it removes every page control.
+  - Moving between rows keeps the frames, so a draft survives a move.
+  - The close button of the pane (a trusted click) and a trusted Preview click on the assignment that shows close the pane and remove every frame, with no question and no way to bring back a draft, as the close of one frame did before.
+    A frame that stays hidden plays sound with no control in view, can show the page of an earlier student after a sign-out in another tab, and stays failed once it failed.
+    So the next Preview click starts with new frames, as a closed tab does.
+    The room goes back to the page.
+    The frames go at once, and then the pane reads the assignment of each frame once, the shown one first, one read after the other through the joins of the "Refresh" item, so a submission in a hidden frame is not missed.
+    A change of student or a sign-out (`reset`) removes the frames too, and ends the reads that still wait.
+    The limit of 6 frames and a page that removes the pane host also remove frames.
+    Escape inside a frame does nothing.
+  - The pane shows while it is open and the file pane is not in view.
+    A file click, in the page or in a frame of the pane (decision 25, item 11), opens the file pane as usual, and the pane host is only hidden.
+    When the file pane closes, the pane shows again with the same frame.
+  - Preview while a file pane is open shows the pane over the file pane, which is hidden and keeps its tabs.
+    The close button of the pane shows the file pane again.
+    The page has the padding of the one pane that shows, and its own padding when none shows, after every order of these steps.
+  - A page that removes the pane host removes the pane and its frames: the poll stops, the room is given back, and a file pane that it covered shows again.
+  - An extension update removes an open pane, as it removes every page control.
   - Escape on the page closes the file pane only when the focus is inside the pane, and only for a trusted key.
-- **Label.**
-  The button says "Re-submit" only when the student really submitted: `submitted_at` is set, or the attempt is 1 or more.
-  Work that a teacher graded without a submission shows "Submit".
-  A graded discussion has no button: `AssignmentsController#show` redirects its assignment page to the discussion page, where the student answers.
+  - Turning the "One assignment view" switch off removes the buttons and the marks at once.
+    An open pane stays with its frames and their unsent work, and the buttons and the marks of the open row come back when the switch goes on.
 - **Refresh.**
-  - The new student view submits without a page load, so the details are read again on each trusted load of the frame after the first, when the pane closes, and every 20 seconds while the pane is open and the page is in view.
+  - The pane does not draw a row.
+    It reads the submission of the assignment that shows (`assignment:details`) when a frame is shown, on each trusted load of a frame after its first, when the pane closes (once for the assignment of each frame, as the "Unsent work" item says), and every 20 seconds while the pane is open and the page is in view.
+    The poll follows the assignment that shows.
+    The pane also reads the assignment that it just left when the student moves to another row, because the student may have submitted it and then moved on.
+    The first read of an assignment is the baseline, and the baselines stay per assignment.
+    The new student view submits without a page load, so the later reads find a change.
   - The reads join per assignment: at most one runs and at most one waits.
-  - The 20 second read goes on while a file pane covers the turn-in, and waits while the page is not in view.
+  - The 20 second read goes on while a file pane covers the pane, and waits while the page is not in view.
     After a failed read the next one waits twice as long, up to 5 minutes, and a good read starts over.
-  - A change in `submitted_at`, `workflow_state` or `attempt` draws the open rows again and sends `weekrow:refresh` with the reason `visible`.
+  - A change in `submitted_at`, `workflow_state` or `attempt` sends `weekrow:refresh` with the reason `visible`.
     That reason keeps the 60-second round limit and the planner backoff.
   - The data layer skips a `visible` refresh with no answer when a round ran in the last 60 seconds, such as the round of a page load.
     It names a time (`retryAt`) only for a full round that follows a light one.
     No existing reason defers a light round, so the view keeps its own timer, like the weekly list surface.
     It asks again at `retryAt` when the reply has one, and otherwise once more after 61 seconds, which the limit can no longer skip.
-  - Details of another student close the pane, as does the `viewer:reset` message that the background sends when it clears the data of a student.
+  - Details of another student remove the pane and every frame, as does the `viewer:reset` message that the background sends when it clears the data of a student.
+  - A read while the "One assignment view" switch is off does nothing.
 
 These source facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 `ApplicationController#set_layout_options` in `app/controllers/application_controller.rb` handles embedded and no_headers, not display=borderless.

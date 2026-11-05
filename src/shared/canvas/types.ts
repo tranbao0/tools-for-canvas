@@ -320,16 +320,13 @@ export interface CanvasClientOptions {
  */
 export interface CanvasApi {
   /**
-   * One assignment with `include[]=submission` and `include[]=can_submit`, for the one assignment
-   * view. The record is checked field by field by `projectAssignmentView`.
+   * One assignment with no include, so the record holds no submission and no grade, for the one
+   * assignment view. The record is checked field by field by `projectAssignmentView`.
    */
   getAssignmentRecord(courseId: string, assignmentId: string): Promise<Record<string, unknown>>;
-  /**
-   * The signed-in student's own submission with `include[]=submission_comments` and
-   * `include[]=rubric_assessment`.
-   */
+  /** The signed-in student's own submission, with no include, for the one assignment view. */
   getOwnSubmissionRecord(courseId: string, assignmentId: string): Promise<Record<string, unknown>>;
-  /** The same record with no include: its user, and nothing that the student wrote or was graded on. */
+  /** The same request, for the owner check of the assignment page, which reads only the user. */
   getOwnSubmissionUserRecord(
     courseId: string,
     assignmentId: string,

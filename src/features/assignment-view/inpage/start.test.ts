@@ -49,7 +49,7 @@ function fakeChannel(saved: string | null = ORIGIN, tools = DEFAULT_TOOLS_SETTIN
   };
 }
 
-const toggles = () => document.querySelectorAll('[data-av-toggle]');
+const toggles = () => document.querySelectorAll('[data-av-preview]');
 const options = (channel: Fake, extra: object = {}) => ({
   channel,
   origin: ORIGIN,
@@ -59,7 +59,7 @@ const options = (channel: Fake, extra: object = {}) => ({
 
 /** One list row for a course, with the absolute link that the row check reads. */
 function listOf(course: string): string {
-  return `<div class="ig-list"><div class="ig-row" id="assignment_101"><div class="ig-info"><a class="ig-title" href="${ORIGIN}/courses/${course}/assignments/101">Essay</a></div></div></div>`;
+  return `<div class="ig-list"><div class="ig-row" id="assignment_101"><div class="ig-row__layout"><div class="ig-info"><a class="ig-title" href="${ORIGIN}/courses/${course}/assignments/101">Essay</a></div></div></div><div class="ig-row" id="assignment_102"><div class="ig-row__layout"><div class="ig-info"><a class="ig-title" href="${ORIGIN}/courses/${course}/assignments/102">Reading</a></div></div></div></div>`;
 }
 
 beforeEach(() => {
@@ -76,7 +76,7 @@ describe('startAssignmentView', () => {
   ])('adds buttons on %s and removes them on stop', async (pathname, course) => {
     document.body.innerHTML = listOf(course!);
     const controller = await startAssignmentView(options(fakeChannel(), { pathname }));
-    expect(toggles()).toHaveLength(1);
+    expect(toggles()).toHaveLength(2);
     controller.stop();
     expect(toggles()).toHaveLength(0);
     expect(document.querySelector('[data-av-own]')).toBeNull();
@@ -99,7 +99,7 @@ describe('startAssignmentView', () => {
     await startAssignmentView(options(channel));
     expect(toggles()).toHaveLength(0);
     channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: true });
-    expect(toggles()).toHaveLength(1);
+    expect(toggles()).toHaveLength(2);
     channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
     expect(toggles()).toHaveLength(0);
   });
@@ -109,7 +109,7 @@ describe('startAssignmentView', () => {
     await startAssignmentView(options(channel));
     expect(toggles()).toHaveLength(0);
     channel.setOrigin(ORIGIN);
-    expect(toggles()).toHaveLength(1);
+    expect(toggles()).toHaveLength(2);
     channel.setOrigin(null);
     expect(toggles()).toHaveLength(0);
   });
@@ -117,7 +117,7 @@ describe('startAssignmentView', () => {
   it('stops when the signal aborts', async () => {
     const abort = new AbortController();
     await startAssignmentView(options(fakeChannel(), { signal: abort.signal }));
-    expect(toggles()).toHaveLength(1);
+    expect(toggles()).toHaveLength(2);
     abort.abort();
     expect(toggles()).toHaveLength(0);
   });
@@ -129,15 +129,228 @@ describe('startAssignmentView', () => {
     expect(toggles()).toHaveLength(0);
   });
 
-  it('follows the Theme setting for the panels', async () => {
-    const channel = fakeChannel();
-    await startAssignmentView(options(channel));
-    document.querySelector<HTMLButtonElement>('[data-av-toggle]')?.click();
-    await vi.advanceTimersByTimeAsync(5);
-    const host = document.querySelector('[data-av-details] [data-av-own]');
-    expect(host?.getAttribute('data-theme')).toBe('light');
-    channel.setSettings({ ...DEFAULT_SETTINGS, theme: 'dark' });
-    expect(host?.getAttribute('data-theme')).toBe('dark');
+  describe('the Preview buttons and the pane', () => {
+    const preview = (id: string) =>
+      document.querySelector<HTMLButtonElement>(`#assignment_${id} [data-av-preview]`)!;
+    const host = () => document.getElementById('tools-turn-in');
+    /** A click that the student makes: the event is trusted. */
+    function press(button: HTMLElement): void {
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'isTrusted', { value: true });
+      button.dispatchEvent(event);
+    }
+    const details = (id: string, submittedAt: string | null) => ({
+      details: {
+        assignment: { id, description: null },
+        submission: {
+          user_id: '42',
+          submitted_at: submittedAt,
+          workflow_state: submittedAt === null ? 'unsubmitted' : 'submitted',
+        },
+      },
+      timeZone: 'UTC',
+    });
+
+    beforeEach(() => {
+      // happy-dom writes a line to stderr for each iframe that it does not load.
+      const write = process.stderr.write.bind(process.stderr) as (chunk: unknown) => boolean;
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) =>
+        String(chunk).includes('Iframe page loading is disabled') ? true : write(chunk),
+      );
+      document.documentElement.removeAttribute('style');
+    });
+
+    it('opens the pane on a trusted click, marks the row, and hides it on a click on the same row', async () => {
+      const channel = fakeChannel();
+      const controller = await startAssignmentView(options(channel));
+      preview('101').click();
+      expect(host()).toBeNull();
+      press(preview('101'));
+      expect(host()).not.toBeNull();
+      expect(preview('101').getAttribute('aria-pressed')).toBe('true');
+      expect(document.getElementById('assignment_101')?.hasAttribute('data-av-open')).toBe(true);
+      press(preview('101'));
+      // The pane and its frames go, and the room goes back.
+      expect(host()).toBeNull();
+      expect(preview('101').getAttribute('aria-pressed')).toBe('false');
+      expect(document.querySelector('[data-av-open]')).toBeNull();
+      press(preview('101'));
+      expect(host()).not.toBeNull();
+      expect(preview('101').getAttribute('aria-pressed')).toBe('true');
+      controller.stop();
+    });
+
+    it('shows the frame of another row at once, and moves the mark to that row', async () => {
+      const channel = fakeChannel();
+      const controller = await startAssignmentView(options(channel));
+      press(preview('101'));
+      const first = host();
+      press(preview('102'));
+      expect(host()).toBe(first);
+      expect(preview('101').getAttribute('aria-pressed')).toBe('false');
+      expect(preview('102').getAttribute('aria-pressed')).toBe('true');
+      press(preview('101'));
+      expect(preview('101').getAttribute('aria-pressed')).toBe('true');
+      expect(preview('102').getAttribute('aria-pressed')).toBe('false');
+      controller.stop();
+    });
+
+    it('reads the submission at the start and asks for a refresh of the list when it changed', async () => {
+      const channel = fakeChannel();
+      let submitted: string | null = null;
+      vi.mocked(channel.send).mockImplementation(async (message) =>
+        message.type === 'assignment:details' ? details('101', submitted) : undefined,
+      );
+      const controller = await startAssignmentView(options(channel));
+      press(preview('101'));
+      await vi.advanceTimersByTimeAsync(5);
+      expect(channel.send).toHaveBeenCalledWith({
+        type: 'assignment:details',
+        courseId: '12',
+        assignmentId: '101',
+      });
+      expect(channel.send).not.toHaveBeenCalledWith({ type: 'weekrow:refresh', reason: 'visible' });
+      submitted = '2026-11-02T12:00:00Z';
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(channel.send).toHaveBeenCalledWith({ type: 'weekrow:refresh', reason: 'visible' });
+      controller.stop();
+    });
+
+    it('closes the pane when the details are the submission of another student', async () => {
+      const channel = fakeChannel();
+      let user = '42';
+      vi.mocked(channel.send).mockImplementation(async (message) => {
+        if (message.type !== 'assignment:details') return undefined;
+        const reply = details('101', null);
+        reply.details.submission.user_id = user;
+        return reply;
+      });
+      const controller = await startAssignmentView(options(channel));
+      press(preview('101'));
+      await vi.advanceTimersByTimeAsync(5);
+      user = '43';
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(host()).toBeNull();
+      expect(document.querySelector('[data-av-open]')).toBeNull();
+      controller.stop();
+    });
+
+    it('closes the pane when the student changes, and keeps it when the switch goes off', async () => {
+      const channel = fakeChannel();
+      let reset: () => void = () => undefined;
+      const controller = await startAssignmentView(
+        options(channel, {
+          onStudentReset: (listener: () => void) => {
+            reset = listener;
+            return () => undefined;
+          },
+        }),
+      );
+      press(preview('101'));
+      channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+      // The buttons and the mark go at once, and the open pane stays with its unsent work.
+      expect(toggles()).toHaveLength(0);
+      expect(document.querySelector('[data-av-open]')).toBeNull();
+      expect(host()).not.toBeNull();
+      channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: true });
+      expect(preview('101').getAttribute('aria-pressed')).toBe('true');
+      reset();
+      expect(host()).toBeNull();
+      expect(document.querySelector('[data-av-open]')).toBeNull();
+      controller.stop();
+    });
+
+    it('keeps the pane that the next student opens on the same assignment', async () => {
+      const channel = fakeChannel();
+      let user = '42';
+      vi.mocked(channel.send).mockImplementation(async (message) => {
+        if (message.type !== 'assignment:details') return undefined;
+        const reply = details('101', null);
+        reply.details.submission.user_id = user;
+        return reply;
+      });
+      let reset: () => void = () => undefined;
+      const controller = await startAssignmentView(
+        options(channel, {
+          onStudentReset: (listener: () => void) => {
+            reset = listener;
+            return () => undefined;
+          },
+        }),
+      );
+      press(preview('101'));
+      await vi.advanceTimersByTimeAsync(5);
+      // The student switched. The pane closes, and the next student previews the same assignment.
+      user = '43';
+      reset();
+      expect(host()).toBeNull();
+      press(preview('101'));
+      await vi.advanceTimersByTimeAsync(5);
+      expect(host()).not.toBeNull();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(host()).not.toBeNull();
+      controller.stop();
+    });
+
+    it('forgets the baselines when the switch goes off, and takes new ones when it goes on', async () => {
+      const channel = fakeChannel();
+      let submitted: string | null = null;
+      vi.mocked(channel.send).mockImplementation(async (message) =>
+        message.type === 'assignment:details' ? details('101', submitted) : undefined,
+      );
+      const controller = await startAssignmentView(options(channel));
+      press(preview('101'));
+      await vi.advanceTimersByTimeAsync(5);
+      channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+      submitted = '2026-11-02T12:00:00Z';
+      await vi.advanceTimersByTimeAsync(20_000);
+      channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: true });
+      // The first read after the switch is a baseline: it compares with nothing, and asks for no
+      // refresh.
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(channel.send).not.toHaveBeenCalledWith({ type: 'weekrow:refresh', reason: 'visible' });
+      controller.stop();
+    });
+
+    it('asks for the file catcher after each load of the frame, only while the File viewer switch is on', async () => {
+      const channel = fakeChannel();
+      const requestFrameCatcher = vi.fn(async () => ({ ok: true }));
+      const frames: HTMLIFrameElement[] = [];
+      const create = document.createElement.bind(document);
+      vi.spyOn(document, 'createElement').mockImplementation(((tag: string, o?: never) => {
+        const made = create(tag, o);
+        if (tag === 'iframe') frames.push(made as HTMLIFrameElement);
+        return made;
+      }) as typeof document.createElement);
+      const controller = await startAssignmentView(options(channel, { requestFrameCatcher }));
+      press(preview('101'));
+      Object.defineProperty(frames[0]!, 'contentWindow', {
+        value: { location: { href: `${ORIGIN}/courses/12/assignments/101?content_only=1` } },
+        configurable: true,
+      });
+      const load = () => {
+        const event = new Event('load');
+        Object.defineProperty(event, 'isTrusted', { value: true });
+        frames[0]!.dispatchEvent(event);
+      };
+      load();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(requestFrameCatcher).toHaveBeenCalledTimes(1);
+      // The switch goes on while the pane is open: the catcher is asked for again.
+      channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+      load();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(requestFrameCatcher).toHaveBeenCalledTimes(1);
+      channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: true });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(requestFrameCatcher).toHaveBeenCalledTimes(2);
+      // A width save is a tools change with the switch as it was: no request.
+      channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: true, fileViewerWidth: 555 });
+      channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: true, fileViewerWidth: 560 });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(requestFrameCatcher).toHaveBeenCalledTimes(2);
+      controller.stop();
+    });
   });
 
   it('listens for a student change while it runs, and stops listening on stop', async () => {
@@ -172,15 +385,10 @@ describe('on a Submission Details page', () => {
       details: {
         assignment: {
           id: '101',
-          name: 'Essay',
           description: '<p>Text</p>',
-          due_at: null,
-          points_possible: 1,
         },
         submission: {
           user_id: '42',
-          score: null,
-          grade: null,
           submission_type: 'online_upload',
           attachments: [{ id: '501', display_name: 'essay.pdf', size: 2048 }],
         },
@@ -217,12 +425,9 @@ describe('on a Submission Details page', () => {
       details: {
         assignment: {
           id: '101',
-          name: 'Essay',
           description: '<p>Text</p>',
-          due_at: null,
-          points_possible: 1,
         },
-        submission: { user_id: '42', score: null, grade: null, submission_type: null },
+        submission: { user_id: '42', submission_type: null },
       },
       timeZone: 'UTC',
     });

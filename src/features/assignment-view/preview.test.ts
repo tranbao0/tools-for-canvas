@@ -6,58 +6,21 @@ import {
   nextPollDelay,
   slimAddress,
   submissionChanged,
-  submitLabel,
-  turnInUrl,
-} from './turnIn';
+  previewUrl,
+} from './preview';
 
 const ORIGIN = 'https://canvas.test';
 
-describe('turn-in', () => {
-  it('shows the action only when Canvas permits submission', () => {
-    const details = structuredClone(ASSIGNMENT_DETAILS);
-    details.assignment.can_submit = false;
-    expect(submitLabel(details)).toBeNull();
-    details.assignment.can_submit = true;
-    details.submission = { user_id: '42', score: null, grade: null, workflow_state: 'unsubmitted' };
-    expect(submitLabel(details)).toBe('Submit');
-    details.submission.attempt = 1;
-    expect(submitLabel(details)).toBe('Re-submit');
-  });
-  it('has no turn-in for a graded discussion', () => {
-    const details = structuredClone(ASSIGNMENT_DETAILS);
-    details.assignment.can_submit = true;
-    details.assignment.submission_types = ['discussion_topic'];
-    expect(submitLabel(details)).toBeNull();
-  });
-  it('says Submit for a work that a teacher graded without a submission', () => {
-    const details = structuredClone(ASSIGNMENT_DETAILS);
-    details.assignment.can_submit = true;
-    details.submission = {
-      user_id: '42',
-      score: 5,
-      grade: '5',
-      workflow_state: 'graded',
-      submitted_at: null,
-      attempt: null,
-    };
-    expect(submitLabel(details)).toBe('Submit');
-    details.submission.attempt = 0;
-    expect(submitLabel(details)).toBe('Submit');
-    details.submission.submitted_at = '2026-11-02T12:00:00Z';
-    expect(submitLabel(details)).toBe('Re-submit');
-    details.submission.submitted_at = null;
-    details.submission.attempt = 1;
-    expect(submitLabel(details)).toBe('Re-submit');
-  });
+describe('the pane addresses', () => {
   it('builds only a Canvas assignment address from valid ids', () => {
-    expect(turnInUrl(ORIGIN, '12~34', '56')).toBe(
+    expect(previewUrl(ORIGIN, '12~34', '56')).toBe(
       'https://canvas.test/courses/12~34/assignments/56?content_only=1',
     );
     expect(assignmentPageUrl(ORIGIN, '12', '56')).toBe(
       'https://canvas.test/courses/12/assignments/56',
     );
-    expect(turnInUrl(ORIGIN, '../evil', '56')).toBeNull();
-    expect(turnInUrl(ORIGIN, '12', '56?evil')).toBeNull();
+    expect(previewUrl(ORIGIN, '../evil', '56')).toBeNull();
+    expect(previewUrl(ORIGIN, '12', '56?evil')).toBeNull();
     expect(assignmentPageUrl(ORIGIN, '12', '56?evil')).toBeNull();
   });
   it('refreshes only for a change in submission fields', () => {
@@ -70,12 +33,12 @@ describe('turn-in', () => {
     ]) {
       expect(submissionChanged(before, { ...before, ...change })).toBe(true);
     }
-    expect(submissionChanged(before, { ...before, score: 999 })).toBe(false);
+    expect(submissionChanged(before, { ...before, body: 'other' })).toBe(false);
   });
 });
 
 describe('slim address after a redirect', () => {
-  const slim = (location: string) => slimAddress(location, ORIGIN, '12', '101');
+  const slim = (location: string) => slimAddress(location, ORIGIN, '12');
   it('adds content_only and keeps the other parts', () => {
     expect(slim(`${ORIGIN}/courses/12/assignments/101`)).toBe(
       `${ORIGIN}/courses/12/assignments/101?content_only=1`,
@@ -87,25 +50,38 @@ describe('slim address after a redirect', () => {
       `${ORIGIN}/courses/12/assignments/101?content_only=1`,
     );
   });
+  it('adds content_only to the page that a graded discussion or quiz redirects to', () => {
+    expect(slim(`${ORIGIN}/courses/12/discussion_topics/9`)).toBe(
+      `${ORIGIN}/courses/12/discussion_topics/9?content_only=1`,
+    );
+    expect(slim(`${ORIGIN}/courses/12/quizzes/7`)).toBe(
+      `${ORIGIN}/courses/12/quizzes/7?content_only=1`,
+    );
+    expect(slim(`${ORIGIN}/courses/12/assignments/102`)).toBe(
+      `${ORIGIN}/courses/12/assignments/102?content_only=1`,
+    );
+    expect(slim(`${ORIGIN}/courses/12`)).toBe(`${ORIGIN}/courses/12?content_only=1`);
+  });
   it('leaves an address that has content_only=1', () => {
     expect(slim(`${ORIGIN}/courses/12/assignments/101?content_only=1`)).toBeNull();
-    expect(slim(`${ORIGIN}/courses/12/assignments/101?x=1&content_only=1`)).toBeNull();
+    expect(slim(`${ORIGIN}/courses/12/discussion_topics/9?x=1&content_only=1`)).toBeNull();
   });
-  it('rewrites no other path, course, assignment, origin or text', () => {
+  it('rewrites no page of another course, origin or text', () => {
     for (const other of [
-      `${ORIGIN}/courses/12/assignments/101/submissions/42`,
-      `${ORIGIN}/courses/12/assignments/102`,
       `${ORIGIN}/courses/13/assignments/101`,
-      `${ORIGIN}/courses/12/assignments/1011`,
-      `${ORIGIN}/courses/12/assignments`,
-      `${ORIGIN}/courses/12/files/101`,
+      `${ORIGIN}/courses/123/assignments/101`,
+      `${ORIGIN}/courses/12x/assignments/101`,
+      `${ORIGIN}/courses/012x`,
+      `${ORIGIN}/login/canvas`,
+      `${ORIGIN}/files/101`,
+      `${ORIGIN}/`,
       'https://other.test/courses/12/assignments/101',
       'about:blank',
       'not an address',
       '',
     ])
       expect(slim(other)).toBeNull();
-    expect(slimAddress(`${ORIGIN}/courses/12/assignments/101`, ORIGIN, '../x', '101')).toBeNull();
+    expect(slimAddress(`${ORIGIN}/courses/12/assignments/101`, ORIGIN, '../x')).toBeNull();
   });
 });
 
@@ -162,13 +138,11 @@ describe('poll delay', () => {
   });
 });
 
-it('keeps the turn-in frame slim across short and global shard ids', () => {
-  expect(
-    slimAddress(
-      ORIGIN + '/courses/20000000000012/assignments/20000000000101',
-      ORIGIN,
-      '2~12',
-      '2~101',
-    ),
-  ).toBe(ORIGIN + '/courses/20000000000012/assignments/20000000000101?content_only=1');
+it('keeps the pane frame slim across short and global shard ids', () => {
+  expect(slimAddress(ORIGIN + '/courses/20000000000012/discussion_topics/9', ORIGIN, '2~12')).toBe(
+    ORIGIN + '/courses/20000000000012/discussion_topics/9?content_only=1',
+  );
+  expect(slimAddress(ORIGIN + '/courses/2~12/quizzes/9', ORIGIN, '20000000000012')).toBe(
+    ORIGIN + '/courses/2~12/quizzes/9?content_only=1',
+  );
 });

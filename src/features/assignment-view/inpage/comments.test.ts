@@ -30,6 +30,17 @@ afterEach(() => {
 });
 
 describe('findComments', () => {
+  it('skips a forged container in the rubric text that stands before the real one', () => {
+    document
+      .getElementById('content')!
+      .insertAdjacentHTML(
+        'afterbegin',
+        '<div id="rubric_holder"><div class="submission-details-container"><div class="submission-details-comments">fake</div></div></div>',
+      );
+    expect(findComments(document)?.textContent).not.toBe('fake');
+    expect(findComments(document)?.querySelector('.comment_list')).not.toBeNull();
+  });
+
   it('finds the column that is a child of the container', () => {
     expect(findComments(document)?.className).toBe('submission-details-comments');
   });
@@ -124,6 +135,30 @@ describe('takeComments', () => {
       document.documentElement.removeAttribute('dir');
       document.documentElement.removeAttribute('lang');
     }
+  });
+
+  it('puts a stale column back in the real container, never in a forged one in the rubric text', () => {
+    const { column, wrapper } = take();
+    box().append(wrapper);
+    wrapper.id = COMMENTS_WRAPPER_ID;
+    box().innerHTML = '';
+    box().append(wrapper);
+    wrapper.append(column);
+    document
+      .querySelector('.submission-details-container')!
+      .childNodes.forEach((node) => node.nodeType === Node.COMMENT_NODE && node.remove());
+    document
+      .getElementById('content')!
+      .insertAdjacentHTML(
+        'afterbegin',
+        '<div id="rubric_holder"><div class="submission-details-container"></div></div>',
+      );
+    restoreStaleComments(document);
+    expect(column.parentElement).toBe(
+      [...document.querySelectorAll('.submission-details-container')].find(
+        (node) => !node.closest('#rubric_holder'),
+      ),
+    );
   });
 
   it('puts the column into the container when its mark is gone', () => {

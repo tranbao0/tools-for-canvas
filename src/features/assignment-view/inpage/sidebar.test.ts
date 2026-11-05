@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sendToFailingRouter } from '../../../../tests/fixtures/router-reply';
 import type { AssignmentOwnerMessage } from '../protocol';
-import { removeStaleView } from './rows';
+import { removeStaleView } from './stale';
 import { createSidebarEngine, type SidebarEngine } from './sidebar';
 
 const ORIGIN = 'https://school.instructure.com';
@@ -189,6 +190,75 @@ describe('the Submission box of the assignment page', () => {
     await vi.waitFor(() => expect(send).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(sidebar().outerHTML).toBe(before);
+  });
+
+  describe('after a read that was rejected', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+    afterEach(() => {
+      engine?.stop();
+      vi.useRealTimers();
+    });
+
+    const failing = (): SidebarEngine => {
+      send = vi.fn(async () => {
+        throw new Error('down');
+      });
+      engine = createSidebarEngine({
+        doc: document,
+        origin: ORIGIN,
+        courseId: '12',
+        assignmentId: '101',
+        send,
+      });
+      return engine;
+    };
+
+    it('asks once more after 2 seconds, and treats the box when that read works', async () => {
+      failing().setActive(true);
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(send).toHaveBeenCalledTimes(1);
+      send.mockResolvedValue(reply('42'));
+      await vi.advanceTimersByTimeAsync(1);
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(document.querySelector('[data-av-original]')).not.toBeNull();
+    });
+
+    it('asks only once more when that read fails too', async () => {
+      failing().setActive(true);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    it('asks no more when the switch went off before the second read', async () => {
+      failing().setActive(true);
+      await vi.advanceTimersByTimeAsync(1000);
+      engine.setActive(false);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks once more after 2 seconds for the reply of a router whose owner failed, and then gives up', async () => {
+      const router = sendToFailingRouter(ORIGIN);
+      failing();
+      send.mockImplementation(async (message) => router.send(message));
+      engine.setActive(true);
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(send).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(send).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(send).toHaveBeenCalledTimes(2);
+      router.stop();
+    });
+
+    it('does not ask again for a refusal', async () => {
+      start({ kind: 'no_submission_access' }).setActive(true);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(send).toHaveBeenCalledTimes(1);
+    });
   });
 
   it.each([
