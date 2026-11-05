@@ -1431,6 +1431,24 @@ describe('a comment that holds the markup of the page', () => {
     vi.restoreAllMocks();
   });
 
+  it('gives the whole page back when the mode above fails to mount too', async () => {
+    const column = document.getElementById('right-side-wrapper')!.outerHTML;
+    const button = document.querySelector(CANVAS_BUTTON)!.outerHTML;
+    const before = container().outerHTML;
+    vi.spyOn(HTMLElement.prototype, 'attachShadow').mockImplementation(() => {
+      throw new Error('no shadow root');
+    });
+    start();
+    await settle();
+    expect(unhandled).toEqual([]);
+    expect(document.querySelector('[data-av-own]')).toBeNull();
+    expect(document.head.querySelector('style')).toBeNull();
+    expect(document.getElementById('right-side-wrapper')!.outerHTML).toBe(column);
+    expect(document.querySelector(CANVAS_BUTTON)!.outerHTML).toBe(button);
+    expect(container().outerHTML).toBe(before);
+    vi.restoreAllMocks();
+  });
+
   it('keeps every node whose id the view uses when it sits in a comment', () => {
     loadWith(
       '<span id="av-submission-details" data-av-own>a</span><div id="tools-feedback" data-av-own>b</div><div id="tools-turn-in" data-av-own>c</div><div id="av-rubric" data-av-own>d</div>',

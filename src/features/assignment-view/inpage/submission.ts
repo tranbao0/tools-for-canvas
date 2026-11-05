@@ -501,28 +501,32 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     let broken = false;
     /**
      * Mounts the mode. A replace mount that fails gives the page back and mounts the mode 'above'
-     * in its place, where Canvas's frame and comments stay. A failure of that mode too leaves the
-     * page as Canvas drew it.
+     * in its place, where Canvas's frame and comments stay. A failure of that mode too gives the
+     * whole page back, with the rules, the link and the frame watch of the view.
      */
     const mountMode = (
       wanted: Mode,
       files: readonly FrameFile[],
     ): ((next: readonly FrameFile[]) => void) => {
+      const giveUp = (error: unknown): (() => void) => {
+        logFailure('submission details', error);
+        mode = 'above';
+        clear();
+        return () => undefined;
+      };
       mode = wanted;
       try {
         return mount(reply, anchors, mode, files);
       } catch (error) {
+        if (mode === 'above') return giveUp(error);
         logFailure('submission details', error);
         unmountMode();
-        if (mode === 'above') return () => undefined;
         broken = true;
         mode = 'above';
         try {
           return mount(reply, anchors, mode, []);
         } catch (again) {
-          logFailure('submission details', again);
-          unmountMode();
-          return () => undefined;
+          return giveUp(again);
         }
       }
     };
