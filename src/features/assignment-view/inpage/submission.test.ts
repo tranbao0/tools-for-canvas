@@ -1346,6 +1346,27 @@ describe('the similarity score in the box', () => {
     expect(score.dataset['state']).toBe('error');
   });
 
+  it('shows no score for a text entry whose report data cannot be shown, and the page stays the same', async () => {
+    send.mockResolvedValue(
+      reply((details) => {
+        details.submission.submission_type = 'online_text_entry';
+        details.submission.body = '<p>My essay</p>';
+        details.submission.attachments = [];
+        details.submission.id = '9';
+        details.submission.reports = [
+          { ...REPORT, asset: 'submission_9', score: null, readable: false },
+        ];
+      }),
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    start();
+    await settle();
+    expect(rules()).toContain('.submission-details-frame{display:none!important}');
+    expect(boxRoot()!.querySelector('.av-box-report')).toBeNull();
+    expect(root()?.querySelector('.av-submission')?.textContent).toContain('My essay');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it('shows a score with a state that is not known as gray', async () => {
     send.mockResolvedValue(withReports({ ...REPORT, state: 'purple' }));
     start();
@@ -1702,10 +1723,9 @@ describe('a comment that holds the markup of the page', () => {
     expect(document.getElementById('av-comments')).toBeNull();
     expect(host()?.nextElementSibling).toBe(container());
     expect(root()?.querySelector('.av-instructions')).not.toBeNull();
-    // One line names the error, and one line gives the reason. Neither holds an address.
+    // One line for the failed mount, with the reason and the error. It holds no address.
     expect(warn.mock.calls.map((call) => call[0])).toEqual([
-      '[weekrow] submission details mount failed: Error: no shadow root',
-      '[weekrow] submission details keeps the Canvas frame, reason: mount-failed',
+      '[weekrow] submission details keeps the Canvas frame, reason: mount-failed (Error: no shadow root)',
     ]);
     vi.restoreAllMocks();
   });
@@ -1727,9 +1747,8 @@ describe('a comment that holds the markup of the page', () => {
     expect(document.querySelector(CANVAS_BUTTON)!.outerHTML).toBe(button);
     expect(container().outerHTML).toBe(before);
     expect(warn.mock.calls.map((call) => call[0])).toEqual([
-      '[weekrow] submission details mount failed: Error: no shadow root',
-      '[weekrow] submission details keeps the Canvas frame, reason: mount-failed',
-      '[weekrow] submission details mount failed: Error: no shadow root',
+      '[weekrow] submission details keeps the Canvas frame, reason: mount-failed (Error: no shadow root)',
+      '[weekrow] submission details gives the page back as Canvas drew it, reason: mount-failed (Error: no shadow root)',
     ]);
     vi.restoreAllMocks();
   });

@@ -265,6 +265,17 @@ describe('the score of a file, after _originality_score.html.erb', () => {
     });
   });
 
+  it('uses an entry that the template never selects as no reason to hide the score of another', () => {
+    const result = score(
+      [ENTRY, { ...ENTRY, kind: 'vericite', asset: 'attachment_502', readable: false }],
+      { id: '9' },
+    );
+    expect(result).toMatchObject({ readable: true, report: { text: '5.0%' } });
+    // The entry of the attachment wins over the unreadable entry of the submission.
+    const own = score([ENTRY, { ...ENTRY, asset: 'submission_9', readable: false }], { id: '9' });
+    expect(own).toMatchObject({ readable: true, report: { text: '5.0%' } });
+  });
+
   it('is not readable when the address fails the check', () => {
     const result = reportFor({ reports: [ENTRY] }, ['attachment_501'], [], 'attachment_501', {
       origin: ORIGIN,
@@ -315,6 +326,38 @@ describe('the score of a text entry', () => {
       state: 'problem',
       url: `${ORIGIN}${PAGE}/originality_report/submission_9?attempt=1`,
     });
+  });
+
+  it.each([
+    ['the same instant with milliseconds', '2026-11-01T10:00:00.000Z', '2026-11-01T10:00:00Z'],
+    ['the same instant with an offset', '2026-11-01T10:00:00Z', '2026-11-01T11:00:00+01:00'],
+    [
+      'a record that writes the time with an offset',
+      '2026-11-01T10:00:00+00:00',
+      '2026-11-01T10:00:00Z',
+    ],
+  ])('finds the key of a text entry when the time is %s', (_name, key, submitted) => {
+    const result = submissionReport(
+      {
+        id: '9',
+        submitted_at: submitted,
+        reports: [{ ...ENTRY, kind: 'originality_report', asset: `submission_9_${key}` }],
+      },
+      CONTEXT,
+    );
+    expect(result.report?.text).toBe('5.0%');
+  });
+
+  it('does not take the key of another submission time, and takes any timed key without a time', () => {
+    const reports = [
+      { ...ENTRY, kind: 'originality_report' as const, asset: 'submission_9_2026-11-01T10:00:00Z' },
+    ];
+    expect(
+      submissionReport({ id: '9', submitted_at: '2026-11-02T10:00:00Z', reports }, CONTEXT).report,
+    ).toBeNull();
+    expect(submissionReport({ id: '9', submitted_at: null, reports }, CONTEXT).report?.text).toBe(
+      '5.0%',
+    );
   });
 
   it('reads the legacy key and shows nothing without a submission id', () => {

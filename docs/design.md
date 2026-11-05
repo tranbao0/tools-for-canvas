@@ -1418,7 +1418,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | Week items | `GET /api/v1/planner/items?start_date=...&end_date=...&per_page=100` | The parts of a view's range that the cache lacks, the days of the span first; the weeks before and after a shown view, ahead of time; the cached parts of the current-week range in each light and full round, in up to 3 chunks |
 | Assignment details | `GET /api/v1/courses/:id/assignments?assignment_ids[]=...&include[]=submission&per_page=100` | New planner items, after they show, per course with assignment items; the current-week items in each full round; a shown week's items after a full round |
 | Assignment (decision 26) | `GET /api/v1/courses/:id/assignments/:id` | The assignment pane shows an assignment, on each later read of the pane (each trusted load of a frame after the first, the assignment that the pane just left when it shows another, each assignment of its frames when it closes, every 20 seconds while it is open and the page is in view), and the Submission Details page loads |
-| Own submission (decision 26) | `GET /api/v1/courses/:id/assignments/:id/submissions/self` | With each assignment read above; alone, to learn the user of the submission, when an assignment page loads |
+| Own submission (decision 26) | `GET /api/v1/courses/:id/assignments/:id/submissions/self` | With each assignment read above; alone, to learn the user of the submission and to get the report data for the scores beside the files, when an assignment page loads |
 | Teacher status names | `POST /api/graphql` with `customGradeStatusesConnection` for each course | Once per session, when a teacher status appears |
 | All assignments (planner turned off only) | `GET /api/v1/courses/:id/assignments?include[]=submission&per_page=100` | Instead of the planner, per course |
 | Undated work | `GET /api/v1/courses/:id/assignments?bucket=undated&...` | 5-minute timer, per course |
@@ -3372,7 +3372,10 @@ So a student switches pages to read the instructions next to the feedback on a f
      - The own submission is known from one read: `GET /api/v1/courses/:id/assignments/:id/submissions/self` with no include.
        The box needs the `user_id` of that record to compare it with the user in the file link, and the report data of the record to show the score of each file.
        So this page does not ask for the assignment record, which the other pages read (item 8), and it makes no second request for the scores.
-     - The score stands right after Canvas's link `View NAME`, in the same line when it fits, and not inside the link, because a link inside a link is not valid and a click on the score must not open the file pane.
+     - The score stands right after Canvas's link `View NAME`, and not inside the link, because a link inside a link is not valid and a click on the score must not open the file pane.
+       It is beside the link only when the name fits on one line.
+       A name that wraps fills the width of the box, so the score stands under it, lined up with the text of the name.
+       A file with a score also makes its link inline, and a file with no score keeps the block that it had.
        It has the same look, the same colors and the same report address as the score in the box of the Submission Details page (item 5, "The similarity score"), with styles of its own, because this page has no shadow root.
        A file with no report, and a report that the view cannot show, get no score, and Canvas's box lists the file as before.
        The score goes with the rest of the view when the switch goes off.
@@ -3468,6 +3471,7 @@ So a student switches pages to read the instructions next to the feedback on a f
      - Each entry of `attachments` has `id`, `display_name`, `size` and `preview_url`.
        `preview_url` is the signed `/api/v1/canvadoc_session` address, and only a file that Canvas can preview has one.
      - `turnitin_data` holds one entry for each report, keyed by an asset string: `attachment_<id>` for a file, and `submission_<id>` or `submission_<id>_<time>` for a text entry.
+       The view compares the time in the key with `submitted_at` as instants, because Canvas writes the key with `utc.iso8601` and the record can write the time in another form.
        Each entry has `similarity_score`, `state`, `status` (`scored`, `pending` or `error`) and `error_message`.
        The VeriCite data is `vericite_data`, with the same keys and the key `provider`.
    - For an `online_upload`, the box draws each file at once from these records: the name, the size, the score with its report link, and the feedback button.
@@ -3489,13 +3493,18 @@ So a student switches pages to read the instructions next to the feedback on a f
        The view returns to the replace mode if a later load of the frame shows an empty cell.
        When Canvas draws a report after the view has shown, the page switches to Canvas's frame, and an open feedback pane may close with the view's host, because Canvas's own button is then visible.
        The owner accepts this (2026-11-03).
-     - A file, or a text entry, whose report data the view cannot show: a score that is not a number, a `state` or a `status` that is not text, or a report address that fails the check below.
+     - A file whose report data the view cannot show: a score that is not a number, a `state` or a `status` that is not text, or a report address that fails the check below.
+       Only the entries that the lookup of the template selects for the file count.
        The student never loses a report: when the view cannot show it, Canvas's frame shows it.
+     - A text entry whose report data the view cannot show is not one of the cases: the box shows no score for it, and the page stays in the replace mode.
+       This is a known gap of the rule of three reasons.
    - **Console lines.**
      Every time the view stays in or goes to the mode 'above', it writes one console line, `[weekrow] submission details keeps the Canvas frame, reason: CODE`.
-     The codes are `type`, `report-data`, `asset-reports` and `mount-failed`.
+     The codes are `type`, `report-data` and `asset-reports`.
      The view writes the line again only when the reason changes, so a frame that changes often does not fill the console.
-     A mount error writes `[weekrow] submission details mount failed: NAME: MESSAGE`, and a word of the message that holds a slash is left out.
+     A failed mount writes one line, `[weekrow] submission details keeps the Canvas frame, reason: mount-failed (NAME: MESSAGE)`.
+     When the mode 'above' fails to mount too and the view gives the whole page back, that second failure writes `[weekrow] submission details gives the page back as Canvas drew it, reason: mount-failed (NAME: MESSAGE)`.
+     A word of the message that holds a slash is left out.
      A file with a feedback address that fails the check (item 6) writes one line with their number.
      A line holds only names and numbers, never an address or a file name.
      The lines go to the console of the page only.

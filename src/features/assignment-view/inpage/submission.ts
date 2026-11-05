@@ -11,16 +11,19 @@
  * keeps its width and the box lands in the free space. The box holds the status line and the date
  * (`submissionBox.ts`). The second host holds the instructions.
  *
- * When the view can show everything that the frame shows (the replace mode), it hides the frame.
- * The box then also holds the files with their similarity scores and the feedback buttons, and
- * Canvas's own comments column, moved into it (`comments.ts`). The host in the content area holds
- * the instructions, the text or address of the submission, and the rubric. In every other case
- * (the mode 'above') the frame and the comments column stay visible and untouched, and the host
- * holds only the instructions, above the whole content area. That is the case for a submission type
- * that the view does not show (media recording, quiz, LTI tool, student annotation, discussion), and
- * for a frame that holds more than the view can show: a file row that does not match, a preview
- * button with no usable session address, a similarity report that the view cannot read or that is
- * outside a file row, the snapshot of a URL, or a frame that cannot be read once it has loaded. A
+ * For a submission type that the view shows (the replace mode), it hides the frame. The box then
+ * also holds the files with their similarity scores and the feedback buttons, and Canvas's own
+ * comments column, moved into it (`comments.ts`). The files, the scores and the session addresses
+ * come from the Canvas records, so the page never depends on the markup of the frame and never
+ * waits for it (`files.ts`). The frame only refines the label of a feedback button and its unread
+ * mark (`submissionFrame.ts`). The host in the content area holds the instructions, the text or
+ * address of the submission, and the rubric. In the mode 'above' the frame and the comments column
+ * stay visible and untouched, and the host holds only the instructions, above the whole content
+ * area. That is the case in three situations, and each writes a console line with its reason
+ * (`modeLog.ts`): a submission type that the view does not show (media recording, quiz, LTI tool,
+ * student annotation, discussion), content in a report cell of an LTI 1.3 asset processor in the
+ * frame, and report data of a file that the view cannot show. A mount that fails also leads to
+ * that mode. A
  * style element in the head carries the rules of the page, and those of the mode: the hidden frame,
  * the rules for the comments, and the rules for Canvas's own rubric when the view shows it
  * (`rubric.ts`). Canvas's rubric holder is moved, under the instructions in the host or, where the
@@ -512,16 +515,14 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       type === 'online_upload'
         ? filesFromDetails(submission.attachments ?? [], submission, context)
         : { files: [], readable: true, withoutSession: 0 };
-    const text =
-      type === 'online_text_entry'
-        ? submissionReport(submission, context)
-        : { report: null, readable: true };
+    // A text entry whose report data cannot be shown gets no score, and the page stays the same.
+    const textReport =
+      type === 'online_text_entry' ? submissionReport(submission, context).report : null;
     const base = upload.files;
-    const textReport = text.report;
     /** Why the page keeps Canvas's frame whatever the frame holds, or `null`. */
-    let fixed: AboveReason | null = null;
+    let fixed: AboveReason | 'mount-failed' | null = null;
     if (!SHOWN_TYPES.has(type)) fixed = 'type';
-    else if (!upload.readable || !text.readable) fixed = 'report-data';
+    else if (!upload.readable) fixed = 'report-data';
     let mode: Mode = 'above';
     /** The reason of the last line logged for the mode 'above'. */
     let logged: AboveReason | null = null;
@@ -541,23 +542,22 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       files: readonly BoxFile[],
     ): ((next: readonly BoxFile[]) => void) => {
       const giveUp = (error: unknown): (() => void) => {
-        logMountFailure(error);
+        logMountFailure(error, 'given-back');
         mode = 'above';
         clear();
         return () => undefined;
       };
       mode = wanted;
-      if (wanted === 'above') logReason(reason ?? 'mount-failed');
-      else logged = null;
+      if (wanted === 'above' && reason !== null) logReason(reason);
+      else if (wanted === 'replace') logged = null;
       try {
         return mount(reply, anchors, mode, files, textReport);
       } catch (error) {
         if (mode === 'above') return giveUp(error);
-        logMountFailure(error);
+        logMountFailure(error, 'above');
         unmountMode();
         fixed = 'mount-failed';
         mode = 'above';
-        logReason('mount-failed');
         try {
           return mount(reply, anchors, mode, [], null);
         } catch (again) {
@@ -659,7 +659,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     try {
       show(reply, anchors, token);
     } catch (error) {
-      logMountFailure(error);
+      logMountFailure(error, 'given-back');
       clear();
     }
   }
