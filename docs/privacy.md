@@ -26,10 +26,10 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - the full text of an announcement that you open;
 - the announcements that the Announcements widget of the new dashboard shows, a page at a time as you scroll: the title, author, date, course name, read state and text of each (the extension keeps the first 4,000 characters of each text in memory for the page view, and reads all your announcements once, 100 at a time and at most 2,000, when you search by topic);
 - the announcements that you find with the search by date, read from the announcements list of your Canvas for the days that you choose, at most 500;
-- the details of an assignment on a page of the one assignment view (the Assignments list, the Submission Details page of your own work, and the assignment page): its instructions and submission types, and your own submission with its status, time, attempt, text, address, and the names and sizes of your files.
+- the details of an assignment on a page of the one assignment view (the Assignments list, the Submission Details page of your own work, and the assignment page): its instructions and submission types, and your own submission with its status, time, attempt, text, address, the names and sizes of your files, the signed address of the preview of each file, and the similarity scores of your files and your text.
   The extension reads them with two requests of your own Canvas: `GET /api/v1/courses/:id/assignments/:id` and `GET /api/v1/courses/:id/assignments/:id/submissions/self`.
   The Submission Details page sends them when it loads, and the Assignments list sends them when you show an assignment in the assignment pane, and again now and then while the pane is open.
-  The assignment page asks only for who owns the submission, with the second request alone, when it loads.
+  The assignment page asks only for who owns the submission and for the similarity scores, with the second request alone, when it loads.
   The request for the assignment asks for no included submission, so its reply holds no submission and no grade.
   The reply of Canvas for the assignment still holds its rubric, and the extension keeps none of it.
   The extension does not read your rubric assessment or the comments on your submission: Canvas shows them in its own page.
@@ -128,8 +128,12 @@ When you close the pane, the frames go, and it reads the status of the assignmen
 It keeps the last answer of each assignment in the memory of the open page.
 It uses the answer to tell when your work was handed in, so that the weekly list refreshes.
 The Submission Details page shows the instructions and your submitted files.
-To show them, it reads the files list that Canvas draws in that page: the file names and sizes, a similarity score and its report link, and the signed address of the DocViewer session of a file.
+To show them, it reads the file list from the same Canvas request that it sends for the details (`GET /api/v1/courses/:id/assignments/:id/submissions/self`): the file names and sizes, the similarity scores, and the signed address of the DocViewer session of each file.
+It does not read the files list that Canvas draws in the frame of that page for these data.
+From that frame it reads only the label of the preview button and its unread mark, and whether Canvas drew a report of an asset processor, and it changes nothing in the frame.
 These stay in the memory of the open page.
+The extension writes lines to the console of the page when it keeps Canvas's own files area.
+A line holds only a reason code or the name and message of an error, never an address or a file name.
 The rubric and the comments on that page stay Canvas's own, which the extension moves into place without reading them.
 The instructions are written by your teacher.
 The extension shows them only after it removes everything that could run code, load a frame or send a form.

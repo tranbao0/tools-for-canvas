@@ -3335,8 +3335,10 @@ So a student switches pages to read the instructions next to the feedback on a f
          With the File viewer switch off, the link says "Download NAME", because the pane cannot take it.
          The switch works without a reload.
        - Under the link, one line shows the size, the similarity score and the feedback button.
-         The button is "View Feedback" (or "Preview" when the teacher left no notes), with Canvas's own label and its unread dot.
-         It opens the DocViewer session of Canvas in a docked feedback pane.
+         All three come from the Canvas records of the submission (item 5), so the box never waits for the files frame.
+         The button says "View Feedback" by default.
+         When the files frame can be read, it refines the label to "Preview" for a file that has no notes of the teacher, and it shows the unread dot of Canvas.
+         The button opens the DocViewer session of Canvas in a docked feedback pane (item 6).
          The score has Canvas's look and color, and it opens the report in a new tab (item 5, "The similarity score").
        - "Comments:" shows Canvas's own comments list and form, moved into the box (item 4).
        - The box has no "Submission Details" link, because it would point to this page.
@@ -3344,6 +3346,7 @@ So a student switches pages to read the instructions next to the feedback on a f
        "Instructions" is the assignment description, sanitized, in full, with "Show more" only when it is longer than about 15 lines.
        There is no "Your files" section, because the box holds the files.
      - A text entry shows its text, and a URL submission shows its link, under "Your submission".
+       The similarity score of a text entry shows in the box, under the files list, as a line "Similarity score" with the score.
      - A submission of another type (media recording, quiz, LTI tool, student annotation, discussion) keeps Canvas's own left area, visible and untouched, and Canvas's comments column stays in its place.
        The extension adds only the "Instructions" block, with the same look and the same "Show more" rule, above the whole content area, and the box with only the status line and the date.
        "Your submission" and the files do not show for these types.
@@ -3367,8 +3370,12 @@ So a student switches pages to read the instructions next to the feedback on a f
        With the "File viewer" switch off, Canvas's link stays as it is, because the pane cannot open the file.
        Both switches work without a reload: the label and the click catcher change together (decision 25, item 6).
      - The own submission is known from one read: `GET /api/v1/courses/:id/assignments/:id/submissions/self` with no include.
-       The box needs only the `user_id` of that record to compare it with the user in the file link.
-       So this page does not ask for the assignment record, which the other pages read (item 8).
+       The box needs the `user_id` of that record to compare it with the user in the file link, and the report data of the record to show the score of each file.
+       So this page does not ask for the assignment record, which the other pages read (item 8), and it makes no second request for the scores.
+     - The score stands right after Canvas's link `View NAME`, in the same line when it fits, and not inside the link, because a link inside a link is not valid and a click on the score must not open the file pane.
+       It has the same look, the same colors and the same report address as the score in the box of the Submission Details page (item 5, "The similarity score"), with styles of its own, because this page has no shadow root.
+       A file with no report, and a report that the view cannot show, get no score, and Canvas's box lists the file as before.
+       The score goes with the rest of the view when the switch goes off.
      - Canvas's other sidebar links stay as they are.
    - **Assignments list (`/courses/:id/assignments`).**
      - Each row keeps Canvas's own markup and gets a "Preview" button as the last child of its layout.
@@ -3394,8 +3401,9 @@ So a student switches pages to read the instructions next to the feedback on a f
    - The page also stays as it is when an anchor is missing: the two columns of the container, the files frame, or the right column `#right-side`.
      The right column is `#right-side` in `#right-side-wrapper`, and it counts only outside `#content`.
      A comment in `#content` can hold elements with the same ids, and the real column comes after the content area.
-   - The view replaces Canvas's files frame only when it can show everything that the frame shows.
-     In every other case the frame stays, and the view adds only the instructions above it: the fallback rule of item 5.
+   - The view replaces Canvas's files frame for every submission type that it shows.
+     It keeps the frame, and adds only the instructions above it, in the three cases of item 5.
+     The page never depends on the markup of the files frame: the view reads what it shows from the Canvas records.
    - The files frame stays visible until the read has finished, so a page that stays as it is never flickers.
 4. **How the page changes.**
    - In both modes, one `style` element in the head holds the rules of the page.
@@ -3422,7 +3430,7 @@ So a student switches pages to read the instructions next to the feedback on a f
      The frame iframe is never moved or changed.
    - A mount that throws an error gives the page back and mounts the mode 'above' of item 5 in its place, and the view stays in that mode.
      A mount of the mode 'above' that throws too gives the whole page back as Canvas drew it: the hosts, the rules of the style element (the right column, the width cap, the hidden button), the own link and the watch of the frame all go.
-     Both log one line, and no error leaves the view unhandled.
+     Both log the name and the message of the error, the first also logs the reason `mount-failed` (item 5, "Console lines"), and no error leaves the view unhandled.
    - In the replace mode, Canvas's own comments column moves into the box (`comments.ts`).
      - The node `div.submission-details-comments` moves, and a copy never replaces it.
        It goes into a wrapper `div#av-comments` with the attribute `data-av-own`.
@@ -3453,50 +3461,71 @@ So a student switches pages to read the instructions next to the feedback on a f
    - Turning the switch off removes the style, the hosts, the own link, the rubric wrapper, the comments wrapper and an open feedback pane, and puts the rubric holder and the comments column back, so the page is the same as Canvas drew it, with no reload.
      One exception stays: after a successful read request for the rubric comments, the unread mark keeps `display: none` and the link keeps its blank title, as they are after Canvas's own click, because the comments are read in Canvas.
 5. **Where the files come from.**
-   - The rows come from the same-origin files frame `iframe#preview_frame`, once its document is the preview page and has loaded: `tr.file-upload-submission`, the file link, the size text, the label of the button, the unread mark and the originality cell.
-   - A link counts only when it is a file of the submission of this page.
-     The page path and the path of the link are compared segment by segment as decimal global ids, because a shard student's page can write `2~123` where the frame writes `20000000000123`.
-   - Until the frame has loaded, an upload shows the files of the details (`attachments` with `display_name` and `size`) with no "View Feedback" button, and the frame is hidden.
-   - **The fallback rule.**
-     When the view cannot show everything that the frame shows, it uses the mode of item 4 for "any other type": the instructions above `.submission-details-container`, the frame and the comments column visible and untouched, no hide-frame rule.
-     The box stays, with only the status line and the date.
-     The mode applies to a submission type that the view does not show (media recording, quiz, LTI tool, student annotation, discussion, and any other type), and to these cases once the frame has loaded:
-     - The frame cannot be read, is on another origin, or does not show the preview page of this submission within 10 seconds.
-     - An upload has attachments in the details but no file row of the frame matches.
-     - A file row does not match: no file link, another submission, or an id that is no file id.
-     - A file row has a preview button (`td.file-upload-submission-attachment a.modal_preview_link`) whose session address fails the strict check, for example with an extra `access_token`.
-     - A file row holds any `[data-canvadoc_session_url]` or `.modal_preview_link` that the selector above did not find, such as a button with a renamed class.
-       Canvas's own `loadDocPreview` reads the data attribute, so the attribute is the stable signal.
-     - The originality cell of a matched file row (`td.file-upload-submission-turnitin`) holds a link whose address fails the check, or content that gives neither a score text nor a link.
+   - The Submission Details page never depends on the markup of Canvas's files frame.
+     The owner's live test of build 0.1.0.29 on sjsu.instructure.com showed the old strip and a box with only the status and the date, while the same code passed on fixtures in Firefox 159 and in Firefox 153.6 ESR.
+     So the live frame differs from the fixture in a way that is not known, and the view reads what it needs from the records of Canvas instead.
+   - The files, the scores and the feedback addresses come from `GET /api/v1/courses/:id/assignments/:id/submissions/self` (item 8).
+     - Each entry of `attachments` has `id`, `display_name`, `size` and `preview_url`.
+       `preview_url` is the signed `/api/v1/canvadoc_session` address, and only a file that Canvas can preview has one.
+     - `turnitin_data` holds one entry for each report, keyed by an asset string: `attachment_<id>` for a file, and `submission_<id>` or `submission_<id>_<time>` for a text entry.
+       Each entry has `similarity_score`, `state`, `status` (`scored`, `pending` or `error`) and `error_message`.
+       The VeriCite data is `vericite_data`, with the same keys and the key `provider`.
+   - For an `online_upload`, the box draws each file at once from these records: the name, the size, the score with its report link, and the feedback button.
+     The page never waits for the frame, so a frame that never loads, is empty or has other markup changes nothing.
+   - **The frame as a helper.**
+     - When the frame can be read, it refines two marks of a file: the label of the button, "View Feedback" or "Preview", and the unread mark.
+       A row counts when its file link is a file of the submission of this page, and the row has exactly one `a.modal_preview_link` that reads "View Feedback" or "Preview".
+       The page path and the path of the link are compared segment by segment as decimal global ids, because a shard student's page can write `2~123` where the frame writes `20000000000123`.
+       The marks apply only to a file that has a feedback address from the records.
+     - The frame never gives an address, a name, a size or a score.
+     - A frame that cannot be read, that is on another origin, or that has any other markup changes nothing.
+     - The default label is "View Feedback".
+   - **When the view keeps Canvas's frame (the mode 'above').**
+     It happens in three cases, and in no other:
+     - A submission type that the view does not show: media recording, quiz, LTI tool, student annotation, discussion, and any other type.
+     - Content in a `td.asset-report-status-container` of the frame, which is the cell of LTI 1.3 asset processor reports.
+       The records of the submission hold nothing for them, so the student would lose the report.
+       Canvas fills the cell with a script after the load, so the view watches the frame for 10 seconds after each load and uses the mode when the cell fills.
+       The view returns to the replace mode if a later load of the frame shows an empty cell.
+       When Canvas draws a report after the view has shown, the page switches to Canvas's frame, and an open feedback pane may close with the view's host, because Canvas's own button is then visible.
+       The owner accepts this (2026-11-03).
+     - A file, or a text entry, whose report data the view cannot show: a score that is not a number, a `state` or a `status` that is not text, or a report address that fails the check below.
        The student never loses a report: when the view cannot show it, Canvas's frame shows it.
-     - The frame shows a similarity mark (`.turnitin_score_container`, `.turnitin_similarity_score`, `.vericite_score_container_caret`) outside the originality cell of a matched file row, such as the report of a text entry, or any content in a `td.asset-report-status-container`, which is the cell of the LTI 1.3 asset processors.
-       Canvas fills the report status cell with a script after the load, so the view watches the frame for 10 seconds after each load and uses the mode when the cell fills.
-       Marks inside the student's own text entry are no report.
-     - A URL submission whose frame shows a snapshot image.
-     The view returns to the replacing mode if a later load of the frame shows nothing of this.
-     When Canvas draws a report after the view has shown, the page switches to Canvas's frame, and an open feedback pane may close with the view's host, because Canvas's own button is then visible.
-     The owner accepts this (2026-11-03).
-   - A re-read of the frame draws the list of files again only when the files changed, the score included.
+   - **Console lines.**
+     Every time the view stays in or goes to the mode 'above', it writes one console line, `[weekrow] submission details keeps the Canvas frame, reason: CODE`.
+     The codes are `type`, `report-data`, `asset-reports` and `mount-failed`.
+     The view writes the line again only when the reason changes, so a frame that changes often does not fill the console.
+     A mount error writes `[weekrow] submission details mount failed: NAME: MESSAGE`, and a word of the message that holds a slash is left out.
+     A file with a feedback address that fails the check (item 6) writes one line with their number.
+     A line holds only names and numbers, never an address or a file name.
+     The lines go to the console of the page only.
+   - A re-read of the frame draws the list of files again only when the files changed, the label and the unread mark included.
      So the keyboard focus in the box stays, and a file whose feedback the student opened keeps its unread dot off until the page reloads.
    - **The similarity score.**
-     - The view reads the originality cell of each matched row, and shows the score in the box.
-       The forms of Canvas are `app/views/submissions/_originality_score.html.erb` and `app/views/shared/_originality_score_icon.html.erb`.
-       - The classic form is `span.turnitin_score_container` with `span.turnitin_score_container_caret.<state>_score` and `a.not_external.turnitin_similarity_score.<state>_score` that shows "5.0%" and opens in a new tab.
-         A report that is not ready has the same link with a blank body.
-       - A report with an error is a link with the message as its `title` and an image.
-       - The VeriCite form is the classic form with `span.vericite_score_container_caret` and a tooltip inside the link, which the view leaves out of the text.
-       - The updated form is `a.turnitin_score_container.tooltip` (a `span` when it has no address), with an `i` icon and `span.turnitin_similarity_score`.
-         It has no state class.
+     - The forms of Canvas are `app/views/submissions/_originality_score.html.erb` and `app/views/shared/_originality_score_icon.html.erb`.
+       The view follows the data of the template, not its markup.
+     - The template looks up a VeriCite entry first (`vericite_data[attachment]`, then `originality_data` of the submission), and then the entry of the attachment, and then the entry of the whole submission.
+       It shows the score only when `similarity_score` is set or the state is `pending`.
+       A score of 0 is a value, so it shows.
+       The view adds a report with an error, which shows its message.
      - Each file gets a `report` with three fields.
-       `text` is the score text, else the title of the link cut to 40 characters, else "Similarity report".
-       `state` is the name in a class `none`, `acceptable`, `warning`, `problem`, `failure`, `pending` or `error` followed by `_score`, on the score element or the caret, else none.
-       `url` is the checked address, or none when the cell has no link.
+       `text` is the score as the updated icon of Canvas writes it (`I18n.n(score, precision: 1)`): the number with one decimal and a percent sign, such as "5.0%".
+       A report that is not ready says "Similarity score".
+       A report with an error says its `error_message` cut to 40 characters, else "Similarity report".
+       `state` is the name `none`, `acceptable`, `warning`, `problem`, `failure`, `pending` or `error` from the entry, and a name that is not one of these gives no color.
+       `url` is the address of the report.
+     - The address follows `_originality_score.html.erb`, and it is built from the page:
+       - `/courses/:c/assignments/:a/submissions/:s/vericite/:asset` for a VeriCite score,
+       - `/courses/:c/assignments/:a/submissions/:s/originality_report/:asset?attempt=N` for an originality report (`attempt` only when the record has one),
+       - `/courses/:c/assignments/:a/submissions/:s/turnitin/:asset` for the legacy Turnitin data.
+       `:asset` is `attachment_<id>` of the file, also for a score that came from the entry of the whole submission, and `submission_<id>` for a text entry.
+       A file on another shard also matches the key with its local id.
      - The address check is strict, like the check of a session address, and it reads the query as text.
-       The address must be on the saved origin, with no hash and no credentials, and on one of the routes `/courses/:c/assignments/:a/submissions/:s/turnitin/:asset`, `/vericite/:asset` or `/originality_report/:asset`.
+       The address must be on the saved origin, with no hash and no credentials, and on one of the three routes.
        The first three ids must be the page's ids, compared as decimal global ids.
        `:asset` matches `^[A-Za-z0-9_~-]+$`.
        The query is empty, or `attempt=` and digits only.
-     - The box shows the score as a link `a.av-score` that opens in a new tab with `rel="noopener noreferrer"` and the title "Similarity score", or as a `span` when the cell has no link.
+     - The box shows the score as a link `a.av-score` that opens in a new tab with `rel="noopener noreferrer"` and the title "Similarity score".
        It has Canvas's look: bold 0.75rem, 2px 4px padding, 3px radius, black text.
        The backgrounds are `none` #397af4, `acceptable` #009917, `warning` #897b01, `problem` #c86604, and `failure` #ad393a with white text.
        A `pending` or `error` score, and a score with no state, have a gray background and the text color #273540, as in Canvas.
@@ -3504,17 +3533,23 @@ So a student switches pages to read the instructions next to the feedback on a f
 6. **The feedback pane.**
    - Canvas opens "View Feedback" in a dialog inside the files frame, which the view hides.
      The dialog needs only the data attributes of the link: its handler calls `loadDocPreview` with `$(this).data()`, and that builds an iframe from `canvadoc_session_url`.
-   - The view reads that attribute from the link in the frame and opens the same address in a feedback pane.
+   - The view takes the address from `preview_url` of the attachment in the submission record (`lib/api/v1/attachment.rb`), which is the same `/api/v1/canvadoc_session` address with `enable_annotations`, and opens it in a feedback pane.
+     It does not read the link in the frame.
      The pane is a frame on the Canvas page in a host of its own, in the dock of decision 25.
      It has a bar with the file name, "Open in new tab" and a close button.
    - The address is strict.
      It must be on the saved Canvas, with the path `/api/v1/canvadoc_session`, with `blob` once, `hmac` once when Canvas sends it, and no other parameter.
-     Any other value counts as absent, and the view uses the fallback mode (item 5), so the notes of the teacher stay reachable through Canvas's own button.
+     Any other value counts as absent: the file gets no feedback button, and the view writes one console line with the number of such files (item 5, "Console lines").
+     The page then keeps the frame hidden, so the notes of the teacher are not reachable on that page for such a file.
+     This is a known gap that follows from the rule of item 5, which lists only three reasons for the mode 'above'.
+     A follow-up can decide whether a bad address should keep the frame.
    - The address is signed for one student and acts like a secret.
      The view keeps it in a closure of the script, and the feedback pane keeps it in its closed root.
      It is never an attribute of the page or of the open root of the view, and no code logs it.
      It is also in Canvas's own markup: the `data-canvadoc_session_url` attribute of the link in the same-origin files frame, which Canvas's scripts and any script of the Canvas page can read.
      The view neither adds nor widens that exposure.
+     The reply of the background holds it as a field of the details, and it stays in the memory of the page script, the message and the closure.
+     No code stores it or logs it.
    - Canvas answers the address with a redirect to DocViewer, so the script cannot read the address of the frame, and it cannot tell that DocViewer refused to be framed.
      So "Open in new tab" is always in the bar.
    - The pane steps aside for the file pane and shows again when it closes.
@@ -3528,11 +3563,12 @@ So a student switches pages to read the instructions next to the feedback on a f
 8. **Data.**
    - The background reads one assignment with `GET /api/v1/courses/:id/assignments/:id` and the student's own submission with `GET /api/v1/courses/:id/assignments/:id/submissions/self`, both with no include.
    - The assignment request asks for no `include[]=submission`: the view takes the submission from the second request, and the included one would only add the grade.
-   - The reply keeps only what the Submission Details page and the refresh of the pane read (see "Message" below).
+   - The reply keeps only what the Submission Details page and the refresh of the pane read (see "Message" below), and for the files the `preview_url` and the report data of the submission.
     The score, the rubric, the comments and the due dates are not in it, because Canvas shows them itself.
    - It reads when the assignment pane shows an assignment, on each later read of the pane (step 3 below), and when the Submission Details page loads.
     The first read of an assignment in the pane is the baseline, and the pane keeps only the last good reply of each assignment, to compare the next one with it.
-   - The assignment page reads only the own submission with no include, to learn its user (item 1).
+   - The assignment page reads only the own submission with no include, to learn its user and to get the report data for the scores (item 1).
+     The reply of `assignment:owner` holds the user, and, only when the record has report data, `id`, `submitted_at`, `attempt` and `reports`.
    - A comparison of a page id with an API id converts both to decimal global strings with BigInt: `s~l` becomes `s * 10^13 + l`.
    - A 404 for the own submission returns `no_submission_access`; the Submission Details page then stays as Canvas drew it.
    - Every read follows the cookie binding of decision 11, so a reply never crosses students.
@@ -3565,7 +3601,10 @@ So a student switches pages to read the instructions next to the feedback on a f
   - A cookie that is not confirmed yet waits for one check (`viewerConfirm`) and the read runs once more.
   - The background keeps only the fields of the view, with a limit on every text, in `projectAssignmentView`.
     For the assignment, these are the id, the description (the instructions) and the submission types.
-    For the submission, these are the user, the attempt, the time, the workflow state, the excused and late marks, the type, the text, the address and the files with their sizes.
+    For the submission, these are the id, the user, the attempt, the time, the workflow state, the excused and late marks, the type, the text, the address, the files with their sizes and signed session addresses, and the report data.
+    The report data is a list of at most 100 entries, one for each key of `turnitin_data` and of `vericite_data` (when its `provider` is `vericite`) that names an attachment or the submission.
+    An entry keeps the asset key, the kind (`turnitin`, `originality_report` or `vericite`), the score, the state, the status, the error message, and whether every field has a type that the view can show.
+    The report addresses of Canvas (`view_report_url`) and the other fields of the entries stay in the background.
   - The reply holds the details and the time zone of the Canvas profile.
   - The Submission Details page and the Submission box of the assignment page try a failed read once more after 2 seconds.
     A failed read is a message that the messaging rejects, or a reply of `null` or `undefined`, because the data router answers every error of the owner with `undefined`, which Chrome delivers as `null` and Firefox as `undefined`.
@@ -3602,7 +3641,7 @@ So a student switches pages to read the instructions next to the feedback on a f
 - The description, a text entry and the comments are teacher or student HTML, so they go through the shared sanitizer of decision 22.
   A URL submission is a link only for `http` and `https`, with `rel="noopener noreferrer"`.
 - The data comes through the existing `assignment:details` message and its checks (see "Message" below).
-  The reply has three more fields: the submission type, the text and the address of the submission, and the size of a file.
+  The reply has more fields: the submission type, the text and the address of the submission, the size and the signed session address of a file, and the report data.
   No new message path exists.
 - The feedback address is handled as in item 6.
   It is also in Canvas's own frame DOM, so the secrecy of the view's copies protects only the view's own nodes.
@@ -3646,8 +3685,8 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c` (20
   `Array.from(url.searchParams.keys())` fails the same way.
   `[...url.searchParams]` and `url.searchParams.size` work.
 - Chromium and jsdom accept `keys()`, so the unit tests and the Chromium tests pass.
-- The error made the Submission box show "Download NAME" in Firefox, and it made every file row with a preview button count as incomplete, so the page fell back to Canvas's files frame (item 5).
-- The two places that check the parameters (`sidebar.ts` and `submissionFrame.ts`) read `url.search` as text, so they need no iterator in any browser version.
+- The error made the Submission box show "Download NAME" in Firefox, and it made every file row with a preview button count as incomplete, so the page fell back to Canvas's files frame (an earlier rule of item 5).
+- The two places that check the parameters (`sidebar.ts` and `files.ts`) read `url.search` as text, so they need no iterator in any browser version.
   An ESLint rule forbids `keys()`, `values()` and `entries()` on `searchParams` in `src`.
 
 **Verified source facts for the data of the rows and the details:**
@@ -3665,6 +3704,24 @@ The assignment serializer includes the submission and computes `can_submit` only
 The renderer still applies the shared sanitizer to comment content as a further check.
 `tests/fixtures/assignment-view.ts` models the two API reply bodies.
 The fixtures run in the browser test server, through the Assignments list route of `tests/e2e/assignment-view.spec.ts`.
+
+**Verified source facts for the files and the scores in the submission record:**
+
+These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
+- `lib/api/v1/submission.rb`, lines 327-345: `attachments` of an upload come from `attachment_json` with `include: ["preview_url"]`, `enable_annotations: true` and `submission_id`.
+  `lib/api/v1/attachment.rb`, lines 170-180: `preview_url` is `attachment.canvadoc_url(user, url_opts)`, the same `/api/v1/canvadoc_session?blob=...&hmac=...` address as the `data-canvadoc_session_url` of the frame.
+  The `access_token` and `instfs_id` options go into the signed blob, not into the query.
+  `canvadoc_url` returns `nil` when the file is not `canvadocable?`, so only a file that Canvas can preview has a `preview_url`.
+- `lib/api/v1/submission.rb`, lines 310-324: `has_originality_report` is true when originality reports exist.
+  `turnitin_data` is `originality_data`, when it is present and the user may view the report.
+  `vericite_data` is there when its data is present, the user may view it and the assignment has VeriCite on.
+- `app/models/submission.rb`, `originality_data` (lines 979-1010): the keys are `OriginalityReport#asset_key`, which is `attachment_<id>`, or `submission_<id>_<time>` (`submission_<id>` with no time), merged over the legacy `turnitin_data`.
+  The values are `similarity_score` (rounded to two decimals), `state`, `attachment_id`, `report_url`, `view_report_url`, `status` (the workflow state: `scored`, `pending` or `error`), `error_message`, `created_at` and `updated_at`.
+  `OriginalityReport#state` is the workflow state, or, for a scored report, `Turnitin.state_from_similarity_score` (`none`, `acceptable`, `warning`, `problem` or `failure`).
+- `app/views/submissions/_originality_score.html.erb`: the report addresses are the legacy `turnitin` route, the `originality_report` route with `attempt: @submission.attempt`, and the `vericite` route, each with the asset string of the attachment, or of the submission for a text entry.
+  `app/views/shared/_originality_score_icon.html.erb` writes the score with `I18n.n(score, precision: 1)`.
+- `app/views/submissions/show_preview.html.erb`: the preview button shows only for `attachment.canvadocable?`, and says "View Feedback" when `attachment.canvadoc.has_annotations?` and "Preview" otherwise.
+  The cell `td.asset-report-status-container` is empty in the markup, and `ui/features/submissions_show_preview_asset_report_status/react/index.tsx` fills it for LTI 1.3 asset processors only, so a page with no processor leaves it empty.
 
 **Verified source facts for the rubric on the Submission Details page:**
 
@@ -3803,13 +3860,16 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
   - The page fixture has the markup of the comments column of `show.html.erb`, with a variant that has no comment and a copy of the script of Canvas that sizes the page (`windowResize`) and saves a comment.
     The Save handler is bound directly on the button, so a test shows that the moved node keeps working.
   - The frame fixture has a score cell in each form: classic, classic with an originality report address, pending, error, VeriCite, updated with an address, and updated with no address (`turnitinScores`).
+    The view ignores them, and they stay to show that a frame with a score cell changes nothing.
+- `tests/fixtures/assignment-view.ts` writes the API records in the real shape: full attachment JSON with `preview_url`, `turnitin_data` and `vericite_data` with the fields of `originality_data`, and `has_originality_report`.
 - `tests/fixtures/pages/assignment.html` has the sidebar of the assignment page.
-- Unit tests (`submission.test.ts`, `submissionFrame.test.ts`, `submissionBox.test.ts`, `comments.test.ts`, `format.test.ts`, `start.test.ts`) cover every score form, a bad report address and an unreadable cell, the status line cases, the date form, the move of the comments column and its return with the typed text, the File viewer switch, the cleanup of a dead copy with marks and ids of the view in the comment of another author, a comment that holds the ids of the right column, a mount that throws, and the keyboard focus on "Go to assignment" through a change of mode.
+- Unit tests (`submission.test.ts`, `files.test.ts`, `submissionFrame.test.ts`, `submissionBox.test.ts`, `sidebar.test.ts`, `modeLog.test.ts`, `project.test.ts`, `comments.test.ts`, `format.test.ts`, `start.test.ts`) cover each branch of the score lookup (VeriCite first, the entry of the submission as the fallback, a score of 0, pending, error, the attempt in the address), report data that cannot be shown, a bad report or session address, a frame that gives no hint, a frame that never loads, the reason lines of the console, the score beside the file link of the assignment page, the status line cases, the date form, the move of the comments column and its return with the typed text, the File viewer switch, the cleanup of a dead copy with marks and ids of the view in the comment of another author, a comment that holds the ids of the right column, a mount that throws, and the keyboard focus on "Go to assignment" through a change of mode.
   The `:has` rule needs a real browser, so Chromium and Firefox show it.
-- `tests/e2e/submission-details.spec.ts` covers the replacement and the box, a page with a Turnitin score (no frame; the file, the score with its address and color, and "View Feedback" in the box), Canvas's comment form from the box, the widths (1920 px: the content keeps Canvas's width and the box stands on its right; 1366 px: side by side; 1024 px with the menu open: the box stands under the content), the File viewer switch, the "Go to assignment" button, the file click, the feedback pane, the instructions above an untouched frame for a media recording, the unchanged pages and the switch.
+- `tests/e2e/submission-details.spec.ts` covers the replacement and the box, a page with a Turnitin score (no frame; the file, the score with its address and color, and "View Feedback" in the box), a frame with markup that Canvas redrew, a row with an extra link, an empty frame and a frame that never loads (the replace mode, the file, the score and "View Feedback" in each), the score of a text entry, a bad session address (no button and one console line), the console lines of the mode 'above' with no address and no file name, the score beside "View NAME" on the assignment page, Canvas's comment form from the box, the widths (1920 px: the content keeps Canvas's width and the box stands on its right; 1366 px: side by side; 1024 px with the menu open: the box stands under the content), the File viewer switch, the "Go to assignment" button, the file click, the feedback pane, the instructions above an untouched frame for a media recording, the unchanged pages and the switch.
 - `tests/firefox/submission-pages.mjs` (`npm run test:firefox:submission-pages`) runs in real Firefox with a fake Canvas over HTTPS.
   It checks the Submission box of the assignment page, with a relative link and a link with the full host, with and without `#submit`.
-  It checks the Submission Details page with a Turnitin score and a good session address: the replace mode, the box in the right column, the score in green with its address, and "View Feedback".
+  It checks the Submission box with the score beside the link, from the report data of the record.
+  It checks the Submission Details page with a Turnitin score and a good session address in the record, with the usual frame and with a frame of other markup: the replace mode, the box in the right column, the score in green with its address, and "View Feedback".
   It also checks that Canvas's comment form works inside the box: Save reaches Canvas's handler, and "No Comments" goes with the first comment.
 
 **Live checks for the owner:**
@@ -3822,10 +3882,10 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
    The button sits at the right end of the row, with no extra gap, where Canvas's button was.
    If Canvas disabled its button for no attempts left, "Go to assignment" still works.
    Canvas's own rubric shows open under the instructions, and "Show Rubric" is gone.
-   If a page shows Canvas's own files area with the instructions above it instead, a fallback case of item 5 applies.
-   Tell me which one, so the case can get its own display.
+   If a page shows Canvas's own files area with the instructions above it instead, open the console and read the line `[weekrow] submission details keeps the Canvas frame, reason: CODE`.
+   Tell me the code, so the case can get its own display.
 2. On a file with a Turnitin score: the box shows the score in Canvas's color, and a click opens the report in a new tab.
-   If a page falls back, tell me the form of the score cell, so the form can get its own reading.
+   If the score is missing, tell me the `turnitin_data` of the `submissions/self` reply (without the address), so the form can get its own reading.
 3. Click the file name: the file opens in the pane.
 4. Click "View Feedback" on an annotated PDF: the pane shows the teacher's notes.
    If DocViewer refuses the frame, use "Open in new tab" and report it.
@@ -3841,6 +3901,7 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 10. Make the window narrower than 1140 px with the course menu open, or narrower than 992 px with it closed: the box stands under the content, and the page still works.
     Make it wide again: the box goes back to the right of the content, and the content has its old width.
 11. On the assignment page, click "View NAME" in the Submission sidebar: the file opens in the pane, and the box has no Download line under it.
+    A file with a Turnitin score shows the score after the link, and a click on the score opens the report in a new tab.
 12. On an assignment with a rubric, the rubric shows with the assessment of the teacher marked, Tab leaves it for the next control, and Escape does nothing.
     If the rubric had unread comments, the dot is gone, and after a reload with the switch off Canvas shows no unread dot on "Show Rubric".
     Turn the switch off: "Show Rubric" is back and the rubric is hidden again.
@@ -3876,7 +3937,9 @@ These items need a live check or an outside answer.
     That catcher has run only against the fixture.
     The live checklist has the steps.
 16. The Submission Details view (decision 26) has run only against fixtures that follow the canvas-lms source.
-    The real files frame, the signed session address, and whether DocViewer lets the feedback pane frame it are known from source only.
+    The live test of build 0.1.0.29 showed the old strip on two pages, which the fixtures did not predict, so the files, the scores and the session addresses now come from the `submissions/self` record and not from the frame.
+    The real shape of `turnitin_data` and `preview_url`, the real content of `td.asset-report-status-container`, and whether DocViewer lets the feedback pane frame it are known from source only.
+    A cell of the asset processors that is never empty on the real page would keep the frame for every submission.
     The text entry and URL data come from the `submissions/self` record, not from the page.
     The live checklist of decision 26 has the steps.
 17. The Preview buttons and the assignment pane of the Assignments list have run only against the fixture and the fake Canvas.
