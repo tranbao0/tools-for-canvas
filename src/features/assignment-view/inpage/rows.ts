@@ -21,16 +21,12 @@ import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import type { AssignmentDetailsMessage, AssignmentDetailsReply } from '../protocol';
 import { isDetailsReply, renderDetails, renderError, renderLoading } from './details';
+import { restoreStaleComments } from './comments';
+import { ORIGINAL, OWN, rightColumn } from './own';
 import { RUBRIC_WRAPPER_ID, restoreStaleRubric } from './rubric';
 import { PAGE_CSS, PANEL_CSS } from './styles';
 
-/** Marks every node that the view adds, so the observer and the cleanup can tell them. */
-export const OWN = 'data-av-own';
-/**
- * Marks an own node that holds nodes of Canvas, which the view moved into it. Giving the nodes
- * back must come before any removal of own nodes.
- */
-export const ORIGINAL = 'data-av-original';
+export { OWN, ORIGINAL };
 const STYLE_ID = 'av-styles';
 /** How long a batch of page changes waits for the next one. */
 const BATCH_MS = 50;
@@ -84,10 +80,66 @@ interface RowState {
 /** The text of other people that Canvas shows in the Submission box. A sweep never goes into it. */
 const COMMENTS = '.comments';
 
+/**
+ * Every place where the text of another author can stand: a comment of Canvas, also while the
+ * column is in the box, and the rubric, which the view moves into its wrapper.
+ */
+const COMMENT_TEXT = '.comments,.submission-details-comments,#av-comments,#rubric_holder';
+
 /** The nodes of the root that match, except those in the comments of Canvas. */
 function inOwnedPart(root: ParentNode, selector: string): Element[] {
   return [...root.querySelectorAll(selector)].filter((node) => node.closest(COMMENTS) === null);
 }
+
+/**
+ * The own node with this id that stands where the view puts it, or `null`. The text of another
+ * author can hold a node with the same id and the mark of the view, so a node counts only at the
+ * place that `at` names, and never inside the comments.
+ */
+function ownNode(doc: Document, id: string, at: (node: Element) => boolean): Element | null {
+  for (const node of doc.querySelectorAll(`[id="${id}"]`)) {
+    if (node.hasAttribute(OWN) && node.closest(COMMENT_TEXT) === null && at(node)) return node;
+  }
+  return null;
+}
+
+/** The container of the two columns that Canvas draws, outside the text of other authors. */
+function realContainer(doc: Document): Element | null {
+  for (const node of doc.querySelectorAll('.submission-details-container')) {
+    if (node.closest(COMMENT_TEXT) === null) return node;
+  }
+  return null;
+}
+
+/** The files frame that Canvas draws in the real container. */
+function realFrame(doc: Document): Element | null {
+  const children = realContainer(doc)?.children ?? [];
+  return (
+    [...children].find((child) => child.classList.contains('submission-details-frame')) ?? null
+  );
+}
+
+/** The host of the instructions stands before the real container, or after the real frame in it. */
+const isHostPlace = (node: Element): boolean => {
+  const container = realContainer(node.ownerDocument);
+  if (container === null) return false;
+  return (
+    node.nextElementSibling === container ||
+    (node.parentElement === container &&
+      node.previousElementSibling === realFrame(node.ownerDocument))
+  );
+};
+
+/** The panes of the dock stand in the body. */
+const isPanePlace = (node: Element): boolean => node.parentElement === node.ownerDocument.body;
+
+/** The wrapper of the rubric stands in the real host of the instructions, or in the real frame. */
+const isRubricPlace = (node: Element): boolean => {
+  const doc = node.ownerDocument;
+  const parent = node.parentElement;
+  if (parent === null) return false;
+  return parent === realFrame(doc) || parent === ownNode(doc, 'av-submission-details', isHostPlace);
+};
 
 /**
  * Puts the nodes of Canvas back in the place of the own nodes that hold them. Only a holder that
@@ -112,8 +164,10 @@ export const STALE_PANE_IDS: readonly string[] = ['tools-feedback', 'tools-turn-
  * The parts of the page where the view of this page puts its nodes, and nothing else. The text of
  * other authors (a description, a comment) sits elsewhere, so a sweep never reaches it:
  * - the assignment page: the content of the Submission box, `#sidebar_content .details .content`;
- * - the Submission Details page: the head, which holds the style, the host, by its id, and the
- *   container of the title row's buttons, `.ic-Action-header__Secondary`, which holds the own link;
+ * - the Submission Details page: the head, which holds the style, the host, by its id, the
+ *   container of the title row's buttons, `.ic-Action-header__Secondary`, which holds the own link,
+ *   and the right column `#right-side`, which holds the Submission box. The comments column goes
+ *   home before the sweep, so a comment of another author is never inside this root;
  * - the Assignments list: the head, and the lists that hold the rows and their detail rows.
  * The panes in the body go by their ids on the pages that dock them.
  */
@@ -124,16 +178,14 @@ function ownedRoots(doc: Document, pathname: string): Element[] {
       (root) => root.closest('.comments') === null,
     );
   }
-  for (const id of STALE_PANE_IDS) {
-    const pane = doc.getElementById(id);
-    if (pane?.hasAttribute(OWN)) pane.remove();
-  }
+  for (const id of STALE_PANE_IDS) ownNode(doc, id, isPanePlace)?.remove();
   const roots = new Set<Element>([doc.head]);
   if (SUBMISSION_PAGE.test(pathname)) {
-    const host = doc.getElementById('av-submission-details');
-    if (host?.hasAttribute(OWN)) host.remove();
+    ownNode(doc, 'av-submission-details', isHostPlace)?.remove();
     const buttons = doc.querySelector('.ic-Action-header__Secondary');
     if (buttons) roots.add(buttons);
+    const column = rightColumn(doc);
+    if (column) roots.add(column);
     return [...roots];
   }
   for (const row of doc.querySelectorAll('.ig-row[id^=assignment_],[data-av-details]')) {
@@ -147,10 +199,12 @@ export function removeStaleView(
   doc: Document = document,
   pathname: string = doc.defaultView?.location.pathname ?? '',
 ): void {
-  // Canvas's rubric goes back home first, while the wrapper that holds it is still on the page.
+  // Canvas's rubric and comments go back home first, while the wrappers that hold them are still
+  // on the page. A comment of another author can hold marks of the view, so the comments must be
+  // home before the sweep.
   restoreStaleRubric(doc);
-  const rubric = doc.getElementById(RUBRIC_WRAPPER_ID);
-  if (rubric?.hasAttribute(OWN)) rubric.remove();
+  restoreStaleComments(doc);
+  ownNode(doc, RUBRIC_WRAPPER_ID, isRubricPlace)?.remove();
   const roots = ownedRoots(doc, pathname);
   // The hosts of dead panes are gone now, so the room that they took goes back.
   giveBackRoom(doc);

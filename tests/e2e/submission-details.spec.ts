@@ -9,7 +9,12 @@ import path from 'node:path';
 import type { Frame, Page } from '@playwright/test';
 import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import { ASSIGNMENT_DETAILS, rawRecords } from '../fixtures/assignment-view';
-import { SESSION_PATH, TURNITIN_SCORE, type FrameRow } from '../fixtures/submission-frame';
+import {
+  SESSION_PATH,
+  TURNITIN_SCORE,
+  turnitinScores,
+  type FrameRow,
+} from '../fixtures/submission-frame';
 import {
   previewWithFiles,
   previewWithMedia,
@@ -31,6 +36,7 @@ const pdf = readFileSync('tests/fixtures/pdf/fixture.pdf', 'latin1');
 const SHOTS = path.join(process.cwd(), 'screenshots', 'submission-details');
 const ASSIGNMENT = '/courses/12/assignments/101';
 const HOST = '#av-submission-details';
+const BOX = '#av-submission-box';
 const FEEDBACK = '#tools-feedback';
 const FILE_PANE = '#tools-file-viewer';
 const FILE_NAME = 'ENGR195A - Reflection Paper #1.pdf';
@@ -88,6 +94,16 @@ interface Options {
   /** The fragment of the address, such as `#rubric`, which opens Canvas's rubric on load. */
   hash?: string;
   height?: number;
+  /** The course menu of Canvas: open or closed. */
+  menu?: 'open' | 'closed';
+  /** The comments list has no comment. */
+  noComments?: boolean;
+  /** The time zone of the Canvas profile, which the date of the box is written in. */
+  timeZone?: string;
+  /** The markup of the first comment, which a teacher wrote. */
+  commentHtml?: string;
+  /** A right-to-left Canvas. */
+  rtl?: boolean;
 }
 
 async function open(
@@ -157,6 +173,10 @@ async function open(
               rubric: options.rubric,
               rubricWithoutLink: options.rubricWithoutLink,
               rubricUnread: options.rubricUnread,
+              menu: options.menu,
+              noComments: options.noComments,
+              commentHtml: options.commentHtml,
+              rtl: options.rtl,
               frameSrc: `${full}?preview=1&rand=481516`,
             }),
       }),
@@ -169,14 +189,14 @@ async function open(
       body: json(records.submission),
     },
     // The signed-in student is the one of the page, as on a real page of one's own submission.
-    ...(options.rubricUnread
+    ...(options.rubricUnread || options.timeZone
       ? [
           {
             path: '/api/v1/users/self/profile',
             body: {
               id: options.shard ? '20000000000123' : user,
               name: 'Bao Tran',
-              time_zone: 'America/Los_Angeles',
+              time_zone: options.timeZone ?? 'America/Los_Angeles',
               locale: null,
               effective_locale: 'en',
             },
@@ -202,6 +222,7 @@ async function open(
 }
 
 const host = (page: Page) => page.locator(HOST);
+const box = (page: Page) => page.locator(BOX);
 
 /** Turns the switch on for a page that loaded with it off, and waits for the view. */
 async function turnOn(page: Page, background: Parameters<typeof saveAddress>[0]): Promise<void> {
@@ -342,7 +363,7 @@ test('a switch saved while the page script starts still shows the view when the 
   await expect(page.locator('#preview_frame')).toBeHidden();
 });
 
-test("the files area gives way to the instructions and the files, and the rest of the page stays Canvas's own", async ({
+test("the files area and the comments column give way to the instructions and the box, and the rest of the page stays Canvas's own", async ({
   context,
   page,
   background,
@@ -356,7 +377,8 @@ test("the files area gives way to the instructions and the files, and the rest o
 
   await turnOn(page, background);
   await expect(host(page)).toBeAttached();
-  // The frame is hidden, and the host takes its place between the frame and the comments.
+  // The frame is hidden, and the host of the instructions takes its place. Canvas's comments column
+  // moved to the box, so the strip is gone.
   await expect(page.locator('#preview_frame')).toBeHidden();
   expect(
     await page.evaluate(() =>
@@ -364,19 +386,29 @@ test("the files area gives way to the instructions and the files, and the rest o
         (child) => child.className || child.id,
       ),
     ),
-  ).toEqual(['submission-details-frame', 'av-submission-details', 'submission-details-comments']);
+  ).toEqual(['submission-details-frame', 'av-submission-details']);
   await expect(page.getByRole('heading', { name: 'Instructions' })).toBeVisible();
   await expect(host(page).getByText('Choose one industry or technology')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Your files' })).toBeVisible();
-  await expect(host(page).getByRole('link', { name: FILE_NAME })).toBeVisible();
-  await expect(host(page).getByText('118 KB')).toBeVisible();
-  await expect(host(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your files' })).toHaveCount(0);
+  // The box holds the file with its size and the feedback button, and Canvas's comments.
+  await expect(box(page).getByRole('heading', { name: 'Submission' })).toBeVisible();
+  await expect(box(page).getByText('Submitted!')).toBeVisible();
+  await expect(box(page).getByRole('link', { name: FILE_NAME })).toBeVisible();
+  await expect(box(page).getByText('118 KB')).toBeVisible();
+  await expect(box(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
+  await expect(box(page).getByText('Comments:')).toBeVisible();
 
-  // The header, the grade, the title, Re-submit and the comments are Canvas's own.
+  // The header, the grade, the title, Re-submit and the comments are Canvas's own nodes. The
+  // comments node is the same, with no new attribute, and it stays in the light DOM of the page.
   const shown = await canvasParts(page);
   // The view adds a link beside Canvas's button and changes no node of Canvas.
   expect(shown.button).toBe(original.button);
   expect(shown.comments).toBe(original.comments);
+  expect(
+    await page.evaluate(
+      () => document.querySelector('.submission-details-comments')!.parentElement?.id,
+    ),
+  ).toBe('av-comments');
   await expect(page.getByRole('heading', { name: 'Submission Details' })).toBeVisible();
   await expect(page.getByText('40').first()).toBeVisible();
   await expect(page.getByRole('link', { name: 'Go to assignment' })).toBeVisible();
@@ -392,10 +424,15 @@ test("the files area gives way to the instructions and the files, and the rest o
   expect((await canvasParts(page)).container).toBe(original.container);
   expect((await canvasParts(page)).header).toBe(original.header);
   expect((await canvasParts(page)).action).toBe(original.action);
+  // The right column is empty and hidden again, as Canvas drew it, and the body class is unchanged.
+  await expect(page.locator('#right-side-wrapper')).toBeHidden();
+  expect(await page.locator('#right-side').evaluate((node) => node.innerHTML)).toBe('');
+  expect(await page.evaluate(() => document.body.className)).toBe('primary-nav-expanded');
   // And on again, without a reload.
   await saveTools(background, DEFAULT_TOOLS_SETTINGS);
   await expect(host(page)).toBeAttached();
   await expect(page.locator('#preview_frame')).toBeHidden();
+  await expect(box(page)).toBeVisible();
 });
 
 const GO_TO_ASSIGNMENT = '/tmp/go-to-assignment.png';
@@ -408,7 +445,8 @@ test('the button of the title row says "Go to assignment" and opens the assignme
   const canvas = await open(context, page, background, { switchOff: true });
   const canvasButton = page.locator('.ic-Action-header__Secondary>a[href$="#submit"]');
   await expect(canvasButton).toHaveText('Re-submit Assignment');
-  const box = (await canvasButton.boundingBox())!;
+  const before = (await canvasButton.boundingBox())!;
+  const rowBefore = (await page.locator('.ic-Action-header').boundingBox())!;
   const look = await canvasButton.evaluate((node) => {
     const style = getComputedStyle(node);
     return { background: style.backgroundColor, color: style.color, weight: style.fontWeight };
@@ -431,9 +469,19 @@ test('the button of the title row says "Go to assignment" and opens the assignme
       return { background: style.backgroundColor, color: style.color, weight: style.fontWeight };
     }),
   ).toEqual(look);
+  // The row is narrower now, because the right column shows, so the button sits at the same
+  // distance from the end of the row as Canvas's button did.
   const now = (await own.boundingBox())!;
-  expect(Math.abs(now.y - box.y)).toBeLessThan(1);
-  expect(Math.abs(now.x + now.width - (box.x + box.width))).toBeLessThan(1);
+  const rowNow = (await row.boundingBox())!;
+  expect(Math.abs(now.y - before.y)).toBeLessThan(1);
+  expect(
+    Math.abs(
+      rowNow.x +
+        rowNow.width -
+        (now.x + now.width) -
+        (rowBefore.x + rowBefore.width - (before.x + before.width)),
+    ),
+  ).toBeLessThan(1);
   await row.screenshot({ path: GO_TO_ASSIGNMENT });
 
   // Turned off and on again, the page has one link at a time, and no reload happens.
@@ -471,7 +519,8 @@ test('a click on a file opens the file pane, and the link of Canvas in the frame
 }) => {
   const canvas = await open(context, page, background);
   await expect(host(page)).toBeAttached();
-  const link = host(page).getByRole('link', { name: FILE_NAME });
+  const link = box(page).getByRole('link', { name: FILE_NAME });
+  await expect(link).toHaveText(`View ${FILE_NAME}`);
   await expect(link).toHaveAttribute(
     'href',
     `${canvas.origin}${ASSIGNMENT}/submissions/42?download=501`,
@@ -502,7 +551,7 @@ test('View Feedback shows the session of Canvas in the feedback pane, and the se
       { fileId: '501', name: FILE_NAME, size: '118 KB', button: 'View Feedback', unread: true },
     ],
   });
-  const button = host(page).getByRole('button', { name: 'View Feedback' });
+  const button = box(page).getByRole('button', { name: 'View Feedback' });
   await expect(button).toBeVisible();
   // Canvas's unread mark shows as a dot, and the title says so.
   await expect(button).toHaveAttribute('title', 'There are unread comments.');
@@ -540,7 +589,10 @@ test('View Feedback shows the session of Canvas in the feedback pane, and the se
         document.documentElement.outerHTML.includes('canvadoc_session') ||
         (
           document.getElementById('av-submission-details')!.shadowRoot!.innerHTML as string
-        ).includes('canvadoc_session'),
+        ).includes('canvadoc_session') ||
+        (document.getElementById('av-submission-box')!.shadowRoot!.innerHTML as string).includes(
+          'canvadoc_session',
+        ),
     ),
   ).toBe(false);
   // A click that a page script makes opens nothing.
@@ -558,9 +610,9 @@ test('the feedback pane gives way to the file pane, comes back when it closes, a
   background,
 }) => {
   await open(context, page, background);
-  await host(page).getByRole('button', { name: 'View Feedback' }).click();
+  await box(page).getByRole('button', { name: 'View Feedback' }).click();
   await expect(page.locator(FEEDBACK)).toBeVisible();
-  const link = host(page).getByRole('link', { name: FILE_NAME });
+  const link = box(page).getByRole('link', { name: FILE_NAME });
   await expect(async () => {
     await link.click();
     await expect(page.locator(FILE_PANE)).toBeVisible({ timeout: 1500 });
@@ -568,18 +620,18 @@ test('the feedback pane gives way to the file pane, comes back when it closes, a
   await expect(page.locator(FEEDBACK)).toBeHidden();
   await closePane(page);
   await expect(page.locator(FEEDBACK)).toBeVisible();
-  const box = (await page.locator(FEEDBACK).boundingBox())!;
-  expect(box.x + box.width).toBe(1440);
-  expect(await paddingRight(page)).toBe(box.width);
+  const barBox = (await page.locator(FEEDBACK).boundingBox())!;
+  expect(barBox.x + barBox.width).toBe(1440);
+  expect(await paddingRight(page)).toBe(barBox.width);
   // The close button is at the right end of the bar.
-  await page.mouse.click(box.x + box.width - 22, 22);
+  await page.mouse.click(barBox.x + barBox.width - 22, 22);
   await expect(page.locator(FEEDBACK)).toHaveCount(0);
   expect(await paddingRight(page)).toBe(0);
 });
 
 test('the pane closes when the view is turned off', async ({ context, page, background }) => {
   await open(context, page, background);
-  await host(page).getByRole('button', { name: 'View Feedback' }).click();
+  await box(page).getByRole('button', { name: 'View Feedback' }).click();
   await expect(page.locator(FEEDBACK)).toBeVisible();
   await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
   await expect(page.locator(FEEDBACK)).toHaveCount(0);
@@ -605,10 +657,10 @@ test('a submission with two files lists both, and only a file that Canvas can pr
       );
     },
   });
-  await expect(host(page).locator('.av-file-row')).toHaveCount(3);
-  await expect(host(page).locator('.av-file-row').nth(1)).toContainText('2.5 KB');
-  await expect(host(page).getByRole('button')).toHaveText(['View Feedback', 'Preview']);
-  await expect(host(page).locator('.av-file-row').nth(1).getByRole('button')).toHaveCount(0);
+  await expect(box(page).locator('.av-box-file')).toHaveCount(3);
+  await expect(box(page).locator('.av-box-file').nth(1)).toContainText('2.5 KB');
+  await expect(box(page).locator('.av-feedback')).toHaveText(['View Feedback', 'Preview']);
+  await expect(box(page).locator('.av-box-file').nth(1).getByRole('button')).toHaveCount(0);
 });
 
 /**
@@ -620,7 +672,7 @@ async function expectFrameKept(page: Page, original: { frame: string; content: s
   await expect(host(page)).toBeAttached({ timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Instructions' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Your files' })).toHaveCount(0);
-  await expect(host(page).getByRole('button', { name: /Feedback|Preview/ })).toHaveCount(0);
+  await expect(box(page).getByRole('button', { name: /Feedback|Preview/ })).toHaveCount(0);
   await expect(page.locator('#preview_frame')).toBeVisible();
   const shown = await page.evaluate(() => ({
     frame: document.querySelector('.submission-details-frame')!.outerHTML,
@@ -690,7 +742,7 @@ test('a shard student, whose frame writes the ids in full, gets the view and Vie
 }) => {
   await open(context, page, background, { shard: true });
   await expect(page.locator('#preview_frame')).toBeHidden();
-  const button = host(page).getByRole('button', { name: 'View Feedback' });
+  const button = box(page).getByRole('button', { name: 'View Feedback' });
   await expect(button).toBeVisible();
   await button.click();
   await expect(page.locator(FEEDBACK)).toBeVisible();
@@ -755,7 +807,7 @@ test('a frame with changed markup keeps the frame of Canvas', async ({
   });
 });
 
-test('a similarity score in a file row keeps the frame of Canvas', async ({
+test('a similarity score with an address that fails the check keeps the frame of Canvas', async ({
   context,
   page,
   background,
@@ -767,9 +819,27 @@ test('a similarity score in a file row keeps the frame of Canvas', async ({
         name: FILE_NAME,
         size: '118 KB',
         button: 'View Feedback',
-        score: TURNITIN_SCORE,
+        score: TURNITIN_SCORE.replace(/href="[^"]*"/, 'href="https://evil.example/report"'),
       },
     ],
+  });
+});
+
+test('a similarity score of a text entry, outside a file row, keeps the frame of Canvas', async ({
+  context,
+  page,
+  background,
+}) => {
+  await checkKept(context, page, background, {
+    preview: previewWithText('<p>My answer, written in the editor.</p>').replace(
+      '<div style="text-align: right',
+      `<div>${TURNITIN_SCORE}</div><div style="text-align: right`,
+    ),
+    change: (copy) => {
+      copy.submission.submission_type = 'online_text_entry';
+      copy.submission.body = '<p>My answer, written in the editor.</p>';
+      copy.submission.attachments = [];
+    },
   });
 });
 
@@ -901,12 +971,24 @@ test('a media recording keeps the frame of Canvas, with the instructions above i
       style.textContent?.includes('.submission-details-frame'),
     ),
   }));
-  await page.screenshot({ path: path.join(SHOTS, 'submission-media-1440-light.png') });
+  // Playwright hides the caret with an inline style on the text field, so the shot keeps it.
+  await page.screenshot({
+    path: path.join(SHOTS, 'submission-media-1440-light.png'),
+    caret: 'initial',
+  });
   expect(shown.frame).toBe(original.frame);
   expect(shown.host).toBeLessThanOrEqual(shown.frameTop);
   expect(shown.frameRule).toBe(false);
   await expect(
     page.frameLocator('#preview_frame').getByRole('link', { name: /media recording/ }),
+  ).toBeVisible();
+  // The box shows the status line and the date, and Canvas keeps its comments column in place.
+  await expect(box(page).getByText('Submitted!')).toBeVisible();
+  await expect(box(page).locator('.av-date')).toHaveText(/^Nov 1 at \d{1,2}(:\d\d)?[ap]m$/);
+  await expect(box(page).locator('.av-box-files, .av-box-comments')).toHaveCount(0);
+  await expect(page.locator('#av-comments')).toHaveCount(0);
+  await expect(
+    page.locator('.submission-details-container > .submission-details-comments'),
   ).toBeVisible();
 
   // Turned off, the page is exactly what Canvas drew.
@@ -1013,23 +1095,12 @@ test('a short text has no "Show more", and the look follows the mockup', async (
     };
     return {
       label: style('.av-instructions .av-heading'),
-      files: style('.av-files .av-heading'),
       body: style('.av-instructions .av-body'),
-      name: style('.av-file'),
-      size: style('.av-size'),
-      feedback: style('.av-feedback'),
-      feedbackRight:
-        root.querySelector('.av-feedback')!.getBoundingClientRect().right -
-        root.querySelector('.av-file-row')!.getBoundingClientRect().right,
     };
   });
   expect(look.label).toMatchObject({ size: '13px', weight: '700' });
-  expect(look.files).toMatchObject({ size: '13px', weight: '700' });
   expect(look.body).toMatchObject({ size: '14px' });
   expect(parseFloat(look.body.line)).toBeCloseTo(23.1, 1);
-  expect(look.name).toMatchObject({ weight: '700' });
-  expect(look.size).toMatchObject({ size: '12px' });
-  expect(look.feedbackRight).toBe(0);
 });
 
 const SIDEBAR_FILE = 'ENGR195A - Reflection Paper #2-1.pdf';
@@ -1333,31 +1404,53 @@ for (const theme of ['light', 'dark'] as const) {
   });
 }
 
-/** Screenshots for the eye, with the text long enough to show "Show more". */
-for (const width of [1440, 1100]) {
-  for (const theme of ['light', 'dark'] as const) {
-    test(`screenshot at ${width} px, ${theme}`, async ({ context, page, background }) => {
-      await saveSetting(background, { theme });
-      await open(context, page, background, {
-        width,
-        change: (copy) => {
-          copy.assignment.description = DESCRIPTION + LONG_DESCRIPTION.slice(0, 1600);
+/**
+ * Screenshots for the eye, with the text long enough to show "Show more", and a score on the file.
+ * Light at 1920, 1366 and 1024 px (the menu is open at 1024 px, where the box stacks under the
+ * content), and dark at 1440 px.
+ */
+const SHOT_CASES = [
+  { width: 1920, theme: 'light', menu: 'closed' },
+  { width: 1366, theme: 'light', menu: 'closed' },
+  { width: 1024, theme: 'light', menu: 'open' },
+  { width: 1440, theme: 'dark', menu: 'closed' },
+] as const;
+for (const { width, theme, menu } of SHOT_CASES) {
+  test(`screenshot at ${width} px, ${theme}`, async ({ context, page, background }) => {
+    await saveSetting(background, { theme });
+    await open(context, page, background, {
+      width,
+      menu,
+      timeZone: 'America/Los_Angeles',
+      change: (copy) => {
+        copy.assignment.description = DESCRIPTION + LONG_DESCRIPTION.slice(0, 1600);
+        copy.submission.submitted_at = '2026-10-16T03:59:00Z';
+      },
+      rows: [
+        {
+          fileId: '501',
+          name: FILE_NAME,
+          size: '118 KB',
+          button: 'View Feedback',
+          unread: true,
+          score: TURNITIN_SCORE,
         },
-      });
-      await expect(host(page)).toBeAttached();
-      await expect(host(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
-      if (theme === 'dark') {
-        await page.addStyleTag({
-          content:
-            'body{background:#1b2330!important;color:#fff!important}a{color:#5a9fd4!important}.submission-details-header__heading-and-grades{border-color:#4a5b68!important}.submission-details-container{border-color:#2e3e4e!important}.Button--primary{background:#0374b5!important;color:#fff!important}',
-        });
-      }
-      await page.screenshot({
-        path: path.join(SHOTS, `submission-${width}-${theme}.png`),
-        animations: 'disabled',
-      });
+      ],
     });
-  }
+    await expect(host(page)).toBeAttached();
+    await expect(box(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
+    if (theme === 'dark') {
+      await page.addStyleTag({
+        content:
+          'body,.ic-Layout-wrapper{background:#1b2330!important;color:#fff!important}a{color:#5a9fd4!important}.submission-details-header__heading-and-grades{border-color:#4a5b68!important}.submission-details-container{border-color:#2e3e4e!important}.Button--primary{background:#0374b5!important;color:#fff!important}',
+      });
+    }
+    await page.screenshot({
+      path: path.join(SHOTS, `submission-${width}-${theme}.png`),
+      animations: 'disabled',
+      caret: 'initial',
+    });
+  });
 }
 
 const RUBRIC = '#rubric_holder';
@@ -1369,9 +1462,9 @@ async function rubricState(page: Page) {
     const holder = document.getElementById('rubric_holder')!;
     const rect = holder.getBoundingClientRect();
     const link = document.querySelector('.assess_submission_link')!;
-    const files = document
+    const instructions = document
       .getElementById('av-submission-details')
-      ?.shadowRoot?.querySelector('.av-files')
+      ?.shadowRoot?.querySelector('.av-instructions')
       ?.getBoundingClientRect();
     return {
       parent: holder.parentElement?.id ?? holder.parentElement?.className,
@@ -1381,7 +1474,7 @@ async function rubricState(page: Page) {
       linkShown: link ? link.getClientRects().length > 0 : null,
       top: rect.top,
       left: rect.left,
-      filesBottom: files?.bottom ?? null,
+      instructionsBottom: instructions?.bottom ?? null,
       ariaHidden: document.querySelectorAll(
         '[aria-hidden="true"][data-hide_from_rubric]:not(.ic-Layout-watermark)',
       ).length,
@@ -1391,7 +1484,7 @@ async function rubricState(page: Page) {
   });
 }
 
-test("Canvas's own rubric shows open under the files with no click, and the page is exact again when the view is off", async ({
+test("Canvas's own rubric shows open under the instructions with no click, and the page is exact again when the view is off", async ({
   context,
   page,
   background,
@@ -1407,15 +1500,15 @@ test("Canvas's own rubric shows open under the files with no click, and the page
   await turnOn(page, background);
   await expect(page.locator(RUBRIC)).toBeVisible();
   const state = await rubricState(page);
-  // The same node, in the host under the files, shown by the page sheet and not by its own style.
+  // The same node, in the host under the instructions, shown by the page sheet and not by its own style.
   expect(state.parent).toBe('av-rubric');
   expect(state.inline).toBe(
     await page.evaluate(() => document.getElementById('rubric_holder')!.getAttribute('style')),
   );
   expect(state.inline).toContain('display: none');
   expect(state.position).toBe('static');
-  expect(state.filesBottom).not.toBeNull();
-  expect(state.top).toBeGreaterThanOrEqual(state.filesBottom!);
+  expect(state.instructionsBottom).not.toBeNull();
+  expect(state.top).toBeGreaterThanOrEqual(state.instructionsBottom!);
   // Canvas's own link is hidden, and no click happened.
   expect(state.linkShown).toBe(false);
   expect(state.opened).toBe(0);
@@ -1767,7 +1860,7 @@ test('a frame that turns out to hold more moves the rubric from the host to the 
         name: FILE_NAME,
         size: '118 KB',
         button: 'View Feedback',
-        score: TURNITIN_SCORE,
+        report: '<span>Processing</span>',
       },
     ],
   });
@@ -1843,3 +1936,407 @@ for (const theme of ['light', 'dark'] as const) {
     });
   });
 }
+
+const REPORT_PAGE = `${ASSIGNMENT}/submissions/42`;
+
+test('a file with a Turnitin score keeps the view: no frame, and the box shows the file, the score with its address and color, and View Feedback', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    timeZone: 'America/Los_Angeles',
+    change: (copy) => {
+      copy.submission.submitted_at = '2026-10-16T03:59:00Z';
+    },
+    rows: [
+      {
+        fileId: '501',
+        name: FILE_NAME,
+        size: '118 KB',
+        button: 'View Feedback',
+        score: TURNITIN_SCORE,
+      },
+    ],
+  });
+  await expect(host(page)).toBeAttached();
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  await expect(
+    page.locator('.submission-details-container > .submission-details-comments'),
+  ).toHaveCount(0);
+  await expect(box(page).getByText('Submitted!')).toBeVisible();
+  await expect(box(page).locator('.av-date')).toHaveText('Oct 15 at 8:59pm');
+  await expect(box(page).getByRole('link', { name: FILE_NAME })).toHaveText(`View ${FILE_NAME}`);
+  await expect(box(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
+  const score = box(page).getByRole('link', { name: '5.0%' });
+  await expect(score).toBeVisible();
+  await expect(score).toHaveAttribute(
+    'href',
+    `${canvas.origin}${REPORT_PAGE}/turnitin/attachment_1`,
+  );
+  await expect(score).toHaveAttribute('target', '_blank');
+  await expect(score).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(score).toHaveAttribute('title', 'Similarity score');
+  // Canvas's color for an acceptable score, in Canvas's size and shape.
+  expect(
+    await score.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return {
+        background: style.backgroundColor,
+        color: style.color,
+        weight: style.fontWeight,
+        size: style.fontSize,
+        padding: style.padding,
+        radius: style.borderRadius,
+      };
+    }),
+  ).toEqual({
+    background: 'rgb(0, 153, 23)',
+    color: 'rgb(0, 0, 0)',
+    weight: '700',
+    size: '12px',
+    padding: '2px 4px',
+    radius: '3px',
+  });
+  // A click opens the report in a new tab, and the page stays.
+  const popup = page.waitForEvent('popup');
+  await score.click();
+  expect(new URL((await popup).url()).pathname).toBe(`${REPORT_PAGE}/turnitin/attachment_1`);
+  expect(new URL(page.url()).pathname).toBe(REPORT_PAGE);
+});
+
+test('a score with no state class shows gray, and one with no address is no link', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    rows: [
+      {
+        fileId: '501',
+        name: FILE_NAME,
+        size: '118 KB',
+        button: null,
+        score: turnitinScores().updatedNoAddress,
+      },
+    ],
+  });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  const score = box(page).getByText('7.0%');
+  await expect(score).toBeVisible();
+  expect(await score.evaluate((node) => node.tagName)).toBe('SPAN');
+  expect(
+    await score.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return { background: style.backgroundColor, color: style.color };
+    }),
+  ).toEqual({ background: 'rgb(128, 128, 128)', color: 'rgb(39, 53, 64)' });
+});
+
+test("Canvas's comment form works from the box: the same node, Save adds the comment, and No Comments goes", async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { noComments: true });
+  await expect(box(page).getByText('Comments:')).toBeVisible();
+  await expect(box(page).getByText('No Comments')).toBeVisible();
+  const area = page.locator('textarea.grading_comment');
+  const save = page.getByRole('button', { name: 'Save' });
+  await expect(area).toBeVisible();
+  // The form is in the box, under the heading, and Canvas's own links are there.
+  const hostRect = (await box(page).boundingBox())!;
+  const areaRect = (await area.boundingBox())!;
+  expect(areaRect.x).toBeGreaterThanOrEqual(hostRect.x);
+  expect(areaRect.x + areaRect.width).toBeLessThanOrEqual(hostRect.x + hostRect.width + 1);
+  await expect(box(page).getByText('Add a Comment:')).toBeVisible();
+  await expect(box(page).getByRole('link', { name: 'Media Comment' })).toBeVisible();
+  await expect(box(page).getByRole('link', { name: 'Attach File' })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        document.querySelector('.submission-details-comments')!.closest('#av-submission-box') !==
+        null,
+    ),
+  ).toBe(true);
+
+  await area.fill('Thank you for the notes');
+  await save.click();
+  // Canvas's script handled the click on its own button, and drew the comment in its own list.
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __canvasComments: { saved: number } }).__canvasComments.saved,
+    ),
+  ).toBe(1);
+  await expect(page.locator('#av-comments .comment_list > .comment')).toHaveCount(1);
+  await expect(box(page).getByText('Thank you for the notes')).toBeVisible();
+  await expect(box(page).getByText('No Comments')).toBeHidden();
+  await expect(area).toHaveValue('');
+});
+
+test('the comments show without "No Comments" when the list has a comment, and the text that was typed stays when the view goes', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background);
+  await expect(
+    box(page).getByText('You selected an interesting and ambitious topic'),
+  ).toBeVisible();
+  await expect(box(page).getByText('No Comments')).toBeHidden();
+  const area = page.locator('textarea.grading_comment');
+  await area.fill('A draft that stays');
+  await area.focus();
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  await expect(box(page)).toHaveCount(0);
+  await expect(page.locator('#av-comments')).toHaveCount(0);
+  await expect(area).toHaveValue('A draft that stays');
+  await expect(area).toBeFocused();
+  expect(
+    await page.evaluate(
+      () =>
+        document.querySelector(
+          '.submission-details-container > .submission-details-comments textarea',
+        ) !== null,
+    ),
+  ).toBe(true);
+  // The page is Canvas's again: the comments column is in the strip, and the right column is hidden.
+  await expect(
+    page.locator('.submission-details-container > .submission-details-comments'),
+  ).toBeVisible();
+  await expect(page.locator('#right-side-wrapper')).toBeHidden();
+});
+
+/** The box and the content column of the page, as rectangles. */
+async function columns(page: Page) {
+  const content = (await page.locator('#content-wrapper').boundingBox())!;
+  const side = (await box(page).boundingBox())!;
+  return { content, side };
+}
+
+test('at 1920 px the content keeps the width that Canvas gives it, and the box stands in the free space on its right', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { switchOff: true, width: 1920 });
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  const canvasWidth = (await page.locator('#content-wrapper').boundingBox())!.width;
+  await turnOn(page, background);
+  await expect(box(page)).toBeVisible();
+  const { content, side } = await columns(page);
+  expect(content.width).toBeCloseTo(canvasWidth, 0);
+  expect(side.x).toBeGreaterThanOrEqual(content.x + content.width - 1);
+  expect(side.y).toBeLessThan(content.y + content.height);
+});
+
+test('at 1366 px the box and the content stand side by side', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { width: 1366 });
+  await expect(box(page)).toBeVisible();
+  const { content, side } = await columns(page);
+  expect(side.x).toBeGreaterThanOrEqual(content.x + content.width - 1);
+  expect(side.y).toBeLessThan(content.y + content.height);
+  // The strip is gone, so the instructions use the width of the content column.
+  const instructions = (await host(page).boundingBox())!;
+  expect(instructions.x + instructions.width).toBeLessThanOrEqual(content.x + content.width);
+  expect(instructions.width).toBeGreaterThan(content.width * 0.8);
+});
+
+test('at 1024 px with the course menu open the box stands under the content', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { width: 1024, menu: 'open' });
+  await expect(box(page)).toBeVisible();
+  const { content, side } = await columns(page);
+  expect(side.y).toBeGreaterThanOrEqual(content.y + content.height - 1);
+  await expect(box(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
+});
+
+test('the File viewer switch changes the label of the file links of the box without a reload', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background);
+  const link = box(page).locator('.av-file');
+  await expect(link).toHaveText(`View ${FILE_NAME}`);
+  await page.evaluate(() => {
+    (window as unknown as { __kept: boolean }).__kept = true;
+  });
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+  await expect(link).toHaveText(`Download ${FILE_NAME}`);
+  await expect(link).toHaveAttribute('href', `${canvas.origin}${REPORT_PAGE}?download=501`);
+  // The view stays on, and the pane does not take the click.
+  await expect(host(page)).toBeAttached();
+  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  await expect(link).toHaveText(`View ${FILE_NAME}`);
+  expect(await page.evaluate(() => (window as unknown as { __kept?: boolean }).__kept)).toBe(true);
+});
+
+test('a mode change keeps the keyboard focus on "Go to assignment"', async ({
+  context,
+  page,
+  background,
+}) => {
+  // The report status shows 2.5 s after the load, so the view goes from the replace mode to the
+  // mode that keeps Canvas's frame, while the focus is on the link.
+  const preview = withScript(
+    previewWithFiles('12', '101', '42', ONE_FILE),
+    "setTimeout(function(){document.querySelector('td.asset-report-status-container').innerHTML='<div><a href=\"#\">Similarity report</a></div>'},2500)",
+  );
+  await open(context, page, background, { preview });
+  const own = page.getByRole('link', { name: 'Go to assignment' });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  await own.focus();
+  await expect(own).toBeFocused();
+  await expect(page.locator('#preview_frame')).toBeVisible({ timeout: 10_000 });
+  await expect(own).toBeFocused();
+  await expect(page.locator('a[data-av-own]')).toHaveCount(1);
+});
+
+const FORGED_ACTION =
+  '<span id="forged-action" data-action="feedback" data-index="0">Open the feedback</span>';
+
+test('a comment that holds the ids of the right column does not take the column from the view', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    commentHtml: '<div id="right-side-wrapper"><div id="right-side">forged column</div></div>',
+  });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  await expect(box(page).getByText('Submitted!')).toBeVisible();
+  await expect(box(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
+  await expect(box(page).getByText('Comments:')).toBeVisible();
+  await expect(page.locator('#av-comments').getByText('forged column')).toBeVisible();
+  // The box stands in the real column, and the forged one in the comment has no node of the view.
+  expect(
+    await page.evaluate(() => {
+      const box = document.getElementById('av-submission-box')!;
+      return {
+        real: box.closest('#content') === null && box.parentElement?.id === 'right-side',
+        forged: document.querySelector('#av-comments #right-side')!.outerHTML,
+      };
+    }),
+  ).toEqual({ real: true, forged: '<div id="right-side">forged column</div>' });
+});
+
+test('a click on the content of a comment runs no action of the box', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { commentHtml: FORGED_ACTION });
+  // The comment stands in the box, once the view has moved the column.
+  await expect(page.locator('#av-comments #forged-action')).toBeVisible();
+  await page.locator('#forged-action').click();
+  await page.waitForTimeout(300);
+  await expect(page.locator(FEEDBACK)).toHaveCount(0);
+  // The button of the box still works for the student.
+  await box(page).getByRole('button', { name: 'View Feedback' }).click();
+  await expect(page.locator(FEEDBACK)).toBeVisible();
+});
+
+test('a wide table in a comment scrolls inside the box and does not widen the page', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    commentHtml: '<table style="width:600px"><tr><td>A wide table in a comment</td></tr></table>',
+  });
+  await expect(page.locator('#av-comments .comments')).toBeVisible();
+  const sizes = await page.evaluate(() => {
+    const list = document.querySelector('#av-comments .comments')!;
+    const root = document.documentElement;
+    return {
+      page: root.scrollWidth - root.clientWidth,
+      scrolls: list.scrollWidth > list.clientWidth,
+      overflowX: getComputedStyle(list).overflowX,
+      inBox:
+        list.getBoundingClientRect().right <=
+        document.getElementById('av-submission-box')!.getBoundingClientRect().right + 1,
+    };
+  });
+  expect(sizes).toEqual({ page: 0, scrolls: true, overflowX: 'auto', inBox: true });
+});
+
+test('the comments in the box keep the direction and the language of a right-to-left Canvas', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { rtl: true });
+  await expect(box(page).getByText('You selected an interesting')).toBeVisible();
+  expect(
+    await page.evaluate(() => {
+      const text = document.querySelector('#av-comments .comment_content')!;
+      return {
+        direction: getComputedStyle(text).direction,
+        lang: text.closest('[lang]')?.getAttribute('lang'),
+        note: document.querySelector('#av-comments .av-no-comments')?.getAttribute('lang'),
+        noteDirection: getComputedStyle(document.querySelector('#av-comments .av-no-comments')!)
+          .direction,
+      };
+    }),
+  ).toEqual({ direction: 'rtl', lang: 'ar', note: 'en', noteDirection: 'ltr' });
+});
+
+test('a click on a data-action in the rubric text does not fold the instructions', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    rubric: true,
+    change: (copy) => {
+      copy.assignment.description = LONG_DESCRIPTION;
+    },
+  });
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  const body = host(page).locator('.av-instructions .av-body');
+  await expect(host(page).getByRole('button', { name: 'Show more' })).toBeVisible();
+  await page.evaluate(() =>
+    document
+      .querySelector('#rubric_holder .rubric')!
+      .insertAdjacentHTML(
+        'beforeend',
+        '<button type="button" id="forged-more" data-action="more">forged</button>',
+      ),
+  );
+  const clipped = await body.evaluate((node) => node.clientHeight);
+  await page.locator('#forged-more').click();
+  await page.waitForTimeout(300);
+  await expect(page.locator('#forged-more')).toHaveText('forged');
+  await expect(page.locator('#forged-more')).not.toHaveAttribute('aria-expanded', /.*/);
+  expect(await body.evaluate((node) => node.clientHeight)).toBe(clipped);
+  await expect(host(page).getByRole('button', { name: 'Show more' })).toBeVisible();
+  // The button of the instructions still works for the student.
+  await host(page).getByRole('button', { name: 'Show more' }).click();
+  await expect(host(page).getByRole('button', { name: 'Show less' })).toBeVisible();
+});
+
+test('the rubric in the instructions host keeps the direction and the language of a right-to-left Canvas', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { rtl: true, rubric: true });
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  expect(
+    await page.evaluate(() => {
+      const rubric = document.querySelector('#rubric_holder .rubric')!;
+      return {
+        direction: getComputedStyle(rubric).direction,
+        lang: rubric.closest('[lang]')?.getAttribute('lang'),
+      };
+    }),
+  ).toEqual({ direction: 'rtl', lang: 'ar' });
+});

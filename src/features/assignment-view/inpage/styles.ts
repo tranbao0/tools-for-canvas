@@ -91,8 +91,8 @@ box-sizing:border-box;margin:0;padding:16px 24px 20px 40px;background:var(--av-b
 `;
 
 /**
- * The Submission Details view, after the panel rules. It fills the slot of the files frame in the
- * flex row beside the comments column, and reads 14 px text at a 1.65 line height.
+ * The Submission Details view, after the panel rules. In the replace mode it fills the slot of the
+ * files frame, which the page hides, and reads 14 px text at a 1.65 line height.
  */
 export const SUBMISSION_CSS = `
 :host{flex:1 1 0!important;min-width:0!important}
@@ -103,17 +103,43 @@ export const SUBMISSION_CSS = `
 .av-sub .av-body[data-av-clamped]{max-height:calc(15 * 1.65em)}
 .av-sub .av-body[data-av-cut]{mask-image:linear-gradient(#000 calc(100% - 3.3em),transparent)}
 .av-sub .av-link{margin-top:0;font-size:13px;line-height:1.65}
-.av-sub .av-files,.av-sub .av-submission,.av-sub .av-rubric{margin-top:18px;padding-top:12px;border-top:1px solid var(--av-soft)}
+.av-sub .av-submission,.av-sub .av-rubric{margin-top:18px;padding-top:12px;border-top:1px solid var(--av-soft)}
 .av-sub-above{margin-bottom:12px;border:1px solid var(--av-soft)}
 .av-link-text{overflow-wrap:anywhere}
-.av-file-list{margin:0;padding:0;list-style:none}
-.av-file-row{display:flex;align-items:center;gap:8px;margin:0;padding:6px 0;font-size:13px;line-height:1.4}
-.av-file{font-weight:700;overflow-wrap:anywhere;text-decoration:none}
-.av-file-icon{flex:none;width:14px;height:14px;color:var(--av-text-2)}
+`;
+
+/**
+ * The Submission box of the Submission Details page, after the panel rules. It sits in the right
+ * column of Canvas, so it has no background of its own and no padding: the column pads it. The
+ * heading follows `#right-side h2` of Canvas (1rem, bold, a 1px line under it), and the similarity
+ * score follows `.turnitin_similarity_score` of Canvas: bold 0.75rem, 2px 4px, 3px radius, black
+ * text, with the colors of its states, and gray for a pending or failed report.
+ */
+export const BOX_CSS = `
+.av.av-box{padding:0;border-top:0;background:transparent;font-size:14px;line-height:1.5}
+.av-box-title{margin:0 0 6px;padding-bottom:6px;border-bottom:1px solid var(--av-soft);font-size:1rem;font-weight:700;line-height:1.5}
+.av-status{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:1rem;font-weight:700}
+.av-status-icon{flex:none;width:16px;height:16px}
+.av-date{margin:2px 0 8px}
+.av-box-files{margin:0;padding:0;list-style:none}
+.av-box-file{margin:0 0 8px}
+.av-box-file-name{display:flex;align-items:flex-start;gap:8px;line-height:1.4}
+.av-file{overflow-wrap:anywhere;text-decoration:none}
+.av-file-icon{flex:none;width:16px;height:16px;margin-top:2px;color:var(--av-text-2)}
 .av-file-pdf{color:light-dark(#c0392b,#f08a8d)}
-.av-size{flex:none;color:var(--av-text-2);font-size:12px;white-space:nowrap}
-.av-feedback{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;margin-inline-start:auto;padding-inline-start:8px;color:var(--av-link);font-size:13px;line-height:1.4;white-space:nowrap;cursor:pointer}
+.av-box-file-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:5px 0 0 24px;font-size:13px}
+.av-size{color:var(--av-text-2);font-size:12px;white-space:nowrap}
+.av-score{--av-score-bg:gray;--av-score-fg:#273540}
+.av .av-score,.av a.av-score{display:inline-block;border-radius:3px;padding:2px 4px;background:var(--av-score-bg);color:var(--av-score-fg);font-size:.75rem;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap}
+.av-score[data-state=none]{--av-score-bg:#397af4;--av-score-fg:#000}
+.av-score[data-state=acceptable]{--av-score-bg:#009917;--av-score-fg:#000}
+.av-score[data-state=warning]{--av-score-bg:#897b01;--av-score-fg:#000}
+.av-score[data-state=problem]{--av-score-bg:#c86604;--av-score-fg:#000}
+.av-score[data-state=failure]{--av-score-bg:#ad393a;--av-score-fg:#fff}
+.av-feedback{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;color:var(--av-link);font-size:13px;line-height:1.4;white-space:nowrap;cursor:pointer}
 .av-feedback:hover{text-decoration:underline}
 .av-feedback:focus-visible{outline:2px solid var(--av-ring);outline-offset:2px}
 .av-unread{flex:none;width:8px;height:8px;border-radius:50%;background:var(--av-ring)}
+.av-box-comments{margin-top:18px}
+.av-box-subtitle{margin:0 0 2px;font-size:.75rem;font-weight:700;line-height:1.5}
 `;

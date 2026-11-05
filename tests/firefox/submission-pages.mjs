@@ -8,9 +8,13 @@
 // checks:
 //   a. The box shows "View NAME" for a relative link and for a link with the full host, with and
 //      without the hash #submit, and it has no Download link of the view.
-//   b. The Submission Details page of the own submission is in 'replace' mode: the files frame is
-//      hidden and the view shows its "View Feedback" button, because the session address of the
-//      preview button passes its check.
+//   b. The Submission Details page of the own submission, with a Turnitin score on the file, is in
+//      'replace' mode: the files frame is hidden, and the Submission box in the right column shows
+//      the file, its score with Canvas's color and address, and "View Feedback", because the session
+//      address of the preview button and the address of the report pass their checks.
+//   c. Canvas's own comment form is inside the box, as the same light DOM node: a click on Save
+//      reaches Canvas's handler, which draws the comment in Canvas's list, the text goes, and the
+//      line "No Comments" of the view goes with the first comment (a `:has` rule).
 //
 // Usage: node tests/firefox/submission-pages.mjs
 // Set SUBMISSION_BOX_SHOT to a file name to save a screenshot of the Submission box at 1440 px.
@@ -52,6 +56,7 @@ registerHooks({
 process.chdir(ROOT);
 const { rawRecords } = await import('../fixtures/assignment-view.ts');
 const { previewWithFiles, submissionDetailsPage } = await import('../fixtures/submission-page.ts');
+const { turnitinScores } = await import('../fixtures/submission-frame.ts');
 
 /**
  * The assignment page with the Submission box as `_submission_sidebar.html.erb` draws it for an
@@ -220,36 +225,115 @@ async function checkSubmissionBox(driver, origin, screenshot) {
   return problems;
 }
 
-/** Check b: the Submission Details page of the own submission is in 'replace' mode. */
+/** Check b: the Submission Details page of the own submission is in 'replace' mode, with the box. */
 async function checkSubmissionDetails(driver, origin) {
   await driver.get('about:blank');
   await driver.get(`${origin}${DETAILS_PATH}`);
+  const read = () =>
+    driver.executeScript(`
+      const box = document.querySelector('#av-submission-box');
+      const frame = document.querySelector('#preview_frame');
+      const root = box && box.shadowRoot;
+      const score = root && root.querySelector('a.av-score');
+      const scoreStyle = score && getComputedStyle(score);
+      return {
+        started: document.documentElement.hasAttribute('data-av-started'),
+        hasBox: box !== null,
+        inColumn: box !== null && box.parentElement !== null && box.parentElement.id === 'right-side',
+        columnShown: getComputedStyle(document.querySelector('#right-side-wrapper')).display !== 'none',
+        frameShown: frame !== null && frame.getClientRects().length > 0,
+        buttons: root ? [...root.querySelectorAll('.av-feedback')].map((node) => node.innerText.trim()) : [],
+        fileLink: root && root.querySelector('a.av-file') ? root.querySelector('a.av-file').innerText.trim() : null,
+        score: score ? {
+          text: score.textContent.trim(),
+          state: score.getAttribute('data-state'),
+          href: score.getAttribute('href'),
+          target: score.getAttribute('target'),
+          background: scoreStyle.backgroundColor,
+          color: scoreStyle.color,
+        } : null,
+        above: document.querySelector('#av-submission-details') !== null &&
+          document.querySelector('#av-submission-details').shadowRoot.querySelector('.av-sub-above') !== null,
+      };
+    `);
   const state = await waitFor(
-    () =>
-      driver.executeScript(`
-        const host = document.querySelector('#av-submission-details');
-        const frame = document.querySelector('#preview_frame');
-        const buttons = host && host.shadowRoot
-          ? [...host.shadowRoot.querySelectorAll('button')].map((node) => node.innerText.trim())
-          : [];
-        return {
-          started: document.documentElement.hasAttribute('data-av-started'),
-          hasHost: host !== null,
-          frameShown: frame !== null && frame.getClientRects().length > 0,
-          buttons,
-          above: host !== null && host.shadowRoot !== null && host.shadowRoot.querySelector('.av-sub-above') !== null,
-        };
-      `),
-    (value) => value.hasHost && !value.frameShown && value.buttons.includes('View Feedback'),
+    read,
+    (value) => value.hasBox && !value.frameShown && value.buttons.includes('View Feedback'),
   );
-  if (state.hasHost && !state.frameShown && state.buttons.includes('View Feedback')) {
-    console.log('Submission Details: the files frame is hidden, "View Feedback" is shown');
-    return [];
+  const wrong = [];
+  if (!state.hasBox) wrong.push('the box is missing');
+  if (!state.inColumn) wrong.push('the box is not in the right column');
+  if (!state.columnShown) wrong.push('the right column is hidden');
+  if (state.frameShown) wrong.push("the files frame is shown (not in 'replace' mode)");
+  if (state.above) wrong.push("the view is in 'above' mode");
+  if (!state.buttons.includes('View Feedback')) {
+    wrong.push(`buttons are ${JSON.stringify(state.buttons)}`);
   }
-  return [
-    `Submission Details: not in replace mode (view ${state.hasHost ? 'drawn' : 'missing'}, ` +
-      `files frame ${state.frameShown ? 'shown' : 'hidden'}, buttons ${JSON.stringify(state.buttons)}, view in ${state.above ? "'above'" : "'replace'"} mode)`,
-  ];
+  if (state.fileLink !== `View ${NAME}`)
+    wrong.push(`file link is ${JSON.stringify(state.fileLink)}`);
+  const score = state.score;
+  if (!score) wrong.push('the score is missing');
+  else {
+    if (score.text !== '5.0%' || score.state !== 'acceptable') {
+      wrong.push(`score is ${score.text} (${score.state})`);
+    }
+    if (
+      score.href !== `${origin}${DETAILS_PATH}/turnitin/attachment_1` ||
+      score.target !== '_blank'
+    ) {
+      wrong.push(`score link is ${score.href} (${score.target})`);
+    }
+    if (score.background !== 'rgb(0, 153, 23)' || score.color !== 'rgb(0, 0, 0)') {
+      wrong.push(`score colors are ${score.background} on ${score.color}`);
+    }
+  }
+  if (wrong.length > 0) return [`Submission Details: ${wrong.join('; ')}`];
+  console.log(
+    'Submission Details: the files frame is hidden, the box shows the file, "5.0%" in green, "View Feedback"',
+  );
+  return [];
+}
+
+/** Check c: Canvas's own comment form works from the box. */
+async function checkCommentForm(driver, origin) {
+  await driver.get('about:blank');
+  await driver.get(`${origin}${DETAILS_PATH}?empty=1`);
+  await waitFor(
+    () => driver.executeScript("return document.querySelector('#av-comments') !== null"),
+    (value) => value === true,
+  );
+  const probe = () =>
+    driver.executeScript(`
+      const area = document.querySelector('textarea.grading_comment');
+      const wrapper = document.querySelector('#av-comments');
+      const none = wrapper && wrapper.querySelector('.av-no-comments');
+      return {
+        inBox: area !== null && document.querySelector('#av-submission-box').contains(area),
+        inLightDom: area !== null && area.getRootNode() === document,
+        wrapperChild: wrapper !== null && wrapper.parentElement.id === 'av-submission-box',
+        noneShown: none ? getComputedStyle(none).display !== 'none' : null,
+        comments: document.querySelectorAll('.comment_list > .comment').length,
+        saved: window.__canvasComments ? window.__canvasComments.saved : null,
+        text: area ? area.value : null,
+      };
+    `);
+  const before = await probe();
+  const wrong = [];
+  if (!before.inBox || !before.inLightDom || !before.wrapperChild) {
+    wrong.push(`the form is not in the box (${JSON.stringify(before)})`);
+  }
+  if (before.noneShown !== true) wrong.push('"No Comments" is not shown for an empty list');
+  await driver.findElement(By.css('textarea.grading_comment')).sendKeys('Thank you for the notes');
+  await driver.findElement(By.css('.save_comment_button')).click();
+  const after = await waitFor(probe, (value) => value.comments === 1);
+  if (after.saved !== 1 || after.comments !== 1) {
+    wrong.push(`Save did not reach Canvas's handler (${JSON.stringify(after)})`);
+  }
+  if (after.text !== '') wrong.push('the text stayed after Save');
+  if (after.noneShown !== false) wrong.push('"No Comments" is still shown after the first comment');
+  if (wrong.length > 0) return [`Comment form in the box: ${wrong.join('; ')}`];
+  console.log('Comment form in the box: Save works, and "No Comments" goes with the first comment');
+  return [];
 }
 
 async function main() {
@@ -301,12 +385,14 @@ async function main() {
               size: '118 KB',
               button: 'View Feedback',
               session: SESSION,
+              score: turnitinScores(DETAILS_PATH).legacy,
             },
           ])
         : submissionDetailsPage({
             course: COURSE,
             assignment: ASSIGNMENT,
             user: USER,
+            noComments: url.searchParams.has('empty'),
             frameSrc: `${DETAILS_PATH}?preview=1&rand=481516`,
           }),
     }),
@@ -354,6 +440,7 @@ async function main() {
     const problems = [
       ...(await checkSubmissionBox(driver, origin, process.env.SUBMISSION_BOX_SHOT)),
       ...(await checkSubmissionDetails(driver, origin)),
+      ...(await checkCommentForm(driver, origin)),
     ];
     if (problems.length > 0) {
       for (const problem of problems) console.error(`FAILED ${problem}`);

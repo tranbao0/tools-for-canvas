@@ -404,11 +404,59 @@ describe('turning the view off', () => {
   it('removes the host of an earlier copy on a Submission Details page, and no comment mark', () => {
     document.body.insertAdjacentHTML(
       'beforeend',
-      '<div id="av-submission-details" data-av-own></div><div class="submission-details-comments"><p data-av-own>teacher</p></div>',
+      '<div id="av-submission-details" data-av-own></div><div class="submission-details-container"><div class="submission-details-comments"><p data-av-own>teacher</p></div></div>',
     );
     removeStaleView(document, '/courses/12/assignments/101/submissions/42');
     expect(document.getElementById('av-submission-details')).toBeNull();
     expect(document.querySelector('.submission-details-comments p[data-av-own]')).not.toBeNull();
+  });
+
+  describe('the place checks on a Submission Details page', () => {
+    const PAGE = '/courses/12/assignments/101/submissions/42';
+    const FORGED_HOST =
+      '<div id="av-submission-details" data-av-own><p>forged</p></div><div class="submission-details-container"><div class="submission-details-frame"></div></div>';
+
+    it('keeps a forged host in the rubric and removes the real stale host next to it', () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `<div id="rubric_holder">${FORGED_HOST}</div><div id="av-submission-details" data-av-own></div><div class="submission-details-container"><div class="submission-details-frame"></div><div class="submission-details-comments"></div></div>`,
+      );
+      removeStaleView(document, PAGE);
+      const hosts = document.querySelectorAll('#av-submission-details');
+      expect(hosts).toHaveLength(1);
+      expect(hosts[0]!.closest('#rubric_holder')).not.toBeNull();
+    });
+
+    it('keeps a forged host that stands before a forged container in the rubric, without a real host', () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `<div id="rubric_holder">${FORGED_HOST}</div><div class="submission-details-container"><div class="submission-details-frame"></div></div>`,
+      );
+      removeStaleView(document, PAGE);
+      expect(document.querySelector('#rubric_holder #av-submission-details')).not.toBeNull();
+    });
+
+    it('removes the real host after the frame, and keeps a host after a forged frame', () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        '<div id="rubric_holder"><div class="submission-details-container"><div class="submission-details-frame"></div><div id="av-submission-details" data-av-own></div></div></div><div class="submission-details-container"><div class="submission-details-frame"></div><div id="av-submission-details" data-av-own></div></div>',
+      );
+      removeStaleView(document, PAGE);
+      const hosts = document.querySelectorAll('#av-submission-details');
+      expect(hosts).toHaveLength(1);
+      expect(hosts[0]!.closest('#rubric_holder')).not.toBeNull();
+    });
+
+    it('removes the wrapper of the rubric in the real host, and keeps a forged one in the rubric', () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        '<div id="rubric_holder"><div class="submission-details-frame"><div id="av-rubric" data-av-own></div></div></div><div id="av-submission-details" data-av-own><div id="av-rubric" data-av-own></div></div><div class="submission-details-container"><div class="submission-details-frame"></div></div>',
+      );
+      removeStaleView(document, PAGE);
+      const wrappers = document.querySelectorAll('#av-rubric');
+      expect(wrappers).toHaveLength(1);
+      expect(wrappers[0]!.closest('#rubric_holder')).not.toBeNull();
+    });
   });
 
   describe('the own link of the title row on a Submission Details page', () => {
