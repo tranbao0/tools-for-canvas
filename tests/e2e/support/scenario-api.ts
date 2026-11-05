@@ -15,6 +15,8 @@ export function apiRoutes(
   scenario: Scenario,
   /** Answers the announcements query of the widget, or returns `undefined` for another query. */
   announcementsQuery?: (request: RecordedRequest) => unknown,
+  /** Answers the People query of the widget, or returns `undefined` for another query. */
+  peopleQuery?: (request: RecordedRequest) => unknown,
 ): FakeCanvasRoute[] {
   const courseIds = scenario.courses.map((course) => course.id);
   const created = {
@@ -55,7 +57,9 @@ export function apiRoutes(
           request.postData?.includes('WeekrowAnnouncements') &&
             announcementsQuery?.(request) !== undefined
             ? announcementsQuery(request)
-            : request.postData?.includes('WidgetGradeVisibility')
+            : request.postData?.includes('WeekrowPeople') && peopleQuery?.(request) !== undefined
+              ? peopleQuery(request)
+              : request.postData?.includes('WidgetGradeVisibility')
               ? { data: { legacyNode: { widgetDashboardConfig: '{}' } } }
               : customGradeStatusesAnswer(scenario, request.postData),
         ),

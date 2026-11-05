@@ -20,6 +20,11 @@
             const courses = target.querySelector('.fixture-widget-tabs [role="tab"]:not([aria-selected])');
             if (courses && window.fixtureSelectTab) window.fixtureSelectTab(courses);
           }
+          // The People widget with the markup of the package: the real rows, the two filters and
+          // the pager. Without the flag the page holds the plain placeholder.
+          const people = document.getElementById('fixture-people-widget');
+          const slot = target.querySelector('[data-testid="widget-container-people-widget"]');
+          if (params.has('fixture_people') && people && slot) slot.innerHTML = people.innerHTML;
           const section = target.querySelector('[data-testid="widget-course-work-combined-widget"]');
           if (section) {
             const state = params.get('fixture_course_work');
