@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createDock } from './dock';
+import { createDock, filePaneOpen, hideFilePane } from './dock';
 import { listenViewerHello, startViewer } from './page';
 
 const SECRET = 'c'.repeat(64);
@@ -177,6 +177,99 @@ describe('the page script', () => {
     expect(removeListener).not.toHaveBeenCalled();
     click(true);
     await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
+  });
+
+  describe('when the background clears the data of a student', () => {
+    const html = document.documentElement;
+    const resetMessage = () => {
+      const listener = addListener.mock.calls[0]![0] as (message: unknown, sender: unknown) => void;
+      listener({ type: 'viewer:reset' }, { id: 'my-extension' });
+    };
+    const paneHost = () => document.getElementById('tools-file-viewer');
+    const writes = () =>
+      sendMessage.mock.calls.filter(([m]) => m.type === 'viewer:tabs-set').map(([m]) => m);
+    async function openPane() {
+      prepare();
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        '<a id="other" href="/files/6">Other notes</a>',
+      );
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(paneHost()).not.toBeNull());
+    }
+    afterEach(() => {
+      html.removeAttribute('style');
+      html.removeAttribute('data-weekrow-room');
+    });
+
+    it('closes the pane, gives the room back, and opens a new pane for the next click', async () => {
+      await openPane();
+      expect(html.style.getPropertyValue('padding-right')).toBe('480px');
+      resetMessage();
+      expect(paneHost()).toBeNull();
+      expect(html.style.getPropertyValue('padding-right')).toBe('');
+      expect(filePaneOpen()).toBe(false);
+      click(true);
+      await vi.waitFor(() => expect(sessionRequests()).toBe(2));
+      await vi.waitFor(() => expect(paneHost()).not.toBeNull());
+    });
+
+    it('closes a pane that another pane covers', async () => {
+      await openPane();
+      hideFilePane(true);
+      expect(paneHost()).not.toBeNull();
+      expect(filePaneOpen()).toBe(false);
+      resetMessage();
+      expect(paneHost()).toBeNull();
+      expect(html.style.getPropertyValue('padding-right')).toBe('');
+    });
+
+    it('clears the tabs of the page, so the next file starts a new list', async () => {
+      prepare();
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        '<a id="other" href="/files/6">Other notes</a>',
+      );
+      // The background keeps the tabs that the page writes, with a token.
+      let stored: unknown = { ids: [], active: null, token: '1:1' };
+      let refuse = false;
+      sendMessage.mockImplementation(async (message: { type: string; tabs?: unknown }) => {
+        if (message.type === 'viewer:tabs-get') {
+          if (refuse) throw new Error('refused');
+          return stored;
+        }
+        if (message.type === 'viewer:tabs-set') {
+          stored = { ...(message.tabs as object), token: '1:1' };
+          return { ok: true };
+        }
+        return reply(message);
+      });
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(paneHost()).not.toBeNull());
+      await vi.waitFor(() => expect(writes()).toHaveLength(1));
+      expect(writes()[0]).toMatchObject({ tabs: { ids: ['5'], active: '5' }, token: '1:1' });
+      resetMessage();
+      // The background has cleared the tabs and does not answer a read, so only the memory of the
+      // page could bring the file of the earlier student back, with the old token.
+      refuse = true;
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+      Object.defineProperty(event, 'isTrusted', { value: true });
+      document.getElementById('other')!.dispatchEvent(event);
+      await vi.waitFor(() => expect(writes()).toHaveLength(2));
+      expect(writes()[1]).toMatchObject({ tabs: { ids: ['6'], active: '6' } });
+      expect(writes()[1].token).toBeUndefined();
+    });
+
+    it('ends no copy of the script, and writes no tabs of its own', async () => {
+      await openPane();
+      const before = writes().length;
+      resetMessage();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(removeListener).not.toHaveBeenCalled();
+      expect(writes()).toHaveLength(before);
+    });
   });
 
   describe('a file pane that a dead copy left behind', () => {
