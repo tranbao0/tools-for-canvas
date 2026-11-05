@@ -22,8 +22,7 @@ export interface FrameRow {
 }
 
 /** A signed session path as `Attachment#canvadoc_url` builds it. */
-export const SESSION_PATH =
-  '/api/v1/canvadoc_session?blob=%7B%22attachment_id%22%3A501%7D';
+export const SESSION_PATH = '/api/v1/canvadoc_session?blob=%7B%22attachment_id%22%3A501%7D';
 
 export function frameRows(path: string, rows: readonly FrameRow[]): string {
   const body = rows
