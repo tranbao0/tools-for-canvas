@@ -239,6 +239,7 @@ export function routeDataMessage(
           message.courseId,
           message.topicId,
           message.read,
+          message.userId,
           sender.tab?.id,
         ),
       );

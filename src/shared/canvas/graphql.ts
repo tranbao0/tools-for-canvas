@@ -165,6 +165,7 @@ export function readAnnouncementPage(body: unknown): AnnouncementPage {
   const info = isJsonObject(connection['pageInfo']) ? connection['pageInfo'] : {};
   const total = info['totalCount'];
   return {
+    count: connection['nodes'].length,
     nodes: connection['nodes']
       .map(toAnnouncementNode)
       .filter((node): node is AnnouncementPageNode => node !== null),

@@ -336,6 +336,7 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
             const nodes = filtered.slice(request.offset, request.offset + request.first);
             return {
               nodes: structuredClone(nodes),
+              count: nodes.length,
               total: filtered.length,
               hasNext: request.offset + request.first < filtered.length,
             };

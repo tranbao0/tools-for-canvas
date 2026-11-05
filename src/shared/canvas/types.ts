@@ -188,6 +188,8 @@ export interface AnnouncementPageNode {
 
 export interface AnnouncementPage {
   nodes: AnnouncementPageNode[];
+  /** How many rows the connection held, also those that were skipped. */
+  count: number;
   /** Canvas's `totalCount` of the filtered set, or `null`. */
   total: number | null;
   hasNext: boolean;
