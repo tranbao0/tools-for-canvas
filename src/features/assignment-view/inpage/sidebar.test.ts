@@ -47,7 +47,7 @@ beforeEach(() => {
 afterEach(() => engine?.stop());
 
 describe('the Submission box of the assignment page', () => {
-  it('reads "View NAME" with an icon, and adds a Download link with the same address', async () => {
+  it('reads "View NAME" with an icon, and adds no Download link', async () => {
     start().setActive(true);
     await vi.waitFor(() => expect(document.querySelector('[data-av-original]')).not.toBeNull());
     expect(send).toHaveBeenCalledWith({
@@ -60,13 +60,11 @@ describe('the Submission box of the assignment page', () => {
     expect(view.hasAttribute('download')).toBe(false);
     expect(view.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     expect(view.querySelector(':scope > span:not([hidden])')!.textContent).toBe('View essay.pdf');
-    const download = sidebar().querySelector<HTMLAnchorElement>('a[download]')!;
-    expect(download.getAttribute('href')).toBe(FILE('42', '501'));
-    expect(download.getAttribute('aria-label')).toBe('Download essay.pdf');
-    expect(download.textContent).toBe('Download');
-    expect(download.hasAttribute('data-weekrow-keep-action')).toBe(true);
-    expect(download.hasAttribute('data-av-own')).toBe(true);
     expect(view.querySelector('[data-av-original]')!.textContent).toBe('Download essay.pdf');
+    // The view adds nothing but the icon and the words inside Canvas's link.
+    expect(sidebar().querySelectorAll('a')).toHaveLength(3);
+    expect(sidebar().querySelectorAll('a[download],a[data-av-own]')).toHaveLength(0);
+    expect(sidebar().textContent).not.toMatch(/^\s*Download\s*$/m);
   });
 
   it('gives the box back exactly, when the switch goes off and when it stops', async () => {
@@ -100,7 +98,7 @@ describe('the Submission box of the assignment page', () => {
     expect(document.getElementById('desc')!.outerHTML).toBe(description);
     start().setActive(true);
     await vi.waitFor(() =>
-      expect(document.querySelectorAll('#sidebar_content a[download]')).toHaveLength(1),
+      expect(document.querySelectorAll('#sidebar_content [data-av-original]')).toHaveLength(1),
     );
     engine.setActive(false);
     expect(document.getElementById('desc')!.outerHTML).toBe(description);
@@ -133,25 +131,26 @@ describe('the Submission box of the assignment page', () => {
     expect(document.querySelector('.comments')!.outerHTML).toBe(comment);
   });
 
-  it('keeps no line of the view for a link that Canvas took out', async () => {
+  it('keeps no node of the view for a link that Canvas took out', async () => {
     start().setActive(true);
-    await vi.waitFor(() => expect(document.querySelectorAll('a[download]')).toHaveLength(1));
+    await vi.waitFor(() => expect(document.querySelectorAll('[data-av-original]')).toHaveLength(1));
     sidebar().querySelector('a[href*="download=501"]')!.parentElement!.remove();
     sidebar()
       .querySelector('.content')!
       .insertAdjacentHTML('beforeend', link('42', '502', 'late.pdf'));
     await vi.waitFor(() =>
       expect(
-        [...document.querySelectorAll('a[download]')].map((a) => a.getAttribute('aria-label')),
+        [...document.querySelectorAll('[data-av-original]')].map((node) => node.textContent),
       ).toEqual(['Download late.pdf']),
     );
+    expect(document.querySelectorAll('svg[data-av-own]')).toHaveLength(1);
   });
 
   it('treats every file', async () => {
     document.body.innerHTML = box(link('42', '501', 'one.pdf') + link('42', '502', 'two.pdf'));
     start().setActive(true);
-    await vi.waitFor(() => expect(document.querySelectorAll('a[download]')).toHaveLength(2));
-    expect(document.querySelectorAll('[data-av-original]')).toHaveLength(2);
+    await vi.waitFor(() => expect(document.querySelectorAll('[data-av-original]')).toHaveLength(2));
+    expect(document.querySelectorAll('a[download]')).toHaveLength(0);
   });
 
   it('leaves the box alone for the file of another user', async () => {
@@ -217,14 +216,14 @@ describe('the Submission box of the assignment page', () => {
 
   it('treats a file that Canvas adds later, and no file twice', async () => {
     start().setActive(true);
-    await vi.waitFor(() => expect(document.querySelectorAll('a[download]')).toHaveLength(1));
+    await vi.waitFor(() => expect(document.querySelectorAll('[data-av-original]')).toHaveLength(1));
     sidebar()
       .querySelector('.content')!
       .insertAdjacentHTML('beforeend', link('42', '502', 'late.pdf'));
-    await vi.waitFor(() => expect(document.querySelectorAll('a[download]')).toHaveLength(2));
+    await vi.waitFor(() => expect(document.querySelectorAll('[data-av-original]')).toHaveLength(2));
     await new Promise((resolve) => setTimeout(resolve, 150));
-    expect(document.querySelectorAll('a[download]')).toHaveLength(2);
     expect(document.querySelectorAll('[data-av-original]')).toHaveLength(2);
+    expect(document.querySelectorAll('svg[data-av-own]')).toHaveLength(2);
   });
 
   it('draws nothing after a switch-off that came before the answer', async () => {

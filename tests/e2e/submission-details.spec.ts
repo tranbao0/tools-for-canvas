@@ -1107,7 +1107,9 @@ test('the submitted file of the assignment page reads "View NAME" with an icon, 
   const icon = await link.locator('svg').boundingBox();
   expect(icon?.width).toBe(16);
   expect(icon?.height).toBe(16);
-  await expect(sidebar.getByRole('link', { name: `Download ${SIDEBAR_FILE}` })).toHaveCount(1);
+  // The file pane has a Download button, so the box adds no download link of its own.
+  await expect(sidebar.getByRole('link', { name: `Download ${SIDEBAR_FILE}` })).toHaveCount(0);
+  await expect(page.locator('a[download]')).toHaveCount(0);
   // The box reads only whose submission it is: one request with no include, and nothing else.
   const api = served.canvas.requests.filter((request) =>
     request.path.startsWith('/api/v1/courses/12/assignments/101'),
@@ -1129,35 +1131,6 @@ test('the submitted file of the assignment page reads "View NAME" with an icon, 
   await expect(page).toHaveURL(`${served.canvas.origin}${ASSIGNMENT}/submissions/42`);
 });
 
-test('the small Download link of the Submission box saves the file and the pane does not take it', async ({
-  context,
-  page,
-  background,
-}) => {
-  const served = await openSidebar(context, page, background);
-  const download = sidebarOf(page).getByRole('link', { name: `Download ${SIDEBAR_FILE}` });
-  await expect(download).toBeVisible();
-  await treated(page);
-  await expect(download).toHaveText('Download');
-  await expect(download).toHaveAttribute('href', SIDEBAR_HREF);
-  await expect(download).toHaveAttribute('download', '');
-  await expect(download).toHaveAttribute('data-av-own', '');
-  const small = await download.evaluate((node) => ({
-    font: getComputedStyle(node).fontSize,
-    icon: [...node.querySelectorAll('svg')].map((svg) => svg.getBoundingClientRect().width),
-  }));
-  expect(small.font).toBe('14px');
-  expect(small.icon).toEqual([14]);
-  // The click is checked after the page script and the pane script have had time to start.
-  await page.waitForTimeout(500);
-  const saved = page.waitForEvent('download');
-  await download.click();
-  expect((await saved).url()).toBe(`${served.canvas.origin}${SIDEBAR_HREF}`);
-  await page.waitForTimeout(800);
-  await expect(page.locator(FILE_PANE)).toHaveCount(0);
-  expect(new URL(page.url()).pathname).toBe(ASSIGNMENT);
-});
-
 test('both files of the Submission box get the treatment', async ({
   context,
   page,
@@ -1172,15 +1145,15 @@ test('both files of the Submission box get the treatment', async ({
   const sidebar = sidebarOf(page);
   await expect(sidebar.getByRole('link', { name: `View ${SECOND_FILE}` })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: `View ${SIDEBAR_FILE}` })).toBeVisible();
-  await expect(sidebar.getByRole('link', { name: `Download ${SECOND_FILE}` })).toHaveAttribute(
+  await expect(sidebar.getByRole('link', { name: `View ${SECOND_FILE}` })).toHaveAttribute(
     'href',
     SECOND_HREF,
   );
-  await expect(sidebar.getByRole('link', { name: `Download ${SIDEBAR_FILE}` })).toHaveAttribute(
+  await expect(sidebar.getByRole('link', { name: `View ${SIDEBAR_FILE}` })).toHaveAttribute(
     'href',
     SIDEBAR_HREF,
   );
-  await expect(page.locator('a[download]')).toHaveCount(2);
+  await expect(page.locator('a[download]')).toHaveCount(0);
 });
 
 test('the Submission box of another user is unchanged', async ({ context, page, background }) => {

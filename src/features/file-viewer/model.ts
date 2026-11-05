@@ -4,11 +4,6 @@
  * root. The pane takes a file link inside it, which the page would see only as a click on the host.
  */
 export const PANEL_HOST_ATTRIBUTE = 'data-weekrow-panel';
-/**
- * The attribute of a link, or of a node around links, that keeps its normal action. The pane never
- * takes a click on it, so an extension link that saves a file does save it.
- */
-export const KEEP_ACTION_ATTRIBUTE = 'data-weekrow-keep-action';
 export interface Tabs {
   ids: string[];
   active: string | null;
