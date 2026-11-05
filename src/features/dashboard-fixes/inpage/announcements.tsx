@@ -620,7 +620,7 @@ export function announcementsFix(): Fix {
             type="button"
             class="wr-a-cal"
             aria-expanded={view.dateOpen}
-            aria-controls="wr-a-dates"
+            aria-controls={view.dateOpen ? 'wr-a-dates' : undefined}
             aria-label={t('annSearchByDate')}
             title={t('annSearchByDate')}
             onClick={() => {

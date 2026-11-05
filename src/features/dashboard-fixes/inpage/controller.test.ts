@@ -24,6 +24,9 @@ let engine: FixesEngine;
 const settle = async (ms = 120): Promise<void> => {
   await vi.advanceTimersByTimeAsync(ms);
 };
+/** The requests for the data of the fixes. The announcements list asks for its own pages besides. */
+const dataRequests = () =>
+  send.mock.calls.filter(([message]) => message.type === 'weekrow:dashboard-data');
 const marks = (): number =>
   document.querySelectorAll('[data-wr-own], [data-wr-cc], [data-wr-grades]').length;
 
@@ -80,7 +83,7 @@ describe('createFixesEngine', () => {
     send.mockClear();
     engine.reload();
     await settle();
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(dataRequests()).toHaveLength(1);
     expect(send).toHaveBeenCalledWith({ type: 'weekrow:dashboard-data' });
   });
 
@@ -252,7 +255,7 @@ describe('createFixesEngine', () => {
     send.mockClear();
     engine.reload();
     await settle();
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(dataRequests()).toHaveLength(1);
     expect(document.querySelector('[data-testid="course-103-grade"]')?.textContent).toBe('•••');
   });
 

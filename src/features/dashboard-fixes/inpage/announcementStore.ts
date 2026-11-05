@@ -176,9 +176,9 @@ export function createAnnouncementStore(options: StoreOptions) {
     } catch (error) {
       if (lists.get(state.key) !== state || disposed) return;
       options.log('announcements page', error);
-      state.status = 'error';
       // Where Canvas's own list can still work, the first page of all courses decides.
       if (first && state.courseId === null && !everLoaded) broken = true;
+      state.status = 'error';
     }
     changed();
   }

@@ -25,7 +25,6 @@ import { ensureBuild, ROOT } from '../../scripts/lib/ensure-build.mjs';
 import { findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
 
 const UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
-const USER = '5501';
 const WAIT_MS = 15000;
 const COURSES = {
   101: 'BIO 110: Principles of Biology',
@@ -51,6 +50,7 @@ process.chdir(ROOT);
 const { renderFixturePageByName } = await import('../fixtures/pages.ts');
 const { ALL_ANNOUNCEMENTS } = await import('../fixtures/announcements.ts');
 const { announcementPageAnswer } = await import('../fixtures/graphql.ts');
+const { SCENARIO_NOW, buildScenario } = await import('../fixtures/scenario.ts');
 
 const json = (value) => ({ type: 'application/json', body: JSON.stringify(value) });
 
@@ -166,20 +166,17 @@ async function main() {
   const extensionDir = ensureBuild('firefox', 'release');
   const addonId = readAddonId(extensionDir);
 
-  const student = { id: USER, name: 'Smoke Student', short_name: 'Smoke' };
+  // The student and the courses of the scenario that the Playwright tests use. The background
+  // needs a session with courses before it serves the announcements.
+  const scenario = buildScenario(SCENARIO_NOW);
   const canvas = await startCanvas({
     '/': { type: 'text/html', body: renderFixturePageByName('dashboard-widgets') },
-    '/api/v1/users/self': json(student),
-    '/api/v1/users/self/profile': json({
-      ...student,
-      time_zone: 'America/New_York',
-      locale: null,
-      effective_locale: 'en',
-    }),
-    '/api/v1/courses': json([]),
-    '/api/v1/users/self/groups': json([]),
-    '/api/v1/users/self/colors': json({ custom_colors: {} }),
-    '/api/v1/users/self/dashboard_positions': json({ dashboard_positions: {} }),
+    '/api/v1/users/self': json(scenario.self),
+    '/api/v1/users/self/profile': json(scenario.profile),
+    '/api/v1/courses': json(scenario.courses),
+    '/api/v1/users/self/groups': json(scenario.groups),
+    '/api/v1/users/self/colors': json(scenario.colors),
+    '/api/v1/users/self/dashboard_positions': json(scenario.dashboardPositions),
     '/api/v1/planner/items': json([]),
     '/api/v1/planner/overrides': json([]),
   });
@@ -214,12 +211,17 @@ async function main() {
     await driver
       .manage()
       .addCookie({ name: 'canvas_session', value: 'smoke-session', path: '/', secure: true });
+    // Every request that is not a GET, such as the GraphQL query, carries the CSRF token.
+    await driver
+      .manage()
+      .addCookie({ name: '_csrf_token', value: 'smoke-token', path: '/', secure: true });
     await driver.get(`${origin}/?fixture_delay_ms=0`);
 
     // a. The list shows 10 rows, and the list and the pager of Canvas are hidden.
     const first = await waitFor(state, (value) => value.articles === 10);
-    if (first.articles !== 10) problems.push(`the list shows ${first.articles} rows, not 10`);
-    else if (first.nativeShown || first.pagerShown) {
+    if (first.articles !== 10) {
+      problems.push(`the list shows ${first.articles} rows, not 10 (${JSON.stringify(first)})`);
+    } else if (first.nativeShown || first.pagerShown) {
       problems.push('the list or the pager of Canvas still shows');
     } else if (!first.scrollable || first.feedHeight < 320) {
       problems.push(`the scroll area has no room to scroll (height ${first.feedHeight})`);
@@ -241,6 +243,19 @@ async function main() {
       const more = await waitFor(state, (value) => value.articles >= 20);
       if (more.articles !== 20) problems.push(`a scroll gave ${more.articles} rows, not 20`);
       else console.log('Scroll: 10 more rows loaded');
+    }
+
+    if (problems.length > 0) {
+      await driver.switchTo().newWindow('tab');
+      await driver.get(`moz-extension://${UUID}/welcome.html`);
+      const background = await driver.executeAsyncScript(`
+        const done = arguments[arguments.length - 1];
+        browser.runtime.sendMessage({ type: 'weekrow:get-state', request: { surface: 'panel', spanOffset: 0, scopeCourseId: null } })
+          .then((reply) => done(JSON.stringify(reply).slice(0, 300)), (error) => done(String(error)));
+      `);
+      console.error(`state of the background: ${background}`);
+      for (const problem of problems) console.error(`FAILED ${problem}`);
+      return 1;
     }
 
     // c. A search for "lockdown" shows 2 results with the match in <mark>.
