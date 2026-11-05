@@ -12,6 +12,7 @@ const STORED: Settings = {
   hiddenCourseIds: ['7', '1~2'],
   showRings: false,
   minimized: true,
+  openGroup: 'done',
   theme: 'dark',
   rowSize: 'comfortable',
 };
@@ -66,6 +67,11 @@ describe('normalizeSettings', () => {
     ['showRings', 1],
     ['minimized', 'true'],
     ['minimized', null],
+    ['openGroup', 'past_due'],
+    ['openGroup', 'Done'],
+    ['openGroup', 1],
+    ['openGroup', false],
+    ['openGroup', undefined],
     ['theme', 'neon'],
     ['theme', 1],
     ['rowSize', 'tiny'],
@@ -118,6 +124,18 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ ...STORED, rowSize: 'huge' }).rowSize).toBe('compact');
     expect(normalizeSettings({ ...STORED, rowSize: 'comfortable' }).rowSize).toBe('comfortable');
     expect(isSettings(old)).toBe(false);
+  });
+
+  it('reads no open group for settings stored without one, and keeps both bottom groups', () => {
+    const { openGroup: _omit, ...old } = STORED;
+
+    expect(DEFAULT_SETTINGS.openGroup).toBeNull();
+    expect(normalizeSettings(old).openGroup).toBeNull();
+    expect(isSettings(old)).toBe(false);
+    for (const openGroup of ['no_due_date', 'done', null] as const) {
+      expect(normalizeSettings({ ...STORED, openGroup }).openGroup).toBe(openGroup);
+      expect(isSettings({ ...STORED, openGroup })).toBe(true);
+    }
   });
 
   it('keeps every kind of span and the limits of a custom span', () => {

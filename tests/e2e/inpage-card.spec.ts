@@ -745,39 +745,103 @@ test.describe('the full list in the card', () => {
     expect(ring).toEqual({ visible: true, offset: '-2px' });
   });
 
-  test('shows the days again when the span steps', async ({ context, page, background }) => {
-    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
-    const list = inpageList(page);
-    const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
-    const days = dayList(list);
-    const open = async () => {
+  for (const layout of LAYOUTS) {
+    test(`keeps the open group when the span steps, on ${layout.name}`, async ({
+      context,
+      page,
+      background,
+    }) => {
+      await openBottomLayout(context, page, background, layout, 800);
+      const list = inpageList(page);
+      const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
+      const area = groupArea(list);
+      const rows = area.locator('[data-row-key]');
+      await done.click();
+      await expect(rows.first()).toBeVisible();
+
+      // A span with nothing done keeps the group open, with its heading and one line.
+      // The first month ahead still holds done work, so the student steps two months.
+      await list.getByRole('button', { name: 'Next month' }).click();
+      await list.getByRole('button', { name: 'Next month' }).click();
+      await expect(area.getByText('Nothing done in this span.')).toBeVisible();
+      await expect(area.getByRole('heading', { name: 'Done' })).toBeVisible();
+      await expect(backOf(list)).toBeVisible();
+      await expect(rows).toHaveCount(0);
+      await expect(dayList(list)).toBeHidden();
+      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await settledList(page);
+      await expect(area.getByText('Nothing done in this span.')).toBeVisible();
+
+      // Today brings back the span with done work, and the group is still open.
+      await list.getByRole('button', { name: 'Today', exact: true }).click();
+      await expect(rows.first()).toBeVisible();
+      await expect(area.getByText('Nothing done in this span.')).toHaveCount(0);
+      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await settledList(page);
+
+      // The span picker and the arrow back keep it open too.
+      await list.getByRole('combobox').selectOption({ label: 'Week' });
+      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await expect(area).toBeVisible();
+      await expect(dayList(list)).toBeHidden();
+      await list.getByRole('button', { name: 'Previous week' }).click();
+      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await expect(area).toBeVisible();
+    });
+  }
+
+  for (const layout of LAYOUTS.slice(0, 2)) {
+    test(`keeps the open group over a minimize and an expand, on ${layout.name}`, async ({
+      context,
+      page,
+      background,
+    }) => {
+      await openBottomLayout(context, page, background, layout, 800);
+      const list = inpageList(page);
+      const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
       await done.click();
       await expect(done).toHaveAttribute('aria-expanded', 'true');
-      await expect(days).toBeHidden();
-    };
-    await open();
+      await list.getByRole('button', { name: 'Minimize list' }).click();
+      await expect(done).toHaveCount(0);
+      // The classic dashboard keeps a tab on the right edge, the widget dashboard a slim bar.
+      await (
+        layout.tabs === true
+          ? page.getByRole('button', { name: /^Open weekly list/ })
+          : list.getByRole('button', { name: /^Weekly list/ })
+      ).click();
+      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await expect(groupArea(list).locator('[data-row-key]').first()).toBeVisible();
+      await expect(dayList(list)).toBeHidden();
+    });
+  }
+
+  test('keeps No due date open with its own line on a span with nothing undated', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
+    const list = inpageList(page);
+    const undated = toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]'));
+    const area = groupArea(list);
+    await undated.click();
+    await expect(area.locator('[data-row-key]').first()).toBeVisible();
     await list.getByRole('button', { name: 'Next month' }).click();
-    await expect(days).toBeVisible();
-    await expect(done).toHaveAttribute('aria-expanded', 'false');
-    await settledList(page);
-    await open();
-    await list.getByRole('button', { name: 'Previous month' }).click();
-    await expect(days).toBeVisible();
-    await settledList(page);
     await list.getByRole('button', { name: 'Next month' }).click();
+    await expect(area.getByText('Nothing without a due date in this span.')).toBeVisible();
+    await expect(undated).toHaveAttribute('aria-expanded', 'true');
     await settledList(page);
-    // Today shows the days too.
-    await open();
-    await list.getByRole('button', { name: 'Today', exact: true }).click();
-    await expect(days).toBeVisible();
-    await settledList(page);
-    await open();
-    await list.getByRole('combobox').selectOption({ label: 'Week' });
-    await expect(days).toBeVisible();
-    await expect(done).toHaveAttribute('aria-expanded', 'false');
+    // Back to days closes it, and the header of an empty group goes away with it. Focus goes to
+    // the day list, because the header that it would return to is gone.
+    await backOf(list).focus();
+    await page.keyboard.press('Enter');
+    await expect(dayList(list)).toBeVisible();
+    await expect(dayList(list)).toBeFocused();
+    await expect(area).toBeHidden();
+    await expect(list.locator('.wr-pinned [data-group="no_due_date"]')).toHaveCount(0);
   });
 
-  test('shows the days again when the open group becomes empty', async ({
+  test('keeps the open group when it becomes empty, and a second click on its header closes it', async ({
     context,
     page,
     background,
@@ -793,9 +857,57 @@ test.describe('the full list in the card', () => {
     await toggleOf(done).click();
     await expect(groupArea(list).locator('[data-row-key]')).toHaveCount(1);
     await groupArea(list).getByRole('checkbox').click();
+    await expect(groupArea(list).getByText('Nothing done in this span.')).toBeVisible();
+    await expect(groupArea(list).getByRole('heading', { name: 'Done' })).toBeFocused();
+    await expect(dayList(list)).toBeHidden();
+    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggleOf(done).locator('.wr-count')).toHaveText('0');
+    await toggleOf(done).focus();
+    await page.keyboard.press('Enter');
     await expect(dayList(list)).toBeVisible();
-    await expect(done).toHaveCount(0);
+    await expect(dayList(list)).toBeFocused();
     await expect(groupArea(list)).toBeHidden();
+    await expect(done).toHaveCount(0);
+  });
+
+  test('holds the open group after a reload and in every tab, and the side panel ignores it', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
+    const list = inpageList(page);
+    const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
+    await done.click();
+    await expect(done).toHaveAttribute('aria-expanded', 'true');
+
+    await page.reload();
+    await page.locator('html[data-fixture-ready="true"]').waitFor({ state: 'attached' });
+    await expect(done).toHaveAttribute('aria-expanded', 'true');
+    await expect(groupArea(list).locator('[data-row-key]').first()).toBeVisible();
+    await expect(dayList(list)).toBeHidden();
+
+    // A second tab shows it open, and closing it there closes it in the first tab.
+    const other = await context.newPage();
+    await openCanvasPage(other, new URL(page.url()).origin);
+    const otherList = inpageList(other);
+    const otherDone = toggleOf(otherList.locator('.wr-pinned [data-group="done"]'));
+    await expect(otherDone).toHaveAttribute('aria-expanded', 'true');
+    await backOf(otherList).click();
+    await expect(dayList(list)).toBeVisible();
+    await expect(done).toHaveAttribute('aria-expanded', 'false');
+    await done.click();
+    await expect(otherDone).toHaveAttribute('aria-expanded', 'true');
+
+    // The side panel has no bottom bar. Its Done group stays closed and works on its own.
+    const panel = await context.newPage();
+    await openExtensionPage(panel, extensionUrl('sidepanel.html'));
+    await expect(panel.getByRole('button', { name: /^Done/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    await expect(panel.locator('.wr-group-area')).toHaveCount(0);
   });
 
   for (const theme of ['light', 'dark'] as const) {

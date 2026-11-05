@@ -194,6 +194,12 @@
   "groupDone": {
     "message": "Done"
   },
+  "nothingDoneInSpan": {
+    "message": "Nothing done in this span."
+  },
+  "nothingUndatedInSpan": {
+    "message": "Nothing without a due date in this span."
+  },
   "nothingDue": {
     "message": "Nothing due $1"
   },

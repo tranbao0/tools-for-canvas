@@ -5,6 +5,7 @@
  * `storage.local`, and a bad value must never break the extension.
  */
 import {
+  BOTTOM_GROUPS,
   DEFAULT_SETTINGS,
   MAX_CUSTOM_DAYS,
   MIN_CUSTOM_DAYS,
@@ -48,6 +49,10 @@ export function sameSpan(a: Span, b: Span): boolean {
   return a.kind === b.kind && (a.kind !== 'custom' || a.days === b.days);
 }
 
+function isOpenGroup(value: unknown): value is Settings['openGroup'] {
+  return value === null || (BOTTOM_GROUPS as readonly unknown[]).includes(value);
+}
+
 function isTheme(value: unknown): value is Settings['theme'] {
   return THEMES.includes(value);
 }
@@ -68,11 +73,12 @@ function isCourseIdList(value: unknown): value is string[] {
 export function isSettings(value: unknown): value is Settings {
   return (
     isRecord(value) &&
-    Object.keys(value).length === 6 &&
+    Object.keys(value).length === 7 &&
     isSpan(value['span']) &&
     isCourseIdList(value['hiddenCourseIds']) &&
     typeof value['showRings'] === 'boolean' &&
     typeof value['minimized'] === 'boolean' &&
+    isOpenGroup(value['openGroup']) &&
     isTheme(value['theme']) &&
     isRowSize(value['rowSize'])
   );
@@ -93,6 +99,7 @@ export function normalizeSettings(stored: unknown): Settings {
       : fallback.hiddenCourseIds,
     showRings: typeof input['showRings'] === 'boolean' ? input['showRings'] : fallback.showRings,
     minimized: typeof input['minimized'] === 'boolean' ? input['minimized'] : fallback.minimized,
+    openGroup: isOpenGroup(input['openGroup']) ? input['openGroup'] : fallback.openGroup,
     theme: isTheme(input['theme']) ? input['theme'] : fallback.theme,
     rowSize: isRowSize(input['rowSize']) ? input['rowSize'] : fallback.rowSize,
   };

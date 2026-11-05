@@ -392,6 +392,8 @@ D3. Scroll the groups of the list, open "Done", then click "Minimize list".
     Expect: the dock opens at once, focus is on the minimize button, and the list has the scroll position and the open group that it had.
     Reload the page with the list minimized.
     Expect: the tab shows, and the list stays minimized in a second tab too.
+    Open a second Canvas tab, open "Done" in the dock, and then step the span with the arrows.
+    Expect: "Done" stays open for each span, with its rows or with "Nothing done in this span.", and the second tab shows "Done" open too and the same after a reload.
 D4. Drag the left edge of the dock to make it wider, then reload.
     Expect: the dock keeps its width, and a narrow window makes the content narrower, as the PDF pane does.
     Make the window narrower than 900 px.

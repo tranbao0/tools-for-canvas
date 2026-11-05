@@ -58,6 +58,7 @@ describe('settings defaults', () => {
       hiddenCourseIds: [],
       showRings: true,
       minimized: false,
+      openGroup: null,
       theme: 'auto',
       rowSize: 'compact',
     });
@@ -74,6 +75,7 @@ describe('settings defaults', () => {
       hiddenCourseIds: ['7'],
       showRings: false,
       minimized: false,
+      openGroup: null,
       theme: 'auto',
       rowSize: 'compact',
     });
@@ -153,6 +155,7 @@ describe('the settings item', () => {
       hiddenCourseIds: ['7'],
       showRings: false,
       minimized: true,
+      openGroup: null,
       theme: 'dark',
       rowSize: 'compact',
     });

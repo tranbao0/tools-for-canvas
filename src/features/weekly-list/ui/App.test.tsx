@@ -7,6 +7,7 @@ import {
   type ItemView,
   type ListGroup,
   type Ring,
+  type Settings,
   type Span,
   type SurfaceState,
 } from '../model/types';
@@ -38,6 +39,37 @@ function setup(state: SurfaceState = readyState(), surface: SurfaceKind = 'panel
   const rerender = (next: SurfaceState) =>
     result.rerender(<App surface={surface} state={next} actions={actions} />);
   return { ...result, actions, rerender };
+}
+
+/**
+ * The list with saved settings that follow `saveSettings`, as the stored settings do. The state
+ * of an open bottom group lives in the settings, so a test that opens one needs them.
+ */
+function setupSaved(
+  state: SurfaceState,
+  surface: SurfaceKind = 'inpage',
+  initial: Settings = DEFAULT_SETTINGS,
+) {
+  const actions: SpyActions = spyActions();
+  let value = initial;
+  let current = state;
+  const draw = () => (
+    <App surface={surface} state={current} actions={actions} settings={{ value, courses: [] }} />
+  );
+  const result = render(draw());
+  actions.saveSettings.mockImplementation((next) => {
+    value = next;
+    result.rerender(draw());
+  });
+  return {
+    ...result,
+    actions,
+    saved: () => value,
+    rerender: (next: SurfaceState) => {
+      current = next;
+      result.rerender(draw());
+    },
+  };
 }
 
 function ringOf(patch: Partial<Ring> = {}): Ring {
@@ -683,7 +715,7 @@ describe('in-page list', () => {
     });
 
     it('name the region of a collapsible group', () => {
-      setup(stateOf(mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) })), 'inpage');
+      setupSaved(stateOf(mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) })));
       const toggle = screen.getByRole('button', { name: /^No due date/ });
       expect(regionOf(toggle)).not.toBeNull();
       fireEvent.click(toggle);
@@ -691,7 +723,7 @@ describe('in-page list', () => {
     });
 
     it('show an open bottom group in the list area, and Back to days returns to its header', () => {
-      setup(stateOf(mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) })), 'inpage');
+      setupSaved(stateOf(mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) })));
       const toggle = screen.getByRole('button', { name: /^No due date/ });
       const area = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
       expect(area?.hidden).toBe(true);
@@ -820,6 +852,207 @@ describe('the minimized list', () => {
   });
 });
 
+describe('the open bottom group', () => {
+  const dueItems = (list: string[], patch: Partial<ItemView> = {}) =>
+    list.map((title) => mkItem({ title, course: 'bio', ...patch }));
+  const todayGroup = mkGroup({
+    kind: 'today',
+    date: '2026-10-27',
+    items: dueItems(['Today one']),
+  });
+  const undatedGroup = mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) });
+  const doneGroup = mkGroup({ kind: 'done', items: dueItems(['Finished one'], { state: 'done' }) });
+  /** A span with work, undated work and done work. */
+  const full = () =>
+    readyState({ view: mkView({ groups: [todayGroup, undatedGroup, doneGroup] }) });
+  /** The next span: it has days, and nothing undated and nothing done. */
+  const bare = () =>
+    readyState({
+      view: mkView({
+        groups: [todayGroup],
+        spanStart: '2026-11-03',
+        spanEnd: '2026-11-09',
+        spanOffset: 1,
+        isCurrentSpan: false,
+      }),
+    });
+  const header = (name: RegExp) => screen.getByRole('button', { name });
+  const area = () => document.querySelector<HTMLElement>('.wr-group-area');
+
+  it('saves the open group as a setting, and a second click on the header saves none', () => {
+    const { actions } = setupSaved(full());
+    fireEvent.click(header(/^Done/));
+    expect(actions.saveSettings).toHaveBeenLastCalledWith({
+      ...DEFAULT_SETTINGS,
+      openGroup: 'done',
+    });
+    expect(header(/^Done/).getAttribute('aria-expanded')).toBe('true');
+    expect(area()?.hidden).toBe(false);
+    fireEvent.click(header(/^Done/));
+    expect(actions.saveSettings).toHaveBeenLastCalledWith({
+      ...DEFAULT_SETTINGS,
+      openGroup: null,
+    });
+    expect(area()?.hidden).toBe(true);
+  });
+
+  it('switches the group on a click on the other header', () => {
+    const { saved } = setupSaved(full());
+    fireEvent.click(header(/^Done/));
+    fireEvent.click(header(/^No due date/));
+    expect(saved().openGroup).toBe('no_due_date');
+    expect(area()?.textContent).toContain('Undated one');
+    expect(area()?.textContent).not.toContain('Finished one');
+  });
+
+  it('starts open when the saved settings hold an open group', () => {
+    setupSaved(full(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
+    expect(header(/^Done/).getAttribute('aria-expanded')).toBe('true');
+    expect(area()?.textContent).toContain('Finished one');
+    expect(document.querySelector<HTMLElement>('.wr-scroll')?.hidden).toBe(true);
+  });
+
+  it('stays open when the student steps the span, and shows the group of the new span', () => {
+    const { actions, rerender, saved } = setupSaved(full(), 'inpage', {
+      ...DEFAULT_SETTINGS,
+      openGroup: 'done',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Next week' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Previous week' }));
+    expect(actions.stepSpan.mock.calls).toEqual([[1], [-1]]);
+    expect(actions.saveSettings).not.toHaveBeenCalled();
+    rerender(
+      readyState({
+        view: mkView({
+          groups: [
+            todayGroup,
+            mkGroup({ kind: 'done', items: dueItems(['Finished later'], { state: 'done' }) }),
+          ],
+          spanStart: '2026-11-03',
+          spanEnd: '2026-11-09',
+          spanOffset: 1,
+          isCurrentSpan: false,
+        }),
+      }),
+    );
+    expect(saved().openGroup).toBe('done');
+    expect(area()?.hidden).toBe(false);
+    expect(area()?.textContent).toContain('Finished later');
+    expect(area()?.textContent).not.toContain('Finished one');
+  });
+
+  it('stays open on Today and on a new span from the picker', () => {
+    const { actions } = setupSaved(bare(), 'inpage', {
+      ...DEFAULT_SETTINGS,
+      openGroup: 'no_due_date',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }));
+    expect(actions.goToSpan).toHaveBeenCalledWith(0);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Span shown' }), {
+      target: { value: 'month' },
+    });
+    expect(actions.saveSettings.mock.calls.at(-1)?.[0].openGroup).toBe('no_due_date');
+  });
+
+  it.each([
+    ['done', 'Nothing done in this span.'],
+    ['no_due_date', 'Nothing without a due date in this span.'],
+  ] as const)(
+    'keeps the %s group open with one line when the span has no rows for it',
+    (kind, line) => {
+      const { rerender, saved } = setupSaved(full(), 'inpage', {
+        ...DEFAULT_SETTINGS,
+        openGroup: kind,
+      });
+      rerender(bare());
+      expect(saved().openGroup).toBe(kind);
+      const shown = area() as HTMLElement;
+      expect(shown.hidden).toBe(false);
+      expect(within(shown).getByRole('heading').textContent).toBe(
+        kind === 'done' ? 'Done' : 'No due date',
+      );
+      expect(within(shown).getByRole('button', { name: 'Back to days' })).toBeTruthy();
+      expect(shown.textContent).toContain(line);
+      expect(shown.querySelector('li')).toBeNull();
+      // The bar keeps the header of the open group, selected and with a zero count.
+      const toggle = header(kind === 'done' ? /^Done/ : /^No due date/);
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+      expect(toggle.querySelector('.wr-count')?.textContent).toBe('0');
+      // The other group has no rows and is not open, so it has no header.
+      expect(
+        screen.queryByRole('button', { name: kind === 'done' ? /^No due date/ : /^Done/ }),
+      ).toBeNull();
+      // The rows come back with the next span that has some.
+      rerender(full());
+      expect(area()?.textContent).not.toContain(line);
+      expect(area()?.querySelector('li')).not.toBeNull();
+    },
+  );
+
+  it('keeps the headers in their order when the open group is empty', () => {
+    setupSaved(readyState({ view: mkView({ groups: [todayGroup, doneGroup] }) }), 'inpage', {
+      ...DEFAULT_SETTINGS,
+      openGroup: 'no_due_date',
+    });
+    const bar = document.querySelector('.wr-pinned') as HTMLElement;
+    expect(
+      [...bar.querySelectorAll('[data-group]')].map((el) => el.getAttribute('data-group')),
+    ).toEqual(['no_due_date', 'done']);
+  });
+
+  it('closes an empty open group with Back to days and with a click on its header, and focus goes to the day list', () => {
+    const first = setupSaved(bare(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
+    const back = screen.getByRole('button', { name: 'Back to days' });
+    back.focus();
+    fireEvent.click(back);
+    expect(first.saved().openGroup).toBeNull();
+    expect(area()?.hidden).toBe(true);
+    expect(screen.queryByRole('button', { name: /^Done/ })).toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('.wr-scroll'));
+    cleanup();
+    const second = setupSaved(bare(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
+    header(/^Done/).focus();
+    fireEvent.click(header(/^Done/));
+    expect(second.saved().openGroup).toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('.wr-scroll'));
+  });
+
+  it('moves focus to the header on Back to days when the group has rows', () => {
+    setupSaved(full(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
+    const back = screen.getByRole('button', { name: 'Back to days' });
+    back.focus();
+    fireEvent.click(back);
+    expect(document.activeElement).toBe(header(/^Done/));
+  });
+
+  it('shows a loading line, not "Nothing done", while the days of the span load', () => {
+    setupSaved(readyState({ view: mkView({ groups: [todayGroup], loading: true }) }), 'inpage', {
+      ...DEFAULT_SETTINGS,
+      openGroup: 'done',
+    });
+    expect(area()?.textContent).not.toContain('Nothing done');
+    expect(within(area() as HTMLElement).getByRole('status')).toBeTruthy();
+  });
+
+  it('is ignored by the side panel, which has no bottom bar', () => {
+    setupSaved(full(), 'panel', { ...DEFAULT_SETTINGS, openGroup: 'done' });
+    expect(area()).toBeNull();
+    expect(header(/^Done/).getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText('Finished one')).toBeNull();
+    fireEvent.click(header(/^Done/));
+    expect(screen.getByText('Finished one')).toBeTruthy();
+  });
+
+  it('stays open over a minimize and an expand', () => {
+    const { saved } = setupSaved(full(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
+    fireEvent.click(screen.getByRole('button', { name: 'Minimize list' }));
+    expect(saved()).toEqual({ ...DEFAULT_SETTINGS, openGroup: 'done', minimized: true });
+    fireEvent.click(screen.getByRole('button', { name: /Weekly list/ }));
+    expect(saved().openGroup).toBe('done');
+    expect(header(/^Done/).getAttribute('aria-expanded')).toBe('true');
+  });
+});
+
 describe('one-course view', () => {
   it('leaves out the course name on every row, and keeps the type icon and the time', () => {
     setup(readyState({ view: mkView({ scopeCourseId: COURSES.math.id }) }), 'inpage');
@@ -831,7 +1064,7 @@ describe('one-course view', () => {
   });
 
   it('shows no empty info line on a row with nothing to say', () => {
-    setup(readyState({ view: mkView({ scopeCourseId: COURSES.bio.id }) }), 'inpage');
+    setupSaved(readyState({ view: mkView({ scopeCourseId: COURSES.bio.id }) }));
     fireEvent.click(screen.getByRole('button', { name: /No due date/ }));
     expect(row('Course survey').querySelector('.wr-info')).toBeNull();
     expect(row('Course survey').querySelector('.wr-course')).toBeNull();
