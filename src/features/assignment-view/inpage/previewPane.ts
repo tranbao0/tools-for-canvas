@@ -21,16 +21,18 @@ import {
   createDock,
   filePaneOpen,
   hideFilePane,
+  setFullView,
   watchFilePane,
   type Dock,
 } from '../../file-viewer/dock';
-import { CLOSE_PATH, EXTERNAL_LINK_PATH } from '../../../shared/ui/iconPaths';
+import { CLOSE_PATH } from '../../../shared/ui/iconPaths';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { OWN } from './own';
 import {
   PANE_CSS,
   createFullViewButton,
+  createOpenInTabLink,
   headerText,
   icon,
   setSubtitle,
@@ -106,10 +108,12 @@ export const MAX_PREVIEW_FRAMES = 6;
 
 /**
  * The frame sits in a white wrapper with room around it. The frame reaches 12 px into the right
- * padding, so its own scroll bar stays near the edge of the card.
+ * padding, so its own scroll bar stays near the edge of the card. In full view the wrapper has
+ * wider room at the sides.
  */
 const PREVIEW_CSS = `${PANE_CSS}
 .frame{box-sizing:border-box;display:flex;flex:1;min-height:0;padding:20px 16px 0 32px;background:#fff}
+:host([data-full]) .frame{padding:24px 96px 0}
 .frame iframe{flex:1;width:auto;min-width:0;margin-right:-12px;background:#fff}
 `;
 
@@ -244,9 +248,25 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     // once. The load after that one never rewrites again, so a page that keeps the plain
     // address cannot make a loop.
     let slimming = false;
+    // A student who types in the frame has the focus there, and the page of the frame gets the
+    // key. This listener reacts to Escape only, and only in full view. It reads no other key and
+    // nothing of the frame.
+    const leaveOnEscape = (key: KeyboardEvent): void => {
+      if (!key.isTrusted || key.key !== 'Escape' || dock?.full !== true) return;
+      key.preventDefault();
+      key.stopPropagation();
+      setFullView(false);
+    };
     frame.addEventListener('load', (event) => {
       // A page script can fire a load event on the frame, so only a real load counts.
       if (!event.isTrusted || removed) return;
+      // Each page has its own window. A frame on another origin has no window to listen on, and
+      // keeps the Escape of the header only.
+      try {
+        frame.contentWindow?.addEventListener('keydown', leaveOnEscape, true);
+      } catch {
+        // The frame went to another origin.
+      }
       let rewriting = false;
       if (slimming) {
         slimming = false;
@@ -284,11 +304,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     bar.className = 'bar';
     const { block, title, sub } = headerText(doc);
     const fullView = createFullViewButton(doc);
-    const link = doc.createElement('a');
-    link.className = 'btn';
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.append(doc.createTextNode('Open in new tab'), icon(doc, EXTERNAL_LINK_PATH));
+    const link = createOpenInTabLink(doc);
     const close = doc.createElement('button');
     close.type = 'button';
     close.className = 'icon-btn';
@@ -306,7 +322,11 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     return { title, sub, link, wrapper, fullView };
   }
 
-  /** Shows the frame of a slot and hides the others, with the header of its assignment. */
+  /**
+   * Shows the frame of a slot and hides the others, with the header of its assignment. The second
+   * line is the one that was read from the row at the click that made the frame, so it can differ
+   * from the row when Canvas changed the row later.
+   */
   function show(slot: Slot): void {
     if (!parts) return;
     // The map keeps the order of showing, so the first entry is the one shown longest ago.

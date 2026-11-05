@@ -2775,10 +2775,11 @@ With the pane read alone, the default run of the test failed before the fix.
      Nothing loads and nothing moves: the host only gets wider, so no frame reloads, and a PDF keeps its page and zoom, and an assignment keeps its typed text and its scroll position.
      A PDF in a fit mode fits itself to the new width through its own resize observer, and a PDF with a fixed zoom stays at that zoom.
      The padding of the `html` element does not change, so the Canvas page behind the pane does not move, and leaving full view gives back the same layout.
+     The host stretches from the left edge to the right edge of the page (`left: 0` and `right: 0`, with no width in `vw`), because `100vw` includes the scroll bar of a long page and would push the card over the left edge.
      The state is one value in the dock module, shared by the panes of the page, and it is never saved.
      Only one pane shows at a time, so a file pane that opens over an assignment pane in full view shows in full view too, and closing it shows the assignment pane in full view again.
-     A pane that closes while no other pane is open takes full view with it, so the next pane starts in its place.
-     This keeps both rules: the close button closes a pane and leaves full view, and a pane that a closed file pane uncovers is still in full view.
+     The close of a pane leaves full view, so the next pane starts in its place, and a file pane that a closed assignment pane or feedback pane uncovers shows in its place, not in full view.
+     One exception keeps both rules: a file pane that closes while another pane waits under it leaves that pane in full view.
      The weekly list dock and its tab stay behind a pane in full view, and the Preview row state stays.
      Below 900 px the dock already covers the page, so the button is hidden and the narrow layout wins.
      The state is kept, so full view comes back when the window gets wide again.
@@ -2786,7 +2787,9 @@ With the pane read alone, the default run of the test failed before the fix.
      The file pane page sends `escape` (the key) and `full-view` (the button) over the port, and the page script answers with the state.
      The state goes to the pane page as `full-view { on, available }`, because the pane page cannot read the width of the Canvas window.
      The pane page never decides: its button changes when the page answers.
-     A key press inside a Canvas frame (the assignment pane and the feedback pane) stays in that frame, and the script never reads the frame, so Escape works only with the focus in the header of those panes.
+     A narrow window has no full view, so there the first Escape closes the pane, even when the kept state is on.
+     A key press inside a Canvas frame stays in that frame.
+     The assignment pane listens for Escape in the frame of the assignment (decision 26, "Frames"), and the feedback pane does not, because DocViewer is on another origin, so Escape works there only with the focus in the header.
 2. **Tabs.**
    - Each file opens in its own tab inside the pane, up to 8 tabs; the 9th file replaces the oldest tab that is not active.
    - A file that is already open becomes the active tab.
@@ -4003,16 +4006,26 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
   - The header has the padding 16 px, 16 px, 14 px and 32 px, from the top, clockwise.
     The title is bold, 18 px, and ends with an ellipsis.
     Under it, a second line shows in 13 px muted text.
-    A long second line wraps, because the buttons leave a narrow title block on a narrow card.
+    A long second line wraps by words, because the buttons leave a narrow title block on a narrow card.
     Then come "Full view", "Open in new tab" and the close button, each 30 px high.
+  - The header is a container.
+    When its content is narrower than 560 px, "Full view" and "Open in new tab" show their icon only, 30 px wide, so the title keeps its room.
+    The text stays as the accessible name (`aria-label`) and as the tooltip (`title`) of each button.
+    At card widths of 360, 420, 480 and 800 px, the title is at least 120 px wide and the header is under 90 px high.
+    The feedback pane has the same header.
   - The second line is the due text and the points of the row, as plain text.
     The script reads them from Canvas's own row at the click: the visible text of `.ig-details .assignment-date-due` and `.ig-details .js-score`, without the copy for screen readers (`.screenreader-only`) and without script or style content.
     The two parts join with " | ", and the line has at most 160 characters.
     A row with neither part has no second line.
-    The text belongs to the frame, so the header always matches the frame that shows.
+    The text belongs to the frame, so the header follows the frame that shows.
+    The script reads the line at the click that makes the frame, and a later Preview click on the same row does not read it again, so the line can differ from the row when Canvas changed the row in between.
     The feedback pane has no second line, because its row has no such data.
   - The frame sits in a white wrapper with the padding 20 px, 16 px, 0 and 32 px.
     The frame reaches 12 px into the right padding, so its own scroll bar stays 4 px from the edge of the card.
+    In full view the wrapper has the padding 24 px, 96 px and 0, so the text of the page has wide margins, as in the mockup of 2026-11-05.
+    The frame keeps its 12 px reach, so its scroll bar then stays 12 px inside the right margin.
+    The PDF pane has no such padding, because the PDF viewer draws its own page margins.
+    The feedback pane keeps its frame without padding in both states, because DocViewer draws its own margin.
 - **Frames.**
   - The pane keeps one frame for each assignment that the student previewed since the pane opened, in one wrapper, and shows one at a time.
     A frame is `/courses/:c/assignments/:a?content_only=1` on the page origin, with validated ids.
@@ -4027,10 +4040,17 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     A Preview click on another row, on an assignment that has a frame, shows the frame as it was.
   - The pane keeps at most 6 frames (`MAX_PREVIEW_FRAMES`), because each frame is a whole Canvas page with its own scripts and memory.
     A seventh Preview click removes the frame that was shown longest ago.
-  - The frames sit in a white wrapper with the padding `0 8px 0 24px`.
-    So the text of the page does not touch the edge of the pane, and the scroll bar of the frame stays near the edge.
+  - The frames sit in the white wrapper of "Card and header", so the text of the page does not touch the edge of the pane, and the scroll bar of the frame stays near the edge.
   - The script never reads the DOM of a frame.
     On a load it reads only the address of the frame.
+  - **Escape in the frame.**
+    A student who types in a frame has the focus in the frame, so the key goes to the page of the frame and not to the pane.
+    At each trusted load of a frame, the script adds one `keydown` listener in the capture phase on the window of that frame.
+    The listener reacts only to a trusted Escape while the pane is in full view, and it leaves full view.
+    It cancels that key press, so the first Escape only leaves full view, and the next one does what it did before.
+    It reads no other key and nothing of the DOM of the frame.
+    The call is in `try` and `catch`.
+    A frame on another origin, such as DocViewer in the feedback pane, gives no window to listen on, and it keeps the Escape of the header only.
   - When the frame lands on a page of the same course on the saved origin without `content_only=1`, the frame loads that address with `content_only=1`, once.
     The old submission view redirects to the plain assignment page after a submission.
     A graded discussion, a quiz and a graded page redirect away from their assignment page to the page of the discussion, the quiz or the page, which has no parameter (`AssignmentsController#show`, `redirect_to` with `context_discussion_topic_url`, `context_quiz_url` and `context_wiki_page_url`).
@@ -4054,7 +4074,7 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     The frames go at once, and then the pane reads the assignment of each frame once, the shown one first, one read after the other through the joins of the "Refresh" item, so a submission in a hidden frame is not missed.
     A change of student or a sign-out (`reset`) removes the frames too, and ends the reads that still wait.
     The limit of 6 frames and a page that removes the pane host also remove frames.
-    Escape inside a frame does nothing.
+    Escape inside a frame closes nothing: in full view it leaves full view ("Escape in the frame" above), and out of full view it does nothing.
   - The pane shows while it is open and the file pane is not in view.
     A file click, in the page or in a frame of the pane (decision 25, item 11), opens the file pane as usual, and the pane host is only hidden.
     When the file pane closes, the pane shows again with the same frame.

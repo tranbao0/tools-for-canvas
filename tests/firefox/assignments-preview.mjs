@@ -278,6 +278,9 @@ async function main() {
     addonId,
     acceptInsecureCerts: true,
     localDomains: 'school.instructure.com',
+    // A page of Firefox on Linux draws overlay scroll bars, which take no room. Full view must
+    // also fit beside a classic scroll bar that takes room.
+    prefs: { 'widget.gtk.overlay-scrollbars.enabled': false, 'ui.useOverlayScrollbars': 0 },
   });
   try {
     console.log(`Firefox ${(await driver.getCapabilities()).get('browserVersion')}`);
@@ -449,7 +452,20 @@ async function main() {
       );
     const pressedOf = async () => (await fullButton()).getAttribute('aria-pressed');
     const paneWidth = async () => (await state(driver)).pane.width;
-    const innerWidth = await driver.executeScript('return window.innerWidth');
+    // A long page has a scroll bar. The window is `innerWidth` wide, and the page, and so the pane,
+    // is `clientWidth` wide: the scroll bar takes the rest.
+    await driver.executeScript("document.body.style.minHeight = '4000px'");
+    const [innerWidth, clientWidth] = await driver.executeScript(
+      'return [window.innerWidth, document.documentElement.clientWidth]',
+    );
+    if (innerWidth - clientWidth <= 0)
+      throw new Error(
+        `The page has no scroll bar that takes room (${innerWidth} px, ${clientWidth} px)`,
+      );
+    const cardBox = async () => {
+      const root = await (await driver.findElement(By.css(PANE))).getShadowRoot();
+      return (await root.findElement(By.css('section'))).getRect();
+    };
     const roomBefore = (await state(driver)).padding;
     const widthBefore = await paneWidth();
     await driver.switchTo().frame(back2[0]);
@@ -473,8 +489,13 @@ async function main() {
       .click()
       .perform();
     await waitFor(pressedOf, (value) => value === 'true', 'the pane to go into full view');
-    if ((await paneWidth()) !== innerWidth)
-      throw new Error(`Full view has ${await paneWidth()} px, the window ${innerWidth} px`);
+    if ((await paneWidth()) !== clientWidth)
+      throw new Error(`Full view has ${await paneWidth()} px, the page ${clientWidth} px`);
+    const fullCard = await cardBox();
+    if (fullCard.x !== 12 || fullCard.x + fullCard.width !== clientWidth - 12)
+      throw new Error(
+        `The card of full view has a gap of ${fullCard.x} px on the left and ${clientWidth - fullCard.x - fullCard.width} px on the right, not 12 px (scroll bar ${innerWidth - clientWidth} px)`,
+      );
     if ((await state(driver)).padding !== roomBefore)
       throw new Error('Full view changed the padding of the page');
     if ((await readDraft()) !== 'half a sentence|same document')

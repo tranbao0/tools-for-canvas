@@ -249,9 +249,10 @@ export async function startViewer(): Promise<void> {
       candidate.onmessage = (message) => {
         if (port === candidate) {
           if (!validPaneRequest(message.data)) return;
-          // Escape leaves full view first. Full view ends with the pane that closes last.
+          // Escape leaves full view first, and a narrow window has none. Full view ends with the
+          // close of a pane (see `createDock`).
           if (message.data.type === 'full-view') setFullView(message.data.on);
-          else if (message.data.type === 'escape' && isFullView()) setFullView(false);
+          else if (message.data.type === 'escape' && created.full) setFullView(false);
           else close();
           return;
         }

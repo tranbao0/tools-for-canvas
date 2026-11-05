@@ -19,12 +19,13 @@ import {
   watchFilePane,
   type Dock,
 } from '../../file-viewer/dock';
-import { CLOSE_PATH, EXTERNAL_LINK_PATH } from '../../../shared/ui/iconPaths';
+import { CLOSE_PATH } from '../../../shared/ui/iconPaths';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { OWN } from './own';
 import {
   PANE_CSS,
   createFullViewButton,
+  createOpenInTabLink,
   headerText,
   icon,
   type FullViewControl,
@@ -126,11 +127,7 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
       const text = headerText(doc);
       title = text.title;
       fullView = createFullViewButton(doc);
-      link = doc.createElement('a');
-      link.className = 'btn';
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.append(doc.createTextNode('Open in new tab'), icon(doc, EXTERNAL_LINK_PATH));
+      link = createOpenInTabLink(doc);
       const close = doc.createElement('button');
       close.type = 'button';
       close.className = 'icon-btn';

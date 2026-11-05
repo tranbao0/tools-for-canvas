@@ -391,11 +391,16 @@ describe('full view', () => {
     expect(isFullView()).toBe(true);
     expect(turnIn.full).toBe(true);
     expect(turnIn.host.hasAttribute('data-full')).toBe(true);
-    expect(turnIn.host.style.width).toBe('100vw');
+    // The host reaches from the left edge to the right edge of the window, which are the edges
+    // without a scroll bar, and it has no width of its own.
+    expect(turnIn.host.style.left).toBe('0px');
+    expect(turnIn.host.style.right).toBe('0px');
+    expect(turnIn.host.style.width).toBe('');
     expect(padding()).toBe('492px');
     setFullView(false);
     expect(turnIn.full).toBe(false);
     expect(turnIn.host.hasAttribute('data-full')).toBe(false);
+    expect(turnIn.host.style.left).toBe('');
     expect(turnIn.host.style.width).toBe('492px');
     expect(padding()).toBe('492px');
   });
@@ -421,7 +426,8 @@ describe('full view', () => {
     turnIn.setHidden(true);
     file.open();
     expect(file.full).toBe(true);
-    expect(file.host.style.width).toBe('100vw');
+    expect(file.host.style.left).toBe('0px');
+    expect(file.host.style.width).toBe('');
     file.close();
     turnIn.setHidden(false);
     expect(isFullView()).toBe(true);
@@ -466,6 +472,38 @@ describe('full view', () => {
     setFullView(true);
     turnIn.host.remove();
     expect(isFullView()).toBe(false);
+  });
+
+  it.each(['turn-in', 'feedback'] as const)(
+    'ends with the close of a %s pane that covers a hidden file pane, and the file pane comes back out of full view',
+    (role) => {
+      const file = dock('file', 600, true);
+      const pane = dock(role, 480, true);
+      file.open();
+      pane.open();
+      file.setHidden(true);
+      setFullView(true);
+      expect(pane.full).toBe(true);
+      pane.close();
+      file.setHidden(false);
+      expect(isFullView()).toBe(false);
+      expect(file.full).toBe(false);
+      expect(file.host.style.left).toBe('');
+      expect(file.host.style.width).toBe('612px');
+    },
+  );
+
+  it('keeps full view for a pane that a closing file pane uncovers, whichever pane it is', () => {
+    const feedback = dock('feedback', 480, true);
+    const file = dock('file', 600, true);
+    feedback.open();
+    setFullView(true);
+    feedback.setHidden(true);
+    file.open();
+    file.close();
+    feedback.setHidden(false);
+    expect(isFullView()).toBe(true);
+    expect(feedback.full).toBe(true);
   });
 
   it('never fills the window on a narrow window, and comes back when the window is wide again', () => {
