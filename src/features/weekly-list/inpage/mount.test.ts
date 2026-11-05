@@ -236,7 +236,6 @@ describe('classic dashboard', () => {
 });
 
 describe('dashboard without a right column', () => {
-  const bodyClass = (): string => document.body.className;
   const panelContainer = (): HTMLElement | null => container();
 
   it('mounts at once on List View, for the weekly dock, and changes nothing in the page layout', async () => {
