@@ -339,6 +339,50 @@ describe('the similarity score beside a file', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  it('watches the width of the box, measures the scores again when it changes, and stops with the view', async () => {
+    const watchers: { callback: ResizeObserverCallback; disconnect: ReturnType<typeof vi.fn> }[] =
+      [];
+    class FakeResizeObserver {
+      disconnect = vi.fn();
+      constructor(callback: ResizeObserverCallback) {
+        watchers.push({ callback, disconnect: this.disconnect });
+      }
+      observe(): void {}
+      unobserve(): void {}
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    try {
+      start(withReports(REPORT)).setActive(true);
+      await vi.waitFor(() => expect(score()).not.toBeNull());
+      expect(watchers).toHaveLength(1);
+      // The name wraps in the box: the score stands under it, offset by the icon and its gap.
+      const chip = score()!;
+      const under = vi.spyOn(chip, 'getBoundingClientRect');
+      under.mockReturnValue({ top: 100 } as DOMRect);
+      const view = sidebar().querySelector<HTMLElement>('a[href] > span:not([hidden])')!;
+      vi.spyOn(view, 'getBoundingClientRect').mockReturnValue({ bottom: 90 } as DOMRect);
+      const box = (width: number) =>
+        [{ contentRect: { width } } as ResizeObserverEntry] as ResizeObserverEntry[];
+      watchers[0]!.callback(box(240), {} as ResizeObserver);
+      expect(chip.style.marginInlineStart).toBe('24px');
+      expect(chip.style.marginTop).toBe('4px');
+      // The same width again measures nothing.
+      under.mockClear();
+      watchers[0]!.callback(box(240), {} as ResizeObserver);
+      expect(under).not.toHaveBeenCalled();
+      // A wider box: the name fits, and the score goes back beside the link.
+      under.mockReturnValue({ top: 60 } as DOMRect);
+      watchers[0]!.callback(box(600), {} as ResizeObserver);
+      expect(chip.style.marginInlineStart).toBe('8px');
+      expect(chip.style.marginTop).toBe('');
+      expect(chip.getAttribute('style')).not.toContain('margin-left');
+      engine.setActive(false);
+      expect(watchers[0]!.disconnect).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('shows a gray score for a report that is not ready, and none for a file without a report', async () => {
     document.body.innerHTML = box(link('42', '501', 'essay.pdf') + link('42', '502', 'notes.pdf'));
     start(withReports({ ...REPORT, state: 'pending', score: null, status: 'pending' })).setActive(
