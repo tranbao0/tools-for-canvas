@@ -36,6 +36,20 @@ it('does not subscribe to cookie changes', async () => {
   stop();
 });
 
+it('wires the other triggers where the browser has no windows API', async () => {
+  const h = await createHarness();
+  for (const event of [browser.runtime.onConnect, browser.alarms.onAlarm]) {
+    vi.spyOn(event, 'addListener').mockImplementation(() => undefined);
+    vi.spyOn(event, 'removeListener').mockImplementation(() => undefined);
+  }
+  vi.spyOn(browser.alarms, 'create').mockResolvedValue(undefined);
+  const startup = vi.spyOn(browser.runtime.onStartup, 'addListener');
+  vi.spyOn(browser, 'windows', 'get').mockReturnValue(undefined as never);
+  const stop = wireDataTriggers(h.owner);
+  expect(startup).toHaveBeenCalled();
+  expect(() => stop()).not.toThrow();
+});
+
 it('limits disconnect to its delete token and maintains the alarm', async () => {
   const h = await createHarness();
   await loadReady(h);

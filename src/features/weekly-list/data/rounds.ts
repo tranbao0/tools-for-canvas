@@ -30,7 +30,13 @@ import type {
 import { assignmentIdsToLookup } from '../model/normalize';
 import type { AssignmentData } from '../model/types';
 import { DEFAULT_LIST_TABS } from './announcements';
-import { toAssignmentData, type RoundScope, type SessionCache, type SessionData } from './cache';
+import {
+  toAssignmentData,
+  toSessionData,
+  type RoundScope,
+  type SessionCache,
+  type SessionData,
+} from './cache';
 import {
   chunkInterval,
   coveredItems,
@@ -167,7 +173,7 @@ async function loadSession(api: CanvasApi): Promise<SessionData> {
     api.getColors(),
     api.getDashboardPositions(),
   ]);
-  return { profile, courses, groups, colors, positions };
+  return toSessionData({ profile, courses, groups, colors, positions });
 }
 
 interface PerCourseResult<T> {

@@ -1553,3 +1553,91 @@ describe('a Canvas that the student leaves by accepting another one', () => {
     expect(events).toEqual(['deleteNote']);
   });
 });
+
+describe('write replies in the other form of the student id', () => {
+  const SHARDED = '2~5501';
+  const GLOBAL = '20000000005501';
+  const IN_USER_REPLY = ['createNote', 'updateNote', 'createOverride', 'updateOverride'];
+
+  /** A Canvas whose write replies name the student by the global id, as a shard account gets them. */
+  async function shardAccount(): Promise<Harness> {
+    const scenario = buildScenario(new Date(Date.now()).toISOString());
+    scenario.self = { ...scenario.self, id: SHARDED };
+    scenario.profile = { ...scenario.profile, id: SHARDED };
+    const h = await createHarness({ scenario });
+    const wrap = (api: object): object =>
+      new Proxy(api, {
+        get(target, key) {
+          const value = Reflect.get(target, key) as unknown;
+          if (typeof value !== 'function') return value;
+          if (key === 'withGuard' || key === 'withPriority')
+            return (...args: unknown[]) => wrap(value.apply(target, args) as object);
+          if (IN_USER_REPLY.includes(String(key)))
+            return async (...args: unknown[]) => ({
+              ...((await value.apply(target, args)) as object),
+              user_id: GLOBAL,
+            });
+          return value.bind(target) as unknown;
+        },
+      });
+    h.createApi.mockImplementation(() => wrap(h.canvas) as typeof h.canvas);
+    await loadReady(h);
+    h.canvas.resetCalls();
+    return h;
+  }
+
+  it('keeps a done mark and a new override whose reply names the student by the global id', async () => {
+    const h = await shardAccount();
+    const cleared = vi.fn();
+    h.deps.onUserDataCleared = cleared;
+
+    await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('updateOverride')).toEqual([]);
+    expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
+    expect((await item(h, QUIZ_3))?.state).toBe('done');
+    expect(cleared).not.toHaveBeenCalled();
+  });
+
+  it('keeps a created task and an updated task whose reply names the student by the global id', async () => {
+    const h = await shardAccount();
+    const cleared = vi.fn();
+    h.deps.onUserDataCleared = cleared;
+
+    await h.owner.act({ kind: 'createTask', input });
+    await h.owner.settled();
+    expect(shownTask(expectReady(await h.owner.getState(PANEL)))).toBeDefined();
+    expect(h.canvas.callsOf('deleteNote')).toEqual([]);
+
+    await h.owner.act({
+      kind: 'updateTask',
+      noteId: N.bioStudyGroup,
+      input: { ...input, title: 'Study group' },
+    });
+    await h.owner.settled();
+
+    expect((await item(h, `planner_note:${N.bioStudyGroup}`))?.title).toBe('Study group');
+    expect(cleared).not.toHaveBeenCalled();
+  });
+
+  it('puts the flags onto an override that Canvas lists with the global id', async () => {
+    const h = await shardAccount();
+    h.canvas.addOverrideElsewhere({
+      id: '555',
+      plannable_type: 'quiz',
+      plannable_id: IDS.quizzes.bioQuiz3Today,
+      user_id: GLOBAL,
+      assignment_id: A.bioQuiz3Today,
+      workflow_state: 'active',
+      marked_complete: false,
+      dismissed: false,
+    });
+
+    await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
+    expect((await item(h, QUIZ_3))?.state).toBe('done');
+  });
+});

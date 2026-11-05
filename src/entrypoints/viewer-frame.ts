@@ -45,7 +45,8 @@ export default defineUnlistedScript(() => {
   // The background says whether the cookie is confirmed for the student of the cache. Every read
   // of file bytes asks it.
   const confirmCookie = async () =>
-    (await browser.runtime.sendMessage({ type: 'viewer:fetch-allowed' })) === true;
+    (await browser.runtime.sendMessage({ type: 'viewer:fetch-allowed', token: tabsToken })) ===
+    true;
 
   // What the background reads when the pane read of an address fails for a missing cookie. It
   // reads the file of the id or the comment attachment, never an address of the pane.

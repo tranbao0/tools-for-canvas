@@ -205,10 +205,26 @@ describe('viewer router', () => {
 
   it('asks the cookie rules whether the pane may fetch bytes', async () => {
     const { host, pane } = setup();
-    expect(await routeViewerMessage({ type: 'viewer:fetch-allowed' }, pane, host)).toBe(true);
+    const { token } = await tabsGet(pane, host);
+    const allowed = () => routeViewerMessage({ type: 'viewer:fetch-allowed', token }, pane, host);
+    expect(await allowed()).toBe(true);
     expect(host.mayFetch).toHaveBeenCalledWith('https://school.edu', 7);
     vi.mocked(host.mayFetch).mockResolvedValue(false);
-    expect(await routeViewerMessage({ type: 'viewer:fetch-allowed' }, pane, host)).toBe(false);
+    expect(await allowed()).toBe(false);
+  });
+  it('refuses the bytes to a pane whose token names another student or an older round', async () => {
+    const { host, pane, store } = setup();
+    const { token } = await tabsGet(pane, host);
+    const ask = (value: unknown) =>
+      routeViewerMessage({ type: 'viewer:fetch-allowed', token: value }, pane, host);
+    expect(await ask(token)).toBe(true);
+    expect(await ask(undefined)).toBe(false);
+    expect(await ask(String(token).replace(':u1', ':u2'))).toBe(false);
+    vi.mocked(host.userId).mockResolvedValue('u2');
+    expect(await ask(token)).toBe(false);
+    vi.mocked(host.userId).mockResolvedValue('u1');
+    store.set('viewer:session:epoch', 1);
+    expect(await ask(token)).toBe(false);
   });
   it('takes the tab id from the sender and normalizes the stored value', async () => {
     const { host, sender } = setup();

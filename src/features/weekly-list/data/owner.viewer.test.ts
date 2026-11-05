@@ -212,6 +212,29 @@ describe('viewer reads', () => {
     await expect(h.owner.viewerUserId(ORIGIN, TAB)).resolves.toBeNull();
   });
 
+  it('tells the viewer to clear its tabs for another student when the cache holds no session', async () => {
+    const h = await createHarness();
+    const cleared = vi.fn();
+    h.deps.onUserDataCleared = cleared;
+    await expect(h.owner.viewerConfirm(ORIGIN, TAB)).resolves.toBe(true);
+    await expect(h.owner.viewerUserId(ORIGIN, TAB)).resolves.toBe(h.canvas.scenario.profile.id);
+    expect(cleared).not.toHaveBeenCalled();
+    signInOtherUser(h);
+    await expect(h.owner.viewerConfirm(ORIGIN, TAB)).resolves.toBe(true);
+    await expect(h.owner.viewerUserId(ORIGIN, TAB)).resolves.toBe('7777');
+    expect(cleared).toHaveBeenCalledOnce();
+  });
+
+  it('tells the viewer to clear its tabs when the first session is another student than the proof', async () => {
+    const h = await createHarness();
+    const cleared = vi.fn();
+    h.deps.onUserDataCleared = cleared;
+    await expect(h.owner.viewerConfirm(ORIGIN, TAB)).resolves.toBe(true);
+    signInOtherUser(h);
+    await loadReady(h);
+    expect(cleared).toHaveBeenCalled();
+  });
+
   it('tells the viewer to clear its tabs on a sign-out and for another student', async () => {
     const h = await loaded();
     const save = () => savePosition(ORIGIN, '5501', '42', { page: 3, zoom: 1.5 }, 1);
