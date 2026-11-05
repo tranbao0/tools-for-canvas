@@ -1387,7 +1387,22 @@ describe('the similarity score in the box', () => {
     expect(score.getAttribute('href')).toBe(`${ORIGIN}${PAGE}/vericite/attachment_501`);
   });
 
-  it('falls back to the report of the whole submission, with the address of the file', async () => {
+  it('falls back to the report of the whole submission at its time, with the address of the file', async () => {
+    send.mockResolvedValue(
+      reply((details) => {
+        details.submission.id = '9';
+        details.submission.submitted_at = '2026-11-01T10:00:00Z';
+        details.submission.reports = [{ ...REPORT, asset: 'submission_9_2026-11-01T10:00:00Z' }];
+      }),
+    );
+    start();
+    await settle();
+    expect(boxRoot()!.querySelector<HTMLAnchorElement>('a.av-score')?.getAttribute('href')).toBe(
+      `${ORIGIN}${PAGE}/turnitin/attachment_501`,
+    );
+  });
+
+  it('gives a file no score from the plain key of the submission, which is the key of a text entry', async () => {
     send.mockResolvedValue(
       reply((details) => {
         details.submission.id = '9';
@@ -1396,9 +1411,7 @@ describe('the similarity score in the box', () => {
     );
     start();
     await settle();
-    expect(boxRoot()!.querySelector<HTMLAnchorElement>('a.av-score')?.getAttribute('href')).toBe(
-      `${ORIGIN}${PAGE}/turnitin/attachment_501`,
-    );
+    expect(boxRoot()!.querySelector('a.av-score')).toBeNull();
   });
 
   it('shows no score for the report of another file', async () => {

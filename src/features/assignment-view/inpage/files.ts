@@ -159,12 +159,14 @@ function attachmentAssets(fileId: string): string[] {
 }
 
 /**
- * The keys that hold a report of the submission itself: `submission_<id>`, and the key with the
- * time of the submission after it (`OriginalityReport.submission_asset_key`). Canvas writes that
- * time as `utc.iso8601`, and the record writes `submitted_at` in its own form, so the two compare
- * as instants and not as text. With no time to compare, every key with a time counts.
+ * The keys that hold a report of the submission itself: the key with the time of the submission
+ * after `submission_<id>` (`OriginalityReport.submission_asset_key`), and, for a text entry only,
+ * the plain `submission_<id>`. Canvas writes that time as `utc.iso8601`, and the record writes
+ * `submitted_at` in its own form, so the two compare as instants and not as text. With no time to
+ * compare, every key with a time counts. A file row never takes the plain key, which belongs to a
+ * text entry.
  */
-function submissionAssets(source: SubmissionReports): string[] {
+function submissionAssets(source: SubmissionReports, text: boolean): string[] {
   if (source.id === undefined) return [];
   const plain = `submission_${source.id}`;
   const at = source.submitted_at ? Date.parse(source.submitted_at) : Number.NaN;
@@ -176,7 +178,7 @@ function submissionAssets(source: SubmissionReports): string[] {
         asset.startsWith(`${plain}_`) &&
         (Number.isNaN(at) || Date.parse(asset.slice(plain.length + 1)) === at),
     );
-  return [...timed, plain];
+  return text ? [...timed, plain] : timed;
 }
 
 /** The score element of an entry, or `null` when its address fails the check. */
@@ -270,7 +272,7 @@ export function fileReport(
   context: ReportContext,
 ): ReportResult {
   const assets = attachmentAssets(fileId);
-  return reportFor(source, assets, submissionAssets(source), assets[0]!, context);
+  return reportFor(source, assets, submissionAssets(source, false), assets[0]!, context);
 }
 
 export interface BoxFiles {
@@ -310,7 +312,7 @@ export function filesFromDetails(
 
 /** The score of the submission itself, which a text entry has. */
 export function submissionReport(source: SubmissionReports, context: ReportContext): ReportResult {
-  const whole = submissionAssets(source);
+  const whole = submissionAssets(source, true);
   if (whole.length === 0) return { report: null, readable: true };
   return reportFor(source, [], whole, `submission_${source.id}`, context);
 }
