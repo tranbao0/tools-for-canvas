@@ -36,7 +36,7 @@ const ASSIGNMENT = '101';
 const USER = '5501';
 const ASSIGNMENT_PATH = `/courses/${COURSE}/assignments/${ASSIGNMENT}`;
 const DETAILS_PATH = `${ASSIGNMENT_PATH}/submissions/${USER}`;
-const SESSION = '/api/v1/canvadoc_session?blob=x&hmac=y';
+const SESSION = '/api/v1/canvadoc_session?blob=x';
 const WAIT_MS = 8000;
 
 // The fixtures of the Playwright tests import each other without the `.ts` extension, which plain

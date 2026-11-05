@@ -24,6 +24,11 @@ describe('sessionUrl', () => {
     expect(sessionUrl(`${ORIGIN}${SESSION_PATH}`, ORIGIN)).toBe(`${ORIGIN}${SESSION_PATH}`);
   });
 
+  it('accepts the session address of a live Canvas, which has the blob and no hmac', () => {
+    const live = '/api/v1/canvadoc_session?blob=%7B%22attachment_id%22%3A501%7D';
+    expect(sessionUrl(live, ORIGIN)).toBe(`${ORIGIN}${live}`);
+  });
+
   it.each([
     ['nothing', null],
     ['an empty value', ''],
@@ -31,7 +36,7 @@ describe('sessionUrl', () => {
     ['another scheme', `javascript:alert(1)`],
     ['another path', '/api/v1/canvadoc_sessions?blob=a&hmac=b'],
     ['a path under the session path', '/api/v1/canvadoc_session/x?blob=a&hmac=b'],
-    ['no hmac', '/api/v1/canvadoc_session?blob=a'],
+    ['no blob', '/api/v1/canvadoc_session?hmac=b'],
     ['an empty blob', '/api/v1/canvadoc_session?blob=&hmac=b'],
     ['a repeated blob', '/api/v1/canvadoc_session?blob=a&blob=c&hmac=b'],
     ['an extra access token', '/api/v1/canvadoc_session?blob=a&hmac=b&access_token=t'],

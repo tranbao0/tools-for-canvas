@@ -13,8 +13,11 @@ import type { AssignmentFile } from '../protocol';
 
 /** The path of the session that Canvas gives for a previewable file (`Attachment#canvadoc_url`). */
 const SESSION_PATH = '/api/v1/canvadoc_session';
-/** The two signed parameters of a session, once each and with a value, and no other. */
-const SESSION_QUERY = /^\?(?:blob=[^&]+&hmac=[^&]+|hmac=[^&]+&blob=[^&]+)$/;
+/**
+ * The query of a session: `blob`, with `hmac` when Canvas sends one, once each and with a value, and
+ * no other parameter. A live Canvas sends the blob alone.
+ */
+const SESSION_QUERY = /^\?(?:blob=[^&]+(?:&hmac=[^&]+)?|hmac=[^&]+&blob=[^&]+)$/;
 const MAX_TEXT = 255;
 
 /** The similarity score of a file, as the originality cell of its row shows it. */
@@ -44,7 +47,7 @@ export interface FrameFile {
 
 /**
  * The address of a DocViewer session, or `null`. It must be on the saved Canvas, with the session
- * path and the two signed parameters `blob` and `hmac` once each, and no other parameter. The value
+ * path and the signed parameter `blob`, an optional `hmac`, once each, and no other parameter. The value
  * is signed for one student, so no other address is ever used.
  */
 export function sessionUrl(value: string | null, origin: string): string | null {
