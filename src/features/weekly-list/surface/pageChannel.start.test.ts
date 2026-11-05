@@ -3,11 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_TOOLS_SETTINGS, type ToolsSettings } from '../../../shared/settings/tools';
 import { startAssignmentView } from '../../assignment-view/inpage/start';
 import { startDashboardFixes } from '../../dashboard-fixes/inpage/start';
-import {
-  dashboardData,
-  drawDashboard,
-  extra,
-} from '../../dashboard-fixes/inpage/testing/dashboard';
+import { dashboardData, drawDashboard } from '../../dashboard-fixes/inpage/testing/dashboard';
 import type { DataMessage } from '../data/protocol';
 import { DEFAULT_SETTINGS } from '../model/types';
 import { createPageChannel } from './pageChannel';
@@ -114,12 +110,12 @@ const CALLERS: Caller[] = [
     reads: 2,
     draw: () => drawDashboard(),
     start: (channel) => startDashboardFixes({ channel, origin: ORIGIN, pathname: '/' }),
-    other: () => dashboardData([extra({ key: 'u', title: 'Undated work' })]),
-    shown: () => document.querySelector('[data-wr-extra]') !== null,
+    other: () => dashboardData(),
+    shown: () => document.querySelector('[data-wr-card]') !== null,
     store: (on, saved) => ({
       saved,
       tools: withTools({
-        dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseWorkExtras: on },
+        dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, allCourseGrades: on },
       }),
     }),
   },

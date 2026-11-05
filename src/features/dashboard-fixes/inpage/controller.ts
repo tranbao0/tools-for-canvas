@@ -18,9 +18,7 @@ import type { DashboardFixesSettings } from '../../../shared/settings/tools';
 import type { DataMessage } from '../../weekly-list/data/protocol';
 import type { DashboardData } from '../protocol';
 import { announcementsFix } from './announcements';
-import { courseColorsFix } from './colors';
 import { isFixNode, type Fix, type FixContext } from './context';
-import { courseWorkFix } from './courseWork';
 import { gradesFix, type GradeVisibilityStore } from './grades';
 import { pagerFix } from './pager';
 import { findGradeWidgets } from '../../../shared/canvas/widgetDashboard';
@@ -67,9 +65,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   const { doc, origin } = options;
   const gradeStore: GradeVisibilityStore = { serverStates: new Map(), observed: new Map() };
   const fixes: Record<FixKey, Fix> = {
-    courseColors: courseColorsFix(),
     announcementsInPlace: announcementsFix(),
-    courseWorkExtras: courseWorkFix(),
     allCourseGrades: gradesFix(gradeStore),
     steadyPager: pagerFix(),
   };

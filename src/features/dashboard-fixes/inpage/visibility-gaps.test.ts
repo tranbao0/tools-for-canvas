@@ -15,13 +15,11 @@ import { dashboardData, drawDashboard, ORIGIN } from './testing/dashboard';
 const WIDGET = 'course-grades-widget';
 const ON = DEFAULT_TOOLS_SETTINGS.dashboardFixes;
 const ALL_OFF: DashboardFixesSettings = {
-  courseColors: false,
   announcementsInPlace: false,
-  courseWorkExtras: false,
   allCourseGrades: false,
   steadyPager: false,
 };
-const NOTHING = { origin: ORIGIN, ready: false, courses: [], extras: [] };
+const NOTHING = { origin: ORIGIN, courses: [] };
 
 let send: Mock<(message: DataMessage) => Promise<unknown>>;
 let engine: FixesEngine;

@@ -345,13 +345,9 @@ export function claimDashboardLayout(
     }
     giveWidgetsBack(slot?.wrapper);
     if (slot !== null) claim(slot);
-    // Before the first show the widget must be settled, and the fixes must have removed their
-    // extras from it after it was claimed, so the card does not show over a box that still changes
-    // with the first data.
-    const unsettled =
-      slot !== null &&
-      !slotShown &&
-      (!slot.loaded || slot.widget.querySelector('[data-wr-extra]') !== null);
+    // Before the first show the widget must be settled, so the card does not show over a box that
+    // still changes with the first data.
+    const unsettled = slot !== null && !slotShown && !slot.loaded;
     if (unsettled && !waiting && !waitExpired) startWait();
     else if (waiting && !unsettled && (slot !== null || grid !== null)) endWait();
     if (waiting) {

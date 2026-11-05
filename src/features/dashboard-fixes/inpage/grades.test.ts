@@ -46,7 +46,7 @@ describe('gradesFix', () => {
       grade: null,
       color: '#324A4D',
     });
-    fix.apply(fakeContext(dashboardData([], courses)));
+    fix.apply(fakeContext(dashboardData(courses)));
     const grade = document.querySelector<HTMLElement>('[data-testid="course-107-grade"]');
     expect(grade?.textContent).toBe('N/A');
     const header = grade?.parentElement?.parentElement?.parentElement;
@@ -158,7 +158,7 @@ describe('gradesFix', () => {
   });
 
   it('adds no card for a course that already has one, and none without a card to copy', () => {
-    gradesFix().apply(fakeContext(dashboardData([], COURSES.slice(0, 6))));
+    gradesFix().apply(fakeContext(dashboardData(COURSES.slice(0, 6))));
     expect(cards()).toHaveLength(6);
     for (const card of cards()) card.remove();
     gradesFix().apply(fakeContext());

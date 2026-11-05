@@ -312,13 +312,9 @@ Use a new, empty profile, and the student account.
 
 ### New dashboard fixes
 
-These steps need the new widget dashboard ("Switch to new dashboard view" in Canvas) with the Course work, Announcements and Course grades widgets, and a student with more than six active courses, one course that hides its totals and an unread announcement in a course with a rich message.
+These steps need the new widget dashboard ("Switch to new dashboard view" in Canvas) with the Announcements and Course grades widgets, and a student with more than six active courses, one course that hides its totals and an unread announcement in a course with a rich message.
 
-32. Open the new widget dashboard.
-    Expect: the icon of each Course work item has the color of its course, the same color as the course card on the Courses tab, with a white or black icon.
-    Expect: the status pill beside each title still shows Missing, Late, Submitted or the due date.
-    Expect: in the dark theme of the dashboard, the colors stay.
-33. Look at the Announcements widget.
+32. Look at the Announcements widget.
     Expect: the list of Canvas and its pager are gone, and the widget shows the read filter, the course filter, a search field with a calendar button, and a scroll area with 10 announcements.
     Expect: each row shows an avatar (the image of the author, or the initials on a color), a bold title, "Sent by NAME | Nov 2, 2026", the course name, a snippet, "Read more" and a circle at the right.
     Scroll the area to its end.
@@ -332,7 +328,7 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
     Expect: the announcement is still unread in Canvas (check the unread count of Canvas, and do not open the page of the announcement, because Canvas marks it as read when the page opens).
     Hold Ctrl (Cmd on a Mac) and click a title of a row.
     Expect: nothing opens, because the title is plain text, as in Canvas.
-34. In the Announcements widget, use the filters, the read control and the searches.
+33. In the Announcements widget, use the filters, the read control and the searches.
     Choose another read filter.
     Expect: the list of that filter shows from its top, and the first request of that filter asks for 10 rows.
     Use the "Course filter:" beside the read filter.
@@ -361,28 +357,18 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
     Expect: the rows, the search field, the date fields and the marks are readable.
     Turn the fix off in the settings.
     Expect: the list of Canvas and its pager come back as they were.
-35. Open the Course work widget with the filter "Not submitted".
-    Expect: an "Also due" section under the list shows work with no due date, overdue work, and pages, ungraded discussions and your own tasks that have a to-do date.
-    Click "Show all".
-    Expect: up to 20 rows, sorted by due date, and the focus stays on the button.
-    Change the filter to "Missing".
-    Expect: the overdue work leaves the section, because Missing lists it.
-    Change the course filter to one course.
-    Expect: the section shows the work of that course only.
-    Compare the three cards with the list.
-    Expect: one short line under "Also due" gives the numbers, and the info mark beside it explains how the cards count.
-36. In the Course grades widget, with more than six courses:
+34. In the Course grades widget, with more than six courses:
     Expect: the pager is gone, and a card shows for every active course.
     Expect: a course that hides its totals shows "N/A", and the letter or percent of the other cards matches the Canvas grades page.
     Turn off "Show all grades".
     Expect: every card, also the added ones, shows dots.
-37. Reload the dashboard, then change something in Canvas that makes React draw a widget again, such as the filter or the page of a widget.
-    Expect: the colors, the section, the filter and the added cards come back each time, and an open announcement stays open.
-38. In the settings of the extension, turn off each switch of "New dashboard fixes" in turn, with the dashboard open.
+35. Reload the dashboard, then change something in Canvas that makes React draw a widget again, such as the filter or the page of a widget.
+    Expect: the filter and the added cards come back each time, and an open announcement stays open.
+36. In the settings of the extension, turn off each switch of "New dashboard fixes" in turn, with the dashboard open.
     Expect: the matching fix goes away at once, the page shows what Canvas draws, and the other fixes stay.
     Minimize the weekly list.
     Expect: the fixes keep working.
-39. Open a course home page and the Courses tab.
+37. Open a course home page and the Courses tab.
     Expect: no fix shows, and nothing changes.
 
 ### Announcements tab
@@ -390,48 +376,48 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
 These steps need a student with unread announcements in two courses from the last 14 days, one read announcement from the last 14 days, one announcement older than 14 days, an announcement with a rich message (a link, an image and a list), and one hidden course (in the settings of the extension) that has an announcement.
 Run them on the classic dashboard in Card View, then in List View, then on a course home page.
 
-40. Look under the rings of the weekly list.
+38. Look under the rings of the weekly list.
     Expect: a switch with "Tasks" and "Announcements" shows, "Tasks" is chosen, and "Announcements" has a small count of the unread announcements.
     Expect: the count leaves out the hidden course, the read announcement and the old announcement.
     Press the Left and Right arrow keys on a tab.
     Expect: the other tab is chosen and takes the focus.
-41. Choose "Announcements".
+39. Choose "Announcements".
     Expect: the unread announcements of the last 14 days show, newest first, each with the dot of its course color, the short name of the course, the title in bold, the author, a relative date such as "Today" and a snippet of two lines of plain text.
     Expect: the card keeps its height, and the list scrolls inside it.
     Turn on "Show read".
     Expect: the read announcement joins the list, with a normal title and no "Mark as read" control.
     If a course of the student has "View Announcements" turned off for students, check that the list still shows the other courses.
     If it shows "Couldn't load your announcements" instead, the request fails for the whole batch of its courses, and the fix in design decision 24 is needed.
-42. Click the title of an unread announcement.
+40. Click the title of an unread announcement.
     Expect: the whole message shows in the row, with its links, image and list, and "Show less" and "Open in Canvas" show.
     Expect: the announcement is still unread in Canvas (check the unread count of Canvas, and do not open its page).
     Click "Show less".
     Expect: the row closes.
-43. Click "Mark as read" of an unread announcement.
+41. Click "Mark as read" of an unread announcement.
     Expect: the row leaves the list, the count goes down by one, and the notice "Marked as read" shows with "Undo".
     Expect: focus moves to the next row.
     Reload the page, and look at the announcement in Canvas.
     Expect: Canvas shows it as read.
     Mark another announcement as read, then click "Undo".
     Expect: the row comes back, focus moves to it, and Canvas shows it as unread again.
-44. Click "Open in Canvas" in an open row.
+42. Click "Open in Canvas" in an open row.
     Expect: the announcement page opens in the same tab, and Canvas marks it as read there.
-45. Choose "Announcements", scroll the list a little, choose "Tasks", scroll that list, and choose "Announcements" again.
+43. Choose "Announcements", scroll the list a little, choose "Tasks", scroll that list, and choose "Announcements" again.
     Expect: each tab shows the place where you left it.
     Reload the page.
     Expect: the tab that you chose last is chosen.
     Open the side panel.
     Expect: it shows its own tab choice, which starts with "Tasks".
-46. Open a course home page.
+44. Open a course home page.
     Expect: the Announcements tab shows only the announcements of that course, and the rows show no course name.
-47. Open the new widget dashboard.
+45. Open the new widget dashboard.
     Expect: the weekly list shows no switch, and the Announcements widget of Canvas is the place for announcements.
     Open the network tab of the browser's developer tools.
     Expect: the weekly list sends no request to `/api/v1/announcements`.
     The only request of the extension to it on this page is the date search of the Announcements widget, and it waits until you set a date.
     Switch the dashboard to List View.
     Expect: the switch shows.
-48. Make the window 240 px wide with the side panel (Firefox) or make the card narrow, then choose "Announcements".
+46. Make the window 240 px wide with the side panel (Firefox) or make the card narrow, then choose "Announcements".
     Expect: the switch, the count and the rows fit, and a long title wraps.
     Open a message with a wide table or a wide image.
     Expect: the table scrolls sideways inside the row and the image fits the width.
@@ -442,18 +428,18 @@ These steps need a student account in a course with PDF files.
 Use a PDF of a few pages with text, a PDF with a scanned page (an image of text), a PDF with a link, and a PDF of about 20 MB or more.
 Use Firefox first, and then Chrome and Edge.
 
-49. Click a PDF link on a course page.
+47. Click a PDF link on a course page.
     Expect: the pane opens with the card of the file, then a bar that shows the part read, then the toolbar and the first page.
     Expect: the first page shows text and pictures, and the text looks the same as in the Canvas preview.
-50. Use Previous page, Next page and the page number input, then type `0`, `9999` and `abc` in the input.
+48. Use Previous page, Next page and the page number input, then type `0`, `9999` and `abc` in the input.
     Expect: `0` goes to page 1, `9999` goes to the last page, and `abc` shows the page in view again.
     Click inside the pages, then press PageDown, PageUp, End and Home.
     Expect: the page number follows each key.
-51. Press Ctrl+plus, Ctrl+minus and Ctrl+0 (Cmd on a Mac) with the focus in the pane, then open the zoom menu and choose "Fit page" and 200%.
+49. Press Ctrl+plus, Ctrl+minus and Ctrl+0 (Cmd on a Mac) with the focus in the pane, then open the zoom menu and choose "Fit page" and 200%.
     Expect: the pages zoom each time, and the browser page does not zoom.
     Make the pane wider and narrower by its handle.
     Expect: with "Fit width", the pages follow the width and the position in the document stays.
-52. Press Ctrl+F (Cmd+F on a Mac) with the focus in the pane, and type a word that is on two pages.
+50. Press Ctrl+F (Cmd+F on a Mac) with the focus in the pane, and type a word that is on two pages.
     Expect: the search bar shows "1 of N", and the matches show in yellow.
     Press Enter and Shift+Enter.
     Expect: the selected match, in orange, moves to the next and to the previous match, and the pane scrolls to it.
@@ -461,22 +447,22 @@ Use Firefox first, and then Chrome and Edge.
     Expect: the marks go, and the pane stays open.
     Select a line of text with the mouse and copy it.
     Expect: the copied text is the text of the page.
-53. Open the thumbnails.
+51. Open the thumbnails.
     Expect: each page has a thumbnail that draws as you scroll the list, and a click goes to the page.
-54. Click a link inside the PDF that goes to a web site, and a link that goes to another page of the PDF.
+52. Click a link inside the PDF that goes to a web site, and a link that goes to another page of the PDF.
     Expect: the web link opens in a new tab and the PDF stays; the other link scrolls to its page.
-55. Open a second PDF, scroll the first one to page 3, switch to the second tab and back.
+53. Open a second PDF, scroll the first one to page 3, switch to the second tab and back.
     Expect: the first tab shows page 3 again without a new bar, and the network tab of the developer tools shows no new request for it.
     Close the second tab.
     Expect: the first tab stays.
-56. Open the PDF with a scanned page (a library scan of a reading), and a PDF that was made with a non-Latin font (for example Japanese or Arabic) if you have one.
+54. Open the PDF with a scanned page (a library scan of a reading), and a PDF that was made with a non-Latin font (for example Japanese or Arabic) if you have one.
     Expect: the scanned page shows its picture of the text, and the other pages draw.
     Write down any page with a missing image, a box in place of a letter, or a font that looks wrong (design decision 25, item 9, "Not shipped").
-57. Open the PDF of 20 MB or more on a slow connection, or throttle the connection in the developer tools.
+55. Open the PDF of 20 MB or more on a slow connection, or throttle the connection in the developer tools.
     Expect: the bar moves, and the pane stays usable while it loads.
     Open a PDF that is larger than 100 MB if you have one.
     Expect: the card shows with "Download" and "Open in Canvas", and no bar.
-58. Turn off "Allow access" for the Canvas site (Firefox: the permissions of the extension; Chrome and Edge: the site access of the extension), then open a PDF.
+56. Turn off "Allow access" for the Canvas site (Firefox: the permissions of the extension; Chrome and Edge: the site access of the extension), then open a PDF.
     Expect: the card shows "Couldn't load this PDF" and "Allow access".
     Click "Allow access" and allow it.
     Expect: the PDF loads without a new click on the file.
@@ -485,18 +471,18 @@ Use Firefox first, and then Chrome and Edge.
 
 ### Store listings
 
-59. Check the Chrome Web Store listing.
+57. Check the Chrome Web Store listing.
     Expect: the single purpose is "Show your Canvas coursework for the week as a to-do list.", the data usage ticks "Website content" processed only on the device, the account is a non-trader, and 2-Step Verification is on.
-60. Check the Edge Add-ons listing.
+58. Check the Edge Add-ons listing.
     Expect: the description has the license link and does not mention other browsers.
-61. Check the Firefox Add-ons listing.
+59. Check the Firefox Add-ons listing.
     Expect: the source zip and the lockfile are attached, the reviewer notes say that the only writes are done marks, skip marks, custom tasks and announcement read marks sent to the student's own Canvas at the student's request, and two-factor authentication is on.
-62. Check every listing.
+60. Check every listing.
     Expect: the privacy policy link opens `docs/privacy.md` on the project site.
     Expect: the description ends with the trademark notice at the end of the README.
-63. Sign in to the reviewer test account.
+61. Sign in to the reviewer test account.
     Expect: the planner, done marks and custom tasks work in its course.
-64. Before the first release only, run the final name check from design decision 17.
+62. Before the first release only, run the final name check from design decision 17.
 
 ## Part 3: File access check (Firefox test channel)
 

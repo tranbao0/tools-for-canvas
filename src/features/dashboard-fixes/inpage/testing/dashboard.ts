@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { vi, type Mock } from 'vitest';
-import type { DashboardCourse, DashboardData, ExtraItem } from '../../protocol';
+import type { DashboardCourse, DashboardData } from '../../protocol';
 import type { FixContext } from '../context';
 
 export const ORIGIN = 'https://school.instructure.com';
@@ -51,19 +51,8 @@ function course(
   };
 }
 
-export function extra(patch: Partial<ExtraItem> & Pick<ExtraItem, 'key' | 'title'>): ExtraItem {
-  return {
-    group: 'undated',
-    type: 'assignment',
-    courseId: '101',
-    due: null,
-    url: `${ORIGIN}/courses/101/assignments/9`,
-    ...patch,
-  };
-}
-
-export function dashboardData(extras: ExtraItem[] = [], courses = COURSES): DashboardData {
-  return { origin: ORIGIN, ready: true, courses, extras, gradeVisibilities: {} };
+export function dashboardData(courses = COURSES): DashboardData {
+  return { origin: ORIGIN, courses, gradeVisibilities: {} };
 }
 
 export interface FakeContext extends FixContext {

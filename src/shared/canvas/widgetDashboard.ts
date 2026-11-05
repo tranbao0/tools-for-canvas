@@ -29,17 +29,12 @@
  *   Summary ids `course-work-summary-widget` and `course_work_summary-widget-<uuid>` are excluded.
  *   Added ids use `${type}-widget-${crypto.randomUUID()}`. Sections use `widget-<id>` and
  *   wrappers use `widget-container-<id>`. A loading section has only a 400px spinner.
- *   A settled section has the status filter or `<id>-retry-button` on error.
+ *   A settled section has `submission-status-filter-select` (the status filter) or
+ *   `<id>-retry-button` on error.
  *   Only the combined empty message has a test id. Section margins are x-small (8px) or zero;
  *   placement copies the computed margin. A wrapper is a flex item of its column (a `Flex`
  *   with `direction="column"`), so it holds the margin of its section, and the card lies over the
  *   section with the margin as its inset.
- * - Course work (`CourseWorkWidget` and `CourseWorkCombinedWidget`): an item is
- *   `[data-testid="listed-course-work-item-<assignment id>"]`. It holds the link
- *   `course-work-item-link-<id>`, the icon box (the parent of the span that wraps the
- *   `<type>-icon` svg) and the status pill `<status>-status-pill-<id>`. The two filters are
- *   `submission-status-filter-select` and `course-filter-select`, two read-only inputs that hold
- *   the label of the choice. The summary cards are `statistics-card-<label>`.
  * - Announcements (`AnnouncementsWidget`): an item is `announcement-item-<topic id>`, and the
  *   empty message is `no-announcements-message`. The read filter is the input
  *   `announcement-filter-select`. The fix replaces the list with its own, so it reads only the
@@ -150,20 +145,11 @@ export function inEditMode(doc: Document): boolean {
 // -------------------------------------------------------------------------------------------------
 
 const WIDGET = 'section[data-testid^="widget-"]';
-const COURSE_WORK_ITEM = '[data-testid^="listed-course-work-item-"]';
-const ICON_SVG = 'svg[data-testid$="-icon"]';
-const STATUS_FILTER = '[data-testid="submission-status-filter-select"]';
-const COURSE_FILTER = '[data-testid="course-filter-select"]';
-const COURSE_WORK_EMPTY = '[data-testid="no-course-work-message"]';
-const STATISTICS = '[data-testid^="statistics-card-"]';
 const ANNOUNCEMENT_ITEM = '[data-testid^="announcement-item-"]';
 const READ_FILTER = '[data-testid="announcement-filter-select"]';
 const ANNOUNCEMENT_EMPTY = '[data-testid="no-announcements-message"]';
 const GRADE_CARD = '[data-testid^="course-grade-card-"]';
 const PAGER = '[data-testid="pagination-container"]';
-
-/** `/courses/<id>/...` in a link, with the id of a Canvas course. */
-const COURSE_IN_PATH = /\/courses\/(\d+(?:~\d+)?)(?:\/|$)/;
 
 function widgetOf(element: Element): HTMLElement | null {
   return element.closest<HTMLElement>(WIDGET);
@@ -176,80 +162,6 @@ function widgetsWith(doc: Document, selector: string): HTMLElement[] {
     if (widget !== null) found.add(widget);
   }
   return [...found];
-}
-
-/** The path of a link, whether the link is relative or absolute. */
-function pathOf(href: string | null, origin: string): string {
-  try {
-    return new URL(href ?? '', `${origin}/`).pathname;
-  } catch {
-    return '';
-  }
-}
-
-export interface CourseWorkIcon {
-  /** The colored box around the icon. */
-  box: HTMLElement;
-  courseId: string;
-}
-
-/** The icon boxes of the Course work items, with the course of each item's link. */
-export function findCourseWorkIcons(doc: Document, origin: string): CourseWorkIcon[] {
-  const found: CourseWorkIcon[] = [];
-  for (const item of doc.querySelectorAll<HTMLElement>(COURSE_WORK_ITEM)) {
-    const link = item.querySelector<HTMLAnchorElement>('a[data-testid^="course-work-item-link-"]');
-    const courseId = COURSE_IN_PATH.exec(pathOf(link?.getAttribute('href') ?? null, origin))?.[1];
-    // The icon sits in a span, and the span in the box.
-    const box = item.querySelector(ICON_SVG)?.parentElement?.parentElement;
-    if (courseId !== undefined && box instanceof HTMLElement && item.contains(box)) {
-      found.push({ box, courseId });
-    }
-  }
-  return found;
-}
-
-export type StatusFilter = 'not_submitted' | 'missing' | 'submitted';
-
-export interface CourseWorkWidget {
-  widget: HTMLElement;
-  /** The element after which the extra section goes: the list, or the empty message. */
-  after: HTMLElement;
-  status: StatusFilter;
-  /** The label of the course filter, such as "All Courses" or a course name. */
-  courseLabel: string;
-  /** The widget shows the Due, Missing and Submitted cards. */
-  hasStatistics: boolean;
-}
-
-function inputValue(widget: HTMLElement, selector: string): string {
-  return widget.querySelector<HTMLInputElement>(selector)?.value.trim() ?? '';
-}
-
-/** The Course work widgets that list work. The summary widget has the filters and no list. */
-export function findCourseWorkWidgets(doc: Document): CourseWorkWidget[] {
-  const found: CourseWorkWidget[] = [];
-  for (const widget of widgetsWith(doc, STATUS_FILTER)) {
-    const firstItem = widget.querySelector(COURSE_WORK_ITEM);
-    const after =
-      firstItem?.closest<HTMLElement>('ul') ??
-      widget.querySelector<HTMLElement>(COURSE_WORK_EMPTY)?.parentElement ??
-      null;
-    const hasStatistics = widget.querySelector(STATISTICS) !== null;
-    // Only the summary widget has the cards and neither a list nor the empty message.
-    if (after === null && hasStatistics) continue;
-    const anchor = after ?? widget.querySelector<HTMLElement>(PAGER)?.previousElementSibling;
-    if (!(anchor instanceof HTMLElement)) continue;
-    const label = inputValue(widget, STATUS_FILTER).toLowerCase();
-    found.push({
-      widget,
-      after: anchor,
-      status:
-        label === 'missing' ? 'missing' : label === 'submitted' ? 'submitted' : 'not_submitted',
-      courseLabel: inputValue(widget, COURSE_FILTER),
-      hasStatistics,
-    });
-  }
-  return found;
 }
 
 export type ReadFilter = 'unread' | 'read' | 'all';

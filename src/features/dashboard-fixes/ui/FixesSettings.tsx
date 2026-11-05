@@ -8,9 +8,7 @@ import { Heading, newIds, Switch, type HeadingLevel } from '../../../shared/ui/p
 import type { DashboardFixesSettings, ToolsSettings } from '../../../shared/settings/tools';
 
 const SWITCHES: readonly [keyof DashboardFixesSettings, MessageKey][] = [
-  ['courseColors', 'fixCourseColors'],
   ['announcementsInPlace', 'fixAnnouncements'],
-  ['courseWorkExtras', 'fixCourseWork'],
   ['allCourseGrades', 'fixCourseGrades'],
   ['steadyPager', 'fixSteadyPager'],
 ];
