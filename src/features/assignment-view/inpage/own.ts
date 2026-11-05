@@ -21,6 +21,20 @@ export function rightColumn(doc: Document): Element | null {
 }
 
 /**
+ * Every place where the text of another author can stand: a comment of Canvas, also while the
+ * column is in the box, and the rubric, which the view moves into its wrapper.
+ */
+export const COMMENT_TEXT = '.comments,.submission-details-comments,#av-comments,#rubric_holder';
+
+/** The container of the two columns that Canvas draws, outside the text of other authors. */
+export function realContainer(doc: Document): Element | null {
+  for (const node of doc.querySelectorAll('.submission-details-container')) {
+    if (node.closest(COMMENT_TEXT) === null) return node;
+  }
+  return null;
+}
+
+/**
  * The element with a `data-action` that a click in a shadow root reached, or `null`. The listener
  * of a shadow root also sees the clicks on light DOM nodes that a slot shows, and those belong to
  * another author, so only a target inside the shadow root counts.

@@ -72,7 +72,7 @@ import {
   whenRubricOnScreen,
   whenRubricReady,
 } from './rubric';
-import { OWN, actionTarget, rightColumn } from './own';
+import { OWN, actionTarget, realContainer, rightColumn } from './own';
 import { createBox, type Box } from './submissionBox';
 import { filesFromDetails, readFrame, type FrameFile } from './submissionFrame';
 import { PANEL_CSS, SUBMISSION_CSS } from './styles';
@@ -158,7 +158,7 @@ function node(doc: Document, tag: string, className: string, text?: string): HTM
 
 /** The anchors that the server renders. Both columns, the frame and the right column must be there. */
 function findAnchors(doc: Document): Anchors | null {
-  const container = doc.querySelector('.submission-details-container');
+  const container = realContainer(doc);
   const children = [...(container?.children ?? [])];
   const box = children.find((child) => child.classList.contains('submission-details-frame'));
   const comments = children.find((child) =>

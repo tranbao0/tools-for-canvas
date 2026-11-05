@@ -1351,6 +1351,25 @@ describe('the cleanup of a dead copy', () => {
   });
 });
 
+describe('a rubric that holds the markup of the page', () => {
+  it('mounts in the real container when the rubric text holds a container that stands before it', async () => {
+    load(submissionDetailsPage({ rubric: true }));
+    showInFrame(FILE_ROW);
+    document
+      .querySelector('#rubric_holder')!
+      .insertAdjacentHTML('afterbegin', '<div class="submission-details-container"></div>');
+    start();
+    await settle();
+    expect(host()).not.toBeNull();
+    expect(host()?.parentElement).toBe(
+      [...document.querySelectorAll('.submission-details-container')].find(
+        (node) => !node.closest('#rubric_holder'),
+      ),
+    );
+    expect(boxHost()).not.toBeNull();
+  });
+});
+
 describe('a comment that holds the markup of the page', () => {
   const FORGED_COLUMN = '<div id="right-side-wrapper"><div id="right-side">forged</div></div>';
   /** The right column that Canvas draws, which is outside the content area. */
