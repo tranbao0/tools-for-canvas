@@ -306,6 +306,11 @@ export interface WeekView {
    * show what has arrived so far.
    */
   loading: boolean;
+  /**
+   * Days of the span never arrived and nothing is on its way, after a failed load. The view shows
+   * the rows it has, and it does not claim that the span holds no work or that a group holds 0.
+   */
+  incomplete: boolean;
   /** The Canvas planner is turned off for the student. */
   limited: boolean;
   /** Set when the view is limited to one course, such as a course home page. */

@@ -272,6 +272,83 @@ describe('the page script', () => {
     });
   });
 
+  describe('a reset while the session of a click is still being read', () => {
+    const html = document.documentElement;
+    const paneHost = () => document.getElementById('tools-file-viewer');
+    const writes = () =>
+      sendMessage.mock.calls.filter(([m]) => m.type === 'viewer:tabs-set').map(([m]) => m);
+    const listener = () =>
+      addListener.mock.calls[0]![0] as (message: unknown, sender: unknown) => void;
+    /** Holds the answers of the session reads until the test releases them, in order. */
+    function holdSessions() {
+      const held: Array<() => void> = [];
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type !== 'viewer:session') return reply(message);
+        await new Promise<void>((resolve) => held.push(resolve));
+        return reply(message);
+      });
+      return held;
+    }
+    const clickOn = (id: string) => {
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+      Object.defineProperty(event, 'isTrusted', { value: true });
+      document.getElementById(id)!.dispatchEvent(event);
+    };
+    const quiet = () => new Promise((resolve) => setTimeout(resolve, 30));
+    afterEach(() => {
+      html.removeAttribute('style');
+      html.removeAttribute('data-weekrow-room');
+    });
+
+    it('ends the open without a pane and writes no tabs', async () => {
+      prepare();
+      const held = holdSessions();
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(held).toHaveLength(1));
+      listener()({ type: 'viewer:reset' }, { id: 'my-extension' });
+      held[0]!();
+      await quiet();
+      expect(paneHost()).toBeNull();
+      expect(writes()).toHaveLength(0);
+    });
+
+    it('still opens the first click of the new student, with only that file', async () => {
+      prepare();
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        '<a id="other" href="/files/6">Other notes</a>',
+      );
+      const held = holdSessions();
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(held).toHaveLength(1));
+      listener()({ type: 'viewer:reset' }, { id: 'my-extension' });
+      clickOn('other');
+      // The click waits behind the open of the earlier student, which ends without a pane.
+      held[0]!();
+      await vi.waitFor(() => expect(held).toHaveLength(2));
+      expect(paneHost()).toBeNull();
+      held[1]!();
+      await vi.waitFor(() => expect(paneHost()).not.toBeNull());
+      await vi.waitFor(() => expect(writes()).toHaveLength(1));
+      expect(writes()[0]).toMatchObject({ tabs: { ids: ['6'], active: '6' } });
+    });
+
+    it('ignores a reset that does not come from the extension itself', async () => {
+      prepare();
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(paneHost()).not.toBeNull());
+      listener()({ type: 'viewer:reset' }, { id: 'another-extension' });
+      listener()({ type: 'viewer:reset' }, { id: 'my-extension', tab: { id: 3 } });
+      listener()({ type: 'viewer:reset' }, {});
+      expect(paneHost()).not.toBeNull();
+      listener()({ type: 'viewer:reset' }, { id: 'my-extension' });
+      expect(paneHost()).toBeNull();
+    });
+  });
+
   describe('a file pane that a dead copy left behind', () => {
     const html = document.documentElement;
     const DOCK = Symbol.for('tools-for-canvas.dock');

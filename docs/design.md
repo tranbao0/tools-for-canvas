@@ -560,6 +560,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     It sits inside the tab panel, after the day list, so the tab order is the day list, the bottom headers, and then the footer.
   - The bar never moves and never changes size, whether a group is open or not.
     The headers work like tabs.
+  - The bar always shows both headers, No due date and Done, in every span, also with a count of 0.
+    So a click never adds or removes a header, and a closed group with no rows can be opened to see its empty line.
   - Each header keeps its arrow, name, count and warning text, with the count aligned with the day counts.
     The arrow is the chevron icon of the sub-lists: it points right when the group is closed and up when it is open.
   - Only one bottom group opens at a time.
@@ -574,12 +576,16 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The group works as a toggle that the student sets once for all pages and all spans, so the student can step through the weeks and look at the done work of each.
     A group stays open when the card is minimized and expanded, when the settings open and close, and after a reload.
   - A group with no rows in the shown span stays open, with its heading, "Back to days" and one line in place of the rows: "Nothing done in this span." for Done, and "Nothing without a due date in this span." for No due date.
-    The bar then keeps the header of the open group, with the count 0 and the selected look, in its usual place (No due date before Done), so the student can close the group with a second click on it.
-    A group that is not open and has no rows has no header in the bar, as before.
+    The header of the open group keeps the count 0 and the selected look, in its usual place (No due date before Done), so the student can close the group with a second click on it.
+    A group that is not open and has no rows keeps its header too, with the count 0.
+    The loading line shows only while a load is on its way.
     While the days of the span still load, the open group shows the loading line in place of the empty line, so it never says that nothing is done before the answer is in.
+    After a failed load, nothing is on its way, and some days of the span may never have arrived.
+    The open group then shows the rows it has, and in place of the empty line it says "Couldn't load this span." with the Retry button.
+    It never says "Nothing done in this span." for a span that did not load.
+    A header of a group with no rows shows "?" in place of the count 0 in that case, and a screen reader hears "Not loaded".
   - Focus stays on the header button when it opens or closes a group.
     "Back to days" moves focus to the header of the group that was open.
-    When that group has no rows, its header goes away with the group, and focus goes to the day list (the region "Tasks by day") instead.
     When the last row of an open group leaves, for example when the student unchecks the last Done item, focus goes to the heading of the group.
   - A group starts at the top of the list area, also for another span.
     The day list keeps its scroll position while a group is open and gets it back on "Back to days".
@@ -773,7 +779,8 @@ Past due, No due date and Done still show.
 
 **Other spans:** Past due comes first, with the same items, the same "N older" line and the same "N skipped" line.
 Then comes one group for each day with items, and Done.
-No due date shows only in the span that starts today.
+No due date holds items only in the span that starts today.
+Its header in the bottom bar of the in-page list shows in every span, with the count 0 when it holds none (decision 4).
 Open work that is not past due stays in its day group, with its status chip (decision 7).
 A span that ended before today has one exception: open work dated inside it stays in its day group, with its status chip, so the span does not look empty.
 
@@ -2783,6 +2790,9 @@ With the pane read alone, the default run of the test failed before the fix.
      The same clearing sends `viewer:reset` to every tab.
      The page script of the file pane closes the pane, also a pane that the turn-in pane covers, and clears the tabs, the courses and the names in its memory, so no pane stays open with the file of the earlier student.
      It writes nothing to the background when it resets.
+     A page script cannot send it: the page script handles it only from the extension itself (the sender is this extension and has no tab).
+     A click that started before the reset ends without a pane and writes no tabs, because the earlier student owns it.
+     The first click of the new student, after the reset, opens a pane as usual.
      A read gives a token (the clearing round and the student), and a write must send the token of the last read.
      So an open pane cannot write the tabs of one student back as the tabs of another, or after a clearing.
      The reads and writes of one browser tab run in the order they arrive.

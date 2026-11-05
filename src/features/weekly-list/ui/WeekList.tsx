@@ -29,7 +29,10 @@ const GROUP_NAMES = {
   done: 'groupDone',
 } as const;
 
-/** A bottom group with no rows, for the header of an open group that the span has nothing for. */
+/** The headers of the bottom bar, in order. */
+const BOTTOM_KINDS: readonly BottomKind[] = ['no_due_date', 'done'];
+
+/** A bottom group with no rows, for the header that the bar always shows. */
 function emptyBottomGroup(kind: BottomKind): ListGroup {
   return { kind, date: null, items: [], older: [], skipped: [], doneUndated: [], warningCount: 0 };
 }
@@ -227,6 +230,8 @@ function GroupSection(props: {
   const [bodyId] = useState(() => newId('body'));
   const { kind, date } = group;
   const count = groupCount(group);
+  // A group with no rows in a span that did not load does not claim that it holds 0.
+  const unknown = view.incomplete && isGroupEmpty(group);
 
   const headContent = (
     <>
@@ -238,9 +243,9 @@ function GroupSection(props: {
         <span class="wr-warn">{tp('warningCount', group.warningCount)}</span>
       )}
       <span class="wr-count" aria-hidden="true">
-        {count}
+        {unknown ? '?' : count}
       </span>
-      <span class="wr-sr">{tp('itemCount', count)}</span>
+      <span class="wr-sr">{unknown ? t('countNotLoaded') : tp('itemCount', count)}</span>
     </>
   );
 
@@ -286,6 +291,7 @@ export function GroupView(props: {
   level: HeadingLevel;
   handlers: ListHandlers;
   onBack(): void;
+  onRetry(): void;
 }) {
   const group = props.view.groups.find((g) => g.kind === props.kind);
   const [id] = useState(() => newId('group'));
@@ -304,6 +310,13 @@ export function GroupView(props: {
         <GroupBody group={group} view={props.view} handlers={props.handlers} />
       ) : props.view.loading ? (
         <Spinner text={t('loading')} />
+      ) : props.view.incomplete ? (
+        <p class="wr-empty">
+          {t('cantLoadSpan')}
+          <button type="button" class="wr-btn" onClick={props.onRetry}>
+            {t('retry')}
+          </button>
+        </p>
       ) : (
         <p class="wr-empty">
           {t(props.kind === 'done' ? 'nothingDoneInSpan' : 'nothingUndatedInSpan')}
@@ -328,21 +341,18 @@ export function WeekList(props: {
   controls?: string;
 }) {
   const { view } = props;
-  const shown = view.groups.filter(
-    (group) =>
-      !isGroupEmpty(group) &&
-      (props.part === undefined ||
-        (props.part === 'bottom') === (group.kind === 'done' || group.kind === 'no_due_date')),
-  );
-  // The open group keeps its header in the bar when the span has no rows for it, so the student
-  // can close it and the bar keeps its places.
-  const open = props.part === 'bottom' ? props.openGroup : null;
+  // The bottom bar always has both headers, also with a count of 0, so a click never adds or
+  // removes one and the bar never changes size.
   const live =
-    open != null && !shown.some((group) => group.kind === open)
-      ? open === 'no_due_date'
-        ? [emptyBottomGroup(open), ...shown]
-        : [...shown, emptyBottomGroup(open)]
-      : shown;
+    props.part === 'bottom'
+      ? BOTTOM_KINDS.map(
+          (kind) => view.groups.find((group) => group.kind === kind) ?? emptyBottomGroup(kind),
+        )
+      : view.groups.filter(
+          (group) =>
+            !isGroupEmpty(group) &&
+            (props.part === undefined || (group.kind !== 'done' && group.kind !== 'no_due_date')),
+        );
   // The nearest day that still loads shows two bars, the later ones one, so a long span does not
   // fill the list with placeholders.
   const firstLoading = live.find((g) => g.loading === true && g.kind !== 'past_due');
