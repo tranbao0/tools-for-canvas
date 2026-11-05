@@ -70,7 +70,7 @@ test('file pane channel, module resolution, padding and page changes', async ({
   await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
   await pressEscapeToClosePane(page);
   await page.getByText('Read notes').first().click();
-  await expect(page.locator('html')).toHaveCSS('padding-right', '480px');
+  await expect(page.locator('html')).toHaveCSS('padding-right', '492px');
   await closePane(page);
   await expect(page.locator('html')).toHaveCSS('padding-right', '13px');
   await page.getByText('Module notes').click();
@@ -78,10 +78,10 @@ test('file pane channel, module resolution, padding and page changes', async ({
   await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
   await focusPaneHandle(page);
   await page.keyboard.press('ArrowLeft');
-  await expect(host).toHaveCSS('width', '500px');
+  await expect(host).toHaveCSS('width', '512px');
   await page.waitForTimeout(300);
   await page.reload();
-  await expect(host).toHaveCSS('width', '500px');
+  await expect(host).toHaveCSS('width', '512px');
   await page.getByText('Next page').click();
   await expect(host).toBeVisible();
   await page.setViewportSize({ width: 800, height: 900 });

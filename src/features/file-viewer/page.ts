@@ -1,8 +1,24 @@
 import { browser, type Browser } from 'wxt/browser';
 import { t } from '../../shared/ui/i18n';
-import { createDock, FILE_HOST_ID, removeStaleFilePane, reportFilePane, type Dock } from './dock';
+import {
+  createDock,
+  FILE_HOST_ID,
+  fullViewAvailable,
+  isFullView,
+  removeStaleFilePane,
+  reportFilePane,
+  setFullView,
+  watchFullView,
+  type Dock,
+} from './dock';
 import { TOP_OPEN } from './frame';
-import { acceptPaneHello, isViewerSecret, secretMessage, validPaneReady } from './channel';
+import {
+  acceptPaneHello,
+  isViewerSecret,
+  secretMessage,
+  validPaneReady,
+  validPaneRequest,
+} from './channel';
 import {
   clickedElement,
   courseOfLink,
@@ -80,6 +96,9 @@ export async function startViewer(): Promise<void> {
     dock?.setTheme(theme);
     port?.postMessage({ type: 'theme', theme });
   };
+  // The pane page cannot read the state of the Canvas page, so it gets the full view state here.
+  const sendFullView = () =>
+    port?.postMessage({ type: 'full-view', on: isFullView(), available: fullViewAvailable() });
   let width = normalizeWidth(undefined, innerWidth);
   let dock: Dock | undefined;
   // The port of the pane once it proved the secret, and a port that waits for that proof.
@@ -117,6 +136,7 @@ export async function startViewer(): Promise<void> {
       tabsToken = stored.token;
     }
     applyTheme();
+    sendFullView();
     if (tabs.active && port && !synced) {
       synced = true;
       port.postMessage(openMessage(tabs.active));
@@ -209,6 +229,7 @@ export async function startViewer(): Promise<void> {
       id: FILE_HOST_ID,
       label: 'File viewer',
       resizeLabel: 'Resize file viewer',
+      card: true,
       width,
       onResized(next) {
         width = next;
@@ -250,7 +271,12 @@ export async function startViewer(): Promise<void> {
       pending = candidate;
       candidate.onmessage = (message) => {
         if (port === candidate) {
-          if ((message.data as { type?: unknown } | null)?.type === 'close') close();
+          if (!validPaneRequest(message.data)) return;
+          // Escape leaves full view first, and a narrow window has none. Full view ends with the
+          // close of a pane (see `createDock`).
+          if (message.data.type === 'full-view') setFullView(message.data.on);
+          else if (message.data.type === 'escape' && created.full) setFullView(false);
+          else close();
           return;
         }
         if (pending !== candidate) return;
@@ -299,6 +325,10 @@ export async function startViewer(): Promise<void> {
     if (scope.__weekrowViewer === teardown) delete scope.__weekrowViewer;
   };
   scope.__weekrowViewer = teardown;
+  // The pane follows full view, and the width of the window decides whether the button shows.
+  const stopWatchingFullView = watchFullView(sendFullView);
+  addEventListener('resize', sendFullView, { signal: lifetime.signal });
+  lifetime.signal.addEventListener('abort', stopWatchingFullView, { once: true });
   // The opens run one after another. Each one reads the stored tabs, adds its file and writes them
   // back, so two that ran side by side would both start from the same tabs and the second write
   // would drop the file of the first. The tab order is also the order of the clicks.

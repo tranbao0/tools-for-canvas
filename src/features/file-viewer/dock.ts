@@ -4,8 +4,9 @@
  * that makes room for it. The file pane, the turn-in pane, the feedback pane and the weekly list all
  * use it, so they sit in the same place with the same width.
  *
- * The panes run in separate scripts of the same isolated world. They share only the room
- * lease below, which keeps the page padding right when one pane hides while the other shows.
+ * The panes run in separate scripts of the same isolated world. They share the room lease below,
+ * which keeps the page padding right when one pane hides while the other shows, and the full view
+ * state, which makes the pane that shows fill the window.
  */
 import { normalizeWidth } from './model';
 
@@ -13,6 +14,9 @@ import { normalizeWidth } from './model';
 const NARROW_PX = 900;
 
 export type DockRole = 'file' | 'turn-in' | 'feedback' | 'weekly';
+
+/** The gap between a card pane and the edge of the window, and between it and the page. */
+export const CARD_GAP_PX = 12;
 
 /** The layer of a dock: above every layer that a page can draw. */
 const TOPMOST_Z_INDEX = 2147483647;
@@ -29,6 +33,11 @@ export interface DockOptions {
   width: number;
   /** The layer of the host. Defaults to the top layer of the page. */
   zIndex?: number;
+  /**
+   * The pane is a card with a gap around it, and it can fill the window (full view). The width is
+   * the width of the card, and the host and the room beside it are one gap wider.
+   */
+  card?: boolean;
   /** Called with the new width when the student has finished a resize. */
   onResized(width: number): void;
   doc?: Document;
@@ -39,8 +48,11 @@ export interface Dock {
   readonly root: ShadowRoot;
   readonly section: HTMLElement;
   readonly width: number;
+  readonly role: DockRole;
   /** Whether the dock is on the page and not hidden. */
   readonly shown: boolean;
+  /** Whether the dock fills the window now: a card dock, in full view, on a window that is wide enough. */
+  readonly full: boolean;
   /** Puts the dock on the page and takes the room beside it. */
   open(): void;
   /** Takes the dock off the page and gives the room back. The padding of the page returns exactly. */
@@ -78,6 +90,13 @@ interface Shared {
   watchers: Set<() => void>;
   /** The file pane script has decided whether a pane opens on this page. */
   fileScriptReported?: boolean;
+  /** The card docks that are open, which are the panes. */
+  panes?: Set<Dock>;
+  /** Whether the pane that shows fills the window. It is never saved. */
+  fullView?: boolean;
+  /** The role of the pane that turned full view on. */
+  fullViewOf?: DockRole | null;
+  fullWatchers?: Set<() => void>;
 }
 
 const SHARED = Symbol.for('tools-for-canvas.dock');
@@ -266,6 +285,48 @@ function shared(): Shared {
   return (scope[SHARED] ??= { holders: new Set(), saved: null, file: null, watchers: new Set() });
 }
 
+/** The panes that are open and on the page. A page can remove the host of a pane without a word. */
+function openPanes(): Set<Dock> {
+  const state = shared();
+  const panes = (state.panes ??= new Set());
+  for (const pane of panes) if (!pane.host.isConnected) panes.delete(pane);
+  return panes;
+}
+
+/** Whether the pane that shows fills the window. Below the narrow width the dock covers the page anyway. */
+export function isFullView(): boolean {
+  return shared().fullView === true && openPanes().size > 0;
+}
+
+/** Whether the window is wide enough for full view. A narrow window has no full view. */
+export function fullViewAvailable(win: Window = window): boolean {
+  return win.innerWidth >= NARROW_PX;
+}
+
+/**
+ * Makes the pane that shows fill the window, or sets it back to its place. It moves nothing in the
+ * pane: the page padding and the frames stay as they are. The state is shared by the panes of the
+ * page, so a pane that covers another one shows in full view too. It is never saved.
+ */
+export function setFullView(on: boolean): void {
+  const state = shared();
+  const next = on && openPanes().size > 0;
+  if (next === (state.fullView === true)) return;
+  state.fullView = next;
+  // The pane in view at this moment owns the full view: a file pane that closes gives it back to
+  // an assignment pane under it only when that pane had it first.
+  state.fullViewOf = next ? ([...openPanes()].find((pane) => pane.shown)?.role ?? null) : null;
+  for (const pane of [...openPanes()]) pane.layout();
+  for (const watcher of [...(state.fullWatchers ??= new Set())]) watcher();
+}
+
+/** Calls the listener when full view turns on or off. Returns a remover. */
+export function watchFullView(listener: () => void): () => void {
+  const watchers = (shared().fullWatchers ??= new Set());
+  watchers.add(listener);
+  return () => watchers.delete(listener);
+}
+
 /** Whether a file pane is on the page and in view now. */
 export function filePaneOpen(): boolean {
   const file = shared().file;
@@ -308,13 +369,20 @@ function tell(): void {
 
 /** The frame, header and handle rules that both panes share. */
 export const DOCK_CSS = `
-:host{--bg:#fff;--text:#273540;--line:#e8eaec;--edge:#c7cdd1;--hover:#f2f4f4;--focus:#0374b5;--btn-line:#d7dade;--btn-hover:#e8eaec;color:var(--text)}
-:host([data-theme='dark']){--bg:#1b2330;--text:#fff;--line:#2e3e4e;--edge:#4a5b68;--hover:#253443;--focus:#5a9fd4;--btn-line:#4a5b68;--btn-hover:#2e3e4e}
+:host{--bg:#fff;--text:#273540;--muted:#586874;--line:#e8eaec;--edge:#c7cdd1;--hover:#f2f4f4;--focus:#0374b5;--btn-line:#d7dade;--btn-hover:#e8eaec;color:var(--text)}
+:host([data-theme='dark']){--bg:#1b2330;--text:#fff;--muted:#aab6c0;--line:#2e3e4e;--edge:#4a5b68;--hover:#253443;--focus:#5a9fd4;--btn-line:#4a5b68;--btn-hover:#2e3e4e}
 section{box-sizing:border-box;height:100%;background:var(--bg);border-left:1px solid var(--edge);display:flex;flex-direction:column;font-family:Lato,Arial,sans-serif}
 iframe{border:0;width:100%;flex:1;min-height:0;background:transparent}
 .handle{position:absolute;left:-4px;top:0;width:8px;height:100%;cursor:ew-resize;touch-action:none}
 .handle:hover,.handle:focus-visible{background:var(--focus)}
 @media(max-width:899px){.handle{display:none}}
+:host([data-card]){box-sizing:border-box;padding:${CARD_GAP_PX}px ${CARD_GAP_PX}px ${CARD_GAP_PX}px 0;pointer-events:none}
+:host([data-card][data-full]){padding:${CARD_GAP_PX}px;pointer-events:auto}
+:host([data-card]) section{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.2);pointer-events:auto}
+:host([data-card][data-theme='dark']) section{box-shadow:0 2px 14px rgba(0,0,0,.55)}
+:host([data-card]) .handle{z-index:1;top:${CARD_GAP_PX}px;height:calc(100% - ${2 * CARD_GAP_PX}px);pointer-events:auto}
+:host([data-card][data-full]) .handle{display:none}
+@media(max-width:899px){:host([data-card]){padding:0}:host([data-card]) section{border:0;border-left:1px solid var(--edge);border-radius:0;box-shadow:none}}
 `;
 
 export function createDock(options: DockOptions): Dock {
@@ -323,12 +391,17 @@ export function createDock(options: DockOptions): Dock {
   let width = normalizeWidth(options.width, win.innerWidth);
   let hidden = false;
   let opened = false;
+  let full = false;
   let stopResize: (() => void) | undefined;
+  const card = options.card === true;
+  /** The gap that the host holds beside the card, which is part of the room that the page keeps. */
+  const gap = card ? CARD_GAP_PX : 0;
 
   const host = doc.createElement('div');
   host.id = options.id;
   host.setAttribute(DOCK_ATTRIBUTE, '');
-  host.style.cssText = `position:fixed;right:0;top:0;height:100vh;z-index:${options.zIndex ?? TOPMOST_Z_INDEX};`;
+  if (card) host.setAttribute('data-card', '');
+  host.style.cssText = `position:fixed;right:0;top:0;bottom:0;z-index:${options.zIndex ?? TOPMOST_Z_INDEX};`;
   // A closed root keeps a script of the Canvas page from reaching the frame element. A frame of the
   // Canvas origin inside the root still reaches the root, so such a frame belongs in a root of its own.
   const root = host.attachShadow({ mode: 'closed' });
@@ -342,18 +415,30 @@ export function createDock(options: DockOptions): Dock {
   handle.setAttribute('aria-label', options.resizeLabel);
   handle.setAttribute('aria-orientation', 'vertical');
   handle.tabIndex = 0;
-  section.append(handle);
-  root.append(style, section);
+  // The card clips its content to the round corners, so its handle sits beside it and not inside.
+  if (card) root.append(style, handle, section);
+  else {
+    section.append(handle);
+    root.append(style, section);
+  }
 
   const page = doc.documentElement;
 
   const layout = (): void => {
     if (!opened) return;
     const narrow = win.innerWidth < NARROW_PX;
-    host.style.width = narrow ? '100vw' : `${normalizeWidth(width, win.innerWidth)}px`;
+    const room = narrow ? '100vw' : `${normalizeWidth(width, win.innerWidth) + gap}px`;
+    full = card && !narrow && shared().fullView === true;
+    host.toggleAttribute('data-full', full);
+    // Full view and a narrow window stretch the host from the left edge to the right edge of the
+    // window, which are the edges without the scroll bar of the page (`100vw` includes the scroll
+    // bar). In full view the room stays as it is, so the page stays put.
+    const stretched = full || narrow;
+    host.style.left = stretched ? '0' : '';
+    host.style.width = stretched ? '' : room;
     // A host that a page removed takes no room.
     if (hidden || !host.isConnected) return;
-    writePadding(page, host.style.width, narrow);
+    writePadding(page, room, narrow);
   };
   const setWidth = (next: number): void => {
     width = normalizeWidth(next, win.innerWidth);
@@ -365,7 +450,7 @@ export function createDock(options: DockOptions): Dock {
     if (!event.isTrusted) return;
     handle.setPointerCapture(event.pointerId);
     const move = (moved: PointerEvent): void => {
-      if (moved.isTrusted) setWidth(win.innerWidth - moved.clientX);
+      if (moved.isTrusted) setWidth(page.clientWidth - moved.clientX - gap);
     };
     const end = (): void => {
       handle.removeEventListener('pointermove', move);
@@ -380,6 +465,15 @@ export function createDock(options: DockOptions): Dock {
     setWidth(width + (event.key === 'ArrowLeft' ? 20 : -20));
     options.onResized(width);
   });
+  // In full view, Escape leaves it first. A frame of the Canvas page can reach this root, so only
+  // a real key counts.
+  if (card)
+    section.addEventListener('keydown', (event) => {
+      if (!event.isTrusted || event.key !== 'Escape' || !full) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setFullView(false);
+    });
 
   const dock: Dock = {
     host,
@@ -388,8 +482,12 @@ export function createDock(options: DockOptions): Dock {
     get width() {
       return width;
     },
+    role: options.role,
     get shown() {
       return opened && !hidden;
+    },
+    get full() {
+      return full;
     },
     open() {
       if (opened) return;
@@ -401,6 +499,11 @@ export function createDock(options: DockOptions): Dock {
       doc.body.append(host);
       win.addEventListener('resize', layout);
       stopResize = () => win.removeEventListener('resize', layout);
+      if (card) {
+        // A state that a vanished pane left behind (a page removed its host) ends with that pane.
+        if (openPanes().size === 0) setFullView(false);
+        openPanes().add(dock);
+      }
       layout();
       if (options.role === 'file') {
         shared().file = dock;
@@ -414,6 +517,18 @@ export function createDock(options: DockOptions): Dock {
       stopResize = undefined;
       releaseRoom(page, dock);
       host.remove();
+      if (card) {
+        openPanes().delete(dock);
+        // The close of a pane leaves full view. A pane that a file pane covers closes without a
+        // change, because the file pane keeps its state. One exception: a file pane that closes
+        // while an assignment pane waits under it leaves that pane in full view.
+        const keeps =
+          hidden ||
+          (options.role === 'file' &&
+            shared().fullViewOf === 'turn-in' &&
+            [...openPanes()].some((pane) => pane.role === 'turn-in'));
+        if (openPanes().size === 0 || !keeps) setFullView(false);
+      }
       if (options.role === 'file' && shared().file === dock) {
         shared().file = null;
         tell();
@@ -434,6 +549,8 @@ export function createDock(options: DockOptions): Dock {
       opened = false;
       stopResize?.();
       stopResize = undefined;
+      openPanes().delete(dock);
+      if (card && openPanes().size === 0) setFullView(false);
     },
     setWidth,
     setTheme(theme) {

@@ -378,7 +378,7 @@ async function checkFilePane(driver, problems) {
   expect(
     problems,
     'the page has the room of the file pane',
-    covered.padding === '480px',
+    covered.padding === '492px',
     covered.padding,
   );
   await closeFilePane(driver);
@@ -418,7 +418,7 @@ async function checkFilePane(driver, problems) {
   expect(
     problems,
     'the page has the room of the file pane, minimized',
-    hidden.padding === '480px',
+    hidden.padding === '492px',
     hidden.padding,
   );
   await closeFilePane(driver);

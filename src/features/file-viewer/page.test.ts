@@ -426,7 +426,7 @@ describe('the page script', () => {
       await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
       expect(document.querySelectorAll('#tools-file-viewer')).toHaveLength(1);
       expect(sessionRequests()).toBe(1);
-      expect(html.style.getPropertyValue('padding-right')).toBe('480px');
+      expect(html.style.getPropertyValue('padding-right')).toBe('492px');
     });
 
     it('never removes an element of the page that only has the id', async () => {

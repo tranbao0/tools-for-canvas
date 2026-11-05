@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createDock } from '../../file-viewer/dock';
+import { createDock, isFullView, setFullView } from '../../file-viewer/dock';
 import {
   createPreviewPane,
   MAX_PREVIEW_FRAMES,
@@ -94,10 +94,29 @@ function frameAt(href: string, index = 0) {
   const frame = frames[index]!;
   const replace = vi.fn();
   const location = { href, replace };
-  Object.defineProperty(frame, 'contentWindow', { value: { location }, configurable: true });
+  /** What the pane listens for in the window of the frame: the type, the listener and the capture flag. */
+  const listened: { type: string; listener: (event: KeyboardEvent) => void; capture: unknown }[] =
+    [];
+  const addEventListener = (
+    type: string,
+    listener: (event: KeyboardEvent) => void,
+    capture: unknown,
+  ) => listened.push({ type, listener, capture });
+  Object.defineProperty(frame, 'contentWindow', {
+    value: { location, addEventListener },
+    configurable: true,
+  });
   return {
     frame,
     replace,
+    listened,
+    /** A key press in the page of the frame. Returns the event, so a test can read `defaultPrevented`. */
+    press(key: string, trusted = true) {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'isTrusted', { value: trusted });
+      for (const entry of listened) if (entry.type === 'keydown') entry.listener(event);
+      return event;
+    },
     /** The page loaded: the frame has this address now. */
     load(next: string, trusted = true) {
       location.href = next;
@@ -124,7 +143,7 @@ describe('the assignment pane', () => {
     expect(barLink()).toBe(`${ORIGIN}/courses/12/assignments/101`);
     expect(frames[0]?.src).toBe(`${ORIGIN}/courses/12/assignments/101?content_only=1`);
     expect(frames[0]?.parentElement?.className).toBe('frame');
-    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
     pane.reset();
     expect(host()).toBeNull();
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
@@ -233,7 +252,7 @@ describe('the assignment pane', () => {
     expect(preview.style.display).toBe('');
     expect(pane.shown).toBe('101');
     expect(onShown).toHaveBeenLastCalledWith('101');
-    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
     pane.reset();
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('');
   });
@@ -259,7 +278,7 @@ describe('the assignment pane', () => {
     expect(host()?.style.display).toBe('');
     expect(file.host.style.display).toBe('none');
     expect(onShown).toHaveBeenLastCalledWith('101');
-    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
     pane.close();
     expect(file.host.style.display).toBe('');
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('600px');
@@ -277,7 +296,7 @@ describe('the assignment pane', () => {
     expect(pane.shown).toBe('101');
     expect(file.host.style.display).toBe('none');
     expect(frames).toHaveLength(1);
-    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
     pane.close();
     expect(file.host.style.display).toBe('');
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('600px');
@@ -589,7 +608,7 @@ describe('one frame for each previewed assignment', () => {
     expect(frames[2]?.src).toBe(SLIM('102'));
     expect(pane.shown).toBe('102');
     expect(onShown).toHaveBeenLastCalledWith('102');
-    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
     pane.close();
     open(pane, '101');
     expect(frames).toHaveLength(4);
@@ -690,7 +709,7 @@ describe('one frame for each previewed assignment', () => {
     expect(shows()).toEqual([false, true]);
     expect(pane.shown).toBe('102');
     expect(onShown).toHaveBeenLastCalledWith('102');
-    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
   });
 
   it('keeps the padding and the shown row right in each order with a file pane', () => {
@@ -701,7 +720,7 @@ describe('one frame for each previewed assignment', () => {
     const file = fileDock();
     file.open();
     open(pane, '101');
-    expect(padding()).toBe('480px');
+    expect(padding()).toBe('492px');
     expect(onShown).toHaveBeenLastCalledWith('101');
     // The file pane covers again, and a Preview click on another row brings the pane back over it.
     file.close();
@@ -711,7 +730,7 @@ describe('one frame for each previewed assignment', () => {
     open(pane, '102');
     expect(file.host.style.display).toBe('none');
     expect(pane.shown).toBe('102');
-    expect(padding()).toBe('480px');
+    expect(padding()).toBe('492px');
     // A close shows the file pane again, and a later Preview click covers it once more.
     pane.close();
     expect(file.host.style.display).toBe('');
@@ -719,7 +738,7 @@ describe('one frame for each previewed assignment', () => {
     expect(padding()).toBe('600px');
     open(pane, '101');
     expect(pane.shown).toBe('101');
-    expect(padding()).toBe('480px');
+    expect(padding()).toBe('492px');
     // The file pane closes after the pane closed: nothing shows, and the page is its own.
     pane.close();
     file.close();
@@ -734,7 +753,7 @@ describe('one frame for each previewed assignment', () => {
     expect(host()).toBeNull();
     expect(padding()).toBe('13px');
     open(pane, '102');
-    expect(padding()).toBe('480px');
+    expect(padding()).toBe('492px');
     expect(pane.shown).toBe('102');
   });
 
@@ -803,7 +822,7 @@ describe('one frame for each previewed assignment', () => {
     expect(onFrameLoad).toHaveBeenCalledOnce();
   });
 
-  it('listens to nothing on the window of a frame', () => {
+  it('listens to the keydown event only on the window of a frame, and reads nothing of it', () => {
     const { pane } = setup();
     open(pane, '101');
     const page = frameAt(SLIM('101'));
@@ -815,7 +834,7 @@ describe('one frame for each previewed assignment', () => {
     const event = new Event('load');
     Object.defineProperty(event, 'isTrusted', { value: true });
     page.frame.dispatchEvent(event);
-    expect(listen).not.toHaveBeenCalled();
+    expect(listen.mock.calls.map((call) => call[0])).toEqual(['keydown']);
   });
 
   it('removes the frames with the host when a page removes the host, and reads nothing for them', async () => {
@@ -832,5 +851,216 @@ describe('one frame for each previewed assignment', () => {
     open(pane, '101');
     expect(frames).toHaveLength(3);
     expect(pane.shown).toBe('101');
+  });
+});
+
+const fullButton = () => roots.at(-1)?.querySelector<HTMLButtonElement>('.btn[aria-pressed]');
+const subLine = () => roots.at(-1)?.querySelector<HTMLElement>('.sub');
+
+describe('Escape in the frame of the pane', () => {
+  afterEach(() => setFullView(false));
+  const address = `${ORIGIN}/courses/12/assignments/101?content_only=1`;
+
+  it('listens in the capture phase for keydown after a trusted load, and leaves full view on a real Escape only', () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(address);
+    page.load(address);
+    expect(page.listened.map((entry) => [entry.type, entry.capture])).toEqual([['keydown', true]]);
+    setFullView(true);
+    // Another key, and a key that a script of the page made, change nothing.
+    expect(page.press('a').defaultPrevented).toBe(false);
+    page.press('Enter');
+    page.press('Escape', false);
+    expect(isFullView()).toBe(true);
+    // The Escape of the student leaves full view, and the page of the frame does not get it.
+    const stopped = vi.fn();
+    const key = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+    Object.defineProperty(key, 'isTrusted', { value: true });
+    key.stopPropagation = stopped;
+    for (const entry of page.listened) entry.listener(key);
+    expect(isFullView()).toBe(false);
+    expect(key.defaultPrevented).toBe(true);
+    expect(stopped).toHaveBeenCalledOnce();
+    // The pane stays open.
+    expect(pane.shown).toBe('101');
+  });
+
+  it('leaves the Escape alone while the pane is not in full view', () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(address);
+    page.load(address);
+    expect(page.press('Escape').defaultPrevented).toBe(false);
+    expect(pane.shown).toBe('101');
+  });
+
+  it('ignores a load that a script of the page fired', () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(address);
+    page.load(address, false);
+    expect(page.listened).toEqual([]);
+  });
+
+  it('listens again in each new page of the frame, with the same listener', () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(address);
+    page.load(address);
+    page.load(address);
+    expect(page.listened).toHaveLength(2);
+    expect(page.listened[1]!.listener).toBe(page.listened[0]!.listener);
+  });
+
+  it('works on with a frame on another origin, which keeps the Escape of the header only', () => {
+    const { pane, onFrameLoad } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(address);
+    Object.defineProperty(page.frame, 'contentWindow', {
+      get() {
+        throw new DOMException('Blocked a frame', 'SecurityError');
+      },
+      configurable: true,
+    });
+    onFrameLoad.mockClear();
+    const event = new Event('load');
+    Object.defineProperty(event, 'isTrusted', { value: true });
+    expect(() => page.frame.dispatchEvent(event)).not.toThrow();
+    expect(pane.shown).toBe('101');
+  });
+});
+
+describe('the header of the assignment pane', () => {
+  afterEach(() => setFullView(false));
+  const open = (
+    pane: { open(request: { assignmentId: string; title: string }): void },
+    id: string,
+  ) => pane.open({ assignmentId: id, title: `Title ${id}` });
+
+  it('shows the due text and the points of the shown frame as a second line, and none when a row has none', () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay', details: 'Due Nov 3 at 10pm | 10 pts' });
+    expect(subLine()?.textContent).toBe('Due Nov 3 at 10pm | 10 pts');
+    expect(subLine()?.hidden).toBe(false);
+    open(pane, '102');
+    expect(subLine()?.textContent).toBe('');
+    expect(subLine()?.hidden).toBe(true);
+    pane.open({ assignmentId: '101', title: 'Essay', details: 'Due Nov 3 at 10pm | 10 pts' });
+    expect(subLine()?.textContent).toBe('Due Nov 3 at 10pm | 10 pts');
+  });
+
+  it('has a Full view button, then Open in new tab and the close button, and the pane is a card', () => {
+    const { pane } = setup();
+    open(pane, '101');
+    const bar = roots.at(-1)!.querySelector('.bar')!;
+    expect(
+      [...bar.children].map((child) => child.getAttribute('aria-label') ?? child.className),
+    ).toEqual(['ti', 'Full view', 'Open in new tab', 'Close assignment']);
+    expect(host()?.hasAttribute('data-card')).toBe(true);
+    // The card is 480 px wide, and the room of the page holds the 12 px gap too.
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
+  });
+
+  it('follows the full view state in one button, with the label of its action and aria-pressed', () => {
+    const { pane } = setup();
+    open(pane, '101');
+    const button = fullButton()!;
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(button.textContent).toBe('Full view');
+    setFullView(true);
+    expect(isFullView()).toBe(true);
+    expect(fullButton()).toBe(button);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(button.getAttribute('aria-label')).toBe('Exit full view');
+    expect(button.textContent).toBe('Exit full view');
+    expect(host()?.hasAttribute('data-full')).toBe(true);
+    expect(host()?.style.left).toBe('0px');
+    expect(host()?.style.width).toBe('');
+    // The padding of the page does not change.
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
+    setFullView(false);
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(button.textContent).toBe('Full view');
+  });
+
+  it('ignores a click that a script made', () => {
+    const { pane } = setup();
+    open(pane, '101');
+    fullButton()!.click();
+    expect(isFullView()).toBe(false);
+  });
+
+  it('shows no Full view button on a narrow window', () => {
+    const { innerWidth } = window;
+    try {
+      window.innerWidth = 800;
+      const { pane } = setup();
+      open(pane, '101');
+      expect(fullButton()!.hidden).toBe(true);
+      window.innerWidth = 1200;
+      window.dispatchEvent(new Event('resize'));
+      expect(fullButton()!.hidden).toBe(false);
+    } finally {
+      window.innerWidth = innerWidth;
+    }
+  });
+
+  it('leaves full view when the pane closes, and the next pane starts in its place', () => {
+    const { pane } = setup();
+    open(pane, '101');
+    setFullView(true);
+    pane.close();
+    expect(isFullView()).toBe(false);
+    open(pane, '101');
+    expect(fullButton()!.getAttribute('aria-pressed')).toBe('false');
+    expect(host()?.style.width).toBe('492px');
+  });
+
+  it('leaves full view with the close of the pane that covers a hidden file pane', () => {
+    const file = createDock({
+      role: 'file',
+      id: 'tools-file-viewer',
+      label: 'File viewer',
+      resizeLabel: 'Resize',
+      card: true,
+      width: 600,
+      onResized: () => undefined,
+    });
+    docks.push(file);
+    file.open();
+    const { pane } = setup();
+    open(pane, '101');
+    expect(file.shown).toBe(false);
+    setFullView(true);
+    pane.close();
+    expect(file.shown).toBe(true);
+    expect(isFullView()).toBe(false);
+    expect(file.full).toBe(false);
+    expect(file.host.style.left).toBe('');
+  });
+
+  it('keeps full view for the pane while a file pane covers it and closes', () => {
+    const { pane } = setup();
+    open(pane, '101');
+    setFullView(true);
+    const file = createDock({
+      role: 'file',
+      id: 'tools-file-viewer',
+      label: 'File viewer',
+      resizeLabel: 'Resize',
+      card: true,
+      width: 600,
+      onResized: () => undefined,
+    });
+    docks.push(file);
+    file.open();
+    expect(file.full).toBe(true);
+    expect(host()?.style.display).toBe('none');
+    file.close();
+    expect(isFullView()).toBe(true);
+    expect(host()?.style.display).toBe('');
+    expect(host()?.style.left).toBe('0px');
+    expect(host()?.style.width).toBe('');
   });
 });
