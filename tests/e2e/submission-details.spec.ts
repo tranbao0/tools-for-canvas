@@ -621,8 +621,95 @@ test('the feedback pane gives way to the file pane, comes back when it closes, a
   const barBox = (await page.locator(FEEDBACK).boundingBox())!;
   expect(barBox.x + barBox.width).toBe(1440);
   expect(await paddingRight(page)).toBe(barBox.width);
-  // The close button is at the right end of the bar.
-  await page.mouse.click(barBox.x + barBox.width - 22, 22);
+  // The close button is at the right end of the header: the gap, the border, the padding and half the button.
+  await page.mouse.click(barBox.x + barBox.width - 44, 44);
+  await expect(page.locator(FEEDBACK)).toHaveCount(0);
+  expect(await paddingRight(page)).toBe(0);
+});
+
+test('the feedback pane is a card with a header, and Full view keeps its frame and gives the pane the window', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background);
+  await box(page).getByRole('button', { name: 'View Feedback' }).click();
+  await expect(page.locator(FEEDBACK)).toBeVisible();
+  const frame = await feedbackFrame(page);
+  await expect(frame.locator('#notes')).toBeVisible();
+  await frame.evaluate(() => {
+    (window as unknown as { __kept: string }).__kept = 'same document';
+  });
+  const read = async () => {
+    const room = await paddingRight(page);
+    return frame.evaluate((padding) => {
+      const root = window.frameElement!.getRootNode() as ShadowRoot;
+      const rect = (element: Element) => {
+        const { x, y, width, height } = element.getBoundingClientRect();
+        return { x, y, width, height };
+      };
+      const button = root.querySelector('.btn[aria-pressed]') as HTMLButtonElement;
+      const bar = getComputedStyle(root.querySelector('.bar')!);
+      return {
+        host: rect(root.host),
+        card: rect(root.querySelector('section')!),
+        padding,
+        barPadding: bar.padding,
+        titleSize: getComputedStyle(root.querySelector('.title')!).fontSize,
+        titleWeight: getComputedStyle(root.querySelector('.title')!).fontWeight,
+        subHidden: (root.querySelector('.sub') as HTMLElement).hidden,
+        frame: rect(window.frameElement!),
+        text: button.textContent,
+        pressed: button.getAttribute('aria-pressed'),
+        focused: root.activeElement === button,
+        names: Array.prototype.map.call(
+          root.querySelectorAll('.bar .btn, .bar .icon-btn'),
+          (node: Element) => node.getAttribute('aria-label') ?? node.textContent,
+        ),
+      };
+    }, room);
+  };
+  const view = page.viewportSize()!;
+  const place = await read();
+  expect(place.card).toMatchObject({ y: 12, height: view.height - 24 });
+  expect(place.card.x + place.card.width).toBe(view.width - 12);
+  expect(place.padding).toBe(place.host.width);
+  expect(place.host.width).toBe(place.card.width + 12);
+  expect(place.barPadding).toBe('16px 16px 14px 32px');
+  expect(place).toMatchObject({ titleSize: '18px', titleWeight: '700', subHidden: true });
+  expect(place.names).toEqual(['Full view', 'Open in new tab', 'Close feedback']);
+  // The session frame fills the card below the header.
+  expect(place.frame.x).toBe(place.card.x + 1);
+  expect(place.frame.x + place.frame.width).toBe(place.card.x + place.card.width - 1);
+
+  const press = async (selector: string) => {
+    const target = await frame.evaluate((query) => {
+      const root = window.frameElement!.getRootNode() as ShadowRoot;
+      const { x, y, width, height } = root.querySelector(query)!.getBoundingClientRect();
+      return { x: x + width / 2, y: y + height / 2 };
+    }, selector);
+    await page.mouse.click(target.x, target.y);
+  };
+  await press('.btn[aria-pressed]');
+  await expect.poll(async () => (await read()).pressed).toBe('true');
+  const full = await read();
+  expect(full.host).toEqual({ x: 0, y: 0, width: view.width, height: view.height });
+  expect(full.card).toEqual({ x: 12, y: 12, width: view.width - 24, height: view.height - 24 });
+  expect(full).toMatchObject({ text: 'Exit full view', focused: true, padding: place.padding });
+  expect(await frame.evaluate(() => (window as unknown as { __kept: string }).__kept)).toBe(
+    'same document',
+  );
+  // Escape with the focus in the header leaves full view and leaves the pane open.
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await read()).pressed).toBe('false');
+  expect((await read()).host).toEqual(place.host);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  await expect(page.locator(FEEDBACK)).toBeVisible();
+  // The close button closes the pane and leaves full view.
+  await press('.btn[aria-pressed]');
+  await expect.poll(async () => (await read()).pressed).toBe('true');
+  await press('.icon-btn');
   await expect(page.locator(FEEDBACK)).toHaveCount(0);
   expect(await paddingRight(page)).toBe(0);
 });

@@ -20,7 +20,7 @@ export const PANE_CSS = `
 .bar{box-sizing:border-box;display:flex;flex:none;align-items:flex-start;gap:10px;padding:16px 16px 14px 32px;border-bottom:1px solid var(--line);color:var(--text);line-height:20px}
 .ti{display:flex;flex:1;flex-direction:column;justify-content:center;min-width:0;min-height:30px}
 .title{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:18px;font-weight:700;line-height:1.25}
-.sub{margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:13px;line-height:1.3}
+.sub{margin-top:3px;overflow-wrap:anywhere;color:var(--muted);font-size:13px;line-height:1.3}
 .sub[hidden],.btn[hidden]{display:none}
 .btn{box-sizing:border-box;display:inline-flex;flex:none;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--edge);border-radius:4px;background:var(--bg);color:var(--text);font:inherit;font-size:13px;line-height:1.125;text-decoration:none;white-space:nowrap;cursor:pointer}
 .btn:hover{background:var(--btn-hover);text-decoration:none}

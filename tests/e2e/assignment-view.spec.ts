@@ -298,10 +298,34 @@ async function paneFrame(page: Page, wanted?: string) {
 const paddingRight = (page: Page) =>
   page.locator('html').evaluate((node) => parseFloat(getComputedStyle(node).paddingRight));
 
-/** Clicks the close button of the assignment pane, at the right end of its first line. */
+/**
+ * The box of a part of the assignment pane in the page. The root of the pane is closed, but a
+ * frame of the Canvas origin reaches it, which is how a test finds the part. The mouse then clicks
+ * where the part is, as a student does.
+ */
+async function paneBox(page: Page, selector: string) {
+  const frame = await paneFrame(page);
+  return frame.evaluate((query) => {
+    const root = window.frameElement!.getRootNode() as ShadowRoot;
+    const rect = root.querySelector(query)!.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  }, selector);
+}
+
+/** Clicks a part of the assignment pane with the mouse, in its middle. */
+async function clickPane(page: Page, selector: string) {
+  const box = await paneBox(page, selector);
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+}
+
+/** Clicks the close button of the assignment pane. */
 async function closeAssignment(page: Page) {
-  const box = (await page.locator(PANE_HOST).boundingBox())!;
-  await page.mouse.click(box.x + box.width - 22, 22);
+  await clickPane(page, '.icon-btn');
+}
+
+/** Clicks the Full view button of the assignment pane. */
+async function toggleFullView(page: Page) {
+  await clickPane(page, '.btn[aria-pressed]');
 }
 
 /** A link of the page that opens a file, as a Canvas page can have one. */
@@ -607,7 +631,7 @@ const headerOf = (frame: Frame) =>
     };
   });
 
-test('the pane has the header of the mockup, and a margin around the frame content', async ({
+test('the pane is a card with a gap, and its header has a title, a second line and three buttons', async ({
   context,
   page,
   background,
@@ -623,60 +647,96 @@ test('the pane has the header of the mockup, and a margin around the frame conte
       const rect = root.querySelector(selector)!.getBoundingClientRect();
       return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
     };
+    const style = (selector: string) => getComputedStyle(root.querySelector(selector)!);
     const link = root.querySelector('a.btn') as HTMLAnchorElement;
-    const title = getComputedStyle(root.querySelector('.title')!);
-    const bar = getComputedStyle(root.querySelector('.bar')!);
-    const wrapper = getComputedStyle(root.querySelector('.frame')!);
+    const hostRect = (root.host as HTMLElement).getBoundingClientRect();
     return {
+      host: { x: hostRect.x, y: hostRect.y, width: hostRect.width, height: hostRect.height },
+      card: box('section'),
+      cardStyle: {
+        radius: style('section').borderTopLeftRadius,
+        shadow: style('section').boxShadow,
+        overflow: style('section').overflow,
+      },
       bar: box('.bar'),
-      barPaddingLeft: bar.paddingLeft,
+      barPadding: style('.bar').padding,
       title: box('.title'),
-      titleWeight: title.fontWeight,
-      titleSize: title.fontSize,
-      ellipsis: title.textOverflow,
-      close: box('.icon-btn'),
-      closeIcon: box('.icon-btn svg'),
+      titleWeight: style('.title').fontWeight,
+      titleSize: style('.title').fontSize,
+      ellipsis: style('.title').textOverflow,
+      sub: box('.sub'),
+      subText: root.querySelector('.sub')!.textContent,
+      subSize: style('.sub').fontSize,
+      subColor: style('.sub').color,
+      full: box('.btn[aria-pressed]'),
+      fullText: root.querySelector('.btn[aria-pressed]')!.textContent,
+      fullName: root.querySelector('.btn[aria-pressed]')!.getAttribute('aria-label'),
+      fullPressed: root.querySelector('.btn[aria-pressed]')!.getAttribute('aria-pressed'),
+      fullIcon: box('.btn[aria-pressed] svg'),
       link: box('a.btn'),
       linkIcon: box('a.btn svg'),
       href: link.href,
       decoration: getComputedStyle(link).textDecorationLine,
       label: link.textContent,
+      close: box('.icon-btn'),
+      closeIcon: box('.icon-btn svg'),
       closeName: root.querySelector('.icon-btn')!.getAttribute('aria-label'),
       region: root.querySelector('section')!.getAttribute('aria-label'),
       wrapper: box('.frame'),
-      wrapperPadding: wrapper.padding,
-      wrapperBackground: wrapper.backgroundColor,
+      wrapperPadding: style('.frame').padding,
+      wrapperBackground: style('.frame').backgroundColor,
       frame: box('iframe'),
     };
   });
-  // The tab row of the file pane is 47 px high: 44 px of tab and the 3 px of its underline.
-  expect(header.bar.height).toBe(47);
-  expect(header.barPaddingLeft).toBe('24px');
-  expect(header.title.x - header.bar.x).toBe(24);
+  // The gap: 12 px above, below and to the right of the card, none to the left.
+  expect(header.host).toMatchObject({ x: 1615 - header.host.width, y: 0, height: 1053 });
+  expect(header.card.x).toBe(header.host.x);
+  expect(header.card.y).toBe(12);
+  expect(header.card.height).toBe(1053 - 24);
+  expect(header.card.x + header.card.width).toBe(1615 - 12);
+  expect(header.cardStyle.radius).toBe('10px');
+  expect(header.cardStyle.shadow).not.toBe('none');
+  expect(header.cardStyle.overflow).toBe('hidden');
+  // The room of the page is the width of the card and the gap.
+  expect(await paddingRight(page)).toBe(header.host.width);
+  expect(header.host.width).toBe(header.card.width + 12);
+  // The header: padding 16 16 14 32, and a bold 18 px title with an ellipsis. The card has a 1 px border.
+  expect(header.barPadding).toBe('16px 16px 14px 32px');
+  expect(header.title.x - header.card.x - 1).toBe(32);
+  expect(header.title.y - header.bar.y).toBe(16);
   expect(header.titleWeight).toBe('700');
-  expect(header.titleSize).toBe('14px');
+  expect(header.titleSize).toBe('18px');
   expect(header.ellipsis).toBe('ellipsis');
-  expect(header.close).toMatchObject({ width: 28, height: 28 });
-  expect(header.closeIcon).toMatchObject({ width: 16, height: 16 });
-  expect(header.link.height).toBe(28);
-  expect(header.linkIcon).toMatchObject({ width: 16, height: 16 });
+  // The second line is the due text and the points of the row, in 13 px muted text.
+  expect(header.subText).toBe('Due Nov 3 at 10pm | 10 pts');
+  expect(header.subSize).toBe('13px');
+  expect(header.subColor).toBe('rgb(88, 104, 116)');
+  expect(header.sub.y).toBeGreaterThan(header.title.y + header.title.height);
+  // Full view, Open in new tab and close: in this order, 30 px high, 16 px icons.
+  expect(header.fullText).toBe('Full view');
+  expect(header.fullName).toBe('Full view');
+  expect(header.fullPressed).toBe('false');
+  expect(header.full.x + header.full.width).toBeLessThan(header.link.x);
+  expect(header.link.x + header.link.width).toBeLessThan(header.close.x);
+  for (const part of [header.full, header.link, header.close])
+    expect(part).toMatchObject({ height: 30, y: header.bar.y + 16 });
+  expect(header.close.width).toBe(30);
+  for (const icon of [header.fullIcon, header.linkIcon, header.closeIcon])
+    expect(icon).toMatchObject({ width: 16, height: 16 });
+  expect(header.close.x + header.close.width).toBe(header.card.x + header.card.width - 1 - 16);
   expect(header.decoration).toBe('none');
   expect(header.label).toBe('Open in new tab');
   expect(header.href).toBe(new URL(ASSIGNMENT, canvas.origin).href);
   expect(header.closeName).toBe('Close assignment');
   expect(header.region).toBe('Assignment');
-  // The frame sits in a white wrapper with a margin: 24 px on the left, 8 px on the right.
-  expect(header.wrapperPadding).toBe('0px 8px 0px 24px');
+  // The frame sits in a white wrapper: 20 px above, 16 px right and 32 px left. The frame reaches
+  // 12 px into the right padding, so its scroll bar stays near the edge of the card.
+  expect(header.wrapperPadding).toBe('20px 16px 0px 32px');
   expect(header.wrapperBackground).toBe('rgb(255, 255, 255)');
-  expect(header.frame.x - header.wrapper.x).toBe(24);
-  expect(header.wrapper.x + header.wrapper.width - (header.frame.x + header.frame.width)).toBe(8);
-  expect(header.frame.height).toBe(header.wrapper.height);
-  // The pane has the dock position of the file pane: full height on the right edge.
-  const box = (await page.locator(PANE_HOST).boundingBox())!;
-  expect(box.x + box.width).toBe(1615);
-  expect(box.y).toBe(0);
-  expect(box.height).toBe(1053);
-  expect(await paddingRight(page)).toBe(box.width);
+  expect(header.frame.x - header.wrapper.x).toBe(32);
+  expect(header.frame.y - header.wrapper.y).toBe(20);
+  expect(header.wrapper.x + header.wrapper.width - (header.frame.x + header.frame.width)).toBe(4);
+  expect(header.frame.height).toBe(header.wrapper.height - 20);
   // The pane never reads the DOM of the frame, so the frame content is what Canvas drew.
   await expect(frame.locator('h1')).toHaveText('Essay');
   expect(await headerOf(frame)).toEqual({
@@ -691,6 +751,281 @@ test('the pane has the header of the mockup, and a margin around the frame conte
     await page.screenshot({ path: path.join(DIR, `pane-${theme}-1615.png`) });
     await page.screenshot({ path: path.join(SHOTS, `pane-${theme}-1615x1053.png`) });
   }
+});
+
+test('a row with no due text and no points gives a header with one line, and a long line ends at its limit', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  await page.evaluate(() => {
+    document.querySelector('#assignment_102 .ig-details')!.remove();
+    // Canvas draws the date twice: for screen readers, and for the eye. A long date shows once.
+    const due = document.querySelector('#assignment_103 .non-screenreader')!;
+    due.insertAdjacentHTML('beforeend', ' ' + 'long '.repeat(60));
+  });
+  const read = async () => {
+    const frame = await paneFrame(page);
+    return frame.evaluate(() => {
+      const root = window.frameElement!.getRootNode() as ShadowRoot;
+      const sub = root.querySelector('.sub') as HTMLElement;
+      const block = root.querySelector('.ti')!.getBoundingClientRect();
+      const title = root.querySelector('.title')!.getBoundingClientRect();
+      return {
+        hidden: sub.hidden,
+        text: sub.textContent,
+        display: getComputedStyle(sub).display,
+        blockHeight: block.height,
+        titleOff: title.y + title.height / 2 - (block.y + block.height / 2),
+      };
+    });
+  };
+  await openPane(page, 'Reading');
+  const none = await read();
+  expect(none).toMatchObject({ hidden: true, text: '', display: 'none', blockHeight: 30 });
+  // The title is in the middle of the 30 px of the buttons.
+  expect(Math.abs(none.titleOff)).toBeLessThan(1);
+  await preview(
+    page,
+    'Weekly discussion with a title that is long enough to wrap in a narrow row',
+  ).click();
+  await expect.poll(async () => (await read()).hidden).toBe(false);
+  const long = await read();
+  expect(long.text!.length).toBeLessThanOrEqual(160);
+  expect(long.text!.startsWith('Due Nov 5 at 10pm long long')).toBe(true);
+  // The text of the screen readers is no part of the line.
+  expect(long.text).not.toContain('Due Nov 5 at 10pm Due');
+  // The header follows the frame that shows.
+  await preview(page, 'Essay').click();
+  await expect.poll(async () => (await read()).text).toBe('Due Nov 3 at 10pm | 10 pts');
+  await preview(page, 'Reading').click();
+  await expect.poll(async () => (await read()).hidden).toBe(true);
+});
+
+/** The geometry of the pane and the state of its Full view button, read from a Canvas frame. */
+async function geometry(page: Page) {
+  const frame = await paneFrame(page);
+  const padding = await paddingRight(page);
+  return frame.evaluate((room) => {
+    const root = window.frameElement!.getRootNode() as ShadowRoot;
+    const box = (element: Element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    };
+    const button = root.querySelector('.btn[aria-pressed]') as HTMLButtonElement;
+    return {
+      host: box(root.host),
+      card: box(root.querySelector('section')!),
+      padding: room,
+      button: {
+        text: button.textContent,
+        label: button.getAttribute('aria-label'),
+        pressed: button.getAttribute('aria-pressed'),
+        hidden: button.hidden,
+        focused: root.activeElement === button,
+        handleShown: getComputedStyle(root.querySelector('.handle')!).display !== 'none',
+      },
+    };
+  }, padding);
+}
+
+test('Full view fills the browser page, keeps the frame and its draft, and leaves the page where it is', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await page.setViewportSize({ width: 1400, height: 930 });
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('a draft that stays');
+  await frame.evaluate(() => {
+    (window as unknown as { __kept: string }).__kept = 'same document';
+    document.body.style.minHeight = '3000px';
+    window.scrollTo(0, 240);
+  });
+  const before = await geometry(page);
+  expect(before.button).toMatchObject({ text: 'Full view', pressed: 'false', handleShown: true });
+  expect(before.padding).toBe(before.host.width);
+  const listBox = () =>
+    page.evaluate(() => {
+      const rect = document.querySelector('ul.ig-list')!.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    });
+  const pageBefore = await listBox();
+
+  await toggleFullView(page);
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
+  const full = await geometry(page);
+  // The host and the card fill the window, with a 12 px gap on every side.
+  expect(full.host).toEqual({ x: 0, y: 0, width: 1400, height: 930 });
+  expect(full.card).toEqual({ x: 12, y: 12, width: 1400 - 24, height: 930 - 24 });
+  expect(full.button).toMatchObject({
+    text: 'Exit full view',
+    label: 'Exit full view',
+    pressed: 'true',
+    focused: true,
+    handleShown: false,
+  });
+  // The page padding does not change, so the page behind does not move.
+  expect(full.padding).toBe(before.padding);
+  expect(await listBox()).toEqual(pageBefore);
+  // The pane covers the page, and the row keeps its state.
+  await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
+  await expect(rowOf(page, '101')).toHaveAttribute('data-av-open', '');
+  // No load, no move: the same frame, the same document, the same draft and scroll position.
+  expect(await paneFrame(page)).toBe(frame);
+  expect(await frame.evaluate(() => (window as unknown as { __kept: string }).__kept)).toBe(
+    'same document',
+  );
+  await expect(frame.locator('#marker')).toHaveValue('a draft that stays');
+  expect(await frame.evaluate(() => window.scrollY)).toBe(240);
+  expect(await frame.evaluate(() => window.innerWidth)).toBeGreaterThan(1100);
+
+  await toggleFullView(page);
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('false');
+  const after = await geometry(page);
+  expect(after.host).toEqual(before.host);
+  expect(after.card).toEqual(before.card);
+  expect(after.padding).toBe(before.padding);
+  expect(after.button).toMatchObject({ text: 'Full view', focused: true, handleShown: true });
+  expect(await listBox()).toEqual(pageBefore);
+  expect(await paneFrame(page)).toBe(frame);
+  expect(await frame.evaluate(() => (window as unknown as { __kept: string }).__kept)).toBe(
+    'same document',
+  );
+  await expect(frame.locator('#marker')).toHaveValue('a draft that stays');
+  expect(await frame.evaluate(() => window.scrollY)).toBe(240);
+});
+
+test('screenshots of the pane and of its full view at 1400 by 930, in light and dark', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await page.setViewportSize({ width: 1400, height: 930 });
+  await ready(page, canvas);
+  await openPane(page, 'Essay');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  for (const full of [false, true]) {
+    if (full) await toggleFullView(page);
+    await expect.poll(async () => (await geometry(page)).button.pressed).toBe(String(full));
+    for (const theme of ['light', 'dark'] as const) {
+      await saveSetting(background, { theme });
+      await expect(page.locator(PANE_HOST)).toHaveAttribute('data-theme', theme);
+      await page.mouse.move(700, 600);
+      await page.screenshot({
+        path: `/tmp/ticket-t/assignment${full ? '-full' : ''}-${theme}-1400x930.png`,
+      });
+    }
+  }
+});
+
+test('Escape leaves full view first, and a second Escape does what it did before', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await page.setViewportSize({ width: 1400, height: 930 });
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await toggleFullView(page);
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
+  // A script of the page does not leave full view.
+  await page.evaluate(() => {
+    for (const target of [window, document, document.querySelector('#tools-turn-in')])
+      target?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  await page.waitForTimeout(200);
+  expect((await geometry(page)).button.pressed).toBe('true');
+  // The focus is on the button, and a real Escape leaves full view.
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('false');
+  expect((await geometry(page)).host.width).toBeLessThan(1000);
+  // The second Escape leaves the pane open, as it did before.
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  expect(await paneFrame(page)).toBe(frame);
+});
+
+test('the close button closes the pane in full view and leaves full view', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await page.setViewportSize({ width: 1400, height: 930 });
+  await ready(page, canvas);
+  await openPane(page, 'Essay');
+  await toggleFullView(page);
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
+  await closeAssignment(page);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
+  expect(await paddingRight(page)).toBe(0);
+  // The next pane starts in its place, not in full view.
+  await openPane(page, 'Reading');
+  const next = await geometry(page);
+  expect(next.button).toMatchObject({ pressed: 'false', text: 'Full view' });
+  expect(next.host.width).toBeLessThan(1000);
+});
+
+test('a file that opens over a full view pane shows in full view, and closing it shows the pane in full view again', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await page.setViewportSize({ width: 1400, height: 930 });
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('unsent words');
+  await toggleFullView(page);
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
+  const padding = (await geometry(page)).padding;
+  await openFileFromPane(page, frame);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
+  const filePane = await pane(page);
+  await expect(filePane.getByRole('button', { name: 'Exit full view' })).toBeVisible();
+  const box = (await page.locator(FILE_PANE).boundingBox())!;
+  expect(box).toMatchObject({ x: 0, y: 0, width: 1400, height: 930 });
+  expect(await paddingRight(page)).toBe(padding);
+  await closePane(page);
+  await expect(page.locator(FILE_PANE)).toHaveCount(0);
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  const back = await geometry(page);
+  expect(back.host).toEqual({ x: 0, y: 0, width: 1400, height: 930 });
+  expect(back.button.pressed).toBe('true');
+  expect(back.padding).toBe(padding);
+  expect(await paneFrame(page)).toBe(frame);
+  await expect(frame.locator('#marker')).toHaveValue('unsent words');
+});
+
+test('a narrow window has no Full view button, and the pane covers the page as before', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await page.setViewportSize({ width: 1400, height: 930 });
+  await ready(page, canvas);
+  await openPane(page, 'Essay');
+  await toggleFullView(page);
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
+  await page.setViewportSize({ width: 800, height: 700 });
+  await expect.poll(async () => (await geometry(page)).button.hidden).toBe(true);
+  const narrow = await geometry(page);
+  expect(narrow.host).toEqual({ x: 0, y: 0, width: 800, height: 700 });
+  expect(narrow.card).toEqual({ x: 0, y: 0, width: 800, height: 700 });
+  // The window is wide again: the pane is still in full view, as the student left it.
+  await page.setViewportSize({ width: 1400, height: 930 });
+  await expect.poll(async () => (await geometry(page)).button.hidden).toBe(false);
+  expect((await geometry(page)).button.pressed).toBe('true');
+  expect((await geometry(page)).host.width).toBe(1400);
 });
 
 test('the pane is the region Assignment, and a Canvas frame cannot reach the root of the file pane', async ({
