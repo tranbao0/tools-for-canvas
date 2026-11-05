@@ -559,6 +559,8 @@ test('a failed read keeps the card, and Retry reads the file again', async ({
   ).toBeVisible();
   await page.screenshot({ path: 'test-results/f3-error-pane.png' });
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  // The clipboard needs the page in front, and other pages run beside it.
+  await page.bringToFront();
   await frame.getByRole('button', { name: 'Copy details' }).click();
   await expect(frame.getByText('Details copied', { exact: true })).toBeVisible();
   const report = await page.evaluate(() => navigator.clipboard.readText());
@@ -1096,6 +1098,8 @@ test('a page drawing error leaves the document open and copies safe details', as
   fileHost,
 }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  // The clipboard needs the page in front, and other pages run beside it.
+  await page.bringToFront();
   const frame = await openPdf(context, page, background, fileHost);
   await frame.evaluate(() => {
     const getContext = HTMLCanvasElement.prototype.getContext;
@@ -1155,6 +1159,8 @@ test.describe('a run of bytes the repair scan could not bear', () => {
     fileHost,
   }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    // The clipboard needs the page in front, and other pages run beside it.
+    await page.bringToFront();
     await openCoursePage(
       context,
       page,
@@ -1186,6 +1192,8 @@ test('a broken PDF has safe details and no document Retry', async ({
   background,
 }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  // The clipboard needs the page in front, and other pages run beside it.
+  await page.bringToFront();
   await openCoursePage(context, page, background, html, [
     {
       path: '/files/42/download',
