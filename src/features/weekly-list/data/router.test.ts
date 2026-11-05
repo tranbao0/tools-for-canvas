@@ -38,6 +38,13 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
       hasNext: false,
     })),
     announcementRange: vi.fn(async () => ({ userId: '42', items: [], truncated: false })),
+    peoplePage: vi.fn(async () => ({
+      userId: '42',
+      items: [],
+      count: 0,
+      total: 0,
+      hasNext: false,
+    })),
     markDashboardAnnouncement: vi.fn(async () => ({ ok: true })),
     announcementFeed: vi.fn(async () => ({ status: 'unavailable', tab: 'tasks' })),
     markRubricRead: vi.fn(async () => undefined),
@@ -442,6 +449,13 @@ describe('routeDataMessage', () => {
       from: '2026-10-01',
       to: '2026-10-31',
     };
+    const PEOPLE = {
+      type: 'weekrow:people-page',
+      courseId: '101',
+      role: 'ta',
+      offset: 10,
+      first: 10,
+    };
     const MARK = {
       type: 'weekrow:announcement-mark',
       courseId: '101',
@@ -492,6 +506,65 @@ describe('routeDataMessage', () => {
         3,
       );
       expect(owner.markDashboardAnnouncement).toHaveBeenCalledWith('101', '31901', true, '42', 3);
+    });
+
+    it('answer the People page for the page of the saved Canvas, with the tab of the sender', async () => {
+      await expect(routeDataMessage(owner, PEOPLE, CONTENT_SCRIPT, host)).resolves.toEqual({
+        userId: '42',
+        items: [],
+        count: 0,
+        total: 0,
+        hasNext: false,
+      });
+      expect(owner.peoplePage).toHaveBeenCalledWith(
+        { courseId: '101', role: 'ta', offset: 10, first: 10 },
+        SAVED,
+        3,
+      );
+      await routeDataMessage(
+        owner,
+        { ...PEOPLE, courseId: null, role: 'all' },
+        CONTENT_SCRIPT,
+        host,
+      );
+      expect(owner.peoplePage).toHaveBeenLastCalledWith(
+        { courseId: null, role: 'all', offset: 10, first: 10 },
+        SAVED,
+        3,
+      );
+    });
+
+    it.each([
+      ['an extension page', EXTENSION_PAGE],
+      ['another Canvas host', OTHER_CANVAS],
+      ['a frame inside the saved Canvas', { ...CONTENT_SCRIPT, frameId: 5 }],
+      ['a sender with no tab', { url: CONTENT_SCRIPT.url }],
+    ])('refuse the People page from %s', async (_name, sender) => {
+      await expect(routeDataMessage(owner, PEOPLE, sender, host)).rejects.toThrow();
+      expect(owner.peoplePage).not.toHaveBeenCalled();
+    });
+
+    it('refuse a People page with a value that is out of bounds', () => {
+      const bad = [
+        { ...PEOPLE, courseId: '1/2' },
+        { ...PEOPLE, courseId: 5 },
+        { ...PEOPLE, courseId: undefined },
+        { ...PEOPLE, role: 'student' },
+        { ...PEOPLE, role: undefined },
+        { ...PEOPLE, offset: -1 },
+        { ...PEOPLE, offset: 100_001 },
+        { ...PEOPLE, offset: 1.5 },
+        { ...PEOPLE, offset: '10' },
+        { ...PEOPLE, first: 100 },
+        { ...PEOPLE, first: 5 },
+      ];
+      for (const message of bad) {
+        expect(
+          routeDataMessage(owner, message, CONTENT_SCRIPT, host),
+          JSON.stringify(message),
+        ).toBeNull();
+      }
+      expect(owner.peoplePage).not.toHaveBeenCalled();
     });
 
     it.each([

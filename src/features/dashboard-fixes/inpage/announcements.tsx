@@ -51,6 +51,14 @@ import {
   type AnnouncementStore,
   type AnnRow,
 } from './announcementStore';
+import {
+  AVATAR_COLORS,
+  Avatar,
+  initialsOf,
+  ScrollList,
+  shadowHost,
+  unmountHost,
+} from './scrollList';
 import { FIXES_CSS } from './styles';
 
 const OWN = 'data-wr-own';
@@ -62,41 +70,12 @@ const TITLE_LIMIT = 75;
 const SNIPPET_LIMIT = 120;
 /** How many results of a search or a range show at first, and how many more each time. */
 const RESULT_STEP = 100;
-/** How close to the end of the area the next page starts, in pixels. */
-const NEAR_END = 200;
 /** The wait after the last change of a date, so a typed date asks once. */
 const DATE_WAIT_MS = 350;
 const NOTE_MS = 6_000;
 const FIRST_DAY = '2000-01-01';
 
-/** Colors for the initials of an author, each with white text at a contrast of 4.5 or more. */
-export const AVATAR_COLORS = [
-  '#3f7d6e',
-  '#8a4f7d',
-  '#2f5f8a',
-  '#9a4a3a',
-  '#5d6b24',
-  '#6b4c93',
-  '#2d6f7e',
-  '#8a5a0f',
-] as const;
-
-function hash(text: string): number {
-  let value = 0;
-  for (let index = 0; index < text.length; index++) {
-    value = (value * 31 + text.charCodeAt(index)) >>> 0;
-  }
-  return value;
-}
-
-/** The first letters of the first and the last word of a name. */
-export function initialsOf(name: string | null): string {
-  const words = (name ?? '').trim().split(/\s+/).filter(Boolean);
-  const first = words[0];
-  if (first === undefined) return '?';
-  const last = words.length > 1 ? words[words.length - 1] : undefined;
-  return `${[...first][0] ?? ''}${last === undefined ? '' : ([...last][0] ?? '')}`.toUpperCase();
-}
+export { AVATAR_COLORS, initialsOf };
 
 /** Today as `yyyy-mm-dd` in the time zone of the computer. */
 export function localToday(now: Date = new Date()): string {
@@ -254,30 +233,6 @@ export function announcementsFix(): Fix {
     return list.map((part) => (part.match ? <mark>{part.text}</mark> : part.text));
   }
 
-  function Avatar(props: { row: AnnRow }) {
-    const { row } = props;
-    const [failed, setFailed] = useState<string | null>(null);
-    const color = AVATAR_COLORS[hash(row.author ?? row.id) % AVATAR_COLORS.length];
-    // The background keeps only an http or https address, and the page checks it again.
-    const image =
-      row.avatarUrl !== null && /^https?:\/\//i.test(row.avatarUrl) && failed !== row.avatarUrl;
-    return (
-      <span class="wr-a-avatar" style={{ backgroundColor: color }} aria-hidden="true">
-        {image ? (
-          <img
-            alt=""
-            src={row.avatarUrl ?? undefined}
-            loading="lazy"
-            referrerpolicy="no-referrer"
-            onError={() => setFailed(row.avatarUrl)}
-          />
-        ) : (
-          initialsOf(row.author)
-        )}
-      </span>
-    );
-  }
-
   function Row(props: {
     row: AnnRow;
     words: string[] | null;
@@ -308,7 +263,7 @@ export function announcementsFix(): Fix {
     const snippet = snippetParts(row.text, SNIPPET_LIMIT, found);
     return (
       <article class="wr-a-row" aria-label={row.title} data-wr-row={key}>
-        <Avatar row={row} />
+        <Avatar name={row.author} seed={row.id} url={row.avatarUrl} class="wr-a-avatar" />
         <div class="wr-a-head">
           <div class="wr-a-title">{parts(title)}</div>
           <div class="wr-a-meta">{meta.join(' | ')}</div>
@@ -508,8 +463,6 @@ export function announcementsFix(): Fix {
 
   function AnnouncementList(props: { view: View; model: Model; data: AnnouncementStore }) {
     const { view, model, data } = props;
-    const scroll = useRef<HTMLDivElement>(null);
-    const sentinel = useRef<HTMLDivElement>(null);
     const course = courseOf(view);
 
     const showMore = (): void => {
@@ -519,27 +472,6 @@ export function announcementsFix(): Fix {
         paint(view);
       }
     };
-    const onMore = useRef(showMore);
-    onMore.current = showMore;
-
-    // The sentinel asks for more when it comes within 200 px of the end of the area. The observer
-    // starts again after each load, because an observer reports only a change.
-    const near = `${model.scrollKey}|${model.rows.length}|${model.hasMore ? 1 : 0}|${model.loadingMore ? 1 : 0}|${model.failed}`;
-    useEffect(() => {
-      const target = sentinel.current;
-      const area = scroll.current;
-      const Observer = globalThis.IntersectionObserver as typeof IntersectionObserver | undefined;
-      if (target === null || area === null || Observer === undefined || !model.hasMore) return;
-      if (model.failed !== 'none' || model.loadingMore) return;
-      const observer = new Observer(
-        (entries) => {
-          if (entries.some((entry) => entry.isIntersecting)) onMore.current();
-        },
-        { root: area, rootMargin: `0px 0px ${NEAR_END}px 0px` },
-      );
-      observer.observe(target);
-      return () => observer.disconnect();
-    }, [near]);
 
     const onMark = (row: AnnRow, event: MouseEvent): void => {
       // Only a click of the student marks. A script cannot.
@@ -679,15 +611,10 @@ export function announcementsFix(): Fix {
             </button>
           ) : null}
         </div>
-        <div
-          class="wr-a-scroll"
-          ref={scroll}
-          role="feed"
-          tabindex={0}
-          aria-label={t('annFeedLabel')}
-          aria-busy={model.loadingFirst || model.loadingMore}
-        >
-          {model.rows.map((row) => (
+        <ScrollList
+          scrollKey={model.scrollKey}
+          rowCount={model.rows.length}
+          rows={model.rows.map((row) => (
             <Row
               key={rowKey(row)}
               row={row}
@@ -696,46 +623,28 @@ export function announcementsFix(): Fix {
               onToggle={onToggle}
             />
           ))}
-          {model.loadingFirst ? (
-            <p class="wr-a-line" role="status">
-              {t('annListLoading')}
-            </p>
-          ) : null}
-          {!model.loadingFirst &&
-          !model.hasMore &&
-          model.failed === 'none' &&
-          model.rows.length === 0 ? (
-            <p class="wr-a-line">{emptyText(view, model)}</p>
-          ) : null}
-          {model.failed !== 'none' ? (
-            <p class="wr-a-line" role="status">
-              {t(model.failed === 'more' ? 'annMoreFailed' : 'annListFailed')}{' '}
-              <button
-                type="button"
-                class="wr-x-link"
-                onClick={() => {
-                  if (model.mode === 'list') data.retry(view.read, course);
-                  else if (model.mode === 'search') data.retryIndex();
-                  else if (view.asked !== null)
-                    data.retryRange(course, view.asked.from, view.asked.to);
-                }}
-              >
-                {t('annRetry')}
-              </button>
-            </p>
-          ) : null}
-          {model.loadingMore ? (
-            <p class="wr-a-line" role="status">
-              {t('annLoadingMore')}
-            </p>
-          ) : null}
-          {model.hasMore && !model.loadingMore && model.failed === 'none' ? (
-            <div class="wr-a-sentinel" ref={sentinel} aria-hidden="true" />
-          ) : null}
-          {model.ended && !model.hasMore && model.failed === 'none' ? (
-            <p class="wr-a-line">{t('annEnd')}</p>
-          ) : null}
-        </div>
+          loadingFirst={model.loadingFirst}
+          hasMore={model.hasMore}
+          loadingMore={model.loadingMore}
+          failed={model.failed}
+          ended={model.ended}
+          text={{
+            feed: t('annFeedLabel'),
+            loading: t('annListLoading'),
+            loadingMore: t('annLoadingMore'),
+            failed: t('annListFailed'),
+            moreFailed: t('annMoreFailed'),
+            retry: t('annRetry'),
+            end: t('annEnd'),
+            empty: emptyText(view, model),
+          }}
+          onMore={showMore}
+          onRetry={() => {
+            if (model.mode === 'list') data.retry(view.read, course);
+            else if (model.mode === 'search') data.retryIndex();
+            else if (view.asked !== null) data.retryRange(course, view.asked.from, view.asked.to);
+          }}
+        />
       </div>
     );
   }
@@ -791,32 +700,13 @@ export function announcementsFix(): Fix {
   // The widget
   // -------------------------------------------------------------------------------------------
 
-  /** Removes a host of the fix, and stops the components that it holds. */
-  function unmount(node: Element): void {
-    render(null, (node.shadowRoot?.lastElementChild ?? node) as HTMLElement);
-    node.remove();
-  }
-
-  /** A host element with a shadow root, so the page styles and the message stay apart. */
-  function shadowHost(doc: Document): { host: HTMLElement; root: HTMLElement } {
-    const host = doc.createElement('div');
-    host.setAttribute(OWN, 'ann');
-    host.setAttribute('data-wr-list', '');
-    const shadow = host.attachShadow({ mode: 'open' });
-    const style = doc.createElement('style');
-    style.textContent = FIXES_CSS;
-    const root = doc.createElement('div');
-    shadow.append(style, root);
-    return { host, root };
-  }
-
   function viewOf(context: FixContext, widget: AnnouncementsWidget): View {
     const known = views.get(widget.widget);
     if (known !== undefined) {
       known.widget = widget;
       return known;
     }
-    const { host, root } = shadowHost(context.doc);
+    const { host, root } = shadowHost(context.doc, 'ann', FIXES_CSS);
     const made: View = {
       widget,
       host,
@@ -985,10 +875,10 @@ export function announcementsFix(): Fix {
   function release(widget: AnnouncementsWidget): void {
     const view = views.get(widget.widget);
     if (view !== undefined) {
-      unmount(view.host);
+      unmountHost(view.host);
       views.delete(widget.widget);
     }
-    widget.bar.querySelectorAll(`:scope > ${MINE}`).forEach(unmount);
+    widget.bar.querySelectorAll(`:scope > ${MINE}`).forEach(unmountHost);
     for (const attribute of ATTRIBUTES) {
       widget.widget.removeAttribute(attribute);
       widget.bar.removeAttribute(attribute);
@@ -1037,7 +927,7 @@ export function announcementsFix(): Fix {
       // A widget that React removed has no list any more.
       for (const [element, view] of views) {
         if (!widgets.some((widget) => widget.widget === element)) {
-          unmount(view.host);
+          unmountHost(view.host);
           views.delete(element);
         }
       }
@@ -1059,7 +949,7 @@ export function announcementsFix(): Fix {
       open.clear();
       bodies.clear();
       focusOpened = null;
-      doc?.querySelectorAll(MINE).forEach(unmount);
+      doc?.querySelectorAll(MINE).forEach(unmountHost);
       for (const attribute of ATTRIBUTES) {
         doc?.querySelectorAll(`[${attribute}]`).forEach((node) => node.removeAttribute(attribute));
       }

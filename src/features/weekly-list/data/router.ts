@@ -231,6 +231,21 @@ export function routeDataMessage(
           sender.tab?.id,
         ),
       );
+    case 'weekrow:people-page':
+      // Only the page of the saved Canvas asks. An extension page has no widget to fill.
+      if (host.isExtensionPage(sender)) return reject('Only the page of the saved Canvas may ask');
+      return allowed.then((origin) =>
+        owner.peoplePage(
+          {
+            courseId: message.courseId,
+            role: message.role,
+            offset: message.offset,
+            first: message.first,
+          },
+          origin,
+          sender.tab?.id,
+        ),
+      );
     case 'weekrow:announcement-mark':
       // Only the page of the saved Canvas marks, and only for a tab of its top frame.
       if (host.isExtensionPage(sender)) return reject('Only the page of the saved Canvas may ask');

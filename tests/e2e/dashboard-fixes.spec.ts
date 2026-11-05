@@ -29,12 +29,17 @@ const OFF: DashboardFixesSettings = {
   announcementsInPlace: false,
   allCourseGrades: false,
   steadyPager: false,
+  peopleList: false,
 };
 const ARTIFACTS = {
   announcementsInPlace: '[data-wr-filter]',
   allCourseGrades: '[data-wr-grades]',
   steadyPager: '[data-wr-own="pager"]',
 } as const;
+/** The fixes of this page. The People list has its own spec, on a page with a People widget. */
+const PAGE_FIXES = DASHBOARD_FIX_KEYS.filter(
+  (key): key is keyof typeof ARTIFACTS => key !== 'peopleList',
+);
 
 type Worker = Parameters<typeof saveTools>[0];
 
@@ -1127,7 +1132,7 @@ test.describe('course grades', () => {
 });
 
 test.describe('the switches', () => {
-  for (const key of DASHBOARD_FIX_KEYS) {
+  for (const key of PAGE_FIXES) {
     test(`turning ${key} off removes that fix and keeps the others`, async ({
       context,
       page,
@@ -1139,7 +1144,7 @@ test.describe('the switches', () => {
       }
       await saveTools(background, tools({ [key]: false }));
       await expect(page.locator(ARTIFACTS[key])).toHaveCount(0);
-      for (const other of DASHBOARD_FIX_KEYS.filter((name) => name !== key)) {
+      for (const other of PAGE_FIXES.filter((name) => name !== key)) {
         await expect(page.locator(ARTIFACTS[other]).first()).toBeAttached();
       }
       if (key === 'allCourseGrades') {

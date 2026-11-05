@@ -2,7 +2,8 @@ import type { PlannerItem, PlannerNote, PlannerOverride } from '../../../src/sha
 import { ALL_ANNOUNCEMENTS as ANNOUNCEMENTS } from '../../fixtures/announcements';
 import { notePlannerItem, type FixtureContext } from '../../fixtures/canvas-json';
 import { CANVAS_ERRORS, type CanvasErrorFixture } from '../../fixtures/errors';
-import { announcementPageAnswer } from '../../fixtures/graphql';
+import { announcementPageAnswer, peoplePageAnswer } from '../../fixtures/graphql';
+import { PEOPLE } from '../../fixtures/people';
 import {
   IDS,
   allAssignmentsInCourse,
@@ -247,7 +248,11 @@ export class CanvasState {
       },
       // An avatar that Canvas no longer has: the widget shows the initials.
       { path: '/images/avatars/missing.png', status: 404, body: 'Not found' },
-      ...apiRoutes(this.scenario, (request) => this.widgetAnnouncements(request)),
+      ...apiRoutes(
+        this.scenario,
+        (request) => this.widgetAnnouncements(request),
+        (request) => this.widgetPeople(request),
+      ),
     ];
   }
 
@@ -256,6 +261,11 @@ export class CanvasState {
    * the current courses, with the read state that the student has now, so a `PUT .../read` shows
    * in the next page.
    */
+  private widgetPeople(request: RecordedRequest): unknown {
+    const names = new Map(this.scenario.courses.map((course) => [course.id, course.name]));
+    return peoplePageAnswer(request.postData, PEOPLE, (courseId) => names.get(courseId) ?? null);
+  }
+
   private widgetAnnouncements(request: RecordedRequest): unknown {
     const names = new Map(this.scenario.courses.map((course) => [course.id, course.name]));
     return announcementPageAnswer(

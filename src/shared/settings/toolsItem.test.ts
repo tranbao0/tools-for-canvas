@@ -40,6 +40,7 @@ describe('toolsSettingsItem', () => {
         announcementsInPlace: true,
         allCourseGrades: true,
         steadyPager: true,
+        peopleList: true,
       },
       assignmentView: true,
     });
@@ -63,10 +64,12 @@ describe('toolsSettingsItem', () => {
 
     const tools = await toolsSettingsItem.getValue();
 
+    // A value stored before the People list existed has no key for it, and the fix is on.
     expect(tools.dashboardFixes).toEqual({
       announcementsInPlace: false,
       allCourseGrades: true,
       steadyPager: false,
+      peopleList: true,
     });
   });
 
@@ -85,6 +88,7 @@ describe('toolsSettingsItem', () => {
         announcementsInPlace: false,
         allCourseGrades: false,
         steadyPager: false,
+        peopleList: false,
       },
       assignmentView: true,
     };

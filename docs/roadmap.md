@@ -21,7 +21,13 @@ The weekly card covers the Course work widget.
 
 - Announcements: one steady list with infinite scroll, a message that opens in its row, a read control, a course filter, a search by topic and a search by date.
 - Course grades for every course, not only six.
+- People: the same steady list as the announcements, with the Course filter and the Role filter of Canvas, each course and role of a person on its own line, and a message button.
 - Steady page buttons: the page navigator of each paged widget keeps one width and one place for each button.
+
+The owner asked on 2026-11-05 that fixes like the announcements list apply Canvas wide where that is possible.
+The scroll list is now one shared module, and the Announcements and People widgets use it.
+The paged widgets that stay on the steady pager are Recent Grades and To-do.
+Each of them needs only an adapter for the shared list: a function that loads a page, a row and its filters.
 
 ## 3. File viewer
 

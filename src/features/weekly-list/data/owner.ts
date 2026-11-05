@@ -21,10 +21,13 @@ import type {
 } from '../../../shared/canvas/types';
 import { dashboardCourses } from '../../dashboard-fixes/data/dashboardData';
 import { rowFromNode, rowFromTopic } from '../../dashboard-fixes/data/announcementRows';
+import { rowFromPerson } from '../../dashboard-fixes/data/peopleRows';
 import {
   ANNOUNCEMENT_PAGE_SIZES,
   MAX_ANNOUNCEMENT_OFFSET,
+  MAX_PEOPLE_OFFSET,
   MAX_RANGE_ROWS,
+  PEOPLE_PAGE_SIZE,
   isCalendarDate,
   type AnnouncementBody,
   type AnnouncementMarkReply,
@@ -33,6 +36,8 @@ import {
   type AnnouncementRangeMessage,
   type AnnouncementRangeReply,
   type DashboardData,
+  type PeoplePageMessage,
+  type PeoplePageReply,
 } from '../../dashboard-fixes/protocol';
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { assignmentIdsToLookup } from '../model/normalize';
@@ -270,6 +275,16 @@ export interface DataOwner {
     origin: string | null,
     tabId?: number,
   ): Promise<AnnouncementPageReply>;
+  /**
+   * One page of the people who teach the signed-in student, as the People widget of Canvas reads
+   * them (decision 22). The courses come from the session: no course means all of them, and a
+   * course that is not in the session gets an empty reply. It rejects like `announcementPage`.
+   */
+  peoplePage(
+    request: Omit<PeoplePageMessage, 'type'>,
+    origin: string | null,
+    tabId?: number,
+  ): Promise<PeoplePageReply>;
   /**
    * The announcements posted from one day to another day (`yyyy-mm-dd`). The courses come from the
    * session, and a course that is not in it gets an empty reply. It rejects like `announcementPage`.
@@ -2965,6 +2980,55 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     };
   }
 
+  async function peoplePage(
+    request: Omit<PeoplePageMessage, 'type'>,
+    origin: string | null,
+    tabId?: number,
+  ): Promise<PeoplePageReply> {
+    if (
+      (request.courseId !== null && !isCanvasId(request.courseId)) ||
+      !['all', 'teacher', 'ta'].includes(request.role) ||
+      !Number.isInteger(request.offset) ||
+      request.offset < 0 ||
+      request.offset > MAX_PEOPLE_OFFSET ||
+      request.first !== PEOPLE_PAGE_SIZE
+    ) {
+      throw new Error('Not a People page');
+    }
+    const reader = await announcementReader(origin, tabId);
+    const userId = reader.stamp.userId;
+    if (userId === null) throw new Error('The people are not available');
+    // The courses are the ones of the session, as the dashboard shows them, never the page's.
+    const sessionIds = new Set(reader.session.courses.map((course) => course.id));
+    const wanted =
+      request.courseId === null
+        ? sessionIds
+        : sessionIds.has(request.courseId)
+          ? new Set([request.courseId])
+          : new Set<string>();
+    if (wanted.size === 0) return { userId, items: [], count: 0, total: 0, hasNext: false };
+    const page = await cookieBound(() =>
+      reader.api.listPeoplePage({
+        courseIds: [...wanted],
+        role: request.role,
+        offset: request.offset,
+        first: request.first,
+      }),
+    );
+    // The student or the cookie can change while the request runs. Nothing of this page may then
+    // reach the surface.
+    if (page === DROPPED || !isCurrent(reader.stamp)) {
+      throw new Error('The student or the cookie changed');
+    }
+    return {
+      userId,
+      items: page.nodes.flatMap((node) => rowFromPerson(node, wanted, reader.origin) ?? []),
+      count: page.count,
+      total: page.total,
+      hasNext: page.hasNext,
+    };
+  }
+
   async function announcementRangeRead(
     request: Omit<AnnouncementRangeMessage, 'type'>,
     origin: string | null,
@@ -3511,6 +3575,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     announcement,
     announcementPage,
     announcementRange: announcementRangeRead,
+    peoplePage,
     markDashboardAnnouncement,
     announcementFeed,
     viewerRead,

@@ -195,6 +195,41 @@ export interface AnnouncementPage {
   hasNext: boolean;
 }
 
+/** What the People page asks for: the people who teach the signed-in student. */
+export interface PeoplePageRequest {
+  /** The courses to list, from the session, never from a page. At least one. */
+  courseIds: readonly string[];
+  role: 'all' | 'teacher' | 'ta';
+  /** How many rows of the filtered set to skip. */
+  offset: number;
+  first: number;
+}
+
+/** One enrollment of a person, with the text as Canvas sent it. */
+export interface PeopleEnrollmentNode {
+  courseId: string;
+  courseName: string;
+  /** `TeacherEnrollment` or `TaEnrollment`. */
+  type: string;
+}
+
+/** One row of the People query, with the text as Canvas sent it. */
+export interface PeoplePageNode {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  enrollments: PeopleEnrollmentNode[];
+}
+
+export interface PeoplePage {
+  nodes: PeoplePageNode[];
+  /** How many rows the connection held, also those that were skipped. */
+  count: number;
+  /** Canvas's `totalCount` of the filtered set, or `null`. */
+  total: number | null;
+  hasNext: boolean;
+}
+
 export interface Group {
   id: string;
   name: string;
@@ -413,6 +448,8 @@ export interface CanvasApi {
   setAnnouncementRead(courseId: string, topicId: string, read: boolean): Promise<void>;
   /** One page of the signed-in student's announcements, read as the widget of Canvas reads them. */
   listAnnouncementPage(request: AnnouncementPageRequest): Promise<AnnouncementPage>;
+  /** One page of the people who teach the student, as the People widget of Canvas reads them. */
+  listPeoplePage(request: PeoplePageRequest): Promise<PeoplePage>;
 }
 
 export interface WidgetGradePreferences {

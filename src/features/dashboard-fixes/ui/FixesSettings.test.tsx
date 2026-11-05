@@ -14,6 +14,7 @@ const LABELS: readonly [keyof DashboardFixesSettings, string][] = [
   ['announcementsInPlace', 'Announcements in place'],
   ['allCourseGrades', 'All course grades'],
   ['steadyPager', 'Steady page buttons'],
+  ['peopleList', 'People list'],
 ];
 
 function setup(tools: ToolsSettings = DEFAULT_TOOLS_SETTINGS) {
@@ -38,10 +39,10 @@ describe('FixesSettings', () => {
     ).toBeTruthy();
   });
 
-  it('shows three switches with the labels of the fixes', () => {
+  it('shows four switches with the labels of the fixes', () => {
     setup();
 
-    expect(screen.getAllByRole('switch')).toHaveLength(3);
+    expect(screen.getAllByRole('switch')).toHaveLength(4);
     for (const [, label] of LABELS) expect(switchOf(label)).toBeTruthy();
   });
 
@@ -67,6 +68,7 @@ describe('FixesSettings', () => {
         announcementsInPlace: true,
         allCourseGrades: false,
         steadyPager: true,
+        peopleList: true,
       },
       assignmentView: true,
     });
@@ -100,6 +102,7 @@ describe('FixesSettings', () => {
         announcementsInPlace: false,
         allCourseGrades: false,
         steadyPager: false,
+        peopleList: false,
       },
       assignmentView: true,
     };

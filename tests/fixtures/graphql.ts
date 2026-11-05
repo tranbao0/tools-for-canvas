@@ -121,3 +121,63 @@ export function announcementPageAnswer(
     },
   };
 }
+
+/** One person that the People query can list, with what the fake needs to answer it. */
+export interface WidgetPersonRow {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  enrollments: { courseId: string; type: 'TeacherEnrollment' | 'TaEnrollment' }[];
+}
+
+/**
+ * The answer of Canvas to the People query of the widget (`WeekrowPeople`), in the raw GraphQL
+ * shape: `courseInstructorsConnection` with `nodes` and `pageInfo`. It applies the arguments as
+ * `query_type.rb` does: only the courses of `courseIds` that `courseName` knows (an empty list
+ * means every one of them), only the enrollment types asked for, and a person once with the
+ * enrollments that are left. `after` is an offset in base64 text.
+ */
+export function peoplePageAnswer(
+  postData: string | null,
+  rows: readonly WidgetPersonRow[],
+  courseName: (courseId: string) => string | null,
+): unknown {
+  const body: unknown = JSON.parse(postData ?? 'null');
+  const variables =
+    typeof body === 'object' && body !== null && 'variables' in body
+      ? (body.variables as Record<string, unknown>)
+      : {};
+  const first = Math.min(Number(variables['first'] ?? 5), 100);
+  const offset = typeof variables['after'] === 'string' ? Number(atob(variables['after'])) : 0;
+  const ids = Array.isArray(variables['courseIds']) ? variables['courseIds'].map(String) : [];
+  const types = Array.isArray(variables['enrollmentTypes'])
+    ? variables['enrollmentTypes'].map(String)
+    : null;
+  const filtered = rows.flatMap((row) => {
+    const enrollments = row.enrollments.filter(
+      (enrollment) =>
+        courseName(enrollment.courseId) !== null &&
+        (ids.length === 0 || ids.includes(enrollment.courseId)) &&
+        (types === null || types.includes(enrollment.type)),
+    );
+    return enrollments.length === 0 ? [] : [{ ...row, enrollments }];
+  });
+  const page = filtered.slice(offset, offset + first);
+  return {
+    data: {
+      courseInstructorsConnection: {
+        nodes: page.map((row) => ({
+          user: { _id: row.id, name: row.name, avatarUrl: row.avatarUrl },
+          enrollments: row.enrollments.map((enrollment) => ({
+            course: { _id: enrollment.courseId, name: courseName(enrollment.courseId) },
+            type: enrollment.type,
+          })),
+        })),
+        pageInfo: {
+          hasNextPage: offset + first < filtered.length,
+          totalCount: filtered.length,
+        },
+      },
+    },
+  };
+}
