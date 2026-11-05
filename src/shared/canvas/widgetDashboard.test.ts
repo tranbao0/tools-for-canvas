@@ -2,8 +2,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   findAnnouncementsWidgets,
-  findCourseWorkIcons,
-  findCourseWorkWidgets,
   findCourseWorkSlot,
   findGradeWidgets,
   expectsWidgetDashboard,
@@ -11,7 +9,7 @@ import {
   inEditMode,
   isDarkWidget,
 } from './widgetDashboard';
-import { drawDashboard, ORIGIN } from '../../features/dashboard-fixes/inpage/testing/dashboard';
+import { drawDashboard } from '../../features/dashboard-fixes/inpage/testing/dashboard';
 
 beforeEach(() => drawDashboard());
 
@@ -19,58 +17,6 @@ describe('the grid', () => {
   it('finds the columns and the edit mode', () => {
     expect(findWidgetGrid(document)?.canvasColumns).toHaveLength(2);
     expect(inEditMode(document)).toBe(false);
-  });
-});
-
-describe('Course work', () => {
-  it('finds each icon box with the course of the link of its item', () => {
-    const icons = findCourseWorkIcons(document, ORIGIN);
-    expect(icons.map((icon) => icon.courseId)).toEqual(['101', '101', '102', '103', '104', '103']);
-    expect(icons[0]?.box.querySelector('svg')?.getAttribute('data-testid')).toBe('quiz-icon');
-  });
-
-  it('reads a course id from an absolute link too, and skips an item with no course link', () => {
-    document
-      .querySelector('a[data-testid="course-work-item-link-1012"]')
-      ?.setAttribute('href', `${ORIGIN}/courses/104~12/assignments/1`);
-    document
-      .querySelector('a[data-testid="course-work-item-link-1004"]')
-      ?.setAttribute('href', '/about');
-    const ids = findCourseWorkIcons(document, ORIGIN).map((icon) => icon.courseId);
-    expect(ids[0]).toBe('104~12');
-    expect(ids).toHaveLength(5);
-  });
-
-  it('finds the widget with its filters, and reads the labels of the two inputs', () => {
-    const [widget] = findCourseWorkWidgets(document);
-    expect(widget?.status).toBe('not_submitted');
-    expect(widget?.courseLabel).toBe('All Courses');
-    expect(widget?.hasStatistics).toBe(true);
-    expect(widget?.after.tagName).toBe('UL');
-    const status = document.querySelector<HTMLInputElement>(
-      '[data-testid="submission-status-filter-select"]',
-    );
-    status!.value = 'Missing';
-    expect(findCourseWorkWidgets(document)[0]?.status).toBe('missing');
-    status!.value = 'Submitted';
-    expect(findCourseWorkWidgets(document)[0]?.status).toBe('submitted');
-    status!.value = 'Pas remis';
-    expect(findCourseWorkWidgets(document)[0]?.status).toBe('not_submitted');
-  });
-
-  it('ignores the summary widget, which has the filters and the cards and no list', () => {
-    document.querySelector('[data-testid^="listed-course-work-item-"]')?.closest('ul')?.remove();
-    expect(findCourseWorkWidgets(document)).toHaveLength(0);
-  });
-
-  it('finds the widget with an empty list through its message', () => {
-    const list = document.querySelector('ul.fx-unstyled');
-    const holder = document.createElement('div');
-    const message = document.createElement('span');
-    message.setAttribute('data-testid', 'no-course-work-message');
-    holder.append(message);
-    list?.replaceWith(holder);
-    expect(findCourseWorkWidgets(document)[0]?.after).toBe(holder);
   });
 });
 

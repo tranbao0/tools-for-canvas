@@ -11,9 +11,7 @@ import { FixesSettings } from './FixesSettings';
 afterEach(cleanup);
 
 const LABELS: readonly [keyof DashboardFixesSettings, string][] = [
-  ['courseColors', 'Course colors on Course work icons'],
   ['announcementsInPlace', 'Announcements in place'],
-  ['courseWorkExtras', 'Course work extras'],
   ['allCourseGrades', 'All course grades'],
   ['steadyPager', 'Steady page buttons'],
 ];
@@ -40,10 +38,10 @@ describe('FixesSettings', () => {
     ).toBeTruthy();
   });
 
-  it('shows four switches with the labels of the fixes', () => {
+  it('shows three switches with the labels of the fixes', () => {
     setup();
 
-    expect(screen.getAllByRole('switch')).toHaveLength(5);
+    expect(screen.getAllByRole('switch')).toHaveLength(3);
     for (const [, label] of LABELS) expect(switchOf(label)).toBeTruthy();
   });
 
@@ -66,19 +64,15 @@ describe('FixesSettings', () => {
       fileViewerWidth: 480,
       weeklyDockWidth: 360,
       dashboardFixes: {
-        courseColors: false,
         announcementsInPlace: true,
-        courseWorkExtras: false,
-        allCourseGrades: true,
+        allCourseGrades: false,
         steadyPager: true,
       },
       assignmentView: true,
     });
 
-    expect(switchOf('Course colors on Course work icons').checked).toBe(false);
     expect(switchOf('Announcements in place').checked).toBe(true);
-    expect(switchOf('Course work extras').checked).toBe(false);
-    expect(switchOf('All course grades').checked).toBe(true);
+    expect(switchOf('All course grades').checked).toBe(false);
     expect(switchOf('Steady page buttons').checked).toBe(true);
   });
 
@@ -103,9 +97,7 @@ describe('FixesSettings', () => {
       fileViewerWidth: 480,
       weeklyDockWidth: 360,
       dashboardFixes: {
-        courseColors: false,
         announcementsInPlace: false,
-        courseWorkExtras: false,
         allCourseGrades: false,
         steadyPager: false,
       },
@@ -128,7 +120,7 @@ describe('FixesSettings', () => {
     const tools: ToolsSettings = structuredClone(DEFAULT_TOOLS_SETTINGS);
     const { onChange } = setup(tools);
 
-    fireEvent.click(switchOf('Course work extras'));
+    fireEvent.click(switchOf('All course grades'));
 
     expect(tools).toEqual(DEFAULT_TOOLS_SETTINGS);
     expect(onChange.mock.calls[0]?.[0]).not.toBe(tools);

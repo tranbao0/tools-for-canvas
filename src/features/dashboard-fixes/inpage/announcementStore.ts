@@ -138,6 +138,12 @@ export function createAnnouncementStore(options: StoreOptions) {
   const waiting = new Set<ListState>();
   /** The rows with a mark on its way, by key, and how many marks each has. */
   const pendingRows = new Map<string, number>();
+  /**
+   * The read state that Canvas last confirmed for each row with a mark on its way, by key. The
+   * row on screen shows the state that the newest mark asked for, so a refused mark puts back
+   * this state and not the state that the row showed when the mark began.
+   */
+  const confirmed = new Map<string, boolean>();
   /** The lists that left a filter with a row of the set kept for a mark that was on its way. */
   const unpruned = new Set<ListState>();
 
@@ -243,9 +249,10 @@ export function createAnnouncementStore(options: StoreOptions) {
 
   /**
    * Takes the rows out of a list that a mark took out of its set, except a row whose mark is still
-   * on its way: Canvas may refuse that mark, and the row must be there to go back. The list is
-   * pruned again when the marks settle. The offset counts only the rows of the set, so it does not
-   * change.
+   * on its way: Canvas may refuse that mark, and the row must be there to go back. A list that
+   * holds such a row stays unpruned, whether the row is in the set or not, because a refused mark
+   * can put the row on the other side. The list is pruned again when the marks settle. The offset
+   * counts only the rows of the set, so it does not change.
    */
   function prune(state: ListState): void {
     const keep = (row: AnnRow): boolean =>
@@ -254,8 +261,11 @@ export function createAnnouncementStore(options: StoreOptions) {
       state.items = state.items.filter(keep);
       changed();
     }
-    if (state.items.every((row) => inFilter(row.read, state.read))) unpruned.delete(state);
-    else unpruned.add(state);
+    if (
+      state.items.every((row) => inFilter(row.read, state.read) && !pendingRows.has(rowKey(row)))
+    ) {
+      unpruned.delete(state);
+    } else unpruned.add(state);
   }
 
   /** The student leaves a filter, so the list is as the server holds it when the student returns. */
@@ -307,6 +317,7 @@ export function createAnnouncementStore(options: StoreOptions) {
       if (state.key !== currentKey || missesRow(state, key, previous, read)) forget(state);
     }
     pendingMarks += 1;
+    if (!pendingRows.has(key)) confirmed.set(key, previous);
     pendingRows.set(key, (pendingRows.get(key) ?? 0) + 1);
     markEpoch += 1;
     changed();
@@ -323,16 +334,21 @@ export function createAnnouncementStore(options: StoreOptions) {
     } catch (error) {
       options.log('announcement mark', error);
     }
-    if (!ok) {
-      setRead(key, previous);
+    if (ok) confirmed.set(key, read);
+    const marks = (pendingRows.get(key) ?? 1) - 1;
+    if (marks > 0) {
+      pendingRows.set(key, marks);
+    } else {
+      // The last mark of the row settled, so the row shows the state that Canvas confirmed.
+      const settled = confirmed.get(key) ?? previous;
+      setRead(key, settled);
       // The forgotten lists are not brought back: they load again from the server.
       for (const state of [...lists.values()]) {
-        if (missesRow(state, key, read, previous)) forget(state);
+        if (!ok && missesRow(state, key, read, settled)) forget(state);
       }
+      pendingRows.delete(key);
+      confirmed.delete(key);
     }
-    const marks = (pendingRows.get(key) ?? 1) - 1;
-    if (marks > 0) pendingRows.set(key, marks);
-    else pendingRows.delete(key);
     pendingMarks -= 1;
     markEpoch += 1;
     for (const state of [...unpruned]) prune(state);

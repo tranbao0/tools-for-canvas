@@ -24,9 +24,7 @@ const ANNOUNCEMENTS = 'widget-announcements-widget';
 const GRADES = 'widget-course-grades-widget';
 const COURSE_WORK = 'widget-course-work-combined-widget';
 const OFF: DashboardFixesSettings = {
-  courseColors: false,
   announcementsInPlace: false,
-  courseWorkExtras: false,
   allCourseGrades: false,
   steadyPager: false,
 };
@@ -736,8 +734,7 @@ test('stops writing to the page when nothing changes', async ({ context, page, b
   await expect(page.locator('[data-wr-list]').first().locator('article').first()).toBeAttached({
     timeout: 20_000,
   });
-  await expect(page.locator('[data-wr-extra]')).toBeAttached({ timeout: 20_000 });
-  await expect(page.locator('[data-wr-cc]').first()).toBeAttached({ timeout: 20_000 });
+  await expect(page.locator('[data-wr-grades]').first()).toBeAttached({ timeout: 20_000 });
   await pageQuiet(page, 6, 400);
   const records = await page.evaluate(
     () =>

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import type { DataMessage } from '../../weekly-list/data/protocol';
 import { DEFAULT_TOOLS_SETTINGS, type ToolsSettings } from '../../../shared/settings/tools';
 import { startDashboardFixes, type FixesChannel } from './start';
-import { dashboardData, drawDashboard, extra, ORIGIN } from './testing/dashboard';
+import { dashboardData, drawDashboard, ORIGIN } from './testing/dashboard';
 
 interface Fake extends FixesChannel {
   setOrigin(origin: string | null): void;
@@ -33,9 +33,7 @@ function fakeChannel(saved: string | null = ORIGIN): Fake {
         return () => undefined;
       },
     },
-    send: vi.fn<(message: DataMessage) => Promise<unknown>>(async () =>
-      dashboardData([extra({ key: 'u', title: 'Undated work' })]),
-    ),
+    send: vi.fn<(message: DataMessage) => Promise<unknown>>(async () => dashboardData()),
     watchChanges: (listener) => {
       changeListener = listener;
       return () => undefined;
@@ -66,7 +64,7 @@ describe('startDashboardFixes', () => {
   it('runs the fixes on the dashboard of the saved Canvas', async () => {
     const controller = await startDashboardFixes(options(fakeChannel()));
     await vi.advanceTimersByTimeAsync(120);
-    expect(document.querySelector('[data-wr-extra]')).not.toBeNull();
+    expect(document.querySelector('[data-wr-card]')).not.toBeNull();
     controller.stop();
     expect(document.querySelector('[data-wr-own]')).toBeNull();
   });
@@ -97,7 +95,7 @@ describe('startDashboardFixes', () => {
     expect(channel.send).not.toHaveBeenCalled();
     channel.setOrigin(ORIGIN);
     await vi.advanceTimersByTimeAsync(120);
-    expect(document.querySelector('[data-wr-extra]')).not.toBeNull();
+    expect(document.querySelector('[data-wr-card]')).not.toBeNull();
     channel.setOrigin('https://other.instructure.com');
     await vi.advanceTimersByTimeAsync(120);
     expect(document.querySelector('[data-wr-own]')).toBeNull();
@@ -112,11 +110,11 @@ describe('startDashboardFixes', () => {
       fileViewer: true,
       fileViewerWidth: 480,
       weeklyDockWidth: 360,
-      dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseWorkExtras: false },
+      dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, allCourseGrades: false },
       assignmentView: true,
     });
     await vi.advanceTimersByTimeAsync(120);
-    expect(document.querySelector('[data-wr-extra]')).toBeNull();
+    expect(document.querySelector('[data-wr-card]')).toBeNull();
     // The announcements list asks for its own pages besides, so only the data requests count.
     const dataCalls = () =>
       channel.send.mock.calls.filter(

@@ -31,9 +31,7 @@ beforeEach(() => {
     isRead(message)
       ? {
           origin: ORIGIN,
-          ready: false,
           courses: [],
-          extras: [],
           userId: student,
           gradeVisibilities: { [WIDGET]: { ...stored } },
         }
@@ -63,9 +61,7 @@ it('A: fallback reply without userId (failed user check) then normal reply', asy
   await hide103AndLeave();
   send.mockImplementationOnce(async () => ({
     origin: ORIGIN,
-    ready: false,
     courses: [],
-    extras: [],
   }));
   engine.reload();
   await settle();
@@ -122,9 +118,7 @@ it('F: a read that ends with no result runs again when the data changes', async 
     isRead(message)
       ? {
           origin: ORIGIN,
-          ready: false,
           courses: [],
-          extras: [],
           userId: '5',
           gradeVisibilities: failing ? null : { [WIDGET]: {} },
         }

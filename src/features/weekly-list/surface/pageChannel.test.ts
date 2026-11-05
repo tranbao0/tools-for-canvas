@@ -10,7 +10,7 @@ const COLORS_OFF: ToolsSettings = {
   fileViewer: true,
   fileViewerWidth: 480,
   weeklyDockWidth: 360,
-  dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
+  dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, steadyPager: false },
   assignmentView: true,
 };
 
@@ -120,10 +120,10 @@ describe('the tools of the page', () => {
   it('give a copy of the defaults, so a caller cannot change them', async () => {
     const { channel } = setup();
     const first = await channel.tools.getValue();
-    first.dashboardFixes.courseColors = false;
+    first.dashboardFixes.steadyPager = false;
 
-    expect((await channel.tools.getValue()).dashboardFixes.courseColors).toBe(true);
-    expect(DEFAULT_TOOLS_SETTINGS.dashboardFixes.courseColors).toBe(true);
+    expect((await channel.tools.getValue()).dashboardFixes.steadyPager).toBe(true);
+    expect(DEFAULT_TOOLS_SETTINGS.dashboardFixes.steadyPager).toBe(true);
   });
 
   it('keep the last tools while the page is not the saved Canvas', async () => {
