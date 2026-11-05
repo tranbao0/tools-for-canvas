@@ -583,57 +583,77 @@ A store build or a build from `npm run build` does not.
 - Repeat the restore check in Firefox.
   Expect the saved page.
 
-## One assignment view, steps 1 and 2
+## One assignment view, Submission Details page
 
-These steps need a student account with a course that has: a graded assignment with a rubric, a teacher comment with a file, a student comment, and a submitted file; an assignment with no rubric and no submission; an assignment whose instructions are longer than 10 lines; and an assignment that is handed in outside Canvas (Gradescope or on paper).
-Run them on the Grades page of the course (`/courses/:id/grades`).
+These steps need a student account with a course that has: a graded assignment with a file upload, a rubric, a teacher comment with a file and a student comment; an assignment with a text entry; an assignment whose instructions are longer than 15 lines; an assignment of another type (a quiz, a graded discussion or an LTI tool) with a submission; and an assignment that is handed in outside Canvas (Gradescope or on paper).
+Run steps 1 to 11 on the Submission Details page of your own submission (`/courses/:id/assignments/:id/submissions/:user`).
+Step 12 runs on the assignment page.
+The Assignments list and its pane have their own steps below.
 
-1. Look at the assignment rows.
-   Expect: each assignment row has a small chevron button before its title, and the group totals and the final grade row have none.
-   Expect: the columns keep their width, and the title link, the score and the Rubric and Comments links look as before.
+1. Open the Submission Details page of the graded assignment with a file upload.
+   Expect: Canvas's "Files" table and its comments column are gone.
+   Expect: a "Submission" box stands right of the content, with the status line "Submitted!", the date in the form of Canvas ("Oct 15 at 8:59pm") in the time zone of your Canvas profile, the file, and "Comments:".
+   Expect: the title, the "Submission Details" header and the grade look as before.
    Open the network tab of the browser's developer tools.
-   Expect: the extension sent no request to `/api/v1/courses/:id/assignments/:id` yet.
-2. Click the chevron of the graded assignment.
-   Expect: a row opens under it, with "Loading details" for a moment, then the due date and the score, the instructions, the rubric, the comments, "Your files" and "Open assignment".
-   Compare the due date, the score, the rubric assessment (the rating that Canvas marks as yours, and your points) and the comments with the submission details page of Canvas.
-   Expect: the dates are in the time zone of your Canvas profile, and the comments are newest first.
-   Post a comment on a test assignment with the text `Use <title> & <b>bold</b>`, a blank line and a second line.
-   Expect: the comment shows the same text and the same line break as Canvas shows.
-   If it loses the angle-bracket text, Canvas does not escape that field, and the comment text needs plain-text handling.
    Expect: two requests went out: the assignment with `include[]=submission`, and `submissions/self` with no include.
-3. Look at the chips of an assignment that is missing, past due, extended or excused, and of the assignment that is handed in outside Canvas.
-   Expect: the chips are the ones of the weekly list for the same assignment, such as "Missing" in red, "Past due", "Extended", "Excused" and "Can't confirm: Gradescope".
-4. Open the assignment whose instructions are longer than 10 lines.
-   Expect: the text stops at about 10 lines with a fade, and "Show more" shows.
+2. Look at the content area.
+   Expect: "Instructions" shows the description of the assignment, and there is no "Your files" section.
+   Open the assignment whose instructions are longer than 15 lines.
+   Expect: the text stops at about 15 lines with a fade, and "Show more" shows.
    Click "Show more".
    Expect: the whole text shows and the button reads "Show less".
    Open an assignment with short instructions.
    Expect: it has no "Show more".
-5. Click the name of a submitted file in "Your files".
-   Expect: the file opens in the file pane beside the page, and the Grades page stays.
+3. Open the assignment with a rubric.
+   Expect: the rubric of Canvas shows under the instructions, and the "Show Rubric" link of the header and its unread mark are gone.
+   Compare the ratings that Canvas marks as yours and your points with the rubric assessment that Canvas shows.
+4. Click "View NAME" of the submitted file.
+   Expect: the file opens in the file pane beside the page, and the page stays.
+   Turn off the file viewer in the settings.
+   Expect: the link says "Download NAME", and a click downloads the file.
+   Turn the file viewer on again without a reload.
+   Expect: the link says "View NAME" again.
+5. Look at the line under the file link.
+   Expect: it shows the size, the similarity score if there is one, and "View Feedback" (or "Preview" when the teacher left no notes) with the unread dot of Canvas.
+   Click "View Feedback".
+   Expect: a feedback pane docks on the right with the DocViewer page of Canvas.
+   Click the similarity score.
+   Expect: the report opens in a new tab.
+6. Post a comment with the text `Use <title> & <b>bold</b>`, a blank line and a second line.
+   Expect: the comment shows the same text and the same line break as Canvas shows.
+   If it loses the angle-bracket text, Canvas does not escape that field, and the comment text needs plain-text handling.
+   Expect: Save, Attach File, Media Comment and the emoji picker of Canvas work in the box.
    Click the name of a file in a teacher comment.
    Expect: the file keeps its download, as decision 26 describes for comment attachments.
-6. Open two assignments, then click the chevron of the first one again.
-   Expect: the first row closes, the second stays open, and the first opens again at once with no new request.
-7. Click the title link, then use Back.
-   Expect: the title link goes to the page that Canvas links.
-   Click "Rubric" and "Comments" of Canvas on an open row.
-   Expect: Canvas opens its own rubric and comment rows, and the extension rows stay where they are.
-   If Canvas shows its own rows in a different place than before, Canvas finds them by their position and the rows of the extension must move.
-8. Make the Canvas request fail, for example with the browser set to offline, and open another row.
-   Expect: the row shows "Can't load the details." with "Retry".
-   Go online and click "Retry".
-   Expect: the details show.
-9. Turn off "One assignment view" in the settings.
-   Expect: every chevron and open row on the open Grades page goes at once.
-   Turn it on again without reloading the Grades page.
-   Expect: the chevrons are back.
-10. Sign out and sign in as another student on the same tab, then open the Grades page.
-    Expect: no row shows details of the first student.
-11. Repeat steps 2 and 5 in the light and the dark theme of the extension (Theme in the settings) and in a Canvas with a dark theme, at 1920 and 1280 px, in Chrome, Edge and Firefox.
-    Expect: the panel reads well, the text is not cut, and the colors follow the theme.
-12. Turn off the file viewer in the settings, then click the name of a submitted file.
-    Expect: Canvas handles the link, and no pane opens.
+7. Open the assignment with a text entry, and one with a URL submission.
+   Expect: "Your submission" shows the text, or the link, under the instructions.
+8. Open the Submission Details page of the quiz, the graded discussion or the LTI tool assignment.
+   Expect: Canvas's own left area and comments column stay where they were.
+   Expect: "Instructions" shows above the whole content area, and the box has only the status line and the date.
+   Open the assignment that is handed in outside Canvas.
+   Expect: no status line shows, unless the assignment is excused.
+9. Look at the title row.
+   Expect: Canvas's "Submit Assignment" or "Re-submit Assignment" button is hidden, and a button "Go to assignment" with the look of Canvas's own button stands beside it.
+   Click "Go to assignment".
+   Expect: the assignment page opens, and the upload form is not open by itself.
+10. Open the Submission Details page of another student (as a teacher or an observer), and sign out and sign in as another student on the same tab.
+    Expect: the page of another user stays exactly as Canvas draws it.
+    Expect: the page of the new student shows nothing of the first student.
+11. Make the Canvas request fail, for example with the browser set to offline, and open the page.
+    Expect: the page stays as Canvas draws it, with its files frame, and no error text shows.
+    Turn off "One assignment view" in the settings on an open page.
+    Expect: the page goes back at once to what Canvas drew, with the comments, the files frame and the button of Canvas.
+    Turn it on again without a reload.
+    Expect: the view is back.
+12. Open the assignment page of the assignment with a submitted file.
+    Expect: the "Submission" sidebar of Canvas keeps its links, and each file link shows a file icon and "View NAME".
+    Click the link.
+    Expect: the file opens in the file pane.
+    Expect: the extension sent one request to `submissions/self` with no include, and none to the assignment record.
+    Turn off the file viewer in the settings.
+    Expect: Canvas's own "Download NAME" link is back.
+13. Repeat steps 1, 3 and 5 in the light and the dark theme of the extension (Theme in the settings) and in a Canvas with a dark theme, at 1920 and 1280 px, in Chrome, Edge and Firefox.
+    Expect: the box reads well, the text is not cut, and the colors follow the theme.
 
 
 ### Assignments list
