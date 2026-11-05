@@ -79,7 +79,7 @@ None of the page scripts can read or write the storage of the extension: the bac
 
 ## What the extension writes
 
-The extension writes only to your own Canvas, and only when you ask it to:
+The extension writes only to your own Canvas, and only for something that you do or open:
 
 - a done mark when you check an item off, or remove it when you uncheck the item;
 - a skip mark when you skip an item, or remove it when you unskip the item;

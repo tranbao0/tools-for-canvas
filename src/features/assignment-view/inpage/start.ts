@@ -39,7 +39,7 @@ const SUBMISSION_PATH =
 interface PaneControl {
   setWidth(width: number): void;
   refreshTheme(): void;
-  /** Removes the frame, for example when the student switched. */
+  /** Removes every frame, for example when the student switched. */
   reset(): void;
   stop(): void;
 }

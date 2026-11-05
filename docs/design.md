@@ -2952,10 +2952,10 @@ With the pane read alone, the default run of the test failed before the fix.
       The catcher never takes one, because it passes only a file id, which the pane reads through the files API (`frameFileTarget`).
       The catcher stays off unless its own path is a submission details page and the top frame is of the same origin.
     - **The frame of the assignment pane.**
-      The assignment pane of the Assignments list (decision 26, step 3) holds a Canvas page in a same-origin frame, and a file link in it must open in the file pane too.
+      The assignment pane of the Assignments list (decision 26, step 3) holds a Canvas page in a same-origin frame for each assignment that the student previewed, and a file link in any of them must open in the file pane too.
       The catcher serves this frame as well, in a second mode.
       - The mode needs all of these: the top frame is a same-origin Assignments list of a course (`/courses/:id/assignments`), the frame is a direct child of the top frame, its path is a page of the same course (`/courses/:id` or any path under it, with the ids compared as decimal global ids), and its address has `content_only=1`.
-        The pane loads its frame with that parameter, and it loads every other page of the course that the frame reaches (a graded discussion, a quiz or a page) with the parameter too (decision 26, "Frame").
+        The pane loads its frame with that parameter, and it loads every other page of the course that the frame reaches (a graded discussion, a quiz or a page) with the parameter too (decision 26, "Frames").
         A page that has the parameter but no course of the list, and a page of the course without the parameter, get no catcher.
       - The catcher takes the links that the top frame takes, for a file id only (`paneFileTarget`): a plain `/files/:id`, a `?preview=:id` of the files page, and a submission route with `?download=:id`.
         It never takes a comment attachment, a module item, a link of another origin, or a link with a `download` attribute except the student's own submission files in the Submission box (`catchesDownload`).
