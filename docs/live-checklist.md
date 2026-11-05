@@ -516,6 +516,17 @@ Use Firefox first, and then Chrome and Edge.
     Expect: the PDF loads without a new click on the file.
     Do this step with a theme set to Dark in the settings once.
     Expect: the toolbar and the area around the pages are dark, and the pages stay white.
+56a. Open a PDF of a few pages, go to page 3, and click "Full view" in the tab row, before the close button.
+    Expect: the pane fills the browser page with a gap of 12 px, the button says "Exit full view", and the Canvas page behind does not move.
+    Expect: the PDF stays on page 3 and draws again only for its new size, with no new bar.
+    With "Fit width", expect the pages to follow the new width.
+    With 150%, expect the pages to keep their size.
+    Press Escape.
+    Expect: full view ends and the pane stays open.
+    Click "Full view" and the close button.
+    Expect: the pane closes, and the next file opens in its place.
+    Use a split screen or a second monitor once, and make the window narrower than 900 px.
+    Expect: the pane covers the page and has no "Full view" button.
 
 ### Store listings
 
@@ -652,7 +663,9 @@ The Assignments list and its pane have their own steps below.
 5. Look at the line under the file link.
    Expect: it shows the size, the similarity score if there is one, and "View Feedback" (or "Preview" when the teacher left no notes) with the unread dot of Canvas.
    Click "View Feedback".
-   Expect: a feedback pane docks on the right with the DocViewer page of Canvas.
+   Expect: a feedback pane docks on the right as a card, with the DocViewer page of Canvas, and a header with the file name, "Full view", "Open in new tab" and a close button.
+   Click "Full view".
+   Expect: the pane fills the browser page with a gap of 12 px, and DocViewer keeps its place in the document.
    Click the similarity score.
    Expect: the report opens in a new tab.
 6. Post a comment with the text `Use <title> & <b>bold</b>`, a blank line and a second line.
@@ -705,7 +718,8 @@ Run them on `/courses/:id/assignments`.
 2. Move the mouse over a row.
    Expect: the row has the light blue background of Canvas, and the button has a border and text in the link color.
 3. Click "Preview" on one row.
-   Expect: a pane opens on the right with the title of the assignment, "Open in new tab" and a close button, and Canvas's own assignment page shows in it with a margin on the left and the right.
+   Expect: a card pane opens on the right, with a gap of 12 px above, below and to the right of it, round corners and a soft shadow.
+   Expect: its header has the title in bold, a second line with the due text and the points of the row, then "Full view", "Open in new tab" and a close button, and Canvas's own assignment page shows below it with room around it.
    Expect: the row has a soft blue background with a bar of the school color at its left edge, and its button is filled with the school color.
    Expect: the page narrows beside the pane, and the pane has no header, menu or breadcrumbs of Canvas.
 4. Click "Preview" on another row.
@@ -752,6 +766,25 @@ Run them on `/courses/:id/assignments`.
     Switch to another student in a second tab (sign out and sign in there), because a sign-in on the same tab reloads the page.
     Then go back to the list tab and click "Preview" on the same assignment.
     Expect: the first pane closed at the switch with all its pages, and the new pane stays open for the new student.
+15. Open a pane, type text into a field of the assignment page, scroll the page of the pane, and click "Full view".
+    Expect: the pane fills the browser page with a gap of 12 px, the button says "Exit full view", the list behind does not move, and the row still shows its marks.
+    Expect: the page in the pane keeps the text and the scroll position, and it does not load again.
+    Click "Exit full view".
+    Expect: the pane and the page go back as they were, with the same text.
+    Click "Full view" again and press Escape.
+    Expect: full view ends and the pane stays open.
+    Press Escape again.
+    Expect: nothing changes, as before.
+16. Click "Full view", then click the name of a file in the page of the pane.
+    Expect: the file pane shows in full view too.
+    Close the file pane.
+    Expect: the assignment pane shows in full view again, with its text.
+    Click the close button of the assignment pane.
+    Expect: the pane closes, and the next pane starts in its place.
+17. Make the window narrower than 900 px, with a pane open.
+    Expect: the pane covers the page and has no "Full view" button.
+    Make the window wide again.
+    Expect: the button comes back.
 
 ## Firefox for Android
 
