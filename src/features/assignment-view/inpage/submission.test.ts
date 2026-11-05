@@ -10,7 +10,7 @@ import {
 import { submissionDetailsPage } from '../../../../tests/fixtures/submission-page';
 import type { AssignmentDetailsMessage, RubricReadMessage } from '../protocol';
 import type { FeedbackRequest } from './feedbackPane';
-import { removeStaleView } from './rows';
+import { removeStaleView } from './stale';
 import { createSubmissionView, type SubmissionView } from './submission';
 
 const ORIGIN = 'https://school.instructure.com';

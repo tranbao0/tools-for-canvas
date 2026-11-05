@@ -101,12 +101,12 @@ const CALLERS: Caller[] = [
     name: 'the assignment view',
     reads: 3,
     draw() {
-      document.body.innerHTML = `<div class="ig-list"><div class="ig-row" id="assignment_101"><div class="ig-info"><a class="ig-title" href="${ORIGIN}/courses/12/assignments/101">Essay</a></div></div></div>`;
+      document.body.innerHTML = `<div class="ig-list"><div class="ig-row" id="assignment_101"><div class="ig-row__layout"><div class="ig-info"><a class="ig-title" href="${ORIGIN}/courses/12/assignments/101">Essay</a></div></div></div></div>`;
     },
     start: (channel) =>
       startAssignmentView({ channel, origin: ORIGIN, pathname: '/courses/12/assignments' }),
     other: () => undefined,
-    shown: () => document.querySelectorAll('[data-av-toggle]').length === 1,
+    shown: () => document.querySelectorAll('[data-av-preview]').length === 1,
     store: (on, saved) => ({ saved, tools: withTools({ assignmentView: on }) }),
   },
   {

@@ -51,14 +51,14 @@ import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
 import { sanitizeHtml } from '../../../shared/ui/sanitize';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { logFailure } from '../../../shared/platform/log';
-import type {
-  AssignmentDetailsMessage,
-  AssignmentDetailsReply,
-  RubricReadMessage,
+import {
+  isDetailsReply,
+  type AssignmentDetailsMessage,
+  type AssignmentDetailsReply,
+  type RubricReadMessage,
 } from '../protocol';
 import { renderInstructions } from '../render';
 import { COMMENTS_CSS, findComments, takeComments } from './comments';
-import { isDetailsReply } from './details';
 import type { FeedbackRequest } from './feedbackPane';
 import { fitInstructions, toggleInstructions } from './instructions';
 import {

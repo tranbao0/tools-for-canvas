@@ -146,7 +146,8 @@ async function topFrameHost(host: ViewerHost, tabId: number, origin: string): Pr
   if (url === null) return null;
   try {
     const top = new URL(url);
-    return top.origin === origin && (isSubmissionPage(top.pathname) || isAssignmentsList(top.pathname))
+    return top.origin === origin &&
+      (isSubmissionPage(top.pathname) || isAssignmentsList(top.pathname))
       ? top
       : null;
   } catch {
@@ -185,7 +186,9 @@ async function openFromFrame(
   if (!isFileId(request['fileId'])) throw new Error('Invalid file id');
   const top = await topFrameHost(host, tabId, origin);
   if (top === null)
-    throw new Error('The tab does not show a submission page or the Assignments list of the saved Canvas');
+    throw new Error(
+      'The tab does not show a submission page or the Assignments list of the saved Canvas',
+    );
   if (!servesFrame(top, frame, origin))
     throw new Error('The frame is no frame that the page of the tab serves');
   return { opened: await host.openInTop(tabId, request['fileId']) };
@@ -292,7 +295,9 @@ export function routeViewerMessage(
         // Only the top frame of the saved Canvas asks, on a submission details page or the Assignments list.
         if (fromPane || tabId === undefined) throw new Error('Only the page script may ask');
         if ((await topFrameHost(host, tabId, origin)) === null)
-          throw new Error('The tab does not show a submission page or the Assignments list of the saved Canvas');
+          throw new Error(
+            'The tab does not show a submission page or the Assignments list of the saved Canvas',
+          );
         await host.injectFrames(tabId, origin);
         return { ok: true };
       }

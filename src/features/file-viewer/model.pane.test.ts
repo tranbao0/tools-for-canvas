@@ -34,9 +34,9 @@ describe('isPaneFramePage', () => {
     expect(isPaneFramePage(list, '/courses/12', '?content_only=1')).toBe(true);
   });
   it('compares shard ids as decimal global ids', () => {
-    expect(isPaneFramePage('/courses/12/assignments', '/courses/12/pages/a', '?content_only=1')).toBe(
-      true,
-    );
+    expect(
+      isPaneFramePage('/courses/12/assignments', '/courses/12/pages/a', '?content_only=1'),
+    ).toBe(true);
     expect(
       isPaneFramePage(
         '/courses/5~120/assignments',
@@ -52,8 +52,18 @@ describe('isPaneFramePage', () => {
     ['of another course', list, '/courses/13/assignments/101', '?content_only=1'],
     ['of no course', list, '/files/4', '?content_only=1'],
     ['with an id that is no id', list, '/courses/12x/assignments/101', '?content_only=1'],
-    ['under a top page that is no list', '/courses/12/modules', '/courses/12/pages/a', '?content_only=1'],
-    ['under an assignment page', '/courses/12/assignments/101', '/courses/12/pages/a', '?content_only=1'],
+    [
+      'under a top page that is no list',
+      '/courses/12/modules',
+      '/courses/12/pages/a',
+      '?content_only=1',
+    ],
+    [
+      'under an assignment page',
+      '/courses/12/assignments/101',
+      '/courses/12/pages/a',
+      '?content_only=1',
+    ],
   ])('refuses a page %s', (_name, top, frame, search) => {
     expect(isPaneFramePage(top, frame, search)).toBe(false);
   });
@@ -99,7 +109,12 @@ describe('paneFileTarget', () => {
       paneFileTarget(mine, `${ORIGIN}${PAGE}/submissions/7?download=45`, ORIGIN, PAGE),
     ).toEqual({ fileId: '45' });
     expect(
-      paneFileTarget(mine, `${ORIGIN}${PAGE}/submissions/7?download=45`, ORIGIN, '/courses/12/pages/a'),
+      paneFileTarget(
+        mine,
+        `${ORIGIN}${PAGE}/submissions/7?download=45`,
+        ORIGIN,
+        '/courses/12/pages/a',
+      ),
     ).toBeNull();
   });
 });

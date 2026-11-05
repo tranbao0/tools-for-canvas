@@ -17,7 +17,7 @@
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { logFailure } from '../../../shared/platform/log';
 import { isOwnerReply, type AssignmentOwnerMessage } from '../protocol';
-import { ORIGINAL, OWN } from './rows';
+import { ORIGINAL, OWN } from './own';
 
 const BOX = '#sidebar_content .details .content';
 const ID = '\\d+(?:~\\d+)?';

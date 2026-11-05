@@ -147,6 +147,17 @@ export interface AssignmentDetailsReply {
   timeZone: string;
 }
 
+/** Whether a background reply has the parts that the view reads. */
+export function isDetailsReply(value: unknown): value is AssignmentDetailsReply {
+  if (typeof value !== 'object' || value === null) return false;
+  const { details, timeZone } = value as Partial<AssignmentDetailsReply>;
+  return (
+    typeof timeZone === 'string' &&
+    typeof details?.assignment?.id === 'string' &&
+    typeof details.submission?.user_id === 'string'
+  );
+}
+
 /** A submission that the current viewer cannot read. */
 export interface NoSubmissionAccess {
   kind: 'no_submission_access';
