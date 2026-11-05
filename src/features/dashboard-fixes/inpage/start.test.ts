@@ -111,6 +111,7 @@ describe('startDashboardFixes', () => {
     channel.setTools({
       fileViewer: true,
       fileViewerWidth: 480,
+      weeklyDockWidth: 360,
       dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseWorkExtras: false },
       assignmentView: true,
     });

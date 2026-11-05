@@ -1,8 +1,8 @@
 /**
  * The dock on the right edge of a Canvas page (design decisions 25 and 26): a fixed host with a
  * closed shadow root, a resize handle on its left edge, and the right padding of the `html` element
- * that makes room for it. The file pane, the turn-in pane and the feedback pane all use it, so they
- * sit in the same place with the same width.
+ * that makes room for it. The file pane, the turn-in pane, the feedback pane and the weekly list all
+ * use it, so they sit in the same place with the same width.
  *
  * The panes run in separate scripts of the same isolated world. They share only the room
  * lease below, which keeps the page padding right when one pane hides while the other shows.
@@ -12,7 +12,7 @@ import { normalizeWidth } from './model';
 /** Below this window width the dock covers the page instead of making room beside it. */
 const NARROW_PX = 900;
 
-export type DockRole = 'file' | 'turn-in' | 'feedback';
+export type DockRole = 'file' | 'turn-in' | 'feedback' | 'weekly';
 
 export interface DockOptions {
   role: DockRole;
@@ -75,8 +75,17 @@ export const ROOM_ATTRIBUTE = 'data-weekrow-room';
 /** The id of the host of the file pane. */
 export const FILE_HOST_ID = 'tools-file-viewer';
 
-/** The ids of the hosts of the three panes. */
-const HOST_IDS = [FILE_HOST_ID, 'tools-turn-in', 'tools-feedback'];
+/** The id of the host of the weekly list dock on the classic dashboard. */
+export const WEEKLY_HOST_ID = 'tools-weekly';
+
+/**
+ * The id of the host of the tab that the minimized weekly list leaves on the right edge. The tab
+ * takes no room, so it is not a pane host (`HOST_IDS`), and a dead copy's tab goes with its dock.
+ */
+export const WEEKLY_TAB_ID = 'tools-weekly-tab';
+
+/** The ids of the hosts of the four panes. */
+const HOST_IDS = [FILE_HOST_ID, 'tools-turn-in', 'tools-feedback', WEEKLY_HOST_ID];
 
 /**
  * The attribute that every dock puts on its host, so a later copy of the script can tell a host
@@ -111,6 +120,18 @@ function readRecord(page: Element): Saved | null {
 export function removeStaleFilePane(doc: Document = document): void {
   for (const host of doc.querySelectorAll(`[id="${FILE_HOST_ID}"][${DOCK_ATTRIBUTE}]`))
     host.remove();
+  giveBackRoom(doc);
+}
+
+/**
+ * Removes the weekly list dock and the tab that an earlier copy of the script left on the page,
+ * and gives their room back. An update can end a copy with its dock open, and the new copy has no
+ * reference to it. Only a host that carries the mark of a dock goes, never an element that a page
+ * gave the id. Call it at the start of a copy, before the copy makes a dock of its own.
+ */
+export function removeStaleWeeklyDock(doc: Document = document): void {
+  for (const id of [WEEKLY_HOST_ID, WEEKLY_TAB_ID])
+    for (const host of doc.querySelectorAll(`[id="${id}"][${DOCK_ATTRIBUTE}]`)) host.remove();
   giveBackRoom(doc);
 }
 

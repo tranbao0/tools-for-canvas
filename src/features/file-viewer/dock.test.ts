@@ -5,7 +5,10 @@ import {
   filePaneOpen,
   giveBackRoom,
   hideFilePane,
+  removeStaleWeeklyDock,
   ROOM_ATTRIBUTE,
+  WEEKLY_HOST_ID,
+  WEEKLY_TAB_ID,
   type Dock,
   type DockRole,
 } from './dock';
@@ -134,5 +137,80 @@ describe('the room of the docks', () => {
     expect(filePaneOpen()).toBe(false);
     turnIn.close();
     expect(padding()).toBe('13px');
+  });
+});
+
+describe('the weekly list dock', () => {
+  const html = document.documentElement;
+
+  it('takes its room like the other docks and gives the exact padding back', () => {
+    html.style.setProperty('padding-right', '13px', 'important');
+    const weekly = createDock({
+      role: 'weekly',
+      id: WEEKLY_HOST_ID,
+      label: 'Weekly list',
+      resizeLabel: 'Resize weekly list',
+      width: 360,
+      onResized: () => undefined,
+    });
+    docks.push(weekly);
+    weekly.open();
+    expect(padding()).toBe('360px');
+    weekly.setHidden(true);
+    expect(padding()).toBe('13px');
+    weekly.setHidden(false);
+    expect(padding()).toBe('360px');
+    weekly.close();
+    expect(padding()).toBe('13px');
+    expect(html.style.getPropertyPriority('padding-right')).toBe('important');
+  });
+
+  it('is not the file pane: it never counts for filePaneOpen', () => {
+    const weekly = dock('weekly', 360);
+    weekly.open();
+    expect(filePaneOpen()).toBe(false);
+  });
+
+  it('keeps its room for a copy that starts later while its host is on the page', () => {
+    html.style.setProperty('padding-right', '13px');
+    const weekly = dock('weekly', 360);
+    weekly.host.id = WEEKLY_HOST_ID;
+    weekly.open();
+    giveBackRoom(document);
+    expect(padding()).toBe('360px');
+  });
+
+  describe('the cleanup of a dead copy', () => {
+    function deadDock(): HTMLElement {
+      const host = document.createElement('div');
+      host.id = WEEKLY_HOST_ID;
+      host.setAttribute('data-weekrow-dock', '');
+      document.body.append(host);
+      return host;
+    }
+
+    it('removes the dock and the tab of an earlier copy and gives the room back', () => {
+      html.style.setProperty('padding-right', '13px');
+      html.style.setProperty('padding-right', '360px', 'important');
+      html.setAttribute(ROOM_ATTRIBUTE, JSON.stringify({ value: '13px', priority: '' }));
+      const host = deadDock();
+      const tab = document.createElement('div');
+      tab.id = WEEKLY_TAB_ID;
+      tab.setAttribute('data-weekrow-dock', '');
+      document.body.append(tab);
+      removeStaleWeeklyDock(document);
+      expect(host.isConnected).toBe(false);
+      expect(tab.isConnected).toBe(false);
+      expect(padding()).toBe('13px');
+      expect(html.hasAttribute(ROOM_ATTRIBUTE)).toBe(false);
+    });
+
+    it('leaves an element that a page gave the same id', () => {
+      const lookalike = document.createElement('div');
+      lookalike.id = WEEKLY_HOST_ID;
+      document.body.append(lookalike);
+      removeStaleWeeklyDock(document);
+      expect(lookalike.isConnected).toBe(true);
+    });
   });
 });

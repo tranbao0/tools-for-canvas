@@ -64,6 +64,7 @@ describe('FixesSettings', () => {
     setup({
       fileViewer: true,
       fileViewerWidth: 480,
+      weeklyDockWidth: 360,
       dashboardFixes: {
         courseColors: false,
         announcementsInPlace: true,
@@ -90,6 +91,7 @@ describe('FixesSettings', () => {
     expect(onChange).toHaveBeenCalledWith({
       fileViewer: true,
       fileViewerWidth: 480,
+      weeklyDockWidth: 360,
       dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, [key]: false },
       assignmentView: true,
     });
@@ -99,6 +101,7 @@ describe('FixesSettings', () => {
     const allOff: ToolsSettings = {
       fileViewer: true,
       fileViewerWidth: 480,
+      weeklyDockWidth: 360,
       dashboardFixes: {
         courseColors: false,
         announcementsInPlace: false,
@@ -115,6 +118,7 @@ describe('FixesSettings', () => {
     expect(onChange).toHaveBeenCalledWith({
       fileViewer: true,
       fileViewerWidth: 480,
+      weeklyDockWidth: 360,
       dashboardFixes: { ...allOff.dashboardFixes, [key]: true },
       assignmentView: true,
     });
