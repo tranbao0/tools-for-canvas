@@ -3892,7 +3892,9 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     A load on another origin is no arrival, and the pending move ends.
     A new Preview click replaces a pending move.
     The rewrite to `content_only=1` stays limited to the same course, so a page of a group loads as it is.
-    One case stays open: a frame that reloads by itself after a cancelled question, with no pointer or key from the student, counts as the arrival, because the pane cannot tell it from the page that the click asked for.
+    Two cases stay open, because the rule reads the action of the student and not the page.
+    A frame that reloads by itself after a cancelled question, with no pointer or key from the student, counts as the arrival, because the pane cannot tell it from the page that the click asked for.
+    A student who presses the pointer or a key in the old page while the new page is still loading ends the move, so the header stays on the first assignment although the frame then shows the new page.
     A cancelled question leaves everything on the first assignment, and the next click asks again.
   - A page that removes the pane host closes the pane: the poll stops, the room is given back, and a file pane that it covered shows again.
   - An extension update removes an open pane, as it removes every page control.
