@@ -101,7 +101,8 @@ function linkUser(anchor: HTMLAnchorElement, options: SidebarOptions): string | 
   if (
     url.origin !== options.origin ||
     path === null ||
-    [...url.searchParams.keys()].length !== 1 ||
+    // The list comes from the params object: a Firefox content script cannot spread `keys()`.
+    [...url.searchParams].length !== 1 ||
     download === null ||
     !FILE_ID.test(download) ||
     normalizeCanvasId(path[1]!) !== normalizeCanvasId(options.courseId) ||
