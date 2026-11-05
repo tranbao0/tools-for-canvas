@@ -73,6 +73,10 @@ export interface Span {
 
 export const DEFAULT_SPAN: Span = { kind: 'week', days: 7 };
 
+/** The groups that sit in the bottom bar of the in-page list, and that open in the list area. */
+export const BOTTOM_GROUPS = ['no_due_date', 'done'] as const;
+export type BottomGroupKind = (typeof BOTTOM_GROUPS)[number];
+
 export interface Settings {
   /** The span the list shows. */
   span: Span;
@@ -83,6 +87,12 @@ export interface Settings {
    * and in every tab. The side panel ignores it.
    */
   minimized: boolean;
+  /**
+   * The bottom group that the in-page list shows in its list area, in place of the days, or
+   * `null` for the days. The state is the same for every span, on every Canvas page and in every
+   * tab. The side panel ignores it.
+   */
+  openGroup: BottomGroupKind | null;
   /**
    * `auto` follows the color scheme the browser reports to extension pages; the in-page list
    * then follows the Canvas page. `light` and `dark` apply to every surface (decision 19).
@@ -100,6 +110,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hiddenCourseIds: [],
   showRings: true,
   minimized: false,
+  openGroup: null,
   theme: 'auto',
   rowSize: 'compact',
 };
@@ -295,6 +306,12 @@ export interface WeekView {
    * show what has arrived so far.
    */
   loading: boolean;
+  /**
+   * Days of the span, or the Past due range, never arrived and nothing is on its way, after a
+   * failed load. The view shows the rows it has, and it does not claim that the span holds no
+   * work or that a group holds 0.
+   */
+  incomplete: boolean;
   /** The Canvas planner is turned off for the student. */
   limited: boolean;
   /** Set when the view is limited to one course, such as a course home page. */

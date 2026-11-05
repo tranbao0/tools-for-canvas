@@ -37,6 +37,9 @@ export function listenViewerHello(
   return () => sourceWindow.removeEventListener('message', hello);
 }
 
+/** The message that the background sends to every tab when it clears the data of a student. */
+const RESET = 'viewer:reset';
+
 /** How long the pane page has to answer with the secret before the pane closes. */
 const HANDSHAKE_MS = 15_000;
 
@@ -149,6 +152,23 @@ export async function startViewer(): Promise<void> {
     tabs = { ids: [], active: null };
     void writeTabs(tabs);
   };
+  // The background cleared the data of a student: a sign-out, another student or a new address.
+  // The pane closes, also a pane that another pane covers, and nothing of the earlier student
+  // stays in this page: not the tabs, not the course or the name of a file. The background holds
+  // no tabs any more, so nothing is written.
+  // An open that started before the reset belongs to the earlier student and ends without a pane,
+  // so `generation` counts the resets.
+  let generation = 0;
+  const reset = () => {
+    generation += 1;
+    showing = undefined;
+    drop();
+    tabs = { ids: [], active: null };
+    tabsToken = undefined;
+    synced = false;
+    courses.clear();
+    names.clear();
+  };
   // A page can remove the host. Then no pane is open, and the next click opens a new one.
   const paneOpen = () => {
     if (dock && !dock.host.isConnected) drop();
@@ -157,12 +177,15 @@ export async function startViewer(): Promise<void> {
   // Opens the pane. A call while another one is in progress waits for the same open.
   let showing: Promise<void> | undefined;
   const show = (): Promise<void> => {
-    showing ??= showNow().finally(() => {
-      showing = undefined;
-    });
+    if (showing === undefined) {
+      const run: Promise<void> = showNow(generation).finally(() => {
+        if (showing === run) showing = undefined;
+      });
+      showing = run;
+    }
     return showing;
   };
-  const showNow = async () => {
+  const showNow = async (started: number) => {
     if (!live) return;
     if (paneOpen()) {
       void send();
@@ -179,7 +202,7 @@ export async function startViewer(): Promise<void> {
     } catch {
       return;
     }
-    if (!live) return;
+    if (!live || generation !== started) return;
     lastHelloAt = -Infinity;
     const created = createDock({
       role: 'file',
@@ -280,8 +303,8 @@ export async function startViewer(): Promise<void> {
   // back, so two that ran side by side would both start from the same tabs and the second write
   // would drop the file of the first. The tab order is also the order of the clicks.
   let opens: Promise<unknown> = Promise.resolve();
-  const openTarget = (target: FileTarget, href: string): Promise<boolean> => {
-    const run = opens.then(() => openNow(target, href));
+  const openTarget = (target: FileTarget, href: string, taken: number): Promise<boolean> => {
+    const run = opens.then(() => openNow(target, href, taken));
     opens = run.catch(() => undefined);
     return run;
   };
@@ -289,7 +312,9 @@ export async function startViewer(): Promise<void> {
    * Opens a file in the pane: resolves a module item to its file, then adds the tab. It resolves
    * to whether the pane has the file or is about to get it.
    */
-  const openNow = async (target: FileTarget, href: string): Promise<boolean> => {
+  const openNow = async (target: FileTarget, href: string, started: number): Promise<boolean> => {
+    const ended = () => !live || generation !== started;
+    if (ended()) return false;
     // A turn-in may have covered the pane. A file shows the pane again.
     if (paneOpen()) dock?.setHidden(false);
     if (!paneOpen()) await show();
@@ -298,7 +323,7 @@ export async function startViewer(): Promise<void> {
         ? target
         : ((await browser.runtime.sendMessage({ type: 'viewer:module-item', ...target })) as
             { fileId: string } | undefined);
-    if (!file || !paneOpen()) return false;
+    if (!file || !paneOpen() || ended()) return false;
     const courseId = 'courseId' in target ? target.courseId : courseOfLink(href, location.origin);
     if (courseId) courses.set(file.fileId, courseId);
     const open = () => {
@@ -310,15 +335,16 @@ export async function startViewer(): Promise<void> {
     };
     if (paneOpen() && port) return open();
     const stored = await readTabs().catch(() => null);
-    if (!live) return false;
+    if (ended()) return false;
     if (stored) tabsToken = stored.token;
     tabs = openFile(stored?.tabs ?? tabs, file.fileId);
     await writeTabs(tabs);
+    if (ended()) return false;
     // The pane may have connected while the tabs were written. It owns them from then on, and
     // it has not seen this file, so it gets the file as a request, never as a copy of the store.
     if (paneOpen() && port) return open();
     await show();
-    return paneOpen();
+    return !ended() && paneOpen();
   };
   document.addEventListener(
     'click',
@@ -354,6 +380,8 @@ export async function startViewer(): Promise<void> {
         if (name) names.set(target.fileId, name);
       }
       const checkedHref = link.getAttribute('href');
+      // A reset that comes while the click waits ends it: the click belongs to this moment.
+      const taken = generation;
       void (async () => {
         // The click is taken at once, even while the settings and the tabs are still loading.
         await starting;
@@ -367,12 +395,13 @@ export async function startViewer(): Promise<void> {
           return;
         }
         if (!live) return;
-        await openTarget(target, href);
+        await openTarget(target, href, taken);
       })().catch(() => undefined);
     },
     { capture: true, signal: lifetime.signal },
   );
   // The settings and the stored tabs load while the listeners above already work.
+  const born = generation;
   const starting = (async () => {
     const context = await readContext();
     if (!live) return;
@@ -386,16 +415,18 @@ export async function startViewer(): Promise<void> {
     width = normalizeWidth(context.tools.fileViewerWidth, innerWidth);
     const stored = await readTabs().catch(() => null);
     if (!live) return;
-    if (stored) {
+    // A reset during the read drops the answer: those tabs belong to the earlier student.
+    if (stored && born === generation) {
       tabs = stored.tabs;
       tabsToken = stored.token;
     }
     enabled = true;
   })().catch(() => undefined);
-  // The background sends two kinds of message to this script. It says when a setting changed, so
-  // the pane follows the Theme setting at once, and the script ends when the File viewer switch goes off. And it passes on a file that the click catcher
-  // took in the frame of the submission details page, whose files list this script cannot see
-  // (frame.ts, decision 25, item 11).
+  // The background sends three kinds of message to this script. It says when a setting changed, so
+  // the pane follows the Theme setting at once, and the script ends when the File viewer switch
+  // goes off. It says when it cleared the data of a student, and the pane closes. And it passes on
+  // a file that the click catcher took in the frame of the submission details page, whose files
+  // list this script cannot see (frame.ts, decision 25, item 11).
   const onBackground = (
     message: unknown,
     sender: Browser.runtime.MessageSender,
@@ -427,6 +458,11 @@ export async function startViewer(): Promise<void> {
       );
       return undefined;
     }
+    if (request?.type === RESET) {
+      // A page cannot send a runtime message to a content script. The sender is the background.
+      if (sender.id === browser.runtime.id && sender.tab === undefined) reset();
+      return undefined;
+    }
     if (request?.type !== TOP_OPEN) return undefined;
     // A page cannot send a runtime message to a content script. The sender is the background.
     if (sender.id !== browser.runtime.id || sender.tab !== undefined || !isFileId(request.fileId)) {
@@ -434,11 +470,14 @@ export async function startViewer(): Promise<void> {
       return undefined;
     }
     const fileId = request.fileId;
+    const taken = generation;
     void (async () => {
       await starting;
       // The catcher saves the file in the usual way unless the pane has it, so the answer comes
       // after the open.
-      respond({ opened: live && enabled && (await openTarget({ fileId }, `/files/${fileId}`)) });
+      respond({
+        opened: live && enabled && (await openTarget({ fileId }, `/files/${fileId}`, taken)),
+      });
     })().catch(() => respond({ opened: false }));
     return true;
   };

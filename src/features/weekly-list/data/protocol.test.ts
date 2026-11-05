@@ -209,6 +209,7 @@ describe('the messages of the in-page script', () => {
     hiddenCourseIds: ['7'],
     showRings: true,
     minimized: true,
+    openGroup: 'done',
     theme: 'dark',
     rowSize: 'compact',
   };
@@ -232,6 +233,9 @@ describe('the messages of the in-page script', () => {
     [{ ...SETTINGS, theme: 'sepia' }],
     [{ ...SETTINGS, rowSize: 'tiny' }],
     [{ ...SETTINGS, rowSize: 1 }],
+    [{ ...SETTINGS, openGroup: 'past_due' }],
+    [{ ...SETTINGS, openGroup: undefined }],
+    [(({ openGroup: _omit, ...rest }) => rest)(SETTINGS)],
     [(({ rowSize: _omit, ...rest }) => rest)(SETTINGS)],
     [{ ...SETTINGS, hiddenCourseIds: 'all' }],
     [{ ...SETTINGS, hiddenCourseIds: [7] }],

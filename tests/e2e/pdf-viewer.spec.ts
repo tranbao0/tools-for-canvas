@@ -940,6 +940,63 @@ test('the first file of a new student opens while the new cookie is not confirme
   await slowExpect(frame.getByRole('status').filter({ hasText: 'Loading file' })).toHaveCount(0);
 });
 
+/** Makes the background skip the `viewer:reset` message, so no tab learns of the new student. */
+async function dropResetMessages(background: Parameters<typeof openCoursePage>[2]) {
+  await background.evaluate(() => {
+    const tabs = (
+      globalThis as unknown as {
+        chrome: { tabs: { sendMessage(id: number, message: { type?: string }): Promise<unknown> } };
+      }
+    ).chrome.tabs;
+    const send = tabs.sendMessage.bind(tabs);
+    tabs.sendMessage = (id, message) =>
+      message.type === 'viewer:reset' ? Promise.resolve(undefined) : send(id, message);
+  });
+}
+
+test('the pane closes when another student signs in, in this tab and in every other', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+  fileHost,
+}) => {
+  // This test starts a second page and a second student, so a loaded machine needs more time.
+  test.setTimeout(90_000);
+  const student = studentCanvas();
+  const canvas = await openCoursePage(context, page, background, html, [
+    ...student.routes,
+    ...routes(fileHost),
+  ]);
+  await openFirstFile(page, 'Read notes');
+  await slowExpect(pageBox(await pane(page), 1).locator('canvas')).toBeVisible();
+  const host = page.locator('#tools-file-viewer');
+  await expect(host).toBeVisible();
+
+  // A second tab of the same Canvas has its own pane open.
+  const second = await context.newPage();
+  await second.goto(page.url());
+  await openFirstFile(second, 'Read notes');
+  await slowExpect(pageBox(await pane(second), 1).locator('canvas')).toBeVisible();
+
+  // The other student signs in. The background clears the data of the first student, and every
+  // pane closes with it, so no pane shows the file of the earlier student.
+  await student.switchStudent(context, background, canvas.origin);
+  await waitForStudent(context, extensionUrl, OTHER_STUDENT);
+  await slowExpect(host).toHaveCount(0);
+  await slowExpect(second.locator('#tools-file-viewer')).toHaveCount(0);
+  // The page has its own room back.
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.style.paddingRight))
+    .not.toMatch(/\d{3,}px/);
+
+  // The next file opens a new pane for the new student, with only that file.
+  await openFirstFile(page, 'Read notes');
+  const frame = await pane(page);
+  await slowExpect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await expect(frame.getByRole('tab')).toHaveCount(1);
+});
+
 test('a pane that stayed open cannot save its position for the next student', async ({
   context,
   page,
@@ -973,6 +1030,10 @@ test('a pane that stayed open cannot save its position for the next student', as
       return reply;
     };
   });
+
+  // The reset message of the background does not reach this tab, so its pane stays open. Only the
+  // token of the pane stops the save of the position then.
+  await dropResetMessages(background);
 
   // The other student signs in, in another tab. That tab opens a file, so the background
   // confirms the other student.

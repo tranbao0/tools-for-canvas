@@ -377,7 +377,11 @@ export function buildWeekView(input: ModelInput): WeekView {
   );
   const loading = input.loading ?? { days: [], pastDue: false };
   const groups = buildGroups(visible, context, byCourse, loading);
-  const isLoading = loading.pastDue || loading.days.length > 0 || loading.incomplete === true;
+  // After a failed load nothing is on its way: a missing Past due range is then incomplete, not loading.
+  const pastDueLoading = loading.pastDue && loading.unavailable !== true;
+  const isLoading = pastDueLoading || loading.days.length > 0;
+  const incomplete =
+    loading.incomplete === true || (loading.pastDue && loading.unavailable === true);
 
   return {
     locale,
@@ -396,8 +400,9 @@ export function buildWeekView(input: ModelInput): WeekView {
     courseFilter: input.courseFilter,
     hiddenCourseCount: input.courses.filter((course) => hidden.has(course.id)).length,
     // Nothing is due only once every day of the span has arrived.
-    nothingDue: !isLoading && !visible.some((placed) => placed.datedInSpan),
+    nothingDue: !isLoading && !incomplete && !visible.some((placed) => placed.datedInSpan),
     loading: isLoading,
+    incomplete,
     limited: input.limited,
     scopeCourseId,
     scopeCourseHidden,
