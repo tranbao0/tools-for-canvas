@@ -9,14 +9,22 @@
  * view stops. The file pane has a Download button for every kind of file, so the box needs no
  * download link of its own.
  *
+ * A file with a similarity score gets the score after Canvas's link, as a link of its own to the
+ * report, with the look of Canvas's `.turnitin_similarity_score`. It stands in the same line when
+ * the name fits there, and under the name, aligned with its text, when the name wraps. It is not
+ * inside Canvas's link, because a link inside a link is not valid and a click on it must not open
+ * the file pane. The score comes from the report data of the same read, so the box makes no second
+ * request.
+ *
  * The view changes the box only for the signed-in student's own submission: the user in the file
  * address must be the user of the `submissions/self` record that the background reads, with no
- * include, because the box needs only that user. A teacher or another user sees Canvas's box as it
- * is. A link that does not read "Download NAME" stays as it is.
+ * include. A teacher or another user sees Canvas's box as it is. A link that does not read
+ * "Download NAME" stays as it is.
  */
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { logFailure } from '../../../shared/platform/log';
-import { isOwnerReply, type AssignmentOwnerMessage } from '../protocol';
+import { isOwnerReply, type AssignmentOwnerMessage, type AssignmentOwnerReply } from '../protocol';
+import { fileReport, type FileReport } from './files';
 import { ORIGINAL, OWN } from './own';
 
 const BOX = '#sidebar_content .details .content';
@@ -26,13 +34,26 @@ const FILE_PATH = new RegExp(`^/courses/(${ID})/assignments/(${ID})/submissions/
 const FILE_ID = /^[1-9]\d*(?:~\d+)?$/;
 /** A link with the `download` parameter and no other. */
 const DOWNLOAD_QUERY = /^\?download=[^&]*$/;
+const ICON_SIZE = 16;
+const GAP = 8;
 /** The nodes that the view added for one file link of Canvas. */
 interface Treatment {
   anchor: HTMLAnchorElement;
   /** The own node that holds the nodes of Canvas that the anchor had. */
   held: HTMLElement;
   view: HTMLElement;
+  /** The similarity score, which stands right after the anchor. */
+  score: HTMLElement | null;
 }
+
+/** The colors of a score state, as Canvas's `.turnitin_similarity_score` has them. */
+const SCORE_COLORS: Readonly<Record<string, readonly [string, string]>> = {
+  none: ['#397af4', '#000'],
+  acceptable: ['#009917', '#000'],
+  warning: ['#897b01', '#000'],
+  problem: ['#c86604', '#000'],
+  failure: ['#ad393a', '#fff'],
+};
 
 /** How long a batch of changes of the box waits for the next one. */
 const BATCH_MS = 50;
@@ -88,8 +109,11 @@ function own<K extends keyof HTMLElementTagNameMap>(
   return made;
 }
 
-/** The user of a file link of this assignment, or `null` when the link is no such file link. */
-function linkUser(anchor: HTMLAnchorElement, options: SidebarOptions): string | null {
+/** The user and the file of a file link of this assignment, or `null` when it is no such link. */
+function fileLink(
+  anchor: HTMLAnchorElement,
+  options: SidebarOptions,
+): { user: string; fileId: string; path: string } | null {
   const href = anchor.getAttribute('href');
   if (href === null) return null;
   let url: URL;
@@ -111,7 +135,7 @@ function linkUser(anchor: HTMLAnchorElement, options: SidebarOptions): string | 
     normalizeCanvasId(path[2]!) !== normalizeCanvasId(options.assignmentId)
   )
     return null;
-  return path[3]!;
+  return { user: path[3]!, fileId: download, path: url.pathname };
 }
 
 export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
@@ -122,17 +146,24 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
   let generation = 0;
   /** The user of the `submissions/self` record, or `null` until the background has answered. */
   let student: string | null = null;
+  /** The reply with the report data of that record. */
+  let owner: AssignmentOwnerReply | null = null;
   let observer: MutationObserver | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  /** The box whose width is watched, the watcher, and the last width it saw. */
+  let sized: Element | null = null;
+  let sizeWatcher: ResizeObserver | null = null;
+  let lastWidth: number | null = null;
 
   /** The treatments of this copy. The view touches no other node of the page. */
   const treatments: Treatment[] = [];
 
   /** Takes one treatment away. The nodes of Canvas go back into the link if it is still there. */
   function release(treatment: Treatment): void {
-    const { held, view } = treatment;
+    const { held, view, score } = treatment;
     if (held.parentNode === treatment.anchor) held.replaceWith(...held.childNodes);
     view.remove();
+    score?.remove();
   }
 
   /** Gives the box back as Canvas drew it. */
@@ -140,7 +171,69 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     for (const treatment of treatments.splice(0)) release(treatment);
   }
 
-  function treat(anchor: HTMLAnchorElement): void {
+  /** The score of a file as a link with Canvas's colors, in styles of its own: this page has no shadow root. */
+  function scoreLink(report: FileReport): HTMLElement {
+    const [background, color] = SCORE_COLORS[report.state ?? ''] ?? ['gray', '#273540'];
+    const link = own(
+      doc,
+      'a',
+      `display:inline-block;margin-inline-start:${GAP}px;border-radius:3px;padding:2px 4px;background:${background};color:${color};font-size:.75rem;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap`,
+    );
+    link.textContent = report.text;
+    link.setAttribute('href', report.url);
+    link.setAttribute('target', '_blank');
+    link.setAttribute('rel', 'noopener noreferrer');
+    link.setAttribute('title', 'Similarity score');
+    if (report.state !== null) link.setAttribute('data-state', report.state);
+    return link;
+  }
+
+  /**
+   * Puts the score in its place. The gap and the offset are on the side of the text direction, so a
+   * right-to-left Canvas keeps the gap between the link and the score. A name that wraps fills the
+   * width of the box, so the score lands under it, and it then lines up with the text of the name,
+   * after the icon and its gap. The place is measured from the plain position every time, so a
+   * wider box takes the score back to the line of the name.
+   */
+  function placeScore(score: HTMLElement, view: HTMLElement): void {
+    score.style.marginInlineStart = `${GAP}px`;
+    score.style.marginTop = '';
+    if (score.getBoundingClientRect().top >= view.getBoundingClientRect().bottom - 1) {
+      score.style.marginInlineStart = `${ICON_SIZE + GAP}px`;
+      score.style.marginTop = '4px';
+    }
+  }
+
+  /** Measures the place of every score again, after the box changed its width. */
+  function placeScores(): void {
+    for (const { score, view } of treatments) {
+      if (score !== null && score.isConnected) placeScore(score, view);
+    }
+  }
+
+  /** Watches the width of the box, because a resize of the window or a menu changes how a name wraps. */
+  function watchSize(): void {
+    const box = doc.querySelector(BOX);
+    if (box === null || box === sized || typeof ResizeObserver === 'undefined') return;
+    stopSize();
+    sized = box;
+    sizeWatcher = new ResizeObserver((entries) => {
+      const width = entries[entries.length - 1]?.contentRect.width;
+      if (width === undefined || width === lastWidth) return;
+      lastWidth = width;
+      placeScores();
+    });
+    sizeWatcher.observe(box);
+  }
+
+  function stopSize(): void {
+    sizeWatcher?.disconnect();
+    sizeWatcher = null;
+    sized = null;
+    lastWidth = null;
+  }
+
+  function treat(anchor: HTMLAnchorElement, fileId: string, path: string): void {
     const name = /^\s*Download\s+(\S[\s\S]*?)\s*$/.exec(anchor.textContent ?? '')?.[1];
     if (name === undefined) return;
     const label = name.replace(/\s+/g, ' ');
@@ -149,16 +242,33 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     held.setAttribute(ORIGINAL, '');
     held.hidden = true;
     held.append(...anchor.childNodes);
-    const view = own(doc, 'span', 'display:flex;align-items:flex-start;gap:8px');
+    // A report that cannot be shown leaves out the score, because Canvas's box lists the file anyway.
+    const report =
+      owner === null
+        ? null
+        : fileReport(owner, fileId, { origin: options.origin, pagePath: path }).report;
+    // With a score the file link is inline, so the score can stand in its line. Without one the
+    // link keeps the block that it always had.
+    const view = own(
+      doc,
+      'span',
+      `display:${report === null ? 'flex' : 'inline-flex;vertical-align:top'};align-items:flex-start;gap:${GAP}px`,
+    );
     const text = own(doc, 'span');
     text.textContent = `View ${label}`;
-    const file = icon(doc, 16, '1.8', ['M6 3h8l4 4v14H6z', 'M14 3v4h4']);
+    const file = icon(doc, ICON_SIZE, '1.8', ['M6 3h8l4 4v14H6z', 'M14 3v4h4']);
     // The icon sits beside the first line of the name, whatever the line height of the box is.
     file.setAttribute('style', 'flex:none;margin-top:calc((1lh - 16px) / 2)');
     view.append(file, text);
     anchor.append(held, view);
 
-    treatments.push({ anchor, held, view });
+    const score = report === null ? null : scoreLink(report);
+    if (score !== null) {
+      anchor.after(score);
+      placeScore(score, view);
+    }
+
+    treatments.push({ anchor, held, view, score });
   }
 
   /** Treats the file links that are not treated yet, for the student's own files only. */
@@ -172,9 +282,11 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     }
     for (const anchor of doc.querySelectorAll<HTMLAnchorElement>(`${BOX} a[href]`)) {
       if (anchor.hasAttribute(OWN) || treatments.some((entry) => entry.anchor === anchor)) continue;
-      const user = linkUser(anchor, options);
-      if (user !== null && normalizeCanvasId(user) === student) treat(anchor);
+      const link = fileLink(anchor, options);
+      if (link !== null && normalizeCanvasId(link.user) === student)
+        treat(anchor, link.fileId, link.path);
     }
+    watchSize();
     watch();
   }
 
@@ -200,7 +312,9 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
   function clear(): void {
     ++generation;
     stopWatching();
+    stopSize();
     student = null;
+    owner = null;
     undo();
   }
 
@@ -232,6 +346,7 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     // A refusal and an error leave the box as it is.
     if (!isOwnerReply(reply)) return;
     student = normalizeCanvasId(reply.userId);
+    owner = reply;
     render();
   }
 

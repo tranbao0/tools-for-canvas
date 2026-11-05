@@ -8,13 +8,9 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Frame, Page } from '@playwright/test';
 import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
+import type { AssignmentReport } from '../../src/features/assignment-view/protocol';
 import { ASSIGNMENT_DETAILS, rawRecords } from '../fixtures/assignment-view';
-import {
-  SESSION_PATH,
-  TURNITIN_SCORE,
-  turnitinScores,
-  type FrameRow,
-} from '../fixtures/submission-frame';
+import { SESSION_PATH, type FrameRow } from '../fixtures/submission-frame';
 import {
   previewWithFiles,
   previewWithMedia,
@@ -55,7 +51,9 @@ function details(change: (copy: Details) => void = () => undefined): Details {
   const copy = structuredClone(ASSIGNMENT_DETAILS);
   copy.assignment.description = DESCRIPTION;
   copy.submission.submission_type = 'online_upload';
-  copy.submission.attachments = [{ id: '501', display_name: FILE_NAME, size: 120_832 }];
+  copy.submission.attachments = [
+    { id: '501', display_name: FILE_NAME, size: 120_832, preview_url: SESSION_PATH },
+  ];
   change(copy);
   return copy;
 }
@@ -71,6 +69,8 @@ interface Options {
   extra?: FakeCanvasRoute[];
   /** The document of the files frame. */
   preview?: string;
+  /** The frame never gets an answer. */
+  previewNever?: boolean;
   /** The user in the path of the page. */
   pathUser?: string;
   teacher?: boolean;
@@ -158,10 +158,12 @@ async function open(
     ...(options.extra ?? []),
     {
       path: route,
-      respond: (request) => ({
+      respond: async (request) => ({
         contentType: 'text/html',
         body: request.path.includes('preview=1')
-          ? preview
+          ? options.previewNever
+            ? await new Promise<string>(() => undefined)
+            : preview
           : submissionDetailsPage({
               course,
               assignment,
@@ -215,7 +217,10 @@ async function open(
     await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
   }
   await page.setViewportSize({ width: options.width ?? 1440, height: options.height ?? 900 });
-  await page.goto(`${served.canvas.origin}${route}${options.hash ?? ''}`);
+  // The load event waits for the frame, so a frame that never answers needs the commit.
+  await page.goto(`${served.canvas.origin}${route}${options.hash ?? ''}`, {
+    waitUntil: options.previewNever ? 'commit' : 'load',
+  });
   return served.canvas;
 }
 
@@ -651,7 +656,7 @@ test('a submission with two files lists both, and only a file that Canvas can pr
     change: (copy) => {
       copy.submission.attachments?.push(
         { id: '502', display_name: 'appendix.txt', size: 2560 },
-        { id: '503', display_name: 'slides.pptx', size: 1_258_291 },
+        { id: '503', display_name: 'slides.pptx', size: 1_258_291, preview_url: SESSION_PATH },
       );
     },
   });
@@ -659,6 +664,95 @@ test('a submission with two files lists both, and only a file that Canvas can pr
   await expect(box(page).locator('.av-box-file').nth(1)).toContainText('2.5 KB');
   await expect(box(page).locator('.av-feedback')).toHaveText(['View Feedback', 'Preview']);
   await expect(box(page).locator('.av-box-file').nth(1).getByRole('button')).toHaveCount(0);
+});
+
+/** The report of the file as `turnitin_data` of the submission record holds it. */
+const REPORT: AssignmentReport = {
+  asset: 'attachment_501',
+  kind: 'turnitin',
+  score: 5,
+  state: 'acceptable',
+  status: 'scored',
+  error: null,
+  readable: true,
+};
+const withReport = (copy: Details) => {
+  copy.submission.reports = [REPORT];
+};
+
+/** The page is in the replace mode: no frame, and the box holds the file, its score and the button. */
+async function expectReplaced(page: Page, origin: string) {
+  await expect(host(page)).toBeAttached({ timeout: 15_000 });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  await expect(box(page).getByRole('link', { name: FILE_NAME })).toBeVisible();
+  await expect(box(page).getByText('118 KB')).toBeVisible();
+  const score = box(page).locator('.av-score');
+  await expect(score).toHaveText('5.0%');
+  await expect(score).toHaveAttribute('data-state', 'acceptable');
+  await expect(score).toHaveAttribute(
+    'href',
+    `${origin}/courses/12/assignments/101/submissions/42/turnitin/attachment_501`,
+  );
+  await expect(box(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
+}
+
+test('a frame with markup that Canvas redrew changes nothing: the box holds the file, the score and View Feedback', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    change: withReport,
+    preview: previewWithText('<ul><li><a href="#">a file list that Canvas redrew</a></li></ul>'),
+  });
+  await expectReplaced(page, canvas.origin);
+});
+
+test('a row with an extra link changes nothing: the box holds the file, the score and View Feedback', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    change: withReport,
+    rows: [
+      {
+        fileId: '501',
+        name: FILE_NAME,
+        size: '118 KB',
+        button: 'View Feedback',
+        score: '<a href="https://evil.example/extra">an extra link</a>',
+      },
+    ],
+  });
+  await expectReplaced(page, canvas.origin);
+});
+
+test('an empty frame changes nothing: the box holds the file, the score and View Feedback', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    change: withReport,
+    preview: '<!doctype html><html><body></body></html>',
+  });
+  await expectReplaced(page, canvas.origin);
+});
+
+test('a frame that never loads changes nothing: the page shows the box at once and keeps it', async ({
+  context,
+  page,
+  background,
+}) => {
+  test.setTimeout(60_000);
+  const canvas = await open(context, page, background, { change: withReport, previewNever: true });
+  // The box needs no frame, so it shows within the wait for the host, though the frame never answers.
+  await expect(host(page)).toBeAttached({ timeout: 8000 });
+  await expectReplaced(page, canvas.origin);
+  // The view watches a frame for 10 seconds after a load, so the wait outlasts that time.
+  await page.waitForTimeout(11_000);
+  await expectReplaced(page, canvas.origin);
 });
 
 /**
@@ -694,43 +788,110 @@ async function canvasOriginal(page: Page) {
   }));
 }
 
-/** Opens the page with the switch off, turns it on, and checks the frame is kept, then the switch off. */
-async function checkKept(
-  context: Parameters<typeof serveScenario>[0],
-  page: Page,
-  background: Parameters<typeof saveAddress>[0],
-  options: Options,
-) {
-  await open(context, page, background, { ...options, switchOff: true });
-  const original = await canvasOriginal(page);
-  await turnOn(page, background);
-  await expectFrameKept(page, original);
-  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
-  await expect(host(page)).toHaveCount(0);
-  expect(await page.evaluate(() => document.getElementById('content')!.outerHTML)).toBe(
-    original.content,
-  );
-}
-
 const withScript = (html: string, script: string) =>
   html.replace('</body>', `<script>${script}</script></body>`);
 
-test('a session address that is not the one of this Canvas keeps the frame of Canvas', async ({
+/** The console lines that the page wrote while the test ran. */
+function watchConsole(page: Page): string[] {
+  const lines: string[] = [];
+  page.on('console', (message) => lines.push(message.text()));
+  return lines;
+}
+
+/** No line names an address, the signed session or a file. */
+function expectNamesOnly(lines: readonly string[], origin: string) {
+  const about = lines.filter((line) => line.includes('[weekrow] submission details'));
+  for (const line of about) {
+    expect(line).not.toContain(origin);
+    expect(line).not.toContain('canvadoc_session');
+    expect(line).not.toContain('hmac');
+    expect(line).not.toContain(FILE_NAME);
+    expect(line).not.toContain('essay');
+  }
+  return about;
+}
+
+test('a session address that is not the one of this Canvas is replaced by the address of the frame row, with one line', async ({
   context,
   page,
   background,
 }) => {
-  await checkKept(context, page, background, {
-    rows: [
-      {
-        fileId: '501',
-        name: FILE_NAME,
-        size: '118 KB',
-        button: 'View Feedback',
-        session: 'https://evil.example/api/v1/canvadoc_session?blob=a&hmac=b',
-      },
-    ],
+  const lines = watchConsole(page);
+  const canvas = await open(context, page, background, {
+    change: (copy) => {
+      copy.submission.attachments![0]!.preview_url =
+        'https://evil.example/api/v1/canvadoc_session?blob=a&hmac=b';
+    },
   });
+  await expect(host(page)).toBeAttached({ timeout: 15_000 });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  await expect(box(page).getByRole('link', { name: FILE_NAME })).toBeVisible();
+  const button = box(page).getByRole('button', { name: 'View Feedback' });
+  await expect(button).toBeVisible();
+  await button.click();
+  // The pane opens the address of the frame row, and not the one of the other site.
+  await expect(page.locator(FEEDBACK)).toBeVisible();
+  await expect((await feedbackFrame(page)).locator('#notes')).toHaveText(
+    'Teacher notes on the paper',
+  );
+  expect(expectNamesOnly(lines, canvas.origin)).toEqual([
+    '[weekrow] submission details: 1 file(s) without a usable feedback address',
+  ]);
+});
+
+test('a file with no usable session address in the details or in the frame row keeps the frame of Canvas', async ({
+  context,
+  page,
+  background,
+}) => {
+  const lines = watchConsole(page);
+  await open(context, page, background, {
+    switchOff: true,
+    rows: [{ ...ONE_FILE[0]!, button: 'Vista previa', session: `${SESSION_PATH}&access_token=t` }],
+    change: (copy) => {
+      delete copy.submission.attachments![0]!.preview_url;
+    },
+  });
+  const original = await canvasOriginal(page);
+  await turnOn(page, background);
+  await expectFrameKept(page, original);
+  await expect(page.frameLocator('#preview_frame').locator('a.modal_preview_link')).toBeVisible();
+  expect(expectNamesOnly(lines, new URL(page.url()).origin)).toEqual([
+    '[weekrow] submission details keeps the Canvas frame, reason: no-session',
+  ]);
+});
+
+test('a file with no session address in the details and no button in the frame changes nothing', async ({
+  context,
+  page,
+  background,
+}) => {
+  const lines = watchConsole(page);
+  const canvas = await open(context, page, background, {
+    rows: [{ ...ONE_FILE[0]!, button: null }],
+    change: (copy) => {
+      delete copy.submission.attachments![0]!.preview_url;
+    },
+  });
+  await expect(host(page)).toBeAttached({ timeout: 15_000 });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  await expect(box(page).getByRole('link', { name: FILE_NAME })).toBeVisible();
+  await expect(box(page).locator('.av-feedback')).toHaveCount(0);
+  expect(expectNamesOnly(lines, canvas.origin)).toEqual([]);
+});
+
+test('a translated Canvas keeps the label of its button and the unread dot', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    rows: [{ ...ONE_FILE[0]!, button: 'Vista previa', unread: true }],
+  });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  const button = box(page).getByRole('button', { name: 'Vista previa' });
+  await expect(button).toBeVisible();
+  await expect(button).toHaveAttribute('title', 'There are unread comments.');
 });
 
 test('a shard student, whose frame writes the ids in full, gets the view and View Feedback', async ({
@@ -749,96 +910,65 @@ test('a shard student, whose frame writes the ids in full, gets the view and Vie
   );
 });
 
-test('a session address with an extra access token keeps the frame of Canvas', async ({
+test('a session address with an extra access token in the details is replaced by the address of the frame row', async ({
   context,
   page,
   background,
 }) => {
-  await checkKept(context, page, background, {
-    rows: [
-      {
-        fileId: '501',
-        name: FILE_NAME,
-        size: '118 KB',
-        button: 'View Feedback',
-        session: `${SESSION_PATH}&access_token=t`,
-      },
-    ],
+  await open(context, page, background, {
+    change: (copy) => {
+      copy.submission.attachments![0]!.preview_url = `${SESSION_PATH}&access_token=t`;
+    },
   });
+  await expect(host(page)).toBeAttached({ timeout: 15_000 });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  await expect(box(page).getByRole('link', { name: FILE_NAME })).toBeVisible();
+  await expect(box(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
 });
 
-test('a preview button that Canvas renamed, with the session attribute, keeps the frame', async ({
+test('a preview button that Canvas renamed changes nothing: the button stays and says View Feedback', async ({
   context,
   page,
   background,
 }) => {
-  await checkKept(context, page, background, {
+  await open(context, page, background, {
     rows: [
       {
         fileId: '501',
         name: FILE_NAME,
         size: '118 KB',
-        button: 'View Feedback',
+        button: 'Preview',
         buttonClass: 'preview_button Button--link',
       },
     ],
   });
+  await expect(host(page)).toBeAttached({ timeout: 15_000 });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  await expect(box(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
 });
 
-test('file rows that do not match the page keep the frame of Canvas', async ({
-  context,
-  page,
-  background,
-}) => {
-  await checkKept(context, page, background, {
+test('file rows of another submission change nothing', async ({ context, page, background }) => {
+  await open(context, page, background, {
     preview: previewWithFiles('12', '101', '43', ONE_FILE),
   });
+  await expect(host(page)).toBeAttached({ timeout: 15_000 });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  await expect(box(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
 });
 
-test('a frame with changed markup keeps the frame of Canvas', async ({
+test('the frame refines the label to Preview and the unread dot, and nothing else', async ({
   context,
   page,
   background,
 }) => {
-  await checkKept(context, page, background, {
-    preview: previewWithText('<ul><li><a href="#">a file list that Canvas redrew</a></li></ul>'),
+  await open(context, page, background, {
+    rows: [{ fileId: '501', name: FILE_NAME, size: '999 MB', button: 'Preview', unread: true }],
   });
-});
-
-test('a similarity score with an address that fails the check keeps the frame of Canvas', async ({
-  context,
-  page,
-  background,
-}) => {
-  await checkKept(context, page, background, {
-    rows: [
-      {
-        fileId: '501',
-        name: FILE_NAME,
-        size: '118 KB',
-        button: 'View Feedback',
-        score: TURNITIN_SCORE.replace(/href="[^"]*"/, 'href="https://evil.example/report"'),
-      },
-    ],
-  });
-});
-
-test('a similarity score of a text entry, outside a file row, keeps the frame of Canvas', async ({
-  context,
-  page,
-  background,
-}) => {
-  await checkKept(context, page, background, {
-    preview: previewWithText('<p>My answer, written in the editor.</p>').replace(
-      '<div style="text-align: right',
-      `<div>${TURNITIN_SCORE}</div><div style="text-align: right`,
-    ),
-    change: (copy) => {
-      copy.submission.submission_type = 'online_text_entry';
-      copy.submission.body = '<p>My answer, written in the editor.</p>';
-      copy.submission.attachments = [];
-    },
-  });
+  const button = box(page).getByRole('button', { name: 'Preview' });
+  await expect(button).toBeVisible();
+  await expect(button).toHaveAttribute('title', 'There are unread comments.');
+  // The size comes from the details.
+  await expect(box(page).getByText('118 KB')).toBeVisible();
 });
 
 test('a report status that the script of Canvas draws after the load keeps the frame', async ({
@@ -846,6 +976,7 @@ test('a report status that the script of Canvas draws after the load keeps the f
   page,
   background,
 }) => {
+  const lines = watchConsole(page);
   const preview = withScript(
     previewWithFiles('12', '101', '42', ONE_FILE),
     "setTimeout(function(){document.querySelector('td.asset-report-status-container').innerHTML='<div><a href=\"#\">Similarity report</a></div>'},1500)",
@@ -858,14 +989,18 @@ test('a report status that the script of Canvas draws after the load keeps the f
   await expect(
     page.frameLocator('#preview_frame').getByRole('link', { name: 'Similarity report' }),
   ).toBeVisible();
+  // One line names the reason, with no address and no file name.
+  expect(expectNamesOnly(lines, new URL(page.url()).origin)).toEqual([
+    '[weekrow] submission details keeps the Canvas frame, reason: asset-reports',
+  ]);
 });
 
-test('the snapshot of a URL submission keeps the frame of Canvas', async ({
+test('the snapshot of a URL submission changes nothing: the box shows the link', async ({
   context,
   page,
   background,
 }) => {
-  await checkKept(context, page, background, {
+  await open(context, page, background, {
     change: (copy) => {
       copy.submission.submission_type = 'online_url';
       copy.submission.url = 'https://example.com/my-work';
@@ -874,6 +1009,37 @@ test('the snapshot of a URL submission keeps the frame of Canvas', async ({
     preview:
       '<!doctype html><html><body><div style="text-align:center"><a href="https://example.com/my-work">https://example.com/my-work</a><img alt="URL Preview" width="120" height="80" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></div></body></html>',
   });
+  await expect(host(page)).toBeAttached({ timeout: 15_000 });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  await expect(host(page).getByRole('link', { name: 'https://example.com/my-work' })).toBeVisible();
+});
+
+test('the score of a text entry shows in the box, from the report data of the submission', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    preview: previewWithText('<p>My answer, written in the editor.</p>'),
+    change: (copy) => {
+      copy.submission.submission_type = 'online_text_entry';
+      copy.submission.body = '<p>My answer, written in the editor.</p>';
+      copy.submission.attachments = [];
+      copy.submission.id = '9';
+      copy.submission.reports = [
+        { ...REPORT, asset: 'submission_9_2026-11-01T10:00:00Z', kind: 'originality_report' },
+      ];
+      copy.submission.attempt = 1;
+    },
+  });
+  await expect(host(page)).toBeAttached({ timeout: 15_000 });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  const score = box(page).locator('.av-box-report .av-score');
+  await expect(score).toHaveText('5.0%');
+  await expect(score).toHaveAttribute(
+    'href',
+    `${canvas.origin}${ASSIGNMENT}/submissions/42/originality_report/submission_9?attempt=1`,
+  );
 });
 
 test('a text entry shows its text as "Your submission", and no "Your files" heading', async ({
@@ -936,6 +1102,7 @@ test('a media recording keeps the frame of Canvas, with the instructions above i
   page,
   background,
 }) => {
+  const lines = watchConsole(page);
   const canvas = await open(context, page, background, {
     switchOff: true,
     preview: previewWithMedia(),
@@ -984,6 +1151,9 @@ test('a media recording keeps the frame of Canvas, with the instructions above i
   await expect(box(page).getByText('Submitted!')).toBeVisible();
   await expect(box(page).locator('.av-date')).toHaveText(/^Nov 1 at \d{1,2}(:\d\d)?[ap]m$/);
   await expect(box(page).locator('.av-box-files, .av-box-comments')).toHaveCount(0);
+  expect(expectNamesOnly(lines, canvas.origin)).toEqual([
+    '[weekrow] submission details keeps the Canvas frame, reason: type',
+  ]);
   await expect(page.locator('#av-comments')).toHaveCount(0);
   await expect(
     page.locator('.submission-details-container > .submission-details-comments'),
@@ -1118,9 +1288,10 @@ async function openSidebar(
     settle?: boolean;
     width?: number;
     extra?: FakeCanvasRoute[];
+    change?: (copy: Details) => void;
   } = {},
 ) {
-  const records = rawRecords(details());
+  const records = rawRecords(details(options.change));
   records.submission.user_id = options.user ?? '42';
   const served = await serveScenario(context, [
     ...(options.extra ?? []),
@@ -1205,6 +1376,168 @@ test('the submitted file of the assignment page reads "View NAME" with an icon, 
   // Canvas's other sidebar links stay as they are.
   await sidebar.getByRole('link', { name: 'Submission Details' }).click();
   await expect(page).toHaveURL(`${served.canvas.origin}${ASSIGNMENT}/submissions/42`);
+});
+
+test('the score of the file shows beside "View NAME" with the look and the link of Canvas, from the one read of the record', async ({
+  context,
+  page,
+  background,
+}) => {
+  const served = await openSidebar(context, page, background, {
+    html: assignmentPage.replace(SIDEBAR_FILE, 'essay.pdf'),
+    change: (copy) => {
+      copy.submission.attempt = 2;
+      copy.submission.reports = [
+        { ...REPORT, kind: 'originality_report', score: 23, state: 'warning' },
+      ];
+    },
+  });
+  await treated(page);
+  const sidebar = sidebarOf(page);
+  const score = sidebar.getByRole('link', { name: '23.0%' });
+  await expect(score).toBeVisible();
+  await expect(score).toHaveAttribute(
+    'href',
+    `${served.canvas.origin}${ASSIGNMENT}/submissions/42/originality_report/attachment_501?attempt=2`,
+  );
+  await expect(score).toHaveAttribute('target', '_blank');
+  await expect(score).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(score).toHaveAttribute('title', 'Similarity score');
+  expect(
+    await score.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return {
+        background: style.backgroundColor,
+        color: style.color,
+        weight: style.fontWeight,
+        size: style.fontSize,
+        padding: style.padding,
+        radius: style.borderRadius,
+      };
+    }),
+  ).toEqual({
+    background: 'rgb(137, 123, 1)',
+    color: 'rgb(0, 0, 0)',
+    weight: '700',
+    size: '12px',
+    padding: '2px 4px',
+    radius: '3px',
+  });
+  // The score stands beside the link, on the same line, and is no part of the link.
+  const link = sidebar.getByRole('link', { name: 'View essay.pdf' });
+  await sidebar.screenshot({ path: path.join(SHOTS, 'sidebar-score-1280-light.png') });
+  const [linkBox, scoreBox] = [await link.boundingBox(), await score.boundingBox()];
+  expect(scoreBox!.x).toBeGreaterThanOrEqual(linkBox!.x + linkBox!.width);
+  expect(
+    Math.abs(scoreBox!.y + scoreBox!.height / 2 - (linkBox!.y + linkBox!.height / 2)),
+  ).toBeLessThan(linkBox!.height / 2);
+  expect(await link.locator('a').count()).toBe(0);
+  // No second request: the one read of the record holds the report data.
+  expect(
+    served.canvas.requests
+      .filter((request) => request.path.startsWith('/api/v1/courses/12/assignments/101'))
+      .map((request) => request.path),
+  ).toEqual(['/api/v1/courses/12/assignments/101/submissions/self']);
+  // A click on the score opens the report and not the file pane.
+  const popup = page.waitForEvent('popup');
+  await score.click();
+  expect(new URL((await popup).url()).pathname).toBe(
+    `${ASSIGNMENT}/submissions/42/originality_report/attachment_501`,
+  );
+  await expect(page.locator(FILE_PANE)).toHaveCount(0);
+
+  // Turned off, the box is exactly what Canvas drew.
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  await expect(score).toHaveCount(0);
+  await expect(page.locator('#sidebar_content [data-av-own]')).toHaveCount(0);
+});
+
+test('the score of a file with a long name stands under the name, lined up with its text', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openSidebar(context, page, background, {
+    change: (copy) => {
+      copy.submission.reports = [REPORT];
+    },
+  });
+  await treated(page);
+  const sidebar = sidebarOf(page);
+  const score = sidebar.getByRole('link', { name: '5.0%' });
+  await expect(score).toBeVisible();
+  const link = sidebar.getByRole('link', { name: `View ${SIDEBAR_FILE}` });
+  const text = link.locator('span:not([hidden]) > span');
+  const [linkBox, textBox, scoreBox] = [
+    await link.boundingBox(),
+    await text.boundingBox(),
+    await score.boundingBox(),
+  ];
+  // The name wraps, and the score stands under it, with the left edge of the name.
+  expect(scoreBox!.y).toBeGreaterThanOrEqual(linkBox!.y + linkBox!.height);
+  expect(Math.abs(scoreBox!.x - textBox!.x)).toBeLessThan(1);
+  await sidebar.screenshot({ path: path.join(SHOTS, 'sidebar-score-long-name-1280-light.png') });
+});
+
+test('on a right-to-left Canvas the score keeps its gap from the link, on the side that faces the link', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openSidebar(context, page, background, {
+    html: assignmentPage
+      .replace(SIDEBAR_FILE, 'essay.pdf')
+      .replace('<html lang="en" dir="ltr">', '<html lang="ar" dir="rtl">'),
+    change: (copy) => {
+      copy.submission.reports = [REPORT];
+    },
+  });
+  await treated(page);
+  const sidebar = sidebarOf(page);
+  const score = sidebar.getByRole('link', { name: '5.0%' });
+  await expect(score).toBeVisible();
+  const link = sidebar.getByRole('link', { name: 'View essay.pdf' });
+  const [linkBox, scoreBox] = [await link.boundingBox(), await score.boundingBox()];
+  // The score follows the link to its left, and 8 px stand between them.
+  expect(linkBox!.x - (scoreBox!.x + scoreBox!.width)).toBeGreaterThanOrEqual(7);
+  expect(linkBox!.x - (scoreBox!.x + scoreBox!.width)).toBeLessThan(10);
+});
+
+test('the score of a file measures again when the box gets wider or narrower', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openSidebar(context, page, background, {
+    change: (copy) => {
+      copy.submission.reports = [REPORT];
+    },
+  });
+  await treated(page);
+  const sidebar = sidebarOf(page);
+  const score = sidebar.getByRole('link', { name: '5.0%' });
+  const link = sidebar.getByRole('link', { name: `View ${SIDEBAR_FILE}` });
+  const stands = async () => {
+    const [linkBox, scoreBox] = [await link.boundingBox(), await score.boundingBox()];
+    return scoreBox!.y >= linkBox!.y + linkBox!.height - 1 ? 'under' : 'beside';
+  };
+  await expect(score).toBeVisible();
+  expect(await stands()).toBe('under');
+  // A window or a menu that makes the box wide enough for the name: the score goes beside the link.
+  await page.addStyleTag({ content: '#sidebar_content .details .content { width: 900px; }' });
+  await expect.poll(stands).toBe('beside');
+  expect(await score.evaluate((node) => getComputedStyle(node).marginTop)).toBe('0px');
+  expect(await score.evaluate((node) => getComputedStyle(node).marginInlineStart)).toBe('8px');
+  // And narrow again: it goes under the name, lined up with its text.
+  await page.addStyleTag({ content: '#sidebar_content .details .content { width: 240px; }' });
+  await expect.poll(stands).toBe('under');
+  const text = link.locator('span:not([hidden]) > span');
+  await expect
+    .poll(async () => {
+      const [textBox, scoreBox] = [await text.boundingBox(), await score.boundingBox()];
+      return Math.abs(scoreBox!.x - textBox!.x);
+    })
+    .toBeLessThan(1);
 });
 
 test('both files of the Submission box get the treatment', async ({
@@ -1430,16 +1763,10 @@ for (const { width, theme, menu } of SHOT_CASES) {
       change: (copy) => {
         copy.assignment.description = DESCRIPTION + LONG_DESCRIPTION.slice(0, 1600);
         copy.submission.submitted_at = '2026-10-16T03:59:00Z';
+        withReport(copy);
       },
       rows: [
-        {
-          fileId: '501',
-          name: FILE_NAME,
-          size: '118 KB',
-          button: 'View Feedback',
-          unread: true,
-          score: TURNITIN_SCORE,
-        },
+        { fileId: '501', name: FILE_NAME, size: '118 KB', button: 'View Feedback', unread: true },
       ],
     });
     await expect(host(page)).toBeAttached();
@@ -1953,16 +2280,8 @@ test('a file with a Turnitin score keeps the view: no frame, and the box shows t
     timeZone: 'America/Los_Angeles',
     change: (copy) => {
       copy.submission.submitted_at = '2026-10-16T03:59:00Z';
+      withReport(copy);
     },
-    rows: [
-      {
-        fileId: '501',
-        name: FILE_NAME,
-        size: '118 KB',
-        button: 'View Feedback',
-        score: TURNITIN_SCORE,
-      },
-    ],
   });
   await expect(host(page)).toBeAttached();
   await expect(page.locator('#preview_frame')).toBeHidden();
@@ -1977,7 +2296,7 @@ test('a file with a Turnitin score keeps the view: no frame, and the box shows t
   await expect(score).toBeVisible();
   await expect(score).toHaveAttribute(
     'href',
-    `${canvas.origin}${REPORT_PAGE}/turnitin/attachment_1`,
+    `${canvas.origin}${REPORT_PAGE}/turnitin/attachment_501`,
   );
   await expect(score).toHaveAttribute('target', '_blank');
   await expect(score).toHaveAttribute('rel', 'noopener noreferrer');
@@ -2006,30 +2325,23 @@ test('a file with a Turnitin score keeps the view: no frame, and the box shows t
   // A click opens the report in a new tab, and the page stays.
   const popup = page.waitForEvent('popup');
   await score.click();
-  expect(new URL((await popup).url()).pathname).toBe(`${REPORT_PAGE}/turnitin/attachment_1`);
+  expect(new URL((await popup).url()).pathname).toBe(`${REPORT_PAGE}/turnitin/attachment_501`);
   expect(new URL(page.url()).pathname).toBe(REPORT_PAGE);
 });
 
-test('a score with no state class shows gray, and one with no address is no link', async ({
+test('a report that is not ready shows gray, and a state that Canvas does not name has no color', async ({
   context,
   page,
   background,
 }) => {
   await open(context, page, background, {
-    rows: [
-      {
-        fileId: '501',
-        name: FILE_NAME,
-        size: '118 KB',
-        button: null,
-        score: turnitinScores().updatedNoAddress,
-      },
-    ],
+    change: (copy) => {
+      copy.submission.reports = [{ ...REPORT, score: null, state: 'pending', status: 'pending' }];
+    },
   });
   await expect(page.locator('#preview_frame')).toBeHidden();
-  const score = box(page).getByText('7.0%');
+  const score = box(page).getByText('Similarity score', { exact: true });
   await expect(score).toBeVisible();
-  expect(await score.evaluate((node) => node.tagName)).toBe('SPAN');
   expect(
     await score.evaluate((node) => {
       const style = getComputedStyle(node);

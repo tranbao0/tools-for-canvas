@@ -43,6 +43,20 @@ describe('assignment details boundary', () => {
       { details: ASSIGNMENT_DETAILS },
       { details: { ...ASSIGNMENT_DETAILS, submission: {} }, timeZone: 'UTC' },
       { details: { assignment: {}, submission: ASSIGNMENT_DETAILS.submission }, timeZone: 'UTC' },
+      {
+        details: {
+          ...ASSIGNMENT_DETAILS,
+          submission: { ...ASSIGNMENT_DETAILS.submission, reports: 'x' },
+        },
+        timeZone: 'UTC',
+      },
+      {
+        details: {
+          ...ASSIGNMENT_DETAILS,
+          submission: { ...ASSIGNMENT_DETAILS.submission, attachments: {} },
+        },
+        timeZone: 'UTC',
+      },
     ])
       expect(isDetailsReply(bad)).toBe(false);
   });
@@ -66,9 +80,17 @@ describe('assignment owner boundary', () => {
     ).toBe(false);
   });
 
-  it('reads the reply as a user id only', () => {
+  it('reads the reply as a user id, with a list of reports when it has one', () => {
     expect(isOwnerReply({ userId: '42' })).toBe(true);
-    for (const bad of [null, {}, { userId: 42 }, { userId: '../x' }, 'x'])
+    expect(isOwnerReply({ userId: '42', reports: [] })).toBe(true);
+    for (const bad of [
+      null,
+      {},
+      { userId: 42 },
+      { userId: '../x' },
+      'x',
+      { userId: '42', reports: 'x' },
+    ])
       expect(isOwnerReply(bad)).toBe(false);
   });
 });
