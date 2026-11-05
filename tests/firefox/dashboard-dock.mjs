@@ -9,10 +9,12 @@
 // layout rules of Canvas (`.ic-Layout-wrapper`, the right column), and checks:
 //   a. The dock sits at the right edge at full window height, 360 px wide, takes 360 px of room,
 //      holds the list, and does not move when the page scrolls.
-//   b. The minimize button closes the dock and gives the room back, and the tab shows on the
-//      right edge with the focus. A click on the tab opens the dock and focuses the button.
+//   b. The minimize button closes the dock, and the tab shows on the right edge with the focus and
+//      keeps 38 px of room. A click on the tab opens the dock and focuses the button.
 //   c. A file pane covers the dock and its tab, and the dock comes back in the state it had, with
 //      the padding of the page exact, for an open dock and for a minimized one.
+//   The list waits for its data before it scrolls: a check that reads the list before the rows
+//   arrive reads a list with no room to scroll.
 //
 // Usage: node tests/firefox/dashboard-dock.mjs
 // Set DASHBOARD_DOCK_SHOT to a file name to save a screenshot of the open dock.
@@ -149,22 +151,47 @@ const STATE = `
       const region = host && host.shadowRoot ? host.shadowRoot.querySelector('.wr-scroll') : null;
       return region ? { top: region.scrollTop, room: region.scrollHeight - region.clientHeight } : null;
     })(),
+    // The rows of work in the list, and the placeholders and busy marks that say data still arrives.
+    rows: (() => {
+      const host = document.querySelector('#weekrow-inpage > weekrow-list');
+      const region = host && host.shadowRoot ? host.shadowRoot.querySelector('.wr-scroll') : null;
+      return region ? region.querySelectorAll('input[type="checkbox"]').length : 0;
+    })(),
+    busy: (() => {
+      const host = document.querySelector('#weekrow-inpage > weekrow-list');
+      return host && host.shadowRoot
+        ? host.shadowRoot.querySelectorAll('.wr-skel-bar, [aria-busy="true"]').length
+        : 0;
+    })(),
   };
 `;
 
 const state = (driver) => driver.executeScript(STATE);
 
+/** The list has real rows, enough to scroll, and no placeholder or busy mark. */
+const listLoaded = (value) =>
+  value.dock !== null &&
+  value.listCard &&
+  value.scroll !== null &&
+  value.scroll.room > 200 &&
+  value.rows >= 3 &&
+  value.busy === 0;
+
 /** Scrolls the day list of the dock, and returns where it stands. */
 async function scrollList(driver, top) {
-  await driver.executeScript(
-    `
-    const host = document.querySelector('#weekrow-inpage > weekrow-list');
-    host.shadowRoot.querySelector('.wr-scroll').scrollTop = arguments[0];
-  `,
-    top,
-  );
+  // The list is settled before it scrolls, and the scroll is set again until it holds.
+  await waitFor(() => state(driver), listLoaded, 'the loaded list');
   return waitFor(
-    async () => (await state(driver)).scroll,
+    async () => {
+      await driver.executeScript(
+        `
+        const host = document.querySelector('#weekrow-inpage > weekrow-list');
+        host.shadowRoot.querySelector('.wr-scroll').scrollTop = arguments[0];
+      `,
+        top,
+      );
+      return (await state(driver)).scroll;
+    },
     (value) => value !== null && Math.abs(value.top - top) < 2,
     'the list to scroll',
   );
@@ -226,11 +253,7 @@ function expect(problems, label, ok, detail) {
 
 /** Check a: the open dock. */
 async function checkOpenDock(driver, problems, screenshot) {
-  const open = await waitFor(
-    () => state(driver),
-    (value) => value.dock !== null && value.listCard && value.scroll !== null,
-    'the dock with the loaded list',
-  );
+  const open = await waitFor(() => state(driver), listLoaded, 'the dock with the loaded list');
   const { pageWidth, innerHeight, dock } = open;
   expect(problems, 'the dock is 360 px wide', Math.round(dock.width) === 360, dock);
   expect(
@@ -285,8 +308,8 @@ async function checkMinimize(driver, problems, openState) {
   );
   expect(
     problems,
-    'the room is given back on a minimize',
-    minimized.padding === '' && !minimized.room,
+    'the dock gives its room back on a minimize, and the tab keeps 38 px',
+    minimized.padding === '38px' && minimized.room,
     minimized.padding,
   );
   const { tab, pageWidth } = minimized;
@@ -406,8 +429,8 @@ async function checkFilePane(driver, problems) {
   );
   expect(
     problems,
-    'the dock stays closed and the page has its own padding',
-    after.dock === null && after.padding === '' && !after.room,
+    'the dock stays closed and the tab keeps its 38 px of room',
+    after.dock === null && after.padding === '38px' && after.room,
     [after.dock, after.padding],
   );
   await (await openTab(driver)).click();
