@@ -56,6 +56,18 @@ describe('webAddress', () => {
     }
   });
 
+  it('applies the rule of Canvas to the host, whatever the scheme or the port', () => {
+    for (const page of [
+      'http://school.instructure.com/courses/1/discussion_topics/2',
+      'https://school.instructure.com:8443/courses/1/discussion_topics/2',
+    ]) {
+      expect(webAddress(page, ORIGIN), page).toBeNull();
+    }
+    expect(webAddress('http://school.instructure.com/images/thumbnails/12/abc', ORIGIN)).toBe(
+      'http://school.instructure.com/images/thumbnails/12/abc',
+    );
+  });
+
   it('does not apply the rule of Canvas to another host', () => {
     const other = 'https://cdn.example.org/courses/101/discussion_topics/31901';
     expect(webAddress(other, ORIGIN)).toBe(other);

@@ -28,14 +28,15 @@ const CANVAS_IMAGE_PATH =
 
 /**
  * The address of an image as an absolute http or https address, or `null`. An address on the Canvas
- * origin must be a file, an equation image or an asset path.
+ * host, with any scheme or port, must be a file, an equation image or an asset path.
  */
 export function webAddress(value: unknown, origin: string): string | null {
   if (typeof value !== 'string' || value === '' || value.length > MAX_URL_CHARS) return null;
   try {
     const url = new URL(value, origin);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
-    if (url.origin === new URL(origin).origin && !CANVAS_IMAGE_PATH.test(url.pathname)) return null;
+    if (url.hostname === new URL(origin).hostname && !CANVAS_IMAGE_PATH.test(url.pathname))
+      return null;
     return url.href;
   } catch {
     return null;
