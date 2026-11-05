@@ -43,7 +43,8 @@ function rawAttachment(file: AssignmentFile) {
     media_entry_id: null,
     category: 'uncategorized',
     locked_for_user: false,
-    ...(file.preview_url === undefined ? {} : { preview_url: file.preview_url }),
+    // Canvas always writes the key, with null for a file it cannot preview (`Attachment#canvadoc_url`).
+    preview_url: file.preview_url ?? null,
   };
 }
 

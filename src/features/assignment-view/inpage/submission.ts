@@ -504,7 +504,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
 
   /**
    * Shows the page for the details. The files, their scores and their feedback buttons come from
-   * the details, so the box never waits for the frame. The frame refines the label of a button
+   * the details, so the box does not wait for the frame. The frame refines the label of a button
    * and its unread mark, and gives the session address of a file whose record has none. The view
    * keeps Canvas's frame for a submission type that it does not show, for report data that it
    * cannot show, for a report of an asset processor that Canvas's script draws in the frame, and

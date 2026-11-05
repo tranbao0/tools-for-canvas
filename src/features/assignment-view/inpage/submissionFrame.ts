@@ -1,7 +1,8 @@
 /**
  * What the Submission Details page may take from its same-origin frame `#preview_frame` (design
  * decision 26, item 5). The frame is a helper: the files, their sizes, their scores and their
- * session addresses come from the details (`files.ts`), and the view never waits for the frame.
+ * session addresses come from the details (`files.ts`), and the view does not wait for the frame,
+ * except for a file whose session address failed the check.
  *
  * The frame tells three things about a file, when it can be read. The first is whether Canvas draws
  * a preview button in its row, whatever the button says: Canvas writes the label in the language of
