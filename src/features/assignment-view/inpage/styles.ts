@@ -100,6 +100,7 @@ export const BOX_CSS = `
 .av-file-pdf{color:light-dark(#c0392b,#f08a8d)}
 .av-box-file-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:5px 0 0 24px;font-size:13px}
 .av-size{color:var(--av-text-2);font-size:12px;white-space:nowrap}
+.av-box-report{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 8px;font-size:13px}
 .av-score{--av-score-bg:gray;--av-score-fg:#273540}
 .av .av-score,.av a.av-score{display:inline-block;border-radius:3px;padding:2px 4px;background:var(--av-score-bg);color:var(--av-score-fg);font-size:.75rem;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap}
 .av-score[data-state=none]{--av-score-bg:#397af4;--av-score-fg:#000}

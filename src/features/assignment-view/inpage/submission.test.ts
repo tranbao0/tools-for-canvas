@@ -4,12 +4,11 @@ import { ASSIGNMENT_DETAILS } from '../../../../tests/fixtures/assignment-view';
 import {
   SESSION_PATH,
   TURNITIN_SCORE,
-  turnitinScores,
   frameRows,
 } from '../../../../tests/fixtures/submission-frame';
 import { sendToFailingRouter } from '../../../../tests/fixtures/router-reply';
 import { submissionDetailsPage } from '../../../../tests/fixtures/submission-page';
-import type { AssignmentDetailsMessage, RubricReadMessage } from '../protocol';
+import type { AssignmentDetailsMessage, AssignmentReport, RubricReadMessage } from '../protocol';
 import type { FeedbackRequest } from './feedbackPane';
 import { removeStaleView } from './stale';
 import { createSubmissionView, type SubmissionView } from './submission';
@@ -19,12 +18,25 @@ const PAGE = '/courses/12/assignments/101/submissions/42';
 
 type Details = typeof ASSIGNMENT_DETAILS;
 
+/** The report of the file as `turnitin_data` of the submission record holds it. */
+const REPORT: AssignmentReport = {
+  asset: 'attachment_501',
+  kind: 'turnitin',
+  score: 5,
+  state: 'acceptable',
+  status: 'scored',
+  error: null,
+  readable: true,
+};
+
 function reply(change: (details: Details) => void = () => undefined) {
   const details = structuredClone(ASSIGNMENT_DETAILS);
   details.assignment.description =
     '<p>Choose one industry.</p><ul><li>Cite four sources.</li></ul>';
   details.submission.submission_type = 'online_upload';
-  details.submission.attachments = [{ id: '501', display_name: 'essay.pdf', size: 120_832 }];
+  details.submission.attachments = [
+    { id: '501', display_name: 'essay.pdf', size: 120_832, preview_url: SESSION_PATH },
+  ];
   change(details);
   return { details, timeZone: 'America/New_York' };
 }
@@ -236,20 +248,22 @@ describe('the own submission', () => {
     expect(boxRoot()!.activeElement).toBe(link);
   });
 
-  it('draws the files again when they changed', async () => {
+  it('draws the files again when the frame changes the label or the unread mark', async () => {
     const frame = showInFrame(FILE_ROW);
     start();
     await settle();
     const list = boxRoot()!.querySelector('.av-box-files')!;
+    expect(boxRoot()!.querySelector('.av-feedback')?.firstChild?.textContent).toBe('View Feedback');
+    expect(boxRoot()!.querySelector('.av-unread')).not.toBeNull();
     showInFrame(
-      frameRows(PAGE, [
-        { fileId: '501', name: 'essay.pdf', size: '119 KB', button: 'View Feedback', unread: true },
-      ]),
+      frameRows(PAGE, [{ fileId: '501', name: 'essay.pdf', size: '119 KB', button: 'Preview' }]),
     );
     frame.dispatchEvent(new Event('load'));
     expect(boxRoot()!.querySelector('.av-box-files')).toBe(list);
-    expect(boxRoot()!.querySelector('.av-file')).not.toBeNull();
-    expect(boxRoot()!.querySelector('.av-size')?.textContent).toBe('119 KB');
+    expect(boxRoot()!.querySelector('.av-feedback')?.firstChild?.textContent).toBe('Preview');
+    expect(boxRoot()!.querySelector('.av-unread')).toBeNull();
+    // The size comes from the details, not from the frame.
+    expect(boxRoot()!.querySelector('.av-size')?.textContent).toBe('118 KB');
   });
 
   it('keeps the session address out of the page', async () => {
@@ -260,19 +274,26 @@ describe('the own submission', () => {
     expect(boxRoot()?.innerHTML).not.toContain('hmac');
   });
 
-  it('shows the files of the details until the frame has loaded, then reads its rows', async () => {
+  it('shows the file, its size and View Feedback from the details before the frame has loaded, then the frame refines the label', async () => {
     const frame = showInFrame(FILE_ROW, 'about:blank', 'loading');
     start();
     await settle();
-    // The frame is hidden, and the details give the file with no button.
     expect(boxRoot()?.querySelector('.av-file')?.textContent).toBe('View essay.pdf');
     expect(boxRoot()?.querySelector('.av-size')?.textContent).toBe('118 KB');
-    expect(boxRoot()?.querySelector('[data-action=feedback]')).toBeNull();
-    expect(document.head.querySelector('style')).not.toBeNull();
-    showInFrame(FILE_ROW);
+    const button = boxRoot()?.querySelector('[data-action=feedback]');
+    expect(button?.firstChild?.textContent).toBe('View Feedback');
+    expect(button?.querySelector('.av-unread')).toBeNull();
+    expect(rules()).toContain('.submission-details-frame{display:none!important}');
+    showInFrame(
+      frameRows(PAGE, [
+        { fileId: '501', name: 'essay.pdf', size: '118 KB', button: 'Preview', unread: true },
+      ]),
+    );
     frame.dispatchEvent(new Event('load'));
-    expect(boxRoot()?.querySelector('[data-action=feedback]')).not.toBeNull();
-    expect(boxRoot()?.querySelector('.av-size')?.textContent).toBe('118 KB');
+    expect(boxRoot()?.querySelector('[data-action=feedback]')?.firstChild?.textContent).toBe(
+      'Preview',
+    );
+    expect(boxRoot()?.querySelector('.av-unread')).not.toBeNull();
   });
 
   it('shows View Feedback for a shard student whose frame writes the ids in full', async () => {
@@ -717,20 +738,23 @@ describe('a submission type that the view cannot show in full', () => {
   });
 });
 
-describe('a frame that holds more than the view can show', () => {
-  /** The frame stays, and the host holds only the instructions above the content area. */
-  async function expectAbove(): Promise<void> {
+describe('a frame that the view cannot use', () => {
+  /** The frame stays hidden, and the box holds the file and View Feedback from the details. */
+  async function expectReplace(): Promise<void> {
     await settle();
-    expect(host()?.nextElementSibling).toBe(container());
-    expect(rules()).not.toContain('.submission-details-frame');
-    expect(root()?.querySelector('.av-instructions')).not.toBeNull();
-    expect(
-      boxRoot()?.querySelector('.av-files, .av-submission, [data-action=feedback]'),
-    ).toBeNull();
+    expect(rules()).toContain('.submission-details-frame{display:none!important}');
+    expect(boxRoot()?.querySelector('.av-file')?.textContent).toBe('View essay.pdf');
+    expect(boxRoot()?.querySelector('[data-action=feedback]')?.firstChild?.textContent).toBe(
+      'View Feedback',
+    );
+    expect(console.warn).not.toHaveBeenCalled();
   }
 
-  it('keeps the frame when a session address has an extra access token', async () => {
-    const frameBefore = document.querySelector('.submission-details-frame')!.outerHTML;
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  it('ignores a session address in the frame, because the address comes from the details', async () => {
     showInFrame(
       frameRows(PAGE, [
         {
@@ -743,27 +767,52 @@ describe('a frame that holds more than the view can show', () => {
       ]),
     );
     start();
-    await expectAbove();
-    expect(document.querySelector('.submission-details-frame')!.outerHTML).toBe(frameBefore);
+    await expectReplace();
   });
 
-  it('keeps the frame when its file rows do not match the page', async () => {
+  it('ignores file rows that do not match the page', async () => {
     showInFrame(
       frameRows('/courses/12/assignments/101/submissions/43', [
-        { fileId: '501', name: 'essay.pdf', size: '118 KB', button: 'View Feedback' },
+        { fileId: '501', name: 'essay.pdf', size: '118 KB', button: 'Preview' },
       ]),
     );
     start();
-    await expectAbove();
+    await expectReplace();
   });
 
-  it('keeps the frame when the markup of the rows changed', async () => {
+  it('ignores a preview button that Canvas renamed', async () => {
+    showInFrame(
+      frameRows(PAGE, [
+        {
+          fileId: '501',
+          name: 'essay.pdf',
+          size: '118 KB',
+          button: 'Preview',
+          buttonClass: 'preview_button Button--link',
+        },
+      ]),
+    );
+    start();
+    await expectReplace();
+  });
+
+  it('ignores a button label that is not known', async () => {
+    showInFrame(
+      frameRows(PAGE, [
+        { fileId: '501', name: 'essay.pdf', size: '118 KB', button: 'Open it' as 'Preview' },
+      ]),
+    );
+    start();
+    await expectReplace();
+  });
+
+  it('ignores the markup of the rows when it changed', async () => {
     showInFrame('<ul class="files"><li><a href="#">essay.pdf</a></li></ul>');
     start();
-    await expectAbove();
+    await expectReplace();
   });
 
-  it('keeps the frame when a row shows a similarity score with an address that fails the check', async () => {
+  it('ignores a cell with a link or a score of the frame, because the score comes from the details', async () => {
     showInFrame(
       frameRows(PAGE, [
         {
@@ -771,60 +820,22 @@ describe('a frame that holds more than the view can show', () => {
           name: 'essay.pdf',
           size: '118 KB',
           button: 'View Feedback',
-          score: TURNITIN_SCORE.replace(
-            /href="[^"]*"/,
-            'href="/courses/12/assignments/101/submissions/43/turnitin/a"',
-          ),
+          score: '<a href="https://evil.example/report">an extra link</a>',
         },
       ]),
     );
     start();
-    await expectAbove();
+    await expectReplace();
+    expect(boxRoot()?.querySelector('.av-score')).toBeNull();
   });
 
-  it('keeps the frame when the score is in a cell that has no readable content', async () => {
-    showInFrame(
-      frameRows(PAGE, [
-        {
-          fileId: '501',
-          name: 'essay.pdf',
-          size: '118 KB',
-          button: 'View Feedback',
-          score: '<span class="turnitin_score_container tooltip"><i class="icon-clock"></i></span>',
-        },
-      ]),
-    );
+  it('ignores a report mark outside a file row', async () => {
+    showInFrame(`<div>${TURNITIN_SCORE}</div>${FILE_ROW}`);
     start();
-    await expectAbove();
+    await expectReplace();
   });
 
-  it('keeps the frame when the report of a text entry shows outside a file row', async () => {
-    send.mockResolvedValue(
-      reply((details) => {
-        details.submission.submission_type = 'online_text_entry';
-        details.submission.body = '<p>My essay</p>';
-        details.submission.attachments = [];
-      }),
-    );
-    showInFrame(
-      `<div>${TURNITIN_SCORE}</div><div id="submission_preview" class="paper user_content"><p>My essay</p></div>`,
-    );
-    start();
-    await expectAbove();
-  });
-
-  it('keeps the frame when a report status shows only after the load', async () => {
-    const frame = showInFrame(FILE_ROW);
-    start();
-    await settle();
-    expect(boxRoot()?.querySelector('[data-action=feedback]')).not.toBeNull();
-    const cell = frame.contentDocument!.querySelector('td.asset-report-status-container')!;
-    cell.innerHTML = '<div><a href="#">Similarity report</a></div>';
-    await vi.advanceTimersByTimeAsync(200);
-    await expectAbove();
-  });
-
-  it('keeps the frame when it cannot be read once it has loaded', async () => {
+  it('ignores a frame that cannot be read', async () => {
     Object.defineProperty(document.querySelector('#preview_frame'), 'contentDocument', {
       get() {
         throw new Error('blocked');
@@ -832,19 +843,18 @@ describe('a frame that holds more than the view can show', () => {
       configurable: true,
     });
     start();
-    await expectAbove();
+    await expectReplace();
   });
 
-  it('keeps the frame when it never shows the preview page', async () => {
+  it('does not wait for a frame that never shows the preview page', async () => {
     showInFrame(FILE_ROW, 'about:blank', 'loading');
     start();
-    await settle();
-    expect(document.head.querySelector('style')).not.toBeNull();
-    await vi.advanceTimersByTimeAsync(10_000);
-    await expectAbove();
+    await expectReplace();
+    await vi.advanceTimersByTimeAsync(30_000);
+    await expectReplace();
   });
 
-  it('keeps the frame of a URL submission that has a snapshot image', async () => {
+  it('ignores the snapshot image of a URL submission', async () => {
     send.mockResolvedValue(
       reply((details) => {
         details.submission.submission_type = 'online_url';
@@ -854,34 +864,123 @@ describe('a frame that holds more than the view can show', () => {
     );
     showInFrame('<div><img src="/snapshot.png" alt="URL Preview"></div>');
     start();
-    await expectAbove();
+    await settle();
+    expect(rules()).toContain('.submission-details-frame{display:none!important}');
+    expect(root()?.querySelector('.av-submission a')?.textContent).toBe('https://example.com/work');
+    expect(console.warn).not.toHaveBeenCalled();
   });
 
-  it('keeps the frame when the details list files that the frame does not show', async () => {
+  it('shows the files of the details when the frame lists none', async () => {
     showInFrame('<div class="file-upload-submission">No files were uploaded</div>');
     start();
-    await expectAbove();
+    await expectReplace();
+  });
+
+  it('shows a file with no preview_url without a button, and a file with a bad one without a button and with a line in the console', async () => {
+    send.mockResolvedValue(
+      reply((details) => {
+        details.submission.attachments = [
+          { id: '501', display_name: 'a.txt', size: 10 },
+          {
+            id: '502',
+            display_name: 'b.pdf',
+            size: 10,
+            preview_url: `${SESSION_PATH}&access_token=t`,
+          },
+        ];
+      }),
+    );
+    start();
+    await settle();
+    expect(boxRoot()?.querySelectorAll('.av-box-file')).toHaveLength(2);
+    expect(boxRoot()?.querySelector('[data-action=feedback]')).toBeNull();
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(console.warn).mock.calls[0]![0]).toBe(
+      '[weekrow] submission details: 1 file(s) without a usable feedback address',
+    );
+  });
+});
+
+describe('a page that keeps the frame of Canvas', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  /** The frame stays, and the host holds only the instructions above the content area. */
+  async function expectAbove(reason: string): Promise<void> {
+    await settle();
+    expect(host()?.nextElementSibling).toBe(container());
+    expect(rules()).not.toContain('.submission-details-frame');
+    expect(root()?.querySelector('.av-instructions')).not.toBeNull();
+    expect(
+      boxRoot()?.querySelector('.av-files, .av-submission, [data-action=feedback]'),
+    ).toBeNull();
+    expect(console.warn).toHaveBeenCalledWith(
+      `[weekrow] submission details keeps the Canvas frame, reason: ${reason}`,
+    );
+  }
+
+  it('keeps it, with a line in the console, when a report status shows only after the load', async () => {
+    const frame = showInFrame(FILE_ROW);
+    start();
+    await settle();
+    expect(boxRoot()?.querySelector('[data-action=feedback]')).not.toBeNull();
+    expect(console.warn).not.toHaveBeenCalled();
+    const cell = frame.contentDocument!.querySelector('td.asset-report-status-container')!;
+    cell.innerHTML = '<div><a href="#">Similarity report</a></div>';
+    await vi.advanceTimersByTimeAsync(200);
+    await expectAbove('asset-reports');
+    // One more change of the frame does not log the same reason again.
+    cell.innerHTML = '<div><a href="#">Similarity report</a> again</div>';
+    await vi.advanceTimersByTimeAsync(200);
+    expect(console.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('goes back to the box when the report of the asset processor is gone', async () => {
+    const frame = showInFrame(FILE_ROW);
+    start();
+    await settle();
+    const cell = frame.contentDocument!.querySelector('td.asset-report-status-container')!;
+    cell.innerHTML = '<span>Processing</span>';
+    await vi.advanceTimersByTimeAsync(200);
+    await expectAbove('asset-reports');
+    cell.innerHTML = '';
+    await vi.advanceTimersByTimeAsync(200);
+    expect(rules()).toContain('.submission-details-frame{display:none!important}');
+    expect(boxRoot()?.querySelector('[data-action=feedback]')).not.toBeNull();
+  });
+
+  it('keeps it when the report data of a file has a form that the view cannot show', async () => {
+    send.mockResolvedValue(
+      reply((details) => {
+        details.submission.reports = [{ ...REPORT, readable: false }];
+      }),
+    );
+    start();
+    await expectAbove('report-data');
+  });
+
+  it('keeps it, with a line in the console, for a submission type that the view does not show', async () => {
+    send.mockResolvedValue(
+      reply((details) => {
+        details.submission.submission_type = 'media_recording';
+      }),
+    );
+    start();
+    await expectAbove('type');
   });
 
   it('gives the page back exactly when turned off, and shows the view again when it is turned on', async () => {
-    showInFrame(
-      frameRows(PAGE, [
-        {
-          fileId: '501',
-          name: 'essay.pdf',
-          size: '118 KB',
-          button: 'Preview',
-          report: '<span>Processing</span>',
-        },
-      ]),
-    );
+    const frame = showInFrame(FILE_ROW);
+    frame.contentDocument!.querySelector('td.asset-report-status-container')!.innerHTML =
+      '<span>Processing</span>';
     const before = document.getElementById('content')!.outerHTML;
     start();
-    await expectAbove();
+    await expectAbove('asset-reports');
     view.setActive(false);
     expect(document.getElementById('content')!.outerHTML).toBe(before);
     view.setActive(true);
-    await expectAbove();
+    await expectAbove('asset-reports');
   });
 });
 
@@ -1167,20 +1266,21 @@ describe('the status line and the date of the box', () => {
 });
 
 describe('the similarity score in the box', () => {
-  const rowWith = (score: string) =>
-    frameRows(PAGE, [
-      { fileId: '501', name: 'essay.pdf', size: '118 KB', button: 'View Feedback', score },
-    ]);
+  const withReports = (...reports: AssignmentReport[]) =>
+    reply((details) => {
+      details.submission.reports = reports;
+    });
 
-  it('replaces the frame also when a file has a score, and shows the score with its address and color', async () => {
-    showInFrame(rowWith(TURNITIN_SCORE));
+  it('shows the score of the report data with its address and color, with no frame read', async () => {
+    send.mockResolvedValue(withReports(REPORT));
+    showInFrame('<p>nothing that the view knows</p>');
     start();
     await settle();
     expect(rules()).toContain('.submission-details-frame{display:none!important}');
     const score = boxRoot()!.querySelector<HTMLAnchorElement>('a.av-score')!;
     expect(score.textContent).toBe('5.0%');
     expect(score.dataset['state']).toBe('acceptable');
-    expect(score.getAttribute('href')).toBe(`${ORIGIN}${PAGE}/turnitin/attachment_1`);
+    expect(score.getAttribute('href')).toBe(`${ORIGIN}${PAGE}/turnitin/attachment_501`);
     expect(score.getAttribute('target')).toBe('_blank');
     expect(score.getAttribute('rel')).toBe('noopener noreferrer');
     expect(score.getAttribute('title')).toBe('Similarity score');
@@ -1194,27 +1294,125 @@ describe('the similarity score in the box', () => {
     ]);
   });
 
-  it('shows a score with no address as a span with no link, and no state as gray', async () => {
-    showInFrame(rowWith(turnitinScores(PAGE).updatedNoAddress));
+  it('puts the attempt in the address of an originality report', async () => {
+    send.mockResolvedValue(
+      reply((details) => {
+        details.submission.attempt = 2;
+        details.submission.reports = [
+          { ...REPORT, kind: 'originality_report', score: 23, state: 'warning' },
+        ];
+      }),
+    );
     start();
     await settle();
-    expect(boxRoot()!.querySelector('a.av-score')).toBeNull();
-    const score = boxRoot()!.querySelector<HTMLElement>('span.av-score')!;
-    expect(score.textContent).toBe('7.0%');
-    expect(score.hasAttribute('data-state')).toBe(false);
-    expect(score.hasAttribute('href')).toBe(false);
+    const score = boxRoot()!.querySelector<HTMLAnchorElement>('a.av-score')!;
+    expect(score.textContent).toBe('23.0%');
+    expect(score.dataset['state']).toBe('warning');
+    expect(score.getAttribute('href')).toBe(
+      `${ORIGIN}${PAGE}/originality_report/attachment_501?attempt=2`,
+    );
   });
 
-  it('draws the score again when it appears after the load', async () => {
-    const frame = showInFrame(FILE_ROW);
+  it('shows a score of 0 and a report that is not ready', async () => {
+    send.mockResolvedValue(withReports({ ...REPORT, score: 0, state: 'none' }));
+    start();
+    await settle();
+    expect(boxRoot()!.querySelector('a.av-score')?.textContent).toBe('0.0%');
+    view.setActive(false);
+    send.mockResolvedValue(
+      withReports({ ...REPORT, score: null, state: 'pending', status: 'pending' }),
+    );
+    view.setActive(true);
+    await settle();
+    const score = boxRoot()!.querySelector<HTMLElement>('.av-score')!;
+    expect(score.textContent).toBe('Similarity score');
+    expect(score.dataset['state']).toBe('pending');
+  });
+
+  it('shows the message of a report with an error, cut to 40 characters', async () => {
+    send.mockResolvedValue(
+      withReports({
+        ...REPORT,
+        score: null,
+        state: 'error',
+        status: 'error',
+        error: 'The file type is not supported by the service and so on and on',
+      }),
+    );
+    start();
+    await settle();
+    const score = boxRoot()!.querySelector<HTMLElement>('.av-score')!;
+    expect(score.textContent).toBe('The file type is not supported by the se');
+    expect(score.dataset['state']).toBe('error');
+  });
+
+  it('shows a score with a state that is not known as gray', async () => {
+    send.mockResolvedValue(withReports({ ...REPORT, state: 'purple' }));
+    start();
+    await settle();
+    const score = boxRoot()!.querySelector<HTMLElement>('.av-score')!;
+    expect(score.textContent).toBe('5.0%');
+    expect(score.hasAttribute('data-state')).toBe(false);
+  });
+
+  it('shows a VeriCite score with the VeriCite address, before a Turnitin score', async () => {
+    send.mockResolvedValue(
+      withReports(REPORT, { ...REPORT, kind: 'vericite', score: 9, state: 'warning' }),
+    );
+    start();
+    await settle();
+    const score = boxRoot()!.querySelector<HTMLAnchorElement>('a.av-score')!;
+    expect(score.textContent).toBe('9.0%');
+    expect(score.getAttribute('href')).toBe(`${ORIGIN}${PAGE}/vericite/attachment_501`);
+  });
+
+  it('falls back to the report of the whole submission, with the address of the file', async () => {
+    send.mockResolvedValue(
+      reply((details) => {
+        details.submission.id = '9';
+        details.submission.reports = [{ ...REPORT, asset: 'submission_9' }];
+      }),
+    );
+    start();
+    await settle();
+    expect(boxRoot()!.querySelector<HTMLAnchorElement>('a.av-score')?.getAttribute('href')).toBe(
+      `${ORIGIN}${PAGE}/turnitin/attachment_501`,
+    );
+  });
+
+  it('shows no score for the report of another file', async () => {
+    send.mockResolvedValue(withReports({ ...REPORT, asset: 'attachment_999' }));
     start();
     await settle();
     expect(boxRoot()!.querySelector('.av-score')).toBeNull();
-    frame.contentDocument!.querySelector('td.file-upload-submission-turnitin')!.innerHTML =
-      TURNITIN_SCORE;
-    await vi.advanceTimersByTimeAsync(200);
-    expect(boxRoot()!.querySelector('a.av-score')?.textContent).toBe('5.0%');
     expect(rules()).toContain('.submission-details-frame{display:none!important}');
+  });
+
+  it('shows the score of a text entry in the box, from the report of the submission', async () => {
+    send.mockResolvedValue(
+      reply((details) => {
+        details.submission.submission_type = 'online_text_entry';
+        details.submission.body = '<p>My essay</p>';
+        details.submission.attachments = [];
+        details.submission.id = '9';
+        details.submission.submitted_at = '2026-11-01T10:00:00Z';
+        details.submission.reports = [
+          {
+            ...REPORT,
+            kind: 'originality_report',
+            asset: 'submission_9_2026-11-01T10:00:00Z',
+            score: 12.35,
+          },
+        ];
+      }),
+    );
+    showInFrame('<div id="submission_preview" class="paper user_content"><p>My essay</p></div>');
+    start();
+    await settle();
+    expect(rules()).toContain('.submission-details-frame{display:none!important}');
+    const score = boxRoot()!.querySelector<HTMLAnchorElement>('.av-box-report a.av-score')!;
+    expect(score.textContent).toBe('12.4%');
+    expect(score.getAttribute('href')).toBe(`${ORIGIN}${PAGE}/originality_report/submission_9`);
   });
 });
 
@@ -1483,6 +1681,7 @@ describe('a comment that holds the markup of the page', () => {
   });
 
   it('keeps the frame and shows the instructions above it when the mount fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const real = HTMLElement.prototype.attachShadow;
     let calls = 0;
     vi.spyOn(HTMLElement.prototype, 'attachShadow').mockImplementation(function (
@@ -1503,10 +1702,16 @@ describe('a comment that holds the markup of the page', () => {
     expect(document.getElementById('av-comments')).toBeNull();
     expect(host()?.nextElementSibling).toBe(container());
     expect(root()?.querySelector('.av-instructions')).not.toBeNull();
+    // One line names the error, and one line gives the reason. Neither holds an address.
+    expect(warn.mock.calls.map((call) => call[0])).toEqual([
+      '[weekrow] submission details mount failed: Error: no shadow root',
+      '[weekrow] submission details keeps the Canvas frame, reason: mount-failed',
+    ]);
     vi.restoreAllMocks();
   });
 
   it('gives the whole page back when the mode above fails to mount too', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const column = document.getElementById('right-side-wrapper')!.outerHTML;
     const button = document.querySelector(CANVAS_BUTTON)!.outerHTML;
     const before = container().outerHTML;
@@ -1521,6 +1726,11 @@ describe('a comment that holds the markup of the page', () => {
     expect(document.getElementById('right-side-wrapper')!.outerHTML).toBe(column);
     expect(document.querySelector(CANVAS_BUTTON)!.outerHTML).toBe(button);
     expect(container().outerHTML).toBe(before);
+    expect(warn.mock.calls.map((call) => call[0])).toEqual([
+      '[weekrow] submission details mount failed: Error: no shadow root',
+      '[weekrow] submission details keeps the Canvas frame, reason: mount-failed',
+      '[weekrow] submission details mount failed: Error: no shadow root',
+    ]);
     vi.restoreAllMocks();
   });
 

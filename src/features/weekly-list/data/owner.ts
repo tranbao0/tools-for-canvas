@@ -89,7 +89,7 @@ import type {
   AssignmentOwnerReply,
   NoSubmissionAccess,
 } from '../../assignment-view/protocol';
-import { projectAssignmentView } from '../../assignment-view/project';
+import { projectAssignmentView, projectReports } from '../../assignment-view/project';
 import {
   applyPatch,
   matchesTarget,
@@ -340,7 +340,8 @@ export interface DataOwner {
   /**
    * Whose submission the signed-in student has for one assignment, under the same rules as
    * `assignmentDetails`, with one request that has no include: no comments, no rubric, and no
-   * assignment record. The Submission box of the assignment page needs only the user.
+   * assignment record. The Submission box of the assignment page needs the user, and the report
+   * data of the same record for the score beside each file.
    */
   assignmentOwner(
     courseId: string,
@@ -2719,16 +2720,16 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     origin: string | null,
     tabId: number | undefined,
   ): Promise<AssignmentOwnerReply | NoSubmissionAccess> {
-    const userId = await readForAssignmentView(origin, tabId, async (api) => {
+    const reply = await readForAssignmentView(origin, tabId, async (api) => {
       const record = await api
         .getOwnSubmissionUserRecord(courseId, assignmentId)
         .catch(notFoundIsNull);
       if (record === null) return null;
       const user = record['user_id'];
       if (typeof user !== 'string' || !isCanvasId(user)) throw new Error('Not a submission record');
-      return user;
+      return { userId: user, ...projectReports(record) };
     });
-    return userId === null ? { kind: 'no_submission_access' } : { userId };
+    return reply === null ? { kind: 'no_submission_access' } : reply;
   }
 
   /**

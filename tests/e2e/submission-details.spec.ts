@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Frame, Page } from '@playwright/test';
 import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
+import type { AssignmentReport } from '../../src/features/assignment-view/protocol';
 import { ASSIGNMENT_DETAILS, rawRecords } from '../fixtures/assignment-view';
 import {
   SESSION_PATH,
@@ -55,7 +56,9 @@ function details(change: (copy: Details) => void = () => undefined): Details {
   const copy = structuredClone(ASSIGNMENT_DETAILS);
   copy.assignment.description = DESCRIPTION;
   copy.submission.submission_type = 'online_upload';
-  copy.submission.attachments = [{ id: '501', display_name: FILE_NAME, size: 120_832 }];
+  copy.submission.attachments = [
+    { id: '501', display_name: FILE_NAME, size: 120_832, preview_url: SESSION_PATH },
+  ];
   change(copy);
   return copy;
 }
@@ -71,6 +74,8 @@ interface Options {
   extra?: FakeCanvasRoute[];
   /** The document of the files frame. */
   preview?: string;
+  /** The frame never gets an answer. */
+  previewNever?: boolean;
   /** The user in the path of the page. */
   pathUser?: string;
   teacher?: boolean;
@@ -158,10 +163,12 @@ async function open(
     ...(options.extra ?? []),
     {
       path: route,
-      respond: (request) => ({
+      respond: async (request) => ({
         contentType: 'text/html',
         body: request.path.includes('preview=1')
-          ? preview
+          ? options.previewNever
+            ? await new Promise<string>(() => undefined)
+            : preview
           : submissionDetailsPage({
               course,
               assignment,
@@ -215,7 +222,10 @@ async function open(
     await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
   }
   await page.setViewportSize({ width: options.width ?? 1440, height: options.height ?? 900 });
-  await page.goto(`${served.canvas.origin}${route}${options.hash ?? ''}`);
+  // The load event waits for the frame, so a frame that never answers needs the commit.
+  await page.goto(`${served.canvas.origin}${route}${options.hash ?? ''}`, {
+    waitUntil: options.previewNever ? 'commit' : 'load',
+  });
   return served.canvas;
 }
 
@@ -659,6 +669,94 @@ test('a submission with two files lists both, and only a file that Canvas can pr
   await expect(box(page).locator('.av-box-file').nth(1)).toContainText('2.5 KB');
   await expect(box(page).locator('.av-feedback')).toHaveText(['View Feedback', 'Preview']);
   await expect(box(page).locator('.av-box-file').nth(1).getByRole('button')).toHaveCount(0);
+});
+
+/** The report of the file as `turnitin_data` of the submission record holds it. */
+const REPORT: AssignmentReport = {
+  asset: 'attachment_501',
+  kind: 'turnitin',
+  score: 5,
+  state: 'acceptable',
+  status: 'scored',
+  error: null,
+  readable: true,
+};
+const withReport = (copy: Details) => {
+  copy.submission.reports = [REPORT];
+};
+
+/** The page is in the replace mode: no frame, and the box holds the file, its score and the button. */
+async function expectReplaced(page: Page, origin: string) {
+  await expect(host(page)).toBeAttached({ timeout: 15_000 });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  await expect(box(page).getByRole('link', { name: FILE_NAME })).toBeVisible();
+  await expect(box(page).getByText('118 KB')).toBeVisible();
+  const score = box(page).locator('.av-score');
+  await expect(score).toHaveText('5.0%');
+  await expect(score).toHaveAttribute('data-state', 'acceptable');
+  await expect(score).toHaveAttribute(
+    'href',
+    `${origin}/courses/12/assignments/101/submissions/42/turnitin/attachment_501`,
+  );
+  await expect(box(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
+}
+
+test('a frame with markup that Canvas redrew changes nothing: the box holds the file, the score and View Feedback', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    change: withReport,
+    preview: previewWithText('<ul><li><a href="#">a file list that Canvas redrew</a></li></ul>'),
+  });
+  await expectReplaced(page, canvas.origin);
+});
+
+test('a row with an extra link changes nothing: the box holds the file, the score and View Feedback', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    change: withReport,
+    rows: [
+      {
+        fileId: '501',
+        name: FILE_NAME,
+        size: '118 KB',
+        button: 'View Feedback',
+        score: '<a href="https://evil.example/extra">an extra link</a>',
+      },
+    ],
+  });
+  await expectReplaced(page, canvas.origin);
+});
+
+test('an empty frame changes nothing: the box holds the file, the score and View Feedback', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, {
+    change: withReport,
+    preview: '<!doctype html><html><body></body></html>',
+  });
+  await expectReplaced(page, canvas.origin);
+});
+
+test('a frame that never loads changes nothing: the page shows the box at once and keeps it', async ({
+  context,
+  page,
+  background,
+}) => {
+  test.setTimeout(60_000);
+  const canvas = await open(context, page, background, { change: withReport, previewNever: true });
+  // The box needs no frame, so it shows before the old wait of 10 seconds could end.
+  await expect(host(page)).toBeAttached({ timeout: 8000 });
+  await expectReplaced(page, canvas.origin);
+  await page.waitForTimeout(11_000);
+  await expectReplaced(page, canvas.origin);
 });
 
 /**

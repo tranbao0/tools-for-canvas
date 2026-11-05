@@ -16,7 +16,8 @@
  */
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { logFailure } from '../../../shared/platform/log';
-import { isOwnerReply, type AssignmentOwnerMessage } from '../protocol';
+import { isOwnerReply, type AssignmentOwnerMessage, type AssignmentOwnerReply } from '../protocol';
+import { fileReport, type FileReport } from './files';
 import { ORIGINAL, OWN } from './own';
 
 const BOX = '#sidebar_content .details .content';
@@ -32,7 +33,18 @@ interface Treatment {
   /** The own node that holds the nodes of Canvas that the anchor had. */
   held: HTMLElement;
   view: HTMLElement;
+  /** The similarity score, which stands right after the anchor. */
+  score: HTMLElement | null;
 }
+
+/** The colors of a score state, as Canvas's `.turnitin_similarity_score` has them. */
+const SCORE_COLORS: Readonly<Record<string, readonly [string, string]>> = {
+  none: ['#397af4', '#000'],
+  acceptable: ['#009917', '#000'],
+  warning: ['#897b01', '#000'],
+  problem: ['#c86604', '#000'],
+  failure: ['#ad393a', '#fff'],
+};
 
 /** How long a batch of changes of the box waits for the next one. */
 const BATCH_MS = 50;
@@ -88,8 +100,11 @@ function own<K extends keyof HTMLElementTagNameMap>(
   return made;
 }
 
-/** The user of a file link of this assignment, or `null` when the link is no such file link. */
-function linkUser(anchor: HTMLAnchorElement, options: SidebarOptions): string | null {
+/** The user and the file of a file link of this assignment, or `null` when it is no such link. */
+function fileLink(
+  anchor: HTMLAnchorElement,
+  options: SidebarOptions,
+): { user: string; fileId: string; path: string } | null {
   const href = anchor.getAttribute('href');
   if (href === null) return null;
   let url: URL;
@@ -111,7 +126,7 @@ function linkUser(anchor: HTMLAnchorElement, options: SidebarOptions): string | 
     normalizeCanvasId(path[2]!) !== normalizeCanvasId(options.assignmentId)
   )
     return null;
-  return path[3]!;
+  return { user: path[3]!, fileId: download, path: url.pathname };
 }
 
 export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
@@ -122,6 +137,8 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
   let generation = 0;
   /** The user of the `submissions/self` record, or `null` until the background has answered. */
   let student: string | null = null;
+  /** The reply with the report data of that record. */
+  let owner: AssignmentOwnerReply | null = null;
   let observer: MutationObserver | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -130,9 +147,10 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
 
   /** Takes one treatment away. The nodes of Canvas go back into the link if it is still there. */
   function release(treatment: Treatment): void {
-    const { held, view } = treatment;
+    const { held, view, score } = treatment;
     if (held.parentNode === treatment.anchor) held.replaceWith(...held.childNodes);
     view.remove();
+    score?.remove();
   }
 
   /** Gives the box back as Canvas drew it. */
@@ -140,7 +158,24 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     for (const treatment of treatments.splice(0)) release(treatment);
   }
 
-  function treat(anchor: HTMLAnchorElement): void {
+  /** The score of a file as a link with Canvas's colors, in styles of its own: this page has no shadow root. */
+  function scoreLink(report: FileReport): HTMLElement {
+    const [background, color] = SCORE_COLORS[report.state ?? ''] ?? ['gray', '#273540'];
+    const link = own(
+      doc,
+      'a',
+      `display:inline-block;margin-left:8px;border-radius:3px;padding:2px 4px;background:${background};color:${color};font-size:.75rem;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap`,
+    );
+    link.textContent = report.text;
+    link.setAttribute('href', report.url);
+    link.setAttribute('target', '_blank');
+    link.setAttribute('rel', 'noopener noreferrer');
+    link.setAttribute('title', 'Similarity score');
+    if (report.state !== null) link.setAttribute('data-state', report.state);
+    return link;
+  }
+
+  function treat(anchor: HTMLAnchorElement, fileId: string, path: string): void {
     const name = /^\s*Download\s+(\S[\s\S]*?)\s*$/.exec(anchor.textContent ?? '')?.[1];
     if (name === undefined) return;
     const label = name.replace(/\s+/g, ' ');
@@ -149,7 +184,7 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     held.setAttribute(ORIGINAL, '');
     held.hidden = true;
     held.append(...anchor.childNodes);
-    const view = own(doc, 'span', 'display:flex;align-items:flex-start;gap:8px');
+    const view = own(doc, 'span', 'display:inline-flex;align-items:flex-start;gap:8px');
     const text = own(doc, 'span');
     text.textContent = `View ${label}`;
     const file = icon(doc, 16, '1.8', ['M6 3h8l4 4v14H6z', 'M14 3v4h4']);
@@ -158,7 +193,15 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     view.append(file, text);
     anchor.append(held, view);
 
-    treatments.push({ anchor, held, view });
+    // A report that cannot be shown leaves out the score, because Canvas's box lists the file anyway.
+    const report =
+      owner === null
+        ? null
+        : fileReport(owner, fileId, { origin: options.origin, pagePath: path }).report;
+    const score = report === null ? null : scoreLink(report);
+    if (score !== null) anchor.after(score);
+
+    treatments.push({ anchor, held, view, score });
   }
 
   /** Treats the file links that are not treated yet, for the student's own files only. */
@@ -172,8 +215,9 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     }
     for (const anchor of doc.querySelectorAll<HTMLAnchorElement>(`${BOX} a[href]`)) {
       if (anchor.hasAttribute(OWN) || treatments.some((entry) => entry.anchor === anchor)) continue;
-      const user = linkUser(anchor, options);
-      if (user !== null && normalizeCanvasId(user) === student) treat(anchor);
+      const link = fileLink(anchor, options);
+      if (link !== null && normalizeCanvasId(link.user) === student)
+        treat(anchor, link.fileId, link.path);
     }
     watch();
   }
@@ -201,6 +245,7 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     ++generation;
     stopWatching();
     student = null;
+    owner = null;
     undo();
   }
 
@@ -232,6 +277,7 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     // A refusal and an error leave the box as it is.
     if (!isOwnerReply(reply)) return;
     student = normalizeCanvasId(reply.userId);
+    owner = reply;
     render();
   }
 

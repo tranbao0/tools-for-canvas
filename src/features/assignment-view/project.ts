@@ -4,13 +4,19 @@
  * the description and of a text entry is still HTML that a person wrote, so the page sanitizes
  * it (src/shared/ui/sanitize.ts). A service worker has no `DOMParser`, so it cannot do that here.
  */
-import type { AssignmentDetails, AssignmentFile } from './protocol';
+import type {
+  AssignmentDetails,
+  AssignmentFile,
+  AssignmentReport,
+  SubmissionReports,
+} from './protocol';
 
 const MAX_HTML = 200_000;
 const MAX_TEXT = 2000;
 const MAX_URL = 2000;
 const MAX_FILES = 50;
 const MAX_TYPES = 20;
+const MAX_REPORTS = 100;
 
 type Fields = Record<string, unknown>;
 
@@ -48,14 +54,80 @@ function files(value: unknown): AssignmentFile[] {
     const fileId = id(fields?.['id']);
     if (fields !== null && fileId !== null) {
       const size = finite(fields['size']);
+      const session = text(fields['preview_url'], MAX_URL);
       result.push({
         id: fileId,
         display_name: plain(fields['display_name'] ?? fields['filename']),
         ...(size !== null && size >= 0 ? { size } : {}),
+        ...(session !== null && session !== '' ? { preview_url: session } : {}),
       });
     }
   }
   return result;
+}
+
+/**
+ * The keys of `turnitin_data` and `vericite_data` that name a report: an attachment, or the
+ * submission itself, with the time of the submission after it for an originality report of a text.
+ */
+const ASSET_KEY =
+  /^(?:attachment_\d{1,32}(?:~\d{1,32})?|submission_\d{1,32}(?:~\d{1,32})?(?:_\d{4}-\d{2}-\d{2}T[\d:.+Z-]{1,30})?)$/;
+
+/** A field that is absent or `null`, or a text. `undefined` in the result means an unreadable type. */
+function optionalText(value: unknown, max: number): string | null | undefined {
+  if (value === null || value === undefined) return null;
+  return typeof value === 'string' ? value.slice(0, max) : undefined;
+}
+
+function reportsOf(data: unknown, kind: AssignmentReport['kind'], into: AssignmentReport[]): void {
+  const fields = record(data);
+  if (fields === null) return;
+  for (const asset of Object.keys(fields)) {
+    if (into.length >= MAX_REPORTS) return;
+    const entry = record(fields[asset]);
+    if (entry === null || !ASSET_KEY.test(asset)) continue;
+    const score = entry['similarity_score'];
+    const state = optionalText(entry['state'], 20);
+    const status = optionalText(entry['status'], 20);
+    const error = optionalText(entry['error_message'], 200);
+    into.push({
+      asset,
+      kind,
+      score: typeof score === 'number' && Number.isFinite(score) ? score : null,
+      state: state ?? null,
+      status: status ?? null,
+      error: error ?? null,
+      readable:
+        (score === null ||
+          score === undefined ||
+          (typeof score === 'number' && Number.isFinite(score))) &&
+        state !== undefined &&
+        status !== undefined,
+    });
+  }
+}
+
+/**
+ * The report data of a submission record (`turnitin_data` and the VeriCite data), with the fields
+ * the page needs to show a score. A record with no report data gives an empty object.
+ */
+export function projectReports(submissionRecord: Fields): SubmissionReports {
+  const reports: AssignmentReport[] = [];
+  reportsOf(
+    submissionRecord['turnitin_data'],
+    submissionRecord['has_originality_report'] === true ? 'originality_report' : 'turnitin',
+    reports,
+  );
+  const vericite = record(submissionRecord['vericite_data']);
+  if (vericite?.['provider'] === 'vericite') reportsOf(vericite, 'vericite', reports);
+  if (reports.length === 0) return {};
+  const submissionId = id(submissionRecord['id']);
+  return {
+    ...(submissionId === null ? {} : { id: submissionId }),
+    submitted_at: text(submissionRecord['submitted_at'], 40),
+    attempt: finite(submissionRecord['attempt']),
+    reports,
+  };
 }
 
 /**
@@ -68,6 +140,7 @@ export function projectAssignmentView(
 ): AssignmentDetails {
   const assignmentId = id(assignmentRecord['id']);
   const userId = id(submissionRecord['user_id']);
+  const submissionId = id(submissionRecord['id']);
   if (assignmentId === null || userId === null) throw new Error('Not an assignment record');
   const types = list(assignmentRecord['submission_types'], MAX_TYPES).filter(
     (type): type is string => typeof type === 'string',
@@ -79,6 +152,7 @@ export function projectAssignmentView(
       submission_types: types.map((type) => type.slice(0, 40)),
     },
     submission: {
+      ...(submissionId === null ? {} : { id: submissionId }),
       user_id: userId,
       attempt: finite(submissionRecord['attempt']),
       submitted_at: text(submissionRecord['submitted_at'], 40),
@@ -89,6 +163,7 @@ export function projectAssignmentView(
       body: text(submissionRecord['body'], MAX_HTML),
       url: text(submissionRecord['url'], MAX_URL),
       attachments: files(submissionRecord['attachments']),
+      ...projectReports(submissionRecord),
     },
   };
 }
