@@ -421,6 +421,7 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
         dock.open();
         onPage = true;
         keeper.track();
+        keeper.restore();
       } else if (!dock.shown) {
         dock.setWidth(width);
         dock.setHidden(false);
