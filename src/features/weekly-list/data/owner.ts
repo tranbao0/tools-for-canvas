@@ -20,10 +20,19 @@ import type {
   TimeRange,
 } from '../../../shared/canvas/types';
 import { dashboardCourses, extrasFromView } from '../../dashboard-fixes/data/dashboardData';
-import type {
-  AnnouncementBody,
-  AnnouncementEntry,
-  DashboardData,
+import { rowFromNode, rowFromTopic } from '../../dashboard-fixes/data/announcementRows';
+import {
+  ANNOUNCEMENT_PAGE_SIZES,
+  MAX_ANNOUNCEMENT_OFFSET,
+  MAX_RANGE_ROWS,
+  isCalendarDate,
+  type AnnouncementBody,
+  type AnnouncementMarkReply,
+  type AnnouncementPageMessage,
+  type AnnouncementPageReply,
+  type AnnouncementRangeMessage,
+  type AnnouncementRangeReply,
+  type DashboardData,
 } from '../../dashboard-fixes/protocol';
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { assignmentIdsToLookup } from '../model/normalize';
@@ -242,7 +251,7 @@ export interface DataOwner {
   dashboardGradeVisibility(token?: string, tabId?: number): Promise<DashboardData>;
   /**
    * One announcement of the saved Canvas with its full message. A tab in another cookie store
-   * gets an empty one.
+   * gets an empty one. It runs the checks of `announcementPage` and rejects like it.
    */
   announcement(
     courseId: string,
@@ -251,13 +260,38 @@ export interface DataOwner {
     tabId?: number,
   ): Promise<AnnouncementBody>;
   /**
-   * The recent announcements of one course. A tab in another cookie store gets none.
+   * One page of the signed-in student's announcements, as the widget of Canvas reads them
+   * (decision 22). The student comes from the session, and the sign-in check confirms them first.
+   * It rejects for a tab in another cookie store, a student that the check does not confirm, and
+   * a Canvas that fails or answers with errors.
    */
-  announcements(
-    courseId: string,
+  announcementPage(
+    request: Omit<AnnouncementPageMessage, 'type'>,
     origin: string | null,
     tabId?: number,
-  ): Promise<AnnouncementEntry[]>;
+  ): Promise<AnnouncementPageReply>;
+  /**
+   * The announcements posted from one day to another day (`yyyy-mm-dd`). The courses come from the
+   * session, and a course that is not in it gets an empty reply. It rejects like `announcementPage`.
+   */
+  announcementRange(
+    request: Omit<AnnouncementRangeMessage, 'type'>,
+    origin: string | null,
+    tabId?: number,
+  ): Promise<AnnouncementRangeReply>;
+  /**
+   * The student marks an announcement of the dashboard as read or as unread. It runs the checks of
+   * the read mark of the Announcements tab, and replies with whether Canvas took the mark. `userId`
+   * is the student whose list held the row. A mark for any other student than the signed-in one is
+   * refused, as an Undo is.
+   */
+  markDashboardAnnouncement(
+    courseId: string,
+    topicId: string,
+    read: boolean,
+    userId: string,
+    tabId?: number,
+  ): Promise<AnnouncementMarkReply>;
   /**
    * The Announcements tab of one surface: the announcements of the last 14 days of the courses
    * the student shows, with the read marks applied (decision 24). The first request loads them
@@ -2251,9 +2285,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   const EXTRAS_SPAN = { kind: 'fortnight', days: 14 } as const;
   /** The longest message the background passes on, so a huge post cannot fill the message. */
   const MAX_MESSAGE_CHARS = 500_000;
-  const MAX_LIST_MESSAGE_CHARS = 4_000;
-  const MAX_LISTED_ANNOUNCEMENTS = 10;
-  const ANNOUNCEMENT_WINDOW_MS = 180 * 24 * 60 * 60 * 1000;
 
   /** How long a sign-in check of cached data stays good, and the wait after a failed one. */
   const USER_CHECK_MS = 30_000;
@@ -2859,11 +2890,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
   }
 
-  async function announcementApi(origin: string | null): Promise<CanvasApi> {
-    if (origin === null) throw new Error('No Canvas address is saved');
-    return apiFor(origin);
-  }
-
   async function announcement(
     courseId: string,
     topicId: string,
@@ -2871,34 +2897,126 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     tabId?: number,
   ): Promise<AnnouncementBody> {
     if (!(await surfaceMayRead(tabId))) return { title: '', message: '' };
-    const topic = await (await announcementApi(origin)).getAnnouncement(courseId, topicId);
+    if (origin === null) throw new Error('No Canvas address is saved');
+    const reader = await signedInReader(origin);
+    const topic = await cookieBound(() => reader.api.getAnnouncement(courseId, topicId));
+    // The message goes to the page only for the student and the cookie that asked.
+    if (topic === DROPPED || !isCurrent(reader.stamp)) {
+      throw new Error('The student or the cookie changed');
+    }
     return {
       title: String(topic.title ?? ''),
       message: String(topic.message ?? '').slice(0, MAX_MESSAGE_CHARS),
     };
   }
 
-  async function announcements(
-    courseId: string,
+  /**
+   * The checks that every read of the student's announcements runs first: the saved Canvas and a
+   * student whom the sign-in check confirms now. It returns the stamp of the cache, so the reply
+   * can be dropped when the student changed.
+   */
+  async function signedInReader(
+    origin: string | null,
+  ): Promise<{ api: CanvasApi; stamp: WriteStamp; session: SessionData; origin: string }> {
+    await ready();
+    if (
+      origin === null ||
+      origin !== knownOrigin ||
+      cache === null ||
+      cache.session === null ||
+      !(await signedInStudentOwnsCache())
+    ) {
+      throw new Error('The announcements are not available');
+    }
+    return { api: apiFor(origin), stamp: writeStamp(), session: cache.session, origin };
+  }
+
+  /** `signedInReader` for a tab in the cookie store of the requests. */
+  async function announcementReader(
+    origin: string | null,
+    tabId: number | undefined,
+  ): Promise<{ api: CanvasApi; stamp: WriteStamp; session: SessionData; origin: string }> {
+    await ready();
+    if (!(await surfaceMayRead(tabId))) throw new Error('The announcements are not available');
+    return signedInReader(origin);
+  }
+
+  async function announcementPage(
+    request: Omit<AnnouncementPageMessage, 'type'>,
     origin: string | null,
     tabId?: number,
-  ): Promise<AnnouncementEntry[]> {
-    if (!(await surfaceMayRead(tabId))) return [];
-    const api = await announcementApi(origin);
-    const end = clock.now();
-    const topics = await api.listAnnouncements(courseId, {
-      start: isoInstant(end - ANNOUNCEMENT_WINDOW_MS),
-      end: isoInstant(end),
-    });
-    return topics.slice(0, MAX_LISTED_ANNOUNCEMENTS).map((topic) => ({
-      id: String(topic.id),
-      courseId,
-      title: String(topic.title ?? ''),
-      message: String(topic.message ?? '').slice(0, MAX_LIST_MESSAGE_CHARS),
-      postedAt: topic.posted_at ?? null,
-      author: topic.user_name ?? topic.author?.display_name ?? null,
-      read: topic.read_state === 'read',
-    }));
+  ): Promise<AnnouncementPageReply> {
+    if (
+      (request.courseId !== null && !isCanvasId(request.courseId)) ||
+      !Number.isInteger(request.offset) ||
+      request.offset < 0 ||
+      request.offset > MAX_ANNOUNCEMENT_OFFSET ||
+      !ANNOUNCEMENT_PAGE_SIZES.includes(request.first)
+    ) {
+      throw new Error('Not an announcements page');
+    }
+    const reader = await announcementReader(origin, tabId);
+    const userId = reader.stamp.userId;
+    if (userId === null) throw new Error('The announcements are not available');
+    const page = await cookieBound(() =>
+      reader.api.listAnnouncementPage({
+        userId,
+        courseId: request.courseId,
+        read: request.read,
+        offset: request.offset,
+        first: request.first,
+      }),
+    );
+    // The student or the cookie can change while the request runs. Nothing of this page may then
+    // reach the surface.
+    if (page === DROPPED || !isCurrent(reader.stamp)) {
+      throw new Error('The student or the cookie changed');
+    }
+    return {
+      userId,
+      items: page.nodes.flatMap((node) => rowFromNode(node, reader.origin) ?? []),
+      count: page.count,
+      total: page.total,
+      hasNext: page.hasNext,
+    };
+  }
+
+  async function announcementRangeRead(
+    request: Omit<AnnouncementRangeMessage, 'type'>,
+    origin: string | null,
+    tabId?: number,
+  ): Promise<AnnouncementRangeReply> {
+    if (
+      (request.courseId !== null && !isCanvasId(request.courseId)) ||
+      !isCalendarDate(request.from) ||
+      !isCalendarDate(request.to) ||
+      request.from > request.to
+    ) {
+      throw new Error('Not an announcements range');
+    }
+    const reader = await announcementReader(origin, tabId);
+    // The courses are the ones of the session, as the dashboard shows them, never the page's.
+    const names = new Map(reader.session.courses.map((course) => [course.id, course.name]));
+    const wanted =
+      request.courseId === null
+        ? [...names.keys()]
+        : names.has(request.courseId)
+          ? [request.courseId]
+          : [];
+    const userId = reader.session.profile.id;
+    if (wanted.length === 0) return { userId, items: [], truncated: false };
+    const topics = await cookieBound(() =>
+      reader.api.listAnnouncementFeed(wanted, { start: request.from, end: request.to }),
+    );
+    if (topics === DROPPED || !isCurrent(reader.stamp)) {
+      throw new Error('The student or the cookie changed');
+    }
+    const rows = topics.flatMap((topic) => rowFromTopic(topic, names, reader.origin) ?? []);
+    return {
+      userId,
+      items: rows.slice(0, MAX_RANGE_ROWS),
+      truncated: rows.length > MAX_RANGE_ROWS,
+    };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -3070,6 +3188,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     seq: number,
     stamp: WriteStamp,
   ): Promise<boolean> {
+    // Resolves with whether Canvas took the mark.
     const key = announcementKey(courseId, topicId);
     if (stamp.origin === null) return false;
     if (!(await verifyUser(stamp))) {
@@ -3097,10 +3216,18 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       staleAnnouncements();
       return false;
     }
-    updateMark(key, seq, (mark) => ({ ...mark, confirmedSeq: nextId() }));
+    // A topic that the cached list does not hold has nothing to overlay. With no load in flight, no
+    // older state can arrive for it, so its mark goes. Otherwise the mark holds until a load shows
+    // the new state.
+    const listed =
+      cache?.announcements?.topics?.some(
+        (topic) => topic.courseId === courseId && topic.id === topicId,
+      ) ?? false;
+    if (!listed && announcementLoad === null) updateMark(key, seq, () => null);
+    else updateMark(key, seq, (mark) => ({ ...mark, confirmedSeq: nextId() }));
     await finishWrite();
-    // The list needs no round: the mark holds until a load shows the new state.
-    return false;
+    // The list needs no round, so the job asks for none.
+    return true;
   }
 
   async function markAnnouncement(
@@ -3139,8 +3266,55 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     };
     persist();
     bumpLater();
-    void enqueueWrite((stamp) => runAnnouncementWrite(courseId, topicId, read, seq, stamp));
+    void enqueueWrite(async (stamp) => {
+      await runAnnouncementWrite(courseId, topicId, read, seq, stamp);
+      return false;
+    });
     return read ? { undo: { kind: 'announcement', userId, origin, courseId, topicId } } : NO_UNDO;
+  }
+
+  /**
+   * The read mark of the Announcements widget of the dashboard. It runs the checks of
+   * `markAnnouncement`: the cookie store of the tab, the sign-in check, the write queue, the
+   * user check and the guard of the request. It differs in two ways. The dashboard has no cached
+   * list of the tab, so the topic need not be in it, and the state that the page shows is the
+   * page's, so the mark is always sent. The mark enters `announcementMarks`, so a tab that holds
+   * the same topic shows it at once, and the next load of that tab settles it. The reply waits for
+   * the write, because the page takes its mark back when Canvas did not take it.
+   */
+  async function markDashboardAnnouncement(
+    courseId: string,
+    topicId: string,
+    read: boolean,
+    userId: string,
+    tabId?: number,
+  ): Promise<AnnouncementMarkReply> {
+    await ready();
+    const refused: AnnouncementMarkReply = { ok: false };
+    if (!isCanvasId(courseId) || !isCanvasId(topicId) || typeof read !== 'boolean') return refused;
+    if (!isCanvasId(userId)) return refused;
+    if (!(await surfaceMayRead(tabId)) || !(await signedInStudentOwnsCache())) return refused;
+    if (knownOrigin === null || cache === null || cache.session == null) return refused;
+    // The row came from the list of a student. Another signed-in student must not mark it.
+    if (cache.session.profile.id !== userId) return refused;
+    const key = announcementKey(courseId, topicId);
+    const listed =
+      cache.announcements?.topics?.some(
+        (topic) => topic.courseId === courseId && topic.id === topicId,
+      ) ?? false;
+    const seq = nextId();
+    cache = {
+      ...cache,
+      announcementMarks: { ...cache.announcementMarks, [key]: { read, seq, confirmedSeq: null } },
+    };
+    persist();
+    if (listed) bumpLater();
+    let ok = false;
+    await enqueueWrite(async (stamp) => {
+      ok = await runAnnouncementWrite(courseId, topicId, read, seq, stamp);
+      return false;
+    });
+    return { ok };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -3351,7 +3525,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     dashboardData,
     dashboardGradeVisibility,
     announcement,
-    announcements,
+    announcementPage,
+    announcementRange: announcementRangeRead,
+    markDashboardAnnouncement,
     announcementFeed,
     viewerRead,
     assignmentDetails,

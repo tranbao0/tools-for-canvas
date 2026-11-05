@@ -23,7 +23,9 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - the names of custom grade statuses in your courses;
 - your current grade and grade letter in each course, which Canvas sends with the course list, unless the course hides them;
 - the announcements of your courses: the title, author, date, read state and text of the announcements of the last 14 days of your shown courses, for the Announcements tab of the list (the extension keeps the first 1,500 characters of each text in memory);
-- the full text of an announcement that you open, and the recent announcements of a course that you choose in the announcements filter of the new dashboard;
+- the full text of an announcement that you open;
+- the announcements that the Announcements widget of the new dashboard shows, a page at a time as you scroll: the title, author, date, course name, read state and text of each (the extension keeps the first 4,000 characters of each text in memory for the page view, and reads all your announcements once, 100 at a time and at most 2,000, when you search by topic);
+- the announcements that you find with the search by date, read from the announcements list of your Canvas for the days that you choose, at most 500;
 - the details of an assignment that you open on the Grades page: its instructions, its rubric, your own submission with your files and your rubric assessment, and the comments on it with their files.
   The extension reads them only when you open the row, with two requests of your own Canvas: `GET /api/v1/courses/:id/assignments/:id` and `GET /api/v1/courses/:id/assignments/:id/submissions/self`.
 
@@ -77,13 +79,17 @@ The extension writes only to your own Canvas, and only when you ask it to:
 - a done mark when you check an item off, or remove it when you uncheck the item;
 - a skip mark when you skip an item, or remove it when you unskip the item;
 - a custom task when you create, edit or delete one;
-- a read mark on an announcement when you press "Mark as read" in the Announcements tab, or an unread mark when you press Undo.
+- a read mark on an announcement when you press "Mark as read" in the Announcements tab, or an unread mark when you press Undo;
+- a read mark or an unread mark on an announcement when you click the read control in the Announcements widget of the new dashboard.
 
-The extension marks an announcement as read only when you press "Mark as read".
+The extension marks an announcement as read only when you press "Mark as read" or click the read control.
+The search, the date search and the scroll of the Announcements widget send no write.
 When you open an announcement in place, it only reads the announcement.
 The extension never loads the Canvas page of an announcement itself.
 That page marks the announcement as read, so it opens only when you press "Open in Canvas", or when you open it in Canvas yourself.
 Before it sends a read mark, the extension asks Canvas who is signed in, so that a mark never goes to the account of another person.
+A read mark from the Announcements widget also names the student whose list held the row, and the extension refuses it when another student is signed in.
+The page keeps that student ID in memory only while the page is open.
 
 Done marks and skip marks are Canvas planner overrides.
 Custom tasks are Canvas planner notes.
@@ -93,7 +99,7 @@ On a module item, Canvas can count a done mark as the module's "Mark as done" re
 ## What the new dashboard fixes do
 
 The fixes work on the new Canvas dashboard and use only the requests that this policy lists.
-They recolor icons, open an announcement in place, show your overdue work, work with no due date, pages and tasks under the Course work list, and show a grade card for each course.
+They recolor icons, show the Announcements widget as one steady list that opens a message in place and searches by topic and by date, show your overdue work, work with no due date, pages and tasks under the Course work list, and show a grade card for each course.
 The text of an announcement is written by your teacher.
 The extension shows it only after it removes everything that could run code, load a frame or send a form.
 The fixes read the grade of each course from the course list, in your browser, and show it only to you on your own dashboard.

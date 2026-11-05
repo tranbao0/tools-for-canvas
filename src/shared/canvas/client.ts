@@ -2,9 +2,11 @@ import { chunk, unique, uniqueBy } from './batch';
 import { isCanvasId } from './ids';
 import { isJsonObject } from './classify';
 import {
+  announcementPageQuery,
   customGradeStatusesQuery,
   GRAPHQL_PATH,
   MAX_GRAPHQL_ALIASES,
+  readAnnouncementPage,
   readCustomGradeStatuses,
 } from './graphql';
 import {
@@ -396,16 +398,6 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
       getAnnouncement: async (courseId, topicId) =>
         getObject<AnnouncementTopic>(topicPath(courseId, topicId)),
 
-      listAnnouncements: async (courseId, range) =>
-        getAll<AnnouncementTopic>(
-          apiUrl('/api/v1/announcements', [
-            ['context_codes[]', `course_${pathId(courseId)}`],
-            ['start_date', range.start],
-            ['end_date', range.end],
-            ['per_page', PER_PAGE],
-          ]),
-        ),
-
       listAnnouncementFeed: async (courseIds, range) => {
         const batches = chunk(unique(courseIds), MAX_FEED_COURSES_PER_REQUEST);
         const results = await Promise.all(
@@ -427,6 +419,15 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
             .sort((a, b) => Date.parse(b.posted_at ?? '') - Date.parse(a.posted_at ?? '')),
           (topic) => topic.id,
         );
+      },
+
+      listAnnouncementPage: async (request) => {
+        const response = await send({
+          method: 'POST',
+          url: GRAPHQL_PATH,
+          body: announcementPageQuery(request),
+        });
+        return readAnnouncementPage(response.data);
       },
 
       setAnnouncementRead: async (courseId, topicId, read) => {

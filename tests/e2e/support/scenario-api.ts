@@ -1,7 +1,7 @@
 import type { Worker } from '@playwright/test';
 import { customGradeStatusesAnswer } from '../../fixtures/graphql';
 import { IDS, type Scenario } from '../../fixtures/scenario';
-import type { FakeCanvasRoute, JsonValue } from './fake-canvas';
+import type { FakeCanvasRoute, JsonValue, RecordedRequest } from './fake-canvas';
 
 export function json(value: unknown): JsonValue {
   return value as JsonValue;
@@ -11,7 +11,11 @@ export function json(value: unknown): JsonValue {
  * The Canvas API for the scenario. The planner answers every row of the term: the extension
  * places items by their own dates and drops the rest, so the range does not change the view.
  */
-export function apiRoutes(scenario: Scenario): FakeCanvasRoute[] {
+export function apiRoutes(
+  scenario: Scenario,
+  /** Answers the announcements query of the widget, or returns `undefined` for another query. */
+  announcementsQuery?: (request: RecordedRequest) => unknown,
+): FakeCanvasRoute[] {
   const courseIds = scenario.courses.map((course) => course.id);
   const created = {
     id: '99001',
@@ -48,9 +52,12 @@ export function apiRoutes(scenario: Scenario): FakeCanvasRoute[] {
       path: '/api/graphql',
       respond: (request) => ({
         body: json(
-          request.postData?.includes('WidgetGradeVisibility')
-            ? { data: { legacyNode: { widgetDashboardConfig: '{}' } } }
-            : customGradeStatusesAnswer(scenario, request.postData),
+          request.postData?.includes('WeekrowAnnouncements') &&
+            announcementsQuery?.(request) !== undefined
+            ? announcementsQuery(request)
+            : request.postData?.includes('WidgetGradeVisibility')
+              ? { data: { legacyNode: { widgetDashboardConfig: '{}' } } }
+              : customGradeStatusesAnswer(scenario, request.postData),
         ),
       }),
     },

@@ -31,14 +31,61 @@ export interface AnnouncementMessage {
   topicId: string;
 }
 
-/** In-page script to background: asks for the announcements of one course. The reply is a list. */
-export interface AnnouncementListMessage {
-  type: 'weekrow:announcement-list';
+/** The read filter of the widget, as the page reads it from the widget. */
+export type AnnouncementRead = 'unread' | 'read' | 'all';
+
+/** The sizes of an announcements page: the list loads 10, the search of all announcements 100. */
+export const ANNOUNCEMENT_PAGE_SIZES = [10, 100] as const;
+/** The largest offset that a page may ask for. */
+export const MAX_ANNOUNCEMENT_OFFSET = 100_000;
+
+/**
+ * In-page script to background: asks for a page of the student's announcements, the rows that
+ * the widget of Canvas reads. The reply is an `AnnouncementPageReply`. The student comes from the
+ * session of the background, never from the page.
+ */
+export interface AnnouncementPageMessage {
+  type: 'weekrow:announcement-page';
+  /** One course, or `null` for all. */
+  courseId: string | null;
+  read: AnnouncementRead;
+  /** How many rows of the filtered set to skip. */
+  offset: number;
+  first: (typeof ANNOUNCEMENT_PAGE_SIZES)[number];
+}
+
+/**
+ * In-page script to background: the student marks an announcement as read or as unread. The reply
+ * is an `AnnouncementMarkReply`. `userId` is the student whose list held the row, as the reply of
+ * that list named them. The background refuses the mark when the signed-in student is another.
+ */
+export interface AnnouncementMarkMessage {
+  type: 'weekrow:announcement-mark';
   courseId: string;
+  topicId: string;
+  userId: string;
+  read: boolean;
+}
+
+/**
+ * In-page script to background: asks for the announcements posted from one day to another day
+ * (`yyyy-mm-dd`, both included). The reply is an `AnnouncementRangeReply`. The background takes
+ * the courses from its session, and a course that is not in it gets an empty reply.
+ */
+export interface AnnouncementRangeMessage {
+  type: 'weekrow:announcement-range';
+  courseId: string | null;
+  from: string;
+  to: string;
 }
 
 export type FixMessage =
-  SaveToolsMessage | DashboardDataMessage | AnnouncementMessage | AnnouncementListMessage;
+  | SaveToolsMessage
+  | DashboardDataMessage
+  | AnnouncementMessage
+  | AnnouncementPageMessage
+  | AnnouncementMarkMessage
+  | AnnouncementRangeMessage;
 
 /** One course for the grade cards, the course colors and the course filter. */
 export interface DashboardCourse {
@@ -98,16 +145,49 @@ export interface AnnouncementBody {
   message: string;
 }
 
-/** One announcement for the course filter. `message` is HTML, as in `AnnouncementBody`. */
-export interface AnnouncementEntry {
+/** One announcement of the list. `message` is HTML, as in `AnnouncementBody`. */
+export interface AnnouncementListRow {
   id: string;
   courseId: string;
+  courseName: string;
   title: string;
-  message: string;
+  /** ISO instant, or `null`. */
   postedAt: string | null;
   author: string | null;
+  /** An http or https address, or `null`. */
+  avatarUrl: string | null;
   read: boolean;
+  message: string;
 }
+
+export interface AnnouncementPageReply {
+  /** The signed-in student whom the rows belong to. */
+  userId: string;
+  items: AnnouncementListRow[];
+  /**
+   * How many rows of the filtered set the page of Canvas held. It can be more than `items`,
+   * because a row without valid ids is not passed on. The next offset advances by it.
+   */
+  count: number;
+  /** Canvas's count of the filtered set, or `null` when it sent none. */
+  total: number | null;
+  hasNext: boolean;
+}
+
+export interface AnnouncementMarkReply {
+  ok: boolean;
+}
+
+export interface AnnouncementRangeReply {
+  /** The signed-in student whom the rows belong to. */
+  userId: string;
+  items: AnnouncementListRow[];
+  /** More announcements lay in the range than the reply holds. */
+  truncated: boolean;
+}
+
+/** The most rows that a range reply holds. */
+export const MAX_RANGE_ROWS = 500;
 
 type Fields = Record<string, unknown>;
 
@@ -131,8 +211,55 @@ export function isAnnouncementMessage(value: unknown): value is AnnouncementMess
   );
 }
 
-export function isAnnouncementListMessage(value: unknown): value is AnnouncementListMessage {
-  return hasType(value, 'weekrow:announcement-list') && isCanvasId(value['courseId']);
+const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** Whether the text is a real calendar day in the form `yyyy-mm-dd`. */
+export function isCalendarDate(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const match = DATE.exec(value);
+  if (match === null) return false;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
+}
+
+function isCourseOrNull(value: unknown): value is string | null {
+  return value === null || isCanvasId(value);
+}
+
+export function isAnnouncementPageMessage(value: unknown): value is AnnouncementPageMessage {
+  return (
+    hasType(value, 'weekrow:announcement-page') &&
+    isCourseOrNull(value['courseId']) &&
+    (value['read'] === 'unread' || value['read'] === 'read' || value['read'] === 'all') &&
+    typeof value['offset'] === 'number' &&
+    Number.isInteger(value['offset']) &&
+    value['offset'] >= 0 &&
+    value['offset'] <= MAX_ANNOUNCEMENT_OFFSET &&
+    (value['first'] === 10 || value['first'] === 100)
+  );
+}
+
+export function isAnnouncementMarkMessage(value: unknown): value is AnnouncementMarkMessage {
+  return (
+    hasType(value, 'weekrow:announcement-mark') &&
+    isCanvasId(value['courseId']) &&
+    isCanvasId(value['topicId']) &&
+    isCanvasId(value['userId']) &&
+    typeof value['read'] === 'boolean'
+  );
+}
+
+export function isAnnouncementRangeMessage(value: unknown): value is AnnouncementRangeMessage {
+  return (
+    hasType(value, 'weekrow:announcement-range') &&
+    isCourseOrNull(value['courseId']) &&
+    isCalendarDate(value['from']) &&
+    isCalendarDate(value['to']) &&
+    value['from'] <= value['to']
+  );
 }
 
 export function isFixMessage(value: unknown): value is FixMessage {
@@ -140,6 +267,8 @@ export function isFixMessage(value: unknown): value is FixMessage {
     isSaveToolsMessage(value) ||
     isDashboardDataMessage(value) ||
     isAnnouncementMessage(value) ||
-    isAnnouncementListMessage(value)
+    isAnnouncementPageMessage(value) ||
+    isAnnouncementMarkMessage(value) ||
+    isAnnouncementRangeMessage(value)
   );
 }

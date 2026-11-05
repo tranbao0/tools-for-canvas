@@ -17,7 +17,7 @@ Each tool gets its own design decision in `docs/design.md` before it is built.
 ## 2. New dashboard fixes (built, see decision 22)
 
 - Course colors on the Course work icons.
-- Announcements: "Read more" opens in place, and a course filter.
+- Announcements: one steady list with infinite scroll, a message that opens in its row, a read control, a course filter, a search by topic and a search by date.
 - Course work gaps: work with no due date, overdue work outside "Missing", pages and ungraded discussions, longer pages with a sort, and summary counts that match the list.
 - Course grades for every course, not only six.
 - Steady page buttons: the page navigator of each paged widget keeps one width and one place for each button.
