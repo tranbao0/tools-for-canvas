@@ -133,6 +133,11 @@ export interface CanvasRequest {
   readonly body?: unknown;
   readonly signal?: AbortSignal;
   readonly cache?: RequestCache;
+  /**
+   * The most times the client retries this request after a rate limit answer. The default is
+   * the shared limit. The transport sends one attempt and ignores this number.
+   */
+  readonly maxRetries?: number;
 }
 
 export interface CanvasResponse {
