@@ -60,8 +60,8 @@ export function apiRoutes(
             : request.postData?.includes('WeekrowPeople') && peopleQuery?.(request) !== undefined
               ? peopleQuery(request)
               : request.postData?.includes('WidgetGradeVisibility')
-              ? { data: { legacyNode: { widgetDashboardConfig: '{}' } } }
-              : customGradeStatusesAnswer(scenario, request.postData),
+                ? { data: { legacyNode: { widgetDashboardConfig: '{}' } } }
+                : customGradeStatusesAnswer(scenario, request.postData),
         ),
       }),
     },

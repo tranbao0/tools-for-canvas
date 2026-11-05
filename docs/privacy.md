@@ -26,6 +26,7 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - the full text of an announcement that you open;
 - the announcements that the Announcements widget of the new dashboard shows, a page at a time as you scroll: the title, author, date, course name, read state and text of each (the extension keeps the first 4,000 characters of each text in memory for the page view, and reads all your announcements once, 100 at a time and at most 2,000, when you search by topic);
 - the announcements that you find with the search by date, read from the announcements list of your Canvas for the days that you choose, at most 500;
+- the people that the People widget of the new dashboard shows, a page at a time as you scroll: the name, the address of the profile picture, and the course and the role (teacher or teaching assistant) of each teacher and assistant of your courses (the extension does not ask for their email addresses, and keeps the rows in memory for the page view);
 - the details of an assignment on a page of the one assignment view (the Assignments list, the Submission Details page of your own work, and the assignment page): its instructions and submission types, and your own submission with its status, time, attempt, text, address, and the names and sizes of your files.
   The extension reads them with two requests of your own Canvas: `GET /api/v1/courses/:id/assignments/:id` and `GET /api/v1/courses/:id/assignments/:id/submissions/self`.
   The Submission Details page sends them when it loads, and the Assignments list sends them when you show an assignment in the assignment pane, and again now and then while the pane is open.
@@ -107,7 +108,9 @@ On a module item, Canvas can count a done mark as the module's "Mark as done" re
 ## What the new dashboard fixes do
 
 The fixes work on the new Canvas dashboard and use only the requests that this policy lists.
-They show the Announcements widget as one steady list that opens a message in place and searches by topic and by date, and show a grade card for each course.
+They show the Announcements widget as one steady list that opens a message in place and searches by topic and by date, show the People widget as one steady list, and show a grade card for each course.
+The message button of a person in that list is a link to the compose page of your own Canvas, and it opens in a new tab.
+The extension sends nothing when you press it, and Canvas gets the same request as from a link that you open yourself.
 The text of an announcement is written by your teacher.
 The extension shows it only after it removes everything that could run code, load a frame or send a form.
 The fixes read the grade of each course from the course list, in your browser, and show it only to you on your own dashboard.
