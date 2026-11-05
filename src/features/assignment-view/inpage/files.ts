@@ -228,14 +228,13 @@ export function reportFor(
   const vericite = reports.some((entry) => entry.kind === 'vericite')
     ? (first(own, true) ?? first(whole, false))
     : undefined;
-  let result: FileReport | null = null;
   if (vericite !== undefined && vericite.score !== null) {
-    result = chip(vericite, 'vericite', asset, source.attempt, context);
+    const result = chip(vericite, 'vericite', asset, source.attempt, context);
     return result === null ? { report: null, readable: false } : { report: result, readable: true };
   }
   const entry = first(own, false) ?? first(whole, false);
   if (entry === undefined || !showable(entry)) return { report: null, readable: true };
-  result = chip(entry, entry.kind, asset, source.attempt, context);
+  const result = chip(entry, entry.kind, asset, source.attempt, context);
   return result === null ? { report: null, readable: false } : { report: result, readable: true };
 }
 

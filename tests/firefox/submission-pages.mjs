@@ -8,10 +8,13 @@
 // checks:
 //   a. The box shows "View NAME" for a relative link and for a link with the full host, with and
 //      without the hash #submit, and it has no Download link of the view.
+//      With a report in the submission record, the score shows beside the link, from the same
+//      read, with Canvas's color and the address of the report.
 //   b. The Submission Details page of the own submission, with a Turnitin score on the file, is in
 //      'replace' mode: the files frame is hidden, and the Submission box in the right column shows
-//      the file, its score with Canvas's color and address, and "View Feedback", because the session
-//      address of the preview button and the address of the report pass their checks.
+//      the file, its score with Canvas's color and address, and "View Feedback". All of it comes
+//      from the submission record (`preview_url` and `turnitin_data`), so a frame with markup that
+//      the view does not know, and a frame that never answers, change nothing.
 //   c. Canvas's own comment form is inside the box, as the same light DOM node: a click on Save
 //      reaches Canvas's handler, which draws the comment in Canvas's list, the text goes, and the
 //      line "No Comments" of the view goes with the first comment (a `:has` rule).
@@ -55,8 +58,8 @@ registerHooks({
 });
 process.chdir(ROOT);
 const { rawRecords } = await import('../fixtures/assignment-view.ts');
-const { previewWithFiles, submissionDetailsPage } = await import('../fixtures/submission-page.ts');
-const { turnitinScores } = await import('../fixtures/submission-frame.ts');
+const { previewWithFiles, previewWithText, submissionDetailsPage } =
+  await import('../fixtures/submission-page.ts');
 
 /**
  * The assignment page with the Submission box as `_submission_sidebar.html.erb` draws it for an
@@ -175,7 +178,21 @@ const BOX_STATE = `
     text: link ? link.innerText.trim() : null,
     href: link ? link.getAttribute('href') : null,
     icons: link ? link.querySelectorAll('svg').length : 0,
-    ownLinks: box ? [...box.querySelectorAll('a[data-av-own],[data-av-own] a')].map((node) => node.innerText.trim()) : [],
+    ownLinks: box ? [...box.querySelectorAll('a[data-av-own]:not([data-state]),[data-av-own] a')].map((node) => node.innerText.trim()) : [],
+    score: (() => {
+      const chip = box && box.querySelector('a[data-av-own][data-state]');
+      if (!chip) return null;
+      const style = getComputedStyle(chip);
+      return {
+        text: chip.textContent.trim(),
+        state: chip.getAttribute('data-state'),
+        href: chip.getAttribute('href'),
+        target: chip.getAttribute('target'),
+        background: style.backgroundColor,
+        color: style.color,
+        insideLink: chip.closest('a:not([data-av-own])') !== null,
+      };
+    })(),
     downloads: box ? box.querySelectorAll('a[download]').length : 0,
     boxText: box ? box.innerText : null,
   };
@@ -215,8 +232,25 @@ async function checkSubmissionBox(driver, origin, screenshot) {
       wrong.push(`the view added links: ${JSON.stringify(state.ownLinks)}`);
     }
     if (/^\s*Download\s*$/m.test(state.boxText ?? '')) wrong.push('the box has a Download line');
+    const chip = state.score;
+    if (!chip) wrong.push('the score is missing');
+    else {
+      if (chip.text !== '5.0%' || chip.state !== 'acceptable') {
+        wrong.push(`score is ${chip.text} (${chip.state})`);
+      }
+      if (
+        chip.href !== `${origin}${DETAILS_PATH}/turnitin/attachment_501` ||
+        chip.target !== '_blank'
+      ) {
+        wrong.push(`score link is ${chip.href} (${chip.target})`);
+      }
+      if (chip.background !== 'rgb(0, 153, 23)' || chip.color !== 'rgb(0, 0, 0)') {
+        wrong.push(`score colors are ${chip.background} on ${chip.color}`);
+      }
+      if (chip.insideLink) wrong.push('the score is inside the link of the file');
+    }
     if (wrong.length > 0) problems.push(`Submission box, ${label}: ${wrong.join('; ')}`);
-    else console.log(`Submission box, ${label}: "View NAME", no Download line`);
+    else console.log(`Submission box, ${label}: "View NAME", "5.0%" beside it, no Download line`);
     if (screenshot !== undefined && label === 'link with the full host, #submit') {
       const box = await driver.findElement(By.css('#sidebar_content .details'));
       writeFileSync(screenshot, await box.takeScreenshot(), 'base64');
@@ -225,10 +259,15 @@ async function checkSubmissionBox(driver, origin, screenshot) {
   return problems;
 }
 
-/** Check b: the Submission Details page of the own submission is in 'replace' mode, with the box. */
-async function checkSubmissionDetails(driver, origin) {
+/**
+ * Check b: the Submission Details page of the own submission is in 'replace' mode, with the box.
+ * `variant` is the frame that the page holds: the usual one, or one with other markup.
+ * @param {string} variant `''` or `'odd'`
+ */
+async function checkSubmissionDetails(driver, origin, variant) {
+  const label = variant === '' ? 'Submission Details' : `Submission Details, ${variant} frame`;
   await driver.get('about:blank');
-  await driver.get(`${origin}${DETAILS_PATH}`);
+  await driver.get(`${origin}${DETAILS_PATH}${variant === '' ? '' : `?${variant}=1`}`);
   const read = () =>
     driver.executeScript(`
       const box = document.querySelector('#av-submission-box');
@@ -278,7 +317,7 @@ async function checkSubmissionDetails(driver, origin) {
       wrong.push(`score is ${score.text} (${score.state})`);
     }
     if (
-      score.href !== `${origin}${DETAILS_PATH}/turnitin/attachment_1` ||
+      score.href !== `${origin}${DETAILS_PATH}/turnitin/attachment_501` ||
       score.target !== '_blank'
     ) {
       wrong.push(`score link is ${score.href} (${score.target})`);
@@ -287,9 +326,9 @@ async function checkSubmissionDetails(driver, origin) {
       wrong.push(`score colors are ${score.background} on ${score.color}`);
     }
   }
-  if (wrong.length > 0) return [`Submission Details: ${wrong.join('; ')}`];
+  if (wrong.length > 0) return [`${label}: ${wrong.join('; ')}`];
   console.log(
-    'Submission Details: the files frame is hidden, the box shows the file, "5.0%" in green, "View Feedback"',
+    `${label}: the files frame is hidden, the box shows the file, "5.0%" in green, "View Feedback"`,
   );
   return [];
 }
@@ -359,7 +398,18 @@ async function main() {
       submitted_at: '2026-11-03T17:41:00Z',
       workflow_state: 'graded',
       submission_type: 'online_upload',
-      attachments: [{ id: '501', display_name: NAME, size: 120_832 }],
+      attachments: [{ id: '501', display_name: NAME, size: 120_832, preview_url: SESSION }],
+      reports: [
+        {
+          asset: 'attachment_501',
+          kind: 'turnitin',
+          score: 5,
+          state: 'acceptable',
+          status: 'scored',
+          error: null,
+          readable: true,
+        },
+      ],
     },
   });
   let origin = '';
@@ -371,22 +421,17 @@ async function main() {
     [DETAILS_PATH]: (url) => ({
       type: 'text/html',
       body: url.searchParams.has('preview')
-        ? previewWithFiles(COURSE, ASSIGNMENT, USER, [
-            {
-              fileId: '501',
-              name: NAME,
-              size: '118 KB',
-              button: 'View Feedback',
-              session: SESSION,
-              score: turnitinScores(DETAILS_PATH).legacy,
-            },
-          ])
+        ? url.searchParams.has('odd')
+          ? previewWithText('<ul><li><a href="#">a file list that Canvas redrew</a></li></ul>')
+          : previewWithFiles(COURSE, ASSIGNMENT, USER, [
+              { fileId: '501', name: NAME, size: '118 KB', button: 'View Feedback' },
+            ])
         : submissionDetailsPage({
             course: COURSE,
             assignment: ASSIGNMENT,
             user: USER,
             noComments: url.searchParams.has('empty'),
-            frameSrc: `${DETAILS_PATH}?preview=1&rand=481516`,
+            frameSrc: `${DETAILS_PATH}?preview=1&rand=481516${url.searchParams.has('odd') ? '&odd=1' : ''}`,
           }),
     }),
     '/api/v1/users/self': json(student),
@@ -432,7 +477,8 @@ async function main() {
       .addCookie({ name: 'canvas_session', value: 'smoke-session', path: '/', secure: true });
     const problems = [
       ...(await checkSubmissionBox(driver, origin, process.env.SUBMISSION_BOX_SHOT)),
-      ...(await checkSubmissionDetails(driver, origin)),
+      ...(await checkSubmissionDetails(driver, origin, '')),
+      ...(await checkSubmissionDetails(driver, origin, 'odd')),
       ...(await checkCommentForm(driver, origin)),
     ];
     if (problems.length > 0) {
