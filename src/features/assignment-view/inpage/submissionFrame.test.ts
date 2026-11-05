@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { TURNITIN_SCORE, frameRows } from '../../../../tests/fixtures/submission-frame';
+import {
+  SESSION_PATH,
+  TURNITIN_SCORE,
+  frameRows,
+} from '../../../../tests/fixtures/submission-frame';
 import { readFrame } from './submissionFrame';
 
 const ORIGIN = 'https://school.instructure.com';
@@ -29,11 +33,13 @@ describe('readFrame', () => {
     { fileId: '503', name: 'c.txt', size: '1 KB', button: null },
   ]);
 
-  it('reads the label and the unread mark of each row that has a button', () => {
+  const SESSION = `${ORIGIN}${SESSION_PATH}`;
+
+  it('reads the label, the unread mark and the session address of each row that has a button', () => {
     const read = ready(frame(rows));
     expect([...read.hints]).toEqual([
-      ['501', { label: 'View Feedback', unread: true }],
-      ['502', { label: 'Preview', unread: false }],
+      ['501', { label: 'View Feedback', unread: true, session: SESSION }],
+      ['502', { label: 'Preview', unread: false, session: SESSION }],
     ]);
     expect(read.assetReports).toBe(false);
   });
@@ -46,6 +52,44 @@ describe('readFrame', () => {
     ]);
     const read = ready(frame(shard, `${ORIGIN}${long}?preview=1&rand=1`), page);
     expect([...read.hints.keys()]).toEqual(['501']);
+  });
+
+  it('keeps the label of a translated Canvas, and its unread mark', () => {
+    const translated = frameRows(PAGE, [
+      { fileId: '501', name: 'a', size: '1 KB', button: 'Vista previa', unread: true },
+      { fileId: '502', name: 'b', size: '1 KB', button: '  Voir les\n commentaires ' },
+    ]);
+    expect([...ready(frame(translated)).hints]).toEqual([
+      ['501', { label: 'Vista previa', unread: true, session: SESSION }],
+      ['502', { label: 'Voir les commentaires', unread: false, session: SESSION }],
+    ]);
+  });
+
+  it('reads the unread mark and the session of a button with no label, and a label that is too long', () => {
+    const odd = frameRows(PAGE, [
+      { fileId: '501', name: 'a', size: '1 KB', button: '', unread: true },
+      { fileId: '502', name: 'b', size: '1 KB', button: 'x'.repeat(200) },
+    ]);
+    expect([...ready(frame(odd)).hints]).toEqual([
+      ['501', { label: null, unread: true, session: SESSION }],
+      ['502', { label: null, unread: false, session: SESSION }],
+    ]);
+  });
+
+  it('gives no session for an address that fails the check, and keeps the hint of the button', () => {
+    const bad = (session: string) =>
+      frameRows(PAGE, [{ fileId: '501', name: 'a', size: '1 KB', button: 'Preview', session }]);
+    for (const session of [
+      '',
+      `${SESSION_PATH}&access_token=t`,
+      `https://evil.example${SESSION_PATH}`,
+      `https://user:pass@school.instructure.com${SESSION_PATH}`,
+      '/api/v1/canvadoc_session?hmac=b',
+    ]) {
+      expect([...ready(frame(bad(session))).hints]).toEqual([
+        ['501', { label: 'Preview', unread: false, session: null }],
+      ]);
+    }
   });
 
   it.each([
@@ -62,10 +106,6 @@ describe('readFrame', () => {
       ]),
     ],
     [
-      'a label that is not known',
-      frameRows(PAGE, [{ fileId: '501', name: 'a', size: '1 KB', button: 'Open' as 'Preview' }]),
-    ],
-    [
       'a row of another submission',
       frameRows('/courses/12/assignments/101/submissions/43', [
         { fileId: '501', name: 'a', size: '1 KB', button: 'Preview' },
@@ -78,7 +118,7 @@ describe('readFrame', () => {
     expect([...ready(frame(html)).hints]).toEqual([]);
   });
 
-  it('gives no hint for a row with two preview buttons', () => {
+  it('knows that a row with two preview buttons has a button, and takes no label or session from it', () => {
     const twice = frameRows(PAGE, [
       { fileId: '501', name: 'a', size: '1 KB', button: 'Preview' },
     ]).replace(
@@ -86,7 +126,9 @@ describe('readFrame', () => {
       '<a class="modal_preview_link" href="#">Preview</a></td>\n        </tr>',
     );
     expect(twice).toContain('modal_preview_link');
-    expect([...ready(frame(twice)).hints]).toEqual([]);
+    expect([...ready(frame(twice)).hints]).toEqual([
+      ['501', { label: null, unread: false, session: null }],
+    ]);
   });
 
   it('reads the first row of a file that two rows name', () => {

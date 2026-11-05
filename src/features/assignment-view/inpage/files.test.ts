@@ -479,24 +479,60 @@ describe('refineFiles', () => {
     ...change,
   });
 
+  const SESSION = `${ORIGIN}${SESSION_PATH}`;
+  const OTHER = `${ORIGIN}/api/v1/canvadoc_session?blob=frame`;
+
   it('takes the label and the unread mark of the frame for a file with a button', () => {
-    const hints = new Map([['501', { label: 'Preview' as const, unread: true }]]);
-    expect(refineFiles([file()], hints)).toEqual([
-      file({ feedbackLabel: 'Preview', unread: true }),
-    ]);
+    const hints = new Map([['501', { label: 'Preview', unread: true, session: SESSION }]]);
+    expect(refineFiles([file()], hints)).toEqual({
+      files: [file({ feedbackLabel: 'Preview', unread: true })],
+      withoutSession: 0,
+    });
+  });
+
+  it('keeps the label of the file when the frame reads no label, and takes the unread mark', () => {
+    const hints = new Map([['501', { label: null, unread: true, session: SESSION }]]);
+    expect(refineFiles([file()], hints).files).toEqual([file({ unread: true })]);
   });
 
   it('matches ids as decimal global ids', () => {
-    const hints = new Map([['20000000000501', { label: 'Preview' as const, unread: false }]]);
-    expect(refineFiles([file({ fileId: '2~501' })], hints)[0]?.feedbackLabel).toBe('Preview');
+    const hints = new Map([
+      ['20000000000501', { label: 'Preview', unread: false, session: SESSION }],
+    ]);
+    expect(refineFiles([file({ fileId: '2~501' })], hints).files[0]?.feedbackLabel).toBe('Preview');
   });
 
-  it('adds no button to a file with no session, and leaves a file that the frame does not name', () => {
-    const hints = new Map([['501', { label: 'Preview' as const, unread: true }]]);
+  it('keeps the session of the details when it is good, also when the frame has another', () => {
+    const hints = new Map([['501', { label: 'Preview', unread: false, session: OTHER }]]);
+    expect(refineFiles([file()], hints).files[0]?.sessionUrl).toBe(SESSION);
+  });
+
+  it('takes the session of the frame row for a file that has none, and gives it a button', () => {
+    const hints = new Map([['501', { label: 'Vista previa', unread: true, session: OTHER }]]);
     const bare = file({ feedbackLabel: null, sessionUrl: null });
-    expect(refineFiles([bare], hints)).toEqual([bare]);
+    expect(refineFiles([bare], hints)).toEqual({
+      files: [file({ feedbackLabel: 'Vista previa', unread: true, sessionUrl: OTHER })],
+      withoutSession: 0,
+    });
+    const noLabel = new Map([['501', { label: null, unread: false, session: OTHER }]]);
+    expect(refineFiles([bare], noLabel).files[0]).toMatchObject({
+      feedbackLabel: 'View Feedback',
+      sessionUrl: OTHER,
+    });
+  });
+
+  it('counts a file that the frame shows a button for and that has no session at all', () => {
+    const hints = new Map([['501', { label: 'Preview', unread: true, session: null }]]);
+    const bare = file({ feedbackLabel: null, sessionUrl: null });
+    expect(refineFiles([bare], hints)).toEqual({ files: [bare], withoutSession: 1 });
+  });
+
+  it('changes nothing for a file that the frame does not name', () => {
+    const hints = new Map([['501', { label: 'Preview', unread: true, session: SESSION }]]);
     const other = file({ fileId: '502' });
-    expect(refineFiles([other], hints)).toEqual([other]);
+    expect(refineFiles([other], hints)).toEqual({ files: [other], withoutSession: 0 });
+    const bare = file({ fileId: '502', feedbackLabel: null, sessionUrl: null });
+    expect(refineFiles([bare], hints)).toEqual({ files: [bare], withoutSession: 0 });
   });
 });
 
