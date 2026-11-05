@@ -195,13 +195,16 @@ Use a new, empty profile, and the student account.
 14. Check the rings.
     Expect: each ring shows "done/total" for the shown span, a ring at 100 percent with no past-due work shows a check mark, and a click on a ring shows only that course.
 15. Open the Canvas Card View dashboard, then the Recent Activity dashboard, then a course home page.
-    Expect: the weekly list replaces the Canvas To Do list, and on the course home page it shows only that course.
-    On the Recent Activity dashboard, scroll down until the whole right column (the list, Coming Up and Recent Feedback) is above the top of the window.
+    Expect: the weekly list replaces the Canvas To Do list.
+    Expect: on the two dashboards the list is in a dock fixed to the right edge of the window, from the top to the bottom, and Coming Up and Recent Feedback stay in Canvas's right column.
+    Expect: on the course home page the list is a card in the right column, and it shows only that course.
+    On the Recent Activity dashboard, scroll the page a long way.
+    Expect: the dock does not move, and the list does not float under the column.
+    On a course home page that is longer than its right column, scroll down until the whole right column is above the top of the window.
     Expect: the list shows again as a card at the top of the empty space under the column, at the width of the column, with a 24 px gap above it.
     Expect: the card never covers an item of the column, and it has the same height limit and the same scroll region as the card on the other pages.
     Check an item off in the card, then scroll back up until the end of the column shows.
     Expect: the card goes away as soon as the end of the column comes into view, the list is back in its place, and the check mark shows in it.
-    Expect: the same on a course home page when the page is longer than the right column.
 16. Open the new Canvas dashboard (if your school has it) and the List View dashboard.
     Expect: Canvas does not show its right column, and the widgets keep their width.
     Expect: on the new dashboard in a wide window (about 1,770 px), the list is a card in the white area to the right of the widgets, as on the old dashboard.
@@ -217,14 +220,12 @@ Use a new, empty profile, and the student account.
     Click "Customize dashboard".
     Expect: while you edit the layout, the card stays in the white area, and it does not cover a widget or a drop zone.
     On a window where the card sits in a column, expect: the card hides while you edit the layout, and it returns when you click "Save changes" or "Cancel".
-    Expect: on List View, the list floats in the free area on the right, with its top at the top of the content, and it stays in view with a 24 px gap while the page scrolls.
-    Expect: the floating card is at least 360 px wide and has its own scroll region when it is taller than the window, with the header and the span controls in view.
-    Expect: when the content would be narrower than about 720 px, the list is a card above the content, at the width of the content.
+    Expect: on List View, the list is in the dock on the right edge, as on the Card View dashboard.
     Expect: the list follows the page theme, also with the widget dashboard dark mode.
     Reload the dashboard five times, and edit and save the layout twice.
     Expect: the list is in its place each time, and it does not jump between places.
     Click "Minimize list" next to the gear.
-    Expect: the card turns into a slim bar in the same place, with the name "Weekly list", a status such as "3 due today · 11 past due" (no part with a zero count), and a chevron, and focus is on the bar.
+    Expect: on the new dashboard the card turns into a slim bar in the same place, with the name "Weekly list", a status such as "3 due today · 11 past due" (no part with a zero count), and a chevron, and focus is on the bar.
     Reload the page, and open the dashboard in a second tab.
     Expect: the bar shows in both, and it takes the same place as the card did, on every window width, with no sideways scroll.
     Click the bar, then minimize again and press Enter and Space on it.
@@ -237,7 +238,7 @@ Use a new, empty profile, and the student account.
     Open the settings with the gear, and go back.
     Expect: the groups are at the same scroll position, and a new span starts at the top.
     Switch the dashboard from Card View to List View with the menu.
-    Expect: after a reload, the list shows as a card.
+    Expect: after a reload, the list shows in the dock.
     Write down whether the list also shows without the reload.
 17. With the side panel open, look at the Card View dashboard in the same window.
     Expect: the in-page list shows in full, as it does with the panel closed.
@@ -356,6 +357,45 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
     Expect: the fixes keep working.
 39. Open a course home page and the Courses tab.
     Expect: no fix shows, and nothing changes.
+
+### Weekly list dock
+
+These steps need the classic dashboard (Card View, Recent Activity and List View) and a window of about 1,800 px.
+They have their own numbers, so the steps above and below keep theirs.
+Check the new widget dashboard in step D8.
+
+D1. Open the Recent Activity dashboard.
+    Expect: the list is in a dock fixed to the right edge of the window, from the top to the bottom, 360 px wide, with a line on its left edge, no shadow and no rounded corners.
+    Expect: the header, the arrows, the rings, the tabs, the groups and the bottom bar are the same as in the card, in the same order, and the inside fills the window height.
+    Expect: if the global navigation of Canvas is collapsed (54 px), nothing of the content of Canvas moves when you minimize the list and open it again.
+    Expect: if the navigation is expanded (84 px), the content ends 13 px sooner while the dock is open, because the content stops at 1366 px and does not fit.
+D2. Scroll the page a long way, then use the arrow keys and the Page Down key.
+    Expect: the dock never moves, and Coming Up and Recent Feedback stay where Canvas draws them.
+D3. Scroll the groups of the list, open "Done", then click "Minimize list".
+    Expect: the room goes back, the page uses its full width, and a tab shows on the right edge, 96 px from the top, with a calendar check icon, the span written from bottom to top (for example "Nov 4 - 10") and a number for the open work of the span.
+    Expect: focus is on the tab, and a screen reader says "Open weekly list, Nov 4 - 10, 2 open" with "collapsed".
+    Click the tab, or press Enter or Space on it.
+    Expect: the dock opens at once, focus is on the minimize button, and the list has the scroll position and the open group that it had.
+    Reload the page with the list minimized.
+    Expect: the tab shows, and the list stays minimized in a second tab too.
+D4. Drag the left edge of the dock to make it wider, then reload.
+    Expect: the dock keeps its width, and a narrow window makes the content narrower, as the PDF pane does.
+    Make the window narrower than 900 px.
+    Expect: the dock covers the page.
+D5. Click a link to a PDF on the page (for example a file in an announcement), with the dock open.
+    Expect: the dock and the tab are hidden while the PDF pane is open, only one resize handle shows, and the page has the room of the PDF pane.
+    Press Escape with focus in the pane.
+    Expect: only the PDF pane closes, and the dock is back with the same width, groups and scroll position.
+D6. Minimize the list, open a PDF, then close it.
+    Expect: the tab hides while the pane is open, no room is taken for the dock, and the tab comes back when the pane closes.
+D7. Turn off "File viewer" in the settings while a PDF is open, then turn it on again.
+    Expect: the pane closes and the dock comes back with the room of the dock, and after the switch is on, a PDF link covers the dock again.
+D8. Open the new widget dashboard and click the Courses tab.
+    Expect: no list and no floating panel show.
+    Click the Dashboard tab.
+    Expect: the card is back with no reload, with the same open groups and scroll position.
+    Select the Courses tab, reload the page, and watch.
+    Expect: nothing of the list shows until you click the Dashboard tab.
 
 ### Announcements tab
 
