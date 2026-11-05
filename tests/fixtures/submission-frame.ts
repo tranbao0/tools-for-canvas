@@ -8,8 +8,8 @@ export interface FrameRow {
   name: string;
   /** Canvas's size text, from `number_to_human_size`. */
   size: string;
-  /** The label of the preview button, or `null` when Canvas draws none. */
-  button: 'View Feedback' | 'Preview' | null;
+  /** The label of the preview button in the language of Canvas, or `null` when Canvas draws none. */
+  button: string | null;
   unread?: boolean;
   /** The classes of the button, when Canvas renamed them. */
   buttonClass?: string;

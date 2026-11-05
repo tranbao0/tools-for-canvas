@@ -3,30 +3,34 @@
  * decision 26, item 5). The frame is a helper: the files, their sizes, their scores and their
  * session addresses come from the details (`files.ts`), and the view never waits for the frame.
  *
- * The frame refines two marks of a file, when it can be read: the label of the preview button
- * ("View Feedback" or "Preview") and the unread mark, which Canvas draws in
- * `tr.file-upload-submission` of `table.file-upload-submission-table`
- * (`app/views/submissions/show_preview.html.erb`). It also tells whether Canvas's script drew a
- * report in a `td.asset-report-status-container`, which is an LTI 1.3 asset processor report that
- * the details do not hold. A frame that cannot be read, or that has other markup, gives nothing.
+ * The frame tells three things about a file, when it can be read. The first is whether Canvas draws
+ * a preview button in its row, whatever the button says: Canvas writes the label in the language of
+ * the student. Its text is the label of the view's button, and the unread mark, which Canvas draws
+ * in `tr.file-upload-submission` of `table.file-upload-submission-table`
+ * (`app/views/submissions/show_preview.html.erb`), is read whatever the label says. The third is
+ * the session address of the button (`data-canvadoc_session_url`), which serves a file whose
+ * details have no usable address. The frame also tells whether Canvas's script drew a report in a
+ * `td.asset-report-status-container`, which is an LTI 1.3 asset processor report that the details
+ * do not hold. A frame that cannot be read, or that has other markup, gives nothing.
  */
 import { fileTarget, isFileId } from '../../file-viewer/model';
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
-import { sameSubmissionPath, type FeedbackLabel, type FrameHint } from './files';
+import { sameSubmissionPath, sessionUrl, type FrameHint } from './files';
 
 /**
  * What the frame holds, read after it has loaded:
  * - `pending`: it does not show the preview page yet, such as the blank page before the load.
  * - `failed`: it cannot be read, such as a frame that went to another origin.
- * - `ready`: the hints of the file rows, by decimal global file id, and whether a report of an
- *   asset processor shows.
+ * - `ready`: the hints of the file rows that have a preview button, by decimal global file id, and
+ *   whether a report of an asset processor shows.
  */
 export type FrameRead =
   | { state: 'pending' }
   | { state: 'failed' }
   | { state: 'ready'; hints: Map<string, FrameHint>; assetReports: boolean };
 
-const LABELS: ReadonlySet<string> = new Set(['View Feedback', 'Preview']);
+/** The longest label of a button that the view takes over. */
+const MAX_LABEL = 40;
 
 function trimmed(value: string | null | undefined): string {
   return (value ?? '').replace(/\s+/g, ' ').trim();
@@ -40,7 +44,11 @@ function hasContent(cell: Element): boolean {
   );
 }
 
-/** The hint of one row, or `null` when the row is not a file row of this page with one button. */
+/**
+ * The hint of one row, or `null` when the row is not a file row of this page with a preview button.
+ * With one button, the hint holds its label and session address. With more, the row still has a
+ * button, but the view takes no label or session from an unclear choice.
+ */
 function hintOf(
   row: Element,
   origin: string,
@@ -58,13 +66,16 @@ function hintOf(
   )
     return null;
   const buttons = row.querySelectorAll('a.modal_preview_link');
-  const label = buttons.length === 1 ? trimmed(buttons[0]!.textContent) : '';
-  if (!LABELS.has(label)) return null;
+  if (buttons.length === 0) return null;
+  const only = buttons.length === 1 ? buttons.item(0) : null;
+  const label = only === null ? '' : trimmed(only.textContent);
   return {
     id: normalizeCanvasId(target.fileId),
     hint: {
-      label: label as FeedbackLabel,
+      label: label !== '' && label.length <= MAX_LABEL ? label : null,
       unread: row.querySelector('.submission_annotation.unread_indicator') !== null,
+      session:
+        only === null ? null : sessionUrl(only.getAttribute('data-canvadoc_session_url'), origin),
     },
   };
 }
@@ -82,15 +93,18 @@ export function readFrame(frame: HTMLIFrameElement, origin: string, pagePath: st
     if (!sameSubmissionPath(shown.pathname, pagePath) || shown.searchParams.get('preview') !== '1')
       return { state: 'pending' };
     const hints = new Map<string, FrameHint>();
-    for (const row of doc.querySelectorAll(
+    // Index loops, because a Firefox content script cannot iterate every list of a page.
+    const rows = doc.querySelectorAll(
       'table.file-upload-submission-table tr.file-upload-submission',
-    )) {
-      const found = hintOf(row, origin, pagePath);
+    );
+    for (let index = 0; index < rows.length; index += 1) {
+      const found = hintOf(rows.item(index), origin, pagePath);
       if (found !== null && !hints.has(found.id)) hints.set(found.id, found.hint);
     }
     let assetReports = false;
-    for (const cell of doc.querySelectorAll('td.asset-report-status-container')) {
-      if (hasContent(cell)) assetReports = true;
+    const cells = doc.querySelectorAll('td.asset-report-status-container');
+    for (let index = 0; index < cells.length; index += 1) {
+      if (hasContent(cells.item(index))) assetReports = true;
     }
     return { state: 'ready', hints, assetReports };
   } catch {

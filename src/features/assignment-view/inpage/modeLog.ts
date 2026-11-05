@@ -12,7 +12,9 @@ export type AboveReason =
   /** The report data of a file has a form that the view cannot show. */
   | 'report-data'
   /** Canvas's script drew a report of an asset processor in the frame. */
-  | 'asset-reports';
+  | 'asset-reports'
+  /** The frame shows a preview button for a file that has no usable session address. */
+  | 'no-session';
 
 export function logAbove(reason: AboveReason): void {
   console.warn(`[weekrow] submission details keeps the Canvas frame, reason: ${reason}`);

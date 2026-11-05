@@ -796,14 +796,18 @@ describe('a frame that the view cannot use', () => {
     await expectReplace();
   });
 
-  it('ignores a button label that is not known', async () => {
+  it('keeps the label of a translated Canvas, with its unread dot', async () => {
     showInFrame(
       frameRows(PAGE, [
-        { fileId: '501', name: 'essay.pdf', size: '118 KB', button: 'Open it' as 'Preview' },
+        { fileId: '501', name: 'essay.pdf', size: '118 KB', button: 'Vista previa', unread: true },
       ]),
     );
     start();
-    await expectReplace();
+    await settle();
+    const button = boxRoot()?.querySelector('[data-action=feedback]');
+    expect(button?.firstChild?.textContent).toBe('Vista previa');
+    expect(button?.querySelector('.av-unread')).not.toBeNull();
+    expect(console.warn).not.toHaveBeenCalled();
   });
 
   it('ignores the markup of the rows when it changed', async () => {
@@ -890,6 +894,13 @@ describe('a frame that the view cannot use', () => {
         ];
       }),
     );
+    // Canvas draws no button for these files, so the frame has no session to give them.
+    showInFrame(
+      frameRows(PAGE, [
+        { fileId: '501', name: 'a.txt', size: '10 Bytes', button: null },
+        { fileId: '502', name: 'b.pdf', size: '10 Bytes', button: null },
+      ]),
+    );
     start();
     await settle();
     expect(boxRoot()?.querySelectorAll('.av-box-file')).toHaveLength(2);
@@ -898,6 +909,155 @@ describe('a frame that the view cannot use', () => {
     expect(vi.mocked(console.warn).mock.calls[0]![0]).toBe(
       '[weekrow] submission details: 1 file(s) without a usable feedback address',
     );
+  });
+});
+
+describe('a file with no usable session address in the details', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  const withPreview = (preview: string | undefined) =>
+    reply((details) => {
+      details.submission.attachments = [
+        {
+          id: '501',
+          display_name: 'essay.pdf',
+          size: 120_832,
+          ...(preview === undefined ? {} : { preview_url: preview }),
+        },
+      ];
+    });
+  const BAD = `${SESSION_PATH}&access_token=t`;
+  const FRAME_ONLY = '/api/v1/canvadoc_session?blob=frame';
+
+  async function expectFrameButton(): Promise<void> {
+    await settle();
+    expect(rules()).toContain('.submission-details-frame{display:none!important}');
+    const button = boxRoot()!.querySelector<HTMLButtonElement>('[data-action=feedback]')!;
+    expect(button.firstChild?.textContent).toBe('View Feedback');
+    expect(button.querySelector('.av-unread')).not.toBeNull();
+    const event = new MouseEvent('click', { bubbles: true, composed: true });
+    Object.defineProperty(event, 'isTrusted', { value: true });
+    button.dispatchEvent(event);
+    expect(openFeedback).toHaveBeenCalledExactlyOnceWith({
+      title: 'essay.pdf',
+      url: `${ORIGIN}${FRAME_ONLY}`,
+    });
+  }
+
+  it('uses the session address of the frame row when the details have none', async () => {
+    send.mockResolvedValue(withPreview(undefined));
+    showInFrame(
+      frameRows(PAGE, [
+        {
+          fileId: '501',
+          name: 'essay.pdf',
+          size: '118 KB',
+          button: 'View Feedback',
+          unread: true,
+          session: FRAME_ONLY,
+        },
+      ]),
+    );
+    start();
+    await expectFrameButton();
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('uses the session address of the frame row when the address of the details fails the check', async () => {
+    send.mockResolvedValue(withPreview(BAD));
+    showInFrame(
+      frameRows(PAGE, [
+        {
+          fileId: '501',
+          name: 'essay.pdf',
+          size: '118 KB',
+          button: 'View Feedback',
+          unread: true,
+          session: FRAME_ONLY,
+        },
+      ]),
+    );
+    start();
+    await expectFrameButton();
+    expect(console.warn).toHaveBeenCalledExactlyOnceWith(
+      '[weekrow] submission details: 1 file(s) without a usable feedback address',
+    );
+  });
+
+  it.each([
+    ['no address in the details', undefined],
+    ['an address in the details that fails the check', BAD],
+  ])(
+    'keeps the frame of Canvas, with a line, when the frame shows a button and there is %s and none in the frame',
+    async (_name, preview) => {
+      send.mockResolvedValue(withPreview(preview));
+      showInFrame(
+        frameRows(PAGE, [
+          {
+            fileId: '501',
+            name: 'essay.pdf',
+            size: '118 KB',
+            button: 'Vista previa',
+            unread: true,
+            session: `${FRAME_ONLY}&access_token=t`,
+          },
+        ]),
+      );
+      start();
+      await settle();
+      expect(host()?.nextElementSibling).toBe(container());
+      expect(rules()).not.toContain('.submission-details-frame');
+      expect(boxRoot()?.querySelector('[data-action=feedback]')).toBeNull();
+      expect(console.warn).toHaveBeenCalledWith(
+        '[weekrow] submission details keeps the Canvas frame, reason: no-session',
+      );
+      // The line holds no address and no file name.
+      expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain('essay');
+      expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain('canvadoc');
+    },
+  );
+
+  it('changes nothing for a file with no address in the details when the frame shows no button', async () => {
+    send.mockResolvedValue(withPreview(undefined));
+    showInFrame(
+      frameRows(PAGE, [{ fileId: '501', name: 'essay.pdf', size: '118 KB', button: null }]),
+    );
+    start();
+    await settle();
+    expect(rules()).toContain('.submission-details-frame{display:none!important}');
+    expect(boxRoot()?.querySelector('.av-file')?.textContent).toBe('View essay.pdf');
+    expect(boxRoot()?.querySelector('[data-action=feedback]')).toBeNull();
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('goes back to the box when a later load of the frame gives the file an address', async () => {
+    send.mockResolvedValue(withPreview(undefined));
+    const frame = showInFrame(
+      frameRows(PAGE, [
+        { fileId: '501', name: 'essay.pdf', size: '118 KB', button: 'Preview', session: '' },
+      ]),
+    );
+    start();
+    await settle();
+    expect(boxRoot()?.querySelector('[data-action=feedback]')).toBeNull();
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    showInFrame(
+      frameRows(PAGE, [
+        {
+          fileId: '501',
+          name: 'essay.pdf',
+          size: '118 KB',
+          button: 'Preview',
+          session: FRAME_ONLY,
+        },
+      ]),
+    );
+    frame.dispatchEvent(new Event('load'));
+    await settle();
+    expect(rules()).toContain('.submission-details-frame{display:none!important}');
+    expect(boxRoot()?.querySelector('[data-action=feedback]')).not.toBeNull();
   });
 });
 

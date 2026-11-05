@@ -15,15 +15,17 @@
  * also holds the files with their similarity scores and the feedback buttons, and Canvas's own
  * comments column, moved into it (`comments.ts`). The files, the scores and the session addresses
  * come from the Canvas records, so the page never depends on the markup of the frame and never
- * waits for it (`files.ts`). The frame only refines the label of a feedback button and its unread
- * mark (`submissionFrame.ts`). The host in the content area holds the instructions, the text or
+ * waits for it (`files.ts`). The frame refines the label of a feedback button and its unread mark,
+ * and its row gives the session address of a file whose details have none
+ * (`submissionFrame.ts`). The host in the content area holds the instructions, the text or
  * address of the submission, and the rubric. In the mode 'above' the frame and the comments column
  * stay visible and untouched, and the host holds only the instructions, above the whole content
- * area. That is the case in three situations, and each writes a console line with its reason
+ * area. That is the case in four situations, and each writes a console line with its reason
  * (`modeLog.ts`): a submission type that the view does not show (media recording, quiz, LTI tool,
  * student annotation, discussion), content in a report cell of an LTI 1.3 asset processor in the
- * frame, and report data of a file that the view cannot show. A mount that fails also leads to
- * that mode. A
+ * frame, report data of a file that the view cannot show, and a preview button of Canvas in the
+ * frame for a file that has no usable session address from the details or from the frame row. A
+ * mount that fails also leads to that mode. A
  * style element in the head carries the rules of the page, and those of the mode: the hidden frame,
  * the rules for the comments, and the rules for Canvas's own rubric when the view shows it
  * (`rubric.ts`). Canvas's rubric holder is moved, under the instructions in the host or, where the
@@ -577,13 +579,19 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       const read = readFrame(anchors.frame, origin, pathname);
       // A frame that cannot be read yet, or at all, changes nothing.
       if (read.state !== 'ready') return;
-      const next: Mode = read.assetReports ? 'above' : 'replace';
-      const files = refineFiles(base, read.hints);
+      const { files, withoutSession } = refineFiles(base, read.hints);
+      // A button of Canvas that the view cannot draw would lose the notes of the teacher.
+      const reason: AboveReason | null = read.assetReports
+        ? 'asset-reports'
+        : withoutSession > 0
+          ? 'no-session'
+          : null;
+      const next: Mode = reason === null ? 'replace' : 'above';
       if (next !== mode) {
         unmountMode();
-        setFiles = mountMode(next, next === 'above' ? 'asset-reports' : null, files);
-      } else if (next === 'above') {
-        logReason('asset-reports');
+        setFiles = mountMode(next, reason, files);
+      } else if (reason !== null) {
+        logReason(reason);
       } else {
         setFiles(files);
       }

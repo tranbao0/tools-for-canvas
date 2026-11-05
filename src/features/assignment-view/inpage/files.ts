@@ -18,8 +18,8 @@ const SESSION_PATH = '/api/v1/canvadoc_session';
  */
 const SESSION_QUERY = /^\?(?:blob=[^&]+(?:&hmac=[^&]+)?|hmac=[^&]+&blob=[^&]+)$/;
 
-/** The label of the preview button: "View Feedback" when the teacher left notes, else "Preview". */
-export type FeedbackLabel = 'View Feedback' | 'Preview';
+/** The label of the feedback button when the frame gives none. */
+const DEFAULT_LABEL = 'View Feedback';
 
 /** The similarity score of a file, as the box shows it. */
 export interface FileReport {
@@ -37,7 +37,7 @@ export interface BoxFile {
   /** The size text, such as "118 KB". */
   size: string | null;
   /** The label of the feedback button, or `null` when the file has no button. */
-  feedbackLabel: FeedbackLabel | null;
+  feedbackLabel: string | null;
   /** Whether Canvas marks unread comments on the file. */
   unread: boolean;
   /** The checked address of the session. It is never put on the page. */
@@ -301,7 +301,7 @@ export function filesFromDetails(
       fileId: file.id,
       name: file.display_name,
       size: file.size === undefined ? null : humanSize(file.size),
-      feedbackLabel: session === null ? null : 'View Feedback',
+      feedbackLabel: session === null ? null : DEFAULT_LABEL,
       unread: false,
       sessionUrl: session,
       report,
@@ -317,22 +317,50 @@ export function submissionReport(source: SubmissionReports, context: ReportConte
   return reportFor(source, [], whole, `submission_${source.id}`, context);
 }
 
-/** What the files frame says about a file: the label of its button, and its unread mark. */
+/** What the files frame says about a file whose row has a preview button. */
 export interface FrameHint {
-  label: FeedbackLabel;
+  /** The text of the button in the language of Canvas, or `null` when it has none that fits. */
+  label: string | null;
+  /** Whether Canvas draws its unread mark in the row. */
   unread: boolean;
+  /** The checked session address of the button, or `null`. It is never put on the page. */
+  session: string | null;
 }
 
-/** The files with the label and the unread mark of the frame, for the files that it names. */
+export interface RefinedFiles {
+  files: BoxFile[];
+  /** How many files the frame shows a button for, while no checked session address is known. */
+  withoutSession: number;
+}
+
+/**
+ * The files with what the frame says about them, for the files that it names. The label and the
+ * unread mark come from the frame. The session address comes from the details, and the address of
+ * the frame row is the second source for a file that has none. A file that the frame shows a
+ * button for and that has no address from either source is counted, because Canvas's button for
+ * it cannot be drawn by the view.
+ */
 export function refineFiles(
   files: readonly BoxFile[],
   hints: ReadonlyMap<string, FrameHint>,
-): BoxFile[] {
-  return files.map((file) => {
+): RefinedFiles {
+  let withoutSession = 0;
+  const refined = files.map((file) => {
     const hint = hints.get(normalizeCanvasId(file.fileId));
-    if (hint === undefined || file.sessionUrl === null) return file;
-    return { ...file, feedbackLabel: hint.label, unread: hint.unread };
+    if (hint === undefined) return file;
+    const session = file.sessionUrl ?? hint.session;
+    if (session === null) {
+      withoutSession += 1;
+      return file;
+    }
+    return {
+      ...file,
+      feedbackLabel: hint.label ?? file.feedbackLabel ?? DEFAULT_LABEL,
+      unread: hint.unread,
+      sessionUrl: session,
+    };
   });
+  return { files: refined, withoutSession };
 }
 
 /** Whether two lists show the same files, so the view draws nothing again. */
