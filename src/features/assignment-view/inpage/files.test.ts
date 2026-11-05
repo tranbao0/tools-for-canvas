@@ -49,6 +49,7 @@ describe('sessionUrl', () => {
     ['no blob', '/api/v1/canvadoc_session?hmac=b'],
     ['a repeated hmac', '/api/v1/canvadoc_session?blob=a&hmac=b&hmac=c'],
     ['credentials', `https://user:pass@school.instructure.com${SESSION_PATH}`],
+    ['a password only', `https://:pass@school.instructure.com${SESSION_PATH}`],
     ['a user name only', `https://user@school.instructure.com${SESSION_PATH}`],
     ['an empty blob', '/api/v1/canvadoc_session?blob=&hmac=b'],
     ['a repeated blob', '/api/v1/canvadoc_session?blob=a&blob=c&hmac=b'],
@@ -556,5 +557,12 @@ describe('sameFiles', () => {
     expect(sameFiles([scored], [{ ...scored, report: { ...scored.report, text: '6.0%' } }])).toBe(
       false,
     );
+  });
+});
+
+describe('refineFiles with a frame button for a file that the box does not list', () => {
+  it('counts the file as one with no usable session address', () => {
+    const hints = new Map([['999', { label: 'View Feedback', unread: false, session: null }]]);
+    expect(refineFiles([], hints).withoutSession).toBe(1);
   });
 });

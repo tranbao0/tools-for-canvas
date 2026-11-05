@@ -129,8 +129,8 @@ It keeps only the fields that it compares (the student, the time, the status and
 It uses the answer to tell when your work was handed in, so that the weekly list refreshes.
 The Submission Details page shows the instructions and your submitted files.
 To show them, it reads the file list from the same Canvas request that it sends for the details (`GET /api/v1/courses/:id/assignments/:id/submissions/self`): the file names and sizes, the similarity scores, and the signed address of the DocViewer session of each file.
-It does not read the files list that Canvas draws in the frame of that page for these data.
-From that frame it reads only whether a file row has a preview button, the label of the button and its unread mark, the signed session address of the button when the record has none for that file, and whether Canvas drew a report of an asset processor, and it changes nothing in the frame.
+It reads the names, sizes and scores from that request, not from the files list that Canvas draws in the frame of that page.
+From that frame it reads only whether a file row has a preview button, the label of the button and its unread mark, the signed session address of the button, which it uses when the record has none for that file, and whether Canvas drew a report of an asset processor, and it changes nothing in the frame.
 These stay in the memory of the open page.
 The extension writes lines to the console of the page when it keeps Canvas's own files area.
 A line holds only a reason code or the name and message of an error, never an address or a file name.

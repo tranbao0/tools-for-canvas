@@ -504,10 +504,11 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
 
   /**
    * Shows the page for the details. The files, their scores and their feedback buttons come from
-   * the details, so the box never waits for the frame. The frame only refines the label of a
-   * button and its unread mark. The view keeps Canvas's frame for a submission type that it does
-   * not show, for report data that it cannot show, and for a report of an asset processor that
-   * Canvas's script draws in the frame.
+   * the details, so the box never waits for the frame. The frame refines the label of a button
+   * and its unread mark, and gives the session address of a file whose record has none. The view
+   * keeps Canvas's frame for a submission type that it does not show, for report data that it
+   * cannot show, for a report of an asset processor that Canvas's script draws in the frame, and
+   * for a frame button whose file has no usable session address.
    */
   function show(reply: AssignmentDetailsReply, anchors: Anchors, token: number): void {
     const { submission } = reply.details;
