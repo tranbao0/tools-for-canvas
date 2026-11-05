@@ -154,9 +154,43 @@ export interface AnnouncementTopic {
   /** `read` or `unread`. */
   read_state?: string;
   user_name?: string | null;
-  author?: { display_name?: string | null } | null;
+  author?: { display_name?: string | null; avatar_image_url?: string | null } | null;
   /** `course_<id>`. The announcements list sends it for each topic (`include_context_code`). */
   context_code?: string;
+}
+
+/** What the announcements page asks for: the signed-in student's own announcements. */
+export interface AnnouncementPageRequest {
+  /** The signed-in student, from the session, never from a page. */
+  userId: string;
+  /** One course, or `null` for all. */
+  courseId: string | null;
+  read: 'unread' | 'read' | 'all';
+  /** How many rows of the filtered set to skip. */
+  offset: number;
+  first: number;
+}
+
+/** One row of the announcements query, with the text as Canvas sent it. */
+export interface AnnouncementPageNode {
+  id: string;
+  courseId: string;
+  courseName: string;
+  title: string;
+  /** ISO instant, or `null`. */
+  createdAt: string | null;
+  authorName: string | null;
+  avatarUrl: string | null;
+  /** HTML that a teacher wrote. Never insert it without sanitizing it. */
+  message: string;
+  read: boolean;
+}
+
+export interface AnnouncementPage {
+  nodes: AnnouncementPageNode[];
+  /** Canvas's `totalCount` of the filtered set, or `null`. */
+  total: number | null;
+  hasNext: boolean;
 }
 
 export interface Group {
@@ -365,8 +399,6 @@ export interface CanvasApi {
   deleteNote(id: string): Promise<void>;
   /** One announcement of a course, with its full message. */
   getAnnouncement(courseId: string, topicId: string): Promise<AnnouncementTopic>;
-  /** The announcements of one course posted in `range`, newest first. */
-  listAnnouncements(courseId: string, range: TimeRange): Promise<AnnouncementTopic[]>;
   /**
    * The published announcements of several courses posted in `range`, newest first, in as many
    * requests as the number of courses needs. Each topic names its course in `context_code`.
@@ -380,6 +412,8 @@ export interface CanvasApi {
    * answers 204 with no body.
    */
   setAnnouncementRead(courseId: string, topicId: string, read: boolean): Promise<void>;
+  /** One page of the signed-in student's announcements, read as the widget of Canvas reads them. */
+  listAnnouncementPage(request: AnnouncementPageRequest): Promise<AnnouncementPage>;
 }
 
 export interface WidgetGradePreferences {
