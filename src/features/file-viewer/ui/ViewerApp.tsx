@@ -15,7 +15,7 @@ import { FileCard, type FileState, type PaneFile } from './FileCard';
 import type { FullViewHost } from './fullView';
 import { FullViewButton } from './FullViewButton';
 import { fileKind, isPdf } from './fileInfo';
-import { fileLinks } from './links';
+import { fileLinks, readAddress } from './links';
 import { PdfTab, type PdfHost } from './PdfTab';
 import { MediaTab } from './MediaTab';
 import { playerType } from './player';
@@ -47,6 +47,11 @@ export interface OpenRequest {
   fileId: string;
   courseId?: string;
   name?: string;
+  /**
+   * The address of the clicked link when it carried a `verifier` or a `location`. The error card
+   * links to it. The pane keeps it in memory only and never reads it.
+   */
+  address?: string;
 }
 
 export interface OpenSource {
@@ -64,6 +69,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const requested = useRef(new Set<string>());
   const courseHints = useRef(new Map<string, string>());
   const nameHints = useRef(new Map<string, string>());
+  const addresses = useRef(new Map<string, string>());
   const focusAfter = useRef<string | null>(null);
 
   // Counts the reads of each PDF. A change makes the tab read its file again.
@@ -109,8 +115,17 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const load = useCallback(
     (fileId: string) => {
       setFiles((all) => ({ ...all, [fileId]: { kind: 'loading' } }));
-      host
-        .loadFile(fileId, nameHints.current.get(fileId))
+      // A pane without a token, because its first read of the tabs was refused, asks again before
+      // the file loads: a comment attachment reads its bytes only with a token. A read that
+      // fails again changes nothing, and the file loads as before.
+      (loaded.current
+        ? Promise.resolve()
+        : host.getTabs().then(
+            () => undefined,
+            () => undefined,
+          )
+      )
+        .then(() => host.loadFile(fileId, nameHints.current.get(fileId)))
         .then(
           (file): FileState => (file ? { kind: 'ready', file } : { kind: 'error' }),
           (): FileState => ({ kind: 'error' }),
@@ -139,6 +154,9 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
       props.opens.subscribe((request) => {
         if (request.courseId) courseHints.current.set(request.fileId, request.courseId);
         if (request.name) nameHints.current.set(request.fileId, request.name);
+        // The page decides: a click on a link without the parameters drops an older address.
+        if (request.address) addresses.current.set(request.fileId, request.address);
+        else addresses.current.delete(request.fileId);
         // The requests run one after another, so the first read of the stored tabs finishes
         // before the next request adds to the tabs.
         pending.current = pending.current
@@ -247,14 +265,15 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
       continue;
     if (Number.isFinite(state.file.size) && state.file.size > MAX_FILE_BYTES) continue;
     const course = courseHints.current.get(fileId) ?? state.file.courseId;
-    const links = fileLinks(host.origin, fileId, course, state.file.url);
+    const links = fileLinks(host.origin, fileId, course);
     if (!links) continue;
+    const readFrom = readAddress(host.origin, fileId, state.file.url) ?? links.download;
     if (!isPdf(state.file.contentType)) {
       pdfTabs.push(
         <MediaTab
           key={fileId}
           host={host}
-          url={links.download}
+          url={readFrom}
           name={state.file.name}
           contentType={state.file.contentType}
           active={fileId === active}
@@ -272,7 +291,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
       <PdfTab
         fileId={fileId}
         key={fileId}
-        url={links.download}
+        url={readFrom}
         file={state.file}
         links={links}
         access={access}
@@ -295,12 +314,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     !(Number.isFinite(activeState.file.size) && activeState.file.size > MAX_FILE_BYTES);
   const activeLinks =
     active !== null && activeState?.kind === 'ready'
-      ? fileLinks(
-          host.origin,
-          active,
-          courseHints.current.get(active) ?? activeState.file.courseId,
-          activeState.file.url,
-        )
+      ? fileLinks(host.origin, active, courseHints.current.get(active) ?? activeState.file.courseId)
       : null;
   return (
     <div class="fv-app">
@@ -331,6 +345,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
             state={(active !== null && files[active]) || { kind: 'loading' }}
             origin={host.origin}
             courseHint={active === null ? undefined : courseHints.current.get(active)}
+            address={active === null ? undefined : addresses.current.get(active)}
             access={access}
             onRetry={() => active !== null && reload(active)}
             onAllow={allow}

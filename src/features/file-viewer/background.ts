@@ -34,8 +34,9 @@ import {
   isTabId,
   normalizeTabs,
 } from './model';
+import { STUDENT_KEY, studentName } from './student';
 import { ViewerUnconfirmedError } from './unconfirmed';
-import { fileLinks } from './ui/links';
+import { readAddress } from './ui/links';
 
 type ViewerSender = Pick<Browser.runtime.MessageSender, 'url' | 'frameId'> & {
   tab?: { id?: number };
@@ -245,10 +246,11 @@ export function routeViewerMessage(
         if (!(await host.mayFetch(origin, tabId))) throw new ViewerUnconfirmedError();
         const student = await host.userId(origin, tabId);
         if (student === null) throw new ViewerUnconfirmedError();
+        await recordStudent(host, student);
         // The token names the student and the clearing round. A write must carry the token that
         // the last read gave, so a pane that stayed open cannot save the position of one student
         // as the position of another, or after a clearing.
-        const token = `${epoch}:${student}`;
+        const token = `${epoch}:${studentName(student)}`;
         if (writing && request['token'] !== token)
           throw new Error('The position changed since it was read');
         return withPositions(async () => {
@@ -288,7 +290,10 @@ export function routeViewerMessage(
         // The pane names the student and the clearing round of its tabs. A pane that a lost reset
         // left open reads no file for another student.
         const student = await host.userId(origin, tabId);
-        return student !== null && request['token'] === `${await readEpoch(host)}:${student}`;
+        return (
+          student !== null &&
+          request['token'] === `${await readEpoch(host)}:${studentName(student)}`
+        );
       }
       case 'viewer:confirm-cookie':
         // A read of the bytes of a comment attachment comes before any read of the files API, so
@@ -324,14 +329,17 @@ export function routeViewerMessage(
         if (tabId === undefined) throw new Error('A browser tab is required');
         // The tabs belong to the student of the cache. The cookie rules must confirm that student
         // first, and tabs of another student read as none.
-        const userId = await host.userId(origin, tabId);
-        if (userId === null) throw new ViewerUnconfirmedError();
+        const id = await host.userId(origin, tabId);
+        if (id === null) throw new ViewerUnconfirmedError();
+        const userId = studentName(id);
         const key = `viewer:${origin}:${tabId}`;
         // The token names the student and the clearing round of the tabs. A write must carry the
         // token that the last read gave, so a pane that stayed open cannot write the tabs of one
-        // student back as the tabs of another, or after a clearing.
+        // student back as the tabs of another, or after a clearing. The round comes first: a
+        // clearing between the two reads leaves this token with the old round.
         const token = `${await readEpoch(host)}:${userId}`;
         if (request['type'] === 'viewer:tabs-get') {
+          await recordStudent(host, userId);
           const stored = await host.get(key);
           const tabs = storedUser(stored) === userId ? normalizeTabs(stored) : normalizeTabs(null);
           return { ...tabs, token };
@@ -376,6 +384,16 @@ function enqueue<T>(tabId: number, run: () => Promise<T>): Promise<T> {
 }
 
 const EPOCH_KEY = `${SESSION_PREFIX}epoch`;
+
+/**
+ * Records the student that a pane got a token for as the owner of the viewer data. The data owner
+ * compares this name with the student of every new proof, so it still finds a change of student
+ * after the worker stopped and lost its memory.
+ */
+async function recordStudent(host: Pick<ViewerHost, 'get' | 'set'>, id: string): Promise<void> {
+  const student = studentName(id);
+  if ((await host.get(STUDENT_KEY)) !== student) await host.set(STUDENT_KEY, student);
+}
 async function readEpoch(host: Pick<ViewerHost, 'get'>): Promise<number> {
   const value = await host.get(EPOCH_KEY);
   return typeof value === 'number' ? value : 0;
@@ -502,11 +520,11 @@ export function serveBytesPort(
   });
 }
 
-/** The address the pane reads for a file: the same links as the card (`fileLinks`) give. */
+/** The address the pane reads for a file: the same one that the pane reads (`readAddress`). */
 function fileDownload(origin: string, fileId: string, url: string | undefined): string {
-  const links = fileLinks(origin, fileId, null, url);
-  if (links === null) throw new Error('Invalid file id');
-  return links.download;
+  const address = readAddress(origin, fileId, url);
+  if (address === null) throw new Error('Invalid file id');
+  return address;
 }
 
 function toBase64(part: Uint8Array): string {
@@ -594,7 +612,8 @@ export function clearViewerTabs(): Promise<void> {
       values = await browser.storage.session.get(null);
       const epoch = typeof values[EPOCH_KEY] === 'number' ? values[EPOCH_KEY] : 0;
       // The new epoch comes first, so a write with an old token fails even while the data goes.
-      await browser.storage.session.set({ [EPOCH_KEY]: epoch + 1 });
+      // The same write drops the student, because the data of that student is going.
+      await browser.storage.session.set({ [EPOCH_KEY]: epoch + 1, [STUDENT_KEY]: null });
     } catch (error) {
       failures.push(error);
     }

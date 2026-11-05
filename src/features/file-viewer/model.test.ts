@@ -6,6 +6,7 @@ import {
   PANEL_HOST_ATTRIBUTE,
   courseOfLink,
   fileTarget,
+  keptAddress,
   isCommentTab,
   isTabId,
   linkName,
@@ -300,5 +301,27 @@ describe('comment attachment routes', () => {
     });
     expect(openFile({ ids: [], active: null }, tab).active).toBe(tab);
     expect(openFile({ ids: [], active: null }, `${tab}&a=1`).active).toBeNull();
+  });
+});
+
+describe('the address of a link that carries a verifier or a location', () => {
+  const origin = 'https://school.edu';
+  it('keeps the whole address of a link on the saved Canvas', () => {
+    expect(keptAddress('/courses/9/files/5?verifier=abc', origin)).toBe(
+      'https://school.edu/courses/9/files/5?verifier=abc',
+    );
+    expect(keptAddress(`${origin}/files/5/download?location=course_9`, origin)).toBe(
+      'https://school.edu/files/5/download?location=course_9',
+    );
+  });
+  it('keeps nothing for a link without either parameter', () => {
+    expect(keptAddress('/courses/9/files/5', origin)).toBeUndefined();
+    expect(keptAddress('/courses/9/files/5?download_frd=1', origin)).toBeUndefined();
+  });
+  it('keeps nothing for another origin, a script address or an address that is too long', () => {
+    expect(keptAddress('https://evil.example/files/5?verifier=abc', origin)).toBeUndefined();
+    expect(keptAddress('//evil.example/files/5?verifier=abc', origin)).toBeUndefined();
+    expect(keptAddress('javascript:alert(1)//?verifier=abc', origin)).toBeUndefined();
+    expect(keptAddress(`/files/5?verifier=${'a'.repeat(2100)}`, origin)).toBeUndefined();
   });
 });

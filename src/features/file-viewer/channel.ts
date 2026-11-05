@@ -6,18 +6,21 @@
  * and is trusted only after it carries the secret: the page script sends it first, and the pane
  * answers with it only after it has checked the first message.
  */
-import { isTabId, linkName } from './model';
+import { ADDRESS_LIMIT, isTabId, linkName } from './model';
 
 /**
  * The pane receives identities only, never addresses to load. The `fileId` is a tab id: a file
  * id, or the submission address of a comment attachment, which every hop checks again. The
- * `name` is the text of the link of a comment attachment.
+ * `name` is the text of the link of a comment attachment. The `address` is the address of a link
+ * that carried a `verifier` or a `location`: the pane shows it as the "Open in Canvas" link of
+ * its error card, and never reads it.
  */
 export interface OpenFileMessage {
   type: 'open-file';
   fileId: string;
   courseId?: string;
   name?: string;
+  address?: string;
 }
 /** The resolved theme of the Canvas page, for the colors of the pane page. */
 export interface ThemeMessage {
@@ -59,13 +62,27 @@ export function isViewerSecret(value: unknown): value is string {
   return typeof value === 'string' && SECRET.test(value);
 }
 
+/** Whether a value is an absolute http or https address of at most `ADDRESS_LIMIT` characters. */
+function webAddress(value: unknown): boolean {
+  if (typeof value !== 'string' || value.length > ADDRESS_LIMIT) return false;
+  try {
+    const { protocol } = new URL(value);
+    return protocol === 'https:' || protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
 export function validOpenFile(value: unknown): value is OpenFileMessage {
   if (typeof value !== 'object' || value === null) return false;
   const message = value as Record<string, unknown>;
   return (
-    Object.keys(message).every((key) => ['type', 'fileId', 'courseId', 'name'].includes(key)) &&
+    Object.keys(message).every((key) =>
+      ['type', 'fileId', 'courseId', 'name', 'address'].includes(key),
+    ) &&
     message['type'] === 'open-file' &&
     isTabId(message['fileId']) &&
+    (message['address'] === undefined || webAddress(message['address'])) &&
     (message['name'] === undefined ||
       (typeof message['name'] === 'string' && linkName(message['name']) === message['name'])) &&
     (message['courseId'] === undefined ||

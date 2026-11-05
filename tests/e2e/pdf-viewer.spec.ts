@@ -18,8 +18,10 @@ import {
   openFirstFile,
   pane,
   saveSetting,
+  waitForListLoaded,
 } from './support/file-viewer';
 import { advanceBackgroundClock } from './support/clock';
+import { isExtensionWorker } from './support/extension';
 import { json } from './support/scenario-api';
 import { expect, test as base } from './support/weekrow';
 import { SCENARIO_NOW, buildScenario } from '../fixtures/scenario';
@@ -91,6 +93,12 @@ const SECOND = {
 const html = courseHomeHtml.replace(
   '<a class="instructure_file_link" href="/files/43">Lecture photo</a>',
   '<a class="instructure_file_link" href="/files/43">Lecture photo</a> <a class="instructure_file_link" href="/courses/101/files/45">Second notes</a>',
+);
+
+/** A course page whose link to the notes carries a verifier and a location. */
+const verifierHtml = html.replace(
+  '<a class="instructure_file_link" href="/courses/101/files/42">Read notes</a>',
+  '<a class="instructure_file_link" href="/courses/101/files/42?verifier=SECRETV&amp;location=course_101">Read notes</a>',
 );
 
 /** The download route of a file: one redirect to the file host. */
@@ -831,13 +839,14 @@ function studentCanvas() {
     /** Signs in the other student: the cookie changes and Canvas names the other student. */
     async switchStudent(
       context: Parameters<typeof openCoursePage>[0],
-      background: Parameters<typeof openCoursePage>[2],
+      background: Parameters<typeof openCoursePage>[2] | null,
       origin: string,
     ) {
       signedIn = OTHER_STUDENT;
       // The owner starts at most two sign-in checks in 30 seconds. The first student's open used
-      // some, so the clock moves on and the check of the new cookie can start.
-      await advanceBackgroundClock(background, 2 * 60_000);
+      // some, so the clock moves on and the check of the new cookie can start. A worker that
+      // restarted has no count of checks and no test clock, so it passes `null`.
+      if (background !== null) await advanceBackgroundClock(background, 2 * 60_000);
       await context.addCookies([
         { name: 'canvas_session', value: 'student-b', url: origin, secure: true, sameSite: 'Lax' },
       ]);
@@ -1031,6 +1040,148 @@ test('the pane closes when another student signs in and the cache has no session
   await openFirstFile(other, 'Read notes');
   await slowExpect(pageBox(await pane(other), 1).locator('canvas')).toBeVisible();
   await slowExpect(host).toHaveCount(0);
+});
+
+/**
+ * Stops the extension service worker, as the browser does after some idle seconds, and starts it
+ * again. A mark in the memory of the old worker proves that the new one is another worker.
+ */
+async function restartWorker(
+  context: Parameters<typeof openCoursePage>[0],
+  page: Page,
+  background: Parameters<typeof openCoursePage>[2],
+  extensionUrl: (file: string) => string,
+): Promise<void> {
+  await background.evaluate(() => {
+    (globalThis as { __restartMark?: string }).__restartMark = 'old worker';
+  });
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('ServiceWorker.enable');
+  await cdp.send('ServiceWorker.stopAllWorkers');
+  await cdp.detach();
+  // A page of the extension wakes the worker again.
+  const waker = await context.newPage();
+  await waker.goto(extensionUrl('sidepanel.html'));
+  await expect
+    .poll(
+      async () => {
+        for (const worker of context.serviceWorkers().filter(isExtensionWorker)) {
+          const mark = await worker
+            .evaluate(() => (globalThis as { __restartMark?: string }).__restartMark ?? 'none')
+            .catch(() => 'gone');
+          if (mark === 'none') return 'restarted';
+        }
+        return 'running';
+      },
+      { timeout: 30_000 },
+    )
+    .toBe('restarted');
+  await waker.close();
+}
+
+test('the pane closes when another student signs in after the worker restarted and the cache has no session', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+  fileHost,
+}) => {
+  // This test starts a second page and a second student, so a loaded machine needs more time.
+  test.setTimeout(120_000);
+  const student = studentCanvas();
+  student.failProfile();
+  const canvas = await openCoursePage(context, page, background, html, [
+    ...student.routes,
+    ...routes(fileHost),
+  ]);
+  await openFirstFile(page, 'Read notes');
+  await slowExpect(pageBox(await pane(page), 1).locator('canvas')).toBeVisible();
+  const host = page.locator('#tools-file-viewer');
+  await expect(host).toBeVisible();
+
+  // The worker stops, so the proof of the first student is gone from its memory. Only the
+  // storage can tell the next proof whose data the pane shows.
+  await restartWorker(context, page, background, extensionUrl);
+  await student.switchStudent(context, null, canvas.origin);
+  const other = await context.newPage();
+  await other.goto(page.url());
+  await openFirstFile(other, 'Read notes');
+  await slowExpect(pageBox(await pane(other), 1).locator('canvas')).toBeVisible();
+  await slowExpect(host).toHaveCount(0);
+});
+
+test('the error card keeps the address of a link with a verifier in memory, and sends it nowhere', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await openCoursePage(context, page, background, verifierHtml, [
+    { path: '/api/v1/files/42', respond: () => ({ status: 404, body: { errors: [] } }) },
+  ]);
+  await waitForListLoaded(canvas);
+  await openFirstFile(page, 'Read notes');
+  let frame = await pane(page);
+  await expect(frame.getByText("Couldn't load this file")).toBeVisible();
+  // The student has one way out: the address that the link had.
+  await expect(frame.getByRole('link', { name: 'Open in Canvas' })).toHaveAttribute(
+    'href',
+    `${canvas.origin}/courses/101/files/42?verifier=SECRETV&location=course_101`,
+  );
+  // The Download link is built from the file id alone.
+  await expect(frame.getByRole('link', { name: 'Download' })).toHaveAttribute(
+    'href',
+    `${canvas.origin}/files/42/download`,
+  );
+  // The address is in no read and in no storage. The click itself is never a navigation.
+  expect(
+    canvas.requests.filter(
+      (request) =>
+        request.path.includes('SECRETV') &&
+        (request.path.startsWith('/api/') || request.path.includes('/download')),
+    ),
+  ).toEqual([]);
+  const stored = await background.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        chrome: { storage: Record<'local' | 'session', { get(keys: null): Promise<unknown> }> };
+      }
+    ).chrome;
+    return JSON.stringify([await api.storage.local.get(null), await api.storage.session.get(null)]);
+  });
+  expect(stored).not.toContain('SECRETV');
+
+  // A reset takes the address with it. The file opens again through the click catcher of a
+  // frame, which sends no address, so only a page that still held the address could show it.
+  const sendToPage = (message: object) =>
+    background.evaluate(
+      async ([origin, body]) => {
+        const api = (
+          globalThis as unknown as {
+            chrome: {
+              tabs: {
+                query(filter: object): Promise<{ id?: number }[]>;
+                sendMessage(id: number, message: object, options: object): Promise<unknown>;
+              };
+            };
+          }
+        ).chrome;
+        for (const tab of await api.tabs.query({ url: `${origin as string}/*` }))
+          if (tab.id !== undefined)
+            await api.tabs
+              .sendMessage(tab.id, body as object, { frameId: 0 })
+              .catch(() => undefined);
+      },
+      [canvas.origin, message] as const,
+    );
+  await sendToPage({ type: 'viewer:reset' });
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+  await sendToPage({ type: 'viewer:open-from-frame', fileId: '42' });
+  frame = await pane(page);
+  await expect(frame.getByText("Couldn't load this file")).toBeVisible();
+  await expect(frame.getByRole('link', { name: 'Open in Canvas' })).toHaveAttribute(
+    'href',
+    `${canvas.origin}/files/42`,
+  );
 });
 
 test('a pane that stayed open cannot save its position for the next student', async ({

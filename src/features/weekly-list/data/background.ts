@@ -12,6 +12,7 @@ import { hasAccess, onAccessChanged } from '../../../shared/platform/permissions
 import { canvasOriginItem, changeMarkerItem, offerItem } from '../../../shared/platform/storage';
 import { seenNotesItem, settingsItem } from './storage';
 import { sessionCacheItem } from './cache';
+import { viewerStudentItem } from '../../file-viewer/student';
 import { createDataOwner, type DataOwner, type DataOwnerDeps } from './owner';
 
 function browserTimeZone(): string {
@@ -37,6 +38,7 @@ function backgroundDataDeps(extra: Pick<DataOwnerDeps, 'onUserDataCleared'>): Da
       seenNotes: seenNotesItem,
       offer: offerItem,
       cache: sessionCacheItem,
+      viewerStudent: viewerStudentItem,
     },
     clock: { now: () => Date.now() },
     timers: {

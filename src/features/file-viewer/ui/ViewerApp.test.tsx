@@ -128,7 +128,8 @@ describe('pane tabs', () => {
     const { open, host } = setup({ getTabs });
     await open('1');
     await waitFor(() => expect(host.setTabs).toHaveBeenCalledWith({ ids: ['1'], active: '1' }));
-    expect(getTabs).toHaveBeenCalledTimes(2);
+    // The refused read, the read before the file loads, and the read after it confirms the student.
+    expect(getTabs).toHaveBeenCalledTimes(3);
   });
 
   it('opens one tab for each file and activates an open file again', async () => {
@@ -274,6 +275,86 @@ describe('tabs that fail to load', () => {
   });
 });
 
+describe('a pane without a token', () => {
+  it('reads the tabs again before a file loads, so a refused first read does not block Retry', async () => {
+    // The host copies the token rule of the pane: a file loads only after a good read of the tabs.
+    let token = false;
+    const getTabs = vi
+      .fn<PaneHost['getTabs']>()
+      .mockRejectedValueOnce(new Error('The cookie is not confirmed'))
+      .mockImplementation(async () => {
+        token = true;
+        return { ids: [], active: null };
+      });
+    const loadFile = vi.fn(async (id: string) => (token ? FILES[id] : undefined));
+    const { open } = setup({ getTabs, loadFile });
+    await open('1');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.docx' })).toBeTruthy());
+  });
+
+  it('goes on to load the file when the read of the tabs fails again', async () => {
+    const getTabs = vi.fn<PaneHost['getTabs']>().mockRejectedValue(new Error('refused'));
+    const { open, host } = setup({ getTabs });
+    await open('1');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.docx' })).toBeTruthy());
+    expect(host.loadFile).toHaveBeenCalledOnce();
+  });
+});
+
+describe('the address that the student clicked', () => {
+  const CLICKED = `${ORIGIN}/courses/9/files/1?verifier=SECRET&location=course_9`;
+  const failing = () => vi.fn(async () => undefined);
+
+  it('is the Open in Canvas link of the error card', async () => {
+    const { opens } = setup({ loadFile: failing() });
+    await act(async () => {
+      opens.emit({ fileId: '1', address: CLICKED });
+    });
+    await waitFor(() => expect(screen.getByText("Couldn't load this file")).toBeTruthy());
+    expect((screen.getByRole('link', { name: 'Open in Canvas' }) as HTMLAnchorElement).href).toBe(
+      CLICKED,
+    );
+    // The Download link stays on the file id alone.
+    expect((screen.getByRole('link', { name: 'Download' }) as HTMLAnchorElement).href).toBe(
+      `${ORIGIN}/files/1/download`,
+    );
+  });
+
+  it('is never read by the pane, and never written with the tabs', async () => {
+    const { opens, host } = setup({ loadFile: failing() });
+    await act(async () => {
+      opens.emit({ fileId: '1', address: CLICKED });
+    });
+    await waitFor(() => expect(screen.getByText("Couldn't load this file")).toBeTruthy());
+    expect(JSON.stringify(vi.mocked(host.setTabs).mock.calls)).not.toContain('SECRET');
+    expect(JSON.stringify(vi.mocked(host.loadFile).mock.calls)).not.toContain('SECRET');
+  });
+
+  it('is ignored when it is not on the saved Canvas', async () => {
+    const { opens } = setup({ loadFile: failing() });
+    await act(async () => {
+      opens.emit({ fileId: '1', address: 'https://evil.example/files/1?verifier=x' });
+    });
+    await waitFor(() => expect(screen.getByText("Couldn't load this file")).toBeTruthy());
+    expect((screen.getByRole('link', { name: 'Open in Canvas' }) as HTMLAnchorElement).href).toBe(
+      `${ORIGIN}/files/1`,
+    );
+  });
+
+  it('gives the error card of a comment attachment an Open in Canvas link', async () => {
+    const comment = '/courses/9/assignments/3/submissions/5?comment_id=8&download=11';
+    const address = `${ORIGIN}${comment}&location=course_9`;
+    const { opens } = setup({ loadFile: failing() });
+    await act(async () => {
+      opens.emit({ fileId: comment, address });
+    });
+    await waitFor(() => expect(screen.getByText("Couldn't load this file")).toBeTruthy());
+    expect((screen.getByRole('link', { name: 'Open in Canvas' }) as HTMLAnchorElement).href).toBe(
+      address,
+    );
+  });
+});
+
 describe('file card', () => {
   it('shows the name, the type and the size with both links', async () => {
     const { open } = setup();
@@ -289,6 +370,15 @@ describe('file card', () => {
       expect(link.rel).toContain('noopener');
     }
     expect(document.querySelector('[data-part="viewer-body"]')).toBeTruthy();
+  });
+
+  it('builds the Download link from the file id alone, never from the query of the record', async () => {
+    const url = `${ORIGIN}/files/1/download?download_frd=1&verifier=SECRET`;
+    const { open } = setup({ loadFile: vi.fn(async () => ({ ...FILES['1']!, url })) });
+    await open('1');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.docx' })).toBeTruthy());
+    const download = screen.getByRole('link', { name: 'Download' }) as HTMLAnchorElement;
+    expect(download.href).toBe(`${ORIGIN}/files/1/download`);
   });
 
   it('links to the plain file path when the file has no course', async () => {

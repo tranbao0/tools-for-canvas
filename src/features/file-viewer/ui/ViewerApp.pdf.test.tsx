@@ -85,6 +85,16 @@ describe('pdf tabs', () => {
     expect(document.querySelector('[data-part="pdf-loading"]')).toBeTruthy();
   });
 
+  it('reads the address of the record, and builds the Download link from the file id alone', async () => {
+    const url = `${ORIGIN}/files/1/download?download_frd=1&verifier=SECRET`;
+    const { open, host } = setup({ loadFile: vi.fn(async () => ({ ...PDF, url })) });
+    await open('1');
+    await waitFor(() => expect(host.readFile).toHaveBeenCalledOnce());
+    expect(vi.mocked(host.readFile).mock.calls[0]![0]).toBe(url);
+    const download = (await screen.findByRole('link', { name: 'Download' })) as HTMLAnchorElement;
+    expect(download.href).toBe(`${ORIGIN}/files/1/download`);
+  });
+
   it('keeps a download address on another host out of the read', async () => {
     const { open, host } = setup({
       loadFile: vi.fn(async () => ({ ...PDF, url: 'https://evil.example/files/1/download' })),

@@ -2925,8 +2925,13 @@ With the pane read alone, the default run of the test failed before the fix.
      A page script cannot send it: the page script handles it only from the extension itself (the sender is this extension and has no tab).
      A click that started before the reset ends without a pane and writes no tabs, because the earlier student owns it.
      The first click of the new student, after the reset, opens a pane as usual.
-     A read gives a token (the clearing round and the student), and a write must send the token of the last read.
+     A read gives a token (the clearing round and the student in its global decimal form), and a write must send the token of the last read.
      So an open pane cannot write the tabs of one student back as the tabs of another, or after a clearing.
+     The background also keeps the name of that student in `storage.session` as `viewer:session:student`, next to the clearing round.
+     It writes the name when a pane gets a token, and the data owner writes it at every sign-in proof and at the commit of every session.
+     The data owner compares the name with the student of every new proof and of the first session, so a change of student clears the viewer also when the worker stopped in between and lost its memory.
+     The clearing sets the round and removes the name in one write.
+     A pane whose first read of the tabs was refused has no token and reads the tabs again before each file loads, and the file loads even when that read fails.
      The reads and writes of one browser tab run in the order they arrive.
      A pane or page script whose read was refused keeps its tabs in memory, writes nothing, and reads again at the next request.
    - The tab strip is the ARIA tabs pattern, drawn like the tabs of Canvas: text tabs on a line, and the active tab has a bar in the brand color.
@@ -2964,7 +2969,8 @@ With the pane read alone, the default run of the test failed before the fix.
      - the address has the shape `/files/:id/download`, or `/courses/:id/assignments/:id/submissions/:id?download=:file`.
      A download button that a teacher puts in an assignment description, and a comment attachment, keep their download.
    - The files list of the submission details page is in a frame, and item 11 handles it.
-     The pane takes only the file id from the address and drops any `verifier`.
+     The pane takes only the file id from the address, for every read and for every link of the card.
+     No `verifier` and no `location` of the address goes to a read, a stored value or a link that the student can click, except the one case in "The address of the clicked link" below.
    - A link without a `download` attribute opens the pane by its address alone.
      The address of a comment attachment carries numeric `comment_id` and `download` query parameters, and the pane takes it on the top frame of Grades and submission details pages (Ticket F2b).
      An explicit HTML `download` attribute keeps its download action.
@@ -3021,10 +3027,13 @@ With the pane read alone, the default run of the test failed before the fix.
      The pane checks the size of the file record before it fetches.
      It also stops the read when `Content-Length` or the bytes read pass 100 MB, because a header can be wrong.
    - Before the pane fetches the bytes, it asks the background with `viewer:fetch-allowed` whether the sign-in cookie is confirmed for the student of the cache (decision 11).
+     The request carries the token of the last read of the tabs, and the background refuses it when the token names another student or an older clearing round.
+     A pane that a lost reset left open therefore reads no file for another student.
      It asks again after the read and drops the bytes when the answer changed.
      When the answer is no, the pane shows "Canvas can't confirm your sign-in for this file" with "Retry" and "Open in Canvas".
      This failure does not ask for the host permission again.
-   - A PDF uses the same `url` that the card uses for "Download": the `url` of the record when it is on the saved Canvas, and `/files/:id/download` otherwise.
+   - A PDF reads the `url` of the record when it is on the saved Canvas, and `/files/:id/download` otherwise.
+     This read is the only use of that `url`, because the token check above guards it: the bytes are dropped when the answer changes.
      The pane page fetches it with the student's session and follows the redirect, through `src/shared/canvas/fileBytes.ts`, and reads it again in the background as the bullet above says.
    - While the bytes of a PDF, an image, audio, video or text load, a progress bar shows the part read, from `Content-Length`.
      The players share the bar of the PDF tab, with the label "Loading file".
@@ -3057,13 +3066,21 @@ With the pane read alone, the default run of the test failed before the fix.
      Each has an accessible label and a tooltip.
      At 1080 px of window height, the pages start at about 190 px and have about 890 px, where the card left about 735 px.
    - The card stays when the record is loading, when it did not load, when the file is over 100 MB, and for every type that is not a PDF.
-   - "Download" links to the `url` of the file record, and "Open in Canvas" links to `/courses/:id/files/:id`, or to `/files/:id` when no course is known.
+   - "Download" links to `/files/:id/download`, built from the file id alone, and "Open in Canvas" links to `/courses/:id/files/:id`, or to `/files/:id` when no course is known.
      The course is the one in the link that the student clicked, then the one in the file record.
-     A `url` that is empty, or that does not belong to the saved Canvas, is replaced by `/files/:id/download`.
+     Neither link takes a query from the file record: a `verifier` in the `url` of the record would open the file for any session, and these links open in a new tab with no check of the extension.
      Both links open in a new tab with `noopener`, on the card and in the slim line.
    - The region with `data-part="viewer-body"` below the card is where the viewers of item 4 draw.
    - While the record loads, the card shows light bars in the divider color.
    - When the record does not load, the card shows "Couldn't load this file" with "Retry" and "Open in Canvas", and the tab shows "Unavailable file".
+   - **The address of the clicked link.**
+     Many links in teacher content carry a `verifier` or a `location`, and the student can usually read that file without them, so the pane still takes the click.
+     Canvas's `api_show` reads both parameters, but the pane sends them to no API and to no read.
+     When the clicked address is on the saved Canvas and has a `verifier` or a `location`, the page script keeps the whole address in its memory for that file, and sends it with the open request.
+     The pane keeps it in memory with the tab, and the error card uses it as its "Open in Canvas" link, so a student whose file does not load has one way out that works.
+     A click on a link without the parameters drops the older address of that file.
+     The address is never written to storage, goes away with `viewer:reset` and with the pane, is never logged, and is never used for a read.
+     The "Download" link stays on the file id alone.
    - "Allow access" shows in the slim line of a PDF, and on the card for every other tab.
 8. **The theme of the pane.**
    - The pane follows the Theme setting (decision 19).
@@ -3825,7 +3842,9 @@ So a student switches pages to read the instructions next to the feedback on a f
     The Submission box of the Submission Details page is such a host.
   - A comment attachment opens in the pane through its submission route, from the comments of the Submission Details page.
   - The error card of every file keeps a Download button, so a file that fails in the pane can still be saved.
+    The button links to the file id alone.
   - A comment attachment has no "Open in Canvas" there, because it has no Canvas page (Ticket F2b).
+    Its error card shows one only when the clicked link carried a `verifier` or a `location`, and then it is that address.
 - **Settings.** "One assignment view" is in the tools settings, on by default, in the same three places as the other settings.
 
 **Security:**
@@ -4372,6 +4391,7 @@ No verified public close API is available for that overlay, so the extension doe
      A tab that is restored from storage has no hint and shows "Comment attachment".
    - If a read fails, the error card shows a Download button that uses the same route.
      "Open in Canvas" is hidden for a comment attachment in the card, the error card, the PDF line and the PDF error, because a comment attachment has no `/files/:id` page that the student can open.
+    The one exception is the error card of a comment attachment whose link carried a `verifier` or a `location`: its "Open in Canvas" is the address of that link (decision 25, "The address of the clicked link").
    - The files frame catcher stays on plain files and takes no comment attachment.
 3. **Folder and search views.**
    Canvas pushes `/courses/:id/files/folder/:splat?preview=:file` and `/courses/:id/files/search?...&preview=:file` (`FilesApp.jsx`, `FilePreview.jsx`).

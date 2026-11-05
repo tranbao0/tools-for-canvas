@@ -27,6 +27,7 @@ import {
   isCommentTab,
   isFileId,
   isSubmissionPage,
+  keptAddress,
   linkName,
   normalizeTabs,
   openFile,
@@ -108,14 +109,20 @@ export async function startViewer(): Promise<void> {
   const courses = new Map<string, string>();
   // The text of the link of each comment attachment that the student opened, for its tab name.
   const names = new Map<string, string>();
+  // The address of the last click on each file whose link carried a `verifier` or a `location`.
+  // The pane shows it as the "Open in Canvas" link of its error card. It lives in this memory
+  // only, goes with a reset, is written nowhere and read by nobody.
+  const addresses = new Map<string, string>();
   const openMessage = (fileId: string) => {
     const courseId = courses.get(fileId);
     const name = names.get(fileId);
+    const address = addresses.get(fileId);
     return {
       type: 'open-file' as const,
       fileId,
       ...(courseId ? { courseId } : {}),
       ...(name ? { name } : {}),
+      ...(address ? { address } : {}),
     };
   };
   // Whether the pane of the current port has been told what to open. The first open-file request
@@ -188,6 +195,7 @@ export async function startViewer(): Promise<void> {
     synced = false;
     courses.clear();
     names.clear();
+    addresses.clear();
   };
   // A page can remove the host. Then no pane is open, and the next click opens a new one.
   const paneOpen = () => {
@@ -408,6 +416,11 @@ export async function startViewer(): Promise<void> {
       if ('fileId' in target && isCommentTab(target.fileId)) {
         const name = linkName(link.textContent);
         if (name) names.set(target.fileId, name);
+      }
+      if ('fileId' in target) {
+        const address = keptAddress(href, location.origin);
+        if (address) addresses.set(target.fileId, address);
+        else addresses.delete(target.fileId);
       }
       const checkedHref = link.getAttribute('href');
       // A reset that comes while the click waits ends it: the click belongs to this moment.

@@ -7,6 +7,7 @@ import { readPosition, savePosition } from '../../file-viewer/positions';
  * check confirmed for the student of the cache, and no reply when the cookie changes during the
  * read.
  */
+import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { emptyCache, sessionCacheItem } from './cache';
 import { canvasError } from './testing/fakeCanvas';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +23,7 @@ import {
 } from './testing/harness';
 
 const TAB = 9;
+const STUDENT = 'viewer:session:student';
 
 beforeEach(() => useScenarioClock());
 afterEach(async () => {
@@ -232,7 +234,62 @@ describe('viewer reads', () => {
     await expect(h.owner.viewerConfirm(ORIGIN, TAB)).resolves.toBe(true);
     signInOtherUser(h);
     await loadReady(h);
-    expect(cleared).toHaveBeenCalled();
+    expect(cleared).toHaveBeenCalledOnce();
+  });
+
+  it('names the student of the viewer data in storage.session after a proof', async () => {
+    const h = await createHarness();
+    await expect(h.owner.viewerConfirm(ORIGIN, TAB)).resolves.toBe(true);
+    await expect
+      .poll(async () => (await fakeBrowser.storage.session.get(STUDENT))[STUDENT])
+      .toBe(h.canvas.scenario.profile.id);
+  });
+
+  it('tells the viewer to clear its tabs for another student after the worker restarted', async () => {
+    const h = await createHarness();
+    // A pane of the first student got a token, so the viewer data names that student.
+    await fakeBrowser.storage.session.set({ [STUDENT]: h.canvas.scenario.profile.id });
+    const cleared = vi.fn();
+    h.deps.onUserDataCleared = cleared;
+    // The worker restarted: the new owner has no proof in memory, and the cache holds no session.
+    const owner = h.restart();
+    signInOtherUser(h);
+    await expect(owner.viewerConfirm(ORIGIN, TAB)).resolves.toBe(true);
+    expect(cleared).toHaveBeenCalledOnce();
+    await expect(owner.viewerUserId(ORIGIN, TAB)).resolves.toBe('7777');
+  });
+
+  it('tells the viewer to clear its tabs when the first session after a restart is another student', async () => {
+    const h = await createHarness();
+    await fakeBrowser.storage.session.set({ [STUDENT]: h.canvas.scenario.profile.id });
+    const cleared = vi.fn();
+    h.deps.onUserDataCleared = cleared;
+    const owner = h.restart();
+    signInOtherUser(h);
+    await loadReady({ ...h, owner });
+    expect(cleared).toHaveBeenCalledOnce();
+  });
+
+  it('clears nothing when the student of the viewer data signs in again after a restart', async () => {
+    const h = await createHarness();
+    await fakeBrowser.storage.session.set({ [STUDENT]: '5501' });
+    const cleared = vi.fn();
+    h.deps.onUserDataCleared = cleared;
+    const owner = h.restart();
+    await expect(owner.viewerConfirm(ORIGIN, TAB)).resolves.toBe(true);
+    await loadReady({ ...h, owner });
+    expect(cleared).not.toHaveBeenCalled();
+  });
+
+  it('gives one change of student one clear, with the proof of the earlier student gone', async () => {
+    const h = await loaded();
+    const cleared = vi.fn();
+    h.deps.onUserDataCleared = cleared;
+    signInOtherUser(h);
+    await expect(h.owner.viewerMayFetch(ORIGIN, TAB)).resolves.toBe(false);
+    expect(cleared).toHaveBeenCalledOnce();
+    await loadReady(h);
+    expect(cleared).toHaveBeenCalledOnce();
   });
 
   it('tells the viewer to clear its tabs on a sign-out and for another student', async () => {

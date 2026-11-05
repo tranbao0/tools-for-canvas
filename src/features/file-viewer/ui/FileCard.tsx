@@ -2,7 +2,7 @@
 import { t } from '../../../shared/ui/i18n';
 import { DownloadIcon, ExternalLinkIcon, FileIcon } from '../../../shared/ui/icons';
 import { fileKind, formatSize, typeLabel } from './fileInfo';
-import { fileLinks } from './links';
+import { fileLinks, sameCanvasAddress } from './links';
 
 /** The record of a file, as the background answers `viewer:file`. */
 export interface PaneFile {
@@ -21,6 +21,8 @@ interface CardProps {
   origin: string;
   /** The course the student opened the file from, if the link told it. */
   courseHint: string | undefined;
+  /** The address of the link that opened the file, when it carried a `verifier` or a `location`. */
+  address: string | undefined;
   /** False while the browser withholds access to the Canvas address. */
   access: boolean;
   onRetry(): void;
@@ -61,13 +63,11 @@ export function FileCard(props: CardProps) {
   }
   // The course the student opened the file from comes first, then the course of the record.
   const course = props.courseHint ?? (state.kind === 'ready' ? state.file.courseId : null);
-  const links = fileLinks(
-    props.origin,
-    props.fileId,
-    course,
-    state.kind === 'ready' ? state.file.url : undefined,
-  );
+  const links = fileLinks(props.origin, props.fileId, course);
   if (state.kind === 'error') {
+    // The file did not load, so the student needs a way out that works: the address of the link
+    // that they clicked, when Canvas gave the file only through it.
+    const open = sameCanvasAddress(props.origin, props.address) ?? links?.canvas ?? null;
     return (
       <div class="fv-card wr-state" data-part="card-error">
         <div role="alert">
@@ -83,8 +83,8 @@ export function FileCard(props: CardProps) {
               {t('fileDownload')}
             </a>
           )}
-          {links?.canvas && (
-            <a class="wr-btn" href={links.canvas} {...NEW_TAB}>
+          {open && (
+            <a class="wr-btn" href={open} {...NEW_TAB}>
               {t('fileOpenInCanvas')}
               <ExternalLinkIcon />
             </a>

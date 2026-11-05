@@ -27,6 +27,7 @@ import type {
   TimeRange,
   UserSelf,
 } from '../../../shared/canvas/types';
+import { sameCanvasId } from '../../../shared/canvas/ids';
 import { assignmentIdsToLookup } from '../model/normalize';
 import type { AssignmentData } from '../model/types';
 import { DEFAULT_LIST_TABS } from './announcements';
@@ -321,7 +322,7 @@ function shared<T>(load: () => Promise<T>): () => Promise<T> {
 /** Rejects with `UserChangedError` when Canvas answers for another user than the cached one. */
 async function checkUser(self: () => Promise<UserSelf>, session: SessionData): Promise<void> {
   const user = await self();
-  if (user.id !== session.profile.id) throw new UserChangedError();
+  if (!sameCanvasId(user.id, session.profile.id)) throw new UserChangedError();
 }
 
 /** The undated work and the override list of a round. */

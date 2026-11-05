@@ -189,7 +189,7 @@ describe('a comment attachment whose pane read gets the sign-in page', () => {
 
 describe('links of a comment attachment', () => {
   it('download from the route and have no Canvas page', () => {
-    expect(fileLinks(ORIGIN, TAB, '12', `${ORIGIN}/other`)).toEqual({
+    expect(fileLinks(ORIGIN, TAB, '12')).toEqual({
       download: `${ORIGIN}${TAB}`,
       canvas: null,
     });
