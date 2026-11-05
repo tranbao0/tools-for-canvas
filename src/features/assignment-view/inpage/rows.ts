@@ -22,7 +22,7 @@ import type { PageTheme } from '../../../shared/ui/pageTheme';
 import type { AssignmentDetailsMessage, AssignmentDetailsReply } from '../protocol';
 import { isDetailsReply, renderDetails, renderError, renderLoading } from './details';
 import { restoreStaleComments } from './comments';
-import { ORIGINAL, OWN } from './own';
+import { ORIGINAL, OWN, rightColumn } from './own';
 import { RUBRIC_WRAPPER_ID, restoreStaleRubric } from './rubric';
 import { PAGE_CSS, PANEL_CSS } from './styles';
 
@@ -132,7 +132,7 @@ function ownedRoots(doc: Document, pathname: string): Element[] {
     if (host?.hasAttribute(OWN)) host.remove();
     const buttons = doc.querySelector('.ic-Action-header__Secondary');
     if (buttons) roots.add(buttons);
-    const column = doc.querySelector('#right-side-wrapper > #right-side');
+    const column = rightColumn(doc);
     if (column) roots.add(column);
     return [...roots];
   }
