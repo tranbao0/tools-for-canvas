@@ -1411,11 +1411,11 @@ for (const frame of ['input', 'wrapper', 'none']) {
           await box(page.locator(frame === 'wrapper' ? '.fx-select:has(#ann-read)' : '#ann-read')),
         );
       await articles(page).first().getByRole('button', { name: 'Read more' }).click();
-      await expect(message(page).locator('h1')).toHaveCSS('font-size', '25.2px');
-      await expect(message(page)).toHaveCSS('font-size', '14px');
-      await expect(message(page)).toHaveCSS('line-height', '21px');
+      await expect(message(page).locator('h1')).toHaveCSS('font-size', '28.8px');
+      await expect(message(page)).toHaveCSS('font-size', '16px');
+      await expect(message(page)).toHaveCSS('line-height', '24px');
       for (const heading of ['h1', 'h2']) {
-        await expect(message(page).locator(heading)).toHaveCSS('font-size', '25.2px');
+        await expect(message(page).locator(heading)).toHaveCSS('font-size', '28.8px');
         await expect(message(page).locator(heading)).toHaveCSS('font-weight', '400');
       }
       for (const edge of ['top', 'bottom']) {

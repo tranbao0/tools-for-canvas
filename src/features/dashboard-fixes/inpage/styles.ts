@@ -118,7 +118,7 @@ a.wr-x-title:hover{text-decoration:underline}
 .wr-a-more{grid-column:1/-1;margin-top:.25rem}
 .wr-a-more .wr-x-link{margin:0}
 .wr-a-body{grid-column:1/-1;margin-top:.5rem;min-width:0}
-.wr-a .wr-body{max-height:none;overflow-x:auto;font-size:.875rem}
+.wr-a .wr-body{max-height:none;overflow-x:auto;font-size:1rem}
 .wr-a-line{margin:0;padding:.75rem 0;text-align:center;font-size:.75rem;color:var(--wr-secondary)}
 .wr-a-sentinel{height:.0625rem}
 mark{background:#fdeeb5;color:#273540;padding:0 .0625rem;border-radius:.125rem}
