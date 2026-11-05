@@ -11,7 +11,7 @@ Each tool gets its own design decision in `docs/design.md` before it is built.
 ## 1. Weekly list (built)
 
 - Spans that start today, Past due in every span, and checked items that never count as late.
-- The list inside the new dashboard grid, with a floating panel as the fallback, and a docked panel on long classic dashboard pages.
+- The list on the new dashboard in the Course work slot, beside the widget grid or above the tab content, in a dock on the right edge of the window on the classic dashboard and in List View, and in the right column of a course home page.
 - Lazy loading: nearest days first, placeholders, and Past due last.
 
 ## 2. New dashboard fixes (built, see decision 22)
