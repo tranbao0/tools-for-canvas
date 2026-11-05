@@ -3508,7 +3508,7 @@ So a student switches pages to read the instructions next to the feedback on a f
      The pane is a frame on the Canvas page in a host of its own, in the dock of decision 25.
      It has a bar with the file name, "Open in new tab" and a close button.
    - The address is strict.
-     It must be on the saved Canvas, with the path `/api/v1/canvadoc_session`, with `blob` and `hmac` once each and no other parameter.
+     It must be on the saved Canvas, with the path `/api/v1/canvadoc_session`, with `blob` once, `hmac` once when Canvas sends it, and no other parameter.
      Any other value counts as absent, and the view uses the fallback mode (item 5), so the notes of the teacher stay reachable through Canvas's own button.
    - The address is signed for one student and acts like a secret.
      The view keeps it in a closure of the script, and the feedback pane keeps it in its closed root.
@@ -3631,6 +3631,7 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c` (20
   - A text entry is `#submission_preview.paper.user_content`, and other types draw their own blocks.
 - `app/helpers/attachment_helper.rb`, `doc_preview_attributes`: the link carries `data-canvadoc_session_url`, `data-attachment_id`, `data-attachment_name`, `data-mimetype` and more.
 - `app/controllers/canvadoc_sessions_controller.rb`: for the file's owner, the session request calls `mark_submission_annotations_read!` when annotations are enabled, then redirects to DocViewer.
+- A live page of sjsu.instructure.com on 2026-11-05 had `blob` as the only parameter of this address, so production differs from the pinned source, and the check takes `hmac` as optional.
 - `app/models/attachment.rb`, `canvadoc_url`: `/api/v1/canvadoc_session?blob=...&hmac=...`, signed with `Canvas::Security.hmac_sha1`, so the value is a relative path.
 - `ui/features/submissions_show_preview_upload/index.js`: `$(document).on('click', '.modal_preview_link', ...)` opens a jQuery UI dialog and calls `loadDocPreview(dialog[0], $.extend({height: '100%'}, $(this).data()))`.
 - `packages/canvas-rce/src/enhance-user-content/doc_previews.jsx`, `loadDocPreview`: with `canvadoc_session_url`, it builds an `iframe` whose `src` is that URL after `sanitizeUrl`.
