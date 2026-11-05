@@ -88,6 +88,8 @@ When you open an announcement in place, it only reads the announcement.
 The extension never loads the Canvas page of an announcement itself.
 That page marks the announcement as read, so it opens only when you press "Open in Canvas", or when you open it in Canvas yourself.
 Before it sends a read mark, the extension asks Canvas who is signed in, so that a mark never goes to the account of another person.
+A read mark from the Announcements widget also names the student whose list held the row, and the extension refuses it when another student is signed in.
+The page keeps that student ID in memory only while the page is open.
 
 Done marks and skip marks are Canvas planner overrides.
 Custom tasks are Canvas planner notes.

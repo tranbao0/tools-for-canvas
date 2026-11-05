@@ -1997,6 +1997,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
 2. **Announcements in place.**
    The own list always replaces the list and the pager of the widget.
    The read filter of Canvas and the course filter of the fix stay above it, and the fix reads the value of the read filter as the widget shows it.
+   The fix reads that value from the English labels of the input of Canvas: "Unread" is the Unread filter, "Read" is the Read filter, and any other text counts as All.
    From the first pass on, the list of Canvas is hidden, so no flash shows while the first page loads.
    One rule of the stylesheet, scoped to the widget mark `data-wr-filtered`, hides every child of the filter bar except the filter block and the nodes of the fix, and the pager.
    The reason is that Canvas shows 3 announcements a page, and an open message changes the height of the card, which moves the pager, so the next page is hard to reach.
@@ -2009,18 +2010,27 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    - A row shows the avatar, the title, "Sent by NAME | Nov 2, 2026", the course name, the snippet, "Read more" and the read control at the right.
      The avatar is the image of the author, or the initials on a color of a fixed set (white text, contrast 4.5 or more) when there is no image or it fails.
      The image has an empty `alt`, `loading="lazy"` and `referrerpolicy="no-referrer"`, and only an http or https address passes.
-     An address on the Canvas origin passes only as a file, an equation image or an asset path (`/files/`, `/courses/:id/files/`, `/users/:id/files/`, `/groups/:id/files/`, `/accounts/:id/files/`, `/equation_images/`, `/images/`, `/dist/`), the same rule as for an image in a message, because a GET of a topic page marks the topic as read.
+     An address on the Canvas host, with any scheme or port, passes only as a file, an equation image or an asset path (`/files/`, `/courses/:id/files/`, `/users/:id/files/`, `/groups/:id/files/`, `/accounts/:id/files/`, `/equation_images/`, `/images/`, `/dist/`), the same rule as for an image in a message, because a GET of a topic page marks the topic as read.
      Any other Canvas page as an avatar address drops, and the initials show.
      The background applies the rule when it projects the row, and the page checks the scheme again.
      The sizes are the rem sizes of the widget: the avatar 3.125rem, the title bold 0.75rem cut at 75 characters, the meta line 0.75rem, the snippet 0.75rem cut at 120 characters with the tags taken out, "Read more" 0.875rem.
      The title shows whole while the message is open.
+   - The open message has the type size of a message on the Canvas page, 1rem.
+     The sizes of the mockup were at the zoom of the owner's browser, so they do not set this size.
    - "Read more" opens the whole message in the row, with the message component and the sanitizer of this decision, and "Show less" closes it.
      The message comes from `weekrow:announcement` (`GET /api/v1/courses/:id/discussion_topics/:id`), which does not mark the topic as read.
      Opening or closing a message changes no read state.
    - The read control is a circle that is empty when the row is unread and a green check when it is read, with `aria-pressed`, as in the widget.
      Only a trusted click on it sends `weekrow:announcement-mark` with the course, the topic and the new state.
      The row changes at once, and it goes back with a short note when the reply is not ok.
-     With the Unread filter, a row that the student marked stays on screen with its check until its list is drawn again.
+     With the Unread filter, a row that the student marked stays on screen with its check until the student leaves that filter.
+     When the student comes back to the filter, the row is gone, because the list is drawn again then.
+     The rows of a list that a mark took out of its set go when the student leaves the filter, and the offset does not change, because it counts only the rows of the set.
+     A search does not count as leaving the filter.
+   - A mark names the student of the row.
+     The page takes the student from the reply that carried the row, and the background refuses the mark when the signed-in student is another one.
+     When the data of the background names another student than before, the controller removes the whole fix, as it removes the grade cards.
+     The lists, the open messages and the state of the open rows then go, and the next pass builds them again for the new student.
    **Paging.**
    - The list loads 10 rows.
      A sentinel at the end of the area, watched by an `IntersectionObserver` with the area as its root and a margin of 200 px, loads 10 more when it comes near.
@@ -2028,8 +2038,14 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    - A "Loading more" line (`role="status"`), an error line with Retry and an end line show at the bottom.
    - The page keeps the rows by course and topic id and drops a row that comes twice.
    - The background keeps no cursor.
-     A page is `{ offset, first }`, and the page script keeps the offset: the rows of the filtered set that it holds, plus the rows that it dropped as doubles.
+     A page is `{ offset, first }`, and the page script keeps the offset: the rows of the filtered set that it holds, plus the rows of the server that it holds no row for.
+     Those are the rows that came twice and the rows that the projection dropped.
+     The reply carries `count`, the number of rows that the page of Canvas held, and the page script counts every row of `count` that it did not keep.
+     A page whose `count` is 0 ends the list, even when it says that more exist, because it cannot move the offset.
      A read mark that takes a row out of the filtered set, such as a row that is read now in the Unread list, lowers the next offset by one, because the offset counts the rows of the server.
+   - Canvas takes a mark some time after the click, and the set of the server changes then.
+     So a page waits while a mark is on its way, and it asks when the mark has settled, with the offset that the settled marks give, whether Canvas took the mark or not.
+     A page that was on its way when a mark began or settled is dropped and asked for again, because its offset may not fit the set.
    - The page keeps a list in memory for each filter (the read filter and the course) for the page view, and a change of filter shows that filter's list from the top.
      After a read mark it forgets the lists of the other filters, which hold the old sets.
    **Search by topic.**
@@ -2049,6 +2065,11 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
      A missing From is 2000-01-01, and a missing To is today in the time zone of the computer.
      A From that is after the To shows a note and sends nothing.
      A typed date asks once, after 350 ms without a change.
+   - A range loads once for a course and a range of days.
+     A range that failed shows its error line with Retry, and it asks again only when the student clicks Retry, so a failure cannot repeat by itself.
+   - The page and the background use one rule for a day: a real calendar day of the form `yyyy-mm-dd` (`isCalendarDate` in `protocol.ts`).
+     A day that the rule refuses, such as one with a year below 100, sends no request.
+   - A reply that holds the first 500 of more rows shows the line "Showing the first 500" after the count of results, and the page logs the cut.
    - The background checks both days as real calendar days, takes the courses of its own session (all the courses that the dashboard shows, also a course that the student hid in the weekly list), gives an empty reply for a course that is not in the session, and reads the REST list through `listAnnouncementFeed` (`GET /api/v1/announcements` with `start_date` and `end_date`, 20 courses a request).
      It projects the topics to the same row shape, at most 500 rows.
      A date of the form `yyyy-mm-dd` covers the whole day in the time zone of the student, and the REST list needs no participant row.
@@ -2063,11 +2084,15 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    - `weekrow:announcement-page { courseId: string | null, read, offset, first }` reads a page.
      `read` is `unread`, `read` or `all`, `offset` is a whole number from 0 to 100000, and `first` is 10 or 100.
      The background uses the id of the student from its session, never one from the page, and it builds `after` as `btoa(String(offset))`.
-     It checks the cookie store of the tab, the saved Canvas and the sign-in check, as every read of the cache does, and it drops the reply when the student changed while the request ran.
+     It checks the cookie store of the tab, the saved Canvas and the sign-in check, as every read of the cache does.
+     It runs the request under the cookie rule of decision 11 (`cookieBound`), and it rejects when the cookie or the student changed while the request ran.
      It projects each row with a limit on every text: the id, the course id, the course name, the title, the date, the author, the avatar address, the read state and the message (4,000 characters, as for the list messages).
      A row whose ids are no Canvas ids drops out.
-     The reply is `{ items, total, hasNext }`.
-   - `weekrow:announcement-mark { courseId, topicId, read }` marks a topic.
+     The reply is `{ userId, items, count, total, hasNext }`, with the signed-in student in `userId`.
+   - `weekrow:announcement-range` runs the same checks and the same cookie rule, and its reply is `{ userId, items, truncated }`.
+   - `weekrow:announcement` ("Read more") runs the same checks and the same cookie rule, so the message of a student never reaches the page of another student or of a cookie that changed.
+   - `weekrow:announcement-mark { courseId, topicId, userId, read }` marks a topic.
+     `userId` is the student of the reply that carried the row, and the background refuses the mark with `ok: false` when it is not the student of its session, before it writes anything, as it refuses the Undo of the tab.
      The background runs the same steps as the read mark of the Announcements tab: the check of the cookie store, the sign-in check (`signedInStudentOwnsCache`), the write queue (`enqueueWrite`), the user check before the request (`verifyUser`), the guard of the request (`writeGuard`) and `setAnnouncementRead`.
      It differs from that mark in two ways.
      The dashboard has no cached list of the tab, so the topic need not be in it, and the mark is always sent, because the state that the page shows is the page's.
@@ -2076,7 +2101,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
      `feedRows` reads a mark only for a topic of its own list, and `settleMarks` drops a confirmed mark when a load that started after it ends.
      A topic that the cached list of the tab does not hold gets no mark after the write is confirmed and no load is in flight, because nothing could carry an older state for it.
      A failed or refused write takes the mark away, and the list of the tab loads again at its next request.
-   - The router accepts all three messages only from the top frame of a tab whose page has the saved origin, never from an extension page, and it checks every id as a Canvas id and every value for its bounds.
+   - The router accepts the page, range and mark messages only from the top frame of a tab whose page has the saved origin, never from an extension page, and it checks every id as a Canvas id and every value for its bounds.
    **Known limits.**
    - The list and the search by topic show only what the connection of Canvas holds: announcements with a participant row of the student, in the current courses, that are not locked, delayed or hidden by their dates.
      The search by date reads the REST list, which needs no participant row, so it can show an announcement that the list does not.
