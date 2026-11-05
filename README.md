@@ -39,9 +39,10 @@ The first time you skip an item, Tools for Canvas shows this note: "Skipping als
 - Chrome 144 or later.
 - Microsoft Edge 144 or later.
 - Firefox 140 or later.
+- Firefox for Android 142 or later is allowed, but nobody has tested it on a phone yet.
 
-Tools for Canvas runs on desktop browsers only.
-Safari and mobile browsers are not supported.
+Chrome and Edge are supported on desktop only.
+Safari is not supported.
 
 ## Site access
 

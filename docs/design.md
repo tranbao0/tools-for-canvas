@@ -41,7 +41,7 @@ This extension has no account, no server of its own and no telemetry.
 | 11 | Data loading, refresh and errors | One data owner in the background, with a memory-only cache |
 | 12 | Build tools and UI framework | WXT, TypeScript and Preact |
 | 13 | Testing and CI | A live gate test first, then Vitest, Playwright, a Firefox smoke test and a live checklist |
-| 14 | Browsers and versions | Chrome and Edge 144+, Firefox 140+, desktop only |
+| 14 | Browsers and versions | Chrome and Edge 144+, Firefox 140+, Firefox for Android 142+ (allowed, not tested on a phone yet) |
 | 15 | Publishing and privacy | Three stores, one privacy policy, no data collection |
 | 16 | License | GPL-3.0-only, with DCO sign-off for contributions |
 | 17 | Name | Tools for Canvas |
@@ -1475,8 +1475,7 @@ These sizes come from one test build of the same small app [19].
      Playwright cannot click the toolbar, so this test uses a test-only button on the panel page that calls `sidePanel.open`.
      Release builds do not include it.
    - The widget dashboard fixture has the layout of the live page: the dashboard stops short of the window edge and clips what leaves it, and the page area goes on to the window edge.
-     A sweep from 1,000 to 2,400 px in 20 px steps, and the browser zoom levels 80, 90, 110 and 133 percent, must show the list as a card that is fully visible, inside the window and the content area, and that overlaps no widget and causes no sideways scroll.
-     The Canvas widget columns must have the same width with and without the list.
+     Screenshot tests at 1,100, 1,300, 1,500, 1,700 and 1,920 px must show the list as a card that causes no sideways scroll.
      At the top of the page the card lines up with the first widget row, and the heading of the list sits on the baseline of the widget headings.
      The card must have no border, and the same shadow and corners as a widget card.
    - The list must show every item of a Month span inside one scroll region, with the header and the rings in place, and the card height limit must hold in windows 700 and 1,000 px tall.
@@ -1484,7 +1483,7 @@ These sizes come from one test build of the same small app [19].
    - A long classic dashboard must dock the list under the right column after the column has scrolled out of view, without covering a column item, and take it back on the scroll up.
    - Screenshot tests run at 200 px, 240 px and 360 px.
    - One test serves a slow Canvas: each answer waits 700 ms, and the planner answers only the requested range, 100 items a page with `Link: rel="next"`, over a full term of work.
-     It checks that a week loaded ahead shows within 300 ms of the click, that a past week within the horizon needs no request, and that a week not yet cached shows within one round trip and asks only for the missing week.
+     It holds the planner request of the next week, clicks the next week before it loaded ahead, and checks that the week shows within one round trip and is asked for once.
 4. **Firefox smoke test:** Selenium with geckodriver, run with `--allow-system-access`.
    Firefox 153 and later need this flag to open extension pages under geckodriver [19].
    The test installs the extension and checks that the content script runs and the panel page loads.
@@ -1519,7 +1518,10 @@ These sizes come from one test build of the same small app [19].
   `sidePanel.close` needs 141 [11].
 - Firefox 140 or later.
   The data collection setting in the manifest needs 140 [20].
-- Desktop only.
+- Firefox for Android 142 or later is allowed.
+  The manifest names it as `gecko_android`, and the data collection setting needs 142 there.
+  Nobody has tested the extension on a phone yet, so the first install on a phone is a step of the live checklist.
+- Chrome and Edge run on desktop only.
 - Safari is out of scope.
   It needs a Mac build and a paid Apple developer account.
 
@@ -1527,7 +1529,7 @@ These sizes come from one test build of the same small app [19].
 
 - Firefox for Android has no sidebar, and Edge for Android has no side panel [11] [12].
 - On a phone, Canvas stacks the right column under the content [13].
-- A later version can add mobile support with the in-page list only.
+- On Firefox for Android, only the in-page list can work, because the browser has no sidebar.
 
 ### 15. Publishing and privacy
 
@@ -2793,7 +2795,7 @@ With the pane read alone, the default run of the test failed before the fix.
         The type of the blob comes from the first bytes of the file (`sniffRaster`), never from the name or the header.
         A file that claims to be an image but holds no raster signature, such as markup that is named `photo.png`, is never given to an element: the tab says "Couldn't show this image".
         The element keeps its decoded frames, so the freed URL does not stop an animation.
-        Chromium 156 and Firefox 159 both keep a GIF moving after `URL.revokeObjectURL` (tests: `tests/e2e/file-viewer-image.spec.ts` and `tests/firefox/smoke.mjs`), so the pane keeps no blob after the load.
+        Chromium 156 and Firefox 159 both kept a GIF moving after `URL.revokeObjectURL` when the player was built, and `tests/firefox/smoke.mjs` still checks it in Firefox, so the pane keeps no blob after the load.
       - **SVG** is drawn on a canvas with `role="img"` and the file name as its label, and the element is dropped.
         The pane keeps no image element and no address of an SVG.
         An SVG shows as a picture only, because an image element never runs script.
@@ -2937,7 +2939,8 @@ With the pane read alone, the default run of the test failed before the fix.
   - **Tests.**
     - Chromium: `tests/e2e/file-viewer-hostile.spec.ts` opens the hostile SVG, checks the canvas, that no `img` or blob address is in the pane, that every blob URL is freed, that a freed URL cannot be read or opened as an SVG page, and that no `hostile-` key exists.
     - Firefox: `tests/firefox/smoke.mjs` runs the same checks through the driver.
-    - `tests/e2e/file-viewer-image.spec.ts` checks that a raster image shows in an element, that the URL is freed before the tab closes, the size limits, and that an animated GIF changes pixels after its URL is freed.
+    - `tests/e2e/file-viewer-image.spec.ts` checks that a raster image shows in an element, and that the URL is freed before the tab closes.
+    - `src/features/file-viewer/ui/player.test.ts` checks the size limits and the size of an SVG that has only a view box.
     - `src/features/file-viewer/ui/MediaTab.test.tsx` checks that markup named `fake.png` reaches no element, and that the blob type follows the signature.
 - **The cookie rules (decision 11).**
   `viewer:file` and `viewer:module-item` pass the tab id of the sender to the data owner.
@@ -3386,7 +3389,11 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
     A copy of the script that starts later on the same page finds the mark hidden after a success and sends nothing.
   - On a reply `ok`, the view hides the unread dot and clears the title of the link, as Canvas's click does.
     On a failure it shows nothing, logs one line and does not send again.
-    The shared client retries only a rate limit answer, as for every request, and each retry runs the guard first.
+    The shared client retries only a rate limit answer.
+    For this request it retries once at most, so the request makes two attempts at most.
+    Other requests retry up to 3 times.
+    The write path of the client has a per-request option for this number.
+    Each attempt runs the guard first, the retry too.
 - `removeStaleView` removes the own link of a dead copy.
   On the Submission Details page it looks, besides the head and the host, only in the one container `.ic-Action-header__Secondary`, so Canvas's own button there stays with its text.
 - `removeStaleView` puts a holder back from the wrapper of an earlier copy of the script before it removes the old view.
