@@ -1,4 +1,4 @@
-import { isCanvasId, normalizeCanvasId } from '../../shared/canvas/ids';
+import { isCanvasId } from '../../shared/canvas/ids';
 import type { AssignmentDetails } from './protocol';
 
 /**
@@ -34,27 +34,37 @@ export function assignmentPageUrl(
   return assignmentAddress(origin, courseId, assignmentId)?.href ?? null;
 }
 
-/** A page of a course, with a plain or a sharded id: the course page and every page under it. */
-const COURSE_PAGE = /^\/courses\/(\d+(?:~\d+)?)(?:\/.*)?$/;
+/** The sign-in, the sign-out and the API, with everything under them. */
+const LEAVE_ALONE = /^\/(?:login|logout|api)(?:\/|$)/;
+
+/** The classic quiz take page of any course, with everything under it. A quiz that runs must not reload. */
+const QUIZ_TAKE = /\/quizzes\/[^/]+\/take(?:\/|$)/;
+
+/** A file download: Canvas answers with the file and not with a page. */
+const DOWNLOAD = /\/download\/?$/;
 
 /**
- * The address to load once more when the pane's frame landed on a page of the course without
+ * The address to load once more when the pane's frame landed on a page of the saved origin without
  * `content_only=1`. The old submission view redirects to the plain assignment page after a
- * submission, and a graded discussion or quiz redirects away from its assignment page, which
- * brings back the header and the menus. Only a page of the same course on the same origin counts.
- * Every other address, and an address that has `content_only=1` already, gives `null`.
+ * submission, a graded discussion or quiz redirects away from its assignment page, a graded group
+ * discussion ends on a page of the group, and a link in the frame can go to any page of Canvas.
+ * Each of these brings back the header and the menus, so every page of the origin counts, of any
+ * course or of none. These give `null`: the sign-in, the sign-out and the API with everything
+ * under them, an address that ends in `/download`, the quiz take page of any course, an address
+ * that has `content_only=1` already, and every address of another origin.
  */
-export function slimAddress(location: string, origin: string, courseId: string): string | null {
+export function slimAddress(location: string, origin: string): string | null {
   let current: URL;
   try {
     current = new URL(location);
   } catch {
     return null;
   }
-  if (!isCanvasId(courseId) || current.origin !== new URL(origin).origin) return null;
-  const course = COURSE_PAGE.exec(current.pathname)?.[1];
-  if (course === undefined || normalizeCanvasId(course) !== normalizeCanvasId(courseId))
+  if (current.origin !== new URL(origin).origin) return null;
+  const { pathname } = current;
+  if (LEAVE_ALONE.test(pathname) || QUIZ_TAKE.test(pathname) || DOWNLOAD.test(pathname)) {
     return null;
+  }
   if (current.searchParams.get('content_only') === '1') return null;
   current.searchParams.set('content_only', '1');
   return current.href;

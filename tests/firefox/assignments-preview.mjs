@@ -21,6 +21,8 @@
 //   g. A frame that is hidden and still loads (a script of its page has not come) does not stop the
 //      file catcher of the frame that shows: Preview on a slow row, then on a fast row, then a file
 //      link in the fast row opens the file pane.
+//   h. A row that redirects to a plain page gets the slim page before the plain page has loaded: a
+//      script of the plain page waits, and the frame still asks for the page with content_only=1.
 //
 // Usage: node tests/firefox/assignments-preview.mjs
 // Set ASSIGNMENTS_PREVIEW_SHOT to a file name to save a screenshot of the list with the pane open.
@@ -225,8 +227,38 @@ async function main() {
   const slowScript = new Promise((resolve) => {
     releaseSlow = resolve;
   });
+  // The third row redirects to a plain page. A script of that page waits until the check lets it
+  // go, so its load event comes late.
+  const LANDING_PATH = `/courses/${COURSE}/pages/landing`;
+  const landingLoads = [];
+  const holdRequests = [];
+  let releaseHold = () => undefined;
+  const holdScript = new Promise((resolve) => {
+    releaseHold = resolve;
+  });
   const canvas = await startCanvas({
     [LIST_PATH]: { type: 'text/html', body: listPage },
+    [`${LIST_PATH}/103`]: {
+      type: 'text/html',
+      body: `<script>location.replace("${LANDING_PATH}")</script>`,
+    },
+    [LANDING_PATH]: (url) => {
+      const mode = url.searchParams.get('content_only') === '1' ? 'slim' : 'full';
+      landingLoads.push(mode);
+      const page = assignmentPage(mode);
+      return {
+        type: 'text/html',
+        body:
+          mode === 'full'
+            ? page.replace('</body>', '<script src="/hold.js"></script></body>')
+            : page,
+      };
+    },
+    '/hold.js': async () => {
+      holdRequests.push('hold.js');
+      await holdScript;
+      return { type: 'text/plain', body: '' };
+    },
     [ASSIGNMENT_PATH]: (url) => {
       const mode = url.searchParams.get('content_only') === '1' ? 'slim' : 'full';
       frameLoads.push(mode);
@@ -557,6 +589,29 @@ async function main() {
       releaseSlow();
     }
     console.log('Slow frame: the file link of the fast row opens the file pane at once.');
+
+    // h. The plain page that a row redirects to waits for a script. The slim page comes first.
+    try {
+      await driver
+        .actions()
+        .move({
+          origin: await driver.findElement(
+            By.css('button[aria-label^="Preview Weekly discussion"]'),
+          ),
+        })
+        .click()
+        .perform();
+      await waitFor(
+        async () => landingLoads.join(),
+        (loads) => loads === 'full,slim',
+        'the slim page to be asked for before the plain page has loaded',
+      );
+      if (holdRequests.length === 0)
+        throw new Error('The plain page did not ask for its script, so it was not loading');
+    } finally {
+      releaseHold();
+    }
+    console.log('Redirect: the frame asks for the slim page while the plain page still loads.');
     console.log('Firefox assignments preview: passed.');
     return 0;
   } finally {
