@@ -30,3 +30,12 @@ export function actionTarget(shadow: ShadowRoot, event: Event): Element | null {
   if (!(target instanceof Element) || target.getRootNode() !== shadow) return null;
   return target.closest('[data-action]');
 }
+
+/**
+ * Gives a wrapper the direction and the language of the page. The wrapper holds text of Canvas that
+ * the host of the view would else show as left-to-right and English.
+ */
+export function copyPageText(doc: Document, wrapper: HTMLElement): void {
+  wrapper.setAttribute('dir', doc.documentElement.getAttribute('dir') === 'rtl' ? 'rtl' : 'ltr');
+  wrapper.setAttribute('lang', doc.documentElement.getAttribute('lang') ?? '');
+}

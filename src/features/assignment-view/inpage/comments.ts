@@ -18,7 +18,7 @@
  * inherit both through the slot. The wrapper takes the direction and the language of the page, so
  * the comments read as they do on Canvas's own page.
  */
-import { OWN, rightColumn } from './own';
+import { OWN, copyPageText, rightColumn } from './own';
 
 const HOME = 'av-comments-home';
 
@@ -101,12 +101,12 @@ export function takeComments(doc: Document, column: HTMLElement, wrapper: HTMLEl
   const mark = doc.createComment(HOME);
   const container = column.parentElement;
   wrapper.id = COMMENTS_WRAPPER_ID;
-  wrapper.setAttribute('dir', doc.documentElement.getAttribute('dir') === 'rtl' ? 'rtl' : 'ltr');
-  wrapper.setAttribute('lang', doc.documentElement.getAttribute('lang') ?? '');
+  copyPageText(doc, wrapper);
   const none = doc.createElement('p');
   none.className = NO_COMMENTS_CLASS;
   none.setAttribute(OWN, '');
   none.setAttribute('lang', 'en');
+  none.setAttribute('dir', 'ltr');
   none.textContent = 'No Comments';
   wrapper.append(none);
   column.before(mark);

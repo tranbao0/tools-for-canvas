@@ -2282,7 +2282,61 @@ test('the comments in the box keep the direction and the language of a right-to-
         direction: getComputedStyle(text).direction,
         lang: text.closest('[lang]')?.getAttribute('lang'),
         note: document.querySelector('#av-comments .av-no-comments')?.getAttribute('lang'),
+        noteDirection: getComputedStyle(document.querySelector('#av-comments .av-no-comments')!)
+          .direction,
       };
     }),
-  ).toEqual({ direction: 'rtl', lang: 'ar', note: 'en' });
+  ).toEqual({ direction: 'rtl', lang: 'ar', note: 'en', noteDirection: 'ltr' });
+});
+
+test('a click on a data-action in the rubric text does not fold the instructions', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    rubric: true,
+    change: (copy) => {
+      copy.assignment.description = LONG_DESCRIPTION;
+    },
+  });
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  const body = host(page).locator('.av-instructions .av-body');
+  await expect(host(page).getByRole('button', { name: 'Show more' })).toBeVisible();
+  await page.evaluate(() =>
+    document
+      .querySelector('#rubric_holder .rubric')!
+      .insertAdjacentHTML(
+        'beforeend',
+        '<button type="button" id="forged-more" data-action="more">forged</button>',
+      ),
+  );
+  const clipped = await body.evaluate((node) => node.clientHeight);
+  await page.locator('#forged-more').click();
+  await page.waitForTimeout(300);
+  await expect(page.locator('#forged-more')).toHaveText('forged');
+  await expect(page.locator('#forged-more')).not.toHaveAttribute('aria-expanded', /.*/);
+  expect(await body.evaluate((node) => node.clientHeight)).toBe(clipped);
+  await expect(host(page).getByRole('button', { name: 'Show more' })).toBeVisible();
+  // The button of the instructions still works for the student.
+  await host(page).getByRole('button', { name: 'Show more' }).click();
+  await expect(host(page).getByRole('button', { name: 'Show less' })).toBeVisible();
+});
+
+test('the rubric in the instructions host keeps the direction and the language of a right-to-left Canvas', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { rtl: true, rubric: true });
+  await expect(page.locator(RUBRIC)).toBeVisible();
+  expect(
+    await page.evaluate(() => {
+      const rubric = document.querySelector('#rubric_holder .rubric')!;
+      return {
+        direction: getComputedStyle(rubric).direction,
+        lang: rubric.closest('[lang]')?.getAttribute('lang'),
+      };
+    }),
+  ).toEqual({ direction: 'rtl', lang: 'ar' });
 });
