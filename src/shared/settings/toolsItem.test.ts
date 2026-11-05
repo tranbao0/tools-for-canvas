@@ -40,6 +40,7 @@ describe('toolsSettingsItem', () => {
         announcementsInPlace: true,
         allCourseGrades: true,
         steadyPager: true,
+        peopleList: true,
       },
       assignmentView: true,
     });
@@ -56,6 +57,7 @@ describe('toolsSettingsItem', () => {
           courseWorkExtras: false,
           allCourseGrades: true,
           steadyPager: false,
+          peopleList: false,
         },
         assignmentView: true,
       },
@@ -67,6 +69,7 @@ describe('toolsSettingsItem', () => {
       announcementsInPlace: false,
       allCourseGrades: true,
       steadyPager: false,
+      peopleList: false,
     });
   });
 
@@ -85,6 +88,7 @@ describe('toolsSettingsItem', () => {
         announcementsInPlace: false,
         allCourseGrades: false,
         steadyPager: false,
+        peopleList: false,
       },
       assignmentView: true,
     };

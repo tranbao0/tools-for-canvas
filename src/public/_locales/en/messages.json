@@ -563,6 +563,36 @@
   "fixSteadyPager": {
     "message": "Steady page buttons"
   },
+  "fixPeopleList": {
+    "message": "People list"
+  },
+  "peopleFeedLabel": {
+    "message": "People"
+  },
+  "peopleLoading": {
+    "message": "Loading people…"
+  },
+  "peopleEmpty": {
+    "message": "No instructors found"
+  },
+  "peopleFailed": {
+    "message": "Couldn't load the people."
+  },
+  "peopleMoreFailed": {
+    "message": "Couldn't load more people."
+  },
+  "peopleEnd": {
+    "message": "No more people"
+  },
+  "peopleMessage": {
+    "message": "Send a message to $1"
+  },
+  "peopleTeacher": {
+    "message": "Teacher"
+  },
+  "peopleTa": {
+    "message": "Teaching Assistant"
+  },
   "pagerPage": {
     "message": "Page $1"
   },

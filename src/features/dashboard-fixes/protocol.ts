@@ -79,13 +79,37 @@ export interface AnnouncementRangeMessage {
   to: string;
 }
 
+/** The role filter of the People widget, as the widget has it. */
+export type PeopleRole = 'all' | 'teacher' | 'ta';
+
+/** The size of a People page: the list loads 10. */
+export const PEOPLE_PAGE_SIZE = 10;
+/** The largest offset that a People page may ask for. */
+export const MAX_PEOPLE_OFFSET = 100_000;
+
+/**
+ * In-page script to background: asks for a page of the people who teach the student, the rows
+ * that the People widget of Canvas reads. The reply is a `PeoplePageReply`. The student and the
+ * courses come from the session of the background, never from the page.
+ */
+export interface PeoplePageMessage {
+  type: 'weekrow:people-page';
+  /** One course, or `null` for all. */
+  courseId: string | null;
+  role: PeopleRole;
+  /** How many rows of the filtered set to skip. */
+  offset: number;
+  first: typeof PEOPLE_PAGE_SIZE;
+}
+
 export type FixMessage =
   | SaveToolsMessage
   | DashboardDataMessage
   | AnnouncementMessage
   | AnnouncementPageMessage
   | AnnouncementMarkMessage
-  | AnnouncementRangeMessage;
+  | AnnouncementRangeMessage
+  | PeoplePageMessage;
 
 /** One course for the grade cards and the course filter. */
 export interface DashboardCourse {
@@ -167,6 +191,38 @@ export interface AnnouncementRangeReply {
   truncated: boolean;
 }
 
+/** One enrollment of a person in a course that the student takes. */
+export interface PersonEnrollment {
+  courseId: string;
+  courseName: string;
+  role: Exclude<PeopleRole, 'all'>;
+}
+
+/** One person of the list: a teacher or an assistant of a course of the student. */
+export interface PersonRow {
+  id: string;
+  name: string;
+  /** An http or https address, or `null`. */
+  avatarUrl: string | null;
+  /** At least one. */
+  enrollments: PersonEnrollment[];
+}
+
+export interface PeoplePageReply {
+  /** The signed-in student whom the rows belong to. */
+  userId: string;
+  items: PersonRow[];
+  /**
+   * How many rows of the filtered set the page of Canvas held. It can be more than `items`,
+   * because a row without a valid id or an enrollment is not passed on. The next offset advances
+   * by it.
+   */
+  count: number;
+  /** Canvas's count of the filtered set, or `null` when it sent none. */
+  total: number | null;
+  hasNext: boolean;
+}
+
 /** The most rows that a range reply holds. */
 export const MAX_RANGE_ROWS = 500;
 
@@ -223,6 +279,19 @@ export function isAnnouncementPageMessage(value: unknown): value is Announcement
   );
 }
 
+export function isPeoplePageMessage(value: unknown): value is PeoplePageMessage {
+  return (
+    hasType(value, 'weekrow:people-page') &&
+    isCourseOrNull(value['courseId']) &&
+    (value['role'] === 'all' || value['role'] === 'teacher' || value['role'] === 'ta') &&
+    typeof value['offset'] === 'number' &&
+    Number.isInteger(value['offset']) &&
+    value['offset'] >= 0 &&
+    value['offset'] <= MAX_PEOPLE_OFFSET &&
+    value['first'] === PEOPLE_PAGE_SIZE
+  );
+}
+
 export function isAnnouncementMarkMessage(value: unknown): value is AnnouncementMarkMessage {
   return (
     hasType(value, 'weekrow:announcement-mark') &&
@@ -250,6 +319,7 @@ export function isFixMessage(value: unknown): value is FixMessage {
     isAnnouncementMessage(value) ||
     isAnnouncementPageMessage(value) ||
     isAnnouncementMarkMessage(value) ||
-    isAnnouncementRangeMessage(value)
+    isAnnouncementRangeMessage(value) ||
+    isPeoplePageMessage(value)
   );
 }

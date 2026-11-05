@@ -340,6 +340,9 @@ describe('a tab in another cookie store', () => {
         9,
       ),
     ).rejects.toThrow();
+    await expect(
+      h.owner.peoplePage({ courseId: null, role: 'all', offset: 0, first: 10 }, ORIGIN, 9),
+    ).rejects.toThrow();
     expect(
       await h.owner.markDashboardAnnouncement(IDS.courses.biology, '11', true, IDS.user, 9),
     ).toEqual({
@@ -348,7 +351,7 @@ describe('a tab in another cookie store', () => {
     await h.owner.settled();
 
     expect(vi.mocked(h.deps.surfaceUsesRequestStore).mock.calls).toEqual(
-      Array.from({ length: 6 }, () => [9]),
+      Array.from({ length: 7 }, () => [9]),
     );
     expect(h.canvas.calls).toEqual([]);
   });

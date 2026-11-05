@@ -29,6 +29,7 @@ test.beforeEach(async ({ background }) => {
       announcementsInPlace: false,
       allCourseGrades: false,
       steadyPager: false,
+      peopleList: false,
     },
   });
 });
