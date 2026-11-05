@@ -202,10 +202,14 @@ export async function startAssignmentView(
     engine = {
       setActive(active) {
         viewOn = active;
+        // A switch that goes off forgets the baselines, so the first read after it is a new one.
+        if (!active) watch.forget();
         rows.setActive(active);
       },
       refreshTheme() {},
       setFileViewer: (on) => preview.setFileViewer(on),
+      // The next student has no baseline of the earlier student, and the earlier reply goes.
+      resetStudent: () => watch.forget(),
       stop() {
         rows.stop();
         watch.stop();

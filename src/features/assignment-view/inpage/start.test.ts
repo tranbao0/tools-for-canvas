@@ -253,6 +253,58 @@ describe('startAssignmentView', () => {
       controller.stop();
     });
 
+    it('keeps the pane that the next student opens on the same assignment', async () => {
+      const channel = fakeChannel();
+      let user = '42';
+      vi.mocked(channel.send).mockImplementation(async (message) => {
+        if (message.type !== 'assignment:details') return undefined;
+        const reply = details('101', null);
+        reply.details.submission.user_id = user;
+        return reply;
+      });
+      let reset: () => void = () => undefined;
+      const controller = await startAssignmentView(
+        options(channel, {
+          onStudentReset: (listener: () => void) => {
+            reset = listener;
+            return () => undefined;
+          },
+        }),
+      );
+      press(preview('101'));
+      await vi.advanceTimersByTimeAsync(5);
+      // The student switched. The pane closes, and the next student previews the same assignment.
+      user = '43';
+      reset();
+      expect(host()).toBeNull();
+      press(preview('101'));
+      await vi.advanceTimersByTimeAsync(5);
+      expect(host()).not.toBeNull();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(host()).not.toBeNull();
+      controller.stop();
+    });
+
+    it('forgets the baselines when the switch goes off, and takes new ones when it goes on', async () => {
+      const channel = fakeChannel();
+      let submitted: string | null = null;
+      vi.mocked(channel.send).mockImplementation(async (message) =>
+        message.type === 'assignment:details' ? details('101', submitted) : undefined,
+      );
+      const controller = await startAssignmentView(options(channel));
+      press(preview('101'));
+      await vi.advanceTimersByTimeAsync(5);
+      channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+      submitted = '2026-11-02T12:00:00Z';
+      await vi.advanceTimersByTimeAsync(20_000);
+      channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: true });
+      // The first read after the switch is a baseline: it compares with nothing, and asks for no
+      // refresh.
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(channel.send).not.toHaveBeenCalledWith({ type: 'weekrow:refresh', reason: 'visible' });
+      controller.stop();
+    });
+
     it('asks for the file catcher after each load of the frame, only while the File viewer switch is on', async () => {
       const channel = fakeChannel();
       const requestFrameCatcher = vi.fn(async () => ({ ok: true }));

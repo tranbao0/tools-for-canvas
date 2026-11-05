@@ -158,6 +158,54 @@ describe('the read of a submission', () => {
     expect(refreshes()).toBe(0);
   });
 
+  it('takes a new baseline after the baselines are forgotten, also for another student', async () => {
+    await watch.read('101');
+    watch.forget();
+    send.mockImplementation(async (message: Message) =>
+      message.type === 'assignment:details'
+        ? reply(message.assignmentId, (details) => {
+            details.submission.user_id = '9001';
+            details.submission.attempt = 5;
+          })
+        : undefined,
+    );
+    await watch.read('101');
+    expect(onOtherStudent).not.toHaveBeenCalled();
+    expect(refreshes()).toBe(0);
+    // The reply of the new student is the baseline now.
+    await watch.read('101');
+    expect(refreshes()).toBe(0);
+    send.mockImplementation(async (message: Message) =>
+      message.type === 'assignment:details'
+        ? reply(message.assignmentId, (details) => {
+            details.submission.user_id = '9001';
+            details.submission.attempt = 6;
+          })
+        : undefined,
+    );
+    await watch.read('101');
+    expect(refreshes()).toBe(1);
+  });
+
+  it('drops the answer of a read that was on its way when the baselines were forgotten', async () => {
+    let answer!: (value: unknown) => void;
+    send.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    const pending = watch.read('101');
+    watch.forget();
+    answer(reply('101'));
+    await pending;
+    // The late reply left no baseline, so the next reply is the baseline and nothing is compared.
+    send.mockImplementation(async (message: Message) =>
+      message.type === 'assignment:details'
+        ? reply(message.assignmentId, (details) => {
+            details.submission.user_id = '9001';
+          })
+        : undefined,
+    );
+    await watch.read('101');
+    expect(onOtherStudent).not.toHaveBeenCalled();
+  });
+
   it('asks the weekly list again after the limit, since a skipped refresh names no time', async () => {
     await watch.read('101');
     send.mockImplementation(async (message: Message) =>
