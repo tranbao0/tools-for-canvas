@@ -26,6 +26,18 @@ describe('sessionUrl', () => {
     expect(sessionUrl(`${ORIGIN}${SESSION_PATH}`, ORIGIN)).toBe(`${ORIGIN}${SESSION_PATH}`);
   });
 
+  it('accepts the session address of a live Canvas, which has the blob and no hmac', () => {
+    expect(sessionUrl(SESSION_PATH, ORIGIN)).toBe(`${ORIGIN}${SESSION_PATH}`);
+    expect(SESSION_PATH).not.toContain('hmac');
+  });
+
+  it('accepts the blob and the hmac in either order', () => {
+    for (const query of ['blob=a&hmac=b', 'hmac=b&blob=a']) {
+      const value = `/api/v1/canvadoc_session?${query}`;
+      expect(sessionUrl(value, ORIGIN)).toBe(`${ORIGIN}${value}`);
+    }
+  });
+
   it.each([
     ['nothing', null],
     ['nothing at all', undefined],
@@ -34,7 +46,10 @@ describe('sessionUrl', () => {
     ['another scheme', `javascript:alert(1)`],
     ['another path', '/api/v1/canvadoc_sessions?blob=a&hmac=b'],
     ['a path under the session path', '/api/v1/canvadoc_session/x?blob=a&hmac=b'],
-    ['no hmac', '/api/v1/canvadoc_session?blob=a'],
+    ['no blob', '/api/v1/canvadoc_session?hmac=b'],
+    ['a repeated hmac', '/api/v1/canvadoc_session?blob=a&hmac=b&hmac=c'],
+    ['credentials', `https://user:pass@school.instructure.com${SESSION_PATH}`],
+    ['a user name only', `https://user@school.instructure.com${SESSION_PATH}`],
     ['an empty blob', '/api/v1/canvadoc_session?blob=&hmac=b'],
     ['a repeated blob', '/api/v1/canvadoc_session?blob=a&blob=c&hmac=b'],
     ['an extra access token', '/api/v1/canvadoc_session?blob=a&hmac=b&access_token=t'],
@@ -98,6 +113,8 @@ describe('reportUrl', () => {
     ['an attempt that is no number', `${PAGE}/originality_report/a?attempt=x`],
     ['an asset with a bad character', `${PAGE}/turnitin/a%2Fb`],
     ['credentials', `https://user:pass@school.instructure.com${PAGE}/turnitin/a`],
+    ['a user name only', `https://user@school.instructure.com${PAGE}/turnitin/a`],
+    ['a password only', `https://:pass@school.instructure.com${PAGE}/turnitin/a`],
     ['javascript', 'javascript:alert(1)'],
   ])('refuses %s', (_name, value) => {
     expect(reportUrl(value, ORIGIN, PAGE)).toBeNull();

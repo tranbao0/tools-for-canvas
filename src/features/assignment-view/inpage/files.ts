@@ -12,8 +12,11 @@ import type { AssignmentFile, AssignmentReport, SubmissionReports } from '../pro
 
 /** The path of the session that Canvas gives for a previewable file (`Attachment#canvadoc_url`). */
 const SESSION_PATH = '/api/v1/canvadoc_session';
-/** The two signed parameters of a session, once each and with a value, and no other. */
-const SESSION_QUERY = /^\?(?:blob=[^&]+&hmac=[^&]+|hmac=[^&]+&blob=[^&]+)$/;
+/**
+ * The query of a session: `blob`, with `hmac` when Canvas sends one, once each and with a value, and
+ * no other parameter. A live Canvas sends the blob alone.
+ */
+const SESSION_QUERY = /^\?(?:blob=[^&]+(?:&hmac=[^&]+)?|hmac=[^&]+&blob=[^&]+)$/;
 
 /** The label of the preview button: "View Feedback" when the teacher left notes, else "Preview". */
 export type FeedbackLabel = 'View Feedback' | 'Preview';
@@ -45,14 +48,21 @@ export interface BoxFile {
 
 /**
  * The address of a DocViewer session, or `null`. It must be on the saved Canvas, with the session
- * path and the two signed parameters `blob` and `hmac` once each, and no other parameter. The value
- * is signed for one student, so no other address is ever used.
+ * path and the signed parameter `blob`, an optional `hmac`, once each, and no other parameter, and
+ * no credentials. The value is signed for one student, so no other address is ever used.
  */
 export function sessionUrl(value: string | null | undefined, origin: string): string | null {
   if (value === null || value === undefined || value === '') return null;
   try {
     const url = new URL(value, origin);
-    if (url.origin !== origin || url.pathname !== SESSION_PATH || url.hash !== '') return null;
+    if (
+      url.origin !== origin ||
+      url.username !== '' ||
+      url.password !== '' ||
+      url.pathname !== SESSION_PATH ||
+      url.hash !== ''
+    )
+      return null;
     // The query is read as text, because a Firefox content script cannot iterate its parameters.
     return SESSION_QUERY.test(url.search) ? url.href : null;
   } catch {
