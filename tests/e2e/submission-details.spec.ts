@@ -747,9 +747,10 @@ test('a frame that never loads changes nothing: the page shows the box at once a
 }) => {
   test.setTimeout(60_000);
   const canvas = await open(context, page, background, { change: withReport, previewNever: true });
-  // The box needs no frame, so it shows before the old wait of 10 seconds could end.
+  // The box needs no frame, so it shows within the wait for the host, though the frame never answers.
   await expect(host(page)).toBeAttached({ timeout: 8000 });
   await expectReplaced(page, canvas.origin);
+  // The view watches a frame for 10 seconds after a load, so the wait outlasts that time.
   await page.waitForTimeout(11_000);
   await expectReplaced(page, canvas.origin);
 });
