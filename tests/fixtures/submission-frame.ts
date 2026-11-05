@@ -55,6 +55,56 @@ export function frameRows(path: string, rows: readonly FrameRow[]): string {
       <tbody>${body}</tbody></table>`;
 }
 
-/** A Turnitin score as `_originality_score.html.erb` draws it, in the classic icon form. */
-export const TURNITIN_SCORE =
-  '<span class="turnitin_score_container"><span class="turnitin_score_container_caret warning_score"></span><a href="/courses/12/assignments/101/submissions/42/turnitin/attachment_1" target="_blank" title="Similarity score -- more information" class="not_external turnitin_similarity_score warning_score">23%</a></span>';
+/** The page that Canvas writes into the report addresses of the fixtures. */
+const REPORT_PAGE = '/courses/12/assignments/101/submissions/42';
+
+/**
+ * The originality cell of a file row in every form that `_originality_score.html.erb` and
+ * `_originality_score_icon.html.erb` of canvas-lms 1c9f0bb draw. `page` is the Submission Details
+ * path that the report addresses start with.
+ */
+export function turnitinScores(page: string = REPORT_PAGE) {
+  const classic = (state: string, text: string, href: string, title: string) =>
+    `<span class="turnitin_score_container"><span class="turnitin_score_container_caret ${state}_score"></span><a href="${href}" target="_blank" title="${title}" class="not_external turnitin_similarity_score ${state}_score">${text}</a></span>`;
+  return {
+    /** The classic form of a report that has no originality report record. */
+    legacy: classic(
+      'acceptable',
+      '5.0%',
+      `${page}/turnitin/attachment_1`,
+      'Similarity score -- more information',
+    ),
+    /** The classic form of an originality report, with the attempt in the address. */
+    legacyReport: `<span class="turnitin_score_container"><span class="turnitin_score_container_caret warning_score"></span>
+            <a href="${page}/originality_report/attachment_1?attempt=2" target="_blank" title="Similarity score" class="not_external turnitin_similarity_score warning_score" data-tooltip="left">
+              23.0%
+            </a></span>`,
+    /** A report that is not ready: the link has a title and a blank body. */
+    legacyPending: `<span class="turnitin_score_container"><span class="turnitin_score_container_caret pending_score"></span>
+            <a href="${page}/originality_report/attachment_1?attempt=2" target="_blank" title="Similarity score" class="not_external turnitin_similarity_score pending_score" data-tooltip="left"> </a></span>`,
+    /** A report with an error: the link has the message as its title and an image. */
+    legacyError: `<span class="turnitin_score_container"><span class="turnitin_score_container_caret error_score"></span>
+            <a title="The file type is not supported" href="${page}/originality_report/attachment_1?attempt=2" data-tooltip="left" target="_blank">
+              <img src="/images/turnitin_error_score.png" alt="The file type is not supported">
+            </a></span>`,
+    /** The VeriCite form, with its tooltip inside the link. */
+    vericite: `<span class="turnitin_score_container">
+      <span class="vericite_score_container_caret acceptable_score"></span>
+      <a href="${page}/vericite/attachment_1"target="_blank" title="Similarity score -- more information" class="tooltip not_external turnitin_similarity_score acceptable_score">
+      5%
+      <span class="tooltip_wrap right">
+          <span class="tooltip_text">See VeriCite results</span>
+      </span>
+      </a>
+    </span>`,
+    /** The updated form with an address: an icon and the score in the link. */
+    updated: `<a class="turnitin_score_container tooltip" href="${page}/originality_report/attachment_1?attempt=2" title="Similarity score"><i class="icon-certified icon-Solid"></i>
+    <span class="turnitin_similarity_score">5.0%</span></a>`,
+    /** The updated form of a pending report that has no address: a span with a clock icon. */
+    updatedNoAddress: `<span class="turnitin_score_container tooltip"><i class="icon-clock"></i>
+    <span class="turnitin_similarity_score">7.0%</span></span>`,
+  };
+}
+
+/** A Turnitin score of the classic form, as the mockup shows it: 5.0%, acceptable. */
+export const TURNITIN_SCORE = turnitinScores().legacy;
