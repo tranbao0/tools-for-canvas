@@ -324,7 +324,6 @@ describe('a tab in another cookie store', () => {
 
     expect(await h.owner.announcementFeed(PANEL_FEED, 9)).toMatchObject({ status: 'unavailable' });
     expect(await h.owner.dashboardGradeVisibility(undefined, 9)).toMatchObject({
-      ready: false,
       gradeVisibilities: null,
     });
     expect(await h.owner.announcement(IDS.courses.biology, '11', ORIGIN, 9)).toEqual({

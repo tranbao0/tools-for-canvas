@@ -554,14 +554,8 @@
   "fixesHelp": {
     "message": "Small fixes for the widgets of the new Canvas dashboard. Each one works on its own."
   },
-  "fixCourseColors": {
-    "message": "Course colors on Course work icons"
-  },
   "fixAnnouncements": {
     "message": "Announcements in place"
-  },
-  "fixCourseWork": {
-    "message": "Course work extras"
   },
   "fixCourseGrades": {
     "message": "All course grades"
@@ -752,6 +746,9 @@
   "annTruncated": {
     "message": "Showing the first $1"
   },
+  "annSearchCapped": {
+    "message": "Searched the newest $1 announcements"
+  },
   "annSearching": {
     "message": "Searching $1 of $2"
   },
@@ -776,56 +773,8 @@
   "annShowMore": {
     "message": "Show more"
   },
-  "alsoDue": {
-    "message": "Also due"
-  },
-  "alsoDueShowAll": {
-    "message": "Show all"
-  },
-  "alsoDueShowFewer": {
-    "message": "Show fewer"
-  },
-  "alsoDueNoDate": {
-    "message": "No due date"
-  },
-  "alsoDueOverdue": {
-    "message": "Overdue"
-  },
-  "alsoDueTypeAssignment": {
-    "message": "Assignment"
-  },
-  "alsoDueTypeQuiz": {
-    "message": "Quiz"
-  },
-  "alsoDueTypeDiscussion": {
-    "message": "Discussion"
-  },
-  "alsoDueTypePage": {
-    "message": "Page"
-  },
-  "alsoDueTypeNote": {
-    "message": "Task"
-  },
-  "alsoDueTypeOther": {
-    "message": "Work"
-  },
-  "alsoDueAria": {
-    "message": "Also due, sorted by due date"
-  },
   "gradeNA": {
     "message": "N/A"
-  },
-  "alsoDueCountUndated": {
-    "message": "$1 with no due date"
-  },
-  "alsoDueCountOverdue": {
-    "message": "$1 overdue"
-  },
-  "alsoDueCountTodo": {
-    "message": "$1 to-do in the next 14 days"
-  },
-  "alsoDueInfo": {
-    "message": "The Due card counts the next 90 days. Missing and Submitted count every date. This list adds the work that the list above leaves out."
   },
   "undoAnnouncementRead_one": {
     "message": "Marked as read"

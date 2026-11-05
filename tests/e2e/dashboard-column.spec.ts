@@ -210,9 +210,7 @@ test.describe('the widget dashboard without Course work', () => {
 const NO_FIXES: ToolsSettings = {
   ...DEFAULT_TOOLS_SETTINGS,
   dashboardFixes: {
-    courseColors: false,
     announcementsInPlace: false,
-    courseWorkExtras: false,
     allCourseGrades: false,
     steadyPager: false,
   },

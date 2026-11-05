@@ -13,12 +13,8 @@ import { normalizeWidth } from '../../features/file-viewer/model';
 
 /** The fixes for the new widget dashboard (decision 22). */
 export interface DashboardFixesSettings {
-  /** The course color on the icons of the Course work widget. */
-  courseColors: boolean;
   /** "Read more" opens the announcement in the card, and the course filter. */
   announcementsInPlace: boolean;
-  /** The "Also due" section under the Course work list. */
-  courseWorkExtras: boolean;
   /** A grade card for every course in the Course grades widget. */
   allCourseGrades: boolean;
   /** One fixed page navigator for the paged widgets. */
@@ -36,9 +32,7 @@ export interface ToolsSettings {
 }
 
 export const DASHBOARD_FIX_KEYS = [
-  'courseColors',
   'announcementsInPlace',
-  'courseWorkExtras',
   'allCourseGrades',
   'steadyPager',
 ] as const satisfies readonly (keyof DashboardFixesSettings)[];
@@ -61,9 +55,7 @@ export const DEFAULT_TOOLS_SETTINGS: ToolsSettings = {
   fileViewerWidth: normalizeWidth(undefined),
   weeklyDockWidth: DEFAULT_WEEKLY_DOCK_WIDTH,
   dashboardFixes: {
-    courseColors: true,
     announcementsInPlace: true,
-    courseWorkExtras: true,
     allCourseGrades: true,
     steadyPager: true,
   },

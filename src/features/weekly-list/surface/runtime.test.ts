@@ -32,7 +32,7 @@ const COLORS_OFF: ToolsSettings = {
   fileViewer: true,
   fileViewerWidth: 480,
   weeklyDockWidth: 360,
-  dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
+  dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, steadyPager: false },
   assignmentView: true,
 };
 const DONE_INFO = { kind: 'done', count: 1 } as const;
@@ -1226,7 +1226,7 @@ describe('settings in place', () => {
     const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
     const seen: boolean[] = [];
     runtime.subscribe(() =>
-      seen.push(runtime.settings()?.tools?.dashboardFixes.courseColors ?? true),
+      seen.push(runtime.settings()?.tools?.dashboardFixes.steadyPager ?? true),
     );
     runtime.start();
     await settle();

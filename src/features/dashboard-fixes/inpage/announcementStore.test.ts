@@ -242,6 +242,27 @@ describe('the list', () => {
     expect(list.items[1]?.read).toBe(false);
   });
 
+  it('restores the state that Canvas confirmed when two marks of one row are both refused', async () => {
+    const { store, state, sent } = setup(many(25));
+    const list = store.ensure('unread', null);
+    await flush();
+    state.markOk = false;
+    const unread = { read: 'unread', courseId: null } as const;
+    // A double click on the control of row 3: the second click reads the row as the first changed it.
+    const first = store.mark(list.items[2]!, true, unread);
+    const second = store.mark(list.items[2]!, false, unread);
+    expect([await first, await second]).toEqual([false, false]);
+
+    expect(list.items[2]).toMatchObject({ id: '3', read: false });
+    store.leave('unread', null);
+    expect(list.items).toHaveLength(10);
+    expect(nextOffset(list)).toBe(10);
+    store.more('unread', null);
+    await flush();
+    expect(sent.at(-1)).toMatchObject({ type: 'weekrow:announcement-page', offset: 10 });
+    expect(list.items.map((entry) => entry.id)).toContain('3');
+  });
+
   it('sends the mark message with the ids and the new state', async () => {
     const { store, sent } = setup(many(3));
     const list = store.ensure('unread', null);
@@ -760,6 +781,30 @@ describe('a row that is back in the set of a list', () => {
     expect(sent.at(-1)).toMatchObject({ type: 'weekrow:announcement-page', offset: 0 });
     expect(again.items.map((entry) => entry.id)).toContain('3');
     expect(again.items).toHaveLength(10);
+  });
+
+  it('puts a refused unmark back out of the set after the student left while it was on its way', async () => {
+    const { store, state } = setup(many(40));
+    const list = store.ensure('unread', null);
+    await flush();
+    expect(await store.mark(list.items[2]!, true, unread)).toBe(true);
+    expect(list.items[2]).toMatchObject({ id: '3', read: true });
+
+    state.markOk = false;
+    let release = (): void => undefined;
+    state.markGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const unmarking = store.mark(list.items[2]!, false, unread);
+    store.leave('unread', null);
+    expect(list.items).toHaveLength(10);
+    state.markGate = null;
+    release();
+    expect(await unmarking).toBe(false);
+
+    expect(list.items.map((entry) => entry.id)).not.toContain('3');
+    expect(list.items).toHaveLength(9);
+    expect(nextOffset(list)).toBe(9);
   });
 
   it('keeps a list that holds the row when the row returns to its set', async () => {

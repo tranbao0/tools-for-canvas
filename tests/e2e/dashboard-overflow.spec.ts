@@ -26,9 +26,7 @@ test.beforeEach(async ({ background }) => {
   await saveTools(background, {
     ...DEFAULT_TOOLS_SETTINGS,
     dashboardFixes: {
-      courseColors: false,
       announcementsInPlace: false,
-      courseWorkExtras: false,
       allCourseGrades: false,
       steadyPager: false,
     },

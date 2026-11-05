@@ -99,7 +99,7 @@ On a module item, Canvas can count a done mark as the module's "Mark as done" re
 ## What the new dashboard fixes do
 
 The fixes work on the new Canvas dashboard and use only the requests that this policy lists.
-They recolor icons, show the Announcements widget as one steady list that opens a message in place and searches by topic and by date, show your overdue work, work with no due date, pages and tasks under the Course work list, and show a grade card for each course.
+They show the Announcements widget as one steady list that opens a message in place and searches by topic and by date, and show a grade card for each course.
 The text of an announcement is written by your teacher.
 The extension shows it only after it removes everything that could run code, load a frame or send a form.
 The fixes read the grade of each course from the course list, in your browser, and show it only to you on your own dashboard.

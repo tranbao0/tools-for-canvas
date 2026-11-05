@@ -19,7 +19,7 @@ import type {
   RequestGuard,
   TimeRange,
 } from '../../../shared/canvas/types';
-import { dashboardCourses, extrasFromView } from '../../dashboard-fixes/data/dashboardData';
+import { dashboardCourses } from '../../dashboard-fixes/data/dashboardData';
 import { rowFromNode, rowFromTopic } from '../../dashboard-fixes/data/announcementRows';
 import {
   ANNOUNCEMENT_PAGE_SIZES,
@@ -2281,8 +2281,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   // Dashboard fixes (decision 22)
   // ---------------------------------------------------------------------------------------------
 
-  /** The weeks that "Also due" reads: today and the 13 days after it. */
-  const EXTRAS_SPAN = { kind: 'fortnight', days: 14 } as const;
   /** The longest message the background passes on, so a huge post cannot fill the message. */
   const MAX_MESSAGE_CHARS = 500_000;
 
@@ -2553,30 +2551,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       !(await surfaceMayRead(tabId)) ||
       !(await signedInStudentOwnsCache())
     ) {
-      return { origin: origin ?? '', ready: false, courses: [], extras: [] };
+      return { origin: origin ?? '', courses: [] };
     }
-    const stamp = writeStamp();
     const session = cache.session;
-    const base = await viewContext(origin);
-    // Every course shows, also one that the student hid from the weekly list: the widgets of
-    // Canvas show all of them.
-    const context: ViewContext = {
-      ...base,
-      settings: { ...base.settings, span: EXTRAS_SPAN, hiddenCourseIds: [] },
-    };
-    if (cache === null || cache.session === null || !isCurrent(stamp)) {
-      return { origin, ready: false, courses: [], extras: [] };
-    }
-    const result = viewFor(
-      cache,
-      session,
-      { surface: 'inpage', spanOffset: 0, scopeCourseId: null },
-      context,
-      { show: false, pastDuePending: false },
-    );
     return {
       origin,
-      ready: result.exact && !blocksLoads(cache.failure),
       userId: session.profile.id,
       ...(lateVisibility?.origin === origin &&
       lateVisibility.userId === session.profile.id &&
@@ -2589,7 +2568,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           }
         : {}),
       courses: dashboardCourses(session.courses, session.colors, session.profile.id),
-      extras: extrasFromView(result.view),
     };
   }
 
@@ -2836,7 +2814,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   async function dashboardGradeVisibility(token?: string, tabId?: number): Promise<DashboardData> {
     await ready();
     const origin = await savedOrigin();
-    const base: DashboardData = { origin: origin ?? '', ready: false, courses: [], extras: [] };
+    const base: DashboardData = { origin: origin ?? '', courses: [] };
     // A tab in another cookie store gets nothing and touches nothing, so it cannot cancel the
     // late result of a read that a valid tab started.
     if (!(await surfaceMayRead(tabId))) return { ...base, gradeVisibilities: null };

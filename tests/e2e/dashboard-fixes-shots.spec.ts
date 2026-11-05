@@ -14,8 +14,6 @@ const DIR = path.join(process.cwd(), 'screenshots', 'dashboard-fixes');
 const TICKET_DIR = '/tmp/ticket-a';
 const LIST = '[data-testid="widget-announcements-widget"] [data-wr-list]';
 const WIDGETS = {
-  colors: 'widget-container-course-work-combined-widget',
-  extras: 'widget-container-course-work-combined-widget',
   announcements: 'widget-container-announcements-widget',
   grades: 'widget-container-course-grades-widget',
 } as const;
@@ -58,18 +56,9 @@ for (const width of [1920, 1280]) {
           document.querySelector('.fixture-widget-app')?.setAttribute('data-fixture-dark', ''),
         );
       }
-      await expect(page.locator('[data-wr-extra]')).toBeVisible();
       await expect(page.locator('[data-wr-card]')).toHaveCount(2);
       const tag = `${width}-${theme}`;
       const widget = (id: string) => page.getByTestId(id);
-
-      await shoot(page, `course-colors-${tag}`, widget(WIDGETS.colors));
-
-      await page.locator('[data-wr-extra]').getByRole('button', { name: 'Show all' }).click();
-      await expect(page.locator('[data-wr-extra] .wr-x-row')).toHaveCount(20);
-      await shoot(page, `also-due-long-${tag}`, widget(WIDGETS.extras));
-      await page.locator('[data-wr-extra]').getByRole('button', { name: 'Show fewer' }).click();
-      await shoot(page, `also-due-${tag}`, page.locator('[data-wr-extra]'));
 
       // The four states of the list: the list, an open message, a search by topic, a search by date.
       const card = widget(WIDGETS.announcements);

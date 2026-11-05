@@ -1,7 +1,6 @@
 import path from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
-import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import {
   addCsrfCookie,
   expect,
@@ -9,7 +8,6 @@ import {
   inpageList,
   openCanvasPage,
   saveSettings,
-  saveTools,
   serveScenario,
   settledList,
   test,
@@ -94,9 +92,7 @@ for (const size of [
       }),
     ).toBe(false);
     expect(await page.locator(WRAPPER).ariaSnapshot()).toBe('');
-    await expect(page.locator(`${WRAPPER} [data-wr-extra], ${WRAPPER} [data-wr-cc]`)).toHaveCount(
-      0,
-    );
+    await expect(page.locator(`${WRAPPER} [data-wr-own]`)).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
@@ -232,38 +228,6 @@ test('covers the box of the widget after the wait, and follows it when the widge
   expect((await card.boundingBox())!.height).toBeGreaterThan(1200);
 });
 
-test('covers the box of the widget with its extras still inside, after the wait', async ({
-  context,
-  page,
-  background,
-}) => {
-  test.setTimeout(60_000);
-  const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
-  await addCsrfCookie(context, canvas.origin);
-  // With the extras fix off, nothing removes an extra section that is already in the widget.
-  await saveTools(background, {
-    ...DEFAULT_TOOLS_SETTINGS,
-    dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseWorkExtras: false },
-  });
-  await page.setViewportSize({ width: 2088, height: 900 });
-  await page.goto(`${canvas.origin}/?fixture_delay_ms=0&fixture_course_work=loading`);
-  await page.bringToFront();
-  await expect(page.locator(WRAPPER)).toHaveAttribute('data-weekrow-replaced', '');
-  await expect(page.locator('#weekrow-inpage')).toBeHidden();
-  // The widget loads with an extra section inside it that stays.
-  await page.locator(SECTION).evaluate((node) => {
-    node.innerHTML =
-      '<input data-testid="submission-status-filter-select"><div style="height:700px">Loaded</div>' +
-      '<section data-wr-extra style="height:300px">Also due</section>';
-  });
-  await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot', { timeout: 15_000 });
-  await expect(page.locator('#weekrow-inpage')).toBeVisible();
-  // The card covers the whole box of the widget, extras included.
-  const boxes = await slotBoxes(page);
-  expectOverSection(boxes);
-  expect(boxes.card.height).toBeGreaterThan(1000);
-});
-
 async function openFixture(
   context: Parameters<typeof serveScenario>[0],
   page: Page,
@@ -285,7 +249,6 @@ for (const state of ['default', 'second', 'pair']) {
     // placed: the window starts once every fix of the fixture has drawn.
     await expect(page.locator('[data-wr-ann]').first()).toBeAttached();
     await expect(page.locator('[data-wr-grades]').first()).toBeAttached();
-    if (state !== 'default') await expect(page.locator('[data-wr-extra]').first()).toBeAttached();
     await page.waitForTimeout(500);
     const records = await page.evaluate(
       () =>
@@ -354,8 +317,6 @@ test('swaps the card and the widget in one frame when edit mode ends', async ({
   await expect(page.locator(WRAPPER)).toBeVisible();
   // In edit mode the widget is Canvas's again: no longer inert.
   expect(await page.locator(SECTION).evaluate((node) => (node as HTMLElement).inert)).toBe(false);
-  // In edit mode the widget is Canvas's again, so the fixes add their extras to it.
-  await expect(page.locator(`${WRAPPER} [data-wr-extra]`)).toBeAttached();
   const states = await page.evaluate(
     () =>
       new Promise<string[]>((resolve) => {
@@ -437,37 +398,15 @@ for (const { width, mode } of [
 }
 
 test.describe('with two loaded Course work widgets', () => {
-  test('replaces the first one and leaves the extras and colors on the second', async ({
+  test('replaces the first one and leaves the second as Canvas draws it', async ({
     context,
     page,
   }) => {
     await openFixture(context, page, 'pair');
-    // The second widget is not replaced, so it gets the extras and the colors.
-    await expect(page.locator(`${WRAPPER} [data-wr-extra]`)).toHaveCount(1);
-    await expect(page.locator(`${WRAPPER} [data-wr-cc]`).first()).toBeAttached();
     await expect(page.locator(FIRST_WRAPPER)).toHaveAttribute('data-weekrow-replaced', '');
     await expect(page.locator(FIRST_WRAPPER)).toBeHidden();
     await expect(page.locator(WRAPPER)).toBeVisible();
-    await expect(
-      page.locator(`${FIRST_WRAPPER} [data-wr-extra], ${FIRST_WRAPPER} [data-wr-cc]`),
-    ).toHaveCount(0);
-  });
-
-  test('removes the extras and the colors from the replaced widget after edit mode', async ({
-    context,
-    page,
-  }) => {
-    await openFixture(context, page, 'pair');
-    await expect(page.locator(`${WRAPPER} [data-wr-extra]`)).toHaveCount(1);
-    await enterEditMode(page);
-    // Given back, the first widget gets the extras and the colors like any other.
-    await expect(page.locator(`${FIRST_WRAPPER} [data-wr-extra]`)).toHaveCount(1);
-    await expect(page.locator(`${FIRST_WRAPPER} [data-wr-cc]`).first()).toBeAttached();
-    await leaveEditMode(page);
-    await expect(page.locator(FIRST_WRAPPER)).toBeHidden();
-    await expect(page.locator(`${FIRST_WRAPPER} [data-wr-extra]`)).toHaveCount(0);
-    await expect(page.locator(`${FIRST_WRAPPER} [data-wr-cc]`)).toHaveCount(0);
-    await expect(page.locator(`${WRAPPER} [data-wr-extra]`)).toHaveCount(1);
+    await expect(page.locator(`${FIRST_WRAPPER} [data-wr-own]`)).toHaveCount(0);
   });
 });
 

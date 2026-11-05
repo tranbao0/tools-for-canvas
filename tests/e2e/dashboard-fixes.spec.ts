@@ -26,16 +26,12 @@ import { requestsQuiet, stableValue } from './support/settle';
 
 const PAGE = [{ path: '/', page: 'dashboard-widgets' }] as const;
 const OFF: DashboardFixesSettings = {
-  courseColors: false,
   announcementsInPlace: false,
-  courseWorkExtras: false,
   allCourseGrades: false,
   steadyPager: false,
 };
 const ARTIFACTS = {
-  courseColors: '[data-wr-cc]',
   announcementsInPlace: '[data-wr-filter]',
-  courseWorkExtras: '[data-wr-extra]',
   allCourseGrades: '[data-wr-grades]',
   steadyPager: '[data-wr-own="pager"]',
 } as const;
@@ -71,20 +67,6 @@ async function open(
     await expect(page.locator(`${LIST} article`).first()).toBeAttached();
   }
   return served;
-}
-
-const ITEM = (id: string): string => `[data-testid="listed-course-work-item-${id}"]`;
-
-/** The background color and the icon color of the icon box of a Course work item. */
-function iconColors(page: Page, id: string): Promise<{ box: string; icon: string }> {
-  return page.evaluate((selector) => {
-    const svg = document.querySelector(`${selector} svg`) as SVGElement;
-    const box = svg.parentElement?.parentElement as HTMLElement;
-    return {
-      box: getComputedStyle(box).backgroundColor,
-      icon: getComputedStyle(svg.parentElement as HTMLElement).color,
-    };
-  }, ITEM(id));
 }
 
 function rgb(hex: string): string {
@@ -128,39 +110,6 @@ function widgetsHtml(page: Page): Promise<string> {
       .join('\n'),
   );
 }
-
-test.describe('course colors', () => {
-  test('color the icon of each Course work item with its course color', async ({
-    context,
-    page,
-  }) => {
-    const { canvas } = await open(context, page);
-    await expect(page.locator('[data-wr-cc]')).toHaveCount(6);
-    // Biology has a saved color. Chemistry has none, so it gets the default that the rings use.
-    const cases = [
-      ['1012', '#0B874B'],
-      ['2009', '#E71F63'],
-      ['3010', '#8F3E97'],
-      ['4003', defaultColorFor('104')],
-    ] as const;
-    for (const [id, color] of cases) {
-      const { box, icon } = await iconColors(page, id);
-      expect(box).toBe(rgb(color));
-      expect(['rgb(255, 255, 255)', 'rgb(0, 0, 0)']).toContain(icon);
-    }
-    // The status stays in the pill, which the fix does not touch.
-    await expect(page.getByTestId('due_soon-status-pill-1012')).toHaveText('Today 11:59 PM');
-    expect(canvas.unmatched).toEqual([]);
-  });
-
-  test('survive React drawing the content again', async ({ context, page }) => {
-    await open(context, page);
-    await expect(page.locator('[data-wr-cc]')).toHaveCount(6);
-    await rerender(page);
-    await expect(page.locator('[data-wr-cc]')).toHaveCount(6);
-    expect((await iconColors(page, '1012')).box).toBe(rgb('#0B874B'));
-  });
-});
 
 const WIDGET = '[data-testid="widget-announcements-widget"]';
 const LIST = `${WIDGET} [data-wr-list]`;
@@ -883,79 +832,6 @@ test('match the dark read filter colors', async ({ context, page }, testInfo) =>
   await page.screenshot({ path: testInfo.outputPath('announcements-dark.png'), fullPage: true });
 });
 
-test.describe('course work extras', () => {
-  test('show work with no due date, overdue work and a page to-do under the list', async ({
-    context,
-    page,
-  }) => {
-    const { canvas } = await open(context, page);
-    const extra = page.locator('[data-wr-extra]');
-    await expect(extra).toContainText('Also due');
-    await expect(extra).toContainText('Extra credit: Science news summary');
-    await expect(extra).toContainText('No due date');
-    await expect(extra).toContainText('Overdue');
-    // One short line gives the numbers, and a tooltip explains the 90 days of the Due card.
-    await expect(extra.locator('.wr-x-note')).toContainText(
-      /\d+ with no due date \u00b7 \d+ overdue \u00b7 \d+ to-do in the next 14 days/,
-    );
-    await expect(extra.locator('.wr-x-info')).toHaveAttribute('title', /90 days/);
-    // Four rows first, and a link to the longer list.
-    await expect(extra.locator('.wr-x-row')).toHaveCount(4);
-    await extra.getByRole('button', { name: 'Show all' }).click();
-    await expect(extra).toContainText('Read: Chapter 7 - Cellular respiration');
-    await expect(extra).toContainText('Study group for BIO midterm');
-    expect(await extra.locator('.wr-x-row').count()).toBeLessThanOrEqual(20);
-    await expect(extra.getByRole('button', { name: 'Show fewer' })).toBeFocused();
-    // The section sits right under the list, before the pager.
-    const order = await page.evaluate(() => {
-      const list = document
-        .querySelector('[data-testid^="listed-course-work-item-"]')
-        ?.closest('ul');
-      return list?.nextElementSibling?.hasAttribute('data-wr-extra');
-    });
-    expect(order).toBe(true);
-    // It uses the planner data of the weekly list: no request of its own.
-    expect(
-      canvas.requests.filter((r) => r.path.startsWith('/api/v1/planner/items')).length,
-    ).toBeLessThan(8);
-    expect(canvas.unmatched).toEqual([]);
-  });
-
-  test('hide overdue work under Missing, and follow the course filter', async ({
-    context,
-    page,
-  }) => {
-    await open(context, page);
-    const extra = page.locator('[data-wr-extra]');
-    await expect(extra).toContainText('Module 3 reflection');
-    // The widget's inputs change when the student picks another choice.
-    await page
-      .getByTestId('submission-status-filter-select')
-      .evaluate((input: HTMLInputElement) => {
-        input.setAttribute('value', 'Missing');
-        input.value = 'Missing';
-      });
-    await expect(extra).not.toContainText('Module 3 reflection');
-    await expect(extra).toContainText('Extra credit: Science news summary');
-    await page.getByTestId('course-filter-select').evaluate((input: HTMLInputElement) => {
-      input.setAttribute('value', 'MATH 221: Calculus II');
-      input.value = 'MATH 221: Calculus II';
-    });
-    await expect(extra).toContainText('Practice exam');
-    await expect(extra).not.toContainText('Extra credit: Science news summary');
-  });
-
-  test('survive React drawing the content again', async ({ context, page }) => {
-    await open(context, page);
-    await expect(page.locator('[data-wr-extra]')).toBeVisible();
-    await rerender(page);
-    await expect(page.locator('[data-wr-extra]')).toContainText(
-      'Extra credit: Science news summary',
-    );
-    await expect(page.locator('[data-wr-extra]')).toHaveCount(1);
-  });
-});
-
 /** The wait for a result that depends on a read of the owner, which may take 5 s under load. */
 const READ_WAIT = 20_000;
 
@@ -1298,8 +1174,7 @@ test.describe('the switches', () => {
     expect(before).not.toContain('data-wr-');
 
     await saveTools(background, DEFAULT_TOOLS_SETTINGS);
-    await expect(page.locator('[data-wr-extra]')).toBeVisible();
-    await expect(page.locator('[data-wr-cc]').first()).toBeAttached();
+    await expect(page.locator('[data-wr-grades]').first()).toBeAttached();
     await articles(page).first().getByRole('button', { name: 'Read more' }).click();
     await expect(message(page)).toBeVisible();
 
@@ -1315,13 +1190,16 @@ test.describe('the switches', () => {
     page,
     background,
   }) => {
-    const { canvas } = await open(context, page, { background, fixes: { courseColors: false } });
-    await expect(page.locator('[data-wr-extra]')).toBeVisible();
-    await expect(page.locator('[data-wr-cc]')).toHaveCount(0);
+    const { canvas } = await open(context, page, {
+      background,
+      fixes: { allCourseGrades: false },
+    });
+    await expect(page.locator('[data-wr-filter]')).toBeVisible();
+    await expect(page.locator('[data-wr-grades]')).toHaveCount(0);
     await page.reload();
     await page.locator('html[data-fixture-ready="true"]').waitFor({ state: 'attached' });
-    await expect(page.locator('[data-wr-extra]')).toBeVisible();
-    await expect(page.locator('[data-wr-cc]')).toHaveCount(0);
+    await expect(page.locator('[data-wr-filter]')).toBeVisible();
+    await expect(page.locator('[data-wr-grades]')).toHaveCount(0);
     expect(canvas.unmatched).toEqual([]);
   });
 
@@ -1344,8 +1222,8 @@ test.describe('the switches', () => {
       await api.storage.local.set({ settings: { ...stored, minimized: true } });
     });
     await expect(page.locator('#weekrow-inpage .wr-minbar')).toBeVisible();
-    await expect(page.locator('[data-wr-cc]')).toHaveCount(6);
-    await expect(page.locator('[data-wr-extra]')).toBeVisible();
+    await expect(page.locator('[data-wr-grades]').first()).toBeAttached();
+    await expect(page.locator('[data-wr-filter]')).toBeVisible();
   });
 });
 

@@ -23,12 +23,10 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
     originChanged: vi.fn(async () => undefined),
     accessChanged: vi.fn(async () => undefined),
     settled: vi.fn(async () => undefined),
-    dashboardData: vi.fn(async () => ({ origin: SAVED, ready: true, courses: [], extras: [] })),
+    dashboardData: vi.fn(async () => ({ origin: SAVED, courses: [] })),
     dashboardGradeVisibility: vi.fn(async () => ({
       origin: SAVED,
-      ready: false,
       courses: [],
-      extras: [],
       gradeVisibilities: {},
     })),
     announcement: vi.fn(async () => ({ title: 'Hello', message: '<p>Hi</p>' })),
@@ -158,7 +156,7 @@ describe('routeDataMessage', () => {
         fileViewer: true,
         fileViewerWidth: 480,
         weeklyDockWidth: 360,
-        dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
+        dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, steadyPager: false },
         assignmentView: true,
       };
       await routeDataMessage(owner, { type: 'weekrow:save-tools', tools }, CONTENT_SCRIPT, host);
@@ -245,10 +243,10 @@ describe('routeDataMessage', () => {
         { type: 'weekrow:mark-note-seen', note: 'other' },
         { type: 'weekrow:mark-note-seen' },
         { type: 'weekrow:save-tools' },
-        { type: 'weekrow:save-tools', tools: { dashboardFixes: { courseColors: false } } },
+        { type: 'weekrow:save-tools', tools: { dashboardFixes: { steadyPager: false } } },
         {
           type: 'weekrow:save-tools',
-          tools: { dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: 1 } },
+          tools: { dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, steadyPager: 1 } },
         },
         {
           type: 'weekrow:save-tools',
@@ -456,7 +454,7 @@ describe('routeDataMessage', () => {
       for (const sender of [CONTENT_SCRIPT, EXTENSION_PAGE]) {
         await expect(
           routeDataMessage(owner, { type: 'weekrow:dashboard-data' }, sender, host),
-        ).resolves.toMatchObject({ ready: true });
+        ).resolves.toMatchObject({ origin: SAVED });
         await expect(
           routeDataMessage(owner, { type: 'weekrow:announcement', ...ANNOUNCEMENT }, sender, host),
         ).resolves.toEqual({ title: 'Hello', message: '<p>Hi</p>' });

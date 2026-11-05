@@ -58,7 +58,7 @@ describe('wirePageSync', () => {
           fileViewer: true,
           fileViewerWidth: 480,
           weeklyDockWidth: 360,
-          dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
+          dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, steadyPager: false },
           assignmentView: true,
         }),
     ],

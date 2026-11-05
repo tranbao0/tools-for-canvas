@@ -13,9 +13,7 @@ const ALL_OFF: ToolsSettings = {
   fileViewerWidth: 480,
   weeklyDockWidth: 360,
   dashboardFixes: {
-    courseColors: false,
     announcementsInPlace: false,
-    courseWorkExtras: false,
     allCourseGrades: false,
     steadyPager: false,
   },
@@ -55,9 +53,7 @@ describe('normalizeToolsSettings', () => {
   it('takes the default for each bad field and keeps the good ones', () => {
     const stored = {
       dashboardFixes: {
-        courseColors: false,
         announcementsInPlace: 'no',
-        courseWorkExtras: 0,
         allCourseGrades: null,
         steadyPager: 'yes',
       },
@@ -68,9 +64,7 @@ describe('normalizeToolsSettings', () => {
       fileViewerWidth: 480,
       weeklyDockWidth: 360,
       dashboardFixes: {
-        courseColors: false,
         announcementsInPlace: true,
-        courseWorkExtras: true,
         allCourseGrades: true,
         steadyPager: true,
       },
@@ -105,12 +99,29 @@ describe('normalizeToolsSettings', () => {
     expect(normalizeToolsSettings(stored)).toEqual(ALL_OFF);
   });
 
+  it('ignores the keys of the two removed Course work switches, whatever they hold', () => {
+    const stored = {
+      dashboardFixes: {
+        ...ALL_OFF.dashboardFixes,
+        courseColors: true,
+        courseWorkExtras: 'on',
+      },
+    };
+
+    const normalized = normalizeToolsSettings(stored);
+
+    expect(normalized).toEqual(ALL_OFF);
+    expect(Object.keys(normalized.dashboardFixes)).not.toContain('courseColors');
+    expect(Object.keys(normalized.dashboardFixes)).not.toContain('courseWorkExtras');
+    expect(isToolsSettings(normalized)).toBe(true);
+  });
+
   it('returns a copy, so a caller cannot change the defaults', () => {
     const first = normalizeToolsSettings(undefined);
-    first.dashboardFixes.courseColors = false;
+    first.dashboardFixes.steadyPager = false;
 
-    expect(DEFAULT_TOOLS_SETTINGS.dashboardFixes.courseColors).toBe(true);
-    expect(normalizeToolsSettings(undefined).dashboardFixes.courseColors).toBe(true);
+    expect(DEFAULT_TOOLS_SETTINGS.dashboardFixes.steadyPager).toBe(true);
+    expect(normalizeToolsSettings(undefined).dashboardFixes.steadyPager).toBe(true);
   });
 });
 
@@ -121,7 +132,7 @@ describe('isToolsSettings', () => {
     expect(
       isToolsSettings({
         ...DEFAULT_TOOLS_SETTINGS,
-        dashboardFixes: { ...ALL_OFF.dashboardFixes, courseWorkExtras: true },
+        dashboardFixes: { ...ALL_OFF.dashboardFixes, steadyPager: true },
       }),
     ).toBe(true);
   });
@@ -136,12 +147,12 @@ describe('isToolsSettings', () => {
     [
       'a missing field',
       {
-        dashboardFixes: { courseColors: true, announcementsInPlace: true, courseWorkExtras: true },
+        dashboardFixes: { announcementsInPlace: true, allCourseGrades: true },
       },
     ],
     [
       'a field that is not a boolean',
-      { dashboardFixes: { ...ALL_OFF.dashboardFixes, courseColors: 'true' } },
+      { dashboardFixes: { ...ALL_OFF.dashboardFixes, steadyPager: 'true' } },
     ],
     [
       'a field that is a number',
