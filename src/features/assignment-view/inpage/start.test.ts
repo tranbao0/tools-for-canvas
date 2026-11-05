@@ -337,6 +337,11 @@ describe('startAssignmentView', () => {
       channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: true });
       await vi.advanceTimersByTimeAsync(1);
       expect(requestFrameCatcher).toHaveBeenCalledTimes(2);
+      // A width save is a tools change with the switch as it was: no request.
+      channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: true, fileViewerWidth: 555 });
+      channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: true, fileViewerWidth: 560 });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(requestFrameCatcher).toHaveBeenCalledTimes(2);
       controller.stop();
     });
   });

@@ -71,7 +71,7 @@ export interface PreviewPane {
   reset(): void;
   setWidth(width: number): void;
   refreshTheme(): void;
-  /** Tells the pane that the File viewer switch changed, so it asks for the file catcher. */
+  /** Tells the pane the File viewer switch. When it goes on, the pane asks for the file catcher. */
   setFileViewer(on: boolean): void;
   /** Removes the pane. */
   stop(): void;
@@ -124,6 +124,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
   let observer: MutationObserver | undefined;
   let stopped = false;
   let announced: string | null = null;
+  let fileViewerOn = false;
 
   // One read at a time and one waiting for an assignment, whatever asks for it. A read that a
   // close starts joins the reads of a pane that opens at once.
@@ -418,7 +419,10 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       dock?.setTheme(options.theme());
     },
     setFileViewer(on) {
-      if (on && current) options.onFrameLoad();
+      // The tools record arrives again after each width save, so only a change of the switch asks.
+      const changed = on !== fileViewerOn;
+      fileViewerOn = on;
+      if (on && changed && current) options.onFrameLoad();
     },
     stop() {
       stopped = true;

@@ -375,6 +375,20 @@ describe('the assignment pane', () => {
     pane.setFileViewer(true);
     expect(onFrameLoad).toHaveBeenCalledOnce();
   });
+
+  it('asks for the file catcher only when the File viewer switch changes, not on each tools change', () => {
+    const { pane, onFrameLoad } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    pane.setFileViewer(true);
+    expect(onFrameLoad).toHaveBeenCalledOnce();
+    // A width save sends the whole tools record again, with the switch as it was.
+    pane.setFileViewer(true);
+    pane.setFileViewer(true);
+    expect(onFrameLoad).toHaveBeenCalledOnce();
+    pane.setFileViewer(false);
+    pane.setFileViewer(true);
+    expect(onFrameLoad).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('the frame of the pane', () => {
