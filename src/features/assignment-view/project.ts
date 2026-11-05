@@ -196,6 +196,7 @@ export function projectAssignmentView(
       workflow_state: plain(submissionRecord['workflow_state'], 40),
       excused: submissionRecord['excused'] === true,
       missing: submissionRecord['missing'] === true,
+      late: submissionRecord['late'] === true,
       late_policy_status: latePolicy(submissionRecord['late_policy_status']),
       custom_grade_status_id: id(submissionRecord['custom_grade_status_id']),
       redo_request: submissionRecord['redo_request'] === true,

@@ -4,11 +4,13 @@ import {
   SESSION_PATH,
   TURNITIN_SCORE,
   frameRows,
+  turnitinScores,
 } from '../../../../tests/fixtures/submission-frame';
 import {
   filesFromDetails,
   humanSize,
   readFrame,
+  reportUrl,
   sameSubmissionPath,
   sessionUrl,
 } from './submissionFrame';
@@ -110,6 +112,7 @@ describe('readFrame', () => {
         feedbackLabel: 'View Feedback',
         unread: true,
         sessionUrl: `${ORIGIN}${SESSION_PATH}`,
+        report: null,
       },
       {
         fileId: '502',
@@ -118,6 +121,7 @@ describe('readFrame', () => {
         feedbackLabel: null,
         unread: false,
         sessionUrl: null,
+        report: null,
       },
     ]);
   });
@@ -179,7 +183,6 @@ describe('readFrame', () => {
   });
 
   it.each([
-    ['a Turnitin score', { score: TURNITIN_SCORE }],
     [
       'a report status that the script of Canvas drew',
       { report: '<div><a href="#">Report</a></div>' },
@@ -190,6 +193,183 @@ describe('readFrame', () => {
       { fileId: '501', name: 'a.pdf', size: '1 KB', button: null, ...extra },
     ]);
     expect(ready(frame(withReport)).complete).toBe(false);
+  });
+
+  describe('the similarity score of a row', () => {
+    const scores = turnitinScores(PAGE);
+    const row = (score: string, extra: { report?: string } = {}) =>
+      frame(
+        frameRows(PAGE, [
+          { fileId: '501', name: 'a.pdf', size: '1 KB', button: null, score, ...extra },
+        ]),
+      );
+    const read = (score: string, extra: { report?: string } = {}) => ready(row(score, extra));
+    const reportOf = (score: string) => read(score).files[0]?.report;
+
+    it('reads the classic Turnitin form: text, state and address', () => {
+      const result = read(scores.legacy);
+      expect(result.complete).toBe(true);
+      expect(result.files[0]?.report).toEqual({
+        text: '5.0%',
+        state: 'acceptable',
+        url: `${ORIGIN}${PAGE}/turnitin/attachment_1`,
+      });
+      expect(read(TURNITIN_SCORE).complete).toBe(true);
+    });
+
+    it('reads an originality report with the attempt in the address', () => {
+      expect(reportOf(scores.legacyReport)).toEqual({
+        text: '23.0%',
+        state: 'warning',
+        url: `${ORIGIN}${PAGE}/originality_report/attachment_1?attempt=2`,
+      });
+    });
+
+    it('shows a pending report with a blank link by the title of the link', () => {
+      expect(reportOf(scores.legacyPending)).toEqual({
+        text: 'Similarity score',
+        state: 'pending',
+        url: `${ORIGIN}${PAGE}/originality_report/attachment_1?attempt=2`,
+      });
+    });
+
+    it('shows a report with an error by the message in the title', () => {
+      expect(reportOf(scores.legacyError)).toEqual({
+        text: 'The file type is not supported',
+        state: 'error',
+        url: `${ORIGIN}${PAGE}/originality_report/attachment_1?attempt=2`,
+      });
+    });
+
+    it('cuts a long title to 40 characters', () => {
+      const long = scores.legacyError.replaceAll('The file type is not supported', 'x'.repeat(90));
+      expect(reportOf(long)?.text).toBe('x'.repeat(40));
+    });
+
+    it('reads the VeriCite form without its tooltip, and leaves the frame as it is', () => {
+      const subject = row(scores.vericite);
+      const before = subject.contentDocument!.body.innerHTML;
+      const result = ready(subject);
+      expect(result.complete).toBe(true);
+      expect(result.files[0]?.report).toEqual({
+        text: '5%',
+        state: 'acceptable',
+        url: `${ORIGIN}${PAGE}/vericite/attachment_1`,
+      });
+      expect(subject.contentDocument!.body.innerHTML).toBe(before);
+    });
+
+    it('reads the updated form with an address, which has no state class', () => {
+      expect(reportOf(scores.updated)).toEqual({
+        text: '5.0%',
+        state: null,
+        url: `${ORIGIN}${PAGE}/originality_report/attachment_1?attempt=2`,
+      });
+    });
+
+    it('reads the updated form without an address as a score with no link', () => {
+      const result = read(scores.updatedNoAddress);
+      expect(result.complete).toBe(true);
+      expect(result.files[0]?.report).toEqual({ text: '7.0%', state: null, url: null });
+    });
+
+    it('names a link with no score text and no title "Similarity report"', () => {
+      const bare = `<span class="turnitin_score_container"><a href="${PAGE}/turnitin/attachment_1"><img src="/x.png" alt=""></a></span>`;
+      expect(reportOf(bare)).toEqual({
+        text: 'Similarity report',
+        state: null,
+        url: `${ORIGIN}${PAGE}/turnitin/attachment_1`,
+      });
+    });
+
+    it('has no report for an empty cell', () => {
+      const result = read('');
+      expect(result.complete).toBe(true);
+      expect(result.files[0]?.report).toBeNull();
+    });
+
+    it.each([
+      [
+        'another origin',
+        'https://evil.example/courses/12/assignments/101/submissions/42/turnitin/a',
+      ],
+      ['another submission', '/courses/12/assignments/101/submissions/43/turnitin/attachment_1'],
+      ['another assignment', '/courses/12/assignments/102/submissions/42/turnitin/attachment_1'],
+      ['another route', '/courses/12/assignments/101/submissions/42/audit_events'],
+      ['the resubmit route', '/courses/12/assignments/101/submissions/42/turnitin/resubmit/x'],
+      ['a hash', '/courses/12/assignments/101/submissions/42/turnitin/attachment_1#x'],
+      [
+        'an extra query',
+        '/courses/12/assignments/101/submissions/42/turnitin/attachment_1?access_token=t',
+      ],
+      [
+        'a query with the attempt and more',
+        '/courses/12/assignments/101/submissions/42/originality_report/a?attempt=1&x=2',
+      ],
+      [
+        'an attempt that is no number',
+        '/courses/12/assignments/101/submissions/42/originality_report/a?attempt=x',
+      ],
+      [
+        'an asset with a bad character',
+        '/courses/12/assignments/101/submissions/42/turnitin/a%2Fb',
+      ],
+      ['javascript', 'javascript:alert(1)'],
+    ])('is incomplete for a link to %s, so the page falls back', (_name, href) => {
+      const bad = scores.legacy.replace(/href="[^"]*"/, `href="${href}"`);
+      const result = read(bad);
+      expect(result.complete).toBe(false);
+      expect(result.files[0]?.report).toBeNull();
+    });
+
+    it('is incomplete for a cell that holds an icon and no text and no link', () => {
+      const icon =
+        '<span class="turnitin_score_container tooltip"><i class="icon-clock"></i></span>';
+      expect(read(icon).complete).toBe(false);
+    });
+
+    it('is incomplete for a mark in the cell of a row that does not match', () => {
+      const other = frameRows('/courses/12/assignments/101/submissions/43', [
+        { fileId: '501', name: 'a.pdf', size: '1 KB', button: null, score: scores.legacy },
+      ]);
+      expect(ready(frame(other)).complete).toBe(false);
+    });
+
+    it('is incomplete for a mark in a matched row outside its originality cell', () => {
+      const outside = frameRows(PAGE, [
+        { fileId: '501', name: 'a.pdf', size: '1 KB', button: null },
+      ]).replace('a.pdf', `a.pdf ${scores.legacy}`);
+      expect(ready(frame(outside)).complete).toBe(false);
+    });
+
+    it('is incomplete for a report status cell, also next to a good score', () => {
+      expect(read(scores.legacy, { report: '<span>Processing</span>' }).complete).toBe(false);
+    });
+
+    it('is incomplete for the report of a text entry outside the file rows', () => {
+      const text = `<div>${scores.legacy}</div><div id="submission_preview" class="paper user_content">Text</div>`;
+      expect(ready(frame(text)).complete).toBe(false);
+    });
+  });
+
+  describe('reportUrl', () => {
+    it('accepts the three routes with the ids of a shard student', () => {
+      for (const route of ['turnitin', 'vericite', 'originality_report']) {
+        const address = `/courses/20000000000012/assignments/2~101/submissions/42/${route}/attachment_1~x-y`;
+        expect(
+          reportUrl(address, ORIGIN, '/courses/2~12/assignments/20000000000101/submissions/42'),
+        ).toBe(`${ORIGIN}${address}`);
+      }
+    });
+
+    it('accepts a full address on the saved origin, and refuses credentials', () => {
+      expect(reportUrl(`${ORIGIN}${PAGE}/turnitin/a`, ORIGIN, PAGE)).toBe(
+        `${ORIGIN}${PAGE}/turnitin/a`,
+      );
+      expect(
+        reportUrl(`https://u:p@school.instructure.com${PAGE}/turnitin/a`, ORIGIN, PAGE),
+      ).toBeNull();
+    });
   });
 
   it('is complete with empty originality cells, and ignores report marks in user content', () => {
@@ -272,7 +452,16 @@ it('gives the files of the details a size and no feedback', () => {
       feedbackLabel: null,
       unread: false,
       sessionUrl: null,
+      report: null,
     },
-    { fileId: '2', name: 'b', size: null, feedbackLabel: null, unread: false, sessionUrl: null },
+    {
+      fileId: '2',
+      name: 'b',
+      size: null,
+      feedbackLabel: null,
+      unread: false,
+      sessionUrl: null,
+      report: null,
+    },
   ]);
 });

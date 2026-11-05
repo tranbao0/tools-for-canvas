@@ -30,6 +30,16 @@ export interface SubmissionPageOptions {
   rubricUnread?: boolean;
   /** The holder is on the page, but Canvas draws no "Show Rubric" (the grade is not posted). */
   rubricWithoutLink?: boolean;
+  /** The course menu: the body class `course-menu-expanded` and the visible `#left-side`. */
+  menu?: 'open' | 'closed';
+  /** The comments list has no comment yet. */
+  noComments?: boolean;
+  /** The comment form does not show: the student may not comment (`add_comment_form` is hidden). */
+  noCommentForm?: boolean;
+  /** The markup of the first comment, which a teacher wrote. It replaces the text of the comment. */
+  commentHtml?: string;
+  /** A right-to-left Canvas: `dir="rtl"` and `lang="ar"` on the `html` element. */
+  rtl?: boolean;
 }
 
 const CSS = readFileSync('tests/fixtures/pages/canvas-layout.css', 'utf8');
@@ -151,6 +161,91 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 `;
 
+/**
+ * The rules of canvas-lms 1c9f0bb (`common.css`, from the production CSS, lines 2187, 2212-2232,
+ * 2247-2251 and 2369 of the rules list) that place the right column of the layout, copied as they
+ * are. Canvas draws `#right-side` empty on this page and hides its wrapper, because the body has no
+ * class `with-right-side`. The layout caps its width at 1366 px.
+ */
+const LAYOUT_RULES = `
+#right-side-wrapper{display:none;position:relative}
+.with-right-side #right-side-wrapper{display:block}
+body:not(.ic-no-flex-layout):not(.embedded) .ic-app-main-content{box-sizing:border-box;flex:1;min-width:1px}
+.ic-Layout-contentWrapper{box-sizing:border-box}
+.ic-Layout-contentMain{padding:36px 48px 48px 48px}
+.ic-app-main-content__secondary{box-sizing:border-box;min-width:1px;padding:24px}
+.ic-app-main-content__secondary{position:relative;-webkit-transform:translate3d(0, 0, 0)}
+@media only screen and (min-width: 1140px){body.course-menu-expanded:not(.ic-no-flex-layout):not(.embedded) .ic-app-main-content{display:flex}}
+@media only screen and (min-width: 1140px){body.course-menu-expanded:not(.ic-no-flex-layout):not(.embedded) .ic-Layout-contentWrapper{flex:1;min-width:1px}}
+@media only screen and (min-width: 1140px){body.course-menu-expanded .ic-app-main-content__secondary{width:288px;padding-left:24px}}
+@media only screen and (min-width: 992px){body:not(.course-menu-expanded):not(.ic-no-flex-layout):not(.embedded) .ic-app-main-content{display:flex}}
+@media only screen and (min-width: 992px){body:not(.course-menu-expanded):not(.ic-no-flex-layout):not(.embedded) .ic-Layout-contentWrapper{flex:1;min-width:1px}}
+@media only screen and (min-width: 992px){body:not(.course-menu-expanded) .ic-app-main-content__secondary{width:288px;padding-left:24px}}
+.ic-Layout-wrapper{box-sizing:border-box;min-height:100vh}
+body:not(.full-width):not(.outcomes):not(.body--login-confirmation):not(.content-only) .ic-Layout-wrapper{max-width:1366px}
+@media(min-width: 768px){body:not(.no-headers):not(.content-only):not(.hide-global-nav) .ic-Layout-wrapper{margin-left:54px}}
+@media(min-width: 768px){body:not(.no-headers):not(.content-only):not(.hide-global-nav).primary-nav-expanded .ic-Layout-wrapper{margin-left:84px}}
+#right-side{position:relative;z-index:10;min-height:20px}
+#right-side h2,#right-side .h2{font-size:16px;font-size:1rem;overflow:hidden;border-bottom:1px solid #e8eaec;padding-bottom:6px;margin:0 0 6px;font-weight:bold}
+.ic-Layout-wrapper{margin:auto}
+`;
+
+const COMMENT_STYLE = `
+.submission-details-comments { box-sizing: border-box; border-top: 1px solid #e8eaec; }
+@media (min-width: 992px) { .submission-details-comments { flex: 0 0 280px; border-top: none; } }
+.submission-details-comments .comments { height: 300px; overflow: auto; background-color: #f5f5f5; }
+@media (min-width: 992px) { .submission-details-comments .comments { border-left: 1px solid #e8eaec; } }
+.submission-details-comments .comment_author_and_date { color: #888888; }
+#add_comment_form label.add_a_comment { font-size: 1rem; }
+#textarea-container { position: relative; margin-bottom: 8px; }
+.ic-Input { box-sizing: border-box; width: 100%; min-height: 70px; padding: 8px 12px; border: 1px solid #8d959f; border-radius: 3px; font: inherit; font-size: 14px; background: #fff; color: #273540; }
+#emoji-quick-picker-container { margin: 6px 0; }
+.clearfix::after { content: ''; display: table; clear: both; }
+.pull-left { float: left; }
+.button-container { margin-top: 8px; }
+`;
+
+/**
+ * The part of the script of Canvas (`ui/features/submissions/jquery/index.tsx`) that sizes the
+ * page and saves a comment: a click on `.save_comment_button` (line 380 binds it directly on the button) reads the
+ * text of `.grading_comment` and draws a new `.comment` in `.comments .comment_list` with document
+ * lookups, then clears the text (lines 99-117). The copy makes no request. It works only while the
+ * column is in the light DOM, as Canvas's script does.
+ */
+const COMMENT_SCRIPT = `
+document.addEventListener('DOMContentLoaded', function () {
+  // windowResize (lines 310-316): the frame as high as the screen, the comments with a maximum
+  // height, and the rubric holder above the right column.
+  function windowResize() {
+    var height = window.screen.height - 20;
+    var frame = document.getElementById('preview_frame');
+    if (frame) frame.style.height = height + 'px';
+    var holder = document.getElementById('rubric_holder');
+    if (holder) { holder.style.maxHeight = (height - 50) + 'px'; holder.style.overflow = 'auto'; holder.style.zIndex = '5'; }
+    var comments = document.querySelector('.comments');
+    if (comments) comments.style.maxHeight = height + 'px';
+  }
+  window.addEventListener('resize', windowResize);
+  windowResize();
+  var save = document.querySelector('.save_comment_button');
+  if (!save) return;
+  window.__canvasComments = { saved: 0 };
+  save.addEventListener('click', function () {
+    var area = document.querySelector('.grading_comment');
+    var text = area.value.trim();
+    if (!text) return;
+    window.__canvasComments.saved++;
+    var comment = document.getElementById('comment_blank').cloneNode(true);
+    comment.removeAttribute('id');
+    comment.style.display = '';
+    comment.querySelector('span.comment').textContent = text;
+    comment.querySelector('.author_name').textContent = 'Bao Tran';
+    document.querySelector('.comments .comment_list').appendChild(comment);
+    area.value = '';
+  });
+});
+`;
+
 const STYLE = `
 .submission-details-header { margin-bottom: 12px; }
 .submission-details-header__heading-and-grades { display: flex; align-items: center; border-bottom: 1px solid #c7cdd1; padding-bottom: 12px; margin-bottom: 12px; }
@@ -165,8 +260,6 @@ const STYLE = `
 .Button--link { background: none; border: 0; color: #0e68b3; padding: 0; }
 .submission-details-container { border: 1px solid #e8eaec; box-sizing: border-box; display: flex; margin-top: 12px; }
 .submission-details-frame { box-sizing: border-box; flex: 1; }
-.submission-details-comments { box-sizing: border-box; flex: 0 0 280px; border-inline-start: 1px solid #e8eaec; background: #f5f5f5; font-size: 14px; }
-.submission-details-comments .comments { height: 300px; overflow: auto; }
 `;
 
 /** The top page of a student's own submission, or of a teacher who looks at it. */
@@ -183,13 +276,13 @@ export function submissionDetailsPage(options: SubmissionPageOptions = {}): stri
       ? `<a class="Button" href="/courses/${course}/gradebook/speed_grader?assignment_id=${assignment}&amp;student_id=${user}" target="_blank" rel="noopener"><i class="icon-speed-grader" aria-hidden="true"></i> SpeedGrader</a>`
       : `<a href="/courses/${course}/assignments/${assignment}#submit" class="Button Button--primary"${options.noAttemptsLeft ? ' disabled' : ''}>Re-submit Assignment</a>`;
   return `<!doctype html>
-<html lang="en" dir="ltr"><head><meta charset="utf-8"><title>Reflection Paper #1: Submission Details</title>
-<style>${CSS}${STYLE}${RUBRIC_STYLE}</style>
+<html lang="${options.rtl ? 'ar' : 'en'}" dir="${options.rtl ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"><title>Reflection Paper #1: Submission Details</title>
+<style>${CSS}${STYLE}${COMMENT_STYLE}${LAYOUT_RULES}${RUBRIC_STYLE}</style>
 <script>INST = { environment: 'production' }; ENV = { current_user_id: '5501', SUBMISSION: { assignment_id: '${assignment}', user_id: '${user}' } };</script>
-${hasHolder ? `<script>${RUBRIC_SCRIPT}</script>` : ''}</head><body>
+${hasHolder ? `<script>${RUBRIC_SCRIPT}</script>` : ''}<script>${COMMENT_SCRIPT}</script></head><body class="${options.menu === 'open' ? 'primary-nav-expanded course-menu-expanded' : 'primary-nav-expanded'}">
 <div id="application" class="ic-app"><div id="wrapper" class="ic-Layout-wrapper"><div id="main" class="ic-Layout-columns">
-<div class="ic-Layout-watermark" aria-hidden="true"></div><div id="left-side" class="ic-app-course-menu" style="display: none"></div>
-<div id="not_right_side" class="ic-app-main-content"><div id="content-wrapper" class="ic-Layout-contentWrapper"><div id="content" class="ic-Layout-contentMain" role="main" style="max-width:1100px;margin:0 auto;padding:24px">
+<div class="ic-Layout-watermark" aria-hidden="true"></div><div id="left-side" class="ic-app-course-menu"${options.menu === 'open' ? '' : ' style="display: none"'}><div id="sticky-container" class="ic-sticky-frame"><ul id="section-tabs"><li><a href="/courses/${course}" class="home">Home</a></li><li><a href="/courses/${course}/assignments" class="assignments active">Assignments</a></li></ul></div></div>
+<div id="not_right_side" class="ic-app-main-content"><div id="content-wrapper" class="ic-Layout-contentWrapper"><div id="content" class="ic-Layout-contentMain" role="main">
   <div class="submission-details-header submission_details">
     <div class="submission-details-header__heading-and-grades">
       <h1 class="submission-details-header__heading submission_header">Submission Details</h1>
@@ -217,17 +310,53 @@ ${hasHolder ? `<script>${RUBRIC_SCRIPT}</script>` : ''}</head><body>
       <div style="background-color: #fff; height: 100%">
         <a href="#" class="comments_link" style="display: none;">Comments</a>
         <div class="comments" style="height: 100%">
-          <div class="comment_list" aria-live="polite" style="padding: 10px; clear: right;">
-            <div class="comment" id="submission_comment_201" style="margin-bottom: 10px;">
-              <div class="comment" style="color: #444;"><span class="comment_content" style="white-space: pre-wrap;">You selected an interesting and ambitious topic and found useful evidence about labor conditions within the anime industry.</span></div>
+          <button type="button" class="btn button-secondary cancel_comment_button" style="display: none; float: right; margin-right:0 !important;">Delete</button>
+          <div class="comment_list" aria-live="polite" style="padding: 10px; clear:right;">
+            ${
+              options.noComments
+                ? ''
+                : `<div class="comment" id="submission_comment_201" style="margin-bottom: 10px;">
+              <div class="comment" style="color: #444;"><span class="comment_content" style="white-space: pre-wrap;">${options.commentHtml ?? 'You selected an interesting and ambitious topic and found useful evidence about labor conditions within the anime industry.'}</span></div>
+              <div class="comment_attachments" style="text-align: right; margin-right: 10px;"></div>
               <div class="comment_author_and_date" style="text-align: right; font-size: 0.8em;"><span class="author_name">Teacher</span>, <span class="posted_at">Sep 20 at 10:00am</span></div>
+            </div>`
+            }
+          </div>
+          <div class="comment" id="comment_blank" style="display: none; margin-bottom: 10px;">
+            <span class="comment" style="color: #444; white-space: pre-wrap;"></span>
+            <div class="comment_attachments" style="text-align: right; margin-right: 10px;"></div>
+            <div style="text-align: right; font-size: 0.8em; color: #888;">
+              <span class="author_name">&nbsp;</span>,
+              <span class="posted_at">&nbsp;</span>
+            </div>
+          </div>
+          <div style="padding: 10px;${options.noCommentForm ? ' display: none;' : ''}" id="add_comment_form">
+            <label class="add_a_comment">
+              <strong>Add a Comment:</strong>
+              <div id="textarea-container">
+                <textarea class="ic-Input grading_comment"></textarea>
+                <span id="emoji-picker-container"></span>
+              </div>
+              <div id="textarea-error-container"></div>
+              <div id="emoji-quick-picker-container"></div>
+            </label>
+            <div class="comment_attachments"></div>
+            <div class="clearfix" style="text-align: right;">
+              <a href="#" class="media_comment_link media-comment pull-left">Media Comment</a>
+              <a href="#" style="float: right;" class="attach_comment_file_link">Attach File</a>
+              <div class="clear"></div>
+            </div>
+            <div class="button-container">
+              <button type="button" class="Button Button--primary save_comment_button">Save</button>
             </div>
           </div>
         </div>
       </div>
     </div>
   </div>
-</div></div></div></div></div></div><div id="aria_alerts" class="hide-text affix" role="alert" aria-live="assertive"></div></body></html>`;
+</div></div>
+<div id="right-side-wrapper" class="ic-app-main-content__secondary"><aside id="right-side"></aside></div>
+</div></div></div></div><div id="aria_alerts" class="hide-text affix" role="alert" aria-live="assertive"></div></body></html>`;
 }
 
 /** The files frame with file rows. */

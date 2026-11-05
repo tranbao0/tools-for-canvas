@@ -17,6 +17,16 @@ const SESSION_PATH = '/api/v1/canvadoc_session';
 const SESSION_QUERY = /^\?(?:blob=[^&]+&hmac=[^&]+|hmac=[^&]+&blob=[^&]+)$/;
 const MAX_TEXT = 255;
 
+/** The similarity score of a file, as the originality cell of its row shows it. */
+export interface FrameReport {
+  /** The score text, such as "5.0%", or the title of the link, or "Similarity report". */
+  text: string;
+  /** The color class of the score: `none`, `acceptable`, `warning`, `problem`, `failure`, `pending` or `error`. */
+  state: string | null;
+  /** The checked address of the report, or `null` when the cell has no link. */
+  url: string | null;
+}
+
 export interface FrameFile {
   fileId: string;
   name: string;
@@ -28,6 +38,8 @@ export interface FrameFile {
   unread: boolean;
   /** The checked address of the session. It is never put on the page. */
   sessionUrl: string | null;
+  /** The similarity score of the row, or `null` when the row has none. */
+  report: FrameReport | null;
 }
 
 /**
@@ -73,29 +85,108 @@ export function sameSubmissionPath(a: string, b: string): boolean {
 const SCORE_MARKS =
   '.turnitin_score_container,.turnitin_similarity_score,.vericite_score_container_caret';
 
+/** The originality cell of a file row, which the view reads and shows itself. */
+const SCORE_CELL = 'td.file-upload-submission-turnitin';
+
 /** Whether a cell holds anything that Canvas drew: text, a link, an image or an icon. */
 function hasContent(cell: Element): boolean {
   return (
     (cell.textContent ?? '').trim() !== '' ||
-    cell.querySelector('a,img,svg,[class*=score]') !== null
+    cell.querySelector('a,img,svg,i,[class*=score]') !== null
   );
 }
 
 /**
- * Whether the frame shows a similarity score or report link that the view would hide. Canvas draws
- * the originality cell with the page, and fills the report status cell with a script a moment later.
+ * Whether the frame shows a similarity report that the view cannot show. The originality cell of a
+ * matched file row is not one: the view reads it (`readReport`), so `handled` holds those cells.
+ * Every other mark counts: a mark in a row that does not match, one outside a file row such as the
+ * report of a text entry, and the report status cell, which Canvas fills with a script a moment
+ * after the load.
  */
-function hasOriginality(doc: Document): boolean {
+function hasOriginality(doc: Document, handled: ReadonlySet<Element>): boolean {
   for (const mark of doc.querySelectorAll(SCORE_MARKS)) {
     // A text entry is user content, and its markup is no report.
-    if (mark.closest('#submission_preview,.user_content') === null) return true;
+    if (mark.closest('#submission_preview,.user_content') !== null) continue;
+    const cell = mark.closest(SCORE_CELL);
+    if (cell === null || !handled.has(cell)) return true;
   }
-  for (const cell of doc.querySelectorAll(
-    'td.file-upload-submission-turnitin,td.asset-report-status-container',
-  )) {
-    if (hasContent(cell)) return true;
+  for (const cell of doc.querySelectorAll(`${SCORE_CELL},td.asset-report-status-container`)) {
+    if (!handled.has(cell) && hasContent(cell)) return true;
   }
   return false;
+}
+
+/** The path of a report: `turnitin`, `vericite` or `originality_report` and an asset string. */
+const REPORT_PATH =
+  /^(\/courses\/\d+(?:~\d+)?\/assignments\/\d+(?:~\d+)?\/submissions\/\d+(?:~\d+)?)\/(?:turnitin|vericite|originality_report)\/[A-Za-z0-9_~-]+$/;
+/** The query of a report address: none, or the attempt. */
+const REPORT_QUERY = /^(?:\?attempt=\d+)?$/;
+
+/**
+ * The address of a similarity report, or `null`. It must be on the saved Canvas, with no hash and
+ * no credentials, on one of the three report routes of the submission of this page
+ * (`config/routes.rb`), and with no query but the attempt.
+ */
+export function reportUrl(value: string, origin: string, pagePath: string): string | null {
+  if (value.includes('#')) return null;
+  try {
+    const url = new URL(value, origin);
+    if (url.origin !== origin || url.username !== '' || url.password !== '') return null;
+    const route = REPORT_PATH.exec(url.pathname);
+    if (!route || !sameSubmissionPath(route[1]!, pagePath)) return null;
+    // The query is read as text, because a Firefox content script cannot iterate its parameters.
+    return REPORT_QUERY.test(url.search) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+const SCORE_STATE = /(?:^|\s)(none|acceptable|warning|problem|failure|pending|error)_score(?:\s|$)/;
+const MAX_REPORT_TEXT = 40;
+
+/** The text of an element without its tooltip (VeriCite writes one inside the link). */
+function textWithoutTooltip(element: Element): string {
+  const copy = element.cloneNode(true) as Element;
+  for (const tip of copy.querySelectorAll('.tooltip_wrap')) tip.remove();
+  return trimmed(copy.textContent, MAX_REPORT_TEXT);
+}
+
+/**
+ * What the originality cell of a matched row shows. `report` is `null` for an empty cell, and
+ * `readable` is false when the cell holds something that the view cannot show: a link with an
+ * address that fails the check, or content that gives neither a score text nor a link.
+ */
+function readReport(
+  cell: Element | null,
+  origin: string,
+  pagePath: string,
+): { report: FrameReport | null; readable: boolean } {
+  if (cell === null || !hasContent(cell)) return { report: null, readable: true };
+  const link = cell.querySelector('a');
+  const score = cell.querySelector('.turnitin_similarity_score');
+  const scoreText = score === null ? '' : textWithoutTooltip(score);
+  if (link === null && scoreText === '') return { report: null, readable: false };
+  const href = link?.getAttribute('href');
+  const url = href == null ? null : reportUrl(href, origin, pagePath);
+  if (link !== null && url === null) return { report: null, readable: false };
+  const classes = [
+    score,
+    cell.querySelector('.turnitin_score_container_caret'),
+    cell.querySelector('.vericite_score_container_caret'),
+  ];
+  let state: string | null = null;
+  for (const element of classes) {
+    const found = SCORE_STATE.exec(element?.getAttribute('class') ?? '');
+    if (found) {
+      state = found[1]!;
+      break;
+    }
+  }
+  const title = trimmed(link?.getAttribute('title'), MAX_REPORT_TEXT);
+  return {
+    report: { text: scoreText || title || 'Similarity report', state, url },
+    readable: true,
+  };
 }
 
 /**
@@ -103,8 +194,9 @@ function hasOriginality(doc: Document): boolean {
  * - `pending`: it does not show the preview page yet, such as the blank page before the load.
  * - `failed`: it cannot be read, such as a frame that went to another origin.
  * - `ready`: the file rows, and what the view cannot show of the frame. `complete` is false when a
- *   file row does not match, a preview button has no usable session address, or a similarity report
- *   shows. `snapshot` is true when the frame holds an image, such as the snapshot of a URL.
+ *   file row does not match, a preview button has no usable session address, the originality cell of
+ *   a row cannot be read, or a similarity report shows that is not in the originality cell of a
+ *   matched row. `snapshot` is true when the frame holds an image, such as the snapshot of a URL.
  */
 export type FrameRead =
   | { state: 'pending' }
@@ -124,7 +216,8 @@ export function readFrame(frame: HTMLIFrameElement, origin: string, pagePath: st
     if (!sameSubmissionPath(shown.pathname, pagePath) || shown.searchParams.get('preview') !== '1')
       return { state: 'pending' };
     const files: FrameFile[] = [];
-    let complete = !hasOriginality(doc);
+    let complete = true;
+    const handled = new Set<Element>();
     for (const row of doc.querySelectorAll(
       'table.file-upload-submission-table tr.file-upload-submission',
     )) {
@@ -156,6 +249,10 @@ export function readFrame(frame: HTMLIFrameElement, origin: string, pagePath: st
       for (const other of row.querySelectorAll('[data-canvadoc_session_url],.modal_preview_link')) {
         if (other !== preview) complete = false;
       }
+      const cell = row.querySelector(SCORE_CELL);
+      const { report, readable } = readReport(cell, origin, pagePath);
+      if (cell !== null) handled.add(cell);
+      if (!readable) complete = false;
       files.push({
         fileId: target.fileId,
         name: trimmed(link.textContent),
@@ -165,12 +262,36 @@ export function readFrame(frame: HTMLIFrameElement, origin: string, pagePath: st
         feedbackLabel: preview ? trimmed(preview.textContent, 40) || null : null,
         unread: row.querySelector('.submission_annotation.unread_indicator') !== null,
         sessionUrl: session,
+        report,
       });
     }
+    if (hasOriginality(doc, handled)) complete = false;
     return { state: 'ready', files, complete, snapshot: doc.querySelector('img') !== null };
   } catch {
     return { state: 'failed' };
   }
+}
+
+/** Whether two lists show the same files, so the view draws nothing again. */
+export function sameFiles(a: readonly FrameFile[], b: readonly FrameFile[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((file, index) => {
+      const other = b[index]!;
+      return (
+        file.fileId === other.fileId &&
+        file.name === other.name &&
+        file.size === other.size &&
+        file.feedbackLabel === other.feedbackLabel &&
+        file.unread === other.unread &&
+        file.sessionUrl === other.sessionUrl &&
+        file.report?.text === other.report?.text &&
+        file.report?.state === other.report?.state &&
+        file.report?.url === other.report?.url &&
+        (file.report === null) === (other.report === null)
+      );
+    })
+  );
 }
 
 /** A size as Rails `number_to_human_size` writes it, for example "118 KB". */
@@ -191,5 +312,6 @@ export function filesFromDetails(files: readonly AssignmentFile[]): FrameFile[] 
     feedbackLabel: null,
     unread: false,
     sessionUrl: null,
+    report: null,
   }));
 }

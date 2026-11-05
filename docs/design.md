@@ -3059,18 +3059,34 @@ So a student switches pages to read the instructions next to the feedback on a f
 
 1. **What shows where.**
    - **Submission Details page, own submission.**
-     - Canvas's left content area is hidden: the files frame with the "Files" table, which the owner crossed out on 2026-11-03.
-     - In its place the extension shows "Instructions" and "Your files".
-     - "Instructions" is the assignment description, sanitized, in full, with "Show more" only when it is longer than about 15 lines.
-     - "Your files" lists each submitted file with its name and size.
-       A click on a file name opens the file in the file viewer pane (decision 25).
-       A file that Canvas can preview has a "View Feedback" button (or "Preview" when the teacher left no notes), right-aligned, with Canvas's own label and its unread dot.
-       The button opens the DocViewer session of Canvas in a docked feedback pane.
+     - Canvas's strip goes away: the files frame with the "Files" table, which the owner crossed out on 2026-11-03, and the comments column.
+       This also holds when a file has a Turnitin score.
+     - A "Submission" box stands in the free space right of the content.
+       It sits in Canvas's own right column, which Canvas draws empty on this page and hides.
+       The owner approved a mockup of the box.
+     - The box has the heading "Submission", then the status line in bold, the date, the files and the comments.
+       - The status line follows the header of Canvas's own Submission box: "Excused!", "Submitted!" with a check icon, or "Not Submitted!" with an x icon.
+         "Submitted!" shows when the submission has a time or a type.
+         An assignment that takes only `none`, `on_paper`, `not_graded` or `external_tool` has no status line, unless it is excused.
+       - The date is Canvas's form, such as "Oct 15 at 8:59pm" or "Nov 1 at 10am", in the Canvas time zone of the reply.
+         The year follows the day ("Oct 15, 2025 at 8:59pm") when it differs from the current year.
+         " (late)" follows the date of a late submission.
+       - Each submitted file has a file icon and a link "View NAME", which opens the file in the file viewer pane (decision 25).
+         With the File viewer switch off, the link says "Download NAME", because the pane cannot take it.
+         The switch works without a reload.
+       - Under the link, one line shows the size, the similarity score and the feedback button.
+         The button is "View Feedback" (or "Preview" when the teacher left no notes), with Canvas's own label and its unread dot.
+         It opens the DocViewer session of Canvas in a docked feedback pane.
+         The score has Canvas's look and color, and it opens the report in a new tab (item 5, "The similarity score").
+       - "Comments:" shows Canvas's own comments list and form, moved into the box (item 4).
+       - The box has no "Submission Details" link, because it would point to this page.
+     - In the content area the extension shows "Instructions", and the rubric under them when the page has one (RB1).
+       "Instructions" is the assignment description, sanitized, in full, with "Show more" only when it is longer than about 15 lines.
+       There is no "Your files" section, because the box holds the files.
      - A text entry shows its text, and a URL submission shows its link, under "Your submission".
-       A submission with no files has no "Your files" heading.
-     - A submission of another type (media recording, quiz, LTI tool, student annotation, discussion) keeps Canvas's own left area, visible and untouched.
-       The extension adds only the "Instructions" block, with the same look and the same "Show more" rule, above the whole content area.
-       "Your files" and "Your submission" do not show for these types.
+     - A submission of another type (media recording, quiz, LTI tool, student annotation, discussion) keeps Canvas's own left area, visible and untouched, and Canvas's comments column stays in its place.
+       The extension adds only the "Instructions" block, with the same look and the same "Show more" rule, above the whole content area, and the box with only the status line and the date.
+       "Your submission" and the files do not show for these types.
        The owner decided this on 2026-11-03: the view cannot show these types safely, and the instructions belong at the top of every Submission Details page.
      - Canvas's primary button of the title row ("Submit Assignment" or "Re-submit Assignment") is hidden, and the extension adds a button of its own beside it.
        The new button says "Go to assignment" and opens the assignment page, with no hash, so Canvas does not open the upload form by itself.
@@ -3078,8 +3094,8 @@ So a student switches pages to read the instructions next to the feedback on a f
        Canvas's button goes back when the switch goes off.
        A page where Canvas draws no such button gets no new button.
        The owner decided this on 2026-11-04.
-     - Everything else on the page stays Canvas's own and untouched: the "Submission Details" header, the grade, "Show Rubric", the title, "submitted ..." and the comments column on the right.
-       Only when the view shows Canvas's own rubric (RB1), the header's "Show Rubric" and its unread mark are hidden, and the rubric holder moves under the files.
+     - Everything else on the page stays Canvas's own and untouched: the "Submission Details" header, the grade, "Show Rubric", the title and "submitted ...".
+       Only when the view shows Canvas's own rubric (RB1), the header's "Show Rubric" and its unread mark are hidden, and the rubric holder moves under the instructions.
    - **Assignment page (`/courses/:id/assignments/:id`).**
      - The extension adds no panel.
      - Canvas's own "Submission" sidebar lists each submitted file as a link `Download NAME`.
@@ -3109,35 +3125,75 @@ So a student switches pages to read the instructions next to the feedback on a f
    - The page is the own submission when the user in the path is the user of the record that the background reads with `submissions/self`.
      The two ids are compared as decimal global ids with BigInt, like `normalizeCanvasId`: `s~l` becomes `s * 10^13 + l`.
    - A teacher, an observer, another student, a refused read, a failed read and a record of another assignment all leave the page as Canvas drew it.
-   - The page also stays as it is when an anchor is missing.
+   - The page also stays as it is when an anchor is missing: the two columns of the container, the files frame, or the right column `#right-side`.
+     The right column is `#right-side` in `#right-side-wrapper`, and it counts only outside `#content`.
+     A comment in `#content` can hold elements with the same ids, and the real column comes after the content area.
    - The view replaces Canvas's files frame only when it can show everything that the frame shows.
      In every other case the frame stays, and the view adds only the instructions above it: the fallback rule of item 5.
    - The files frame stays visible until the read has finished, so a page that stays as it is never flickers.
 4. **How the page changes.**
-   - When the view replaces the frame: one `style` element in the head hides `.submission-details-container>.submission-details-frame`, and one host element is added after that frame, in the same flex row, with the comments column on its right.
-   - In the fallback mode of item 5: the hide-frame rule is not added, and the host is added right before `.submission-details-container`, so it sits above the frame and the comments column.
-     The frame iframe and the comments column are not moved or changed.
-     The one style element holds the rubric rules when the page has a rubric that the view shows (RB1), and the rule for Canvas's submit button when that button is on the page.
-     When the page has a rubric that the view shows, the rubric wrapper `div#av-rubric` is added inside `div.submission-details-frame` after the iframe, so that node of Canvas gets a new child.
-     The iframe itself does not move.
-   - In both modes, when Canvas's primary button of the title row is on the page, the same style element also holds one rule that hides it: `.ic-Action-header__Secondary>a.Button--primary[href$="#submit"]{display:none!important}`.
+   - In both modes, one `style` element in the head holds the rules of the page.
+     - `#right-side-wrapper{display:block!important}` shows the right column.
+       Canvas hides it with `#right-side-wrapper{display:none}` and shows it only with the body class `with-right-side`, which the layout sets only when the page gives the column content.
+       The view does not change the body class.
+     - `body:not(.full-width):not(.outcomes):not(.body--login-confirmation):not(.content-only) .ic-Layout-wrapper{max-width:1654px!important}` raises the 1366 px cap of Canvas by the 288 px of the column.
+       On a wide window, the content keeps the width that Canvas gives it, and the box lands in the free space on its right.
+     - Canvas lays the column beside the content only at 1140 px or wider with the course menu open, and at 992 px or wider with it closed.
+       Below that, the column stacks under the content, and so does the box.
+       The owner accepts this.
+   - The view adds two hosts.
+     - The box is `div#av-submission-box`, with the attribute `data-av-own`, an open shadow root and the attribute that lets the file pane take the clicks on its file links (decision 25).
+       It is the last child of `#right-side`, and it has the role "region" with the label "Submission".
+       A click runs a box action (View Feedback, "Show more") only when its target is inside the shadow root of the host.
+       The listener of the shadow root also sees the clicks on the comments, which a slot shows from the light DOM, and a comment can hold a `data-action` of its own.
+     - The instructions are `div#av-submission-details`, with the same attributes and the label "Instructions".
+       In the replace mode, it is added after the frame in the same container.
+       The container then holds the frame, hidden, and the host, so the host has the whole width.
+       In the mode of item 5 ('above'), it is added right before `.submission-details-container`, so it sits above the frame and the comments column.
+   - In the replace mode only, one more rule hides `.submission-details-container>.submission-details-frame`.
+     The rule comes only after the box and the comments column stand in the page.
+     The frame stays in the page, hidden, so the view can read it.
+     The frame iframe is never moved or changed.
+   - A mount that throws an error gives the page back and mounts the mode 'above' of item 5 in its place, and the view stays in that mode.
+     A mount of the mode 'above' that throws too gives the whole page back as Canvas drew it: the hosts, the rules of the style element (the right column, the width cap, the hidden button), the own link and the watch of the frame all go.
+     Both log one line, and no error leaves the view unhandled.
+   - In the replace mode, Canvas's own comments column moves into the box (`comments.ts`).
+     - The node `div.submission-details-comments` moves, and a copy never replaces it.
+       It goes into a wrapper `div#av-comments` with the attribute `data-av-own`.
+       The wrapper is a light DOM child of the box host, and a slot of the box shows it under "Comments:".
+       A comment mark `av-comments-home` stays where the node was, as a child of the container.
+     - The node never goes into the shadow tree.
+       Canvas's script finds its parts with document lookups and binds a document level change listener, so Save, Attach File, Media Comment and the emoji picker work only in the light DOM.
+     - Rules of the same style element, scoped by `#av-comments` with `!important`, fit the node to the box: no border, no fixed height, no padding on the list and the form, and a transparent background.
+       The text takes its colors from the box, so the dark theme stays readable.
+     - The list `.comments` keeps `overflow-x:auto`, so a wide table in a comment scrolls inside the box and the page gets no horizontal scroll.
+     - The host of the box sets `direction:ltr` and `lang="en"` for its own English text, and the comments would inherit both through the slot.
+       The wrapper `#av-comments` takes the `dir` and the `lang` of the `html` element of the page, so a right-to-left Canvas shows the comments right to left.
+       The line "No Comments" has `lang="en"`, because the extension writes it in English.
+     - The wrapper also holds one line "No Comments" of its own.
+       A `:has` rule shows it only while `.comment_list` holds no comment, also right after Canvas adds one on Save, with no observer.
+     - A change to the 'above' mode, and the switch off, put the same node back at its mark.
+       The text that the student typed stays, and the focus goes back to the same control when it was inside.
+     - Moving the column never changes the rubric: the holder moves as RB1 says.
+   - In both modes, when Canvas's primary button of the title row is on the page, the style element also holds one rule that hides it: `.ic-Action-header__Secondary>a.Button--primary[href$="#submit"]{display:none!important}`.
      The view adds one link right after Canvas's button, in the same container `.ic-Action-header__Secondary`.
      The link has the attribute `data-av-own` and the classes `Button Button--primary`, so it takes Canvas's own button look.
      Its text is exactly "Go to assignment".
      Its address is the assignment page on the origin of the page, built from the course id and the assignment id of the page, with no hash and no query.
      The link has no `disabled` attribute, because it only navigates, so it also works when Canvas disabled its button for no attempts left.
      Without Canvas's button on the page, the view adds neither the rule nor the link.
-     A change between the two modes draws the link again, so the page never has two.
-   - Apart from the moved rubric holder, and the mark and the title after a successful read request (see "The rubric in the view"), no node of Canvas gets an attribute or a style, and the frame is never moved, because a moved frame reloads.
-   - Turning the switch off removes the style, the host, the own link, the rubric wrapper and an open feedback pane, and puts the rubric holder back, so the content area is the same as Canvas drew it.
+     A change between the two modes keeps the same rule and the same link, so a keyboard focus on the link stays, and the page never has two.
+   - Apart from the moved rubric holder, the moved comments column, and the mark and the title after a successful read request (see "The rubric in the view"), no node of Canvas gets an attribute or a style, and the frame is never moved, because a moved frame reloads.
+   - Turning the switch off removes the style, the hosts, the own link, the rubric wrapper, the comments wrapper and an open feedback pane, and puts the rubric holder and the comments column back, so the page is the same as Canvas drew it, with no reload.
      One exception stays: after a successful read request for the rubric comments, the unread mark keeps `display: none` and the link keeps its blank title, as they are after Canvas's own click, because the comments are read in Canvas.
 5. **Where the files come from.**
-   - The rows come from the same-origin files frame `iframe#preview_frame`, once its document is the preview page and has loaded: `tr.file-upload-submission`, the file link, the size text, the label of the button and the unread mark.
+   - The rows come from the same-origin files frame `iframe#preview_frame`, once its document is the preview page and has loaded: `tr.file-upload-submission`, the file link, the size text, the label of the button, the unread mark and the originality cell.
    - A link counts only when it is a file of the submission of this page.
      The page path and the path of the link are compared segment by segment as decimal global ids, because a shard student's page can write `2~123` where the frame writes `20000000000123`.
    - Until the frame has loaded, an upload shows the files of the details (`attachments` with `display_name` and `size`) with no "View Feedback" button, and the frame is hidden.
    - **The fallback rule.**
-     When the view cannot show everything that the frame shows, it uses the mode of item 4 for "any other type": the instructions above `.submission-details-container`, the frame visible and untouched, no hide-frame rule.
+     When the view cannot show everything that the frame shows, it uses the mode of item 4 for "any other type": the instructions above `.submission-details-container`, the frame and the comments column visible and untouched, no hide-frame rule.
+     The box stays, with only the status line and the date.
      The mode applies to a submission type that the view does not show (media recording, quiz, LTI tool, student annotation, discussion, and any other type), and to these cases once the frame has loaded:
      - The frame cannot be read, is on another origin, or does not show the preview page of this submission within 10 seconds.
      - An upload has attachments in the details but no file row of the frame matches.
@@ -3145,15 +3201,39 @@ So a student switches pages to read the instructions next to the feedback on a f
      - A file row has a preview button (`td.file-upload-submission-attachment a.modal_preview_link`) whose session address fails the strict check, for example with an extra `access_token`.
      - A file row holds any `[data-canvadoc_session_url]` or `.modal_preview_link` that the selector above did not find, such as a button with a renamed class.
        Canvas's own `loadDocPreview` reads the data attribute, so the attribute is the stable signal.
-     - The frame shows a similarity report: `.turnitin_score_container`, `.turnitin_similarity_score`, `.vericite_score_container_caret`, or content in `td.file-upload-submission-turnitin` or `td.asset-report-status-container`.
+     - The originality cell of a matched file row (`td.file-upload-submission-turnitin`) holds a link whose address fails the check, or content that gives neither a score text nor a link.
+       The student never loses a report: when the view cannot show it, Canvas's frame shows it.
+     - The frame shows a similarity mark (`.turnitin_score_container`, `.turnitin_similarity_score`, `.vericite_score_container_caret`) outside the originality cell of a matched file row, such as the report of a text entry, or any content in a `td.asset-report-status-container`, which is the cell of the LTI 1.3 asset processors.
        Canvas fills the report status cell with a script after the load, so the view watches the frame for 10 seconds after each load and uses the mode when the cell fills.
        Marks inside the student's own text entry are no report.
      - A URL submission whose frame shows a snapshot image.
      The view returns to the replacing mode if a later load of the frame shows nothing of this.
      When Canvas draws a report after the view has shown, the page switches to Canvas's frame, and an open feedback pane may close with the view's host, because Canvas's own button is then visible.
      The owner accepts this (2026-11-03).
-   - A re-read of the frame draws the list of files again only when the files changed.
-     So the keyboard focus in "Your files" stays, and a file whose feedback the student opened keeps its unread dot off until the page reloads.
+   - A re-read of the frame draws the list of files again only when the files changed, the score included.
+     So the keyboard focus in the box stays, and a file whose feedback the student opened keeps its unread dot off until the page reloads.
+   - **The similarity score.**
+     - The view reads the originality cell of each matched row, and shows the score in the box.
+       The forms of Canvas are `app/views/submissions/_originality_score.html.erb` and `app/views/shared/_originality_score_icon.html.erb`.
+       - The classic form is `span.turnitin_score_container` with `span.turnitin_score_container_caret.<state>_score` and `a.not_external.turnitin_similarity_score.<state>_score` that shows "5.0%" and opens in a new tab.
+         A report that is not ready has the same link with a blank body.
+       - A report with an error is a link with the message as its `title` and an image.
+       - The VeriCite form is the classic form with `span.vericite_score_container_caret` and a tooltip inside the link, which the view leaves out of the text.
+       - The updated form is `a.turnitin_score_container.tooltip` (a `span` when it has no address), with an `i` icon and `span.turnitin_similarity_score`.
+         It has no state class.
+     - Each file gets a `report` with three fields.
+       `text` is the score text, else the title of the link cut to 40 characters, else "Similarity report".
+       `state` is the name in a class `none`, `acceptable`, `warning`, `problem`, `failure`, `pending` or `error` followed by `_score`, on the score element or the caret, else none.
+       `url` is the checked address, or none when the cell has no link.
+     - The address check is strict, like the check of a session address, and it reads the query as text.
+       The address must be on the saved origin, with no hash and no credentials, and on one of the routes `/courses/:c/assignments/:a/submissions/:s/turnitin/:asset`, `/vericite/:asset` or `/originality_report/:asset`.
+       The first three ids must be the page's ids, compared as decimal global ids.
+       `:asset` matches `^[A-Za-z0-9_~-]+$`.
+       The query is empty, or `attempt=` and digits only.
+     - The box shows the score as a link `a.av-score` that opens in a new tab with `rel="noopener noreferrer"` and the title "Similarity score", or as a `span` when the cell has no link.
+       It has Canvas's look: bold 0.75rem, 2px 4px padding, 3px radius, black text.
+       The backgrounds are `none` #397af4, `acceptable` #009917, `warning` #897b01, `problem` #c86604, and `failure` #ad393a with white text.
+       A `pending` or `error` score, and a score with no state, have a gray background and the text color #273540, as in Canvas.
    - The size of the details is written like Rails `number_to_human_size`: base 1024, three significant digits, for example "118 KB".
 6. **The feedback pane.**
    - Canvas opens "View Feedback" in a dialog inside the files frame, which the view hides.
@@ -3177,6 +3257,7 @@ So a student switches pages to read the instructions next to the feedback on a f
 7. **Settings.** The "One assignment view" switch in the tools settings turns all of this on and off at once, without a reload.
    - Off gives the page back exactly as Canvas drew it.
    - The sidebar of the assignment page needs the "File viewer" switch too (see "Assignment page" in item 1).
+   - On the Submission Details page, the "File viewer" switch changes only the label of the file links in the box ("View NAME" or "Download NAME"), and it does not turn the view off.
 
 8. **Data.**
    - The background reads one assignment with `GET /api/v1/courses/:id/assignments/:id?include[]=submission&include[]=can_submit` and the student's own submission with `GET /api/v1/courses/:id/assignments/:id/submissions/self?include[]=submission_comments&include[]=rubric_assessment`.
@@ -3195,8 +3276,11 @@ So a student switches pages to read the instructions next to the feedback on a f
   - An assignment page (`/courses/:id/assignments/:id`) gets it too, for the Submission box.
   - The Grades list and the page of an anonymous submission (`anonymous_submissions/:id`) get nothing.
   - A newer injection retires the copy of an earlier one, and a start removes the nodes that a destroyed copy left (every node and mark starts with `data-av-`).
-    The removal looks only in the parts that the view of the page owns: the content of the Submission box (`#sidebar_content .details .content`, never its `.comments`) on the assignment page, the head, the host and the one header container `.ic-Action-header__Secondary` on the Submission Details page, and the head and the lists of rows on the Assignments list.
-    A pane that an earlier copy docked in the body (`#tools-feedback`, `#tools-turn-in`) is removed by its id when it has `data-av-own`, on the Submission Details page and on the Assignments list.
+    The removal looks only in the parts that the view of the page owns: the content of the Submission box (`#sidebar_content .details .content`, never its `.comments`) on the assignment page, the head, the two hosts, the one header container `.ic-Action-header__Secondary` and the right column `#right-side` (and nothing more) on the Submission Details page, and the head and the lists of rows on the Assignments list.
+    A pane that an earlier copy docked in the body (`#tools-feedback`, `#tools-turn-in`) is removed by its id when it has `data-av-own` and is a direct child of the body, on the Submission Details page and on the Assignments list.
+    The host `#av-submission-details` is removed by its id when it has `data-av-own` and stands where the view puts it: right before the container, or right after the files frame in it.
+    The rubric wrapper `#av-rubric` is removed by its id when it has `data-av-own` and is a child of that host or of the files frame.
+    A node with one of these ids inside a comment is never removed, even with `data-av-own`.
     A description or a comment of another author can hold such marks, and the removal never reaches it.
     A holder of Canvas's nodes is given back only when it has `data-av-own` and is a direct child of a link in the box.
   - The script follows the switch, the saved address and the Theme setting through the page channel.
@@ -3333,13 +3417,51 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 - Same file, lines 744-745: the hash `#rubric` clicks `.assess_submission_link:visible:first`.
 - `app/models/rubric_association.rb`, lines 196-209: a student can assess for `user_can_assess_for?` only as the assessor of a peer review request, or in a self assessment, so a student's own page has no "Save Comment" button in the holder in the normal case.
 
+**Verified source facts for the right column and the box:**
+
+These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
+- `app/views/submissions/show.html.erb`, line 114: the page calls `provide_blank :right_side`, so it gives the right column no content.
+- `app/views/layouts/application.html.erb`:
+  - Line 57: `right_side = (yield :right_side).presence`.
+  - Line 94: the body gets the class `with-right-side` only when the right side is not blank.
+    The Submission Details page has no such class.
+  - Lines 273-277: `div#right-side-wrapper.ic-app-main-content__secondary` holds `aside#right-side`, and the layout draws both on every page.
+    The wrapper is a child of `div#not_right_side.ic-app-main-content`, after `div#content-wrapper`.
+- The production CSS of Canvas (`common.css`, downloaded on 2026-10-27), by the lines of the list with one rule per line:
+  - Lines 2369 and 2187: `#right-side-wrapper{display:none;position:relative}` and `.with-right-side #right-side-wrapper{display:block}`.
+  - Lines 2224-2232: `.ic-app-main-content__secondary` has 24 px padding and a `translate3d` transform.
+    `.ic-app-main-content` is a flex row only at 1140 px or wider with the course menu open, and at 992 px or wider with it closed.
+    The column is 288 px wide there, with 24 px of left padding.
+  - Line 2248: `body:not(.full-width):not(.outcomes):not(.body--login-confirmation):not(.content-only) .ic-Layout-wrapper{max-width:1366px}`.
+  - Line 2372: `#right-side h2` has 1rem, bold text, a 1px #e8eaec line under it, 6px of padding and 6px of margin below.
+    The heading of the box copies this.
+  - Lines 2566-2573: the look and the colors of `.turnitin_similarity_score`, with the gray of the pending and error states.
+- `app/views/assignments/_submission_sidebar.html.erb`:
+  - Lines 29-43: the heading "Submission", then the header: "Excused!" for an excused submission, else, only when `@assignment.expects_submission?`, "Submitted!" with `icon-check` or "Not Submitted!" with `icon-x`.
+  - Lines 50-55: the date, written by `datetime_string`, and "%{submitted_at} (late)" for a late submission.
+  - The same file draws the link "Submission Details", which the box leaves out because it would point to the page itself.
+- `app/views/submissions/show_preview.html.erb`:
+  - Lines 266-272: the originality cell of a file row, `td.file-upload-submission-turnitin`, renders only the originality partial.
+  - Lines 205-216: for a text entry, the same partial draws its score in the `div` above `#submission_preview`, outside any file row.
+- `app/models/submission.rb`, lines 2967-2969: `to_param` is `user_id`, so the third id of a report address is the user of the page's path.
+- `config/routes.rb`, lines 302-306: the routes `originality_report/:asset_string`, `turnitin/:asset_string` and `vericite/:asset_string` inside `resources :submissions`.
+- `app/views/submissions/show.html.erb`, from line 334: the comments column is `div.submission-details-comments` with `div.comments`, `div.comment_list`, the hidden blank templates, and `div#add_comment_form` with the label, the textarea, "Media Comment", "Attach File" and the Save button.
+  Canvas draws no text for an empty list, so the wrapper of the view holds the line "No Comments".
+- `ui/features/submissions/jquery/index.tsx`:
+  - Lines 113-115, 393-394, 402-406, 502-516, 684-693 and 708: the script finds the comments list, the form, the Save button and the links with document lookups, such as `$('.comments .comment_list')`, `$('.grading_comment')` and `$('.save_comment_button')`.
+    Line 402 binds a click directly on the Save button.
+    Line 406 binds `comment_change` on the document.
+    Line 508 adds a document level `change` listener for the file inputs of the form.
+    So the column works only in the light DOM, as the same node.
+  - Lines 310-316: `windowResize` sets the height of the frame, a `max-height` on `.comments`, and `max-height`, `overflow` and `z-index: 5` on the rubric holder.
+
 **The rubric in the view (RB1):**
 
 - The view shows Canvas's own holder, not a copy.
   `rubric.ts` moves the same node (so the script of Canvas keeps its handlers) into a wrapper `div#av-rubric` and leaves a comment mark `av-rubric-home` where the holder was.
-  The wrapper is a child of the host, and a slot of the host shows it under "Your files".
+  The wrapper is a child of the host, and a slot of the host shows it under the instructions and "Your submission".
   Where the frame stays (the instructions-above case), the wrapper goes after the frame inside `div.submission-details-frame`, and the frame itself does not move.
-  So the order of the page is: title, "Go to assignment", instructions, files, rubric, comments.
+  So the order of the page is: title, "Go to assignment", instructions, rubric, and the box on the right with the status line, the date, the files and the comments.
 - The holder gets no attribute and no style of its own.
   A rule in the page sheet (`!important`, scoped by `#av-rubric>#rubric_holder`) shows it in the flow, with no absolute place, no maximum height and a transparent background, so it takes the colors of the page.
   The same sheet hides `div.submission-details-header__rubric` (the link and its unread dot) and `a.hide_rubric_link`, because a close button has no use in the page.
@@ -3388,38 +3510,64 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
     On a failure it shows nothing, logs one line and does not send again.
     The shared client retries only a rate limit answer, as for every request, and each retry runs the guard first.
 - `removeStaleView` removes the own link of a dead copy.
-  On the Submission Details page it looks, besides the head and the host, only in the one container `.ic-Action-header__Secondary`, so Canvas's own button there stays with its text.
+  On the Submission Details page it looks, besides the head and the hosts, only in the container `.ic-Action-header__Secondary` and in the right column `#right-side`, so Canvas's own button there stays with its text.
 - `removeStaleView` puts a holder back from the wrapper of an earlier copy of the script before it removes the old view.
+- `removeStaleView` also puts the comments column of a dead copy back from its wrapper to the mark, before any removal.
+  Only a wrapper with the attribute `data-av-own`, inside the box in the right column (found outside `#content`, so a forged pair of ids in a comment never counts), counts, and only a mark that is a child of the container.
+  A comment of another author can hold marks of the view, so the comments must be home before the sweep of the right column, and the sweep never reaches them.
 
 **Fixtures and tests:**
 
 - `tests/fixtures/submission-page.ts` and `tests/fixtures/submission-frame.ts` model the page and the files frame on that markup.
-  The page fixture has a student and a teacher variant, a variant with Canvas's button disabled for no attempts left, a variant with no button in the title row, and a rubric variant with the link, the holder and a small copy of the script of Canvas that handles the holder.
+  - The page fixture has a student and a teacher variant, a variant with Canvas's button disabled for no attempts left, a variant with no button in the title row, and a rubric variant with the link, the holder and a small copy of the script of Canvas that handles the holder.
+  - The page fixture has the real layout of the right column: `#right-side-wrapper` with an empty `aside#right-side` in `#not_right_side`, no body class `with-right-side`, and the rules of Canvas's CSS that place it (`common.css` lines 2187, 2224-2232, 2248 and 2369), copied as they are.
+    The body has the class `primary-nav-expanded`, and `course-menu-expanded` for the variant with the course menu open.
+    The content has no width of its own, as in Canvas.
+  - The page fixture can hold the markup of a teacher's comment (a forged right column, a `data-action`, a wide table, the ids of the view) and can draw the page right to left (`dir="rtl"`, `lang="ar"`).
+  - The page fixture has the markup of the comments column of `show.html.erb`, with a variant that has no comment and a copy of the script of Canvas that sizes the page (`windowResize`) and saves a comment.
+    The Save handler is bound directly on the button, so a test shows that the moved node keeps working.
+  - The frame fixture has a score cell in each form: classic, classic with an originality report address, pending, error, VeriCite, updated with an address, and updated with no address (`turnitinScores`).
 - `tests/fixtures/pages/assignment.html` has the sidebar of the assignment page.
+- Unit tests (`submission.test.ts`, `submissionFrame.test.ts`, `submissionBox.test.ts`, `comments.test.ts`, `format.test.ts`, `start.test.ts`) cover every score form, a bad report address and an unreadable cell, the status line cases, the date form, the move of the comments column and its return with the typed text, the File viewer switch, the cleanup of a dead copy with marks and ids of the view in the comment of another author, a comment that holds the ids of the right column, a mount that throws, and the keyboard focus on "Go to assignment" through a change of mode.
+  The `:has` rule needs a real browser, so Chromium and Firefox show it.
+- `tests/e2e/submission-details.spec.ts` covers the replacement and the box, a page with a Turnitin score (no frame; the file, the score with its address and color, and "View Feedback" in the box), Canvas's comment form from the box, the widths (1920 px: the content keeps Canvas's width and the box stands on its right; 1366 px: side by side; 1024 px with the menu open: the box stands under the content), the File viewer switch, the "Go to assignment" button, the file click, the feedback pane, the instructions above an untouched frame for a media recording, the unchanged pages and the switch.
 - `tests/firefox/submission-pages.mjs` (`npm run test:firefox:submission-pages`) runs in real Firefox with a fake Canvas over HTTPS.
-  It checks the Submission box with a relative link and a link with the full host, with and without `#submit`, and the replace mode of the Submission Details page with a good session address.
-- `tests/e2e/submission-details.spec.ts` covers the replacement, the "Go to assignment" button, the file click, the feedback pane, the instructions above an untouched frame for a media recording, the unchanged pages and the switch.
+  It checks the Submission box of the assignment page, with a relative link and a link with the full host, with and without `#submit`.
+  It checks the Submission Details page with a Turnitin score and a good session address: the replace mode, the box in the right column, the score in green with its address, and "View Feedback".
+  It also checks that Canvas's comment form works inside the box: Save reaches Canvas's handler, and "No Comments" goes with the first comment.
 
 **Live checks for the owner:**
 
-1. Open a graded submission on sjsu.instructure.com: the left area shows "Instructions" and "Your files", and the header, grade and comments look as before.
+1. Open a graded submission on sjsu.instructure.com: the strip is gone, and "Instructions" shows in its place.
+   The right column shows the "Submission" box with the status line, the date, the file, "View Feedback" and the comments.
+   The header, the grade and the title look as before.
    The button of the title row says "Go to assignment" in Canvas's blue, in the place of "Re-submit Assignment".
    A click on it opens the assignment page with no upload form.
    The button sits at the right end of the row, with no extra gap, where Canvas's button was.
    If Canvas disabled its button for no attempts left, "Go to assignment" still works.
-   Canvas's own rubric shows open under "Your files", and "Show Rubric" is gone.
-   If a page shows Canvas's own files area with the instructions above it instead, a fallback case of item 5 applies (for example a similarity score).
+   Canvas's own rubric shows open under the instructions, and "Show Rubric" is gone.
+   If a page shows Canvas's own files area with the instructions above it instead, a fallback case of item 5 applies.
    Tell me which one, so the case can get its own display.
-2. Click the file name: the file opens in the pane.
-3. Click "View Feedback" on an annotated PDF: the pane shows the teacher's notes.
+2. On a file with a Turnitin score: the box shows the score in Canvas's color, and a click opens the report in a new tab.
+   If a page falls back, tell me the form of the score cell, so the form can get its own reading.
+3. Click the file name: the file opens in the pane.
+4. Click "View Feedback" on an annotated PDF: the pane shows the teacher's notes.
    If DocViewer refuses the frame, use "Open in new tab" and report it.
-4. Open the same page as a teacher, if possible: nothing changes.
-5. A text entry, a URL submission and a media recording: the first two show in "Your submission", and the media recording keeps Canvas's own area with the instructions above it.
-6. Turn the switch off: the page is as Canvas drew it, without a reload, and the button says "Re-submit Assignment" again.
-7. On the assignment page, click "View NAME" in the Submission sidebar: the file opens in the pane, and the box has no Download line under it.
-8. On an assignment with a rubric, the rubric shows with the assessment of the teacher marked, Tab leaves it for the next control, and Escape does nothing.
-   If the rubric had unread comments, the dot is gone, and after a reload with the switch off Canvas shows no unread dot on "Show Rubric".
-   Turn the switch off: "Show Rubric" is back and the rubric is hidden again.
+5. Write a comment in the box and click "Save": the comment shows in the list of the box, and the line "No Comments" is gone.
+   Check "Attach File" and "Media Comment" too.
+6. Open the same page as a teacher, if possible: nothing changes.
+7. A text entry, a URL submission and a media recording: the first two show in "Your submission", and the media recording keeps Canvas's own area, with the instructions above it and the comments column in its place.
+   The box shows the status line and the date.
+8. Turn the switch off: the page is as Canvas drew it, without a reload, and the button says "Re-submit Assignment" again.
+   The right column is empty and hidden again, and the comments column is back in the strip.
+9. Turn the File viewer switch off: the file link in the box says "Download NAME", and a click downloads the file.
+   Turn it on: the link says "View NAME" again.
+10. Make the window narrower than 1140 px with the course menu open, or narrower than 992 px with it closed: the box stands under the content, and the page still works.
+    Make it wide again: the box goes back to the right of the content, and the content has its old width.
+11. On the assignment page, click "View NAME" in the Submission sidebar: the file opens in the pane, and the box has no Download line under it.
+12. On an assignment with a rubric, the rubric shows with the assessment of the teacher marked, Tab leaves it for the next control, and Escape does nothing.
+    If the rubric had unread comments, the dot is gone, and after a reload with the switch off Canvas shows no unread dot on "Show Rubric".
+    Turn the switch off: "Show Rubric" is back and the rubric is hidden again.
 
 ## Open risks
 
