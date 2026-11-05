@@ -524,7 +524,7 @@ test('the button follows the close button of the pane and a redraw of the rows',
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('[data-av-open]')).toHaveCount(1);
   await expect(rowOf(page, '102')).toHaveAttribute('data-av-open', '');
-  // A click on the new button closes the pane that the old one opened.
+  // A click on the new button hides the pane that the old one opened.
   await preview(page, 'Reading').click();
   await expect(page.locator(PANE_HOST)).toBeHidden();
 });
@@ -879,12 +879,12 @@ test('every order of a file pane and the assignment pane keeps the page padding 
   await expectPadding(page, PANE_HOST);
   await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'true');
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'false');
-  // Preview on another row moves the pane, and the file pane stays hidden behind it.
+  // Preview on another row shows that row's frame, and the file pane stays hidden behind it.
   await preview(page, 'Essay').click();
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator(FILE_PANE)).toBeHidden();
   await expectPadding(page, PANE_HOST);
-  // Preview on the open row closes the pane and shows the file.
+  // Preview on the open row hides the pane and shows the file.
   await preview(page, 'Essay').click();
   await expect(page.locator(PANE_HOST)).toBeHidden();
   await expectPadding(page, FILE_PANE);
@@ -1540,6 +1540,18 @@ test('with two frames, every order of a file pane keeps the page padding and the
   await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'true');
   expect(await shows(reading)).toBe(true);
   expect(await shows(essay)).toBe(false);
+
+  // 1b. A frame that was hidden and shows again has the file catcher too.
+  await preview(page, 'Essay').click();
+  await expect.poll(() => shows(essay)).toBe(true);
+  await openFileFromPane(page, essay);
+  await expectPadding(page, FILE_PANE);
+  await closePane(page);
+  await expectPadding(page, PANE_HOST);
+  await expect(essay.locator('#marker')).toHaveValue('unsent words');
+  await preview(page, 'Reading').click();
+  await expect.poll(() => shows(reading)).toBe(true);
+  await expectPadding(page, PANE_HOST);
 
   // 2. A file from the list covers the pane. Preview on the other row shows that row's frame over it.
   await openFileFromList(page);
