@@ -36,6 +36,8 @@ interface Treatment {
 
 /** How long a batch of changes of the box waits for the next one. */
 const BATCH_MS = 50;
+/** How long the view waits before it asks again after a read that failed. It asks once. */
+const RETRY_MS = 2000;
 
 export interface SidebarOptions {
   doc: Document;
@@ -202,7 +204,7 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     undo();
   }
 
-  async function start(): Promise<void> {
+  async function start(retry = true): Promise<void> {
     const token = ++generation;
     if (doc.querySelector(BOX) === null) return;
     let reply: unknown;
@@ -214,6 +216,13 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
       });
     } catch (error) {
       logFailure('submission sidebar', error);
+      // A read that failed gets one more try. A switch-off, a new start or a change of student
+      // in the meantime changes the generation and ends it.
+      if (retry) {
+        setTimeout(() => {
+          if (token === generation && !stopped && active) void start(false);
+        }, RETRY_MS);
+      }
       return;
     }
     if (token !== generation || stopped || !active) return;

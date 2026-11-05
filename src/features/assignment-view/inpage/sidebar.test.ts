@@ -191,6 +191,61 @@ describe('the Submission box of the assignment page', () => {
     expect(sidebar().outerHTML).toBe(before);
   });
 
+  describe('after a read that was rejected', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+    afterEach(() => {
+      engine?.stop();
+      vi.useRealTimers();
+    });
+
+    const failing = (): SidebarEngine => {
+      send = vi.fn(async () => {
+        throw new Error('down');
+      });
+      engine = createSidebarEngine({
+        doc: document,
+        origin: ORIGIN,
+        courseId: '12',
+        assignmentId: '101',
+        send,
+      });
+      return engine;
+    };
+
+    it('asks once more after 2 seconds, and treats the box when that read works', async () => {
+      failing().setActive(true);
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(send).toHaveBeenCalledTimes(1);
+      send.mockResolvedValue(reply('42'));
+      await vi.advanceTimersByTimeAsync(1);
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(document.querySelector('[data-av-original]')).not.toBeNull();
+    });
+
+    it('asks only once more when that read fails too', async () => {
+      failing().setActive(true);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    it('asks no more when the switch went off before the second read', async () => {
+      failing().setActive(true);
+      await vi.advanceTimersByTimeAsync(1000);
+      engine.setActive(false);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not ask again for a refusal', async () => {
+      start({ kind: 'no_submission_access' }).setActive(true);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it.each([
     ['a link that does not read Download', '<a href="X">Open essay.pdf</a>'],
     [
