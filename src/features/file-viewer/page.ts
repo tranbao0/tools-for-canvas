@@ -37,6 +37,9 @@ export function listenViewerHello(
   return () => sourceWindow.removeEventListener('message', hello);
 }
 
+/** The message that the background sends to every tab when it clears the data of a student. */
+const RESET = 'viewer:reset';
+
 /** How long the pane page has to answer with the secret before the pane closes. */
 const HANDSHAKE_MS = 15_000;
 
@@ -148,6 +151,18 @@ export async function startViewer(): Promise<void> {
     drop();
     tabs = { ids: [], active: null };
     void writeTabs(tabs);
+  };
+  // The background cleared the data of a student: a sign-out, another student or a new address.
+  // The pane closes, also a pane that another pane covers, and nothing of the earlier student
+  // stays in this page: not the tabs, not the course or the name of a file. The background holds
+  // no tabs any more, so nothing is written.
+  const reset = () => {
+    drop();
+    tabs = { ids: [], active: null };
+    tabsToken = undefined;
+    synced = false;
+    courses.clear();
+    names.clear();
   };
   // A page can remove the host. Then no pane is open, and the next click opens a new one.
   const paneOpen = () => {
@@ -392,10 +407,11 @@ export async function startViewer(): Promise<void> {
     }
     enabled = true;
   })().catch(() => undefined);
-  // The background sends two kinds of message to this script. It says when a setting changed, so
-  // the pane follows the Theme setting at once, and the script ends when the File viewer switch goes off. And it passes on a file that the click catcher
-  // took in the frame of the submission details page, whose files list this script cannot see
-  // (frame.ts, decision 25, item 11).
+  // The background sends three kinds of message to this script. It says when a setting changed, so
+  // the pane follows the Theme setting at once, and the script ends when the File viewer switch
+  // goes off. It says when it cleared the data of a student, and the pane closes. And it passes on
+  // a file that the click catcher took in the frame of the submission details page, whose files
+  // list this script cannot see (frame.ts, decision 25, item 11).
   const onBackground = (
     message: unknown,
     sender: Browser.runtime.MessageSender,
@@ -425,6 +441,10 @@ export async function startViewer(): Promise<void> {
         },
         () => undefined,
       );
+      return undefined;
+    }
+    if (request?.type === RESET) {
+      reset();
       return undefined;
     }
     if (request?.type !== TOP_OPEN) return undefined;
