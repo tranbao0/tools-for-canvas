@@ -123,7 +123,7 @@ The pane keeps one frame for each assignment that you previewed, up to 6, so eac
 When you close the pane, the extension removes every frame at once, with no question, and the text that you typed in them is gone.
 The frames also go when you change the student or the pane needs room for a new frame.
 The extension reads the address of a frame, and nothing else of its content, except that with the File viewer on it reads the address of the file link that you click in a frame (see "File viewer").
-In full view, the extension also listens only for the Escape key in that frame, to leave full view, and it reads no other key.
+The extension listens only for the Escape key in that frame, and it uses that key only to leave full view.
 While the pane is open, the extension reads your submission status of the assignment that it shows now and then, and also of the assignment that the pane just left when you move to another row.
 When you close the pane, the frames go, and it reads the status of the assignment of each frame once.
 It keeps the last answer of each assignment in the memory of the open page.
@@ -235,7 +235,7 @@ This shows that the extension is installed, and it reveals nothing else.
 The file viewer reads a record or bytes only while the session cookie of your Canvas is the one that the extension confirmed for your account, so it never shows the file of another account.
 If it cannot confirm it, the pane shows "Open in Canvas" and reads nothing.
 The file viewer switch and pane width stay in local settings.
-With the File viewer on, it also reads the address of the file link that you click in a frame of the assignment pane, to open that file in the file pane, and it reads nothing else of those frames.
+With the File viewer on, it also reads the address of the file link that you click in a frame of the assignment pane, to open that file in the file pane, and it reads nothing else of those frames, apart from the Escape key (see "What the one assignment view does").
 It reads the same address in the frame of a submission page, also on an anonymous submission page.
 The file viewer reads the bytes of a PDF from your saved Canvas address, with your own Canvas session.
 Canvas answers with a redirect to its own file storage, and the extension follows it.

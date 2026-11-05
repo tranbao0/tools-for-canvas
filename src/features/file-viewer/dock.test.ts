@@ -493,7 +493,20 @@ describe('full view', () => {
     },
   );
 
-  it('keeps full view for a pane that a closing file pane uncovers, whichever pane it is', () => {
+  it('keeps full view for an assignment pane that a closing file pane uncovers', () => {
+    const turnIn = dock('turn-in', 480, true);
+    const file = dock('file', 600, true);
+    turnIn.open();
+    setFullView(true);
+    turnIn.setHidden(true);
+    file.open();
+    file.close();
+    turnIn.setHidden(false);
+    expect(isFullView()).toBe(true);
+    expect(turnIn.full).toBe(true);
+  });
+
+  it('ends full view when a closing file pane uncovers a feedback pane', () => {
     const feedback = dock('feedback', 480, true);
     const file = dock('file', 600, true);
     feedback.open();
@@ -502,8 +515,8 @@ describe('full view', () => {
     file.open();
     file.close();
     feedback.setHidden(false);
-    expect(isFullView()).toBe(true);
-    expect(feedback.full).toBe(true);
+    expect(isFullView()).toBe(false);
+    expect(feedback.full).toBe(false);
   });
 
   it('keeps full view for a file pane when the pane that it covers closes', () => {
