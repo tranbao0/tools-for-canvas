@@ -21,6 +21,7 @@ import {
   test,
   type ScenarioOptions,
 } from './support/weekrow';
+import type { FakeReply } from './support/fake-canvas';
 import { requestsQuiet, stableValue } from './support/settle';
 
 const PAGE = [{ path: '/', page: 'dashboard-widgets' }] as const;
@@ -53,6 +54,7 @@ async function open(
   page: Page,
   options: {
     width?: number;
+    height?: number;
     scenario?: ScenarioOptions;
     background?: Worker;
     fixes?: Partial<DashboardFixesSettings>;
@@ -63,16 +65,15 @@ async function open(
   if (options.background !== undefined && options.fixes !== undefined) {
     await saveTools(options.background, tools(options.fixes));
   }
-  await page.setViewportSize({ width: options.width ?? 1920, height: 1000 });
+  await page.setViewportSize({ width: options.width ?? 1920, height: options.height ?? 1000 });
   await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
   if (options.fixes?.announcementsInPlace !== false) {
-    await expect(page.locator(`${ANNOUNCEMENT} [data-wr-title]`)).toBeAttached();
+    await expect(page.locator(`${LIST} article`).first()).toBeAttached();
   }
   return served;
 }
 
 const ITEM = (id: string): string => `[data-testid="listed-course-work-item-${id}"]`;
-const ANNOUNCEMENT = '[data-testid="announcement-item-31901"]';
 
 /** The background color and the icon color of the icon box of a Course work item. */
 function iconColors(page: Page, id: string): Promise<{ box: string; icon: string }> {
@@ -93,7 +94,7 @@ function rgb(hex: string): string {
 
 /** The text of the message of the opened announcement, from its shadow root. */
 function message(page: Page): Locator {
-  return page.locator(`${ANNOUNCEMENT} [data-wr-own] .wr-body`);
+  return page.locator(`${LIST} .wr-body`);
 }
 
 /** Replays the content of the dashboard, as React draws it again. */
@@ -161,16 +162,177 @@ test.describe('course colors', () => {
   });
 });
 
-test.describe('announcements in place', () => {
-  test('open the whole message in the card and never leave the page', async ({ context, page }) => {
+const WIDGET = '[data-testid="widget-announcements-widget"]';
+const LIST = `${WIDGET} [data-wr-list]`;
+const NATIVE_ITEM = `${WIDGET} [data-testid^="announcement-item-"]`;
+
+/** The articles of the own list. CSS locators of Playwright pierce the open shadow root. */
+function articles(page: Page): Locator {
+  return page.locator(`${LIST} article`);
+}
+
+/** The scroll area of the own list. */
+function feed(page: Page): Locator {
+  return page.locator(`${LIST} [role="feed"]`);
+}
+
+/** The variables of the announcements queries that went to Canvas, in order. */
+function pageQueries(canvas: { requests: readonly { path: string; postData: string | null }[] }) {
+  return canvas.requests
+    .filter((r) => r.path === '/api/graphql' && (r.postData ?? '').includes('WeekrowAnnouncements'))
+    .map(
+      (r) => (JSON.parse(r.postData ?? '{}') as { variables: Record<string, unknown> }).variables,
+    );
+}
+
+/** The read filter of the widget, as React draws it: the value of its input. */
+async function setReadFilter(page: Page, label: string): Promise<void> {
+  await page
+    .locator(`${WIDGET} [data-testid="announcement-filter-select"]`)
+    .evaluate((input, value) => {
+      (input as HTMLInputElement).value = value;
+      input.setAttribute('value', value);
+    }, label);
+}
+
+async function heightOf(locator: Locator): Promise<number> {
+  return (await locator.boundingBox())?.height ?? -1;
+}
+
+test.describe('announcements: one steady list', () => {
+  test('replace the list and the pager of Canvas with 10 rows and a scroll area', async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await open(context, page);
+    await expect(articles(page)).toHaveCount(10);
+    // The list and the pager of Canvas give way, and the filters stay.
+    await expect(page.locator(NATIVE_ITEM).first()).toBeHidden();
+    await expect(page.locator(`${WIDGET} [data-testid="pagination-container"]`)).toBeHidden();
+    await expect(
+      page.locator(`${WIDGET} [data-testid="announcement-filter-select"]`),
+    ).toBeVisible();
+    await expect(page.locator(`${WIDGET} [data-wr-filter] select`)).toBeVisible();
+
+    expect(pageQueries(canvas)[0]).toEqual({
+      userId: '5501',
+      first: 10,
+      after: null,
+      readState: 'unread',
+      courseId: null,
+    });
+    // The first row is the newest unread one, with its course, author, date and snippet.
+    const first = articles(page).first();
+    await expect(first).toHaveAttribute('aria-label', 'Lab room change for Thursday');
+    await expect(first).toContainText('Sent by Dr. Maya Okafor | Oct 27, 2026');
+    await expect(first).toContainText('BIO 110: Principles of Biology');
+    await expect(first).toContainText('Read more');
+    // The scroll area is a feed that takes the keyboard focus.
+    await expect(feed(page)).toHaveAttribute('tabindex', '0');
+    await expect(feed(page)).toHaveAttribute('aria-busy', 'false');
+    expect(canvas.unmatched).toEqual([]);
+  });
+
+  test('keep the avatar image, and the initials where the image fails or is missing', async ({
+    context,
+    page,
+  }) => {
+    await open(context, page);
+    const okafor = articles(page).first().locator('.wr-a-avatar');
+    const image = okafor.locator('img');
+    await expect(image).toHaveAttribute('referrerpolicy', 'no-referrer');
+    await expect(image).toHaveAttribute('loading', 'lazy');
+    await expect(image).toHaveAttribute('alt', '');
+    await expect
+      .poll(() => image.evaluate((img) => (img as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+    // Sam Whitaker's image gives a 404, so the initials show on a color.
+    const sam = articles(page)
+      .filter({ hasText: 'Safety goggles are required' })
+      .locator('.wr-a-avatar');
+    await expect(sam).toHaveText('SW');
+    await expect(sam.locator('img')).toHaveCount(0);
+    expect(await sam.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(
+      'rgba(0, 0, 0, 0)',
+    );
+    // A row with no image at all.
+    const duarte = articles(page).filter({ hasText: 'Office hours move' }).locator('.wr-a-avatar');
+    await expect(duarte).toHaveText('PD');
+  });
+
+  test('load 10 more rows when a scroll brings the end near, then show the end', async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await open(context, page);
+    await expect(articles(page)).toHaveCount(10);
+    await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(articles(page)).toHaveCount(20);
+    expect(pageQueries(canvas)[1]).toMatchObject({ first: 10, after: btoa('10') });
+    await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(articles(page)).toHaveCount(25);
+    expect(pageQueries(canvas)[2]).toMatchObject({ after: btoa('20') });
+    await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(feed(page)).toContainText('No more announcements');
+    // The rows are all different.
+    const labels = await articles(page).evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute('aria-label')),
+    );
+    expect(new Set(labels).size).toBe(25);
+    expect(pageQueries(canvas)).toHaveLength(3);
+  });
+
+  test('keep the height of the card when a message opens, scrolls or loads more', async ({
+    context,
+    page,
+  }) => {
+    await open(context, page);
+    await expect(articles(page)).toHaveCount(10);
+    const card = page.locator(WIDGET);
+    const before = {
+      card: await heightOf(card),
+      feed: await heightOf(feed(page)),
+      filters: await heightOf(page.locator(`${WIDGET} [data-wr-filter]`)),
+    };
+    // 36rem, or the window height less 14rem when that is less: 576 px in a window of 1000 px.
+    expect(before.feed).toBe(576);
+    const scrollHeight = await feed(page).evaluate((el) => el.scrollHeight);
+
+    await articles(page).first().getByRole('button', { name: 'Read more' }).click();
+    await expect(articles(page).first().locator('.wr-body')).toContainText('Science Hall 214');
+    expect(await heightOf(card)).toBe(before.card);
+    expect(await heightOf(feed(page))).toBe(before.feed);
+    // The message grows inside the scroll area only.
+    expect(await feed(page).evaluate((el) => el.scrollHeight)).toBeGreaterThan(scrollHeight);
+    // The pager of the page and the filters did not move.
+    expect(await heightOf(page.locator(`${WIDGET} [data-wr-filter]`))).toBe(before.filters);
+
+    await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(articles(page)).toHaveCount(20);
+    expect(await heightOf(card)).toBe(before.card);
+
+    await articles(page).first().getByRole('button', { name: 'Show less' }).click();
+    await expect(articles(page).first().locator('.wr-body')).toHaveCount(0);
+    expect(await heightOf(card)).toBe(before.card);
+  });
+
+  test('keep a shorter window at the minimum height of 20rem', async ({ context, page }) => {
+    await open(context, page, { height: 500 });
+    await expect(articles(page)).toHaveCount(10);
+    expect(await heightOf(feed(page))).toBe(320);
+  });
+
+  test('open the whole message in place, with the sanitizer, and never leave the page', async ({
+    context,
+    page,
+  }) => {
     const { canvas } = await open(context, page);
     const navigations: string[] = [];
     page.on('framenavigated', (frame) => navigations.push(frame.url()));
     await page.evaluate(() => {
       (window as unknown as { __marker: number }).__marker = 1;
     });
-
-    await page.locator(`${ANNOUNCEMENT} a[href*="discussion_topics"]`).click();
+    await articles(page).first().getByRole('button', { name: 'Read more' }).click();
 
     await expect(message(page)).toContainText('Science Hall 214');
     await expect(message(page).locator('a[href="https://example.org/map"]')).toHaveAttribute(
@@ -181,112 +343,27 @@ test.describe('announcements in place', () => {
       'target',
       '_blank',
     );
-    // The widget's snippet and "Read more" give way to the message.
-    await expect(page.locator(`${ANNOUNCEMENT} [data-wr-snippet]`)).toBeHidden();
-    // No navigation and no reload.
+    // The snippet and "Read more" give way to the message, and the title shows whole.
+    await expect(articles(page).first().locator('.wr-a-snippet')).toHaveCount(0);
     expect(page.url()).toBe(`${canvas.origin}/?fixture_course_work=second&fixture_delay_ms=0`);
     expect(navigations).toEqual([]);
     expect(await page.evaluate(() => (window as unknown as { __marker?: number }).__marker)).toBe(
       1,
     );
-
-    // Show less closes it.
-    await page
-      .locator(`${ANNOUNCEMENT} [data-wr-own]`)
-      .getByRole('button', { name: 'Show less' })
-      .click();
-    await expect(message(page)).toHaveCount(0);
-    expect(canvas.unmatched).toEqual([]);
-  });
-
-  test('leave the announcement unread when the student opens and closes the message', async ({
-    context,
-    page,
-    background,
-  }) => {
-    const { canvas, state } = await open(context, page);
-    const circle = page.locator(`${ANNOUNCEMENT} [data-testid^="mark-read-"]`);
-    await expect(circle).toHaveAttribute('aria-pressed', 'false');
-
-    await page.locator(`${ANNOUNCEMENT} a[href*="discussion_topics"]`).click();
-    await expect(message(page)).toContainText('Science Hall 214');
-    // No mark and no line about a mark, while the message is open.
-    await expect(message(page)).not.toContainText('Marked as read.');
-    await expect(page.locator(ANNOUNCEMENT)).not.toHaveAttribute('data-wr-read', '');
-    await expect(circle).toHaveAttribute('aria-pressed', 'false');
-
-    await page
-      .locator(`${ANNOUNCEMENT} [data-wr-own]`)
-      .getByRole('button', { name: 'Show less' })
-      .click();
-    await expect(message(page)).toHaveCount(0);
-    // The unread list still has the item, and its circle is as it was.
-    await expect(page.locator(ANNOUNCEMENT)).toBeVisible();
-    await expect(page.locator(ANNOUNCEMENT)).not.toHaveAttribute('data-wr-gone', '');
-    await expect(circle).toHaveAttribute('aria-pressed', 'false');
-    expect(await circle.locator('svg').evaluate((svg) => getComputedStyle(svg).display)).not.toBe(
-      'none',
-    );
-
-    // Wait until the page is quiet, so that a late write has gone out, then check that none did.
-    await requestsQuiet(page, canvas.requests, background);
-    // The extension reads Canvas through GET and through GraphQL queries. No mutation goes out.
-    const writes = canvas.requests.filter(
-      (r) =>
-        r.method !== 'GET' &&
-        !(r.path === '/api/graphql' && !(r.postData ?? '').trimStart().startsWith('mutation')),
-    );
-    expect(writes).toEqual([]);
-    expect(canvas.requests.filter((r) => (r.postData ?? '').includes('mutation'))).toEqual([]);
-    expect(canvas.requests.filter((r) => r.path.endsWith('/read'))).toEqual([]);
-    expect(state.readAnnouncements.has('101:31901')).toBe(false);
-    expect(canvas.unmatched).toEqual([]);
-  });
-
-  test('open with a click on the title, and ignore a click with a modifier key', async ({
-    context,
-    page,
-  }) => {
-    const { canvas } = await open(context, page);
-    const popups: string[] = [];
-    context.on('page', (opened) => popups.push(opened.url()));
-    await page.locator(`${ANNOUNCEMENT} [data-wr-title]`).click({ modifiers: ['Shift'] });
-    await expect(message(page)).toHaveCount(0);
-    await page.locator(`${ANNOUNCEMENT} [data-wr-title]`).click();
-    await expect(message(page)).toContainText('Science Hall 214');
-    expect(page.url()).toBe(`${canvas.origin}/?fixture_course_work=second&fixture_delay_ms=0`);
-  });
-
-  test('keep the message open when React draws the list again', async ({ context, page }) => {
-    await open(context, page);
-    await page.locator(`${ANNOUNCEMENT} a[href*="discussion_topics"]`).click();
-    await expect(message(page)).toContainText('Science Hall 214');
-    await rerender(page);
-    await expect(message(page)).toContainText('Science Hall 214');
-  });
-
-  test('sanitize the message: no script, handler, frame, form, svg or unsafe link', async ({
-    context,
-    page,
-  }) => {
-    await open(context, page);
-    await page.locator(`${ANNOUNCEMENT} a[href*="discussion_topics"]`).click();
-    await expect(message(page)).toContainText('Science Hall 214');
     const result = await page.evaluate((selector) => {
       const body = document.querySelector(selector)?.shadowRoot?.querySelector('.wr-body');
       const tags = new Set([...(body?.querySelectorAll('*') ?? [])].map((e) => e.localName));
       const attrs = new Set(
         [...(body?.querySelectorAll('*') ?? [])].flatMap((e) => e.getAttributeNames()),
       );
-      const hrefs = [...(body?.querySelectorAll('a') ?? [])].map((a) => a.getAttribute('href'));
       return {
         tags: [...tags].sort(),
         attrs: [...attrs].sort(),
-        hrefs,
+        hrefs: [...(body?.querySelectorAll('a') ?? [])].map((a) => a.getAttribute('href')),
         pwned: (window as unknown as { __pwned?: number }).__pwned,
-        pageScripts: document.querySelectorAll('iframe, form').length,
+        frames: document.querySelectorAll('iframe, form').length,
       };
-    }, `${ANNOUNCEMENT} > [data-wr-own]`);
+    }, LIST);
     expect(result.pwned).toBeUndefined();
     expect(result.tags).toEqual([
       'a',
@@ -314,41 +391,403 @@ test.describe('announcements in place', () => {
     ]);
     // The two unsafe links are plain text now, and the two safe links stay.
     expect(result.hrefs).toHaveLength(2);
-    expect(result.pageScripts).toBe(0);
-    await expect(message(page)).toContainText('Click for the party or the other party.');
+    expect(result.frames).toBe(0);
     expect(HOSTILE_MESSAGE).toContain('javascript:');
+
+    await articles(page).first().getByRole('button', { name: 'Show less' }).click();
+    await expect(message(page)).toHaveCount(0);
+    expect(canvas.unmatched).toEqual([]);
   });
 
-  test('filter the announcements by course, with the read filter still applied', async ({
+  test('send no write when the student opens and closes a message', async ({
+    context,
+    page,
+    background,
+  }) => {
+    const { canvas, state } = await open(context, page);
+    const control = articles(page)
+      .first()
+      .getByRole('button', { name: /Mark .* as read/ });
+    await expect(control).toHaveAttribute('aria-pressed', 'false');
+    await articles(page).first().getByRole('button', { name: 'Read more' }).click();
+    await expect(message(page)).toContainText('Science Hall 214');
+    await expect(message(page)).not.toContainText('Marked as read.');
+    await expect(control).toHaveAttribute('aria-pressed', 'false');
+    await articles(page).first().getByRole('button', { name: 'Show less' }).click();
+    await expect(message(page)).toHaveCount(0);
+    await expect(control).toHaveAttribute('aria-pressed', 'false');
+
+    await requestsQuiet(page, canvas.requests, background);
+    // The extension reads Canvas through GET and through GraphQL queries. No mutation goes out.
+    const writes = canvas.requests.filter(
+      (r) =>
+        r.method !== 'GET' &&
+        !(r.path === '/api/graphql' && !(r.postData ?? '').trimStart().startsWith('mutation')),
+    );
+    expect(writes).toEqual([]);
+    expect(canvas.requests.filter((r) => (r.postData ?? '').includes('mutation'))).toEqual([]);
+    expect(canvas.requests.filter((r) => r.path.endsWith('/read'))).toEqual([]);
+    expect(state.readAnnouncements.has('101:31901')).toBe(false);
+    expect(canvas.unmatched).toEqual([]);
+  });
+
+  test('keep the message open when React draws the widget again', async ({ context, page }) => {
+    await open(context, page);
+    await articles(page).first().getByRole('button', { name: 'Read more' }).click();
+    await expect(message(page)).toContainText('Science Hall 214');
+    await rerender(page);
+    await expect(message(page)).toContainText('Science Hall 214');
+    await expect(articles(page)).toHaveCount(10);
+  });
+
+  test('mark a row as read with one PUT, and keep it on screen with its check', async ({
+    context,
+    page,
+  }) => {
+    const { canvas, state } = await open(context, page);
+    const row = articles(page).first();
+    const control = row.getByRole('button', { name: 'Mark Lab room change for Thursday as read' });
+    await expect(control).toHaveAttribute('aria-pressed', 'false');
+    await control.click();
+
+    await expect(
+      row.getByRole('button', { name: 'Mark Lab room change for Thursday as unread' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(row).toBeVisible();
+    await expect(articles(page)).toHaveCount(10);
+    await expect
+      .poll(() => canvas.requests.filter((r) => r.method === 'PUT').map((r) => r.path))
+      .toEqual(['/api/v1/courses/101/discussion_topics/31901/read']);
+    expect(state.readAnnouncements.has('101:31901')).toBe(true);
+    const headers = canvas.requests.find((r) => r.method === 'PUT')?.headers ?? {};
+    expect(headers['x-csrf-token']).toBe('tok+en/==');
+
+    // The next page continues after the 9 rows that are still unread on the server, so no row is
+    // skipped and none repeats.
+    await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(articles(page)).toHaveCount(20);
+    expect(pageQueries(canvas)[1]).toMatchObject({ after: btoa('9') });
+    const labels = await articles(page).evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute('aria-label')),
+    );
+    expect(new Set(labels).size).toBe(20);
+
+    // The mark can go back, with one DELETE.
+    await row.getByRole('button', { name: 'Mark Lab room change for Thursday as unread' }).click();
+    await expect
+      .poll(() => canvas.requests.filter((r) => r.method === 'DELETE').map((r) => r.path))
+      .toEqual(['/api/v1/courses/101/discussion_topics/31901/read']);
+    expect(state.readAnnouncements.has('101:31901')).toBe(false);
+  });
+
+  test('take the check back with a short note when Canvas refuses the mark', async ({
+    context,
+    page,
+  }) => {
+    const served = await serveScenario(
+      context,
+      [
+        ...PAGE,
+        {
+          method: 'PUT',
+          path: /^\/api\/v1\/courses\/\d+\/discussion_topics\/\d+\/read$/,
+          respond: () => ({ status: 500, body: 'Server error' }),
+        },
+      ],
+      {},
+    );
+    await addCsrfCookie(context, served.canvas.origin);
+    await page.setViewportSize({ width: 1920, height: 1000 });
+    await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+    await expect(articles(page)).toHaveCount(10);
+    const row = articles(page).first();
+    await row.getByRole('button', { name: 'Mark Lab room change for Thursday as read' }).click();
+    await expect(page.locator(`${LIST} [role="status"]`).first()).toContainText(
+      "Couldn't change the read mark.",
+    );
+    await expect(
+      row.getByRole('button', { name: 'Mark Lab room change for Thursday as read' }),
+    ).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('send no mark for a click that a script made', async ({ context, page, background }) => {
+    const { canvas } = await open(context, page);
+    await articles(page)
+      .first()
+      .getByRole('button', { name: /Mark .* as read/ })
+      .evaluate((button) => button.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await requestsQuiet(page, canvas.requests, background);
+    expect(canvas.requests.filter((r) => r.method === 'PUT')).toEqual([]);
+  });
+
+  test('show the list of another read filter from its top, and keep each list', async ({
     context,
     page,
   }) => {
     const { canvas } = await open(context, page);
-    const widget = page.getByTestId('widget-announcements-widget');
+    await expect(articles(page)).toHaveCount(10);
+    await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(articles(page)).toHaveCount(20);
+
+    await setReadFilter(page, 'Read');
+    await expect(articles(page).first()).toHaveAttribute('aria-label', 'Syllabus quiz reminder');
+    await expect(articles(page).filter({ hasText: 'Lab room change' })).toHaveCount(0);
+    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(0);
+    expect(pageQueries(canvas).at(-1)).toMatchObject({ readState: 'read', after: null });
+    // Every row of this list is read: a check.
+    await expect(page.locator(`${LIST} .wr-a-read[data-read="false"]`)).toHaveCount(0);
+
+    await setReadFilter(page, 'All');
+    await expect.poll(() => pageQueries(canvas).at(-1)?.['readState']).toBe('all');
+    await expect(articles(page)).toHaveCount(10);
+
+    // The list of the first filter is still in memory: it comes back with no new request.
+    const asked = pageQueries(canvas).length;
+    await setReadFilter(page, 'Unread');
+    await expect(articles(page)).toHaveCount(20);
+    expect(pageQueries(canvas)).toHaveLength(asked);
+  });
+
+  test('forget the lists of the other filters after a read mark', async ({ context, page }) => {
+    const { canvas } = await open(context, page);
+    await setReadFilter(page, 'All');
+    await expect.poll(() => pageQueries(canvas).at(-1)?.['readState']).toBe('all');
+    await setReadFilter(page, 'Unread');
+    // The list of All holds read rows, and the list of Unread holds none.
+    await expect(page.locator(`${LIST} .wr-a-read[data-read="true"]`)).toHaveCount(0);
+    const before = pageQueries(canvas).length;
+    // The list of Unread comes back from memory.
+    expect(before).toBe(2);
+    await articles(page)
+      .first()
+      .getByRole('button', { name: /Mark .* as read/ })
+      .click();
+    await expect.poll(() => canvas.requests.filter((r) => r.method === 'PUT').length).toBe(1);
+    await setReadFilter(page, 'All');
+    // The list of All asked Canvas again, from its top.
+    await expect.poll(() => pageQueries(canvas).length).toBe(before + 1);
+    expect(pageQueries(canvas).at(-1)).toMatchObject({ readState: 'all', after: null });
+    await expect(articles(page)).toHaveCount(10);
+  });
+
+  test('filter by course with the read filter still applied, and keep one height', async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await open(context, page);
+    const widget = page.locator(WIDGET);
     await expect(widget.getByLabel('Course filter:')).toBeVisible();
+    const height = await heightOf(widget);
     await widget
       .getByLabel('Course filter:')
       .selectOption({ label: 'BIO 110: Principles of Biology' });
 
-    // The native list and its pager give way to the announcements of the course. Unread only.
-    await expect(page.locator('[data-wr-list]')).toContainText('Lab room change for Thursday');
-    await expect(page.locator('[data-wr-list]')).toContainText('Welcome to BIO 110');
-    await expect(page.locator('[data-wr-list]')).not.toContainText('Syllabus quiz reminder');
-    await expect(page.locator('[data-wr-list]')).not.toContainText('Office hours move');
-    await expect(widget.locator('[data-wr-content]')).toBeHidden();
-    await expect(widget.getByTestId('pagination-container')).toBeHidden();
-    expect(
-      canvas.requests.filter((r) => r.path.startsWith('/api/v1/announcements')).map((r) => r.path),
-    ).toHaveLength(1);
-
-    // Read more opens in place in the filtered list, too.
-    await page.locator('[data-wr-list]').getByRole('button', { name: 'Read more' }).first().click();
-    await expect(page.locator('[data-wr-list] .wr-body').first()).toBeVisible();
+    await expect(articles(page).first()).toHaveAttribute(
+      'aria-label',
+      'Lab room change for Thursday',
+    );
+    await expect(articles(page).filter({ hasText: 'Office hours move' })).toHaveCount(0);
+    expect(pageQueries(canvas).at(-1)).toMatchObject({ readState: 'unread', courseId: '101' });
+    const names = await articles(page).locator('.wr-a-meta').allInnerTexts();
+    expect(names.filter((text) => text.includes(':') && !text.includes('Sent by'))).toEqual(
+      names.filter((text) => text === 'BIO 110: Principles of Biology'),
+    );
+    expect(await heightOf(widget)).toBe(height);
 
     await widget.getByLabel('Course filter:').selectOption({ label: 'All courses' });
-    await expect(page.locator('[data-wr-list]')).toHaveCount(0);
-    await expect(widget.locator('[data-wr-content]')).toBeVisible();
+    await expect(articles(page).filter({ hasText: 'Office hours move' })).toHaveCount(1);
   });
+
+  test('search the title and the message for every word, and mark the match', async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await open(context, page);
+    const search = page.locator(`${LIST} input[type="search"]`);
+    await search.fill('lockdown');
+
+    await expect(articles(page)).toHaveCount(2);
+    await expect(page.locator(`${LIST} .wr-a-res`)).toContainText('2 results, read and unread');
+    // Pages of 100, read all, all courses.
+    const searches = pageQueries(canvas).filter((variables) => variables['first'] === 100);
+    expect(searches).toEqual([
+      { userId: '5501', first: 100, after: null, readState: 'all', courseId: null },
+    ]);
+    // The match is a <mark> in the title and in a snippet around the first match.
+    const first = articles(page).first();
+    await expect(first).toHaveAttribute('aria-label', 'Install the Lockdown Browser');
+    await expect(first.locator('.wr-a-title mark')).toHaveText('Lockdown');
+    await expect(articles(page).nth(1).locator('.wr-a-snippet mark')).toHaveText('lockdown');
+    // The read filter does not apply: Unread shows, and a read row is in the results.
+    await expect(page.locator(`${LIST} .wr-a-read[data-read="true"]`)).toHaveCount(1);
+
+    // Every word must appear.
+    await search.fill('lockdown laptop');
+    await expect(articles(page)).toHaveCount(1);
+    await expect(articles(page).first()).toHaveAttribute('aria-label', 'Quiz 3 rules');
+    // The course filter narrows the results.
+    await search.fill('lockdown');
+    await page
+      .locator(WIDGET)
+      .getByLabel('Course filter:')
+      .selectOption({ label: 'MATH 221: Calculus II' });
+    await expect(articles(page)).toHaveCount(1);
+    await expect(page.locator(`${LIST} .wr-a-res`)).toContainText('1 result, read and unread');
+    // The search asked only once.
+    expect(pageQueries(canvas).filter((variables) => variables['first'] === 100)).toHaveLength(1);
+    expect(canvas.unmatched).toEqual([]);
+  });
+
+  test('show a hostile title as text, and the match as a text node', async ({ context, page }) => {
+    await open(context, page);
+    const search = page.locator(`${LIST} input[type="search"]`);
+    await search.fill('<b>');
+    await expect(articles(page)).toHaveCount(0);
+    await search.fill('Weekly');
+    await expect(articles(page)).toHaveCount(30);
+    expect(
+      await page
+        .locator(`${LIST} article mark`)
+        .first()
+        .evaluate((el) => el.children.length),
+    ).toBe(0);
+  });
+
+  test('clear the search with the x and go back to the list at its scroll position', async ({
+    context,
+    page,
+  }) => {
+    await open(context, page);
+    await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(articles(page)).toHaveCount(20);
+    const top = await feed(page).evaluate((el) => el.scrollTop);
+    expect(top).toBeGreaterThan(0);
+
+    const search = page.locator(`${LIST} input[type="search"]`);
+    await search.fill('lockdown');
+    await expect(articles(page)).toHaveCount(2);
+    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(0);
+    await page.locator(`${LIST}`).getByRole('button', { name: 'Clear search' }).click();
+    await expect(articles(page)).toHaveCount(20);
+    await expect(search).toHaveValue('');
+    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(top);
+  });
+
+  test('search by date with the REST list, filter it by the text, and Clear it', async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await open(context, page);
+    await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(articles(page)).toHaveCount(20);
+    const top = await feed(page).evaluate((el) => el.scrollTop);
+
+    const calendar = page.locator(`${LIST}`).getByRole('button', { name: 'Search by date' });
+    await expect(calendar).toHaveAttribute('aria-expanded', 'false');
+    await calendar.click();
+    await expect(calendar).toHaveAttribute('aria-expanded', 'true');
+    const from = page.locator(`${LIST}`).getByLabel('From', { exact: true });
+    const to = page.locator(`${LIST}`).getByLabel('To', { exact: true });
+    await from.fill('2026-10-01');
+    await to.fill('2026-10-31');
+
+    await expect(page.locator(`${LIST} .wr-a-res`)).toContainText('results, read and unread');
+    const requests = canvas.requests.filter((r) => r.path.startsWith('/api/v1/announcements'));
+    const last = new URL(requests.at(-1)?.url ?? '', canvas.origin).searchParams;
+    expect(last.get('start_date')).toBe('2026-10-01');
+    expect(last.get('end_date')).toBe('2026-10-31');
+    expect(last.getAll('context_codes[]').length).toBeGreaterThan(1);
+    // The announcements of October, from the REST list: the old ones and the new ones.
+    await expect(articles(page).filter({ hasText: 'Lab room change' })).toHaveCount(1);
+    await expect(articles(page).filter({ hasText: 'Install the Lockdown Browser' })).toHaveCount(1);
+    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(0);
+
+    // A text filters the results of the range.
+    await page.locator(`${LIST} input[type="search"]`).fill('lockdown');
+    await expect(articles(page)).toHaveCount(2);
+
+    // Clear takes the dates away and goes back to the list at its old position.
+    await page.locator(`${LIST}`).getByRole('button', { name: 'Clear', exact: true }).click();
+    await expect(page.locator(`${LIST} .wr-a-dates`)).toHaveCount(0);
+    await expect(calendar).toHaveAttribute('aria-expanded', 'false');
+    // The text is still in the field, so the search of all shows.
+    await expect(articles(page)).toHaveCount(2);
+    await page.locator(`${LIST}`).getByRole('button', { name: 'Clear search' }).click();
+    await expect(articles(page)).toHaveCount(20);
+    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(top);
+  });
+
+  test('send a missing From as 2000-01-01, a missing To as today, and nothing when From is after To', async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await open(context, page);
+    const restRequests = () =>
+      canvas.requests.filter((r) => r.path.startsWith('/api/v1/announcements')).length;
+    await page.locator(LIST).getByRole('button', { name: 'Search by date' }).click();
+    const before = restRequests();
+    await page.locator(LIST).getByLabel('To', { exact: true }).fill('2026-10-31');
+    await expect.poll(restRequests).toBe(before + 1);
+    const query = new URL(
+      canvas.requests.filter((r) => r.path.startsWith('/api/v1/announcements')).at(-1)!.url,
+      canvas.origin,
+    ).searchParams;
+    expect(query.get('start_date')).toBe('2000-01-01');
+    expect(query.get('end_date')).toBe('2026-10-31');
+
+    await page.locator(LIST).getByLabel('From', { exact: true }).fill('2026-11-15');
+    await expect(page.locator(`${LIST} .wr-a-res`)).toContainText(
+      'The From date must be on or before the To date.',
+    );
+    await expect(articles(page)).toHaveCount(10);
+    expect(restRequests()).toBe(before + 1);
+  });
+
+  const FAILED_PAGES: [string, FakeReply][] = [
+    ['an error status', { status: 500, body: 'Server error' }],
+    ['a 200 answer with errors', { body: { data: null, errors: [{ message: 'boom' }] } }],
+  ];
+  for (const [name, reply] of FAILED_PAGES) {
+    test(`give Canvas its own list back when the first page fails with ${name}`, async ({
+      context,
+      page,
+    }) => {
+      const served = await serveScenario(context, [
+        ...PAGE,
+        {
+          method: 'POST',
+          path: '/api/graphql',
+          respond: (request) =>
+            (request.postData ?? '').includes('WeekrowAnnouncements')
+              ? reply
+              : { body: { data: {} } },
+        },
+      ]);
+      await addCsrfCookie(context, served.canvas.origin);
+      await page.setViewportSize({ width: 1920, height: 1000 });
+      await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+      await expect(page.locator(NATIVE_ITEM).first()).toBeVisible();
+      await expect(page.locator(NATIVE_ITEM)).toHaveCount(3);
+      // The pager shows again: the steady navigator that clicks the pager of Canvas.
+      await expect(page.locator(`${WIDGET} [data-wr-own="pager"]`)).toBeVisible();
+      await expect(page.locator(LIST)).toHaveCount(0);
+      await expect(page.locator(`${WIDGET} [data-wr-filter]`)).toHaveCount(0);
+      // Nothing of this fix stays on the widget. The steady pager is another fix, and it keeps its mark.
+      expect(
+        await page
+          .locator(WIDGET)
+          .evaluate((el) =>
+            el
+              .getAttributeNames()
+              .filter((name) => name.startsWith('data-wr-') && name !== 'data-wr-paged'),
+          ),
+      ).toEqual([]);
+      // The read filter of Canvas still works as it is.
+      await expect(
+        page.locator(`${WIDGET} [data-testid="announcement-filter-select"]`),
+      ).toBeVisible();
+    });
+  }
 });
 
 test('match the dark read filter colors', async ({ context, page }, testInfo) => {
@@ -798,8 +1237,10 @@ test.describe('the switches', () => {
         ).toBeVisible();
       }
       if (key === 'announcementsInPlace') {
-        // The "Read more" link works as the widget made it: a click goes to the page.
-        await expect(page.locator('[data-wr-title]')).toHaveCount(0);
+        // The list of Canvas shows again, with its pager (the steady pager of the other fix).
+        await expect(page.locator(NATIVE_ITEM).first()).toBeVisible();
+        await expect(page.locator(`${WIDGET} [data-wr-own="pager"]`)).toBeVisible();
+        await expect(page.locator(LIST)).toHaveCount(0);
       }
     });
   }
@@ -823,7 +1264,7 @@ test.describe('the switches', () => {
     await saveTools(background, DEFAULT_TOOLS_SETTINGS);
     await expect(page.locator('[data-wr-extra]')).toBeVisible();
     await expect(page.locator('[data-wr-cc]').first()).toBeAttached();
-    await page.locator(`${ANNOUNCEMENT} a[href*="discussion_topics"]`).click();
+    await articles(page).first().getByRole('button', { name: 'Read more' }).click();
     await expect(message(page)).toBeVisible();
 
     await saveTools(background, tools(OFF));
@@ -892,6 +1333,9 @@ for (const frame of ['input', 'wrapper', 'none']) {
       `,
         });
       }
+      // A change of the theme or of the frame is signaled through an attribute that the widget
+      // observer watches, as React draws it again.
+      await page.locator('#ann-read').evaluate((el) => el.setAttribute('value', 'Unread'));
       const styles = async (locator: Locator) =>
         locator.evaluate((el) => {
           const css = getComputedStyle(el);
@@ -930,12 +1374,12 @@ for (const frame of ['input', 'wrapper', 'none']) {
         .toEqual(
           await box(page.locator(frame === 'wrapper' ? '.fx-select:has(#ann-read)' : '#ann-read')),
         );
-      await page.locator(`${ANNOUNCEMENT} a[href*="discussion_topics"]`).click();
-      await expect(message(page).locator('h1')).toHaveCSS('font-size', '28.8px');
-      await expect(message(page)).toHaveCSS('font-size', '16px');
-      await expect(message(page)).toHaveCSS('line-height', '24px');
+      await articles(page).first().getByRole('button', { name: 'Read more' }).click();
+      await expect(message(page).locator('h1')).toHaveCSS('font-size', '25.2px');
+      await expect(message(page)).toHaveCSS('font-size', '14px');
+      await expect(message(page)).toHaveCSS('line-height', '21px');
       for (const heading of ['h1', 'h2']) {
-        await expect(message(page).locator(heading)).toHaveCSS('font-size', '28.8px');
+        await expect(message(page).locator(heading)).toHaveCSS('font-size', '25.2px');
         await expect(message(page).locator(heading)).toHaveCSS('font-weight', '400');
       }
       for (const edge of ['top', 'bottom']) {
@@ -946,19 +1390,28 @@ for (const frame of ['input', 'wrapper', 'none']) {
         await expect(cell).toHaveCSS('border-top-style', 'solid');
         await expect(cell).not.toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
       }
-      await page
-        .locator('[data-wr-filter] select')
-        .selectOption({ label: 'BIO 110: Principles of Biology' });
-      const list = page.locator('[data-wr-list]');
-      await expect(list).toBeVisible();
-      await expect(list).toHaveCSS('line-height', '19.6px');
-      await expect(list.locator('.wr-x-meta').first()).toHaveCSS('opacity', '0.75');
-      await expect(list.locator('.wr-x-meta').first()).toHaveCSS(
+      await articles(page).first().getByRole('button', { name: 'Show less' }).click();
+      // The sizes of the rows are the rem sizes of the widget of Canvas, in the font of the page.
+      const row = articles(page).nth(1);
+      const family = (await styles(page.locator('.fx-label-text')))[0];
+      await expect(row.locator('.wr-a-title')).toHaveCSS('font-size', '12px');
+      await expect(row.locator('.wr-a-title')).toHaveCSS('font-weight', '700');
+      expect(
+        await row.locator('.wr-a-title').evaluate((el) => getComputedStyle(el).fontFamily),
+      ).toBe(family);
+      await expect(row.locator('.wr-a-meta').first()).toHaveCSS('font-size', '12px');
+      await expect(row.locator('.wr-a-meta').first()).toHaveCSS(
         'color',
-        dark ? 'rgb(255, 255, 255)' : 'rgb(39, 53, 64)',
+        dark ? 'rgb(158, 166, 173)' : 'rgb(88, 104, 116)',
       );
-      await expect(list.locator('.wr-x-link').first()).toHaveCSS('font-size', '14px');
-      await page.locator('[data-wr-filter] select').selectOption({ label: 'All courses' });
+      await expect(row.locator('.wr-a-snippet')).toHaveCSS('font-size', '12px');
+      await expect(row.getByRole('button', { name: 'Read more' })).toHaveCSS('font-size', '14px');
+      await expect(row.locator('.wr-a-avatar')).toHaveCSS('width', '50px');
+      await expect(row.locator('.wr-a-avatar')).toHaveCSS('border-radius', '50%');
+      await expect(page.locator(LIST).getByRole('button', { name: 'Read more' }).first()).toHaveCSS(
+        'color',
+        dark ? 'rgb(90, 159, 212)' : 'rgb(14, 104, 179)',
+      );
       await page.evaluate(() => document.fonts.ready);
       await page.screenshot({
         path: `screenshots/dashboard-fixes/announcement-fonts-1280-${dark ? 'dark' : 'light'}-${frame}.png`,
