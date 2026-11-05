@@ -202,14 +202,27 @@ const COMMENT_STYLE = `
 `;
 
 /**
- * The part of the script of Canvas (`ui/features/submissions/jquery/index.tsx`) that saves a
- * comment: a click on `.save_comment_button` (line 380 binds it directly on the button) reads the
+ * The part of the script of Canvas (`ui/features/submissions/jquery/index.tsx`) that sizes the
+ * page and saves a comment: a click on `.save_comment_button` (line 380 binds it directly on the button) reads the
  * text of `.grading_comment` and draws a new `.comment` in `.comments .comment_list` with document
  * lookups, then clears the text (lines 99-117). The copy makes no request. It works only while the
  * column is in the light DOM, as Canvas's script does.
  */
 const COMMENT_SCRIPT = `
 document.addEventListener('DOMContentLoaded', function () {
+  // windowResize (lines 310-316): the frame as high as the screen, the comments with a maximum
+  // height, and the rubric holder above the right column.
+  function windowResize() {
+    var height = window.screen.height - 20;
+    var frame = document.getElementById('preview_frame');
+    if (frame) frame.style.height = height + 'px';
+    var holder = document.getElementById('rubric_holder');
+    if (holder) { holder.style.maxHeight = (height - 50) + 'px'; holder.style.overflow = 'auto'; holder.style.zIndex = '5'; }
+    var comments = document.querySelector('.comments');
+    if (comments) comments.style.maxHeight = height + 'px';
+  }
+  window.addEventListener('resize', windowResize);
+  windowResize();
   var save = document.querySelector('.save_comment_button');
   if (!save) return;
   window.__canvasComments = { saved: 0 };
