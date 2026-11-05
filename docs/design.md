@@ -344,7 +344,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   Focus goes to the tab after a minimize that the student made inside the dock, and to the minimize button after an open from the tab.
   The tab keeps 38 px of room on the page, as long as the window is at least 900 px wide, with the same padding lease as the dock.
   So the tab never covers the text of the page: at 1368 px the right column ends at the left edge of the tab.
-  A wider window sees no change in the content, because the content of Canvas ends before the tab (see the accepted result above).
+  A window that is wide enough sees no change in the content of an account with the width cap, because the content of Canvas ends before the tab (see the accepted result above).
+  A full-width account narrows by the 38 px of the tab.
   Below 900 px the tab covers the page, as the dock does.
   The tab takes its room before the dock gives its room back, and the dock takes its room before the tab gives it back, so the padding never falls to the padding of the page between the two.
   The host of the tab has its own id (`tools-weekly-tab`) and the mark of a dock.
@@ -1544,12 +1545,12 @@ These sizes come from one test build of the same small app [19].
 - The in-page UI uses px units, because rem units follow the page's font size [19].
 - Plain CSS with custom properties for colors and spacing; no CSS framework.
 - No runtime dependencies besides Preact and `@preact/signals`.
-- Each entry point must stay under 45 KB after gzip, and the detector under 2 KB, because the detector runs on every https page.
+- Each entry point must stay under 45 KB after gzip, except `inpage.js`, which may reach 48 KB, and the detector must stay under 2 KB, because the detector runs on every https page.
   Every entry point loads from the extension's own files, not over the network.
   The limit was 30 KB until 2026-10-29, when the span feature and the dashboard column filled it.
   The limit was 40 KB until 2026-11-03, when the Course work slot filled it.
   The limit of `inpage.js` alone is 48 KB since 2026-11-05: the page script now holds the weekly dock, its tab and the shared room lease, which the card did not need.
-  No other entry point has more than 45 KB, and the script is not split (decision 25 keeps the file pane in its own script).
+  The other entry points keep 45 KB, and the script is not split (decision 25 keeps the file pane in its own script).
   CI checks these limits.
   The extension pages load one shared chunk for all code under `src/shared` and `src/features`, because several small chunks cost more after gzip.
   A test build with Preact had a 9.3 KB content script [19].

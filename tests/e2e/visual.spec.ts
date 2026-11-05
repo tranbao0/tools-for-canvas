@@ -222,9 +222,9 @@ const LAYOUT_SHOTS: LayoutShot[] = [
   { name: 'widgets-column', fixture: 'dashboard-widgets', width: 1280 },
   { name: 'widgets-edit', fixture: 'dashboard-widgets', width: 1920, edit: true },
   { name: 'widgets-edit', fixture: 'dashboard-widgets', width: 1280, edit: true },
-  { name: 'listview-float', fixture: 'dashboard-list-view', width: 1920, tall: true },
-  { name: 'listview-float', fixture: 'dashboard-list-view', width: 1280, tall: true },
-  { name: 'listview-stack', fixture: 'dashboard-list-view', width: 1000, tall: true },
+  { name: 'listview-dock', fixture: 'dashboard-list-view', width: 1920, tall: true },
+  { name: 'listview-dock', fixture: 'dashboard-list-view', width: 1280, tall: true },
+  { name: 'listview-dock', fixture: 'dashboard-list-view', width: 1000, tall: true },
 ];
 
 /** Where the layout put the list on the page, from the host of the list. */
@@ -314,7 +314,8 @@ for (const shot of LAYOUT_SHOTS) {
         expect(await panelMode(page)).toBe('slot');
         expect(await list.isVisible()).toBe(shot.edit !== true);
       } else {
-        expect(await panelMode(page)).not.toBeNull();
+        // List View gets the weekly dock, which marks the host of the list as the one in the dock.
+        expect(await panelMode(page)).toBe('side');
       }
     });
   }

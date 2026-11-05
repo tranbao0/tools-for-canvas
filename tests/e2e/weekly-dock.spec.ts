@@ -720,6 +720,22 @@ test.describe('the load order with a file pane that opens at the start', () => {
 });
 
 test.describe('a page that removes the host of a pane', () => {
+  test('a dock that a file pane hid and a page removed shows again, with its room, when the pane closes', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background, { withFile: true });
+    await openFirstFile(page, FILE_LINK, () => addFileLink(page));
+    await expect(page.locator(DOCK)).toBeHidden();
+    // The page removes the hidden dock without a word, and the file pane closes.
+    await page.evaluate(() => document.getElementById('tools-weekly')?.remove());
+    await closePane(page);
+    await expect(page.locator(DOCK)).toBeVisible();
+    expect(await padding(page)).toBe('360px');
+    expect(await boxOf(page, DOCK)).toMatchObject({ x: 1437, width: 360 });
+  });
+
   test('a minimized list takes the room of a removed file host back, as an open list does', async ({
     context,
     page,
