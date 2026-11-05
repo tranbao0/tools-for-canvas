@@ -634,8 +634,8 @@ The Assignments list and its pane have their own steps below.
    Expect: two requests went out: the assignment and `submissions/self`, both with no include.
    Open the console of the page.
    Expect: no line that starts with `[weekrow] submission details` shows.
-   If Canvas's "Files" table and its comments column are still there, read the line `[weekrow] submission details keeps the Canvas frame, reason: CODE`, and write down the code (`type`, `report-data`, `asset-reports` or `mount-failed`).
-   Then open the reply of `submissions/self` and write down, without any address, whether each attachment has a `preview_url`, the keys of `turnitin_data` and `vericite_data`, and the fields of each entry.
+   If Canvas's "Files" table and its comments column are still there, read the line `[weekrow] submission details keeps the Canvas frame, reason: CODE`, and write down the code (`type`, `report-data`, `asset-reports`, `no-session` or `mount-failed`).
+   Then open the reply of `submissions/self` and write down, without any address, whether each attachment has a `preview_url` and the names of its query parameters (`blob`, and `hmac` if it has one; never the values), the keys of `turnitin_data` and `vericite_data`, and the fields of each entry.
    Inspect the frame `#preview_frame` and write down whether `td.asset-report-status-container` holds anything.
 2. Look at the content area.
    Expect: "Instructions" shows the description of the assignment, and there is no "Your files" section.
