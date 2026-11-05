@@ -2318,7 +2318,15 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The fix reads the text of each input: "All Courses" or the name of a course, and "All Roles", "Teacher" or "Teaching Assistant".
    It finds the widget by the Role filter (`role-filter-select`), because the Course filter (`course-filter-select`) is a shared component that other widgets use too.
    The Course filter text is matched to the name of one course of the dashboard data.
+   Canvas fills that filter from `ENV.SHARED_COURSE_DATA`, which `users_controller.rb` builds in `fetch_courses_with_grades`.
+   Its `courseName` is the nickname that the signed-in user set for the course, or else the course name, and `originalName` holds the course name.
+   The REST course list gives `name` the same way (`apply_nickname` in `lib/api/v1/course.rb` puts the nickname in `name` and the course name in `original_name`).
+   So `DashboardCourse.name` is the text of the filter, and the fix needs no other field.
    When the fix cannot tell a filter, Canvas's own list stays: the Role text is not one of the three English labels, the Course text names no course or names two courses alike, or the data has not come yet.
+   The own list reads the courses of the session, which are the courses of the student.
+   A parent who observes a child has no student course, so the session has none, and the fix leaves Canvas's list alone and marks nothing.
+   Canvas's filter and list then follow the child (`OBSERVED_USER_ID`), and the own list would show "No instructors found".
+   A user who is a student and also an observer: when the Course filter text is not one of the courses of the session, Canvas's own list stays, because the text names a course of the child.
    A school with another language therefore sees Canvas's own list, and the fix does nothing there.
    The Announcements fix reads any other text as All, and this fix does not, because a list for the wrong person group is worse than Canvas's own list.
    - The card keeps its height, as in the approved mockup of 2026-11-05.
@@ -2416,6 +2424,10 @@ The page scripts of the fixes and of the weekly list share one sanitizer, `src/s
   If Canvas shows another name than the data holds, or two courses have one name, the fix cannot tell the course, and Canvas's own list stays.
   The query `WeekrowPeople` follows `coursePeople.ts` of Canvas, and the finder follows the test ids of `PeopleWidget`.
   If Canvas changes its schema, the first page fails and the list of Canvas shows again.
+- The People list has one limit for a user who is a student and also an observer.
+  The session holds only the courses of the student, and the fix cannot read which user the dashboard shows.
+  With "All Courses" chosen, the own list then shows the people of the courses of the student, while Canvas's list and its filter follow the observed child (`OBSERVED_USER_ID`).
+  A Course filter text that is not a course of the session keeps Canvas's list, and a session with no course keeps it too.
 - The dashboard fixes and weekly list share the same session fingerprint check from decision 11.
   A page of another cookie store gets no grades, and a page without a session cookie gets none either.
   A read of the cache that the cookie check does not confirm gets no data, and a cookie store that cannot be read gets none either.

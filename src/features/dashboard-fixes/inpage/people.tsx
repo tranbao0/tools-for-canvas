@@ -70,14 +70,16 @@ function isPageReply(value: unknown): value is PeoplePageReply {
 
 /**
  * The filters as the widget shows them, or `null` when the fix cannot tell: the role is not an
- * English label, or the Course filter names a course that is none of the courses of the data or
- * more than one of them. Canvas's own list then stays.
+ * English label, the data came with no course (a parent who observes a child has no student
+ * course, and Canvas's list has the people of the child), or the Course filter names a course that
+ * is none of the courses of the data or more than one of them. Canvas's own list then stays.
  */
 export function filterOf(
   widget: Pick<PeopleWidget, 'courseLabel' | 'role'>,
   courses: readonly DashboardCourse[] | null,
 ): PeopleFilter | null {
   if (widget.role === null) return null;
+  if (courses !== null && courses.length === 0) return null;
   if (widget.courseLabel === ALL_COURSES_LABEL) return { courseId: null, role: widget.role };
   const named = (courses ?? []).filter((course) => course.name === widget.courseLabel);
   const [only] = named;
