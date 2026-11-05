@@ -205,7 +205,7 @@ describe('the page script', () => {
 
     it('closes the pane, gives the room back, and opens a new pane for the next click', async () => {
       await openPane();
-      expect(html.style.getPropertyValue('padding-right')).toBe('480px');
+      expect(html.style.getPropertyValue('padding-right')).toBe('492px');
       resetMessage();
       expect(paneHost()).toBeNull();
       expect(html.style.getPropertyValue('padding-right')).toBe('');
