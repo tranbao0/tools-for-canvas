@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ASSIGNMENT_DETAILS, rawRecords } from '../../../tests/fixtures/assignment-view';
+import { fileReport } from './inpage/files';
 import { projectAssignmentView, projectReports } from './project';
 
 describe('projectAssignmentView', () => {
@@ -180,7 +181,7 @@ describe('the file addresses and the report data', () => {
     updated_at: '2026-11-01T10:02:00Z',
   };
 
-  it('keeps the session address of an attachment, with a limit', () => {
+  it('keeps the session address of an attachment, and drops one over the limit', () => {
     const { assignment, submission } = rawRecords();
     const details = projectAssignmentView(assignment, {
       ...submission,
@@ -195,7 +196,7 @@ describe('the file addresses and the report data', () => {
       '/api/v1/canvadoc_session?blob=a&hmac=b',
       undefined,
       undefined,
-      'p'.repeat(2000),
+      undefined,
     ]);
   });
 
@@ -287,11 +288,53 @@ describe('the file addresses and the report data', () => {
     expect(reports?.[4]?.error).toHaveLength(200);
   });
 
-  it('limits the number of entries', () => {
+  it('keeps a session address of exactly the limit, whole', () => {
+    const { assignment, submission } = rawRecords();
+    const exact = `/api/v1/canvadoc_session?blob=${'a'.repeat(2000 - '/api/v1/canvadoc_session?blob='.length)}`;
+    const details = projectAssignmentView(assignment, {
+      ...submission,
+      attachments: [{ id: '1', display_name: 'a', preview_url: exact }],
+    });
+    expect(details.submission.attachments?.[0]?.preview_url).toBe(exact);
+  });
+
+  it('marks a valid key whose value is no object as not readable, so it does not vanish', () => {
+    const { submission } = rawRecords();
+    const { reports } = projectReports({
+      ...submission,
+      turnitin_data: {
+        attachment_1: 'broken',
+        attachment_2: null,
+        attachment_3: [entry],
+        attachment_4: entry,
+        webhook_info: 'not a report key',
+      },
+    });
+    expect(reports?.map((report) => [report.asset, report.readable])).toEqual([
+      ['attachment_1', false],
+      ['attachment_2', false],
+      ['attachment_3', false],
+      ['attachment_4', true],
+    ]);
+    expect(reports?.[0]).toMatchObject({ score: null, state: null, status: null, error: null });
+  });
+
+  it('limits the entries, and marks the keys past the limit as not readable, not as absent', () => {
     const { submission } = rawRecords();
     const turnitin_data = Object.fromEntries(
       Array.from({ length: 300 }, (_, index) => [`attachment_${index}`, entry]),
     );
-    expect(projectReports({ ...submission, turnitin_data }).reports).toHaveLength(100);
+    const { reports } = projectReports({ ...submission, turnitin_data });
+    expect(reports).toHaveLength(200);
+    expect(reports?.slice(0, 100).every((report) => report.readable)).toBe(true);
+    expect(reports?.slice(100).every((report) => !report.readable)).toBe(true);
+    // A file whose key sits past the limit is not shown without a score, but kept in Canvas's frame.
+    const source = { reports };
+    const context = {
+      origin: 'https://school.instructure.com',
+      pagePath: '/courses/1/assignments/2/submissions/3',
+    };
+    expect(fileReport(source, '150', context).readable).toBe(false);
+    expect(fileReport(source, '50', context).readable).toBe(true);
   });
 });
