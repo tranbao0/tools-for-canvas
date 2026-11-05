@@ -1303,6 +1303,8 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | Course order | `GET /api/v1/users/self/dashboard_positions` | Once per session |
 | Week items | `GET /api/v1/planner/items?start_date=...&end_date=...&per_page=100` | The parts of a view's range that the cache lacks, the days of the span first; the weeks before and after a shown view, ahead of time; the cached parts of the current-week range in each light and full round, in up to 3 chunks |
 | Assignment details | `GET /api/v1/courses/:id/assignments?assignment_ids[]=...&include[]=submission&per_page=100` | New planner items, after they show, per course with assignment items; the current-week items in each full round; a shown week's items after a full round |
+| Assignment (decision 26) | `GET /api/v1/courses/:id/assignments/:id?include[]=submission` | The assignment pane opens, on each later read of the pane (each trusted load of its frame after the first, when it closes, every 20 seconds while it is open and the page is in view), and the Submission Details page loads |
+| Own submission (decision 26) | `GET /api/v1/courses/:id/assignments/:id/submissions/self` | With each assignment read above; alone, to learn the user of the submission, when an assignment page loads |
 | Teacher status names | `POST /api/graphql` with `customGradeStatusesConnection` for each course | Once per session, when a teacher status appears |
 | All assignments (planner turned off only) | `GET /api/v1/courses/:id/assignments?include[]=submission&per_page=100` | Instead of the planner, per course |
 | Undated work | `GET /api/v1/courses/:id/assignments?bucket=undated&...` | 5-minute timer, per course |
@@ -3420,10 +3422,9 @@ So a student switches pages to read the instructions next to the feedback on a f
    - On the Submission Details page, the "File viewer" switch changes only the label of the file links in the box ("View NAME" or "Download NAME"), and it does not turn the view off.
 
 8. **Data.**
-   - The background reads one assignment with `GET /api/v1/courses/:id/assignments/:id?include[]=submission&include[]=can_submit` and the student's own submission with `GET /api/v1/courses/:id/assignments/:id/submissions/self?include[]=submission_comments&include[]=rubric_assessment`.
+   - The background reads one assignment with `GET /api/v1/courses/:id/assignments/:id?include[]=submission` and the student's own submission with `GET /api/v1/courses/:id/assignments/:id/submissions/self` with no include.
    - The reply keeps only what the Submission Details page and the refresh of the pane read (see "Message" below).
     The score, the rubric, the comments and the due dates are not in it, because Canvas shows them itself.
-    The requests still carry `include[]=can_submit`, `include[]=submission_comments` and `include[]=rubric_assessment`, which no field of the reply uses now, because their include list is in `src/shared/canvas/client.ts`.
    - It reads when the assignment pane opens, on each later read of the pane (step 3 below), and when the Submission Details page loads.
     The first read of an assignment in the pane is the baseline, and the pane keeps only the last good reply of each assignment, to compare the next one with it.
    - The assignment page reads only the own submission with no include, to learn its user (item 1).

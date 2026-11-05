@@ -174,6 +174,11 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
         ]),
       );
 
+    const ownSubmission = (courseId: string, assignmentId: string) =>
+      getObject<Record<string, unknown>>(
+        apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/self`, []),
+      );
+
     const listStatusBatch = async (
       courseIds: readonly string[],
     ): Promise<Record<string, CustomGradeStatus[]>> => {
@@ -190,24 +195,14 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
         getObject(
           apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}`, [
             ['include[]', 'submission'],
-            ['include[]', 'can_submit'],
           ]),
         ),
       markRubricCommentsRead: (courseId, assignmentId, userId) => {
         const url = `${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/${pathId(userId)}/rubric_assessments/read`;
         return write('PUT', url, undefined).then(() => undefined);
       },
-      getOwnSubmissionRecord: (courseId, assignmentId) =>
-        getObject(
-          apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/self`, [
-            ['include[]', 'submission_comments'],
-            ['include[]', 'rubric_assessment'],
-          ]),
-        ),
-      getOwnSubmissionUserRecord: (courseId, assignmentId) =>
-        getObject(
-          apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/self`, []),
-        ),
+      getOwnSubmissionRecord: ownSubmission,
+      getOwnSubmissionUserRecord: ownSubmission,
       getViewerFile: (fileId) => getObject(`/api/v1/files/${pathId(fileId)}`),
       getViewerModuleItem: (courseId, moduleId, itemId) =>
         getObject(

@@ -600,7 +600,7 @@ Run them on the Grades page of the course (`/courses/:id/grades`).
    Post a comment on a test assignment with the text `Use <title> & <b>bold</b>`, a blank line and a second line.
    Expect: the comment shows the same text and the same line break as Canvas shows.
    If it loses the angle-bracket text, Canvas does not escape that field, and the comment text needs plain-text handling.
-   Expect: two requests went out: the assignment with `include[]=submission` and `include[]=can_submit`, and `submissions/self` with `include[]=submission_comments` and `include[]=rubric_assessment`.
+   Expect: two requests went out: the assignment with `include[]=submission`, and `submissions/self` with no include.
 3. Look at the chips of an assignment that is missing, past due, extended or excused, and of the assignment that is handed in outside Canvas.
    Expect: the chips are the ones of the weekly list for the same assignment, such as "Missing" in red, "Past due", "Extended", "Excused" and "Can't confirm: Gradescope".
 4. Open the assignment whose instructions are longer than 10 lines.
