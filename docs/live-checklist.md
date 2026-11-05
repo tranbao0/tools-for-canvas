@@ -368,11 +368,11 @@ D1. Open the Recent Activity dashboard.
     Expect: the list is in a dock fixed to the right edge of the window, from the top to the bottom, 360 px wide, with a line on its left edge, no shadow and no rounded corners.
     Expect: the header, the arrows, the rings, the tabs, the groups and the bottom bar are the same as in the card, in the same order, and the inside fills the window height.
     Expect: if the global navigation of Canvas is collapsed (54 px), nothing of the content of Canvas moves when you minimize the list and open it again.
-    Expect: if the navigation is expanded (84 px), the content ends 13 px sooner while the dock is open, because the content stops at 1366 px and does not fit.
+    Expect: if the navigation is expanded (84 px), which is the default, the content ends 13 px sooner while the dock is open (28 px with a page scroll bar), because the content stops at 1366 px and does not fit.
 D2. Scroll the page a long way, then use the arrow keys and the Page Down key.
     Expect: the dock never moves, and Coming Up and Recent Feedback stay where Canvas draws them.
 D3. Scroll the groups of the list, open "Done", then click "Minimize list".
-    Expect: the room goes back, the page uses its full width, and a tab shows on the right edge, 96 px from the top, with a calendar check icon, the span written from bottom to top (for example "Nov 4 - 10") and a number for the open work of the span.
+    Expect: the dock closes, the page keeps 38 px of room for the tab, and a tab shows on the right edge, 96 px from the top, with a calendar check icon, the span written from bottom to top (for example "Nov 4 - 10") and a number for the open work of the span.
     Expect: focus is on the tab, and a screen reader says "Open weekly list, Nov 4 - 10, 2 open" with "collapsed".
     Click the tab, or press Enter or Space on it.
     Expect: the dock opens at once, focus is on the minimize button, and the list has the scroll position and the open group that it had.
@@ -387,9 +387,17 @@ D5. Click a link to a PDF on the page (for example a file in an announcement), w
     Press Escape with focus in the pane.
     Expect: only the PDF pane closes, and the dock is back with the same width, groups and scroll position.
 D6. Minimize the list, open a PDF, then close it.
-    Expect: the tab hides while the pane is open, no room is taken for the dock, and the tab comes back when the pane closes.
+    Expect: the tab hides while the pane is open, the page has the room of the PDF pane, and the tab comes back with its 38 px of room when the pane closes.
 D7. Turn off "File viewer" in the settings while a PDF is open, then turn it on again.
     Expect: the pane closes and the dock comes back with the room of the dock, and after the switch is on, a PDF link covers the dock again.
+D7a. In List View, click "+ To Do", then close the tray and open the grades tray.
+    Expect: each tray shows on top of the dock, with the focus inside it.
+    Minimize the list and open the "+ To Do" tray again.
+    Expect: the tray shows on top of the tab.
+D7b. Make the window about 1,400 px wide, with the list minimized.
+    Expect: the tab does not cover the text of the right column.
+D7c. Reload a page that has a PDF pane open.
+    Expect: the dock never shows before the PDF pane.
 D8. Open the new widget dashboard and click the Courses tab.
     Expect: no list and no floating panel show.
     Click the Dashboard tab.

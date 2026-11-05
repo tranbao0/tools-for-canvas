@@ -277,6 +277,12 @@ export interface WeekView {
   /** Empty when the rings setting is off. */
   rings: Ring[];
   /**
+   * The open work of the shown span: the items that the rings count and that are not done, so
+   * the ring total minus its done count, summed over the rings. It is counted also when the rings
+   * setting is off.
+   */
+  openCount: number;
+  /**
    * `undefined`: no filter. `null`: the Personal ring. Also `undefined` when the data owner dropped
    * a filter that no longer applies (rings off, course hidden or gone), so the surface clears its own.
    */

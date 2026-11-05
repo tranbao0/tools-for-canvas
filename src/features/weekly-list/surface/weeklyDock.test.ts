@@ -1,12 +1,18 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   COURSES_TAB_ID,
   DASHBOARD_TAB_ID,
   findSelectedDashboardTab,
 } from '../../../shared/canvas/widgetDashboard';
 import { DEFAULT_TOOLS_SETTINGS, type ToolsSettings } from '../../../shared/settings/tools';
-import { createDock, WEEKLY_HOST_ID, WEEKLY_TAB_ID, type Dock } from '../../file-viewer/dock';
+import {
+  createDock,
+  reportFilePane,
+  WEEKLY_HOST_ID,
+  WEEKLY_TAB_ID,
+  type Dock,
+} from '../../file-viewer/dock';
 import { DEFAULT_SETTINGS, type Settings, type SurfaceState } from '../model/types';
 import type { Actions } from '../ui/contract';
 import { hideOnCoursesTab } from './coursesTab';
@@ -22,11 +28,19 @@ import {
 const html = document.documentElement;
 const padding = (): string => html.style.getPropertyValue('padding-right');
 
-/** A state with a week view that has the given number of items in each day group. */
-function ready(days: { kind: 'today' | 'tomorrow' | 'day'; open: number }[], older = 0) {
+/**
+ * A state with a week view that has the given number of items in each day group. The rings count
+ * `openCount` items as open, whatever the groups show.
+ */
+function ready(
+  days: { kind: 'today' | 'tomorrow' | 'day'; open: number }[],
+  openCount = 0,
+  older = 0,
+) {
   return {
     kind: 'ready',
     view: {
+      openCount,
       span: { kind: 'week', days: 7 },
       spanStart: '2026-11-04',
       spanEnd: '2026-11-10',
@@ -47,21 +61,30 @@ function ready(days: { kind: 'today' | 'tomorrow' | 'day'; open: number }[], old
 }
 
 describe('the tab text', () => {
-  it('counts the open work of the day groups only', () => {
-    const state = ready([
-      { kind: 'today', open: 1 },
-      { kind: 'tomorrow', open: 0 },
-      { kind: 'day', open: 1 },
-    ]);
+  it('counts the open work that the rings count in the shown span', () => {
+    // The rings count 4 items in the span and 2 are done. The day groups hold other rows too, such
+    // as reminders and look-ahead items, which the rings leave out.
+    const state = ready(
+      [
+        { kind: 'today', open: 3 },
+        { kind: 'tomorrow', open: 2 },
+        { kind: 'day', open: 1 },
+      ],
+      2,
+      1,
+    );
     expect(openWork(state)).toBe(2);
   });
 
   it('names the span and the open work in the label', () => {
     const text = tabText(
-      ready([
-        { kind: 'today', open: 1 },
-        { kind: 'day', open: 1 },
-      ]),
+      ready(
+        [
+          { kind: 'today', open: 1 },
+          { kind: 'day', open: 1 },
+        ],
+        2,
+      ),
     );
     expect(text.span).toBe('Nov 4 - 10');
     expect(text.open).toBe(2);
@@ -213,12 +236,16 @@ async function settle(): Promise<void> {
 }
 
 /** Starts the weekly dock with a fake runtime. The stored settings load at once. */
-async function rig(options: { minimized?: boolean; width?: number } = {}): Promise<Rig> {
+async function rig(
+  options: { minimized?: boolean; width?: number; fileViewer?: boolean } = {},
+): Promise<Rig> {
   let invalid = false;
   let settings: Settings = { ...DEFAULT_SETTINGS, minimized: options.minimized === true };
   let tools: ToolsSettings = {
     ...DEFAULT_TOOLS_SETTINGS,
     weeklyDockWidth: options.width ?? 360,
+    // The first show waits for the file pane script only while this switch is on.
+    fileViewer: options.fileViewer === true,
   };
   const subscribers = new Set<(state: SurfaceState) => void>();
   const settingsListeners = new Set<(value: Settings) => void>();
@@ -226,7 +253,7 @@ async function rig(options: { minimized?: boolean; width?: number } = {}): Promi
   const saved: Settings[] = [];
   const savedWidths: number[] = [];
   const runtime = {
-    state: () => ready([{ kind: 'today', open: 2 }]),
+    state: () => ready([{ kind: 'today', open: 2 }], 2),
     settings: (): InPlaceSettings => ({ value: settings, courses: [] }),
     announcements: () => undefined,
     actions: {
@@ -335,12 +362,12 @@ describe('the weekly dock and its tab', () => {
     expect(savedWidths).toEqual([]);
   });
 
-  it('a minimized list opens no dock: it shows the tab and takes no room', async () => {
+  it('a minimized list opens no dock: it shows the tab and keeps 38 px of room for it', async () => {
     html.style.setProperty('padding-right', '13px');
     await rig({ minimized: true });
     expect(host()).toBeNull();
     expect(shown(tab())).toBe(true);
-    expect(padding()).toBe('13px');
+    expect(padding()).toBe('38px');
   });
 
   it('gives the room back on a minimize and takes it again on an open from the tab', async () => {
@@ -350,7 +377,7 @@ describe('the weekly dock and its tab', () => {
     setMinimized(true);
     expect(shown(host())).toBe(false);
     expect(shown(tab())).toBe(true);
-    expect(padding()).toBe('13px');
+    expect(padding()).toBe('38px');
     expect(saved).toEqual([]);
   });
 
@@ -405,7 +432,7 @@ describe('one dock at a time with the file pane', () => {
     file.close();
     expect(shown(tab())).toBe(true);
     expect(host()).toBeNull();
-    expect(padding()).toBe('13px');
+    expect(padding()).toBe('38px');
   });
 
   it('a page that opens with a file pane already open starts with the dock hidden', async () => {
@@ -441,7 +468,7 @@ describe('one dock at a time with the file pane', () => {
     expect(padding()).toBe('600px');
     expect(shown(tab())).toBe(false);
     file.close();
-    expect(padding()).toBe('13px');
+    expect(padding()).toBe('38px');
     expect(shown(tab())).toBe(true);
     expect(shown(host())).toBe(false);
   });
@@ -524,5 +551,170 @@ describe('a copy whose extension context ended', () => {
     old.dock.stop();
     expect(host()).toBeNull();
     expect(padding()).toBe('13px');
+  });
+});
+
+describe('the room of the tab', () => {
+  it('keeps 38 px for the tab of a minimized list and gives the page padding back with the tab', async () => {
+    html.style.setProperty('padding-right', '13px', 'important');
+    const { dock, setMinimized } = await rig({ minimized: true });
+    expect(padding()).toBe('38px');
+    expect(html.style.getPropertyPriority('padding-right')).toBe('important');
+    setMinimized(false);
+    expect(padding()).toBe('360px');
+    setMinimized(true);
+    expect(padding()).toBe('38px');
+    dock.stop();
+    expect(padding()).toBe('13px');
+    expect(html.style.getPropertyPriority('padding-right')).toBe('important');
+    expect(html.hasAttribute('data-weekrow-room')).toBe(false);
+  });
+
+  it('does not change the padding on a narrow window, where the tab covers the page', async () => {
+    html.style.setProperty('padding-right', '13px');
+    const { innerWidth } = window;
+    try {
+      window.innerWidth = 880;
+      await rig({ minimized: true });
+      expect(shown(tab())).toBe(true);
+      expect(padding()).toBe('13px');
+      window.innerWidth = 1280;
+      window.dispatchEvent(new Event('resize'));
+      expect(padding()).toBe('38px');
+    } finally {
+      window.innerWidth = innerWidth;
+    }
+  });
+
+  it('takes the room back from a file pane whose host a page removed while the list is minimized', async () => {
+    html.style.setProperty('padding-right', '13px');
+    await rig({ minimized: true });
+    const file = fileDock(480);
+    file.open();
+    expect(shown(tab())).toBe(false);
+    expect(padding()).toBe('480px');
+    file.host.remove();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(shown(tab())).toBe(true);
+    expect(padding()).toBe('38px');
+  });
+
+  it('puts the tab and its room back when a page removes the tab host', async () => {
+    await rig({ minimized: true });
+    tab()?.remove();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(shown(tab())).toBe(true);
+    expect(padding()).toBe('38px');
+  });
+});
+
+describe('a stopped copy', () => {
+  it('never writes the padding on a resize, also when it lost its host to a newer copy', async () => {
+    html.style.setProperty('padding-right', '13px');
+    const old = await rig();
+    expect(padding()).toBe('360px');
+    old.invalidate();
+    host()?.remove();
+    html.style.setProperty('padding-right', '480px');
+    old.dock.stop();
+    window.dispatchEvent(new Event('resize'));
+    expect(padding()).toBe('480px');
+  });
+
+  it('never writes the padding on a resize after a stop of a minimized copy', async () => {
+    html.style.setProperty('padding-right', '13px');
+    const old = await rig({ minimized: true });
+    old.invalidate();
+    tab()?.remove();
+    html.style.setProperty('padding-right', '480px');
+    old.dock.stop();
+    window.dispatchEvent(new Event('resize'));
+    expect(padding()).toBe('480px');
+  });
+});
+
+/** Forgets the report of the file pane script, as a page that was just loaded has none. */
+function unreportFilePane(): void {
+  const scope = globalThis as unknown as Record<symbol, { fileScriptReported?: boolean }>;
+  const state = scope[Symbol.for('tools-for-canvas.dock')];
+  if (state !== undefined) state.fileScriptReported = false;
+}
+
+describe('the first show with the File viewer switch on', () => {
+  /** Every value that the padding of the page took, in order. */
+  function recordPadding(): string[] {
+    const values: string[] = [];
+    new MutationObserver(() => {
+      const value = padding();
+      if (values[values.length - 1] !== value) values.push(value);
+    }).observe(html, { attributes: true, attributeFilter: ['style'] });
+    return values;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    unreportFilePane();
+  });
+
+  it('holds the dock until the file pane script has reported, and then shows it', async () => {
+    unreportFilePane();
+    await rig({ fileViewer: true });
+    expect(host()).toBeNull();
+    expect(padding()).toBe('');
+    reportFilePane();
+    expect(shown(host())).toBe(true);
+    expect(padding()).toBe('360px');
+  });
+
+  it('shows the dock after 200 ms when the file pane script has not reported', async () => {
+    unreportFilePane();
+    await rig({ fileViewer: true });
+    await vi.advanceTimersByTimeAsync(199);
+    expect(host()).toBeNull();
+    await vi.advanceTimersByTimeAsync(2);
+    expect(shown(host())).toBe(true);
+    expect(padding()).toBe('360px');
+  });
+
+  it('never takes the room of the dock when a file pane opens before the report', async () => {
+    unreportFilePane();
+    const values = recordPadding();
+    html.style.setProperty('padding-right', '13px');
+    await rig({ fileViewer: true });
+    await vi.advanceTimersByTimeAsync(50);
+    const file = fileDock(480);
+    file.open();
+    reportFilePane();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(host()).toBeNull();
+    expect(padding()).toBe('480px');
+    expect(values).not.toContain('360px');
+    file.close();
+    expect(padding()).toBe('360px');
+  });
+
+  it('holds the tab of a minimized list in the same way', async () => {
+    unreportFilePane();
+    await rig({ fileViewer: true, minimized: true });
+    expect(tab()).toBeNull();
+    expect(padding()).toBe('');
+    reportFilePane();
+    expect(shown(tab())).toBe(true);
+    expect(padding()).toBe('38px');
+  });
+
+  it('does not hold the dock while the File viewer switch is off', async () => {
+    unreportFilePane();
+    await rig({ fileViewer: false });
+    expect(shown(host())).toBe(true);
+  });
+
+  it('does not hold the dock when the file pane script reported before', async () => {
+    reportFilePane();
+    await rig({ fileViewer: true });
+    expect(shown(host())).toBe(true);
   });
 });

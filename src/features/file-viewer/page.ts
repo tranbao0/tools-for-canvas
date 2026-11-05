@@ -1,6 +1,6 @@
 import { browser, type Browser } from 'wxt/browser';
 import { t } from '../../shared/ui/i18n';
-import { createDock, FILE_HOST_ID, removeStaleFilePane, type Dock } from './dock';
+import { createDock, FILE_HOST_ID, removeStaleFilePane, reportFilePane, type Dock } from './dock';
 import { TOP_OPEN } from './frame';
 import { acceptPaneHello, isViewerSecret, secretMessage, validPaneReady } from './channel';
 import {
@@ -491,5 +491,11 @@ export async function startViewer(): Promise<void> {
     );
     askForCatcher();
   }
-  if (live && enabled && tabs.active) void show();
+  // The weekly dock waits for this report before it first shows, so it never shows on a page that
+  // opens with a file pane. The pane is open by now, or none will open.
+  try {
+    if (live && enabled && tabs.active) await show();
+  } finally {
+    reportFilePane();
+  }
 }

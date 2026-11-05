@@ -6,6 +6,7 @@
  * (tests/e2e/weekly-dock.spec.ts).
  */
 import type { Page } from '@playwright/test';
+import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import { IDS } from '../fixtures/scenario';
 import { pageQuiet } from './support/settle';
 import {
@@ -14,6 +15,7 @@ import {
   expect,
   inpageList,
   openCanvasPage,
+  saveSettings,
   serveScenario,
   settledList,
   test,
@@ -21,6 +23,7 @@ import {
 
 const QUIZ_3 = 'Quiz 3: Cell membranes';
 const VIEWPORT = { width: 1280, height: 800 };
+const COURSE_HOME = `/courses/${IDS.courses.biology}`;
 
 interface Box {
   x: number;
@@ -89,6 +92,16 @@ async function sidebarBoxes(page: Page): Promise<Box[]> {
   );
 }
 
+/** Makes the page much longer than the right column, so the column can scroll out of view. */
+async function lengthenPage(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const filler = document.createElement('div');
+    filler.style.height = '4000px';
+    document.getElementById('content')?.append(filler);
+  });
+  await pageQuiet(page);
+}
+
 async function openLongPage(
   context: Parameters<typeof serveScenario>[0],
   page: Page,
@@ -108,12 +121,7 @@ async function openLongPage(
 test.describe('a course home page with a short right column', () => {
   test('docks the list the same way', async ({ context, page }) => {
     await openLongPage(context, page, 'course-home', `/courses/${IDS.courses.biology}`);
-    await page.evaluate(() => {
-      const filler = document.createElement('div');
-      filler.style.height = '4000px';
-      document.getElementById('content')?.append(filler);
-    });
-    await pageQuiet(page);
+    await lengthenPage(page);
     const columnEnd = (await dockState(page)).sentinelTop;
     expect((await dockState(page)).panel).toBeNull();
     await scrollTo(page, columnEnd + 60);
@@ -123,5 +131,65 @@ test.describe('a course home page with a short right column', () => {
     for (const item of await sidebarBoxes(page)) expect(overlap(item, card)).toBe(false);
     await scrollTo(page, columnEnd - 100);
     await expect.poll(async () => (await dockState(page)).panel).toBeNull();
+  });
+
+  test('a check made in the docked list shows in the list at its place', async ({
+    context,
+    page,
+  }) => {
+    await openLongPage(context, page, 'course-home', COURSE_HOME);
+    await lengthenPage(page);
+    const columnEnd = (await dockState(page)).sentinelTop;
+    await page.evaluate(() => {
+      const container = document.getElementById('weekrow-inpage');
+      if (container) container.dataset['instance'] = 'one';
+    });
+    await scrollTo(page, columnEnd + 60);
+    await expect.poll(async () => (await dockState(page)).panel).toBe('dock');
+
+    const list = inpageList(page);
+    await expect(doneBox(list, QUIZ_3)).not.toBeChecked();
+    await doneBox(list, QUIZ_3).click();
+    // Done work moves to the Done group, so the box is not in the Today group any more.
+    await expect(doneBox(list, QUIZ_3)).toHaveCount(0);
+    await settledList(page);
+
+    await scrollTo(page, columnEnd - 100);
+    await expect.poll(async () => (await dockState(page)).panel).toBeNull();
+    // The same list, not a copy: the mark is in it, and so is the container.
+    await expect(page.locator('#weekrow-inpage[data-instance="one"]')).toHaveCount(1);
+    await expect(doneBox(list, QUIZ_3)).toHaveCount(0);
+  });
+
+  test('shows the slim bar when the list is minimized, and the page keeps no side scroll', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openLongPage(context, page, 'course-home', COURSE_HOME);
+    await lengthenPage(page);
+    const columnEnd = (await dockState(page)).sentinelTop;
+    await scrollTo(page, columnEnd + 60);
+    await expect.poll(async () => (await dockState(page)).panel).toBe('dock');
+    await saveSettings(background, { ...DEFAULT_SETTINGS, minimized: true });
+    await expect(inpageList(page).getByRole('button', { name: /^Weekly list/ })).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+  });
+
+  test('does not dock when the column sits under the content on a narrow window', async ({
+    context,
+    page,
+  }) => {
+    await openLongPage(context, page, 'course-home', COURSE_HOME);
+    await page.setViewportSize({ width: 800, height: 800 });
+    await lengthenPage(page);
+    const columnEnd = (await dockState(page)).sentinelTop;
+    await scrollTo(page, columnEnd + 60);
+    await pageQuiet(page);
+    expect(await dockState(page)).toMatchObject({ panel: null, spacer: false });
   });
 });
