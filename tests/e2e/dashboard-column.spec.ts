@@ -153,12 +153,17 @@ test.describe('the widget dashboard without Course work', () => {
       await browser.close();
       for (const tab of ['Dashboard', 'Courses', 'Dashboard']) {
         await page.getByRole('tab', { name: tab, exact: true }).click();
+        if (tab === 'Courses') {
+          // The Courses tab shows no card and no floating panel. The list stays on the page.
+          await expect(inpageList(page)).toBeHidden();
+          await expect(page.locator('#weekrow-inpage')).toHaveCount(1);
+          expect(await noSideScroll(page)).toBe(true);
+          continue;
+        }
+        await expect(inpageList(page)).toBeVisible();
         await expectMode(page, wide ? 'area' : 'stack');
-        // The anchor of the card: the first widget on Dashboard, the tab content on Courses.
-        const anchorCss =
-          tab === 'Dashboard'
-            ? 'section[data-testid^="widget-"]'
-            : '[data-testid="dashboard-tab-content"]';
+        // The anchor of the card: the first widget on Dashboard.
+        const anchorCss = 'section[data-testid^="widget-"]';
         await expect
           .poll(async () => {
             const card = await listBox(page);
@@ -182,7 +187,7 @@ test.describe('the widget dashboard without Course work', () => {
         expect(card.y).toBeGreaterThan(heading.y);
         expect(await noSideScroll(page)).toBe(true);
         expect(await coveredCanvasElements(page)).toEqual([]);
-        if (tab === 'Dashboard') {
+        {
           for (let i = 0; i < selectors.length; i++) {
             const r = (await boxes(page, selectors[i]!))[0]!;
             expect(r.x).toBeCloseTo(before[i]!.x, 0);
@@ -369,55 +374,37 @@ test.describe('when the grid arrives after the wait', () => {
 });
 
 test.describe('List View', () => {
-  test('keeps Canvas styles and supports resize after placement', async ({ context, page }) => {
-    await openPage(context, page, 'dashboard-list-view', 2088);
-    await expectMode(page, 'area');
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await expectMode(page, 'stack');
-    await expect(page.locator('[data-weekrow-styled]')).toHaveCount(0);
-    const card = await listBox(page);
-    const content = (await boxes(page, '#content'))[0]!;
-    expect(card.y + card.height).toBeLessThanOrEqual(content.y);
-    await page.setViewportSize({ width: 2088, height: 800 });
-    await expectMode(page, 'area');
-  });
-
   for (const width of [2088, 1920, 1800]) {
-    test(`sits one gutter right of the content column, over nothing visible, at ${width} px`, async ({
+    test(`docks the list at the right edge at ${width} px and leaves Canvas alone`, async ({
       context,
       page,
     }) => {
       await openPage(context, page, 'dashboard-list-view', width);
-      await expectMode(page, 'area');
-      const columnRight = await page.evaluate(() => {
-        const content = document.getElementById('content')!;
-        return (
-          content.getBoundingClientRect().right -
-          Number.parseFloat(getComputedStyle(content).paddingRight)
-        );
-      });
-      const card = await listBox(page);
-      expect(card.x).toBeCloseTo(columnRight + 24, 0);
-      expect(card.x + card.width).toBeLessThanOrEqual(width - 24 + 0.5);
-      expect(await coveredCanvasElements(page)).toEqual([]);
+      const dock = (await boxes(page, '#tools-weekly'))[0]!;
+      expect(dock.x + dock.width).toBeCloseTo(width, 0);
+      expect(dock.y).toBe(0);
+      expect(dock.height).toBeCloseTo(VIEWPORT_HEIGHT, 0);
+      await expect(page.locator('[data-weekrow-styled]')).toHaveCount(0);
+      await expect(page.locator('body[data-weekrow-column]')).toHaveCount(0);
+      // The card of the page content is gone: nothing of the list sits in a Canvas box.
+      await expect(page.locator('#content #weekrow-inpage, body > #weekrow-inpage')).toHaveCount(0);
       expect(await noSideScroll(page)).toBe(true);
-      await page.screenshot({ path: `screenshots/j3-list-view-${width}.png`, fullPage: true });
+      expect(await panelMode(page)).toBe('side');
     });
   }
 
-  test('keeps the list when the page removes the container', async ({ context, page }) => {
+  test('puts the dock back when the page removes its host or the list container', async ({
+    context,
+    page,
+  }) => {
     await openPage(context, page, 'dashboard-list-view', 1920);
-    await expectMode(page, 'area');
+    await page.evaluate(() => document.getElementById('tools-weekly')?.remove());
+    await expect(page.locator('#tools-weekly #weekrow-inpage')).toHaveCount(1);
+    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
     await page.evaluate(() => document.getElementById('weekrow-inpage')?.remove());
-    await expect(page.locator('body > #weekrow-inpage')).toHaveCount(1);
+    await expect(page.locator('#tools-weekly #weekrow-inpage')).toHaveCount(1);
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
     await settledList(page);
-    await expectMode(page, 'area');
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.evaluate(() => document.getElementById('weekrow-inpage')?.remove());
-    await expect(page.locator('#content-wrapper > #weekrow-inpage')).toHaveCount(1);
-    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
-    await expectMode(page, 'stack');
   });
 });
 

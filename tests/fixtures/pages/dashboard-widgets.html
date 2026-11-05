@@ -90,9 +90,11 @@
     <button type="button" class="Button" data-testid="switch-to-old-dashboard-button">Switch to old dashboard view</button>
     <button type="button" class="Button" data-testid="customize-dashboard-button">Customize dashboard</button>
   </div>
-  <div data-testid="dashboard-tabs" class="fixture-widget-tabs" role="tablist">
-    <span role="tab" aria-selected="true" data-testid="tab-dashboard">Dashboard</span>
-    <span role="tab" aria-selected="false" data-testid="tab-courses">Courses</span>
+  <div data-testid="dashboard-tabs" class="fixture-widget-tabs">
+    <div role="tablist">
+      <div role="tab" id="tab-dashboard" aria-selected="true" aria-controls="dashboard" tabindex="0"><span data-testid="tab-dashboard">Dashboard</span></div>
+      <div role="tab" id="tab-courses" aria-controls="courses"><span data-testid="tab-courses">Courses</span></div>
+    </div>
   </div>
   <div data-testid="dashboard-tab-content">
     <div class="fixture-widget-grid">
