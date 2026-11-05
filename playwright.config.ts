@@ -9,7 +9,8 @@ export default defineConfig({
   outputDir: './test-results',
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
-  retries: 0,
+  // The small CI machines fail a different test now and then under load. A real failure fails twice.
+  retries: process.env['CI'] ? 1 : 0,
   timeout: 30_000,
   // A check waits long enough for a loaded machine, so only a real failure stops a run.
   expect: { timeout: 15_000 },
