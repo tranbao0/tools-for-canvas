@@ -4286,10 +4286,11 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     Only a trusted load clears the address and the count, when `slimAddress` gives `null` for the page that loaded.
     So a page that keeps the plain address after a rewrite does not loop, a rewrite that Canvas redirects to another plain page is rewritten again, a declined question of the page ("leave this page?") does not repeat, and a link that the student clicks during a rewrite is rewritten like any other page.
     The rewrite, the request for the file catcher after each trusted load, and the read after each trusted load but the first belong to the frame.
-    The file catcher rule (`isPaneFramePage`) does not change: a page that is not a page of the list's course gets no catcher.
+    The file catcher keeps its own rule (`isPaneFramePage`): only a page of the list's course gets a catcher, so a page of a group or of another course has none.
     A frame gets its address before it joins the page, because Chromium fires a load for the blank page of a frame that joins with no address, and that load would use up the first load.
     So one Preview makes one read at the click, the first trusted load makes none, and each later trusted load makes one.
-    A row that redirects to a plain page loads the slim page before the plain page has loaded, so the plain page makes no trusted load of its own.
+    A row that redirects to a plain page usually gets the slim page from the poll before the plain page has loaded.
+    A small plain page can load before the next tick, and then the load handler asks for the slim page.
   - A load that a script of the page fires is not a load: only a trusted `load` event counts.
 - **Header.**
   - The header is the one of "Card and header" above: a bold 18 px title with an ellipsis, a second line, and three 30 px buttons with 16 px icons.
