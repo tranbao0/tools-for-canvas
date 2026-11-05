@@ -12,7 +12,7 @@ import type { AssignmentDetails } from '../protocol';
 import { submissionFileUrl } from '../render';
 import { OWN } from './own';
 import { sameFiles, type FrameFile } from './submissionFrame';
-import { BOX_CSS, PANEL_CSS } from './styles';
+import { BOX_CSS, PANEL_CSS, SUBMISSION_CSS } from './styles';
 
 export const BOX_ID = 'av-submission-box';
 
@@ -129,7 +129,7 @@ export function createBox(options: BoxOptions): Box {
   host.setAttribute('lang', 'en');
   const shadow = host.attachShadow({ mode: 'open' });
   const sheet = doc.createElement('style');
-  sheet.textContent = PANEL_CSS + BOX_CSS;
+  sheet.textContent = PANEL_CSS + SUBMISSION_CSS + BOX_CSS;
   const panel = node(doc, 'div', 'av av-box');
   panel.setAttribute('role', 'region');
   panel.setAttribute('aria-label', 'Submission');
