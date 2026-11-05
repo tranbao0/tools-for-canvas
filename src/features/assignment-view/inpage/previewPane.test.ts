@@ -153,13 +153,14 @@ describe('the assignment pane', () => {
     expect(onShown.mock.calls.map((call) => call[0])).toEqual(['101', null]);
   });
 
-  it('closes like its close button: the room goes back and the submission is read once more', async () => {
+  it('closes like its close button: the host and the frame go, the room goes back and the submission is read once more', async () => {
     document.documentElement.style.setProperty('padding-right', '13px');
     const { pane, reload } = setup();
     pane.open({ assignmentId: '101', title: 'Essay' });
     reload.mockClear();
     pane.close();
-    expect(host()?.style.display).toBe('none');
+    expect(host()).toBeNull();
+    expect(frames[0]?.isConnected).toBe(false);
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
     await vi.advanceTimersByTimeAsync(0);
     expect(reload).toHaveBeenCalledExactlyOnceWith('101');
@@ -178,7 +179,7 @@ describe('the assignment pane', () => {
     Object.defineProperty(real, 'isTrusted', { value: true });
     close.dispatchEvent(real);
     expect(pane.shown).toBeNull();
-    expect(host()?.style.display).toBe('none');
+    expect(host()).toBeNull();
   });
 
   it('reads the submission when it opens, which the later reads compare with', () => {
@@ -403,6 +404,21 @@ describe('the frame of the pane', () => {
     expect(onFrameLoad).toHaveBeenCalledTimes(2);
   });
 
+  it('has its address before it joins the page, so the blank page of a bare frame loads nothing', () => {
+    const joined: string[] = [];
+    const append = HTMLElement.prototype.append;
+    vi.spyOn(HTMLElement.prototype, 'append').mockImplementation(function (
+      this: HTMLElement,
+      ...nodes: (Node | string)[]
+    ) {
+      for (const node of nodes) if (node instanceof HTMLIFrameElement) joined.push(node.src);
+      append.apply(this, nodes);
+    });
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    expect(joined).toEqual([SLIM]);
+  });
+
   it('loads the plain page of the course again with content_only=1, once', () => {
     const { pane, onFrameLoad } = setup();
     pane.open({ assignmentId: '101', title: 'Essay' });
@@ -546,51 +562,87 @@ describe('one frame for each previewed assignment', () => {
     expect(frames[7]?.src).toBe(SLIM('102'));
   });
 
-  it('keeps the frames when the pane closes, and shows the same state when it opens again', async () => {
+  it('removes every frame and the pane when it closes, and the next Preview starts with a new frame', async () => {
     document.documentElement.style.setProperty('padding-right', '13px');
     const { pane, reload, onShown } = setup();
     open(pane, '101');
     open(pane, '102');
-    const before = [...frames];
     await vi.advanceTimersByTimeAsync(0);
     reload.mockClear();
     pane.close();
-    expect(host()?.style.display).toBe('none');
-    expect(frames.every((frame) => frame.isConnected)).toBe(true);
+    expect(host()).toBeNull();
+    expect(frames.some((frame) => frame.isConnected)).toBe(false);
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
     expect(pane.shown).toBeNull();
     expect(onShown).toHaveBeenLastCalledWith(null);
     await vi.advanceTimersByTimeAsync(0);
-    expect(reload).toHaveBeenCalledExactlyOnceWith('102');
+    expect(reload.mock.calls.map((call) => call[0])).toEqual(['102', '101']);
     // The poll stops while the pane is closed.
     reload.mockClear();
     await vi.advanceTimersByTimeAsync(PREVIEW_POLL_MS * 3);
     expect(reload).not.toHaveBeenCalled();
-    // A Preview click on the row that was open shows the same frame, and so does another row's.
+    // A Preview click on the row that was open makes a new frame, and so does another row's.
     open(pane, '102');
     expect(host()?.style.display).toBe('');
-    expect(frames).toEqual(before);
-    expect(shows()).toEqual([false, true]);
+    expect(frames).toHaveLength(3);
+    expect(frames[2]?.isConnected).toBe(true);
+    expect(frames[2]?.src).toBe(SLIM('102'));
     expect(pane.shown).toBe('102');
     expect(onShown).toHaveBeenLastCalledWith('102');
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
     pane.close();
     open(pane, '101');
-    expect(frames).toEqual(before);
-    expect(shows()).toEqual([true, false]);
+    expect(frames).toHaveLength(4);
+    expect(frames.filter((frame) => frame.isConnected)).toEqual([frames[3]]);
     expect(barText()).toBe('Title 101');
     pane.reset();
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
   });
 
-  it('polls again after a reopen, for the assignment that shows', async () => {
+  it('reads the assignment of every frame on close, the shown one first, one after the other', async () => {
     const { pane, reload } = setup();
     open(pane, '101');
+    open(pane, '102');
+    open(pane, '103');
+    open(pane, '101');
+    await vi.advanceTimersByTimeAsync(0);
+    const waiting: (() => void)[] = [];
+    reload.mockClear();
+    reload.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          waiting.push(resolve);
+        }),
+    );
     pane.close();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reload.mock.calls.map((call) => call[0])).toEqual(['101']);
+    waiting.splice(0).forEach((resolve) => resolve());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reload.mock.calls.map((call) => call[0])).toEqual(['101', '103']);
+    waiting.splice(0).forEach((resolve) => resolve());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reload.mock.calls.map((call) => call[0])).toEqual(['101', '103', '102']);
+  });
+
+  it('ends the reads that wait when the student changes during a close', async () => {
+    const { pane, reload } = setup();
+    open(pane, '101');
     open(pane, '102');
     await vi.advanceTimersByTimeAsync(0);
+    let release: () => void = () => undefined;
     reload.mockClear();
-    await vi.advanceTimersByTimeAsync(PREVIEW_POLL_MS);
+    reload.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    pane.close();
+    await vi.advanceTimersByTimeAsync(0);
+    pane.reset();
+    release();
+    await vi.advanceTimersByTimeAsync(0);
     expect(reload).toHaveBeenCalledExactlyOnceWith('102');
   });
 
@@ -599,8 +651,6 @@ describe('one frame for each previewed assignment', () => {
     const { pane, onShown } = setup();
     open(pane, '101');
     open(pane, '102');
-    pane.close();
-    open(pane, '101');
     pane.reset();
     expect(host()).toBeNull();
     expect(frames.some((frame) => frame.isConnected)).toBe(false);
@@ -613,14 +663,16 @@ describe('one frame for each previewed assignment', () => {
     expect(pane.shown).toBe('101');
   });
 
-  it('removes every frame on reset also while the pane is closed', () => {
-    const { pane } = setup();
+  it('reads nothing on reset, and nothing after a close that follows a reset', async () => {
+    const { pane, reload } = setup();
     open(pane, '101');
     open(pane, '102');
-    pane.close();
+    await vi.advanceTimersByTimeAsync(0);
+    reload.mockClear();
     pane.reset();
-    expect(host()).toBeNull();
-    expect(frames.some((frame) => frame.isConnected)).toBe(false);
+    pane.close();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it('keeps the frames when a file pane covers the pane and closes again', () => {
@@ -668,18 +720,18 @@ describe('one frame for each previewed assignment', () => {
     open(pane, '101');
     expect(pane.shown).toBe('101');
     expect(padding()).toBe('480px');
-    // The file pane closes while a closed pane is hidden: nothing shows, and the page is its own.
+    // The file pane closes after the pane closed: nothing shows, and the page is its own.
     pane.close();
     file.close();
     expect(padding()).toBe('13px');
     expect(pane.shown).toBeNull();
     expect(onShown).toHaveBeenLastCalledWith(null);
-    // A file pane that opens while the pane is closed does not show the pane.
+    // A file pane that opens while the pane is closed leaves no pane behind.
     file.open();
-    expect(host()?.style.display).toBe('none');
+    expect(host()).toBeNull();
     expect(padding()).toBe('600px');
     file.close();
-    expect(host()?.style.display).toBe('none');
+    expect(host()).toBeNull();
     expect(padding()).toBe('13px');
     open(pane, '102');
     expect(padding()).toBe('480px');
@@ -740,9 +792,12 @@ describe('one frame for each previewed assignment', () => {
     expect(onFrameLoad).toHaveBeenCalledTimes(3);
   });
 
-  it('asks for the file catcher when the switch goes on and a closed pane keeps frames', () => {
+  it('asks for the file catcher when the switch goes on with a frame, and not after a close', () => {
     const { pane, onFrameLoad } = setup();
     open(pane, '101');
+    pane.setFileViewer(true);
+    expect(onFrameLoad).toHaveBeenCalledOnce();
+    pane.setFileViewer(false);
     pane.close();
     pane.setFileViewer(true);
     expect(onFrameLoad).toHaveBeenCalledOnce();
@@ -763,14 +818,17 @@ describe('one frame for each previewed assignment', () => {
     expect(listen).not.toHaveBeenCalled();
   });
 
-  it('removes the frames with the host when a page removes the host of a closed pane', async () => {
-    const { pane } = setup();
+  it('removes the frames with the host when a page removes the host, and reads nothing for them', async () => {
+    const { pane, reload } = setup();
     open(pane, '101');
     open(pane, '102');
-    pane.close();
+    await vi.advanceTimersByTimeAsync(0);
+    reload.mockClear();
     host()!.remove();
     await vi.advanceTimersByTimeAsync(0);
     expect(pane.shown).toBeNull();
+    expect(frames.some((frame) => frame.isConnected)).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
     open(pane, '101');
     expect(frames).toHaveLength(3);
     expect(pane.shown).toBe('101');
