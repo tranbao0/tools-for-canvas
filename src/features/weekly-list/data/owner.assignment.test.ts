@@ -99,7 +99,7 @@ describe('assignment details', () => {
     const h = await loaded();
     const reply = await h.owner.assignmentDetails('12', '101', ORIGIN, TAB);
     if ('kind' in reply) throw new Error('Expected details');
-    expect(reply.details.assignment.name).toBe('Essay');
+    expect(reply.details.assignment.id).toBe('101');
     expect(reply.details.submission.user_id).toBe('42');
     expect(reply.timeZone).toBe(h.canvas.scenario.profile.time_zone);
     expect(h.canvas.callsOf('getAssignmentRecord')).toEqual([['12', '101']]);

@@ -37,24 +37,17 @@ const SHOTS = '/tmp/ticket-l';
 
 function details(change: (copy: typeof ASSIGNMENT_DETAILS) => void = () => undefined) {
   const copy = structuredClone(ASSIGNMENT_DETAILS);
-  copy.assignment.can_submit = true;
   copy.submission.attempt = 1;
   change(copy);
   return copy;
 }
 
-function otherAssignment(id: string, name: string) {
+function otherAssignment(id: string) {
   const copy = structuredClone(ASSIGNMENT_DETAILS);
   copy.assignment.id = id;
-  copy.assignment.name = name;
-  copy.assignment.rubric = undefined;
-  copy.submission.score = null;
-  copy.submission.grade = null;
   copy.submission.workflow_state = 'unsubmitted';
   copy.submission.submitted_at = null;
   copy.submission.attachments = [];
-  copy.submission.submission_comments = [];
-  copy.submission.rubric_assessment = {};
   return copy;
 }
 
@@ -112,9 +105,8 @@ interface OpenOptions {
  * submission of the old view: Canvas redirects to the plain assignment page, with no content_only
  * parameter. `quiet` posts without a page load, as the new student view does. Both change the
  * submission record. The third row is a graded discussion: Canvas redirects its assignment page to
- * the discussion page, and drops the parameter. The fake redirects with a script, because the
- * browser carries the query of the first request through a stubbed 302, which a Rails redirect
- * does not do.
+ * the discussion page, and drops the parameter. The fake redirects with a script, so the test sees
+ * the plain address that the redirect of Canvas gives.
  */
 async function open(
   context: Parameters<typeof serveScenario>[0],
@@ -196,8 +188,8 @@ async function open(
         return { body: json(records.submission) };
       },
     }),
-    ...viewRoutes('102', rawRecords(otherAssignment('102', 'Reading'))),
-    ...viewRoutes('103', rawRecords(otherAssignment('103', 'Weekly discussion'))),
+    ...viewRoutes('102', rawRecords(otherAssignment('102'))),
+    ...viewRoutes('103', rawRecords(otherAssignment('103'))),
     ...FILE_ROUTES,
   ]);
   await addCsrfCookie(context, served.canvas.origin);
