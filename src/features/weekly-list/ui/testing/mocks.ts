@@ -414,6 +414,7 @@ export function currentRings(): Ring[] {
 }
 
 export function mkView(patch: Partial<WeekView> = {}): WeekView {
+  const rings = patch.rings ?? currentRings();
   return {
     span: { kind: 'week', days: 7 },
     spanStart: '2026-10-27',
@@ -426,7 +427,8 @@ export function mkView(patch: Partial<WeekView> = {}): WeekView {
     browserTimeZoneDiffers: true,
     hourCycle: 'h12',
     groups: currentWeekGroups(),
-    rings: currentRings(),
+    rings,
+    openCount: rings.reduce((sum, entry) => sum + entry.total - entry.done, 0),
     courseFilter: undefined,
     hiddenCourseCount: 1,
     nothingDue: false,

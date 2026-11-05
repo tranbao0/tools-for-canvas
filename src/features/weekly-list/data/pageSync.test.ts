@@ -57,6 +57,7 @@ describe('wirePageSync', () => {
         toolsSettingsItem.setValue({
           fileViewer: true,
           fileViewerWidth: 480,
+          weeklyDockWidth: 360,
           dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
           assignmentView: true,
         }),
@@ -85,6 +86,7 @@ describe('wirePageSync', () => {
     await toolsSettingsItem.setValue({
       fileViewer: true,
       fileViewerWidth: 480,
+      weeklyDockWidth: 360,
       dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, allCourseGrades: false },
       assignmentView: true,
     });

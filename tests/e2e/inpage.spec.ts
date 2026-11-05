@@ -228,7 +228,7 @@ test.describe('course home page', () => {
 });
 
 test.describe('pages with other layouts', () => {
-  test('mounts above the teacher To Do on a mixed-role dashboard, and the teacher To Do stays', async ({
+  test('gives the list to the dock on a mixed-role dashboard, and the teacher To Do stays', async ({
     context,
     page,
   }) => {
@@ -239,15 +239,11 @@ test.describe('pages with other layouts', () => {
     const list = inpageList(page);
     await expect(doneBox(list, QUIZ_3)).toBeVisible();
     await settledList(page);
-    await expect(page.locator('#right-side-wrapper > #weekrow-inpage + #right-side')).toHaveCount(
-      1,
-    );
+    await expect(page.locator('#tools-weekly > #weekrow-inpage')).toHaveCount(1);
+    await expect(page.locator('#right-side-wrapper #weekrow-inpage')).toHaveCount(0);
     const teacherHeader = page.locator('#right-side h2.todo-list-header');
     await expect(teacherHeader).toBeVisible();
     await expect(page.locator('#right-side ul.to-do-list')).toBeVisible();
-    const listBox = await list.boundingBox();
-    const headerBox = await teacherHeader.boundingBox();
-    expect(listBox?.y ?? Infinity).toBeLessThan(headerBox?.y ?? 0);
   });
 
   test('adds nothing to a K-5 course home page', async ({ context, page, background }) => {
@@ -346,7 +342,7 @@ test.describe('in-page list', () => {
     await expect(list.getByRole('button', { name: /^(Next 7 days|Rest of)/ })).toHaveCount(0);
   });
 
-  test('the chart draws at most 4 rings in the narrow column and the legend lists every class', async ({
+  test('the chart draws at most 6 rings in the dock and the legend lists every class', async ({
     context,
     page,
   }) => {
@@ -358,8 +354,9 @@ test.describe('in-page list', () => {
 
     const legend = await list.locator('.wr-legend-row').count();
     const drawn = await list.locator('.wr-ring').count();
-    expect(drawn).toBeLessThanOrEqual(4);
-    if (legend > 4) {
+    // The dock is wide enough for the legend beside the chart, which draws up to 6 classes.
+    expect(drawn).toBeLessThanOrEqual(6);
+    if (legend > 6) {
       // Classes with no work in the span stay out of the chart and out of the +N count.
       await expect(list.locator('.wr-chart-more')).toHaveText(/^\+[1-9]\d*$/);
     }

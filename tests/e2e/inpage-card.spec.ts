@@ -59,13 +59,15 @@ async function open(
     completed?: boolean;
     /** The path and query that open the page. */
     query?: string;
+    /** The path that the page is served at. Defaults to the dashboard. */
+    path?: string;
   } = {},
 ): Promise<void> {
   await saveSettings(background, options.settings ?? MONTH);
   const keep = options.only ? new Set(options.only) : null;
   const { canvas } = await serveScenario(
     context,
-    [{ path: '/', page: options.page ?? 'dashboard-widgets' }],
+    [{ path: options.path ?? '/', page: options.page ?? 'dashboard-widgets' }],
     {
       extend(scenario) {
         if (options.completed) {
@@ -111,7 +113,7 @@ async function open(
         audit.height = section.getBoundingClientRect().height;
     }).observe(document, { subtree: true, childList: true, attributes: true });
   });
-  await openCanvasPage(page, canvas.origin, options.query);
+  await openCanvasPage(page, canvas.origin, options.query ?? options.path);
   await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
   await settledList(page);
 }
@@ -149,6 +151,8 @@ async function cardBox(page: Page): Promise<CardBox> {
 interface BottomLayout {
   name: string;
   page: string;
+  /** The path that the page is served at. Defaults to the dashboard. */
+  path?: string;
   width: number;
   docked?: boolean;
   /** The card has the Tasks and Announcements tabs. */
@@ -157,11 +161,31 @@ interface BottomLayout {
   rowSize?: Settings['rowSize'];
 }
 
-/** The places of the card that have a bottom section: the widget dashboard and the classic one. */
+/**
+ * The places of the card that have a bottom section: the widget dashboard, the dock of the classic
+ * dashboard, and the right column of a course home page, at rest and docked under the column.
+ */
 const LAYOUTS: BottomLayout[] = [
   { name: 'the widget dashboard', page: 'dashboard-widgets', width: 1280, rowSize: 'compact' },
-  { name: 'the tabbed classic dashboard', page: 'dashboard-card-view', width: 1280, tabs: true },
-  { name: 'the docked classic dashboard', page: 'dashboard-card-view', width: 1280, docked: true },
+  {
+    name: 'the dock of the classic dashboard',
+    page: 'dashboard-card-view',
+    width: 1280,
+    tabs: true,
+  },
+  {
+    name: 'the right column of a course home page',
+    page: 'course-home',
+    path: '/courses/101',
+    width: 1280,
+  },
+  {
+    name: 'the docked right column of a course home page',
+    page: 'course-home',
+    path: '/courses/101',
+    width: 1280,
+    docked: true,
+  },
 ];
 
 /** The layouts of the bottom bar tests: the widget dashboard once for each Row size. */
@@ -175,7 +199,13 @@ async function dockCard(page: Page): Promise<void> {
   await page.evaluate(() => {
     const cards = document.getElementById('DashboardCard_Container');
     const activity = document.getElementById('dashboard-activity');
-    if (!cards || !activity) return;
+    if (!cards || !activity) {
+      // A course home page has no activity stream: a tall filler makes the page long.
+      const filler = document.createElement('div');
+      filler.style.height = '4000px';
+      document.getElementById('content')?.append(filler);
+      return;
+    }
     cards.style.display = 'none';
     activity.style.display = 'block';
     const items = document.createElement('ul');
@@ -215,6 +245,7 @@ async function openBottomLayout(
   await open(context, page, background, {
     query,
     page: layout.page,
+    path: layout.path,
     width: layout.width,
     height,
     completed: true,
@@ -385,8 +416,9 @@ test.describe('the full list in the card', () => {
           // The list scrolls when its rows are taller than the area, and not otherwise. Done holds
           // 10 or more items: taller than the area with Comfortable rows, shorter with Compact
           // rows in the slot of the widget dashboard, whose list area is 509 px high, the height
-          // of the covered widget in the fixture.
-          if (group === done) {
+          // of the covered widget in the fixture. A course home page lists one course, which holds
+          // too few done items for this rule.
+          if (group === done && layout.path === undefined) {
             const rows = await groupArea(list).evaluate((element) => {
               const boxes = [...element.querySelectorAll('[data-row-key]')].map((row) =>
                 row.getBoundingClientRect(),
@@ -672,7 +704,7 @@ test.describe('the full list in the card', () => {
     page,
     background,
   }) => {
-    await openBottomLayout(context, page, background, LAYOUTS[1]!, 800);
+    await openBottomLayout(context, page, background, LAYOUTS[2]!, 800);
     const list = inpageList(page);
     const toggle = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
     await toggle.click();
@@ -1032,7 +1064,7 @@ test.describe('the full list in the card', () => {
 
 test.describe('the list in other places', () => {
   for (const pageName of ['dashboard-card-view', 'course-home']) {
-    test(`has the height limit and the scroll region on ${pageName}`, async ({
+    test(`has the right height and the scroll region on ${pageName}`, async ({
       context,
       page,
       background,
@@ -1054,7 +1086,10 @@ test.describe('the list in other places', () => {
           scrollable: scroll.scrollHeight > scroll.clientHeight,
         };
       });
-      expect(box.height).toBeLessThanOrEqual(limit(800) + 1);
+      // The dock of the classic dashboard fills the window. The column of a course home page keeps
+      // the height limit.
+      if (pageName === 'dashboard-card-view') expect(box.height).toBeCloseTo(800, 0);
+      else expect(box.height).toBeLessThanOrEqual(limit(800) + 1);
       expect(box.overflowY).toBe('auto');
       expect(box.scrollable).toBe(true);
     });

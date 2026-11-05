@@ -1,8 +1,8 @@
 /**
  * The dock on the right edge of a Canvas page (design decisions 25 and 26): a fixed host with a
  * closed shadow root, a resize handle on its left edge, and the right padding of the `html` element
- * that makes room for it. The file pane, the turn-in pane and the feedback pane all use it, so they
- * sit in the same place with the same width.
+ * that makes room for it. The file pane, the turn-in pane, the feedback pane and the weekly list all
+ * use it, so they sit in the same place with the same width.
  *
  * The panes run in separate scripts of the same isolated world. They share only the room
  * lease below, which keeps the page padding right when one pane hides while the other shows.
@@ -12,7 +12,10 @@ import { normalizeWidth } from './model';
 /** Below this window width the dock covers the page instead of making room beside it. */
 const NARROW_PX = 900;
 
-export type DockRole = 'file' | 'turn-in' | 'feedback';
+export type DockRole = 'file' | 'turn-in' | 'feedback' | 'weekly';
+
+/** The layer of a dock: above every layer that a page can draw. */
+const TOPMOST_Z_INDEX = 2147483647;
 
 export interface DockOptions {
   role: DockRole;
@@ -24,6 +27,8 @@ export interface DockOptions {
   resizeLabel: string;
   /** The width at the start. */
   width: number;
+  /** The layer of the host. Defaults to the top layer of the page. */
+  zIndex?: number;
   /** Called with the new width when the student has finished a resize. */
   onResized(width: number): void;
   doc?: Document;
@@ -42,6 +47,11 @@ export interface Dock {
   close(): void;
   /** Hides the dock and gives the room back, or shows it and takes the room again. Never moves it. */
   setHidden(hidden: boolean): void;
+  /**
+   * Ends the dock for a copy of the script that lost the page to a newer copy: the dock stops
+   * watching the window and never writes the padding again. It changes nothing in the page.
+   */
+  forget(): void;
   /** Follows a new width, such as one that another pane saved. */
   setWidth(width: number): void;
   setTheme(theme: string): void;
@@ -53,14 +63,21 @@ interface Saved {
   priority: string;
 }
 
+/** What holds room beside it: a dock, or the tab of a minimized list. */
+interface Holder {
+  readonly host: HTMLElement;
+}
+
 interface Shared {
-  /** The docks that hold the room beside them. */
-  holders: Set<Dock>;
+  /** The holders of the room beside them. */
+  holders: Set<Holder>;
   /** The inline padding of the page before the first holder took the room. */
   saved: Saved | null;
   /** The open file pane, so the turn-in pane can step aside for it. */
   file: Dock | null;
   watchers: Set<() => void>;
+  /** The file pane script has decided whether a pane opens on this page. */
+  fileScriptReported?: boolean;
 }
 
 const SHARED = Symbol.for('tools-for-canvas.dock');
@@ -75,8 +92,17 @@ export const ROOM_ATTRIBUTE = 'data-weekrow-room';
 /** The id of the host of the file pane. */
 export const FILE_HOST_ID = 'tools-file-viewer';
 
-/** The ids of the hosts of the three panes. */
-const HOST_IDS = [FILE_HOST_ID, 'tools-turn-in', 'tools-feedback'];
+/** The id of the host of the weekly list dock on the classic dashboard. */
+export const WEEKLY_HOST_ID = 'tools-weekly';
+
+/**
+ * The id of the host of the tab that the minimized weekly list leaves on the right edge. The tab
+ * holds a little room (`leaseRoom`), and a dead copy's tab goes with its dock.
+ */
+export const WEEKLY_TAB_ID = 'tools-weekly-tab';
+
+/** The ids of the hosts that hold room: the four panes and the tab of the weekly list. */
+const HOST_IDS = [FILE_HOST_ID, 'tools-turn-in', 'tools-feedback', WEEKLY_HOST_ID, WEEKLY_TAB_ID];
 
 /**
  * The attribute that every dock puts on its host, so a later copy of the script can tell a host
@@ -115,6 +141,18 @@ export function removeStaleFilePane(doc: Document = document): void {
 }
 
 /**
+ * Removes the weekly list dock and the tab that an earlier copy of the script left on the page,
+ * and gives their room back. An update can end a copy with its dock open, and the new copy has no
+ * reference to it. Only a host that carries the mark of a dock goes, never an element that a page
+ * gave the id. Call it at the start of a copy, before the copy makes a dock of its own.
+ */
+export function removeStaleWeeklyDock(doc: Document = document): void {
+  for (const id of [WEEKLY_HOST_ID, WEEKLY_TAB_ID])
+    for (const host of doc.querySelectorAll(`[id="${id}"][${DOCK_ATTRIBUTE}]`)) host.remove();
+  giveBackRoom(doc);
+}
+
+/**
  * Gives back the room that a copy of the script took and could not give back, such as one that
  * an update ended with a pane open. It acts only on what a dock recorded: the padding returns to
  * the recorded value, and a page that never had a dock keeps its own padding. A pane that is still
@@ -123,7 +161,7 @@ export function removeStaleFilePane(doc: Document = document): void {
 export function giveBackRoom(doc: Document = document): void {
   const page = doc.documentElement;
   const state = shared();
-  for (const holder of state.holders) if (!holder.host.isConnected) state.holders.delete(holder);
+  prune(state);
   // Only a pane host counts, by its id and its mark: a page element with the id alone does not.
   const paneOnPage = HOST_IDS.some((id) => doc.getElementById(id)?.hasAttribute(DOCK_ATTRIBUTE));
   if (state.holders.size > 0 || paneOnPage) return;
@@ -131,6 +169,96 @@ export function giveBackRoom(doc: Document = document): void {
   state.saved = null;
   page.removeAttribute(ROOM_ATTRIBUTE);
   if (saved) page.style.setProperty('padding-right', saved.value, saved.priority);
+}
+
+/** The inline right padding of the page, as one dock or tab writes it. */
+function writePadding(page: HTMLElement, value: string, narrow: boolean): void {
+  const { saved } = shared();
+  const [text, priority] = narrow && saved ? [saved.value, saved.priority] : [value, 'important'];
+  if (
+    page.style.getPropertyValue('padding-right') !== text ||
+    page.style.getPropertyPriority('padding-right') !== priority
+  )
+    page.style.setProperty('padding-right', text, priority);
+}
+
+function prune(state: Shared): void {
+  for (const holder of state.holders) if (!holder.host.isConnected) state.holders.delete(holder);
+}
+
+/**
+ * Takes a place among the holders. The padding that the page had before the first holder took
+ * room stays saved until the last holder leaves, even when a page removed the host of a holder
+ * that never gave its room back.
+ */
+function claimRoom(page: HTMLElement, holder: Holder): void {
+  const state = shared();
+  prune(state);
+  if (!state.saved) {
+    state.saved = {
+      value: page.style.getPropertyValue('padding-right'),
+      priority: page.style.getPropertyPriority('padding-right'),
+    };
+    page.setAttribute(ROOM_ATTRIBUTE, JSON.stringify(state.saved));
+  }
+  state.holders.add(holder);
+}
+
+function releaseRoom(page: HTMLElement, holder: Holder): void {
+  const state = shared();
+  state.holders.delete(holder);
+  prune(state);
+  if (state.holders.size === 0 && state.saved) {
+    page.style.setProperty('padding-right', state.saved.value, state.saved.priority);
+    page.removeAttribute(ROOM_ATTRIBUTE);
+    state.saved = null;
+  }
+}
+
+export interface RoomLease {
+  /** Takes the room again if a page pruned it, and writes the padding. */
+  refresh(): void;
+  /** Gives the room back. The padding of the page returns when no other holder is left. */
+  release(): void;
+  /** Stops watching the window and changes nothing in the page. */
+  forget(): void;
+}
+
+/**
+ * Holds `width` pixels of room beside the host, as a dock does, for a host that is not a dock: the
+ * tab of a minimized list. It shares the lease of the docks, so the padding that the page had
+ * comes back only after the last holder left. Below the width where a dock covers the page, the
+ * lease leaves the padding of the page alone, as a dock does.
+ */
+export function leaseRoom(host: HTMLElement, width: number, doc: Document = document): RoomLease {
+  const win = doc.defaultView ?? window;
+  const page = doc.documentElement;
+  const holder: Holder = { host };
+  let live = true;
+  claimRoom(page, holder);
+  const layout = (): void => {
+    if (!live || !host.isConnected) return;
+    writePadding(page, `${width}px`, win.innerWidth < NARROW_PX);
+  };
+  const stop = (): void => {
+    live = false;
+    win.removeEventListener('resize', layout);
+  };
+  win.addEventListener('resize', layout);
+  layout();
+  return {
+    refresh() {
+      if (!live) return;
+      claimRoom(page, holder);
+      layout();
+    },
+    release() {
+      if (!live) return;
+      stop();
+      releaseRoom(page, holder);
+    },
+    forget: stop,
+  };
 }
 
 function shared(): Shared {
@@ -150,6 +278,21 @@ export function filePaneOpen(): boolean {
  */
 export function hideFilePane(hidden: boolean): void {
   shared().file?.setHidden(hidden);
+}
+
+/**
+ * The file pane script says that it has decided whether a pane opens on this page: it opened one,
+ * or it has none to open. A page script that wants to wait for the pane reads
+ * `filePaneReported` and listens with `watchFilePane`.
+ */
+export function reportFilePane(): void {
+  shared().fileScriptReported = true;
+  tell();
+}
+
+/** Whether the file pane script has reported on this page. */
+export function filePaneReported(): boolean {
+  return shared().fileScriptReported === true;
 }
 
 /** Calls the listener when the file pane opens or closes. Returns a remover. */
@@ -185,7 +328,7 @@ export function createDock(options: DockOptions): Dock {
   const host = doc.createElement('div');
   host.id = options.id;
   host.setAttribute(DOCK_ATTRIBUTE, '');
-  host.style.cssText = 'position:fixed;right:0;top:0;height:100vh;z-index:2147483647;';
+  host.style.cssText = `position:fixed;right:0;top:0;height:100vh;z-index:${options.zIndex ?? TOPMOST_Z_INDEX};`;
   // A closed root keeps a script of the Canvas page from reaching the frame element. A frame of the
   // Canvas origin inside the root still reaches the root, so such a frame belongs in a root of its own.
   const root = host.attachShadow({ mode: 'closed' });
@@ -203,42 +346,14 @@ export function createDock(options: DockOptions): Dock {
   root.append(style, section);
 
   const page = doc.documentElement;
-  const prune = (state: Shared): void => {
-    for (const holder of state.holders) if (!holder.host.isConnected) state.holders.delete(holder);
-  };
-  // The padding that the page had before the first pane took room stays saved until the last
-  // pane leaves, even when a page removed the host of a pane that never gave its room back.
-  const claim = (): void => {
-    const state = shared();
-    prune(state);
-    if (!state.saved) {
-      state.saved = {
-        value: page.style.getPropertyValue('padding-right'),
-        priority: page.style.getPropertyPriority('padding-right'),
-      };
-      page.setAttribute(ROOM_ATTRIBUTE, JSON.stringify(state.saved));
-    }
-    state.holders.add(dock);
-  };
-  const release = (): void => {
-    const state = shared();
-    state.holders.delete(dock);
-    prune(state);
-    if (state.holders.size === 0 && state.saved) {
-      page.style.setProperty('padding-right', state.saved.value, state.saved.priority);
-      page.removeAttribute(ROOM_ATTRIBUTE);
-      state.saved = null;
-    }
-  };
 
   const layout = (): void => {
     if (!opened) return;
     const narrow = win.innerWidth < NARROW_PX;
     host.style.width = narrow ? '100vw' : `${normalizeWidth(width, win.innerWidth)}px`;
-    if (hidden) return;
-    const { saved } = shared();
-    if (narrow && saved) page.style.setProperty('padding-right', saved.value, saved.priority);
-    else page.style.setProperty('padding-right', host.style.width, 'important');
+    // A host that a page removed takes no room.
+    if (hidden || !host.isConnected) return;
+    writePadding(page, host.style.width, narrow);
   };
   const setWidth = (next: number): void => {
     width = normalizeWidth(next, win.innerWidth);
@@ -280,7 +395,9 @@ export function createDock(options: DockOptions): Dock {
       if (opened) return;
       opened = true;
       hidden = false;
-      claim();
+      // A dock that was hidden and lost its host comes back as it was: shown.
+      host.style.display = '';
+      claimRoom(page, dock);
       doc.body.append(host);
       win.addEventListener('resize', layout);
       stopResize = () => win.removeEventListener('resize', layout);
@@ -295,7 +412,7 @@ export function createDock(options: DockOptions): Dock {
       opened = false;
       stopResize?.();
       stopResize = undefined;
-      release();
+      releaseRoom(page, dock);
       host.remove();
       if (options.role === 'file' && shared().file === dock) {
         shared().file = null;
@@ -308,10 +425,15 @@ export function createDock(options: DockOptions): Dock {
       if (!host.isConnected) return;
       hidden = next;
       host.style.display = next ? 'none' : '';
-      if (next) release();
-      else claim();
+      if (next) releaseRoom(page, dock);
+      else claimRoom(page, dock);
       layout();
       if (options.role === 'file') tell();
+    },
+    forget() {
+      opened = false;
+      stopResize?.();
+      stopResize = undefined;
     },
     setWidth,
     setTheme(theme) {

@@ -112,7 +112,7 @@ describe('mountInpageList', () => {
     const settings = settingsStore(initial);
     const releaseColumn = vi.fn();
     const dispose = mountInpageList(
-      { courseId: null, announcements: false, container, release: releaseColumn },
+      { courseId: null, announcements: false, container, docked: false, release: releaseColumn },
       { runtime, settings },
     );
     const host = (): HTMLElement => container.querySelector(SHADOW_HOST_NAME) as HTMLElement;

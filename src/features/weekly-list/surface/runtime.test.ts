@@ -31,6 +31,7 @@ const UNDO: UndoData = {
 const COLORS_OFF: ToolsSettings = {
   fileViewer: true,
   fileViewerWidth: 480,
+  weeklyDockWidth: 360,
   dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
   assignmentView: true,
 };

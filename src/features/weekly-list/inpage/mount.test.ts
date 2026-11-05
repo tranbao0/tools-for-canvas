@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MOUNT_CONTAINER_ID, isAdapterPath } from './adapters';
+import { MOUNT_CONTAINER_ID, findDashboardAnchors, isAdapterPath } from './adapters';
 import { GRID_WAIT_MS } from './layout';
 import {
   DEFAULT_MOUNT_TIMEOUT_MS,
@@ -127,7 +127,13 @@ describe('adapter paths', () => {
     await mountWhenReady(onMount, { pathname });
 
     expect(mounts).toEqual([
-      { courseId, announcements: true, container: container(), release: expect.any(Function) },
+      {
+        courseId,
+        announcements: true,
+        container: container(),
+        docked: courseId === null,
+        release: expect.any(Function),
+      },
     ]);
   });
 });
@@ -151,6 +157,7 @@ describe('classic dashboard', () => {
         courseId: null,
         announcements: true,
         container: container(),
+        docked: true,
         release: expect.any(Function),
       },
     ]);
@@ -229,12 +236,11 @@ describe('classic dashboard', () => {
 });
 
 describe('dashboard without a right column', () => {
-  const bodyClass = (): string => document.body.className;
   const panelContainer = (): HTMLElement | null => container();
 
-  it('mounts at once on List View, above the content, and leaves the right column alone', async () => {
+  it('mounts at once on List View, for the weekly dock, and changes nothing in the page layout', async () => {
     loadPage(document, LIST_VIEW);
-    const before = bodyClass();
+    const before = document.body.outerHTML;
 
     const outcome = await mountWhenReady(onMount, { pathname: '/' });
 
@@ -244,15 +250,16 @@ describe('dashboard without a right column', () => {
         courseId: null,
         announcements: true,
         container: container(),
+        docked: true,
         release: expect.any(Function),
       },
     ]);
-    // A page without layout (happy-dom) has no room beside the content: the card stacks above it.
-    expect(panelContainer()?.nextElementSibling).toBe(document.getElementById('content'));
-    expect(panelContainer()?.parentElement?.id).toBe('content-wrapper');
-    // Canvas's right column stays off, as it was.
-    expect(bodyClass()).toBe(before);
-    expect(document.getElementById('right-side-wrapper')?.style.display).toBe('none');
+    // The container waits before the right column until the dock takes it.
+    expectMountedBeforeRightSide();
+    expect(document.body.hasAttribute('data-weekrow-column')).toBe(false);
+    expect(document.querySelector('[data-weekrow-styled]')).toBeNull();
+    container()?.remove();
+    expect(document.body.outerHTML).toBe(before);
   });
 
   it('mounts above the tab content without entering a widget column', async () => {
@@ -420,7 +427,7 @@ describe('dashboard without a right column', () => {
       loadPage(document, LIST_VIEW);
       await mountWhenReady(onMount, { pathname: '/' });
       expect(container()?.style.display).not.toBe('none');
-      expect(container()?.nextElementSibling?.id).toBe('content');
+      expect(document.body.hasAttribute('data-weekrow-column')).toBe(false);
     });
 
     it('does not wait on a dashboard that the server filled with classic content', async () => {
@@ -609,11 +616,10 @@ describe('dashboard without a right column', () => {
   });
 });
 
-describe('the dock of the classic dashboard', () => {
-  it('adds a sentinel at the end of the right column and removes it on release', async () => {
-    loadPage(document, CARD_VIEW);
-    injectSidebar(document, STUDENT_SIDEBAR);
-    await mountWhenReady(onMount, { pathname: '/' });
+describe('the dock of the right column', () => {
+  it('adds a sentinel at the end of the right column of a course home page and removes it on release', async () => {
+    loadPage(document, COURSE_HOME);
+    await mountWhenReady(onMount, { pathname: '/courses/5' });
 
     const wrapper = document.getElementById('right-side-wrapper');
     expect(wrapper?.lastElementChild?.id).toBe('weekrow-sentinel');
@@ -623,14 +629,24 @@ describe('the dock of the classic dashboard', () => {
   });
 
   it('removes the sentinel of a list that an earlier copy left on the page', async () => {
-    loadPage(document, CARD_VIEW);
-    injectSidebar(document, STUDENT_SIDEBAR);
-    await mountWhenReady(onMount, { pathname: '/' });
+    loadPage(document, COURSE_HOME);
+    await mountWhenReady(onMount, { pathname: '/courses/5' });
 
     expect(removeStaleMount(document)).toBe(true);
 
     expect(document.getElementById('weekrow-sentinel')).toBeNull();
     expect(container()).toBeNull();
+  });
+
+  it('adds no sentinel on the classic dashboard, whose list sits in the weekly dock', async () => {
+    loadPage(document, CARD_VIEW);
+    injectSidebar(document, STUDENT_SIDEBAR);
+    await mountWhenReady(onMount, { pathname: '/' });
+
+    expect(document.getElementById('weekrow-sentinel')).toBeNull();
+    expect(mounts[0]?.docked).toBe(true);
+    mounts[0]?.release();
+    expect(document.getElementById('weekrow-sentinel')).toBeNull();
   });
 });
 
@@ -641,7 +657,13 @@ describe('course home', () => {
 
     expect(outcome.kind).toBe('mounted');
     expect(mounts).toEqual([
-      { courseId: '5', announcements: true, container: container(), release: expect.any(Function) },
+      {
+        courseId: '5',
+        announcements: true,
+        container: container(),
+        docked: false,
+        release: expect.any(Function),
+      },
     ]);
     expectMountedBeforeRightSide();
   });
@@ -691,7 +713,13 @@ describe('mountWhenReady', () => {
     expect(stale.isConnected).toBe(false);
     expect(document.querySelectorAll(`#${MOUNT_CONTAINER_ID}`)).toHaveLength(1);
     expect(mounts).toEqual([
-      { courseId: '5', announcements: true, container: container(), release: expect.any(Function) },
+      {
+        courseId: '5',
+        announcements: true,
+        container: container(),
+        docked: false,
+        release: expect.any(Function),
+      },
     ]);
     expectMountedBeforeRightSide();
     expect(nativeTodoHidden()).toBe(false);
@@ -800,5 +828,17 @@ describe('right column anchors', () => {
     await vi.advanceTimersByTimeAsync(DEFAULT_MOUNT_TIMEOUT_MS);
     expect(await done).toEqual({ kind: 'timeout' });
     expect(container()).toBeNull();
+  });
+});
+
+describe('where the list sits', () => {
+  it.each([
+    ['Card View and Recent Activity', CARD_VIEW, 'dock'],
+    ['List View', LIST_VIEW, 'dock'],
+    ['the widget dashboard', WIDGET_DASHBOARD, 'layout'],
+  ] as const)('%s: %s', (_name, fixture, placement) => {
+    loadPage(document, fixture);
+    injectSidebar(document, STUDENT_SIDEBAR);
+    expect(findDashboardAnchors('/', document)?.placement).toBe(placement);
   });
 });

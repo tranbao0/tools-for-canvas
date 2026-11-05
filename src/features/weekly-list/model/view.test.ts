@@ -959,6 +959,54 @@ describe('item colors', () => {
   });
 });
 
+describe('the open count', () => {
+  const doneMark = override('o1', { markedComplete: true, dismissed: false });
+  const items = [
+    task('a', '2026-10-27T20:00:00Z'),
+    task('b', '2026-10-28T16:00:00Z', { override: doneMark }),
+    task('c', '2026-10-29T16:00:00Z'),
+    task('d', '2026-10-30T16:00:00Z'),
+  ];
+  const details = detailsById(['a', 'b', 'c', 'd'].map((id) => upload(id)));
+
+  it('is the ring total minus its done count, summed over the rings', () => {
+    const view = buildWeekView(input({ plannerItems: items, assignmentDetails: details }));
+    const rings = view.rings.reduce((sum, ring) => sum + ring.total - ring.done, 0);
+    expect(view.rings.reduce((sum, ring) => sum + ring.total, 0)).toBe(4);
+    expect(rings).toBe(3);
+    expect(view.openCount).toBe(3);
+  });
+
+  it('counts the same with the rings turned off', () => {
+    const view = buildWeekView(
+      input({
+        settings: { ...DEFAULT_SETTINGS, showRings: false },
+        plannerItems: items,
+        assignmentDetails: details,
+      }),
+    );
+    expect(view.rings).toEqual([]);
+    expect(view.openCount).toBe(3);
+  });
+
+  it('leaves out reminders, skipped items and Past due', () => {
+    const view = buildWeekView(
+      input({
+        plannerItems: [
+          task('a', '2026-10-27T20:00:00Z'),
+          task('late', '2026-10-26T16:00:00Z'),
+          task('r', '2026-10-28T16:00:00Z'),
+        ],
+        assignmentDetails: {
+          ...detailsById([upload('a'), upload('late')]),
+          ...detailsById([assignment({ id: 'r', courseId: '101', types: ['not_graded'] })]),
+        },
+      }),
+    );
+    expect(view.openCount).toBe(1);
+  });
+});
+
 describe('the planner-off list', () => {
   it('builds the same list from all assignments and the override list', () => {
     const view = buildWeekView(

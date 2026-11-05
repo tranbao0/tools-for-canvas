@@ -4,8 +4,9 @@
  *
  * Every Canvas page has `#right-side-wrapper`, but Canvas shows it only when the body has the
  * `with-right-side` class. Canvas replaces the contents of `#right-side`, so the list mounts as
- * a sibling before `#right-side`, inside `#right-side-wrapper`. The widget dashboard and List
- * View have no right column, so there the list takes a place in the page content (layout.ts).
+ * a sibling before `#right-side`, inside `#right-side-wrapper`. The classic dashboard and List
+ * View give the list a dock on the right edge of the window (weeklyDock.ts). The widget dashboard
+ * has no right column, so there the list takes a place in the page content (layout.ts).
  *
  * An adapter returns the course and the anchors when the page meets its mount condition, and
  * `null` otherwise, so the caller waits and asks again as Canvas builds the page.
@@ -14,6 +15,14 @@
 import { expectsWidgetDashboard } from '../../../shared/canvas/widgetDashboard';
 
 export const MOUNT_CONTAINER_ID = 'weekrow-inpage';
+
+/**
+ * - `dock`: the classic dashboard and List View. The list sits in the weekly dock (weeklyDock.ts).
+ * - `layout`: the widget dashboard has no right column, so the list takes a place in the page
+ *   content (layout.ts).
+ * - `column`: a course home page. The list sits in the right column (dock.ts).
+ */
+export type Placement = 'dock' | 'layout' | 'column';
 
 export interface SidebarAnchors {
   wrapper: HTMLElement;
@@ -24,8 +33,8 @@ export interface AdapterResult {
   /** The course of a course home page, otherwise `null`. */
   courseId: string | null;
   anchors: SidebarAnchors;
-  /** The page has no right column, so the list takes a place in the page content (layout.ts). */
-  claimsLayout: boolean;
+  /** Where the list sits: in the weekly dock, in the page content, or in the right column. */
+  placement: Placement;
   /**
    * The page is the new widget dashboard, drawn or not yet drawn. The layout then waits for the
    * widget grid before it places the list (layout.ts).
@@ -89,7 +98,7 @@ export function findDashboardAnchors(pathname: string, doc: Document): AdapterRe
     return {
       courseId: null,
       anchors,
-      claimsLayout: true,
+      placement: listView ? 'dock' : 'layout',
       widgetDashboard: !listView && expectsWidgetDashboard(doc),
       announcements: listView,
     };
@@ -98,7 +107,7 @@ export function findDashboardAnchors(pathname: string, doc: Document): AdapterRe
   return {
     courseId: null,
     anchors,
-    claimsLayout: false,
+    placement: 'dock',
     widgetDashboard: false,
     announcements: true,
   };
@@ -114,7 +123,7 @@ export function findCourseHomeAnchors(pathname: string, doc: Document): AdapterR
   const anchors = showsRightColumn(doc) ? findSidebarAnchors(doc) : null;
   return anchors === null
     ? null
-    : { courseId, anchors, claimsLayout: false, widgetDashboard: false, announcements: true };
+    : { courseId, anchors, placement: 'column', widgetDashboard: false, announcements: true };
 }
 
 /** Creates the empty mount container before `#right-side`. */

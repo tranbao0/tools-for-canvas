@@ -17,6 +17,15 @@
   "expandList": {
     "message": "Expand list"
   },
+  "openWeeklyList": {
+    "message": "Open weekly list"
+  },
+  "openWeeklyListOpen": {
+    "message": "Open weekly list, $1, $2 open"
+  },
+  "resizeWeeklyList": {
+    "message": "Resize weekly list"
+  },
   "minimizedBarName": {
     "message": "Weekly list, minimized"
   },
