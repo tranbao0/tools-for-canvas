@@ -105,6 +105,16 @@ interface Target {
 /** The course page of an address, with a plain or a sharded id. */
 const COURSE_PATH = /^\/courses\/(\d+(?:~\d+)?)(?:\/.*)?$/;
 
+/**
+ * The pages that `AssignmentsController#show` sends an assignment page to: the discussion, the
+ * quiz or the wiki page of the assignment. Only the page itself counts, so the pages under a quiz
+ * (`/take`) do not.
+ */
+const MOVED_COURSE_PAGE = /^\/courses\/[^/]+\/(?:discussion_topics|quizzes|pages)\/[^/]+$/;
+
+/** A student in a group is sent to the discussion of the group, which is outside the course. */
+const MOVED_GROUP_PAGE = /^\/groups\/\d+(?:~\d+)?\/discussion_topics\/\d+(?:~\d+)?$/;
+
 export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
   const { doc, origin, courseId } = options;
   const win = doc.defaultView ?? window;
@@ -158,33 +168,49 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     return url === null || pageUrl === null ? null : { ...request, url, pageUrl };
   }
 
+  /** The address that the frame has now, or `null` when it is not ours to read. */
+  function addressOf(frame: HTMLIFrameElement): URL | null {
+    try {
+      return new URL(frame.contentWindow?.location.href ?? '');
+    } catch {
+      return null;
+    }
+  }
+
+  const pathOf = (address: URL): string => address.pathname.replace(/\/$/, '');
+
   /**
    * Whether the frame has loaded the page that a Preview click asked for. It reads only the
-   * address. The page is the assignment page of the target, or any other page of the course that
-   * the frame was sent to: a graded discussion or quiz redirects away from its assignment page.
-   * The page that the pane left does not count, because it can load again by itself.
+   * address. That page is the assignment page of the target, or a page that Canvas sends an
+   * assignment page to (`MOVED_COURSE_PAGE`: a graded discussion, a quiz or a graded page, also a
+   * discussion of the student's group). Any other load is something else, such as a link that the
+   * student followed after the page declined a leave question: a declined question fires no load.
+   * The pages that the frame had at the click (`left`) and when the pane last landed
+   * (`landed`) do not count, because they can load again by themselves.
    */
-  function reached(frame: HTMLIFrameElement, next: Target, left: Target): boolean {
-    try {
-      const shown = new URL(frame.contentWindow?.location.href ?? '');
-      if (shown.origin !== origin) return false;
-      const course = COURSE_PATH.exec(shown.pathname)?.[1];
-      if (course === undefined || normalizeCanvasId(course) !== normalizeCanvasId(courseId))
-        return false;
-      const page = (address: string): string => new URL(address).pathname.replace(/\/$/, '');
-      return page(shown.href) === page(next.pageUrl) || page(shown.href) !== page(left.pageUrl);
-    } catch {
-      return false;
-    }
+  function reached(frame: HTMLIFrameElement, next: Target, left: string, landed: string): boolean {
+    const address = addressOf(frame);
+    if (address === null || address.origin !== origin) return false;
+    const shown = pathOf(address);
+    if (shown === pathOf(new URL(next.pageUrl))) return true;
+    if (shown === left || shown === landed) return false;
+    const course = COURSE_PATH.exec(shown)?.[1];
+    if (course === undefined) return MOVED_GROUP_PAGE.test(shown);
+    return (
+      normalizeCanvasId(course) === normalizeCanvasId(courseId) && MOVED_COURSE_PAGE.test(shown)
+    );
   }
 
   function build(first: Target): Open | null {
     if (!dock) return null;
     let active = first;
-    // The page that a Preview click on another assignment asked for. The pane keeps showing the
-    // assignment that it had until that page has loaded. A page of Canvas can keep the frame
-    // from leaving, with its own "leave this page" question, and a student can say no.
-    let pending: Target | null = null;
+    // The page that a Preview click on another assignment asked for, and the path that the frame
+    // had at the click. The pane keeps showing the assignment that it had until that page has
+    // loaded. A page of Canvas can keep the frame from leaving, with its own "leave this page"
+    // question, and a student can say no.
+    let pending: { next: Target; left: string } | null = null;
+    // The path that the frame had when the pane last landed on a page of its assignment.
+    let landed = '';
     const style = doc.createElement('style');
     style.textContent = PREVIEW_CSS;
     const bar = doc.createElement('div');
@@ -220,6 +246,10 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     };
 
     let loads = 0;
+    const currentPath = (): string => {
+      const address = addressOf(frame);
+      return address === null ? '' : pathOf(address);
+    };
     // The old submission view redirects to the plain assignment page, and a graded discussion or
     // quiz redirects to its own page. The frame then loads the same page with content_only=1,
     // once. The load after that one never rewrites again, so a page that keeps the plain
@@ -230,9 +260,9 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       if (!event.isTrusted) return;
       let moved = false;
       if (pending) {
-        const next = pending;
+        const { next, left: leftPath } = pending;
         pending = null;
-        if (reached(frame, next, active)) {
+        if (reached(frame, next, leftPath, landed)) {
           const left = active;
           active = next;
           title.textContent = next.title;
@@ -240,6 +270,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
           frame.title = `Assignment ${next.title}`;
           moved = true;
           slimming = false;
+          landed = currentPath();
           // The student may have submitted the assignment that the frame just left. The new one
           // gets its first read, which later reads compare with.
           void read(left.assignmentId);
@@ -262,6 +293,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
           // The frame went to another origin. Its address is not ours to read.
         }
       }
+      if (loads === 0) landed = currentPath();
       // The first page of an assignment is no sign of a submission.
       if (!moved && ++loads > 1) void read(active.assignmentId);
       if (!rewriting) options.onFrameLoad();
@@ -297,7 +329,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       retarget(request) {
         const next = target(request);
         if (next === null || next.assignmentId === active.assignmentId) return;
-        pending = next;
+        pending = { next, left: currentPath() };
         frame.src = next.url;
       },
       stop() {

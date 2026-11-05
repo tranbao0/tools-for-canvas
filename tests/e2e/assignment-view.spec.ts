@@ -1244,6 +1244,52 @@ test('a cancelled leave question keeps the first assignment, and an accepted one
   await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('a declined leave question keeps the first assignment when the student follows a link in the frame', async ({
+  context,
+  page,
+  background,
+}) => {
+  // The switch is off, so the link to the file page loads in the frame.
+  const { canvas } = await open(context, page, background, { tools: { fileViewer: false } });
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('half a draft');
+  const questions: string[] = [];
+  let answer = false;
+  page.on('dialog', (dialog) => {
+    questions.push(dialog.type());
+    void (answer ? dialog.accept() : dialog.dismiss());
+  });
+  await preview(page, 'Reading').click();
+  await expect.poll(() => questions.length).toBe(1);
+  await page.waitForTimeout(500);
+  // The student said no to the question of Preview, and then follows a link of the page.
+  answer = true;
+  await frame.locator('#file-plain').click();
+  await expect.poll(() => questions.length).toBe(2);
+  await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe('/courses/12/files/501');
+  await expect(frame.getByText('The file page')).toBeVisible();
+  await page.waitForTimeout(500);
+  // The frame shows a file page, and the pane still says that it shows the first assignment.
+  expect(await headerOf(frame)).toEqual({
+    title: 'Essay',
+    href: ASSIGNMENT,
+    frameTitle: 'Assignment Essay',
+  });
+  await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
+  await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'false');
+  // A click on Preview Reading asks again, and moves the pane when the frame has loaded it.
+  await preview(page, 'Reading').click();
+  await expect(frame.locator('#mode')).toHaveText('reading');
+  await expect
+    .poll(() => headerOf(frame))
+    .toEqual({
+      title: 'Reading',
+      href: '/courses/12/assignments/102',
+      frameTitle: 'Assignment Reading',
+    });
+});
+
 test('the Theme setting wins over the page background', async ({ context, page, background }) => {
   const { canvas } = await open(context, page, background);
   await ready(page, canvas);

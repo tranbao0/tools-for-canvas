@@ -3873,8 +3873,13 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
   - A Preview click on another assignment while the pane is open moves the same frame to that slim address, and never removes the frame.
     Canvas can then ask whether to leave the page, and the student can say no.
     The title, the "Open in new tab" link, the frame title, the marks of the rows and the reads move to the new assignment only when the frame has loaded a page.
-    The page that counts is the assignment page of the new assignment, or any other page of the course that the frame was sent to (a graded discussion).
-    The page that the pane left does not count, because it can load again by itself.
+    The page that counts is the assignment page of the new assignment, or the page that Canvas sends an assignment page to (`AssignmentsController#show`): `/courses/:c/discussion_topics/:id`, `/courses/:c/quizzes/:id` or `/courses/:c/pages/:url` of the same course, and `/groups/:g/discussion_topics/:id` on the saved origin for a student in a group, which is outside the course.
+    Only the page itself counts, so a page under a quiz (`/take`) or a file page does not.
+    The pane reads the address of the frame at the click, and the address of the page where it last landed.
+    Neither address counts, because a page can load again by itself.
+    A cancelled question fires no load, so the next load can be a page that the student followed in the frame, and it is no arrival unless it has the form of one of these pages.
+    The first trusted load after the click is the only one that can count.
+    A student who cancelled the question and then follows a link to another discussion, quiz or page in the frame is the one case that the pane takes for an arrival, because the script does not read the page.
     A cancelled question leaves everything on the first assignment, and the next click asks again.
   - A page that removes the pane host closes the pane: the poll stops, the room is given back, and a file pane that it covered shows again.
   - An extension update removes an open pane, as it removes every page control.
