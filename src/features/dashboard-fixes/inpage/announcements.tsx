@@ -51,7 +51,14 @@ import {
   type AnnouncementStore,
   type AnnRow,
 } from './announcementStore';
-import { ScrollList, shadowHost, unmountHost } from './scrollList';
+import {
+  AVATAR_COLORS,
+  Avatar,
+  initialsOf,
+  ScrollList,
+  shadowHost,
+  unmountHost,
+} from './scrollList';
 import { FIXES_CSS } from './styles';
 
 const OWN = 'data-wr-own';
@@ -68,34 +75,7 @@ const DATE_WAIT_MS = 350;
 const NOTE_MS = 6_000;
 const FIRST_DAY = '2000-01-01';
 
-/** Colors for the initials of an author, each with white text at a contrast of 4.5 or more. */
-export const AVATAR_COLORS = [
-  '#3f7d6e',
-  '#8a4f7d',
-  '#2f5f8a',
-  '#9a4a3a',
-  '#5d6b24',
-  '#6b4c93',
-  '#2d6f7e',
-  '#8a5a0f',
-] as const;
-
-function hash(text: string): number {
-  let value = 0;
-  for (let index = 0; index < text.length; index++) {
-    value = (value * 31 + text.charCodeAt(index)) >>> 0;
-  }
-  return value;
-}
-
-/** The first letters of the first and the last word of a name. */
-export function initialsOf(name: string | null): string {
-  const words = (name ?? '').trim().split(/\s+/).filter(Boolean);
-  const first = words[0];
-  if (first === undefined) return '?';
-  const last = words.length > 1 ? words[words.length - 1] : undefined;
-  return `${[...first][0] ?? ''}${last === undefined ? '' : ([...last][0] ?? '')}`.toUpperCase();
-}
+export { AVATAR_COLORS, initialsOf };
 
 /** Today as `yyyy-mm-dd` in the time zone of the computer. */
 export function localToday(now: Date = new Date()): string {
@@ -253,30 +233,6 @@ export function announcementsFix(): Fix {
     return list.map((part) => (part.match ? <mark>{part.text}</mark> : part.text));
   }
 
-  function Avatar(props: { row: AnnRow }) {
-    const { row } = props;
-    const [failed, setFailed] = useState<string | null>(null);
-    const color = AVATAR_COLORS[hash(row.author ?? row.id) % AVATAR_COLORS.length];
-    // The background keeps only an http or https address, and the page checks it again.
-    const image =
-      row.avatarUrl !== null && /^https?:\/\//i.test(row.avatarUrl) && failed !== row.avatarUrl;
-    return (
-      <span class="wr-a-avatar" style={{ backgroundColor: color }} aria-hidden="true">
-        {image ? (
-          <img
-            alt=""
-            src={row.avatarUrl ?? undefined}
-            loading="lazy"
-            referrerpolicy="no-referrer"
-            onError={() => setFailed(row.avatarUrl)}
-          />
-        ) : (
-          initialsOf(row.author)
-        )}
-      </span>
-    );
-  }
-
   function Row(props: {
     row: AnnRow;
     words: string[] | null;
@@ -307,7 +263,7 @@ export function announcementsFix(): Fix {
     const snippet = snippetParts(row.text, SNIPPET_LIMIT, found);
     return (
       <article class="wr-a-row" aria-label={row.title} data-wr-row={key}>
-        <Avatar row={row} />
+        <Avatar name={row.author} seed={row.id} url={row.avatarUrl} class="wr-a-avatar" />
         <div class="wr-a-head">
           <div class="wr-a-title">{parts(title)}</div>
           <div class="wr-a-meta">{meta.join(' | ')}</div>

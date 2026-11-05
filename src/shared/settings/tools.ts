@@ -19,6 +19,8 @@ export interface DashboardFixesSettings {
   allCourseGrades: boolean;
   /** One fixed page navigator for the paged widgets. */
   steadyPager: boolean;
+  /** One steady scroll list in the People widget. */
+  peopleList: boolean;
 }
 
 export interface ToolsSettings {
@@ -35,6 +37,7 @@ export const DASHBOARD_FIX_KEYS = [
   'announcementsInPlace',
   'allCourseGrades',
   'steadyPager',
+  'peopleList',
 ] as const satisfies readonly (keyof DashboardFixesSettings)[];
 
 /** The weekly list dock opens at the narrowest width that a dock can have. */
@@ -58,6 +61,7 @@ export const DEFAULT_TOOLS_SETTINGS: ToolsSettings = {
     announcementsInPlace: true,
     allCourseGrades: true,
     steadyPager: true,
+    peopleList: true,
   },
   assignmentView: true,
 };

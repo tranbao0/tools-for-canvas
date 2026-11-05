@@ -6,7 +6,9 @@ import {
   customGradeStatusesQuery,
   GRAPHQL_PATH,
   MAX_GRAPHQL_ALIASES,
+  peoplePageQuery,
   readAnnouncementPage,
+  readPeoplePage,
   readCustomGradeStatuses,
 } from './graphql';
 import {
@@ -452,6 +454,15 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
           body: announcementPageQuery(request),
         });
         return readAnnouncementPage(response.data);
+      },
+
+      listPeoplePage: async (request) => {
+        const response = await send({
+          method: 'POST',
+          url: GRAPHQL_PATH,
+          body: peoplePageQuery(request),
+        });
+        return readPeoplePage(response.data);
       },
 
       setAnnouncementRead: async (courseId, topicId, read) => {

@@ -29,11 +29,13 @@ const OFF: DashboardFixesSettings = {
   announcementsInPlace: false,
   allCourseGrades: false,
   steadyPager: false,
+  peopleList: false,
 };
 const ARTIFACTS = {
   announcementsInPlace: '[data-wr-filter]',
   allCourseGrades: '[data-wr-grades]',
   steadyPager: '[data-wr-own="pager"]',
+  peopleList: '[data-wr-own="people"]',
 } as const;
 
 type Worker = Parameters<typeof saveTools>[0];

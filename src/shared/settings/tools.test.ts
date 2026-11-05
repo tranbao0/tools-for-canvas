@@ -16,6 +16,7 @@ const ALL_OFF: ToolsSettings = {
     announcementsInPlace: false,
     allCourseGrades: false,
     steadyPager: false,
+    peopleList: false,
   },
   assignmentView: true,
 };
@@ -67,6 +68,7 @@ describe('normalizeToolsSettings', () => {
         announcementsInPlace: true,
         allCourseGrades: true,
         steadyPager: true,
+        peopleList: true,
       },
       assignmentView: true,
     });

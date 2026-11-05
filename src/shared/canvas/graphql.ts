@@ -13,6 +13,9 @@ import {
   type AnnouncementPageNode,
   type AnnouncementPageRequest,
   type CustomGradeStatus,
+  type PeoplePage,
+  type PeoplePageNode,
+  type PeoplePageRequest,
 } from './types';
 
 export const GRAPHQL_PATH = '/api/graphql';
@@ -20,7 +23,7 @@ export const MAX_GRAPHQL_ALIASES = 20;
 
 export interface GraphQLBody {
   readonly query: string;
-  readonly variables: Readonly<Record<string, string | number | null>>;
+  readonly variables: Readonly<Record<string, string | number | readonly string[] | null>>;
 }
 
 function alias(index: number): string {
@@ -169,6 +172,105 @@ export function readAnnouncementPage(body: unknown): AnnouncementPage {
     nodes: connection['nodes']
       .map(toAnnouncementNode)
       .filter((node): node is AnnouncementPageNode => node !== null),
+    total: typeof total === 'number' && Number.isInteger(total) && total >= 0 ? total : null,
+    hasNext: info['hasNextPage'] === true,
+  };
+}
+
+/** The most rows one People page may ask for. Canvas caps `first` at 100 with no error. */
+export const MAX_PEOPLE_PAGE = 100;
+
+/**
+ * Builds the query of the People widget of Canvas (`coursePeople.ts`): the teachers and assistants
+ * of the given courses with their enrollments. It leaves out the fields that the list does not
+ * show (the email and the other names). `after` is an offset that Canvas reads from base64 text:
+ * the widget sends `btoa(String(offset))`, and the first page sends nothing. The widget names
+ * `observedUserId` for an observed student, and this query never does.
+ */
+export function peoplePageQuery(request: PeoplePageRequest): GraphQLBody {
+  if (
+    request.courseIds.length === 0 ||
+    !Number.isInteger(request.first) ||
+    request.first < 1 ||
+    request.first > MAX_PEOPLE_PAGE ||
+    !Number.isInteger(request.offset) ||
+    request.offset < 0
+  ) {
+    throw new RangeError('A People page needs a course, first from 1 to 100 and a whole offset');
+  }
+  return {
+    query: [
+      'query WeekrowPeople($courseIds: [ID!]!, $first: Int, $after: String, $enrollmentTypes: [String!]) {',
+      '  courseInstructorsConnection(courseIds: $courseIds, first: $first, after: $after, enrollmentTypes: $enrollmentTypes) {',
+      '    nodes { user { _id name avatarUrl } enrollments { course { _id name } type } }',
+      '    pageInfo { hasNextPage totalCount }',
+      '  }',
+      '}',
+    ].join('\n'),
+    variables: {
+      courseIds: request.courseIds,
+      first: request.first,
+      after: request.offset === 0 ? null : btoa(String(request.offset)),
+      enrollmentTypes:
+        request.role === 'all'
+          ? null
+          : request.role === 'teacher'
+            ? ['TeacherEnrollment']
+            : ['TaEnrollment'],
+    },
+  };
+}
+
+function toPeopleNode(node: unknown): PeoplePageNode | null {
+  if (!isJsonObject(node) || !isJsonObject(node['user']) || !Array.isArray(node['enrollments'])) {
+    return null;
+  }
+  const user = node['user'];
+  const enrollments = node['enrollments'].flatMap((enrollment) => {
+    const course =
+      isJsonObject(enrollment) && isJsonObject(enrollment['course']) ? enrollment['course'] : null;
+    if (!isJsonObject(enrollment) || course === null) return [];
+    return [
+      {
+        courseId: text(course['_id']) ?? '',
+        courseName: text(course['name']) ?? '',
+        type: text(enrollment['type']) ?? '',
+      },
+    ];
+  });
+  return {
+    id: text(user['_id']) ?? '',
+    name: text(user['name']) ?? '',
+    avatarUrl: text(user['avatarUrl']),
+    enrollments,
+  };
+}
+
+/**
+ * Reads the answer to `peoplePageQuery`. A 200 answer can hold `errors`, so they are checked
+ * first. An answer without the connection is no page.
+ */
+export function readPeoplePage(body: unknown): PeoplePage {
+  if (!isJsonObject(body)) throw new CanvasError('not_canvas', 'Expected a GraphQL object');
+  const errors = body['errors'];
+  if (Array.isArray(errors) ? errors.length > 0 : errors !== undefined && errors !== null) {
+    throw new CanvasError('bad_request', 'The People query returned errors');
+  }
+  const data = isJsonObject(body['data']) ? body['data'] : null;
+  const connection =
+    data !== null && isJsonObject(data['courseInstructorsConnection'])
+      ? data['courseInstructorsConnection']
+      : null;
+  if (connection === null || !Array.isArray(connection['nodes'])) {
+    throw new CanvasError('not_canvas', 'The People answer has no connection');
+  }
+  const info = isJsonObject(connection['pageInfo']) ? connection['pageInfo'] : {};
+  const total = info['totalCount'];
+  return {
+    count: connection['nodes'].length,
+    nodes: connection['nodes']
+      .map(toPeopleNode)
+      .filter((node): node is PeoplePageNode => node !== null),
     total: typeof total === 'number' && Number.isInteger(total) && total >= 0 ? total : null,
     hasNext: info['hasNextPage'] === true,
   };

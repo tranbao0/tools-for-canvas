@@ -39,6 +39,13 @@
  *   empty message is `no-announcements-message`. The read filter is the input
  *   `announcement-filter-select`. The fix replaces the list with its own, so it reads only the
  *   read filter and the block of the filter.
+ * - People (`PeopleWidget`, `PeopleFilters`): the Course filter is the input `course-filter-select`
+ *   (the shared `CourseFilterSelect`, which other widgets use too) and the Role filter is the input
+ *   `role-filter-select`, so only the role filter says that a widget is People. A row has the
+ *   avatar `instructor-avatar-<user id>` and the button `message-button-<user id>`, and the empty
+ *   message is `no-instructors-message`. The filters sit in one row above the list, and the list
+ *   and the filters are children of one column. The inputs show the label of the chosen option:
+ *   "All Courses" or a course name, and "All Roles", "Teacher" or "Teaching Assistant".
  * - Course grades (`CourseGradesWidget`): a card is `course-grade-card-<course id>` in a grid
  *   (`role="list"`), and the pager is `pagination-container`. The card holds
  *   `course-<id>-grade`, `-name`, `-code`, `-term`, `-last-updated`, `-gradebook-link` and
@@ -201,6 +208,74 @@ export function findAnnouncementsWidgets(doc: Document): AnnouncementsWidget[] {
       filterBlock,
       bar,
       read: label === 'unread' ? 'unread' : label === 'read' ? 'read' : 'all',
+    });
+  }
+  return found;
+}
+
+const ROLE_FILTER = '[data-testid="role-filter-select"]';
+const COURSE_FILTER = '[data-testid="course-filter-select"]';
+const PEOPLE_ITEM = '[data-testid^="instructor-avatar-"]';
+const PEOPLE_EMPTY = '[data-testid="no-instructors-message"]';
+
+export type PeopleRoleFilter = 'all' | 'teacher' | 'ta';
+
+/** The text of the Course filter when it shows every course. */
+export const ALL_COURSES_LABEL = 'All Courses';
+
+const ROLE_LABELS: Readonly<Record<string, PeopleRoleFilter>> = {
+  'all roles': 'all',
+  teacher: 'teacher',
+  'teaching assistant': 'ta',
+};
+
+export interface PeopleWidget {
+  widget: HTMLElement;
+  /** The row that holds the Course filter and the Role filter, a child of `bar`. */
+  filterBlock: HTMLElement;
+  /** The column that holds the filter block and the list. */
+  bar: HTMLElement;
+  /** The text of the Course filter: "All Courses" or the name of a course. */
+  courseLabel: string;
+  /** The Role filter, or `null` when its text is not one of the English labels. */
+  role: PeopleRoleFilter | null;
+}
+
+function inputOf(element: HTMLElement): HTMLInputElement | null {
+  return element instanceof HTMLInputElement ? element : element.querySelector('input');
+}
+
+/** The People widgets, with the pieces the fixes attach to. */
+export function findPeopleWidgets(doc: Document): PeopleWidget[] {
+  const found: PeopleWidget[] = [];
+  for (const widget of widgetsWith(doc, ROLE_FILTER)) {
+    const roleElement = widget.querySelector<HTMLElement>(ROLE_FILTER);
+    const courseElement = widget.querySelector<HTMLElement>(COURSE_FILTER);
+    const roleInput = roleElement === null ? null : inputOf(roleElement);
+    const courseInput = courseElement === null ? null : inputOf(courseElement);
+    if (roleInput === null || courseInput === null) continue;
+    const marker =
+      widget.querySelector<HTMLElement>(PEOPLE_ITEM) ??
+      widget.querySelector<HTMLElement>(PEOPLE_EMPTY);
+    // The filter block is the last ancestor of the filters that does not hold the content.
+    let filterBlock: HTMLElement = roleInput;
+    while (
+      filterBlock.parentElement !== null &&
+      filterBlock.parentElement !== widget &&
+      (marker === null ||
+        !filterBlock.parentElement.contains(marker) ||
+        !filterBlock.contains(courseInput))
+    ) {
+      filterBlock = filterBlock.parentElement;
+    }
+    const bar = filterBlock.parentElement;
+    if (bar === null || bar === widget || !filterBlock.contains(courseInput)) continue;
+    found.push({
+      widget,
+      filterBlock,
+      bar,
+      courseLabel: courseInput.value.trim(),
+      role: ROLE_LABELS[roleInput.value.trim().toLowerCase()] ?? null,
     });
   }
   return found;

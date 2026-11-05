@@ -213,6 +213,7 @@ const NO_FIXES: ToolsSettings = {
     announcementsInPlace: false,
     allCourseGrades: false,
     steadyPager: false,
+    peopleList: false,
   },
 };
 

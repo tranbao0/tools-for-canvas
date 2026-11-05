@@ -18,12 +18,72 @@
  */
 import type { ComponentChildren } from 'preact';
 import { render } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 
 /** How many rows a list asks for each time. */
 export const LIST_PAGE = 10;
 /** How close to the end of the area the next page starts, in pixels. */
 export const NEAR_END = 200;
+
+/** Colors for the initials of a person, each with white text at a contrast of 4.5 or more. */
+export const AVATAR_COLORS = [
+  '#3f7d6e',
+  '#8a4f7d',
+  '#2f5f8a',
+  '#9a4a3a',
+  '#5d6b24',
+  '#6b4c93',
+  '#2d6f7e',
+  '#8a5a0f',
+] as const;
+
+function hash(text: string): number {
+  let value = 0;
+  for (let index = 0; index < text.length; index++) {
+    value = (value * 31 + text.charCodeAt(index)) >>> 0;
+  }
+  return value;
+}
+
+/** The first letters of the first and the last word of a name. */
+export function initialsOf(name: string | null): string {
+  const words = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  const first = words[0];
+  if (first === undefined) return '?';
+  const last = words.length > 1 ? words[words.length - 1] : undefined;
+  return `${[...first][0] ?? ''}${last === undefined ? '' : ([...last][0] ?? '')}`.toUpperCase();
+}
+
+/**
+ * The avatar of a person: the image, or the initials on a color of a fixed set when there is no
+ * image or it fails. The background keeps only an http or https address, and the view checks the
+ * scheme again. `seed` picks the color when the person has no name.
+ */
+export function Avatar(props: {
+  name: string | null;
+  seed: string;
+  url: string | null;
+  class: string;
+}) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const color = AVATAR_COLORS[hash(props.name ?? props.seed) % AVATAR_COLORS.length];
+  const image = props.url !== null && /^https?:\/\//i.test(props.url) && failed !== props.url;
+  return (
+    <span class={props.class} style={{ backgroundColor: color }} aria-hidden="true">
+      {image ? (
+        <img
+          alt=""
+          src={props.url ?? undefined}
+          loading="lazy"
+          referrerpolicy="no-referrer"
+          onError={() => setFailed(props.url)}
+        />
+      ) : (
+        initialsOf(props.name)
+      )}
+    </span>
+  );
+}
 
 export interface PagedList<Row, Filter> {
   key: string;

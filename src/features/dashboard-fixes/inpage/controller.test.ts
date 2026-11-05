@@ -13,6 +13,7 @@ const OFF: DashboardFixesSettings = {
   announcementsInPlace: false,
   allCourseGrades: false,
   steadyPager: false,
+  peopleList: false,
 };
 const DATA = { ...dashboardData(), userId: '5' };
 
