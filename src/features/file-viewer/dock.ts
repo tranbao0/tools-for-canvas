@@ -374,7 +374,7 @@ iframe{border:0;width:100%;flex:1;min-height:0;background:transparent}
 :host([data-card][data-full]){padding:${CARD_GAP_PX}px;pointer-events:auto}
 :host([data-card]) section{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.2);pointer-events:auto}
 :host([data-card][data-theme='dark']) section{box-shadow:0 2px 14px rgba(0,0,0,.55)}
-:host([data-card]) .handle{top:${CARD_GAP_PX}px;height:calc(100% - ${2 * CARD_GAP_PX}px);pointer-events:auto}
+:host([data-card]) .handle{z-index:1;top:${CARD_GAP_PX}px;height:calc(100% - ${2 * CARD_GAP_PX}px);pointer-events:auto}
 :host([data-card][data-full]) .handle{display:none}
 @media(max-width:899px){:host([data-card]){padding:0}:host([data-card]) section{border:0;border-left:1px solid var(--edge);border-radius:0;box-shadow:none}}
 `;
@@ -488,7 +488,11 @@ export function createDock(options: DockOptions): Dock {
       doc.body.append(host);
       win.addEventListener('resize', layout);
       stopResize = () => win.removeEventListener('resize', layout);
-      if (card) openPanes().add(dock);
+      if (card) {
+        // A state that a vanished pane left behind (a page removed its host) ends with that pane.
+        if (openPanes().size === 0) setFullView(false);
+        openPanes().add(dock);
+      }
       layout();
       if (options.role === 'file') {
         shared().file = dock;
@@ -529,6 +533,7 @@ export function createDock(options: DockOptions): Dock {
       stopResize?.();
       stopResize = undefined;
       openPanes().delete(dock);
+      if (card && openPanes().size === 0) setFullView(false);
     },
     setWidth,
     setTheme(theme) {
