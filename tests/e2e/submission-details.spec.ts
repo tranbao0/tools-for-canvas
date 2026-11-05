@@ -811,7 +811,7 @@ function expectNamesOnly(lines: readonly string[], origin: string) {
   return about;
 }
 
-test('a session address that is not the one of this Canvas gives the file no button, and the box stays', async ({
+test('a session address that is not the one of this Canvas is replaced by the address of the frame row, with one line', async ({
   context,
   page,
   background,
@@ -826,10 +826,72 @@ test('a session address that is not the one of this Canvas gives the file no but
   await expect(host(page)).toBeAttached({ timeout: 15_000 });
   await expect(page.locator('#preview_frame')).toBeHidden();
   await expect(box(page).getByRole('link', { name: FILE_NAME })).toBeVisible();
-  await expect(box(page).locator('.av-feedback')).toHaveCount(0);
+  const button = box(page).getByRole('button', { name: 'View Feedback' });
+  await expect(button).toBeVisible();
+  await button.click();
+  // The pane opens the address of the frame row, and not the one of the other site.
+  await expect(page.locator(FEEDBACK)).toBeVisible();
+  await expect((await feedbackFrame(page)).locator('#notes')).toHaveText(
+    'Teacher notes on the paper',
+  );
   expect(expectNamesOnly(lines, canvas.origin)).toEqual([
     '[weekrow] submission details: 1 file(s) without a usable feedback address',
   ]);
+});
+
+test('a file with no usable session address in the details or in the frame row keeps the frame of Canvas', async ({
+  context,
+  page,
+  background,
+}) => {
+  const lines = watchConsole(page);
+  await open(context, page, background, {
+    switchOff: true,
+    rows: [{ ...ONE_FILE[0]!, button: 'Vista previa', session: `${SESSION_PATH}&access_token=t` }],
+    change: (copy) => {
+      delete copy.submission.attachments![0]!.preview_url;
+    },
+  });
+  const original = await canvasOriginal(page);
+  await turnOn(page, background);
+  await expectFrameKept(page, original);
+  await expect(page.frameLocator('#preview_frame').locator('a.modal_preview_link')).toBeVisible();
+  expect(expectNamesOnly(lines, new URL(page.url()).origin)).toEqual([
+    '[weekrow] submission details keeps the Canvas frame, reason: no-session',
+  ]);
+});
+
+test('a file with no session address in the details and no button in the frame changes nothing', async ({
+  context,
+  page,
+  background,
+}) => {
+  const lines = watchConsole(page);
+  const canvas = await open(context, page, background, {
+    rows: [{ ...ONE_FILE[0]!, button: null }],
+    change: (copy) => {
+      delete copy.submission.attachments![0]!.preview_url;
+    },
+  });
+  await expect(host(page)).toBeAttached({ timeout: 15_000 });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  await expect(box(page).getByRole('link', { name: FILE_NAME })).toBeVisible();
+  await expect(box(page).locator('.av-feedback')).toHaveCount(0);
+  expect(expectNamesOnly(lines, canvas.origin)).toEqual([]);
+});
+
+test('a translated Canvas keeps the label of its button and the unread dot', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    rows: [{ ...ONE_FILE[0]!, button: 'Vista previa', unread: true }],
+  });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  const button = box(page).getByRole('button', { name: 'Vista previa' });
+  await expect(button).toBeVisible();
+  await expect(button).toHaveAttribute('title', 'There are unread comments.');
 });
 
 test('a shard student, whose frame writes the ids in full, gets the view and View Feedback', async ({
@@ -848,7 +910,7 @@ test('a shard student, whose frame writes the ids in full, gets the view and Vie
   );
 });
 
-test('a session address with an extra access token gives the file no button', async ({
+test('a session address with an extra access token in the details is replaced by the address of the frame row', async ({
   context,
   page,
   background,
@@ -861,7 +923,7 @@ test('a session address with an extra access token gives the file no button', as
   await expect(host(page)).toBeAttached({ timeout: 15_000 });
   await expect(page.locator('#preview_frame')).toBeHidden();
   await expect(box(page).getByRole('link', { name: FILE_NAME })).toBeVisible();
-  await expect(box(page).locator('.av-feedback')).toHaveCount(0);
+  await expect(box(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
 });
 
 test('a preview button that Canvas renamed changes nothing: the button stays and says View Feedback', async ({
