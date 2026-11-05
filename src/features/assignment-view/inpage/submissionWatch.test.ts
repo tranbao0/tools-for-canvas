@@ -137,6 +137,17 @@ describe('the read of a submission', () => {
     await expect(watch.read('101')).rejects.toThrow('no details');
   });
 
+  it('keeps the fields that it compares, not the reply with its signed addresses', async () => {
+    const first = reply('101');
+    send.mockImplementationOnce(async () => first);
+    await watch.read('101');
+    // A later change to the object that the background gave must not change the baseline.
+    first.details.submission.attempt = 9;
+    first.details.submission.attachments = [];
+    await watch.read('101');
+    expect(refreshes()).toBe(0);
+  });
+
   it('does nothing while the view is off, and when it stops', async () => {
     active = false;
     await watch.read('101');
