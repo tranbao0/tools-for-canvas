@@ -511,9 +511,10 @@ export function createDock(options: DockOptions): Dock {
       host.remove();
       if (card) {
         openPanes().delete(dock);
-        // The close of a pane leaves full view. A file pane that closes while another pane waits
-        // under it is the one exception: that pane stays in full view.
-        if (options.role !== 'file' || openPanes().size === 0) setFullView(false);
+        // The close of a pane that shows leaves full view. A file pane that closes while another
+        // pane waits under it is the one exception: that pane stays in full view. A pane that a
+        // file pane covers closes without a change, because the file pane keeps its state.
+        if (openPanes().size === 0 || (options.role !== 'file' && !hidden)) setFullView(false);
       }
       if (options.role === 'file' && shared().file === dock) {
         shared().file = null;
