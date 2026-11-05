@@ -250,7 +250,8 @@ async function checkSubmissionBox(driver, origin, screenshot) {
       if (chip.insideLink) wrong.push('the score is inside the link of the file');
     }
     if (wrong.length > 0) problems.push(`Submission box, ${label}: ${wrong.join('; ')}`);
-    else console.log(`Submission box, ${label}: "View NAME", "5.0%" beside it, no Download line`);
+    else
+      console.log(`Submission box, ${label}: "View NAME", "5.0%" after the link, no Download line`);
     if (screenshot !== undefined && label === 'link with the full host, #submit') {
       const box = await driver.findElement(By.css('#sidebar_content .details'));
       writeFileSync(screenshot, await box.takeScreenshot(), 'base64');
