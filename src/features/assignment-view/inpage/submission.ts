@@ -508,7 +508,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
    * and its unread mark, and gives the session address of a file whose record has none. The view
    * keeps Canvas's frame for a submission type that it does not show, for report data that it
    * cannot show, for a report of an asset processor that Canvas's script draws in the frame, and
-   * for a frame button whose file has no usable session address.
+   * for a file whose session address failed the check, until a frame row has given it one.
    */
   function show(reply: AssignmentDetailsReply, anchors: Anchors, token: number): void {
     const { submission } = reply.details;
@@ -569,7 +569,15 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       }
     };
     if (upload.withoutSession > 0) logNoFeedbackAddress(upload.withoutSession);
-    let setFiles = mountMode(fixed === null ? 'replace' : 'above', fixed, base);
+    // A file whose session address failed the check keeps Canvas's frame in view until a row of
+    // the frame proves that its button can go (`assess`). A page with no such file hides the frame
+    // at once.
+    const unproven = upload.withoutSession > 0;
+    let setFiles = mountMode(
+      fixed === null && !unproven ? 'replace' : 'above',
+      fixed ?? (unproven ? 'no-session' : null),
+      base,
+    );
     // Nothing in the frame changes these, and no submission at all needs no frame read.
     if (fixed !== null || type === null || type === undefined) return;
 

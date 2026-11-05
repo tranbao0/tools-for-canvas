@@ -71,6 +71,8 @@ interface Options {
   preview?: string;
   /** The frame never gets an answer. */
   previewNever?: boolean;
+  /** The query of the address of the files frame, when Canvas writes it another way. */
+  frameQuery?: string;
   /** The user in the path of the page. */
   pathUser?: string;
   teacher?: boolean;
@@ -160,7 +162,7 @@ async function open(
       path: route,
       respond: async (request) => ({
         contentType: 'text/html',
-        body: request.path.includes('preview=1')
+        body: request.path.includes(options.frameQuery ?? 'preview=1')
           ? options.previewNever
             ? await new Promise<string>(() => undefined)
             : preview
@@ -177,7 +179,7 @@ async function open(
               noComments: options.noComments,
               commentHtml: options.commentHtml,
               rtl: options.rtl,
-              frameSrc: `${full}?preview=1&rand=481516`,
+              frameSrc: `${full}?${options.frameQuery ?? 'preview=1&rand=481516'}`,
             }),
       }),
     },
@@ -994,8 +996,10 @@ test('a session address that is not the one of this Canvas is replaced by the ad
   await expect((await feedbackFrame(page)).locator('#notes')).toHaveText(
     'Teacher notes on the paper',
   );
+  // The page kept the frame of Canvas until the frame row gave the address.
   expect(expectNamesOnly(lines, canvas.origin)).toEqual([
     '[weekrow] submission details: 1 file(s) without a usable feedback address',
+    '[weekrow] submission details keeps the Canvas frame, reason: no-session',
   ]);
 });
 
@@ -1019,6 +1023,64 @@ test('a file with no usable session address in the details or in the frame row k
   expect(expectNamesOnly(lines, new URL(page.url()).origin)).toEqual([
     '[weekrow] submission details keeps the Canvas frame, reason: no-session',
   ]);
+});
+
+test("a session address with a new parameter, and a button that the view cannot read, keep Canvas's frame in view with the notes of the teacher reachable", async ({
+  context,
+  page,
+  background,
+}) => {
+  const lines = watchConsole(page);
+  const preview = withScript(
+    previewWithFiles('12', '101', '42', [
+      {
+        ...ONE_FILE[0]!,
+        buttonClass: 'preview_button Button--link',
+        session: `${SESSION_PATH}&new=1`,
+      },
+    ]),
+    "document.querySelector('a.preview_button').addEventListener('click',function(event){event.preventDefault();var notes=document.createElement('p');notes.id='notes';notes.textContent='Teacher notes on the paper';document.body.append(notes)})",
+  );
+  await open(context, page, background, {
+    switchOff: true,
+    preview,
+    change: (copy) => {
+      copy.submission.attachments![0]!.preview_url = `${SESSION_PATH}&new=1`;
+    },
+  });
+  const original = await canvasOriginal(page);
+  await turnOn(page, background);
+  await expectFrameKept(page, original);
+  await page.frameLocator('#preview_frame').locator('a.preview_button').click();
+  await expect(page.frameLocator('#preview_frame').locator('#notes')).toHaveText(
+    'Teacher notes on the paper',
+  );
+  expect(expectNamesOnly(lines, new URL(page.url()).origin)).toEqual([
+    '[weekrow] submission details: 1 file(s) without a usable feedback address',
+    '[weekrow] submission details keeps the Canvas frame, reason: no-session',
+  ]);
+});
+
+test('a frame address with another parameter than preview=1 still gives the session of its row, so the box shows View Feedback', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    frameQuery: 'embed=1&rand=481516',
+    rows: [{ ...ONE_FILE[0]!, session: '/api/v1/canvadoc_session?blob=frame' }],
+    change: (copy) => {
+      copy.submission.attachments![0]!.preview_url = `${SESSION_PATH}&new=1`;
+    },
+  });
+  await expect(host(page)).toBeAttached({ timeout: 15_000 });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  const button = box(page).getByRole('button', { name: 'View Feedback' });
+  await expect(button).toBeVisible();
+  await button.click();
+  await expect((await feedbackFrame(page)).locator('#notes')).toHaveText(
+    'Teacher notes on the paper',
+  );
 });
 
 test('a file with no session address in the details and no button in the frame changes nothing', async ({

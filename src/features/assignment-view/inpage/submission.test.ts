@@ -880,35 +880,22 @@ describe('a frame that the view cannot use', () => {
     await expectReplace();
   });
 
-  it('shows a file with no preview_url without a button, and a file with a bad one without a button and with a line in the console', async () => {
+  it('shows a file with no preview_url without a button, and no line in the console', async () => {
     send.mockResolvedValue(
       reply((details) => {
-        details.submission.attachments = [
-          { id: '501', display_name: 'a.txt', size: 10 },
-          {
-            id: '502',
-            display_name: 'b.pdf',
-            size: 10,
-            preview_url: `${SESSION_PATH}&access_token=t`,
-          },
-        ];
+        details.submission.attachments = [{ id: '501', display_name: 'a.zip', size: 10 }];
       }),
     );
-    // Canvas draws no button for these files, so the frame has no session to give them.
+    // Canvas draws no button for a file that it cannot preview.
     showInFrame(
-      frameRows(PAGE, [
-        { fileId: '501', name: 'a.txt', size: '10 Bytes', button: null },
-        { fileId: '502', name: 'b.pdf', size: '10 Bytes', button: null },
-      ]),
+      frameRows(PAGE, [{ fileId: '501', name: 'a.zip', size: '10 Bytes', button: null }]),
     );
     start();
     await settle();
-    expect(boxRoot()?.querySelectorAll('.av-box-file')).toHaveLength(2);
+    expect(rules()).toContain('.submission-details-frame{display:none!important}');
+    expect(boxRoot()?.querySelectorAll('.av-box-file')).toHaveLength(1);
     expect(boxRoot()?.querySelector('[data-action=feedback]')).toBeNull();
-    expect(console.warn).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(console.warn).mock.calls[0]![0]).toBe(
-      '[weekrow] submission details: 1 file(s) without a usable feedback address',
-    );
+    expect(console.warn).not.toHaveBeenCalled();
   });
 });
 
@@ -981,9 +968,11 @@ describe('a file with no usable session address in the details', () => {
     );
     start();
     await expectFrameButton();
-    expect(console.warn).toHaveBeenCalledExactlyOnceWith(
-      '[weekrow] submission details: 1 file(s) without a usable feedback address',
-    );
+    // The page kept the frame of Canvas until the frame row gave the address.
+    expect(vi.mocked(console.warn).mock.calls).toEqual([
+      ['[weekrow] submission details: 1 file(s) without a usable feedback address'],
+      ['[weekrow] submission details keeps the Canvas frame, reason: no-session'],
+    ]);
   });
 
   it.each([
@@ -1018,6 +1007,153 @@ describe('a file with no usable session address in the details', () => {
       expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain('canvadoc');
     },
   );
+
+  /** The frame stays, and the box and the instructions are above it. */
+  function expectFrameStays(): void {
+    expect(host()?.nextElementSibling).toBe(container());
+    expect(rules()).not.toContain('.submission-details-frame');
+    expect(boxRoot()?.querySelector('[data-action=feedback]')).toBeNull();
+  }
+
+  it('starts with the frame of Canvas for an address that fails the check, until the frame gives one', async () => {
+    send.mockResolvedValue(withPreview(BAD));
+    const frame = showInFrame(FILE_ROW, 'about:blank', 'loading');
+    start();
+    await settle();
+    expectFrameStays();
+    expect(console.warn).toHaveBeenCalledTimes(2);
+    expect(console.warn).toHaveBeenLastCalledWith(
+      '[weekrow] submission details keeps the Canvas frame, reason: no-session',
+    );
+    await vi.advanceTimersByTimeAsync(30_000);
+    expectFrameStays();
+    showInFrame(
+      frameRows(PAGE, [
+        {
+          fileId: '501',
+          name: 'essay.pdf',
+          size: '118 KB',
+          button: 'View Feedback',
+          unread: true,
+          session: FRAME_ONLY,
+        },
+      ]),
+    );
+    frame.dispatchEvent(new Event('load'));
+    await expectFrameButton();
+  });
+
+  it('keeps the frame of Canvas for an address that fails the check when the frame cannot be read', async () => {
+    send.mockResolvedValue(withPreview(BAD));
+    Object.defineProperty(document.querySelector('#preview_frame'), 'contentDocument', {
+      get() {
+        throw new Error('blocked');
+      },
+      configurable: true,
+    });
+    start();
+    await settle();
+    expectFrameStays();
+  });
+
+  it.each([
+    ['has no row for the file', frameRows(PAGE, [])],
+    [
+      'has a button that the selectors do not match',
+      frameRows(PAGE, [
+        {
+          fileId: '501',
+          name: 'essay.pdf',
+          size: '118 KB',
+          button: 'Preview',
+          buttonClass: 'preview_button Button--link',
+        },
+      ]),
+    ],
+    [
+      'has a row of another submission',
+      frameRows('/courses/12/assignments/101/submissions/43', [
+        { fileId: '501', name: 'essay.pdf', size: '118 KB', button: 'Preview' },
+      ]),
+    ],
+    [
+      'has a button with an address that fails the check',
+      frameRows(PAGE, [
+        { fileId: '501', name: 'essay.pdf', size: '118 KB', button: 'Preview', session: BAD },
+      ]),
+    ],
+  ])(
+    'keeps the frame of Canvas for an address that fails the check when the frame %s',
+    async (_name, rows) => {
+      send.mockResolvedValue(withPreview(BAD));
+      showInFrame(rows);
+      start();
+      await settle();
+      expectFrameStays();
+      expect(console.warn).toHaveBeenLastCalledWith(
+        '[weekrow] submission details keeps the Canvas frame, reason: no-session',
+      );
+      expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain('canvadoc');
+    },
+  );
+
+  it('moves to the box once the frame gives a session for each file that failed the check', async () => {
+    send.mockResolvedValue(
+      reply((details) => {
+        details.submission.attachments = [
+          { id: '501', display_name: 'essay.pdf', size: 1, preview_url: BAD },
+          { id: '502', display_name: 'b.pdf', size: 1, preview_url: BAD },
+          { id: '503', display_name: 'c.pdf', size: 1, preview_url: SESSION_PATH },
+        ];
+      }),
+    );
+    const one = (fileId: string) => ({
+      fileId,
+      name: `${fileId}.pdf`,
+      size: '1 KB',
+      button: 'View Feedback',
+      session: FRAME_ONLY,
+    });
+    const frame = showInFrame(frameRows(PAGE, [one('501'), one('503')]));
+    start();
+    await settle();
+    expectFrameStays();
+    showInFrame(frameRows(PAGE, [one('501'), one('502'), one('503')]));
+    frame.dispatchEvent(new Event('load'));
+    await settle();
+    expect(rules()).toContain('.submission-details-frame{display:none!important}');
+    expect(boxRoot()?.querySelectorAll('[data-action=feedback]')).toHaveLength(3);
+  });
+
+  it('shows the box for a frame at an address with another parameter than preview=1', async () => {
+    send.mockResolvedValue(withPreview(BAD));
+    showInFrame(
+      frameRows(PAGE, [
+        {
+          fileId: '501',
+          name: 'essay.pdf',
+          size: '118 KB',
+          button: 'View Feedback',
+          unread: true,
+          session: FRAME_ONLY,
+        },
+      ]),
+      `${ORIGIN}${PAGE}?embed=1&rand=1`,
+    );
+    start();
+    await expectFrameButton();
+  });
+
+  it('starts with the box, and no frame of Canvas, for a file that Canvas offers no address for', async () => {
+    send.mockResolvedValue(withPreview(undefined));
+    showInFrame(FILE_ROW, 'about:blank', 'loading');
+    start();
+    await settle();
+    expect(rules()).toContain('.submission-details-frame{display:none!important}');
+    expect(host()?.nextElementSibling).not.toBe(container());
+    expect(boxRoot()?.querySelector('[data-action=feedback]')).toBeNull();
+    expect(console.warn).not.toHaveBeenCalled();
+  });
 
   it('changes nothing for a file with no address in the details when the frame shows no button', async () => {
     send.mockResolvedValue(withPreview(undefined));

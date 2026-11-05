@@ -458,6 +458,37 @@ describe('filesFromDetails', () => {
     ]);
   });
 
+  it('counts only a file that Canvas offered an address for: a file with no preview has none', () => {
+    // Canvas writes `preview_url: null` for a file it cannot preview (`Attachment#canvadoc_url`),
+    // and the background keeps no key for it.
+    const { files, withoutSession } = filesFromDetails(
+      [
+        { id: '1', display_name: 'a.zip' },
+        { id: '2', display_name: 'b.zip', preview_url: null as unknown as string },
+        { id: '3', display_name: 'c.zip', preview_url: '' },
+        { id: '4', display_name: 'd', preview_url: `${SESSION_PATH}&new=1` },
+      ],
+      {},
+      CONTEXT,
+    );
+    expect(withoutSession).toBe(1);
+    expect(files.map((file) => file.awaitsFrameSession === true)).toEqual([
+      false,
+      false,
+      false,
+      true,
+    ]);
+  });
+
+  it('marks no file when every address passes the check', () => {
+    const { files } = filesFromDetails(
+      [{ id: '501', display_name: 'a.pdf', preview_url: SESSION_PATH }],
+      {},
+      CONTEXT,
+    );
+    expect(files[0]).not.toHaveProperty('awaitsFrameSession');
+  });
+
   it('is not readable when one file has report data that the view cannot show', () => {
     const { readable } = filesFromDetails(
       [{ id: '501', display_name: 'a' }],
@@ -532,6 +563,41 @@ describe('refineFiles', () => {
     const hints = new Map([['501', { label: 'Preview', unread: true, session: null }]]);
     const bare = file({ feedbackLabel: null, sessionUrl: null });
     expect(refineFiles([bare], hints)).toEqual({ files: [bare], withoutSession: 1 });
+  });
+
+  describe('a file whose address failed the check', () => {
+    const failed = (change: Partial<BoxFile> = {}) =>
+      file({ feedbackLabel: null, sessionUrl: null, awaitsFrameSession: true, ...change });
+
+    it('is counted while the frame has no row for it', () => {
+      const hints = new Map([['999', { label: 'Preview', unread: false, session: SESSION }]]);
+      expect(refineFiles([failed()], hints)).toEqual({ files: [failed()], withoutSession: 1 });
+      expect(refineFiles([failed()], new Map()).withoutSession).toBe(1);
+    });
+
+    it('is counted when its frame row gives no session', () => {
+      const hints = new Map([['501', { label: 'Preview', unread: false, session: null }]]);
+      expect(refineFiles([failed()], hints).withoutSession).toBe(1);
+    });
+
+    it('is proven by a frame row with a session, which gives it a button', () => {
+      const hints = new Map([['501', { label: 'Preview', unread: true, session: OTHER }]]);
+      const read = refineFiles([failed()], hints);
+      expect(read.withoutSession).toBe(0);
+      expect(read.files).toEqual([
+        file({ feedbackLabel: 'Preview', unread: true, sessionUrl: OTHER }),
+      ]);
+      expect(read.files[0]).not.toHaveProperty('awaitsFrameSession');
+    });
+
+    it('counts each such file once, whatever the other files hold', () => {
+      const hints = new Map([['501', { label: 'Preview', unread: false, session: OTHER }]]);
+      const read = refineFiles(
+        [failed(), failed({ fileId: '502' }), file({ fileId: '503' })],
+        hints,
+      );
+      expect(read.withoutSession).toBe(1);
+    });
   });
 
   it('changes nothing for a file that the frame does not name', () => {
