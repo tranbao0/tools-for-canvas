@@ -404,7 +404,7 @@ describe('turning the view off', () => {
   it('removes the host of an earlier copy on a Submission Details page, and no comment mark', () => {
     document.body.insertAdjacentHTML(
       'beforeend',
-      '<div id="av-submission-details" data-av-own></div><div class="submission-details-comments"><p data-av-own>teacher</p></div>',
+      '<div id="av-submission-details" data-av-own></div><div class="submission-details-container"><div class="submission-details-comments"><p data-av-own>teacher</p></div></div>',
     );
     removeStaleView(document, '/courses/12/assignments/101/submissions/42');
     expect(document.getElementById('av-submission-details')).toBeNull();

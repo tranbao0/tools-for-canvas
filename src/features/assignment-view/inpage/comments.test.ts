@@ -103,6 +103,29 @@ describe('takeComments', () => {
     expect(clicks).toBe(2);
   });
 
+  it('leaves the page as it was when the wrapper is inside the column', () => {
+    const column = findComments(document)!;
+    const wrapper = document.createElement('div');
+    column.querySelector('.comment_list')!.append(wrapper);
+    expect(() => takeComments(document, column, wrapper)).toThrow();
+    const container = document.querySelector('.submission-details-container')!;
+    expect(column.parentElement).toBe(container);
+    expect([...container.childNodes].some((n) => n.nodeType === Node.COMMENT_NODE)).toBe(false);
+  });
+
+  it('gives the wrapper the direction and the language of the page', () => {
+    document.documentElement.setAttribute('dir', 'rtl');
+    document.documentElement.setAttribute('lang', 'ar');
+    try {
+      const { wrapper } = take();
+      expect(wrapper.getAttribute('dir')).toBe('rtl');
+      expect(wrapper.getAttribute('lang')).toBe('ar');
+    } finally {
+      document.documentElement.removeAttribute('dir');
+      document.documentElement.removeAttribute('lang');
+    }
+  });
+
   it('puts the column into the container when its mark is gone', () => {
     const { column, restore } = take();
     document
@@ -120,6 +143,12 @@ describe('the rules of the column', () => {
     for (const property of ['border:0', 'height:auto', 'padding:0', 'background:transparent']) {
       expect(COMMENTS_CSS).toContain(`${property}!important`);
     }
+  });
+
+  it('keeps the horizontal scroller of the list, so a wide comment scrolls inside the box', () => {
+    expect(COMMENTS_CSS).toContain(`#${COMMENTS_WRAPPER_ID} .comments{`);
+    expect(COMMENTS_CSS).toContain('overflow-x:auto!important');
+    expect(COMMENTS_CSS).not.toContain('overflow:visible');
   });
 
   it('shows "No Comments" only while the list holds no comment', () => {

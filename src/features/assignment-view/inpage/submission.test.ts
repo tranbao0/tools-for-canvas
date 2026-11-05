@@ -1350,3 +1350,124 @@ describe('the cleanup of a dead copy', () => {
     expect(document.getElementById('av-submission-box')).toBeNull();
   });
 });
+
+describe('a comment that holds the markup of the page', () => {
+  const FORGED_COLUMN = '<div id="right-side-wrapper"><div id="right-side">forged</div></div>';
+  /** The right column that Canvas draws, which is outside the content area. */
+  const realColumn = () =>
+    [...document.querySelectorAll('#right-side')].find((node) => !node.closest('#content'))!;
+  const unhandled: unknown[] = [];
+  const record = (reason: unknown): void => void unhandled.push(reason);
+
+  beforeEach(() => {
+    unhandled.length = 0;
+    process.on('unhandledRejection', record);
+  });
+  afterEach(() => {
+    process.off('unhandledRejection', record);
+  });
+
+  function loadWith(commentHtml: string): void {
+    load(submissionDetailsPage({ commentHtml }));
+    showInFrame(FILE_ROW);
+  }
+
+  it('does not take the right column from a comment: the box and the comments are placed in the real column', async () => {
+    loadWith(FORGED_COLUMN);
+    const forged = document.querySelector('#content #right-side-wrapper')!;
+    const forgedHtml = forged.outerHTML;
+    start();
+    await settle();
+    expect(unhandled).toEqual([]);
+    expect(boxHost()?.parentElement).toBe(realColumn());
+    expect(
+      document.getElementById('av-comments')?.querySelector('.submission-details-comments'),
+    ).not.toBeNull();
+    expect(document.head.textContent).toContain(
+      '.submission-details-frame{display:none!important}',
+    );
+    // The comment has no mark and no attribute of the view.
+    expect(forged.outerHTML).toBe(forgedHtml);
+  });
+
+  it('does not strip the marks of a comment in the cleanup, and still cleans the real column', async () => {
+    loadWith(FORGED_COLUMN);
+    const forged = document.querySelector<HTMLElement>('#content #right-side')!;
+    forged.setAttribute('data-av-note', 'kept');
+    forged.insertAdjacentHTML('beforeend', '<span data-av-own id="author-mark">kept</span>');
+    realColumn().insertAdjacentHTML(
+      'beforeend',
+      '<div id="av-submission-box" data-av-own data-av-x><div id="av-comments" data-av-own></div></div>',
+    );
+    realColumn().setAttribute('data-av-room', '1');
+    removeStaleView(document, PAGE);
+    expect(forged.getAttribute('data-av-note')).toBe('kept');
+    expect(document.getElementById('author-mark')).not.toBeNull();
+    expect(document.getElementById('av-submission-box')).toBeNull();
+    expect(realColumn().hasAttribute('data-av-room')).toBe(false);
+  });
+
+  it('keeps the frame and shows the instructions above it when the mount fails', async () => {
+    const real = HTMLElement.prototype.attachShadow;
+    let calls = 0;
+    vi.spyOn(HTMLElement.prototype, 'attachShadow').mockImplementation(function (
+      this: HTMLElement,
+      init: ShadowRootInit,
+    ) {
+      calls += 1;
+      // The second call builds the box, after the instructions host stands on the page.
+      if (calls === 2) throw new Error('no shadow root');
+      return real.call(this, init);
+    });
+    start();
+    await settle();
+    expect(unhandled).toEqual([]);
+    expect(document.head.textContent).not.toContain('.submission-details-frame{display:none');
+    // The comments column is home, and the instructions stand above the content area.
+    expect(container().querySelector(':scope > .submission-details-comments')).not.toBeNull();
+    expect(document.getElementById('av-comments')).toBeNull();
+    expect(host()?.nextElementSibling).toBe(container());
+    expect(root()?.querySelector('.av-instructions')).not.toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  it('keeps every node whose id the view uses when it sits in a comment', () => {
+    loadWith(
+      '<span id="av-submission-details" data-av-own>a</span><div id="tools-feedback" data-av-own>b</div><div id="tools-turn-in" data-av-own>c</div><div id="av-rubric" data-av-own>d</div>',
+    );
+    removeStaleView(document, PAGE);
+    for (const id of ['av-submission-details', 'tools-feedback', 'tools-turn-in', 'av-rubric']) {
+      expect(document.getElementById(id), id).not.toBeNull();
+    }
+  });
+
+  it('still removes the host, the panes and the rubric wrapper at the places where the view puts them', () => {
+    const frame = document.querySelector('.submission-details-frame')!;
+    frame.insertAdjacentHTML('afterend', '<div id="av-submission-details" data-av-own></div>');
+    frame.insertAdjacentHTML('beforeend', '<div id="av-rubric" data-av-own></div>');
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<div id="tools-feedback" data-av-own></div><div id="tools-turn-in" data-av-own></div>',
+    );
+    removeStaleView(document, PAGE);
+    for (const id of ['av-submission-details', 'tools-feedback', 'tools-turn-in', 'av-rubric']) {
+      expect(document.getElementById(id), id).toBeNull();
+    }
+  });
+
+  it('gives the comments the direction and the language of the page', async () => {
+    document.documentElement.setAttribute('dir', 'rtl');
+    document.documentElement.setAttribute('lang', 'ar');
+    try {
+      start();
+      await settle();
+      const wrapper = document.getElementById('av-comments')!;
+      expect(wrapper.getAttribute('dir')).toBe('rtl');
+      expect(wrapper.getAttribute('lang')).toBe('ar');
+      expect(wrapper.querySelector('.av-no-comments')?.getAttribute('lang')).toBe('en');
+    } finally {
+      document.documentElement.removeAttribute('dir');
+      document.documentElement.removeAttribute('lang');
+    }
+  });
+});

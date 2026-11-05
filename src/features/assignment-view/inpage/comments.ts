@@ -13,6 +13,10 @@
  * Canvas draws no text for an empty list, so the wrapper holds one line "No Comments" of its own.
  * A `:has` rule shows it only while the list holds no comment, also right after Canvas adds the
  * first comment on Save.
+ *
+ * The host of the box sets `direction: ltr` and `lang="en"` for its own text, and the comments
+ * inherit both through the slot. The wrapper takes the direction and the language of the page, so
+ * the comments read as they do on Canvas's own page.
  */
 import { OWN, rightColumn } from './own';
 
@@ -29,13 +33,14 @@ const SCOPE = `#${COMMENTS_WRAPPER_ID}`;
  * The rules for the page while the column is in the box. They fit Canvas's column to the box: no
  * border, no fixed height, no padding of the list and the form, and no background of its own, so
  * the colors of the box show. The column takes its text colors from the box, so the dark theme
- * stays readable.
+ * stays readable. The list keeps a horizontal scroller, so a wide table in a comment scrolls inside
+ * the box and does not widen the page.
  */
 export const COMMENTS_CSS = [
   `${SCOPE}{display:block;font-size:.875rem}`,
   `${SCOPE}>.submission-details-comments{display:block!important;flex:none!important;width:auto!important;min-width:0!important;border:0!important;background:transparent!important;color:inherit!important}`,
   `${SCOPE} .submission-details-comments>div{height:auto!important;background:transparent!important}`,
-  `${SCOPE} .comments{height:auto!important;max-height:none!important;overflow:visible!important;border:0!important;background:transparent!important}`,
+  `${SCOPE} .comments{height:auto!important;max-height:none!important;overflow-x:auto!important;border:0!important;background:transparent!important}`,
   `${SCOPE} .comment_list{padding:0!important}`,
   `${SCOPE} #add_comment_form{padding:0!important}`,
   `${SCOPE} .comment,${SCOPE} .comment_content,${SCOPE} #add_comment_form label{color:inherit!important}`,
@@ -95,14 +100,23 @@ function keepingFocus(doc: Document, node: Element, move: () => void): void {
 export function takeComments(doc: Document, column: HTMLElement, wrapper: HTMLElement): () => void {
   const mark = doc.createComment(HOME);
   const container = column.parentElement;
-  column.before(mark);
   wrapper.id = COMMENTS_WRAPPER_ID;
+  wrapper.setAttribute('dir', doc.documentElement.getAttribute('dir') === 'rtl' ? 'rtl' : 'ltr');
+  wrapper.setAttribute('lang', doc.documentElement.getAttribute('lang') ?? '');
   const none = doc.createElement('p');
   none.className = NO_COMMENTS_CLASS;
   none.setAttribute(OWN, '');
+  none.setAttribute('lang', 'en');
   none.textContent = 'No Comments';
   wrapper.append(none);
-  keepingFocus(doc, column, () => wrapper.append(column));
+  column.before(mark);
+  try {
+    keepingFocus(doc, column, () => wrapper.append(column));
+  } catch (error) {
+    // The move fails when the wrapper is inside the column: the page stays as it was.
+    mark.remove();
+    throw error;
+  }
   return () => {
     keepingFocus(doc, column, () => {
       if (mark.isConnected) mark.replaceWith(column);

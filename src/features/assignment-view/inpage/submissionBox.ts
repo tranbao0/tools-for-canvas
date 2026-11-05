@@ -10,7 +10,7 @@ import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { formatSubmittedAt } from '../format';
 import type { AssignmentDetails } from '../protocol';
 import { submissionFileUrl } from '../render';
-import { OWN } from './own';
+import { OWN, actionTarget } from './own';
 import { sameFiles, type FrameFile } from './submissionFrame';
 import { BOX_CSS, PANEL_CSS, SUBMISSION_CSS } from './styles';
 
@@ -207,7 +207,7 @@ export function createBox(options: BoxOptions): Box {
   }
 
   shadow.addEventListener('click', (event) => {
-    const target = event.target instanceof Element ? event.target.closest('[data-action]') : null;
+    const target = actionTarget(shadow, event);
     // A page script can click the button, but only the student opens the feedback.
     if (target?.getAttribute('data-action') !== 'feedback' || !event.isTrusted) return;
     const file = files[Number(target.getAttribute('data-index'))];

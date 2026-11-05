@@ -80,10 +80,39 @@ interface RowState {
 /** The text of other people that Canvas shows in the Submission box. A sweep never goes into it. */
 const COMMENTS = '.comments';
 
+/** Every place where a comment of Canvas can stand, also while the column is in the box. */
+const COMMENT_TEXT = '.comments,.submission-details-comments,#av-comments';
+
 /** The nodes of the root that match, except those in the comments of Canvas. */
 function inOwnedPart(root: ParentNode, selector: string): Element[] {
   return [...root.querySelectorAll(selector)].filter((node) => node.closest(COMMENTS) === null);
 }
+
+/**
+ * The own node with this id that stands where the view puts it, or `null`. The text of another
+ * author can hold a node with the same id and the mark of the view, so a node counts only at the
+ * place that `at` names, and never inside the comments.
+ */
+function ownNode(doc: Document, id: string, at: (node: Element) => boolean): Element | null {
+  for (const node of doc.querySelectorAll(`[id="${id}"]`)) {
+    if (node.hasAttribute(OWN) && node.closest(COMMENT_TEXT) === null && at(node)) return node;
+  }
+  return null;
+}
+
+/** The host of the instructions stands before the container, or after the files frame in it. */
+const isHostPlace = (node: Element): boolean =>
+  node.nextElementSibling?.classList.contains('submission-details-container') === true ||
+  (node.parentElement?.classList.contains('submission-details-container') === true &&
+    node.previousElementSibling?.classList.contains('submission-details-frame') === true);
+
+/** The panes of the dock stand in the body. */
+const isPanePlace = (node: Element): boolean => node.parentElement === node.ownerDocument.body;
+
+/** The wrapper of the rubric stands in the host of the instructions, or in the files frame. */
+const isRubricPlace = (node: Element): boolean =>
+  node.parentElement?.id === 'av-submission-details' ||
+  node.parentElement?.classList.contains('submission-details-frame') === true;
 
 /**
  * Puts the nodes of Canvas back in the place of the own nodes that hold them. Only a holder that
@@ -122,14 +151,10 @@ function ownedRoots(doc: Document, pathname: string): Element[] {
       (root) => root.closest('.comments') === null,
     );
   }
-  for (const id of STALE_PANE_IDS) {
-    const pane = doc.getElementById(id);
-    if (pane?.hasAttribute(OWN)) pane.remove();
-  }
+  for (const id of STALE_PANE_IDS) ownNode(doc, id, isPanePlace)?.remove();
   const roots = new Set<Element>([doc.head]);
   if (SUBMISSION_PAGE.test(pathname)) {
-    const host = doc.getElementById('av-submission-details');
-    if (host?.hasAttribute(OWN)) host.remove();
+    ownNode(doc, 'av-submission-details', isHostPlace)?.remove();
     const buttons = doc.querySelector('.ic-Action-header__Secondary');
     if (buttons) roots.add(buttons);
     const column = rightColumn(doc);
@@ -152,8 +177,7 @@ export function removeStaleView(
   // home before the sweep.
   restoreStaleRubric(doc);
   restoreStaleComments(doc);
-  const rubric = doc.getElementById(RUBRIC_WRAPPER_ID);
-  if (rubric?.hasAttribute(OWN)) rubric.remove();
+  ownNode(doc, RUBRIC_WRAPPER_ID, isRubricPlace)?.remove();
   const roots = ownedRoots(doc, pathname);
   // The hosts of dead panes are gone now, so the room that they took goes back.
   giveBackRoom(doc);

@@ -72,7 +72,7 @@ import {
   whenRubricOnScreen,
   whenRubricReady,
 } from './rubric';
-import { OWN, rightColumn } from './own';
+import { OWN, actionTarget, rightColumn } from './own';
 import { createBox, type Box } from './submissionBox';
 import { filesFromDetails, readFrame, type FrameFile } from './submissionFrame';
 import { PANEL_CSS, SUBMISSION_CSS } from './styles';
@@ -416,7 +416,6 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     const { details } = reply;
     const replace = mode === 'replace';
     setUpPage();
-    if (replace) addModeRules(HIDE_FRAME);
 
     const created = doc.createElement('div');
     created.id = 'av-submission-details';
@@ -456,7 +455,11 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     });
     box = made;
     anchors.column.append(made.host);
-    if (replace) placeComments(made.host);
+    if (replace) {
+      placeComments(made.host);
+      // The frame goes only once the box and the comments stand in the page.
+      addModeRules(HIDE_FRAME);
+    }
 
     panel.append(renderInstructions(details, { origin, doc }));
     const submitted = renderSubmission(reply);
@@ -473,7 +476,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     }
 
     shadow.addEventListener('click', (event) => {
-      const target = event.target instanceof Element ? event.target.closest('[data-action]') : null;
+      const target = actionTarget(shadow, event);
       if (target?.getAttribute('data-action') === 'more') toggleInstructions(panel, target);
     });
     return (next) => {
@@ -494,7 +497,36 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     const attachments = submission.attachments ?? [];
     let mode: Mode = SHOWN_TYPES.has(type) ? 'replace' : 'above';
     const fallback = type === 'online_upload' ? filesFromDetails(attachments) : [];
-    let setFiles = mount(reply, anchors, mode, fallback);
+    /** Whether the replace mode failed to mount, so the page stays in the mode 'above'. */
+    let broken = false;
+    /**
+     * Mounts the mode. A replace mount that fails gives the page back and mounts the mode 'above'
+     * in its place, where Canvas's frame and comments stay. A failure of that mode too leaves the
+     * page as Canvas drew it.
+     */
+    const mountMode = (
+      wanted: Mode,
+      files: readonly FrameFile[],
+    ): ((next: readonly FrameFile[]) => void) => {
+      mode = wanted;
+      try {
+        return mount(reply, anchors, mode, files);
+      } catch (error) {
+        logFailure('submission details', error);
+        unmountMode();
+        if (mode === 'above') return () => undefined;
+        broken = true;
+        mode = 'above';
+        try {
+          return mount(reply, anchors, mode, []);
+        } catch (again) {
+          logFailure('submission details', again);
+          unmountMode();
+          return () => undefined;
+        }
+      }
+    };
+    let setFiles = mountMode(mode, fallback);
     // A submission type that the view does not show, and no submission at all, need no frame read.
     if (mode === 'above' || type === null || type === undefined) return;
 
@@ -505,7 +537,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     const assess = (): void => {
       if (token !== generation || stopped || !active) return;
       const read = readFrame(anchors.frame, origin, pathname);
-      let next: Mode = 'replace';
+      let next: Mode = broken ? 'above' : 'replace';
       let files: readonly FrameFile[] = fallback;
       if (read.state === 'ready') {
         const incomplete =
@@ -518,9 +550,8 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
         next = 'above';
       }
       if (next !== mode) {
-        mode = next;
         unmountMode();
-        setFiles = mount(reply, anchors, mode, files);
+        setFiles = mountMode(next, files);
       } else {
         setFiles(files);
       }
@@ -591,7 +622,13 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     )
       return;
     const anchors = findAnchors(doc);
-    if (anchors) show(reply, anchors, token);
+    if (!anchors) return;
+    try {
+      show(reply, anchors, token);
+    } catch (error) {
+      logFailure('submission details', error);
+      clear();
+    }
   }
 
   return {
