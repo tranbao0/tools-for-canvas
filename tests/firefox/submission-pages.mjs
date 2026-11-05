@@ -12,9 +12,14 @@
 //      read, with Canvas's color and the address of the report.
 //   b. The Submission Details page of the own submission, with a Turnitin score on the file, is in
 //      'replace' mode: the files frame is hidden, and the Submission box in the right column shows
-//      the file, its score with Canvas's color and address, and "View Feedback". All of it comes
-//      from the submission record (`preview_url` and `turnitin_data`), so a frame with markup that
-//      the view does not know, and a frame that never answers, change nothing.
+//      the file, its score with Canvas's color and address, and "View Feedback". The file, the
+//      score and the session address come from the submission record (`preview_url`, which has the
+//      `blob` and no `hmac`, as a live Canvas sends it, and `turnitin_data`), so a frame with
+//      markup that the view does not know changes nothing.
+//      A third run gives the record no `preview_url` and the frame a row with the button "Preview",
+//      Canvas's unread dot and a blob-only session address. The frame is then read in Firefox: the
+//      box shows the button with the label "Preview" and the unread dot, and the session address
+//      of the frame row serves the file.
 //   c. Canvas's own comment form is inside the box, as the same light DOM node: a click on Save
 //      reaches Canvas's handler, which draws the comment in Canvas's list, the text goes, and the
 //      line "No Comments" of the view goes with the first comment (a `:has` rule).
@@ -39,8 +44,11 @@ const ASSIGNMENT = '101';
 const USER = '5501';
 const ASSIGNMENT_PATH = `/courses/${COURSE}/assignments/${ASSIGNMENT}`;
 const DETAILS_PATH = `${ASSIGNMENT_PATH}/submissions/${USER}`;
+// The address of a live Canvas: the blob and no hmac.
 const SESSION = '/api/v1/canvadoc_session?blob=x';
 const WAIT_MS = 8000;
+/** What the record holds for the run that is on: `checkSubmissionDetails` sets it. */
+const serving = { withoutPreview: false };
 
 // The fixtures of the Playwright tests import each other without the `.ts` extension, which plain
 // Node does not resolve. Node strips the types itself.
@@ -262,11 +270,14 @@ async function checkSubmissionBox(driver, origin, screenshot) {
 
 /**
  * Check b: the Submission Details page of the own submission is in 'replace' mode, with the box.
- * `variant` is the frame that the page holds: the usual one, or one with other markup.
- * @param {string} variant `''` or `'odd'`
+ * `variant` is the frame that the page holds: the usual one, one with other markup, or one with the
+ * button "Preview" and the unread dot, for a record that has no session address.
+ * @param {string} variant `''`, `'odd'` or `'label'`
  */
 async function checkSubmissionDetails(driver, origin, variant) {
   const label = variant === '' ? 'Submission Details' : `Submission Details, ${variant} frame`;
+  const button = variant === 'label' ? 'Preview' : 'View Feedback';
+  serving.withoutPreview = variant === 'label';
   await driver.get('about:blank');
   await driver.get(`${origin}${DETAILS_PATH}${variant === '' ? '' : `?${variant}=1`}`);
   const read = () =>
@@ -283,6 +294,7 @@ async function checkSubmissionDetails(driver, origin, variant) {
         columnShown: getComputedStyle(document.querySelector('#right-side-wrapper')).display !== 'none',
         frameShown: frame !== null && frame.getClientRects().length > 0,
         buttons: root ? [...root.querySelectorAll('.av-feedback')].map((node) => node.innerText.trim()) : [],
+        unreadDots: root ? root.querySelectorAll('.av-feedback .av-unread').length : 0,
         fileLink: root && root.querySelector('a.av-file') ? root.querySelector('a.av-file').innerText.trim() : null,
         score: score ? {
           text: score.textContent.trim(),
@@ -298,7 +310,7 @@ async function checkSubmissionDetails(driver, origin, variant) {
     `);
   const state = await waitFor(
     read,
-    (value) => value.hasBox && !value.frameShown && value.buttons.includes('View Feedback'),
+    (value) => value.hasBox && !value.frameShown && value.buttons.includes(button),
   );
   const wrong = [];
   if (!state.hasBox) wrong.push('the box is missing');
@@ -306,8 +318,11 @@ async function checkSubmissionDetails(driver, origin, variant) {
   if (!state.columnShown) wrong.push('the right column is hidden');
   if (state.frameShown) wrong.push("the files frame is shown (not in 'replace' mode)");
   if (state.above) wrong.push("the view is in 'above' mode");
-  if (!state.buttons.includes('View Feedback')) {
-    wrong.push(`buttons are ${JSON.stringify(state.buttons)}`);
+  if (!state.buttons.includes(button)) {
+    wrong.push(`buttons are ${JSON.stringify(state.buttons)}, not "${button}"`);
+  }
+  if (state.unreadDots !== (variant === 'label' ? 1 : 0)) {
+    wrong.push(`the buttons have ${state.unreadDots} unread dots`);
   }
   if (state.fileLink !== `View ${NAME}`)
     wrong.push(`file link is ${JSON.stringify(state.fileLink)}`);
@@ -329,7 +344,7 @@ async function checkSubmissionDetails(driver, origin, variant) {
   }
   if (wrong.length > 0) return [`${label}: ${wrong.join('; ')}`];
   console.log(
-    `${label}: the files frame is hidden, the box shows the file, "5.0%" in green, "View Feedback"`,
+    `${label}: the files frame is hidden, the box shows the file, "5.0%" in green, "${button}"${variant === 'label' ? ' with the unread dot' : ''}`,
   );
   return [];
 }
@@ -425,14 +440,19 @@ async function main() {
         ? url.searchParams.has('odd')
           ? previewWithText('<ul><li><a href="#">a file list that Canvas redrew</a></li></ul>')
           : previewWithFiles(COURSE, ASSIGNMENT, USER, [
-              { fileId: '501', name: NAME, size: '118 KB', button: 'View Feedback' },
+              url.searchParams.has('label')
+                ? { fileId: '501', name: NAME, size: '118 KB', button: 'Preview', unread: true }
+                : { fileId: '501', name: NAME, size: '118 KB', button: 'View Feedback' },
             ])
         : submissionDetailsPage({
             course: COURSE,
             assignment: ASSIGNMENT,
             user: USER,
             noComments: url.searchParams.has('empty'),
-            frameSrc: `${DETAILS_PATH}?preview=1&rand=481516${url.searchParams.has('odd') ? '&odd=1' : ''}`,
+            frameSrc: `${DETAILS_PATH}?preview=1&rand=481516${['odd', 'label']
+              .filter((name) => url.searchParams.has(name))
+              .map((name) => `&${name}=1`)
+              .join('')}`,
           }),
     }),
     '/api/v1/users/self': json(student),
@@ -443,9 +463,17 @@ async function main() {
     '/api/v1/users/self/dashboard_positions': json({ dashboard_positions: {} }),
     '/api/v1/planner/items': json([]),
     [`/api/v1/courses/${COURSE}/assignments/${ASSIGNMENT}`]: json(records.assignment),
-    [`/api/v1/courses/${COURSE}/assignments/${ASSIGNMENT}/submissions/self`]: json(
-      records.submission,
-    ),
+    [`/api/v1/courses/${COURSE}/assignments/${ASSIGNMENT}/submissions/self`]: () =>
+      json(
+        serving.withoutPreview
+          ? {
+              ...records.submission,
+              attachments: records.submission.attachments.map(
+                ({ preview_url: _preview, ...file }) => file,
+              ),
+            }
+          : records.submission,
+      ),
   });
   origin = `https://school.instructure.com:${canvas.port}`;
   const driver = await startFirefox({
@@ -480,6 +508,7 @@ async function main() {
       ...(await checkSubmissionBox(driver, origin, process.env.SUBMISSION_BOX_SHOT)),
       ...(await checkSubmissionDetails(driver, origin, '')),
       ...(await checkSubmissionDetails(driver, origin, 'odd')),
+      ...(await checkSubmissionDetails(driver, origin, 'label')),
       ...(await checkCommentForm(driver, origin)),
     ];
     if (problems.length > 0) {
