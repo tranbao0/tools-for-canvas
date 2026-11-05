@@ -71,6 +71,8 @@ interface Options {
   /** The user in the path of the page. */
   pathUser?: string;
   teacher?: boolean;
+  /** No attempts are left: Canvas disables its button. */
+  noAttemptsLeft?: boolean;
   /** A shard student: the page writes `2~123`, and the frame writes the ids in full. */
   shard?: boolean;
   switchOff?: boolean;
@@ -151,6 +153,7 @@ async function open(
               assignment,
               user,
               teacher: options.teacher,
+              noAttemptsLeft: options.noAttemptsLeft,
               rubric: options.rubric,
               rubricWithoutLink: options.rubricWithoutLink,
               rubricUnread: options.rubricUnread,
@@ -158,6 +161,7 @@ async function open(
             }),
       }),
     },
+    { path: ASSIGNMENT, contentType: 'text/html', body: assignmentPage },
     ...(full === route ? [] : [{ path: full, contentType: 'text/html', body: preview }]),
     { path: `/api/v1/courses/${course}/assignments/${assignment}`, body: json(records.assignment) },
     {
@@ -214,6 +218,7 @@ async function canvasParts(page: Page) {
   return page.evaluate(() => ({
     header: document.querySelector('.submission-details-header')!.outerHTML,
     action: document.querySelector('.ic-Action-header')!.outerHTML,
+    button: document.querySelector('.ic-Action-header__Secondary>a[href$="#submit"]')!.outerHTML,
     comments: document.querySelector('.submission-details-comments')!.outerHTML,
     container: document.querySelector('.submission-details-container')!.outerHTML,
   }));
@@ -369,12 +374,13 @@ test("the files area gives way to the instructions and the files, and the rest o
 
   // The header, the grade, the title, Re-submit and the comments are Canvas's own.
   const shown = await canvasParts(page);
-  expect(shown.header).toBe(original.header);
-  expect(shown.action).toBe(original.action);
+  // The view adds a link beside Canvas's button and changes no node of Canvas.
+  expect(shown.button).toBe(original.button);
   expect(shown.comments).toBe(original.comments);
   await expect(page.getByRole('heading', { name: 'Submission Details' })).toBeVisible();
   await expect(page.getByText('40').first()).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Re-submit Assignment' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Go to assignment' })).toBeVisible();
+  await expect(page.getByText('Re-submit Assignment')).toBeHidden();
   await expect(page.getByText('Bao Tran submitted Sep 13 at 9:30pm')).toBeVisible();
   await expect(page.getByText('You selected an interesting and ambitious topic')).toBeVisible();
 
@@ -384,10 +390,78 @@ test("the files area gives way to the instructions and the files, and the rest o
   await expect(page.locator('[data-av-own]')).toHaveCount(0);
   await expect(page.locator('#preview_frame')).toBeVisible();
   expect((await canvasParts(page)).container).toBe(original.container);
+  expect((await canvasParts(page)).header).toBe(original.header);
+  expect((await canvasParts(page)).action).toBe(original.action);
   // And on again, without a reload.
   await saveTools(background, DEFAULT_TOOLS_SETTINGS);
   await expect(host(page)).toBeAttached();
   await expect(page.locator('#preview_frame')).toBeHidden();
+});
+
+const GO_TO_ASSIGNMENT = '/tmp/go-to-assignment.png';
+
+test('the button of the title row says "Go to assignment" and opens the assignment page without the upload form, and the switch gives Canvas\'s button back', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, { switchOff: true });
+  const canvasButton = page.locator('.ic-Action-header__Secondary>a[href$="#submit"]');
+  await expect(canvasButton).toHaveText('Re-submit Assignment');
+  const box = (await canvasButton.boundingBox())!;
+  const look = await canvasButton.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return { background: style.backgroundColor, color: style.color, weight: style.fontWeight };
+  });
+  const row = page.locator('.ic-Action-header');
+  await page.evaluate(() => {
+    (window as unknown as { __kept: boolean }).__kept = true;
+  });
+
+  await turnOn(page, background);
+  const own = page.getByRole('link', { name: 'Go to assignment' });
+  await expect(own).toBeVisible();
+  await expect(page.getByText('Re-submit Assignment')).toBeHidden();
+  await expect(page.locator('a[data-av-own]')).toHaveCount(1);
+  await expect(own).toHaveAttribute('href', `${canvas.origin}${ASSIGNMENT}`);
+  // It takes Canvas's own look and sits where Canvas's button sat, at the end of the row.
+  expect(
+    await own.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return { background: style.backgroundColor, color: style.color, weight: style.fontWeight };
+    }),
+  ).toEqual(look);
+  const now = (await own.boundingBox())!;
+  expect(Math.abs(now.y - box.y)).toBeLessThan(1);
+  expect(Math.abs(now.x + now.width - (box.x + box.width))).toBeLessThan(1);
+  await row.screenshot({ path: GO_TO_ASSIGNMENT });
+
+  // Turned off and on again, the page has one link at a time, and no reload happens.
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  await expect(page.locator('a[data-av-own]')).toHaveCount(0);
+  await expect(canvasButton).toBeVisible();
+  await expect(canvasButton).toHaveText('Re-submit Assignment');
+  await expect(page.getByText('Go to assignment')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as unknown as { __kept?: boolean }).__kept)).toBe(true);
+  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  await expect(page.locator('a[data-av-own]')).toHaveCount(1);
+
+  await own.click();
+  await expect(page).toHaveURL(`${canvas.origin}${ASSIGNMENT}`);
+  expect(new URL(page.url()).hash).toBe('');
+});
+
+test('"Go to assignment" works when Canvas disabled its button for no attempts left', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await open(context, page, background, { noAttemptsLeft: true });
+  const own = page.getByRole('link', { name: 'Go to assignment' });
+  await expect(own).toBeVisible();
+  await expect(own).not.toHaveAttribute('disabled');
+  await own.click();
+  await expect(page).toHaveURL(`${canvas.origin}${ASSIGNMENT}`);
 });
 
 test('a click on a file opens the file pane, and the link of Canvas in the frame keeps its href and target', async ({
@@ -552,11 +626,13 @@ async function expectFrameKept(page: Page, original: { frame: string; content: s
     frame: document.querySelector('.submission-details-frame')!.outerHTML,
     host: document.getElementById('av-submission-details')!.getBoundingClientRect().bottom,
     frameTop: document.querySelector('.submission-details-frame')!.getBoundingClientRect().top,
-    styles: document.querySelectorAll('head style[data-av-own]').length,
+    frameRule: [...document.querySelectorAll('head style[data-av-own]')].some((style) =>
+      style.textContent?.includes('.submission-details-frame'),
+    ),
   }));
   expect(shown.frame).toBe(original.frame);
   expect(shown.host).toBeLessThanOrEqual(shown.frameTop);
-  expect(shown.styles).toBe(0);
+  expect(shown.frameRule).toBe(false);
 }
 
 /** The content area as Canvas drew it, taken while the switch is off. */
@@ -821,12 +897,14 @@ test('a media recording keeps the frame of Canvas, with the instructions above i
     frame: document.querySelector('.submission-details-frame')!.outerHTML,
     host: document.getElementById('av-submission-details')!.getBoundingClientRect().bottom,
     frameTop: document.querySelector('.submission-details-frame')!.getBoundingClientRect().top,
-    styles: document.querySelectorAll('head style[data-av-own]').length,
+    frameRule: [...document.querySelectorAll('head style[data-av-own]')].some((style) =>
+      style.textContent?.includes('.submission-details-frame'),
+    ),
   }));
   await page.screenshot({ path: path.join(SHOTS, 'submission-media-1440-light.png') });
   expect(shown.frame).toBe(original.frame);
   expect(shown.host).toBeLessThanOrEqual(shown.frameTop);
-  expect(shown.styles).toBe(0);
+  expect(shown.frameRule).toBe(false);
   await expect(
     page.frameLocator('#preview_frame').getByRole('link', { name: /media recording/ }),
   ).toBeVisible();
@@ -1792,4 +1870,3 @@ for (const theme of ['light', 'dark'] as const) {
     });
   });
 }
-

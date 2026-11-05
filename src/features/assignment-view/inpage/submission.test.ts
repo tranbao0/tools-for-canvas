@@ -9,6 +9,7 @@ import {
 import { submissionDetailsPage } from '../../../../tests/fixtures/submission-page';
 import type { AssignmentDetailsMessage, RubricReadMessage } from '../protocol';
 import type { FeedbackRequest } from './feedbackPane';
+import { removeStaleView } from './rows';
 import { createSubmissionView, type SubmissionView } from './submission';
 
 const ORIGIN = 'https://school.instructure.com';
@@ -82,6 +83,12 @@ const settle = () => vi.advanceTimersByTimeAsync(10);
 const host = () => document.getElementById('av-submission-details');
 const root = () => host()?.shadowRoot;
 const container = () => document.querySelector('.submission-details-container')!;
+const CANVAS_BUTTON = '.ic-Action-header__Secondary>a[href$="#submit"]';
+const ownLinks = () => [...document.querySelectorAll('a[data-av-own]')];
+/** The rules of the view's style element in the head. */
+const rules = () => document.head.querySelector('style[data-av-own]')?.textContent ?? '';
+const HIDE_RULE =
+  '.ic-Action-header__Secondary>a.Button--primary[href$="#submit"]{display:none!important}';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -139,13 +146,16 @@ describe('the own submission', () => {
     const before = container().outerHTML;
     const header = document.querySelector('.submission-details-header')!.outerHTML;
     const action = document.querySelector('.ic-Action-header')!.outerHTML;
+    const canvasButton = document.querySelector(CANVAS_BUTTON)!.outerHTML;
     start();
     await settle();
     expect(container().outerHTML).not.toBe(before);
-    expect(document.querySelector('.submission-details-header')!.outerHTML).toBe(header);
-    expect(document.querySelector('.ic-Action-header')!.outerHTML).toBe(action);
+    // The view adds a link beside Canvas's button and changes no node of Canvas.
+    expect(document.querySelector(CANVAS_BUTTON)!.outerHTML).toBe(canvasButton);
     view.setActive(false);
     expect(container().outerHTML).toBe(before);
+    expect(document.querySelector('.submission-details-header')!.outerHTML).toBe(header);
+    expect(document.querySelector('.ic-Action-header')!.outerHTML).toBe(action);
     expect(document.querySelector('[data-av-own]')).toBeNull();
     expect(closeFeedback).toHaveBeenCalled();
   });
@@ -342,6 +352,150 @@ describe('the own submission', () => {
   });
 });
 
+describe('the button of the title row', () => {
+  const OWN_ADDRESS = `${ORIGIN}/courses/12/assignments/101`;
+
+  function expectOwnLink(): void {
+    const links = ownLinks();
+    expect(links).toHaveLength(1);
+    const link = links[0] as HTMLAnchorElement;
+    expect(link.textContent).toBe('Go to assignment');
+    expect(link.className).toBe('Button Button--primary');
+    expect(link.getAttribute('href')).toBe(OWN_ADDRESS);
+    expect(link.hasAttribute('disabled')).toBe(false);
+    // The link sits right after Canvas's button, in Canvas's container.
+    expect(link.previousElementSibling).toBe(document.querySelector(CANVAS_BUTTON));
+    expect(link.parentElement?.className).toContain('ic-Action-header__Secondary');
+    expect(rules()).toContain(HIDE_RULE);
+  }
+
+  it('gets an own link in the replace mode, and Canvas keeps its button, hidden by a rule', async () => {
+    start();
+    await settle();
+    expect(container().querySelector('.submission-details-frame')).not.toBeNull();
+    expect(rules()).toContain('.submission-details-frame{display:none!important}');
+    expectOwnLink();
+    expect(document.querySelector(CANVAS_BUTTON)?.textContent).toBe('Re-submit Assignment');
+    expect(document.querySelector(CANVAS_BUTTON)?.hasAttribute('data-av-own')).toBe(false);
+  });
+
+  it('gets an own link in the above mode, where the frame stays', async () => {
+    send.mockResolvedValue(
+      reply((details) => {
+        details.submission.submission_type = 'media_recording';
+      }),
+    );
+    start();
+    await settle();
+    expect(rules()).not.toContain('.submission-details-frame{display:none!important}');
+    expectOwnLink();
+  });
+
+  it('points at the assignment page of a shard student, with the ids as the page writes them', async () => {
+    document.body.innerHTML = '';
+    load(submissionDetailsPage({ course: '2~12', assignment: '2~101', user: '2~123' }));
+    send.mockResolvedValue(
+      reply((details) => {
+        details.assignment.id = '20000000000101';
+        details.submission.user_id = '20000000000123';
+        details.submission.submission_type = 'media_recording';
+      }),
+    );
+    start('2~123', '2~101', '2~12');
+    await settle();
+    const [link] = ownLinks() as HTMLAnchorElement[];
+    expect(link?.getAttribute('href')).toBe(`${ORIGIN}/courses/2~12/assignments/2~101`);
+  });
+
+  it('gives the page back with no link and no rule when turned off', async () => {
+    const before = document.querySelector('.ic-Action-header__Secondary')!.outerHTML;
+    start();
+    await settle();
+    view.setActive(false);
+    expect(ownLinks()).toHaveLength(0);
+    expect(document.head.querySelector('style')).toBeNull();
+    expect(document.querySelector('.ic-Action-header__Secondary')!.outerHTML).toBe(before);
+  });
+
+  it('leaves exactly one own link when the mode changes', async () => {
+    const frame = showInFrame(FILE_ROW);
+    start();
+    await settle();
+    expectOwnLink();
+    // A similarity report shows after the load, so the view goes to the above mode.
+    showInFrame(
+      frameRows(PAGE, [
+        {
+          fileId: '501',
+          name: 'essay.pdf',
+          size: '118 KB',
+          button: 'Preview',
+          score: TURNITIN_SCORE,
+        },
+      ]),
+    );
+    frame.dispatchEvent(new Event('load'));
+    await vi.advanceTimersByTimeAsync(200);
+    expect(rules()).not.toContain('.submission-details-frame{display:none!important}');
+    expectOwnLink();
+  });
+
+  it('leaves a newer copy with one link and one rule after the cleanup of a dead copy', async () => {
+    document
+      .querySelector('.ic-Action-header__Secondary')!
+      .insertAdjacentHTML(
+        'beforeend',
+        '<a data-av-own href="/courses/12/assignments/101" class="Button Button--primary">Go to assignment</a>',
+      );
+    document.head.insertAdjacentHTML('beforeend', `<style data-av-own>${HIDE_RULE}</style>`);
+    removeStaleView(document, PAGE);
+    start();
+    await settle();
+    expectOwnLink();
+    expect(document.head.querySelectorAll('style[data-av-own]')).toHaveLength(1);
+    expect(rules().split(HIDE_RULE)).toHaveLength(2);
+  });
+
+  it('gives a working link when Canvas disabled its button for no attempts left', async () => {
+    load(submissionDetailsPage({ noAttemptsLeft: true }));
+    showInFrame(FILE_ROW);
+    expect(document.querySelector(CANVAS_BUTTON)?.hasAttribute('disabled')).toBe(true);
+    start();
+    await settle();
+    expectOwnLink();
+  });
+
+  it('adds nothing when Canvas draws no such button', async () => {
+    load(submissionDetailsPage({ noButton: true }));
+    showInFrame(FILE_ROW);
+    start();
+    await settle();
+    expect(host()).not.toBeNull();
+    expect(ownLinks()).toHaveLength(0);
+    expect(rules()).not.toContain('#submit');
+  });
+
+  it('leaves the button of Canvas alone on the page of a teacher or another student', async () => {
+    send.mockResolvedValue(
+      reply((details) => {
+        details.submission.user_id = '9001';
+      }),
+    );
+    start();
+    await settle();
+    expect(ownLinks()).toHaveLength(0);
+    expect(document.head.querySelector('style')).toBeNull();
+  });
+
+  it('leaves the button of Canvas alone when the read fails', async () => {
+    send.mockRejectedValue(new Error('offline'));
+    start();
+    await settle();
+    expect(ownLinks()).toHaveLength(0);
+    expect(document.head.querySelector('style')).toBeNull();
+  });
+});
+
 describe('every page that is not the own submission', () => {
   const untouched = async (): Promise<void> => {
     await settle();
@@ -444,7 +598,7 @@ describe('a submission type that the view cannot show in full', () => {
       await settle();
       // The host sits right before the content area, so it is above the frame.
       expect(host()?.nextElementSibling).toBe(container());
-      expect(document.head.querySelector('style')).toBeNull();
+      expect(rules()).not.toContain('.submission-details-frame');
       expect(frameBox.outerHTML).toBe(frameBefore);
       expect(document.querySelector('.submission-details-comments')!.outerHTML).toBe(
         commentsBefore,
@@ -479,7 +633,7 @@ describe('a frame that holds more than the view can show', () => {
   async function expectAbove(): Promise<void> {
     await settle();
     expect(host()?.nextElementSibling).toBe(container());
-    expect(document.head.querySelector('style')).toBeNull();
+    expect(rules()).not.toContain('.submission-details-frame');
     expect(root()?.querySelector('.av-instructions')).not.toBeNull();
     expect(root()?.querySelector('.av-files, .av-submission, [data-action=feedback]')).toBeNull();
   }

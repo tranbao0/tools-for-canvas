@@ -21,12 +21,20 @@
  * does. Nothing else of the page is touched, no node of Canvas gets another attribute or style, and
  * the frame is never moved, because a moved frame reloads.
  *
+ * One more change is in the title row of the page: Canvas's primary button there ("Submit
+ * Assignment" or "Re-submit Assignment", a link to `/courses/:c/assignments/:a#submit`) is hidden by
+ * a rule of the same style element, and the view adds a link of its own beside it that says "Go to
+ * assignment" and opens the assignment page, with no hash, so no upload form opens by itself. The
+ * link takes Canvas's button classes. It has no `disabled` attribute, because it only navigates. A
+ * page with no such button of Canvas gets neither the rule nor the link. The link and the rule go
+ * away with the host, and the page shows Canvas's button again.
+ *
  * The view changes the page only for the signed-in student's own submission: the user of the path
  * must be the user of the `submissions/self` record that the background reads. A teacher, an
  * observer or another student sees Canvas's page as it is. The same holds when an anchor is missing
  * or the read fails. The files frame stays visible until the read has finished.
  */
-import { normalizeCanvasId } from '../../../shared/canvas/ids';
+import { isCanvasId, normalizeCanvasId } from '../../../shared/canvas/ids';
 import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
 import { sanitizeHtml } from '../../../shared/ui/sanitize';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
@@ -74,6 +82,10 @@ type Mode = 'replace' | 'above';
 
 const HIDE_FRAME =
   '.submission-details-container>.submission-details-frame{display:none!important}';
+
+/** Canvas's primary button of the title row, whose address ends in `#submit`. */
+const SUBMIT_BUTTON = '.ic-Action-header__Secondary>a.Button--primary[href$="#submit"]';
+const HIDE_SUBMIT = `${SUBMIT_BUTTON}{display:none!important}`;
 
 export interface SubmissionViewOptions {
   doc: Document;
@@ -170,6 +182,8 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   let generation = 0;
   let style: HTMLStyleElement | null = null;
   let host: HTMLElement | null = null;
+  /** The view's own "Go to assignment" link beside Canvas's hidden button. */
+  let assignmentLink: HTMLAnchorElement | null = null;
   let stopFrame: (() => void) | null = null;
   let resize: ResizeObserver | null = null;
   let stopRubricWait: (() => void) | null = null;
@@ -183,7 +197,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   const known = (file: FrameFile): FrameFile =>
     opened.has(file.fileId) && file.unread ? { ...file, unread: false } : file;
 
-  /** Takes the host, the style and the feedback pane away. The page is as Canvas drew it. */
+  /** Takes the host, the link, the style and the feedback pane away. The page is as Canvas drew it. */
   function unmount(): void {
     resize?.disconnect();
     resize = null;
@@ -195,6 +209,8 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     restoreRubric = null;
     host?.remove();
     host = null;
+    assignmentLink?.remove();
+    assignmentLink = null;
     style?.remove();
     style = null;
     options.closeFeedback();
@@ -315,6 +331,24 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     });
   }
 
+  /**
+   * Hides Canvas's "Submit Assignment" or "Re-submit Assignment" button and adds a link beside it
+   * to the assignment page. Without that button on the page, nothing changes.
+   */
+  function placeAssignmentLink(addRules: (css: string) => void): void {
+    const canvasButton = doc.querySelector(SUBMIT_BUTTON);
+    if (!canvasButton || !isCanvasId(options.courseId) || !isCanvasId(options.assignmentId)) return;
+    const path = `/courses/${options.courseId}/assignments/${options.assignmentId}`;
+    const link = doc.createElement('a');
+    link.className = 'Button Button--primary';
+    link.setAttribute(OWN, '');
+    link.setAttribute('href', new URL(path, origin).href);
+    link.textContent = 'Go to assignment';
+    addRules(HIDE_SUBMIT);
+    canvasButton.after(link);
+    assignmentLink = link;
+  }
+
   /** Draws the host. The returned function sets the files of an `online_upload` submission. */
   function mount(
     reply: AssignmentDetailsReply,
@@ -333,6 +367,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       style.textContent += css;
     };
     if (replace) addRules(HIDE_FRAME);
+    placeAssignmentLink(addRules);
 
     const created = doc.createElement('div');
     created.id = 'av-submission-details';
