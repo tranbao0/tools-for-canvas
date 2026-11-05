@@ -952,6 +952,35 @@ describe('request guard', () => {
     expect(events).toEqual(['guard', 'put', 'guard', 'put']);
   });
 
+  it('keeps the 3 retries of every other write', async () => {
+    useRetryFakeTimers();
+    const state = { calls: 0 };
+    server.use(
+      http.post(api('/api/v1/planner/overrides'), () => {
+        state.calls += 1;
+        return tooMany();
+      }),
+    );
+    const error = catchError(
+      testClient().createOverride({
+        plannableType: 'quiz',
+        plannableId: '1',
+        markedComplete: true,
+        dismissed: false,
+      }),
+    );
+    for (const [calls, wait] of [
+      [1, 1000],
+      [2, 2000],
+      [3, 4000],
+    ] as const) {
+      await settleUntil(() => state.calls === calls);
+      await vi.advanceTimersByTimeAsync(wait);
+    }
+    expect(await error).toMatchObject({ kind: 'rate_limited', status: 429 });
+    expect(state.calls).toBe(4);
+  });
+
   it('runs once the request holds a slot of the queue, not when it joined', async () => {
     const gate = deferred();
     let colorCalls = 0;

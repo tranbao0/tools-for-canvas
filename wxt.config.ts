@@ -185,8 +185,8 @@ export default defineConfig({
               // Only test channel builds name an update address. A listed store build must not.
               ...(TEST_UPDATE_URL ? { update_url: TEST_UPDATE_URL } : {}),
             },
-            // The extension is desktop only (decision 14). This only states the minimum version on
-            // Android, where the data collection setting needs Firefox 142.
+            // Firefox for Android is allowed (decision 14). This states the minimum version there,
+            // where the data collection setting needs Firefox 142.
             gecko_android: { strict_min_version: '142.0' },
           },
         }

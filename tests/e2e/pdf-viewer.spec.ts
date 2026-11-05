@@ -19,7 +19,10 @@ import {
   pane,
   saveSetting,
 } from './support/file-viewer';
+import { advanceBackgroundClock } from './support/clock';
+import { json } from './support/scenario-api';
 import { expect, test as base } from './support/weekrow';
+import { SCENARIO_NOW, buildScenario } from '../fixtures/scenario';
 import {
   FAX_BOX,
   FIXTURE_LINK,
@@ -781,6 +784,218 @@ async function saveThirdPageAtZoom(frame: Frame, background: Parameters<typeof o
     )
     .toBe(true);
 }
+
+const OTHER_STUDENT = '987654';
+
+/** A Canvas whose signed-in student is the one that `who()` names, and a way to sign in another. */
+function studentCanvas() {
+  const scenario = buildScenario(SCENARIO_NOW);
+  let signedIn = scenario.self.id;
+  // The answers that name the student take this long.
+  let delayMs = 0;
+  const answerLate = () => new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+  const routesOfStudent: FakeCanvasRoute[] = [
+    {
+      path: '/api/v1/users/self/profile',
+      respond: async () => {
+        await answerLate();
+        return { body: json({ ...scenario.profile, id: signedIn }) };
+      },
+    },
+    {
+      path: '/api/v1/users/self',
+      respond: async () => {
+        await answerLate();
+        return { body: json({ ...scenario.self, id: signedIn }) };
+      },
+    },
+  ];
+  return {
+    first: scenario.self.id,
+    routes: routesOfStudent,
+    /** Makes the answers that name the student late, so a check of the cookie takes a while. */
+    slowChecks(ms: number): void {
+      delayMs = ms;
+    },
+    /** Signs in the other student: the cookie changes and Canvas names the other student. */
+    async switchStudent(
+      context: Parameters<typeof openCoursePage>[0],
+      background: Parameters<typeof openCoursePage>[2],
+      origin: string,
+    ) {
+      signedIn = OTHER_STUDENT;
+      // The owner starts at most two sign-in checks in 30 seconds. The first student's open used
+      // some, so the clock moves on and the check of the new cookie can start.
+      await advanceBackgroundClock(background, 2 * 60_000);
+      await context.addCookies([
+        { name: 'canvas_session', value: 'student-b', url: origin, secure: true, sameSite: 'Lax' },
+      ]);
+    },
+  };
+}
+
+/**
+ * Waits until the background has loaded the signed-in student. The viewer reads Canvas only for a
+ * confirmed student, and a read that comes sooner is refused. A side panel page asks, as it does
+ * for a student, and the reply names the student once the round is done.
+ */
+async function waitForStudent(
+  context: Parameters<typeof openCoursePage>[0],
+  extensionUrl: (file: string) => string,
+  id: string,
+): Promise<void> {
+  const panel = await context.newPage();
+  await panel.goto(extensionUrl('sidepanel.html'));
+  await expect
+    .poll(() =>
+      panel.evaluate(async () => {
+        const api = (
+          globalThis as unknown as {
+            chrome: {
+              runtime: {
+                sendMessage(message: unknown): Promise<{ kind: string; userId?: string }>;
+              };
+            };
+          }
+        ).chrome;
+        const reply = await api.runtime.sendMessage({
+          type: 'weekrow:get-state',
+          request: { surface: 'panel', spanOffset: 0, scopeCourseId: null },
+        });
+        return reply.kind === 'ready' ? reply.userId : reply.kind;
+      }),
+    )
+    .toBe(id);
+  await panel.close();
+}
+
+const studentOf = (key: string): unknown => (JSON.parse(key) as unknown[])[1];
+
+test('a saved position does not open for another student', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+  fileHost,
+}) => {
+  // These tests start a second page and a second student, so a loaded machine needs more time.
+  test.setTimeout(90_000);
+  const student = studentCanvas();
+  const canvas = await openCoursePage(context, page, background, html, [
+    ...student.routes,
+    ...routes(fileHost),
+  ]);
+  await openFirstFile(page, 'Read notes');
+  let frame = await pane(page);
+  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await saveThirdPageAtZoom(frame, background);
+  const keys = Object.keys(await savedPositions(background));
+  expect(keys).toHaveLength(1);
+  expect(studentOf(keys[0]!)).toBe(student.first);
+
+  await student.switchStudent(context, background, canvas.origin);
+  await waitForStudent(context, extensionUrl, OTHER_STUDENT);
+  await page.reload();
+  await openFirstFile(page, 'Read notes');
+  frame = await pane(page);
+  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  // The controls work only after the viewer has the answer to its read of the position.
+  await expect(pageInput(frame)).toBeEnabled();
+  await expect(pageInput(frame)).toHaveValue('1');
+  await expect(frame.locator('[data-part="pdf-zoom-text"]')).not.toHaveText('150%');
+  expect(
+    Object.keys(await savedPositions(background)).filter((key) => studentOf(key) === student.first),
+  ).toEqual([]);
+});
+
+test('the first file of a new student opens while the new cookie is not confirmed yet', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  // These tests start a second page and a second student, so a loaded machine needs more time.
+  test.setTimeout(90_000);
+  const student = studentCanvas();
+  const canvas = await openCoursePage(context, page, background, html, [
+    ...student.routes,
+    ...routes(fileHost),
+  ]);
+  await openFirstFile(page, 'Read notes');
+  await expect(pageBox(await pane(page), 1).locator('canvas')).toBeVisible();
+
+  // The other student signs in, and the answer that names the student comes late. The first
+  // requests of the pane and of the page join the check of the new cookie, which ends by finding
+  // another student. They are refused, although the next request is not.
+  student.slowChecks(800);
+  await student.switchStudent(context, background, canvas.origin);
+  await page.reload();
+  await openFirstFile(page, 'Read notes');
+  const frame = await pane(page);
+  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await expect(frame.getByRole('status').filter({ hasText: 'Loading file' })).toHaveCount(0);
+});
+
+test('a pane that stayed open cannot save its position for the next student', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+  fileHost,
+}) => {
+  // These tests start a second page and a second student, so a loaded machine needs more time.
+  test.setTimeout(90_000);
+  const student = studentCanvas();
+  const canvas = await openCoursePage(context, page, background, html, [
+    ...student.routes,
+    ...routes(fileHost),
+  ]);
+  await openFirstFile(page, 'Read notes');
+  const frame = await pane(page);
+  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await saveThirdPageAtZoom(frame, background);
+  // The pane records the answer to each save, so the test waits for it and needs no sleep.
+  await frame.evaluate(() => {
+    const runtime = (globalThis as unknown as { chrome: typeof browser }).chrome.runtime;
+    const send = runtime.sendMessage.bind(runtime) as (message: unknown) => Promise<unknown>;
+    const replies: { zoom: unknown; reply: unknown }[] = [];
+    (globalThis as unknown as { __saves: unknown[] }).__saves = replies;
+    (runtime as unknown as { sendMessage: unknown }).sendMessage = async (message: {
+      type?: string;
+      zoom?: unknown;
+    }) => {
+      const reply = await send(message);
+      if (message.type === 'viewer:position-set') replies.push({ zoom: message.zoom, reply });
+      return reply;
+    };
+  });
+
+  // The other student signs in, in another tab. That tab opens a file, so the background
+  // confirms the other student.
+  await student.switchStudent(context, background, canvas.origin);
+  await waitForStudent(context, extensionUrl, OTHER_STUDENT);
+  const other = await context.newPage();
+  await other.goto(page.url());
+  await openFirstFile(other, 'Read notes');
+  await expect(pageBox(await pane(other), 1).locator('canvas')).toBeVisible();
+
+  // The first tab still shows the first student's pane. A zoom change there saves after a second.
+  await frame.getByRole('button', { name: 'Zoom level' }).click();
+  await frame.getByRole('menuitemradio', { name: '200%' }).click();
+  // The save of the 200 percent zoom reached the background and got its answer.
+  await expect
+    .poll(() =>
+      frame.evaluate(() =>
+        (globalThis as unknown as { __saves: { zoom: unknown }[] }).__saves.some(
+          (save) => save.zoom === 2,
+        ),
+      ),
+    )
+    .toBe(true);
+  const stored = await savedPositions(background);
+  expect(Object.keys(stored).filter((key) => studentOf(key) === OTHER_STUDENT)).toEqual([]);
+  expect(Object.values(stored).filter((value) => value.zoom === 2)).toEqual([]);
+});
 
 test('a closed tab leaves its saved page and zoom for the next tab', async ({
   context,
