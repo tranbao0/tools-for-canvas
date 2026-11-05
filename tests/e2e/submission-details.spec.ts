@@ -53,14 +53,9 @@ type Details = typeof ASSIGNMENT_DETAILS;
 
 function details(change: (copy: Details) => void = () => undefined): Details {
   const copy = structuredClone(ASSIGNMENT_DETAILS);
-  copy.assignment.name = 'Reflection Paper #1';
   copy.assignment.description = DESCRIPTION;
-  copy.assignment.points_possible = 50;
-  copy.submission.score = 40;
-  copy.submission.grade = '40';
   copy.submission.submission_type = 'online_upload';
   copy.submission.attachments = [{ id: '501', display_name: FILE_NAME, size: 120_832 }];
-  copy.submission.submission_comments = [];
   change(copy);
   return copy;
 }

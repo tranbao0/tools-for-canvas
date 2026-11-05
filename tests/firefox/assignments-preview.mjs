@@ -189,19 +189,12 @@ async function main() {
   const records = rawRecords({
     assignment: {
       id: '101',
-      name: 'Essay',
       description: '<p>Write.</p>',
-      due_at: '2026-11-03T20:00:00Z',
-      points_possible: 10,
-      can_submit: true,
     },
     submission: {
       user_id: USER,
-      score: null,
-      grade: null,
       submitted_at: null,
       workflow_state: 'unsubmitted',
-      submission_comments: [],
     },
   });
   const frameLoads = [];

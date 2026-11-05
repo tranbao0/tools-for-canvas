@@ -655,7 +655,9 @@ Run them on `/courses/:id/assignments`.
 4. Click "Preview" on another row.
    Expect: the pane moves to that assignment, and the marks move to the other row.
    Type text into a field of the first assignment, then click "Preview" on another row.
-   Expect: Canvas asks whether to leave the page. Say no, and the pane and the marks stay on the first assignment, with your text.
+   Expect: Canvas asks whether to leave the page.
+   Say no.
+   Expect: the pane and the marks stay on the first assignment, with your text.
 5. Click "Preview" on the row that the pane shows.
    Expect: the pane closes, the page has its width back, and the marks go.
    Open the pane again and click the close button of the pane.

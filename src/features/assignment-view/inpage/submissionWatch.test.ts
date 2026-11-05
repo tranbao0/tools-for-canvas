@@ -77,12 +77,12 @@ describe('the read of a submission', () => {
     }
   });
 
-  it('asks for no refresh for a change in the score', async () => {
+  it('asks for no refresh for a change in another field', async () => {
     await watch.read('101');
     send.mockImplementation(async (message: Message) =>
       message.type === 'assignment:details'
         ? reply(message.assignmentId, (details) => {
-            details.submission.score = 999;
+            details.submission.body = 'other text';
           })
         : undefined,
     );

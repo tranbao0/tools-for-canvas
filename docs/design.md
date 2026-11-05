@@ -3416,7 +3416,9 @@ So a student switches pages to read the instructions next to the feedback on a f
 
 8. **Data.**
    - The background reads one assignment with `GET /api/v1/courses/:id/assignments/:id?include[]=submission&include[]=can_submit` and the student's own submission with `GET /api/v1/courses/:id/assignments/:id/submissions/self?include[]=submission_comments&include[]=rubric_assessment`.
-   - The rubric comes with the assignment record.
+   - The reply keeps only what the Submission Details page and the refresh of the pane read (see "Message" below).
+    The score, the rubric, the comments and the due dates are not in it, because Canvas shows them itself.
+    The requests still carry `include[]=can_submit`, `include[]=submission_comments` and `include[]=rubric_assessment`, which no field of the reply uses now, because their include list is in `src/shared/canvas/client.ts`.
    - It reads when the assignment pane opens, on each later read of the pane (step 3 below), and when the Submission Details page loads.
     The first read of an assignment in the pane is the baseline, and the pane keeps only the last good reply of each assignment, to compare the next one with it.
    - The assignment page reads only the own submission with no include, to learn its user (item 1).
@@ -3451,9 +3453,10 @@ So a student switches pages to read the instructions next to the feedback on a f
   - Both requests run inside one read under those rules, so the reply is dropped when the cookie changes during them.
   - A cookie that is not confirmed yet waits for one check (`viewerConfirm`) and the read runs once more.
   - The background keeps only the fields of the view, with a limit on every text, in `projectAssignmentView`.
+    For the assignment, these are the id, the description (the instructions) and the submission types.
+    For the submission, these are the user, the attempt, the time, the workflow state, the excused and late marks, the type, the text, the address and the files with their sizes.
   - The reply holds the details and the time zone of the Canvas profile.
-  - The Submission Details page uses the same message and reply.
-    The projection keeps the size of each file and, for the submission, its type, text and address, with the same limits.
+  - The Submission Details page uses the same message and reply, and so does the refresh of the pane, which compares `submitted_at`, `workflow_state` and `attempt`.
 - **Rows.**
   - A row counts when it is `div.ig-row` with the id `assignment_<assignment id>`, a layout `.ig-row__layout`, and a title link `a.ig-title` to the same course and assignment on the saved Canvas.
   - The button is the last child of `.ig-row__layout`.
@@ -3844,7 +3847,7 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
   - The frame is `/courses/:c/assignments/:a?content_only=1` on the page origin, with validated ids.
     The frame receives no extension channel, secret or port.
   - The frame sits in a white wrapper with the padding `0 8px 0 24px`.
-    The text of the page so does not touch the edge of the pane, and the scroll bar of the frame stays near the edge.
+    So the text of the page does not touch the edge of the pane, and the scroll bar of the frame stays near the edge.
   - The script never reads the DOM of the frame.
     On a load it reads only the address of the frame.
   - When the frame lands on a page of the same course on the saved origin without `content_only=1`, the frame loads that address with `content_only=1`, once.

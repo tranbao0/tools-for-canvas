@@ -141,11 +141,9 @@ describe('startAssignmentView', () => {
     }
     const details = (id: string, submittedAt: string | null) => ({
       details: {
-        assignment: { id, name: 'A', description: null, due_at: null, points_possible: 1 },
+        assignment: { id, description: null },
         submission: {
           user_id: '42',
-          score: null,
-          grade: null,
           submitted_at: submittedAt,
           workflow_state: submittedAt === null ? 'unsubmitted' : 'submitted',
         },
@@ -323,15 +321,10 @@ describe('on a Submission Details page', () => {
       details: {
         assignment: {
           id: '101',
-          name: 'Essay',
           description: '<p>Text</p>',
-          due_at: null,
-          points_possible: 1,
         },
         submission: {
           user_id: '42',
-          score: null,
-          grade: null,
           submission_type: 'online_upload',
           attachments: [{ id: '501', display_name: 'essay.pdf', size: 2048 }],
         },
@@ -368,12 +361,9 @@ describe('on a Submission Details page', () => {
       details: {
         assignment: {
           id: '101',
-          name: 'Essay',
           description: '<p>Text</p>',
-          due_at: null,
-          points_possible: 1,
         },
-        submission: { user_id: '42', score: null, grade: null, submission_type: null },
+        submission: { user_id: '42', submission_type: null },
       },
       timeZone: 'UTC',
     });
