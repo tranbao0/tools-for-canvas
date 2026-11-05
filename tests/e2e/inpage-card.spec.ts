@@ -5,6 +5,8 @@
  */
 import path from 'node:path';
 import type { Locator, Page } from '@playwright/test';
+import { errorReply, type CanvasState } from './support/canvas-state';
+import { CANVAS_ERRORS } from '../fixtures/errors';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/model/types';
 import {
   addCsrfCookie,
@@ -62,10 +64,10 @@ async function open(
     /** The path that the page is served at. Defaults to the dashboard. */
     path?: string;
   } = {},
-): Promise<void> {
+): Promise<CanvasState> {
   await saveSettings(background, options.settings ?? MONTH);
   const keep = options.only ? new Set(options.only) : null;
-  const { canvas } = await serveScenario(
+  const { canvas, state } = await serveScenario(
     context,
     [{ path: options.path ?? '/', page: options.page ?? 'dashboard-widgets' }],
     {
@@ -116,6 +118,7 @@ async function open(
   await openCanvasPage(page, canvas.origin, options.query ?? options.path);
   await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
   await settledList(page);
+  return state;
 }
 
 function region(page: Page): Locator {
@@ -466,6 +469,54 @@ test.describe('the full list in the card', () => {
           .click({ trial: true });
       });
     }
+  }
+
+  for (const layout of LAYOUTS) {
+    test(`keeps the bar the same height with each group open, closed and on an empty span, on ${layout.name}`, async ({
+      context,
+      page,
+      background,
+    }) => {
+      await openBottomLayout(context, page, background, layout, 800);
+      const list = inpageList(page);
+      const root = list.locator('.wr');
+      const undated = toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]'));
+      const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
+      const pinned = list.locator('.wr-pinned');
+      const height = () => pinned.evaluate((element) => element.getBoundingClientRect().height);
+      const closed = await barState(root);
+      const barHeight = await height();
+
+      for (const toggle of [undated, done]) {
+        await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        expect(await height()).toBe(barHeight);
+        expectSameBar(await barState(root), closed);
+        await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        expect(await height()).toBe(barHeight);
+      }
+
+      // Two months ahead the span holds nothing undated and nothing done. Both headers stay, with
+      // the count 0, so a click on either one adds nothing and removes nothing.
+      await list.getByRole('button', { name: 'Next month' }).click();
+      await list.getByRole('button', { name: 'Next month' }).click();
+      await settledList(page);
+      for (const toggle of [undated, done]) {
+        await expect(toggle.locator('.wr-count')).toHaveText('0');
+        expect(await height()).toBe(barHeight);
+        expectSameBar(await barState(root), closed);
+        await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(groupArea(list).locator('.wr-empty')).toBeVisible();
+        expect(await height()).toBe(barHeight);
+        expectSameBar(await barState(root), closed);
+        await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        expect(await height()).toBe(barHeight);
+        expectSameBar(await barState(root), closed);
+      }
+    });
   }
 
   for (const layout of LAYOUTS.slice(0, 2)) {
@@ -831,14 +882,60 @@ test.describe('the full list in the card', () => {
     await expect(area.getByText('Nothing without a due date in this span.')).toBeVisible();
     await expect(undated).toHaveAttribute('aria-expanded', 'true');
     await settledList(page);
-    // Back to days closes it, and the header of an empty group goes away with it. Focus goes to
-    // the day list, because the header that it would return to is gone.
+    // Back to days closes it. The header of the empty group stays, with the count 0, and takes
+    // focus.
     await backOf(list).focus();
     await page.keyboard.press('Enter');
     await expect(dayList(list)).toBeVisible();
-    await expect(dayList(list)).toBeFocused();
+    await expect(undated).toBeFocused();
     await expect(area).toBeHidden();
-    await expect(list.locator('.wr-pinned [data-group="no_due_date"]')).toHaveCount(0);
+    await expect(undated).toHaveAttribute('aria-expanded', 'false');
+    await expect(undated.locator('.wr-count')).toHaveText('0');
+
+    // A closed empty group opens to show its empty line.
+    await undated.click();
+    await expect(area.getByText('Nothing without a due date in this span.')).toBeVisible();
+  });
+
+  test('says that the span did not load, with Retry, in an open group after a failed load', async ({
+    context,
+    page,
+    background,
+  }) => {
+    const state = await open(context, page, background, {
+      width: 1280,
+      height: 900,
+      completed: true,
+      settings: { ...MONTH, hiddenCourseIds: ['102'] },
+    });
+    const list = inpageList(page);
+    const done = list.locator('.wr-pinned [data-group="done"]');
+    await toggleOf(done).click();
+    await expect(groupArea(list).locator('[data-row-key]').first()).toBeVisible();
+    await settledList(page);
+
+    state.plannerReply = errorReply(CANVAS_ERRORS.serverError);
+    // The month ahead is in the cache, and so is a week at its far end; the week after it is
+    // not, so the span at the edge of the cache has some days and misses the rest.
+    const area = groupArea(list);
+    await list.getByRole('button', { name: 'Next month' }).click();
+    await expect(list.getByText('November 27 to December 26')).toBeVisible();
+    await list.getByRole('combobox').selectOption({ label: 'Week' });
+    await list.getByRole('button', { name: 'Next week' }).evaluate((button) => {
+      for (let step = 0; step < 8; step++) (button as HTMLButtonElement).click();
+    });
+    await expect(list.getByText('December 22 to 28')).toBeVisible();
+    await expect(area.getByText("Couldn't load this span.")).toBeVisible();
+    await expect(area.getByText('Loading your list')).toHaveCount(0);
+    await expect(area.getByText('Nothing done in this span.')).toHaveCount(0);
+    // The count does not claim 0 for a span that did not load.
+    await expect(toggleOf(done).locator('.wr-count')).toHaveText('?');
+
+    // Retry asks again, and the span fills in when Canvas answers.
+    state.plannerReply = null;
+    await area.getByRole('button', { name: 'Retry' }).click();
+    await expect(area.getByText("Couldn't load this span.")).toHaveCount(0);
+    await expect(area.getByText('Nothing done in this span.')).toBeVisible();
   });
 
   test('keeps the open group when it becomes empty, and a second click on its header closes it', async ({
@@ -865,50 +962,53 @@ test.describe('the full list in the card', () => {
     await toggleOf(done).focus();
     await page.keyboard.press('Enter');
     await expect(dayList(list)).toBeVisible();
-    await expect(dayList(list)).toBeFocused();
+    await expect(toggleOf(done)).toBeFocused();
     await expect(groupArea(list)).toBeHidden();
-    await expect(done).toHaveCount(0);
+    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggleOf(done).locator('.wr-count')).toHaveText('0');
   });
 
-  test('holds the open group after a reload and in every tab, and the side panel ignores it', async ({
-    context,
-    page,
-    background,
-    extensionUrl,
-  }) => {
-    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
-    const list = inpageList(page);
-    const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
-    await done.click();
-    await expect(done).toHaveAttribute('aria-expanded', 'true');
+  for (const layout of LAYOUTS) {
+    test(`holds the open group after a reload and in every tab, and the side panel ignores it, on ${layout.name}`, async ({
+      context,
+      page,
+      background,
+      extensionUrl,
+    }) => {
+      await openBottomLayout(context, page, background, layout, 800);
+      const list = inpageList(page);
+      const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
+      await done.click();
+      await expect(done).toHaveAttribute('aria-expanded', 'true');
 
-    await page.reload();
-    await page.locator('html[data-fixture-ready="true"]').waitFor({ state: 'attached' });
-    await expect(done).toHaveAttribute('aria-expanded', 'true');
-    await expect(groupArea(list).locator('[data-row-key]').first()).toBeVisible();
-    await expect(dayList(list)).toBeHidden();
+      await page.reload();
+      await page.locator('html[data-fixture-ready="true"]').waitFor({ state: 'attached' });
+      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await expect(groupArea(list).locator('[data-row-key]').first()).toBeVisible();
+      await expect(dayList(list)).toBeHidden();
 
-    // A second tab shows it open, and closing it there closes it in the first tab.
-    const other = await context.newPage();
-    await openCanvasPage(other, new URL(page.url()).origin);
-    const otherList = inpageList(other);
-    const otherDone = toggleOf(otherList.locator('.wr-pinned [data-group="done"]'));
-    await expect(otherDone).toHaveAttribute('aria-expanded', 'true');
-    await backOf(otherList).click();
-    await expect(dayList(list)).toBeVisible();
-    await expect(done).toHaveAttribute('aria-expanded', 'false');
-    await done.click();
-    await expect(otherDone).toHaveAttribute('aria-expanded', 'true');
+      // A second tab shows it open, and closing it there closes it in the first tab.
+      const other = await context.newPage();
+      await openCanvasPage(other, new URL(page.url()).origin, layout.path);
+      const otherList = inpageList(other);
+      const otherDone = toggleOf(otherList.locator('.wr-pinned [data-group="done"]'));
+      await expect(otherDone).toHaveAttribute('aria-expanded', 'true');
+      await backOf(otherList).click();
+      await expect(dayList(list)).toBeVisible();
+      await expect(done).toHaveAttribute('aria-expanded', 'false');
+      await done.click();
+      await expect(otherDone).toHaveAttribute('aria-expanded', 'true');
 
-    // The side panel has no bottom bar. Its Done group stays closed and works on its own.
-    const panel = await context.newPage();
-    await openExtensionPage(panel, extensionUrl('sidepanel.html'));
-    await expect(panel.getByRole('button', { name: /^Done/ })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
-    await expect(panel.locator('.wr-group-area')).toHaveCount(0);
-  });
+      // The side panel has no bottom bar. Its Done group stays closed and works on its own.
+      const panel = await context.newPage();
+      await openExtensionPage(panel, extensionUrl('sidepanel.html'));
+      await expect(panel.getByRole('button', { name: /^Done/ })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+      await expect(panel.locator('.wr-group-area')).toHaveCount(0);
+    });
+  }
 
   for (const theme of ['light', 'dark'] as const) {
     test(`gives the open header the selected look and a rising arrow, ${theme}`, async ({

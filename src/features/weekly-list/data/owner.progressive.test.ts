@@ -205,7 +205,8 @@ describe('a load that fails', () => {
     // The days that never arrived are not empty days: nothing is said about them, and the rings
     // do not call the span finished.
     expect(state.view.nothingDue).toBe(false);
-    expect(state.view.loading).toBe(true);
+    expect(state.view.loading).toBe(false);
+    expect(state.view.incomplete).toBe(true);
     expect(state.view.groups.some((group) => group.date === '2026-11-10')).toBe(false);
   });
 

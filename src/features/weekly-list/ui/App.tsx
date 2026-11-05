@@ -38,14 +38,7 @@ import { Rings } from './Rings';
 import { SettingsPanel } from './Settings';
 import { Spinner, StateBody } from './States';
 import { TaskForm, type TaskFormMode } from './TaskForm';
-import {
-  groupCount,
-  GroupView,
-  type BottomKind,
-  isGroupEmpty,
-  WeekList,
-  type ListHandlers,
-} from './WeekList';
+import { groupCount, GroupView, type BottomKind, WeekList, type ListHandlers } from './WeekList';
 import { captureFocus, firstRowControl, restoreFocus, usable, type FocusSnapshot } from './focus';
 
 type ReadyState = Extract<SurfaceState, { kind: 'ready' }>;
@@ -551,19 +544,10 @@ function ReadyView(props: {
     if (await actions.createTask(input)) closeForm(null);
     else setSave('failed');
   };
-  /**
-   * Shows the days again. Focus goes to the header of the group that was open. A group with no
-   * rows has no header in the bar once it is closed, so focus goes to the day list instead.
-   */
+  /** Shows the days again. Focus goes to the header of the group that was open. */
   const closeGroup = () => {
-    if (openBottom !== null) {
-      const hasHeader = view.groups.some(
-        (group) => group.kind === openBottom && !isGroupEmpty(group),
-      );
-      returnFocus.current = hasHeader
-        ? `.wr-pinned [data-group="${openBottom}"] .wr-group-toggle`
-        : '.wr-scroll';
-    }
+    if (openBottom !== null)
+      returnFocus.current = `.wr-pinned [data-group="${openBottom}"] .wr-group-toggle`;
     setOpenBottom(null);
   };
   /** Closes the form and focuses the control that opened it, or the Add button. */
@@ -765,7 +749,7 @@ function ReadyView(props: {
         rings={view.rings}
         span={view.span}
         filter={view.courseFilter}
-        loading={view.loading}
+        loading={view.loading || view.incomplete}
         onSelect={(id) => actions.setCourseFilter(id)}
       />
       {filter !== null && (
@@ -802,6 +786,7 @@ function ReadyView(props: {
                 level={subLevel(level)}
                 handlers={handlers}
                 onBack={closeGroup}
+                onRetry={() => actions.retry()}
               />
             )}
           </GroupArea>

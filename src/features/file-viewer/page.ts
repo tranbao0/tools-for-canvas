@@ -156,7 +156,12 @@ export async function startViewer(): Promise<void> {
   // The pane closes, also a pane that another pane covers, and nothing of the earlier student
   // stays in this page: not the tabs, not the course or the name of a file. The background holds
   // no tabs any more, so nothing is written.
+  // An open that started before the reset belongs to the earlier student and ends without a pane,
+  // so `generation` counts the resets.
+  let generation = 0;
   const reset = () => {
+    generation += 1;
+    showing = undefined;
     drop();
     tabs = { ids: [], active: null };
     tabsToken = undefined;
@@ -172,12 +177,15 @@ export async function startViewer(): Promise<void> {
   // Opens the pane. A call while another one is in progress waits for the same open.
   let showing: Promise<void> | undefined;
   const show = (): Promise<void> => {
-    showing ??= showNow().finally(() => {
-      showing = undefined;
-    });
+    if (showing === undefined) {
+      const run: Promise<void> = showNow(generation).finally(() => {
+        if (showing === run) showing = undefined;
+      });
+      showing = run;
+    }
     return showing;
   };
-  const showNow = async () => {
+  const showNow = async (started: number) => {
     if (!live) return;
     if (paneOpen()) {
       void send();
@@ -194,7 +202,7 @@ export async function startViewer(): Promise<void> {
     } catch {
       return;
     }
-    if (!live) return;
+    if (!live || generation !== started) return;
     lastHelloAt = -Infinity;
     const created = createDock({
       role: 'file',
@@ -296,7 +304,8 @@ export async function startViewer(): Promise<void> {
   // would drop the file of the first. The tab order is also the order of the clicks.
   let opens: Promise<unknown> = Promise.resolve();
   const openTarget = (target: FileTarget, href: string): Promise<boolean> => {
-    const run = opens.then(() => openNow(target, href));
+    const started = generation;
+    const run = opens.then(() => openNow(target, href, started));
     opens = run.catch(() => undefined);
     return run;
   };
@@ -304,7 +313,9 @@ export async function startViewer(): Promise<void> {
    * Opens a file in the pane: resolves a module item to its file, then adds the tab. It resolves
    * to whether the pane has the file or is about to get it.
    */
-  const openNow = async (target: FileTarget, href: string): Promise<boolean> => {
+  const openNow = async (target: FileTarget, href: string, started: number): Promise<boolean> => {
+    const ended = () => !live || generation !== started;
+    if (ended()) return false;
     // A turn-in may have covered the pane. A file shows the pane again.
     if (paneOpen()) dock?.setHidden(false);
     if (!paneOpen()) await show();
@@ -313,7 +324,7 @@ export async function startViewer(): Promise<void> {
         ? target
         : ((await browser.runtime.sendMessage({ type: 'viewer:module-item', ...target })) as
             { fileId: string } | undefined);
-    if (!file || !paneOpen()) return false;
+    if (!file || !paneOpen() || ended()) return false;
     const courseId = 'courseId' in target ? target.courseId : courseOfLink(href, location.origin);
     if (courseId) courses.set(file.fileId, courseId);
     const open = () => {
@@ -325,15 +336,16 @@ export async function startViewer(): Promise<void> {
     };
     if (paneOpen() && port) return open();
     const stored = await readTabs().catch(() => null);
-    if (!live) return false;
+    if (ended()) return false;
     if (stored) tabsToken = stored.token;
     tabs = openFile(stored?.tabs ?? tabs, file.fileId);
     await writeTabs(tabs);
+    if (ended()) return false;
     // The pane may have connected while the tabs were written. It owns them from then on, and
     // it has not seen this file, so it gets the file as a request, never as a copy of the store.
     if (paneOpen() && port) return open();
     await show();
-    return paneOpen();
+    return !ended() && paneOpen();
   };
   document.addEventListener(
     'click',
@@ -444,7 +456,8 @@ export async function startViewer(): Promise<void> {
       return undefined;
     }
     if (request?.type === RESET) {
-      reset();
+      // A page cannot send a runtime message to a content script. The sender is the background.
+      if (sender.id === browser.runtime.id && sender.tab === undefined) reset();
       return undefined;
     }
     if (request?.type !== TOP_OPEN) return undefined;

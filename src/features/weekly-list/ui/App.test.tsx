@@ -978,10 +978,10 @@ describe('the open bottom group', () => {
       const toggle = header(kind === 'done' ? /^Done/ : /^No due date/);
       expect(toggle.getAttribute('aria-expanded')).toBe('true');
       expect(toggle.querySelector('.wr-count')?.textContent).toBe('0');
-      // The other group has no rows and is not open, so it has no header.
-      expect(
-        screen.queryByRole('button', { name: kind === 'done' ? /^No due date/ : /^Done/ }),
-      ).toBeNull();
+      // The other group has no rows and is not open, and its header stays with the count 0.
+      const other = header(kind === 'done' ? /^No due date/ : /^Done/);
+      expect(other.getAttribute('aria-expanded')).toBe('false');
+      expect(other.querySelector('.wr-count')?.textContent).toBe('0');
       // The rows come back with the next span that has some.
       rerender(full());
       expect(area()?.textContent).not.toContain(line);
@@ -1000,21 +1000,87 @@ describe('the open bottom group', () => {
     ).toEqual(['no_due_date', 'done']);
   });
 
-  it('closes an empty open group with Back to days and with a click on its header, and focus goes to the day list', () => {
+  it('closes an empty open group with Back to days and with a click on its header, and its header stays', () => {
     const first = setupSaved(bare(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
     const back = screen.getByRole('button', { name: 'Back to days' });
     back.focus();
     fireEvent.click(back);
     expect(first.saved().openGroup).toBeNull();
     expect(area()?.hidden).toBe(true);
-    expect(screen.queryByRole('button', { name: /^Done/ })).toBeNull();
-    expect(document.activeElement).toBe(document.querySelector('.wr-scroll'));
+    expect(header(/^Done/).getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(header(/^Done/));
     cleanup();
     const second = setupSaved(bare(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
     header(/^Done/).focus();
     fireEvent.click(header(/^Done/));
     expect(second.saved().openGroup).toBeNull();
-    expect(document.activeElement).toBe(document.querySelector('.wr-scroll'));
+    expect(header(/^Done/).getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('always shows both headers in the bar, in every span, with a count of 0 for an empty group', () => {
+    const closed = () =>
+      [...document.querySelectorAll('.wr-pinned [data-group]')].map((el) => [
+        el.getAttribute('data-group'),
+        el.querySelector('.wr-count')?.textContent,
+      ]);
+    setupSaved(bare());
+    expect(closed()).toEqual([
+      ['no_due_date', '0'],
+      ['done', '0'],
+    ]);
+    cleanup();
+    setupSaved(full());
+    expect(closed()).toEqual([
+      ['no_due_date', '1'],
+      ['done', '1'],
+    ]);
+    cleanup();
+    setupSaved(bare(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
+    expect(closed()).toEqual([
+      ['no_due_date', '0'],
+      ['done', '0'],
+    ]);
+  });
+
+  it('opens a closed empty group to show its empty line', () => {
+    setupSaved(bare());
+    fireEvent.click(header(/^No due date/));
+    expect(area()?.textContent).toContain('Nothing without a due date in this span.');
+  });
+
+  describe('after a failed load', () => {
+    const failed = (groups: ListGroup[]) =>
+      readyState({ view: mkView({ groups, incomplete: true }) });
+
+    it('says that the span did not load, with Retry, in place of the empty line', () => {
+      const { actions } = setupSaved(failed([todayGroup]), 'inpage', {
+        ...DEFAULT_SETTINGS,
+        openGroup: 'done',
+      });
+      const shown = area() as HTMLElement;
+      expect(shown.textContent).toContain("Couldn't load this span.");
+      expect(shown.textContent).not.toContain('Nothing done');
+      expect(within(shown).queryByRole('status')).toBeNull();
+      fireEvent.click(within(shown).getByRole('button', { name: 'Retry' }));
+      expect(actions.retry).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not claim a count of 0 for a group with no rows', () => {
+      setupSaved(failed([todayGroup, doneGroup]));
+      const count = (name: RegExp) => header(name).querySelector('.wr-count')?.textContent;
+      expect(count(/^No due date/)).toBe('?');
+      expect(header(/^No due date/).textContent).toContain('Not loaded');
+      expect(count(/^Done/)).toBe('1');
+    });
+
+    it('shows the rows it has', () => {
+      setupSaved(failed([todayGroup, doneGroup]), 'inpage', {
+        ...DEFAULT_SETTINGS,
+        openGroup: 'done',
+      });
+      expect(area()?.textContent).toContain('Finished one');
+      expect(area()?.textContent).not.toContain("Couldn't load this span.");
+    });
   });
 
   it('moves focus to the header on Back to days when the group has rows', () => {
@@ -1032,6 +1098,35 @@ describe('the open bottom group', () => {
     });
     expect(area()?.textContent).not.toContain('Nothing done');
     expect(within(area() as HTMLElement).getByRole('status')).toBeTruthy();
+  });
+
+  it('keeps the scroll of the open group over a redraw, and starts a new span and another group at the top', () => {
+    const { rerender } = setupSaved(full(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
+    const shown = area() as HTMLElement;
+    shown.scrollTop = 80;
+
+    // The same span drawn again, for example after a refresh, keeps the position.
+    rerender(full());
+    expect(shown.scrollTop).toBe(80);
+
+    // A new span starts at the top.
+    rerender(
+      readyState({
+        view: mkView({
+          groups: [todayGroup, doneGroup],
+          spanStart: '2026-11-03',
+          spanEnd: '2026-11-09',
+          spanOffset: 1,
+          isCurrentSpan: false,
+        }),
+      }),
+    );
+    expect(shown.scrollTop).toBe(0);
+
+    // Another group starts at the top too.
+    shown.scrollTop = 80;
+    fireEvent.click(header(/^No due date/));
+    expect(shown.scrollTop).toBe(0);
   });
 
   it('is ignored by the side panel, which has no bottom bar', () => {
@@ -1916,14 +2011,14 @@ describe('focus when the last row of a group leaves the list', () => {
     view: { ...state.view, groups },
   });
 
-  it('goes to the Done group when no row or heading is left above it', () => {
+  it('goes to the next header when no row or heading is left above it', () => {
     const state = readyState({ view: mkView({ groups: [today('Only one'), done('Old one')] }) });
     const { rerender } = setup(state, 'inpage');
     screen.getByRole('checkbox', { name: 'Done: Only one' }).focus();
 
     rerender(withGroups(state, done('Old one', 'Only one')));
 
-    const toggle = screen.getByRole('button', { name: /^Done/ });
+    const toggle = screen.getByRole('button', { name: /^No due date/ });
     expect(document.activeElement).toBe(toggle);
   });
 
