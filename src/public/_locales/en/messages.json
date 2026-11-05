@@ -690,10 +690,73 @@
     "message": "No read announcements"
   },
   "annEmptyAll": {
-    "message": "No recent announcements"
+    "message": "No announcements"
   },
   "annListFailed": {
-    "message": "Couldn't load the announcements of this course."
+    "message": "Couldn't load the announcements."
+  },
+  "annMoreFailed": {
+    "message": "Couldn't load more announcements."
+  },
+  "annRetry": {
+    "message": "Retry"
+  },
+  "annLoadingMore": {
+    "message": "Loading more"
+  },
+  "annEnd": {
+    "message": "No more announcements"
+  },
+  "annFeedLabel": {
+    "message": "Announcements"
+  },
+  "annSearch": {
+    "message": "Search announcements"
+  },
+  "annSearchClear": {
+    "message": "Clear search"
+  },
+  "annSearchByDate": {
+    "message": "Search by date"
+  },
+  "annDateFrom": {
+    "message": "From"
+  },
+  "annDateTo": {
+    "message": "To"
+  },
+  "annDateClear": {
+    "message": "Clear"
+  },
+  "annDateOrder": {
+    "message": "The From date must be on or before the To date."
+  },
+  "annNoResults": {
+    "message": "No announcements match"
+  },
+  "annResults_one": {
+    "message": "$1 result, read and unread"
+  },
+  "annResults_other": {
+    "message": "$1 results, read and unread"
+  },
+  "annSearching": {
+    "message": "Searching $1 of $2"
+  },
+  "annSearchingSome": {
+    "message": "Searching $1"
+  },
+  "annSearchingRange": {
+    "message": "Searching…"
+  },
+  "annMarkRead": {
+    "message": "Mark $1 as read"
+  },
+  "annMarkUnread": {
+    "message": "Mark $1 as unread"
+  },
+  "annMarkFailed": {
+    "message": "Couldn't change the read mark."
   },
   "annListLoading": {
     "message": "Loading announcements…"
