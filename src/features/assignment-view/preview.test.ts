@@ -33,7 +33,8 @@ describe('the pane addresses', () => {
     ]) {
       expect(submissionChanged(before, { ...before, ...change })).toBe(true);
     }
-    expect(submissionChanged(before, { ...before, body: 'other' })).toBe(false);
+    const otherText = { ...before, body: 'other' };
+    expect(submissionChanged(before, otherText)).toBe(false);
   });
 });
 

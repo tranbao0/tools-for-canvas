@@ -55,10 +55,13 @@ export function slimAddress(location: string, origin: string, courseId: string):
   return current.href;
 }
 
-export function submissionChanged(
-  a: AssignmentDetails['submission'],
-  b: AssignmentDetails['submission'],
-): boolean {
+/** The fields of a submission that a change check compares. */
+export type SubmissionMark = Pick<
+  AssignmentDetails['submission'],
+  'user_id' | 'submitted_at' | 'workflow_state' | 'attempt'
+>;
+
+export function submissionChanged(a: SubmissionMark, b: SubmissionMark): boolean {
   return (
     a.submitted_at !== b.submitted_at ||
     a.workflow_state !== b.workflow_state ||
