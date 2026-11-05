@@ -29,12 +29,12 @@ import {
   isSubmissionPage,
   linkName,
   normalizeTabs,
-  normalizeWidth,
   openFile,
   plainClick,
   type FileTarget,
   type Tabs,
 } from './model';
+import { normalizeWidth } from './width';
 import type { ToolsSettings } from '../../shared/settings/tools';
 import { detectPageTheme } from '../../shared/ui/pageTheme';
 import { inpageTheme, type ThemeChoice } from '../../shared/ui/theme';

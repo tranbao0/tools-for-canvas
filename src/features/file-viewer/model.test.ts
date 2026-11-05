@@ -11,13 +11,13 @@ import {
   linkName,
   normalizeTabs,
   openFile,
-  normalizeWidth,
   validRequest,
   plainClick,
   isSubmissionPage,
   frameFileTarget,
   catchesDownload,
 } from './model';
+import { normalizeWidth } from './width';
 
 describe('file targets', () => {
   for (const path of [

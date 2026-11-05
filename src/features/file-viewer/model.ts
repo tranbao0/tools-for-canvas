@@ -142,11 +142,6 @@ export function linkName(text: string | null): string | undefined {
     .trimEnd();
   return name === '' ? undefined : name;
 }
-export function normalizeWidth(value: unknown, viewportWidth = 1920): number {
-  const limit = Math.max(360, Math.floor(viewportWidth * 0.7));
-  const width = typeof value === 'number' && Number.isFinite(value) ? value : 480;
-  return Math.round(Math.max(360, Math.min(limit, width)));
-}
 export function openFile(state: Tabs, id: string): Tabs {
   if (!isTabId(id)) return state;
   const ids = [...state.ids];

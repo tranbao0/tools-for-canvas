@@ -8,7 +8,7 @@
  * which keeps the page padding right when one pane hides while the other shows, and the full view
  * state, which makes the pane that shows fill the window.
  */
-import { normalizeWidth } from './model';
+import { normalizeWidth } from './width';
 
 /** Below this window width the dock covers the page instead of making room beside it. */
 const NARROW_PX = 900;
