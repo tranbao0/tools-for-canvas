@@ -377,8 +377,11 @@ export function buildWeekView(input: ModelInput): WeekView {
   );
   const loading = input.loading ?? { days: [], pastDue: false };
   const groups = buildGroups(visible, context, byCourse, loading);
-  const isLoading = loading.pastDue || loading.days.length > 0;
-  const incomplete = loading.incomplete === true;
+  // After a failed load nothing is on its way: a missing Past due range is then incomplete, not loading.
+  const pastDueLoading = loading.pastDue && loading.unavailable !== true;
+  const isLoading = pastDueLoading || loading.days.length > 0;
+  const incomplete =
+    loading.incomplete === true || (loading.pastDue && loading.unavailable === true);
 
   return {
     locale,
