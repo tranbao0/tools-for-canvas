@@ -38,7 +38,8 @@ export function sessionUrl(value: string | null, origin: string): string | null 
   try {
     const url = new URL(value, origin);
     if (url.origin !== origin || url.pathname !== SESSION_PATH || url.hash !== '') return null;
-    const keys = [...url.searchParams.keys()].sort();
+    // The list comes from the params object: a Firefox content script cannot spread `keys()`.
+    const keys = [...url.searchParams].map(([key]) => key).sort();
     if (keys.length !== 2 || keys[0] !== 'blob' || keys[1] !== 'hmac') return null;
     if (!url.searchParams.get('blob') || !url.searchParams.get('hmac')) return null;
     return url.href;
