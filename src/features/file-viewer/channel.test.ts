@@ -40,6 +40,20 @@ describe('viewer identities', () => {
     expect(validOpenFile({ ...open, url: 'https://school.edu/files/42' })).toBe(false);
     expect(validOpenFile({ ...open, nonce: 'x' })).toBe(false);
   });
+  it('accepts the address of a link that carried a verifier, and nothing that is not a web address', () => {
+    const address = 'https://school.edu/courses/12/files/42?verifier=abc';
+    expect(validOpenFile({ ...open, address })).toBe(true);
+    for (const bad of [
+      42,
+      '',
+      '/courses/12/files/42?verifier=abc',
+      'javascript:alert(1)',
+      'ftp://school.edu/files/42',
+      `${address}${'a'.repeat(2000)}`,
+    ]) {
+      expect(validOpenFile({ ...open, address: bad })).toBe(false);
+    }
+  });
   it('accepts a comment attachment route and the clean name of its link', () => {
     const fileId = '/courses/12~3/assignments/7/submissions/8?comment_id=9&download=45~6';
     expect(validOpenFile({ type: 'open-file', fileId })).toBe(true);

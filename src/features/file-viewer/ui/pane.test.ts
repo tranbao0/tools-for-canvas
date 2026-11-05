@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fileKind, formatSize, typeLabel } from './fileInfo';
-import { fileLinks } from './links';
+import { fileLinks, readAddress } from './links';
 import { tabKeyTarget } from './tabKeys';
 
 describe('tab keys', () => {
@@ -71,32 +71,43 @@ describe('file type', () => {
 describe('file links', () => {
   const origin = 'https://school.instructure.com';
   it('links to the course file page and to the download', () => {
-    expect(fileLinks(origin, '42', '101', '/files/42/download?download_frd=1')).toEqual({
-      download: `${origin}/files/42/download?download_frd=1`,
+    expect(fileLinks(origin, '42', '101')).toEqual({
+      download: `${origin}/files/42/download`,
       canvas: `${origin}/courses/101/files/42`,
     });
   });
   it('uses the plain file path without a course', () => {
-    expect(fileLinks(origin, '42', null, undefined)).toEqual({
+    expect(fileLinks(origin, '42', null)).toEqual({
       download: `${origin}/files/42/download`,
       canvas: `${origin}/files/42`,
     });
   });
-  it('keeps an absolute address on the same Canvas', () => {
-    expect(fileLinks(origin, '42', null, `${origin}/files/42/download?verifier=x`)?.download).toBe(
+  it('leaves out a course that is not an id, and rejects a file that is not an id', () => {
+    expect(fileLinks(origin, '42', '../1')?.canvas).toBe(`${origin}/files/42`);
+    expect(fileLinks(origin, '../42', null)).toBeNull();
+  });
+});
+
+describe('the address of a pane read', () => {
+  const origin = 'https://school.instructure.com';
+  it('keeps the address of the record on the same Canvas, with its query', () => {
+    expect(readAddress(origin, '42', '/files/42/download?download_frd=1')).toBe(
+      `${origin}/files/42/download?download_frd=1`,
+    );
+    expect(readAddress(origin, '42', `${origin}/files/42/download?verifier=x`)).toBe(
       `${origin}/files/42/download?verifier=x`,
     );
   });
-  it('replaces an empty address', () => {
-    expect(fileLinks(origin, '42', null, '')?.download).toBe(`${origin}/files/42/download`);
-  });
-  it('replaces an address on another host', () => {
+  it('replaces an empty address, and an address on another host', () => {
+    expect(readAddress(origin, '42', '')).toBe(`${origin}/files/42/download`);
+    expect(readAddress(origin, '42', undefined)).toBe(`${origin}/files/42/download`);
     for (const url of ['https://evil.example/x', '//evil.example/x', 'javascript:alert(1)']) {
-      expect(fileLinks(origin, '42', null, url)?.download).toBe(`${origin}/files/42/download`);
+      expect(readAddress(origin, '42', url)).toBe(`${origin}/files/42/download`);
     }
   });
-  it('leaves out a course that is not an id, and rejects a file that is not an id', () => {
-    expect(fileLinks(origin, '42', '../1', undefined)?.canvas).toBe(`${origin}/files/42`);
-    expect(fileLinks(origin, '../42', null, undefined)).toBeNull();
+  it('rejects a file that is not an id, and leaves a comment attachment on its route', () => {
+    expect(readAddress(origin, '../42', undefined)).toBeNull();
+    const comment = '/courses/12/assignments/7/submissions/8?comment_id=9&download=45';
+    expect(readAddress(origin, comment, `${origin}/other?verifier=x`)).toBe(`${origin}${comment}`);
   });
 });

@@ -56,6 +56,9 @@ const storedPositionKeys = async () =>
   Object.keys(await fakeBrowser.storage.local.get(null)).filter((key) =>
     key.startsWith('viewerPosition:'),
   );
+/** Whether the store holds the tabs of a browser tab, whatever else it holds. */
+const hasTabs = (store: Map<string, unknown>) =>
+  [...store.keys()].some((key) => key.startsWith('viewer:https://'));
 type Reply = { ids: string[]; active: string | null; token: string };
 const tabsGet = async (sender: Sender, host: ViewerHost) =>
   (await routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)) as Reply;
@@ -289,7 +292,7 @@ describe('tabs and students', () => {
     await expect(tabsSet(sender, host, { ids: ['1'], active: '1' }, token)).rejects.toThrow(
       'confirmed',
     );
-    expect(store.size).toBe(0);
+    expect(hasTabs(store)).toBe(false);
   });
   it('treats tabs stored with no student as none', async () => {
     const { host, sender, store } = setup();
@@ -305,7 +308,7 @@ describe('tabs and students', () => {
     // An open pane of student u1 writes after student u2 took over the tab.
     vi.mocked(host.userId).mockResolvedValue('u2');
     await expect(tabsSet(sender, host, tabs, token)).rejects.toThrow('changed');
-    expect(store.size).toBe(0);
+    expect(hasTabs(store)).toBe(false);
   });
   it('refuses a write with a token from before the tabs were cleared', async () => {
     fakeBrowser.reset();
@@ -520,6 +523,33 @@ describe('files list frame', () => {
   });
 });
 
+describe('the student that the viewer data belongs to', () => {
+  const STUDENT = 'viewer:session:student';
+  it('is recorded when a pane gets a token, and the token names the id in its global form', async () => {
+    const { host, sender, store } = setup();
+    vi.mocked(host.userId).mockResolvedValue('2~5501');
+    const { token } = await tabsGet(sender, host);
+    expect(store.get(STUDENT)).toBe('20000000005501');
+    expect(token).toBe('0:20000000005501');
+    // The same student in the other form gets the same token, so a pane does not lose its writes.
+    vi.mocked(host.userId).mockResolvedValue('20000000005501');
+    expect((await tabsGet(sender, host)).token).toBe(token);
+  });
+  it('changes with the student of the next token', async () => {
+    const { host, sender, store } = setup();
+    await tabsGet(sender, host);
+    expect(store.get(STUDENT)).toBe('u1');
+    vi.mocked(host.userId).mockResolvedValue('u2');
+    await tabsGet(sender, host);
+    expect(store.get(STUDENT)).toBe('u2');
+  });
+  it('is recorded for the token of a saved position too', async () => {
+    const { host, pane, store } = setup();
+    await routeViewerMessage({ type: 'viewer:position-get', fileId: '7' }, pane, host);
+    expect(store.get(STUDENT)).toBe('u1');
+  });
+});
+
 describe('clearing the tabs', () => {
   it('removes the tabs of every browser tab and keeps the pane secrets', async () => {
     fakeBrowser.reset();
@@ -531,10 +561,14 @@ describe('clearing the tabs', () => {
     });
     await clearViewerTabs();
     const kept = await fakeBrowser.storage.session.get(null);
-    expect(Object.keys(kept).sort()).toEqual(
-      [sessionKey(7), 'other', 'viewer:session:epoch'].sort(),
-    );
+    expect(
+      Object.keys(kept)
+        .filter((key) => key !== 'viewer:session:student')
+        .sort(),
+    ).toEqual([sessionKey(7), 'other', 'viewer:session:epoch'].sort());
     expect(kept['viewer:session:epoch']).toBe(1);
+    // The data of the student is gone, so no student owns the viewer data now.
+    expect(kept['viewer:session:student'] ?? null).toBeNull();
     await clearViewerTabs();
     expect(
       (await fakeBrowser.storage.session.get('viewer:session:epoch'))['viewer:session:epoch'],

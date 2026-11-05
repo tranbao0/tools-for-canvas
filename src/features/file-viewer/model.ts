@@ -102,6 +102,27 @@ export function fileTarget(href: string, origin: string, moduleId?: string): Fil
     return { courseId: module[1], moduleId, itemId: module[2] };
   return null;
 }
+/** The longest address of a clicked link that the pane keeps. */
+export const ADDRESS_LIMIT = 2000;
+
+/**
+ * The address of a file link that carries a `verifier` or a `location` parameter, or `undefined`
+ * for any other link, another origin and an address that is too long. `fileTarget` drops these
+ * parameters, so a file that Canvas shows only through them has no way out of an error card. The
+ * pane keeps this address in memory for the "Open in Canvas" link of that card. It never reads it.
+ */
+export function keptAddress(href: string, origin: string): string | undefined {
+  try {
+    const url = new URL(href, origin);
+    if (url.origin !== origin || url.href.length > ADDRESS_LIMIT) return undefined;
+    return url.searchParams.has('verifier') || url.searchParams.has('location')
+      ? url.href
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The course of a file link such as `/courses/12/files/42`, or `null` when the link has none. */
 export function courseOfLink(href: string, origin: string): string | null {
   try {

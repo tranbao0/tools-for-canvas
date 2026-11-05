@@ -166,9 +166,9 @@ The extension stores only these items in browser storage on your device:
 - the page and the zoom of up to 200 PDFs that you opened, with your Canvas user id and the file ids, until you sign out, another student opens a PDF or you remove the extension (see "Saved PDF positions");
 - a random salt for the sign-in fingerprint.
 
-The extension also keeps these items in browser memory (`storage.session`) for the browser session only: the Canvas data of your list, the announcements of the Announcements tab, the read marks that Canvas has not shown yet, your waiting changes and task deletes, the confirmed sign-in fingerprints, the tab (Tasks or Announcements) that each list shows, the open file ids of each browser tab and the secret of each pane.
+The extension also keeps these items in browser memory (`storage.session`) for the browser session only: the Canvas data of your list, the announcements of the Announcements tab, the read marks that Canvas has not shown yet, your waiting changes and task deletes, the confirmed sign-in fingerprints, the tab (Tasks or Announcements) that each list shows, the open file ids of each browser tab, the id of the student that those file ids belong to and the secret of each pane.
 The browser clears them when it closes.
-The extension also drops the Canvas data, the announcements, the read marks, the waiting changes and the open file ids when another person signs in to Canvas.
+The extension also drops the Canvas data, the announcements, the read marks, the waiting changes, the open file ids and the id of the student that they belong to when another person signs in to Canvas.
 
 The settings, the address, the notes, the switches of the fixes and the salt are in storage that web pages cannot reach.
 In Chrome and Edge, the extension locks its `storage.local` against page scripts.
@@ -255,6 +255,7 @@ The file viewer resolves a module item with `GET /api/v1/courses/:id/modules/:id
 When you open a file, the pane reads its bytes from the download address of the file record.
 A file that a teacher attached to a comment reads from the submission address that Canvas links.
 The extension stores the open file ids and the id of your Canvas account in session storage for each browser tab.
+It also stores the id of the account that the open file ids belong to once, so it finds another account that signs in after the extension restarted its background script.
 It also stores a random secret there for each open pane, so that only the Canvas page script and the pane page can talk to each other.
 The secret is never shown or sent anywhere.
 It removes the file ids and the secret when the browser tab closes, and the file ids also when you sign out or another account signs in.

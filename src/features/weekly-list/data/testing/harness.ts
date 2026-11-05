@@ -22,6 +22,7 @@ import {
   type Scenario,
 } from '../../../../../tests/fixtures/scenario';
 import { sessionCacheItem, type SessionData } from '../cache';
+import { viewerStudentItem } from '../../../file-viewer/student';
 import { mergeIntervals, toInterval, toRange } from '../coverage';
 import { createDataOwner, type DataOwner, type DataOwnerDeps } from '../owner';
 import type { StateReply, SurfaceRequest } from '../protocol';
@@ -97,6 +98,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
       seenNotes: seenNotesItem,
       offer: offerItem,
       cache: sessionCacheItem,
+      viewerStudent: viewerStudentItem,
     },
     clock: { now: () => Date.now() },
     timers: {

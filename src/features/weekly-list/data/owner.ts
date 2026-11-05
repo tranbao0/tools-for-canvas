@@ -88,6 +88,7 @@ import {
   type PlannerCoverage,
 } from './coverage';
 import { failureFor, isCanvasError } from './failures';
+import { studentName } from '../../file-viewer/student';
 import { ViewerUnconfirmedError } from '../../file-viewer/unconfirmed';
 import type {
   AssignmentDetailsReply,
@@ -182,6 +183,11 @@ interface DataStore {
   seenNotes: StoredValue<SeenNotes>;
   offer: StoredValue<Offer | null>;
   cache: StoredValue<SessionCache | null>;
+  /**
+   * The student that the data of the file viewer belongs to (`storage.session`, next to the clearing
+   * round of the viewer). It outlives the worker, so a change of student is found after a restart.
+   */
+  viewerStudent: StoredValue<string | null>;
 }
 
 export interface DataOwnerDeps {
@@ -940,6 +946,34 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     } catch (error) {
       deps.log('user data cleared', error);
     }
+    // The viewer data of the earlier student is going, so no student owns it, and no proof of
+    // that student stays. The next proof or session names its student, and a compare against
+    // the old one can neither repeat this reset nor report a change that never happened.
+    viewerProof = null;
+    writeViewerStudent(null).catch(() => undefined);
+  }
+
+  /** The claim of the newest session. A viewer read waits for it, so no pane reads before the reset. */
+  let viewerClaim: Promise<unknown> = Promise.resolve();
+
+  /** The writes of the viewer student run in the order they were asked. */
+  let viewerStudentWrites: Promise<unknown> = Promise.resolve();
+  function writeViewerStudent(student: string | null): Promise<void> {
+    const write = viewerStudentWrites.then(() => deps.store.viewerStudent.setValue(student));
+    viewerStudentWrites = write.catch((error: unknown) => deps.log('viewer student', error));
+    return write;
+  }
+
+  /**
+   * A student is signed in whom Canvas named. When the viewer data belongs to another student, the
+   * viewer clears it first. The name comes from `storage.session`, not from this worker's memory,
+   * which a restart erases. Then the viewer data belongs to this student.
+   */
+  async function claimViewer(userId: string): Promise<void> {
+    const held = await deps.store.viewerStudent.getValue().catch(() => undefined);
+    // A name that cannot be read counts as another student: the reset is safe.
+    if (held === undefined || (held !== null && !sameCanvasId(held, userId))) userDataCleared();
+    await writeViewerStudent(studentName(userId));
   }
 
   /**
@@ -1065,11 +1099,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
             (async () => {
               if (!(await bindingHolds(binding))) return;
               if (gen !== generation || cache === null || cache.session !== null) return;
-              if (viewerProof?.origin === origin && viewerProof.userId !== session.profile.id)
-                userDataCleared();
               cache = { ...cache, session };
               recordUserCheck(binding.fingerprint);
               persist();
+              // The commit does not wait for the viewer: the viewer reads wait for the claim.
+              viewerClaim = claimViewer(session.profile.id).catch((error: unknown) =>
+                deps.log('viewer student', error),
+              );
               await bump();
             })(),
           );
@@ -2537,12 +2573,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       }
       if (stamp.userId === null && fingerprint !== null) {
         // With no session in the cache, a change of student still clears what the first one left.
-        if (viewerProof?.origin === stamp.origin && viewerProof.userId !== self.id)
-          userDataCleared();
+        await claimViewer(self.id);
+        if (!isCurrent(stamp)) return false;
         viewerProof = { origin: stamp.origin, gen: generation, userId: self.id, fingerprint };
         return true;
       }
-      if (self.id !== stamp.userId) {
+      if (!sameCanvasId(self.id, stamp.userId)) {
         await dropUserData();
         return false;
       }
@@ -2636,6 +2672,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     allowColdCheck = false,
   ): Promise<string | null> {
     await ready();
+    await viewerClaim;
     if (
       tabId === undefined ||
       origin === null ||
@@ -2663,7 +2700,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       proof.gen === generation &&
       knownOrigin === origin &&
       fingerprint === proof.fingerprint &&
-      (cache?.session == null || cache.session.profile.id === proof.userId)
+      (cache?.session == null || sameCanvasId(cache.session.profile.id, proof.userId))
     );
   }
 
