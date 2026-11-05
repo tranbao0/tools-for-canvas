@@ -416,8 +416,9 @@ test.describe('the full list in the card', () => {
           // The list scrolls when its rows are taller than the area, and not otherwise. Done holds
           // 10 or more items: taller than the area with Comfortable rows, shorter with Compact
           // rows in the slot of the widget dashboard, whose list area is 509 px high, the height
-          // of the covered widget in the fixture.
-          if (group === done) {
+          // of the covered widget in the fixture. A course home page lists one course, which holds
+          // too few done items for this rule.
+          if (group === done && layout.path === undefined) {
             const rows = await groupArea(list).evaluate((element) => {
               const boxes = [...element.querySelectorAll('[data-row-key]')].map((row) =>
                 row.getBoundingClientRect(),

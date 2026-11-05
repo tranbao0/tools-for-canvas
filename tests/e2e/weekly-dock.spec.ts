@@ -29,6 +29,7 @@ import {
   test,
 } from './support/weekrow';
 import type { StorageArea } from './support/scenario-api';
+import { GRID_WAIT_MS } from '../../src/features/weekly-list/inpage/layout';
 import { pageQuiet } from './support/settle';
 
 const QUIZ_3 = 'Quiz 3: Cell membranes';
@@ -568,6 +569,56 @@ test.describe('one dock at a time with the file pane', () => {
   });
 });
 
+test.describe('a new copy of the script', () => {
+  /** Injects the list script again, as the background does after an update or a reload. */
+  async function inject(background: Worker, origin: string): Promise<void> {
+    await background.evaluate(async (value) => {
+      const api = (
+        globalThis as unknown as {
+          chrome: {
+            tabs: { query(query: { url: string }): Promise<{ id?: number }[]> };
+            scripting: {
+              executeScript(injection: {
+                target: { tabId: number; frameIds: number[] };
+                files: string[];
+              }): Promise<unknown>;
+            };
+          };
+        }
+      ).chrome;
+      const [tab] = await api.tabs.query({ url: `${value}/*` });
+      await api.scripting.executeScript({
+        target: { tabId: tab!.id!, frameIds: [0] },
+        files: ['/inpage.js'],
+      });
+    }, origin);
+  }
+
+  test('takes the page from the old copy: one dock, one list, and the room of one dock', async ({
+    context,
+    page,
+    background,
+  }) => {
+    const served = await open(context, page, background);
+    await region(page).evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await inject(background, served.canvas.origin);
+    await expect(page.locator(DOCK)).toHaveCount(1);
+    await expect(page.locator('#weekrow-inpage')).toHaveCount(1);
+    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await settledList(page);
+    await pageQuiet(page);
+    await expect(page.locator(DOCK)).toHaveCount(1);
+    expect(await padding(page)).toBe('360px');
+    expect(await boxOf(page, DOCK)).toMatchObject({ x: 1437, width: 360 });
+    // The page padding of the new copy is the padding of the page, not the room of the old dock.
+    await minimize(page);
+    expect(await padding(page)).toBe('');
+    await expect(page.locator('html[data-weekrow-room]')).toHaveCount(0);
+  });
+});
+
 test.describe('the Courses tab of the new dashboard', () => {
   const QUERY = '/?fixture_course_work=none';
 
@@ -616,6 +667,7 @@ test.describe('the Courses tab of the new dashboard', () => {
     page,
     background,
   }) => {
+    test.setTimeout(60_000);
     await open(context, page, background, {
       fixture: 'dashboard-widgets',
       path: `${QUERY}&fixture_tab=courses`,
@@ -626,7 +678,9 @@ test.describe('the Courses tab of the new dashboard', () => {
       'aria-selected',
       'true',
     );
-    await page.waitForTimeout(1500);
+    // The Courses tab has no grid, so the wait of the card for the grid ends here. The fallback of
+    // the layout then places the card, and the Courses tab must still show nothing.
+    await page.waitForTimeout(GRID_WAIT_MS + 1500);
     await expect(inpageList(page)).toBeHidden();
     await expect(page.locator('weekrow-list')).toBeHidden();
     await page.getByRole('tab', { name: 'Dashboard', exact: true }).click();

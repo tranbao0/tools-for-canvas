@@ -18,11 +18,31 @@
 // Set DASHBOARD_DOCK_SHOT to a file name to save a screenshot of the open dock.
 // Firefox and geckodriver are found as in tests/firefox/smoke.mjs.
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { registerHooks } from 'node:module';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { By } from 'selenium-webdriver';
 import { startFileHost } from '../e2e/support/file-host.ts';
 import { ensureBuild } from '../../scripts/lib/ensure-build.mjs';
 import { findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
+
+// The fixtures of the Playwright tests import each other without the `.ts` extension, which plain
+// Node does not resolve. Node strips the types itself.
+registerHooks({
+  resolve(specifier, context, next) {
+    try {
+      return next(specifier, context);
+    } catch (error) {
+      if (specifier.startsWith('.') && path.extname(specifier) === '') {
+        return next(`${specifier}.ts`, context);
+      }
+      throw error;
+    }
+  },
+});
+process.chdir(fileURLToPath(new URL('../..', import.meta.url)));
+const { buildScenario } = await import('../fixtures/scenario.ts');
+const { apiRoutes } = await import('../e2e/support/scenario-api.ts');
 
 const UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
 const WAIT_MS = 15_000;
@@ -124,10 +144,31 @@ const STATE = `
     activeId: active ? active.id : null,
     activeInList: active ? active.tagName === 'WEEKROW-LIST' : false,
     activePart: inner ? inner.getAttribute('data-part') : null,
+    scroll: (() => {
+      const host = document.querySelector('#weekrow-inpage > weekrow-list');
+      const region = host && host.shadowRoot ? host.shadowRoot.querySelector('.wr-scroll') : null;
+      return region ? { top: region.scrollTop, room: region.scrollHeight - region.clientHeight } : null;
+    })(),
   };
 `;
 
 const state = (driver) => driver.executeScript(STATE);
+
+/** Scrolls the day list of the dock, and returns where it stands. */
+async function scrollList(driver, top) {
+  await driver.executeScript(
+    `
+    const host = document.querySelector('#weekrow-inpage > weekrow-list');
+    host.shadowRoot.querySelector('.wr-scroll').scrollTop = arguments[0];
+  `,
+    top,
+  );
+  return waitFor(
+    async () => (await state(driver)).scroll,
+    (value) => value !== null && Math.abs(value.top - top) < 2,
+    'the list to scroll',
+  );
+}
 
 async function minimizeButton(driver) {
   const host = await driver.findElement(By.css('#weekrow-inpage > weekrow-list'));
@@ -187,8 +228,8 @@ function expect(problems, label, ok, detail) {
 async function checkOpenDock(driver, problems, screenshot) {
   const open = await waitFor(
     () => state(driver),
-    (value) => value.dock !== null && value.listCard,
-    'the dock with the list',
+    (value) => value.dock !== null && value.listCard && value.scroll !== null,
+    'the dock with the loaded list',
   );
   const { pageWidth, innerHeight, dock } = open;
   expect(problems, 'the dock is 360 px wide', Math.round(dock.width) === 360, dock);
@@ -207,6 +248,12 @@ async function checkOpenDock(driver, problems, screenshot) {
   expect(problems, 'the page keeps 360 px of room', open.padding === '360px', open.padding);
   expect(problems, 'the list is a child of the dock host', open.list);
   expect(problems, 'there is no tab', open.tab === null, open.tab);
+  expect(
+    problems,
+    'the list has work to scroll',
+    open.scroll !== null && open.scroll.room > 200,
+    open.scroll,
+  );
   if (screenshot !== undefined) writeFileSync(screenshot, await driver.takeScreenshot(), 'base64');
   await driver.executeScript('window.scrollTo(0, 1500)');
   const scrolled = await waitFor(
@@ -229,6 +276,7 @@ async function checkOpenDock(driver, problems, screenshot) {
 
 /** Check b: minimize, the tab, the focus, and open from the tab. */
 async function checkMinimize(driver, problems, openState) {
+  await scrollList(driver, 200);
   await (await minimizeButton(driver)).click();
   const minimized = await waitFor(
     () => state(driver),
@@ -248,9 +296,15 @@ async function checkMinimize(driver, problems, openState) {
   expect(problems, 'the tab is about 140 px high', tab.height >= 139 && tab.height < 200, tab);
   expect(
     problems,
-    'the tab is a collapsed button with a label',
-    minimized.tabExpanded === 'false' && /^Open weekly list/.test(minimized.tabLabel ?? ''),
-    [minimized.tabExpanded, minimized.tabLabel],
+    'the tab is a collapsed button',
+    minimized.tabExpanded === 'false',
+    minimized.tabExpanded,
+  );
+  expect(
+    problems,
+    'the tab names the span and the open work',
+    /^Open weekly list, .+, \d+ open$/.test(minimized.tabLabel ?? ''),
+    minimized.tabLabel,
   );
   expect(
     problems,
@@ -269,6 +323,12 @@ async function checkMinimize(driver, problems, openState) {
     () => state(driver),
     (value) => value.dock !== null && value.tab === null && value.activePart === 'minimize',
     'the dock after a click on the tab',
+  );
+  expect(
+    problems,
+    'the list keeps its scroll position through a minimize',
+    reopened.scroll !== null && Math.abs(reopened.scroll.top - 200) < 2,
+    reopened.scroll,
   );
   expect(
     problems,
@@ -303,6 +363,12 @@ async function checkFilePane(driver, problems) {
     () => state(driver),
     (value) => value.dock !== null,
     'the dock after the file pane closed',
+  );
+  expect(
+    problems,
+    'the list keeps its scroll position through a file pane',
+    back.scroll !== null && Math.abs(back.scroll.top - 200) < 2,
+    back.scroll,
   );
   expect(
     problems,
@@ -385,16 +451,15 @@ async function main() {
     size: 10,
     url: `${origin}/files/42/download?download_frd=1`,
   });
-  const student = { id: '5501', name: 'Smoke Student', short_name: 'Smoke' };
-  files['/api/v1/users/self'] = json(student);
-  files['/api/v1/users/self/profile'] = json(student);
-  files['/api/v1/courses'] = json([]);
-  files['/api/v1/users/self/groups'] = json([]);
-  files['/api/v1/users/self/colors'] = json({ custom_colors: {} });
-  files['/api/v1/users/self/dashboard_positions'] = json({ dashboard_positions: {} });
-  files['/api/v1/planner/items'] = json([]);
-  files['/api/v1/planner/overrides'] = json([]);
-  files['/api/v1/announcements'] = json([]);
+  // The data of the scenario of the Playwright tests, around the real clock: the list is ready,
+  // and it has enough work to scroll.
+  const scenario = buildScenario(new Date().toISOString());
+  for (const route of apiRoutes(scenario)) {
+    if (typeof route.path === 'string' && route.method === undefined && route.body !== undefined) {
+      files[route.path] = json(route.body);
+    }
+  }
+  files['/api/graphql'] = json({ data: { legacyNode: { widgetDashboardConfig: '{}' } } });
   const driver = await startFirefox({
     firefoxBin,
     geckodriverBin,

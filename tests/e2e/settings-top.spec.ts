@@ -53,10 +53,13 @@ async function openDashboard(
   page: Page,
   options: { fixture: string; query?: string; width: number; height?: number },
 ): Promise<Locator> {
-  const { canvas } = await serveScenario(context, [{ path: '/', page: options.fixture }]);
+  const target = options.query ?? '/';
+  const { canvas } = await serveScenario(context, [
+    { path: target.split('?')[0]!, page: options.fixture },
+  ]);
   await addCsrfCookie(context, canvas.origin);
   await page.setViewportSize({ width: options.width, height: options.height ?? 900 });
-  await openCanvasPage(page, canvas.origin, options.query ?? '/');
+  await openCanvasPage(page, canvas.origin, target);
   const list = inpageList(page);
   await expect(doneBox(list, QUIZ_3)).toBeVisible();
   await settledList(page);
@@ -82,7 +85,7 @@ for (const { name, width, query, mode } of [
   });
 }
 
-test('puts the settings heading at the top of the card in the classic right column', async ({
+test('puts the settings heading at the top of the list in the dock of the classic dashboard', async ({
   context,
   page,
 }) => {
@@ -91,30 +94,37 @@ test('puts the settings heading at the top of the card in the classic right colu
     width: 1280,
     height: 800,
   });
+  await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'side');
   await expectSettingsAtListTop(card, inpageList(page));
 });
 
-test('puts the settings heading at the top of the docked card', async ({ context, page }) => {
+test('puts the settings heading at the top of the card in the right column of a course home page', async ({
+  context,
+  page,
+}) => {
   const card = await openDashboard(context, page, {
-    fixture: 'dashboard-card-view',
+    fixture: 'course-home',
+    query: '/courses/101',
+    width: 1280,
+    height: 800,
+  });
+  await expectSettingsAtListTop(card, inpageList(page));
+});
+
+test('puts the settings heading at the top of the docked card of a course home page', async ({
+  context,
+  page,
+}) => {
+  const card = await openDashboard(context, page, {
+    fixture: 'course-home',
+    query: '/courses/101',
     width: 1280,
     height: 800,
   });
   await page.evaluate(() => {
-    const cards = document.getElementById('DashboardCard_Container');
-    const activity = document.getElementById('dashboard-activity');
-    if (!cards || !activity) return;
-    cards.style.display = 'none';
-    activity.style.display = 'block';
-    const list = document.createElement('ul');
-    list.className = 'recent_activity';
-    for (let index = 1; index <= 70; index += 1) {
-      const item = document.createElement('li');
-      item.className = 'stream-category';
-      item.innerHTML = `<div class="category_name">Announcement ${index}</div><div class="details">BIO 110 - posted ${index} days ago</div>`;
-      list.append(item);
-    }
-    activity.replaceChildren(list);
+    const filler = document.createElement('div');
+    filler.style.height = '4000px';
+    document.getElementById('content')?.append(filler);
   });
   // The column has to leave the view before the card docks under it.
   await page.evaluate(() => {

@@ -107,7 +107,8 @@ test('the in-page list works with storage locked, and follows a change of the se
     const settings = ((await api.storage.local.get('settings'))['settings'] ?? {}) as object;
     await api.storage.local.set({ settings: { ...settings, minimized: true } });
   });
-  await expect(list.getByRole('button', { name: /^Weekly list/ })).toBeVisible();
+  // The classic dashboard has the dock, and a minimized list is a tab there.
+  await expect(page.getByRole('button', { name: /^Open weekly list/ })).toBeVisible();
 });
 
 test('the page sees neither a message nor an event from the extension, with the detector or the list', async ({

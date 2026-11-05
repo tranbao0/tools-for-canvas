@@ -87,7 +87,7 @@ export function openWork(state: SurfaceState): number | null {
 export interface TabText {
   /** The span as the header of the list shows it, or the title of the list when no span is known. */
   span: string;
-  /** The open work of the span, or `null` when it is not known. The pill shows a count above zero. */
+  /** The open work of the span, or `null` when it is not known. */
   open: number | null;
   /** The accessible name of the tab. */
   label: string;
@@ -102,11 +102,7 @@ export function tabText(state: SurfaceState): TabText {
   // The header text holds no-break spaces. The tab and its name use plain spaces.
   const span = formatSpanRange(view.span, view.spanStart, view.spanEnd).replace(/\u00a0/g, ' ');
   const open = openWork(state) ?? 0;
-  return {
-    span,
-    open,
-    label: open > 0 ? t('openWeeklyListOpen', span, String(open)) : t('openWeeklyListNone', span),
-  };
+  return { span, open, label: t('openWeeklyListOpen', span, String(open)) };
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -180,7 +176,7 @@ function createTab(doc: Document, onOpen: () => void): Tab {
       button.title = text.label;
       span.textContent = text.span;
       pill.textContent = text.open === null ? '' : String(text.open);
-      pill.hidden = text.open === null || text.open === 0;
+      pill.hidden = text.open === null;
     },
     show(visible) {
       if (visible && !host.isConnected) doc.body.append(host);
@@ -212,6 +208,12 @@ export interface WeeklyDockOptions {
     watch(listener: (tools: ToolsSettings) => void): () => void;
   };
   theme: PageTheme;
+  /**
+   * Whether the extension context of this copy has ended. A copy of an extension that was updated
+   * can stay on the page for a few seconds. A newer copy removes its dock, and the old copy must
+   * not put the dock back.
+   */
+  invalid(): boolean;
   log(step: string, error: unknown): void;
 }
 
@@ -237,6 +239,8 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
   let settingsRead = false;
   let toolsRead = false;
   let stopped = false;
+  /** The context ended, so this copy watches nothing and never puts a host back. */
+  let left = false;
   /** The minimized state that the stored settings last told, for the time before the list has them. */
   let stored: Settings | null = null;
   let focusUntil = 0;
@@ -298,9 +302,23 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
     return active !== null && dock.host.contains(active);
   };
 
+  /**
+   * The context ended: stop watching and change nothing. A newer copy may have taken the page, and
+   * its dock and its room are not ours to touch.
+   */
+  function leave(): void {
+    left = true;
+    for (const stopListening of stops.splice(0)) stopListening();
+    keeper.stop();
+  }
+
   /** Shows the dock or the tab that the state asks for, and hides the other one. */
   function sync(): void {
-    if (stopped) return;
+    if (stopped || left) return;
+    if (options.invalid()) {
+      leave();
+      return;
+    }
     keeper.track();
     // A page can remove a host without a word. The dock then takes its place again.
     if (onPage && !dock.host.isConnected) {
@@ -411,7 +429,9 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
       stopped = true;
       for (const stopListening of stops.splice(0)) stopListening();
       keeper.stop();
-      dock.close();
+      // A host that a newer copy removed took its room back already. Closing the dock would put
+      // the padding of this copy over the room of the newer one.
+      if (dock.host.isConnected || !options.invalid()) dock.close();
       tab.remove();
       dock.host.remove();
     },
