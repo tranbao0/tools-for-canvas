@@ -32,6 +32,11 @@ export interface SubmissionWatch {
    * baseline as it is and rejects.
    */
   read(assignmentId: string): Promise<void>;
+  /**
+   * Forgets the baselines, also those of a read that is on its way, and keeps the waiting
+   * refresh. The next read of each assignment is a baseline again.
+   */
+  forget(): void;
   /** Forgets the baselines and drops a waiting refresh. */
   stop(): void;
 }
@@ -42,6 +47,8 @@ export function createSubmissionWatch(options: SubmissionWatchOptions): Submissi
   /** The last good reply of each assignment, by assignment id. */
   const known = new Map<string, AssignmentDetailsReply>();
   let stopped = false;
+  /** Counts the times the baselines were forgotten, so a read that began before cannot write one. */
+  let generation = 0;
 
   async function load(assignmentId: string): Promise<AssignmentDetailsReply> {
     const reply = await send({ type: 'assignment:details', courseId, assignmentId });
@@ -58,8 +65,9 @@ export function createSubmissionWatch(options: SubmissionWatchOptions): Submissi
     async read(assignmentId) {
       if (stopped || !options.active()) return;
       const previous = known.get(assignmentId);
+      const began = generation;
       const next = await load(assignmentId);
-      if (stopped || !options.active()) return;
+      if (stopped || !options.active() || began !== generation) return;
       if (
         previous !== undefined &&
         previous.details.submission.user_id !== next.details.submission.user_id
@@ -76,6 +84,10 @@ export function createSubmissionWatch(options: SubmissionWatchOptions): Submissi
         // The visible refresh keeps the Canvas rate limit and the backoff of the weekly list.
         listRefresh.request();
       }
+    },
+    forget() {
+      generation += 1;
+      known.clear();
     },
     stop() {
       if (stopped) return;
