@@ -139,7 +139,8 @@ export function moveContainer(container: HTMLElement, parent: Node, before: Node
   if (active !== null && active.isConnected) (active as HTMLElement).focus({ preventScroll: true });
 }
 
-const SCROLL_PARTS = '.wr, .wr-scroll, .wr-group-area';
+/** The parts of the card that scroll. */
+export const SCROLL_PARTS = '.wr, .wr-scroll, .wr-group-area';
 
 /**
  * The name of an element of the card that scrolls: the card, the day list, or the list area that

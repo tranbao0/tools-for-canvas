@@ -410,6 +410,8 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
         keeper.restore();
       }
     } else if (onPage && dock.shown) {
+      // A scroll event that has not arrived yet would leave an older position behind.
+      keeper.capture();
       dock.setHidden(true);
     }
     if (!wantTab) tab.show(false);
