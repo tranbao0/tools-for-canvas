@@ -82,6 +82,15 @@ describe('normalizeToolsSettings', () => {
     );
   });
 
+  it('turns the People list on for a group stored before it existed', () => {
+    const { peopleList: _removed, ...before } = ALL_OFF.dashboardFixes;
+
+    expect(normalizeToolsSettings({ dashboardFixes: before }).dashboardFixes).toEqual({
+      ...before,
+      peopleList: true,
+    });
+  });
+
   it('takes the default for a missing field', () => {
     expect(normalizeToolsSettings({ dashboardFixes: { allCourseGrades: false } })).toEqual({
       fileViewer: true,
