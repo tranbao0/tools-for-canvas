@@ -1488,6 +1488,7 @@ These sizes come from one test build of the same small app [19].
 4. **Firefox smoke test:** Selenium with geckodriver, run with `--allow-system-access`.
    Firefox 153 and later need this flag to open extension pages under geckodriver [19].
    The test installs the extension and checks that the content script runs and the panel page loads.
+   A second Firefox test, `npm run test:firefox:submission-pages`, checks the Submission box and the replace mode of the Submission Details page (decision 26), because Firefox content scripts differ from Chromium in how they iterate `URLSearchParams`.
 5. **Live checklist:** Before each release, a person runs a short checklist with a real student account on Chrome, Edge and Firefox.
    It includes the first run, the welcome page and a custom-domain grant.
 6. **CI:** GitHub Actions on `ubuntu-24.04`, pinned because `ubuntu-latest` is moving to 26.04 [19].
@@ -3085,16 +3086,13 @@ So a student switches pages to read the instructions next to the feedback on a f
        The extension keeps that link and its address, and shows a file icon and "View NAME" in it.
        A click opens the file in the file pane, because the pane takes any `/submissions/:user?download=:file` link (decision 25).
        Canvas's text moves into a hidden node of the extension, and it goes back when a switch goes off.
-     - Under the link the extension adds a small "Download" link with the same address and a `download` attribute.
-       The pane never takes it, so the browser saves the file.
+     - The extension adds no download link of its own, because the pane has a Download button for every kind of file.
      - This happens only for the own submission, and only while the "Assignment view" switch and the "File viewer" switch are on.
        With the "File viewer" switch off, Canvas's link stays as it is, because the pane cannot open the file.
        Both switches work without a reload: the label and the click catcher change together (decision 25, item 6).
      - The own submission is known from one read: `GET /api/v1/courses/:id/assignments/:id/submissions/self` with no include.
        The box needs only the `user_id` of that record to compare it with the user in the file link.
        So this page does not ask for the assignment record, the comments or the rubric, which the other pages read (item 8).
-     - Known limit: with an expired Canvas session, the `download` attribute of the small "Download" link saves the login page of Canvas as a file, because the browser saves whatever the address answers.
-       The attribute stays, so the link always saves and never opens a page.
      - Canvas's other sidebar links stay as they are.
    - **Assignments list (`/courses/:id/assignments`).**
      - Each row has an expand button that opens the score, instructions, rubric, feedback and files in place, and "Submit" opens Canvas's own turn-in page in the docked pane (steps 2 and 3 below).
@@ -3284,6 +3282,16 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c` (20
   - The view is inside a Rails fragment cache.
 - The viewer script (decision 25) takes any link that `fileTarget` accepts, and a link without a `download` attribute needs no exception, so the sidebar link opens the pane with no new code.
 
+**Verified fact for the page script in Firefox:**
+
+- In a Firefox 159.0 content script (headless, the signed build), `[...url.searchParams.keys()]` throws `TypeError: searchParams.keys() is not iterable`.
+  `Array.from(url.searchParams.keys())` fails the same way.
+  `[...url.searchParams]` and `url.searchParams.size` work.
+- Chromium and jsdom accept `keys()`, so the unit tests and the Chromium tests pass.
+- The error made the Submission box show "Download NAME" in Firefox, and it made every file row with a preview button count as incomplete, so the page fell back to Canvas's files frame (item 5).
+- The two places that read the parameter names (`sidebar.ts` and `submissionFrame.ts`) take the list from the params object.
+  An ESLint rule forbids `keys()`, `values()` and `entries()` on `searchParams` in `src`.
+
 **Verified source facts for the data of the rows and the details:**
 
 These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
@@ -3386,6 +3394,8 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 - `tests/fixtures/submission-page.ts` and `tests/fixtures/submission-frame.ts` model the page and the files frame on that markup.
   The page fixture has a student and a teacher variant, a variant with Canvas's button disabled for no attempts left, a variant with no button in the title row, and a rubric variant with the link, the holder and a small copy of the script of Canvas that handles the holder.
 - `tests/fixtures/pages/assignment.html` has the sidebar of the assignment page.
+- `tests/firefox/submission-pages.mjs` (`npm run test:firefox:submission-pages`) runs in real Firefox with a fake Canvas over HTTPS.
+  It checks the Submission box with a relative link and a link with the full host, with and without `#submit`, and the replace mode of the Submission Details page with a good session address.
 - `tests/e2e/submission-details.spec.ts` covers the replacement, the "Go to assignment" button, the file click, the feedback pane, the instructions above an untouched frame for a media recording, the unchanged pages and the switch.
 
 **Live checks for the owner:**
@@ -3404,7 +3414,7 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 4. Open the same page as a teacher, if possible: nothing changes.
 5. A text entry, a URL submission and a media recording: the first two show in "Your submission", and the media recording keeps Canvas's own area with the instructions above it.
 6. Turn the switch off: the page is as Canvas drew it, without a reload, and the button says "Re-submit Assignment" again.
-7. On the assignment page, click the download link of the Submission sidebar: the file opens in the pane.
+7. On the assignment page, click "View NAME" in the Submission sidebar: the file opens in the pane, and the box has no Download line under it.
 8. On an assignment with a rubric, the rubric shows with the assessment of the teacher marked, Tab leaves it for the next control, and Escape does nothing.
    If the rubric had unread comments, the dot is gone, and after a reload with the switch off Canvas shows no unread dot on "Show Rubric".
    Turn the switch off: "Show Rubric" is back and the rubric is hidden again.
