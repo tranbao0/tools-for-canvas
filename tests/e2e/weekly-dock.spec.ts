@@ -747,7 +747,7 @@ test.describe('a page that removes the host of a pane', () => {
     await expect(page.locator(TAB)).toHaveCount(0);
     expect(await padding(page)).toBe('480px');
     // A click that the helper repeated on a slow machine ends before the page removes the host.
-    await expect((await pane(page)).locator('[data-part="card"]')).toBeVisible();
+    await expect((await pane(page)).locator('[data-part="download"]')).toBeVisible();
     await page.evaluate(() => document.getElementById('tools-file-viewer')?.remove());
     await expect(tab(page)).toBeVisible();
     await expect.poll(() => padding(page)).toBe('38px');
