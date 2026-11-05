@@ -6,7 +6,7 @@ import {
   type DashboardFixesSettings,
 } from '../../../shared/settings/tools';
 import { createFixesEngine, removeStaleFixes, type FixesEngine } from './controller';
-import { dashboardData, drawDashboard, ORIGIN } from './testing/dashboard';
+import { dashboardData, drawDashboard, drawPeopleWidget, ORIGIN } from './testing/dashboard';
 
 const ON = DEFAULT_TOOLS_SETTINGS.dashboardFixes;
 const OFF: DashboardFixesSettings = {
@@ -513,6 +513,87 @@ describe('a change of the student', () => {
     await settle(400);
 
     expect(list()).toEqual(['Topic of B']);
+  });
+});
+
+describe('the People list', () => {
+  const people = () =>
+    [
+      ...(document
+        .querySelector<HTMLElement>('[data-testid="widget-people-widget"] [data-wr-list]')
+        ?.shadowRoot?.querySelectorAll('article') ?? []),
+    ].map((article) => article.getAttribute('aria-label'));
+
+  function answer(student: () => string) {
+    send.mockImplementation(async (message) => {
+      if (message.type === 'weekrow:people-page') {
+        const name = student() === '5' ? 'Person of A' : 'Person of B';
+        return {
+          userId: student(),
+          count: 1,
+          total: 1,
+          hasNext: false,
+          items: [
+            {
+              id: student() === '5' ? '1' : '2',
+              name,
+              avatarUrl: null,
+              enrollments: [{ courseId: '101', courseName: 'BIO 110', role: 'teacher' }],
+            },
+          ],
+        };
+      }
+      return { ...DATA, userId: student() };
+    });
+  }
+
+  it('draws with its own switch, and gives the widget back when the switch goes off', async () => {
+    drawPeopleWidget();
+    answer(() => '5');
+    engine.setSettings({ ...OFF, peopleList: true });
+    engine.setActive(true);
+    await settle();
+    expect(people()).toEqual(['Person of A']);
+    expect(
+      document
+        .querySelector('[data-testid="widget-people-widget"]')
+        ?.hasAttribute('data-wr-people'),
+    ).toBe(true);
+    // The other fixes did nothing: this switch is the only one on.
+    expect(document.querySelector('[data-wr-own="ann"], [data-wr-card]')).toBeNull();
+
+    engine.setSettings(OFF);
+    await settle();
+    expect(document.querySelector('[data-wr-own]')).toBeNull();
+    expect(document.querySelector('[data-wr-people]')).toBeNull();
+  });
+
+  it('draws no People list when the switch is off', async () => {
+    drawPeopleWidget();
+    answer(() => '5');
+    engine.setSettings({ ...ON, peopleList: false });
+    engine.setActive(true);
+    await settle();
+    expect(people()).toEqual([]);
+    expect(
+      send.mock.calls.filter(([message]) => message.type === 'weekrow:people-page'),
+    ).toHaveLength(0);
+  });
+
+  it('drops the people of the first student, and loads the list of the second', async () => {
+    drawPeopleWidget();
+    let student = '5';
+    answer(() => student);
+    engine.setSettings({ ...OFF, peopleList: true });
+    engine.setActive(true);
+    await settle();
+    expect(people()).toEqual(['Person of A']);
+
+    student = '6';
+    engine.reload();
+    await settle(400);
+
+    expect(people()).toEqual(['Person of B']);
   });
 });
 
