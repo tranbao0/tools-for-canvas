@@ -3855,7 +3855,7 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
   - The frame sits in a white wrapper with the padding `0 8px 0 24px`.
     So the text of the page does not touch the edge of the pane, and the scroll bar of the frame stays near the edge.
   - The script never reads the DOM of the frame.
-    On a load it reads only the address of the frame.
+    On a load it reads only the address of the frame, and it puts capture listeners for `pointerdown` and `keydown` on the window of the frame.
   - When the frame lands on a page of the same course on the saved origin without `content_only=1`, the frame loads that address with `content_only=1`, once.
     The old submission view redirects to the plain assignment page after a submission.
     A graded discussion, a quiz and a graded page redirect away from their assignment page to the page of the discussion, the quiz or the page, which has no parameter (`AssignmentsController#show`, `redirect_to` with `context_discussion_topic_url`, `context_quiz_url` and `context_wiki_page_url`).
@@ -3879,13 +3879,20 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
   - A Preview click on another assignment while the pane is open moves the same frame to that slim address, and never removes the frame.
     Canvas can then ask whether to leave the page, and the student can say no.
     The title, the "Open in new tab" link, the frame title, the marks of the rows and the reads move to the new assignment only when the frame has loaded a page.
-    The page that counts is the assignment page of the new assignment, or the page that Canvas sends an assignment page to (`AssignmentsController#show`): `/courses/:c/discussion_topics/:id`, `/courses/:c/quizzes/:id` or `/courses/:c/pages/:url` of the same course, and `/groups/:g/discussion_topics/:id` on the saved origin for a student in a group, which is outside the course.
-    Only the page itself counts, so a page under a quiz (`/take`) or a file page does not.
-    The pane reads the address of the frame at the click, and the address of the page where it last landed.
-    Neither address counts, because a page can load again by itself.
-    A cancelled question fires no load, so the next load can be a page that the student followed in the frame, and it is no arrival unless it has the form of one of these pages.
-    The first trusted load after the click is the only one that can count.
-    A student who cancelled the question and then follows a link to another discussion, quiz or page in the frame is the one case that the pane takes for an arrival, because the script does not read the page.
+    The pane has no rule about the form of the address, because any such rule fails both ways: a link to a discussion looks like the redirect of a graded discussion, and a click on Preview for a graded discussion that the frame already shows loads the same path.
+    It uses the action of the student in the frame instead.
+    A Preview click sets the address of the frame and records that a move is pending.
+    A cancelled question fires no load.
+    The pane adds capture listeners for `pointerdown` and `keydown` on the window of the frame at each trusted load, because each page has a window of its own.
+    A trusted `pointerdown` or `keydown` in the frame while a move is pending means that the student stayed on the frame and cancelled the question.
+    The pending move ends, and the header stays on the first assignment.
+    A page that the student opens after that is no arrival, whatever its address is.
+    The first trusted load while a move is still pending is the arrival, on any page of the saved origin: the assignment page, a redirect to a discussion, a quiz or a page of the course, and a discussion or a page of the group of the student, which is outside the course.
+    The header, the "Open in new tab" link, the frame title, the marks of the rows and the reads move to the new assignment at that load.
+    A load on another origin is no arrival, and the pending move ends.
+    A new Preview click replaces a pending move.
+    The rewrite to `content_only=1` stays limited to the same course, so a page of a group loads as it is.
+    One case stays open: a frame that reloads by itself after a cancelled question, with no pointer or key from the student, counts as the arrival, because the pane cannot tell it from the page that the click asked for.
     A cancelled question leaves everything on the first assignment, and the next click asks again.
   - A page that removes the pane host closes the pane: the poll stops, the room is given back, and a file pane that it covered shows again.
   - An extension update removes an open pane, as it removes every page control.

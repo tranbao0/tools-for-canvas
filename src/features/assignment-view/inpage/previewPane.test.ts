@@ -84,21 +84,51 @@ function fileDock() {
   return file;
 }
 
-/** The frame of the pane, with the address that its page has now and a place to see a rewrite. */
+/**
+ * The frame of the pane, with the address that its page has now, a place to see a rewrite, and the
+ * listeners that the pane put on the window of the frame.
+ */
 function frameAt(href: string) {
   const frame = frames[0]!;
   const replace = vi.fn();
   const location = { href, replace };
-  Object.defineProperty(frame, 'contentWindow', { value: { location }, configurable: true });
+  const listeners = new Map<string, { listener: EventListener; capture: unknown }[]>();
+  const addEventListener = vi.fn((type: string, listener: EventListener, capture?: unknown) => {
+    const list = listeners.get(type) ?? [];
+    if (!list.some((entry) => entry.listener === listener)) list.push({ listener, capture });
+    listeners.set(type, list);
+  });
+  Object.defineProperty(frame, 'contentWindow', {
+    value: { location, addEventListener },
+    configurable: true,
+  });
+  const fire = (event: Event, trusted: boolean) => {
+    Object.defineProperty(event, 'isTrusted', { value: trusted });
+    for (const entry of listeners.get(event.type) ?? []) entry.listener(event);
+  };
   return {
     frame,
     replace,
+    addEventListener,
+    /** The types that have a capture listener on the window of the frame. */
+    captured: () =>
+      [...listeners]
+        .filter(([, list]) => list.some((entry) => entry.capture === true))
+        .map(([type]) => type),
     /** The page loaded: the frame has this address now. */
     load(next: string, trusted = true) {
       location.href = next;
       const event = new Event('load');
       Object.defineProperty(event, 'isTrusted', { value: trusted });
       frame.dispatchEvent(event);
+    },
+    /** The student presses the pointer in the page of the frame. */
+    pointer(trusted = true) {
+      fire(new Event('pointerdown'), trusted);
+    },
+    /** The student presses a key in the page of the frame. */
+    key(trusted = true) {
+      fire(new Event('keydown'), trusted);
     },
   };
 }
@@ -491,20 +521,53 @@ describe('the frame of the pane', () => {
     );
   });
 
-  it('keeps the first assignment when the page that it left loads again, or no page loads', async () => {
+  it('keeps the first assignment while no page loads after the click', async () => {
     const { pane, onShown } = setup();
     pane.open({ assignmentId: '101', title: 'Essay' });
     const page = frameAt(SLIM);
     page.load(SLIM);
     pane.open({ assignmentId: '102', title: 'Reading' });
     // A cancelled leave question: nothing loads, and the pane stays on the first assignment.
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(PREVIEW_POLL_MS * 3);
     expect(barText()).toBe('Essay');
     expect(pane.shown).toBe('101');
-    // The first page loads again by itself: the pane does not follow.
-    page.load(SLIM);
-    expect(barText()).toBe('Essay');
     expect(onShown).not.toHaveBeenCalledWith('102');
+  });
+
+  it('takes a load by itself after a cancelled question, with no action of the student, for the arrival', () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(SLIM);
+    page.load(SLIM);
+    pane.open({ assignmentId: '102', title: 'Reading' });
+    page.load(SLIM);
+    expect(barText()).toBe('Reading');
+  });
+
+  describe('the listeners on the window of the frame', () => {
+    it('go in at each trusted load, in the capture phase, and not at a script load', () => {
+      const { pane } = setup();
+      pane.open({ assignmentId: '101', title: 'Essay' });
+      const page = frameAt(SLIM);
+      page.load(SLIM, false);
+      expect(page.addEventListener).not.toHaveBeenCalled();
+      page.load(SLIM);
+      expect(page.captured().sort()).toEqual(['keydown', 'pointerdown']);
+    });
+
+    it('survive a frame that went to another site, which is not ours to listen on', () => {
+      const { pane } = setup();
+      pane.open({ assignmentId: '101', title: 'Essay' });
+      const page = frameAt(SLIM);
+      page.addEventListener.mockImplementation(() => {
+        throw new DOMException('Blocked a frame', 'SecurityError');
+      });
+      expect(() => page.load('https://other.example/')).not.toThrow();
+      // The pane still follows a click once the frame is back on the site of the list.
+      pane.open({ assignmentId: '102', title: 'Reading' });
+      page.load(SLIM);
+      expect(barText()).toBe('Reading');
+    });
   });
 
   describe('after a Preview click that the leave question of the page declined', () => {
@@ -522,77 +585,178 @@ describe('the frame of the pane', () => {
     }
 
     it.each([
-      ['the next page of a classic quiz', TAKE, `${ORIGIN}/courses/12/quizzes/5/take/questions/7`],
-      [
-        'a link to a file page of the course in a quiz',
-        TAKE,
-        `${ORIGIN}/courses/12/files/501?content_only=1`,
-      ],
-      ['a link in a plain assignment page', SLIM, `${ORIGIN}/courses/12/modules`],
-      [
-        'a link in a plain assignment page to the home page of the course',
-        SLIM,
-        `${ORIGIN}/courses/12`,
-      ],
-      ['a link to a page of another course', SLIM, `${ORIGIN}/courses/13/discussion_topics/9`],
-    ])('keeps the first assignment when %s loads', async (_name, start, next) => {
-      const { pane, onShown, reload, page } = declined(start);
-      expect(pane.shown).toBe('101');
-      reload.mockClear();
-      page.load(next);
+      ['a pointer press', 'pointer'],
+      ['a key press', 'key'],
+    ] as const)(
+      'keeps the first assignment when %s in the frame comes before the next load',
+      async (_name, act) => {
+        const { pane, onShown, reload, page } = declined(SLIM);
+        expect(pane.shown).toBe('101');
+        page[act]();
+        reload.mockClear();
+        page.load(`${ORIGIN}/courses/12/discussion_topics/9`);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(barText()).toBe('Essay');
+        expect(barLink()).toBe(`${PLAIN}`);
+        expect(pane.shown).toBe('101');
+        expect(onShown).not.toHaveBeenCalledWith('102');
+        expect(reload).toHaveBeenCalledExactlyOnceWith('101');
+      },
+    );
+
+    it('keeps the first assignment for a link to a discussion of the course (a)', async () => {
+      const { pane, page } = declined(SLIM);
+      page.pointer();
+      page.load(`${ORIGIN}/courses/12/discussion_topics/9`);
       await vi.advanceTimersByTimeAsync(0);
       expect(barText()).toBe('Essay');
-      expect(barLink()).toBe(`${PLAIN}`);
+      expect(barLink()).toBe(PLAIN);
       expect(pane.shown).toBe('101');
-      expect(onShown).not.toHaveBeenCalledWith('102');
-      expect(reload).toHaveBeenCalledExactlyOnceWith('101');
+      // The page of the course is loaded again with content_only=1, as for any page of the course.
+      expect(page.replace).toHaveBeenCalledExactlyOnceWith(
+        `${ORIGIN}/courses/12/discussion_topics/9?content_only=1`,
+      );
     });
 
-    it('keeps the first assignment when the quiz returns to the page that the pane landed on', async () => {
+    it('keeps the first assignment when a quiz reached by a link returns to its page after a click (b)', async () => {
       const view = setup();
       view.pane.open({ assignmentId: '101', title: 'Essay' });
-      const page = frameAt(QUIZ);
+      const page = frameAt(SLIM);
+      page.load(SLIM);
+      // A link of the page leads to the quiz, and no move is pending.
+      page.pointer();
       page.load(QUIZ);
+      page.pointer();
       page.load(TAKE);
       view.pane.open({ assignmentId: '102', title: 'Reading' });
+      page.pointer();
       page.load(QUIZ);
       await vi.advanceTimersByTimeAsync(0);
       expect(barText()).toBe('Essay');
       expect(view.pane.shown).toBe('101');
     });
 
-    it('keeps the first assignment on later loads too, because the question is over', async () => {
+    it('keeps the first assignment for a link to a discussion of a group (c)', async () => {
+      const { pane, onShown, page } = declined(SLIM);
+      page.pointer();
+      page.load(`${ORIGIN}/groups/7/discussion_topics/44`);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(barText()).toBe('Essay');
+      expect(pane.shown).toBe('101');
+      expect(onShown).not.toHaveBeenCalledWith('102');
+    });
+
+    it.each([
+      ['the next page of a classic quiz', TAKE, `${ORIGIN}/courses/12/quizzes/5/take/questions/7`],
+      ['a link in a plain assignment page', SLIM, `${ORIGIN}/courses/12/modules`],
+      ['a link to a page of another course', SLIM, `${ORIGIN}/courses/13/discussion_topics/9`],
+    ])('keeps the first assignment when %s loads after a click', async (_name, start, next) => {
+      const { pane, page } = declined(start);
+      page.pointer();
+      page.load(next);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(barText()).toBe('Essay');
+      expect(pane.shown).toBe('101');
+    });
+
+    it('keeps the first assignment on later loads too, because the move is over', async () => {
       const { pane, page } = declined(SLIM);
+      page.key();
       page.load(`${ORIGIN}/courses/12/modules`);
+      page.load(SLIM);
       page.load(`${ORIGIN}/courses/12/discussion_topics/9?content_only=1`);
       await vi.advanceTimersByTimeAsync(0);
       expect(barText()).toBe('Essay');
       expect(pane.shown).toBe('101');
     });
+
+    it('is not ended by a press that a script of the page made', () => {
+      const { page } = declined(SLIM);
+      page.pointer(false);
+      page.key(false);
+      page.load(`${ORIGIN}/courses/12/discussion_topics/9`);
+      expect(barText()).toBe('Reading');
+    });
+
+    it('moves on the first load of a new click, and a press before that click does not count', () => {
+      const { pane, page } = declined(SLIM);
+      page.pointer();
+      pane.open({ assignmentId: '102', title: 'Reading' });
+      page.load(`${ORIGIN}/courses/12/modules`);
+      expect(barText()).toBe('Reading');
+      expect(pane.shown).toBe('102');
+    });
+
+    it('lets a new Preview click replace the move that waits', async () => {
+      const { pane, page } = declined(SLIM);
+      pane.open({ assignmentId: '103', title: 'Discuss' });
+      page.load(`${ORIGIN}/courses/12/discussion_topics/9`);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(barText()).toBe('Discuss');
+      expect(pane.shown).toBe('103');
+      expect(barLink()).toBe(`${ORIGIN}/courses/12/assignments/103`);
+    });
   });
 
-  describe('a move to a graded discussion of a group', () => {
-    const GROUP = `${ORIGIN}/groups/7/discussion_topics/9`;
+  it('moves to a graded discussion that the frame already shows, on the first click (d)', async () => {
+    const DISCUSSION = `${ORIGIN}/courses/12/discussion_topics/9?content_only=1`;
+    const { pane, onShown } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(SLIM);
+    page.load(SLIM);
+    // A link of the page leads to the discussion of row 103. No move is pending, so the header stays.
+    page.pointer();
+    page.load(DISCUSSION);
+    expect(barText()).toBe('Essay');
+    pane.open({ assignmentId: '103', title: 'Discuss' });
+    expect(frames[0]?.src).toBe(`${ORIGIN}/courses/12/assignments/103?content_only=1`);
+    // The click loads the assignment page, which Canvas sends to the same discussion path.
+    page.load(DISCUSSION);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(barText()).toBe('Discuss');
+    expect(pane.shown).toBe('103');
+    expect(onShown).toHaveBeenLastCalledWith('103');
+  });
 
-    it('follows the preview when the frame lands on the page of the group', async () => {
+  describe('an accepted move (e)', () => {
+    it.each([
+      ['a plain assignment', `${ORIGIN}/courses/12/assignments/102?content_only=1`],
+      ['a redirect to a discussion of the course', `${ORIGIN}/courses/12/discussion_topics/9`],
+      ['a redirect to a quiz of the course', `${ORIGIN}/courses/12/quizzes/5`],
+      ['a redirect to a discussion of a group', `${ORIGIN}/groups/7/discussion_topics/44`],
+      ['a redirect to a page of a shard group', `${ORIGIN}/groups/20000000000007/pages/x`],
+    ])('moves the header on a load of %s', async (_name, next) => {
       const { pane, onShown, reload } = setup();
       pane.open({ assignmentId: '101', title: 'Essay' });
       const page = frameAt(SLIM);
       page.load(SLIM);
-      pane.open({ assignmentId: '102', title: 'Discuss' });
+      pane.open({ assignmentId: '102', title: 'Reading' });
       reload.mockClear();
-      page.load(GROUP);
+      page.load(next);
       await vi.advanceTimersByTimeAsync(0);
-      expect(barText()).toBe('Discuss');
+      expect(barText()).toBe('Reading');
       expect(barLink()).toBe(`${ORIGIN}/courses/12/assignments/102`);
       expect(pane.shown).toBe('102');
       expect(onShown).toHaveBeenLastCalledWith('102');
       expect(reload.mock.calls.map((call) => call[0]).sort()).toEqual(['101', '102']);
-      // The rewrite to content_only=1 stays in the course of the list.
-      expect(page.replace).not.toHaveBeenCalled();
     });
 
-    it('does not follow a page of a group on another site', () => {
+    it('keeps the content_only=1 rewrite in the course of the list', () => {
+      const { pane } = setup();
+      pane.open({ assignmentId: '101', title: 'Essay' });
+      const page = frameAt(SLIM);
+      page.load(SLIM);
+      pane.open({ assignmentId: '102', title: 'Discuss' });
+      page.load(`${ORIGIN}/groups/7/discussion_topics/44`);
+      expect(page.replace).not.toHaveBeenCalled();
+      pane.open({ assignmentId: '103', title: 'Course discussion' });
+      page.load(`${ORIGIN}/courses/12/discussion_topics/9`);
+      expect(page.replace).toHaveBeenCalledExactlyOnceWith(
+        `${ORIGIN}/courses/12/discussion_topics/9?content_only=1`,
+      );
+    });
+
+    it('does not move on a page of another site, and the move is over', () => {
       const { pane } = setup();
       pane.open({ assignmentId: '101', title: 'Essay' });
       const page = frameAt(SLIM);
@@ -600,15 +764,7 @@ describe('the frame of the pane', () => {
       pane.open({ assignmentId: '102', title: 'Discuss' });
       page.load('https://other.example/groups/7/discussion_topics/9');
       expect(barText()).toBe('Essay');
-    });
-
-    it('keeps the first assignment when the page of the group is the page that the frame had', () => {
-      const { pane } = setup();
-      pane.open({ assignmentId: '101', title: 'Essay' });
-      const page = frameAt(GROUP);
-      page.load(GROUP);
-      pane.open({ assignmentId: '102', title: 'Discuss' });
-      page.load(GROUP);
+      page.load(`${ORIGIN}/groups/7/discussion_topics/9`);
       expect(barText()).toBe('Essay');
     });
   });

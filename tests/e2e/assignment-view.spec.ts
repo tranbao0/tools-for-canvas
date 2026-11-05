@@ -29,6 +29,10 @@ const notes = readFileSync('tests/fixtures/files/notes.txt', 'utf8');
 const LIST = '/courses/12/assignments';
 const ASSIGNMENT = '/courses/12/assignments/101';
 const DISCUSSION = '/courses/12/discussion_topics/9';
+const QUIZ = '/courses/12/quizzes/5';
+const QUIZ_TAKE = `${QUIZ}/take`;
+const GROUP_DISCUSSION = '/groups/7/discussion_topics/44';
+const LONG = 'Weekly discussion with a title that is long enough to wrap in a narrow row';
 const PANE_HOST = '#tools-turn-in';
 const FILE_PANE = '#tools-file-viewer';
 const OTHER_STUDENT = '9001';
@@ -86,10 +90,11 @@ const FILE_ROUTES: FakeCanvasRoute[] = [
 /**
  * The page that Canvas shows in the pane for an assignment. The file link `#file` does nothing by
  * itself, so a click that comes before the file catcher is in the frame changes nothing, and a
- * test can click until the file pane opens. `#file-plain` follows its link.
+ * test can click until the file pane opens. `#file-plain` follows its link, and so do the links to
+ * a discussion, a quiz and a discussion of a group.
  */
 function paneContent(name: string, mode: string): string {
-  return `<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>${name}</h1><p id="mode">${mode}</p><p><a id="file" href="/courses/12/files/501" onclick="return false">essay.txt</a> <a id="file-plain" href="/courses/12/files/501">essay again</a></p><input id="marker" aria-label="Draft"><script>addEventListener('beforeunload',(e)=>{if(document.getElementById('marker').value){e.preventDefault();e.returnValue='';}})</script><form method="post"><button>Submit work</button></form><button type="button" id="quiet" onclick="fetch('${ASSIGNMENT}/quiet',{method:'POST'})">Submit quietly</button></body></html>`;
+  return `<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>${name}</h1><p id="mode">${mode}</p><p><a id="file" href="/courses/12/files/501" onclick="return false">essay.txt</a> <a id="file-plain" href="/courses/12/files/501">essay again</a></p><p><a id="to-discussion" href="${DISCUSSION}">discussion</a> <a id="to-quiz" href="${QUIZ}">quiz</a> <a id="to-take" href="${QUIZ_TAKE}">take</a> <a id="to-group" href="${GROUP_DISCUSSION}">group</a></p><input id="marker" aria-label="Draft"><script>addEventListener('beforeunload',(e)=>{if(document.getElementById('marker').value){e.preventDefault();e.returnValue='';}})</script><form method="post"><button>Submit work</button></form><button type="button" id="quiet" onclick="fetch('${ASSIGNMENT}/quiet',{method:'POST'})">Submit quietly</button></body></html>`;
 }
 
 interface OpenOptions {
@@ -172,6 +177,18 @@ async function open(
           request.path.includes('content_only=1') ? 'slim' : 'full',
         ),
       }),
+    },
+    {
+      path: QUIZ,
+      respond: () => ({ contentType: 'text/html', body: paneContent('Quiz', 'quiz') }),
+    },
+    {
+      path: QUIZ_TAKE,
+      respond: () => ({ contentType: 'text/html', body: paneContent('Take the quiz', 'take') }),
+    },
+    {
+      path: GROUP_DISCUSSION,
+      respond: () => ({ contentType: 'text/html', body: paneContent('Group discussion', 'group') }),
     },
     { path: '/courses/12/files/501', contentType: 'text/html', body: '<p>The file page</p>' },
     ...viewRoutes('101', rawRecords(essay), {
@@ -1289,6 +1306,143 @@ test('a declined leave question keeps the first assignment when the student foll
       frameTitle: 'Assignment Reading',
     });
 });
+
+/** The pane shows Essay, the student has a draft in it, and a Preview click on Reading was declined. */
+async function declinedPreview(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  background: Parameters<typeof saveAddress>[0],
+) {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('half a draft');
+  const questions: string[] = [];
+  let answer = false;
+  page.on('dialog', (dialog) => {
+    questions.push(dialog.type());
+    void (answer ? dialog.accept() : dialog.dismiss());
+  });
+  await preview(page, 'Reading').click();
+  await expect.poll(() => questions.length).toBe(1);
+  await page.waitForTimeout(500);
+  answer = true;
+  return { frame, questions };
+}
+
+const EssayHeader = { title: 'Essay', href: ASSIGNMENT, frameTitle: 'Assignment Essay' };
+
+for (const [name, link, wanted] of [
+  ['a discussion of the course', '#to-discussion', DISCUSSION],
+  ['a discussion of a group', '#to-group', GROUP_DISCUSSION],
+  ['a quiz', '#to-quiz', QUIZ],
+] as const) {
+  test(`a declined leave question keeps the first assignment when the student follows a link to ${name}`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    const { frame, questions } = await declinedPreview(context, page, background);
+    await frame.locator(link).click();
+    await expect.poll(() => questions.length).toBe(2);
+    await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(wanted);
+    await page.waitForTimeout(500);
+    expect(await headerOf(frame)).toEqual(EssayHeader);
+    await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
+    await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'false');
+  });
+}
+
+test('a declined leave question keeps the first assignment when a quiz returns to its page after a click', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  // Links of the page lead to the quiz and into it. No move is pending, so the header stays.
+  await frame.locator('#to-quiz').click();
+  await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(QUIZ);
+  await frame.locator('#to-take').click();
+  await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(QUIZ_TAKE);
+  await frame.locator('#marker').fill('half a quiz answer');
+  const questions: string[] = [];
+  let answer = false;
+  page.on('dialog', (dialog) => {
+    questions.push(dialog.type());
+    void (answer ? dialog.accept() : dialog.dismiss());
+  });
+  await preview(page, 'Reading').click();
+  await expect.poll(() => questions.length).toBe(1);
+  await page.waitForTimeout(500);
+  answer = true;
+  await frame.locator('#to-quiz').click();
+  await expect.poll(() => questions.length).toBe(2);
+  await expect.poll(() => canvas.requests.filter((r) => r.path === QUIZ).length).toBe(2);
+  await page.waitForTimeout(500);
+  expect(await headerOf(frame)).toEqual(EssayHeader);
+  await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('a Preview click on the graded discussion that the frame shows moves the header on the first click', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#to-discussion').click();
+  await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(DISCUSSION);
+  await expect(frame.locator('h1')).toHaveText('Weekly discussion');
+  await page.waitForTimeout(500);
+  expect(await headerOf(frame)).toEqual(EssayHeader);
+  // The path of the frame is the path that the row redirects to, as before the click.
+  await preview(page, LONG).click();
+  await expect
+    .poll(() => headerOf(frame).catch(() => null))
+    .toEqual({
+      title: LONG,
+      href: '/courses/12/assignments/103',
+      frameTitle: `Assignment ${LONG}`,
+    });
+  await expect(preview(page, LONG)).toHaveAttribute('aria-pressed', 'true');
+  await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'false');
+});
+
+for (const [name, redirect] of [
+  ['a graded discussion of the course', LONG],
+  ['a graded discussion of a group', 'Reading'],
+] as const) {
+  test(`an accepted Preview click moves the header to ${name}`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    const extra: FakeCanvasRoute[] =
+      redirect === 'Reading'
+        ? [
+            {
+              path: '/courses/12/assignments/102',
+              respond: () => ({
+                contentType: 'text/html',
+                body: `<script>location.replace("${GROUP_DISCUSSION}")</script>`,
+              }),
+            },
+          ]
+        : [];
+    const { canvas } = await open(context, page, background, { extra });
+    await ready(page, canvas);
+    const frame = await openPane(page, 'Essay');
+    await frame.locator('#marker').fill('half a draft');
+    page.on('dialog', (dialog) => void dialog.accept());
+    await preview(page, redirect).click();
+    await expect.poll(() => headerOf(frame).catch(() => null)).toMatchObject({ title: redirect });
+    await expect(preview(page, redirect)).toHaveAttribute('aria-pressed', 'true');
+    await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'false');
+  });
+}
 
 test('the Theme setting wins over the page background', async ({ context, page, background }) => {
   const { canvas } = await open(context, page, background);
