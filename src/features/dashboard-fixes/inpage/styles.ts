@@ -104,7 +104,7 @@ export const FIXES_CSS = `
 .wr-a .wr-body{max-height:none;overflow-x:auto;font-size:1rem}
 .wr-a-line{margin:0;padding:.75rem 0;text-align:center;font-size:.75rem;color:var(--wr-secondary)}
 .wr-a-sentinel{height:.0625rem}
-.wr-p{--wr-feed:max(16rem,min(22rem,calc(100vh - 14rem)));display:flex;flex-direction:column;box-sizing:border-box;min-width:0;height:var(--wr-feed)}
+.wr-p{--wr-feed:max(20rem,min(22rem,calc(100vh - 14rem)));display:flex;flex-direction:column;box-sizing:border-box;min-width:0;height:var(--wr-feed)}
 .wr-p-row{display:grid;grid-template-columns:2.5rem minmax(0,1fr) 1.875rem;column-gap:.5rem;align-items:start;padding:.75rem .5rem .75rem 0;border-bottom:.0625rem solid var(--wr-line);font-size:.75rem;line-height:1.4}
 .wr-p-row .wr-a-avatar{grid-row:1;align-self:start;width:2.5rem;height:2.5rem;font-size:.875rem}
 .wr-p-info{grid-column:2;min-width:0}
