@@ -272,6 +272,7 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
   /** When the wait for the file pane script ends. */
   const holdEnd = Date.now() + FILE_PANE_WAIT_MS;
   let holdTimer: ReturnType<typeof setTimeout> | undefined;
+  let focusRetry: number | undefined;
   /** The minimized state that the stored settings last told, for the time before the list has them. */
   let stored: Settings | null = null;
   let focusUntil = 0;
@@ -325,8 +326,17 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
     const button =
       container.firstElementChild?.shadowRoot?.querySelector<HTMLElement>('[data-part="minimize"]');
     if (button == null || !dock.shown) return;
-    focusUntil = 0;
     button.focus();
+    if ((button.getRootNode() as ShadowRoot).activeElement === button) {
+      focusUntil = 0;
+      return;
+    }
+    // A browser can ignore a focus on a control that it has not drawn yet. Try again at the next
+    // frame, until the follow time ends.
+    focusRetry ??= win.requestAnimationFrame(() => {
+      focusRetry = undefined;
+      sync();
+    });
   };
 
   const focusInDock = (): boolean => {
@@ -342,6 +352,7 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
     left = true;
     for (const stopListening of stops.splice(0)) stopListening();
     clearTimeout(holdTimer);
+    if (focusRetry !== undefined) win.cancelAnimationFrame(focusRetry);
     keeper.stop();
   }
 
@@ -487,6 +498,7 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
       stopped = true;
       for (const stopListening of stops.splice(0)) stopListening();
       clearTimeout(holdTimer);
+      if (focusRetry !== undefined) win.cancelAnimationFrame(focusRetry);
       keeper.stop();
       // A host that a newer copy removed took its room back already. Closing the dock would put
       // the padding of this copy over the room of the newer one. The copy still ends its
