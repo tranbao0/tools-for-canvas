@@ -26,8 +26,10 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - the full text of an announcement that you open;
 - the announcements that the Announcements widget of the new dashboard shows, a page at a time as you scroll: the title, author, date, course name, read state and text of each (the extension keeps the first 4,000 characters of each text in memory for the page view, and reads all your announcements once, 100 at a time and at most 2,000, when you search by topic);
 - the announcements that you find with the search by date, read from the announcements list of your Canvas for the days that you choose, at most 500;
-- the details of an assignment that you open on the Grades page: its instructions, its rubric, your own submission with your files and your rubric assessment, and the comments on it with their files.
-  The extension reads them only when you open the row, with two requests of your own Canvas: `GET /api/v1/courses/:id/assignments/:id` and `GET /api/v1/courses/:id/assignments/:id/submissions/self`.
+- the details of an assignment on a page of the one assignment view (the Assignments list, the Submission Details page of your own work, and the assignment page): its instructions and submission types, and your own submission with its status, time, attempt, text, address, and the names and sizes of your files.
+  The extension reads them when such a page opens, and again now and then while the assignment pane of the Assignments list is open, with two requests of your own Canvas: `GET /api/v1/courses/:id/assignments/:id` and `GET /api/v1/courses/:id/assignments/:id/submissions/self`.
+  On the assignment page it asks only for who owns the submission, with the second request alone.
+  It does not read your rubric assessment or the comments on your submission: Canvas shows them in its own page.
 
 It reads the `_csrf_token` cookie of your Canvas site, because Canvas requires that token to accept a write.
 
@@ -68,7 +70,7 @@ Session storage stays in browser memory and the browser clears it when it closes
 The extension opens its welcome page once per browser session when it finds a Canvas that waits for your answer.
 The extension shows its list only on the Canvas address that you saved.
 The list script, the script of the dashboard fixes and the script of the one assignment view run only there.
-The script of the one assignment view runs only on the Grades page of that Canvas, and only while its switch is on.
+The script of the one assignment view runs only on the Assignments list, the Submission Details page and the assignment page of that Canvas, and does its work only while its switch is on.
 It sends no message and no event to the page.
 None of the page scripts can read or write the storage of the extension: the background answers them through checked messages.
 
@@ -114,8 +116,9 @@ The pane is a frame of your Canvas site, so it shows what Canvas shows when you 
 The extension reads only the address of the frame, and nothing of its content.
 While the pane is open, the extension reads your submission status of that assignment now and then, and keeps the last answer in the memory of the open page.
 It uses the answer to tell when your work was handed in, so that the weekly list refreshes.
-The Submission Details page shows the instructions, the rubric with your assessment, the comments and your submitted files.
-The instructions and the comments are written by your teacher.
+The Submission Details page shows the instructions and your submitted files.
+The rubric and the comments on that page stay Canvas's own, which the extension moves into place without reading them.
+The instructions are written by your teacher.
 The extension shows them only after it removes everything that could run code, load a frame or send a form.
 The view has a switch in the settings, which is on by default.
 
