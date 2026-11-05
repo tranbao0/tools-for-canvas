@@ -603,7 +603,7 @@ test('a failed read with a withheld permission shows Allow access, which reads t
   const allow = frame.getByRole('button', { name: 'Allow access' });
   await expect(allow).toBeVisible();
   await expect(frame.getByText("Couldn't load this PDF")).toBeVisible();
-  const handle = page.frames().find((entry) => entry.url().includes('viewer.html'))!;
+  const handle = await pane(page);
   await handle.evaluate(() => {
     const api = (
       globalThis as unknown as {
