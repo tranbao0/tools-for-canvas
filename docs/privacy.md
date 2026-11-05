@@ -27,9 +27,11 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - the announcements that the Announcements widget of the new dashboard shows, a page at a time as you scroll: the title, author, date, course name, read state and text of each (the extension keeps the first 4,000 characters of each text in memory for the page view, and reads all your announcements once, 100 at a time and at most 2,000, when you search by topic);
 - the announcements that you find with the search by date, read from the announcements list of your Canvas for the days that you choose, at most 500;
 - the details of an assignment on a page of the one assignment view (the Assignments list, the Submission Details page of your own work, and the assignment page): its instructions and submission types, and your own submission with its status, time, attempt, text, address, and the names and sizes of your files.
-  The extension reads them when such a page opens, and again now and then while the assignment pane of the Assignments list is open, with two requests of your own Canvas: `GET /api/v1/courses/:id/assignments/:id` and `GET /api/v1/courses/:id/assignments/:id/submissions/self`.
-  On the assignment page it asks only for who owns the submission, with the second request alone.
-  It does not read your rubric assessment or the comments on your submission: Canvas shows them in its own page.
+  The extension reads them with two requests of your own Canvas: `GET /api/v1/courses/:id/assignments/:id` and `GET /api/v1/courses/:id/assignments/:id/submissions/self`.
+  The Submission Details page sends them when it loads, and the Assignments list sends them when you open the assignment pane, and again now and then while the pane is open.
+  The assignment page asks only for who owns the submission, with the second request alone, when it loads.
+  The reply of Canvas for the assignment also holds its rubric, and the extension keeps none of it.
+  The extension does not read your rubric assessment or the comments on your submission: Canvas shows them in its own page.
 
 It reads the `_csrf_token` cookie of your Canvas site, because Canvas requires that token to accept a write.
 

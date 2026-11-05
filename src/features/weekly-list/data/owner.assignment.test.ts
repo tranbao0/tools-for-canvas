@@ -114,6 +114,13 @@ describe('the queue of the assignment view reads', () => {
     release();
     await owner;
     await holder;
+    const reads = h.canvas.calls.filter((call) =>
+      ['getAssignmentRecord', 'getOwnSubmissionRecord', 'getOwnSubmissionUserRecord'].includes(
+        call.method,
+      ),
+    );
+    expect(reads).toHaveLength(3);
+    expect(reads.every((call) => call.priority === 'high')).toBe(true);
     const methods = h.canvas.calls.map((call) => call.method);
     expect(methods.indexOf('getOwnSubmissionUserRecord')).toBeLessThan(
       methods.indexOf('createOverride'),
