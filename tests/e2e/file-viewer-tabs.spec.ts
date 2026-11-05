@@ -227,7 +227,7 @@ test('a withheld permission shows Allow access, which asks the browser and reloa
   const allow = (await pane(page)).getByRole('button', { name: 'Allow access' });
   await expect(allow).toBeVisible();
   await expect((await pane(page)).getByRole('link', { name: 'Open in Canvas' })).toBeVisible();
-  const frame = page.frames().find((entry) => entry.url().includes('viewer.html'))!;
+  const frame = await pane(page);
   await frame.evaluate(() => {
     const api = (
       globalThis as unknown as {
