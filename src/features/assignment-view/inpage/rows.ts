@@ -178,7 +178,8 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
     button.addEventListener('click', (event) => {
       // A script of the page can click the button, but only the student opens the pane.
       if (!event.isTrusted) return;
-      // The row is read at the click, so the line is the one that Canvas shows now.
+      // The line is read from the row at the click. A frame that already exists keeps the line of
+      // the click that made it.
       const details = detailsOf(row);
       options.onPreview({ assignmentId, title, ...(details === undefined ? {} : { details }) });
     });

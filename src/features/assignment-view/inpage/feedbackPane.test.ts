@@ -93,16 +93,39 @@ describe('the feedback pane', () => {
 describe('the feedback pane in full view', () => {
   afterEach(() => setFullView(false));
 
+  it('leaves full view with the close of the pane that covers a hidden file pane', () => {
+    const file = createDock({
+      role: 'file',
+      id: 'tools-file-viewer',
+      label: 'Files',
+      resizeLabel: 'Resize',
+      card: true,
+      width: 480,
+      onResized: () => undefined,
+    });
+    file.open();
+    pane.open({ title: 'essay.pdf', url: URL_ONE });
+    expect(file.shown).toBe(false);
+    setFullView(true);
+    pane.close();
+    expect(file.shown).toBe(true);
+    expect(isFullView()).toBe(false);
+    expect(file.full).toBe(false);
+    file.close();
+  });
+
   it('is a card, fills the window in full view without a change of the page padding, and leaves with the pane', () => {
     pane.open({ title: 'essay.pdf', url: URL_ONE });
     expect(host()?.hasAttribute('data-card')).toBe(true);
     expect(host()?.style.width).toBe('492px');
     setFullView(true);
-    expect(host()?.style.width).toBe('100vw');
+    expect(host()?.style.left).toBe('0px');
+    expect(host()?.style.width).toBe('');
     expect(document.documentElement.style.paddingRight).toBe('492px');
     // A session that replaces the shown one keeps the state.
     pane.open({ title: 'two.pdf', url: URL_TWO });
-    expect(host()?.style.width).toBe('100vw');
+    expect(host()?.style.left).toBe('0px');
+    expect(host()?.style.width).toBe('');
     pane.close();
     expect(isFullView()).toBe(false);
     pane.open({ title: 'essay.pdf', url: URL_ONE });

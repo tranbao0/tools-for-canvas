@@ -424,8 +424,11 @@ export function createDock(options: DockOptions): Dock {
     const room = narrow ? '100vw' : `${normalizeWidth(width, win.innerWidth) + gap}px`;
     full = card && !narrow && shared().fullView === true;
     host.toggleAttribute('data-full', full);
-    // Full view widens the host over the page and leaves the room as it is, so the page stays put.
-    host.style.width = full ? '100vw' : room;
+    // Full view stretches the host from the left edge to the right edge of the window, which are
+    // the edges without the scroll bar of the page (`100vw` includes the scroll bar). The room
+    // stays as it is, so the page stays put.
+    host.style.left = full ? '0' : '';
+    host.style.width = full ? '' : room;
     // A host that a page removed takes no room.
     if (hidden || !host.isConnected) return;
     writePadding(page, room, narrow);
@@ -508,9 +511,9 @@ export function createDock(options: DockOptions): Dock {
       host.remove();
       if (card) {
         openPanes().delete(dock);
-        // The last pane that leaves takes full view with it. A pane that shows again under a file
-        // pane that closed stays in full view.
-        if (openPanes().size === 0) setFullView(false);
+        // The close of a pane leaves full view. A file pane that closes while another pane waits
+        // under it is the one exception: that pane stays in full view.
+        if (options.role !== 'file' || openPanes().size === 0) setFullView(false);
       }
       if (options.role === 'file' && shared().file === dock) {
         shared().file = null;

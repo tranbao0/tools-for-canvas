@@ -2027,3 +2027,285 @@ test('the Theme setting wins over the page background', async ({ context, page, 
   await saveSetting(background, { theme: 'light' });
   await expect(page.locator(PANE_HOST)).toHaveAttribute('data-theme', 'light');
 });
+
+/** The state of the header and the wrapper of the assignment pane, read from a Canvas frame. */
+async function headerBoxes(page: Page) {
+  const frame = await paneFrame(page);
+  return frame.evaluate(() => {
+    const root = window.frameElement!.getRootNode() as ShadowRoot;
+    const box = (selector: string) => {
+      const rect = root.querySelector(selector)!.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    };
+    const shown = (selector: string) =>
+      getComputedStyle(root.querySelector(selector)!).display !== 'none';
+    return {
+      bar: box('.bar'),
+      title: box('.title'),
+      full: box('.btn[aria-pressed]'),
+      link: box('a.btn'),
+      labelsShown: shown('.btn[aria-pressed] .lb') && shown('a.btn .lb'),
+      fullName: root.querySelector('.btn[aria-pressed]')!.getAttribute('aria-label'),
+      fullTitle: root.querySelector('.btn[aria-pressed]')!.getAttribute('title'),
+      linkName: root.querySelector('a.btn')!.getAttribute('aria-label'),
+      linkTitle: root.querySelector('a.btn')!.getAttribute('title'),
+      subWrap: getComputedStyle(root.querySelector('.sub')!).overflowWrap,
+    };
+  });
+}
+
+test('the header keeps its title on a narrow card: below 560 px the text buttons show their icon only', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await page.setViewportSize({ width: 1400, height: 930 });
+  await ready(page, canvas);
+  await openPane(page, 'Essay');
+  for (const width of [360, 420, 480, 800]) {
+    await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewerWidth: width });
+    await expect.poll(async () => (await geometry(page)).card.width).toBe(width);
+    const header = await headerBoxes(page);
+    // The title keeps room, and the header is no higher than two lines of text.
+    expect(header.title.width, `title at ${width}`).toBeGreaterThanOrEqual(120);
+    expect(header.bar.height, `header at ${width}`).toBeLessThan(90);
+    // The second line wraps by words.
+    expect(header.subWrap).toBe('normal');
+    // The icon-only buttons are squares. The text stays as the name and the tooltip.
+    expect(header.labelsShown, `labels at ${width}`).toBe(width >= 800);
+    if (width < 800) {
+      expect(header.full.width).toBe(30);
+      expect(header.link.width).toBe(30);
+    } else {
+      expect(header.full.width).toBeGreaterThan(80);
+      expect(header.link.width).toBeGreaterThan(100);
+    }
+    expect(header).toMatchObject({
+      fullName: 'Full view',
+      fullTitle: 'Full view',
+      linkName: 'Open in new tab',
+      linkTitle: 'Open in new tab',
+    });
+  }
+});
+
+test('the wrapper of the frame has wide room at the sides in full view only', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await page.setViewportSize({ width: 1400, height: 930 });
+  await ready(page, canvas);
+  await openPane(page, 'Essay');
+  const padding = async () => {
+    const frame = await paneFrame(page);
+    return frame.evaluate(() => {
+      const root = window.frameElement!.getRootNode() as ShadowRoot;
+      return getComputedStyle(root.querySelector('.frame')!).padding;
+    });
+  };
+  expect(await padding()).toBe('20px 16px 0px 32px');
+  await toggleFullView(page);
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
+  expect(await padding()).toBe('24px 96px 0px');
+  await toggleFullView(page);
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('false');
+  expect(await padding()).toBe('20px 16px 0px 32px');
+});
+
+test('the close button of the pane over a hidden file pane leaves full view, and the file pane comes back in its place', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await page.setViewportSize({ width: 1400, height: 930 });
+  await ready(page, canvas);
+  await addFileLinkToList(page);
+  await openFileFromList(page);
+  const filePlace = (await page.locator(FILE_PANE).boundingBox())!;
+  expect(filePlace.width).toBeLessThan(1000);
+  // Preview shows the pane over the file pane, which stays hidden with its tabs.
+  await preview(page, 'Essay').click();
+  await expect(page.locator(FILE_PANE)).toBeHidden();
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await toggleFullView(page);
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
+  await closeAssignment(page);
+  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  // The file pane shows in its place, not in full view.
+  await expect(page.locator(FILE_PANE)).toBeVisible();
+  expect(await page.locator(FILE_PANE).boundingBox()).toEqual(filePlace);
+  const filePane = await pane(page);
+  await expect(filePane.getByRole('button', { name: 'Full view', exact: true })).toBeVisible();
+  // A new pane starts out of full view too.
+  await closePane(page);
+  await openPane(page, 'Reading');
+  expect((await geometry(page)).button.pressed).toBe('false');
+});
+
+test('Escape with the focus in the frame leaves full view, and only a real Escape in full view does', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await page.setViewportSize({ width: 1400, height: 930 });
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  const pressed = async () => (await geometry(page)).button.pressed;
+  // Not in full view, Escape in the frame does nothing.
+  await frame.locator('#marker').focus();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await toggleFullView(page);
+  await expect.poll(pressed).toBe('true');
+  // The student types in the frame. A script of the page cannot press Escape for the student.
+  await frame.locator('#marker').fill('words in the frame');
+  await frame.evaluate(() => {
+    for (const target of [window, document, document.querySelector('#marker')])
+      target?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  await frame.locator('#marker').press('Enter');
+  await page.waitForTimeout(200);
+  expect(await pressed()).toBe('true');
+  await frame.locator('#marker').focus();
+  await page.keyboard.press('Escape');
+  await expect.poll(pressed).toBe('false');
+  // The pane stays open with its frame and its words, and the next Escape does what it did before.
+  expect(await paneFrame(page)).toBe(frame);
+  await expect(frame.locator('#marker')).toHaveValue('words in the frame');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+
+  // A new page in the frame gets the listener too.
+  await toggleFullView(page);
+  await expect.poll(pressed).toBe('true');
+  await frame.locator('#marker').fill('');
+  await frame.evaluate(() => {
+    (window as unknown as { __old: boolean }).__old = true;
+    location.reload();
+  });
+  await expect
+    .poll(() =>
+      frame
+        .evaluate(() => (window as unknown as { __old?: boolean }).__old === true)
+        .catch(() => true),
+    )
+    .toBe(false);
+  await expect(async () => {
+    await frame.locator('#marker').focus({ timeout: 2000 });
+    await page.keyboard.press('Escape');
+    expect(await pressed()).toBe('false');
+  }).toPass({ timeout: 20_000 });
+});
+
+/** The stored settings of the tools, which hold the width of the pane. */
+async function storedTools(worker: Worker): Promise<Record<string, unknown>> {
+  return worker.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        chrome: { storage: { local: { get(key: string): Promise<Record<string, unknown>> } } };
+      }
+    ).chrome;
+    return ((await api.storage.local.get('toolsSettings'))['toolsSettings'] ?? {}) as Record<
+      string,
+      unknown
+    >;
+  });
+}
+
+test('the resize handle of the pane follows the mouse and the arrow keys, saves the width, and is gone in full view', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await page.setViewportSize({ width: 1400, height: 930 });
+  await ready(page, canvas);
+  await openPane(page, 'Essay');
+  const hostBox = async () => (await page.locator(PANE_HOST).boundingBox())!;
+  const start = await hostBox();
+  expect(start.width).toBe(DEFAULT_TOOLS_SETTINGS.fileViewerWidth + 12);
+
+  // A drag from the handle to x = 700 makes the host 700 px wide: the card and the 12 px gap.
+  await page.mouse.move(start.x + 2, start.y + start.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(700, start.y + start.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(async () => (await hostBox()).width).toBe(700);
+  expect(await paddingRight(page)).toBe(700);
+  expect((await geometry(page)).card.width).toBe(688);
+  await expect.poll(async () => (await storedTools(background))['fileViewerWidth']).toBe(688);
+
+  // The arrow keys move the edge by 20 px, with the focus on the handle.
+  const dragged = await hostBox();
+  await page.mouse.click(dragged.x + 2, dragged.y + dragged.height / 2);
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(async () => (await hostBox()).width).toBe(720);
+  await expect.poll(async () => (await storedTools(background))['fileViewerWidth']).toBe(708);
+  // The saved width comes back to the pane, so each key waits for its own save.
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => (await storedTools(background))['fileViewerWidth']).toBe(688);
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => (await hostBox()).width).toBe(680);
+  expect(await paddingRight(page)).toBe(680);
+  await expect.poll(async () => (await storedTools(background))['fileViewerWidth']).toBe(668);
+
+  // The card never gets narrower than 360 px.
+  const narrow = await hostBox();
+  await page.mouse.move(narrow.x + 2, narrow.y + narrow.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(1390, narrow.y + narrow.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(async () => (await hostBox()).width).toBe(372);
+
+  // Full view has no handle, and leaving it gives the handle back.
+  await toggleFullView(page);
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
+  expect((await geometry(page)).button.handleShown).toBe(false);
+  await toggleFullView(page);
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('false');
+  expect((await geometry(page)).button.handleShown).toBe(true);
+  expect((await hostBox()).width).toBe(372);
+});
+
+test.describe('with the scroll bars of the page', () => {
+  test.use({ scrollBars: true });
+
+  test('Full view keeps the 12 px gap on the left, beside the scroll bar of a long page', async ({
+    context,
+    page,
+    background,
+  }) => {
+    const { canvas } = await open(context, page, background);
+    await page.setViewportSize({ width: 1400, height: 930 });
+    await ready(page, canvas);
+    await page.evaluate(() => {
+      document.body.style.minHeight = '4000px';
+    });
+    await openPane(page, 'Essay');
+    // The window is 1400 px wide, and the page draws a scroll bar. `innerWidth` includes it.
+    const view = () =>
+      page.evaluate(() => ({
+        inner: window.innerWidth,
+        client: document.documentElement.clientWidth,
+      }));
+    const { inner, client } = await view();
+    expect(inner - client).toBeGreaterThan(0);
+    await toggleFullView(page);
+    await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
+    const full = await geometry(page);
+    expect(full.host).toMatchObject({ x: 0, y: 0, width: client });
+    expect(full.card).toMatchObject({ x: 12, y: 12, width: client - 24 });
+    await toggleFullView(page);
+    await expect.poll(async () => (await geometry(page)).button.pressed).toBe('false');
+    const back = await geometry(page);
+    expect(back.host.x + back.host.width).toBe(client);
+    expect(back.card.x + back.card.width).toBe(client - 12);
+  });
+});

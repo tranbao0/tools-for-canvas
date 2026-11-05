@@ -45,6 +45,8 @@ export interface ExtensionOptions {
   extensionDir: string;
   /** More command line flags for Chromium. */
   browserArgs: string[];
+  /** Whether pages draw their classic scroll bars. Headless Chromium hides them by default. */
+  scrollBars: boolean;
 }
 
 export interface ExtensionFixtures {
@@ -158,13 +160,15 @@ export async function launchBrowser(
 export const test = base.extend<ExtensionFixtures & ExtensionOptions>({
   extensionDir: [CHROME_EXTENSION_DIR, { option: true }],
   browserArgs: [[], { option: true }],
+  scrollBars: [false, { option: true }],
   context: [
-    async ({ extensionDir, browserArgs }, use, testInfo) => {
+    async ({ extensionDir, browserArgs, scrollBars }, use, testInfo) => {
       const context = await launchBrowser(
         testInfo,
         {
           channel: 'chromium',
           headless: true,
+          ...(scrollBars ? { ignoreDefaultArgs: ['--hide-scrollbars'] } : {}),
           args: [
             `--disable-extensions-except=${extensionDir}`,
             `--load-extension=${extensionDir}`,

@@ -714,6 +714,79 @@ test('the feedback pane is a card with a header, and Full view keeps its frame a
   expect(await paddingRight(page)).toBe(0);
 });
 
+test('the header of the feedback pane keeps its title on a narrow card, with icon-only text buttons below 560 px', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background);
+  await box(page).getByRole('button', { name: 'View Feedback' }).click();
+  await expect(page.locator(FEEDBACK)).toBeVisible();
+  const frame = await feedbackFrame(page);
+  for (const width of [360, 420, 480, 800]) {
+    await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewerWidth: width });
+    await expect
+      .poll(async () => (await page.locator(FEEDBACK).boundingBox())!.width)
+      .toBe(width + 12);
+    const header = await frame.evaluate(() => {
+      const root = window.frameElement!.getRootNode() as ShadowRoot;
+      const rect = (selector: string) => root.querySelector(selector)!.getBoundingClientRect();
+      return {
+        title: rect('.title').width,
+        bar: rect('.bar').height,
+        full: rect('.btn[aria-pressed]').width,
+        link: rect('a.btn').width,
+      };
+    });
+    expect(header.title, `title at ${width}`).toBeGreaterThanOrEqual(120);
+    expect(header.bar, `header at ${width}`).toBeLessThan(90);
+    if (width < 560) expect([header.full, header.link]).toEqual([30, 30]);
+    else expect(Math.min(header.full, header.link)).toBeGreaterThan(80);
+  }
+});
+
+test('the close button of the feedback pane over a hidden file pane leaves full view, and the file pane comes back in its place', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background);
+  const link = box(page).getByRole('link', { name: FILE_NAME });
+  await expect(async () => {
+    await link.click();
+    await expect(page.locator(FILE_PANE)).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 20_000 });
+  const filePlace = (await page.locator(FILE_PANE).boundingBox())!;
+  await box(page).getByRole('button', { name: 'View Feedback' }).click();
+  await expect(page.locator(FEEDBACK)).toBeVisible();
+  await expect(page.locator(FILE_PANE)).toBeHidden();
+  const frame = await feedbackFrame(page);
+  await frame.evaluate(() => {
+    const root = window.frameElement!.getRootNode() as ShadowRoot;
+    (root.querySelector('.btn[aria-pressed]') as HTMLElement).focus();
+  });
+  const view = page.viewportSize()!;
+  const place = (await page.locator(FEEDBACK).boundingBox())!;
+  const press = async (selector: string) => {
+    const target = await frame.evaluate((query) => {
+      const root = window.frameElement!.getRootNode() as ShadowRoot;
+      const { x, y, width, height } = root.querySelector(query)!.getBoundingClientRect();
+      return { x: x + width / 2, y: y + height / 2 };
+    }, selector);
+    await page.mouse.click(target.x, target.y);
+  };
+  await press('.btn[aria-pressed]');
+  await expect
+    .poll(async () => (await page.locator(FEEDBACK).boundingBox())!.width)
+    .toBe(view.width);
+  await press('.icon-btn');
+  await expect(page.locator(FEEDBACK)).toHaveCount(0);
+  // The file pane shows in its place, not in full view.
+  await expect(page.locator(FILE_PANE)).toBeVisible();
+  expect(await page.locator(FILE_PANE).boundingBox()).toEqual(filePlace);
+  expect(place.width).toBe(filePlace.width);
+});
+
 test('the pane closes when the view is turned off', async ({ context, page, background }) => {
   await open(context, page, background);
   await box(page).getByRole('button', { name: 'View Feedback' }).click();

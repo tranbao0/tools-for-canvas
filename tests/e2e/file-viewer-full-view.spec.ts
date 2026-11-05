@@ -242,6 +242,23 @@ test('the close button closes the file pane in full view, and the next file open
   expect((await place(page, next)).host).toEqual(before.host);
 });
 
+test('Escape closes the file pane on a window that is too narrow for full view, where the state is only kept', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost);
+  await toggle(frame, 'Full view');
+  await expect(fullButton(frame)).toHaveAttribute('aria-pressed', 'true');
+  await page.setViewportSize({ width: 800, height: 700 });
+  await expect(fullButton(frame)).toHaveCount(0);
+  // One Escape, with the focus in the pane: the window has no full view to leave, so it closes the pane.
+  await frame.getByRole('button', { name: 'Close file viewer', exact: true }).focus();
+  void page.keyboard.press('Escape').catch(() => undefined);
+  await expect(page.locator(HOST)).toHaveCount(0);
+});
+
 test('a narrow window has no Full view button in the file pane', async ({
   context,
   page,
