@@ -104,6 +104,24 @@ describe('the frame catcher', () => {
     expect(click('file').defaultPrevented).toBe(false);
   });
 
+  it('checks the page and the top frame again at each click', async () => {
+    startFrameCatcher();
+    expect(click('file').defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    sendMessage.mockClear();
+    // The frame moves to another page without a load.
+    window.history.replaceState({}, '', '/courses/2/files/4');
+    expect(click('file').defaultPrevented).toBe(false);
+    window.history.replaceState({}, '', `${PATH}?preview=1`);
+    expect(click('file').defaultPrevented).toBe(true);
+    // The top frame becomes unreadable, as a frame of another site is.
+    vi.spyOn(window, 'top', 'get').mockImplementation(() => {
+      throw new DOMException('Blocked a frame', 'SecurityError');
+    });
+    expect(click('file').defaultPrevented).toBe(false);
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+  });
+
   it('stops the copy before it when it starts again, so one click acts once', async () => {
     startFrameCatcher();
     startFrameCatcher();

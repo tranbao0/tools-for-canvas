@@ -433,6 +433,7 @@ export function mkView(patch: Partial<WeekView> = {}): WeekView {
     hiddenCourseCount: 1,
     nothingDue: false,
     loading: false,
+    incomplete: false,
     limited: false,
     scopeCourseId: null,
     scopeCourseHidden: false,

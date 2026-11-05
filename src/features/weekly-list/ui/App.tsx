@@ -38,14 +38,7 @@ import { Rings } from './Rings';
 import { SettingsPanel } from './Settings';
 import { Spinner, StateBody } from './States';
 import { TaskForm, type TaskFormMode } from './TaskForm';
-import {
-  groupCount,
-  GroupView,
-  type BottomKind,
-  isGroupEmpty,
-  WeekList,
-  type ListHandlers,
-} from './WeekList';
+import { groupCount, GroupView, type BottomKind, WeekList, type ListHandlers } from './WeekList';
 import { captureFocus, firstRowControl, restoreFocus, usable, type FocusSnapshot } from './focus';
 
 type ReadyState = Extract<SurfaceState, { kind: 'ready' }>;
@@ -103,13 +96,18 @@ function ScrollRegion(props: {
 /**
  * The list area that shows the open bottom group in place of the day list. The element stays in
  * the card, so the headers of the bottom bar can name it; it is hidden while no group is open. A
- * group starts at the top.
+ * group starts at the top, also for another span.
  */
-function GroupArea(props: { id: string; kind: string | null; children: ComponentChildren }) {
+function GroupArea(props: {
+  id: string;
+  kind: string | null;
+  resetKey: string;
+  children: ComponentChildren;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (ref.current !== null) ref.current.scrollTop = 0;
-  }, [props.kind]);
+  }, [props.kind, props.resetKey]);
   return (
     <div ref={ref} id={props.id} class="wr-group-area" hidden={props.kind === null}>
       {props.children}
@@ -453,16 +451,12 @@ function ReadyView(props: {
   const saved = props.settings;
   const level = baseLevel(surface);
   const [form, setForm] = useState<TaskFormMode | null>(null);
-  const [openBottomKind, setOpenBottom] = useState<BottomKind | null>(null);
-  // A bottom group that disappears also closes, so it does not come back open.
-  const openBottom =
-    openBottomKind !== null &&
-    view.groups.some((group) => group.kind === openBottomKind && !isGroupEmpty(group))
-      ? openBottomKind
-      : null;
-  useLayoutEffect(() => {
-    if (openBottom !== openBottomKind) setOpenBottom(null);
-  }, [openBottom, openBottomKind]);
+  // The open bottom group is a saved setting, the same for every span and every surface. The side
+  // panel has no bottom bar and ignores it.
+  const openBottom: BottomKind | null = surface === 'inpage' ? (saved?.openGroup ?? null) : null;
+  const setOpenBottom = (kind: BottomKind | null) => {
+    if (saved) actions.saveSettings({ ...saved, openGroup: kind });
+  };
   /** A new task waits for Canvas, or the last try to save one failed. */
   const [save, setSave] = useState<'idle' | 'saving' | 'failed'>('idle');
   const [notes, setNotes] = useState<OneTimeNote[]>([]);
@@ -550,9 +544,9 @@ function ReadyView(props: {
     if (await actions.createTask(input)) closeForm(null);
     else setSave('failed');
   };
-  /** Shows the days again. Focus goes to the header of the group that was open, if any. */
-  const closeGroup = (focusHeader: boolean) => {
-    if (focusHeader && openBottom !== null)
+  /** Shows the days again. Focus goes to the header of the group that was open. */
+  const closeGroup = () => {
+    if (openBottom !== null)
       returnFocus.current = `.wr-pinned [data-group="${openBottom}"] .wr-group-toggle`;
     setOpenBottom(null);
   };
@@ -688,13 +682,12 @@ function ReadyView(props: {
     );
   /** The bottom group that fills the list area, in place of the days. */
   const shownGroup = surface === 'inpage' && tab === 'tasks' ? openBottom : null;
+  const spanKey = `${view.span.kind}:${view.span.days}:${view.spanStart}`;
   const scrolling = props.scrollMemory ? (
     <ScrollRegion
       hidden={shownGroup !== null}
       memory={props.scrollMemory[tab]}
-      resetKey={
-        tab === 'tasks' ? `${view.span.kind}:${view.span.days}:${view.spanStart}` : 'announcements'
-      }
+      resetKey={tab === 'tasks' ? spanKey : 'announcements'}
       label={tab === 'tasks' ? t('scrollRegionLabel') : t('feedRegion')}
     >
       {content}
@@ -738,22 +731,9 @@ function ReadyView(props: {
         addDisabledReason={view.limited ? t('limitedLine') : null}
         addDescribedBy={limitedId}
         span={saved?.span ?? view.span}
-        onSpan={
-          saved
-            ? (span) => {
-                closeGroup(false);
-                actions.saveSettings({ ...saved, span });
-              }
-            : null
-        }
-        onStep={(delta) => {
-          closeGroup(false);
-          actions.stepSpan(delta);
-        }}
-        onToday={() => {
-          closeGroup(false);
-          actions.goToSpan(0);
-        }}
+        onSpan={saved ? (span) => actions.saveSettings({ ...saved, span }) : null}
+        onStep={(delta) => actions.stepSpan(delta)}
+        onToday={() => actions.goToSpan(0)}
         onAdd={() => openForm({ kind: 'new' })}
         onSettings={() => props.onSettings('gear')}
         onMinimize={props.onMinimize}
@@ -769,7 +749,7 @@ function ReadyView(props: {
         rings={view.rings}
         span={view.span}
         filter={view.courseFilter}
-        loading={view.loading}
+        loading={view.loading || view.incomplete}
         onSelect={(id) => actions.setCourseFilter(id)}
       />
       {filter !== null && (
@@ -797,7 +777,7 @@ function ReadyView(props: {
       >
         {scrolling}
         {surface === 'inpage' && tab === 'tasks' && (
-          <GroupArea id={areaId} kind={shownGroup}>
+          <GroupArea id={areaId} kind={shownGroup} resetKey={spanKey}>
             {shownGroup !== null && (
               <GroupView
                 key={shownGroup}
@@ -805,7 +785,8 @@ function ReadyView(props: {
                 kind={shownGroup}
                 level={subLevel(level)}
                 handlers={handlers}
-                onBack={() => closeGroup(true)}
+                onBack={closeGroup}
+                onRetry={() => actions.retry()}
               />
             )}
           </GroupArea>
@@ -823,7 +804,7 @@ function ReadyView(props: {
               handlers={handlers}
               part="bottom"
               openGroup={openBottom}
-              onToggleGroup={(kind) => setOpenBottom(openBottom === kind ? null : kind)}
+              onToggleGroup={(kind) => (openBottom === kind ? closeGroup() : setOpenBottom(kind))}
               controls={areaId}
             />
             {footer}

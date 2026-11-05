@@ -44,6 +44,12 @@ function modeOf(top: Location): Mode | null {
   return isSubmissionPage(location.pathname) ? 'submission' : null;
 }
 
+/** The mode of this frame now, or `null` when the top frame or the page does not serve the catcher. */
+function currentMode(): Mode | null {
+  const top = sameOriginTop();
+  return top === null ? null : modeOf(top);
+}
+
 /**
  * The click catcher for the file links that the top frame cannot see (decision 25, item 11).
  *
@@ -62,15 +68,17 @@ export function startFrameCatcher(): void {
   const scope = globalThis as typeof globalThis & { __weekrowFrame?: () => void };
   scope.__weekrowFrame?.();
   scope.__weekrowFrame = undefined;
-  const top = sameOriginTop();
-  const mode = top === null ? null : modeOf(top);
-  if (mode === null) return;
+  if (currentMode() === null) return;
   const lifetime = new AbortController();
   scope.__weekrowFrame = () => lifetime.abort();
   document.addEventListener(
     'click',
     (event) => {
       if (!plainClick(event) || !(event.target instanceof Element)) return;
+      // The page of a frame can change without a load (`history.replaceState`), so each click
+      // applies the rule of the start again.
+      const mode = currentMode();
+      if (mode === null) return;
       const link = event.target.closest('a[href]');
       const href = link?.getAttribute('href');
       if (!link || href == null) return;

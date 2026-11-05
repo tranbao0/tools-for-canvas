@@ -162,6 +162,7 @@ const settings: Settings = {
   hiddenCourseIds: [COURSES.psyc.id],
   showRings: true,
   minimized: false,
+  openGroup: null,
   theme: 'auto',
   rowSize: 'compact',
 };
