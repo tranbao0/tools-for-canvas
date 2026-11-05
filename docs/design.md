@@ -2293,7 +2293,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
 3. **Steady page buttons.**
    The paged widgets that have no list of their own stay on this fix: Recent Grades and To-do.
    Each of them needs only an adapter for the shared list (a loader, a row and its filters) to get the same steady list.
-   Course work is covered by the weekly card, and Course grades by the grade cards.
+   Course work stays on it while the weekly card is off, and Course grades stays on it while "All course grades" is off.
    The navigator is a `nav` of nine places of equal width in one row, with the same accessible name as the pager of Canvas.
    The places are the previous arrow, the first page, a gap, the page before the current one, the current page, the page after it, a gap, the last page and the next arrow.
    The current page always stands in the middle place, with the look of the current page of Canvas (a filled dark blue square and a white bold number).
