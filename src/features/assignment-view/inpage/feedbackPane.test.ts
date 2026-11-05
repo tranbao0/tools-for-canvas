@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createDock } from '../../file-viewer/dock';
+import { createDock, isFullView, setFullView } from '../../file-viewer/dock';
 import { FEEDBACK_HOST_ID, createFeedbackPane, type FeedbackPane } from './feedbackPane';
 
 const URL_ONE = 'https://school.instructure.com/api/v1/canvadoc_session?blob=a&hmac=b';
@@ -87,5 +87,25 @@ describe('the feedback pane', () => {
     pane.close();
     expect(file.shown).toBe(true);
     file.close();
+  });
+});
+
+describe('the feedback pane in full view', () => {
+  afterEach(() => setFullView(false));
+
+  it('is a card, fills the window in full view without a change of the page padding, and leaves with the pane', () => {
+    pane.open({ title: 'essay.pdf', url: URL_ONE });
+    expect(host()?.hasAttribute('data-card')).toBe(true);
+    expect(host()?.style.width).toBe('492px');
+    setFullView(true);
+    expect(host()?.style.width).toBe('100vw');
+    expect(document.documentElement.style.paddingRight).toBe('492px');
+    // A session that replaces the shown one keeps the state.
+    pane.open({ title: 'two.pdf', url: URL_TWO });
+    expect(host()?.style.width).toBe('100vw');
+    pane.close();
+    expect(isFullView()).toBe(false);
+    pane.open({ title: 'essay.pdf', url: URL_ONE });
+    expect(host()?.style.width).toBe('492px');
   });
 });
