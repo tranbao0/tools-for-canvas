@@ -3237,7 +3237,9 @@ So a student switches pages to read the instructions next to the feedback on a f
   - A submitted file links as `/courses/:id/assignments/:id/submissions/:user?download=:file`, without a `download` attribute, so the pane matcher of decision 25 takes it.
   - The click path is the one of the page script of the pane.
     A click inside the open shadow root reaches the page as a click on the host, so the script reads the real element from the event path for a host with the attribute `data-weekrow-panel`, and for no other host.
-  - A comment attachment opens in the pane through its submission route, and its error card keeps a Download button (Ticket F2b).
+  - A comment attachment opens in the pane through its submission route.
+  - The error card of every file keeps a Download button, so a file that fails in the pane can still be saved.
+  - A comment attachment has no "Open in Canvas" there, because it has no Canvas page (Ticket F2b).
 - **Settings.** "One assignment view" is in the tools settings, on by default, in the same three places as the other settings.
 
 **Security:**
@@ -3289,7 +3291,7 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c` (20
   `[...url.searchParams]` and `url.searchParams.size` work.
 - Chromium and jsdom accept `keys()`, so the unit tests and the Chromium tests pass.
 - The error made the Submission box show "Download NAME" in Firefox, and it made every file row with a preview button count as incomplete, so the page fell back to Canvas's files frame (item 5).
-- The two places that read the parameter names (`sidebar.ts` and `submissionFrame.ts`) take the list from the params object.
+- The two places that check the parameters (`sidebar.ts` and `submissionFrame.ts`) read `url.search` as text, so they need no iterator in any browser version.
   An ESLint rule forbids `keys()`, `values()` and `entries()` on `searchParams` in `src`.
 
 **Verified source facts for the data of the rows and the details:**
