@@ -38,7 +38,10 @@ async function open(
   ]);
   await page.setViewportSize({ width: options.width ?? 1920, height: 800 });
   await openCanvasPage(page, canvas.origin);
-  if (options.settings?.minimized === true) {
+  if (options.settings?.minimized === true && usesDock(options.page)) {
+    // The classic dashboard and List View have the dock, and a minimized list is a tab there.
+    await expect(tab(page)).toBeVisible();
+  } else if (options.settings?.minimized === true) {
     await expect(bar(page)).toBeVisible();
     // The bar shows the counts once the whole view has loaded.
     await expect(inpageList(page).locator('.wr-minbar-status')).toHaveText(/past due/);
@@ -47,6 +50,15 @@ async function open(
     await settledList(page);
   }
   return canvas.origin;
+}
+
+/** The classic dashboard and List View give the list to the dock (design decision 4). */
+function usesDock(pageName: string | undefined): boolean {
+  return pageName === 'dashboard-card-view' || pageName === 'dashboard-list-view';
+}
+
+function tab(page: Page): Locator {
+  return page.getByRole('button', { name: /^Open weekly list/ });
 }
 
 function bar(page: Page): Locator {
@@ -230,7 +242,7 @@ test.describe('screenshots of the bar', () => {
               document.querySelector('.fixture-widget-app')?.setAttribute('data-fixture-dark', ''),
             );
           }
-          await expect(bar(page)).toBeVisible();
+          await expect(usesDock(pageName) ? tab(page) : bar(page)).toBeVisible();
           await page.screenshot({
             path: path.join(SHOTS, `bar-${pageName}-${width}-${theme}.png`),
             clip: { x: 0, y: 0, width, height: 800 },

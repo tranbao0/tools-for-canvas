@@ -205,6 +205,7 @@ function mountList(
       settings: channel.settings,
       tools: channel.tools,
       theme,
+      invalid: () => ctx.isInvalid,
       log: logFailure,
     });
   }

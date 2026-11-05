@@ -23,9 +23,6 @@
   "openWeeklyListOpen": {
     "message": "Open weekly list, $1, $2 open"
   },
-  "openWeeklyListNone": {
-    "message": "Open weekly list, $1, nothing open"
-  },
   "resizeWeeklyList": {
     "message": "Resize weekly list"
   },

@@ -69,10 +69,10 @@ describe('the tab text', () => {
     expect(text.label).toBe('Open weekly list, Nov 4 - 10, 2 open');
   });
 
-  it('says that nothing is open when the span has no open work', () => {
+  it('shows the count zero when the span has no open work', () => {
     const text = tabText(ready([{ kind: 'today', open: 0 }]));
     expect(text.open).toBe(0);
-    expect(text.label).toBe('Open weekly list, Nov 4 - 10, nothing open');
+    expect(text.label).toBe('Open weekly list, Nov 4 - 10, 0 open');
   });
 
   it('names only the list before the data is there', () => {
@@ -199,6 +199,8 @@ describe('the selected tab of the widget dashboard', () => {
 
 interface Rig {
   dock: WeeklyDock;
+  /** Ends the context of the copy, as an update of the extension does. */
+  invalidate(): void;
   container: HTMLElement;
   /** Changes the minimized state in the settings that the list shows. */
   setMinimized(value: boolean): void;
@@ -229,12 +231,13 @@ async function settle(): Promise<void> {
 
 /** Starts the weekly dock with a fake runtime. The stored settings load at once. */
 async function rig(options: { minimized?: boolean; width?: number } = {}): Promise<Rig> {
+  let invalid = false;
   let settings: Settings = { ...DEFAULT_SETTINGS, minimized: options.minimized === true };
   let tools: ToolsSettings = {
     ...DEFAULT_TOOLS_SETTINGS,
     weeklyDockWidth: options.width ?? 360,
   };
-  const subscribers = new Set<() => void>();
+  const subscribers = new Set<(state: SurfaceState) => void>();
   const settingsListeners = new Set<(value: Settings) => void>();
   const toolsListeners = new Set<(value: ToolsSettings) => void>();
   const saved: Settings[] = [];
@@ -247,12 +250,14 @@ async function rig(options: { minimized?: boolean; width?: number } = {}): Promi
       saveSettings(next: Settings) {
         saved.push(next);
         settings = next;
-        for (const listener of [...subscribers]) listener();
+        for (const listener of [...subscribers]) listener(runtime.state());
       },
     } as unknown as Actions,
-    subscribe(listener: () => void) {
+    subscribe(listener: (state: SurfaceState) => void) {
       subscribers.add(listener);
-      return () => subscribers.delete(listener);
+      return () => {
+        subscribers.delete(listener);
+      };
     },
     start() {},
     stop() {},
@@ -284,6 +289,7 @@ async function rig(options: { minimized?: boolean; width?: number } = {}): Promi
       },
     },
     theme: 'light',
+    invalid: () => invalid,
     log: () => undefined,
   };
   const dock = mountWeeklyDock(config);
@@ -291,6 +297,9 @@ async function rig(options: { minimized?: boolean; width?: number } = {}): Promi
   await settle();
   return {
     dock,
+    invalidate() {
+      invalid = true;
+    },
     container,
     saved,
     savedWidths,
@@ -504,5 +513,33 @@ describe('a page that removes the host of the dock', () => {
     expect(shown(host())).toBe(true);
     expect(container.parentElement).toBe(host());
     expect(padding()).toBe('360px');
+  });
+});
+
+describe('a copy whose extension context ended', () => {
+  it('does not put the dock back after a newer copy removed it, and does not touch the room of the newer copy', async () => {
+    html.style.setProperty('padding-right', '13px');
+    const old = await rig();
+    expect(padding()).toBe('360px');
+    old.invalidate();
+    // The newer copy removes the dock of this copy and takes the room itself.
+    host()?.remove();
+    html.style.setProperty('padding-right', '480px');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(host()).toBeNull();
+    expect(padding()).toBe('480px');
+    // The check of the context ends this copy a few seconds later.
+    old.dock.stop();
+    expect(padding()).toBe('480px');
+    expect(host()).toBeNull();
+  });
+
+  it('still removes its own dock and gives the room back when nothing took the page', async () => {
+    html.style.setProperty('padding-right', '13px');
+    const old = await rig();
+    old.invalidate();
+    old.dock.stop();
+    expect(host()).toBeNull();
+    expect(padding()).toBe('13px');
   });
 });

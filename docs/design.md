@@ -327,7 +327,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   It has its left corners rounded at 8 px, a 1 px `#c7cdd1` border, a small shadow and a white background (a dark pair in the dark theme).
   It shows a calendar check icon, the text of the span written vertically (for example "Nov 4 - 10"), and a pill with the count of open work of the shown span.
   The count is the number of items in the day groups of the span: Today, Tomorrow and the later days.
-  It leaves out Past due, No due date and Done, and the pill is hidden when the count is zero.
+  It leaves out Past due, No due date and Done.
   The tab is a real button with `aria-expanded="false"` and a name such as "Open weekly list, Nov 4 - 10, 2 open".
   A click opens the dock at once.
   Focus goes to the tab after a minimize that the student made inside the dock, and to the minimize button after an open from the tab.

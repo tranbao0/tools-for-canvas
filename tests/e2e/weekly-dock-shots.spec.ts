@@ -51,6 +51,12 @@ for (const size of SIZES) {
       ]);
       await addCsrfCookie(context, served.canvas.origin);
       await page.setViewportSize(size);
+      // The navigation is collapsed, as Canvas starts, so the wrapper ends at 1420 px.
+      await page.addInitScript(() => {
+        document.addEventListener('DOMContentLoaded', () =>
+          document.body.classList.remove('primary-nav-expanded'),
+        );
+      });
       await openCanvasPage(page, served.canvas.origin, '/');
       await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
       await settledList(page);
