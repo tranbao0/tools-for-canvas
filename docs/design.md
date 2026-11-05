@@ -3195,7 +3195,7 @@ So a student switches pages to read the instructions next to the feedback on a f
   - An assignment page (`/courses/:id/assignments/:id`) gets it too, for the Submission box.
   - The Grades list and the page of an anonymous submission (`anonymous_submissions/:id`) get nothing.
   - A newer injection retires the copy of an earlier one, and a start removes the nodes that a destroyed copy left (every node and mark starts with `data-av-`).
-    The removal looks only in the parts that the view of the page owns: the content of the Submission box (`#sidebar_content .details .content`, never its `.comments`) on the assignment page, the head and the host on the Submission Details page, and the head and the lists of rows on the Assignments list.
+    The removal looks only in the parts that the view of the page owns: the content of the Submission box (`#sidebar_content .details .content`, never its `.comments`) on the assignment page, the head, the host and the one header container `.ic-Action-header__Secondary` on the Submission Details page, and the head and the lists of rows on the Assignments list.
     A pane that an earlier copy docked in the body (`#tools-feedback`, `#tools-turn-in`) is removed by its id when it has `data-av-own`, on the Submission Details page and on the Assignments list.
     A description or a comment of another author can hold such marks, and the removal never reaches it.
     A holder of Canvas's nodes is given back only when it has `data-av-own` and is a direct child of a link in the box.
