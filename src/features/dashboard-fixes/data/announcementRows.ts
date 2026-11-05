@@ -18,10 +18,13 @@ function limited(value: unknown, max: number): string {
 }
 
 /**
- * The paths on the Canvas origin that an image may load: files, equation images and assets. It is
- * the rule of the sanitizer (`CANVAS_IMAGE_PATH` in src/shared/ui/sanitize.ts). Any other Canvas
- * page as an image address would be a GET of that page, and a GET of a topic page marks the topic
- * as read, so such an avatar address is dropped.
+ * The paths on the Canvas host that an image may load: files, equation images and assets. The path
+ * list is the one of the sanitizer (`CANVAS_IMAGE_PATH` in src/shared/ui/sanitize.ts), but the
+ * test of the host differs: the sanitizer compares origins, so an image on the Canvas host with
+ * another port counts there as another origin. `webAddress` compares host names, so an address on
+ * the Canvas host with any scheme or port needs such a path. Any other
+ * Canvas page as an image address would be a GET of that page, and a GET of a topic page marks the
+ * topic as read, so such an avatar address is dropped.
  */
 const CANVAS_IMAGE_PATH =
   /^\/(?:(?:courses|groups|users|accounts)\/\d+(?:~\d+)?\/files\/|files\/|equation_images\/|images\/|dist\/)/;

@@ -397,7 +397,7 @@ export function announcementsFix(): Fix {
         loadingFirst: state.status === 'loading',
         hasMore: rows.length > view.shown,
         failed: state.status === 'error' ? 'first' : 'none',
-        ended: state.status === 'done' && rows.length > 0,
+        ended: state.status === 'done' && rows.length > 0 && !state.truncated,
         line:
           state.status === 'loading'
             ? t('annSearchingRange')
@@ -522,7 +522,7 @@ export function announcementsFix(): Fix {
 
     // The sentinel asks for more when it comes within 200 px of the end of the area. The observer
     // starts again after each load, because an observer reports only a change.
-    const near = `${model.scrollKey}|${model.rows.length}|${model.loadingMore ? 1 : 0}|${model.failed}`;
+    const near = `${model.scrollKey}|${model.rows.length}|${model.hasMore ? 1 : 0}|${model.loadingMore ? 1 : 0}|${model.failed}`;
     useEffect(() => {
       const target = sentinel.current;
       const area = scroll.current;
@@ -699,7 +699,10 @@ export function announcementsFix(): Fix {
               {t('annListLoading')}
             </p>
           ) : null}
-          {!model.loadingFirst && model.failed === 'none' && model.rows.length === 0 ? (
+          {!model.loadingFirst &&
+          !model.hasMore &&
+          model.failed === 'none' &&
+          model.rows.length === 0 ? (
             <p class="wr-a-line">{emptyText(view, model)}</p>
           ) : null}
           {model.failed !== 'none' ? (
