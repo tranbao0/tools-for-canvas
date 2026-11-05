@@ -3063,7 +3063,7 @@ So a student switches pages to read the instructions next to the feedback on a f
        This also holds when a file has a Turnitin score.
      - A "Submission" box stands in the free space right of the content.
        It sits in Canvas's own right column, which Canvas draws empty on this page and hides.
-       The owner approved the look of the box on 2026-11-04, from a mockup.
+       The owner approved a mockup of the box.
      - The box has the heading "Submission", then the status line in bold, the date, the files and the comments.
        - The status line follows the header of Canvas's own Submission box: "Excused!", "Submitted!" with a check icon, or "Not Submitted!" with an x icon.
          "Submitted!" shows when the submission has a time or a type.
@@ -3138,7 +3138,7 @@ So a student switches pages to read the instructions next to the feedback on a f
        On a wide window, the content keeps the width that Canvas gives it, and the box lands in the free space on its right.
      - Canvas lays the column beside the content only at 1140 px or wider with the course menu open, and at 992 px or wider with it closed.
        Below that, the column stacks under the content, and so does the box.
-       The owner accepts this (2026-11-04).
+       The owner accepts this.
    - The view adds two hosts.
      - The box is `div#av-submission-box`, with the attribute `data-av-own`, an open shadow root and the attribute that lets the file pane take the clicks on its file links (decision 25).
        It is the last child of `#right-side`, and it has the role "region" with the label "Submission".
@@ -3425,6 +3425,9 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
   - Lines 29-43: the heading "Submission", then the header: "Excused!" for an excused submission, else, only when `@assignment.expects_submission?`, "Submitted!" with `icon-check` or "Not Submitted!" with `icon-x`.
   - Lines 50-55: the date, written by `datetime_string`, and "%{submitted_at} (late)" for a late submission.
   - The same file draws the link "Submission Details", which the box leaves out because it would point to the page itself.
+- `app/views/submissions/show_preview.html.erb`:
+  - Lines 266-272: the originality cell of a file row, `td.file-upload-submission-turnitin`, renders only the originality partial.
+  - Lines 205-216: for a text entry, the same partial draws its score in the `div` above `#submission_preview`, outside any file row.
 - `app/models/submission.rb`, lines 2967-2969: `to_param` is `user_id`, so the third id of a report address is the user of the page's path.
 - `config/routes.rb`, lines 302-306: the routes `originality_report/:asset_string`, `turnitin/:asset_string` and `vericite/:asset_string` inside `resources :submissions`.
 - `app/views/submissions/show.html.erb`, from line 334: the comments column is `div.submission-details-comments` with `div.comments`, `div.comment_list`, the hidden blank templates, and `div#add_comment_form` with the label, the textarea, "Media Comment", "Attach File" and the Save button.
