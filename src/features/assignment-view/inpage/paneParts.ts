@@ -2,12 +2,7 @@
  * The parts that the panes of the assignment view share: the header rules, the icons and the Full
  * view button. The panes sit in a card dock (decision 25), which gives the frame and the colors.
  */
-import {
-  fullViewAvailable,
-  isFullView,
-  setFullView,
-  watchFullView,
-} from '../../file-viewer/dock';
+import { fullViewAvailable, isFullView, setFullView, watchFullView } from '../../file-viewer/dock';
 import { EXIT_FULL_VIEW_PATH, FULL_VIEW_PATH } from '../../../shared/ui/iconPaths';
 import { t } from '../../../shared/ui/i18n';
 
