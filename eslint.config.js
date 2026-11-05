@@ -65,6 +65,11 @@ export default defineConfig([
   {
     files: ['src/**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser } },
+  },
+  {
+    // Unit tests run in Node, which accepts these calls.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.test.{ts,tsx}'],
     rules: {
       // Firefox 159 throws "is not iterable" when a content script spreads these iterators.
       'no-restricted-syntax': [
