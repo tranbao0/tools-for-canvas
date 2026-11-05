@@ -15,6 +15,10 @@ export interface SubmissionPageOptions {
   user?: string;
   /** The page of a teacher: SpeedGrader instead of "Re-submit Assignment". */
   teacher?: boolean;
+  /** No attempts are left: Canvas draws "Re-submit Assignment" with the `disabled` attribute. */
+  noAttemptsLeft?: boolean;
+  /** The container has no button: the user may not submit and is no teacher. */
+  noButton?: boolean;
   /** The address of the files frame. */
   frameSrc?: string;
   /**
@@ -173,9 +177,11 @@ export function submissionDetailsPage(options: SubmissionPageOptions = {}): stri
   const page = `/courses/${course}/assignments/${assignment}/submissions/${user}`;
   const src = options.frameSrc ?? `${page}?preview=1&rand=481516`;
   const hasHolder = options.rubric === true || options.rubricWithoutLink === true;
-  const action = options.teacher
-    ? `<a class="Button" href="/courses/${course}/gradebook/speed_grader?assignment_id=${assignment}&amp;student_id=${user}" target="_blank" rel="noopener"><i class="icon-speed-grader" aria-hidden="true"></i> SpeedGrader</a>`
-    : `<a href="/courses/${course}/assignments/${assignment}#submit" class="Button Button--primary">Re-submit Assignment</a>`;
+  const action = options.noButton
+    ? ''
+    : options.teacher
+      ? `<a class="Button" href="/courses/${course}/gradebook/speed_grader?assignment_id=${assignment}&amp;student_id=${user}" target="_blank" rel="noopener"><i class="icon-speed-grader" aria-hidden="true"></i> SpeedGrader</a>`
+      : `<a href="/courses/${course}/assignments/${assignment}#submit" class="Button Button--primary"${options.noAttemptsLeft ? ' disabled' : ''}>Re-submit Assignment</a>`;
   return `<!doctype html>
 <html lang="en" dir="ltr"><head><meta charset="utf-8"><title>Reflection Paper #1: Submission Details</title>
 <style>${CSS}${STYLE}${RUBRIC_STYLE}</style>

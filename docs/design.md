@@ -3071,7 +3071,13 @@ So a student switches pages to read the instructions next to the feedback on a f
        The extension adds only the "Instructions" block, with the same look and the same "Show more" rule, above the whole content area.
        "Your files" and "Your submission" do not show for these types.
        The owner decided this on 2026-11-03: the view cannot show these types safely, and the instructions belong at the top of every Submission Details page.
-     - Everything else on the page stays Canvas's own and untouched: the "Submission Details" header, the grade, "Show Rubric", the title, "submitted ...", "Re-submit Assignment" and the comments column on the right.
+     - Canvas's primary button of the title row ("Submit Assignment" or "Re-submit Assignment") is hidden, and the extension adds a button of its own beside it.
+       The new button says "Go to assignment" and opens the assignment page, with no hash, so Canvas does not open the upload form by itself.
+       It has Canvas's own button look.
+       Canvas's button goes back when the switch goes off.
+       A page where Canvas draws no such button gets no new button.
+       The owner decided this on 2026-11-04.
+     - Everything else on the page stays Canvas's own and untouched: the "Submission Details" header, the grade, "Show Rubric", the title, "submitted ..." and the comments column on the right.
        Only when the view shows Canvas's own rubric (RB1), the header's "Show Rubric" and its unread mark are hidden, and the rubric holder moves under the files.
    - **Assignment page (`/courses/:id/assignments/:id`).**
      - The extension adds no panel.
@@ -3113,10 +3119,19 @@ So a student switches pages to read the instructions next to the feedback on a f
    - When the view replaces the frame: one `style` element in the head hides `.submission-details-container>.submission-details-frame`, and one host element is added after that frame, in the same flex row, with the comments column on its right.
    - In the fallback mode of item 5: the hide-frame rule is not added, and the host is added right before `.submission-details-container`, so it sits above the frame and the comments column.
      The frame iframe and the comments column are not moved or changed.
-     When the page has a rubric that the view shows (RB1), the one style element still exists, with the rubric rules, and the rubric wrapper `div#av-rubric` is added inside `div.submission-details-frame` after the iframe, so that node of Canvas gets a new child.
+     The one style element holds the rubric rules when the page has a rubric that the view shows (RB1), and the rule for Canvas's submit button when that button is on the page.
+     When the page has a rubric that the view shows, the rubric wrapper `div#av-rubric` is added inside `div.submission-details-frame` after the iframe, so that node of Canvas gets a new child.
      The iframe itself does not move.
+   - In both modes, when Canvas's primary button of the title row is on the page, the same style element also holds one rule that hides it: `.ic-Action-header__Secondary>a.Button--primary[href$="#submit"]{display:none!important}`.
+     The view adds one link right after Canvas's button, in the same container `.ic-Action-header__Secondary`.
+     The link has the attribute `data-av-own` and the classes `Button Button--primary`, so it takes Canvas's own button look.
+     Its text is exactly "Go to assignment".
+     Its address is the assignment page on the origin of the page, built from the course id and the assignment id of the page, with no hash and no query.
+     The link has no `disabled` attribute, because it only navigates, so it also works when Canvas disabled its button for no attempts left.
+     Without Canvas's button on the page, the view adds neither the rule nor the link.
+     A change between the two modes draws the link again, so the page never has two.
    - Apart from the moved rubric holder, and the mark and the title after a successful read request (see "The rubric in the view"), no node of Canvas gets an attribute or a style, and the frame is never moved, because a moved frame reloads.
-   - Turning the switch off removes the style, the host, the rubric wrapper and an open feedback pane, and puts the rubric holder back, so the content area is the same as Canvas drew it.
+   - Turning the switch off removes the style, the host, the own link, the rubric wrapper and an open feedback pane, and puts the rubric holder back, so the content area is the same as Canvas drew it.
      One exception stays: after a successful read request for the rubric comments, the unread mark keeps `display: none` and the link keeps its blank title, as they are after Canvas's own click, because the comments are read in Canvas.
 5. **Where the files come from.**
    - The rows come from the same-origin files frame `iframe#preview_frame`, once its document is the preview page and has loaded: `tr.file-upload-submission`, the file link, the size text, the label of the button and the unread mark.
@@ -3124,7 +3139,7 @@ So a student switches pages to read the instructions next to the feedback on a f
      The page path and the path of the link are compared segment by segment as decimal global ids, because a shard student's page can write `2~123` where the frame writes `20000000000123`.
    - Until the frame has loaded, an upload shows the files of the details (`attachments` with `display_name` and `size`) with no "View Feedback" button, and the frame is hidden.
    - **The fallback rule.**
-     When the view cannot show everything that the frame shows, it uses the mode of item 4 for "any other type": the instructions above `.submission-details-container`, the frame visible and untouched, no hide style.
+     When the view cannot show everything that the frame shows, it uses the mode of item 4 for "any other type": the instructions above `.submission-details-container`, the frame visible and untouched, no hide-frame rule.
      The mode applies to a submission type that the view does not show (media recording, quiz, LTI tool, student annotation, discussion, and any other type), and to these cases once the frame has loaded:
      - The frame cannot be read, is on another origin, or does not show the preview page of this submission within 10 seconds.
      - An upload has attachments in the details but no file row of the frame matches.
@@ -3246,6 +3261,10 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c` (20
   - The frame is `submission_preview_frame_url`: the same page with `preview=1` and a random number.
   - The header is `div.submission-details-header`, with `h1.submission-details-header__heading`, `a.assess_submission_link` for "Show Rubric", `h2.submission-details-header__heading` for the title and `span.submission-details-header__time`.
   - "Re-submit Assignment" is `a.Button.Button--primary` in `.ic-Action-header__Secondary`, only for `@current_user == @submission.user`.
+    Lines 247-251 draw it as `<a href="/courses/:c/assignments/:a#submit" class="Button Button--primary">` with the `disabled` attribute when no attempts are left.
+    It shows only when the assignment expects a submission and the user may submit.
+    The address ends in `#submit`, so the assignment page opens the upload form by itself.
+    The container may also hold a SpeedGrader button, for teachers only.
   - The page has no DOM marker for the own submission, a teacher or an observer.
   - The user id is only in `ENV.SUBMISSION`, which a content script cannot read.
 - `app/stylesheets/bundles/submission.scss`: the container is a flex row at the desktop breakpoint, the frame has `flex: 1` and the comments column `flex: 0 0 280px`.
@@ -3310,7 +3329,7 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
   `rubric.ts` moves the same node (so the script of Canvas keeps its handlers) into a wrapper `div#av-rubric` and leaves a comment mark `av-rubric-home` where the holder was.
   The wrapper is a child of the host, and a slot of the host shows it under "Your files".
   Where the frame stays (the instructions-above case), the wrapper goes after the frame inside `div.submission-details-frame`, and the frame itself does not move.
-  So the order of the page is: title, Re-submit, instructions, files, rubric, comments.
+  So the order of the page is: title, "Go to assignment", instructions, files, rubric, comments.
 - The holder gets no attribute and no style of its own.
   A rule in the page sheet (`!important`, scoped by `#av-rubric>#rubric_holder`) shows it in the flow, with no absolute place, no maximum height and a transparent background, so it takes the colors of the page.
   The same sheet hides `div.submission-details-header__rubric` (the link and its unread dot) and `a.hide_rubric_link`, because a close button has no use in the page.
@@ -3358,18 +3377,24 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
   - On a reply `ok`, the view hides the unread dot and clears the title of the link, as Canvas's click does.
     On a failure it shows nothing, logs one line and does not send again.
     The shared client retries only a rate limit answer, as for every request, and each retry runs the guard first.
+- `removeStaleView` removes the own link of a dead copy.
+  On the Submission Details page it looks, besides the head and the host, only in the one container `.ic-Action-header__Secondary`, so Canvas's own button there stays with its text.
 - `removeStaleView` puts a holder back from the wrapper of an earlier copy of the script before it removes the old view.
 
 **Fixtures and tests:**
 
 - `tests/fixtures/submission-page.ts` and `tests/fixtures/submission-frame.ts` model the page and the files frame on that markup.
-  The page fixture has a student and a teacher variant, and a rubric variant with the link, the holder and a small copy of the script of Canvas that handles the holder.
+  The page fixture has a student and a teacher variant, a variant with Canvas's button disabled for no attempts left, a variant with no button in the title row, and a rubric variant with the link, the holder and a small copy of the script of Canvas that handles the holder.
 - `tests/fixtures/pages/assignment.html` has the sidebar of the assignment page.
-- `tests/e2e/submission-details.spec.ts` covers the replacement, the file click, the feedback pane, the instructions above an untouched frame for a media recording, the unchanged pages and the switch.
+- `tests/e2e/submission-details.spec.ts` covers the replacement, the "Go to assignment" button, the file click, the feedback pane, the instructions above an untouched frame for a media recording, the unchanged pages and the switch.
 
 **Live checks for the owner:**
 
-1. Open a graded submission on sjsu.instructure.com: the left area shows "Instructions" and "Your files", and the header, grade, "Re-submit Assignment" and comments look as before.
+1. Open a graded submission on sjsu.instructure.com: the left area shows "Instructions" and "Your files", and the header, grade and comments look as before.
+   The button of the title row says "Go to assignment" in Canvas's blue, in the place of "Re-submit Assignment".
+   A click on it opens the assignment page with no upload form.
+   The button sits at the right end of the row, with no extra gap, where Canvas's button was.
+   If Canvas disabled its button for no attempts left, "Go to assignment" still works.
    Canvas's own rubric shows open under "Your files", and "Show Rubric" is gone.
    If a page shows Canvas's own files area with the instructions above it instead, a fallback case of item 5 applies (for example a similarity score).
    Tell me which one, so the case can get its own display.
@@ -3378,7 +3403,7 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
    If DocViewer refuses the frame, use "Open in new tab" and report it.
 4. Open the same page as a teacher, if possible: nothing changes.
 5. A text entry, a URL submission and a media recording: the first two show in "Your submission", and the media recording keeps Canvas's own area with the instructions above it.
-6. Turn the switch off: the page is as Canvas drew it, without a reload.
+6. Turn the switch off: the page is as Canvas drew it, without a reload, and the button says "Re-submit Assignment" again.
 7. On the assignment page, click the download link of the Submission sidebar: the file opens in the pane.
 8. On an assignment with a rubric, the rubric shows with the assessment of the teacher marked, Tab leaves it for the next control, and Escape does nothing.
    If the rubric had unread comments, the dot is gone, and after a reload with the switch off Canvas shows no unread dot on "Show Rubric".

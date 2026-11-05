@@ -411,6 +411,35 @@ describe('turning the view off', () => {
     expect(document.querySelector('.submission-details-comments p[data-av-own]')).not.toBeNull();
   });
 
+  describe('the own link of the title row on a Submission Details page', () => {
+    const PAGE = '/courses/12/assignments/101/submissions/42';
+    const BUTTONS =
+      '<div class="ic-Action-header__Secondary"><a href="/courses/12/assignments/101#submit" class="Button Button--primary">Re-submit Assignment</a><a data-av-own href="/courses/12/assignments/101" class="Button Button--primary">Go to assignment</a></div>';
+
+    it('removes the link of a dead copy and keeps the button of Canvas with its text', () => {
+      document.body.insertAdjacentHTML('beforeend', BUTTONS);
+      removeStaleView(document, PAGE);
+      const links = [...document.querySelectorAll('.ic-Action-header__Secondary a')];
+      expect(links.map((link) => link.textContent)).toEqual(['Re-submit Assignment']);
+      expect(links[0]!.outerHTML).toBe(
+        '<a href="/courses/12/assignments/101#submit" class="Button Button--primary">Re-submit Assignment</a>',
+      );
+    });
+
+    it('looks nowhere else for an own link: not on the assignment page, the list, or in a comment', () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `${BUTTONS}<div class="submission-details-comments"><a data-av-own href="/x">Go to assignment</a></div><div class="other"><a data-av-own href="/y">Go to assignment</a></div>`,
+      );
+      removeStaleView(document, '/courses/12/assignments/101');
+      removeStaleView(document, '/courses/12/assignments');
+      expect(document.querySelectorAll('a[data-av-own]')).toHaveLength(3);
+      removeStaleView(document, PAGE);
+      expect(document.querySelectorAll('a[data-av-own]')).toHaveLength(2);
+      expect(document.querySelector('.ic-Action-header__Secondary a[data-av-own]')).toBeNull();
+    });
+  });
+
   it('ignores an answer that arrives after the view stopped', async () => {
     let answer!: (value: unknown) => void;
     send.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));

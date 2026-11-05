@@ -112,7 +112,8 @@ export const STALE_PANE_IDS: readonly string[] = ['tools-feedback', 'tools-turn-
  * The parts of the page where the view of this page puts its nodes, and nothing else. The text of
  * other authors (a description, a comment) sits elsewhere, so a sweep never reaches it:
  * - the assignment page: the content of the Submission box, `#sidebar_content .details .content`;
- * - the Submission Details page: the head, which holds the style, and the host, by its id;
+ * - the Submission Details page: the head, which holds the style, the host, by its id, and the
+ *   container of the title row's buttons, `.ic-Action-header__Secondary`, which holds the own link;
  * - the Assignments list: the head, and the lists that hold the rows and their detail rows.
  * The panes in the body go by their ids on the pages that dock them.
  */
@@ -131,6 +132,8 @@ function ownedRoots(doc: Document, pathname: string): Element[] {
   if (SUBMISSION_PAGE.test(pathname)) {
     const host = doc.getElementById('av-submission-details');
     if (host?.hasAttribute(OWN)) host.remove();
+    const buttons = doc.querySelector('.ic-Action-header__Secondary');
+    if (buttons) roots.add(buttons);
     return [...roots];
   }
   for (const row of doc.querySelectorAll('.ig-row[id^=assignment_],[data-av-details]')) {
