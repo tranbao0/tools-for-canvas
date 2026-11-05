@@ -563,6 +563,7 @@ describe('sameFiles', () => {
 describe('refineFiles with a frame button for a file that the box does not list', () => {
   it('counts the file as one with no usable session address', () => {
     const hints = new Map([['999', { label: 'View Feedback', unread: false, session: null }]]);
-    expect(refineFiles([], hints).withoutSession).toBe(1);
+    const full = Array.from({ length: 50 }, (_, index) => file({ fileId: String(index + 1) }));
+    expect(refineFiles(full, hints).withoutSession).toBe(1);
   });
 });
