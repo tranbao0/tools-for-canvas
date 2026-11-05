@@ -2158,7 +2158,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The pager of Canvas, with its spinner, stays in the page and takes no room: one rule of the stylesheet, scoped to the widget mark `data-wr-paged`, hides it with `display: none`.
    So it is out of the accessibility tree and the tab order, and Canvas does not move the focus into it.
    The navigator has `data-wr-own`, so the observer ignores it.
-   Another fix that hides the pager (the grade cards, and the course filter of the announcements) hides the navigator too.
+   Another fix that hides the pager (the grade cards, and the own list of the announcements) hides the navigator too.
    The navigator follows the dark theme of the widget, with the link color `#5A9FD4`, the ink `#FFFFFF` and the disabled color `#4A5B68` of the package, and the current page keeps its blue square.
    A widget with one page has no pager of Canvas, so it has no navigator.
 
