@@ -252,23 +252,34 @@ describe('the score of a file, after _originality_score.html.erb', () => {
     expect(result.report?.url).toBe(`${ORIGIN}${PAGE}/turnitin/attachment_501`);
   });
 
-  it('falls back to the report of the whole submission, with the address of the file', () => {
-    const result = score([{ ...ENTRY, asset: 'submission_9' }], { id: '9' });
-    expect(result.report?.url).toBe(`${ORIGIN}${PAGE}/turnitin/attachment_501`);
+  it('falls back to the report of the whole submission at its time, with the address of the file', () => {
     const timed = score([{ ...ENTRY, asset: 'submission_9_2026-11-01T10:00:00Z' }], {
       id: '9',
       submitted_at: '2026-11-01T10:00:00Z',
     });
+    expect(timed.report?.url).toBe(`${ORIGIN}${PAGE}/turnitin/attachment_501`);
     expect(timed.report?.text).toBe('5.0%');
   });
 
+  it('never takes the plain key of the submission for a file, which is the key of a text entry', () => {
+    expect(score([{ ...ENTRY, asset: 'submission_9' }], { id: '9' })).toEqual({
+      report: null,
+      readable: true,
+    });
+    expect(score([{ ...ENTRY, asset: 'submission_9', readable: false }], { id: '9' })).toEqual({
+      report: null,
+      readable: true,
+    });
+  });
+
   it('uses the VeriCite entry of the attachment, then the entry of the submission, as the template does', () => {
+    const at = { id: '9', submitted_at: '2026-11-01T10:00:00Z' };
     const result = score(
       [
-        { ...ENTRY, asset: 'submission_9', score: 31, state: 'problem' },
+        { ...ENTRY, asset: 'submission_9_2026-11-01T10:00:00Z', score: 31, state: 'problem' },
         { ...ENTRY, kind: 'vericite', asset: 'attachment_999', score: 9 },
       ],
-      { id: '9' },
+      at,
     );
     expect(result.report).toMatchObject({ text: '31.0%' });
     expect(result.report?.url).toContain('/vericite/attachment_501');
@@ -276,7 +287,8 @@ describe('the score of a file, after _originality_score.html.erb', () => {
 
   it('is not readable when the entry of the file has a form that the view cannot show', () => {
     expect(score([{ ...ENTRY, readable: false }])).toEqual({ report: null, readable: false });
-    expect(score([{ ...ENTRY, asset: 'submission_9', readable: false }], { id: '9' })).toEqual({
+    const timed = { ...ENTRY, asset: 'submission_9_2026-11-01T10:00:00Z', readable: false };
+    expect(score([timed], { id: '9', submitted_at: '2026-11-01T10:00:00Z' })).toEqual({
       report: null,
       readable: false,
     });
@@ -289,7 +301,8 @@ describe('the score of a file, after _originality_score.html.erb', () => {
     );
     expect(result).toMatchObject({ readable: true, report: { text: '5.0%' } });
     // The entry of the attachment wins over the unreadable entry of the submission.
-    const own = score([ENTRY, { ...ENTRY, asset: 'submission_9', readable: false }], { id: '9' });
+    const timed = { ...ENTRY, asset: 'submission_9_2026-11-01T10:00:00Z', readable: false };
+    const own = score([ENTRY, timed], { id: '9', submitted_at: '2026-11-01T10:00:00Z' });
     expect(own).toMatchObject({ readable: true, report: { text: '5.0%' } });
   });
 
