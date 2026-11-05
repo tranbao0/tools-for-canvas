@@ -1532,8 +1532,12 @@ test('the score of a file measures again when the box gets wider or narrower', a
   await page.addStyleTag({ content: '#sidebar_content .details .content { width: 240px; }' });
   await expect.poll(stands).toBe('under');
   const text = link.locator('span:not([hidden]) > span');
-  const [textBox, scoreBox] = [await text.boundingBox(), await score.boundingBox()];
-  expect(Math.abs(scoreBox!.x - textBox!.x)).toBeLessThan(1);
+  await expect
+    .poll(async () => {
+      const [textBox, scoreBox] = [await text.boundingBox(), await score.boundingBox()];
+      return Math.abs(scoreBox!.x - textBox!.x);
+    })
+    .toBeLessThan(1);
 });
 
 test('both files of the Submission box get the treatment', async ({
