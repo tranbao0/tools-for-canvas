@@ -2778,8 +2778,9 @@ With the pane read alone, the default run of the test failed before the fix.
      The host stretches from the left edge to the right edge of the page (`left: 0` and `right: 0`, with no width in `vw`), because `100vw` includes the scroll bar of a long page and would push the card over the left edge.
      The state is one value in the dock module, shared by the panes of the page, and it is never saved.
      Only one pane shows at a time, so a file pane that opens over an assignment pane in full view shows in full view too, and closing it shows the assignment pane in full view again.
-     The close of a pane leaves full view, so the next pane starts in its place, and a file pane that a closed assignment pane or feedback pane uncovers shows in its place, not in full view.
-     One exception keeps both rules: a file pane that closes while another pane waits under it leaves that pane in full view.
+     The close of a pane that shows leaves full view, so the next pane starts in its place, and a file pane that a closed assignment pane or feedback pane uncovers shows in its place, not in full view.
+     One exception keeps both rules: a file pane that closes while an assignment pane waits under it leaves that pane in full view.
+     A pane that a file pane covers can close without the student (a change of student, or a page that removes its host), and then full view stays as the file pane has it.
      The weekly list dock and its tab stay behind a pane in full view, and the Preview row state stays.
      Below 900 px the dock already covers the page, so the button is hidden and the narrow layout wins.
      The state is kept, so full view comes back when the window gets wide again.

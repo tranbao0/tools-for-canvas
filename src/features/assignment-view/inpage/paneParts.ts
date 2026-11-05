@@ -28,7 +28,7 @@ export const PANE_CSS = `
 .sub[hidden],.btn[hidden]{display:none}
 .btn{box-sizing:border-box;display:inline-flex;flex:none;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--edge);border-radius:4px;background:var(--bg);color:var(--text);font:inherit;font-size:13px;line-height:1.125;text-decoration:none;white-space:nowrap;cursor:pointer}
 .btn:hover{background:var(--btn-hover);text-decoration:none}
-@container (max-width:${COMPACT_HEADER_PX - 1}px){.btn{justify-content:center;width:30px;padding:0}.lb{display:none}}
+@container (width<${COMPACT_HEADER_PX}px){.btn{justify-content:center;width:30px;padding:0}.lb{display:none}}
 .icon-btn{box-sizing:border-box;display:inline-flex;flex:none;align-items:center;justify-content:center;width:30px;height:30px;margin:0;padding:0;border:0;border-radius:4px;background:transparent;color:var(--text);cursor:pointer}
 .icon-btn:hover{background:var(--hover)}
 a:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}

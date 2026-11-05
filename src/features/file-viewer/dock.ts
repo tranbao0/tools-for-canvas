@@ -48,6 +48,7 @@ export interface Dock {
   readonly root: ShadowRoot;
   readonly section: HTMLElement;
   readonly width: number;
+  readonly role: DockRole;
   /** Whether the dock is on the page and not hidden. */
   readonly shown: boolean;
   /** Whether the dock fills the window now: a card dock, in full view, on a window that is wide enough. */
@@ -475,6 +476,7 @@ export function createDock(options: DockOptions): Dock {
     get width() {
       return width;
     },
+    role: options.role,
     get shown() {
       return opened && !hidden;
     },
@@ -511,10 +513,13 @@ export function createDock(options: DockOptions): Dock {
       host.remove();
       if (card) {
         openPanes().delete(dock);
-        // The close of a pane that shows leaves full view. A file pane that closes while another
-        // pane waits under it is the one exception: that pane stays in full view. A pane that a
-        // file pane covers closes without a change, because the file pane keeps its state.
-        if (openPanes().size === 0 || (options.role !== 'file' && !hidden)) setFullView(false);
+        // The close of a pane leaves full view. A pane that a file pane covers closes without a
+        // change, because the file pane keeps its state. One exception: a file pane that closes
+        // while an assignment pane waits under it leaves that pane in full view.
+        const keeps =
+          hidden ||
+          (options.role === 'file' && [...openPanes()].some((pane) => pane.role === 'turn-in'));
+        if (openPanes().size === 0 || !keeps) setFullView(false);
       }
       if (options.role === 'file' && shared().file === dock) {
         shared().file = null;
