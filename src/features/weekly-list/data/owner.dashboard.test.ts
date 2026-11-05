@@ -17,7 +17,6 @@ import {
 } from './testing/harness';
 
 const C = IDS.courses;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 beforeEach(() => useScenarioClock());
 afterEach(async () => {
@@ -71,7 +70,6 @@ it('uses the checked announcement origin without reading storage again', async (
   h.canvas.setAnnouncements(C.biology, [topic('11')]);
   const readOrigin = vi.spyOn(h.deps.store.origin, 'getValue');
   await h.owner.announcement(C.biology, '11', ORIGIN);
-  await h.owner.announcements(C.biology, ORIGIN);
   expect(readOrigin).not.toHaveBeenCalled();
   expect(h.createApi).toHaveBeenCalledWith(ORIGIN);
   expect(h.createApi).not.toHaveBeenCalledWith('https://other.instructure.com');
@@ -396,119 +394,6 @@ describe('announcement', () => {
     await expect(h.owner.announcement(C.biology, '1', ORIGIN)).rejects.toMatchObject({
       kind: 'not_found',
     });
-  });
-});
-
-describe('announcements', () => {
-  it('asks for a window of 180 days that ends at the clock time', async () => {
-    const h = await loaded();
-    const now = Date.now();
-
-    await h.owner.announcements(C.biology, ORIGIN);
-
-    expect(h.canvas.callsOf('listAnnouncements')).toEqual([
-      [
-        C.biology,
-        {
-          start: new Date(now - 180 * DAY_MS).toISOString(),
-          end: new Date(now).toISOString(),
-        },
-      ],
-    ]);
-  });
-
-  it('maps the topics to entries', async () => {
-    const h = await loaded();
-    h.canvas.setAnnouncements(C.biology, [
-      topic('21', {
-        title: 'Exam',
-        message: '<p>Friday</p>',
-        posted_at: '2026-10-20T15:00:00Z',
-        read_state: 'read',
-        user_name: 'Dr. Rivera',
-      }),
-      topic('22', {
-        posted_at: '2026-10-21T15:00:00Z',
-        read_state: 'unread',
-        user_name: null,
-        author: { display_name: 'T. Assistant' },
-      }),
-      topic('23', { message: null, read_state: undefined }),
-    ]);
-
-    expect(await h.owner.announcements(C.biology, ORIGIN)).toEqual([
-      {
-        id: '21',
-        courseId: C.biology,
-        title: 'Exam',
-        message: '<p>Friday</p>',
-        postedAt: '2026-10-20T15:00:00Z',
-        author: 'Dr. Rivera',
-        read: true,
-      },
-      {
-        id: '22',
-        courseId: C.biology,
-        title: 'Topic 22',
-        message: '<p>22</p>',
-        postedAt: '2026-10-21T15:00:00Z',
-        author: 'T. Assistant',
-        read: false,
-      },
-      {
-        id: '23',
-        courseId: C.biology,
-        title: 'Topic 23',
-        message: '',
-        postedAt: null,
-        author: null,
-        read: false,
-      },
-    ]);
-  });
-
-  it('prefers the user name over the author', async () => {
-    const h = await loaded();
-    h.canvas.setAnnouncements(C.biology, [
-      topic('1', { user_name: 'Named', author: { display_name: 'Other' } }),
-    ]);
-
-    expect((await h.owner.announcements(C.biology, ORIGIN))[0]?.author).toBe('Named');
-  });
-
-  it('keeps at most 10 announcements, the first ones', async () => {
-    const h = await loaded();
-    h.canvas.setAnnouncements(
-      C.biology,
-      Array.from({ length: 14 }, (_unused, index) => topic(String(index + 1))),
-    );
-
-    const entries = await h.owner.announcements(C.biology, ORIGIN);
-
-    expect(entries.map((entry) => entry.id)).toEqual(
-      Array.from({ length: 10 }, (_unused, index) => String(index + 1)),
-    );
-  });
-
-  it('cuts the message of a listed announcement to 4000 characters', async () => {
-    const h = await loaded();
-    h.canvas.setAnnouncements(C.biology, [topic('1', { message: 'x'.repeat(9_000) })]);
-
-    const [entry] = await h.owner.announcements(C.biology, ORIGIN);
-
-    expect(entry?.message).toBe('x'.repeat(4_000));
-  });
-
-  it('gives an empty list for a course with no announcements', async () => {
-    const h = await loaded();
-
-    expect(await h.owner.announcements(C.calculus, ORIGIN)).toEqual([]);
-  });
-
-  it('rejects when no Canvas address is saved', async () => {
-    const h = await createHarness({ origin: null });
-
-    await expect(h.owner.announcements(C.biology, null)).rejects.toThrow('No Canvas address');
   });
 });
 

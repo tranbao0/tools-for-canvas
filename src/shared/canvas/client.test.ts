@@ -110,21 +110,6 @@ describe('read requests', () => {
       ],
     ],
     [
-      'listAnnouncements',
-      (client) =>
-        client.listAnnouncements('77', {
-          start: '2026-04-30T04:00:00.000Z',
-          end: '2026-10-27T18:00:00.000Z',
-        }),
-      '/api/v1/announcements',
-      [
-        ['context_codes[]', 'course_77'],
-        ['start_date', '2026-04-30T04:00:00.000Z'],
-        ['end_date', '2026-10-27T18:00:00.000Z'],
-        ['per_page', '100'],
-      ],
-    ],
-    [
       'listGroups',
       (client) => client.listGroups(),
       '/api/v1/users/self/groups',
@@ -1375,4 +1360,78 @@ it('reads the assignment and the own submission with the includes of the one ass
   ]);
   expect(() => client.getAssignmentRecord('12', '../8')).toThrow(CanvasError);
   expect(() => client.getOwnSubmissionRecord('1/2', '8')).toThrow(CanvasError);
+});
+
+describe('listAnnouncementPage', () => {
+  const request = {
+    userId: '5501',
+    courseId: '101',
+    read: 'unread',
+    offset: 20,
+    first: 10,
+  } as const;
+
+  function serve(reply: unknown): {
+    bodies: { query: string; variables: unknown }[];
+    csrf: (string | null)[];
+  } {
+    const seen = {
+      bodies: [] as { query: string; variables: unknown }[],
+      csrf: [] as (string | null)[],
+    };
+    server.use(
+      http.post(api('/api/graphql'), async ({ request: incoming }) => {
+        seen.bodies.push((await incoming.json()) as { query: string; variables: unknown });
+        seen.csrf.push(incoming.headers.get('X-CSRF-Token'));
+        return HttpResponse.json(reply as Record<string, unknown>);
+      }),
+    );
+    return seen;
+  }
+
+  it('posts the query on the send path of the other queries and reads the page', async () => {
+    const seen = serve({
+      data: {
+        legacyNode: {
+          discussionParticipantsConnection: {
+            nodes: [
+              {
+                id: 'p1',
+                read: true,
+                discussionTopic: {
+                  _id: '31901',
+                  title: 'Lab room change',
+                  message: '<p>x</p>',
+                  createdAt: '2026-10-27T16:00:00Z',
+                  contextName: 'BIO 110',
+                  contextId: '101',
+                  author: { _id: '7', name: 'Dr. Okafor', avatarUrl: null },
+                },
+              },
+            ],
+            pageInfo: { hasNextPage: true, endCursor: 'x', totalCount: 31 },
+          },
+        },
+      },
+    });
+    const page = await testClient().listAnnouncementPage(request);
+    expect(seen.csrf).toEqual([CSRF_TOKEN]);
+    expect(seen.bodies[0]?.variables).toEqual({
+      userId: '5501',
+      first: 10,
+      after: btoa('20'),
+      readState: 'unread',
+      courseId: '101',
+    });
+    expect(page).toMatchObject({ total: 31, hasNext: true });
+    expect(page.nodes).toHaveLength(1);
+    expect(page.nodes[0]).toMatchObject({ id: '31901', courseId: '101', read: true });
+  });
+
+  it('rejects a 200 answer that holds errors', async () => {
+    serve({ data: null, errors: [{ message: 'internal error' }] });
+    await expect(testClient().listAnnouncementPage(request)).rejects.toMatchObject({
+      kind: 'bad_request',
+    });
+  });
 });

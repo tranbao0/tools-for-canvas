@@ -331,10 +331,24 @@ describe('a tab in another cookie store', () => {
       title: '',
       message: '',
     });
-    expect(await h.owner.announcements(IDS.courses.biology, ORIGIN, 9)).toEqual([]);
+    await expect(
+      h.owner.announcementPage({ courseId: null, read: 'all', offset: 0, first: 10 }, ORIGIN, 9),
+    ).rejects.toThrow();
+    await expect(
+      h.owner.announcementRange(
+        { courseId: null, from: '2026-10-01', to: '2026-10-31' },
+        ORIGIN,
+        9,
+      ),
+    ).rejects.toThrow();
+    expect(await h.owner.markDashboardAnnouncement(IDS.courses.biology, '11', true, 9)).toEqual({
+      ok: false,
+    });
     await h.owner.settled();
 
-    expect(vi.mocked(h.deps.surfaceUsesRequestStore).mock.calls).toEqual([[9], [9], [9], [9]]);
+    expect(vi.mocked(h.deps.surfaceUsesRequestStore).mock.calls).toEqual(
+      Array.from({ length: 6 }, () => [9]),
+    );
     expect(h.canvas.calls).toEqual([]);
   });
 
@@ -347,7 +361,13 @@ describe('a tab in another cookie store', () => {
     expect(await h.owner.announcement(IDS.courses.biology, '11', ORIGIN, 9)).toMatchObject({
       title: 'Lab room change',
     });
-    expect(await h.owner.announcements(IDS.courses.biology, ORIGIN, 9)).toHaveLength(1);
+    expect(
+      await h.owner.announcementPage(
+        { courseId: null, read: 'all', offset: 0, first: 10 },
+        ORIGIN,
+        9,
+      ),
+    ).toMatchObject({ items: [], hasNext: false });
   });
 
   it('gets nothing when its store cannot be told', async () => {
@@ -355,7 +375,9 @@ describe('a tab in another cookie store', () => {
     vi.mocked(h.deps.surfaceUsesRequestStore).mockRejectedValue(new Error('no stores'));
 
     expect(await h.owner.announcementFeed(PANEL_FEED, 9)).toMatchObject({ status: 'unavailable' });
-    expect(await h.owner.announcements(IDS.courses.biology, ORIGIN, 9)).toEqual([]);
+    await expect(
+      h.owner.announcementPage({ courseId: null, read: 'all', offset: 0, first: 10 }, ORIGIN, 9),
+    ).rejects.toThrow();
   });
 });
 
