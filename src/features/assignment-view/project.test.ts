@@ -325,7 +325,8 @@ describe('the file addresses and the report data', () => {
       Array.from({ length: 300 }, (_, index) => [`attachment_${index}`, entry]),
     );
     const { reports } = projectReports({ ...submission, turnitin_data });
-    expect(reports).toHaveLength(200);
+    expect(reports).toHaveLength(201);
+    expect(reports?.at(-1)?.asset).toBe('*');
     expect(reports?.slice(0, 100).every((report) => report.readable)).toBe(true);
     expect(reports?.slice(100).every((report) => !report.readable)).toBe(true);
     // A file whose key sits past the limit is not shown without a score, but kept in Canvas's frame.

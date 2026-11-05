@@ -11,6 +11,9 @@
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import type { AssignmentFile, AssignmentReport, SubmissionReports } from '../protocol';
 
+/** The files that the projection of the record keeps (`files` in `project.ts`). */
+const MAX_LISTED_FILES = 50;
+
 /** The path of the session that Canvas gives for a previewable file (`Attachment#canvadoc_url`). */
 const SESSION_PATH = '/api/v1/canvadoc_session';
 /**
@@ -347,9 +350,11 @@ export function refineFiles(
   hints: ReadonlyMap<string, FrameHint>,
 ): RefinedFiles {
   let withoutSession = 0;
-  const shown = new Set(files.map((file) => normalizeCanvasId(file.fileId)));
-  // A frame button for a file that the box does not list, such as one past the limit of the record.
-  for (const key of hints.keys()) if (!shown.has(key)) withoutSession += 1;
+  // A full list can leave files out, and a frame button for such a file has no row in the box.
+  if (files.length >= MAX_LISTED_FILES) {
+    const shown = new Set(files.map((file) => normalizeCanvasId(file.fileId)));
+    for (const key of hints.keys()) if (!shown.has(key)) withoutSession += 1;
+  }
   const refined = files.map((file) => {
     const hint = hints.get(normalizeCanvasId(file.fileId));
     if (hint === undefined) return file;
