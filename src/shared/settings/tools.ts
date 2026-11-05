@@ -1,4 +1,4 @@
-import { normalizeWidth } from '../../features/file-viewer/model';
+import { normalizeWidth } from '../../features/file-viewer/width';
 /**
  * The settings of the small tools, one switch for each fix. See docs/design.md, decisions 18
  * and 22.
