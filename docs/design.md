@@ -2969,6 +2969,11 @@ With the pane read alone, the default run of the test failed before the fix.
       - **Forwarding.**
         The background accepts `viewer:frame-open` from a child frame only when the top frame shows a submission page and the frame is a submission page, or the top frame shows an Assignments list and the address of the frame is a page of its course with `content_only=1`.
         The reply, the file id check, and the message to the top frame are as before.
+      - **A frame inside the frame of the pane.**
+        The student can follow a link in the pane to a submission details page, which holds its own `#preview_frame`.
+        That frame is not a direct child of the top frame, so it gets the catcher in the submission mode.
+        The background refuses its message, because the top frame shows an Assignments list and the address of the frame is no page of the course with `content_only=1`.
+        The catcher then clicks the link again from script, and the browser follows the link.
       - **The File viewer switch.**
         Nothing is injected while the switch is off, and a catcher that is in a frame when the switch goes off finds no pane to open the file, so it clicks the link again from script and the browser follows the link.
       - **Covering.**
