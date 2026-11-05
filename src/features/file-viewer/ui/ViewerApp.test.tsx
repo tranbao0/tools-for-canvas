@@ -68,6 +68,51 @@ function setup(overrides: Partial<PaneHost> = {}, stored: Tabs = { ids: [], acti
 
 const tabs = () => screen.queryAllByRole('tab');
 
+describe('the Full view button', () => {
+  it('shows only after the Canvas page says that the window is wide enough, before the close button', async () => {
+    const fullView = createFullViewStore(vi.fn());
+    setup({ fullView });
+    expect(screen.queryByRole('button', { name: 'Full view' })).toBeNull();
+    await act(async () => fullView.receive({ on: false, available: true }));
+    const button = screen.getByRole('button', { name: 'Full view' });
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    const close = screen.getByRole('button', { name: 'Close file viewer' });
+    expect(button.compareDocumentPosition(close)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('asks the page for the other state, and takes the answer in the same button, with its action as the label', async () => {
+    const send = vi.fn();
+    const fullView = createFullViewStore(send);
+    setup({ fullView });
+    await act(async () => fullView.receive({ on: false, available: true }));
+    const button = screen.getByRole('button', { name: 'Full view' });
+    button.focus();
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(send).toHaveBeenCalledExactlyOnceWith(true);
+    // The pane does not guess: the button changes when the page answers.
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    await act(async () => fullView.receive({ on: true, available: true }));
+    expect(screen.getByRole('button', { name: 'Exit full view' })).toBe(button);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(document.activeElement).toBe(button);
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(send).toHaveBeenLastCalledWith(false);
+  });
+
+  it('goes away on a narrow window', async () => {
+    const fullView = createFullViewStore(vi.fn());
+    setup({ fullView });
+    await act(async () => fullView.receive({ on: true, available: true }));
+    expect(screen.getByRole('button', { name: 'Exit full view' })).not.toBeNull();
+    await act(async () => fullView.receive({ on: true, available: false }));
+    expect(screen.queryByRole('button', { name: /full view/i })).toBeNull();
+  });
+});
+
 describe('pane tabs', () => {
   it('shows a placeholder before a file opens', () => {
     setup();

@@ -8,7 +8,9 @@ import {
   isExtensionOrigin,
   secretMessage,
   validOpenFile,
+  validFullView,
   validPaneReady,
+  validPaneRequest,
   validTheme,
 } from './channel';
 import { linkName } from './model';
@@ -81,6 +83,40 @@ describe('viewer theme', () => {
     }
     expect(validTheme({ ...theme, color: 'red' })).toBe(false);
     expect(validTheme(null)).toBe(false);
+  });
+});
+
+describe('full view messages', () => {
+  it('accepts the state of the Canvas page, and nothing with another shape', () => {
+    expect(validFullView({ type: 'full-view', on: true, available: false })).toBe(true);
+    for (const bad of [
+      { type: 'full-view', on: 'yes', available: true },
+      { type: 'full-view', on: true },
+      { type: 'full-view', on: true, available: true, url: 'https://school.edu' },
+      { type: 'theme', on: true, available: true },
+      null,
+    ])
+      expect(validFullView(bad)).toBe(false);
+  });
+  it('accepts the three requests of the pane page, and nothing with another shape', () => {
+    for (const good of [
+      { type: 'close' },
+      { type: 'escape' },
+      { type: 'full-view', on: true },
+      { type: 'full-view', on: false },
+    ])
+      expect(validPaneRequest(good)).toBe(true);
+    for (const bad of [
+      { type: 'close', fileId: '1' },
+      { type: 'escape', on: true },
+      { type: 'full-view' },
+      { type: 'full-view', on: 1 },
+      { type: 'full-view', on: true, available: true },
+      { type: 'open-file', fileId: '1' },
+      'close',
+      null,
+    ])
+      expect(validPaneRequest(bad)).toBe(false);
   });
 });
 
@@ -205,6 +241,10 @@ describe('port of the pane', () => {
     port.deliver({ type: 'theme', theme: 'light' });
     expect(receive).toHaveBeenNthCalledWith(1, open);
     expect(receive).toHaveBeenNthCalledWith(2, { type: 'theme', theme: 'light' });
+    port.deliver({ type: 'full-view', on: true, available: 'yes' });
+    port.deliver({ type: 'full-view', on: true, available: true });
+    expect(receive).toHaveBeenCalledTimes(3);
+    expect(receive).toHaveBeenNthCalledWith(3, { type: 'full-view', on: true, available: true });
     unbind();
     expect(port.close).toHaveBeenCalledOnce();
   });
