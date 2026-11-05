@@ -46,6 +46,8 @@ interface ViewEngine {
   /** Shows the view on the page, or gives the page back as Canvas drew it. */
   setActive(active: boolean): void;
   refreshTheme(): void;
+  /** Follows the File viewer switch, for a view whose file links need it. */
+  setFileViewer?(on: boolean): void;
   resetStudent?(): void;
   stop(): void;
 }
@@ -202,6 +204,7 @@ export async function startAssignmentView(
     channel.tools.watch((next) => {
       tools = next;
       enabled = wanted(next);
+      view.setFileViewer?.(next.fileViewer);
       dock.setWidth(next.fileViewerWidth);
       apply();
     }),
@@ -226,6 +229,7 @@ export async function startAssignmentView(
     saved = address;
     tools = loadedTools;
     enabled = wanted(loadedTools);
+    view.setFileViewer?.(loadedTools.fileViewer);
     follow(loadedSettings);
     apply();
   } catch (error) {

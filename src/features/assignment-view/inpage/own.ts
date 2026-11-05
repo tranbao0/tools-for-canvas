@@ -6,3 +6,12 @@ export const OWN = 'data-av-own';
  * back must come before any removal of own nodes.
  */
 export const ORIGINAL = 'data-av-original';
+
+/**
+ * The right column that Canvas draws on every page: `aside#right-side` in `#right-side-wrapper`
+ * (`app/views/layouts/application.html.erb`). The element is found by its place, because the text
+ * of another author can hold an element with the same id.
+ */
+export function rightColumn(doc: Document): Element | null {
+  return doc.querySelector('#right-side-wrapper > #right-side');
+}

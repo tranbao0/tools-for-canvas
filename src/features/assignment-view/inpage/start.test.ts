@@ -163,7 +163,52 @@ describe('on a Submission Details page', () => {
       String(chunk).includes('Iframe page loading is disabled') ? true : write(chunk),
     );
     document.body.innerHTML =
-      '<div class="submission-details-container"><div class="submission-details-frame"><iframe id="preview_frame"></iframe></div><div class="submission-details-comments"></div></div>';
+      '<div class="submission-details-container"><div class="submission-details-frame"><iframe id="preview_frame"></iframe></div><div class="submission-details-comments"></div></div><div id="right-side-wrapper"><aside id="right-side"></aside></div>';
+  });
+
+  it('follows the File viewer switch in the file links of the box, with no reload', async () => {
+    const channel = fakeChannel();
+    vi.mocked(channel.send).mockResolvedValue({
+      details: {
+        assignment: {
+          id: '101',
+          name: 'Essay',
+          description: '<p>Text</p>',
+          due_at: null,
+          points_possible: 1,
+        },
+        submission: {
+          user_id: '42',
+          score: null,
+          grade: null,
+          submission_type: 'online_upload',
+          attachments: [{ id: '501', display_name: 'essay.pdf', size: 2048 }],
+        },
+      },
+      timeZone: 'UTC',
+    });
+    // The frame has not loaded, so the box shows the files of the details.
+    const frame = document.querySelector('#preview_frame')!;
+    Object.defineProperty(frame, 'contentDocument', {
+      value: { readyState: 'loading' },
+      configurable: true,
+    });
+    Object.defineProperty(frame, 'contentWindow', {
+      value: { location: { href: 'about:blank' } },
+      configurable: true,
+    });
+    await startAssignmentView(options(channel, { pathname: PAGE }));
+    await vi.advanceTimersByTimeAsync(5);
+    const label = () =>
+      document.getElementById('av-submission-box')?.shadowRoot?.querySelector('.av-file')
+        ?.textContent;
+    expect(label()).toBe('View essay.pdf');
+    channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+    expect(label()).toBe('Download essay.pdf');
+    // The assignment view stays on, because the switch of the file viewer does not turn it off.
+    expect(document.getElementById('av-submission-details')).not.toBeNull();
+    channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: true });
+    expect(label()).toBe('View essay.pdf');
   });
 
   it('reads the details of the path and follows the switch', async () => {

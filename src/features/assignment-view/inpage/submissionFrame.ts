@@ -272,6 +272,28 @@ export function readFrame(frame: HTMLIFrameElement, origin: string, pagePath: st
   }
 }
 
+/** Whether two lists show the same files, so the view draws nothing again. */
+export function sameFiles(a: readonly FrameFile[], b: readonly FrameFile[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((file, index) => {
+      const other = b[index]!;
+      return (
+        file.fileId === other.fileId &&
+        file.name === other.name &&
+        file.size === other.size &&
+        file.feedbackLabel === other.feedbackLabel &&
+        file.unread === other.unread &&
+        file.sessionUrl === other.sessionUrl &&
+        file.report?.text === other.report?.text &&
+        file.report?.state === other.report?.state &&
+        file.report?.url === other.report?.url &&
+        (file.report === null) === (other.report === null)
+      );
+    })
+  );
+}
+
 /** A size as Rails `number_to_human_size` writes it, for example "118 KB". */
 export function humanSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} ${bytes === 1 ? 'Byte' : 'Bytes'}`;

@@ -14,7 +14,7 @@
  * A `:has` rule shows it only while the list holds no comment, also right after Canvas adds the
  * first comment on Save.
  */
-import { OWN } from './own';
+import { OWN, rightColumn } from './own';
 
 const HOME = 'av-comments-home';
 
@@ -124,8 +124,8 @@ export function restoreStaleComments(doc: Document): void {
   for (let next = walker.nextNode(); next; next = walker.nextNode()) {
     if (isHomeMark(next)) marks.push(next as Comment);
   }
-  const wrapper = doc.querySelector(
-    `#right-side-wrapper > #right-side > #av-submission-box[${OWN}] > #${COMMENTS_WRAPPER_ID}[${OWN}]`,
+  const wrapper = rightColumn(doc)?.querySelector(
+    `:scope > #av-submission-box[${OWN}] > #${COMMENTS_WRAPPER_ID}[${OWN}]`,
   );
   const column = [...(wrapper?.children ?? [])].find((child) =>
     child.classList.contains('submission-details-comments'),

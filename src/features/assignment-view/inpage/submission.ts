@@ -2,32 +2,43 @@
  * The Submission Details page of the student's own submission (design decision 26).
  *
  * Canvas draws the page with the header, the grade and "Show Rubric", the title and the submit
- * button, and a content area of two columns: the files frame `div.submission-details-frame` on the
+ * button, a content area of two columns, the files frame `div.submission-details-frame` on the
  * left and the comments `div.submission-details-comments` on the right
- * (`app/views/submissions/show.html.erb`). When the view can show everything that the frame
- * shows, it hides the files frame and puts a host of its own beside the comments column. The host
- * shows the instructions, the text or address of the submission and the files. In every other case
- * the frame stays visible and untouched, and the host holds only the instructions, above the whole
- * content area. That is the case for a submission type that the view does not show (media
- * recording, quiz, LTI tool, student annotation, discussion), and for a frame that holds more than
- * the view can show: a file row that does not match, a preview button with no usable session
- * address, a similarity report, the snapshot of a URL, or a frame that cannot be read once it has
- * loaded. A style element in the head carries the rules of the mode: the hidden frame, and the rules
- * for Canvas's own rubric when the view shows it (`rubric.ts`). Canvas's rubric holder is moved,
- * under the files in the host or, where the frame stays, into a wrapper inside the frame area after
- * the frame, and goes back to its place when the view goes. The header's "Show Rubric" and its
- * unread mark are hidden by those rules. After the request that marks the rubric comments read
- * succeeds, the unread mark gets `display: none` and the link a blank title, as Canvas's own click
- * does. Nothing else of the page is touched, no node of Canvas gets another attribute or style, and
- * the frame is never moved, because a moved frame reloads.
+ * (`app/views/submissions/show.html.erb`), and an empty right column `#right-side` that the layout
+ * draws but hides (`app/views/layouts/application.html.erb`). The view shows two hosts of its own.
+ * The Submission box stands in the right column, which a rule of the view shows, and a second rule
+ * raises the width cap of the layout by the width of that column, so on a wide window the content
+ * keeps its width and the box lands in the free space. The box holds the status line and the date
+ * (`submissionBox.ts`). The second host holds the instructions.
+ *
+ * When the view can show everything that the frame shows (the replace mode), it hides the frame.
+ * The box then also holds the files with their similarity scores and the feedback buttons, and
+ * Canvas's own comments column, moved into it (`comments.ts`). The host in the content area holds
+ * the instructions, the text or address of the submission, and the rubric. In every other case
+ * (the mode 'above') the frame and the comments column stay visible and untouched, and the host
+ * holds only the instructions, above the whole content area. That is the case for a submission type
+ * that the view does not show (media recording, quiz, LTI tool, student annotation, discussion), and
+ * for a frame that holds more than the view can show: a file row that does not match, a preview
+ * button with no usable session address, a similarity report that the view cannot read or that is
+ * outside a file row, the snapshot of a URL, or a frame that cannot be read once it has loaded. A
+ * style element in the head carries the rules of the page, and those of the mode: the hidden frame,
+ * the rules for the comments, and the rules for Canvas's own rubric when the view shows it
+ * (`rubric.ts`). Canvas's rubric holder is moved, under the instructions in the host or, where the
+ * frame stays, into a wrapper inside the frame area after the frame, and goes back to its place
+ * when the view goes. The header's "Show Rubric" and its unread mark are hidden by those rules.
+ * After the request that marks the rubric comments read succeeds, the unread mark gets
+ * `display: none` and the link a blank title, as Canvas's own click does. Nothing else of the page
+ * is touched, no node of Canvas gets another attribute or style, and the frame is never moved,
+ * because a moved frame reloads.
  *
  * One more change is in the title row of the page: Canvas's primary button there ("Submit
  * Assignment" or "Re-submit Assignment", a link to `/courses/:c/assignments/:a#submit`) is hidden by
  * a rule of the same style element, and the view adds a link of its own beside it that says "Go to
  * assignment" and opens the assignment page, with no hash, so no upload form opens by itself. The
  * link takes Canvas's button classes. It has no `disabled` attribute, because it only navigates. A
- * page with no such button of Canvas gets neither the rule nor the link. The link and the rule go
- * away with the host, and the page shows Canvas's button again.
+ * page with no such button of Canvas gets neither the rule nor the link. The link and the rule stay
+ * through a change of the mode, so a keyboard focus on the link stays, and they go away when the
+ * view goes, and the page shows Canvas's button again.
  *
  * The view changes the page only for the signed-in student's own submission: the user of the path
  * must be the user of the `submissions/self` record that the background reads. A teacher, an
@@ -36,6 +47,7 @@
  */
 import { isCanvasId, normalizeCanvasId } from '../../../shared/canvas/ids';
 import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
+import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
 import { sanitizeHtml } from '../../../shared/ui/sanitize';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { logFailure } from '../../../shared/platform/log';
@@ -44,7 +56,8 @@ import type {
   AssignmentDetailsReply,
   RubricReadMessage,
 } from '../protocol';
-import { renderInstructions, submissionFileUrl } from '../render';
+import { renderInstructions } from '../render';
+import { COMMENTS_CSS, findComments, takeComments } from './comments';
 import { isDetailsReply } from './details';
 import type { FeedbackRequest } from './feedbackPane';
 import { fitInstructions, toggleInstructions } from './instructions';
@@ -59,7 +72,8 @@ import {
   whenRubricOnScreen,
   whenRubricReady,
 } from './rubric';
-import { OWN } from './rows';
+import { OWN, rightColumn } from './own';
+import { createBox, type Box } from './submissionBox';
 import { filesFromDetails, readFrame, type FrameFile } from './submissionFrame';
 import { PANEL_CSS, SUBMISSION_CSS } from './styles';
 
@@ -83,6 +97,17 @@ type Mode = 'replace' | 'above';
 const HIDE_FRAME =
   '.submission-details-container>.submission-details-frame{display:none!important}';
 
+/**
+ * The right column, in both modes. Canvas draws `#right-side` empty and hides its wrapper
+ * (`#right-side-wrapper{display:none}`, shown only with the body class `with-right-side`), and the
+ * view shows the wrapper without a change of the body class. Canvas caps the layout at 1366 px
+ * (`.ic-Layout-wrapper{max-width:1366px}`), so the cap grows by the 288 px of the column, and the
+ * content keeps its width on a wide window while the box lands in the free space.
+ */
+const SHOW_RIGHT_SIDE =
+  '#right-side-wrapper{display:block!important}' +
+  'body:not(.full-width):not(.outcomes):not(.body--login-confirmation):not(.content-only) .ic-Layout-wrapper{max-width:1654px!important}';
+
 /** Canvas's primary button of the title row, whose address ends in `#submit`. */
 const SUBMIT_BUTTON = '.ic-Action-header__Secondary>a.Button--primary[href$="#submit"]';
 const HIDE_SUBMIT = `${SUBMIT_BUTTON}{display:none!important}`;
@@ -99,6 +124,8 @@ export interface SubmissionViewOptions {
   userId: string;
   send(message: AssignmentDetailsMessage | RubricReadMessage): Promise<unknown>;
   theme?(): PageTheme;
+  /** The time in milliseconds, which decides whether the date of the box shows a year. */
+  now?(): number;
   openFeedback(request: FeedbackRequest): void;
   closeFeedback(): void;
 }
@@ -106,6 +133,8 @@ export interface SubmissionViewOptions {
 export interface SubmissionView {
   /** Shows the view on the page, or gives the page back as Canvas drew it. */
   setActive(active: boolean): void;
+  /** Follows the File viewer switch: the file links of the box read "View" or "Download". */
+  setFileViewer(on: boolean): void;
   refreshTheme(): void;
   /** Starts over, after the student changed or signed out. */
   resetStudent(): void;
@@ -116,23 +145,8 @@ interface Anchors {
   container: Element;
   box: Element;
   frame: HTMLIFrameElement;
-}
-
-function sameFiles(a: readonly FrameFile[], b: readonly FrameFile[]): boolean {
-  return (
-    a.length === b.length &&
-    a.every((file, index) => {
-      const other = b[index]!;
-      return (
-        file.fileId === other.fileId &&
-        file.name === other.name &&
-        file.size === other.size &&
-        file.feedbackLabel === other.feedbackLabel &&
-        file.unread === other.unread &&
-        file.sessionUrl === other.sessionUrl
-      );
-    })
-  );
+  /** The right column of the layout, which holds the Submission box. */
+  column: Element;
 }
 
 function node(doc: Document, tag: string, className: string, text?: string): HTMLElement {
@@ -142,26 +156,7 @@ function node(doc: Document, tag: string, className: string, text?: string): HTM
   return made;
 }
 
-const SVG = 'http://www.w3.org/2000/svg';
-
-function fileIcon(doc: Document, name: string): SVGElement {
-  const svg = doc.createElementNS(SVG, 'svg');
-  svg.setAttribute('class', /\.pdf$/i.test(name) ? 'av-file-icon av-file-pdf' : 'av-file-icon');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '1.8');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('focusable', 'false');
-  for (const d of ['M6 3h8l4 4v14H6z', 'M14 3v4h4']) {
-    const path = doc.createElementNS(SVG, 'path');
-    path.setAttribute('d', d);
-    svg.append(path);
-  }
-  return svg;
-}
-
-/** The anchors that the server renders. Both columns and the frame must be there. */
+/** The anchors that the server renders. Both columns, the frame and the right column must be there. */
 function findAnchors(doc: Document): Anchors | null {
   const container = doc.querySelector('.submission-details-container');
   const children = [...(container?.children ?? [])];
@@ -170,24 +165,34 @@ function findAnchors(doc: Document): Anchors | null {
     child.classList.contains('submission-details-comments'),
   );
   const frame = box?.querySelector<HTMLIFrameElement>('iframe#preview_frame');
-  return container && box && comments && frame ? { container, box, frame } : null;
+  const column = rightColumn(doc);
+  return container && box && comments && frame && column ? { container, box, frame, column } : null;
 }
 
 export function createSubmissionView(options: SubmissionViewOptions): SubmissionView {
   const { doc, origin, pathname, send } = options;
   const theme = options.theme ?? ((): PageTheme => 'light');
+  const now = options.now ?? (() => Date.now());
   let active = false;
   let stopped = false;
   /** Names the start that may draw, so an older answer cannot draw after a newer start. */
   let generation = 0;
+  /** The style element of the view. It stays through a change of the mode. */
   let style: HTMLStyleElement | null = null;
+  /** The rules of the page, and the rules of the mode that the host shows now. */
+  let pageRules = '';
+  let modeRules = '';
   let host: HTMLElement | null = null;
-  /** The view's own "Go to assignment" link beside Canvas's hidden button. */
+  let box: Box | null = null;
+  /** The view's own "Go to assignment" link beside Canvas's hidden button. It stays through a change of the mode. */
   let assignmentLink: HTMLAnchorElement | null = null;
+  /** Whether the file pane takes the links, which the File viewer switch decides. */
+  let fileViewer = DEFAULT_TOOLS_SETTINGS.fileViewer;
   let stopFrame: (() => void) | null = null;
   let resize: ResizeObserver | null = null;
   let stopRubricWait: (() => void) | null = null;
   let restoreRubric: (() => void) | null = null;
+  let restoreComments: (() => void) | null = null;
   let stopOnScreen: (() => void) | null = null;
   /** Whether the request that marks the rubric comments read went out. It goes out once per page. */
   let readSent = false;
@@ -197,8 +202,11 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   const known = (file: FrameFile): FrameFile =>
     opened.has(file.fileId) && file.unread ? { ...file, unread: false } : file;
 
-  /** Takes the host, the link, the style and the feedback pane away. The page is as Canvas drew it. */
-  function unmount(): void {
+  /**
+   * Takes what belongs to the mode away: the hosts, the rubric, the comments and the rules of the
+   * mode, and the feedback pane. The link, and the rules of the page, stay.
+   */
+  function unmountMode(): void {
     resize?.disconnect();
     resize = null;
     stopRubricWait?.();
@@ -207,13 +215,29 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     stopOnScreen = null;
     restoreRubric?.();
     restoreRubric = null;
+    restoreComments?.();
+    restoreComments = null;
     host?.remove();
     host = null;
+    box?.host.remove();
+    box = null;
+    modeRules = '';
+    writeStyle();
+    options.closeFeedback();
+  }
+
+  /** Takes everything away. The page is as Canvas drew it. */
+  function unmount(): void {
+    unmountMode();
     assignmentLink?.remove();
     assignmentLink = null;
     style?.remove();
     style = null;
-    options.closeFeedback();
+    pageRules = '';
+  }
+
+  function writeStyle(): void {
+    if (style) style.textContent = pageRules + modeRules;
   }
 
   function clear(): void {
@@ -331,25 +355,58 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     });
   }
 
-  /**
-   * Hides Canvas's "Submit Assignment" or "Re-submit Assignment" button and adds a link beside it
-   * to the assignment page. Without that button on the page, nothing changes.
-   */
-  function placeAssignmentLink(addRules: (css: string) => void): void {
-    const canvasButton = doc.querySelector(SUBMIT_BUTTON);
-    if (!canvasButton || !isCanvasId(options.courseId) || !isCanvasId(options.assignmentId)) return;
-    const path = `/courses/${options.courseId}/assignments/${options.assignmentId}`;
-    const link = doc.createElement('a');
-    link.className = 'Button Button--primary';
-    link.setAttribute(OWN, '');
-    link.setAttribute('href', new URL(path, origin).href);
-    link.textContent = 'Go to assignment';
-    addRules(HIDE_SUBMIT);
-    canvasButton.after(link);
-    assignmentLink = link;
+  /** Adds rules for the mode that the hosts show now. They go when the mode changes. */
+  function addModeRules(css: string): void {
+    modeRules += css;
+    writeStyle();
   }
 
-  /** Draws the host. The returned function sets the files of an `online_upload` submission. */
+  /**
+   * Sets up what the page needs in both modes, once: the style element with the rules of the right
+   * column, and, when Canvas draws its "Submit Assignment" or "Re-submit Assignment" button, the
+   * rule that hides it and a link beside it to the assignment page. Without that button, there is
+   * no rule and no link. A change of the mode leaves all of this where it is, so a keyboard focus
+   * on the link stays.
+   */
+  function setUpPage(): void {
+    if (style) return;
+    style = doc.createElement('style');
+    style.setAttribute(OWN, '');
+    doc.head.append(style);
+    pageRules = SHOW_RIGHT_SIDE;
+    const canvasButton = doc.querySelector(SUBMIT_BUTTON);
+    if (canvasButton && isCanvasId(options.courseId) && isCanvasId(options.assignmentId)) {
+      const path = `/courses/${options.courseId}/assignments/${options.assignmentId}`;
+      const link = doc.createElement('a');
+      link.className = 'Button Button--primary';
+      link.setAttribute(OWN, '');
+      link.setAttribute('href', new URL(path, origin).href);
+      link.textContent = 'Go to assignment';
+      pageRules += HIDE_SUBMIT;
+      canvasButton.after(link);
+      assignmentLink = link;
+    }
+    writeStyle();
+  }
+
+  /**
+   * Moves Canvas's own comments column into the box, under "Comments:". The wrapper is on the page
+   * before the column moves into it, so a focus inside the column stays.
+   */
+  function placeComments(boxHost: HTMLElement): void {
+    const column = findComments(doc);
+    if (!column) return;
+    const wrapper = doc.createElement('div');
+    wrapper.setAttribute(OWN, '');
+    boxHost.append(wrapper);
+    restoreComments = takeComments(doc, column, wrapper);
+    addModeRules(COMMENTS_CSS);
+  }
+
+  /**
+   * Draws the two hosts: the Submission box in the right column and the instructions in the content
+   * area. The returned function sets the files of an `online_upload` submission.
+   */
   function mount(
     reply: AssignmentDetailsReply,
     anchors: Anchors,
@@ -358,16 +415,8 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   ): (next: readonly FrameFile[]) => void {
     const { details } = reply;
     const replace = mode === 'replace';
-    const addRules = (css: string): void => {
-      if (!style) {
-        style = doc.createElement('style');
-        style.setAttribute(OWN, '');
-        doc.head.append(style);
-      }
-      style.textContent += css;
-    };
-    if (replace) addRules(HIDE_FRAME);
-    placeAssignmentLink(addRules);
+    setUpPage();
+    if (replace) addModeRules(HIDE_FRAME);
 
     const created = doc.createElement('div');
     created.id = 'av-submission-details';
@@ -381,61 +430,39 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     sheet.textContent = PANEL_CSS + SUBMISSION_CSS;
     const panel = node(doc, 'div', replace ? 'av av-sub' : 'av av-sub av-sub-above');
     panel.setAttribute('role', 'region');
-    panel.setAttribute('aria-label', replace ? 'Instructions and your files' : 'Instructions');
+    panel.setAttribute('aria-label', 'Instructions');
     shadow.append(sheet, panel);
     host = created;
     if (replace) anchors.box.after(created);
     else anchors.container.before(created);
 
-    // The checked session addresses stay in this list. They never become attributes of the page.
-    let files: readonly FrameFile[] = first.map(known);
-    const instructions = renderInstructions(details, { origin, doc });
-    const submitted = renderSubmission(reply);
-    const filesSection = (): HTMLElement | null => {
-      if (files.length === 0) return null;
-      const section = node(doc, 'section', 'av-section av-files');
-      section.append(node(doc, 'h3', 'av-heading', 'Your files'));
-      const list = node(doc, 'ul', 'av-file-list');
-      files.forEach((file, index) => {
-        const item = node(doc, 'li', 'av-file-row');
-        const link = node(doc, 'a', 'av-file', file.name);
-        link.setAttribute(
-          'href',
-          submissionFileUrl(details, { origin, courseId: options.courseId, doc }, file.fileId).href,
-        );
-        item.append(fileIcon(doc, file.name), link);
-        if (file.size !== null) item.append(node(doc, 'span', 'av-size', file.size));
-        if (file.feedbackLabel !== null && file.sessionUrl !== null) {
-          const button = node(doc, 'button', 'av-feedback', file.feedbackLabel);
-          button.setAttribute('type', 'button');
-          button.dataset['action'] = 'feedback';
-          button.dataset['index'] = String(index);
-          if (file.unread) {
-            button.title = 'There are unread comments.';
-            button.append(node(doc, 'span', 'av-unread'));
-          }
-          item.append(button);
-        }
-        list.append(item);
-      });
-      section.append(list);
-      return section;
-    };
-    const drawFiles = (): void => {
-      panel.querySelector('.av-files')?.remove();
-      const section = filesSection();
-      if (!section) return;
-      const rubric = panel.querySelector('.av-rubric');
-      if (rubric) rubric.before(section);
-      else panel.append(section);
-    };
-    panel.append(instructions);
-    if (replace) {
-      if (submitted) panel.append(submitted);
-      drawFiles();
-    }
+    // The checked session addresses stay in the box. They never become attributes of the page.
+    const made = createBox({
+      doc,
+      origin,
+      courseId: options.courseId,
+      details,
+      timeZone: reply.timeZone,
+      now: now(),
+      theme: theme(),
+      replace,
+      fileViewer,
+      files: first.map(known),
+      openFeedback: (file) => {
+        if (file.sessionUrl === null) return;
+        options.openFeedback({ title: file.name, url: file.sessionUrl });
+        opened.add(file.fileId);
+      },
+    });
+    box = made;
+    anchors.column.append(made.host);
+    if (replace) placeComments(made.host);
 
-    placeRubric(created, panel, anchors, replace, addRules);
+    panel.append(renderInstructions(details, { origin, doc }));
+    const submitted = renderSubmission(reply);
+    if (replace && submitted) panel.append(submitted);
+
+    placeRubric(created, panel, anchors, replace, addModeRules);
 
     fitInstructions(panel);
     const body = panel.querySelector('.av-instructions .av-body');
@@ -447,28 +474,11 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
 
     shadow.addEventListener('click', (event) => {
       const target = event.target instanceof Element ? event.target.closest('[data-action]') : null;
-      const action = target?.getAttribute('data-action');
-      if (action === 'more' && target) toggleInstructions(panel, target);
-      // A page script can click the button, but only the student opens the feedback.
-      else if (action === 'feedback' && event.isTrusted) {
-        const file = files[Number(target?.getAttribute('data-index'))];
-        if (file?.sessionUrl) {
-          options.openFeedback({ title: file.name, url: file.sessionUrl });
-          // The session request marks the comments as read in Canvas, as its own dialog does.
-          file.unread = false;
-          opened.add(file.fileId);
-          target?.removeAttribute('title');
-          target?.querySelector('.av-unread')?.remove();
-        }
-      }
+      if (target?.getAttribute('data-action') === 'more') toggleInstructions(panel, target);
     });
     return (next) => {
-      if (host !== created || !replace) return;
-      const merged = next.map(known);
-      // The same files draw nothing again, so the focus in the list and the read dots stay.
-      if (sameFiles(files, merged)) return;
-      files = merged;
-      drawFiles();
+      if (host !== created) return;
+      made.setFiles(next.map(known));
     };
   }
 
@@ -509,7 +519,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       }
       if (next !== mode) {
         mode = next;
-        unmount();
+        unmountMode();
         setFiles = mount(reply, anchors, mode, files);
       } else {
         setFiles(files);
@@ -591,8 +601,13 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       if (next) void start();
       else clear();
     },
+    setFileViewer(on) {
+      fileViewer = on;
+      box?.setFileViewer(on);
+    },
     refreshTheme() {
       host?.setAttribute('data-theme', theme());
+      box?.host.setAttribute('data-theme', theme());
     },
     resetStudent() {
       active = false;
