@@ -7,12 +7,15 @@
  * frame of the Canvas origin can reach the shadow root that holds it, and the root of the file
  * pane must hold only extension content.
  *
- * The pane keeps one frame for each assignment that the student previewed, and shows one of them.
- * A frame never goes to another assignment, so Canvas never asks whether to leave, and the header
- * always belongs to the frame that shows. A frame that does not show has `display: none` on its
- * own element and is never moved in the DOM, because a moved frame reloads. Unsent work stays in
- * a frame until the student changes, the pane evicts the frame, or a page removes the host. The
- * script never reads the DOM of a frame. It reads only the address of a frame.
+ * The pane keeps one frame for each assignment that the student previewed since it opened, and
+ * shows one of them. A frame never goes to another assignment, so Canvas never asks whether to
+ * leave, and the header always belongs to the frame that shows. A frame that does not show has
+ * `display: none` on its own element and is never moved in the DOM, because a moved frame reloads.
+ * Unsent work stays in a frame while the student moves between rows. It goes when the student
+ * closes the pane, the pane evicts the frame, the student changes, or a page removes the host. The
+ * close removes every frame, so no hidden frame plays sound, keeps a page of an earlier student,
+ * or stays failed, and the next Preview starts with new frames, as a closed tab does. The script
+ * never reads the DOM of a frame. It reads only the address of a frame.
  */
 import {
   createDock,
@@ -70,7 +73,10 @@ export interface PreviewPane {
    * the pane when it is closed, and shows it over a file pane.
    */
   open(request: PreviewRequest): void;
-  /** Hides the pane like its close button does, keeps the frames, and reads the submission once more. */
+  /**
+   * Closes the pane like its close button does: reads the assignment of each frame once, one
+   * after the other, and removes every frame and the pane.
+   */
   close(): void;
   /** Removes every frame and the pane, for example when the student switched. No read follows. */
   reset(): void;
@@ -128,12 +134,12 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
   const slots = new Map<string, Slot>();
   /** The frame that shows when the pane is open. */
   let visible: Slot | undefined;
-  /** Whether the pane is hidden by its close button. The frames stay. */
-  let closed = false;
   let stopWatching: (() => void) | undefined;
   let observer: MutationObserver | undefined;
   let stopped = false;
   let announced: string | null = null;
+  /** Counts the student changes and stops, so the reads of an earlier close end. */
+  let session = 0;
   let fileViewerOn = false;
 
   // One read at a time and one waiting for an assignment, whatever asks for it. A read that a
@@ -156,7 +162,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
   };
 
   const shownId = (): string | null =>
-    visible !== undefined && !closed && dock?.shown === true ? visible.assignmentId : null;
+    visible !== undefined && dock?.shown === true ? visible.assignmentId : null;
 
   /** Tells the list which assignment the pane shows, once for each change. */
   const publish = (): void => {
@@ -177,7 +183,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       shut();
       return;
     }
-    dock.setHidden(closed || filePaneOpen());
+    dock.setHidden(filePaneOpen());
     publish();
   };
 
@@ -220,6 +226,9 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     frame.title = `Assignment ${first.title}`;
     let removed = false;
     let loads = 0;
+    // The address is set before the frame joins the page. A frame that joins with no address
+    // fires a load for its blank page, which would use up the load that the first page is.
+    frame.src = first.url;
     // The old submission view redirects to the plain assignment page, and a graded discussion or
     // quiz redirects to its own page. The frame then loads the same page with content_only=1,
     // once. The load after that one never rewrites again, so a page that keeps the plain
@@ -278,7 +287,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     close.append(icon(doc, CLOSE_PATH));
     close.addEventListener('click', (event) => {
       // A frame of the Canvas page can reach this root, so only a real click counts.
-      if (event.isTrusted) hideAndRead();
+      if (event.isTrusted) closeAndRead();
     });
     bar.append(title, link, close);
     const wrapper = doc.createElement('div');
@@ -317,7 +326,6 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     slots.clear();
     visible = undefined;
     parts = undefined;
-    closed = false;
     stopWatching?.();
     stopWatching = undefined;
     observer?.disconnect();
@@ -328,15 +336,22 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     publish();
   }
 
-  /** Hides the pane and gives the room back. The frames stay in the page with their state. */
-  function hideAndRead(): void {
-    const assignmentId = visible?.assignmentId;
-    if (!dock || closed || assignmentId === undefined) return;
-    closed = true;
-    stopPoll();
-    hideFilePane(false);
-    sync();
-    void reader(assignmentId)();
+  /**
+   * Removes every frame and the pane, and gives the room back. A frame can hold a submission that
+   * the poll has not seen, so the assignment of each frame is read once first, the shown one
+   * first, one read after the other. A student change or a stop ends the reads that wait.
+   */
+  function closeAndRead(): void {
+    if (!dock) return;
+    const ids = [...slots.values()].reverse().map((slot) => slot.assignmentId);
+    shut();
+    const mine = session;
+    void (async () => {
+      for (const id of ids) {
+        if (session !== mine) return;
+        await reader(id)();
+      }
+    })();
   }
 
   return {
@@ -349,7 +364,6 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       const next = target(request);
       if (next === null) return;
       const left = visible;
-      const wasClosed = closed;
       if (!dock) {
         const created = createDock({
           role: 'turn-in',
@@ -371,11 +385,9 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
         observer = new MutationObserver(sync);
         observer.observe(doc.body, { childList: true });
       } else {
-        closed = false;
         hideFilePane(true);
       }
       let slot = slots.get(normalizeCanvasId(next.assignmentId));
-      const made = slot === undefined;
       if (!slot) {
         evict();
         slot = makeSlot(next);
@@ -384,16 +396,16 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       show(slot);
       sync();
       startPoll();
-      if (made) slot.frame.src = slot.url;
       // The first read of an assignment is its baseline, and each later read compares with it. The
       // student may have submitted the assignment that the pane just left.
       void read(slot.assignmentId);
-      if (left && !wasClosed && left !== slot) void read(left.assignmentId);
+      if (left && left !== slot) void read(left.assignmentId);
     },
     close() {
-      hideAndRead();
+      closeAndRead();
     },
     reset() {
+      session++;
       shut();
     },
     setWidth(width) {
@@ -410,6 +422,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     },
     stop() {
       stopped = true;
+      session++;
       shut();
     },
   };

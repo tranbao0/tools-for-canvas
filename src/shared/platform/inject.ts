@@ -148,6 +148,9 @@ export async function injectFrameCatchers(tabId: number, origin: string): Promis
     );
   const probes = await browser.scripting.executeScript({
     target: { tabId, allFrames: true },
+    // Without this, the call waits for the document of every frame to be idle, and a hidden pane
+    // frame that still loads would hold the catcher back from the frame that shows.
+    injectImmediately: true,
     // `self.origin` is the origin of the document, which is "null" for a sandboxed frame.
     func: (): FrameProbe => ({ origin: self.origin, path: location.pathname }),
   });
@@ -171,6 +174,7 @@ export async function injectFrameCatchers(tabId: number, origin: string): Promis
         ? { tabId, documentIds }
         : { tabId, frameIds: found.map((probe) => probe.frameId) },
     files: [FRAME_FILE],
+    injectImmediately: true,
   });
 }
 

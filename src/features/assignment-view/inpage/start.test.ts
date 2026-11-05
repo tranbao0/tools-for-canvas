@@ -170,13 +170,12 @@ describe('startAssignmentView', () => {
       expect(preview('101').getAttribute('aria-pressed')).toBe('true');
       expect(document.getElementById('assignment_101')?.hasAttribute('data-av-open')).toBe(true);
       press(preview('101'));
-      // The frame stays in the page with its state, and the pane gives the room back.
-      expect(host()?.isConnected).toBe(true);
-      expect(host()?.style.display).toBe('none');
+      // The pane and its frames go, and the room goes back.
+      expect(host()).toBeNull();
       expect(preview('101').getAttribute('aria-pressed')).toBe('false');
       expect(document.querySelector('[data-av-open]')).toBeNull();
       press(preview('101'));
-      expect(host()?.style.display).toBe('');
+      expect(host()).not.toBeNull();
       expect(preview('101').getAttribute('aria-pressed')).toBe('true');
       controller.stop();
     });

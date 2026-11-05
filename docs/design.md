@@ -1303,7 +1303,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | Course order | `GET /api/v1/users/self/dashboard_positions` | Once per session |
 | Week items | `GET /api/v1/planner/items?start_date=...&end_date=...&per_page=100` | The parts of a view's range that the cache lacks, the days of the span first; the weeks before and after a shown view, ahead of time; the cached parts of the current-week range in each light and full round, in up to 3 chunks |
 | Assignment details | `GET /api/v1/courses/:id/assignments?assignment_ids[]=...&include[]=submission&per_page=100` | New planner items, after they show, per course with assignment items; the current-week items in each full round; a shown week's items after a full round |
-| Assignment (decision 26) | `GET /api/v1/courses/:id/assignments/:id` | The assignment pane shows an assignment, on each later read of the pane (each trusted load of a frame after the first, when it closes, every 20 seconds while it is open and the page is in view), and the Submission Details page loads |
+| Assignment (decision 26) | `GET /api/v1/courses/:id/assignments/:id` | The assignment pane shows an assignment, on each later read of the pane (each trusted load of a frame after the first, the assignment that the pane just left when it shows another, each assignment of its frames when it closes, every 20 seconds while it is open and the page is in view), and the Submission Details page loads |
 | Own submission (decision 26) | `GET /api/v1/courses/:id/assignments/:id/submissions/self` | With each assignment read above; alone, to learn the user of the submission, when an assignment page loads |
 | Teacher status names | `POST /api/graphql` with `customGradeStatusesConnection` for each course | Once per session, when a teacher status appears |
 | All assignments (planner turned off only) | `GET /api/v1/courses/:id/assignments?include[]=submission&per_page=100` | Instead of the planner, per course |
@@ -3464,7 +3464,7 @@ So a student switches pages to read the instructions next to the feedback on a f
     For the submission, these are the user, the attempt, the time, the workflow state, the excused and late marks, the type, the text, the address and the files with their sizes.
   - The reply holds the details and the time zone of the Canvas profile.
   - The Submission Details page and the Submission box of the assignment page try a failed read once more after 2 seconds.
-    A failed read is a message that the messaging rejects, or a reply of `undefined`, because the data router answers every error of the owner with `undefined`.
+    A failed read is a message that the messaging rejects, or a reply of `null` or `undefined`, because the data router answers every error of the owner with `undefined`, which Chrome delivers as `null` and Firefox as `undefined`.
     A refusal (`no_submission_access`) is no failed read and gets no second try.
   - The Submission Details page uses the same message and reply, and so does the refresh of the pane, which compares `submitted_at`, `workflow_state` and `attempt`.
 - **Rows.**
@@ -3835,9 +3835,10 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
 
 - **Click.**
   - Only a trusted click on a Preview button counts.
-  - With no pane, or a closed pane, the click shows the frame of the assignment of the row, as it was, or makes the frame when the assignment has none.
-  - With a pane that shows another assignment, the click shows the frame of the assignment of the row in the same way, and hides the frame that showed.
-  - With a pane that shows this assignment, the click hides the pane, as the close button does.
+  - With no pane, the click opens the pane with a new frame of the assignment of the row.
+    A pane that the close button or this click closed keeps no frame, so the next click starts fresh, as a new tab does.
+  - With a pane that shows another assignment, the click shows the frame of the assignment of the row as it was, or makes the frame when the assignment has none, and hides the frame that showed.
+  - With a pane that shows this assignment, the click closes the pane, as the close button does.
   - The marks of the row (decision 26, "Rows") follow what the pane shows.
     While a file pane covers the pane, the pane shows no assignment, so no row has the marks.
     A click on Preview then shows the pane over the file pane, whatever row it is.
@@ -3854,7 +3855,7 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
   - The two scripts run in one isolated world and share a small lease for the padding.
     The first pane that takes room records the inline padding, and the last pane that gives room back restores it exactly.
 - **Frames.**
-  - The pane keeps one frame for each assignment that the student previewed, in one wrapper, and shows one at a time.
+  - The pane keeps one frame for each assignment that the student previewed since the pane opened, in one wrapper, and shows one at a time.
     A frame is `/courses/:c/assignments/:a?content_only=1` on the page origin, with validated ids.
     A frame receives no extension channel, secret or port.
   - A frame never goes to another assignment.
@@ -3864,7 +3865,7 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     A redirect inside a frame, for example to a discussion or to a page of a group, changes nothing in the header, because the header belongs to the row.
   - A frame that does not show has `display: none` on its own element.
     The script never moves a frame in the DOM, because a moved frame reloads and loses its page, its scroll position and its typed work.
-    A Preview click on an assignment that has a frame shows the frame as it was.
+    A Preview click on another row, on an assignment that has a frame, shows the frame as it was.
   - The pane keeps at most 6 frames (`MAX_PREVIEW_FRAMES`), because each frame is a whole Canvas page with its own scripts and memory.
     A seventh Preview click removes the frame that was shown longest ago.
   - The frames sit in a white wrapper with the padding `0 8px 0 24px`.
@@ -3878,15 +3879,22 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     A page that is not of this course, or not on this origin, stays as it is, because "Open in new tab" is always in the bar.
     The load after a rewrite never rewrites again.
     The rewrite, the request for the file catcher after each trusted load, and the read after each trusted load but the first belong to the frame.
+    A frame gets its address before it joins the page, because Chromium fires a load for the blank page of a frame that joins with no address, and that load would use up the first load.
+    So one Preview makes one read.
   - A load that a script of the page fires is not a load: only a trusted `load` event counts.
 - **Header.**
   - The bar has the height of the tab row of the file pane, 47 px (44 px of tab and the 3 px of its underline), a left padding of 24 px, a bold 14 px title with an ellipsis, and the same 28 px close button with a 16 px icon.
   - "Open in new tab" is a bordered button with an icon and no underline.
     It opens the assignment address without `content_only`.
 - **Unsent work.**
-  - The close button of the pane (a trusted click) and a trusted Preview click on the assignment that shows hide the pane and keep every frame.
-    The room goes back to the page, the pane reads the submission once more, and the next Preview click shows the same state.
-    Only a change of student or a sign-out (`reset`), the limit of 6 frames, and a page that removes the pane host remove frames.
+  - Moving between rows keeps the frames, so a draft survives a move.
+  - The close button of the pane (a trusted click) and a trusted Preview click on the assignment that shows close the pane and remove every frame, with no question and no way to bring back a draft, as the close of one frame did before.
+    A frame that stays hidden plays sound with no control in view, can show the page of an earlier student after a sign-out in another tab, and stays failed once it failed.
+    So the next Preview click starts with new frames, as a closed tab does.
+    The room goes back to the page.
+    Before the frames go, the pane reads the assignment of each frame once, the shown one first, one read after the other through the joins of the "Refresh" item, so a submission in a hidden frame is not missed.
+    A change of student or a sign-out (`reset`) removes the frames too, and ends the reads that still wait.
+    The limit of 6 frames and a page that removes the pane host also remove frames.
     Escape inside a frame does nothing.
   - The pane shows while it is open and the file pane is not in view.
     A file click, in the page or in a frame of the pane (decision 25, item 11), opens the file pane as usual, and the pane host is only hidden.
@@ -3901,9 +3909,9 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     An open pane stays with its frames and their unsent work, and the buttons and the marks of the open row come back when the switch goes on.
 - **Refresh.**
   - The pane does not draw a row.
-    It reads the submission of the assignment that shows (`assignment:details`) when a frame is shown, on each trusted load of a frame after its first, when the pane closes, and every 20 seconds while the pane is open and the page is in view.
+    It reads the submission of the assignment that shows (`assignment:details`) when a frame is shown, on each trusted load of a frame after its first, when the pane closes (once for the assignment of each frame, as the "Unsent work" item says), and every 20 seconds while the pane is open and the page is in view.
     The poll follows the assignment that shows.
-    The pane also reads the assignment that it just left, because the student may have submitted it.
+    The pane also reads the assignment that it just left when the student moves to another row, because the student may have submitted it and then moved on.
     The first read of an assignment is the baseline, and the baselines stay per assignment.
     The new student view submits without a page load, so the later reads find a change.
   - The reads join per assignment: at most one runs and at most one waits.

@@ -16,8 +16,11 @@
 //      of the assignment pane.
 //   e. Two previews keep two frames: the second row makes a second frame, the first frame stays in
 //      the page without a new load and is hidden, and a click on the first row shows it again.
-//   f. A click on Preview on the open row hides the pane, keeps both frames, and gives the page its
-//      own padding back.
+//   f. A click on Preview on the open row closes the pane, removes both frames, and gives the page
+//      its own padding back.
+//   g. A frame that is hidden and still loads (a script of its page has not come) does not stop the
+//      file catcher of the frame that shows: Preview on a slow row, then on a fast row, then a file
+//      link in the fast row opens the file pane.
 //
 // Usage: node tests/firefox/assignments-preview.mjs
 // Set ASSIGNMENTS_PREVIEW_SHOT to a file name to save a screenshot of the list with the pane open.
@@ -144,11 +147,18 @@ const STATE = `
 
 const state = (driver) => driver.executeScript(STATE);
 
-/** The pane that a host holds: its frame, found in the closed shadow root. */
-async function frameOf(driver, selector) {
+/**
+ * The frame that a host holds, found in the closed shadow root: the first one, or the one that
+ * shows when `shown` is set.
+ */
+async function frameOf(driver, selector, shown = false) {
   const host = await driver.findElement(By.css(selector));
   const frames = await (await host.getShadowRoot()).findElements(By.css('iframe'));
   if (frames.length === 0) throw new Error(`${selector} has no frame`);
+  if (shown) {
+    for (const frame of frames) if (await frame.isDisplayed()) return frame;
+    throw new Error(`${selector} shows no frame`);
+  }
   return frames[0];
 }
 
@@ -158,13 +168,13 @@ async function framesOf(driver, selector) {
   return (await host.getShadowRoot()).findElements(By.css('iframe'));
 }
 
-/** Clicks the file link in the frame of the assignment pane until the file pane opens. */
+/** Clicks the file link in the frame of the assignment pane that shows until the file pane opens. */
 async function clickFileLinkUntilFilePane(driver) {
   const end = Date.now() + WAIT_MS;
   for (;;) {
     try {
       await driver.switchTo().defaultContent();
-      await driver.switchTo().frame(await frameOf(driver, PANE));
+      await driver.switchTo().frame(await frameOf(driver, PANE, true));
       const link = await driver.wait(
         async () => (await driver.findElements(By.css('#file')))[0] ?? false,
         10_000,
@@ -208,6 +218,13 @@ async function main() {
   });
   const frameLoads = [];
   const readingLoads = [];
+  // The slow row has its page at once, but a script of the page waits until the check lets it go.
+  let slowRow = false;
+  const slowRequests = [];
+  let releaseSlow = () => undefined;
+  const slowScript = new Promise((resolve) => {
+    releaseSlow = resolve;
+  });
   const canvas = await startCanvas({
     [LIST_PATH]: { type: 'text/html', body: listPage },
     [ASSIGNMENT_PATH]: (url) => {
@@ -217,7 +234,16 @@ async function main() {
     },
     [`${LIST_PATH}/102`]: (url) => {
       readingLoads.push(url.searchParams.get('content_only') ?? '');
-      return { type: 'text/html', body: assignmentPage('reading') };
+      const page = assignmentPage('reading');
+      return {
+        type: 'text/html',
+        body: slowRow ? page.replace('</body>', '<script src="/slow.js"></script></body>') : page,
+      };
+    },
+    '/slow.js': async () => {
+      slowRequests.push('slow.js');
+      await slowScript;
+      return { type: 'text/plain', body: '' };
     },
     [`/api/v1/files/501`]: json({
       id: '501',
@@ -416,7 +442,7 @@ async function main() {
       );
     console.log('Two previews: two frames stay, the shown one follows the row, none loads again.');
 
-    // f. Preview on the open row hides the pane and keeps both frames.
+    // f. Preview on the open row closes the pane and removes both frames.
     await driver
       .actions()
       .move({ origin: await driver.findElement(By.css('button[aria-label="Preview Essay"]')) })
@@ -424,16 +450,39 @@ async function main() {
       .perform();
     const closed = await waitFor(
       () => state(driver),
-      (value) => value.pane?.display === 'none' && value.pressed === 'false',
-      'the pane to hide',
+      (value) => value.pane === null && value.pressed === 'false',
+      'the pane to close',
     );
     if (closed.padding !== ownPadding)
       throw new Error(`The page has ${closed.padding} px of padding, not its own ${ownPadding} px`);
-    if ((await framesOf(driver, PANE)).length !== 2)
-      throw new Error('The pane lost a frame when it hid');
     console.log(
-      'Preview on the open row: the pane hides, keeps its frames, and the page has its own padding.',
+      'Preview on the open row: the pane closes with its frames, and the page has its own padding.',
     );
+
+    // g. A hidden frame that still loads does not stop the file catcher of the frame that shows.
+    slowRow = true;
+    await driver
+      .actions()
+      .move({ origin: await driver.findElement(By.css('button[aria-label="Preview Reading"]')) })
+      .click()
+      .perform();
+    await waitFor(
+      async () => slowRequests.length,
+      (count) => count > 0,
+      'the slow frame to ask for its script',
+    );
+    await driver
+      .actions()
+      .move({ origin: await driver.findElement(By.css('button[aria-label="Preview Essay"]')) })
+      .click()
+      .perform();
+    await waitFor(header, (text) => text === 'Essay', 'the header to follow the fast row');
+    try {
+      await clickFileLinkUntilFilePane(driver);
+    } finally {
+      releaseSlow();
+    }
+    console.log('Slow frame: the file link of the fast row opens the file pane at once.');
     console.log('Firefox assignments preview: passed.');
     return 0;
   } finally {

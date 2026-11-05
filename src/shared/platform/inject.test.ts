@@ -317,10 +317,12 @@ describe('injectFrameCatchers', () => {
     expect(scripting.executeScript).toHaveBeenCalledTimes(2);
     expect(scripting.executeScript.mock.calls[0]![0]).toMatchObject({
       target: { tabId: 7, allFrames: true },
+      injectImmediately: true,
     });
     expect(scripting.executeScript).toHaveBeenLastCalledWith({
       target: { tabId: 7, frameIds: [4, 8] },
       files: [FRAME_FILE],
+      injectImmediately: true,
     });
   });
 
@@ -334,6 +336,7 @@ describe('injectFrameCatchers', () => {
     expect(scripting.executeScript).toHaveBeenLastCalledWith({
       target: { tabId: 7, documentIds: ['doc-4'] },
       files: [FRAME_FILE],
+      injectImmediately: true,
     });
   });
 
@@ -374,6 +377,7 @@ describe('injectFrameCatchers', () => {
       expect(scripting.executeScript).toHaveBeenLastCalledWith({
         target: { tabId: 7, frameIds: [4, 5] },
         files: [FRAME_FILE],
+        injectImmediately: true,
       });
     });
 
@@ -395,6 +399,7 @@ describe('injectFrameCatchers', () => {
       expect(scripting.executeScript).toHaveBeenLastCalledWith({
         target: { tabId: 7, documentIds: ['doc-4'] },
         files: [FRAME_FILE],
+        injectImmediately: true,
       });
     });
 

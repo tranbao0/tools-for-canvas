@@ -8,8 +8,9 @@ import { wireDataRouter, type RouterHost } from '../../src/features/weekly-list/
 /**
  * A `send` that goes through the real data router of the background, whose owner fails on every
  * assignment read. The router answers an owner error with `undefined`, and a message that reaches
- * the router and fails is no rejected send, so this is the reply that the page really gets.
- * Call the returned `stop` when the test ends.
+ * the router and fails is no rejected send. The reply goes through JSON as Chrome sends it, so an
+ * `undefined` reply arrives as `null`, which is what a page in Chrome really gets (Firefox
+ * delivers `undefined`). Call the returned `stop` when the test ends.
  */
 export function sendToFailingRouter(origin: string): {
   send(message: unknown): Promise<unknown>;
@@ -36,5 +37,10 @@ export function sendToFailingRouter(origin: string): {
     markNoteSeen: async () => undefined,
   };
   const stop = wireDataRouter(owner, host);
-  return { send: (message) => fakeBrowser.runtime.sendMessage(message), stop };
+  const send = async (message: unknown): Promise<unknown> => {
+    const reply: unknown = await fakeBrowser.runtime.sendMessage(message);
+    const text = JSON.stringify(reply);
+    return text === undefined ? null : (JSON.parse(text) as unknown);
+  };
+  return { send, stop };
 }

@@ -445,7 +445,7 @@ test('the Preview button has the size and the look of the mockup, and the colors
   expect((await look('Reading')).fillShown).toBe(false);
 });
 
-test('Preview opens the pane, shows the frame of another row, and hides the pane on the open row', async ({
+test('Preview opens the pane, shows the frame of another row, and closes the pane on the open row', async ({
   context,
   page,
   background,
@@ -487,14 +487,13 @@ test('Preview opens the pane, shows the frame of another row, and hides the pane
   expect(framePath(reading)).toBe('/courses/12/assignments/102');
   expect(await paddingRight(page)).toBe((await page.locator(PANE_HOST).boundingBox())!.width);
 
-  // A click on the open row hides the pane and keeps the frames.
+  // A click on the open row closes the pane and removes every frame.
   await preview(page, 'Reading').click();
-  await expect(page.locator(PANE_HOST)).toBeHidden();
+  await expect(page.locator(PANE_HOST)).toHaveCount(0);
   await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('[data-av-open]')).toHaveCount(0);
   expect(await paddingRight(page)).toBe(0);
-  expect(page.frames()).toContain(frame);
-  expect(page.frames()).toContain(reading);
+  await expect.poll(() => paneFrames(page).length).toBe(0);
 });
 
 test('the button follows the close button of the pane and a redraw of the rows', async ({
@@ -1475,7 +1474,7 @@ test('a Preview click on the graded discussion that another frame shows keeps bo
   expect(await headerOf(essay)).toEqual(EssayHeader);
 });
 
-test('closing the pane and opening it again keep the frames, the draft and the scroll position', async ({
+test('closing the pane removes every frame and the draft, and the next Preview starts fresh', async ({
   context,
   page,
   background,
@@ -1492,28 +1491,134 @@ test('closing the pane and opening it again keep the frames, the draft and the s
   await preview(page, 'Reading').click();
   const reading = await paneFrame(page, '/courses/12/assignments/102');
   await expect(reading.locator('#mode')).toHaveText('reading');
+  // Moving between rows keeps the draft.
+  await preview(page, 'Essay').click();
+  await expect.poll(() => shows(essay)).toBe(true);
+  await expect(essay.locator('#marker')).toHaveValue('half a draft');
+  const questions: string[] = [];
+  page.on('dialog', (dialog) => {
+    questions.push(dialog.type());
+    void dialog.dismiss();
+  });
   await closeAssignment(page);
-  await expect(page.locator(PANE_HOST)).toBeHidden();
+  await expect(page.locator(PANE_HOST)).toHaveCount(0);
   expect(await paddingRight(page)).toBe(0);
   await expect(page.locator('[data-av-open]')).toHaveCount(0);
-  expect(paneFrames(page)).toHaveLength(2);
-  // A Preview click on the row that was open shows the same frame.
+  await expect.poll(() => paneFrames(page).length).toBe(0);
+  expect(page.frames()).not.toContain(essay);
+  expect(page.frames()).not.toContain(reading);
+  // A Preview click on the row that was open makes a new frame.
   await preview(page, 'Reading').click();
   await expect(page.locator(PANE_HOST)).toBeVisible();
-  expect(await shows(reading)).toBe(true);
-  expect(await paneFrame(page, '/courses/12/assignments/102')).toBe(reading);
+  const fresh = await paneFrame(page, '/courses/12/assignments/102');
+  expect(fresh).not.toBe(reading);
+  await expect(fresh.locator('#mode')).toHaveText('reading');
   await expectPadding(page, PANE_HOST);
-  // The click on the open row hides the pane the same way, and another row shows its own frame.
+  expect(paneFrames(page)).toHaveLength(1);
+  // The click on the open row closes the pane the same way, and the next row starts fresh too.
   await preview(page, 'Reading').click();
-  await expect(page.locator(PANE_HOST)).toBeHidden();
+  await expect(page.locator(PANE_HOST)).toHaveCount(0);
   await preview(page, 'Essay').click();
   await expect(page.locator(PANE_HOST)).toBeVisible();
-  await expect.poll(() => shows(essay)).toBe(true);
-  expect(await headerOf(essay)).toEqual(EssayHeader);
-  await expect(essay.locator('#marker')).toHaveValue('half a draft');
-  await expect.poll(() => essay.evaluate(() => window.scrollY)).toBe(600);
-  expect(paneFrames(page)).toHaveLength(2);
+  const again = await paneFrame(page, ASSIGNMENT);
+  expect(again).not.toBe(essay);
+  await expect(again.locator('#marker')).toHaveValue('');
+  expect(await again.evaluate(() => window.scrollY)).toBe(0);
+  expect(paneFrames(page)).toHaveLength(1);
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
+  // Closing asks nothing, although the first draft was never sent.
+  expect(questions).toEqual([]);
+});
+
+test('one Preview makes one read of the assignment', async ({ context, page, background }) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const reads = () =>
+    canvas.requests.filter((request) => request.path === '/api/v1/courses/12/assignments/101')
+      .length;
+  const before = reads();
+  const frame = await openPane(page, 'Essay');
+  await expect(frame.locator('#mode')).toHaveText('slim');
+  await expect.poll(reads).toBe(before + 1);
+  // A load of the frame would add a read within a moment, and the poll waits 20 seconds.
+  await page.waitForTimeout(2000);
+  expect(reads()).toBe(before + 1);
+});
+
+test('closing the pane reads the assignment of a hidden frame too', async ({
+  context,
+  page,
+  background,
+}) => {
+  const refreshes = await watchRefreshes(background);
+  const { canvas, state } = await open(context, page, background, { submitted: false });
+  await ready(page, canvas);
+  const essay = await openPane(page, 'Essay');
+  await expect
+    .poll(
+      () =>
+        canvas.requests.filter((request) =>
+          request.path.includes('/assignments/101/submissions/self'),
+        ).length,
+    )
+    .toBeGreaterThan(0);
+  await preview(page, 'Reading').click();
+  const reading = await paneFrame(page, '/courses/12/assignments/102');
+  await expect(reading.locator('#mode')).toHaveText('reading');
+  await expect.poll(() => shows(essay)).toBe(false);
+  // The student submits in the frame that is hidden, and then closes the pane from another row.
+  await essay.evaluate(() => document.getElementById('quiet')!.click());
+  await expect.poll(() => state.submitted).toBe(true);
+  const earlier = (await refreshes()).length;
+  await closeAssignment(page);
+  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect
+    .poll(async () => (await refreshes()).length, { timeout: 8000 })
+    .toBeGreaterThan(earlier);
+});
+
+test('a hidden frame that still loads does not stop the file catcher of the frame that shows', async ({
+  context,
+  page,
+  background,
+}) => {
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const slowRequests: string[] = [];
+  const { canvas } = await open(context, page, background, {
+    extra: [
+      // The page of the slow row has come, but a script of it has not, so its document still loads.
+      {
+        path: '/courses/12/assignments/102',
+        respond: () => ({
+          contentType: 'text/html',
+          body: `${paneContent('Reading', 'reading')}<script src="/slow.js"></script>`,
+        }),
+      },
+      {
+        path: '/slow.js',
+        respond: async (request) => {
+          slowRequests.push(request.path);
+          await held;
+          return { status: 404, body: {} };
+        },
+      },
+    ],
+  });
+  try {
+    await ready(page, canvas);
+    // The slow row first: its frame still loads when the fast row shows.
+    await preview(page, 'Reading').click();
+    await expect.poll(() => slowRequests.length).toBeGreaterThan(0);
+    await preview(page, 'Essay').click();
+    const essay = await paneFrame(page, ASSIGNMENT);
+    await expect(essay.locator('#mode')).toHaveText('slim');
+    await openFileFromPane(page, essay);
+  } finally {
+    release();
+  }
 });
 
 test('with two frames, every order of a file pane keeps the page padding and the row state', async ({
@@ -1564,18 +1669,18 @@ test('with two frames, every order of a file pane keeps the page padding and the
   await expect(essay.locator('#marker')).toHaveValue('unsent words');
   // The close button of the pane shows the file again, and the file pane closes into the own padding.
   await closeAssignment(page);
-  await expect(page.locator(PANE_HOST)).toBeHidden();
+  await expect(page.locator(PANE_HOST)).toHaveCount(0);
   await expectPadding(page, FILE_PANE);
   await expect(page.locator('[data-av-open]')).toHaveCount(0);
   await closePane(page);
   await expectPadding(page, null, 13);
 
-  // 3. Both are closed. The pane shows again with the frame of the row, and the file pane stays closed.
+  // 3. Both are closed. The pane shows again with a new frame of the row, and the file pane stays closed.
   await preview(page, 'Reading').click();
   await expectPadding(page, PANE_HOST);
   await expect(page.locator(FILE_PANE)).toHaveCount(0);
   await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'true');
-  expect(paneFrames(page)).toHaveLength(2);
+  await expect.poll(() => paneFrames(page).length).toBe(1);
   await closeAssignment(page);
   await expectPadding(page, null, 13);
 });

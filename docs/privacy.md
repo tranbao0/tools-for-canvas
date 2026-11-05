@@ -119,9 +119,13 @@ The one assignment view works on the Assignments list, on the Submission Details
 On the Assignments list, it adds a "Preview" button to each assignment row.
 The button opens Canvas's own assignment page in a pane beside the list.
 The pane is a frame of your Canvas site, so it shows what Canvas shows when you open that page, and it works as that page does.
-The pane keeps one frame for each assignment that you previewed, up to 6, so each frame keeps its page and your typed text until you change the student or the pane needs room for a new frame.
-The extension reads only the address of a frame, and nothing of its content.
-While the pane is open, the extension reads your submission status of the assignment that it shows now and then, and keeps the last answer in the memory of the open page.
+The pane keeps one frame for each assignment that you previewed, up to 6, so each frame keeps its page and your typed text while you move between rows.
+When you close the pane, the extension removes every frame at once, with no question, and the text that you typed in them is gone.
+The frames also go when you change the student or the pane needs room for a new frame.
+The extension reads the address of a frame, and nothing else of its content, except that with the File viewer on it reads the address of the file link that you click in a frame (see "File viewer").
+While the pane is open, the extension reads your submission status of the assignment that it shows now and then, and also of the assignment that the pane just left when you move to another row.
+When you close the pane, it reads the status of the assignment of each frame once before the frames go.
+It keeps the last answer of each assignment in the memory of the open page.
 It uses the answer to tell when your work was handed in, so that the weekly list refreshes.
 The Submission Details page shows the instructions and your submitted files.
 The rubric and the comments on that page stay Canvas's own, which the extension moves into place without reading them.
@@ -228,6 +232,7 @@ This shows that the extension is installed, and it reveals nothing else.
 The file viewer reads a record or bytes only while the session cookie of your Canvas is the one that the extension confirmed for your account, so it never shows the file of another account.
 If it cannot confirm it, the pane shows "Open in Canvas" and reads nothing.
 The file viewer switch and pane width stay in local settings.
+With the File viewer on, it also reads the address of the file link that you click in a frame of the assignment pane or of a submission page, to open that file in the file pane, and it reads nothing else of those frames.
 The file viewer reads the bytes of a PDF from your saved Canvas address, with your own Canvas session.
 Canvas answers with a redirect to its own file storage, and the extension follows it.
 The bytes stay in the memory of the pane and are freed when you close the tab of the file.
