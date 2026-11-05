@@ -1318,7 +1318,7 @@ describe('the cleanup of a dead copy', () => {
     const comment = document.querySelector('.comment_list .comment')!;
     comment.insertAdjacentHTML(
       'beforeend',
-      '<span data-av-own data-av-toggle id="author-mark">Mark of an author</span>',
+      '<span data-av-own data-av-mark id="author-mark">Mark of an author</span>',
     );
     const column = document.querySelector('.submission-details-comments')!;
     expect(document.getElementById('av-comments')?.contains(column)).toBe(true);
@@ -1331,7 +1331,7 @@ describe('the cleanup of a dead copy', () => {
     const survivor = document.getElementById('author-mark');
     expect(survivor).not.toBeNull();
     expect(survivor?.hasAttribute('data-av-own')).toBe(true);
-    expect(survivor?.hasAttribute('data-av-toggle')).toBe(true);
+    expect(survivor?.hasAttribute('data-av-mark')).toBe(true);
     // The column is home at its mark, and the mark is gone.
     expect(container().querySelector(':scope > .submission-details-comments')).toBe(column);
     expect([...container().childNodes].some((node) => node.nodeType === Node.COMMENT_NODE)).toBe(

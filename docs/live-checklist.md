@@ -638,13 +638,47 @@ Run them on the Grades page of the course (`/courses/:id/grades`).
 
 ### Assignments list
 
-1. Open `/courses/:id/assignments` and expand one row.
-   Expect: the details panel shows under that row.
-2. Expand another row and change the list order or filter.
-   Expect: both panels stay open when both assignments remain in the list.
-3. Click the title link and use the Canvas controls.
+These steps need a student account with a course that has: an assignment that takes a file upload, an assignment with a long title, a graded discussion, and a submission with a file.
+Run them on `/courses/:id/assignments`.
+
+1. Look at the rows.
+   Expect: each assignment row has a "Preview" button at its right end, with a small side panel icon before the text, and no row has an arrow.
+   Expect: the title link, the due date and the points look as before, and the rows keep their height.
+   Open the network tab of the browser's developer tools.
+   Expect: the extension sent no request to `/api/v1/courses/:id/assignments/:id` yet.
+2. Move the mouse over a row.
+   Expect: the row has the light blue background of Canvas, and the button has a border and text in the link color.
+3. Click "Preview" on one row.
+   Expect: a pane opens on the right with the title of the assignment, "Open in new tab" and a close button, and Canvas's own assignment page shows in it with a margin on the left and the right.
+   Expect: the row has a soft blue background with a bar of the school color at its left edge, and its button is filled with the school color.
+   Expect: the page narrows beside the pane, and the pane has no header, menu or breadcrumbs of Canvas.
+4. Click "Preview" on another row.
+   Expect: the pane moves to that assignment, and the marks move to the other row.
+   Type text into a field of the first assignment, then click "Preview" on another row.
+   Expect: Canvas asks whether to leave the page. Say no, and the pane and the marks stay on the first assignment, with your text.
+5. Click "Preview" on the row that the pane shows.
+   Expect: the pane closes, the page has its width back, and the marks go.
+   Open the pane again and click the close button of the pane.
+   Expect: the same, and the button of the row is not filled.
+6. Click "Preview" on the graded discussion.
+   Expect: the pane shows the discussion page of Canvas with no header or menus, and the title of the pane is the title of the assignment.
+7. Click the name of a file in the assignment page in the pane, such as a file in the instructions or in the Submission section.
+   Expect: the file opens in the file pane, which covers the assignment pane, and the page has the width of one pane.
+   Close the file pane.
+   Expect: the assignment pane shows again with the same page and the typed text, and the marks of its row are back.
+8. Open a file in the file pane, then click "Preview" on a row.
+   Expect: the assignment pane shows over the file pane, and the page has the width of one pane.
+   Close the assignment pane.
+   Expect: the file pane shows again, with its tabs.
+9. Click the title link and use the Canvas controls.
    Expect: each control keeps its Canvas action.
-4. Turn the switch off and then on without a reload.
-   Expect: the buttons go away and return.
-5. Check one open row at 1920 and 1280 pixels in light and dark themes.
-   Expect: the panel fits the list and each control is clear.
+10. Turn off "One assignment view" in the settings while a pane is open.
+    Expect: every "Preview" button and mark goes at once, and the open pane stays with its text.
+    Turn it on again without a reload.
+    Expect: the buttons come back, and the open row has its marks.
+11. Turn off the file viewer in the settings, open a pane, and click the name of a file in it.
+    Expect: Canvas handles the link, and no file pane opens.
+12. Check the list with the pane open at 1920 and 1280 pixels in the light and the dark theme of the extension, in Chrome, Edge and Firefox.
+    Expect: the button stays in its row, a long title wraps, and each control is clear.
+13. Submit an assignment inside the pane, then look at the weekly list.
+    Expect: the weekly list shows the new state within about a minute.
