@@ -8,7 +8,7 @@ Last updated: 2026-11-05.
 Tools for Canvas has no account, no server of its own and no telemetry.
 It reads your Canvas data in your browser and shows it to you.
 It writes only done marks, skip marks, custom tasks, announcement read marks and the read mark of your rubric comments, and only to your own Canvas.
-Nothing goes anywhere else, except the images that a teacher put into an announcement (see "What the extension sends elsewhere").
+Nothing goes anywhere else, except the images that a teacher put into an announcement and the profile pictures of the people in the People widget (see "What the extension sends elsewhere").
 
 ## What the extension reads
 
@@ -164,6 +164,7 @@ It has no analytics, no error reporting, no advertising and no remote configurat
 It opens no web page on install or uninstall.
 All requests of the extension go to the one Canvas address that you saved.
 The one exception is an image in an announcement, in the instructions of an assignment or in a comment that you open in place: the browser loads it from the address that your teacher chose, with no referrer, as the Canvas page does.
+A profile picture in the People widget or in the Announcements widget of the new dashboard is the same kind of exception: when Canvas keeps the picture on another host, the browser loads it from there with no referrer, and a picture on your Canvas host loads only from a file or an image path.
 
 The code enforces this.
 All network requests go through one function that allows only your Canvas address.
