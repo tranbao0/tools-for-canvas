@@ -28,7 +28,7 @@ describe('the feedback pane', () => {
     expect(pane.isOpen).toBe(true);
     expect(host()).not.toBeNull();
     expect(host()?.getAttribute('data-theme')).toBe('light');
-    expect(document.documentElement.style.paddingRight).toBe('480px');
+    expect(document.documentElement.style.paddingRight).toBe('492px');
     // The root is closed, so the page cannot reach the frame or the address.
     expect(host()?.shadowRoot).toBeNull();
     expect(document.documentElement.outerHTML).not.toContain('canvadoc_session');

@@ -28,7 +28,14 @@ import { CLOSE_PATH, EXTERNAL_LINK_PATH } from '../../../shared/ui/iconPaths';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { OWN } from './own';
-import { PANE_CSS, icon } from './paneParts';
+import {
+  PANE_CSS,
+  createFullViewButton,
+  headerText,
+  icon,
+  setSubtitle,
+  type FullViewControl,
+} from './paneParts';
 import {
   assignmentPageUrl,
   createCoalescer,
@@ -97,12 +104,13 @@ export interface PreviewPane {
  */
 export const MAX_PREVIEW_FRAMES = 6;
 
-/** The header of the pane: the left padding of the mockup, and a bold title. The frame sits in a white wrapper. */
+/**
+ * The frame sits in a white wrapper with room around it. The frame reaches 12 px into the right
+ * padding, so its own scroll bar stays near the edge of the card.
+ */
 const PREVIEW_CSS = `${PANE_CSS}
-.bar{padding-left:24px}
-.title{font-weight:700}
-.frame{box-sizing:border-box;display:flex;flex:1;min-height:0;padding:0 8px 0 24px;background:#fff}
-.frame iframe{flex:1;width:auto;min-width:0;background:#fff}
+.frame{box-sizing:border-box;display:flex;flex:1;min-height:0;padding:20px 16px 0 32px;background:#fff}
+.frame iframe{flex:1;width:auto;min-width:0;margin-right:-12px;background:#fff}
 `;
 
 /** What a Preview click asks for, with the addresses of its page. */
@@ -121,8 +129,10 @@ interface Slot extends Target {
 /** The parts of the dock that the pane fills: the header, which shows the assignment of the visible frame, and the wrapper. */
 interface Parts {
   title: HTMLElement;
+  sub: HTMLElement;
   link: HTMLAnchorElement;
   wrapper: HTMLElement;
+  fullView: FullViewControl;
 }
 
 export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
@@ -272,8 +282,8 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     style.textContent = PREVIEW_CSS;
     const bar = doc.createElement('div');
     bar.className = 'bar';
-    const title = doc.createElement('span');
-    title.className = 'title';
+    const { block, title, sub } = headerText(doc);
+    const fullView = createFullViewButton(doc);
     const link = doc.createElement('a');
     link.className = 'btn';
     link.target = '_blank';
@@ -289,11 +299,11 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       // A frame of the Canvas page can reach this root, so only a real click counts.
       if (event.isTrusted) closeAndRead();
     });
-    bar.append(title, link, close);
+    bar.append(block, fullView.button, link, close);
     const wrapper = doc.createElement('div');
     wrapper.className = 'frame';
     created.section.append(style, bar, wrapper);
-    return { title, link, wrapper };
+    return { title, sub, link, wrapper, fullView };
   }
 
   /** Shows the frame of a slot and hides the others, with the header of its assignment. */
@@ -305,6 +315,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     slots.set(key, slot);
     for (const other of slots.values()) other.frame.style.display = other === slot ? '' : 'none';
     parts.title.textContent = slot.title;
+    setSubtitle(parts.sub, slot.details);
     parts.link.href = slot.pageUrl;
     visible = slot;
   }
@@ -325,6 +336,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     for (const slot of slots.values()) slot.remove();
     slots.clear();
     visible = undefined;
+    parts?.fullView.stop();
     parts = undefined;
     stopWatching?.();
     stopWatching = undefined;
@@ -370,6 +382,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
           id: PREVIEW_HOST_ID,
           label: 'Assignment',
           resizeLabel: 'Resize assignment',
+          card: true,
           width: options.width(),
           onResized: options.saveWidth,
           doc,
@@ -380,6 +393,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
         parts = mount(created);
         hideFilePane(true);
         created.open();
+        parts.fullView.update();
         stopWatching = watchFilePane(sync);
         // A script of the page can remove the file pane host or this one without a word.
         observer = new MutationObserver(sync);

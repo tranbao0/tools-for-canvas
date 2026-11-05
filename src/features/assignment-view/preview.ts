@@ -1,10 +1,15 @@
 import { isCanvasId, normalizeCanvasId } from '../../shared/canvas/ids';
 import type { AssignmentDetails } from './protocol';
 
-/** What a Preview click asks for: the assignment, and its title as the row shows it. */
+/**
+ * What a Preview click asks for: the assignment, its title as the row shows it, and the second
+ * line of the header: the due text and the points of the row, as plain text. A row with neither
+ * has no second line.
+ */
 export interface PreviewRequest {
   assignmentId: string;
   title: string;
+  details?: string;
 }
 
 /** The address of an assignment page of Canvas, or `null` for an id that is not valid. */

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Tabs } from '../model';
 import type { PdfjsLib } from '../pdf/types';
 import type { PaneFile } from './FileCard';
+import { createFullViewStore } from './fullView';
 import { createOpenSource } from './openSource';
 import { ViewerApp, type PaneHost } from './ViewerApp';
 
@@ -46,6 +47,7 @@ function setup(overrides: Partial<PaneHost> = {}, stored: Tabs = { ids: [], acti
       saved = tabs;
     }),
     closePane: vi.fn(),
+    fullView: createFullViewStore(vi.fn()),
     readFile: vi.fn(() => new Promise<Uint8Array>(() => undefined)),
     loadPdfjs: vi.fn(() => new Promise<PdfjsLib>(() => undefined)),
     ...overrides,
