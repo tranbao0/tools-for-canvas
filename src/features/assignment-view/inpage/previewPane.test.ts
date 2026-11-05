@@ -493,6 +493,112 @@ describe('the frame of the pane', () => {
     expect(onShown).not.toHaveBeenCalledWith('102');
   });
 
+  describe('after a Preview click that the leave question of the page declined', () => {
+    const QUIZ = `${ORIGIN}/courses/12/quizzes/5?content_only=1`;
+    const TAKE = `${ORIGIN}/courses/12/quizzes/5/take?content_only=1`;
+
+    /** The pane shows a page at `start`, the student previews Reading, and no load follows. */
+    function declined(start: string) {
+      const view = setup();
+      view.pane.open({ assignmentId: '101', title: 'Essay' });
+      const page = frameAt(start);
+      page.load(start);
+      view.pane.open({ assignmentId: '102', title: 'Reading' });
+      return { ...view, page };
+    }
+
+    it.each([
+      ['the next page of a classic quiz', TAKE, `${ORIGIN}/courses/12/quizzes/5/take/questions/7`],
+      [
+        'a link to a file page of the course in a quiz',
+        TAKE,
+        `${ORIGIN}/courses/12/files/501?content_only=1`,
+      ],
+      ['a link in a plain assignment page', SLIM, `${ORIGIN}/courses/12/modules`],
+      [
+        'a link in a plain assignment page to the home page of the course',
+        SLIM,
+        `${ORIGIN}/courses/12`,
+      ],
+      ['a link to a page of another course', SLIM, `${ORIGIN}/courses/13/discussion_topics/9`],
+    ])('keeps the first assignment when %s loads', async (_name, start, next) => {
+      const { pane, onShown, reload, page } = declined(start);
+      expect(pane.shown).toBe('101');
+      reload.mockClear();
+      page.load(next);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(barText()).toBe('Essay');
+      expect(barLink()).toBe(`${PLAIN}`);
+      expect(pane.shown).toBe('101');
+      expect(onShown).not.toHaveBeenCalledWith('102');
+      expect(reload).toHaveBeenCalledExactlyOnceWith('101');
+    });
+
+    it('keeps the first assignment when the quiz returns to the page that the pane landed on', async () => {
+      const view = setup();
+      view.pane.open({ assignmentId: '101', title: 'Essay' });
+      const page = frameAt(QUIZ);
+      page.load(QUIZ);
+      page.load(TAKE);
+      view.pane.open({ assignmentId: '102', title: 'Reading' });
+      page.load(QUIZ);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(barText()).toBe('Essay');
+      expect(view.pane.shown).toBe('101');
+    });
+
+    it('keeps the first assignment on later loads too, because the question is over', async () => {
+      const { pane, page } = declined(SLIM);
+      page.load(`${ORIGIN}/courses/12/modules`);
+      page.load(`${ORIGIN}/courses/12/discussion_topics/9?content_only=1`);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(barText()).toBe('Essay');
+      expect(pane.shown).toBe('101');
+    });
+  });
+
+  describe('a move to a graded discussion of a group', () => {
+    const GROUP = `${ORIGIN}/groups/7/discussion_topics/9`;
+
+    it('follows the preview when the frame lands on the page of the group', async () => {
+      const { pane, onShown, reload } = setup();
+      pane.open({ assignmentId: '101', title: 'Essay' });
+      const page = frameAt(SLIM);
+      page.load(SLIM);
+      pane.open({ assignmentId: '102', title: 'Discuss' });
+      reload.mockClear();
+      page.load(GROUP);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(barText()).toBe('Discuss');
+      expect(barLink()).toBe(`${ORIGIN}/courses/12/assignments/102`);
+      expect(pane.shown).toBe('102');
+      expect(onShown).toHaveBeenLastCalledWith('102');
+      expect(reload.mock.calls.map((call) => call[0]).sort()).toEqual(['101', '102']);
+      // The rewrite to content_only=1 stays in the course of the list.
+      expect(page.replace).not.toHaveBeenCalled();
+    });
+
+    it('does not follow a page of a group on another site', () => {
+      const { pane } = setup();
+      pane.open({ assignmentId: '101', title: 'Essay' });
+      const page = frameAt(SLIM);
+      page.load(SLIM);
+      pane.open({ assignmentId: '102', title: 'Discuss' });
+      page.load('https://other.example/groups/7/discussion_topics/9');
+      expect(barText()).toBe('Essay');
+    });
+
+    it('keeps the first assignment when the page of the group is the page that the frame had', () => {
+      const { pane } = setup();
+      pane.open({ assignmentId: '101', title: 'Essay' });
+      const page = frameAt(GROUP);
+      page.load(GROUP);
+      pane.open({ assignmentId: '102', title: 'Discuss' });
+      page.load(GROUP);
+      expect(barText()).toBe('Essay');
+    });
+  });
+
   it('keeps the first assignment when the page of another site loads', () => {
     const { pane } = setup();
     pane.open({ assignmentId: '101', title: 'Essay' });
