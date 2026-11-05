@@ -12,10 +12,10 @@ describe('toolsSettingsItem', () => {
 
   it('gives a fresh copy of the defaults on every read', async () => {
     const first = await toolsSettingsItem.getValue();
-    first.dashboardFixes.courseColors = false;
+    first.dashboardFixes.steadyPager = false;
 
-    expect((await toolsSettingsItem.getValue()).dashboardFixes.courseColors).toBe(true);
-    expect(DEFAULT_TOOLS_SETTINGS.dashboardFixes.courseColors).toBe(true);
+    expect((await toolsSettingsItem.getValue()).dashboardFixes.steadyPager).toBe(true);
+    expect(DEFAULT_TOOLS_SETTINGS.dashboardFixes.steadyPager).toBe(true);
   });
 
   it('normalizes a bad stored value field by field', async () => {
@@ -24,9 +24,7 @@ describe('toolsSettingsItem', () => {
         fileViewer: true,
         fileViewerWidth: 480,
         dashboardFixes: {
-          courseColors: false,
           announcementsInPlace: 'off',
-          courseWorkExtras: 3,
         },
         assignmentView: true,
         unknown: 1,
@@ -37,13 +35,36 @@ describe('toolsSettingsItem', () => {
       fileViewer: true,
       fileViewerWidth: 480,
       dashboardFixes: {
-        courseColors: false,
         announcementsInPlace: true,
-        courseWorkExtras: true,
         allCourseGrades: true,
         steadyPager: true,
       },
       assignmentView: true,
+    });
+  });
+
+  it('reads a value stored with the removed Course work keys, and drops the keys', async () => {
+    await fakeBrowser.storage.local.set({
+      toolsSettings: {
+        fileViewer: true,
+        fileViewerWidth: 480,
+        dashboardFixes: {
+          courseColors: false,
+          announcementsInPlace: false,
+          courseWorkExtras: false,
+          allCourseGrades: true,
+          steadyPager: false,
+        },
+        assignmentView: true,
+      },
+    });
+
+    const tools = await toolsSettingsItem.getValue();
+
+    expect(tools.dashboardFixes).toEqual({
+      announcementsInPlace: false,
+      allCourseGrades: true,
+      steadyPager: false,
     });
   });
 
@@ -58,9 +79,7 @@ describe('toolsSettingsItem', () => {
       fileViewer: true,
       fileViewerWidth: 480,
       dashboardFixes: {
-        courseColors: true,
         announcementsInPlace: false,
-        courseWorkExtras: true,
         allCourseGrades: false,
         steadyPager: false,
       },

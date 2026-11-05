@@ -49,7 +49,7 @@ This extension has no account, no server of its own and no telemetry.
 | 19 | Accessibility, language and theme | WCAG 2.2 AA, English text, a Theme setting with Automatic, Light and Dark |
 | 20 | No-telemetry guarantee | One fetch wrapper that only reaches the student's Canvas |
 | 21 | Visual design | Looks like a native part of Canvas, not an add-on sidebar |
-| 22 | New dashboard fixes | Four small fixes for the widgets of the new Canvas dashboard, each with its own switch, in a page script of their own |
+| 22 | New dashboard fixes | Three small fixes for the widgets of the new Canvas dashboard, each with its own switch, in a page script of their own; the owner removed Course colors and Course work extras on 2026-11-04 |
 | 23 | File access check | A read-only check that runs on the owner's live Canvas in test builds only, and answers the open questions for the file viewer |
 | 24 | Announcements in the weekly list | A Tasks and Announcements switch under the rings on the classic dashboard, List View, course home pages and the side panel, with a read mark that only an explicit student action writes |
 | 25 | File viewer | Files open in a docked, resizable pane with tabs beside Canvas; PDFs in a bundled PDF.js viewer that saves the page, other types in the browser's own players or an "Open in Canvas" card |
@@ -341,7 +341,6 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     Wait for the status filter or retry button before the card shows for the first time, so it does not appear over a box that changes with the first data.
     After ten seconds without settled data, the card shows over whatever box the widget has.
     A slot that first shows up unsettled after those ten seconds, such as on the Dashboard tab after the Courses tab, has its own ten seconds: the card stays hidden until the slot settles or that wait ends.
-    Before the first show, the card also waits until the Course work extras are gone from the claimed widget, within the same ten seconds.
     Once the card has shown, a widget that loads again does not hide it.
     In Customize dashboard, restore the widget and hide the card until Save or Cancel, only when a slot is in use.
     With no slot, the card keeps its place beside the grid or above it in Customize dashboard.
@@ -1831,12 +1830,15 @@ The owner asked for it after testing an early build: the list should feel like p
 
 **Question:** How does the extension fix the gaps of the new Canvas widget dashboard (roadmap item 2)?
 
-**Decision:** Five fixes, each with its own switch in one setting group, "New dashboard fixes".
-All five are on by default.
-Course work extras and course colors skip the widget whose wrapper has `data-weekrow-replaced`.
-They remove any extras and colors already added to that widget, and still apply to other Course work widgets.
-Both switches stay in settings.
+**Decision:** Three fixes, each with its own switch in one setting group, "New dashboard fixes".
+All three are on by default.
 The owner chose the list on 2026-10-30 (see `docs/roadmap.md`).
+The owner removed two fixes on 2026-11-04: "Course colors on Course work icons" and "Course work extras".
+The weekly card covers the Course work widget, so the two switches did nothing while the card was on.
+With the card off, the student sees the plain widget of Canvas.
+A stored setting with the old keys `courseColors` and `courseWorkExtras` is ignored: the settings are read field by field, and other keys are dropped.
+The dashboard data no longer carries the extras, because nothing reads them.
+The courses stay, because the grade cards and the course filter read them.
 The fixes run on the dashboard of the saved Canvas, next to the weekly list, and need not have the list turned on.
 The dashboard uses the origin that the router checks and shares the session fingerprint check in decision 11.
 The extension reads both session cookies there to compare their salted fingerprints.
@@ -1845,9 +1847,7 @@ The cache writes of the weekly list follow the cookie rule of decision 11, and t
 
 | Switch | Fix |
 |---|---|
-| Course colors on Course work icons | The icon box of each Course work item takes the color of its course |
 | Announcements in place | One steady list with infinite scroll replaces the list of the widget: a message opens in its row, the card keeps its height, and a course filter, a search by topic and a search by date join the read filter |
-| Course work extras | An "Also due" section under the Course work list |
 | All course grades | A grade card for every course, not only six |
 | Steady page buttons | One page navigator with nine fixed places for the paged widgets |
 
@@ -1856,16 +1856,6 @@ They come from the source of the widget package `@instructure/platform-widget-da
 I read each of them in the package source.
 
 - The Course work widget lists assignment submissions only (`courseWorkSubmissionsConnection`), 4 to a page (6 in the combined widget), with no sort.
-  Every filter leaves out work with no due date.
-  Overdue work shows only under Missing.
-  Pages, ungraded discussions and planner notes never show.
-- The three summary counts come from `submissionStatistics`.
-  Only the Due count takes a date range, which is today to 90 days.
-  The Missing and Submitted counts take no date range.
-  The list under "Not submitted" starts at the present moment and has no end.
-  So the cards and the list can disagree.
-- The icon of an item is colored by the status of the submission (`getSubmissionStatus`), never by the course.
-  React rewrites the inline color of the icon on every render.
 - The Announcements widget cuts a title at 75 characters and a message at 120, with the HTML taken out.
   The title is plain text.
   "Read more" is the only link, and it sets `window.location.href` to the page of the announcement.
@@ -1924,7 +1914,7 @@ I read each of them in the package source.
   `GET /api/v1/courses/:id/discussion_topics/:id/view` (the `view` action) logs the access and renders the materialized view of the entries, and it does not change the read state of the topic.
   The topic HTML page does mark it: `DiscussionTopicsController#show` calls `change_read_state("read")` for the signed-in user when the student can read the topic.
   So the extension never loads the topic page itself.
-  It reads announcements with these two requests and with the GraphQL read of the widget list (decision 22, choice 2), which `discussionParticipantsConnection` serves with no change of the read state.
+  It reads announcements with these two requests and with the GraphQL read of the widget list (decision 22, choice 1), which `discussionParticipantsConnection` serves with no change of the read state.
   The read mark of decision 24 uses `PUT` and `DELETE` on `/api/v1/courses/:id/discussion_topics/:id/read` (`mark_topic_read` and `mark_topic_unread`), which change only the read state of the topic.
   A page that the student opens on Canvas, such as with Ctrl+click on "Read more", marks the topic as read by Canvas, as it does without the extension.
 
@@ -1987,14 +1977,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
 
 **The choices.**
 
-1. **Course colors.**
-   The background of the icon box is the course color with `!important`, and the icon takes white or black by the rule that the package uses for its grade cards (white when its contrast is at least 4.5).
-   This is the nearest native style.
-   The status keeps its place in the pill beside the title, which the fix leaves alone.
-   The course id comes from the item link (`/courses/:id/...`).
-   The color is the saved Canvas color, or the default color that the rings use.
-   The background computes the ink color, so the script stays small.
-2. **Announcements in place.**
+1. **Announcements in place.**
    The own list always replaces the list and the pager of the widget.
    The read filter of Canvas and the course filter of the fix stay above it, and the fix reads the value of the read filter as the widget shows it.
    The fix reads that value from the English labels of the input of Canvas: "Unread" is the Unread filter, "Read" is the Read filter, and any other text counts as All.
@@ -2026,6 +2009,10 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
      The row changes at once, and it goes back with a short note when the reply is not ok.
      With the Unread filter, a row that the student marked stays on screen with its check until the student leaves that filter.
      When the student comes back to the filter, the row is gone, because the list is drawn again then.
+     A row with a pending mark is the exception: it stays when the student leaves the filter and when the student comes back during the write, because Canvas may refuse the mark and the row must be there to go back.
+     A refused mark puts back the state that Canvas last confirmed for the row, not the state that the row showed when the mark began, so two refused marks of one row leave it as it was.
+     The list is cleared again when the marks of its rows settle, also when a refused mark put a row out of the set.
+     A settled mark can forget a list: the lists of the other filters go when a row is marked, and the list of the filter goes when the row returns to its set and the list holds no row for it.
      The rows of a list that a mark took out of its set go when the student leaves the filter, and the offset does not change, because it counts only the rows of the set.
      A search does not count as leaving the filter.
    - A mark names the student of the row.
@@ -2055,6 +2042,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
      The function `searchAnnouncements(items, query)` in `inpage/announcementSearch.ts` does it, so a later search across courses can use it.
    - The first search loads all announcements once: pages of 100, read all, all courses, one after another, up to 20 pages.
      The page logs when the cap cuts anything.
+     A search that the cap cut shows no end line and says "Searched the newest 2000 announcements" after the count of results, like the line of a cut date search.
      It keeps only the fields of a row and the plain text of the message (`htmlToText`) in memory for the page view.
    - Results show while the pages arrive, with the line "Searching 200 of 423".
      The course filter narrows the results, and the read filter does not apply, so the line says "4 results, read and unread".
@@ -2131,22 +2119,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The only other write of the extension for an announcement is "Mark as read" of the weekly list (decision 24).
    The extension never loads the Canvas page of an announcement itself, because it marks the topic as read.
    The ids are checked as Canvas ids at the message boundary and again before they enter a path.
-3. **Course work extras.**
-   The section shows work with no due date, open overdue work (not under Missing, where the widget lists it), and open pages, ungraded discussions and the student's own tasks that have a to-do date.
-   It also follows the course filter of the widget, by the course name in its input.
-   It shows 4 rows, in the order undated, overdue, to-do.
-   "Show all" shows up to 20 rows, sorted by due date, with undated work last.
-   The data come from the planner cache of the weekly list (two weeks from today, and Past due), with no new request.
-   Courses that the student hid in the weekly list still count, because the widgets of Canvas show them.
-   **The summary counts.**
-   The choice is a note, not a recompute.
-   A recompute would have to replace numbers that React draws, so every render would fight the extension.
-   The planner cache covers two weeks, and the Due card covers 90 days, so the extension could not compute the right number without more requests.
-   So the section says, in one line under its heading, how the three cards count, and it adds the work that the list leaves out.
-   One short line under the heading gives the numbers of the list that the filters let through, such as "3 with no due date · 10 overdue · 8 to-do in the next 14 days".
-   A small info mark beside it, with a tooltip, explains the 90 days of the Due card and says that Missing and Submitted count every date.
-   The info mark shows only when the widget has the cards.
-4. **All course grades.**
+2. **All course grades.**
    The fix hides the pager and adds a card for each course that has no card on the page.
    A card is a copy of a card that the widget drew, so it has the same markup, classes and theme.
    The copy loses its buttons, which belong to React, and its ids.
@@ -2174,7 +2147,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    Normal data change notices do not read them again.
    Cached dashboard data never waits for this read.
    Copies hide their grades while preferences are unknown.
-5. **Steady page buttons.**
+3. **Steady page buttons.**
    The navigator is a `nav` of nine places of equal width in one row, with the same accessible name as the pager of Canvas.
    The places are the previous arrow, the first page, a gap, the page before the current one, the current page, the page after it, a gap, the last page and the next arrow.
    The current page always stands in the middle place, with the look of the current page of Canvas (a filled dark blue square and a white bold number).
@@ -2247,7 +2220,6 @@ The page scripts of the fixes and of the weekly list share one sanitizer, `src/s
   The weekly list keeps the 60-second limit of decision 11 for full data refreshes.
 - The copies of the grade cards and the course list of the announcement filter keep the data of the session: a grade that Canvas posts later shows in the cards of the widget and in the copies after the next refresh of the courses.
 - An image in an announcement loads from the address that the teacher chose, as it does on the Canvas page, with no referrer for another origin.
-- The "Also due" section covers two weeks of pages and tasks, because the planner cache does.
 - A grade card copy has no color menu, no hide button and no update date, because those belong to React or to data that the extension does not have.
 - A hostile message that a future browser parses in a new way would still go through the same allowlist, because the output is built node by node.
 

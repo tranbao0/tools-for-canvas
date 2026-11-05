@@ -6,17 +6,15 @@ import {
   type DashboardFixesSettings,
 } from '../../../shared/settings/tools';
 import { createFixesEngine, removeStaleFixes, type FixesEngine } from './controller';
-import { dashboardData, drawDashboard, extra, ORIGIN } from './testing/dashboard';
+import { dashboardData, drawDashboard, ORIGIN } from './testing/dashboard';
 
 const ON = DEFAULT_TOOLS_SETTINGS.dashboardFixes;
 const OFF: DashboardFixesSettings = {
-  courseColors: false,
   announcementsInPlace: false,
-  courseWorkExtras: false,
   allCourseGrades: false,
   steadyPager: false,
 };
-const DATA = { ...dashboardData([extra({ key: 'u', title: 'Undated work' })]), userId: '5' };
+const DATA = { ...dashboardData(), userId: '5' };
 
 let send: Mock<(message: DataMessage) => Promise<unknown>>;
 let engine: FixesEngine;
@@ -27,8 +25,7 @@ const settle = async (ms = 120): Promise<void> => {
 /** The requests for the data of the fixes. The announcements list asks for its own pages besides. */
 const dataRequests = () =>
   send.mock.calls.filter(([message]) => message.type === 'weekrow:dashboard-data');
-const marks = (): number =>
-  document.querySelectorAll('[data-wr-own], [data-wr-cc], [data-wr-grades]').length;
+const marks = (): number => document.querySelectorAll('[data-wr-own], [data-wr-grades]').length;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -55,12 +52,8 @@ describe('createFixesEngine', () => {
       includeGradeVisibility: true,
       readToken: expect.any(String),
     });
-    expect(document.querySelector('[data-wr-cc]')).not.toBeNull();
-    expect(document.querySelector('[data-wr-extra]')).not.toBeNull();
     expect(document.querySelectorAll('[data-wr-card]').length).toBeGreaterThan(0);
-    expect(document.getElementById('wr-dashboard-fixes')?.textContent).toContain(
-      '[data-wr-cc="101"]',
-    );
+    expect(document.getElementById('wr-dashboard-fixes')).not.toBeNull();
   });
 
   it('reads preferences when the grade widget appears after the first load', async () => {
@@ -97,8 +90,7 @@ describe('createFixesEngine', () => {
     engine.setSettings(ON);
     engine.setActive(true);
     await settle();
-    expect(document.querySelector('[data-wr-cc]')).not.toBeNull();
-    expect(document.querySelector('[data-wr-extra]')).not.toBeNull();
+    expect(document.querySelector('[data-wr-card]')).not.toBeNull();
     expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
     engine.reload();
     await settle();
@@ -365,7 +357,7 @@ describe('createFixesEngine', () => {
     await settle();
     expect(send).not.toHaveBeenCalled();
     expect(document.getElementById('wr-dashboard-fixes')).toBeNull();
-    engine.setSettings({ ...OFF, courseColors: true });
+    engine.setSettings({ ...OFF, steadyPager: true });
     await settle();
     expect(send).toHaveBeenCalledTimes(1);
   });
@@ -374,13 +366,14 @@ describe('createFixesEngine', () => {
     engine.setSettings(ON);
     engine.setActive(true);
     await settle();
+    const cards = document.querySelectorAll('[data-wr-card]').length;
+    expect(cards).toBeGreaterThan(0);
     drawDashboard();
     drawDashboard();
     drawDashboard();
-    expect(document.querySelector('[data-wr-extra]')).toBeNull();
+    expect(document.querySelector('[data-wr-card]')).toBeNull();
     await settle();
-    expect(document.querySelectorAll('[data-wr-extra]')).toHaveLength(1);
-    expect(document.querySelectorAll('[data-wr-cc]').length).toBe(6);
+    expect(document.querySelectorAll('[data-wr-card]')).toHaveLength(cards);
   });
 
   it('ignores the changes that the fixes make themselves', async () => {
@@ -398,16 +391,11 @@ describe('createFixesEngine', () => {
     engine.setSettings(ON);
     engine.setActive(true);
     await settle();
-    engine.setSettings({ ...ON, courseWorkExtras: false });
+    expect(document.querySelector('[data-wr-card]')).not.toBeNull();
+    engine.setSettings({ ...ON, allCourseGrades: false });
     await settle();
-    expect(document.querySelector('[data-wr-extra]')).toBeNull();
-    expect(document.querySelector('[data-wr-cc]')).not.toBeNull();
-    engine.setSettings({ ...ON, courseWorkExtras: false, courseColors: false });
-    await settle();
-    expect(document.querySelector('[data-wr-cc]')).toBeNull();
-    expect(document.getElementById('wr-dashboard-fixes')?.textContent).not.toContain(
-      '[data-wr-cc="101"]',
-    );
+    expect(document.querySelector('[data-wr-card]')).toBeNull();
+    expect(document.getElementById('wr-dashboard-fixes')).not.toBeNull();
   });
 
   it('puts the page back as Canvas drew it when every fix is off or the engine stops', async () => {
@@ -442,12 +430,7 @@ describe('createFixesEngine', () => {
     engine.setActive(true);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    send.mockResolvedValue({
-      origin: ORIGIN,
-      ready: true,
-      courses: [{ id: '101' }],
-      extras: 'bad',
-    });
+    send.mockResolvedValue({ origin: ORIGIN, courses: [null] });
     engine.reload();
     await settle();
     // The data is malformed for several fixes. The engine survives and the page stays intact.
@@ -461,18 +444,18 @@ describe('createFixesEngine', () => {
     engine.setSettings(ON);
     engine.setActive(true);
     await settle();
-    expect(document.querySelector('[data-wr-extra]')).toBeNull();
+    expect(document.querySelector('[data-wr-card]')).toBeNull();
     let release: (value: unknown) => void = () => undefined;
     send.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
     engine.reload();
     send.mockResolvedValueOnce(DATA);
     engine.reload();
     await settle();
-    expect(document.querySelector('[data-wr-extra]')).not.toBeNull();
+    expect(document.querySelector('[data-wr-card]')).not.toBeNull();
     release(dashboardData([]));
     await settle();
-    // The older answer, with no work, did not replace the newer one.
-    expect(document.querySelector('[data-wr-extra]')).not.toBeNull();
+    // The older answer, with no courses, did not replace the newer one.
+    expect(document.querySelector('[data-wr-card]')).not.toBeNull();
   });
 
   it('a stopped engine stays stopped', async () => {

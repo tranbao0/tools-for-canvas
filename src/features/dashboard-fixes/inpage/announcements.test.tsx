@@ -537,6 +537,25 @@ describe('search by topic', () => {
     ).toHaveLength(1);
   });
 
+  it('says that a search cut at 20 pages covers the newest 2000, and shows no end line', async () => {
+    await start([
+      row('1', { title: 'Lockdown Browser', message: '<p>Use it.</p>' }),
+      ...Array.from({ length: 2100 }, (_unused, index) => row(String(10 + index))),
+    ]);
+    await type('lockdown');
+    const line = shadow('.wr-a-res [role=status]')?.textContent ?? '';
+    expect(line).toMatch(/^1 result, read and unread\./);
+    expect(line).toContain('Searched the newest 2000 announcements');
+    expect(shadow('.wr-a-scroll')?.textContent).not.toContain('No more announcements');
+  });
+
+  it('ends a search that covered every announcement with the end line', async () => {
+    await start(searchable);
+    await type('lockdown');
+    expect(shadow('.wr-a-res [role=status]')?.textContent).toBe('2 results, read and unread');
+    expect(shadow('.wr-a-scroll')?.textContent).toContain('No more announcements');
+  });
+
   it('builds the highlight from text nodes and never from markup', async () => {
     await start([
       row('1', { title: '<img src=x onerror=alert(1)> lockdown', message: '<p>a</p>' }),

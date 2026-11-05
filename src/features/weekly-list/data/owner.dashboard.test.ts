@@ -157,7 +157,7 @@ it('drops a check result when the Canvas address changes during the request', as
   expect(await reply).toEqual({ kind: 'loading' });
 });
 
-it.each(['dashboard', 'weekly', 'seenNotes'] as const)(
+it.each(['weekly', 'seenNotes'] as const)(
   'drops the %s reply if the address changes during a storage read',
   async (surface) => {
     const h = await loaded();
@@ -175,13 +175,11 @@ it.each(['dashboard', 'weekly', 'seenNotes'] as const)(
       });
       return value as never;
     });
-    const reply = surface === 'dashboard' ? h.owner.dashboardData() : h.owner.getState(PANEL);
+    const reply = h.owner.getState(PANEL);
     await waiting;
     await h.owner.originChanged(null);
     release();
-    expect(await reply).toMatchObject(
-      surface === 'dashboard' ? { ready: false, courses: [], extras: [] } : { kind: 'loading' },
-    );
+    expect(await reply).toMatchObject({ kind: 'loading' });
   },
 );
 
@@ -229,12 +227,12 @@ it('checks a changed fingerprint after a worker restart', async () => {
 });
 
 describe('dashboardData', () => {
-  it('is not ready and empty before the session loads', async () => {
+  it('is empty before the session loads', async () => {
     const h = await createHarness();
 
     const data = await h.owner.dashboardData();
 
-    expect(data).toEqual({ origin: ORIGIN, ready: false, courses: [], extras: [] });
+    expect(data).toEqual({ origin: ORIGIN, courses: [] });
     expect(h.canvas.calls).toEqual([]);
   });
 
@@ -243,19 +241,16 @@ describe('dashboardData', () => {
 
     expect(await h.owner.dashboardData()).toEqual({
       origin: '',
-      ready: false,
       courses: [],
-      extras: [],
     });
   });
 
-  it('returns the courses with colors, totals and extras after a load', async () => {
+  it('returns the courses with colors and totals after a load', async () => {
     const h = await loaded();
 
     const data = await h.owner.dashboardData();
 
     expect(data.origin).toBe(ORIGIN);
-    expect(data.ready).toBe(true);
     const biology = data.courses.find((entry) => entry.id === C.biology);
     expect(biology).toMatchObject({
       color: '#0B874B',
@@ -273,17 +268,6 @@ describe('dashboardData', () => {
       score: null,
       grade: null,
     });
-    expect(data.extras.length).toBeGreaterThan(0);
-    expect(new Set(data.extras.map((extra) => extra.group))).toContain('undated');
-    expect(
-      data.extras.some(
-        (extra) => extra.key === `assignment:${IDS.assignments.bioExtraCreditUndated}`,
-      ),
-    ).toBe(true);
-    // Only the work that has no submission is a to-do.
-    for (const extra of data.extras.filter((entry) => entry.group === 'todo')) {
-      expect(['page', 'note', 'discussion']).toContain(extra.type);
-    }
   });
 
   it('makes no request for data: only the sign-in check, at most once in 30 seconds', async () => {
@@ -309,7 +293,7 @@ describe('dashboardData', () => {
 
     const data = await h.owner.dashboardData();
 
-    expect(data).toMatchObject({ ready: false, courses: [], extras: [] });
+    expect(data).toMatchObject({ courses: [] });
     expect((await sessionCacheItem.getValue())?.session?.profile.id).not.toBe(IDS.user);
   });
 
@@ -320,7 +304,7 @@ describe('dashboardData', () => {
     vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
     vi.spyOn(h.canvas, 'checkCacheUser').mockRejectedValueOnce(canvasError('unauthorized', 401));
 
-    expect(await h.owner.dashboardData()).toMatchObject({ ready: false, courses: [] });
+    expect(await h.owner.dashboardData()).toMatchObject({ courses: [] });
   });
 
   it('shows a course that the student hid from the weekly list', async () => {
@@ -525,7 +509,6 @@ it('lets a tab in another cookie store touch nothing of the late result of a val
 
   // The refused tab asks while the read of the valid tab is late, and it gets nothing.
   expect(await h.owner.dashboardGradeVisibility('token-2', 9)).toMatchObject({
-    ready: false,
     gradeVisibilities: null,
   });
   expect(read).toHaveBeenCalledTimes(1);
@@ -616,7 +599,7 @@ it('does not read the cookie of a tab in another store, and does not sign out', 
   const h = await loaded();
   vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
   expect(await h.owner.getState(PANEL, 9)).toMatchObject({ kind: 'cant_load', offline: false });
-  expect(await h.owner.dashboardData(ORIGIN, 9)).toMatchObject({ ready: false, courses: [] });
+  expect(await h.owner.dashboardData(ORIGIN, 9)).toMatchObject({ courses: [] });
   expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
   expect(h.deps.surfaceUsesRequestStore).toHaveBeenCalledWith(9);
   expect((await h.owner.getState(PANEL)).kind).toBe('ready');
@@ -636,7 +619,7 @@ it('signs out, and drops the cache, when the session cookie is gone', async () =
   const h = await loaded();
   vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
   expect((await h.owner.getState(PANEL)).kind).toBe('signed_out');
-  expect(await h.owner.dashboardData()).toMatchObject({ ready: false, courses: [] });
+  expect(await h.owner.dashboardData()).toMatchObject({ courses: [] });
   expect((await sessionCacheItem.getValue())?.session).toBeNull();
   expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
 });
@@ -679,7 +662,7 @@ it('never serves a mismatched fingerprint after a failed check or a restart', as
   vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('student-b');
   h.canvas.fail('getSelf', canvasError('network'));
   expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'cant_load', offline: true });
-  expect(await h.owner.dashboardData()).toMatchObject({ ready: false, courses: [], extras: [] });
+  expect(await h.owner.dashboardData()).toMatchObject({ courses: [] });
   await h.owner.settled();
   expect(await h.restart().getState(PANEL)).toMatchObject({ kind: 'cant_load', offline: true });
   expect(h.canvas.callsOf('getSelf')).toHaveLength(1);

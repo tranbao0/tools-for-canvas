@@ -87,7 +87,7 @@ export type FixMessage =
   | AnnouncementMarkMessage
   | AnnouncementRangeMessage;
 
-/** One course for the grade cards, the course colors and the course filter. */
+/** One course for the grade cards and the course filter. */
 export interface DashboardCourse {
   id: string;
   /** The nickname when the student set one. */
@@ -104,30 +104,11 @@ export interface DashboardCourse {
   grade: string | null;
 }
 
-export type ExtraGroup = 'undated' | 'overdue' | 'todo';
-export type ExtraType = 'assignment' | 'quiz' | 'discussion' | 'page' | 'note' | 'other';
-
-/** Work that the Course work widget leaves out. */
-export interface ExtraItem {
-  key: string;
-  group: ExtraGroup;
-  type: ExtraType;
-  title: string;
-  courseId: string | null;
-  /** ISO instant, or `null` for undated work. */
-  due: string | null;
-  /** Absolute URL on the saved Canvas, or `null` for a task. */
-  url: string | null;
-}
-
 export interface DashboardData {
   userId?: string;
   /** The Canvas address, so the in-page script can check the links it builds. */
   origin: string;
-  /** The planner data is in. Until then `extras` can lack items. */
-  ready: boolean;
   courses: DashboardCourse[];
-  extras: ExtraItem[];
   /** Saved main toggles, keyed by widget id. Missing values add no constraint. */
   showGrades?: Record<string, boolean>;
   /**

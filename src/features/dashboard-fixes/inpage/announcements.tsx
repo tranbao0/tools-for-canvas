@@ -423,14 +423,16 @@ export function announcementsFix(): Fix {
         loadingFirst: loading && rows.length === 0,
         hasMore: rows.length > view.shown,
         failed: index.status === 'error' ? 'first' : 'none',
-        ended: index.status === 'done' && rows.length > 0,
+        ended: index.status === 'done' && rows.length > 0 && !index.capped,
         line: loading
           ? index.total === null
             ? t('annSearchingSome', String(index.rows.length))
             : t('annSearching', String(index.rows.length), String(index.total))
           : index.status === 'error'
             ? null
-            : tp('annResults', rows.length),
+            : index.capped
+              ? `${tp('annResults', rows.length)}. ${t('annSearchCapped', String(index.rows.length))}`
+              : tp('annResults', rows.length),
       };
     }
     const list = data.ensure(view.read, course);
