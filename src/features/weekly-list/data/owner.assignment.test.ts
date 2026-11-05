@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { canvasError } from './testing/fakeCanvas';
 import { rawRecords } from '../../../../tests/fixtures/assignment-view';
-import { buildScenario } from '../../../../tests/fixtures/scenario';
+import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
 import {
   ORIGIN,
   createHarness,
@@ -91,6 +91,33 @@ describe('assignment owner', () => {
       submission: { ...records.submission, user_id: 42 },
     });
     await expect(h.owner.assignmentOwner('12', '102', ORIGIN, TAB)).rejects.toThrow();
+  });
+});
+
+describe('the queue of the assignment view reads', () => {
+  it('lets the reads of the view go before the background requests that wait in the queue', async () => {
+    const h = await createHarness({ maxConcurrency: 1 });
+    await loadReady(h);
+    h.canvas.setAssignmentView('12', '101', rawRecords());
+    // One request holds the only slot, and a background write waits behind it.
+    const release = h.canvas.hold('getOwnSubmissionRecord');
+    const holder = h.owner.assignmentDetails('12', '101', ORIGIN, TAB).catch(() => undefined);
+    await vi.waitFor(() => expect(h.canvas.callsOf('getOwnSubmissionRecord')).toHaveLength(1));
+    await h.owner.act({
+      kind: 'setDone',
+      key: `assignment:${IDS.assignments.bioQuiz3Today}`,
+      done: true,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    const owner = h.owner.assignmentOwner('12', '101', ORIGIN, TAB);
+    await vi.advanceTimersByTimeAsync(0);
+    release();
+    await owner;
+    await holder;
+    const methods = h.canvas.calls.map((call) => call.method);
+    expect(methods.indexOf('getOwnSubmissionUserRecord')).toBeLessThan(
+      methods.indexOf('createOverride'),
+    );
   });
 });
 

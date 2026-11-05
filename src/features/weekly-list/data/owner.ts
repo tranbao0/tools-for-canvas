@@ -2687,19 +2687,24 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return response;
   }
 
-  /** A live read for the assignment view. A cookie that is not confirmed yet waits for one check. */
+  /**
+   * A live read for the assignment view. A cookie that is not confirmed yet waits for one check.
+   * The student looks at the page that waits for the read, so it goes before the requests of a
+   * refresh round on the queue.
+   */
   async function readForAssignmentView<T>(
     origin: string | null,
     tabId: number | undefined,
     read: (api: CanvasApi) => Promise<T | null>,
   ): Promise<T | null> {
+    const urgent = (api: CanvasApi): Promise<T | null> => read(api.withPriority(() => 'high'));
     try {
-      return await viewerRead(origin, tabId, read);
+      return await viewerRead(origin, tabId, urgent);
     } catch (error) {
       // As in the viewer: a cookie that is not confirmed yet waits for one check and tries once more.
       if (!(error instanceof ViewerUnconfirmedError) || !(await viewerConfirm(origin, tabId)))
         throw error;
-      return viewerRead(origin, tabId, read);
+      return viewerRead(origin, tabId, urgent);
     }
   }
 
