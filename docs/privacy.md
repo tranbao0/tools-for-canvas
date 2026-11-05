@@ -107,10 +107,14 @@ Each fix has a switch in the settings, and each is on by default.
 
 ## What the one assignment view does
 
-The one assignment view works on the Grades page.
-It adds a button to each assignment row, and the button opens the assignment under its row.
-The row shows the due date, your score and status, the instructions, the rubric with your assessment, the comments and your submitted files.
-It only reads, and it keeps what it read in the memory of the open page until you close or reload the page.
+The one assignment view works on the Assignments list, on the Submission Details page of your own work, and on the assignment page.
+On the Assignments list, it adds a "Preview" button to each assignment row.
+The button opens Canvas's own assignment page in a pane beside the list.
+The pane is a frame of your Canvas site, so it shows what Canvas shows when you open that page, and it works as that page does.
+The extension reads only the address of the frame, and nothing of its content.
+While the pane is open, the extension reads your submission status of that assignment now and then, and keeps the last answer in the memory of the open page.
+It uses the answer to tell when your work was handed in, so that the weekly list refreshes.
+The Submission Details page shows the instructions, the rubric with your assessment, the comments and your submitted files.
 The instructions and the comments are written by your teacher.
 The extension shows them only after it removes everything that could run code, load a frame or send a form.
 The view has a switch in the settings, which is on by default.
