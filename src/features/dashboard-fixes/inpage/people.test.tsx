@@ -142,6 +142,9 @@ describe('filterOf', () => {
     const twins = [COURSES[0]!, { ...COURSES[1]!, name: COURSES[0]!.name }];
     expect(filterOf({ courseLabel: COURSES[0]!.name, role: 'all' }, twins)).toBeNull();
     expect(filterOf({ courseLabel: COURSES[0]!.name, role: 'all' }, null)).toBeNull();
+    // An observer has no student course: the data holds none, and Canvas's list has the people.
+    expect(filterOf({ courseLabel: 'All Courses', role: 'all' }, [])).toBeNull();
+    expect(filterOf({ courseLabel: 'BIO 110', role: 'all' }, [])).toBeNull();
     expect(filterOf({ courseLabel: 'All Courses', role: 'all' }, null)).toEqual({
       courseId: null,
       role: 'all',
@@ -283,6 +286,36 @@ describe('the list replaces the one of Canvas', () => {
 });
 
 describe('the fallback', () => {
+  it('leaves Canvas its own list when the data has no course, and marks nothing', async () => {
+    context.data = dashboardData([]);
+    await start();
+    expect(host()).toBeNull();
+    expect(pages()).toHaveLength(0);
+    const widget = document.querySelector(WIDGET)!;
+    expect(widget.getAttributeNames().filter((name) => name.startsWith('data-wr-'))).toEqual([]);
+    expect(widget.querySelector('[data-wr-pbar], [data-wr-pfb]')).toBeNull();
+  });
+
+  it('leaves Canvas its own list for a course of a child, and takes the list for a course of the student', async () => {
+    // A student who also observes: the Course filter can name a course that the session lacks.
+    await start();
+    setFilter('course-filter-select', 'Grade 5 Science (child)');
+    fix.apply(context);
+    expect(host()).toBeNull();
+    expect(
+      document
+        .querySelector(WIDGET)!
+        .getAttributeNames()
+        .filter((name) => name.startsWith('data-wr-')),
+    ).toEqual([]);
+
+    setFilter('course-filter-select', 'MATH 221: Calculus II');
+    fix.apply(context);
+    await settle();
+    expect(pages().at(-1)).toMatchObject({ courseId: '102' });
+    expect(host()).not.toBeNull();
+  });
+
   it('gives Canvas its own list back when the first page fails', async () => {
     server.failPages = true;
     await start();

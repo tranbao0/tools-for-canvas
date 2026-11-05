@@ -309,6 +309,26 @@ test.describe('people: the filters of Canvas', () => {
 });
 
 test.describe('people: the fallback', () => {
+  test('leave Canvas its own list for a session with no student course', async ({
+    context,
+    page,
+  }) => {
+    // A parent who observes a child has no student course, so the session has none.
+    const { canvas } = await serveScenario(context, PAGE, {
+      extend(scenario) {
+        scenario.courses.length = 0;
+      },
+    });
+    await addCsrfCookie(context, canvas.origin);
+    await page.setViewportSize({ width: 1920, height: 1000 });
+    await openCanvasPage(page, canvas.origin, URL_PATH);
+    await expect(page.locator(NATIVE_ITEM).first()).toBeVisible();
+    await expect(page.locator(NATIVE_ITEM)).toHaveCount(5);
+    await expect(page.locator(LIST)).toHaveCount(0);
+    expect(await page.locator(WIDGET).innerText()).not.toContain('No instructors found');
+    expect(queries(canvas)).toHaveLength(0);
+  });
+
   const FAILED_PAGES: [string, FakeReply][] = [
     ['an error status', { status: 500, body: 'Server error' }],
     ['a 200 answer with errors', { body: { data: null, errors: [{ message: 'boom' }] } }],
