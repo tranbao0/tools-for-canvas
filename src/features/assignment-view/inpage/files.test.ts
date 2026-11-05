@@ -483,6 +483,12 @@ describe('refineFiles', () => {
   const SESSION = `${ORIGIN}${SESSION_PATH}`;
   const OTHER = `${ORIGIN}/api/v1/canvadoc_session?blob=frame`;
 
+  it('counts a frame button for a file past the limit of a full list', () => {
+    const hints = new Map([['999', { label: 'View Feedback', unread: false, session: null }]]);
+    const full = Array.from({ length: 50 }, (_, index) => file({ fileId: String(index + 1) }));
+    expect(refineFiles(full, hints).withoutSession).toBe(1);
+  });
+
   it('takes the label and the unread mark of the frame for a file with a button', () => {
     const hints = new Map([['501', { label: 'Preview', unread: true, session: SESSION }]]);
     expect(refineFiles([file()], hints)).toEqual({
@@ -557,13 +563,5 @@ describe('sameFiles', () => {
     expect(sameFiles([scored], [{ ...scored, report: { ...scored.report, text: '6.0%' } }])).toBe(
       false,
     );
-  });
-});
-
-describe('refineFiles with a frame button for a file that the box does not list', () => {
-  it('counts the file as one with no usable session address', () => {
-    const hints = new Map([['999', { label: 'View Feedback', unread: false, session: null }]]);
-    const full = Array.from({ length: 50 }, (_, index) => file({ fileId: String(index + 1) }));
-    expect(refineFiles(full, hints).withoutSession).toBe(1);
   });
 });
