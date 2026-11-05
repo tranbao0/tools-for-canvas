@@ -11,6 +11,7 @@
  * Escape closes it and hides the rest of the page from screen readers. Neither fits a rubric in the
  * page, so the keys Tab and Escape stop at the wrapper before the handlers of Canvas see them.
  */
+import { copyPageText } from './own';
 
 const HOME = 'av-rubric-home';
 
@@ -215,6 +216,7 @@ export function takeRubric(doc: Document, holder: HTMLElement, wrapper: HTMLElem
   const mark = doc.createComment(HOME);
   holder.before(mark);
   wrapper.id = RUBRIC_WRAPPER_ID;
+  copyPageText(doc, wrapper);
   wrapper.addEventListener('keydown', stopModalKeys, true);
   wrapper.append(holder);
   return () => {

@@ -80,8 +80,11 @@ interface RowState {
 /** The text of other people that Canvas shows in the Submission box. A sweep never goes into it. */
 const COMMENTS = '.comments';
 
-/** Every place where a comment of Canvas can stand, also while the column is in the box. */
-const COMMENT_TEXT = '.comments,.submission-details-comments,#av-comments';
+/**
+ * Every place where the text of another author can stand: a comment of Canvas, also while the
+ * column is in the box, and the rubric, which the view moves into its wrapper.
+ */
+const COMMENT_TEXT = '.comments,.submission-details-comments,#av-comments,#rubric_holder';
 
 /** The nodes of the root that match, except those in the comments of Canvas. */
 function inOwnedPart(root: ParentNode, selector: string): Element[] {
@@ -100,19 +103,43 @@ function ownNode(doc: Document, id: string, at: (node: Element) => boolean): Ele
   return null;
 }
 
-/** The host of the instructions stands before the container, or after the files frame in it. */
-const isHostPlace = (node: Element): boolean =>
-  node.nextElementSibling?.classList.contains('submission-details-container') === true ||
-  (node.parentElement?.classList.contains('submission-details-container') === true &&
-    node.previousElementSibling?.classList.contains('submission-details-frame') === true);
+/** The container of the two columns that Canvas draws, outside the text of other authors. */
+function realContainer(doc: Document): Element | null {
+  for (const node of doc.querySelectorAll('.submission-details-container')) {
+    if (node.closest(COMMENT_TEXT) === null) return node;
+  }
+  return null;
+}
+
+/** The files frame that Canvas draws in the real container. */
+function realFrame(doc: Document): Element | null {
+  const children = realContainer(doc)?.children ?? [];
+  return (
+    [...children].find((child) => child.classList.contains('submission-details-frame')) ?? null
+  );
+}
+
+/** The host of the instructions stands before the real container, or after the real frame in it. */
+const isHostPlace = (node: Element): boolean => {
+  const container = realContainer(node.ownerDocument);
+  if (container === null) return false;
+  return (
+    node.nextElementSibling === container ||
+    (node.parentElement === container &&
+      node.previousElementSibling === realFrame(node.ownerDocument))
+  );
+};
 
 /** The panes of the dock stand in the body. */
 const isPanePlace = (node: Element): boolean => node.parentElement === node.ownerDocument.body;
 
-/** The wrapper of the rubric stands in the host of the instructions, or in the files frame. */
-const isRubricPlace = (node: Element): boolean =>
-  node.parentElement?.id === 'av-submission-details' ||
-  node.parentElement?.classList.contains('submission-details-frame') === true;
+/** The wrapper of the rubric stands in the real host of the instructions, or in the real frame. */
+const isRubricPlace = (node: Element): boolean => {
+  const doc = node.ownerDocument;
+  const parent = node.parentElement;
+  if (parent === null) return false;
+  return parent === realFrame(doc) || parent === ownNode(doc, 'av-submission-details', isHostPlace);
+};
 
 /**
  * Puts the nodes of Canvas back in the place of the own nodes that hold them. Only a holder that
