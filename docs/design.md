@@ -1506,6 +1506,7 @@ These sizes come from one test build of the same small app [19].
 - So CI uses fixtures, and a person runs the live checks.
 - Tests run with no retries.
   A flaky test is a bug to fix.
+  A test that fails only under heavy load may be removed by the owner's choice, but a test that is the only cover of a security or data rule stays.
 
 ### 14. Browsers and versions
 

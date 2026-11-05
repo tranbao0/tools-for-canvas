@@ -82,8 +82,6 @@ async function recordClicks(page: Page): Promise<void> {
 interface WeekChange {
   /** Milliseconds from the click until the heading names the week, in the page's clock. */
   ms: number;
-  /** Epoch milliseconds when the week showed. The page and the test share the system clock. */
-  shownAt: number;
 }
 
 /** Clicks a header button and times the change until the heading names `week` and its days are in. */
@@ -101,7 +99,7 @@ async function timeWeekChange(page: Page, button: string, week: string): Promise
           // The week counts as shown once its heading is there and no day or Past due still loads.
           const loading = document.querySelector('[data-loading="true"]');
           if (clicked !== undefined && heading?.textContent === name && loading === null) {
-            resolve({ ms: performance.now() - clicked, shownAt: Date.now() });
+            resolve({ ms: performance.now() - clicked });
           } else {
             requestAnimationFrame(check);
           }
@@ -121,7 +119,7 @@ async function openSlowCanvas(
   background: Worker,
   panelUrl: string,
   plannerGate?: PlannerGate,
-): Promise<{ canvas: FakeCanvas; firstLoad: number }> {
+): Promise<{ canvas: FakeCanvas }> {
   let added = 0;
   const { canvas } = await serveScenario(context, [], {
     extend: (scenario) => {
@@ -134,13 +132,12 @@ async function openSlowCanvas(
   expect(added).toBeGreaterThan(300);
   await addCsrfCookie(context, canvas.origin);
   await saveAddress(background, canvas.origin);
-  const opened = Date.now();
   await openExtensionPage(page, panelUrl);
   await expect(
     page.getByRole('heading', { level: 1, name: 'October 27 to November 2' }),
   ).toBeVisible({ timeout: 60_000 });
   await recordClicks(page);
-  return { canvas, firstLoad: Date.now() - opened };
+  return { canvas };
 }
 
 test('the next week shows within one round trip when it is clicked before it loaded ahead', async ({
