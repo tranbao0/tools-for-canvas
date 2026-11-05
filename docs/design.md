@@ -3632,7 +3632,8 @@ So a student switches pages to read the instructions next to the feedback on a f
        Each entry has `similarity_score`, `state`, `status` (`scored`, `pending` or `error`) and `error_message`.
        The VeriCite data is `vericite_data`, with the same keys and the key `provider`.
    - For an `online_upload`, the box draws each file at once from these records: the name, the size, the score with its report link, and the feedback button.
-     The page never waits for the frame, so a frame that never loads, is empty or has other markup changes nothing.
+     The page does not wait for the frame, so a frame that never loads, is empty or has other markup changes nothing.
+     The one exception is a file whose `preview_url` fails the check: the frame stays in view until a frame row gives that file an address.
    - **The frame as a helper.**
      - When the frame can be read, it tells three things about a file that has a preview button: the label of the button, the unread mark, and the session address of the button.
        A row counts when its file link is a file of the submission of this page, and the row has an `a.modal_preview_link`.
@@ -3646,9 +3647,12 @@ So a student switches pages to read the instructions next to the feedback on a f
        A file whose `preview_url` is good keeps that address.
      - The frame never gives a name, a size or a score.
      - A frame that cannot be read, that is on another origin, or that has any other markup changes nothing.
+     - The frame counts as loaded when it is on this origin and on the path of the submission of this page, and it holds a `table.file-upload-submission-table` or a `td.asset-report-status-container`.
+       The query of its address does not matter, so a Canvas that renames or drops `preview=1` does not keep the view waiting.
+       A frame at the address with `preview=1` counts as loaded even when it holds neither.
      - The default label is "View Feedback".
    - **When the view keeps Canvas's frame (the mode 'above').**
-     It happens in four cases, and in no other:
+     It happens in these cases, and in no other:
      - A submission type that the view does not show: media recording, quiz, LTI tool, student annotation, discussion, and any other type.
      - Content in a `td.asset-report-status-container` of the frame, which is the cell of LTI 1.3 asset processor reports.
        The records of the submission hold nothing for them, so the student would lose the report.
@@ -3659,10 +3663,14 @@ So a student switches pages to read the instructions next to the feedback on a f
      - A file whose report data the view cannot show: a score that is not a number, a `state` or a `status` that is not text, a key whose value is not an object, a key past the limit of the report list, or a report address that fails the check below.
        Only the entries that the lookup of the template selects for the file count.
        The student never loses a report: when the view cannot show it, Canvas's frame shows it.
-     - A preview button of Canvas in the frame, for a file that has no usable session address from the details and none from the frame row.
+     - A file for which Canvas gave a `preview_url` that fails the check (item 6), until a row of the frame has given it a session address that passes the check.
        The teacher's notes would be lost, because Canvas shows a button that the view cannot draw.
-       A file with no `preview_url` and no button in the frame changes nothing, because Canvas offers no preview for it.
-       Like the report cell, this case depends on the frame, so the view returns to the replace mode if a later load of the frame gives the file an address or no button.
+       The page starts in the mode 'above' with the reason `no-session`, and it moves to the replace mode only when the frame has loaded and every such file has a frame row with a good session address.
+       A frame that cannot be read, that never loads, that has no row for the file, or whose row has no good address keeps the mode 'above'.
+       A file that Canvas offers no address for does not count: Canvas writes `preview_url: null` for a file it cannot preview (`Attachment#canvadoc_url` returns nothing when the file is not `canvadocable?`), such as a zip, and the background keeps no address for it.
+       The page with only such files starts in the replace mode, so the frame does not flash.
+       A file with no `preview_url` and a preview button in the frame, with no good address in the button, also keeps the mode 'above'.
+       Like the report cell, this case depends on the frame, so the view returns to the replace mode if a later load of the frame gives the file an address, and goes back to the mode 'above' if a later load does not.
      - A text entry whose report data the view cannot show is not one of the cases: the box shows no score for it, and the page stays in the replace mode.
        This is a known gap of the rule of four reasons.
    - **Console lines.**
@@ -3721,7 +3729,8 @@ So a student switches pages to read the instructions next to the feedback on a f
      It has no credentials and no fragment.
      Any other value counts as absent, and the view writes one console line with the number of such files (item 5, "Console lines").
      The file then gets the address of the frame row.
-     If the frame row has none either and shows a button, the view uses the mode 'above' with the reason `no-session` (item 5), so the notes of the teacher stay reachable through Canvas's own button.
+     The mode 'above' with the reason `no-session` (item 5) holds from the start for a file whose address failed the check, until a frame row gives one, so the notes of the teacher stay reachable through Canvas's own button.
+     It also holds for a file with no address in the details when the frame shows a button for it and the button has none either.
    - The address is signed for one student and acts like a secret.
      The view keeps it in a closure of the script, and the feedback pane keeps it in its closed root.
      It is never an attribute of the page or of the open root of the view, and no code logs it.
@@ -4048,7 +4057,7 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 - `tests/fixtures/pages/assignment.html` has the sidebar of the assignment page.
 - Unit tests (`submission.test.ts`, `files.test.ts`, `submissionFrame.test.ts`, `submissionBox.test.ts`, `sidebar.test.ts`, `modeLog.test.ts`, `project.test.ts`, `comments.test.ts`, `format.test.ts`, `start.test.ts`) cover each branch of the score lookup (VeriCite first, the entry of the submission as the fallback, a score of 0, pending, error, the attempt in the address), report data that cannot be shown, a bad report or session address, a frame that gives no hint, a frame that never loads, the reason lines of the console, the score beside the file link of the assignment page, the status line cases, the date form, the move of the comments column and its return with the typed text, the File viewer switch, the cleanup of a dead copy with marks and ids of the view in the comment of another author, a comment that holds the ids of the right column, a mount that throws, and the keyboard focus on "Go to assignment" through a change of mode.
   The `:has` rule needs a real browser, so Chromium and Firefox show it.
-- `tests/e2e/submission-details.spec.ts` covers the replacement and the box, a page with a Turnitin score (no frame; the file, the score with its address and color, and "View Feedback" in the box), a frame with markup that Canvas redrew, a row with an extra link, an empty frame and a frame that never loads (the replace mode, the file, the score and "View Feedback" in each), the score of a text entry, a bad session address in the details (the address of the frame row serves the file, with one console line), a file with no usable address in the details or in the frame row (the frame stays, with the reason `no-session`), a file with no address and no button (no change), the label and the unread dot of a translated Canvas, the console lines of the mode 'above' with no address and no file name, the score beside "View NAME" on the assignment page, Canvas's comment form from the box, the widths (1920 px: the content keeps Canvas's width and the box stands on its right; 1366 px: side by side; 1024 px with the menu open: the box stands under the content), the score of the assignment page on a right-to-left Canvas and after a change of the width of the box, the File viewer switch, the "Go to assignment" button, the file click, the feedback pane, the instructions above an untouched frame for a media recording, the unchanged pages and the switch.
+- `tests/e2e/submission-details.spec.ts` covers the replacement and the box, a page with a Turnitin score (no frame; the file, the score with its address and color, and "View Feedback" in the box), a frame with markup that Canvas redrew, a row with an extra link, an empty frame and a frame that never loads (the replace mode, the file, the score and "View Feedback" in each), the score of a text entry, a bad session address in the details (the address of the frame row serves the file, with one console line), a file with no usable address in the details or in the frame row (the frame stays, with the reason `no-session`), a new parameter in the address of the details with a frame button that the view cannot read (the frame stays in view and its button opens the notes), a frame address with another parameter than `preview=1` (the row still gives its address), a file with no address and no button (no change), the label and the unread dot of a translated Canvas, the console lines of the mode 'above' with no address and no file name, the score beside "View NAME" on the assignment page, Canvas's comment form from the box, the widths (1920 px: the content keeps Canvas's width and the box stands on its right; 1366 px: side by side; 1024 px with the menu open: the box stands under the content), the score of the assignment page on a right-to-left Canvas and after a change of the width of the box, the File viewer switch, the "Go to assignment" button, the file click, the feedback pane, the instructions above an untouched frame for a media recording, the unchanged pages and the switch.
 - `tests/firefox/submission-pages.mjs` (`npm run test:firefox:submission-pages`) runs in real Firefox with a fake Canvas over HTTPS.
   It checks the Submission box of the assignment page, with a relative link and a link with the full host, with and without `#submit`.
   It checks the Submission box with the score beside the link, from the report data of the record.

@@ -46,6 +46,12 @@ export interface BoxFile {
   unread: boolean;
   /** The checked address of the session. It is never put on the page. */
   sessionUrl: string | null;
+  /**
+   * Set when the details gave an address for the session that failed the check, so only a row of
+   * the files frame can still give the file one. A file that Canvas offers no address for has no
+   * mark.
+   */
+  awaitsFrameSession?: true;
   /** The similarity score of the file, or `null` when it has none. */
   report: FileReport | null;
 }
@@ -301,7 +307,11 @@ export function filesFromDetails(
     const { report, readable: shown } = fileReport(source, file.id, context);
     if (!shown) readable = false;
     const session = sessionUrl(file.preview_url, context.origin);
-    if (file.preview_url !== undefined && session === null) withoutSession += 1;
+    // Canvas writes `preview_url: null` for a file it cannot preview (`Attachment#canvadoc_url`),
+    // such as a zip, and the background keeps no address for it. Only a text counts as an offer.
+    const failed =
+      session === null && typeof file.preview_url === 'string' && file.preview_url !== '';
+    if (failed) withoutSession += 1;
     files.push({
       fileId: file.id,
       name: file.display_name,
@@ -309,6 +319,7 @@ export function filesFromDetails(
       feedbackLabel: session === null ? null : DEFAULT_LABEL,
       unread: false,
       sessionUrl: session,
+      ...(failed ? { awaitsFrameSession: true as const } : {}),
       report,
     });
   }
@@ -343,7 +354,9 @@ export interface RefinedFiles {
  * unread mark come from the frame. The session address comes from the details, and the address of
  * the frame row is the second source for a file that has none. A file that the frame shows a
  * button for and that has no address from either source is counted, because Canvas's button for
- * it cannot be drawn by the view.
+ * it cannot be drawn by the view. So is a file whose address in the details failed the check, when
+ * the frame has no row with a session address for it: nothing proves that Canvas's button for it
+ * can go.
  */
 export function refineFiles(
   files: readonly BoxFile[],
@@ -357,14 +370,18 @@ export function refineFiles(
   }
   const refined = files.map((file) => {
     const hint = hints.get(normalizeCanvasId(file.fileId));
-    if (hint === undefined) return file;
+    if (hint === undefined) {
+      if (file.awaitsFrameSession === true) withoutSession += 1;
+      return file;
+    }
     const session = file.sessionUrl ?? hint.session;
     if (session === null) {
       withoutSession += 1;
       return file;
     }
+    const { awaitsFrameSession: _proven, ...proven } = file;
     return {
-      ...file,
+      ...proven,
       feedbackLabel: hint.label ?? file.feedbackLabel ?? DEFAULT_LABEL,
       unread: hint.unread,
       sessionUrl: session,

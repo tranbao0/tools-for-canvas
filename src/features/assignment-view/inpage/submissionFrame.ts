@@ -90,10 +90,18 @@ export function readFrame(frame: HTMLIFrameElement, origin: string, pagePath: st
     if (win.location.href === 'about:blank') return { state: 'pending' };
     const shown = new URL(win.location.href);
     if (shown.origin !== origin) return { state: 'failed' };
-    if (!sameSubmissionPath(shown.pathname, pagePath) || shown.searchParams.get('preview') !== '1')
+    if (!sameSubmissionPath(shown.pathname, pagePath)) return { state: 'pending' };
+    // Index loops, because a Firefox content script cannot iterate every list of a page.
+    const cells = doc.querySelectorAll('td.asset-report-status-container');
+    // The preview page has a files table or a report cell, whatever parameters its address holds.
+    // Canvas writes `preview=1` there today, and the view does not depend on that parameter.
+    if (
+      shown.searchParams.get('preview') !== '1' &&
+      cells.length === 0 &&
+      doc.querySelector('table.file-upload-submission-table') === null
+    )
       return { state: 'pending' };
     const hints = new Map<string, FrameHint>();
-    // Index loops, because a Firefox content script cannot iterate every list of a page.
     const rows = doc.querySelectorAll(
       'table.file-upload-submission-table tr.file-upload-submission',
     );
@@ -102,7 +110,6 @@ export function readFrame(frame: HTMLIFrameElement, origin: string, pagePath: st
       if (found !== null && !hints.has(found.id)) hints.set(found.id, found.hint);
     }
     let assetReports = false;
-    const cells = doc.querySelectorAll('td.asset-report-status-container');
     for (let index = 0; index < cells.length; index += 1) {
       if (hasContent(cells.item(index))) assetReports = true;
     }
