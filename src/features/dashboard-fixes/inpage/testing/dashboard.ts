@@ -21,6 +21,18 @@ export function drawDashboard(doc: Document = document): void {
   doc.body.innerHTML = match?.[1] ?? '';
 }
 
+const PEOPLE_WIDGET =
+  /<template id="fixture-people-widget">([\s\S]*?)<\/template>/.exec(FIXTURE)?.[1] ?? '';
+
+/**
+ * Puts the People widget with the markup of the package in place of the plain People block, as
+ * the page does with `?fixture_people=1`. Call it after `drawDashboard`.
+ */
+export function drawPeopleWidget(doc: Document = document): void {
+  const slot = doc.querySelector('[data-testid="widget-container-people-widget"]');
+  if (slot !== null) slot.innerHTML = PEOPLE_WIDGET;
+}
+
 export const COURSES: DashboardCourse[] = [
   course('101', 'BIO 110: Principles of Biology', '#0B874B', 84.4, 'B'),
   course('102', 'MATH 221: Calculus II', '#E71F63', 78.9, null),
