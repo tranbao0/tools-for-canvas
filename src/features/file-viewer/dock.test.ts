@@ -506,6 +506,18 @@ describe('full view', () => {
     expect(feedback.full).toBe(true);
   });
 
+  it('keeps full view for a file pane when the pane that it covers closes', () => {
+    const turnIn = dock('turn-in', 480, true);
+    const file = dock('file', 600, true);
+    turnIn.open();
+    setFullView(true);
+    turnIn.setHidden(true);
+    file.open();
+    turnIn.close();
+    expect(isFullView()).toBe(true);
+    expect(file.full).toBe(true);
+  });
+
   it('never fills the window on a narrow window, and comes back when the window is wide again', () => {
     const { innerWidth } = window;
     try {
