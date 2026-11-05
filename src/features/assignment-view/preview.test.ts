@@ -39,7 +39,7 @@ describe('the pane addresses', () => {
 });
 
 describe('slim address after a redirect', () => {
-  const slim = (location: string) => slimAddress(location, ORIGIN, '12');
+  const slim = (location: string) => slimAddress(location, ORIGIN);
   it('adds content_only and keeps the other parts', () => {
     expect(slim(`${ORIGIN}/courses/12/assignments/101`)).toBe(
       `${ORIGIN}/courses/12/assignments/101?content_only=1`,
@@ -67,22 +67,59 @@ describe('slim address after a redirect', () => {
     expect(slim(`${ORIGIN}/courses/12/assignments/101?content_only=1`)).toBeNull();
     expect(slim(`${ORIGIN}/courses/12/discussion_topics/9?x=1&content_only=1`)).toBeNull();
   });
-  it('rewrites no page of another course, origin or text', () => {
+  it('adds content_only to every page of the saved origin: a group, another course, a user, the calendar', () => {
+    for (const [from, to] of [
+      ['/groups/7/discussion_topics/44', '/groups/7/discussion_topics/44?content_only=1'],
+      ['/courses/13/pages/x', '/courses/13/pages/x?content_only=1'],
+      ['/courses/12~34/assignments/5', '/courses/12~34/assignments/5?content_only=1'],
+      ['/users/5', '/users/5?content_only=1'],
+      ['/calendar', '/calendar?content_only=1'],
+      ['/conversations', '/conversations?content_only=1'],
+      ['/files/5', '/files/5?content_only=1'],
+      ['/profile', '/profile?content_only=1'],
+      ['/', '/?content_only=1'],
+      ['/loginfo', '/loginfo?content_only=1'],
+      ['/apiary', '/apiary?content_only=1'],
+    ] as const)
+      expect(slim(`${ORIGIN}${from}`)).toBe(`${ORIGIN}${to}`);
+  });
+  it('leaves the quiz take page of any course, so a running quiz never reloads', () => {
+    for (const take of [
+      '/courses/12/quizzes/7/take',
+      '/courses/12/quizzes/7/take/',
+      '/courses/12/quizzes/7/take/questions/3',
+      '/courses/13/quizzes/7/take',
+      '/courses/12~34/quizzes/7/take?user_id=5',
+    ])
+      expect(slim(`${ORIGIN}${take}`)).toBeNull();
+    expect(slim(`${ORIGIN}/courses/12/quizzes/7/taken`)).toBe(
+      `${ORIGIN}/courses/12/quizzes/7/taken?content_only=1`,
+    );
+  });
+  it('leaves the sign-in, the sign-out, the API and a download', () => {
+    for (const denied of [
+      '/login',
+      '/login/',
+      '/login/canvas',
+      '/logout',
+      '/api/v1/courses',
+      '/api',
+      '/courses/12/files/5/download?download_frd=1',
+      '/files/5/download',
+      '/files/5/download/',
+    ])
+      expect(slim(`${ORIGIN}${denied}`)).toBeNull();
+  });
+  it('leaves no page of another origin and no text that is not an address', () => {
     for (const other of [
-      `${ORIGIN}/courses/13/assignments/101`,
-      `${ORIGIN}/courses/123/assignments/101`,
-      `${ORIGIN}/courses/12x/assignments/101`,
-      `${ORIGIN}/courses/012x`,
-      `${ORIGIN}/login/canvas`,
-      `${ORIGIN}/files/101`,
-      `${ORIGIN}/`,
       'https://other.test/courses/12/assignments/101',
+      `${ORIGIN}.evil.test/courses/12`,
+      'http://canvas.test/courses/12',
       'about:blank',
       'not an address',
       '',
     ])
       expect(slim(other)).toBeNull();
-    expect(slimAddress(`${ORIGIN}/courses/12/assignments/101`, ORIGIN, '../x')).toBeNull();
   });
 });
 
@@ -137,13 +174,4 @@ describe('poll delay', () => {
     expect(seen).toEqual([40_000, 80_000, 160_000, 300_000, 300_000, 300_000]);
     expect(nextPollDelay(delay, base, true)).toBe(base);
   });
-});
-
-it('keeps the pane frame slim across short and global shard ids', () => {
-  expect(slimAddress(ORIGIN + '/courses/20000000000012/discussion_topics/9', ORIGIN, '2~12')).toBe(
-    ORIGIN + '/courses/20000000000012/discussion_topics/9?content_only=1',
-  );
-  expect(slimAddress(ORIGIN + '/courses/2~12/quizzes/9', ORIGIN, '20000000000012')).toBe(
-    ORIGIN + '/courses/2~12/quizzes/9?content_only=1',
-  );
 });

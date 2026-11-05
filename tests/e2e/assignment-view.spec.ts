@@ -188,7 +188,13 @@ async function open(
     },
     {
       path: GROUP_DISCUSSION,
-      respond: () => ({ contentType: 'text/html', body: paneContent('Group discussion', 'group') }),
+      respond: (request) => ({
+        contentType: 'text/html',
+        body: paneContent(
+          'Group discussion',
+          request.path.includes('content_only=1') ? 'group slim' : 'group full',
+        ),
+      }),
     },
     { path: '/courses/12/files/501', contentType: 'text/html', body: '<p>The file page</p>' },
     ...viewRoutes('101', rawRecords(essay), {
@@ -581,7 +587,7 @@ test('a graded discussion loads its redirect page with content_only once', async
   expect(get(`${DISCUSSION}?content_only=1`)).toHaveLength(1);
 });
 
-test('a page of another course keeps its address in the pane', async ({
+test('a page of another course loads with content_only like every page of the saved origin', async ({
   context,
   page,
   background,
@@ -599,13 +605,119 @@ test('a page of another course keeps its address in the pane', async ({
   const frame = await openPane(page, 'Essay');
   await frame.evaluate(() => location.assign('/courses/13/assignments/5'));
   await expect(frame.locator('#mode')).toHaveText('another course');
+  await expect
+    .poll(() => frame.url())
+    .toBe(`${canvas.origin}/courses/13/assignments/5?content_only=1`);
+});
+
+/**
+ * The pages that a graded group discussion goes through: the assignment page of the course, the
+ * list of the group, and the topic of the group. None of the redirects keeps content_only. The
+ * fake redirects with a script, as the other redirects of this file do.
+ */
+const GROUP_CHAIN: FakeCanvasRoute[] = [
+  {
+    path: '/courses/12/assignments/102',
+    respond: () => ({
+      contentType: 'text/html',
+      body: '<script>location.replace("/groups/7/discussion_topics?root_discussion_topic_id=9")</script>',
+    }),
+  },
+  {
+    path: '/groups/7/discussion_topics',
+    respond: () => ({
+      contentType: 'text/html',
+      body: `<script>location.replace("${GROUP_DISCUSSION}")</script>`,
+    }),
+  },
+];
+
+test('a row that redirects to a page of a group ends with content_only=1 in the frame', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background, { extra: GROUP_CHAIN });
+  await ready(page, canvas);
+  await preview(page, 'Reading').click();
+  const frame = await paneFrame(page, GROUP_DISCUSSION);
+  await expect(frame.locator('#mode')).toHaveText('group slim');
+  expect(frame.url()).toBe(`${canvas.origin}${GROUP_DISCUSSION}?content_only=1`);
   await page.waitForTimeout(500);
-  expect(frame.url()).toBe(`${canvas.origin}/courses/13/assignments/5`);
-  expect(
-    canvas.requests.filter(
-      (request) => request.path === '/courses/13/assignments/5?content_only=1',
-    ),
-  ).toHaveLength(0);
+  expect(frame.url()).toBe(`${canvas.origin}${GROUP_DISCUSSION}?content_only=1`);
+});
+
+test('a row that lands on a plain page is rewritten before the load event of that page', async ({
+  context,
+  page,
+  background,
+}) => {
+  const LANDING = '/courses/12/pages/landing';
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const { canvas } = await open(context, page, background, {
+    extra: [
+      {
+        path: '/courses/12/assignments/102',
+        respond: () => ({
+          contentType: 'text/html',
+          body: `<script>location.replace("${LANDING}")</script>`,
+        }),
+      },
+      {
+        // The plain page has an image that Canvas answers late, so its load event waits.
+        path: LANDING,
+        respond: (request) => ({
+          contentType: 'text/html',
+          body: request.path.includes('content_only=1')
+            ? '<!doctype html><p id="mode">slim</p>'
+            : '<!doctype html><p id="mode">full</p><img src="/held.png" alt="">',
+        }),
+      },
+      {
+        path: '/held.png',
+        respond: async () => {
+          await held;
+          return { status: 404 };
+        },
+      },
+    ],
+  });
+  try {
+    await ready(page, canvas);
+    await preview(page, 'Reading').click();
+    await expect
+      .poll(() => canvas.requests.some((request) => request.path === `${LANDING}?content_only=1`), {
+        timeout: 5000,
+      })
+      .toBe(true);
+    // The image of the plain page is still unanswered, so that page has not loaded: the slim
+    // page came before the load event.
+    expect(
+      canvas.requests.filter(
+        (request) => request.path === '/held.png' && request.answeredAt !== null,
+      ),
+    ).toEqual([]);
+    const frame = await paneFrame(page, LANDING);
+    await expect(frame.locator('#mode')).toHaveText('slim');
+    expect(frame.url()).toBe(`${canvas.origin}${LANDING}?content_only=1`);
+  } finally {
+    release();
+  }
+});
+
+test('the quiz take page keeps its address in the pane', async ({ context, page, background }) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#to-take').click();
+  await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(QUIZ_TAKE);
+  await expect(frame.locator('#mode')).toHaveText('take');
+  await page.waitForTimeout(800);
+  expect(frame.url()).toBe(`${canvas.origin}${QUIZ_TAKE}`);
+  expect(canvas.requests.filter((request) => request.path.startsWith(QUIZ_TAKE))).toHaveLength(1);
 });
 
 /** Runs a read inside a frame, and tries again while the frame is in the middle of a navigation. */
