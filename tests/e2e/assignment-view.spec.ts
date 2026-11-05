@@ -2229,6 +2229,13 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
   await ready(page, canvas);
   await openPane(page, 'Essay');
   const hostBox = async () => (await page.locator(PANE_HOST).boundingBox())!;
+  // Each save comes back to the pane as a change of the setting. A step that starts before the
+  // echo of the step before it would see the older width, so each step waits for its save and for
+  // the echo.
+  const saved = async (width: number) => {
+    await expect.poll(async () => (await storedTools(background))['fileViewerWidth']).toBe(width);
+    await page.waitForTimeout(400);
+  };
   const start = await hostBox();
   expect(start.width).toBe(DEFAULT_TOOLS_SETTINGS.fileViewerWidth + 12);
 
@@ -2237,24 +2244,24 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
   await page.mouse.down();
   await page.mouse.move(700, start.y + start.height / 2, { steps: 4 });
   await page.mouse.up();
-  await expect.poll(async () => (await hostBox()).width).toBe(700);
+  await saved(688);
+  expect((await hostBox()).width).toBe(700);
   expect(await paddingRight(page)).toBe(700);
   expect((await geometry(page)).card.width).toBe(688);
-  await expect.poll(async () => (await storedTools(background))['fileViewerWidth']).toBe(688);
 
   // The arrow keys move the edge by 20 px, with the focus on the handle.
   const dragged = await hostBox();
   await page.mouse.click(dragged.x + 2, dragged.y + dragged.height / 2);
+  await saved(688);
   await page.keyboard.press('ArrowLeft');
-  await expect.poll(async () => (await hostBox()).width).toBe(720);
-  await expect.poll(async () => (await storedTools(background))['fileViewerWidth']).toBe(708);
-  // The saved width comes back to the pane, so each key waits for its own save.
+  await saved(708);
+  expect((await hostBox()).width).toBe(720);
   await page.keyboard.press('ArrowRight');
-  await expect.poll(async () => (await storedTools(background))['fileViewerWidth']).toBe(688);
+  await saved(688);
   await page.keyboard.press('ArrowRight');
-  await expect.poll(async () => (await hostBox()).width).toBe(680);
+  await saved(668);
+  expect((await hostBox()).width).toBe(680);
   expect(await paddingRight(page)).toBe(680);
-  await expect.poll(async () => (await storedTools(background))['fileViewerWidth']).toBe(668);
 
   // The card never gets narrower than 360 px.
   const narrow = await hostBox();
@@ -2262,7 +2269,8 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
   await page.mouse.down();
   await page.mouse.move(1390, narrow.y + narrow.height / 2, { steps: 4 });
   await page.mouse.up();
-  await expect.poll(async () => (await hostBox()).width).toBe(372);
+  await saved(360);
+  expect((await hostBox()).width).toBe(372);
 
   // Full view has no handle, and leaving it gives the handle back.
   await toggleFullView(page);
