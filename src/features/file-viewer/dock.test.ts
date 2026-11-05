@@ -541,7 +541,8 @@ describe('full view', () => {
       window.dispatchEvent(new Event('resize'));
       expect(fullViewAvailable()).toBe(false);
       expect(turnIn.full).toBe(false);
-      expect(turnIn.host.style.width).toBe('100vw');
+      expect(turnIn.host.style.width).toBe('');
+      expect(turnIn.host.style.left).toBe('0');
       expect(turnIn.host.hasAttribute('data-full')).toBe(false);
       window.innerWidth = 1200;
       window.dispatchEvent(new Event('resize'));
@@ -550,6 +551,18 @@ describe('full view', () => {
     } finally {
       window.innerWidth = innerWidth;
     }
+  });
+
+  it('leaves full view when a file pane that turned it on closes over an assignment pane', () => {
+    const turnIn = dock('turn-in', 480, true);
+    const file = dock('file', 480, true);
+    turnIn.open();
+    file.open();
+    turnIn.setHidden(true);
+    setFullView(true);
+    file.close();
+    turnIn.setHidden(false);
+    expect(isFullView()).toBe(false);
   });
 
   it('is no state of the weekly dock', () => {

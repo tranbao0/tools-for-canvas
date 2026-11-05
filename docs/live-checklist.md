@@ -771,7 +771,7 @@ Run them on `/courses/:id/assignments`.
     Expect: the page in the pane keeps the text and the scroll position, and it does not load again.
     Click "Exit full view".
     Expect: the pane and the page go back as they were, with the same text.
-    Click "Full view" again, click in a text field of the page in the pane, and press Escape.
+    Click "Full view" again, click in a plain text field of the page in the pane, not the rich text editor, and press Escape.
     Expect: full view ends and the pane stays open, with the text.
     Press Escape again.
     Expect: nothing changes, as before.

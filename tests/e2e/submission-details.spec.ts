@@ -739,7 +739,7 @@ test('the header of the feedback pane keeps its title on a narrow card, with ico
       };
     });
     expect(header.title, `title at ${width}`).toBeGreaterThanOrEqual(120);
-    expect(header.bar, `header at ${width}`).toBeLessThan(90);
+    expect(header.bar, `header at ${width}`).toBeLessThan(92);
     if (width < 560) expect([header.full, header.link]).toEqual([30, 30]);
     else expect(Math.min(header.full, header.link)).toBeGreaterThan(80);
   }

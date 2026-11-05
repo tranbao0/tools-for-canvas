@@ -2790,6 +2790,7 @@ With the pane read alone, the default run of the test failed before the fix.
      The pane page never decides: its button changes when the page answers.
      A narrow window has no full view, so there the first Escape closes the pane, even when the kept state is on.
      A key press inside a Canvas frame stays in that frame.
+     A frame inside that frame keeps its keys too, such as the rich text editor, so Escape does nothing there, and the button leaves full view.
      The assignment pane listens for Escape in the frame of the assignment (decision 26, "Frames"), and the feedback pane does not, because DocViewer is on another origin, so Escape works there only with the focus in the header.
 2. **Tabs.**
    - Each file opens in its own tab inside the pane, up to 8 tabs; the 9th file replaces the oldest tab that is not active.
@@ -4012,7 +4013,7 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
   - The header is a container.
     When its content is narrower than 560 px, "Full view" and "Open in new tab" show their icon only, 30 px wide, so the title keeps its room.
     The text stays as the accessible name (`aria-label`) and as the tooltip (`title`) of each button.
-    At card widths of 360, 420, 480 and 800 px, the title is at least 120 px wide and the header is under 90 px high.
+    At card widths of 360, 420, 480 and 800 px, the title is at least 120 px wide and the header is at most 91 px high, because the second line shows at most two lines.
     The feedback pane has the same header.
   - The second line is the due text and the points of the row, as plain text.
     The script reads them from Canvas's own row at the click: the visible text of `.ig-details .assignment-date-due` and `.ig-details .js-score`, without the copy for screen readers (`.screenreader-only`) and without script or style content.
