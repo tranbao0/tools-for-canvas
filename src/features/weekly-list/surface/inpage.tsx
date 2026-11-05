@@ -21,13 +21,7 @@ import type { PageScriptContext } from './pageScript';
 import { createSurfaceRuntime, type SurfaceRuntime } from './runtime';
 import { attachShadowMount } from './shadowMount';
 import { hideOnCoursesTab } from './coursesTab';
-import {
-  DOCK_LIST_CSS,
-  SIDE_PANEL,
-  dashboardHasDock,
-  mountWeeklyDock,
-  type WeeklyDock,
-} from './weeklyDock';
+import { DOCK_LIST_CSS, SIDE_PANEL, mountWeeklyDock, type WeeklyDock } from './weeklyDock';
 import {
   followTheme,
   inpageTheme,
@@ -179,13 +173,7 @@ function mountList(
     // The widget grid renders late, so a page that looked like List View is checked again.
     announcementTabs: () => mount.announcements && findWidgetGrid(document) === null,
   });
-  // The classic dashboard and List View give the list a dock. That replaces the place in the right
-  // column or the card in the page content, so what the mount set up for them goes at once.
-  const docked = dashboardHasDock(document, mount.courseId);
-  if (docked) {
-    mount.release();
-    mount.container.removeAttribute('style');
-  }
+  const { docked } = mount;
   let weekly: WeeklyDock | null = null;
   let theme: PageTheme = detectPageTheme(document);
   const remove = mountInpageList(mount, {

@@ -64,14 +64,6 @@ export const DOCK_LIST_CSS = `
 }
 `;
 
-/** The classic dashboard has the dock when the body has one of these classes (decision 4). */
-const DOCK_BODY_CLASSES = ['with-right-side', 'dashboard-is-planner'];
-
-/** Whether this dashboard page gets the dock: the classic dashboard and List View. */
-export function dashboardHasDock(doc: Document, courseId: string | null): boolean {
-  return courseId === null && DOCK_BODY_CLASSES.some((name) => doc.body?.classList.contains(name));
-}
-
 /** The open work of the shown span: the items in the day groups, not Past due, No due date or Done. */
 export function openWork(state: SurfaceState): number | null {
   if (state.kind !== 'ready') return null;

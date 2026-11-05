@@ -1518,6 +1518,8 @@ These sizes come from one test build of the same small app [19].
   Every entry point loads from the extension's own files, not over the network.
   The limit was 30 KB until 2026-10-29, when the span feature and the dashboard column filled it.
   The limit was 40 KB until 2026-11-03, when the Course work slot filled it.
+  The limit of `inpage.js` alone is 48 KB since 2026-11-05: the page script now holds the weekly dock, its tab and the shared room lease, which the card did not need.
+  No other entry point has more than 45 KB, and the script is not split (decision 25 keeps the file pane in its own script).
   CI checks these limits.
   The extension pages load one shared chunk for all code under `src/shared` and `src/features`, because several small chunks cost more after gzip.
   A test build with Preact had a 9.3 KB content script [19].
@@ -3097,7 +3099,7 @@ With the pane read alone, the default run of the test failed before the fix.
 
 **Size:**
 
-- The page script that catches clicks and draws the pane frame is its own small script, like `dashboard.js`, so the in-page list keeps its 45 KB limit.
+- The page script that catches clicks and draws the pane frame is its own small script, like `dashboard.js`, so the in-page list does not grow by the pane code.
 - The pane page and PDF.js load only when a file opens, and they get their own limit of 1.5 MB gzip, because they load from the extension's files.
 - `viewer-frame.js`, the pane page, stays under the 45 KB limit.
   It holds the app, the toolbar, the engine and the style sheet, and imports PDF.js at run time.

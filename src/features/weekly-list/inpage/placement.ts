@@ -17,11 +17,10 @@ export const STYLED_ATTRIBUTE = 'data-weekrow-styled';
  * - `slot`: a card over the box of the first Course work widget, which keeps its place in the
  *   layout, invisible. A minimized card is in the flow instead, and the widget is not displayed.
  * - `area`: a card in the free area beside the widget grid, out of the flow, not sticky.
- * - `float`: a card that floats in the free area beside the content, sticky, in List View.
  * - `stack`: a card above the content, at the width of the content.
  * - `dock`: a card that floats in the right column after the column's items scrolled out of view.
  */
-export type PanelMode = 'slot' | 'area' | 'float' | 'stack' | 'dock';
+export type PanelMode = 'slot' | 'area' | 'stack' | 'dock';
 
 /** The node at the bottom of the right column that the dock watches. */
 export const SENTINEL_ID = 'weekrow-sentinel';
@@ -30,9 +29,6 @@ export const SPACER_ID = 'weekrow-spacer';
 
 /** The space between the viewport and a sticky panel, above and below. */
 export const PANEL_EDGE_GAP_PX = 24;
-
-/** The width of the floating panel in List View. */
-export const PANEL_WIDTH_PX = 372;
 
 /** The card in the free area beside the widget grid is this wide at least, and this wide at most. */
 export const AREA_MIN_PX = 320;
