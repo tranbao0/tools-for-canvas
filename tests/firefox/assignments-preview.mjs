@@ -14,10 +14,10 @@
 //      and the page has the padding of the file pane only.
 //   d. Closing the file pane shows the assignment pane again, with the same frame, and the padding
 //      of the assignment pane.
-//   e. A click on Preview on the open row closes the pane and gives the page its own padding back.
-//   f. A click on Preview on another row keeps the header on the first assignment when the student
-//      presses the pointer in the frame before the new page loads (the capture listeners on the
-//      window of the frame work in Firefox), and moves it on the next click with no such press.
+//   e. Two previews keep two frames: the second row makes a second frame, the first frame stays in
+//      the page without a new load and is hidden, and a click on the first row shows it again.
+//   f. A click on Preview on the open row hides the pane, keeps both frames, and gives the page its
+//      own padding back.
 //
 // Usage: node tests/firefox/assignments-preview.mjs
 // Set ASSIGNMENTS_PREVIEW_SHOT to a file name to save a screenshot of the list with the pane open.
@@ -152,6 +152,12 @@ async function frameOf(driver, selector) {
   return frames[0];
 }
 
+/** All frames that a host holds, in the order they were made. */
+async function framesOf(driver, selector) {
+  const host = await driver.findElement(By.css(selector));
+  return (await host.getShadowRoot()).findElements(By.css('iframe'));
+}
+
 /** Clicks the file link in the frame of the assignment pane until the file pane opens. */
 async function clickFileLinkUntilFilePane(driver) {
   const end = Date.now() + WAIT_MS;
@@ -201,12 +207,7 @@ async function main() {
     },
   });
   const frameLoads = [];
-  // The page of the second assignment waits for the test, so the test can act in the old page.
-  let readingRequested = false;
-  let openReading = () => undefined;
-  const readingGate = new Promise((resolve) => {
-    openReading = resolve;
-  });
+  const readingLoads = [];
   const canvas = await startCanvas({
     [LIST_PATH]: { type: 'text/html', body: listPage },
     [ASSIGNMENT_PATH]: (url) => {
@@ -214,9 +215,8 @@ async function main() {
       frameLoads.push(mode);
       return { type: 'text/html', body: assignmentPage(mode) };
     },
-    [`${LIST_PATH}/102`]: async () => {
-      readingRequested = true;
-      await readingGate;
+    [`${LIST_PATH}/102`]: (url) => {
+      readingLoads.push(url.searchParams.get('content_only') ?? '');
       return { type: 'text/html', body: assignmentPage('reading') };
     },
     [`/api/v1/files/501`]: json({
@@ -362,64 +362,78 @@ async function main() {
       'Close file: the assignment pane comes back, with its padding and its pressed row.',
     );
 
-    // f. A press in the frame before the new page loads ends the move, and the header stays.
+    // e. Two previews keep two frames. A frame never goes to another assignment.
     const header = async () => {
       const root = await (await driver.findElement(By.css(PANE))).getShadowRoot();
       return (await root.findElement(By.css('.title'))).getText();
+    };
+    const modeOf = async (candidate) => {
+      await driver.switchTo().frame(candidate);
+      try {
+        return await driver.executeScript(
+          "return document.getElementById('mode')?.textContent ?? ''",
+        );
+      } finally {
+        await driver.switchTo().defaultContent();
+      }
     };
     await driver
       .actions()
       .move({ origin: await driver.findElement(By.css('button[aria-label="Preview Reading"]')) })
       .click()
       .perform();
-    await waitFor(
-      () => readingRequested,
-      (requested) => requested,
-      'the request for the page of the second assignment',
+    await waitFor(header, (text) => text === 'Reading', 'the header to follow the second row');
+    const two = await waitFor(
+      () => framesOf(driver, PANE),
+      (list) => list.length === 2,
+      'a second frame for the second assignment',
     );
-    await driver.switchTo().frame(await frameOf(driver, PANE));
-    await driver
-      .actions()
-      .move({ origin: await driver.findElement(By.css('#mode')) })
-      .click()
-      .perform();
-    await driver.switchTo().defaultContent();
-    openReading();
-    await driver.switchTo().frame(await frameOf(driver, PANE));
     await waitFor(
-      () => driver.executeScript("return document.getElementById('mode')?.textContent ?? ''"),
+      () => modeOf(two[1]),
       (mode) => mode === 'reading',
-      'the frame to load the page of the second assignment',
+      'the second frame to load the second assignment',
     );
-    await driver.switchTo().defaultContent();
-    await sleep(1000);
-    if ((await header()) !== 'Essay')
-      throw new Error(`A press in the frame did not keep the header: ${await header()}`);
-    // The next click has no press in the frame, so the first load is the arrival.
+    if ((await two[0].getId()) !== (await frame.getId()))
+      throw new Error('The first frame is not the frame from before');
+    if (await two[0].isDisplayed()) throw new Error('The first frame still shows');
+    if (!(await two[1].isDisplayed())) throw new Error('The second frame does not show');
+    if (frameLoads.join() !== 'slim')
+      throw new Error(`The first frame loaded again: ${JSON.stringify(frameLoads)}`);
     await driver
       .actions()
-      .move({ origin: await driver.findElement(By.css('button[aria-label="Preview Reading"]')) })
+      .move({ origin: await driver.findElement(By.css('button[aria-label="Preview Essay"]')) })
       .click()
       .perform();
-    await waitFor(header, (text) => text === 'Reading', 'the header to follow the second click');
-    console.log(
-      'Preview on another row: a press in the frame keeps the header, and the next click moves it.',
-    );
+    await waitFor(header, (text) => text === 'Essay', 'the header to go back to the first row');
+    const back2 = await framesOf(driver, PANE);
+    if (back2.length !== 2) throw new Error(`The pane has ${back2.length} frames, not 2`);
+    if (!(await back2[0].isDisplayed()) || (await back2[1].isDisplayed()))
+      throw new Error('Preview on the first row did not show the first frame again');
+    if ((await modeOf(back2[0])) !== 'slim') throw new Error('The first frame lost its page');
+    if (frameLoads.join() !== 'slim' || readingLoads.join() !== '1')
+      throw new Error(
+        `A frame loaded again: ${JSON.stringify(frameLoads)} ${JSON.stringify(readingLoads)}`,
+      );
+    console.log('Two previews: two frames stay, the shown one follows the row, none loads again.');
 
-    // e. Preview on the open row closes the pane.
+    // f. Preview on the open row hides the pane and keeps both frames.
     await driver
       .actions()
-      .move({ origin: await driver.findElement(By.css('button[aria-label="Preview Reading"]')) })
+      .move({ origin: await driver.findElement(By.css('button[aria-label="Preview Essay"]')) })
       .click()
       .perform();
     const closed = await waitFor(
       () => state(driver),
-      (value) => value.pane === null && value.pressed === 'false',
-      'the pane to close',
+      (value) => value.pane?.display === 'none' && value.pressed === 'false',
+      'the pane to hide',
     );
     if (closed.padding !== ownPadding)
       throw new Error(`The page has ${closed.padding} px of padding, not its own ${ownPadding} px`);
-    console.log('Preview on the open row: the pane closes and the page has its own padding.');
+    if ((await framesOf(driver, PANE)).length !== 2)
+      throw new Error('The pane lost a frame when it hid');
+    console.log(
+      'Preview on the open row: the pane hides, keeps its frames, and the page has its own padding.',
+    );
     console.log('Firefox assignments preview: passed.');
     return 0;
   } finally {

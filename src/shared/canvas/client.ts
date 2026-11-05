@@ -192,11 +192,7 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
 
     return {
       getAssignmentRecord: (courseId, assignmentId) =>
-        getObject(
-          apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}`, [
-            ['include[]', 'submission'],
-          ]),
-        ),
+        getObject(apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}`, [])),
       markRubricCommentsRead: (courseId, assignmentId, userId) => {
         const url = `${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/${pathId(userId)}/rubric_assessments/read`;
         return write('PUT', url, undefined).then(() => undefined);

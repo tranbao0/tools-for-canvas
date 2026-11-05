@@ -445,7 +445,7 @@ test('the Preview button has the size and the look of the mockup, and the colors
   expect((await look('Reading')).fillShown).toBe(false);
 });
 
-test('Preview opens the pane, moves it to another row, and closes it on the open row', async ({
+test('Preview opens the pane, shows the frame of another row, and hides the pane on the open row', async ({
   context,
   page,
   background,
@@ -455,7 +455,7 @@ test('Preview opens the pane, moves it to another row, and closes it on the open
   // A click that a page script makes opens nothing.
   await preview(page, 'Essay').evaluate((node) => (node as HTMLButtonElement).click());
   await page.waitForTimeout(300);
-  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
 
   const frame = await openPane(page, 'Essay');
   await expect(frame.locator('#mode')).toHaveText('slim');
@@ -474,23 +474,27 @@ test('Preview opens the pane, moves it to another row, and closes it on the open
 
   const host = await page.locator(PANE_HOST).elementHandle();
   await preview(page, 'Reading').click();
-  await expect(frame.locator('#mode')).toHaveText('reading');
+  const reading = await paneFrame(page, '/courses/12/assignments/102');
+  await expect(reading.locator('#mode')).toHaveText('reading');
   await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'true');
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'false');
   await expect(rowOf(page, '101')).not.toHaveAttribute('data-av-open', '');
   await expect(rowOf(page, '102')).toHaveAttribute('data-av-open', '');
-  // The host and the frame are the ones from before. Nothing was removed.
+  // The host and the first frame are the ones from before, and the first frame stays on its page.
   expect(await host!.evaluate((node) => node.isConnected)).toBe(true);
   expect(page.frames()).toContain(frame);
-  expect(framePath(frame)).toBe('/courses/12/assignments/102');
+  expect(framePath(frame)).toBe(ASSIGNMENT);
+  expect(framePath(reading)).toBe('/courses/12/assignments/102');
   expect(await paddingRight(page)).toBe((await page.locator(PANE_HOST).boundingBox())!.width);
 
-  // A click on the open row closes the pane.
+  // A click on the open row hides the pane and keeps the frames.
   await preview(page, 'Reading').click();
-  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
   await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('[data-av-open]')).toHaveCount(0);
   expect(await paddingRight(page)).toBe(0);
+  expect(page.frames()).toContain(frame);
+  expect(page.frames()).toContain(reading);
 });
 
 test('the button follows the close button of the pane and a redraw of the rows', async ({
@@ -503,7 +507,7 @@ test('the button follows the close button of the pane and a redraw of the rows',
   await openPane(page, 'Essay');
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
   await closeAssignment(page);
-  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('[data-av-open]')).toHaveCount(0);
 
@@ -522,7 +526,7 @@ test('the button follows the close button of the pane and a redraw of the rows',
   await expect(rowOf(page, '102')).toHaveAttribute('data-av-open', '');
   // A click on the new button closes the pane that the old one opened.
   await preview(page, 'Reading').click();
-  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
 });
 
 test('a graded discussion loads its redirect page with content_only once', async ({
@@ -532,13 +536,13 @@ test('a graded discussion loads its redirect page with content_only once', async
 }) => {
   const { canvas } = await open(context, page, background);
   await ready(page, canvas);
-  await openPane(page, 'Essay');
-  const frame = await paneFrame(page, ASSIGNMENT);
+  const essay = await openPane(page, 'Essay');
   await preview(
     page,
     'Weekly discussion with a title that is long enough to wrap in a narrow row',
   ).click();
-  await expect.poll(() => framePath(frame)).toBe(DISCUSSION);
+  const frame = await paneFrame(page, DISCUSSION);
+  expect(frame).not.toBe(essay);
   await expect(frame.locator('#mode')).toHaveText('slim');
   expect(frame.url()).toBe(`${canvas.origin}${DISCUSSION}?content_only=1`);
   const get = (path: string) =>
@@ -581,9 +585,21 @@ test('a page of another course keeps its address in the pane', async ({
   ).toHaveLength(0);
 });
 
+/** Runs a read inside a frame, and tries again while the frame is in the middle of a navigation. */
+async function steady<T>(frame: Frame, read: () => T): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await frame.evaluate(read);
+    } catch (error) {
+      if (attempt >= 30) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+}
+
 /** The header of the pane, read from inside the Canvas frame, as a hostile frame could. */
 const headerOf = (frame: Frame) =>
-  frame.evaluate(() => {
+  steady(frame, () => {
     const root = window.frameElement!.getRootNode() as ShadowRoot;
     return {
       title: root.querySelector('.title')!.textContent,
@@ -850,7 +866,7 @@ test('every order of a file pane and the assignment pane keeps the page padding 
   await expectPadding(page, PANE_HOST);
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
   await closeAssignment(page);
-  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
   await expectPadding(page, FILE_PANE);
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'false');
   await expect((await pane(page)).locator('pre')).toHaveText(notes);
@@ -870,7 +886,7 @@ test('every order of a file pane and the assignment pane keeps the page padding 
   await expectPadding(page, PANE_HOST);
   // Preview on the open row closes the pane and shows the file.
   await preview(page, 'Essay').click();
-  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
   await expectPadding(page, FILE_PANE);
   await expect(page.locator('[data-av-open]')).toHaveCount(0);
   await closePane(page);
@@ -885,7 +901,7 @@ test('every order of a file pane and the assignment pane keeps the page padding 
   await expect(page.locator(FILE_PANE)).toBeHidden();
   await expectPadding(page, PANE_HOST);
   await closeAssignment(page);
-  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
   await expectPadding(page, FILE_PANE);
   await closePane(page);
   await expectPadding(page, null, 13);
@@ -921,11 +937,11 @@ test('the pane works with the File viewer switch off', async ({ context, page, b
   expect(await paddingRight(page)).toBeGreaterThan(0);
   await expect(page.locator(FILE_PANE)).toHaveCount(0);
   await closeAssignment(page);
-  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
   expect(await paddingRight(page)).toBe(0);
 });
 
-test('the close button of the pane removes it and gives the padding back', async ({
+test('the close button of the pane hides it and gives the padding back', async ({
   context,
   page,
   background,
@@ -941,7 +957,7 @@ test('the close button of the pane removes it and gives the padding back', async
   await page.waitForTimeout(300);
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await closeAssignment(page);
-  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
   expect(await paddingRight(page)).toBe(0);
 });
 
@@ -1053,7 +1069,7 @@ test('on a small window the button stays in the row and the title wraps', async 
     await page.screenshot({ path: path.join(SHOTS, `list-open-${theme}-1280x800.png`) });
   }
   await closeAssignment(page);
-  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
   await page.setViewportSize({ width: 1280, height: 800 });
   for (const theme of ['light', 'dark'] as const) {
     await saveSetting(background, { theme });
@@ -1130,7 +1146,7 @@ test('closing the pane reads the submission at once and asks the list to refresh
     .toBeGreaterThan(earlier);
 });
 
-test('the pane closes when another student signs in', async ({
+test('the pane and every frame go when another student signs in', async ({
   context,
   page,
   background,
@@ -1152,6 +1168,8 @@ test('the pane closes when another student signs in', async ({
   });
   await ready(page, canvas);
   await openPane(page, 'Essay');
+  await preview(page, 'Reading').click();
+  await expect.poll(() => paneFrames(page).length).toBe(2);
   signedIn = OTHER_STUDENT;
   // The owner starts at most two sign-in checks in 30 seconds, so the clock moves on.
   await advanceBackgroundClock(background, 2 * 60_000);
@@ -1191,258 +1209,364 @@ test('the pane closes when another student signs in', async ({
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
   await expect(page.locator('[data-av-open]')).toHaveCount(0);
   expect(await paddingRight(page)).toBe(0);
+  expect(paneFrames(page)).toHaveLength(0);
+  // The next student starts with no frame: a Preview click makes a new one.
+  await preview(page, 'Essay').click();
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await expect.poll(() => paneFrames(page).length).toBe(1);
 });
 
-test('Preview on another assignment moves the same frame, and the header follows the load', async ({
-  context,
-  page,
-  background,
-}) => {
-  const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
-  const frame = await openPane(page, 'Essay');
-  expect(await headerOf(frame)).toEqual({
-    title: 'Essay',
-    href: ASSIGNMENT,
-    frameTitle: 'Assignment Essay',
-  });
-  await preview(page, 'Reading').click();
-  await expect(frame.locator('#mode')).toHaveText('reading');
-  await expect
-    .poll(() => headerOf(frame))
-    .toEqual({
-      title: 'Reading',
-      href: '/courses/12/assignments/102',
-      frameTitle: 'Assignment Reading',
-    });
-  await expect(page.locator(PANE_HOST)).toHaveCount(1);
-  expect(page.frames()).toContain(frame);
-});
+/** The frames of the pane: every frame of the page but the main one and the file viewer. */
+const paneFrames = (page: Page) =>
+  page
+    .frames()
+    .filter((frame) => frame !== page.mainFrame() && !frame.url().includes('viewer.html'));
 
-test('a cancelled leave question keeps the first assignment, and an accepted one moves the frame', async ({
-  context,
-  page,
-  background,
-}) => {
-  const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
-  const frame = await openPane(page, 'Essay');
-  await frame.locator('#marker').fill('half a draft');
-  const questions: string[] = [];
-  let answer = false;
-  page.on('dialog', (dialog) => {
-    questions.push(dialog.type());
-    void (answer ? dialog.accept() : dialog.dismiss());
-  });
-  await preview(page, 'Reading').click();
-  await expect.poll(() => questions.length).toBe(1);
-  expect(questions).toEqual(['beforeunload']);
-  await page.waitForTimeout(500);
-  // The student said no: everything is still the first assignment, with the typed words.
-  expect(await headerOf(frame)).toEqual({
-    title: 'Essay',
-    href: ASSIGNMENT,
-    frameTitle: 'Assignment Essay',
-  });
-  await expect(frame.locator('#marker')).toHaveValue('half a draft');
-  await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
-  await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'false');
-  // A second click asks again, and this time the student says yes.
-  answer = true;
-  await preview(page, 'Reading').click();
-  await expect(frame.locator('#mode')).toHaveText('reading');
-  await expect
-    .poll(() => headerOf(frame))
-    .toEqual({
-      title: 'Reading',
-      href: '/courses/12/assignments/102',
-      frameTitle: 'Assignment Reading',
-    });
-  await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('a declined leave question keeps the first assignment when the student follows a link in the frame', async ({
-  context,
-  page,
-  background,
-}) => {
-  // The switch is off, so the link to the file page loads in the frame.
-  const { canvas } = await open(context, page, background, { tools: { fileViewer: false } });
-  await ready(page, canvas);
-  const frame = await openPane(page, 'Essay');
-  await frame.locator('#marker').fill('half a draft');
-  const questions: string[] = [];
-  let answer = false;
-  page.on('dialog', (dialog) => {
-    questions.push(dialog.type());
-    void (answer ? dialog.accept() : dialog.dismiss());
-  });
-  await preview(page, 'Reading').click();
-  await expect.poll(() => questions.length).toBe(1);
-  await page.waitForTimeout(500);
-  // The student said no to the question of Preview, and then follows a link of the page.
-  answer = true;
-  await frame.locator('#file-plain').click();
-  await expect.poll(() => questions.length).toBe(2);
-  await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe('/courses/12/files/501');
-  await expect(frame.getByText('The file page')).toBeVisible();
-  await page.waitForTimeout(500);
-  // The frame shows a file page, and the pane still says that it shows the first assignment.
-  expect(await headerOf(frame)).toEqual({
-    title: 'Essay',
-    href: ASSIGNMENT,
-    frameTitle: 'Assignment Essay',
-  });
-  await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
-  await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'false');
-  // A click on Preview Reading asks again, and moves the pane when the frame has loaded it.
-  await preview(page, 'Reading').click();
-  await expect(frame.locator('#mode')).toHaveText('reading');
-  await expect
-    .poll(() => headerOf(frame))
-    .toEqual({
-      title: 'Reading',
-      href: '/courses/12/assignments/102',
-      frameTitle: 'Assignment Reading',
-    });
-});
-
-/** The pane shows Essay, the student has a draft in it, and a Preview click on Reading was declined. */
-async function declinedPreview(
-  context: Parameters<typeof serveScenario>[0],
-  page: Page,
-  background: Parameters<typeof saveAddress>[0],
-) {
-  const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
-  const frame = await openPane(page, 'Essay');
-  await frame.locator('#marker').fill('half a draft');
-  const questions: string[] = [];
-  let answer = false;
-  page.on('dialog', (dialog) => {
-    questions.push(dialog.type());
-    void (answer ? dialog.accept() : dialog.dismiss());
-  });
-  await preview(page, 'Reading').click();
-  await expect.poll(() => questions.length).toBe(1);
-  await page.waitForTimeout(500);
-  answer = true;
-  return { frame, questions };
-}
+/** Whether the frame shows in the pane. A hidden frame has `display: none` on its own element. */
+const shows = (frame: Frame) =>
+  steady(frame, () => (window.frameElement as HTMLElement).style.display !== 'none');
 
 const EssayHeader = { title: 'Essay', href: ASSIGNMENT, frameTitle: 'Assignment Essay' };
+const ReadingHeader = {
+  title: 'Reading',
+  href: '/courses/12/assignments/102',
+  frameTitle: 'Assignment Reading',
+};
+const LongHeader = {
+  title: LONG,
+  href: '/courses/12/assignments/103',
+  frameTitle: `Assignment ${LONG}`,
+};
+
+test('Preview on another row asks no leave question and keeps the draft, and going back shows the draft', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const essay = await openPane(page, 'Essay');
+  await essay.locator('#marker').fill('half a draft');
+  const questions: string[] = [];
+  page.on('dialog', (dialog) => {
+    questions.push(dialog.type());
+    void dialog.dismiss();
+  });
+  await preview(page, 'Reading').click();
+  const reading = await paneFrame(page, '/courses/12/assignments/102');
+  await expect(reading.locator('#mode')).toHaveText('reading');
+  await page.waitForTimeout(500);
+  expect(questions).toEqual([]);
+  // The first frame is the one from before, on its page, with the typed words, and it is hidden.
+  expect(page.frames()).toContain(essay);
+  expect(framePath(essay)).toBe(ASSIGNMENT);
+  await expect(essay.locator('#marker')).toHaveValue('half a draft');
+  expect(await shows(essay)).toBe(false);
+  expect(await shows(reading)).toBe(true);
+  expect(await headerOf(reading)).toEqual(ReadingHeader);
+  await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'true');
+  await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'false');
+  // Going back shows the first frame as it was.
+  await preview(page, 'Essay').click();
+  await expect.poll(() => shows(essay)).toBe(true);
+  expect(await shows(reading)).toBe(false);
+  expect(await headerOf(essay)).toEqual(EssayHeader);
+  await expect(essay.locator('#marker')).toHaveValue('half a draft');
+  await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
+  expect(questions).toEqual([]);
+  // Nothing loaded twice: each assignment page was asked for once.
+  const gets = (path: string) =>
+    canvas.requests.filter((request) => request.method === 'GET' && request.path === path);
+  expect(gets(`${ASSIGNMENT}?content_only=1`)).toHaveLength(1);
+  expect(gets('/courses/12/assignments/102?content_only=1')).toHaveLength(1);
+  expect(paneFrames(page)).toHaveLength(2);
+});
+
+test('each header matches the frame that shows, in every order of Preview clicks', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const headers = { Essay: EssayHeader, Reading: ReadingHeader, [LONG]: LongHeader };
+  const frames = new Map<string, Frame>();
+  for (const title of ['Essay', 'Reading', LONG, 'Essay', LONG, 'Reading', 'Essay']) {
+    await preview(page, title).click();
+    const header = headers[title as keyof typeof headers];
+    // The graded discussion row lands on the discussion page, so its frame is found by header.
+    await expect
+      .poll(async () => {
+        for (const frame of paneFrames(page)) {
+          const header = await headerOf(frame).catch(() => null);
+          if (header?.title === title && (await shows(frame))) {
+            frames.set(title, frame);
+            return true;
+          }
+        }
+        return false;
+      })
+      .toBe(true);
+    const frame = frames.get(title)!;
+    expect(await headerOf(frame)).toEqual(header);
+    for (const other of paneFrames(page)) expect(await shows(other)).toBe(other === frame);
+    for (const row of ['Essay', 'Reading', LONG])
+      await expect(preview(page, row)).toHaveAttribute('aria-pressed', String(row === title));
+    await expect(page.locator('[data-av-open]')).toHaveCount(1);
+  }
+  expect(paneFrames(page)).toHaveLength(3);
+});
+
+/** The list with four more rows after the three of the fixture, and a page for each. */
+function manyRows(count: number): FakeCanvasRoute[] {
+  const after =
+    '<div id="assignment_student_peer_review_103"><div id="assign-to-mount-point"></div><div id="create-edit-mount-point"></div></div></li>';
+  const extra = Array.from({ length: count }, (_value, index) => {
+    const id = String(104 + index);
+    return `<li class="assignment search_show"><div id="assignment_${id}" class="ig-row" data-item-id="${id}"><div class="ig-row__layout"><div class="ig-info"><a href="/courses/12/assignments/${id}" class="ig-title">Extra ${id}</a></div></div></div></li>`;
+  }).join('');
+  return [
+    { path: LIST, contentType: 'text/html', body: assignmentsPage.replace(after, after + extra) },
+    ...Array.from({ length: count }, (_value, index): FakeCanvasRoute[] => {
+      const id = String(104 + index);
+      return [
+        {
+          path: `/courses/12/assignments/${id}`,
+          respond: () => ({ contentType: 'text/html', body: paneContent(`Extra ${id}`, id) }),
+        },
+        ...viewRoutes(id, rawRecords(otherAssignment(id))),
+      ];
+    }).flat(),
+  ];
+}
+
+test('the seventh Preview removes the frame that was shown longest ago', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background, { extra: manyRows(5) });
+  await ready(page, canvas);
+  const essay = await openPane(page, 'Essay');
+  await essay.locator('#marker').fill('the oldest draft');
+  for (const title of ['Reading', 'Extra 104', 'Extra 105', 'Extra 106', 'Extra 107']) {
+    await preview(page, title).click();
+    await expect(preview(page, title)).toHaveAttribute('aria-pressed', 'true');
+  }
+  await expect.poll(() => paneFrames(page).length).toBe(6);
+  // Six frames stay. Essay is shown once more, so Reading is the one shown longest ago.
+  await preview(page, 'Essay').click();
+  await expect.poll(() => shows(essay)).toBe(true);
+  await expect(essay.locator('#marker')).toHaveValue('the oldest draft');
+  expect(paneFrames(page)).toHaveLength(6);
+  const reading = paneFrames(page).find(
+    (frame) => framePath(frame) === '/courses/12/assignments/102',
+  )!;
+  await preview(page, 'Extra 108').click();
+  await expect(preview(page, 'Extra 108')).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => paneFrames(page).length).toBe(6);
+  expect(page.frames()).not.toContain(reading);
+  expect(page.frames()).toContain(essay);
+  await expect(essay.locator('#marker')).toHaveValue('the oldest draft');
+  // The assignment that lost its frame gets a new frame, with a new page.
+  await preview(page, 'Reading').click();
+  const again = await paneFrame(page, '/courses/12/assignments/102');
+  await expect(again.locator('#mode')).toHaveText('reading');
+  expect(again).not.toBe(reading);
+  await expect.poll(() => paneFrames(page).length).toBe(6);
+  expect(await shows(again)).toBe(true);
+});
 
 for (const [name, link, wanted] of [
   ['a discussion of the course', '#to-discussion', DISCUSSION],
   ['a discussion of a group', '#to-group', GROUP_DISCUSSION],
   ['a quiz', '#to-quiz', QUIZ],
 ] as const) {
-  test(`a declined leave question keeps the first assignment when the student follows a link to ${name}`, async ({
+  test(`a link to ${name} in the frame keeps the header of its row`, async ({
     context,
     page,
     background,
   }) => {
-    const { frame, questions } = await declinedPreview(context, page, background);
+    const { canvas } = await open(context, page, background);
+    await ready(page, canvas);
+    const frame = await openPane(page, 'Essay');
     await frame.locator(link).click();
-    await expect.poll(() => questions.length).toBe(2);
     await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(wanted);
     await page.waitForTimeout(500);
     expect(await headerOf(frame)).toEqual(EssayHeader);
     await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
-    await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'false');
+    // A Preview click on another row leaves that frame on its page, and the click back shows it.
+    await preview(page, 'Reading').click();
+    await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'true');
+    expect(framePath(frame)).toBe(wanted);
+    await preview(page, 'Essay').click();
+    await expect.poll(() => shows(frame)).toBe(true);
+    expect(await headerOf(frame)).toEqual(EssayHeader);
   });
 }
 
-test('a declined leave question keeps the first assignment when a quiz returns to its page after a click', async ({
-  context,
-  page,
-  background,
-}) => {
-  const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
-  const frame = await openPane(page, 'Essay');
-  // Links of the page lead to the quiz and into it. No move is pending, so the header stays.
-  await frame.locator('#to-quiz').click();
-  await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(QUIZ);
-  await frame.locator('#to-take').click();
-  await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(QUIZ_TAKE);
-  await frame.locator('#marker').fill('half a quiz answer');
-  const questions: string[] = [];
-  let answer = false;
-  page.on('dialog', (dialog) => {
-    questions.push(dialog.type());
-    void (answer ? dialog.accept() : dialog.dismiss());
-  });
-  await preview(page, 'Reading').click();
-  await expect.poll(() => questions.length).toBe(1);
-  await page.waitForTimeout(500);
-  answer = true;
-  await frame.locator('#to-quiz').click();
-  await expect.poll(() => questions.length).toBe(2);
-  await expect.poll(() => canvas.requests.filter((r) => r.path === QUIZ).length).toBe(2);
-  await page.waitForTimeout(500);
-  expect(await headerOf(frame)).toEqual(EssayHeader);
-  await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'false');
-});
-
-test('a Preview click on the graded discussion that the frame shows moves the header on the first click', async ({
-  context,
-  page,
-  background,
-}) => {
-  const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
-  const frame = await openPane(page, 'Essay');
-  await frame.locator('#to-discussion').click();
-  await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(DISCUSSION);
-  await expect(frame.locator('h1')).toHaveText('Weekly discussion');
-  await page.waitForTimeout(500);
-  expect(await headerOf(frame)).toEqual(EssayHeader);
-  // The path of the frame is the path that the row redirects to, as before the click.
-  await preview(page, LONG).click();
-  await expect
-    .poll(() => headerOf(frame).catch(() => null))
-    .toEqual({
-      title: LONG,
-      href: '/courses/12/assignments/103',
-      frameTitle: `Assignment ${LONG}`,
-    });
-  await expect(preview(page, LONG)).toHaveAttribute('aria-pressed', 'true');
-  await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'false');
-});
-
-for (const [name, redirect] of [
-  ['a graded discussion of the course', LONG],
-  ['a graded discussion of a group', 'Reading'],
+for (const [name, title, extra, header] of [
+  ['a graded discussion of the course', LONG, [], LongHeader],
+  [
+    'a graded discussion of a group',
+    'Reading',
+    [
+      {
+        path: '/courses/12/assignments/102',
+        respond: () => ({
+          contentType: 'text/html' as const,
+          body: `<script>location.replace("${GROUP_DISCUSSION}")</script>`,
+        }),
+      },
+    ],
+    ReadingHeader,
+  ],
 ] as const) {
-  test(`an accepted Preview click moves the header to ${name}`, async ({
+  test(`a Preview click on ${name} keeps the header of its row after the redirect`, async ({
     context,
     page,
     background,
   }) => {
-    const extra: FakeCanvasRoute[] =
-      redirect === 'Reading'
-        ? [
-            {
-              path: '/courses/12/assignments/102',
-              respond: () => ({
-                contentType: 'text/html',
-                body: `<script>location.replace("${GROUP_DISCUSSION}")</script>`,
-              }),
-            },
-          ]
-        : [];
-    const { canvas } = await open(context, page, background, { extra });
+    const { canvas } = await open(context, page, background, { extra: [...extra] });
     await ready(page, canvas);
-    const frame = await openPane(page, 'Essay');
-    await frame.locator('#marker').fill('half a draft');
-    page.on('dialog', (dialog) => void dialog.accept());
-    await preview(page, redirect).click();
-    await expect.poll(() => headerOf(frame).catch(() => null)).toMatchObject({ title: redirect });
-    await expect(preview(page, redirect)).toHaveAttribute('aria-pressed', 'true');
+    const essay = await openPane(page, 'Essay');
+    await essay.locator('#marker').fill('half a draft');
+    const questions: string[] = [];
+    page.on('dialog', (dialog) => {
+      questions.push(dialog.type());
+      void dialog.dismiss();
+    });
+    await preview(page, title).click();
+    await expect(preview(page, title)).toHaveAttribute('aria-pressed', 'true');
+    const wanted = title === LONG ? DISCUSSION : GROUP_DISCUSSION;
+    await expect
+      .poll(() => paneFrames(page).some((frame) => framePath(frame) === wanted), {
+        timeout: 15_000,
+      })
+      .toBe(true);
+    const frame = paneFrames(page).find((candidate) => framePath(candidate) === wanted)!;
+    await page.waitForTimeout(500);
+    expect(await headerOf(frame)).toEqual(header);
     await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'false');
+    expect(questions).toEqual([]);
+    await expect(essay.locator('#marker')).toHaveValue('half a draft');
   });
 }
+
+test('a Preview click on the graded discussion that another frame shows keeps both headers', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const essay = await openPane(page, 'Essay');
+  await essay.locator('#to-discussion').click();
+  await expect.poll(() => framePath(essay), { timeout: 15_000 }).toBe(DISCUSSION);
+  await preview(page, LONG).click();
+  await expect(preview(page, LONG)).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => paneFrames(page).length).toBe(2);
+  const graded = paneFrames(page).find((frame) => frame !== essay)!;
+  await expect.poll(() => framePath(graded), { timeout: 15_000 }).toBe(DISCUSSION);
+  expect(await headerOf(graded)).toEqual(LongHeader);
+  expect(await shows(essay)).toBe(false);
+  await preview(page, 'Essay').click();
+  await expect.poll(() => shows(essay)).toBe(true);
+  expect(await headerOf(essay)).toEqual(EssayHeader);
+});
+
+test('closing the pane and opening it again keep the frames, the draft and the scroll position', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const essay = await openPane(page, 'Essay');
+  await essay.locator('#marker').fill('half a draft');
+  await essay.evaluate(() => {
+    document.body.style.minHeight = '4000px';
+    window.scrollTo(0, 600);
+  });
+  await expect.poll(() => essay.evaluate(() => window.scrollY)).toBe(600);
+  await preview(page, 'Reading').click();
+  const reading = await paneFrame(page, '/courses/12/assignments/102');
+  await expect(reading.locator('#mode')).toHaveText('reading');
+  await closeAssignment(page);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
+  expect(await paddingRight(page)).toBe(0);
+  await expect(page.locator('[data-av-open]')).toHaveCount(0);
+  expect(paneFrames(page)).toHaveLength(2);
+  // A Preview click on the row that was open shows the same frame.
+  await preview(page, 'Reading').click();
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  expect(await shows(reading)).toBe(true);
+  expect(await paneFrame(page, '/courses/12/assignments/102')).toBe(reading);
+  await expectPadding(page, PANE_HOST);
+  // The click on the open row hides the pane the same way, and another row shows its own frame.
+  await preview(page, 'Reading').click();
+  await expect(page.locator(PANE_HOST)).toBeHidden();
+  await preview(page, 'Essay').click();
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await expect.poll(() => shows(essay)).toBe(true);
+  expect(await headerOf(essay)).toEqual(EssayHeader);
+  await expect(essay.locator('#marker')).toHaveValue('half a draft');
+  await expect.poll(() => essay.evaluate(() => window.scrollY)).toBe(600);
+  expect(paneFrames(page)).toHaveLength(2);
+  await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('with two frames, every order of a file pane keeps the page padding and the row state', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  await page.evaluate(() => document.documentElement.style.setProperty('padding-right', '13px'));
+  await addFileLinkToList(page);
+  const essay = await openPane(page, 'Essay');
+  await essay.locator('#marker').fill('unsent words');
+  await preview(page, 'Reading').click();
+  const reading = await paneFrame(page, '/courses/12/assignments/102');
+  await expectPadding(page, PANE_HOST);
+
+  // 1. A file click in the visible frame covers the pane. Closing the file shows the same frame.
+  await openFileFromPane(page, reading);
+  await expectPadding(page, FILE_PANE);
+  await expect(page.locator('[data-av-open]')).toHaveCount(0);
+  await closePane(page);
+  await expectPadding(page, PANE_HOST);
+  await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'true');
+  expect(await shows(reading)).toBe(true);
+  expect(await shows(essay)).toBe(false);
+
+  // 2. A file from the list covers the pane. Preview on the other row shows that row's frame over it.
+  await openFileFromList(page);
+  await expectPadding(page, FILE_PANE);
+  await preview(page, 'Essay').click();
+  await expect(page.locator(FILE_PANE)).toBeHidden();
+  await expectPadding(page, PANE_HOST);
+  await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
+  await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'false');
+  await expect(essay.locator('#marker')).toHaveValue('unsent words');
+  // The close button of the pane shows the file again, and the file pane closes into the own padding.
+  await closeAssignment(page);
+  await expect(page.locator(PANE_HOST)).toBeHidden();
+  await expectPadding(page, FILE_PANE);
+  await expect(page.locator('[data-av-open]')).toHaveCount(0);
+  await closePane(page);
+  await expectPadding(page, null, 13);
+
+  // 3. Both are closed. The pane shows again with the frame of the row, and the file pane stays closed.
+  await preview(page, 'Reading').click();
+  await expectPadding(page, PANE_HOST);
+  await expect(page.locator(FILE_PANE)).toHaveCount(0);
+  await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'true');
+  expect(paneFrames(page)).toHaveLength(2);
+  await closeAssignment(page);
+  await expectPadding(page, null, 13);
+});
 
 test('the Theme setting wins over the page background', async ({ context, page, background }) => {
   const { canvas } = await open(context, page, background);

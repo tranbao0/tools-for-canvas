@@ -214,6 +214,9 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
         courseId: options.courseId,
         assignmentId: options.assignmentId,
       });
+      // The router answers every error of the owner with `undefined`, so a reply of `undefined`
+      // is a failed read, not a refusal.
+      if (reply === undefined) throw new Error('The background gave no reply');
     } catch (error) {
       logFailure('submission sidebar', error);
       // A read that failed gets one more try. A switch-off, a new start or a change of student

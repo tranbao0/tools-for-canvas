@@ -7,11 +7,12 @@
  * frame of the Canvas origin can reach the shadow root that holds it, and the root of the file
  * pane must hold only extension content.
  *
- * Unsent work must not get lost by accident. Only the close button of the pane, a Preview click on
- * the assignment that it shows, and a change of student remove the frame. A file pane that opens
- * covers this pane, which is then only hidden. The script never reads the DOM of the frame. It
- * reads the address of the frame, and it listens for the pointer and the keys of the student on
- * the window of the frame.
+ * The pane keeps one frame for each assignment that the student previewed, and shows one of them.
+ * A frame never goes to another assignment, so Canvas never asks whether to leave, and the header
+ * always belongs to the frame that shows. A frame that does not show has `display: none` on its
+ * own element and is never moved in the DOM, because a moved frame reloads. Unsent work stays in
+ * a frame until the student changes, the pane evicts the frame, or a page removes the host. The
+ * script never reads the DOM of a frame. It reads only the address of a frame.
  */
 import {
   createDock,
@@ -22,6 +23,7 @@ import {
 } from '../../file-viewer/dock';
 import { CLOSE_PATH, EXTERNAL_LINK_PATH } from '../../../shared/ui/iconPaths';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
+import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { OWN } from './own';
 import { PANE_CSS, icon } from './paneParts';
 import {
@@ -58,16 +60,19 @@ export interface PreviewPaneOptions {
    * when the pane is closed or hidden behind a file pane.
    */
   onShown(assignmentId: string | null): void;
-  /** Called after each trusted load of the frame that stays, so the file catcher can go in. */
+  /** Called after each trusted load of a frame that stays, so the file catcher can go in. */
   onFrameLoad(): void;
 }
 
 export interface PreviewPane {
-  /** Opens the pane on an assignment, moves it to the assignment, or shows it over a file pane. */
+  /**
+   * Shows the frame of an assignment, and makes the frame when the assignment has none. It opens
+   * the pane when it is closed, and shows it over a file pane.
+   */
   open(request: PreviewRequest): void;
-  /** Closes the pane like its close button does, and reads the submission once more. */
+  /** Hides the pane like its close button does, keeps the frames, and reads the submission once more. */
   close(): void;
-  /** Removes the frame, for example when the student switched. No read follows. */
+  /** Removes every frame and the pane, for example when the student switched. No read follows. */
   reset(): void;
   setWidth(width: number): void;
   refreshTheme(): void;
@@ -79,6 +84,13 @@ export interface PreviewPane {
   readonly shown: string | null;
 }
 
+/**
+ * The most frames that the pane keeps. Each frame is a whole Canvas page with its own scripts and
+ * memory, so the pane cannot keep one for every assignment that the student looked at. A Preview
+ * click beyond this number removes the frame that was shown longest ago.
+ */
+export const MAX_PREVIEW_FRAMES = 6;
+
 /** The header of the pane: the left padding of the mockup, and a bold title. The frame sits in a white wrapper. */
 const PREVIEW_CSS = `${PANE_CSS}
 .bar{padding-left:24px}
@@ -87,26 +99,37 @@ const PREVIEW_CSS = `${PANE_CSS}
 .frame iframe{flex:1;width:auto;min-width:0;background:#fff}
 `;
 
-interface Open {
-  readonly assignmentId: string;
-  /** Moves the frame to another assignment. The pane follows when that page has loaded. */
-  retarget(request: PreviewRequest): void;
-  stop(): void;
-}
-
-/** What the pane shows now, or what it will show when a page that it asked for has loaded. */
-interface Target {
-  assignmentId: string;
-  title: string;
+/** What a Preview click asks for, with the addresses of its page. */
+interface Target extends PreviewRequest {
   url: string;
   pageUrl: string;
+}
+
+/** The frame of one assignment. */
+interface Slot extends Target {
+  readonly frame: HTMLIFrameElement;
+  /** Takes the frame out of the page, and ends what it started. */
+  remove(): void;
+}
+
+/** The parts of the dock that the pane fills: the header, which shows the assignment of the visible frame, and the wrapper. */
+interface Parts {
+  title: HTMLElement;
+  link: HTMLAnchorElement;
+  wrapper: HTMLElement;
 }
 
 export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
   const { doc, origin, courseId } = options;
   const win = doc.defaultView ?? window;
   let dock: Dock | undefined;
-  let current: Open | undefined;
+  let parts: Parts | undefined;
+  /** The frames by assignment, in the order they were shown: the first one was shown longest ago. */
+  const slots = new Map<string, Slot>();
+  /** The frame that shows when the pane is open. */
+  let visible: Slot | undefined;
+  /** Whether the pane is hidden by its close button. The frames stay. */
+  let closed = false;
   let stopWatching: (() => void) | undefined;
   let observer: MutationObserver | undefined;
   let stopped = false;
@@ -117,16 +140,23 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
   // close starts joins the reads of a pane that opens at once.
   const readers = new Map<string, () => Promise<boolean>>();
   const reader = (assignmentId: string): (() => Promise<boolean>) => {
-    let read = readers.get(assignmentId);
+    const key = normalizeCanvasId(assignmentId);
+    let read = readers.get(key);
     if (!read) {
       read = createCoalescer(() => options.reload(assignmentId));
-      readers.set(assignmentId, read);
+      readers.set(key, read);
     }
     return read;
   };
 
+  let delay = PREVIEW_POLL_MS;
+  // A failed read makes the next poll wait longer, and a good read starts over.
+  const read = async (assignmentId: string): Promise<void> => {
+    delay = nextPollDelay(delay, PREVIEW_POLL_MS, await reader(assignmentId)());
+  };
+
   const shownId = (): string | null =>
-    current !== undefined && dock?.shown === true ? current.assignmentId : null;
+    visible !== undefined && !closed && dock?.shown === true ? visible.assignmentId : null;
 
   /** Tells the list which assignment the pane shows, once for each change. */
   const publish = (): void => {
@@ -138,16 +168,44 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
 
   /**
    * The pane shows while it is open and no file pane covers it. A page can remove the host. The
-   * pane is then closed: it keeps no read and no room, and a file pane that it covered shows again.
+   * pane is then removed with its frames: it keeps no read and no room, and a file pane that it
+   * covered shows again.
    */
   const sync = (): void => {
-    if (!dock || !current) return;
+    if (!dock) return;
     if (!dock.host.isConnected) {
       shut();
       return;
     }
-    dock.setHidden(filePaneOpen());
+    dock.setHidden(closed || filePaneOpen());
     publish();
+  };
+
+  // The poll follows the visible assignment while the pane is open, also behind a file pane. The
+  // new student view submits without any page load. It waits while the page is not in view.
+  let poll: number | undefined;
+  let polling = false;
+  const schedule = (): void => {
+    poll = win.setTimeout(tick, delay);
+  };
+  function tick(): void {
+    poll = undefined;
+    if (!polling) return;
+    const next = (): void => {
+      if (polling && poll === undefined) schedule();
+    };
+    if (doc.visibilityState !== 'visible' || visible === undefined) next();
+    else void read(visible.assignmentId).then(next);
+  }
+  const startPoll = (): void => {
+    if (polling) return;
+    polling = true;
+    schedule();
+  };
+  const stopPoll = (): void => {
+    polling = false;
+    win.clearTimeout(poll);
+    poll = undefined;
   };
 
   function target(request: PreviewRequest): Target | null {
@@ -156,74 +214,12 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     return url === null || pageUrl === null ? null : { ...request, url, pageUrl };
   }
 
-  /** The address that the frame has now, or `null` when it is not ours to read. */
-  function addressOf(frame: HTMLIFrameElement): URL | null {
-    try {
-      return new URL(frame.contentWindow?.location.href ?? '');
-    } catch {
-      return null;
-    }
-  }
-
-  function build(first: Target): Open | null {
-    if (!dock) return null;
-    let active = first;
-    // The assignment that a Preview click asked for, until the frame has loaded a page. The pane
-    // keeps showing the assignment that it had until then. A page of Canvas can keep the frame
-    // from leaving, with its own "leave this page" question, and the student can say no: that
-    // fires no load. A student who stays and acts in the frame, with the pointer or a key, ends the
-    // move, so a page that the student opens later is no arrival.
-    let pending: Target | null = null;
-    const style = doc.createElement('style');
-    style.textContent = PREVIEW_CSS;
-    const bar = doc.createElement('div');
-    bar.className = 'bar';
-    const title = doc.createElement('span');
-    title.className = 'title';
-    title.textContent = first.title;
-    const link = doc.createElement('a');
-    link.className = 'btn';
-    link.href = first.pageUrl;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.append(doc.createTextNode('Open in new tab'), icon(doc, EXTERNAL_LINK_PATH));
-    const close = doc.createElement('button');
-    close.type = 'button';
-    close.className = 'icon-btn';
-    close.setAttribute('aria-label', 'Close assignment');
-    close.title = 'Close assignment';
-    close.append(icon(doc, CLOSE_PATH));
-    bar.append(title, link, close);
-
-    const wrapper = doc.createElement('div');
-    wrapper.className = 'frame';
+  /** Makes the frame of an assignment, with the rules that belong to the frame. */
+  function makeSlot(first: Target): Slot {
     const frame = doc.createElement('iframe');
     frame.title = `Assignment ${first.title}`;
-    wrapper.append(frame);
-
-    let delay = PREVIEW_POLL_MS;
-    let ended = false;
-    // A failed read makes the next poll wait longer, and a good read starts over.
-    const read = async (assignmentId: string): Promise<void> => {
-      delay = nextPollDelay(delay, PREVIEW_POLL_MS, await reader(assignmentId)());
-    };
-
+    let removed = false;
     let loads = 0;
-    const endMove = (event: Event): void => {
-      // A page script can send these events too, so only a real one counts.
-      if (event.isTrusted) pending = null;
-    };
-    // Each page of the frame has a window of its own, so the listeners go in at each load. The
-    // capture phase sees the event before any element of the page can stop it.
-    const watchStudent = (): void => {
-      try {
-        const inner = frame.contentWindow;
-        inner?.addEventListener('pointerdown', endMove, true);
-        inner?.addEventListener('keydown', endMove, true);
-      } catch {
-        // The frame went to another origin. Its window is not ours to listen on.
-      }
-    };
     // The old submission view redirects to the plain assignment page, and a graded discussion or
     // quiz redirects to its own page. The frame then loads the same page with content_only=1,
     // once. The load after that one never rewrites again, so a page that keeps the plain
@@ -231,28 +227,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     let slimming = false;
     frame.addEventListener('load', (event) => {
       // A page script can fire a load event on the frame, so only a real load counts.
-      if (!event.isTrusted) return;
-      let moved = false;
-      if (pending) {
-        const next = pending;
-        pending = null;
-        // The first load while a move is pending is the arrival, on any page of the saved Canvas:
-        // a redirect and a page of a group included. A page of another site is no arrival.
-        if (addressOf(frame)?.origin === origin) {
-          const left = active;
-          active = next;
-          title.textContent = next.title;
-          link.href = next.pageUrl;
-          frame.title = `Assignment ${next.title}`;
-          moved = true;
-          slimming = false;
-          // The student may have submitted the assignment that the frame just left. The new one
-          // gets its first read, which later reads compare with.
-          void read(left.assignmentId);
-          void read(next.assignmentId);
-          publish();
-        }
-      }
+      if (!event.isTrusted || removed) return;
       let rewriting = false;
       if (slimming) {
         slimming = false;
@@ -268,59 +243,81 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
           // The frame went to another origin. Its address is not ours to read.
         }
       }
-      watchStudent();
       // The first page of an assignment is no sign of a submission.
-      if (!moved && ++loads > 1) void read(active.assignmentId);
+      if (++loads > 1) void read(first.assignmentId);
       if (!rewriting) options.onFrameLoad();
     });
-    close.addEventListener('click', (event) => {
-      // A frame of the Canvas page can reach this root, so only a real click counts.
-      if (!event.isTrusted) return;
-      closeAndRead();
-    });
-
-    // The student can submit in the new student view without any page load. The poll goes on
-    // while a file pane covers the pane, and waits while the page is not in view.
-    let poll: number | undefined;
-    const tick = (): void => {
-      poll = undefined;
-      if (ended) return;
-      const next = (): void => {
-        if (!ended) poll = win.setTimeout(tick, delay);
-      };
-      if (doc.visibilityState !== 'visible') next();
-      else void read(active.assignmentId).then(next);
-    };
-    poll = win.setTimeout(tick, delay);
-
-    dock.section.append(style, bar, wrapper);
-    frame.src = first.url;
-    // The first read of the assignment, which later reads compare with.
-    void read(first.assignmentId);
     return {
-      get assignmentId() {
-        return active.assignmentId;
-      },
-      retarget(request) {
-        const next = target(request);
-        if (next === null || next.assignmentId === active.assignmentId) return;
-        pending = next;
-        frame.src = next.url;
-      },
-      stop() {
-        ended = true;
-        win.clearTimeout(poll);
-        style.remove();
-        bar.remove();
-        wrapper.remove();
+      ...first,
+      frame,
+      remove() {
+        removed = true;
+        frame.remove();
       },
     };
   }
 
-  /** Removes the frame and the dock, and shows the file pane again if it was covered. */
+  /** Builds the header and the wrapper of the frames in the dock. */
+  function mount(created: Dock): Parts {
+    const style = doc.createElement('style');
+    style.textContent = PREVIEW_CSS;
+    const bar = doc.createElement('div');
+    bar.className = 'bar';
+    const title = doc.createElement('span');
+    title.className = 'title';
+    const link = doc.createElement('a');
+    link.className = 'btn';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.append(doc.createTextNode('Open in new tab'), icon(doc, EXTERNAL_LINK_PATH));
+    const close = doc.createElement('button');
+    close.type = 'button';
+    close.className = 'icon-btn';
+    close.setAttribute('aria-label', 'Close assignment');
+    close.title = 'Close assignment';
+    close.append(icon(doc, CLOSE_PATH));
+    close.addEventListener('click', (event) => {
+      // A frame of the Canvas page can reach this root, so only a real click counts.
+      if (event.isTrusted) hideAndRead();
+    });
+    bar.append(title, link, close);
+    const wrapper = doc.createElement('div');
+    wrapper.className = 'frame';
+    created.section.append(style, bar, wrapper);
+    return { title, link, wrapper };
+  }
+
+  /** Shows the frame of a slot and hides the others, with the header of its assignment. */
+  function show(slot: Slot): void {
+    if (!parts) return;
+    // The map keeps the order of showing, so the first entry is the one shown longest ago.
+    const key = normalizeCanvasId(slot.assignmentId);
+    slots.delete(key);
+    slots.set(key, slot);
+    for (const other of slots.values()) other.frame.style.display = other === slot ? '' : 'none';
+    parts.title.textContent = slot.title;
+    parts.link.href = slot.pageUrl;
+    visible = slot;
+  }
+
+  /** Removes the frame that was shown longest ago, so the next frame stays within the limit. */
+  function evict(): void {
+    while (slots.size >= MAX_PREVIEW_FRAMES) {
+      const oldest = slots.keys().next();
+      if (oldest.done === true) return;
+      slots.get(oldest.value)?.remove();
+      slots.delete(oldest.value);
+    }
+  }
+
+  /** Removes every frame and the dock, and shows the file pane again if it was covered. */
   function shut(): void {
-    current?.stop();
-    current = undefined;
+    stopPoll();
+    for (const slot of slots.values()) slot.remove();
+    slots.clear();
+    visible = undefined;
+    parts = undefined;
+    closed = false;
     stopWatching?.();
     stopWatching = undefined;
     observer?.disconnect();
@@ -331,10 +328,15 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     publish();
   }
 
-  function closeAndRead(): void {
-    const assignmentId = current?.assignmentId;
-    shut();
-    if (assignmentId !== undefined) void reader(assignmentId)();
+  /** Hides the pane and gives the room back. The frames stay in the page with their state. */
+  function hideAndRead(): void {
+    const assignmentId = visible?.assignmentId;
+    if (!dock || closed || assignmentId === undefined) return;
+    closed = true;
+    stopPoll();
+    hideFilePane(false);
+    sync();
+    void reader(assignmentId)();
   }
 
   return {
@@ -344,44 +346,52 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     open(request) {
       if (stopped) return;
       sync();
-      if (current) {
-        // An open pane may hold unsent work, so a Preview click shows it and never removes it. For
-        // another assignment, the same frame goes to that page, and Canvas can ask first.
+      const next = target(request);
+      if (next === null) return;
+      const left = visible;
+      const wasClosed = closed;
+      if (!dock) {
+        const created = createDock({
+          role: 'turn-in',
+          id: PREVIEW_HOST_ID,
+          label: 'Assignment',
+          resizeLabel: 'Resize assignment',
+          width: options.width(),
+          onResized: options.saveWidth,
+          doc,
+        });
+        created.host.setAttribute(OWN, '');
+        created.setTheme(options.theme());
+        dock = created;
+        parts = mount(created);
         hideFilePane(true);
-        sync();
-        current.retarget(request);
-        return;
+        created.open();
+        stopWatching = watchFilePane(sync);
+        // A script of the page can remove the file pane host or this one without a word.
+        observer = new MutationObserver(sync);
+        observer.observe(doc.body, { childList: true });
+      } else {
+        closed = false;
+        hideFilePane(true);
       }
-      const first = target(request);
-      if (first === null) return;
-      const created = createDock({
-        role: 'turn-in',
-        id: PREVIEW_HOST_ID,
-        label: 'Assignment',
-        resizeLabel: 'Resize assignment',
-        width: options.width(),
-        onResized: options.saveWidth,
-        doc,
-      });
-      created.host.setAttribute(OWN, '');
-      created.setTheme(options.theme());
-      dock = created;
-      const made = build(first);
-      if (made === null) {
-        dock = undefined;
-        return;
+      let slot = slots.get(normalizeCanvasId(next.assignmentId));
+      const made = slot === undefined;
+      if (!slot) {
+        evict();
+        slot = makeSlot(next);
+        parts?.wrapper.append(slot.frame);
       }
-      current = made;
-      hideFilePane(true);
-      created.open();
-      stopWatching = watchFilePane(sync);
-      // A script of the page can remove the file pane host or this one without a word.
-      observer = new MutationObserver(sync);
-      observer.observe(doc.body, { childList: true });
-      publish();
+      show(slot);
+      sync();
+      startPoll();
+      if (made) slot.frame.src = slot.url;
+      // The first read of an assignment is its baseline, and each later read compares with it. The
+      // student may have submitted the assignment that the pane just left.
+      void read(slot.assignmentId);
+      if (left && !wasClosed && left !== slot) void read(left.assignmentId);
     },
     close() {
-      if (current) closeAndRead();
+      hideAndRead();
     },
     reset() {
       shut();
@@ -396,7 +406,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       // The tools record arrives again after each width save, so only a change of the switch asks.
       const changed = on !== fileViewerOn;
       fileViewerOn = on;
-      if (on && changed && current) options.onFrameLoad();
+      if (on && changed && slots.size > 0) options.onFrameLoad();
     },
     stop() {
       stopped = true;

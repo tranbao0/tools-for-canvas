@@ -1,13 +1,13 @@
 # Privacy policy
 
 This policy covers the Tools for Canvas browser extension for Chrome, Microsoft Edge and Firefox.
-Last updated: 2026-11-02.
+Last updated: 2026-11-05.
 
 ## Summary
 
 Tools for Canvas has no account, no server of its own and no telemetry.
 It reads your Canvas data in your browser and shows it to you.
-It writes only done marks, skip marks, custom tasks and announcement read marks, and only to your own Canvas.
+It writes only done marks, skip marks, custom tasks, announcement read marks and the read mark of your rubric comments, and only to your own Canvas.
 Nothing goes anywhere else, except the images that a teacher put into an announcement (see "What the extension sends elsewhere").
 
 ## What the extension reads
@@ -28,9 +28,10 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - the announcements that you find with the search by date, read from the announcements list of your Canvas for the days that you choose, at most 500;
 - the details of an assignment on a page of the one assignment view (the Assignments list, the Submission Details page of your own work, and the assignment page): its instructions and submission types, and your own submission with its status, time, attempt, text, address, and the names and sizes of your files.
   The extension reads them with two requests of your own Canvas: `GET /api/v1/courses/:id/assignments/:id` and `GET /api/v1/courses/:id/assignments/:id/submissions/self`.
-  The Submission Details page sends them when it loads, and the Assignments list sends them when you open the assignment pane, and again now and then while the pane is open.
+  The Submission Details page sends them when it loads, and the Assignments list sends them when you show an assignment in the assignment pane, and again now and then while the pane is open.
   The assignment page asks only for who owns the submission, with the second request alone, when it loads.
-  The reply of Canvas for the assignment also holds its rubric, and the extension keeps none of it.
+  The request for the assignment asks for no included submission, so its reply holds no submission and no grade.
+  The reply of Canvas for the assignment still holds its rubric, and the extension keeps none of it.
   The extension does not read your rubric assessment or the comments on your submission: Canvas shows them in its own page.
 
 It reads the `_csrf_token` cookie of your Canvas site, because Canvas requires that token to accept a write.
@@ -61,7 +62,7 @@ It keeps the answer only when both fingerprints match and the check confirmed th
 It starts no request to Canvas when there is no session cookie or when the cookie cannot be read.
 It reads the fingerprint again right before each request that writes to Canvas, also before a retry after a rate limit.
 It sends a write only when a check confirmed that fingerprint for the same student.
-This covers done marks, skip marks, read marks of announcements, and the creation, change and deletion of your own tasks.
+This covers done marks, skip marks, read marks of announcements, the read mark of rubric comments, and the creation, change and deletion of your own tasks.
 It does not announce itself to the page.
 It sends nothing to any server.
 On a page that is not Canvas, it stops at once and keeps nothing.
@@ -84,9 +85,12 @@ The extension writes only to your own Canvas, and only when you ask it to:
 - a skip mark when you skip an item, or remove it when you unskip the item;
 - a custom task when you create, edit or delete one;
 - a read mark on an announcement when you press "Mark as read" in the Announcements tab, or an unread mark when you press Undo;
-- a read mark or an unread mark on an announcement when you click the read control in the Announcements widget of the new dashboard.
+- a read mark or an unread mark on an announcement when you click the read control in the Announcements widget of the new dashboard;
+- a read mark on the rubric comments of your own submission (`PUT /api/v1/courses/:id/assignments/:id/submissions/:id/rubric_assessments/read`), when you open the Submission Details page of your own work and its rubric, with unread comments, is in view.
 
 The extension marks an announcement as read only when you press "Mark as read" or click the read control.
+The read mark of the rubric comments is the request that Canvas's own page sends when you open the rubric.
+It goes only for your own submission, and only while the same student is signed in.
 The search, the date search and the scroll of the Announcements widget send no write.
 When you open an announcement in place, it only reads the announcement.
 The extension never loads the Canvas page of an announcement itself.
@@ -115,8 +119,9 @@ The one assignment view works on the Assignments list, on the Submission Details
 On the Assignments list, it adds a "Preview" button to each assignment row.
 The button opens Canvas's own assignment page in a pane beside the list.
 The pane is a frame of your Canvas site, so it shows what Canvas shows when you open that page, and it works as that page does.
-The extension reads only the address of the frame, and nothing of its content.
-While the pane is open, the extension reads your submission status of that assignment now and then, and keeps the last answer in the memory of the open page.
+The pane keeps one frame for each assignment that you previewed, up to 6, so each frame keeps its page and your typed text until you change the student or the pane needs room for a new frame.
+The extension reads only the address of a frame, and nothing of its content.
+While the pane is open, the extension reads your submission status of the assignment that it shows now and then, and keeps the last answer in the memory of the open page.
 It uses the answer to tell when your work was handed in, so that the weekly list refreshes.
 The Submission Details page shows the instructions and your submitted files.
 The rubric and the comments on that page stay Canvas's own, which the extension moves into place without reading them.
