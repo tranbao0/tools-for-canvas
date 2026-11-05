@@ -74,7 +74,15 @@ import {
 } from './rubric';
 import { OWN, actionTarget, realContainer, rightColumn } from './own';
 import { createBox, type Box } from './submissionBox';
-import { filesFromDetails, readFrame, type FrameFile } from './submissionFrame';
+import {
+  filesFromDetails,
+  refineFiles,
+  submissionReport,
+  type BoxFile,
+  type FileReport,
+} from './files';
+import { logAbove, logMountFailure, logNoFeedbackAddress, type AboveReason } from './modeLog';
+import { readFrame } from './submissionFrame';
 import { PANEL_CSS, SUBMISSION_CSS } from './styles';
 
 /**
@@ -89,7 +97,7 @@ const SHOWN_TYPES: ReadonlySet<string | null | undefined> = new Set([
   'online_url',
 ]);
 
-/** How long a frame may stay blank, and how long the report cells of the frame are watched. */
+/** How long the report cells of the frame are watched after a load. */
 const FRAME_WAIT_MS = 10_000;
 /** How long the view waits before it asks again after a read that failed. It asks once. */
 const RETRY_MS = 2000;
@@ -201,7 +209,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
 
   /** The files whose feedback the student opened. Canvas still marks them unread until a reload. */
   const opened = new Set<string>();
-  const known = (file: FrameFile): FrameFile =>
+  const known = (file: BoxFile): BoxFile =>
     opened.has(file.fileId) && file.unread ? { ...file, unread: false } : file;
 
   /**
@@ -413,8 +421,9 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     reply: AssignmentDetailsReply,
     anchors: Anchors,
     mode: Mode,
-    first: readonly FrameFile[],
-  ): (next: readonly FrameFile[]) => void {
+    first: readonly BoxFile[],
+    textReport: FileReport | null,
+  ): (next: readonly BoxFile[]) => void {
     const { details } = reply;
     const replace = mode === 'replace';
     setUpPage();
@@ -449,6 +458,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       replace,
       fileViewer,
       files: first.map(known),
+      submissionReport: textReport,
       openFeedback: (file) => {
         if (file.sessionUrl === null) return;
         options.openFeedback({ title: file.name, url: file.sessionUrl });
@@ -488,19 +498,38 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   }
 
   /**
-   * Shows the page for the details and keeps watching the frame. The frame is hidden only while the
-   * view can show everything that it shows. Until the frame has loaded, an upload shows the files
-   * of the details. Once it has loaded and the read failed, or the frame holds more than the view
-   * shows, the frame stays visible and the view adds only the instructions.
+   * Shows the page for the details. The files, their scores and their feedback buttons come from
+   * the details, so the box never waits for the frame. The frame only refines the label of a
+   * button and its unread mark. The view keeps Canvas's frame for a submission type that it does
+   * not show, for report data that it cannot show, and for a report of an asset processor that
+   * Canvas's script draws in the frame.
    */
   function show(reply: AssignmentDetailsReply, anchors: Anchors, token: number): void {
     const { submission } = reply.details;
     const type = submission.submission_type;
-    const attachments = submission.attachments ?? [];
-    let mode: Mode = SHOWN_TYPES.has(type) ? 'replace' : 'above';
-    const fallback = type === 'online_upload' ? filesFromDetails(attachments) : [];
-    /** Whether the replace mode failed to mount, so the page stays in the mode 'above'. */
-    let broken = false;
+    const context = { origin, pagePath: pathname };
+    const upload =
+      type === 'online_upload'
+        ? filesFromDetails(submission.attachments ?? [], submission, context)
+        : { files: [], readable: true, withoutSession: 0 };
+    const text =
+      type === 'online_text_entry'
+        ? submissionReport(submission, context)
+        : { report: null, readable: true };
+    const base = upload.files;
+    const textReport = text.report;
+    /** Why the page keeps Canvas's frame whatever the frame holds, or `null`. */
+    let fixed: AboveReason | null = null;
+    if (!SHOWN_TYPES.has(type)) fixed = 'type';
+    else if (!upload.readable || !text.readable) fixed = 'report-data';
+    let mode: Mode = 'above';
+    /** The reason of the last line logged for the mode 'above'. */
+    let logged: AboveReason | null = null;
+    const logReason = (reason: AboveReason): void => {
+      if (reason === logged) return;
+      logged = reason;
+      logAbove(reason);
+    };
     /**
      * Mounts the mode. A replace mount that fails gives the page back and mounts the mode 'above'
      * in its place, where Canvas's frame and comments stay. A failure of that mode too gives the
@@ -508,56 +537,53 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
      */
     const mountMode = (
       wanted: Mode,
-      files: readonly FrameFile[],
-    ): ((next: readonly FrameFile[]) => void) => {
+      reason: AboveReason | null,
+      files: readonly BoxFile[],
+    ): ((next: readonly BoxFile[]) => void) => {
       const giveUp = (error: unknown): (() => void) => {
-        logFailure('submission details', error);
+        logMountFailure(error);
         mode = 'above';
         clear();
         return () => undefined;
       };
       mode = wanted;
+      if (wanted === 'above') logReason(reason ?? 'mount-failed');
+      else logged = null;
       try {
-        return mount(reply, anchors, mode, files);
+        return mount(reply, anchors, mode, files, textReport);
       } catch (error) {
         if (mode === 'above') return giveUp(error);
-        logFailure('submission details', error);
+        logMountFailure(error);
         unmountMode();
-        broken = true;
+        fixed = 'mount-failed';
         mode = 'above';
+        logReason('mount-failed');
         try {
-          return mount(reply, anchors, mode, []);
+          return mount(reply, anchors, mode, [], null);
         } catch (again) {
           return giveUp(again);
         }
       }
     };
-    let setFiles = mountMode(mode, fallback);
-    // A submission type that the view does not show, and no submission at all, need no frame read.
-    if (mode === 'above' || type === null || type === undefined) return;
+    if (upload.withoutSession > 0) logNoFeedbackAddress(upload.withoutSession);
+    let setFiles = mountMode(fixed === null ? 'replace' : 'above', fixed, base);
+    // Nothing in the frame changes these, and no submission at all needs no frame read.
+    if (fixed !== null || type === null || type === undefined) return;
 
-    let loaded = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
     let watching: MutationObserver | null = null;
     let watchEnds: ReturnType<typeof setTimeout> | null = null;
     const assess = (): void => {
-      if (token !== generation || stopped || !active) return;
+      if (token !== generation || stopped || !active || fixed !== null) return;
       const read = readFrame(anchors.frame, origin, pathname);
-      let next: Mode = broken ? 'above' : 'replace';
-      let files: readonly FrameFile[] = fallback;
-      if (read.state === 'ready') {
-        const incomplete =
-          !read.complete ||
-          (type === 'online_url' && read.snapshot) ||
-          (type === 'online_upload' && read.files.length === 0 && attachments.length > 0);
-        if (incomplete) next = 'above';
-        else files = type === 'online_upload' ? read.files : [];
-      } else if (read.state === 'failed' || loaded) {
-        next = 'above';
-      }
+      // A frame that cannot be read yet, or at all, changes nothing.
+      if (read.state !== 'ready') return;
+      const next: Mode = read.assetReports ? 'above' : 'replace';
+      const files = refineFiles(base, read.hints);
       if (next !== mode) {
         unmountMode();
-        setFiles = mountMode(next, files);
+        setFiles = mountMode(next, next === 'above' ? 'asset-reports' : null, files);
+      } else if (next === 'above') {
+        logReason('asset-reports');
       } else {
         setFiles(files);
       }
@@ -584,21 +610,12 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       watchEnds = null;
     };
     const onLoad = (): void => {
-      loaded = true;
       assess();
       watchReports();
     };
-    // A frame that never shows the preview page is read as failed after a while.
-    timer = setTimeout(() => {
-      timer = null;
-      loaded = true;
-      assess();
-    }, FRAME_WAIT_MS);
     anchors.frame.addEventListener('load', onLoad);
     stopFrame = () => {
       anchors.frame.removeEventListener('load', onLoad);
-      if (timer !== null) clearTimeout(timer);
-      timer = null;
       stopWatching();
     };
     assess();
@@ -642,7 +659,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     try {
       show(reply, anchors, token);
     } catch (error) {
-      logFailure('submission details', error);
+      logMountFailure(error);
       clear();
     }
   }

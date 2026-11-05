@@ -326,7 +326,7 @@ export interface CanvasApi {
   getAssignmentRecord(courseId: string, assignmentId: string): Promise<Record<string, unknown>>;
   /** The signed-in student's own submission, with no include, for the one assignment view. */
   getOwnSubmissionRecord(courseId: string, assignmentId: string): Promise<Record<string, unknown>>;
-  /** The same request, for the owner check of the assignment page, which reads only the user. */
+  /** The same request, for the owner check of the assignment page, which reads the user and the report data. */
   getOwnSubmissionUserRecord(
     courseId: string,
     assignmentId: string,

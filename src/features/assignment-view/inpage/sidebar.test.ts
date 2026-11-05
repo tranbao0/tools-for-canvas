@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sendToFailingRouter } from '../../../../tests/fixtures/router-reply';
-import type { AssignmentOwnerMessage } from '../protocol';
+import type { AssignmentOwnerMessage, AssignmentReport } from '../protocol';
 import { removeStaleView } from './stale';
 import { createSidebarEngine, type SidebarEngine } from './sidebar';
 
@@ -302,5 +302,77 @@ describe('the Submission box of the assignment page', () => {
     engine.setActive(false);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(sidebar().outerHTML).toBe(before);
+  });
+});
+
+describe('the similarity score beside a file', () => {
+  const REPORT: AssignmentReport = {
+    asset: 'attachment_501',
+    kind: 'turnitin',
+    score: 23,
+    state: 'warning',
+    status: 'scored',
+    error: null,
+    readable: true,
+  };
+  const withReports = (...reports: AssignmentReport[]) => ({ userId: '42', reports });
+  const score = () => sidebar().querySelector<HTMLAnchorElement>('a[data-state]');
+
+  it('shows the score after the link, with the look and the address of Canvas, and no second request', async () => {
+    start(withReports(REPORT)).setActive(true);
+    await vi.waitFor(() => expect(score()).not.toBeNull());
+    const chip = score()!;
+    expect(chip.textContent).toBe('23.0%');
+    expect(chip.getAttribute('href')).toBe(
+      `${ORIGIN}/courses/12/assignments/101/submissions/42/turnitin/attachment_501`,
+    );
+    expect(chip.getAttribute('target')).toBe('_blank');
+    expect(chip.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(chip.getAttribute('title')).toBe('Similarity score');
+    expect(chip.hasAttribute('data-av-own')).toBe(true);
+    expect(chip.style.background).toBe('#897b01');
+    expect(chip.style.fontWeight).toBe('700');
+    // The score stands beside Canvas's link, not inside it, so a click on it is no click on the file.
+    const file = sidebar().querySelector(`a[href$="${FILE('42', '501')}"]`)!;
+    expect(chip.previousElementSibling).toBe(file);
+    expect(file.contains(chip)).toBe(false);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a gray score for a report that is not ready, and none for a file without a report', async () => {
+    document.body.innerHTML = box(link('42', '501', 'essay.pdf') + link('42', '502', 'notes.pdf'));
+    start(withReports({ ...REPORT, state: 'pending', score: null, status: 'pending' })).setActive(
+      true,
+    );
+    await vi.waitFor(() => expect(score()).not.toBeNull());
+    expect(sidebar().querySelectorAll('a[data-state]')).toHaveLength(1);
+    expect(score()!.textContent).toBe('Similarity score');
+    expect(score()!.style.background).toBe('gray');
+  });
+
+  it('shows no score when the report cannot be shown, and still treats the link', async () => {
+    start(withReports({ ...REPORT, readable: false })).setActive(true);
+    await vi.waitFor(() => expect(document.querySelector('[data-av-original]')).not.toBeNull());
+    expect(score()).toBeNull();
+  });
+
+  it('gives the box back exactly, also when the stale cleanup runs', async () => {
+    const before = sidebar().outerHTML;
+    start(withReports(REPORT)).setActive(true);
+    await vi.waitFor(() => expect(score()).not.toBeNull());
+    engine.setActive(false);
+    expect(sidebar().outerHTML).toBe(before);
+    engine.setActive(true);
+    await vi.waitFor(() => expect(score()).not.toBeNull());
+    removeStaleView(document, '/courses/12/assignments/101');
+    expect(sidebar().outerHTML).toBe(before);
+  });
+
+  it('shows one score for a file, also after the box changes', async () => {
+    start(withReports(REPORT)).setActive(true);
+    await vi.waitFor(() => expect(score()).not.toBeNull());
+    sidebar().querySelector('.content')!.append(document.createElement('span'));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(sidebar().querySelectorAll('a[data-state]')).toHaveLength(1);
   });
 });
