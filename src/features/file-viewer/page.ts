@@ -303,9 +303,8 @@ export async function startViewer(): Promise<void> {
   // back, so two that ran side by side would both start from the same tabs and the second write
   // would drop the file of the first. The tab order is also the order of the clicks.
   let opens: Promise<unknown> = Promise.resolve();
-  const openTarget = (target: FileTarget, href: string): Promise<boolean> => {
-    const started = generation;
-    const run = opens.then(() => openNow(target, href, started));
+  const openTarget = (target: FileTarget, href: string, taken: number): Promise<boolean> => {
+    const run = opens.then(() => openNow(target, href, taken));
     opens = run.catch(() => undefined);
     return run;
   };
@@ -381,6 +380,8 @@ export async function startViewer(): Promise<void> {
         if (name) names.set(target.fileId, name);
       }
       const checkedHref = link.getAttribute('href');
+      // A reset that comes while the click waits ends it: the click belongs to this moment.
+      const taken = generation;
       void (async () => {
         // The click is taken at once, even while the settings and the tabs are still loading.
         await starting;
@@ -394,12 +395,13 @@ export async function startViewer(): Promise<void> {
           return;
         }
         if (!live) return;
-        await openTarget(target, href);
+        await openTarget(target, href, taken);
       })().catch(() => undefined);
     },
     { capture: true, signal: lifetime.signal },
   );
   // The settings and the stored tabs load while the listeners above already work.
+  const born = generation;
   const starting = (async () => {
     const context = await readContext();
     if (!live) return;
@@ -413,7 +415,8 @@ export async function startViewer(): Promise<void> {
     width = normalizeWidth(context.tools.fileViewerWidth, innerWidth);
     const stored = await readTabs().catch(() => null);
     if (!live) return;
-    if (stored) {
+    // A reset during the read drops the answer: those tabs belong to the earlier student.
+    if (stored && born === generation) {
       tabs = stored.tabs;
       tabsToken = stored.token;
     }
@@ -467,11 +470,14 @@ export async function startViewer(): Promise<void> {
       return undefined;
     }
     const fileId = request.fileId;
+    const taken = generation;
     void (async () => {
       await starting;
       // The catcher saves the file in the usual way unless the pane has it, so the answer comes
       // after the open.
-      respond({ opened: live && enabled && (await openTarget({ fileId }, `/files/${fileId}`)) });
+      respond({
+        opened: live && enabled && (await openTarget({ fileId }, `/files/${fileId}`, taken)),
+      });
     })().catch(() => respond({ opened: false }));
     return true;
   };

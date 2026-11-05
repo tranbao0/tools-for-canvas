@@ -313,6 +313,48 @@ describe('the page script', () => {
       expect(writes()).toHaveLength(0);
     });
 
+    it('ends a click that waited for the start of the script when a reset came', async () => {
+      prepare();
+      let release: () => void = () => undefined;
+      const slow = new Promise<void>((resolve) => (release = resolve));
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'weekrow:page-context') await slow;
+        return reply(message);
+      });
+      const started = startViewer();
+      click(true);
+      listener()({ type: 'viewer:reset' }, { id: 'my-extension' });
+      release();
+      await started;
+      await quiet();
+      expect(paneHost()).toBeNull();
+      expect(writes()).toHaveLength(0);
+    });
+
+    it('drops the stored tabs of the earlier student when a reset comes during the read', async () => {
+      prepare();
+      let release: () => void = () => undefined;
+      const slow = new Promise<void>((resolve) => (release = resolve));
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'viewer:tabs-get') {
+          await slow;
+          return { ids: ['5'], active: '5' };
+        }
+        return reply(message);
+      });
+      const started = startViewer();
+      await vi.waitFor(() =>
+        expect(
+          sendMessage.mock.calls.some(([m]) => (m as { type: string }).type === 'viewer:tabs-get'),
+        ).toBe(true),
+      );
+      listener()({ type: 'viewer:reset' }, { id: 'my-extension' });
+      release();
+      await started;
+      await quiet();
+      expect(paneHost()).toBeNull();
+    });
+
     it('still opens the first click of the new student, with only that file', async () => {
       prepare();
       document.body.insertAdjacentHTML(
