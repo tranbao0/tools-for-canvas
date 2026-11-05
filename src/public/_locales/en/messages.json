@@ -1001,6 +1001,12 @@
   "fileViewerClose": {
     "message": "Close file viewer"
   },
+  "fullView": {
+    "message": "Full view"
+  },
+  "exitFullView": {
+    "message": "Exit full view"
+  },
   "pdfMoreControls": {
     "message": "More PDF controls"
   },

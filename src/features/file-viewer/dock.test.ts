@@ -4,10 +4,14 @@ import {
   createDock,
   filePaneOpen,
   giveBackRoom,
+  fullViewAvailable,
   hideFilePane,
+  isFullView,
   leaseRoom,
   removeStaleWeeklyDock,
   ROOM_ATTRIBUTE,
+  setFullView,
+  watchFullView,
   WEEKLY_HOST_ID,
   WEEKLY_TAB_ID,
   type Dock,
@@ -17,9 +21,10 @@ import {
 const padding = () => document.documentElement.style.getPropertyValue('padding-right');
 const docks: Dock[] = [];
 
-function dock(role: DockRole, width: number): Dock {
+function dock(role: DockRole, width: number, card = false): Dock {
   const made = createDock({
     role,
+    card,
     id: `tools-${role}`,
     label: role,
     resizeLabel: `Resize ${role}`,
@@ -343,5 +348,143 @@ describe('the room of a tab', () => {
     html.style.setProperty('padding-right', '480px');
     window.dispatchEvent(new Event('resize'));
     expect(padding()).toBe('480px');
+  });
+});
+
+describe('a card pane', () => {
+  const html = document.documentElement;
+  // An earlier test can leave a holder that a reset of the body removed from the page.
+  beforeEach(() => giveBackRoom(document));
+
+  it('keeps the gap of the card inside its host and inside the room beside it', () => {
+    html.style.setProperty('padding-right', '13px');
+    const turnIn = dock('turn-in', 480, true);
+    turnIn.open();
+    expect(turnIn.host.hasAttribute('data-card')).toBe(true);
+    expect(turnIn.host.style.width).toBe('492px');
+    expect(padding()).toBe('492px');
+    turnIn.close();
+    expect(padding()).toBe('13px');
+  });
+
+  it('gives a dock that is no card the room of its width, with no gap', () => {
+    const weekly = dock('weekly', 360);
+    weekly.open();
+    expect(weekly.host.hasAttribute('data-card')).toBe(false);
+    expect(padding()).toBe('360px');
+  });
+});
+
+describe('full view', () => {
+  afterEach(() => setFullView(false));
+
+  it('is off at the start, and no pane means no full view', () => {
+    expect(isFullView()).toBe(false);
+    setFullView(true);
+    expect(isFullView()).toBe(false);
+  });
+
+  it('widens the host over the window and leaves the room of the page as it is', () => {
+    const turnIn = dock('turn-in', 480, true);
+    turnIn.open();
+    setFullView(true);
+    expect(isFullView()).toBe(true);
+    expect(turnIn.full).toBe(true);
+    expect(turnIn.host.hasAttribute('data-full')).toBe(true);
+    expect(turnIn.host.style.width).toBe('100vw');
+    expect(padding()).toBe('492px');
+    setFullView(false);
+    expect(turnIn.full).toBe(false);
+    expect(turnIn.host.hasAttribute('data-full')).toBe(false);
+    expect(turnIn.host.style.width).toBe('492px');
+    expect(padding()).toBe('492px');
+  });
+
+  it('tells the watchers once for each change', () => {
+    const calls: boolean[] = [];
+    const stop = watchFullView(() => calls.push(isFullView()));
+    dock('file', 480, true).open();
+    setFullView(true);
+    setFullView(true);
+    setFullView(false);
+    setFullView(false);
+    stop();
+    setFullView(true);
+    expect(calls).toEqual([true, false]);
+  });
+
+  it('shows a pane that covers another one in full view too, and the pane under it again after it closes', () => {
+    const turnIn = dock('turn-in', 480, true);
+    const file = dock('file', 600, true);
+    turnIn.open();
+    setFullView(true);
+    turnIn.setHidden(true);
+    file.open();
+    expect(file.full).toBe(true);
+    expect(file.host.style.width).toBe('100vw');
+    file.close();
+    turnIn.setHidden(false);
+    expect(isFullView()).toBe(true);
+    expect(turnIn.full).toBe(true);
+    expect(padding()).toBe('492px');
+  });
+
+  it('ends with the last pane, and a pane that opens later starts in its place', () => {
+    const turnIn = dock('turn-in', 480, true);
+    turnIn.open();
+    setFullView(true);
+    turnIn.close();
+    expect(isFullView()).toBe(false);
+    const next = dock('feedback', 480, true);
+    next.open();
+    expect(next.full).toBe(false);
+    expect(next.host.style.width).toBe('492px');
+  });
+
+  it('ends when a page removed the host of the only pane', () => {
+    const turnIn = dock('turn-in', 480, true);
+    turnIn.open();
+    setFullView(true);
+    turnIn.host.remove();
+    expect(isFullView()).toBe(false);
+  });
+
+  it('never fills the window on a narrow window, and comes back when the window is wide again', () => {
+    const { innerWidth } = window;
+    try {
+      const turnIn = dock('turn-in', 480, true);
+      turnIn.open();
+      setFullView(true);
+      window.innerWidth = 800;
+      window.dispatchEvent(new Event('resize'));
+      expect(fullViewAvailable()).toBe(false);
+      expect(turnIn.full).toBe(false);
+      expect(turnIn.host.style.width).toBe('100vw');
+      expect(turnIn.host.hasAttribute('data-full')).toBe(false);
+      window.innerWidth = 1200;
+      window.dispatchEvent(new Event('resize'));
+      expect(fullViewAvailable()).toBe(true);
+      expect(turnIn.full).toBe(true);
+    } finally {
+      window.innerWidth = innerWidth;
+    }
+  });
+
+  it('is no state of the weekly dock', () => {
+    const weekly = dock('weekly', 360);
+    const turnIn = dock('turn-in', 480, true);
+    weekly.open();
+    turnIn.open();
+    setFullView(true);
+    expect(weekly.full).toBe(false);
+    expect(weekly.host.style.width).toBe('360px');
+  });
+
+  it('ignores an Escape that a script made', () => {
+    const turnIn = dock('turn-in', 480, true);
+    turnIn.open();
+    setFullView(true);
+    turnIn.section.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(isFullView()).toBe(true);
   });
 });
