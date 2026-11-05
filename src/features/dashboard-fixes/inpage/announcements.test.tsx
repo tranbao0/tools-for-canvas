@@ -34,10 +34,27 @@ async function flush(): Promise<void> {
   });
 }
 
+/** Clicks as the student does: happy-dom marks only a native click as trusted. */
+async function clickTrusted(element: HTMLElement | undefined): Promise<void> {
+  await act(async () => {
+    Object.defineProperty(MouseEvent.prototype, 'isTrusted', {
+      get: () => true,
+      configurable: true,
+    });
+    element?.click();
+    await vi.advanceTimersByTimeAsync(400);
+  });
+  await flush();
+  delete (MouseEvent.prototype as { isTrusted?: boolean }).isTrusted;
+}
+
 interface Server {
   rows: AnnouncementListRow[];
   failPages: boolean;
+  failRanges: boolean;
   markOk: boolean;
+  /** The range reply says that the range holds more rows than it carries. */
+  truncated: boolean;
 }
 
 function serve(context: FakeContext, server: Server): void {
@@ -53,18 +70,29 @@ function serve(context: FakeContext, server: Server): void {
         );
         const offset = request['offset'] as number;
         const first = request['first'] as number;
+        const slice = filtered.slice(offset, offset + first);
         return {
-          items: filtered.slice(offset, offset + first),
+          items: slice,
+          count: slice.length,
+          userId: '7',
           total: filtered.length,
           hasNext: offset + first < filtered.length,
         };
       }
-      case 'weekrow:announcement-mark':
+      case 'weekrow:announcement-mark': {
+        const found = server.rows.find(
+          (candidate) =>
+            candidate.courseId === request['courseId'] && candidate.id === request['topicId'],
+        );
+        if (server.markOk && found !== undefined) found.read = request['read'] === true;
         return { ok: server.markOk };
+      }
       case 'weekrow:announcement-range':
+        if (server.failRanges) throw new Error('offline');
         return {
           items: server.rows.filter((candidate) => candidate.postedAt !== null),
-          truncated: false,
+          userId: '7',
+          truncated: server.truncated,
         };
       case 'weekrow:announcement':
         return { title: 'T', message: '<p>Hello <strong>world</strong></p><script>x()</script>' };
@@ -116,7 +144,7 @@ beforeEach(() => {
   drawDashboard();
   fix = announcementsFix();
   context = fakeContext();
-  server = { rows: [], failPages: false, markOk: true };
+  server = { rows: [], failPages: false, failRanges: false, markOk: true, truncated: false };
   serve(context, server);
 });
 afterEach(() => {
@@ -303,7 +331,13 @@ describe('the read control', () => {
     await flush();
     delete (MouseEvent.prototype as { isTrusted?: boolean }).isTrusted;
     expect(sentOf('weekrow:announcement-mark')).toEqual([
-      { type: 'weekrow:announcement-mark', courseId: '101', topicId: '1', read: true },
+      {
+        type: 'weekrow:announcement-mark',
+        courseId: '101',
+        topicId: '1',
+        userId: '7',
+        read: true,
+      },
     ]);
     expect(shadowAll('article')).toHaveLength(3);
     expect(shadowAll('.wr-a-read')[0]?.getAttribute('aria-pressed')).toBe('true');
@@ -326,6 +360,31 @@ describe('the read control', () => {
     expect(shadowAll('.wr-a-read')[0]?.getAttribute('aria-pressed')).toBe('false');
     expect(shadow('.wr-a-res [role=status]')?.textContent).toBe("Couldn't change the read mark.");
     await flush();
+  });
+});
+
+describe('the filter round trip', () => {
+  const choose = (label: string): void => {
+    (document.querySelector('#ann-read') as HTMLInputElement).value = label;
+    fix.apply(context);
+  };
+
+  it('keeps a marked row in the Unread list until the student leaves the filter', async () => {
+    await start(many(3));
+    await clickTrusted(shadowAll('.wr-a-read')[0]);
+    expect(shadowAll('article')).toHaveLength(3);
+
+    choose('Read');
+    await settle();
+    expect(shadowAll('article').map((article) => article.getAttribute('aria-label'))).toEqual([
+      'Topic 1',
+    ]);
+    choose('Unread');
+    await settle();
+    expect(shadowAll('article').map((article) => article.getAttribute('aria-label'))).toEqual([
+      'Topic 2',
+      'Topic 3',
+    ]);
   });
 });
 
@@ -545,6 +604,49 @@ describe('search by date', () => {
     });
     expect(shadowAll('article').length).toBeGreaterThan(0);
     expect(shadow('.wr-a-res [role=status]')?.textContent).toMatch(/results?, read and unread/);
+  });
+
+  it('shows Retry for a range that failed, and asks again only on a click', async () => {
+    server.failRanges = true;
+    await start();
+    await openDates();
+    await setDate('From', '2026-10-01');
+    await flush();
+    await flush();
+    // The failed range is not asked for again at each paint.
+    expect(sentOf('weekrow:announcement-range')).toHaveLength(1);
+    expect(shadow('.wr-a-scroll')?.textContent).toContain("Couldn't load the announcements.");
+    const retry = shadowAll('.wr-a-line button')[0];
+    expect(retry?.textContent).toBe('Retry');
+
+    server.failRanges = false;
+    await act(async () => {
+      retry?.click();
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    await flush();
+    expect(sentOf('weekrow:announcement-range')).toHaveLength(2);
+    expect(shadowAll('article').length).toBeGreaterThan(0);
+    expect(shadow('.wr-a-scroll')?.textContent).not.toContain("Couldn't load");
+  });
+
+  it('sends no range for a day that the background would refuse', async () => {
+    await start();
+    await openDates();
+    // A date input accepts a year below 100, and the background refuses it.
+    await setDate('From', '0050-01-01');
+    await setDate('From', '2026-02-30');
+    expect(sentOf('weekrow:announcement-range')).toEqual([]);
+  });
+
+  it('says that a cut range shows the first 500, with the count', async () => {
+    server.truncated = true;
+    await start(many(3));
+    await openDates();
+    await setDate('From', '2026-10-01');
+    const line = shadow('.wr-a-res [role=status]')?.textContent ?? '';
+    expect(line).toContain('Showing the first 500');
+    expect(line).toMatch(/3 results/);
   });
 
   it('shows a note and sends nothing when From is after To', async () => {

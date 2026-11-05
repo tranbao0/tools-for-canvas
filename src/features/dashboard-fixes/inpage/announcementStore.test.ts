@@ -27,7 +27,16 @@ function row(id: string, patch: Partial<AnnouncementListRow> = {}): Announcement
 /** The rows that Canvas holds, newest first, and a `send` that answers from them like the background. */
 function canvas(rows: AnnouncementListRow[]) {
   const sent: Record<string, unknown>[] = [];
-  const state = { rows, failPages: 0, failMarks: false, markOk: true };
+  const state = {
+    rows,
+    failPages: 0,
+    failMarks: false,
+    markOk: true,
+    /** A mark waits for this promise before Canvas takes it. */
+    markGate: null as Promise<void> | null,
+    /** A page reply waits for this promise after Canvas read the page. */
+    pageGate: null as Promise<void> | null,
+  };
   const send = vi.fn(async (message: unknown) => {
     const request = message as Record<string, unknown>;
     sent.push(request);
@@ -44,13 +53,19 @@ function canvas(rows: AnnouncementListRow[]) {
         );
         const offset = request['offset'] as number;
         const first = request['first'] as number;
+        const slice = filtered.slice(offset, offset + first);
+        const gate = state.pageGate;
+        if (gate !== null) await gate;
         return {
-          items: filtered.slice(offset, offset + first),
+          items: slice,
+          count: slice.length,
+          userId: '7',
           total: filtered.length,
           hasNext: offset + first < filtered.length,
         };
       }
       case 'weekrow:announcement-mark': {
+        if (state.markGate !== null) await state.markGate;
         if (state.failMarks) throw new Error('offline');
         if (state.markOk) {
           const found = state.rows.find(
@@ -62,7 +77,7 @@ function canvas(rows: AnnouncementListRow[]) {
         return { ok: state.markOk };
       }
       case 'weekrow:announcement-range':
-        return { items: state.rows.slice(0, 3), truncated: false };
+        return { items: state.rows.slice(0, 3), userId: '7', truncated: false };
     }
     return undefined;
   });
@@ -236,6 +251,7 @@ describe('the list', () => {
       type: 'weekrow:announcement-mark',
       courseId: '101',
       topicId: '2',
+      userId: '7',
       read: true,
     });
   });
@@ -437,13 +453,13 @@ describe('a range of days', () => {
     expect(sent).toHaveLength(2);
   });
 
-  it('shows a failure, and asks again for it', async () => {
+  it('shows a failure, asks again for it only on a retry, and never on a paint', async () => {
     let calls = 0;
     const store = createAnnouncementStore({
       send: async () => {
         calls += 1;
         if (calls === 1) throw new Error('offline');
-        return { items: [row('1')], truncated: true };
+        return { items: [row('1')], userId: '7', truncated: true };
       },
       changed: vi.fn(),
       log: vi.fn(),
@@ -451,8 +467,208 @@ describe('a range of days', () => {
     const state = store.ensureRange(null, '2000-01-01', '2026-11-04');
     await flush();
     expect(state.status).toBe('error');
-    store.ensureRange(null, '2000-01-01', '2026-11-04');
+
+    // The view asks for the range at each paint. A range that failed stays failed.
+    for (let paint = 0; paint < 5; paint++) store.ensureRange(null, '2000-01-01', '2026-11-04');
     await flush();
+    expect(calls).toBe(1);
+    expect(state.status).toBe('error');
+
+    store.retryRange(null, '2000-01-01', '2026-11-04');
+    await flush();
+    expect(calls).toBe(2);
     expect(state).toMatchObject({ status: 'done', truncated: true });
+    // A range that is done is not asked for again by a retry.
+    store.retryRange(null, '2000-01-01', '2026-11-04');
+    await flush();
+    expect(calls).toBe(2);
+  });
+
+  it('logs when the reply holds fewer rows than the range has', async () => {
+    const { store, log, state } = setup(many(5));
+    const send = vi.fn(async () => ({
+      items: state.rows.slice(0, 2),
+      userId: '7',
+      truncated: true,
+    }));
+    const cut = createAnnouncementStore({ send, changed: vi.fn(), log });
+    const range = cut.ensureRange(null, '2026-10-01', '2026-10-31');
+    await flush();
+    expect(range.truncated).toBe(true);
+    expect(log).toHaveBeenCalledWith('announcement range', expect.any(Error));
+    expect(store.index.rows).toEqual([]);
+  });
+});
+
+describe('a mark that waits for Canvas', () => {
+  const current = { read: 'unread', courseId: null } as const;
+
+  /** Loads 20 of 40 unread rows, marks row 3 with Canvas holding the mark, and scrolls. */
+  async function scrollDuringMark(markOk: boolean) {
+    const server = setup(many(40));
+    const { store, sent, state } = server;
+    const list = store.ensure('unread', null);
+    await flush();
+    store.more('unread', null);
+    await flush();
+    expect(list.items).toHaveLength(20);
+    state.markOk = markOk;
+    let release = (): void => undefined;
+    state.markGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const pagesBefore = sent.filter((m) => m['type'] === 'weekrow:announcement-page').length;
+    const marking = store.mark(list.items[2]!, true, current);
+    // The student scrolls while Canvas has not taken the mark.
+    store.more('unread', null);
+    await flush();
+    const pagesDuring = sent.filter((m) => m['type'] === 'weekrow:announcement-page').length;
+    expect(pagesDuring).toBe(pagesBefore);
+    state.markGate = null;
+    release();
+    expect(await marking).toBe(markOk);
+    await flush();
+    for (let more = 0; more < 6; more++) {
+      store.more('unread', null);
+      await flush();
+    }
+    return { list, sent };
+  }
+
+  it.each([true, false])('shows every row once when the mark succeeds: %s', async (markOk) => {
+    const { list } = await scrollDuringMark(markOk);
+    const ids = list.items.map((entry) => entry.id).sort((a, b) => Number(a) - Number(b));
+    expect(ids).toEqual(Array.from({ length: 40 }, (_unused, index) => String(index + 1)));
+    expect(list.hasNext).toBe(false);
+  });
+
+  it('asks for the page that the scroll wanted as soon as the mark settles', async () => {
+    const { sent } = await scrollDuringMark(true);
+    const pages = sent.filter((m) => m['type'] === 'weekrow:announcement-page');
+    expect(pages[2]).toMatchObject({ offset: 19 });
+  });
+
+  it('drops the reply of a page that was on its way when the mark began, and asks again', async () => {
+    const { store, sent, state } = setup(many(40));
+    const list = store.ensure('unread', null);
+    await flush();
+    let release = (): void => undefined;
+    state.pageGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    store.more('unread', null);
+    await flush();
+    // The page of offset 10 is read. Then the mark of row 3 reaches Canvas.
+    expect(await store.mark(list.items[2]!, true, current)).toBe(true);
+    state.pageGate = null;
+    release();
+    await flush();
+    await flush();
+    const offsets = sent
+      .filter((m) => m['type'] === 'weekrow:announcement-page')
+      .map((m) => m['offset']);
+    expect(offsets).toEqual([0, 10, 9]);
+    expect(list.items.map((entry) => entry.id)).toEqual(
+      Array.from({ length: 20 }, (_unused, index) => String(index + 1)),
+    );
+  });
+});
+
+describe('a page whose rows the projection dropped', () => {
+  it('advances the offset by the rows of the server, so an empty page does not repeat', async () => {
+    const pages: Record<string, unknown>[] = [];
+    const store = createAnnouncementStore({
+      send: async (message) => {
+        const request = message as unknown as Record<string, unknown>;
+        pages.push(request);
+        const offset = request['offset'] as number;
+        // The server holds 30 rows. The first page projects to 8 rows, the second to none.
+        if (offset === 0) {
+          return { items: [row('1'), row('2')], count: 10, userId: '7', total: 30, hasNext: true };
+        }
+        if (offset === 10) return { items: [], count: 10, userId: '7', total: 30, hasNext: true };
+        return { items: [row('21')], count: 10, userId: '7', total: 30, hasNext: false };
+      },
+      changed: vi.fn(),
+      log: vi.fn(),
+    });
+    const list = store.ensure('all', null);
+    await flush();
+    store.more('all', null);
+    await flush();
+    store.more('all', null);
+    await flush();
+    expect(pages.map((request) => request['offset'])).toEqual([0, 10, 20]);
+    expect(list.hasNext).toBe(false);
+    expect(list.items.map((entry) => entry.id)).toEqual(['1', '2', '21']);
+  });
+
+  it('stops when a reply that says it has more holds no row of the server', async () => {
+    const send = vi.fn(async () => ({
+      items: [],
+      count: 0,
+      userId: '7',
+      total: null,
+      hasNext: true,
+    }));
+    const store = createAnnouncementStore({ send, changed: vi.fn(), log: vi.fn() });
+    const list = store.ensure('all', null);
+    await flush();
+    store.more('all', null);
+    await flush();
+    expect(list.hasNext).toBe(false);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves the search index on by the rows of the server', async () => {
+    const offsets: unknown[] = [];
+    const store = createAnnouncementStore({
+      send: async (message) => {
+        const request = message as unknown as Record<string, unknown>;
+        offsets.push(request['offset']);
+        const offset = request['offset'] as number;
+        return {
+          items: offset === 0 ? [row('1')] : [row('2')],
+          count: 100,
+          userId: '7',
+          total: 200,
+          hasNext: offset === 0,
+        };
+      },
+      changed: vi.fn(),
+      log: vi.fn(),
+    });
+    store.ensureIndex();
+    await flush();
+    await flush();
+    expect(offsets).toEqual([0, 100]);
+    expect(store.index.status).toBe('done');
+  });
+});
+
+describe('a row that a mark took out of its filter', () => {
+  it('leaves the list when the student leaves the filter, and the offset stays right', async () => {
+    const { store, sent } = setup(many(25));
+    const list = store.ensure('unread', null);
+    await flush();
+    await store.mark(list.items[0]!, true, { read: 'unread', courseId: null });
+    expect(list.items).toHaveLength(10);
+
+    store.leave('unread', null);
+    expect(list.items).toHaveLength(9);
+    expect(list.items.map((entry) => entry.id)).not.toContain('1');
+    expect(nextOffset(list)).toBe(9);
+    store.more('unread', null);
+    await flush();
+    expect(sent.at(-1)).toMatchObject({ offset: 9 });
+  });
+
+  it('keeps the rows of a list that no mark touched', async () => {
+    const { store } = setup(many(25));
+    const list = store.ensure('all', null);
+    await flush();
+    await store.mark(list.items[0]!, true, { read: 'all', courseId: null });
+    store.leave('all', null);
+    expect(list.items).toHaveLength(10);
   });
 });
