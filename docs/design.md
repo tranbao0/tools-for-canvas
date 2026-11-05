@@ -353,7 +353,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - Only one dock shows at a time.
   While a file pane is open (decision 25), the dock and its tab are hidden, with no state lost.
   When the file pane closes, they come back in the state they had, open or minimized, with the same width, groups and scroll position.
-  The dock uses `watchFilePane` and `filePaneOpen` of the dock module, and `setHidden`, as the turn-in pane does.
+  The dock uses `watchFilePane` and `filePaneOpen` of the dock module, and `setHidden`, as the assignment pane does.
   The two scripts share the lease through the shared state of the dock module, and the file pane script may be injected later, when the File viewer switch goes on.
   A dock never opens while a file pane is open, because opening would write the padding of the dock over the padding of the file pane.
   A page that opens with a file pane already open starts with the dock hidden: while the File viewer switch is on, the first show of the dock or of the tab waits until the file pane script has reported that a pane is open or that none will open, for at most 200 ms (`reportFilePane` and `filePaneReported` of the dock module).
@@ -1574,6 +1574,9 @@ These sizes come from one test build of the same small app [19].
   The limit of `inpage.js` alone is 48 KB since 2026-11-05: the page script now holds the weekly dock, its tab and the shared room lease, which the card did not need.
   The other entry points keep 45 KB, and the script is not split (decision 25 keeps the file pane in its own script).
   CI checks these limits.
+  The budget applies to the store builds.
+  The signed test-channel build and the E2E build also hold the file check code (decision 23), and they sit above the store limits: in the test-channel build `background.js` is 47,551 bytes and `inpage.js` is 48,031 bytes after gzip, and the E2E build is over on the same two files.
+  `npm run check` removes the test switches from the build, so it measures only the store builds.
   The extension pages load one shared chunk for all code under `src/shared` and `src/features`, because several small chunks cost more after gzip.
   A test build with Preact had a 9.3 KB content script [19].
 - The package manager is npm.
@@ -1680,20 +1683,24 @@ These sizes come from one test build of the same small app [19].
 - Publish the same version on the Chrome Web Store, Microsoft Edge Add-ons and Firefox Add-ons.
 - Host one privacy policy page on the project's GitHub Pages site.
   - It says the extension reads Canvas data in the browser.
-  - It says the extension writes only done marks, skip marks, custom tasks and announcement read marks, and only to the student's own Canvas.
-  - It says the extension stores only settings, the Canvas address, a change time stamp and which one-time notes were seen on the device.
-  - It says nothing goes anywhere else.
+  - It says the extension writes only these items, and only to the student's own Canvas: planner overrides for done and skip marks (POST and PUT), planner notes for custom tasks (POST, PUT and DELETE), announcement read and unread marks (PUT and DELETE on the `read` route, from the Announcements tab and the widget), and the read mark of the student's rubric comments (PUT on `rubric_assessments/read`).
+  - It says that a write that reached another account gets one corrective write.
+  - It says that View Feedback loads the DocViewer session of Canvas, and that Canvas then marks the notes of that file as read.
+  - It says the extension stores on the device only the settings, the Canvas address, a change time stamp, the one-time notes that were seen, a fingerprint salt, and the page and zoom of up to 200 PDFs with the student id and the file ids.
+  - It says nothing goes to the developer, and it names the storage, DocViewer and image hosts that Canvas or a teacher chooses.
   - It includes the Chrome Web Store Limited Use statement [20].
 - Chrome Web Store [20]:
-  - Single purpose: "Show your Canvas coursework for the week as a to-do list."
-  - Data usage: tick "Website content", and say the data is processed only on the device.
+  - Single purpose: "Make the Canvas site easier for students to use: see coursework as a to-do list, and open files, assignments, announcements and teachers in place on your own Canvas."
+  - Data usage: tick "Website content", "Personally identifiable information" (name and user id) and "Authentication information" (the CSRF token, and the session cookie that the extension reads only to hash it), and say that the data is processed only on the device and sent only to the student's own Canvas.
     Chrome requires disclosure even when data stays on the device.
   - Declare "non-trader".
   - Turn on 2-Step Verification.
 - Firefox Add-ons [12] [20]:
   - Set `gecko.id`.
   - Set `data_collection_permissions` to `required: ["none"]`.
-    The reviewer notes explain that the only writes are done marks, skip marks, custom tasks and announcement read marks, sent to the student's own Canvas at the student's request.
+    The reviewer notes list the same writes.
+    They say that each write follows a click of the student, except the rubric read mark and the corrective write.
+    The rubric read mark goes once when the student's own Submission Details page shows the rubric with unread comments, as Canvas's own page sends it when the rubric opens.
   - Upload the source with a `build-for-amo` npm script and the lockfile.
   - Turn on two-factor authentication.
 - Edge Add-ons [20]:
@@ -1916,10 +1923,12 @@ They show in the same three places, below Row size, and they are stored apart fr
 
 **Decision:**
 
-- All network calls go through one fetch wrapper.
-- The wrapper allows only the saved Canvas address.
-  During setup, it also allows the one candidate address being checked.
+- All network calls go through the fetch wrapper in `src/shared/canvas`.
+  It has two functions.
+  `canvasFetch` sends each Canvas request, and `fetchFileBytes` reads the bytes of a file.
+- `canvasFetch` allows only the saved Canvas address, and it follows no redirect.
   A unit test checks this.
+- `fetchFileBytes` starts only on the saved Canvas address, and it follows the redirect that Canvas chooses, because Canvas serves a file from its storage host (decision 25).
 - A lint rule forbids `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource` and `navigator.sendBeacon` outside the wrapper.
 - The build turns off Vite's module preload polyfill, which calls `fetch` by itself.
   A CI step fails when a built bundle other than the background contains a `fetch(` call.
@@ -2911,7 +2920,7 @@ With the pane read alone, the default run of the test failed before the fix.
      It reads and writes them only when the cookie rules confirm that student (decision 11), and it gives back none when the student is another one.
      A sign-out, another student and a new address clear them.
      The same clearing sends `viewer:reset` to every tab.
-     The page script of the file pane closes the pane, also a pane that the turn-in pane covers, and clears the tabs, the courses and the names in its memory, so no pane stays open with the file of the earlier student.
+     The page script of the file pane closes the pane, also a pane that the assignment pane covers, and clears the tabs, the courses and the names in its memory, so no pane stays open with the file of the earlier student.
      It writes nothing to the background when it resets.
      A page script cannot send it: the page script handles it only from the extension itself (the sender is this extension and has no tab).
      A click that started before the reset ends without a pane and writes no tabs, because the earlier student owns it.
@@ -3425,7 +3434,7 @@ With the pane read alone, the default run of the test failed before the fix.
 - PDF.js, its worker and its decoders count toward the 1.5 MB limit of `viewer.html`.
   `check-size` adds the files of `pdfjs/` to that page, because a scan of the code cannot see an address that the page builds at run time.
   It follows the bare script name in the page (`src="viewer-frame.js"`), so the script counts too.
-- The sizes after gzip are about 32 KB for `viewer-frame.js` and about 0.7 MB for `viewer.html`, the same in all three browsers.
+- The sizes after gzip are about 42 KB for `viewer-frame.js` (limit 45 KB) and about 0.7 MB for `viewer.html`, the same in all three browsers.
 
 **Implementation status:**
 

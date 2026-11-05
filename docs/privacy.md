@@ -7,8 +7,9 @@ Last updated: 2026-11-05.
 
 Tools for Canvas has no account, no server of its own and no telemetry.
 It reads your Canvas data in your browser and shows it to you.
-It writes only done marks, skip marks, custom tasks, announcement read marks and the read mark of your rubric comments, and only to your own Canvas.
-Nothing goes anywhere else, except the images that a teacher put into an announcement and the profile pictures of the people in the People widget (see "What the extension sends elsewhere").
+It writes only done marks, skip marks, custom tasks, announcement read and unread marks and the read mark of your rubric comments, and only to your own Canvas.
+Nothing goes to the developer.
+Canvas can send a file or View Feedback to its own storage and DocViewer hosts, and images and profile pictures can load from other hosts that a teacher or Canvas chose (see "What the extension sends elsewhere").
 
 ## What the extension reads
 
@@ -22,6 +23,7 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - your done marks, skip marks and custom tasks;
 - the names of custom grade statuses in your courses;
 - your current grade and grade letter in each course, which Canvas sends with the course list, unless the course hides them;
+- the preference of the new dashboard that says which grades you hide, so that the grade cards keep them hidden;
 - the announcements of your courses: the title, author, date, read state and text of the announcements of the last 14 days of your shown courses, for the Announcements tab of the list (the extension keeps the first 1,500 characters of each text in memory);
 - the full text of an announcement that you open;
 - the announcements that the Announcements widget of the new dashboard shows, a page at a time as you scroll: the title, author, date, course name, read state and text of each (the extension keeps the first 4,000 characters of each text in memory for the page view, and reads all your announcements once, 100 at a time and at most 2,000, when you search by topic);
@@ -29,7 +31,7 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - the people that the People widget of the new dashboard shows, a page at a time as you scroll: the name, the address of the profile picture, and the course and the role (teacher or teaching assistant) of each teacher and assistant of your courses (the extension does not ask for their email addresses, and keeps the rows in memory for the page view);
 - the details of an assignment on a page of the one assignment view (the Assignments list, the Submission Details page of your own work, and the assignment page): its instructions and submission types, and your own submission with its status, time, attempt, text, address, the names and sizes of your files, the signed address of the preview of each file, and the similarity scores of your files and your text.
   The extension reads them with two requests of your own Canvas: `GET /api/v1/courses/:id/assignments/:id` and `GET /api/v1/courses/:id/assignments/:id/submissions/self`.
-  The Submission Details page sends them when it loads, and the Assignments list sends them when you show an assignment in the assignment pane, and again now and then while the pane is open.
+  The Submission Details page sends them when it loads, and the Assignments list sends them when you show an assignment in the assignment pane, and again about every 20 seconds while the pane is open and the page is in view (less often after a failed read).
   The assignment page asks only for who owns the submission and for the similarity scores, with the second request alone, when it loads.
   The request for the assignment asks for no included submission, so its reply holds no submission and no grade.
   The reply of Canvas for the assignment still holds its rubric, and the extension keeps none of it.
@@ -40,6 +42,7 @@ It reads the `_csrf_token` cookie of your Canvas site, because Canvas requires t
 The extension processes these data only on your device, to show your list.
 It keeps the Canvas data in browser memory (`storage.session`) while the browser runs.
 That memory is never written to disk, and the browser clears it when it closes.
+The browser's normal web cache can also keep answers of Canvas, as it does for any page.
 
 ## What the extension checks on web pages
 
@@ -50,6 +53,8 @@ The markers are one page element and the settings that Canvas writes in its inli
 The script looks at the text of inline scripts only to find those settings, and it keeps none of that text.
 It reads nothing else on the page.
 The detector does not read your cookies, your text input or your history.
+With the File viewer on, on a Submission Details page and on the Assignments list, the extension also asks each frame of the tab for its origin and path, after a frame of the page loads, to find the frames of your Canvas.
+It keeps no answer, and it runs nothing else in a frame of another site.
 The extension reads the Canvas session cookie (`canvas_session` and `_normandy_session`) only to compare a salted fingerprint.
 It does this before it shows cached data, to know that the same student is signed in.
 When both cookies exist, the fingerprint includes both salted hashes.
@@ -60,12 +65,14 @@ On Firefox, the item lives in the IndexedDB of the extension, which content scri
 It never stores or sends the session cookie value.
 It reads the fingerprint before and after each request that fills its cache.
 It keeps the answer only when both fingerprints match and the check confirmed that fingerprint for the same student.
-It starts no request to Canvas when there is no session cookie or when the cookie cannot be read.
+It starts no load of Canvas data when there is no session cookie or when the cookie cannot be read.
+The one request that it can send without that check is the question to Canvas who is signed in, which comes before a write.
 It reads the fingerprint again right before each request that writes to Canvas, also before a retry after a rate limit.
 It sends a write only when a check confirmed that fingerprint for the same student.
 This covers done marks, skip marks, read marks of announcements, the read mark of rubric comments, and the creation, change and deletion of your own tasks.
-It does not announce itself to the page.
-It sends nothing to any server.
+The one exception is a correction: if a write reached another account because the sign-in changed during the request, the extension sends one more request to take that write back.
+The detector does not announce itself to the page.
+The detector sends nothing to any server.
 On a page that is not Canvas, it stops at once and keeps nothing.
 On a Canvas page, it sends the address of that page to the extension itself.
 The extension keeps that address only when it is the first `instructure.com` Canvas that you open, when you answer "Use it" to the question for a Canvas with its own address, or when you choose "Switch to this Canvas?".
@@ -73,7 +80,7 @@ Until you answer, the extension keeps the detected Canvas address in session sto
 Session storage stays in browser memory and the browser clears it when it closes.
 The extension opens its welcome page once per browser session when it finds a Canvas that waits for your answer.
 The extension shows its list only on the Canvas address that you saved.
-The list script, the script of the dashboard fixes and the script of the one assignment view run only there.
+The list script, the script of the dashboard fixes, the script of the one assignment view and the script that catches clicks on file links run only there.
 The script of the one assignment view runs only on the Assignments list, the Submission Details page and the assignment page of that Canvas, and does its work only while its switch is on.
 It sends no message and no event to the page.
 None of the page scripts can read or write the storage of the extension: the background answers them through checked messages.
@@ -87,7 +94,10 @@ The extension writes only to your own Canvas, and only for something that you do
 - a custom task when you create, edit or delete one;
 - a read mark on an announcement when you press "Mark as read" in the Announcements tab, or an unread mark when you press Undo;
 - a read mark or an unread mark on an announcement when you click the read control in the Announcements widget of the new dashboard;
-- a read mark on the rubric comments of your own submission (`PUT /api/v1/courses/:id/assignments/:id/submissions/:id/rubric_assessments/read`), when you open the Submission Details page of your own work and its rubric, with unread comments, is in view.
+- a read mark on the rubric comments of your own submission (`PUT /api/v1/courses/:id/assignments/:id/submissions/:id/rubric_assessments/read`), when you open the Submission Details page of your own work and its rubric, with unread comments, is in view;
+- nothing of its own when you open View Feedback, but the session address that it loads makes Canvas mark the notes on that file as read, as Canvas's own dialog does.
+
+The one write that is not in this list is the correction of a write that reached another account (see "What the extension checks on web pages").
 
 The extension marks an announcement as read only when you press "Mark as read" or click the read control.
 The read mark of the rubric comments is the request that Canvas's own page sends when you open the rubric.
@@ -127,7 +137,7 @@ When you close the pane, the extension removes every frame at once, with no ques
 The frames also go when you change the student or the pane needs room for a new frame.
 The extension reads the address of a frame, and nothing else of its content, except that with the File viewer on it reads the address of the file link that you click in a frame (see "File viewer").
 The extension listens only for the Escape key in that frame, and it uses that key only to leave full view.
-While the pane is open, the extension reads your submission status of the assignment that it shows now and then, and also of the assignment that the pane just left when you move to another row.
+While the pane is open and the page is in view, the extension reads your submission status of the assignment that it shows about every 20 seconds (less often after a failed read), and also of the assignment that the pane just left when you move to another row.
 When you close the pane, the frames go, and it reads the status of the assignment of each frame once.
 It keeps only the fields that it compares (the student, the time, the status and the attempt) of the last answer of each assignment in the memory of the open page.
 It uses the answer to tell when your work was handed in, so that the weekly list refreshes.
@@ -152,38 +162,44 @@ The extension stores only these items in browser storage on your device:
 - a change time stamp, so that open lists refresh after a write;
 - which one-time notes you have seen;
 - which small fixes for the new Canvas dashboard are on;
-- whether the one assignment view is on.
+- whether the one assignment view is on;
+- the page and the zoom of up to 200 PDFs that you opened, with your Canvas user id and the file ids, until you sign out, another student opens a PDF or you remove the extension (see "Saved PDF positions");
+- a random salt for the sign-in fingerprint.
 
-The extension also keeps these items in browser memory (`storage.session`) for the browser session only: the announcements of the Announcements tab, the read marks that Canvas has not shown yet, and the tab (Tasks or Announcements) that each list shows.
-The browser clears them when it closes, and the extension drops them when another person signs in to Canvas.
+The extension also keeps these items in browser memory (`storage.session`) for the browser session only: the Canvas data of your list, the announcements of the Announcements tab, the read marks that Canvas has not shown yet, your waiting changes and task deletes, the confirmed sign-in fingerprints, the tab (Tasks or Announcements) that each list shows, the open file ids of each browser tab and the secret of each pane.
+The browser clears them when it closes.
+The extension also drops the Canvas data, the announcements, the read marks, the waiting changes and the open file ids when another person signs in to Canvas.
 
-The settings, the address, the notes and the switches of the fixes are in storage that web pages cannot reach.
+The settings, the address, the notes, the switches of the fixes and the salt are in storage that web pages cannot reach.
 In Chrome and Edge, the extension locks its `storage.local` against page scripts.
 In Firefox, they live in the extension's own IndexedDB, with a copy in `storage.local` that the extension checks and repairs.
 
 ## What the extension sends elsewhere
 
-Nothing.
-The extension sends no data to the developer or to any third party.
+The extension sends no data to the developer.
 It has no analytics, no error reporting, no advertising and no remote configuration.
 It opens no web page on install or uninstall.
-All requests of the extension go to the one Canvas address that you saved.
-The one exception is an image in an announcement, in the instructions of an assignment or in a comment that you open in place: the browser loads it from the address that your teacher chose, with no referrer, as the Canvas page does.
+Every request of the extension starts at the one Canvas address that you saved.
+When you open a file, Canvas can redirect the read to its file storage on another host, such as `cdn.inst-fs-iad-prod.inscloudgate.net`, and the extension follows that redirect and reads the file there.
+When you open View Feedback, the extension loads the session address of your Canvas in a frame, and Canvas sends that frame to DocViewer.
+The assignment pane shows pages of your Canvas, and these pages load what they load in a normal tab.
+An image in an announcement, in the instructions of an assignment or in your own text entry loads from the address that its author chose, with no referrer, as the Canvas page does.
 A profile picture in the People widget or in the Announcements widget of the new dashboard is the same kind of exception: when Canvas keeps the picture on another host, the browser loads it from there with no referrer, and a picture on your Canvas host loads only from a file or an image path.
 
 The code enforces this.
-All network requests go through one function that allows only your Canvas address.
+The background sends each Canvas request through one function that allows only your Canvas address.
+The bytes of a file go through a second function that starts only on your Canvas address and follows the redirect that Canvas chooses.
 A lint rule forbids network calls anywhere else in the code, and a CI check scans the built extension for web addresses.
 
 ## Permissions
 
 | Permission | Why the extension needs it |
 |---|---|
-| Access to all `https://` sites | To find your Canvas on any school address, to check each page for the Canvas markers, and to read and write your data on your saved Canvas only |
+| Access to all `https://` sites | To find your Canvas on any school address, to check each page for the Canvas markers, to read and write your data on your saved Canvas, and to read a file from the storage host that Canvas redirects to |
 | `alarms` | To resume waiting task deletes after the background worker stops |
 | `storage` | To store the settings and the Canvas address listed above, and to hold Canvas data in memory |
 | `cookies` | To read the `_csrf_token` cookie that Canvas requires for a write, and to compare a salted fingerprint of the session cookie on the saved Canvas |
-| `scripting` | To run the Canvas check in the tabs that were open before you installed or updated the extension, and to show the list, the dashboard fixes and the one assignment view in your saved Canvas |
+| `scripting` | To run the Canvas check in the tabs that were open before you installed or updated the extension, and to show the list, the dashboard fixes, the one assignment view and the file viewer in your saved Canvas |
 | `sidePanel` (Chrome and Edge) | To show the list in the browser side panel |
 
 ## Sharing and sale
@@ -196,7 +212,8 @@ No person reads your data, except you.
 The use of information that Tools for Canvas receives adheres to the Chrome Web Store User Data Policy, including the [Limited Use](https://developer.chrome.com/docs/webstore/program-policies/limited-use) requirements.
 In particular:
 
-- The extension uses your data only to show your Canvas coursework as a to-do list, which is its single purpose.
+- The extension uses your data only to make your Canvas easier to use: it shows your coursework, files, assignments, announcements and teachers to you, and it saves the marks and tasks that you ask for.
+  That is its single purpose.
 - The extension transfers no user data to any third party.
 - No person reads your data.
 - The extension does not use or transfer your data for advertising, for credit checks or for any other purpose.
@@ -204,7 +221,8 @@ In particular:
 ## Firefox data collection
 
 In Firefox, the extension declares that it collects no data (`data_collection_permissions` is `none`).
-The only data that leave your browser are the writes listed above, which go to your own Canvas at your request.
+The extension sends your Canvas requests only to your own Canvas and to the hosts that Canvas redirects to.
+It sends nothing to the developer or to any other party.
 
 ## Remove your data
 
@@ -234,11 +252,14 @@ This independent project is not affiliated with or endorsed by Instructure.
 The file viewer reads a file record with `GET /api/v1/files/:id` from your saved Canvas address.
 The record supplies the file name, content type, size, download address and course when known.
 The file viewer resolves a module item with `GET /api/v1/courses/:id/modules/:id/items/:id` to find its file id.
+When you open a file, the pane reads its bytes from the download address of the file record.
+A file that a teacher attached to a comment reads from the submission address that Canvas links.
 The extension stores the open file ids and the id of your Canvas account in session storage for each browser tab.
 It also stores a random secret there for each open pane, so that only the Canvas page script and the pane page can talk to each other.
 The secret is never shown or sent anywhere.
 It removes the file ids and the secret when the browser tab closes, and the file ids also when you sign out or another account signs in.
-In Firefox, the Canvas page can see the random address of the extension while the pane is open.
+While the pane is open, a script of the Canvas page can see a message that names the extension and its address.
+On Firefox that address is random for each install and does not change.
 This shows that the extension is installed, and it reveals nothing else.
 The file viewer reads a record or bytes only while the session cookie of your Canvas is the one that the extension confirmed for your account, so it never shows the file of another account.
 If it cannot confirm it, the pane shows "Open in Canvas" and reads nothing.
