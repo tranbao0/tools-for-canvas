@@ -577,6 +577,47 @@ describe('every page that is not the own submission', () => {
     await untouched();
   });
 
+  it('asks once more after 2 seconds when the read is rejected, and then gives up', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    send.mockRejectedValueOnce(new Error('down'));
+    start();
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(host()).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(host()).not.toBeNull();
+    view.stop();
+    send.mockReset();
+    send.mockRejectedValue(new Error('down'));
+    start();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not ask again for a refusal', async () => {
+    send.mockResolvedValue({ kind: 'no_submission_access' });
+    start();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks no more after a rejected read when the view was turned off or the student changed', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    send.mockRejectedValue(new Error('down'));
+    start();
+    await settle();
+    view.setActive(false);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(send).toHaveBeenCalledTimes(1);
+    view.setActive(true);
+    await settle();
+    expect(send).toHaveBeenCalledTimes(2);
+    view.resetStudent();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
   it('leaves the page as it is when an anchor is missing, and asks for nothing', async () => {
     document.querySelector('.submission-details-comments')!.remove();
     start();

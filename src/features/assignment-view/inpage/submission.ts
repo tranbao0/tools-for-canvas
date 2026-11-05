@@ -91,6 +91,8 @@ const SHOWN_TYPES: ReadonlySet<string | null | undefined> = new Set([
 
 /** How long a frame may stay blank, and how long the report cells of the frame are watched. */
 const FRAME_WAIT_MS = 10_000;
+/** How long the view waits before it asks again after a read that failed. It asks once. */
+const RETRY_MS = 2000;
 
 type Mode = 'replace' | 'above';
 
@@ -603,7 +605,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     if (readFrame(anchors.frame, origin, pathname).state === 'ready') watchReports();
   }
 
-  async function start(): Promise<void> {
+  async function start(retry = true): Promise<void> {
     const token = ++generation;
     if (!findAnchors(doc)) return;
     let reply: unknown;
@@ -615,6 +617,13 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       });
     } catch (error) {
       logFailure('submission details', error);
+      // A read that failed gets one more try. A switch-off, a new start or a change of student
+      // in the meantime changes the generation and ends it.
+      if (retry) {
+        setTimeout(() => {
+          if (token === generation && !stopped && active) void start(false);
+        }, RETRY_MS);
+      }
       return;
     }
     if (token !== generation || stopped || !active) return;
