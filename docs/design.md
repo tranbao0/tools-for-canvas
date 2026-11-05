@@ -4042,7 +4042,7 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     So one Preview makes one read, and a row that redirects makes one more, for the load after the slim rewrite.
   - A load that a script of the page fires is not a load: only a trusted `load` event counts.
 - **Header.**
-  - The bar has the height of the tab row of the file pane, 47 px (44 px of tab and the 3 px of its underline), a left padding of 24 px, a bold 14 px title with an ellipsis, and the same 28 px close button with a 16 px icon.
+  - The header is the one of "Card and header" above: a bold 18 px title with an ellipsis, a second line, and three 30 px buttons with 16 px icons.
   - "Open in new tab" is a bordered button with an icon and no underline.
     It opens the assignment address without `content_only`.
 - **Unsent work.**
