@@ -13,6 +13,8 @@ import type { AssignmentFile } from '../protocol';
 
 /** The path of the session that Canvas gives for a previewable file (`Attachment#canvadoc_url`). */
 const SESSION_PATH = '/api/v1/canvadoc_session';
+/** The two signed parameters of a session, once each and with a value, and no other. */
+const SESSION_QUERY = /^\?(?:blob=[^&]+&hmac=[^&]+|hmac=[^&]+&blob=[^&]+)$/;
 const MAX_TEXT = 255;
 
 export interface FrameFile {
@@ -38,11 +40,8 @@ export function sessionUrl(value: string | null, origin: string): string | null 
   try {
     const url = new URL(value, origin);
     if (url.origin !== origin || url.pathname !== SESSION_PATH || url.hash !== '') return null;
-    // The list comes from the params object: a Firefox content script cannot spread `keys()`.
-    const keys = [...url.searchParams].map(([key]) => key).sort();
-    if (keys.length !== 2 || keys[0] !== 'blob' || keys[1] !== 'hmac') return null;
-    if (!url.searchParams.get('blob') || !url.searchParams.get('hmac')) return null;
-    return url.href;
+    // The query is read as text, because a Firefox content script cannot iterate its parameters.
+    return SESSION_QUERY.test(url.search) ? url.href : null;
   } catch {
     return null;
   }

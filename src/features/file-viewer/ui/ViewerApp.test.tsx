@@ -262,13 +262,14 @@ describe('file card', () => {
     );
   });
 
-  it('shows the error with Retry and Open in Canvas, and loads again on Retry', async () => {
+  it('shows the error with Retry, Download and Open in Canvas, and loads again on Retry', async () => {
     let fail = true;
     const { open, host } = setup({
       loadFile: vi.fn(async (id: string) => (fail ? undefined : FILES[id])),
     });
     await open('1');
     await waitFor(() => expect(screen.getByText("Couldn't load this file")).toBeTruthy());
+    expect(screen.getByRole('link', { name: 'Download' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Open in Canvas' })).toBeTruthy();
     expect(tabs()[0]!.getAttribute('title')).toBe('Unavailable file');
     fail = false;

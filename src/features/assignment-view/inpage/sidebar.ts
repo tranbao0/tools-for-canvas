@@ -24,6 +24,8 @@ const ID = '\\d+(?:~\\d+)?';
 /** The address of a submitted file: `/courses/:course/assignments/:assignment/submissions/:user`. */
 const FILE_PATH = new RegExp(`^/courses/(${ID})/assignments/(${ID})/submissions/(${ID})$`);
 const FILE_ID = /^[1-9]\d*(?:~\d+)?$/;
+/** A link with the `download` parameter and no other. */
+const DOWNLOAD_QUERY = /^\?download=[^&]*$/;
 /** The nodes that the view added for one file link of Canvas. */
 interface Treatment {
   anchor: HTMLAnchorElement;
@@ -99,8 +101,8 @@ function linkUser(anchor: HTMLAnchorElement, options: SidebarOptions): string | 
   if (
     url.origin !== options.origin ||
     path === null ||
-    // The list comes from the params object: a Firefox content script cannot spread `keys()`.
-    [...url.searchParams].length !== 1 ||
+    // The query is read as text, because a Firefox content script cannot iterate its parameters.
+    !DOWNLOAD_QUERY.test(url.search) ||
     download === null ||
     !FILE_ID.test(download) ||
     normalizeCanvasId(path[1]!) !== normalizeCanvasId(options.courseId) ||

@@ -77,19 +77,17 @@ export function FileCard(props: CardProps) {
           <button type="button" class="wr-btn wr-btn-primary" onClick={props.onRetry}>
             {t('fileRetry')}
           </button>
-          {links?.canvas ? (
+          {links && (
+            <a class="wr-btn" href={links.download} data-part="download" {...NEW_TAB}>
+              <DownloadIcon />
+              {t('fileDownload')}
+            </a>
+          )}
+          {links?.canvas && (
             <a class="wr-btn" href={links.canvas} {...NEW_TAB}>
               {t('fileOpenInCanvas')}
               <ExternalLinkIcon />
             </a>
-          ) : (
-            // A comment attachment has no Canvas page. The download is the way to the file.
-            links && (
-              <a class="wr-btn" href={links.download} data-part="download" {...NEW_TAB}>
-                <DownloadIcon />
-                {t('fileDownload')}
-              </a>
-            )
           )}
           {!props.access && <AllowAccess onAllow={props.onAllow} />}
         </div>
