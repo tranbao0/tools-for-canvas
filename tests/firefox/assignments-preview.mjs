@@ -15,6 +15,9 @@
 //   d. Closing the file pane shows the assignment pane again, with the same frame, and the padding
 //      of the assignment pane.
 //   e. A click on Preview on the open row closes the pane and gives the page its own padding back.
+//   f. A click on Preview on another row keeps the header on the first assignment when the student
+//      presses the pointer in the frame before the new page loads (the capture listeners on the
+//      window of the frame work in Firefox), and moves it on the next click with no such press.
 //
 // Usage: node tests/firefox/assignments-preview.mjs
 // Set ASSIGNMENTS_PREVIEW_SHOT to a file name to save a screenshot of the list with the pane open.
@@ -84,10 +87,10 @@ async function startCanvas(routes) {
   );
   const server = createServer(
     { key: readFileSync(key), cert: readFileSync(cert) },
-    (request, response) => {
+    async (request, response) => {
       const url = new URL(request.url ?? '/', 'https://127.0.0.1');
       const route = routes[url.pathname];
-      const answer = typeof route === 'function' ? route(url) : route;
+      const answer = await (typeof route === 'function' ? route(url) : route);
       if (answer === undefined) {
         response.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
         return;
@@ -198,12 +201,23 @@ async function main() {
     },
   });
   const frameLoads = [];
+  // The page of the second assignment waits for the test, so the test can act in the old page.
+  let readingRequested = false;
+  let openReading = () => undefined;
+  const readingGate = new Promise((resolve) => {
+    openReading = resolve;
+  });
   const canvas = await startCanvas({
     [LIST_PATH]: { type: 'text/html', body: listPage },
     [ASSIGNMENT_PATH]: (url) => {
       const mode = url.searchParams.get('content_only') === '1' ? 'slim' : 'full';
       frameLoads.push(mode);
       return { type: 'text/html', body: assignmentPage(mode) };
+    },
+    [`${LIST_PATH}/102`]: async () => {
+      readingRequested = true;
+      await readingGate;
+      return { type: 'text/html', body: assignmentPage('reading') };
     },
     [`/api/v1/files/501`]: json({
       id: '501',
@@ -225,6 +239,11 @@ async function main() {
     '/api/v1/planner/items': json([]),
     [`/api/v1/courses/${COURSE}/assignments/101`]: json(records.assignment),
     [`/api/v1/courses/${COURSE}/assignments/101/submissions/self`]: json(records.submission),
+    [`/api/v1/courses/${COURSE}/assignments/102`]: json({ ...records.assignment, id: '102' }),
+    [`/api/v1/courses/${COURSE}/assignments/102/submissions/self`]: json({
+      ...records.submission,
+      assignment_id: '102',
+    }),
   });
   const origin = `https://school.instructure.com:${canvas.port}`;
   const driver = await startFirefox({
@@ -343,10 +362,54 @@ async function main() {
       'Close file: the assignment pane comes back, with its padding and its pressed row.',
     );
 
+    // f. A press in the frame before the new page loads ends the move, and the header stays.
+    const header = async () => {
+      const root = await (await driver.findElement(By.css(PANE))).getShadowRoot();
+      return (await root.findElement(By.css('.title'))).getText();
+    };
+    await driver
+      .actions()
+      .move({ origin: await driver.findElement(By.css('button[aria-label="Preview Reading"]')) })
+      .click()
+      .perform();
+    await waitFor(
+      () => readingRequested,
+      (requested) => requested,
+      'the request for the page of the second assignment',
+    );
+    await driver.switchTo().frame(await frameOf(driver, PANE));
+    await driver
+      .actions()
+      .move({ origin: await driver.findElement(By.css('#mode')) })
+      .click()
+      .perform();
+    await driver.switchTo().defaultContent();
+    openReading();
+    await driver.switchTo().frame(await frameOf(driver, PANE));
+    await waitFor(
+      () => driver.executeScript("return document.getElementById('mode')?.textContent ?? ''"),
+      (mode) => mode === 'reading',
+      'the frame to load the page of the second assignment',
+    );
+    await driver.switchTo().defaultContent();
+    await sleep(1000);
+    if ((await header()) !== 'Essay')
+      throw new Error(`A press in the frame did not keep the header: ${await header()}`);
+    // The next click has no press in the frame, so the first load is the arrival.
+    await driver
+      .actions()
+      .move({ origin: await driver.findElement(By.css('button[aria-label="Preview Reading"]')) })
+      .click()
+      .perform();
+    await waitFor(header, (text) => text === 'Reading', 'the header to follow the second click');
+    console.log(
+      'Preview on another row: a press in the frame keeps the header, and the next click moves it.',
+    );
+
     // e. Preview on the open row closes the pane.
     await driver
       .actions()
-      .move({ origin: await driver.findElement(By.css('button[aria-label="Preview Essay"]')) })
+      .move({ origin: await driver.findElement(By.css('button[aria-label="Preview Reading"]')) })
       .click()
       .perform();
     const closed = await waitFor(
