@@ -12,7 +12,6 @@ import type { Actions } from '../ui/contract';
 import { hideOnCoursesTab } from './coursesTab';
 import type { InPlaceSettings, SurfaceRuntime } from './runtime';
 import {
-  dashboardHasDock,
   mountWeeklyDock,
   openWork,
   tabText,
@@ -79,22 +78,6 @@ describe('the tab text', () => {
     const text = tabText({ kind: 'loading', undo: null } as unknown as SurfaceState);
     expect(text).toEqual({ span: 'Weekly list', open: null, label: 'Open weekly list' });
     expect(openWork({ kind: 'loading' } as unknown as SurfaceState)).toBeNull();
-  });
-});
-
-describe('the pages that get the dock', () => {
-  afterEach(() => {
-    document.body.className = '';
-  });
-
-  it.each([
-    ['Card View and Recent Activity', 'with-right-side', null, true],
-    ['List View', 'dashboard-is-planner', null, true],
-    ['the widget dashboard', '', null, false],
-    ['a course home page', 'with-right-side', '101', false],
-  ])('%s: %s', (_name, bodyClass, courseId, expected) => {
-    document.body.className = bodyClass;
-    expect(dashboardHasDock(document, courseId)).toBe(expected);
   });
 });
 

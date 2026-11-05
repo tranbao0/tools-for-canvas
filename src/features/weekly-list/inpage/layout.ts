@@ -88,7 +88,7 @@ function originOf(doc: Document, container: HTMLElement): Origin {
 }
 
 /**
- * Takes the layout of the widget dashboard and List View for the list, and keeps it while the
+ * Takes the layout of the widget dashboard for the list, and keeps it while the
  * page changes. Returns the function that stops watching and gives the page back.
  *
  * The marker on the body says that a list owns the layout. Every release removes it, so an

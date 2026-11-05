@@ -19,6 +19,15 @@ import { formatKb, listFiles, runForTargets } from './lib/build-output.mjs';
 export const BUDGET_BYTES = 45_000;
 
 /**
+ * The gzip budget for the in-page list script, in bytes. The page holds the weekly dock, its tab
+ * and the shared room lease besides the list (design decision 12).
+ */
+export const INPAGE_BUDGET_BYTES = 48_000;
+
+/** The built in-page list script. */
+export const INPAGE_ENTRY = 'inpage.js';
+
+/**
  * The gzip budget for the detector content script, in bytes. It runs on every https page
  * (decision 5), so it must stay tiny.
  */
@@ -34,6 +43,7 @@ export const DETECTOR_ENTRY = 'detector.js';
  */
 export function budgetFor(name) {
   if (name === DETECTOR_ENTRY) return DETECTOR_BUDGET_BYTES;
+  if (name === INPAGE_ENTRY) return INPAGE_BUDGET_BYTES;
   if (name === 'viewer.js') return 15_000;
   if (name === 'submission-frame.js') return 4_000;
   if (name === 'viewer.html') return 1_500_000;
