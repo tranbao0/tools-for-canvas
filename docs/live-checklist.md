@@ -365,6 +365,21 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
     Expect: every card, also the added ones, shows dots.
 35. Reload the dashboard, then change something in Canvas that makes React draw a widget again, such as the filter or the page of a widget.
     Expect: the filter and the added cards come back each time, and an open announcement stays open.
+35a. Look at the People widget, with a student who has more than 10 teachers and assistants.
+    Expect: the list of Canvas and its pager are gone, and the widget shows the Course filter, the Role filter and a scroll area with 10 people.
+    Expect: each row shows an avatar (the picture, or the initials on a color), the name in bold, each course and role of the person on its own line with no toggle, and a message button at the right.
+    Scroll the area to its end.
+    Expect: "Loading more" shows, then 10 more rows join the list, no row repeats, and the card does not change its height.
+    Keep scrolling until the end.
+    Expect: the line "No more people" shows, and the number of rows matches the number that Canvas counts for the filters.
+    Choose a course in the Course filter, then a role in the Role filter.
+    Expect: the list shows only the people of that course and role from its top, and the list of "All Courses" and "All Roles" comes back with its rows when you choose them again.
+    Press the message button of a person.
+    Expect: a new tab opens the compose page of Canvas with that person and that course filled in, and the dashboard stays where it is.
+    Use the dark theme of the dashboard.
+    Expect: the rows, the message buttons and the lines are readable.
+    Turn off "People list" in the settings.
+    Expect: the list and the pager of Canvas come back as they were, and the other fixes stay.
 36. In the settings of the extension, turn off each switch of "New dashboard fixes" in turn, with the dashboard open.
     Expect: the matching fix goes away at once, the page shows what Canvas draws, and the other fixes stay.
     Minimize the weekly list.
