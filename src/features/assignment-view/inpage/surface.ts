@@ -10,7 +10,7 @@ import { logFailure } from '../../../shared/platform/log';
 import { sendFromContentScript } from '../../weekly-list/surface/inpageHost';
 import { createPageChannel } from '../../weekly-list/surface/pageChannel';
 import type { PageScriptContext } from '../../weekly-list/surface/pageScript';
-import { removeStaleView } from './rows';
+import { removeStaleView } from './stale';
 import { startAssignmentView } from './start';
 
 /** How often the script checks that its extension is still there (see pageScript.ts). */
@@ -39,6 +39,7 @@ export async function startAssignmentViewSurface(ctx: PageScriptContext): Promis
   await startAssignmentView({
     channel,
     signal: ctx.signal,
+    requestFrameCatcher: () => browser.runtime.sendMessage({ type: 'viewer:inject-frames' }),
     // The background tells every page when the student of the data changed or signed out.
     onStudentReset: (listener) =>
       listenToBackground((message) => {

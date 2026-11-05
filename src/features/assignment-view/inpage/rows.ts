@@ -1,37 +1,31 @@
-import { normalizeCanvasId } from '../../../shared/canvas/ids';
 /**
- * The expand rows of the Assignments list (design decision 26, "The Assignments list rows").
+ * The Preview buttons of the Assignments list (design decision 26, "The Assignments list").
  *
- * Each assignment row gets a toggle button at the start of its info block. The button opens a
- * row under it that holds the details in a shadow root, and a second click closes it. The rows
- * stay open while the page stays open, and the details load on the first open and stay in memory
- * for the page view. This code leaves the title link and Canvas's own controls as they are.
+ * Each assignment row gets a "Preview" button as the last child of its layout. A click on it opens
+ * the assignment pane on that assignment, moves the pane to it, or closes the pane when the pane
+ * already shows it. The row of the assignment in the pane is marked, and its button is pressed.
+ * This code leaves the title link and Canvas's own controls as they are.
  *
- * One observer watches the page, because Canvas can draw rows late. After a batch of changes, one
- * pass adds a button to each row that has none. The pass ignores the changes that this code makes
- * itself. Turning the view off removes everything it added.
+ * One observer watches the page, because Canvas draws rows late and draws a row again after a
+ * change. After a batch of changes, one pass adds a button to each row that has none. The pass
+ * ignores the changes that this code makes itself. Turning the view off removes everything it
+ * added.
  */
-import { submissionChanged } from '../turnIn';
-import { createListRefresh } from './listRefresh';
-import { fitInstructions, toggleInstructions } from './instructions';
-import type { DataMessage } from '../../weekly-list/data/protocol';
-import { logFailure } from '../../../shared/platform/log';
-import { giveBackRoom } from '../../file-viewer/dock';
-import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
-import type { PageTheme } from '../../../shared/ui/pageTheme';
-import type { AssignmentDetailsMessage, AssignmentDetailsReply } from '../protocol';
-import { isDetailsReply, renderDetails, renderError, renderLoading } from './details';
-import { restoreStaleComments } from './comments';
-import { ORIGINAL, OWN, rightColumn } from './own';
-import { RUBRIC_WRAPPER_ID, restoreStaleRubric } from './rubric';
-import { PAGE_CSS, PANEL_CSS } from './styles';
+import { normalizeCanvasId } from '../../../shared/canvas/ids';
+import type { PreviewRequest } from '../preview';
+import { OWN } from './own';
+import { PAGE_CSS } from './styles';
 
-export { OWN, ORIGINAL };
 const STYLE_ID = 'av-styles';
+/** The attribute of the button, which the style rules find. */
+const BUTTON = 'data-av-preview';
+/** The mark of the row whose assignment the pane shows. */
+const OPEN_MARK = 'data-av-open';
 /** How long a batch of page changes waits for the next one. */
 const BATCH_MS = 50;
 /** The id of an assignment row: `assignment_<assignment id>`. */
 const ROW_ID = /^assignment_(\d+(?:~\d+)?)$/;
+const SVG = 'http://www.w3.org/2000/svg';
 
 export interface RowsOptions {
   doc: Document;
@@ -39,184 +33,27 @@ export interface RowsOptions {
   origin: string;
   /** The course of the page. */
   courseId: string;
-  send(message: AssignmentDetailsMessage | DataMessage): Promise<unknown>;
-  /** Called when the student presses Submit or Re-submit in an open row. */
-  openTurnIn?(request: { assignmentId: string; title: string }): void;
-  /** Called when a read of the details finds the submission of another student. */
-  onOtherStudent?(): void;
-  now?: () => Temporal.Instant;
-  /** The theme of the panels now. It is read when a panel opens, because the page can change. */
-  theme?: () => PageTheme;
+  /** Called when the student presses Preview. Only a trusted click calls it. */
+  onPreview(request: PreviewRequest): void;
 }
 
 export interface RowsEngine {
-  /** Shows the view on the page, or removes it. Removing it forgets the loaded details. */
+  /** Shows the buttons on the page, or removes them and the marks. */
   setActive(active: boolean): void;
-  /** Reads the theme again, after the Theme setting changed. */
-  refreshTheme(): void;
   /**
-   * Reads the details of an assignment again, after a submission may have happened. A change of the
-   * submission draws the open rows again and asks the weekly list to refresh. A failed read leaves
-   * the details as they are and rejects.
+   * Marks the row of the assignment that the pane shows, and the button in it, and clears the mark
+   * of every other row. `null` marks no row. The mark survives a redraw of the rows.
    */
-  reload(assignmentId: string): Promise<void>;
+  setOpen(assignmentId: string | null): void;
   /** Removes everything and stops. */
   stop(): void;
 }
 
 interface RowState {
   assignmentId: string;
-  title: string;
   row: HTMLElement;
+  layout: HTMLElement;
   button: HTMLButtonElement;
-  details: HTMLElement | null;
-  panel: HTMLElement | null;
-  host: HTMLElement | null;
-  resize: ResizeObserver | null;
-  /** Names the load that may draw, so an older answer cannot replace a newer one. */
-  load: number;
-}
-
-/** The text of other people that Canvas shows in the Submission box. A sweep never goes into it. */
-const COMMENTS = '.comments';
-
-/**
- * Every place where the text of another author can stand: a comment of Canvas, also while the
- * column is in the box, and the rubric, which the view moves into its wrapper.
- */
-const COMMENT_TEXT = '.comments,.submission-details-comments,#av-comments,#rubric_holder';
-
-/** The nodes of the root that match, except those in the comments of Canvas. */
-function inOwnedPart(root: ParentNode, selector: string): Element[] {
-  return [...root.querySelectorAll(selector)].filter((node) => node.closest(COMMENTS) === null);
-}
-
-/**
- * The own node with this id that stands where the view puts it, or `null`. The text of another
- * author can hold a node with the same id and the mark of the view, so a node counts only at the
- * place that `at` names, and never inside the comments.
- */
-function ownNode(doc: Document, id: string, at: (node: Element) => boolean): Element | null {
-  for (const node of doc.querySelectorAll(`[id="${id}"]`)) {
-    if (node.hasAttribute(OWN) && node.closest(COMMENT_TEXT) === null && at(node)) return node;
-  }
-  return null;
-}
-
-/** The container of the two columns that Canvas draws, outside the text of other authors. */
-function realContainer(doc: Document): Element | null {
-  for (const node of doc.querySelectorAll('.submission-details-container')) {
-    if (node.closest(COMMENT_TEXT) === null) return node;
-  }
-  return null;
-}
-
-/** The files frame that Canvas draws in the real container. */
-function realFrame(doc: Document): Element | null {
-  const children = realContainer(doc)?.children ?? [];
-  return (
-    [...children].find((child) => child.classList.contains('submission-details-frame')) ?? null
-  );
-}
-
-/** The host of the instructions stands before the real container, or after the real frame in it. */
-const isHostPlace = (node: Element): boolean => {
-  const container = realContainer(node.ownerDocument);
-  if (container === null) return false;
-  return (
-    node.nextElementSibling === container ||
-    (node.parentElement === container &&
-      node.previousElementSibling === realFrame(node.ownerDocument))
-  );
-};
-
-/** The panes of the dock stand in the body. */
-const isPanePlace = (node: Element): boolean => node.parentElement === node.ownerDocument.body;
-
-/** The wrapper of the rubric stands in the real host of the instructions, or in the real frame. */
-const isRubricPlace = (node: Element): boolean => {
-  const doc = node.ownerDocument;
-  const parent = node.parentElement;
-  if (parent === null) return false;
-  return parent === realFrame(doc) || parent === ownNode(doc, 'av-submission-details', isHostPlace);
-};
-
-/**
- * Puts the nodes of Canvas back in the place of the own nodes that hold them. Only a holder that
- * is a direct child of a link, inside the root, counts: that is where the sidebar view puts it.
- */
-export function giveBackOriginals(root: ParentNode): void {
-  for (const holder of inOwnedPart(root, `a[href] > [${ORIGINAL}][${OWN}]`))
-    holder.replaceWith(...holder.childNodes);
-}
-
-/** The assignment page, with its Submission box in the right column. */
-const ASSIGNMENT_PAGE = /^\/courses\/\d+(?:~\d+)?\/assignments\/\d+(?:~\d+)?\/?$/;
-const SUBMISSION_PAGE = /^\/courses\/\d+(?:~\d+)?\/assignments\/\d+(?:~\d+)?\/submissions\//;
-
-/**
- * The ids of the two panes that this view docks in the body: the feedback pane and the turn-in
- * pane. An earlier copy of the script can leave one behind when it dies with its pane open.
- */
-export const STALE_PANE_IDS: readonly string[] = ['tools-feedback', 'tools-turn-in'];
-
-/**
- * The parts of the page where the view of this page puts its nodes, and nothing else. The text of
- * other authors (a description, a comment) sits elsewhere, so a sweep never reaches it:
- * - the assignment page: the content of the Submission box, `#sidebar_content .details .content`;
- * - the Submission Details page: the head, which holds the style, the host, by its id, the
- *   container of the title row's buttons, `.ic-Action-header__Secondary`, which holds the own link,
- *   and the right column `#right-side`, which holds the Submission box. The comments column goes
- *   home before the sweep, so a comment of another author is never inside this root;
- * - the Assignments list: the head, and the lists that hold the rows and their detail rows.
- * The panes in the body go by their ids on the pages that dock them.
- */
-function ownedRoots(doc: Document, pathname: string): Element[] {
-  if (ASSIGNMENT_PAGE.test(pathname)) {
-    // A comment can hold its own `.content` inside `.details`: only the box's own counts.
-    return [...doc.querySelectorAll('#sidebar_content .details .content')].filter(
-      (root) => root.closest('.comments') === null,
-    );
-  }
-  for (const id of STALE_PANE_IDS) ownNode(doc, id, isPanePlace)?.remove();
-  const roots = new Set<Element>([doc.head]);
-  if (SUBMISSION_PAGE.test(pathname)) {
-    ownNode(doc, 'av-submission-details', isHostPlace)?.remove();
-    const buttons = doc.querySelector('.ic-Action-header__Secondary');
-    if (buttons) roots.add(buttons);
-    const column = rightColumn(doc);
-    if (column) roots.add(column);
-    return [...roots];
-  }
-  for (const row of doc.querySelectorAll('.ig-row[id^=assignment_],[data-av-details]')) {
-    if (row.parentElement) roots.add(row.parentElement);
-  }
-  return [...roots];
-}
-
-/** Removes what an earlier copy of this script left in the parts of the page that the view owns. */
-export function removeStaleView(
-  doc: Document = document,
-  pathname: string = doc.defaultView?.location.pathname ?? '',
-): void {
-  // Canvas's rubric and comments go back home first, while the wrappers that hold them are still
-  // on the page. A comment of another author can hold marks of the view, so the comments must be
-  // home before the sweep.
-  restoreStaleRubric(doc);
-  restoreStaleComments(doc);
-  ownNode(doc, RUBRIC_WRAPPER_ID, isRubricPlace)?.remove();
-  const roots = ownedRoots(doc, pathname);
-  // The hosts of dead panes are gone now, so the room that they took goes back.
-  giveBackRoom(doc);
-  for (const root of roots) {
-    giveBackOriginals(root);
-    for (const node of inOwnedPart(root, `[${OWN}]`)) node.remove();
-    for (const element of [root, ...inOwnedPart(root, '*')]) {
-      for (const name of element.getAttributeNames()) {
-        if (name.startsWith('data-av-')) element.removeAttribute(name);
-      }
-    }
-  }
 }
 
 function titleOf(row: HTMLElement, assignmentId: string): string {
@@ -230,7 +67,6 @@ function isForeign(records: readonly MutationRecord[]): boolean {
   return records.some((record) => {
     if (record.target instanceof Element && record.target.closest(`[${OWN}]`) !== null)
       return false;
-    if (record.type === 'attributes') return true;
     const nodes = [...record.addedNodes, ...record.removedNodes];
     return !(
       nodes.length > 0 && nodes.every((node) => node instanceof Element && node.hasAttribute(OWN))
@@ -238,189 +74,104 @@ function isForeign(records: readonly MutationRecord[]): boolean {
   });
 }
 
+/** The side panel icon: a window with a pane on its right, which is filled while the pane is open. */
+function icon(doc: Document): SVGElement {
+  const svg = doc.createElementNS(SVG, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '16');
+  svg.setAttribute('height', '16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  const shape = (tag: string, attributes: Record<string, string>): SVGElement => {
+    const node = doc.createElementNS(SVG, tag);
+    for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
+    return node;
+  };
+  svg.append(
+    shape('rect', { x: '3', y: '4', width: '18', height: '16', rx: '2' }),
+    shape('path', { d: 'M15 4v16' }),
+    shape('rect', {
+      class: 'av-pane-fill',
+      x: '15',
+      y: '4',
+      width: '6',
+      height: '16',
+      fill: 'currentColor',
+    }),
+  );
+  return svg;
+}
+
 export function createRowsEngine(options: RowsOptions): RowsEngine {
-  const { doc, origin, courseId, send } = options;
-  const listRefresh = createListRefresh(send);
-  const now = options.now ?? (() => Temporal.Now.instant());
-  const theme = options.theme ?? ((): PageTheme => 'light');
+  const { doc, origin, courseId } = options;
   let active = false;
   let stopped = false;
   let observer: MutationObserver | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let style: HTMLStyleElement | null = null;
+  let openId: string | null = null;
   const states = new Map<HTMLElement, RowState>();
-  /** The requests of this page view, by assignment id. A failed request leaves the map. */
-  const openIds = new Set<string>();
-  const loaded = new Map<string, Promise<AssignmentDetailsReply>>();
 
-  function details(assignmentId: string): Promise<AssignmentDetailsReply> {
-    let request = loaded.get(assignmentId);
-    if (request === undefined) {
-      request = Promise.resolve(send({ type: 'assignment:details', courseId, assignmentId })).then(
-        (reply) => {
-          if (
-            !isDetailsReply(reply) ||
-            normalizeCanvasId(reply.details.assignment.id) !== normalizeCanvasId(assignmentId)
-          ) {
-            throw new Error('The background gave no details');
-          }
-          return reply;
-        },
-      );
-      const own = request;
-      loaded.set(assignmentId, own);
-      own.catch(() => {
-        if (loaded.get(assignmentId) === own) loaded.delete(assignmentId);
-      });
-    }
-    return request;
+  const isOpen = (state: RowState): boolean =>
+    openId !== null && normalizeCanvasId(state.assignmentId) === normalizeCanvasId(openId);
+
+  /** Sets the mark of a row and the state of its button, and only when they differ. */
+  function mark(state: RowState): void {
+    const open = isOpen(state);
+    if (state.row.hasAttribute(OPEN_MARK) !== open) state.row.toggleAttribute(OPEN_MARK, open);
+    const pressed = String(open);
+    if (state.button.getAttribute('aria-pressed') !== pressed)
+      state.button.setAttribute('aria-pressed', pressed);
   }
 
-  function showIn(state: RowState, content: HTMLElement): void {
-    state.panel?.replaceChildren(content);
-  }
-
-  /** Cuts the instructions to about 10 lines and shows the button only when text is cut. */
-  function fitInstructionsOf(state: RowState): void {
-    if (state.details?.hidden === false) fitInstructions(state.panel);
-  }
-
-  function draw(state: RowState): void {
-    const token = ++state.load;
-    showIn(state, renderLoading(doc));
-    details(state.assignmentId).then(
-      (reply) => {
-        if (stopped || state.load !== token || !state.row.isConnected) return;
-        showIn(state, renderDetails(reply, { doc, origin, courseId, now }));
-        fitInstructionsOf(state);
-        const body = state.panel?.querySelector('.av-instructions .av-body');
-        // An image that loads later changes the height.
-        state.resize?.disconnect();
-        state.resize = null;
-        if (body && typeof ResizeObserver !== 'undefined') {
-          state.resize = new ResizeObserver(() => fitInstructionsOf(state));
-          state.resize.observe(body);
-        }
-      },
-      (error: unknown) => {
-        if (stopped || state.load !== token) return;
-        logFailure('assignment details', error);
-        showIn(state, renderError(doc));
-      },
-    );
-  }
-
-  function onPanelClick(state: RowState, event: Event): void {
-    const target = event.target instanceof Element ? event.target.closest('[data-action]') : null;
-    const action = target?.getAttribute('data-action');
-    if (action === 'submit') {
-      // A page script can click the button, but only the student opens the turn-in.
-      if (event.isTrusted)
-        options.openTurnIn?.({ assignmentId: state.assignmentId, title: state.title });
-    } else if (action === 'retry') {
-      draw(state);
-    } else if (action === 'more' && target) {
-      toggleInstructions(state.panel, target);
-    }
-  }
-
-  function createDetails(state: RowState): void {
-    const row = doc.createElement('div');
-    row.id = `av-details-${state.assignmentId}`;
-    row.setAttribute(OWN, '');
-    row.setAttribute('data-av-details', '');
-    const host = doc.createElement('div');
-    host.setAttribute(OWN, '');
-    // The file pane takes clicks on the links inside this host (decision 25).
-    host.setAttribute(PANEL_HOST_ATTRIBUTE, '');
-    host.setAttribute('data-theme', theme());
-    host.setAttribute('lang', 'en');
-    const shadow = host.attachShadow({ mode: 'open' });
-    const sheet = doc.createElement('style');
-    sheet.textContent = PANEL_CSS;
-    const panel = doc.createElement('div');
-    panel.className = 'av';
-    panel.setAttribute('role', 'region');
-    panel.setAttribute('aria-label', `Details of ${state.title}`);
-    shadow.append(sheet, panel);
-    shadow.addEventListener('click', (event) => onPanelClick(state, event));
-    row.append(host);
-    state.row.after(row);
-    state.details = row;
-    state.host = host;
-    state.panel = panel;
-  }
-
-  function toggle(state: RowState): void {
-    const opening = state.button.getAttribute('aria-expanded') !== 'true';
-    if (opening) openIds.add(state.assignmentId);
-    else openIds.delete(state.assignmentId);
-    state.button.setAttribute('aria-expanded', String(opening));
-    if (!opening) {
-      if (state.details) state.details.hidden = true;
-      return;
-    }
-    if (state.details === null) {
-      createDetails(state);
-      draw(state);
-    } else {
-      state.host?.setAttribute('data-theme', theme());
-      state.details.hidden = false;
-      fitInstructionsOf(state);
-    }
-  }
-
-  function attach(row: HTMLElement, assignmentId: string): void {
+  function attach(row: HTMLElement, layout: HTMLElement, assignmentId: string): void {
     const title = titleOf(row, assignmentId);
     const button = doc.createElement('button');
     button.type = 'button';
     button.setAttribute(OWN, '');
-    button.setAttribute('data-av-toggle', '');
-    button.setAttribute('aria-expanded', 'false');
-    button.setAttribute('aria-controls', `av-details-${assignmentId}`);
-    button.setAttribute('aria-label', `Show details for ${title}`);
-    const state: RowState = {
-      assignmentId,
-      title,
-      row,
-      button,
-      details: null,
-      panel: null,
-      host: null,
-      resize: null,
-      load: 0,
-    };
-    button.addEventListener('click', () => toggle(state));
-    (row.querySelector('.ig-info') ?? row.firstElementChild ?? row).prepend(button);
+    button.setAttribute(BUTTON, '');
+    button.setAttribute('aria-label', `Preview ${title}`);
+    button.append(icon(doc), doc.createTextNode('Preview'));
+    button.addEventListener('click', (event) => {
+      // A script of the page can click the button, but only the student opens the pane.
+      if (event.isTrusted) options.onPreview({ assignmentId, title });
+    });
+    layout.append(button);
+    const state: RowState = { assignmentId, row, layout, button };
     states.set(row, state);
-    if (openIds.has(assignmentId)) toggle(state);
+    mark(state);
   }
 
   function release(state: RowState): void {
-    state.resize?.disconnect();
     state.button.remove();
-    state.details?.remove();
+    state.row.removeAttribute(OPEN_MARK);
   }
 
   /** Adds a button to each assignment row that has none, and forgets the rows that left the page. */
   function pass(): void {
     if (!active || stopped) return;
     for (const [row, state] of states) {
-      if (row.isConnected && state.button.isConnected) {
-        if (state.details && state.details.previousElementSibling !== row) row.after(state.details);
+      if (row.isConnected && state.button.isConnected && state.layout.isConnected) {
+        // Canvas can add a control to the layout after the button, and the button stays last.
+        if (state.layout.lastElementChild !== state.button) state.layout.append(state.button);
+        mark(state);
         continue;
       }
-      if (state.button.getAttribute('aria-expanded') === 'true') openIds.add(state.assignmentId);
       release(state);
       states.delete(row);
     }
     for (const row of doc.querySelectorAll<HTMLElement>('.ig-row[id^=assignment_]')) {
       const assignmentId = ROW_ID.exec(row.id)?.[1];
       if (assignmentId === undefined || states.has(row)) continue;
+      const layout = row.querySelector<HTMLElement>('.ig-row__layout');
       const link = row.querySelector<HTMLAnchorElement>('a.ig-title');
       const path =
         link && /^\/courses\/(\d+(?:~\d+)?)\/assignments\/(\d+(?:~\d+)?)\/?$/.exec(link.pathname);
       if (
+        !layout ||
         !link ||
         link.origin !== origin ||
         !path ||
@@ -428,7 +179,7 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
         normalizeCanvasId(path[2]!) !== normalizeCanvasId(assignmentId)
       )
         continue;
-      attach(row, assignmentId);
+      attach(row, layout, assignmentId);
     }
   }
 
@@ -448,8 +199,6 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
     observer = null;
     for (const state of states.values()) release(state);
     states.clear();
-    loaded.clear();
-    openIds.clear();
     style?.remove();
     style = null;
   }
@@ -473,35 +222,12 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
       });
       observer.observe(doc.body, { childList: true, subtree: true });
     },
-    refreshTheme() {
-      for (const state of states.values()) state.host?.setAttribute('data-theme', theme());
-    },
-    async reload(assignmentId) {
-      const previous = await loaded.get(assignmentId);
-      if (!active || stopped) return;
-      loaded.delete(assignmentId);
-      const next = await details(assignmentId).catch((error: unknown) => {
-        if (active && !stopped && previous && !loaded.has(assignmentId)) {
-          loaded.set(assignmentId, Promise.resolve(previous));
-        }
-        throw error;
-      });
-      if (!active || stopped) return;
-      if (previous && previous.details.submission.user_id !== next.details.submission.user_id) {
-        options.onOtherStudent?.();
-        return;
-      }
-      if (previous && submissionChanged(previous.details.submission, next.details.submission)) {
-        for (const row of states.values()) {
-          if (row.assignmentId === assignmentId && row.details) draw(row);
-        }
-        // The visible refresh keeps the Canvas rate limit and the backoff of the weekly list.
-        listRefresh.request();
-      }
+    setOpen(assignmentId) {
+      openId = assignmentId;
+      for (const state of states.values()) mark(state);
     },
     stop() {
       if (stopped) return;
-      listRefresh.stop();
       active = false;
       clear();
       stopped = true;

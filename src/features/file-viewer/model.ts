@@ -1,3 +1,4 @@
+import { normalizeCanvasId } from '../../shared/canvas/ids';
 /** File identities and pane state contain no download addresses. */
 /**
  * The attribute of a host that an extension panel draws into the Canvas page, with an open shadow
@@ -213,6 +214,59 @@ const SUBMISSION_PAGE =
   /^\/courses\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/assignments\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/(?:submissions\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?|anonymous_submissions\/[A-Za-z0-9]+)\/?$/;
 export function isSubmissionPage(pagePath: string): boolean {
   return SUBMISSION_PAGE.test(pagePath);
+}
+
+/** The Assignments list of a course, and a page of a course: `/courses/:id` and everything under it. */
+const ASSIGNMENTS_LIST = new RegExp(`^/courses/(${ID_PART})/assignments/?$`);
+const COURSE_PAGE = new RegExp(`^/courses/(${ID_PART})(?:/.*)?$`);
+
+/** Whether a page path is the Assignments list of a course, which holds the assignment pane. */
+export function isAssignmentsList(pagePath: string): boolean {
+  return ASSIGNMENTS_LIST.test(pagePath);
+}
+
+/**
+ * Whether a frame page is in the course of the Assignments list at `topPath`. The ids compare as
+ * decimal global ids, because a shard id can be written in two forms.
+ */
+export function isPaneCoursePage(topPath: string, framePath: string): boolean {
+  const list = ASSIGNMENTS_LIST.exec(topPath)?.[1];
+  const own = COURSE_PAGE.exec(framePath)?.[1];
+  return (
+    list !== undefined && own !== undefined && normalizeCanvasId(list) === normalizeCanvasId(own)
+  );
+}
+
+/**
+ * Whether a frame page is a page that the assignment pane holds in a tab that shows the
+ * Assignments list at `topPath`: a page of the same course with `content_only=1`. The pane loads
+ * its frame with that parameter, and it loads every other page of the course that the frame
+ * reaches (a graded discussion or quiz) with the parameter too.
+ */
+export function isPaneFramePage(topPath: string, framePath: string, frameSearch: string): boolean {
+  return (
+    isPaneCoursePage(topPath, framePath) &&
+    new URLSearchParams(frameSearch).get('content_only') === '1'
+  );
+}
+
+/**
+ * The file of a link in a page of the assignment pane's frame (decision 25, item 11), or `null`
+ * when the link is not a file link. It takes the links that the top frame takes (`fileTarget`)
+ * and passes a file id only, because a comment attachment needs a route that the frame never
+ * hands over. A link with a `download` attribute keeps its action, except a file that the student
+ * handed in (`catchesDownload`). `href` is the address that the browser resolved for the link.
+ */
+export function paneFileTarget(
+  link: Element,
+  href: string,
+  origin: string,
+  pagePath: string,
+): { fileId: string } | null {
+  if (!link.matches('a[href]')) return null;
+  if (link.hasAttribute('download') && !catchesDownload(link, href, origin, pagePath)) return null;
+  const target = fileTarget(href, origin);
+  return target !== null && 'fileId' in target && isFileId(target.fileId) ? target : null;
 }
 
 /**

@@ -16,11 +16,14 @@ import { inpageTheme } from '../../../shared/ui/theme';
 import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
 import type { DataMessage } from '../../weekly-list/data/protocol';
 import type { Settings } from '../../weekly-list/model/types';
+import { normalizeCanvasId } from '../../../shared/canvas/ids';
+import { createCatcherRequest } from './catcherRequest';
 import { createFeedbackPane, type FeedbackPane } from './feedbackPane';
-import { createRowsEngine, type RowsEngine } from './rows';
+import { createPreviewPane } from './previewPane';
+import { createRowsEngine } from './rows';
 import { createSidebarEngine } from './sidebar';
 import { createSubmissionView } from './submission';
-import { createTurnInPane, type TurnInPane } from './turnInPane';
+import { createSubmissionWatch } from './submissionWatch';
 
 /** The Assignments list, including a shard id. */
 const LIST_PATH = /^\/courses\/(\d+(?:~\d+)?)\/assignments\/?$/;
@@ -36,7 +39,7 @@ const SUBMISSION_PATH =
 interface PaneControl {
   setWidth(width: number): void;
   refreshTheme(): void;
-  /** Removes the frame, for example when the student switched. */
+  /** Removes every frame, for example when the student switched. */
   reset(): void;
   stop(): void;
 }
@@ -83,6 +86,11 @@ export interface StartAssignmentViewOptions {
   signal?: AbortSignal;
   /** Calls the listener when the student changed or signed out. Returns a remover. */
   onStudentReset?(listener: () => void): () => void;
+  /**
+   * Asks the background to put the file catcher into the frame of the assignment pane, which
+   * makes a file link in the pane open in the file pane. The background checks the switch.
+   */
+  requestFrameCatcher?(): Promise<unknown>;
 }
 
 export interface AssignmentViewController {
@@ -103,7 +111,7 @@ export async function startAssignmentView(
   let stopped = false;
   const stops: (() => void)[] = [];
   let engine: ViewEngine | null = null;
-  /** The pane of the page: the turn-in on the list, the feedback on the submission page. */
+  /** The pane of the page: the assignment pane on the list, the feedback on the submission page. */
   let pane: PaneControl | null = null;
   const controller: AssignmentViewController = {
     stop() {
@@ -156,26 +164,58 @@ export async function startAssignmentView(
     });
     pane = { setWidth() {}, refreshTheme() {}, reset() {}, stop() {} };
   } else {
-    const rows: RowsEngine = createRowsEngine({
+    let viewOn = false;
+    const requestCatcher = createCatcherRequest(
+      () => options.requestFrameCatcher?.() ?? Promise.resolve(),
+      () => !stopped && tools?.fileViewer === true,
+    );
+    const rows = createRowsEngine({
       doc,
       origin,
       courseId,
-      send: channel.send,
-      theme,
-      openTurnIn: (request) => turnIn.open(request),
-      onOtherStudent: () => turnIn.reset(),
+      onPreview: (request) => {
+        const shown = preview.shown;
+        // A click on the row that the pane shows closes the pane. A pane that a file pane covers
+        // shows no row, so the click brings it back over the file pane.
+        if (shown !== null && normalizeCanvasId(shown) === normalizeCanvasId(request.assignmentId))
+          preview.close();
+        else preview.open(request);
+      },
     });
-    const turnIn: TurnInPane = createTurnInPane({
+    const watch = createSubmissionWatch({
+      courseId,
+      send: channel.send,
+      active: () => viewOn,
+      onOtherStudent: () => preview.reset(),
+    });
+    const preview = createPreviewPane({
       doc,
       origin,
       courseId,
       theme,
       width,
       saveWidth,
-      reload: (assignmentId) => rows.reload(assignmentId),
+      reload: (assignmentId) => watch.read(assignmentId),
+      onShown: (assignmentId) => rows.setOpen(assignmentId),
+      onFrameLoad: requestCatcher,
     });
-    engine = rows;
-    pane = turnIn;
+    engine = {
+      setActive(active) {
+        viewOn = active;
+        // A switch that goes off forgets the baselines, so the first read after it is a new one.
+        if (!active) watch.forget();
+        rows.setActive(active);
+      },
+      refreshTheme() {},
+      setFileViewer: (on) => preview.setFileViewer(on),
+      // The next student has no baseline of the earlier student, and the earlier reply goes.
+      resetStudent: () => watch.forget(),
+      stop() {
+        rows.stop();
+        watch.stop();
+      },
+    };
+    pane = preview;
   }
   const view = engine;
   const dock = pane;
@@ -186,8 +226,8 @@ export async function startAssignmentView(
   let saved: string | null = null;
   let enabled = false;
   const apply = (): void => {
-    // An open turn-in may hold unsent work, so a switch or an address that a failed read made
-    // unknown never closes it. A change of student, a sign-out and a new address do, through
+    // An open assignment pane may hold unsent work, so a switch or an address that a failed read
+    // made unknown never closes it. A change of student, a sign-out and a new address do, through
     // `onStudentReset`.
     view.setActive(!stopped && enabled && saved === origin);
   };

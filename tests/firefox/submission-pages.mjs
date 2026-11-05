@@ -352,21 +352,14 @@ async function main() {
   const records = rawRecords({
     assignment: {
       id: ASSIGNMENT,
-      name: 'Reflection Paper #2',
       description: '<p>Write.</p>',
-      due_at: '2026-11-03T20:00:00Z',
-      points_possible: 50,
-      can_submit: true,
     },
     submission: {
       user_id: USER,
-      score: 40,
-      grade: '40',
       submitted_at: '2026-11-03T17:41:00Z',
       workflow_state: 'graded',
       submission_type: 'online_upload',
       attachments: [{ id: '501', display_name: NAME, size: 120_832 }],
-      submission_comments: [],
     },
   });
   let origin = '';

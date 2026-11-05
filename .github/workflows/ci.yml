@@ -121,6 +121,12 @@ jobs:
           export GECKODRIVER_BIN="$GECKOWEBDRIVER/geckodriver"
           npm run test:firefox:submission-pages
 
+      - name: Firefox assignments preview test
+        run: |
+          export FIREFOX_BIN="$(command -v firefox)"
+          export GECKODRIVER_BIN="$GECKOWEBDRIVER/geckodriver"
+          npm run test:firefox:assignments-preview
+
       - name: Firefox announcements test
         run: |
           export FIREFOX_BIN="$(command -v firefox)"

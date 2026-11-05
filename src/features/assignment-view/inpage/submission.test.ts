@@ -7,10 +7,11 @@ import {
   turnitinScores,
   frameRows,
 } from '../../../../tests/fixtures/submission-frame';
+import { sendToFailingRouter } from '../../../../tests/fixtures/router-reply';
 import { submissionDetailsPage } from '../../../../tests/fixtures/submission-page';
 import type { AssignmentDetailsMessage, RubricReadMessage } from '../protocol';
 import type { FeedbackRequest } from './feedbackPane';
-import { removeStaleView } from './rows';
+import { removeStaleView } from './stale';
 import { createSubmissionView, type SubmissionView } from './submission';
 
 const ORIGIN = 'https://school.instructure.com';
@@ -575,6 +576,61 @@ describe('every page that is not the own submission', () => {
     );
     start();
     await untouched();
+  });
+
+  it('asks once more after 2 seconds when the read is rejected, and then gives up', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    send.mockRejectedValueOnce(new Error('down'));
+    start();
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(host()).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(host()).not.toBeNull();
+    view.stop();
+    send.mockReset();
+    send.mockRejectedValue(new Error('down'));
+    start();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks once more after 2 seconds for the reply of a router whose owner failed, and then gives up', async () => {
+    const router = sendToFailingRouter(ORIGIN);
+    send.mockImplementation(async (message) => router.send(message));
+    start();
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(send).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(send).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(host()).toBeNull();
+    router.stop();
+  });
+
+  it('does not ask again for a refusal', async () => {
+    send.mockResolvedValue({ kind: 'no_submission_access' });
+    start();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks no more after a rejected read when the view was turned off or the student changed', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    send.mockRejectedValue(new Error('down'));
+    start();
+    await settle();
+    view.setActive(false);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(send).toHaveBeenCalledTimes(1);
+    view.setActive(true);
+    await settle();
+    expect(send).toHaveBeenCalledTimes(2);
+    view.resetStudent();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(send).toHaveBeenCalledTimes(2);
   });
 
   it('leaves the page as it is when an anchor is missing, and asks for nothing', async () => {
@@ -1318,7 +1374,7 @@ describe('the cleanup of a dead copy', () => {
     const comment = document.querySelector('.comment_list .comment')!;
     comment.insertAdjacentHTML(
       'beforeend',
-      '<span data-av-own data-av-toggle id="author-mark">Mark of an author</span>',
+      '<span data-av-own data-av-mark id="author-mark">Mark of an author</span>',
     );
     const column = document.querySelector('.submission-details-comments')!;
     expect(document.getElementById('av-comments')?.contains(column)).toBe(true);
@@ -1331,7 +1387,7 @@ describe('the cleanup of a dead copy', () => {
     const survivor = document.getElementById('author-mark');
     expect(survivor).not.toBeNull();
     expect(survivor?.hasAttribute('data-av-own')).toBe(true);
-    expect(survivor?.hasAttribute('data-av-toggle')).toBe(true);
+    expect(survivor?.hasAttribute('data-av-mark')).toBe(true);
     // The column is home at its mark, and the mark is gone.
     expect(container().querySelector(':scope > .submission-details-comments')).toBe(column);
     expect([...container().childNodes].some((node) => node.nodeType === Node.COMMENT_NODE)).toBe(
@@ -1348,6 +1404,25 @@ describe('the cleanup of a dead copy', () => {
       );
     removeStaleView(document, PAGE);
     expect(document.getElementById('av-submission-box')).toBeNull();
+  });
+});
+
+describe('a rubric that holds the markup of the page', () => {
+  it('mounts in the real container when the rubric text holds a container that stands before it', async () => {
+    load(submissionDetailsPage({ rubric: true }));
+    showInFrame(FILE_ROW);
+    document
+      .querySelector('#rubric_holder')!
+      .insertAdjacentHTML('afterbegin', '<div class="submission-details-container"></div>');
+    start();
+    await settle();
+    expect(host()).not.toBeNull();
+    expect(host()?.parentElement).toBe(
+      [...document.querySelectorAll('.submission-details-container')].find(
+        (node) => !node.closest('#rubric_holder'),
+      ),
+    );
+    expect(boxHost()).not.toBeNull();
   });
 });
 

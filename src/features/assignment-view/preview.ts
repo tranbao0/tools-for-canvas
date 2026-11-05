@@ -1,18 +1,10 @@
 import { isCanvasId, normalizeCanvasId } from '../../shared/canvas/ids';
 import type { AssignmentDetails } from './protocol';
 
-/**
- * The label of the turn-in button, or `null` when Canvas does not let the student submit. The label
- * is "Re-submit" only when the student really submitted. A teacher can grade a work that was
- * never handed in, and that shows "Submit".
- */
-export function submitLabel(details: AssignmentDetails): string | null {
-  if (details.assignment.can_submit !== true) return null;
-  // A graded discussion redirects from the assignment page to the discussion page, which the
-  // student answers there, so the pane has no turn-in for it.
-  if (details.assignment.submission_types?.includes('discussion_topic')) return null;
-  const submission = details.submission;
-  return submission.submitted_at || (submission.attempt ?? 0) >= 1 ? 'Re-submit' : 'Submit';
+/** What a Preview click asks for: the assignment, and its title as the row shows it. */
+export interface PreviewRequest {
+  assignmentId: string;
+  title: string;
 }
 
 /** The address of an assignment page of Canvas, or `null` for an id that is not valid. */
@@ -21,8 +13,8 @@ function assignmentAddress(origin: string, courseId: string, assignmentId: strin
   return new URL(`/courses/${courseId}/assignments/${assignmentId}`, origin);
 }
 
-/** The address of the turn-in frame: the assignment page without the header and the menus. */
-export function turnInUrl(origin: string, courseId: string, assignmentId: string): string | null {
+/** The address of the pane's frame: the assignment page without the header and the menus. */
+export function previewUrl(origin: string, courseId: string, assignmentId: string): string | null {
   const url = assignmentAddress(origin, courseId, assignmentId);
   url?.searchParams.set('content_only', '1');
   return url?.href ?? null;
@@ -37,34 +29,26 @@ export function assignmentPageUrl(
   return assignmentAddress(origin, courseId, assignmentId)?.href ?? null;
 }
 
+/** A page of a course, with a plain or a sharded id: the course page and every page under it. */
+const COURSE_PAGE = /^\/courses\/(\d+(?:~\d+)?)(?:\/.*)?$/;
+
 /**
- * The address to load once more when the turn-in frame landed on the plain assignment page. The
- * old submission view redirects there after a submission, which brings back the header and the
- * menus. Only the same course assignment path of the same origin counts. Every other address, and
- * an address that has `content_only=1` already, gives `null`.
+ * The address to load once more when the pane's frame landed on a page of the course without
+ * `content_only=1`. The old submission view redirects to the plain assignment page after a
+ * submission, and a graded discussion or quiz redirects away from its assignment page, which
+ * brings back the header and the menus. Only a page of the same course on the same origin counts.
+ * Every other address, and an address that has `content_only=1` already, gives `null`.
  */
-export function slimAddress(
-  location: string,
-  origin: string,
-  courseId: string,
-  assignmentId: string,
-): string | null {
-  const page = assignmentAddress(origin, courseId, assignmentId);
+export function slimAddress(location: string, origin: string, courseId: string): string | null {
   let current: URL;
   try {
     current = new URL(location);
   } catch {
     return null;
   }
-  if (page === null || current.origin !== page.origin) return null;
-  const parts = /^\/courses\/(\d+(?:~\d+)?)\/assignments\/(\d+(?:~\d+)?)\/?$/.exec(
-    current.pathname,
-  );
-  if (
-    !parts ||
-    normalizeCanvasId(parts[1]!) !== normalizeCanvasId(courseId) ||
-    normalizeCanvasId(parts[2]!) !== normalizeCanvasId(assignmentId)
-  )
+  if (!isCanvasId(courseId) || current.origin !== new URL(origin).origin) return null;
+  const course = COURSE_PAGE.exec(current.pathname)?.[1];
+  if (course === undefined || normalizeCanvasId(course) !== normalizeCanvasId(courseId))
     return null;
   if (current.searchParams.get('content_only') === '1') return null;
   current.searchParams.set('content_only', '1');

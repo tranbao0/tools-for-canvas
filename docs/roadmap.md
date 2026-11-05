@@ -45,8 +45,11 @@ The weekly card covers the Course work widget.
 
 - Canvas lists the same assignments on two tabs: Grades shows the score, the rubric and the feedback, and Assignments is where a student turns work in.
 - From Grades a student cannot turn anything in, and the submission details page holds only files and comments.
-- On both the Grades page and the Assignments list, each assignment row expands in place to show the instructions, the score, the rubric, the teacher's feedback and the student's own submitted files.
-- A "Submit" or "Re-submit" button opens Canvas's own turn-in page in the docked pane of the file viewer, so the student turns work in without leaving the list.
+- On the Assignments list, each assignment row has a "Preview" button.
+  It opens Canvas's own assignment page in the docked pane of the file viewer, so the student reads the instructions and turns work in without leaving the list.
+  The student can compare the rows with their pages, which helps when teachers name assignments badly.
+- A file link in the pane opens in the file pane, and closing the file shows the assignment pane again.
+- The Grades page keeps Canvas's own look.
 - The classic assignment page shows the score, rubric, feedback and submitted files below its description.
 - The tool reuses the docked pane of the file viewer, so it comes after it.
 
