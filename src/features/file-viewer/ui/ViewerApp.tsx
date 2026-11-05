@@ -12,6 +12,8 @@ import { CloseIcon } from '../../../shared/ui/icons';
 import { t } from '../../../shared/ui/i18n';
 import { closeFile, openFile, type Tabs } from '../model';
 import { FileCard, type FileState, type PaneFile } from './FileCard';
+import type { FullViewHost } from './fullView';
+import { FullViewButton } from './FullViewButton';
 import { fileKind, isPdf } from './fileInfo';
 import { fileLinks } from './links';
 import { PdfTab, type PdfHost } from './PdfTab';
@@ -36,6 +38,8 @@ export interface PaneHost extends PdfHost {
   setTabs(tabs: Tabs): Promise<void>;
   /** Asks the Canvas page to close the pane. */
   closePane(): void;
+  /** The full view state of the pane, which the Canvas page keeps. */
+  fullView: FullViewHost;
 }
 
 /** The Canvas page asks the pane to open a file. */
@@ -302,6 +306,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     <div class="fv-app">
       <div class="fv-tab-row">
         <TabStrip tabs={tabs} items={items} onActivate={activate} onClose={close} />
+        <FullViewButton host={host.fullView} />
         <button
           type="button"
           class="wr-icon-btn fv-pane-close"

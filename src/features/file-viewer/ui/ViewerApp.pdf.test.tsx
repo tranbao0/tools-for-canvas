@@ -6,6 +6,7 @@ import { FileBytesError } from '../../../shared/canvas/fileBytes';
 import type { Tabs } from '../model';
 import type { PdfjsLib } from '../pdf/types';
 import type { PaneFile } from './FileCard';
+import { createFullViewStore } from './fullView';
 import { createOpenSource } from './openSource';
 import { ViewerApp, type PaneHost } from './ViewerApp';
 
@@ -55,6 +56,7 @@ function setup(overrides: Partial<PaneHost> = {}) {
       saved = tabs;
     }),
     closePane: vi.fn(),
+    fullView: createFullViewStore(vi.fn()),
     readFile: vi.fn(never),
     loadPdfjs: vi.fn(() => new Promise<PdfjsLib>(() => undefined)),
     ...overrides,

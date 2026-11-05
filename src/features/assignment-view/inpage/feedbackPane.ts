@@ -19,10 +19,17 @@ import {
   watchFilePane,
   type Dock,
 } from '../../file-viewer/dock';
-import { CLOSE_PATH, EXTERNAL_LINK_PATH } from '../../../shared/ui/iconPaths';
+import { CLOSE_PATH } from '../../../shared/ui/iconPaths';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { OWN } from './own';
-import { PANE_CSS, icon } from './paneParts';
+import {
+  PANE_CSS,
+  createFullViewButton,
+  createOpenInTabLink,
+  headerText,
+  icon,
+  type FullViewControl,
+} from './paneParts';
 
 export const FEEDBACK_HOST_ID = 'tools-feedback';
 
@@ -55,6 +62,7 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
   let frame: HTMLIFrameElement | undefined;
   let title: HTMLElement | undefined;
   let link: HTMLAnchorElement | undefined;
+  let fullView: FullViewControl | undefined;
   let stopWatching: (() => void) | undefined;
   let observer: MutationObserver | undefined;
 
@@ -76,6 +84,8 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
     frame = undefined;
     title = undefined;
     link = undefined;
+    fullView?.stop();
+    fullView = undefined;
     hideFilePane(false);
   }
 
@@ -103,6 +113,7 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
         id: FEEDBACK_HOST_ID,
         label: 'Feedback',
         resizeLabel: 'Resize feedback',
+        card: true,
         width: options.width(),
         onResized: options.saveWidth,
         doc,
@@ -113,13 +124,10 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
       style.textContent = PANE_CSS;
       const bar = doc.createElement('div');
       bar.className = 'bar';
-      title = doc.createElement('span');
-      title.className = 'title';
-      link = doc.createElement('a');
-      link.className = 'btn';
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.append(doc.createTextNode('Open in new tab'), icon(doc, EXTERNAL_LINK_PATH));
+      const text = headerText(doc);
+      title = text.title;
+      fullView = createFullViewButton(doc);
+      link = createOpenInTabLink(doc);
       const close = doc.createElement('button');
       close.type = 'button';
       close.className = 'icon-btn';
@@ -130,7 +138,7 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
         // A frame of the Canvas page can reach this root, so only a real click counts.
         if (event.isTrusted) shut();
       });
-      bar.append(title, link, close);
+      bar.append(text.block, fullView.button, link, close);
       frame = doc.createElement('iframe');
       frame.setAttribute('allowfullscreen', '');
       frame.style.background = '#fff';
@@ -139,6 +147,7 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
       show(request);
       hideFilePane(true);
       created.open();
+      fullView.update();
       stopWatching = watchFilePane(sync);
       // A script of the page can remove the host or the file pane host without a word.
       observer = new MutationObserver(sync);

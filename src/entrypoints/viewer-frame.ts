@@ -9,6 +9,7 @@ import {
 } from '@/features/file-viewer/channel';
 import { isCommentTab, normalizeTabs, type Tabs } from '@/features/file-viewer/model';
 import { loadCommentFile } from '@/features/file-viewer/ui/commentFile';
+import { createFullViewStore } from '@/features/file-viewer/ui/fullView';
 import { createOpenSource } from '@/features/file-viewer/ui/openSource';
 import { ViewerApp, type PaneHost } from '@/features/file-viewer/ui/ViewerApp';
 import type { PaneFile } from '@/features/file-viewer/ui/FileCard';
@@ -37,6 +38,7 @@ export default defineUnlistedScript(() => {
   document.head.append(style);
   const opens = createOpenSource();
   let port: MessagePort | undefined;
+  const fullView = createFullViewStore((on) => port?.postMessage({ type: 'full-view', on }));
   // The token that the last read of the tabs gave. A write carries it back.
   let tabsToken: string | undefined;
 
@@ -111,6 +113,7 @@ export default defineUnlistedScript(() => {
       await browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs, token: tabsToken });
     },
     closePane: () => port?.postMessage({ type: 'close' }),
+    fullView,
   });
 
   // The secret of this pane, from the background. It is in no address and in no window message.
@@ -133,6 +136,10 @@ export default defineUnlistedScript(() => {
           document.documentElement.setAttribute('data-theme', message.theme);
           return;
         }
+        if (message.type === 'full-view') {
+          fullView.receive({ on: message.on, available: message.available });
+          return;
+        }
         opens.emit({
           fileId: message.fileId,
           ...(message.courseId ? { courseId: message.courseId } : {}),
@@ -144,7 +151,7 @@ export default defineUnlistedScript(() => {
         port = offered;
         window.removeEventListener('message', listener);
         document.addEventListener('keydown', (key) => {
-          if (key.key === 'Escape') port?.postMessage({ type: 'close' });
+          if (key.key === 'Escape') port?.postMessage({ type: 'escape' });
         });
       },
     });

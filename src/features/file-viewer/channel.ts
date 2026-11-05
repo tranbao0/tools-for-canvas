@@ -25,7 +25,25 @@ export interface ThemeMessage {
   theme: 'light' | 'dark';
 }
 
-export type PaneMessage = OpenFileMessage | ThemeMessage;
+/**
+ * The full view state of the Canvas page: whether the pane fills the window, and whether the
+ * window is wide enough for that. The pane page cannot read the width of the Canvas window.
+ */
+export interface FullViewMessage {
+  type: 'full-view';
+  on: boolean;
+  available: boolean;
+}
+
+export type PaneMessage = OpenFileMessage | ThemeMessage | FullViewMessage;
+
+/**
+ * What the pane page asks of the Canvas page. `close` is the close button. `escape` is the key:
+ * it leaves full view first, and closes the pane when full view is off. `full-view` turns full
+ * view on or off.
+ */
+export type PaneRequest =
+  { type: 'close' } | { type: 'escape' } | { type: 'full-view'; on: boolean };
 
 const ID = /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/;
 const SECRET = /^[0-9a-f]{64}$/;
@@ -62,6 +80,31 @@ export function validTheme(value: unknown): value is ThemeMessage {
     Object.keys(message).every((key) => ['type', 'theme'].includes(key)) &&
     message['type'] === 'theme' &&
     (message['theme'] === 'light' || message['theme'] === 'dark')
+  );
+}
+
+export function validFullView(value: unknown): value is FullViewMessage {
+  if (typeof value !== 'object' || value === null) return false;
+  const message = value as Record<string, unknown>;
+  return (
+    Object.keys(message).every((key) => ['type', 'on', 'available'].includes(key)) &&
+    message['type'] === 'full-view' &&
+    typeof message['on'] === 'boolean' &&
+    typeof message['available'] === 'boolean'
+  );
+}
+
+/** The page script side: whether a message on its port is a request of the real pane page. */
+export function validPaneRequest(value: unknown): value is PaneRequest {
+  if (typeof value !== 'object' || value === null) return false;
+  const message = value as Record<string, unknown>;
+  const keys = Object.keys(message);
+  if (message['type'] === 'close' || message['type'] === 'escape') return keys.length === 1;
+  return (
+    message['type'] === 'full-view' &&
+    keys.length === 2 &&
+    keys.includes('on') &&
+    typeof message['on'] === 'boolean'
   );
 }
 
@@ -164,7 +207,8 @@ export function bindViewerPort(
       handlers.bound();
       return;
     }
-    if (validOpenFile(message.data) || validTheme(message.data)) handlers.receive(message.data);
+    if (validOpenFile(message.data) || validTheme(message.data) || validFullView(message.data))
+      handlers.receive(message.data);
   };
   port.addEventListener('message', listener);
   port.start();

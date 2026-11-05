@@ -12,7 +12,9 @@ function row(id: string, title: string, href = `${ORIGIN}/courses/12/assignments
 const PAGE = `<ul class="ig-list">${row('101', 'Essay')}${row('102', 'Reading')}${row('103', 'Another assignment', `${ORIGIN}/courses/12/assignments/999`)}${row('104', 'Another site', 'https://evil.example/courses/12/assignments/104')}<li><div id="other_105" class="ig-row"><div class="ig-row__layout"><a class="ig-title" href="${ORIGIN}/courses/12/assignments/105">Not an assignment row</a></div></div></li><li><div id="assignment_106" class="ig-row"><span>Making a copy</span></div></li></ul>`;
 
 let engine: RowsEngine;
-let onPreview: ReturnType<typeof vi.fn<(request: { assignmentId: string; title: string }) => void>>;
+let onPreview: ReturnType<
+  typeof vi.fn<(request: { assignmentId: string; title: string; details?: string }) => void>
+>;
 
 function start(): RowsEngine {
   engine = createRowsEngine({ doc: document, origin: ORIGIN, courseId: '12', onPreview });
@@ -194,5 +196,58 @@ describe('turning the view off', () => {
     engine.setActive(true);
     engine.setOpen('102');
     expect(document.querySelector('[data-av-own], [data-av-open]')).toBeNull();
+  });
+});
+
+describe('the second line of the pane header', () => {
+  /** The details of a row as Canvas draws them: a copy for screen readers and one for the eye. */
+  const DETAILS =
+    '<div class="ig-details"><div class="ig-details__item assignment-date-due" data-view="date-due"><span class="screenreader-only">Due Nov 3 at 10pm</span><span class="non-screenreader" aria-hidden="true"><strong>Due</strong>\n  Nov 3 at 10pm</span></div><div class="ig-details__item js-score"><span class="screenreader-only">10 Points Possible</span><span class="non-screenreader" aria-hidden="true">10 pts</span></div></div>';
+  const press = (id: string): void => click(button(id), true);
+
+  it('is the due text and the points that Canvas shows, joined with a bar', () => {
+    rowOf('101').querySelector('.ig-details')!.outerHTML = DETAILS;
+    start();
+    press('101');
+    expect(onPreview).toHaveBeenCalledExactlyOnceWith({
+      assignmentId: '101',
+      title: 'Essay',
+      details: 'Due Nov 3 at 10pm | 10 pts',
+    });
+  });
+
+  it('reads the row at the click, and leaves out the part that a row does not have', () => {
+    start();
+    rowOf('101').querySelector('.ig-details')!.outerHTML = DETAILS.replace(
+      /<div class="ig-details__item js-score">.*<\/div><\/div>$/,
+      '</div>',
+    );
+    press('101');
+    expect(onPreview).toHaveBeenLastCalledWith({
+      assignmentId: '101',
+      title: 'Essay',
+      details: 'Due Nov 3 at 10pm',
+    });
+  });
+
+  it('has no text for a row with nothing to show, and never reads the points that only a screen reader has', () => {
+    start();
+    press('101');
+    expect(onPreview).toHaveBeenLastCalledWith({ assignmentId: '101', title: 'Essay' });
+    rowOf('102').querySelector('.ig-details')!.innerHTML =
+      '<span class="js-score screenreader-only">No Points Possible</span>';
+    press('102');
+    expect(onPreview).toHaveBeenLastCalledWith({ assignmentId: '102', title: 'Reading' });
+  });
+
+  it('is plain text with a limit, whatever the row holds', () => {
+    start();
+    rowOf('101').querySelector('.ig-details')!.innerHTML =
+      `<div class="assignment-date-due"><b>Due</b> <img src="x" onerror="alert(1)"><script>1</script>${'long '.repeat(80)}</div>`;
+    press('101');
+    const { details } = onPreview.mock.calls[0]![0];
+    expect(details!.length).toBeLessThanOrEqual(160);
+    expect(details!.startsWith('Due long long')).toBe(true);
+    expect(details).not.toContain('<');
   });
 });

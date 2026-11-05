@@ -70,7 +70,7 @@ const listPage = readFileSync('tests/fixtures/pages/assignments.html', 'utf8');
  * @param {string} mode
  */
 function assignmentPage(mode) {
-  return `<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>Essay</h1><p id="mode">${mode}</p><p><a id="file" href="/courses/${COURSE}/files/501" onclick="return false">notes.txt</a></p></body></html>`;
+  return `<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>Essay</h1><p id="mode">${mode}</p><p><a id="file" href="/courses/${COURSE}/files/501" onclick="return false">notes.txt</a></p><input id="draft" aria-label="Draft"></body></html>`;
 }
 
 const json = (value) => ({ type: 'application/json', body: JSON.stringify(value) });
@@ -278,6 +278,9 @@ async function main() {
     addonId,
     acceptInsecureCerts: true,
     localDomains: 'school.instructure.com',
+    // A page of Firefox on Linux draws overlay scroll bars, which take no room. Full view must
+    // also fit beside a classic scroll bar that takes room.
+    prefs: { 'widget.gtk.overlay-scrollbars.enabled': false, 'ui.useOverlayScrollbars': 0 },
   });
   try {
     console.log(`Firefox ${(await driver.getCapabilities()).get('browserVersion')}`);
@@ -441,6 +444,77 @@ async function main() {
         `A frame loaded again: ${JSON.stringify(frameLoads)} ${JSON.stringify(readingLoads)}`,
       );
     console.log('Two previews: two frames stay, the shown one follows the row, none loads again.');
+
+    // e2. Full view on and off keeps a draft in the frame, and the page behind does not move.
+    const fullButton = async () =>
+      (await (await driver.findElement(By.css(PANE))).getShadowRoot()).findElement(
+        By.css('.btn[aria-pressed]'),
+      );
+    const pressedOf = async () => (await fullButton()).getAttribute('aria-pressed');
+    const paneWidth = async () => (await state(driver)).pane.width;
+    // A long page has a scroll bar. The window is `innerWidth` wide, and the page, and so the pane,
+    // is `clientWidth` wide: the scroll bar takes the rest.
+    await driver.executeScript("document.body.style.minHeight = '4000px'");
+    const [innerWidth, clientWidth] = await driver.executeScript(
+      'return [window.innerWidth, document.documentElement.clientWidth]',
+    );
+    if (innerWidth - clientWidth <= 0)
+      throw new Error(
+        `The page has no scroll bar that takes room (${innerWidth} px, ${clientWidth} px)`,
+      );
+    const cardBox = async () => {
+      const root = await (await driver.findElement(By.css(PANE))).getShadowRoot();
+      return (await root.findElement(By.css('section'))).getRect();
+    };
+    const roomBefore = (await state(driver)).padding;
+    const widthBefore = await paneWidth();
+    await driver.switchTo().frame(back2[0]);
+    await driver.executeScript(
+      "document.getElementById('draft').value = 'half a sentence'; window.__kept = 'same document';",
+    );
+    await driver.switchTo().defaultContent();
+    const readDraft = async () => {
+      await driver.switchTo().frame(back2[0]);
+      try {
+        return await driver.executeScript(
+          "return [document.getElementById('draft').value, window.__kept].join('|')",
+        );
+      } finally {
+        await driver.switchTo().defaultContent();
+      }
+    };
+    await driver
+      .actions()
+      .move({ origin: await fullButton() })
+      .click()
+      .perform();
+    await waitFor(pressedOf, (value) => value === 'true', 'the pane to go into full view');
+    if ((await paneWidth()) !== clientWidth)
+      throw new Error(`Full view has ${await paneWidth()} px, the page ${clientWidth} px`);
+    const fullCard = await cardBox();
+    if (fullCard.x !== 12 || fullCard.x + fullCard.width !== clientWidth - 12)
+      throw new Error(
+        `The card of full view has a gap of ${fullCard.x} px on the left and ${clientWidth - fullCard.x - fullCard.width} px on the right, not 12 px (scroll bar ${innerWidth - clientWidth} px)`,
+      );
+    if ((await state(driver)).padding !== roomBefore)
+      throw new Error('Full view changed the padding of the page');
+    if ((await readDraft()) !== 'half a sentence|same document')
+      throw new Error('Full view lost the draft or reloaded the frame');
+    await driver
+      .actions()
+      .move({ origin: await fullButton() })
+      .click()
+      .perform();
+    await waitFor(pressedOf, (value) => value === 'false', 'the pane to leave full view');
+    if ((await paneWidth()) !== widthBefore)
+      throw new Error('The pane did not return to its width');
+    if ((await state(driver)).padding !== roomBefore)
+      throw new Error('Leaving full view changed the padding of the page');
+    if ((await readDraft()) !== 'half a sentence|same document')
+      throw new Error('Leaving full view lost the draft or reloaded the frame');
+    if (frameLoads.join() !== 'slim')
+      throw new Error(`The frame loaded again: ${JSON.stringify(frameLoads)}`);
+    console.log('Full view: on and off keeps the draft in the frame, and the page does not move.');
 
     // f. Preview on the open row closes the pane and removes both frames.
     await driver
