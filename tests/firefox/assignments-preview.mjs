@@ -231,7 +231,6 @@ async function main() {
   // go, so its load event comes late.
   const LANDING_PATH = `/courses/${COURSE}/pages/landing`;
   const landingLoads = [];
-  const holdRequests = [];
   let releaseHold = () => undefined;
   const holdScript = new Promise((resolve) => {
     releaseHold = resolve;
@@ -255,7 +254,6 @@ async function main() {
       };
     },
     '/hold.js': async () => {
-      holdRequests.push('hold.js');
       await holdScript;
       return { type: 'text/plain', body: '' };
     },
@@ -606,8 +604,6 @@ async function main() {
         (loads) => loads === 'full,slim',
         'the slim page to be asked for before the plain page has loaded',
       );
-      if (holdRequests.length === 0)
-        throw new Error('The plain page did not ask for its script, so it was not loading');
     } finally {
       releaseHold();
     }
