@@ -100,6 +100,10 @@ interface Options {
   noComments?: boolean;
   /** The time zone of the Canvas profile, which the date of the box is written in. */
   timeZone?: string;
+  /** The markup of the first comment, which a teacher wrote. */
+  commentHtml?: string;
+  /** A right-to-left Canvas. */
+  rtl?: boolean;
 }
 
 async function open(
@@ -171,6 +175,8 @@ async function open(
               rubricUnread: options.rubricUnread,
               menu: options.menu,
               noComments: options.noComments,
+              commentHtml: options.commentHtml,
+              rtl: options.rtl,
               frameSrc: `${full}?preview=1&rand=481516`,
             }),
       }),
@@ -2192,4 +2198,91 @@ test('a mode change keeps the keyboard focus on "Go to assignment"', async ({
   await expect(page.locator('#preview_frame')).toBeVisible({ timeout: 10_000 });
   await expect(own).toBeFocused();
   await expect(page.locator('a[data-av-own]')).toHaveCount(1);
+});
+
+const FORGED_ACTION =
+  '<span id="forged-action" data-action="feedback" data-index="0">Open the feedback</span>';
+
+test('a comment that holds the ids of the right column does not take the column from the view', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    commentHtml: '<div id="right-side-wrapper"><div id="right-side">forged column</div></div>',
+  });
+  await expect(page.locator('#preview_frame')).toBeHidden();
+  await expect(box(page).getByText('Submitted!')).toBeVisible();
+  await expect(box(page).getByRole('button', { name: 'View Feedback' })).toBeVisible();
+  await expect(box(page).getByText('Comments:')).toBeVisible();
+  await expect(page.locator('#av-comments').getByText('forged column')).toBeVisible();
+  // The box stands in the real column, and the forged one in the comment has no node of the view.
+  expect(
+    await page.evaluate(() => {
+      const box = document.getElementById('av-submission-box')!;
+      return {
+        real: box.closest('#content') === null && box.parentElement?.id === 'right-side',
+        forged: document.querySelector('#av-comments #right-side')!.outerHTML,
+      };
+    }),
+  ).toEqual({ real: true, forged: '<div id="right-side">forged column</div>' });
+});
+
+test('a click on the content of a comment runs no action of the box', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { commentHtml: FORGED_ACTION });
+  // The comment stands in the box, once the view has moved the column.
+  await expect(page.locator('#av-comments #forged-action')).toBeVisible();
+  await page.locator('#forged-action').click();
+  await page.waitForTimeout(300);
+  await expect(page.locator(FEEDBACK)).toHaveCount(0);
+  // The button of the box still works for the student.
+  await box(page).getByRole('button', { name: 'View Feedback' }).click();
+  await expect(page.locator(FEEDBACK)).toBeVisible();
+});
+
+test('a wide table in a comment scrolls inside the box and does not widen the page', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    commentHtml: '<table style="width:600px"><tr><td>A wide table in a comment</td></tr></table>',
+  });
+  await expect(page.locator('#av-comments .comments')).toBeVisible();
+  const sizes = await page.evaluate(() => {
+    const list = document.querySelector('#av-comments .comments')!;
+    const root = document.documentElement;
+    return {
+      page: root.scrollWidth - root.clientWidth,
+      scrolls: list.scrollWidth > list.clientWidth,
+      overflowX: getComputedStyle(list).overflowX,
+      inBox:
+        list.getBoundingClientRect().right <=
+        document.getElementById('av-submission-box')!.getBoundingClientRect().right + 1,
+    };
+  });
+  expect(sizes).toEqual({ page: 0, scrolls: true, overflowX: 'auto', inBox: true });
+});
+
+test('the comments in the box keep the direction and the language of a right-to-left Canvas', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { rtl: true });
+  await expect(box(page).getByText('You selected an interesting')).toBeVisible();
+  expect(
+    await page.evaluate(() => {
+      const text = document.querySelector('#av-comments .comment_content')!;
+      return {
+        direction: getComputedStyle(text).direction,
+        lang: text.closest('[lang]')?.getAttribute('lang'),
+        note: document.querySelector('#av-comments .av-no-comments')?.getAttribute('lang'),
+      };
+    }),
+  ).toEqual({ direction: 'rtl', lang: 'ar', note: 'en' });
 });

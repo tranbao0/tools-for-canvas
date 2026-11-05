@@ -36,6 +36,10 @@ export interface SubmissionPageOptions {
   noComments?: boolean;
   /** The comment form does not show: the student may not comment (`add_comment_form` is hidden). */
   noCommentForm?: boolean;
+  /** The markup of the first comment, which a teacher wrote. It replaces the text of the comment. */
+  commentHtml?: string;
+  /** A right-to-left Canvas: `dir="rtl"` and `lang="ar"` on the `html` element. */
+  rtl?: boolean;
 }
 
 const CSS = readFileSync('tests/fixtures/pages/canvas-layout.css', 'utf8');
@@ -272,7 +276,7 @@ export function submissionDetailsPage(options: SubmissionPageOptions = {}): stri
       ? `<a class="Button" href="/courses/${course}/gradebook/speed_grader?assignment_id=${assignment}&amp;student_id=${user}" target="_blank" rel="noopener"><i class="icon-speed-grader" aria-hidden="true"></i> SpeedGrader</a>`
       : `<a href="/courses/${course}/assignments/${assignment}#submit" class="Button Button--primary"${options.noAttemptsLeft ? ' disabled' : ''}>Re-submit Assignment</a>`;
   return `<!doctype html>
-<html lang="en" dir="ltr"><head><meta charset="utf-8"><title>Reflection Paper #1: Submission Details</title>
+<html lang="${options.rtl ? 'ar' : 'en'}" dir="${options.rtl ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"><title>Reflection Paper #1: Submission Details</title>
 <style>${CSS}${STYLE}${COMMENT_STYLE}${LAYOUT_RULES}${RUBRIC_STYLE}</style>
 <script>INST = { environment: 'production' }; ENV = { current_user_id: '5501', SUBMISSION: { assignment_id: '${assignment}', user_id: '${user}' } };</script>
 ${hasHolder ? `<script>${RUBRIC_SCRIPT}</script>` : ''}<script>${COMMENT_SCRIPT}</script></head><body class="${options.menu === 'open' ? 'primary-nav-expanded course-menu-expanded' : 'primary-nav-expanded'}">
@@ -312,7 +316,7 @@ ${hasHolder ? `<script>${RUBRIC_SCRIPT}</script>` : ''}<script>${COMMENT_SCRIPT}
               options.noComments
                 ? ''
                 : `<div class="comment" id="submission_comment_201" style="margin-bottom: 10px;">
-              <div class="comment" style="color: #444;"><span class="comment_content" style="white-space: pre-wrap;">You selected an interesting and ambitious topic and found useful evidence about labor conditions within the anime industry.</span></div>
+              <div class="comment" style="color: #444;"><span class="comment_content" style="white-space: pre-wrap;">${options.commentHtml ?? 'You selected an interesting and ambitious topic and found useful evidence about labor conditions within the anime industry.'}</span></div>
               <div class="comment_attachments" style="text-align: right; margin-right: 10px;"></div>
               <div class="comment_author_and_date" style="text-align: right; font-size: 0.8em;"><span class="author_name">Teacher</span>, <span class="posted_at">Sep 20 at 10:00am</span></div>
             </div>`

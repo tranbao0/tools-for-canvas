@@ -3126,6 +3126,8 @@ So a student switches pages to read the instructions next to the feedback on a f
      The two ids are compared as decimal global ids with BigInt, like `normalizeCanvasId`: `s~l` becomes `s * 10^13 + l`.
    - A teacher, an observer, another student, a refused read, a failed read and a record of another assignment all leave the page as Canvas drew it.
    - The page also stays as it is when an anchor is missing: the two columns of the container, the files frame, or the right column `#right-side`.
+     The right column is `#right-side` in `#right-side-wrapper`, and it counts only outside `#content`.
+     A comment in `#content` can hold elements with the same ids, and the real column comes after the content area.
    - The view replaces Canvas's files frame only when it can show everything that the frame shows.
      In every other case the frame stays, and the view adds only the instructions above it: the fallback rule of item 5.
    - The files frame stays visible until the read has finished, so a page that stays as it is never flickers.
@@ -3142,13 +3144,19 @@ So a student switches pages to read the instructions next to the feedback on a f
    - The view adds two hosts.
      - The box is `div#av-submission-box`, with the attribute `data-av-own`, an open shadow root and the attribute that lets the file pane take the clicks on its file links (decision 25).
        It is the last child of `#right-side`, and it has the role "region" with the label "Submission".
+       A click runs a box action (View Feedback, "Show more") only when its target is inside the shadow root of the host.
+       The listener of the shadow root also sees the clicks on the comments, which a slot shows from the light DOM, and a comment can hold a `data-action` of its own.
      - The instructions are `div#av-submission-details`, with the same attributes and the label "Instructions".
        In the replace mode, it is added after the frame in the same container.
        The container then holds the frame, hidden, and the host, so the host has the whole width.
        In the mode of item 5 ('above'), it is added right before `.submission-details-container`, so it sits above the frame and the comments column.
    - In the replace mode only, one more rule hides `.submission-details-container>.submission-details-frame`.
+     The rule comes only after the box and the comments column stand in the page.
      The frame stays in the page, hidden, so the view can read it.
      The frame iframe is never moved or changed.
+   - A mount that throws an error gives the page back and mounts the mode 'above' of item 5 in its place, and the view stays in that mode.
+     A mount of the mode 'above' that throws too leaves the page as Canvas drew it.
+     Both log one line, and no error leaves the view unhandled.
    - In the replace mode, Canvas's own comments column moves into the box (`comments.ts`).
      - The node `div.submission-details-comments` moves, and a copy never replaces it.
        It goes into a wrapper `div#av-comments` with the attribute `data-av-own`.
@@ -3158,6 +3166,10 @@ So a student switches pages to read the instructions next to the feedback on a f
        Canvas's script finds its parts with document lookups and binds a document level change listener, so Save, Attach File, Media Comment and the emoji picker work only in the light DOM.
      - Rules of the same style element, scoped by `#av-comments` with `!important`, fit the node to the box: no border, no fixed height, no padding on the list and the form, and a transparent background.
        The text takes its colors from the box, so the dark theme stays readable.
+     - The list `.comments` keeps `overflow-x:auto`, so a wide table in a comment scrolls inside the box and the page gets no horizontal scroll.
+     - The host of the box sets `direction:ltr` and `lang="en"` for its own English text, and the comments would inherit both through the slot.
+       The wrapper `#av-comments` takes the `dir` and the `lang` of the `html` element of the page, so a right-to-left Canvas shows the comments right to left.
+       The line "No Comments" has `lang="en"`, because the extension writes it in English.
      - The wrapper also holds one line "No Comments" of its own.
        A `:has` rule shows it only while `.comment_list` holds no comment, also right after Canvas adds one on Save, with no observer.
      - A change to the 'above' mode, and the switch off, put the same node back at its mark.
@@ -3265,7 +3277,10 @@ So a student switches pages to read the instructions next to the feedback on a f
   - The Grades list and the page of an anonymous submission (`anonymous_submissions/:id`) get nothing.
   - A newer injection retires the copy of an earlier one, and a start removes the nodes that a destroyed copy left (every node and mark starts with `data-av-`).
     The removal looks only in the parts that the view of the page owns: the content of the Submission box (`#sidebar_content .details .content`, never its `.comments`) on the assignment page, the head, the two hosts, the one header container `.ic-Action-header__Secondary` and the right column `#right-side` (and nothing more) on the Submission Details page, and the head and the lists of rows on the Assignments list.
-    A pane that an earlier copy docked in the body (`#tools-feedback`, `#tools-turn-in`) is removed by its id when it has `data-av-own`, on the Submission Details page and on the Assignments list.
+    A pane that an earlier copy docked in the body (`#tools-feedback`, `#tools-turn-in`) is removed by its id when it has `data-av-own` and is a direct child of the body, on the Submission Details page and on the Assignments list.
+    The host `#av-submission-details` is removed by its id when it has `data-av-own` and stands where the view puts it: right before the container, or right after the files frame in it.
+    The rubric wrapper `#av-rubric` is removed by its id when it has `data-av-own` and is a child of that host or of the files frame.
+    A node with one of these ids inside a comment is never removed, even with `data-av-own`.
     A description or a comment of another author can hold such marks, and the removal never reaches it.
     A holder of Canvas's nodes is given back only when it has `data-av-own` and is a direct child of a link in the box.
   - The script follows the switch, the saved address and the Theme setting through the page channel.
@@ -3498,7 +3513,7 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
   On the Submission Details page it looks, besides the head and the hosts, only in the container `.ic-Action-header__Secondary` and in the right column `#right-side`, so Canvas's own button there stays with its text.
 - `removeStaleView` puts a holder back from the wrapper of an earlier copy of the script before it removes the old view.
 - `removeStaleView` also puts the comments column of a dead copy back from its wrapper to the mark, before any removal.
-  Only a wrapper with the attribute `data-av-own`, inside the box in the right column, counts, and only a mark that is a child of the container.
+  Only a wrapper with the attribute `data-av-own`, inside the box in the right column (found outside `#content`, so a forged pair of ids in a comment never counts), counts, and only a mark that is a child of the container.
   A comment of another author can hold marks of the view, so the comments must be home before the sweep of the right column, and the sweep never reaches them.
 
 **Fixtures and tests:**
@@ -3508,11 +3523,12 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
   - The page fixture has the real layout of the right column: `#right-side-wrapper` with an empty `aside#right-side` in `#not_right_side`, no body class `with-right-side`, and the rules of Canvas's CSS that place it (`common.css` lines 2187, 2224-2232, 2248 and 2369), copied as they are.
     The body has the class `primary-nav-expanded`, and `course-menu-expanded` for the variant with the course menu open.
     The content has no width of its own, as in Canvas.
+  - The page fixture can hold the markup of a teacher's comment (a forged right column, a `data-action`, a wide table, the ids of the view) and can draw the page right to left (`dir="rtl"`, `lang="ar"`).
   - The page fixture has the markup of the comments column of `show.html.erb`, with a variant that has no comment and a copy of the script of Canvas that sizes the page (`windowResize`) and saves a comment.
     The Save handler is bound directly on the button, so a test shows that the moved node keeps working.
   - The frame fixture has a score cell in each form: classic, classic with an originality report address, pending, error, VeriCite, updated with an address, and updated with no address (`turnitinScores`).
 - `tests/fixtures/pages/assignment.html` has the sidebar of the assignment page.
-- Unit tests (`submission.test.ts`, `submissionFrame.test.ts`, `submissionBox.test.ts`, `comments.test.ts`, `format.test.ts`, `start.test.ts`) cover every score form, a bad report address and an unreadable cell, the status line cases, the date form, the move of the comments column and its return with the typed text, the File viewer switch, the cleanup of a dead copy with marks of the view in the comment of another author, and the keyboard focus on "Go to assignment" through a change of mode.
+- Unit tests (`submission.test.ts`, `submissionFrame.test.ts`, `submissionBox.test.ts`, `comments.test.ts`, `format.test.ts`, `start.test.ts`) cover every score form, a bad report address and an unreadable cell, the status line cases, the date form, the move of the comments column and its return with the typed text, the File viewer switch, the cleanup of a dead copy with marks and ids of the view in the comment of another author, a comment that holds the ids of the right column, a mount that throws, and the keyboard focus on "Go to assignment" through a change of mode.
   The `:has` rule needs a real browser, so Chromium and Firefox show it.
 - `tests/e2e/submission-details.spec.ts` covers the replacement and the box, a page with a Turnitin score (no frame; the file, the score with its address and color, and "View Feedback" in the box), Canvas's comment form from the box, the widths (1920 px: the content keeps Canvas's width and the box stands on its right; 1366 px: side by side; 1024 px with the menu open: the box stands under the content), the File viewer switch, the "Go to assignment" button, the file click, the feedback pane, the instructions above an untouched frame for a media recording, the unchanged pages and the switch.
 - `tests/firefox/submission-pages.mjs` (`npm run test:firefox:submission-pages`) runs in real Firefox with a fake Canvas over HTTPS.
