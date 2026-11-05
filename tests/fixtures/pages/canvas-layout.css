@@ -1,6 +1,6 @@
 /* Canvas layout at desktop widths, after app/stylesheets/base/_ic_app_layout.scss,
    _layout.scss, _right-side.scss and _variables.scss ($ic-sp: 12px, right side 288px,
-   course menu 192px, global nav 84px, breakpoints 992px and 1140px). */
+   course menu 192px, global nav 84px, breakpoints 768px, 992px and 1140px). */
 /* Canvas's default brand, which Canvas sets on :root from dist/brandable_css/default/variables-*.css. */
 :root {
   --ic-brand-primary: #2B7ABC;
@@ -104,11 +104,14 @@ body:not(.full-width):not(.outcomes):not(.body--login-confirmation):not(.content
 }
 #section-tabs a.active { border-left-color: #2d3b45; color: #2d3b45; font-weight: 700; }
 
-@media (min-width: 992px) {
-  /* The wrapper stands right of the global navigation: 54px when it is collapsed, 84px when the
-     student expanded it (common.css, body.primary-nav-expanded). */
+@media (min-width: 768px) {
+  /* The wrapper stands right of the global navigation: 54px when it is collapsed, 84px when it is
+     expanded, which is Canvas's default (common.css, body.primary-nav-expanded). The real rule
+     applies from 768px on. */
   .ic-Layout-wrapper { margin-left: 54px; }
   body.primary-nav-expanded .ic-Layout-wrapper { margin-left: 84px; }
+}
+@media (min-width: 992px) {
   body.course-menu-expanded .ic-Layout-columns { margin-left: 192px; }
   body:not(.course-menu-expanded) .ic-app-main-content { display: flex; }
   body:not(.course-menu-expanded) .ic-Layout-contentWrapper { flex: 1; min-width: 1px; }
@@ -130,6 +133,14 @@ body:not(.full-width):not(.outcomes):not(.body--login-confirmation):not(.content
   .ic-Layout-contentMain { padding: 24px 12px; }
   .ic-app-main-content__secondary { padding-left: 12px; padding-right: 12px; }
 }
+
+/* The planner trays (InstUI Tray, placement end): z-index 9999 is the theme's stacking.topmost. */
+.fixture-tray {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 9999; box-sizing: border-box;
+  width: 420px; padding: 24px; background: #fff; border-left: 1px solid #c7cdd1;
+  box-shadow: -2px 0 8px rgba(39, 53, 64, 0.2);
+}
+.fixture-tray[hidden] { display: none; }
 
 /* Buttons */
 .btn, .Button {

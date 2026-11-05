@@ -358,12 +358,9 @@ export function buildWeekView(input: ModelInput): WeekView {
   };
   // The late counts wait for the whole Past due range, so a badge never grows while it loads.
   const loadingPastDue = input.loading?.pastDue === true;
-  const rings = input.settings.showRings
-    ? buildRings(
-        placed.map((entry) => ringEntry(entry, loadingPastDue)),
-        ringParams,
-      )
-    : [];
+  const ringEntries = placed.map((entry) => ringEntry(entry, loadingPastDue));
+  const rings = input.settings.showRings ? buildRings(ringEntries, ringParams) : [];
+  const openCount = ringEntries.filter((entry) => entry.counted && !entry.done).length;
 
   const courses = new Map(input.courses.map((course) => [course.id, course]));
   const labels = new Map(
@@ -395,6 +392,7 @@ export function buildWeekView(input: ModelInput): WeekView {
     hourCycle: hourCycleFor(locale),
     groups,
     rings,
+    openCount,
     courseFilter: input.courseFilter,
     hiddenCourseCount: input.courses.filter((course) => hidden.has(course.id)).length,
     // Nothing is due only once every day of the span has arrived.

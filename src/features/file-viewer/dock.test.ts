@@ -5,6 +5,7 @@ import {
   filePaneOpen,
   giveBackRoom,
   hideFilePane,
+  leaseRoom,
   removeStaleWeeklyDock,
   ROOM_ATTRIBUTE,
   WEEKLY_HOST_ID,
@@ -212,5 +213,135 @@ describe('the weekly list dock', () => {
       removeStaleWeeklyDock(document);
       expect(lookalike.isConnected).toBe(true);
     });
+  });
+});
+
+describe('a dock that a page hid and removed', () => {
+  it('shows again when it opens again', () => {
+    const weekly = dock('weekly', 360);
+    weekly.open();
+    weekly.setHidden(true);
+    expect(weekly.host.style.display).toBe('none');
+    weekly.host.remove();
+    weekly.close();
+    weekly.open();
+    expect(weekly.host.isConnected).toBe(true);
+    expect(weekly.host.style.display).toBe('');
+    expect(weekly.shown).toBe(true);
+    expect(padding()).toBe('360px');
+  });
+});
+
+describe('the layer of a dock', () => {
+  it('is above every page layer for the panes, and below the overlays of Canvas for the weekly list', () => {
+    expect(dock('file', 480).host.style.zIndex).toBe('2147483647');
+    const weekly = createDock({
+      role: 'weekly',
+      id: WEEKLY_HOST_ID,
+      label: 'Weekly list',
+      resizeLabel: 'Resize weekly list',
+      width: 360,
+      zIndex: 1000,
+      onResized: () => undefined,
+    });
+    docks.push(weekly);
+    expect(weekly.host.style.zIndex).toBe('1000');
+  });
+});
+
+describe('a dock that was forgotten', () => {
+  it('never writes the padding again, and takes nothing off the page', () => {
+    const weekly = dock('weekly', 360);
+    weekly.open();
+    weekly.forget();
+    document.documentElement.style.setProperty('padding-right', '480px');
+    window.dispatchEvent(new Event('resize'));
+    weekly.setWidth(400);
+    expect(padding()).toBe('480px');
+    expect(weekly.host.isConnected).toBe(true);
+  });
+
+  it('never writes the padding when its host is off the page', () => {
+    const weekly = dock('weekly', 360);
+    weekly.open();
+    weekly.host.remove();
+    document.documentElement.style.setProperty('padding-right', '480px');
+    window.dispatchEvent(new Event('resize'));
+    expect(padding()).toBe('480px');
+  });
+});
+
+describe('the room of a tab', () => {
+  const html = document.documentElement;
+  const leases: { release(): void }[] = [];
+
+  function tabHost(): HTMLElement {
+    const host = document.createElement('div');
+    document.body.append(host);
+    return host;
+  }
+  afterEach(() => {
+    for (const lease of leases.splice(0)) lease.release();
+  });
+
+  it('takes the width of the tab and gives the exact padding back', () => {
+    html.style.setProperty('padding-right', '13px', 'important');
+    const lease = leaseRoom(tabHost(), 38);
+    leases.push(lease);
+    expect(padding()).toBe('38px');
+    expect(html.style.getPropertyPriority('padding-right')).toBe('important');
+    expect(JSON.parse(html.getAttribute(ROOM_ATTRIBUTE)!).value).toBe('13px');
+    lease.release();
+    expect(padding()).toBe('13px');
+    expect(html.hasAttribute(ROOM_ATTRIBUTE)).toBe(false);
+  });
+
+  it('shares the lease with a dock: the page padding returns only after the last holder', () => {
+    html.style.setProperty('padding-right', '13px');
+    const lease = leaseRoom(tabHost(), 38);
+    leases.push(lease);
+    const weekly = dock('weekly', 360);
+    weekly.open();
+    expect(padding()).toBe('360px');
+    lease.release();
+    expect(padding()).toBe('360px');
+    weekly.close();
+    expect(padding()).toBe('13px');
+  });
+
+  it('takes the room back from a pane whose host a page removed', () => {
+    html.style.setProperty('padding-right', '13px');
+    const file = dock('file', 480);
+    file.open();
+    const lease = leaseRoom(tabHost(), 38);
+    leases.push(lease);
+    file.host.remove();
+    lease.refresh();
+    expect(padding()).toBe('38px');
+  });
+
+  it('leaves the page padding alone below 900 px, where the tab covers the page', () => {
+    html.style.setProperty('padding-right', '13px');
+    const { innerWidth } = window;
+    try {
+      window.innerWidth = 800;
+      const lease = leaseRoom(tabHost(), 38);
+      leases.push(lease);
+      expect(padding()).toBe('13px');
+      window.innerWidth = 1200;
+      window.dispatchEvent(new Event('resize'));
+      expect(padding()).toBe('38px');
+    } finally {
+      window.innerWidth = innerWidth;
+    }
+  });
+
+  it('stops writing the padding after it was forgotten', () => {
+    const lease = leaseRoom(tabHost(), 38);
+    leases.push(lease);
+    lease.forget();
+    html.style.setProperty('padding-right', '480px');
+    window.dispatchEvent(new Event('resize'));
+    expect(padding()).toBe('480px');
   });
 });

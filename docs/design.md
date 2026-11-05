@@ -307,14 +307,23 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The setting `weeklyDockWidth` stores it with the rules of `fileViewerWidth`: at least 360 px, at most 70 percent of the window, and 360 px for a missing value.
   The file pane and the weekly dock never change each other's width.
 - The dock takes room with the same padding lease as the other panes: the `html` element gets a right padding of the width of the dock.
-  Canvas's `.ic-Layout-wrapper` has `max-width: 1366px` and stays at the left of the window, with a `margin-left` of 54 px when the global navigation is collapsed, and 84 px when the student expanded it.
+  Canvas's `.ic-Layout-wrapper` has `max-width: 1366px` and stays at the left of the window.
+  Its `margin-left` is 84 px when the global navigation is expanded, and 54 px when the student collapsed it, from a window width of 768 px on.
+  The expanded navigation is Canvas's default: the preference `collapse_global_nav` of a user is off (`app/models/user.rb`), and `app/views/layouts/application.html.erb` then puts `primary-nav-expanded` on the body.
   That is the source fact for the width cap.
   The rules are `body:not(.full-width):not(.outcomes):not(.body--login-confirmation):not(.content-only) .ic-Layout-wrapper` and `body:not(.no-headers):not(.content-only):not(.hide-global-nav) .ic-Layout-wrapper` in `app/stylesheets/base/_ic_app_layout.scss` (canvas-lms `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`, where `$ic-header-primary-width` is 84 px), shipped in `common.css`.
-  So the content of Canvas ends at 1420 px with the collapsed navigation, which is the left edge of the place that the owner drew.
-  A window that is at least 1420 px plus the width of the dock wide shows no change in the content: at 1797 px with a 360 px dock, the left and the right edge of the content are the same with the dock open and minimized.
-  With the expanded navigation the content ends at 1450 px, so at 1797 px with a 360 px dock it narrows by the 13 px that do not fit.
+  The accepted result at 1797 px with a 360 px dock:
+  - With the collapsed navigation the content of Canvas ends at 1420 px, which is the left edge of the place that the owner drew, so it does not move.
+    The left and the right edge of the content are the same with the dock open and minimized.
+  - With the expanded navigation, which is the default, the content ends at 1450 px, so it narrows by the 13 px that do not fit.
+    With a page scroll bar of 15 px it narrows by 28 px.
+  - An account with the full-width layout (`full-width` on the body) has no width cap, so its content narrows by the width of the dock.
   On a narrower window the content narrows, as it does for the PDF pane.
   Below 900 px the dock covers the page, as the other panes do.
+- The dock and its tab are under the overlays of Canvas.
+  They have `z-index: 1000`, and an InstUI Tray or Modal has 9999 (`stacking.topmost` of InstUI).
+  The Add To Do tray and the grades tray of List View open at the right edge of the window with placement end, so they show on top of the dock and of the tab, with the focus inside them.
+  The file pane and the other panes keep the top layer of the page.
 - The look: no card shadow, no card corners and no gap above, a line on the left edge, and the same inside as the card (the header, the arrows, the rings, the tabs, the scroll region and the bottom bar, in the same order).
   The inside fills the window height, and a short list leaves room above the bottom bar.
   The host of the list carries `data-panel="side"`, which keeps the padding and the header rules of a card, and the rules of the dock take away the shadow, the corners and the fixed card height.
@@ -326,12 +335,19 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   A tab stays on the right edge of the window, 96 px from the top, 38 px wide and about 140 px high.
   It has its left corners rounded at 8 px, a 1 px `#c7cdd1` border, a small shadow and a white background (a dark pair in the dark theme).
   It shows a calendar check icon, the text of the span written vertically (for example "Nov 4 - 10"), and a pill with the count of open work of the shown span.
-  The count is the number of items in the day groups of the span: Today, Tomorrow and the later days.
-  It leaves out Past due, No due date and Done.
+  The count is the open work that the rings count in the shown span: the ring total minus its done count, summed over the rings.
+  On a span with the rings 2/4, the tab shows 2.
+  The view holds the number (`openCount`), so the tab shows it also when the rings setting is off.
+  It leaves out reminders, items that the student skipped, Past due, No due date and the look-ahead rows of the next day.
   The tab is a real button with `aria-expanded="false"` and a name such as "Open weekly list, Nov 4 - 10, 2 open".
   A click opens the dock at once.
   Focus goes to the tab after a minimize that the student made inside the dock, and to the minimize button after an open from the tab.
-  The tab takes no room, and its host has its own id (`tools-weekly-tab`) and the mark of a dock.
+  The tab keeps 38 px of room on the page, as long as the window is at least 900 px wide, with the same padding lease as the dock.
+  So the tab never covers the text of the page: at 1368 px the right column ends at the left edge of the tab.
+  A wider window sees no change in the content, because the content of Canvas ends before the tab (see the accepted result above).
+  Below 900 px the tab covers the page, as the dock does.
+  The tab takes its room before the dock gives its room back, and the dock takes its room before the tab gives it back, so the padding never falls to the padding of the page between the two.
+  The host of the tab has its own id (`tools-weekly-tab`) and the mark of a dock.
   The state is the field `minimized` of the stored settings, as for the card, so it holds on every Canvas page and in every tab, and it stays after a reload.
 - Only one dock shows at a time.
   While a file pane is open (decision 25), the dock and its tab are hidden, with no state lost.
@@ -339,23 +355,33 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The dock uses `watchFilePane` and `filePaneOpen` of the dock module, and `setHidden`, as the turn-in pane does.
   The two scripts share the lease through the shared state of the dock module, and the file pane script may be injected later, when the File viewer switch goes on.
   A dock never opens while a file pane is open, because opening would write the padding of the dock over the padding of the file pane.
-  A page that opens with a file pane already open starts with the dock hidden.
+  A page that opens with a file pane already open starts with the dock hidden: while the File viewer switch is on, the first show of the dock or of the tab waits until the file pane script has reported that a pane is open or that none will open, for at most 200 ms (`reportFilePane` and `filePaneReported` of the dock module).
+  So the padding of the page never takes the 360 px of the dock on such a page.
   A file pane script that ends with no word, and a page that removes a host, are seen by an observer of the body, and the dock follows.
   The tab never sits on the file pane, the two resize handles never overlap, and Escape in the file pane closes only the file pane.
-  After the last pane closes, the padding of the page is what the page had.
+  After the last pane and the tab are gone, the padding of the page is what the page had.
+  A page that removes the host of a file pane gives its room back to a minimized list as well: the tab prunes the holders and takes its own 38 px.
 - An extension update removes the dock and the tab of a dead copy and gives the room back, by the stale cleanup rules of the dock module (`removeStaleWeeklyDock`).
   A host without the mark of a dock stays.
-- The code that docked the card under the right column of the classic dashboard no longer runs on the dashboard.
-  The mount of the page calls its release at once for the dock, and the code that course home pages use is unchanged.
-- `tests/e2e/weekly-dock.spec.ts` checks the place, the room at 1797 px, the tab and its focus, every order of the swap with the file pane with the padding read from the page, the dark theme and the Courses tab on a click and on load.
+- The code that docked the card under the right column (`inpage/dock.ts`) runs on course home pages only.
+  The adapter tells the mount where the list sits (`placement`: `dock`, `layout` or `column`), so the classic dashboard and List View start no column dock and no layout, and the widget dashboard keeps `layout.ts`.
+  The panel mode `float` of the stylesheet is gone, because nothing sets it.
+- A copy of the script whose context ended never writes the padding again.
+  Its `stop` always ends the resize listener of the dock and of the tab, and a dock whose host a page removed writes nothing.
+  When a newer copy removed the host, the old copy leaves the room to the newer copy.
+- A dock that was hidden and lost its host shows again when it opens again.
+- `tests/e2e/weekly-dock.spec.ts` checks the place, the room at 1797 px, the tab and its focus, the room of the tab at 1368 px, a planner tray on top of the dock and of the tab, every order of the swap with the file pane with the padding read from the page (also through a page load), the dark theme and the Courses tab on a click and on load.
+  `tests/e2e/dock.spec.ts` checks the column dock of course home pages.
   `tests/fixtures/pages/canvas-layout.css` has the real rules of `.ic-Layout-wrapper` and of the right column, and the widget dashboard fixture has the tab markup of InstUI Tabs.
   `tests/firefox/dashboard-dock.mjs` (`npm run test:firefox:dashboard-dock`) runs the dock, the tab and the swap with a file pane in real Firefox with a fake Canvas over HTTPS.
 
 **Live checks for the owner (the weekly dock):**
 
-1. On the Recent Activity dashboard of sjsu.instructure.com, in a window of about 1,800 px, check the list: it is fixed at the right edge from the top to the bottom, and the content of Canvas does not move when you minimize and open it.
+1. On the Recent Activity dashboard of sjsu.instructure.com, in a window of about 1,800 px, check the list: it is fixed at the right edge from the top to the bottom.
+   With the collapsed navigation the content of Canvas does not move when you minimize and open it.
+   With the expanded navigation it narrows by 13 px while the dock is open.
 2. Scroll the page a long way: the dock stays.
-3. Click "Minimize list": the room goes back and a tab shows on the right edge, with the span and the count.
+3. Click "Minimize list": the dock closes and a tab shows on the right edge, with the span and the count of open work.
    A click on the tab opens the dock.
 4. Open a PDF from a link: only the PDF pane shows.
    Close the pane: the dock is back in the state it had, with the same scroll position.
@@ -364,6 +390,10 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 7. Open the new widget dashboard and click the Courses tab: no list shows.
    Click the Dashboard tab: the card is back with no reload.
    Select the Courses tab, reload, and check that nothing shows until you click the Dashboard tab.
+8. In List View, click "+ To Do": the tray shows on top of the dock.
+   Do the same with the list minimized: the tray shows on top of the tab.
+9. In a window of about 1,400 px with the list minimized, check that the tab does not cover the text of the right column.
+10. Reload a page that has a file pane open: the dock never shows before the pane.
 
 **Opening and closing the panel:**
 
@@ -1567,7 +1597,7 @@ These sizes come from one test build of the same small app [19].
      The card must have no border, and the same shadow and corners as a widget card.
    - The list must show every item of a Month span inside one scroll region, with the header and the rings in place, and the card height limit must hold in windows 700 and 1,000 px tall.
    - The minimized bar must keep the same placement as the card, and the choice must stay after a reload.
-   - A long classic dashboard must dock the list under the right column after the column has scrolled out of view, without covering a column item, and take it back on the scroll up.
+   - A long course home page must dock the list under the right column after the column has scrolled out of view, without covering a column item, and take it back on the scroll up.
    - Screenshot tests run at 200 px, 240 px and 360 px.
    - One test serves a slow Canvas: each answer waits 700 ms, and the planner answers only the requested range, 100 items a page with `Link: rel="next"`, over a full term of work.
      It checks that a week loaded ahead shows within 300 ms of the click, that a past week within the horizon needs no request, and that a week not yet cached shows within one round trip and asks only for the missing week.
@@ -1763,7 +1793,7 @@ It has a minimize button instead (see below).
   - So the student always knows that the list is filtered.
 - The in-page list has a minimize button next to the gear.
   - The button is labeled "Minimize list".
-    On the classic dashboard and in List View, where the list lives in a dock (decision 4), a click closes the dock and gives the room back, and a tab stays on the right edge of the window.
+    On the classic dashboard and in List View, where the list lives in a dock (decision 4), a click closes the dock, and a tab stays on the right edge of the window and keeps 38 px of room.
     The tab is a button with `aria-expanded="false"` and the name "Open weekly list, <span>, <count> open".
     A click on the tab opens the dock at once, and focus goes to the tab after a minimize and to the minimize button after an open.
     The next lines describe the slim bar, which the other places keep.
@@ -3621,10 +3651,12 @@ Submit and Re-submit open the Canvas assignment in a docked pane.
     Every listener in the turn-in root accepts only trusted events.
   - Both panes, and the weekly list dock of decision 4, use one dock module (`src/features/file-viewer/dock.ts`): the position, the width, the resize handle and the `html` padding-right rule.
     The ids that the stale cleanup knows are the hosts `tools-file-viewer`, `tools-turn-in`, `tools-feedback` and `tools-weekly`.
-    The tab of the minimized weekly list (`tools-weekly-tab`) takes no room, so it is not one of them, and the cleanup of the weekly dock removes it with the dock.
+    The tab of the minimized weekly list (`tools-weekly-tab`) holds 38 px of room with the same lease, so the stale cleanup knows its id as well, and the cleanup of the weekly dock removes it with the dock.
     The width is the saved file viewer width.
   - The two scripts run in one isolated world and share a small lease for the padding.
     The first pane that takes room records the inline padding, and the last pane that gives room back restores it exactly.
+    The tab of the weekly list is a holder of the lease too (`leaseRoom`).
+    A file pane script reports to the dock module when it has decided whether a pane opens (`reportFilePane`), so the weekly dock can wait for it.
 - **Frame.**
   - The frame is `/courses/:c/assignments/:a?content_only=1` on the page origin, with validated ids.
     The frame receives no extension channel, secret or port.

@@ -76,7 +76,7 @@
                 <div class="large ic-Dashboard-header__layout">
                   <span class="ic-Dashboard-header__title"><span class="hidden-phone">Dashboard</span></span>
                   <div class="ic-Dashboard-header__actions">
-                    <div id="dashboard-planner-header" class="CanvasPlanner__HeaderContainer" style="display: block;"><button type="button" class="Button">Today</button><button type="button" class="Button">+ To Do</button></div>
+                    <div id="dashboard-planner-header" class="CanvasPlanner__HeaderContainer" style="display: block;"><button type="button" class="Button">Today</button><button type="button" class="Button" id="planner-add-todo" onclick="document.getElementById('planner-todo-tray').hidden = false">+ To Do</button></div>
                     <div id="DashboardOptionsMenu_Container"><button type="button" class="Button" aria-label="Dashboard Options">&#8942;</button></div>
                     <div id="dashboard-planner-header-aux"></div>
                   </div>
@@ -204,4 +204,11 @@
   <div id="aria_alerts" class="hide-text affix" role="alert" aria-live="assertive"></div>
   <div id="StudentTray__Container"></div>
   <div id="react-router-portals"></div>
+</div>
+<!-- The Add To Do tray of the planner: an InstUI Tray with placement end. InstUI gives a tray
+     z-index 9999 (stacking.topmost) and draws it in a portal on the body. -->
+<div id="planner-todo-tray" class="fixture-tray" role="dialog" aria-label="Add To Do" hidden>
+  <h2>Add To Do</h2>
+  <label>Title <input type="text" id="planner-todo-title"></label>
+  <button type="button" class="Button" onclick="document.getElementById('planner-todo-tray').hidden = true">Close</button>
 </div>

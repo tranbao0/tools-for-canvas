@@ -15,10 +15,13 @@ import {
   DOCK_ATTRIBUTE,
   DOCK_CSS,
   filePaneOpen,
+  filePaneReported,
+  leaseRoom,
   watchFilePane,
   WEEKLY_HOST_ID,
   WEEKLY_TAB_ID,
   type Dock,
+  type RoomLease,
 } from '../../file-viewer/dock';
 import { CALENDAR_CHECK_PATH } from '../../../shared/ui/iconPaths';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
@@ -36,6 +39,19 @@ import {
 
 /** The tab sits this far below the top edge of the window. */
 export const TAB_TOP_PX = 96;
+
+/** The width of the tab, which is also the room that a minimized list keeps on the page. */
+export const TAB_WIDTH_PX = 38;
+
+/**
+ * The layer of the dock and of its tab. It is under the overlays of Canvas, which the planner
+ * trays and the modals draw at 9999, so they show on top of the dock. The file pane keeps the top
+ * layer of the page.
+ */
+export const WEEKLY_Z_INDEX = 1000;
+
+/** How long the first show waits for the file pane script, at most. */
+export const FILE_PANE_WAIT_MS = 200;
 
 /** Marks the shadow host of the list as the one in the dock. The stylesheet reads it. */
 export const SIDE_PANEL = 'side';
@@ -64,16 +80,12 @@ export const DOCK_LIST_CSS = `
 }
 `;
 
-/** The open work of the shown span: the items in the day groups, not Past due, No due date or Done. */
+/**
+ * The open work of the shown span: the items that the rings count and that are not done, which is
+ * the ring total minus its done count (design decision 8).
+ */
 export function openWork(state: SurfaceState): number | null {
-  if (state.kind !== 'ready') return null;
-  let count = 0;
-  for (const group of state.view.groups) {
-    if (group.kind === 'today' || group.kind === 'tomorrow' || group.kind === 'day') {
-      count += group.items.length + group.older.length;
-    }
-  }
-  return count;
+  return state.kind === 'ready' ? state.view.openCount : null;
 }
 
 export interface TabText {
@@ -115,7 +127,7 @@ function icon(doc: Document, path: string): SVGElement {
 const TAB_CSS = `
 :host{--pill:#0e68b3;--hover:#f2f4f4;--shadow:rgba(39,53,64,.22)}
 :host([data-theme='dark']){--pill:#2b7abc;--hover:#253443;--shadow:rgba(0,0,0,.5)}
-button{box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:8px;width:38px;min-height:140px;max-height:calc(100vh - ${TAB_TOP_PX}px - 16px);margin:0;padding:10px 0;border:1px solid var(--edge);border-right:0;border-radius:8px 0 0 8px;background:var(--bg);box-shadow:-1px 1px 4px var(--shadow);color:var(--text);font:700 12px/1 Lato,Arial,sans-serif;cursor:pointer}
+button{box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:8px;width:${TAB_WIDTH_PX}px;min-height:140px;max-height:calc(100vh - ${TAB_TOP_PX}px - 16px);margin:0;padding:10px 0;border:1px solid var(--edge);border-right:0;border-radius:8px 0 0 8px;background:var(--bg);box-shadow:-1px 1px 4px var(--shadow);color:var(--text);font:700 12px/1 Lato,Arial,sans-serif;cursor:pointer}
 button:hover{background:var(--hover)}
 button:focus-visible{outline:2px solid var(--focus);outline-offset:-3px}
 svg{display:block;flex:none;width:18px;height:18px}
@@ -128,16 +140,21 @@ interface Tab {
   readonly host: HTMLDivElement;
   readonly button: HTMLButtonElement;
   update(text: TabText): void;
+  /** Shows the tab and keeps its room, or hides it and gives the room back. */
   show(visible: boolean): void;
   setTheme(theme: PageTheme): void;
-  remove(): void;
+  /**
+   * Removes the tab and gives its room back. When the context of the copy ended and a newer copy
+   * removed the tab, the room is the room of the newer copy, so this copy only stops.
+   */
+  remove(contextEnded: boolean): void;
 }
 
 function createTab(doc: Document, onOpen: () => void): Tab {
   const host = doc.createElement('div');
   host.id = WEEKLY_TAB_ID;
   host.setAttribute(DOCK_ATTRIBUTE, '');
-  host.style.cssText = `position:fixed;right:0;top:${TAB_TOP_PX}px;z-index:2147483647;`;
+  host.style.cssText = `position:fixed;right:0;top:${TAB_TOP_PX}px;z-index:${WEEKLY_Z_INDEX};`;
   // The tab holds no frame, so its root is open. A script of the page cannot press the button
   // (only a real click counts), and the button stays reachable for tests and for screen readers.
   const root = host.attachShadow({ mode: 'open' });
@@ -157,6 +174,8 @@ function createTab(doc: Document, onOpen: () => void): Tab {
   button.addEventListener('click', (event) => {
     if (event.isTrusted) onOpen();
   });
+  /** The room that the tab keeps while it shows. */
+  let room: RoomLease | null = null;
   return {
     host,
     button,
@@ -171,13 +190,26 @@ function createTab(doc: Document, onOpen: () => void): Tab {
       pill.hidden = text.open === null;
     },
     show(visible) {
-      if (visible && !host.isConnected) doc.body.append(host);
-      else if (!visible && host.isConnected) host.remove();
+      if (!visible) {
+        room?.release();
+        room = null;
+        host.remove();
+        return;
+      }
+      if (!host.isConnected) {
+        // A page removed the tab, or it never showed: the old lease ends before a new one starts.
+        room?.release();
+        doc.body.append(host);
+        room = leaseRoom(host, TAB_WIDTH_PX, doc);
+      } else room?.refresh();
     },
     setTheme(theme) {
       host.setAttribute('data-theme', theme);
     },
-    remove() {
+    remove(contextEnded) {
+      if (!host.isConnected && contextEnded) room?.forget();
+      else room?.release();
+      room = null;
       host.remove();
     },
   };
@@ -233,6 +265,13 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
   let stopped = false;
   /** The context ended, so this copy watches nothing and never puts a host back. */
   let left = false;
+  /** The File viewer switch, from the stored switches of the small tools. */
+  let fileViewerOn = true;
+  /** The dock or the tab has shown once. From then on the first show waits for nothing. */
+  let shownOnce = false;
+  /** When the wait for the file pane script ends. */
+  const holdEnd = Date.now() + FILE_PANE_WAIT_MS;
+  let holdTimer: ReturnType<typeof setTimeout> | undefined;
   /** The minimized state that the stored settings last told, for the time before the list has them. */
   let stored: Settings | null = null;
   let focusUntil = 0;
@@ -254,6 +293,7 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
     label: t('listTitle'),
     resizeLabel: t('resizeWeeklyList'),
     width,
+    zIndex: WEEKLY_Z_INDEX,
     onResized: saveWidth,
     doc,
   });
@@ -301,7 +341,25 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
   function leave(): void {
     left = true;
     for (const stopListening of stops.splice(0)) stopListening();
+    clearTimeout(holdTimer);
     keeper.stop();
+  }
+
+  /**
+   * Whether the first show waits for the file pane script. A page that opens with a file pane
+   * would otherwise show the dock first and hide it again a moment later. The wait ends when the
+   * script has reported, when the File viewer switch is off, or after `FILE_PANE_WAIT_MS`.
+   */
+  function holding(): boolean {
+    if (shownOnce || !fileViewerOn || filePaneReported() || Date.now() >= holdEnd) return false;
+    holdTimer ??= setTimeout(
+      () => {
+        holdTimer = undefined;
+        sync();
+      },
+      Math.max(0, holdEnd - Date.now()),
+    );
+    return true;
   }
 
   /** Shows the dock or the tab that the state asks for, and hides the other one. */
@@ -318,12 +376,16 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
       onPage = false;
     }
     tab.update(tabText(runtime.state()));
-    const ready = settingsRead && toolsRead;
+    const ready = settingsRead && toolsRead && !holding();
     const file = filePaneOpen();
     const minimized = isMinimized();
     const wantDock = ready && !minimized && !file;
     const wantTab = ready && minimized && !file;
+    if (wantDock || wantTab) shownOnce = true;
     const hadFocus = focusInDock();
+    // The tab takes its room before the dock gives its room back, and the dock takes its room
+    // before the tab gives it back, so the padding never falls to the padding of the page between.
+    if (wantTab) tab.show(true);
     if (wantDock) {
       if (!onPage) {
         // `open` takes the room at once, and a file pane that is open has the room already.
@@ -339,7 +401,7 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
     } else if (onPage && dock.shown) {
       dock.setHidden(true);
     }
-    tab.show(wantTab);
+    if (!wantTab) tab.show(false);
     // A minimize that the student made inside the dock leaves the focus on the tab.
     if (wantTab && hadFocus) tab.button.focus();
     focusMinimizeButton();
@@ -367,6 +429,7 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
     }),
     options.tools.watch((next) => {
       width = normalizeWeeklyDockWidth(next.weeklyDockWidth, win.innerWidth);
+      fileViewerOn = next.fileViewer;
       toolsRead = true;
       if (onPage) dock.setWidth(width);
       sync();
@@ -400,7 +463,10 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
   options.tools
     .getValue()
     .then((value) => {
-      if (!toolsRead) width = normalizeWeeklyDockWidth(value.weeklyDockWidth, win.innerWidth);
+      if (!toolsRead) {
+        width = normalizeWeeklyDockWidth(value.weeklyDockWidth, win.innerWidth);
+        fileViewerOn = value.fileViewer;
+      }
       toolsRead = true;
       sync();
     })
@@ -420,11 +486,15 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
       if (stopped) return;
       stopped = true;
       for (const stopListening of stops.splice(0)) stopListening();
+      clearTimeout(holdTimer);
       keeper.stop();
       // A host that a newer copy removed took its room back already. Closing the dock would put
-      // the padding of this copy over the room of the newer one.
-      if (dock.host.isConnected || !options.invalid()) dock.close();
-      tab.remove();
+      // the padding of this copy over the room of the newer one. The copy still ends its
+      // listeners, and a stopped dock never writes the padding.
+      const gone = options.invalid();
+      if (!dock.host.isConnected && gone) dock.forget();
+      else dock.close();
+      tab.remove(gone);
       dock.host.remove();
     },
   };

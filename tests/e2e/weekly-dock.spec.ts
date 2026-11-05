@@ -52,7 +52,11 @@ interface OpenOptions {
   /** The path and query. Defaults to the dashboard. */
   path?: string;
   settings?: Partial<Settings>;
-  /** The student collapsed the global navigation, as Canvas starts. The fixtures expand it. */
+  /**
+   * Collapses the global navigation. The fixtures start with the navigation expanded, which is
+   * Canvas's default (`app/models/user.rb` turns the preference `collapse_global_nav` off, and
+   * `application.html.erb` then adds `primary-nav-expanded` to the body).
+   */
   collapsedNavigation?: boolean;
   /** Adds a file link to the page, so a file pane can open. */
   withFile?: boolean;
@@ -220,7 +224,8 @@ test.describe('the dock on the classic dashboard', () => {
     // The source fact: margin-left 54 px, with the navigation collapsed, and max-width 1366 px.
     expect(open_['#wrapper']).toEqual([54, 1420]);
     await minimize(page);
-    expect(await padding(page)).toBe('');
+    // The tab keeps 38 px of room, and a window this wide has more than that to spare.
+    expect(await padding(page)).toBe('38px');
     const minimized = await canvasEdges(page);
     expect(minimized).toEqual(open_);
     expect(
@@ -230,7 +235,7 @@ test.describe('the dock on the classic dashboard', () => {
     ).toBe(true);
   });
 
-  test('with the navigation expanded the wrapper is 13 px too wide for the room, and only that much narrows', async ({
+  test('with the navigation expanded, which is the default, the wrapper is 13 px too wide for the room, and only that much narrows', async ({
     context,
     page,
     background,
@@ -240,6 +245,7 @@ test.describe('the dock on the classic dashboard', () => {
     await minimize(page);
     const minimized = await canvasEdges(page);
     // 84 px of margin and 1366 px of width end at 1450 px. A window of 1797 px minus 360 px is 1437 px.
+    // The minimized list keeps the 38 px of the tab, which is 1759 px of room, so the wrapper fits.
     expect(minimized['#wrapper']).toEqual([84, 1450]);
     expect(open_['#wrapper']).toEqual([84, 1437]);
     expect(open_['#content']![0]).toBe(minimized['#content']![0]);
@@ -259,6 +265,54 @@ test.describe('the dock on the classic dashboard', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect.poll(async () => (await boxOf(page, DOCK)).width).toBe(360);
     expect(await padding(page)).toBe('360px');
+  });
+
+  test('the wrapper of the fixture has its margin from 768 px on, as the real rule has', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background, { width: 800, height: 800 });
+    expect((await canvasEdges(page))['#wrapper']![0]).toBe(84);
+    await page.setViewportSize({ width: 760, height: 800 });
+    await expect.poll(async () => (await canvasEdges(page))['#wrapper']![0]).toBe(0);
+  });
+
+  test('a full-width account narrows by the width of the dock', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background);
+    await page.evaluate(() => document.body.classList.add('full-width'));
+    await expect.poll(async () => (await canvasEdges(page))['#wrapper']![1]).toBe(1437);
+    await minimize(page);
+    await expect.poll(async () => (await canvasEdges(page))['#wrapper']![1]).toBe(1759);
+  });
+
+  test('keeps 38 px of room for the tab, so the tab never covers the right column text', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background, {
+      width: 1368,
+      height: 900,
+      settings: { minimized: true },
+    });
+    expect(await padding(page)).toBe('38px');
+    const tabBox = await boxOf(page, TAB);
+    expect(tabBox.x).toBe(1330);
+    const textRight = await page.evaluate(() => {
+      let right = 0;
+      for (const element of document.querySelectorAll('#right-side *')) {
+        const box = element.getBoundingClientRect();
+        if (box.width > 0 && box.height > 0) right = Math.max(right, box.right);
+      }
+      return right;
+    });
+    expect(textRight).toBeLessThanOrEqual(tabBox.x);
+    await page.screenshot({ path: '/tmp/ticket-d/e2e-tab-1368.png' });
   });
 
   test('docks the list on List View in the same place', async ({ context, page, background }) => {
@@ -285,16 +339,60 @@ test.describe('the dock on the classic dashboard', () => {
   });
 });
 
+test.describe('Canvas overlays on List View', () => {
+  /** Which of the dock, the tab and the tray is on top at a point of the window. */
+  const topAt = (page: Page, x: number, y: number): Promise<string> =>
+    page.evaluate(
+      ([px, py]) => {
+        const top = document.elementFromPoint(px!, py!);
+        return top?.closest('#tools-weekly, #tools-weekly-tab, #planner-todo-tray')?.id ?? '';
+      },
+      [x, y],
+    );
+
+  test('the Add To Do tray at the right edge shows on top of the open dock', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background, { fixture: 'dashboard-list-view' });
+    await expect(page.locator(DOCK)).toBeVisible();
+    expect(await topAt(page, 1600, 400)).toBe('tools-weekly');
+    await page.getByRole('button', { name: '+ To Do' }).click();
+    await expect(page.getByRole('dialog', { name: 'Add To Do' })).toBeVisible();
+    // The tray stands at the right window edge, over the dock, with the z-index of Canvas.
+    expect(await topAt(page, 1600, 400)).toBe('planner-todo-tray');
+    expect(await topAt(page, 1790, 20)).toBe('planner-todo-tray');
+    await page.screenshot({ path: '/tmp/ticket-d/e2e-tray-over-dock.png' });
+  });
+
+  test('the Add To Do tray shows on top of the tab of the minimized list', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background, {
+      fixture: 'dashboard-list-view',
+      settings: { minimized: true },
+    });
+    const box = await boxOf(page, TAB);
+    expect(await topAt(page, box.x + 19, box.y + 40)).toBe('tools-weekly-tab');
+    await page.getByRole('button', { name: '+ To Do' }).click();
+    await expect(page.getByRole('dialog', { name: 'Add To Do' })).toBeVisible();
+    expect(await topAt(page, box.x + 19, box.y + 40)).toBe('planner-todo-tray');
+    await page.screenshot({ path: '/tmp/ticket-d/e2e-tray-over-tab.png' });
+  });
+});
+
 test.describe('minimize and the tab', () => {
-  test('minimize closes the dock and gives the room back, and a click on the tab opens it at once', async ({
+  test('minimize closes the dock and keeps 38 px of room for the tab, and a click on the tab opens it at once', async ({
     context,
     page,
     background,
   }) => {
     await open(context, page, background);
     await minimize(page);
-    expect(await padding(page)).toBe('');
-    await expect(page.locator(`html[data-weekrow-room]`)).toHaveCount(0);
+    expect(await padding(page)).toBe('38px');
     // The tab: 38 px wide, 96 px from the top, on the right edge, about 140 px high.
     const box = await boxOf(page, TAB);
     expect(box.x + box.width).toBe(1797);
@@ -365,7 +463,7 @@ test.describe('minimize and the tab', () => {
     await page.reload();
     await expect(tab(page)).toBeVisible();
     await expect(page.locator(DOCK)).toHaveCount(0);
-    expect(await padding(page)).toBe('');
+    expect(await padding(page)).toBe('38px');
     expect(await tab(page).getAttribute('aria-label')).toBe(label);
     await tab(page).click();
     await expect(page.locator(DOCK)).toBeVisible();
@@ -374,28 +472,34 @@ test.describe('minimize and the tab', () => {
     await expect(page.locator(TAB)).toHaveCount(0);
   });
 
-  test('the pill counts the open work of the shown span and follows the list', async ({
+  test('the pill counts the open work that the rings count in the shown span, and follows the list', async ({
     context,
     page,
     background,
   }) => {
     await open(context, page, background);
-    // The open work of the shown span: the rows of the day groups.
-    const open_ = await region(page)
-      .locator(
-        'section[data-group="today"], section[data-group="tomorrow"], section[data-group="day"]',
-      )
-      .getByRole('checkbox')
-      .count();
+    /** The ring total minus its done count, summed over the legend rows of the rings. */
+    const ringsOpen = (): Promise<number> =>
+      inpageList(page)
+        .locator('.wr-legend-row')
+        .evaluateAll((rows) =>
+          rows.reduce((sum, row) => {
+            const counts = /(\d+)\/(\d+)$/.exec(row.textContent ?? '');
+            return counts === null ? sum : sum + Number(counts[2]) - Number(counts[1]);
+          }, 0),
+        );
+    const before = await ringsOpen();
+    expect(before).toBeGreaterThan(0);
     await minimize(page);
     const pill = await tab(page).evaluate((button) => button.querySelector('.pill')?.textContent);
-    expect(Number(pill)).toBe(open_);
+    expect(Number(pill)).toBe(before);
     await tab(page).click();
     await doneBox(inpageList(page), QUIZ_3).click();
     await settledList(page);
+    expect(await ringsOpen()).toBe(before - 1);
     await minimize(page);
     const after = await tab(page).evaluate((button) => button.querySelector('.pill')?.textContent);
-    expect(Number(after)).toBe(open_ - 1);
+    expect(Number(after)).toBe(before - 1);
   });
 
   test('stays through the dark theme, with the dark pair of colors', async ({
@@ -477,7 +581,7 @@ test.describe('one dock at a time with the file pane', () => {
   test('minimized, file open, file close', async ({ context, page, background }) => {
     await open(context, page, background, { withFile: true, settings: { minimized: true } });
     await expect(tab(page)).toBeVisible();
-    expect(await padding(page)).toBe('');
+    expect(await padding(page)).toBe('38px');
     await openFirstFile(page, FILE_LINK, () => addFileLink(page));
     await expect(page.locator(TAB)).toHaveCount(0);
     await expect(page.locator(DOCK)).toHaveCount(0);
@@ -485,8 +589,7 @@ test.describe('one dock at a time with the file pane', () => {
     await closePane(page);
     await expect(tab(page)).toBeVisible();
     await expect(page.locator(DOCK)).toHaveCount(0);
-    expect(await padding(page)).toBe('');
-    await expect(page.locator('html[data-weekrow-room]')).toHaveCount(0);
+    expect(await padding(page)).toBe('38px');
     // The tab never sat on the file pane: it is at the edge of the window again.
     const box = await boxOf(page, TAB);
     expect(box.x + box.width).toBe(1797);
@@ -506,7 +609,7 @@ test.describe('one dock at a time with the file pane', () => {
     await closePane(page);
     await expect(tab(page)).toBeVisible();
     await expect(page.locator(DOCK)).toBeHidden();
-    expect(await padding(page)).toBe('');
+    expect(await padding(page)).toBe('38px');
   });
 
   test('a resize of each dock changes only its own width', async ({
@@ -569,6 +672,69 @@ test.describe('one dock at a time with the file pane', () => {
   });
 });
 
+test.describe('the load order with a file pane that opens at the start', () => {
+  test('a page with a file pane open starts with the dock hidden: the padding never takes the 360 px step', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background, { withFile: true });
+    await openFirstFile(page, FILE_LINK, () => addFileLink(page));
+    await expect(page.locator(DOCK)).toBeHidden();
+    // Every value that the padding takes while the page loads again, with the file pane stored.
+    await page.addInitScript(() => {
+      const values: string[] = [];
+      (window as unknown as { paddings: string[] }).paddings = values;
+      // The page element does not exist yet at the start of the load, so the document is watched.
+      new MutationObserver(() => {
+        const value = document.documentElement.style.getPropertyValue('padding-right');
+        if (values[values.length - 1] !== value) values.push(value);
+      }).observe(document, { attributes: true, subtree: true, attributeFilter: ['style'] });
+    });
+    await page.reload();
+    await expect(page.locator('#tools-file-viewer')).toBeVisible();
+    await pageQuiet(page);
+    await page.waitForTimeout(400);
+    const values = await page.evaluate(
+      () => (window as unknown as { paddings: string[] }).paddings,
+    );
+    expect(values).toContain('480px');
+    expect(values).not.toContain('360px');
+    await expect(page.locator(DOCK)).toBeHidden();
+    expect(await padding(page)).toBe('480px');
+    await closePane(page);
+    await expect(page.locator(DOCK)).toBeVisible();
+    expect(await padding(page)).toBe('360px');
+  });
+
+  test('the dock shows with no wait when the File viewer switch is off', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+    await open(context, page, background);
+    await expect(page.locator(DOCK)).toBeVisible();
+    expect(await padding(page)).toBe('360px');
+  });
+});
+
+test.describe('a page that removes the host of a pane', () => {
+  test('a minimized list takes the room of a removed file host back, as an open list does', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background, { withFile: true, settings: { minimized: true } });
+    await openFirstFile(page, FILE_LINK, () => addFileLink(page));
+    await expect(page.locator(TAB)).toHaveCount(0);
+    expect(await padding(page)).toBe('480px');
+    await page.evaluate(() => document.getElementById('tools-file-viewer')?.remove());
+    await expect(tab(page)).toBeVisible();
+    await expect.poll(() => padding(page)).toBe('38px');
+  });
+});
+
 test.describe('a new copy of the script', () => {
   /** Injects the list script again, as the background does after an update or a reload. */
   async function inject(background: Worker, origin: string): Promise<void> {
@@ -614,8 +780,24 @@ test.describe('a new copy of the script', () => {
     expect(await boxOf(page, DOCK)).toMatchObject({ x: 1437, width: 360 });
     // The page padding of the new copy is the padding of the page, not the room of the old dock.
     await minimize(page);
-    expect(await padding(page)).toBe('');
-    await expect(page.locator('html[data-weekrow-room]')).toHaveCount(0);
+    expect(await padding(page)).toBe('38px');
+  });
+
+  test('the old copy writes no padding when the window changes size', async ({
+    context,
+    page,
+    background,
+  }) => {
+    const served = await open(context, page, background);
+    await inject(background, served.canvas.origin);
+    await expect(page.locator(DOCK)).toHaveCount(1);
+    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await settledList(page);
+    await minimize(page);
+    expect(await padding(page)).toBe('38px');
+    await page.setViewportSize({ width: 1700, height: 1074 });
+    await pageQuiet(page);
+    expect(await padding(page)).toBe('38px');
   });
 });
 
