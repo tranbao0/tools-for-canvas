@@ -17,8 +17,9 @@ export function isAssignmentDetailsMessage(value: unknown): value is AssignmentD
 }
 
 /**
- * Asks only whose submission the signed-in student has for an assignment. The Submission box of
- * the assignment page needs nothing more, so the read has no comments, rubric or assignment record.
+ * Asks whose submission the signed-in student has for an assignment, and for the similarity scores
+ * of its files. The Submission box of the assignment page needs nothing more, so the read has no
+ * comments, rubric or assignment record.
  */
 export interface AssignmentOwnerMessage {
   type: 'assignment:owner';

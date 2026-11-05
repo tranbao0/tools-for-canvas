@@ -1389,6 +1389,33 @@ test('the score of the file shows beside "View NAME" with the look and the link 
   await expect(page.locator('#sidebar_content [data-av-own]')).toHaveCount(0);
 });
 
+test('the score of a file with a long name stands under the name, lined up with its text', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openSidebar(context, page, background, {
+    change: (copy) => {
+      copy.submission.reports = [REPORT];
+    },
+  });
+  await treated(page);
+  const sidebar = sidebarOf(page);
+  const score = sidebar.getByRole('link', { name: '5.0%' });
+  await expect(score).toBeVisible();
+  const link = sidebar.getByRole('link', { name: `View ${SIDEBAR_FILE}` });
+  const text = link.locator('span:not([hidden]) > span');
+  const [linkBox, textBox, scoreBox] = [
+    await link.boundingBox(),
+    await text.boundingBox(),
+    await score.boundingBox(),
+  ];
+  // The name wraps, and the score stands under it, with the left edge of the name.
+  expect(scoreBox!.y).toBeGreaterThanOrEqual(linkBox!.y + linkBox!.height);
+  expect(Math.abs(scoreBox!.x - textBox!.x)).toBeLessThan(1);
+  await sidebar.screenshot({ path: path.join(SHOTS, 'sidebar-score-long-name-1280-light.png') });
+});
+
 test('both files of the Submission box get the treatment', async ({
   context,
   page,

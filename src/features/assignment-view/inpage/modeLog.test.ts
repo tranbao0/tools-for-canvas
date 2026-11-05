@@ -12,22 +12,27 @@ describe('the console lines of the Submission Details page', () => {
     ]);
   });
 
-  it('writes the name and the message of a mount error, and leaves an address out', () => {
+  it('writes one line for a failed mount, with the reason, the name and the message, and no address', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    logMountFailure(new TypeError('Bad value https://school.instructure.com/files/501 here'));
-    logMountFailure('not an error');
+    logMountFailure(
+      new TypeError('Bad value https://school.instructure.com/files/501 here'),
+      'above',
+    );
+    logMountFailure('not an error', 'given-back');
     expect(warn.mock.calls).toEqual([
-      ['[weekrow] submission details mount failed: TypeError: Bad value <address> here'],
-      ['[weekrow] submission details mount failed: Error: '],
+      [
+        '[weekrow] submission details keeps the Canvas frame, reason: mount-failed (TypeError: Bad value <address> here)',
+      ],
+      [
+        '[weekrow] submission details gives the page back as Canvas drew it, reason: mount-failed (Error: )',
+      ],
     ]);
   });
 
   it('cuts a long message', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    logMountFailure(new Error('x'.repeat(500)));
-    expect(String(warn.mock.calls[0]![0])).toHaveLength(
-      '[weekrow] submission details mount failed: Error: '.length + 200,
-    );
+    logMountFailure(new Error('x'.repeat(500)), 'above');
+    expect(String(warn.mock.calls[0]![0])).toContain(`(Error: ${'x'.repeat(200)})`);
   });
 
   it('writes the number of files without a feedback address, and no address', () => {

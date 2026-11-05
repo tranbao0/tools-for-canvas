@@ -148,11 +148,25 @@ function attachmentAssets(fileId: string): string[] {
     : [`attachment_${fileId}`, `attachment_${local}`];
 }
 
-/** The keys that hold a report of the submission itself (`OriginalityReport.submission_asset_key`). */
+/**
+ * The keys that hold a report of the submission itself: `submission_<id>`, and the key with the
+ * time of the submission after it (`OriginalityReport.submission_asset_key`). Canvas writes that
+ * time as `utc.iso8601`, and the record writes `submitted_at` in its own form, so the two compare
+ * as instants and not as text. With no time to compare, every key with a time counts.
+ */
 function submissionAssets(source: SubmissionReports): string[] {
   if (source.id === undefined) return [];
-  const own = `submission_${source.id}`;
-  return source.submitted_at ? [`${own}_${source.submitted_at}`, own] : [own];
+  const plain = `submission_${source.id}`;
+  const at = source.submitted_at ? Date.parse(source.submitted_at) : Number.NaN;
+  const reports = Array.isArray(source.reports) ? source.reports : [];
+  const timed = reports
+    .map((entry) => entry.asset)
+    .filter(
+      (asset) =>
+        asset.startsWith(`${plain}_`) &&
+        (Number.isNaN(at) || Date.parse(asset.slice(plain.length + 1)) === at),
+    );
+  return [...timed, plain];
 }
 
 /** The score element of an entry, or `null` when its address fails the check. */
@@ -201,7 +215,7 @@ function showable(entry: AssignmentReport): boolean {
 /**
  * The score that the template shows for a subject. `own` holds the asset strings of the subject
  * (an attachment), `whole` the keys of the submission, which the template falls back to, and
- * `asset` names the subject in the report address. A subject whose report data cannot be shown
+ * `asset` names the subject in the report address. A subject whose selected entry cannot be shown
  * gives `readable: false`, and no score.
  */
 export function reportFor(
@@ -212,9 +226,6 @@ export function reportFor(
   context: ReportContext,
 ): ReportResult {
   const reports = Array.isArray(source.reports) ? source.reports : [];
-  const keys = [...own, ...whole];
-  if (reports.some((entry) => keys.includes(entry.asset) && !entry.readable))
-    return { report: null, readable: false };
   const first = (list: readonly string[], vericite: boolean): AssignmentReport | undefined => {
     for (const key of list) {
       const hit = reports.find(
@@ -228,11 +239,15 @@ export function reportFor(
   const vericite = reports.some((entry) => entry.kind === 'vericite')
     ? (first(own, true) ?? first(whole, false))
     : undefined;
+  const entry = first(own, false) ?? first(whole, false);
+  // Only the entries that the lookup selects count: an entry that the template never uses is no
+  // reason to hide the score of another.
+  if ((vericite !== undefined && !vericite.readable) || (entry !== undefined && !entry.readable))
+    return { report: null, readable: false };
   if (vericite !== undefined && vericite.score !== null) {
     const result = chip(vericite, 'vericite', asset, source.attempt, context);
     return result === null ? { report: null, readable: false } : { report: result, readable: true };
   }
-  const entry = first(own, false) ?? first(whole, false);
   if (entry === undefined || !showable(entry)) return { report: null, readable: true };
   const result = chip(entry, entry.kind, asset, source.attempt, context);
   return result === null ? { report: null, readable: false } : { report: result, readable: true };

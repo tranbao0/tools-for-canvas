@@ -9,10 +9,17 @@
  * view stops. The file pane has a Download button for every kind of file, so the box needs no
  * download link of its own.
  *
+ * A file with a similarity score gets the score after Canvas's link, as a link of its own to the
+ * report, with the look of Canvas's `.turnitin_similarity_score`. It stands in the same line when
+ * the name fits there, and under the name, aligned with its text, when the name wraps. It is not
+ * inside Canvas's link, because a link inside a link is not valid and a click on it must not open
+ * the file pane. The score comes from the report data of the same read, so the box makes no second
+ * request.
+ *
  * The view changes the box only for the signed-in student's own submission: the user in the file
  * address must be the user of the `submissions/self` record that the background reads, with no
- * include, because the box needs only that user. A teacher or another user sees Canvas's box as it
- * is. A link that does not read "Download NAME" stays as it is.
+ * include. A teacher or another user sees Canvas's box as it is. A link that does not read
+ * "Download NAME" stays as it is.
  */
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { logFailure } from '../../../shared/platform/log';
@@ -27,6 +34,8 @@ const FILE_PATH = new RegExp(`^/courses/(${ID})/assignments/(${ID})/submissions/
 const FILE_ID = /^[1-9]\d*(?:~\d+)?$/;
 /** A link with the `download` parameter and no other. */
 const DOWNLOAD_QUERY = /^\?download=[^&]*$/;
+const ICON_SIZE = 16;
+const GAP = 8;
 /** The nodes that the view added for one file link of Canvas. */
 interface Treatment {
   anchor: HTMLAnchorElement;
@@ -164,7 +173,7 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     const link = own(
       doc,
       'a',
-      `display:inline-block;margin-left:8px;border-radius:3px;padding:2px 4px;background:${background};color:${color};font-size:.75rem;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap`,
+      `display:inline-block;margin-left:${GAP}px;border-radius:3px;padding:2px 4px;background:${background};color:${color};font-size:.75rem;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap`,
     );
     link.textContent = report.text;
     link.setAttribute('href', report.url);
@@ -184,22 +193,36 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     held.setAttribute(ORIGINAL, '');
     held.hidden = true;
     held.append(...anchor.childNodes);
-    const view = own(doc, 'span', 'display:inline-flex;align-items:flex-start;gap:8px');
-    const text = own(doc, 'span');
-    text.textContent = `View ${label}`;
-    const file = icon(doc, 16, '1.8', ['M6 3h8l4 4v14H6z', 'M14 3v4h4']);
-    // The icon sits beside the first line of the name, whatever the line height of the box is.
-    file.setAttribute('style', 'flex:none;margin-top:calc((1lh - 16px) / 2)');
-    view.append(file, text);
-    anchor.append(held, view);
-
     // A report that cannot be shown leaves out the score, because Canvas's box lists the file anyway.
     const report =
       owner === null
         ? null
         : fileReport(owner, fileId, { origin: options.origin, pagePath: path }).report;
+    // With a score the file link is inline, so the score can stand in its line. Without one the
+    // link keeps the block that it always had.
+    const view = own(
+      doc,
+      'span',
+      `display:${report === null ? 'flex' : 'inline-flex;vertical-align:top'};align-items:flex-start;gap:${GAP}px`,
+    );
+    const text = own(doc, 'span');
+    text.textContent = `View ${label}`;
+    const file = icon(doc, ICON_SIZE, '1.8', ['M6 3h8l4 4v14H6z', 'M14 3v4h4']);
+    // The icon sits beside the first line of the name, whatever the line height of the box is.
+    file.setAttribute('style', 'flex:none;margin-top:calc((1lh - 16px) / 2)');
+    view.append(file, text);
+    anchor.append(held, view);
+
     const score = report === null ? null : scoreLink(report);
-    if (score !== null) anchor.after(score);
+    if (score !== null) {
+      anchor.after(score);
+      // A name that wraps fills the width of the box, so the score lands under it. It then lines up
+      // with the text of the name, after the icon and its gap.
+      if (score.getBoundingClientRect().top >= view.getBoundingClientRect().bottom - 1) {
+        score.style.marginLeft = `${ICON_SIZE + GAP}px`;
+        score.style.marginTop = '4px';
+      }
+    }
 
     treatments.push({ anchor, held, view, score });
   }
