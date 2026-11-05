@@ -683,9 +683,9 @@ Run them on `/courses/:id/assignments`.
    Then click a link in the page in the pane, such as a link to a file page, to the modules of the course or to a discussion.
    Expect: Canvas may ask whether to leave, and the page in the pane changes, but the title, the "Open in new tab" link and the marks stay on the assignment of the row.
 5. Click "Preview" on the row that the pane shows.
-   Expect: the pane hides, the page has its width back, and the marks go.
+   Expect: the pane closes, the page has its width back, and the marks go.
    Click "Preview" on the same row.
-   Expect: the pane shows the same page, with your text.
+   Expect: the page loads again, with no text, because a closed pane keeps nothing.
    Click the close button of the pane.
    Expect: the same as above, and the button of the row is not filled.
    Click "Preview" on seven different rows, one after the other.

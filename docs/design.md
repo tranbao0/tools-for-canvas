@@ -3480,7 +3480,7 @@ So a student switches pages to read the instructions next to the feedback on a f
     They show the assignment that the pane shows, also after the close button of the pane, and after Canvas draws the rows again.
     A pane that a file pane covers shows no row, so the click on its row brings it back over the file pane.
   - A click on Preview needs to be trusted.
-    It shows the frame of that assignment, or makes it, when the pane shows another assignment or none, and hides the pane when the pane shows this one (step 3).
+    It shows the frame of that assignment, or makes it, when the pane shows another assignment or none, and closes the pane and removes every frame when the pane shows this one (step 3).
   - One observer adds the button to a row that Canvas draws late or draws again, keeps the button last in its layout, and ignores its own changes.
   - A row in a copy, import or migration state has no layout and no title link, and gets no button.
 - **Files.**
@@ -3880,7 +3880,7 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     The load after a rewrite never rewrites again.
     The rewrite, the request for the file catcher after each trusted load, and the read after each trusted load but the first belong to the frame.
     A frame gets its address before it joins the page, because Chromium fires a load for the blank page of a frame that joins with no address, and that load would use up the first load.
-    So one Preview makes one read.
+    So one Preview makes one read, and a row that redirects makes one more, for the load after the slim rewrite.
   - A load that a script of the page fires is not a load: only a trusted `load` event counts.
 - **Header.**
   - The bar has the height of the tab row of the file pane, 47 px (44 px of tab and the 3 px of its underline), a left padding of 24 px, a bold 14 px title with an ellipsis, and the same 28 px close button with a 16 px icon.
@@ -3892,7 +3892,7 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     A frame that stays hidden plays sound with no control in view, can show the page of an earlier student after a sign-out in another tab, and stays failed once it failed.
     So the next Preview click starts with new frames, as a closed tab does.
     The room goes back to the page.
-    Before the frames go, the pane reads the assignment of each frame once, the shown one first, one read after the other through the joins of the "Refresh" item, so a submission in a hidden frame is not missed.
+    The frames go at once, and then the pane reads the assignment of each frame once, the shown one first, one read after the other through the joins of the "Refresh" item, so a submission in a hidden frame is not missed.
     A change of student or a sign-out (`reset`) removes the frames too, and ends the reads that still wait.
     The limit of 6 frames and a page that removes the pane host also remove frames.
     Escape inside a frame does nothing.
