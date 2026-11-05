@@ -517,10 +517,11 @@ for (const view of Object.keys(PREVIEW_VIEWS) as (keyof typeof PREVIEW_VIEWS)[])
 test('a script cannot open the pane with history calls', async ({ context, page, background }) => {
   const { canvas } = await openFilesView(context, page, background, 'files');
   // A first open shows that the viewer is live. The attacks follow with the pane closed.
-  await clickName(page);
-  await closePane(page);
   const filesRequests = () =>
     canvas.requests.filter((request) => request.path === '/api/v1/files/42').length;
+  await clickName(page);
+  await expect.poll(filesRequests).toBeGreaterThan(0);
+  await closePane(page);
   const before = filesRequests();
   const idle = async () => {
     await page.waitForTimeout(1000);
