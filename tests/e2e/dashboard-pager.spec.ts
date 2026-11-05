@@ -58,7 +58,13 @@ async function open(
   await saveTools(background, tools(fixes));
   await page.setViewportSize({ width: options.width ?? 1280, height: 1000 });
   await openCanvasPage(page, served.canvas.origin, options.query ?? '/?fixture_course_work=second');
-  if (fixes.steadyPager) await expect(navOf(page, ANNOUNCEMENTS)).toBeVisible();
+  // The own list of the Announcements widget hides the pager of Canvas, so the navigator of the
+  // Course work widget shows that the fix has drawn.
+  if (fixes.steadyPager) {
+    await expect(
+      navOf(page, fixes.announcementsInPlace ? COURSE_WORK : ANNOUNCEMENTS),
+    ).toBeVisible();
+  }
   return served;
 }
 
@@ -639,15 +645,14 @@ test.describe('every paged widget', () => {
   test('leaves the Course work widget that the weekly card replaces alone', async ({
     context,
     page,
+    background,
   }) => {
-    await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]).then(
-      async (served) => {
-        await addCsrfCookie(context, served.canvas.origin);
-        await page.setViewportSize({ width: 1920, height: 1000 });
-        await openCanvasPage(page, served.canvas.origin, '/');
-      },
-    );
-    await expect(navOf(page, ANNOUNCEMENTS)).toBeVisible();
+    // The Announcements widget keeps the pager of Canvas, so its navigator shows that the fix ran.
+    await open(context, page, background, {
+      width: 1920,
+      query: '/',
+      fixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, announcementsInPlace: false },
+    });
     const replaced = page.locator('[data-weekrow-replaced]');
     await expect(replaced).toHaveCount(1);
     await expect(replaced.locator('[data-wr-own="pager"]')).toHaveCount(0);
@@ -705,14 +710,17 @@ test.describe('the switch', () => {
     background,
   }) => {
     await open(context, page, background, { fixes: DEFAULT_TOOLS_SETTINGS.dashboardFixes });
-    await expect(navOf(page, ANNOUNCEMENTS)).toBeVisible();
+    await expect(navOf(page, COURSE_WORK)).toBeVisible();
     await saveTools(
       background,
       tools({ ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, steadyPager: false }),
     );
     await expect(page.locator('[data-wr-own="pager"]')).toHaveCount(0);
     await page.reload();
-    await expect(page.locator('[data-testid="pagination-container"]').first()).toBeVisible();
+    // The own list of the Announcements widget and the grades fix hide their pagers.
+    await expect(
+      page.getByTestId(COURSE_WORK).locator('[data-testid="pagination-container"]'),
+    ).toBeVisible();
     await pageQuiet(page);
     await expect(page.locator('[data-wr-own="pager"]')).toHaveCount(0);
   });
@@ -722,8 +730,12 @@ test('stops writing to the page when nothing changes', async ({ context, page, b
   await open(context, page, background, {
     fixes: DEFAULT_TOOLS_SETTINGS.dashboardFixes,
   });
-  // The other fixes draw after the data arrives, so wait for each of them.
-  await expect(page.locator('[data-wr-title]').first()).toBeAttached({ timeout: 20_000 });
+  // The other fixes draw after the data arrives, so wait for each of them. The Announcements
+  // list is steady once its first page of rows is in.
+  await expect(page.locator('[data-wr-list]').first()).toBeAttached({ timeout: 20_000 });
+  await expect(page.locator('[data-wr-list]').first().locator('article').first()).toBeAttached({
+    timeout: 20_000,
+  });
   await expect(page.locator('[data-wr-extra]')).toBeAttached({ timeout: 20_000 });
   await expect(page.locator('[data-wr-cc]').first()).toBeAttached({ timeout: 20_000 });
   await pageQuiet(page, 6, 400);

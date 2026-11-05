@@ -32,7 +32,15 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
       gradeVisibilities: {},
     })),
     announcement: vi.fn(async () => ({ title: 'Hello', message: '<p>Hi</p>' })),
-    announcements: vi.fn(async () => []),
+    announcementPage: vi.fn(async () => ({
+      userId: '42',
+      items: [],
+      count: 0,
+      total: 0,
+      hasNext: false,
+    })),
+    announcementRange: vi.fn(async () => ({ userId: '42', items: [], truncated: false })),
+    markDashboardAnnouncement: vi.fn(async () => ({ ok: true })),
     announcementFeed: vi.fn(async () => ({ status: 'unavailable', tab: 'tasks' })),
     markRubricRead: vi.fn(async () => undefined),
     assignmentDetails: vi.fn(async () => ({
@@ -422,6 +430,27 @@ describe('routeDataMessage', () => {
   describe('the messages of the dashboard fixes', () => {
     const ANNOUNCEMENT = { courseId: '101', topicId: '31901' };
 
+    const PAGE = {
+      type: 'weekrow:announcement-page',
+      courseId: null,
+      read: 'unread',
+      offset: 20,
+      first: 10,
+    };
+    const RANGE = {
+      type: 'weekrow:announcement-range',
+      courseId: '101',
+      from: '2026-10-01',
+      to: '2026-10-31',
+    };
+    const MARK = {
+      type: 'weekrow:announcement-mark',
+      courseId: '101',
+      topicId: '31901',
+      userId: '42',
+      read: true,
+    };
+
     it('answer the saved Canvas and extension pages from the owner', async () => {
       for (const sender of [CONTENT_SCRIPT, EXTENSION_PAGE]) {
         await expect(
@@ -430,23 +459,89 @@ describe('routeDataMessage', () => {
         await expect(
           routeDataMessage(owner, { type: 'weekrow:announcement', ...ANNOUNCEMENT }, sender, host),
         ).resolves.toEqual({ title: 'Hello', message: '<p>Hi</p>' });
-        await expect(
-          routeDataMessage(
-            owner,
-            { type: 'weekrow:announcement-list', courseId: '101' },
-            sender,
-            host,
-          ),
-        ).resolves.toEqual([]);
       }
       expect(owner.announcement.mock.calls).toEqual([
         ['101', '31901', SAVED, 3],
         ['101', '31901', SAVED, undefined],
       ]);
-      expect(owner.announcements.mock.calls).toEqual([
-        ['101', SAVED, 3],
-        ['101', SAVED, undefined],
-      ]);
+    });
+
+    it('answer the announcement page, range and mark for the page of the saved Canvas only', async () => {
+      await expect(routeDataMessage(owner, PAGE, CONTENT_SCRIPT, host)).resolves.toEqual({
+        userId: '42',
+        items: [],
+        count: 0,
+        total: 0,
+        hasNext: false,
+      });
+      await expect(routeDataMessage(owner, RANGE, CONTENT_SCRIPT, host)).resolves.toEqual({
+        userId: '42',
+        items: [],
+        truncated: false,
+      });
+      await expect(routeDataMessage(owner, MARK, CONTENT_SCRIPT, host)).resolves.toEqual({
+        ok: true,
+      });
+      expect(owner.announcementPage).toHaveBeenCalledWith(
+        { courseId: null, read: 'unread', offset: 20, first: 10 },
+        SAVED,
+        3,
+      );
+      expect(owner.announcementRange).toHaveBeenCalledWith(
+        { courseId: '101', from: '2026-10-01', to: '2026-10-31' },
+        SAVED,
+        3,
+      );
+      expect(owner.markDashboardAnnouncement).toHaveBeenCalledWith('101', '31901', true, '42', 3);
+    });
+
+    it.each([
+      ['an extension page', EXTENSION_PAGE],
+      ['another Canvas host', OTHER_CANVAS],
+      ['a frame inside the saved Canvas', { ...CONTENT_SCRIPT, frameId: 5 }],
+      ['a sender with no tab', { url: CONTENT_SCRIPT.url }],
+    ])('refuse the announcement page, range and mark from %s', async (_name, sender) => {
+      for (const message of [PAGE, RANGE, MARK]) {
+        await expect(routeDataMessage(owner, message, sender, host)).rejects.toThrow();
+      }
+      expect(owner.announcementPage).not.toHaveBeenCalled();
+      expect(owner.announcementRange).not.toHaveBeenCalled();
+      expect(owner.markDashboardAnnouncement).not.toHaveBeenCalled();
+    });
+
+    it('refuse a page, range or mark with a value that is out of bounds', () => {
+      const bad = [
+        { ...PAGE, courseId: '1/2' },
+        { ...PAGE, courseId: 5 },
+        { ...PAGE, read: 'everything' },
+        { ...PAGE, offset: -1 },
+        { ...PAGE, offset: 100_001 },
+        { ...PAGE, offset: 1.5 },
+        { ...PAGE, offset: '10' },
+        { ...PAGE, first: 11 },
+        { ...PAGE, first: 1000 },
+        { ...RANGE, courseId: '1?x' },
+        { ...RANGE, courseId: undefined },
+        { ...RANGE, from: '2026-02-30' },
+        { ...RANGE, from: '2026-1-01' },
+        { ...RANGE, to: '2026-10-31T00:00:00Z' },
+        { ...RANGE, from: '2026-11-01' },
+        { ...MARK, courseId: '../x' },
+        { ...MARK, topicId: '1/read' },
+        { ...MARK, userId: undefined },
+        { ...MARK, userId: '4/2' },
+        { ...MARK, read: 'true' },
+        { ...MARK, read: undefined },
+      ];
+      for (const message of bad) {
+        expect(
+          routeDataMessage(owner, message, CONTENT_SCRIPT, host),
+          JSON.stringify(message),
+        ).toBeNull();
+      }
+      expect(owner.announcementPage).not.toHaveBeenCalled();
+      expect(owner.announcementRange).not.toHaveBeenCalled();
+      expect(owner.markDashboardAnnouncement).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -457,7 +552,6 @@ describe('routeDataMessage', () => {
       const messages = [
         { type: 'weekrow:dashboard-data' },
         { type: 'weekrow:announcement', ...ANNOUNCEMENT },
-        { type: 'weekrow:announcement-list', courseId: '101' },
         {
           type: 'weekrow:announcement-feed',
           request: { surface: 'inpage', scopeCourseId: null, force: false, tab: null },
@@ -469,7 +563,6 @@ describe('routeDataMessage', () => {
       }
       expect(owner.dashboardData).not.toHaveBeenCalled();
       expect(owner.announcement).not.toHaveBeenCalled();
-      expect(owner.announcements).not.toHaveBeenCalled();
       expect(owner.announcementFeed).not.toHaveBeenCalled();
       expect(host.saveTools).not.toHaveBeenCalled();
     });
@@ -478,10 +571,9 @@ describe('routeDataMessage', () => {
       const bad = [
         { type: 'weekrow:announcement', courseId: '../users/self', topicId: '1' },
         { type: 'weekrow:announcement', courseId: '1', topicId: '1/read' },
-        // The extension has no read mark, so the old message is no message of the protocol.
+        // The old messages are no messages of the protocol.
         { type: 'weekrow:announcement-read', courseId: '1', topicId: '2' },
-        { type: 'weekrow:announcement-list', courseId: '1?x=2' },
-        { type: 'weekrow:announcement-list' },
+        { type: 'weekrow:announcement-list', courseId: '1' },
       ];
       for (const message of bad) {
         expect(

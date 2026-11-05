@@ -24,6 +24,9 @@ let engine: FixesEngine;
 const settle = async (ms = 120): Promise<void> => {
   await vi.advanceTimersByTimeAsync(ms);
 };
+/** The requests for the data of the fixes. The announcements list asks for its own pages besides. */
+const dataRequests = () =>
+  send.mock.calls.filter(([message]) => message.type === 'weekrow:dashboard-data');
 const marks = (): number =>
   document.querySelectorAll('[data-wr-own], [data-wr-cc], [data-wr-grades]').length;
 
@@ -80,7 +83,7 @@ describe('createFixesEngine', () => {
     send.mockClear();
     engine.reload();
     await settle();
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(dataRequests()).toHaveLength(1);
     expect(send).toHaveBeenCalledWith({ type: 'weekrow:dashboard-data' });
   });
 
@@ -252,7 +255,7 @@ describe('createFixesEngine', () => {
     send.mockClear();
     engine.reload();
     await settle();
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(dataRequests()).toHaveLength(1);
     expect(document.querySelector('[data-testid="course-103-grade"]')?.textContent).toBe('•••');
   });
 
@@ -478,6 +481,54 @@ describe('createFixesEngine', () => {
     engine.setActive(true);
     await settle();
     expect(marks()).toBe(0);
+  });
+});
+
+describe('a change of the student', () => {
+  const list = () =>
+    [
+      ...(document
+        .querySelector<HTMLElement>('[data-wr-list]')
+        ?.shadowRoot?.querySelectorAll('article') ?? []),
+    ].map((article) => article.getAttribute('aria-label'));
+
+  it('drops the announcements of the first student, and loads the list of the second', async () => {
+    let student = '5';
+    send.mockImplementation(async (message) => {
+      if (message.type === 'weekrow:announcement-page') {
+        const title = student === '5' ? 'Topic of A' : 'Topic of B';
+        return {
+          userId: student,
+          count: 1,
+          total: 1,
+          hasNext: false,
+          items: [
+            {
+              id: student === '5' ? '1' : '2',
+              courseId: '101',
+              courseName: 'BIO 110',
+              title,
+              postedAt: null,
+              author: null,
+              avatarUrl: null,
+              read: false,
+              message: '',
+            },
+          ],
+        };
+      }
+      return { ...DATA, userId: student };
+    });
+    engine.setSettings({ ...OFF, announcementsInPlace: true });
+    engine.setActive(true);
+    await settle();
+    expect(list()).toEqual(['Topic of A']);
+
+    student = '6';
+    engine.reload();
+    await settle(400);
+
+    expect(list()).toEqual(['Topic of B']);
   });
 });
 

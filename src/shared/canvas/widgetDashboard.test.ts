@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  findAnnouncementItem,
   findAnnouncementsWidgets,
   findCourseWorkIcons,
   findCourseWorkWidgets,
@@ -76,21 +75,24 @@ describe('Course work', () => {
 });
 
 describe('Announcements', () => {
-  it('finds the items with the pieces that the fix attaches to', () => {
-    const [widget] = findAnnouncementsWidgets(document, ORIGIN);
-    expect(widget?.items.map((item) => [item.courseId, item.topicId])).toEqual([
-      ['101', '31901'],
-      ['102', '32901'],
-      ['104', '34901'],
-    ]);
+  it('finds the read filter and the block around it', () => {
+    const [widget] = findAnnouncementsWidgets(document);
     expect(widget?.read).toBe('unread');
-    const first = widget?.items[0];
-    expect(first?.title?.textContent?.trim()).toBe('Lab room change for Thursday');
-    expect(first?.snippet?.textContent).toContain('lab section moves');
-    expect(first?.linkRow?.contains(first.link)).toBe(true);
     expect(widget?.filterBlock.parentElement).toBe(widget?.bar);
-    expect(widget?.content?.parentElement).toBe(widget?.bar);
     expect(widget?.bar.contains(widget?.filterBlock)).toBe(true);
+    // The block of the filter holds no announcement, and the bar holds the list beside it.
+    expect(widget?.filterBlock.querySelector('[data-testid^="announcement-item-"]')).toBeNull();
+    expect(widget?.bar.querySelector('[data-testid^="announcement-item-"]')).not.toBeNull();
+  });
+
+  it('finds the filter block when the widget shows its empty message', () => {
+    document.querySelectorAll('[data-testid^="announcement-item-"]').forEach((row) => row.remove());
+    const message = document.createElement('span');
+    message.setAttribute('data-testid', 'no-announcements-message');
+    document.querySelector('[data-testid="widget-announcements-widget"] ul')?.append(message);
+    const [widget] = findAnnouncementsWidgets(document);
+    expect(widget?.filterBlock.parentElement).toBe(widget?.bar);
+    expect(widget?.filterBlock.querySelector('input')).not.toBeNull();
   });
 
   it('reads the read filter from the label of its input', () => {
@@ -103,23 +105,8 @@ describe('Announcements', () => {
       ['Non lus', 'all'],
     ] as const) {
       input!.value = label;
-      expect(findAnnouncementsWidgets(document, ORIGIN)[0]?.read).toBe(read);
+      expect(findAnnouncementsWidgets(document)[0]?.read).toBe(read);
     }
-  });
-
-  it('finds the title of a long announcement by its cut text', () => {
-    const row = document.querySelector<HTMLElement>('[data-testid="announcement-item-31901"]')!;
-    const full = 'L'.repeat(90);
-    row.setAttribute('aria-label', full);
-    const leaf = row.querySelector('.fx-xsmall');
-    leaf!.textContent = `${'L'.repeat(75)}...`;
-    expect(findAnnouncementItem(row, ORIGIN)?.title).not.toBeNull();
-  });
-
-  it('gives no item for a row with no link to a topic', () => {
-    const row = document.querySelector<HTMLElement>('[data-testid="announcement-item-31901"]')!;
-    row.querySelector('a')?.setAttribute('href', '/courses/101/pages/x');
-    expect(findAnnouncementItem(row, ORIGIN)).toBeNull();
   });
 });
 

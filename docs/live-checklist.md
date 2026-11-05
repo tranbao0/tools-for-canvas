@@ -318,21 +318,49 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
     Expect: the icon of each Course work item has the color of its course, the same color as the course card on the Courses tab, with a white or black icon.
     Expect: the status pill beside each title still shows Missing, Late, Submitted or the due date.
     Expect: in the dark theme of the dashboard, the colors stay.
-33. In the Announcements widget, click "Read more" of an unread announcement.
-    Expect: the whole message shows in the card, with its links, images and lists, and the page does not change.
-    Expect: the announcement does not show "Marked as read.", and the circle of the card does not change.
+33. Look at the Announcements widget.
+    Expect: the list of Canvas and its pager are gone, and the widget shows the read filter, the course filter, a search field with a calendar button, and a scroll area with 10 announcements.
+    Expect: each row shows an avatar (the image of the author, or the initials on a color), a bold title, "Sent by NAME | Nov 2, 2026", the course name, a snippet, "Read more" and a circle at the right.
+    Scroll the area to its end.
+    Expect: "Loading more" shows, then 10 more rows join the list, and the card does not change its height.
+    Keep scrolling until the end.
+    Expect: the line "No more announcements" shows, and the number of rows is the number that Canvas shows in the Unread filter.
+    Click "Read more" of an unread announcement.
+    Expect: the whole message shows in the row, with its links, images and lists, the title shows whole, and the card and the scroll area keep their height.
+    Expect: the circle of the row does not change.
     Click "Show less".
-    Expect: with the Unread filter, the announcement stays in the list, and in Canvas it is still unread (check the unread count of Canvas, and do not open the page of the announcement, because Canvas marks it as read when the page opens).
-    Click the read circle of the card.
-    Expect: the widget marks the announcement as read in its own way, and it leaves the Unread list.
-    Click the title of another announcement.
-    Expect: the same as "Read more".
-    Hold Ctrl (Cmd on a Mac) and click "Read more".
-    Expect: Canvas opens the announcement in a new tab.
-34. In the Announcements widget, use the new "Course filter:" beside the read filter.
-    Expect: the list shows the announcements of that course, filtered by the read filter, with its own "Read more" in place, and the pager of the widget is gone.
+    Expect: the announcement is still unread in Canvas (check the unread count of Canvas, and do not open the page of the announcement, because Canvas marks it as read when the page opens).
+    Hold Ctrl (Cmd on a Mac) and click a title of a row.
+    Expect: nothing opens, because the title is plain text, as in Canvas.
+34. In the Announcements widget, use the filters, the read control and the searches.
+    Choose another read filter.
+    Expect: the list of that filter shows from its top, and the first request of that filter asks for 10 rows.
+    Use the "Course filter:" beside the read filter.
+    Expect: the list shows the announcements of that course, filtered by the read filter, and the pager of the widget is gone.
     Choose "All courses".
-    Expect: the list of the widget is back.
+    Click the circle of an unread announcement in the Unread filter.
+    Expect: the circle becomes a green check at once, the row stays in the list, and in Canvas the announcement is read (check the unread count of Canvas).
+    Scroll to load more rows.
+    Expect: no row of the list repeats, and no row is missing.
+    Click the check again.
+    Expect: the circle comes back, and the announcement is unread in Canvas.
+    Type a word of a title in the search field, then a word of a message that is not in the title.
+    Expect: after the first search, the line "Searching 100 of N" can show while the announcements load, then the line "N results, read and unread", with the matches marked in the titles and in the snippets, and read announcements in the results.
+    Expect: with two words, only the announcements that hold both show.
+    Click the x of the search field.
+    Expect: the list comes back at its old scroll position.
+    Click the calendar button, set From and To, and look at the results.
+    Expect: the announcements of those days show, also an announcement that the list of the widget did not show, if your Canvas has one, and the line says how many.
+    Set From after To.
+    Expect: a note says that From must be on or before To, and nothing new loads.
+    Click "Clear".
+    Expect: the list comes back at its old scroll position.
+    Make the window 500 px high.
+    Expect: the scroll area keeps at least 20rem, and the page scrolls.
+    Use the dark theme of the dashboard.
+    Expect: the rows, the search field, the date fields and the marks are readable.
+    Turn the fix off in the settings.
+    Expect: the list of Canvas and its pager come back as they were.
 35. Open the Course work widget with the filter "Not submitted".
     Expect: an "Also due" section under the list shows work with no due date, overdue work, and pages, ungraded discussions and your own tasks that have a to-do date.
     Click "Show all".
@@ -399,7 +427,8 @@ Run them on the classic dashboard in Card View, then in List View, then on a cou
 47. Open the new widget dashboard.
     Expect: the weekly list shows no switch, and the Announcements widget of Canvas is the place for announcements.
     Open the network tab of the browser's developer tools.
-    Expect: the extension sends no request to `/api/v1/announcements`.
+    Expect: the weekly list sends no request to `/api/v1/announcements`.
+    The only request of the extension to it on this page is the date search of the Announcements widget, and it waits until you set a date.
     Switch the dashboard to List View.
     Expect: the switch shows.
 48. Make the window 240 px wide with the side panel (Firefox) or make the card narrow, then choose "Announcements".

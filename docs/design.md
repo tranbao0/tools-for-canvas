@@ -1077,8 +1077,8 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   It causes no check and no sign-out.
   The router passes the tab of the sender, and the owner asks the browser which store lists the tab.
   A surface without a tab, such as the side panel, uses the default store.
-  Every route that reads for a tab makes this check first: the weekly list state, the dashboard data, the grade visibility read, the Announcements tab, one announcement and the announcement list of a course.
-  For a tab in another store, the Announcements tab is `unavailable`, the grade visibility read has no visibilities, and one announcement or the announcement list is empty.
+  Every route that reads for a tab makes this check first: the weekly list state, the dashboard data, the grade visibility read, the Announcements tab, one announcement, and the announcement page, range and read mark of the dashboard widget.
+  For a tab in another store, the Announcements tab is `unavailable`, the grade visibility read has no visibilities, one announcement is empty, and the announcement page, range and read mark of the widget are refused.
   Canvas hears nothing for such a tab.
   The router passes the tab to every action too (a done mark, a skip mark, an Undo, a read mark and every task write), and the owner makes the same check first.
   A refused action does nothing, and its reply is the plain one with no Undo.
@@ -1309,7 +1309,9 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | Overrides | `GET /api/v1/planner/overrides?per_page=100` | 5-minute timer, when No due date has items |
 | Announcements (decision 24) | `GET /api/v1/announcements?context_codes[]=course_:id...&start_date=...&end_date=...&active_only=true&per_page=100` | A surface with the Announcements tab asks, and the list is missing or older than 60 seconds; one request for each 20 courses |
 | Announcement message | `GET /api/v1/courses/:id/discussion_topics/:id` | The student opens a row (decision 22 and 24) |
-| Announcement read mark | `PUT` and `DELETE /api/v1/courses/:id/discussion_topics/:id/read` | The student presses "Mark as read" or Undo, with the sign-in check before it |
+| Announcement page of the dashboard widget (decision 22) | `POST /api/graphql`, query `WeekrowAnnouncements` (`discussionParticipantsConnection`, a read, no mutation) | The list of the widget loads 10 rows, and 10 more when the end of its scroll area comes near; the search by topic loads pages of 100, up to 20, once for the page view |
+| Announcement range of the dashboard widget (decision 22) | `GET /api/v1/announcements?context_codes[]=course_:id...&start_date=yyyy-mm-dd&end_date=yyyy-mm-dd&active_only=true&per_page=100` | The student sets From or To in the search by date; one request for each 20 courses of the session |
+| Announcement read mark | `PUT` and `DELETE /api/v1/courses/:id/discussion_topics/:id/read` | The student presses "Mark as read" or Undo, or clicks the read control of the dashboard widget (decision 22), with the sign-in check before it |
 
 **Request rules:**
 
@@ -1844,7 +1846,7 @@ The cache writes of the weekly list follow the cookie rule of decision 11, and t
 | Switch | Fix |
 |---|---|
 | Course colors on Course work icons | The icon box of each Course work item takes the color of its course |
-| Announcements in place | "Read more" and the title open the whole message in the card, and a course filter joins the read filter |
+| Announcements in place | One steady list with infinite scroll replaces the list of the widget: a message opens in its row, the card keeps its height, and a course filter, a search by topic and a search by date join the read filter |
 | Course work extras | An "Also due" section under the Course work list |
 | All course grades | A grade card for every course, not only six |
 | Steady page buttons | One page navigator with nine fixed places for the paged widgets |
@@ -1921,7 +1923,8 @@ I read each of them in the package source.
   `GET /api/v1/announcements` (`AnnouncementsApiController#index`) only lists the announcements.
   `GET /api/v1/courses/:id/discussion_topics/:id/view` (the `view` action) logs the access and renders the materialized view of the entries, and it does not change the read state of the topic.
   The topic HTML page does mark it: `DiscussionTopicsController#show` calls `change_read_state("read")` for the signed-in user when the student can read the topic.
-  So the extension never loads the topic page itself, and it reads announcements with only the first two requests.
+  So the extension never loads the topic page itself.
+  It reads announcements with these two requests and with the GraphQL read of the widget list (decision 22, choice 2), which `discussionParticipantsConnection` serves with no change of the read state.
   The read mark of decision 24 uses `PUT` and `DELETE` on `/api/v1/courses/:id/discussion_topics/:id/read` (`mark_topic_read` and `mark_topic_unread`), which change only the read state of the topic.
   A page that the student opens on Canvas, such as with Ctrl+click on "Read more", marks the topic as read by Canvas, as it does without the extension.
 
@@ -1970,6 +1973,8 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
   `scripts/check-storage.mjs`, `check-fetch.mjs` and `check-size.mjs` check it like the list script, and each script has its own size budget.
 - Steady page buttons is in `inpage/pager.ts`.
   `findPagedWidgets` in `src/shared/canvas/widgetDashboard.ts` finds each pager, its current page, its total and its buttons, and skips the widget whose wrapper has `data-weekrow-replaced`.
+- Announcements in place is in `inpage/announcements.tsx` (the view), `inpage/announcementStore.ts` (the lists, the offsets, the marks, the search index and the ranges, with no DOM) and `inpage/announcementSearch.ts` (the pure search).
+  The background side is `data/announcementRows.ts` (the projection of a row with a limit on every text), the page, range and mark methods of the data owner, and `announcementPageQuery` and `readAnnouncementPage` in `src/shared/canvas/graphql.ts`.
 - One `MutationObserver` serves the whole feature.
   It watches the content of the page, and a batch of changes (50 ms) runs one pass of the enabled fixes.
   The observer ignores the nodes that the fixes add, so a pass never starts another.
@@ -1990,27 +1995,142 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The color is the saved Canvas color, or the default color that the rings use.
    The background computes the ink color, so the script stays small.
 2. **Announcements in place.**
-   A click listener on the window, in the capture phase, takes a plain primary click on "Read more" or on the title, and stops it before React sees it.
-   A click with a modifier key, or with another button, keeps its native meaning.
-   The message comes from `GET /api/v1/courses/:id/discussion_topics/:id` through the background.
-   The course filter copies the box, border, radius, padding and type of the read filter from its computed style, so it looks the same in every theme.
-   The message takes the type size and line height of the snippet that it replaces.
-   Opening or closing the message does not mark the announcement as read.
-   It sends no write, it does not change the read state, and it does not refresh the widget.
-   The extension shows no "Marked as read." line, and it does not change the circle of the card.
-   The owner chose on 2026-10-30 that only an explicit student action marks an announcement as read.
-   The read circle of the widget is the only control of the dashboard that marks one, and the fix leaves its native behavior alone.
-   The extension makes no such mark, and the Canvas page of an announcement marks it as read when the student opens that page.
-   The owner found the first design on a live Canvas on 2026-10-30.
-   With the Unread filter, the student opened and closed a message, and the extension had marked it as read, so it left the list.
-   The dashboard fixes have no request that writes to an announcement.
-   The only write of the extension for an announcement is the explicit "Mark as read" control of the weekly list (decision 24).
+   The own list always replaces the list and the pager of the widget.
+   The read filter of Canvas and the course filter of the fix stay above it, and the fix reads the value of the read filter as the widget shows it.
+   The fix reads that value from the English labels of the input of Canvas: "Unread" is the Unread filter, "Read" is the Read filter, and any other text counts as All.
+   From the first pass on, the list of Canvas is hidden, so no flash shows while the first page loads.
+   One rule of the stylesheet, scoped to the widget mark `data-wr-filtered`, hides every child of the filter bar except the filter block and the nodes of the fix, and the pager.
+   The reason is that Canvas shows 3 announcements a page, and an open message changes the height of the card, which moves the pager, so the next page is hard to reach.
+   The owner approved a mockup of four states: the list, an open message, a search by topic and a search by date.
+   Below the filters the fix draws a host with a shadow root that holds the search row and one scroll area.
+   - The scroll area has `height: min(36rem, calc(100vh - 14rem))`, `min-height: 20rem`, `overflow-y: auto` and `overscroll-behavior: contain`.
+     Its height does not change, whatever happens inside.
+     An open message grows inside the area only.
+   - The area is a `role="feed"` with `aria-busy` and `tabindex="0"`, and each row is an `article` with its title as the label.
+   - A row shows the avatar, the title, "Sent by NAME | Nov 2, 2026", the course name, the snippet, "Read more" and the read control at the right.
+     The avatar is the image of the author, or the initials on a color of a fixed set (white text, contrast 4.5 or more) when there is no image or it fails.
+     The image has an empty `alt`, `loading="lazy"` and `referrerpolicy="no-referrer"`, and only an http or https address passes.
+     An address on the Canvas host, with any scheme or port, passes only as a file, an equation image or an asset path (`/files/`, `/courses/:id/files/`, `/users/:id/files/`, `/groups/:id/files/`, `/accounts/:id/files/`, `/equation_images/`, `/images/`, `/dist/`), the same path list as for an image in a message, because a GET of a topic page marks the topic as read.
+     The avatar rule compares host names, so an address on the Canvas host with another scheme or port needs such a path too, while the sanitizer of a message compares origins (and takes https only), so an image on the same host with another port counts there as an image of another origin and passes without such a path.
+     Any other Canvas page as an avatar address drops, and the initials show.
+     The background applies the rule when it projects the row, and the page checks the scheme again.
+     The sizes are the rem sizes of the widget: the avatar 3.125rem, the title bold 0.75rem cut at 75 characters, the meta line 0.75rem, the snippet 0.75rem cut at 120 characters with the tags taken out, "Read more" 0.875rem.
+     The title shows whole while the message is open.
+   - The open message has the type size of a message on the Canvas page, 1rem.
+     The sizes of the mockup were at the zoom of the owner's browser, so they do not set this size.
+   - "Read more" opens the whole message in the row, with the message component and the sanitizer of this decision, and "Show less" closes it.
+     The message comes from `weekrow:announcement` (`GET /api/v1/courses/:id/discussion_topics/:id`), which does not mark the topic as read.
+     Opening or closing a message changes no read state.
+   - The read control is a circle that is empty when the row is unread and a green check when it is read, with `aria-pressed`, as in the widget.
+     Only a trusted click on it sends `weekrow:announcement-mark` with the course, the topic and the new state.
+     The row changes at once, and it goes back with a short note when the reply is not ok.
+     With the Unread filter, a row that the student marked stays on screen with its check until the student leaves that filter.
+     When the student comes back to the filter, the row is gone, because the list is drawn again then.
+     The rows of a list that a mark took out of its set go when the student leaves the filter, and the offset does not change, because it counts only the rows of the set.
+     A search does not count as leaving the filter.
+   - A mark names the student of the row.
+     The page takes the student from the reply that carried the row, and the background refuses the mark when the signed-in student is another one.
+     When the data of the background names another student than before, the controller removes the whole fix, as it removes the grade cards.
+     The lists, the open messages and the state of the open rows then go, and the next pass builds them again for the new student.
+   **Paging.**
+   - The list loads 10 rows.
+     A sentinel at the end of the area, watched by an `IntersectionObserver` with the area as its root and a margin of 200 px, loads 10 more when it comes near.
+     The observer starts again after each load.
+   - A "Loading more" line (`role="status"`), an error line with Retry and an end line show at the bottom.
+   - The page keeps the rows by course and topic id and drops a row that comes twice.
+   - The background keeps no cursor.
+     A page is `{ offset, first }`, and the page script keeps the offset: the rows of the filtered set that it holds, plus the rows of the server that it holds no row for.
+     Those are the rows that came twice and the rows that the projection dropped.
+     The reply carries `count`, the number of rows that the page of Canvas held, and the page script counts every row of `count` that it did not keep.
+     A page whose `count` is 0 ends the list, even when it says that more exist, because it cannot move the offset.
+     A read mark that takes a row out of the filtered set, such as a row that is read now in the Unread list, lowers the next offset by one, because the offset counts the rows of the server.
+   - Canvas takes a mark some time after the click, and the set of the server changes then.
+     So a page waits while a mark is on its way, and it asks when the mark has settled, with the offset that the settled marks give, whether Canvas took the mark or not.
+     A page that was on its way when a mark began or settled is dropped and asked for again, because its offset may not fit the set.
+   - The page keeps a list in memory for each filter (the read filter and the course) for the page view, and a change of filter shows that filter's list from the top.
+     After a read mark it forgets the lists of the other filters, which hold the old sets.
+   **Search by topic.**
+   - The search field matches the title and the text of the message.
+     Every word of the query must appear, ignoring case, and the query needs 2 characters.
+     The function `searchAnnouncements(items, query)` in `inpage/announcementSearch.ts` does it, so a later search across courses can use it.
+   - The first search loads all announcements once: pages of 100, read all, all courses, one after another, up to 20 pages.
+     The page logs when the cap cuts anything.
+     It keeps only the fields of a row and the plain text of the message (`htmlToText`) in memory for the page view.
+   - Results show while the pages arrive, with the line "Searching 200 of 423".
+     The course filter narrows the results, and the read filter does not apply, so the line says "4 results, read and unread".
+   - A match shows in `<mark>` in the title and in a snippet cut around the first match.
+     The page builds both from text nodes and never from HTML, and it finds the ranges with a pattern run on the original text, because lower-casing can change the length of a text.
+   **Search by date.**
+   - The calendar button (`aria-expanded`, label "Search by date") opens From and To, two native date inputs.
+     A date that is set sends `weekrow:announcement-range` with the course or `null`, and the days as `yyyy-mm-dd`.
+     A missing From is 2000-01-01, and a missing To is today in the time zone of the computer.
+     A From that is after the To shows a note and sends nothing.
+     A typed date asks once, after 350 ms without a change.
+   - A range loads once for a course and a range of days.
+     A range that failed shows its error line with Retry, and it asks again only when the student clicks Retry, so a failure cannot repeat by itself.
+   - The page and the background use one rule for a day: a real calendar day of the form `yyyy-mm-dd` (`isCalendarDate` in `protocol.ts`).
+     A day that the rule refuses, such as one with a year below 100, sends no request.
+   - A reply that holds the first 500 of more rows shows the line "Showing the first 500" after the count of results, and the page logs the cut.
+   - The background checks both days as real calendar days, takes the courses of its own session (all the courses that the dashboard shows, also a course that the student hid in the weekly list), gives an empty reply for a course that is not in the session, and reads the REST list through `listAnnouncementFeed` (`GET /api/v1/announcements` with `start_date` and `end_date`, 20 courses a request).
+     It projects the topics to the same row shape, at most 500 rows.
+     A date of the form `yyyy-mm-dd` covers the whole day in the time zone of the student, and the REST list needs no participant row.
+   - With a text in the search field, `searchAnnouncements` filters the rows of the range.
+   - "Clear" in the line of the results, and the x of the search field, go back to the list at its old scroll position.
+   **The fallback.**
+   - If the first page of all courses fails, and no list of the page view has loaded yet, the fix takes its list, its filter and all its marks off the widget, and the list and the pager of Canvas show again.
+     So the fix does nothing where it cannot work.
+     A later change of the data of the background asks for that page again without a sign, and the own list comes back when it loads.
+   - A failed page of a course, or a later page, shows its error line with Retry in the list.
+   **The requests.**
+   - `weekrow:announcement-page { courseId: string | null, read, offset, first }` reads a page.
+     `read` is `unread`, `read` or `all`, `offset` is a whole number from 0 to 100000, and `first` is 10 or 100.
+     The background uses the id of the student from its session, never one from the page, and it builds `after` as `btoa(String(offset))`.
+     It checks the cookie store of the tab, the saved Canvas and the sign-in check, as every read of the cache does.
+     It runs the request under the cookie rule of decision 11 (`cookieBound`), and it rejects when the cookie or the student changed while the request ran.
+     It projects each row with a limit on every text: the id, the course id, the course name, the title, the date, the author, the avatar address, the read state and the message (4,000 characters, as for the list messages).
+     A row whose ids are no Canvas ids drops out.
+     The reply is `{ userId, items, count, total, hasNext }`, with the signed-in student in `userId`.
+   - `weekrow:announcement-range` runs the same checks and the same cookie rule, and its reply is `{ userId, items, truncated }`.
+   - `weekrow:announcement` ("Read more") runs the same checks and the same cookie rule, so the message of a student never reaches the page of another student or of a cookie that changed.
+   - `weekrow:announcement-mark { courseId, topicId, userId, read }` marks a topic.
+     `userId` is the student of the reply that carried the row, and the background refuses the mark with `ok: false` when it is not the student of its session, before it writes anything, as it refuses the Undo of the tab.
+     The background runs the same steps as the read mark of the Announcements tab: the check of the cookie store, the sign-in check (`signedInStudentOwnsCache`), the write queue (`enqueueWrite`), the user check before the request (`verifyUser`), the guard of the request (`writeGuard`) and `setAnnouncementRead`.
+     It differs from that mark in two ways.
+     The dashboard has no cached list of the tab, so the topic need not be in it, and the mark is always sent, because the state that the page shows is the page's.
+     The reply waits for the write and says whether Canvas took the mark, so the page can take its own mark back.
+     The mark enters `announcementMarks` of the cache with a sequence number, as the mark of the tab does, so a tab that holds the same topic shows it at once.
+     `feedRows` reads a mark only for a topic of its own list, and `settleMarks` drops a confirmed mark when a load that started after it ends.
+     A topic that the cached list of the tab does not hold gets no mark after the write is confirmed and no load is in flight, because nothing could carry an older state for it.
+     A failed or refused write takes the mark away, and the list of the tab loads again at its next request.
+   - The router accepts the page, range and mark messages only from the top frame of a tab whose page has the saved origin, never from an extension page, and it checks every id as a Canvas id and every value for its bounds.
+   **Known limits.**
+   - The list and the search by topic show only what the connection of Canvas holds: announcements with a participant row of the student, in the current courses, that are not locked, delayed or hidden by their dates.
+     The search by date reads the REST list, which needs no participant row, so it can show an announcement that the list does not.
+   - Canvas sorts by `created_at` with no second key, so two announcements with the same time can swap places between two pages.
+     The page drops a row that comes twice, and a swap can hide a row until the list loads again.
+   - In the observer mode of the widget dashboard, the widget shows an observed student, and the fix shows the signed-in user.
+     The extension is for students, and it does not tell the two modes apart.
+   **Source facts (canvas-lms at 1c9f0bb).**
+   - The widget reads `discussionParticipantsConnection` on `legacyNode(_id: $userId, type: User)` with `filter: { isAnnouncement: true, readState: $readState }` (`ui/features/widget_dashboard/react/hooks/useAnnouncements.ts` lines 70 to 105).
+   - The filter also takes `courseId` (`app/graphql/types/user_type.rb` lines 37 to 50, in Canvas since 2025-08).
+     The list is sorted by `discussion_topics.created_at DESC` (line 966).
+     It holds only the topics with a participant row of the user, in the current courses of the dashboard, and not locked or delayed (lines 922 to 960).
+   - `first` is capped at 100 with no error, and at most 20 aliases apply.
+     `after` is an offset: the widget sends `btoa(String(offset))` (`useAnnouncements.ts`, `calculateCursorForPage`, lines 168 to 172).
+     `pageInfo` has `hasNextPage`, `endCursor` and `totalCount`.
+   - `message` goes through `api_user_content` and is whole.
+     A 200 reply can hold `errors`, so the reader checks `body.errors`.
+   - `GET /api/v1/announcements` takes `start_date` and `end_date`, and a `yyyy-mm-dd` value covers the whole day in the time zone of the user.
+   - The read control is an empty circle when unread, a green check when read, with `aria-pressed` (`AnnouncementItem.tsx` lines 150 to 171).
+     The title is bold 0.75rem cut at 75 characters (lines 206 and 207), the snippet 0.75rem cut at 120 characters with the tags taken out (lines 256 and 257), the avatar is medium (line 195) and "Read more" is 0.875rem (line 264).
+   **The choice about the owner's rule.**
+   The owner chose on 2026-10-30 that only an explicit student action marks an announcement as read, and this stays.
+   The dashboard fixes had no write until the own list.
+   Now they have one explicit write: the read mark above, on a trusted click of the read control.
+   Opening or closing a message, a search, a date search and a scroll send no write.
+   The only other write of the extension for an announcement is "Mark as read" of the weekly list (decision 24).
+   The extension never loads the Canvas page of an announcement itself, because it marks the topic as read.
    The ids are checked as Canvas ids at the message boundary and again before they enter a path.
-   With the Unread filter, an announcement that the student opens stays in the list after the message closes, until the student marks it as read.
-   The course filter hides the list of the widget and its pager when a course is chosen.
-   It then shows the recent announcements of the course, at most 10 from the last 180 days, loaded by the background, with the read filter applied.
-   The match of the read filter uses the English labels of the widget.
-   An unknown label counts as "All".
 3. **Course work extras.**
    The section shows work with no due date, open overdue work (not under Missing, where the widget lists it), and open pages, ungraded discussions and the student's own tasks that have a to-do date.
    It also follows the course filter of the widget, by the course name in its input.
@@ -2070,7 +2190,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The pager of Canvas, with its spinner, stays in the page and takes no room: one rule of the stylesheet, scoped to the widget mark `data-wr-paged`, hides it with `display: none`.
    So it is out of the accessibility tree and the tab order, and Canvas does not move the focus into it.
    The navigator has `data-wr-own`, so the observer ignores it.
-   Another fix that hides the pager (the grade cards, and the course filter of the announcements) hides the navigator too.
+   Another fix that hides the pager (the grade cards, and the own list of the announcements) hides the navigator too.
    The navigator follows the dark theme of the widget, with the link color `#5A9FD4`, the ink `#FFFFFF` and the disabled color `#4A5B68` of the package, and the current page keeps its blue square.
    A widget with one page has no pager of Canvas, so it has no navigator.
 
@@ -2112,8 +2232,10 @@ The page scripts of the fixes and of the weekly list share one sanitizer, `src/s
 - The markup of the widgets changes with the releases of the package, which had 16 major versions in 2026.
   Every finder returns nothing when its test ids are gone, and the fix then does nothing.
   The adapter file names the version that its selectors follow.
-- The finders for the title and the snippet of an announcement use the structure of the item: the snippet is the element before the one that holds "Read more".
-  A change of the structure can make the title click and the hidden snippet stop working, while "Read more" keeps working.
+- The own list of the Announcements widget needs only the read filter and the block around it, and it hides every other child of the filter bar.
+  A change of the markup of that bar can leave Canvas's list or pager in view, or make the fix find no widget and do nothing.
+  The query `WeekrowAnnouncements` follows the query of the widget of Canvas.
+  If Canvas changes its schema, the first page fails and the list of Canvas shows again.
 - The widget keeps its own dark theme in JavaScript.
   The extension reads the color of the card to choose the colors of its pills.
 - The read filter and the course filter labels are English.

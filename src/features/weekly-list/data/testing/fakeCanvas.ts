@@ -9,6 +9,7 @@ import {
 } from '../../../../shared/canvas/limiter';
 import {
   CanvasError,
+  type AnnouncementPageNode,
   type AnnouncementTopic,
   type CanvasApi,
   type NoteInput,
@@ -56,6 +57,11 @@ export interface FakeCanvas extends CanvasApi {
   failIf(method: FakeMethod, match: (args: unknown[]) => boolean, error: unknown): void;
   /** Sets the announcements that Canvas lists for a course, and returns by id. */
   setAnnouncements(courseId: string, topics: AnnouncementTopic[]): void;
+  /**
+   * Sets the rows of the announcements query, newest first, as Canvas holds them for the student.
+   * A page answers by read state, course, offset and size, as the connection does.
+   */
+  setAnnouncementPageRows(rows: AnnouncementPageNode[]): void;
   /** Sets the two records that Canvas gives for the one assignment view. */
   setAssignmentView(
     courseId: string,
@@ -106,6 +112,7 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
   const overrides = new Map<string, PlannerOverride>();
   const notes = new Map<string, PlannerNote | null>();
   const announcements = new Map<string, AnnouncementTopic[]>();
+  let pageRows: AnnouncementPageNode[] = [];
   const assignmentViews = new Map<
     string,
     { assignment: Record<string, unknown>; submission: Record<string, unknown> }
@@ -286,14 +293,6 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
           priority,
           guard,
         ),
-      listAnnouncements: (courseId, range) =>
-        call(
-          'listAnnouncements',
-          [courseId, range],
-          () => announcements.get(courseId) ?? [],
-          priority,
-          guard,
-        ),
       listAnnouncementFeed: (courseIds, range) => {
         // Canvas reads its state when the request arrives, not when a held answer is released.
         const topics = courseIds.flatMap((courseId) =>
@@ -314,8 +313,33 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
           [courseId, topicId, read],
           () => {
             const topic = announcements.get(courseId)?.find((entry) => entry.id === topicId);
-            if (topic === undefined) throw canvasError('not_found', 404);
-            topic.read_state = read ? 'read' : 'unread';
+            const row = pageRows.find(
+              (entry) => entry.courseId === courseId && entry.id === topicId,
+            );
+            if (topic === undefined && row === undefined) throw canvasError('not_found', 404);
+            if (topic !== undefined) topic.read_state = read ? 'read' : 'unread';
+            if (row !== undefined) row.read = read;
+          },
+          priority,
+          guard,
+        ),
+      listAnnouncementPage: (request) =>
+        call(
+          'listAnnouncementPage',
+          [request],
+          () => {
+            const filtered = pageRows.filter(
+              (row) =>
+                (request.courseId === null || row.courseId === request.courseId) &&
+                (request.read === 'all' || row.read === (request.read === 'read')),
+            );
+            const nodes = filtered.slice(request.offset, request.offset + request.first);
+            return {
+              nodes: structuredClone(nodes),
+              count: nodes.length,
+              total: filtered.length,
+              hasNext: request.offset + request.first < filtered.length,
+            };
           },
           priority,
           guard,
@@ -477,6 +501,9 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
     },
     setAnnouncements(courseId, topics) {
       announcements.set(courseId, topics);
+    },
+    setAnnouncementPageRows(rows) {
+      pageRows = rows;
     },
     setAssignmentView(courseId, assignmentId, records) {
       assignmentViews.set(`${courseId}/${assignmentId}`, records);

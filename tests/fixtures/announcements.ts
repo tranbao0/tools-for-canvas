@@ -77,3 +77,52 @@ export const ANNOUNCEMENTS: readonly AnnouncementFixture[] = [
     user_name: 'Sam Whitaker',
   },
 ];
+
+/**
+ * Older announcements, posted before the 14 days that the Announcements tab shows (the scenario
+ * clock is 2026-10-27), so the tab keeps its rows. The widget of the dashboard lists them all: 30
+ * more rows for the infinite list, and two about a lockdown browser for the search.
+ */
+const FILLER_COURSES = ['101', '102', '104'] as const;
+const FILLER_AUTHORS = ['Dr. Maya Okafor', 'Prof. Ines Duarte', 'Sam Whitaker'] as const;
+
+export const OLDER_ANNOUNCEMENTS: readonly AnnouncementFixture[] = [
+  {
+    id: '36001',
+    courseId: '101',
+    title: 'Install the Lockdown Browser',
+    message: '<p>Please install the Lockdown Browser before the first exam.</p>',
+    posted_at: '2026-10-10T14:00:00Z',
+    read: true,
+    user_name: 'Dr. Maya Okafor',
+  },
+  {
+    id: '36002',
+    courseId: '102',
+    title: 'Quiz 3 rules',
+    message:
+      '<p>The quiz runs inside the lockdown browser. Bring a charged laptop and your student card.</p>',
+    posted_at: '2026-10-08T14:00:00Z',
+    read: false,
+    user_name: 'Prof. Ines Duarte',
+  },
+  ...Array.from({ length: 30 }, (_unused, index): AnnouncementFixture => {
+    const number = index + 1;
+    const posted = new Date(Date.UTC(2026, 9, 12, 14, 0, 0) - index * 24 * 60 * 60 * 1000);
+    return {
+      id: String(40000 + number),
+      courseId: FILLER_COURSES[index % 3] ?? '101',
+      title: `Weekly note ${number}`,
+      message: `<p>Note number ${number} of the term. Read the chapter and bring your questions.</p>`,
+      posted_at: posted.toISOString(),
+      read: number % 3 === 0,
+      user_name: FILLER_AUTHORS[index % 3] ?? null,
+    };
+  }),
+];
+
+/** Every announcement that Canvas holds for the student. */
+export const ALL_ANNOUNCEMENTS: readonly AnnouncementFixture[] = [
+  ...ANNOUNCEMENTS,
+  ...OLDER_ANNOUNCEMENTS,
+];

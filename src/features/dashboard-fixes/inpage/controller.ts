@@ -358,6 +358,8 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
           if (changed) {
             fixes.allCourseGrades.remove();
             gradeStore.observed.clear();
+            // The announcements, their messages and their marks belong to the first student.
+            fixes.announcementsInPlace.remove();
           }
           markBlind();
         }

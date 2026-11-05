@@ -116,10 +116,15 @@ describe('startDashboardFixes', () => {
     });
     await vi.advanceTimersByTimeAsync(120);
     expect(document.querySelector('[data-wr-extra]')).toBeNull();
-    const calls = channel.send.mock.calls.length;
+    // The announcements list asks for its own pages besides, so only the data requests count.
+    const dataCalls = () =>
+      channel.send.mock.calls.filter(
+        ([message]) => (message as { type: string }).type === 'weekrow:dashboard-data',
+      ).length;
+    const calls = dataCalls();
     channel.change();
     await vi.advanceTimersByTimeAsync(120);
-    expect(channel.send.mock.calls.length).toBe(calls + 1);
+    expect(dataCalls()).toBe(calls + 1);
     controller.stop();
   });
 

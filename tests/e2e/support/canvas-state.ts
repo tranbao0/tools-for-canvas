@@ -1,7 +1,8 @@
 import type { PlannerItem, PlannerNote, PlannerOverride } from '../../../src/shared/canvas/types';
-import { ANNOUNCEMENTS } from '../../fixtures/announcements';
+import { ALL_ANNOUNCEMENTS as ANNOUNCEMENTS } from '../../fixtures/announcements';
 import { notePlannerItem, type FixtureContext } from '../../fixtures/canvas-json';
 import { CANVAS_ERRORS, type CanvasErrorFixture } from '../../fixtures/errors';
+import { announcementPageAnswer } from '../../fixtures/graphql';
 import {
   IDS,
   allAssignmentsInCourse,
@@ -238,8 +239,44 @@ export class CanvasState {
           return { body: json(list) };
         },
       })),
-      ...apiRoutes(this.scenario),
+      {
+        // The avatar of the teacher that the widget query names.
+        path: '/images/avatars/okafor.svg',
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50"><rect width="50" height="50" fill="#d9822b"/></svg>',
+      },
+      // An avatar that Canvas no longer has: the widget shows the initials.
+      { path: '/images/avatars/missing.png', status: 404, body: 'Not found' },
+      ...apiRoutes(this.scenario, (request) => this.widgetAnnouncements(request)),
     ];
+  }
+
+  /**
+   * The answer to the announcements query of the widget: the announcements of the scenario for
+   * the current courses, with the read state that the student has now, so a `PUT .../read` shows
+   * in the next page.
+   */
+  private widgetAnnouncements(request: RecordedRequest): unknown {
+    const names = new Map(this.scenario.courses.map((course) => [course.id, course.name]));
+    return announcementPageAnswer(
+      request.postData,
+      ANNOUNCEMENTS.map((topic) => ({
+        id: topic.id,
+        courseId: topic.courseId,
+        title: topic.title,
+        message: topic.message,
+        postedAt: topic.posted_at ?? '',
+        authorName: topic.user_name ?? null,
+        avatarUrl:
+          topic.user_name === 'Dr. Maya Okafor'
+            ? `${this.scenario.origin}/images/avatars/okafor.svg`
+            : topic.user_name === 'Sam Whitaker'
+              ? `${this.scenario.origin}/images/avatars/missing.png`
+              : null,
+        read: this.readAnnouncements.has(`${topic.courseId}:${topic.id}`),
+      })),
+      (courseId) => names.get(courseId) ?? null,
+    );
   }
 
   /**

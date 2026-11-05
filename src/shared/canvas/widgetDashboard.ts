@@ -40,10 +40,10 @@
  *   `<type>-icon` svg) and the status pill `<status>-status-pill-<id>`. The two filters are
  *   `submission-status-filter-select` and `course-filter-select`, two read-only inputs that hold
  *   the label of the choice. The summary cards are `statistics-card-<label>`.
- * - Announcements (`AnnouncementsWidget`): an item is `announcement-item-<topic id>`. The title
- *   is plain text (its group has the full title as `aria-label`), "Read more" is the only link
- *   to `/courses/<id>/discussion_topics/<id>`, and the snippet is the element before the one
- *   that holds that link. The read filter is the input `announcement-filter-select`.
+ * - Announcements (`AnnouncementsWidget`): an item is `announcement-item-<topic id>`, and the
+ *   empty message is `no-announcements-message`. The read filter is the input
+ *   `announcement-filter-select`. The fix replaces the list with its own, so it reads only the
+ *   read filter and the block of the filter.
  * - Course grades (`CourseGradesWidget`): a card is `course-grade-card-<course id>` in a grid
  *   (`role="list"`), and the pager is `pagination-container`. The card holds
  *   `course-<id>-grade`, `-name`, `-code`, `-term`, `-last-updated`, `-gradebook-link` and
@@ -164,7 +164,6 @@ const PAGER = '[data-testid="pagination-container"]';
 
 /** `/courses/<id>/...` in a link, with the id of a Canvas course. */
 const COURSE_IN_PATH = /\/courses\/(\d+(?:~\d+)?)(?:\/|$)/;
-const TOPIC_IN_PATH = /\/courses\/(\d+(?:~\d+)?)\/discussion_topics\/(\d+(?:~\d+)?)(?:\/|$|\?)/;
 
 function widgetOf(element: Element): HTMLElement | null {
   return element.closest<HTMLElement>(WIDGET);
@@ -253,82 +252,26 @@ export function findCourseWorkWidgets(doc: Document): CourseWorkWidget[] {
   return found;
 }
 
-export interface AnnouncementItem {
-  item: HTMLElement;
-  courseId: string;
-  topicId: string;
-  /** The "Read more" link. */
-  link: HTMLAnchorElement;
-  /** The element that holds the title text, or `null` when it cannot be told apart. */
-  title: HTMLElement | null;
-  /** The element with the 120-character snippet, or `null`. */
-  snippet: HTMLElement | null;
-  /** The element that holds the link. */
-  linkRow: HTMLElement | null;
-}
-
-const TITLE_LIMIT = 75;
-
-/** The pieces of one announcement item, or `null` when it has no link to its topic. */
-export function findAnnouncementItem(item: HTMLElement, origin: string): AnnouncementItem | null {
-  for (const link of item.querySelectorAll<HTMLAnchorElement>('a[href]')) {
-    const match = TOPIC_IN_PATH.exec(pathOf(link.getAttribute('href'), origin));
-    if (match === null) continue;
-    const full = item.getAttribute('aria-label') ?? '';
-    const shown = full.length > TITLE_LIMIT ? `${full.slice(0, TITLE_LIMIT).trim()}...` : full;
-    let title: HTMLElement | null = null;
-    for (const element of item.querySelectorAll<HTMLElement>('span, div')) {
-      if (element.childElementCount === 0 && element.textContent?.trim() === shown) {
-        title = element;
-        break;
-      }
-    }
-    // The title sits in wrappers that hold nothing else, and a click on any of them counts.
-    while (
-      title?.parentElement != null &&
-      title.parentElement !== item &&
-      title.parentElement.textContent?.trim() === shown
-    ) {
-      title = title.parentElement;
-    }
-    const linkRow = link.parentElement;
-    const snippet = linkRow?.previousElementSibling;
-    return {
-      item,
-      courseId: match[1] ?? '',
-      topicId: match[2] ?? '',
-      link,
-      title,
-      snippet: snippet instanceof HTMLElement ? snippet : null,
-      linkRow: linkRow instanceof HTMLElement && linkRow !== item ? linkRow : null,
-    };
-  }
-  return null;
-}
-
 export type ReadFilter = 'unread' | 'read' | 'all';
 
 export interface AnnouncementsWidget {
   widget: HTMLElement;
-  items: AnnouncementItem[];
   /** The block with the read filter, a child of `bar`. */
   filterBlock: HTMLElement;
   /** The container of the filter block and the content block. */
   bar: HTMLElement;
-  /** The block with the list of announcements, or the empty message. */
-  content: HTMLElement | null;
   read: ReadFilter;
 }
 
 /** The Announcements widgets, with the pieces the fixes attach to. */
-export function findAnnouncementsWidgets(doc: Document, origin: string): AnnouncementsWidget[] {
+export function findAnnouncementsWidgets(doc: Document): AnnouncementsWidget[] {
   const found: AnnouncementsWidget[] = [];
   for (const widget of widgetsWith(doc, READ_FILTER)) {
     const input = widget.querySelector<HTMLElement>(READ_FILTER);
     if (input === null) continue;
-    const rows = [...widget.querySelectorAll<HTMLElement>(ANNOUNCEMENT_ITEM)];
-    const items = rows.flatMap((row) => findAnnouncementItem(row, origin) ?? []);
-    const marker = rows[0] ?? widget.querySelector<HTMLElement>(ANNOUNCEMENT_EMPTY);
+    const marker =
+      widget.querySelector<HTMLElement>(ANNOUNCEMENT_ITEM) ??
+      widget.querySelector<HTMLElement>(ANNOUNCEMENT_EMPTY);
     // The filter block is the last ancestor of the filter that does not hold the content.
     let filterBlock: HTMLElement = input;
     while (
@@ -340,21 +283,11 @@ export function findAnnouncementsWidgets(doc: Document, origin: string): Announc
     }
     const bar = filterBlock.parentElement;
     if (bar === null || bar === widget) continue;
-    let content: HTMLElement | null = null;
-    if (marker !== null) {
-      content = marker;
-      while (content.parentElement !== null && content.parentElement !== bar) {
-        content = content.parentElement;
-      }
-      if (content.parentElement !== bar) content = null;
-    }
     const label = (input as HTMLInputElement).value.trim().toLowerCase();
     found.push({
       widget,
-      items,
       filterBlock,
       bar,
-      content,
       read: label === 'unread' ? 'unread' : label === 'read' ? 'read' : 'all',
     });
   }
