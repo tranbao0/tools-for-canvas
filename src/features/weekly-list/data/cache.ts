@@ -8,11 +8,13 @@ import type {
   CanvasErrorKind,
   Colors,
   Course,
+  CourseEnrollment,
   CustomGradeStatus,
   DashboardPositions,
   Group,
   PlannerOverride,
   Profile,
+  Term,
 } from '../../../shared/canvas/types';
 import type { AssignmentData, SubmissionData } from '../model/types';
 import { browser } from 'wxt/browser';
@@ -151,6 +153,60 @@ export function toAssignmentData(assignment: AssignmentData): AssignmentData {
     data.submission = pick(assignment.submission, SUBMISSION_FIELDS);
   }
   return data;
+}
+
+const PROFILE_FIELDS = [
+  'id',
+  'name',
+  'time_zone',
+  'locale',
+  'effective_locale',
+] as const satisfies readonly (keyof Profile)[];
+
+const COURSE_FIELDS = [
+  'id',
+  'name',
+  'course_code',
+  'start_at',
+  'restrict_enrollments_to_course_dates',
+] as const satisfies readonly (keyof Course)[];
+
+const TERM_FIELDS = ['id', 'name', 'start_at', 'end_at'] as const satisfies readonly (keyof Term)[];
+
+const ENROLLMENT_FIELDS = [
+  'type',
+  'computed_current_score',
+  'computed_current_grade',
+] as const satisfies readonly (keyof CourseEnrollment)[];
+
+const GROUP_FIELDS = [
+  'id',
+  'name',
+  'context_type',
+  'course_id',
+] as const satisfies readonly (keyof Group)[];
+
+/**
+ * The part of the session replies that the cache keeps: the fields the code reads. A real reply
+ * also carries an e-mail address, a login and calendar feed addresses, which must not stay in
+ * `storage.session`.
+ */
+export function toSessionData(data: SessionData): SessionData {
+  return {
+    profile: pick(data.profile, PROFILE_FIELDS),
+    courses: data.courses.map((course) => {
+      const kept: Course = pick(course, COURSE_FIELDS);
+      if (course.term !== undefined) kept.term = pick(course.term, TERM_FIELDS);
+      if (course.enrollments !== undefined)
+        kept.enrollments = course.enrollments.map((enrollment) =>
+          pick(enrollment, ENROLLMENT_FIELDS),
+        );
+      return kept;
+    }),
+    groups: data.groups.map((group) => pick(group, GROUP_FIELDS)),
+    colors: data.colors,
+    positions: data.positions,
+  };
 }
 
 export function emptyCache(origin: string): SessionCache {

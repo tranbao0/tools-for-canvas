@@ -283,8 +283,13 @@ export function routeViewerMessage(
         );
       case 'viewer:permission':
         return host.permission(origin);
-      case 'viewer:fetch-allowed':
-        return host.mayFetch(origin, tabId);
+      case 'viewer:fetch-allowed': {
+        if (!(await host.mayFetch(origin, tabId))) return false;
+        // The pane names the student and the clearing round of its tabs. A pane that a lost reset
+        // left open reads no file for another student.
+        const student = await host.userId(origin, tabId);
+        return student !== null && request['token'] === `${await readEpoch(host)}:${student}`;
+      }
       case 'viewer:confirm-cookie':
         // A read of the bytes of a comment attachment comes before any read of the files API, so
         // nothing has confirmed the cookie yet. A refusal here gets the check and one more try,

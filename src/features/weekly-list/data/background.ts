@@ -66,8 +66,10 @@ export function wireDataTriggers(owner: DataOwner): () => void {
   const onStartup = (): void => {
     owner.trigger('startup').catch(report('startup refresh'));
   };
+  // Firefox for Android has no windows API.
+  const windows = browser.windows as typeof browser.windows | undefined;
   const onFocus = (windowId: number): void => {
-    if (windowId === browser.windows.WINDOW_ID_NONE) return;
+    if (windowId === windows?.WINDOW_ID_NONE) return;
     owner.trigger('focus').catch(report('focus refresh'));
   };
   const onConnect = (port: import('wxt/browser').Browser.runtime.Port): void => {
@@ -121,7 +123,7 @@ export function wireDataTriggers(owner: DataOwner): () => void {
   updateAlarm();
   void owner.resumeDeletes().catch(report('pending deletes'));
   browser.runtime.onStartup.addListener(onStartup);
-  browser.windows.onFocusChanged.addListener(onFocus);
+  windows?.onFocusChanged.addListener(onFocus);
   const stopOrigin = canvasOriginItem.watch((origin) => {
     owner.originChanged(origin).catch(report('address change'));
   });
@@ -132,7 +134,7 @@ export function wireDataTriggers(owner: DataOwner): () => void {
     browser.runtime.onConnect.removeListener(onConnect);
     browser.alarms.onAlarm.removeListener(onAlarm);
     browser.runtime.onStartup.removeListener(onStartup);
-    browser.windows.onFocusChanged.removeListener(onFocus);
+    windows?.onFocusChanged.removeListener(onFocus);
     browser.storage.onChanged.removeListener(onStorage);
     stopOrigin();
     stopAccess();

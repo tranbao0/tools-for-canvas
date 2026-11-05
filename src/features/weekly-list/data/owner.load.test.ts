@@ -318,6 +318,29 @@ describe('first load', () => {
     expect(text).not.toContain('preview_url');
   });
 
+  it('keeps only the profile, course and group fields that the code reads in storage.session', async () => {
+    const h = await createHarness();
+    const scenario = h.canvas.scenario;
+    const feed = { ics: 'https://school.instructure.com/feeds/calendars/user_secret.ics' };
+    Object.assign(scenario.profile, { primary_email: 'a@b.edu', login_id: 'jr', calendar: feed });
+    for (const course of scenario.courses) Object.assign(course, { calendar: feed, uuid: 'x' });
+    for (const group of scenario.groups) Object.assign(group, { description: 'private' });
+    await loadReady(h);
+
+    const session = (await sessionCacheItem.getValue())?.session;
+    expect(session?.courses.length).toBeGreaterThan(1);
+    expect(Object.keys(session?.profile ?? {}).sort()).toEqual(
+      ['effective_locale', 'id', 'locale', 'name', 'time_zone'].sort(),
+    );
+    const text = JSON.stringify(session);
+    for (const secret of ['primary_email', 'login_id', 'calendar', 'uuid', 'description'])
+      expect(text).not.toContain(secret);
+    expect(session?.courses.find((c) => c.id === C.history)).toMatchObject({
+      name: expect.any(String),
+      course_code: expect.any(String),
+    });
+  });
+
   it('asks Canvas nothing more while the view is complete', async () => {
     const h = await createHarness();
     await loadReady(h);

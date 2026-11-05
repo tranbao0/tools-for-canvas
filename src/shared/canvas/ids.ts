@@ -17,3 +17,15 @@ export function normalizeCanvasId(id: string): string {
     ? BigInt(id).toString()
     : (BigInt(shard!) * 10n ** 13n + BigInt(local)).toString();
 }
+
+/**
+ * Whether two values name the same Canvas id, in the sharded form (`2~123`) or the global form
+ * (`20000000000123`). A value that is not a Canvas id is never equal to anything.
+ */
+export function sameCanvasId(first: unknown, second: unknown): boolean {
+  return (
+    isCanvasId(first) &&
+    isCanvasId(second) &&
+    normalizeCanvasId(first) === normalizeCanvasId(second)
+  );
+}

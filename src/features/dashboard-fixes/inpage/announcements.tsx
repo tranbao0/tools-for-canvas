@@ -178,11 +178,14 @@ export function announcementsFix(): Fix {
     }, []);
     useEffect(() => {
       if (message !== undefined) return;
+      const readStore = store;
       context
         .send({ type: 'weekrow:announcement', courseId: course, topicId: topic })
         .then((reply) => {
           const loaded = reply as AnnouncementBody | undefined;
           if (typeof loaded?.message !== 'string') throw new Error('No message');
+          // The store went while the read ran, so the message belongs to a view that is gone.
+          if (store !== readStore) return;
           bodies.set(key, loaded);
           setMessage(loaded);
         })

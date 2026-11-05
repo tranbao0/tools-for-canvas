@@ -307,6 +307,41 @@ describe('a row', () => {
     expect(sentOf('weekrow:announcement-mark')).toEqual([]);
   });
 
+  it('keeps a message that arrives after the fix went out of the next student view', async () => {
+    await start(many(3));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const send = vi.mocked(context.send);
+    const inner = send.getMockImplementation()!;
+    let held = false;
+    send.mockImplementation(async (message) => {
+      if ((message as { type: string }).type !== 'weekrow:announcement' || held)
+        return inner(message);
+      held = true;
+      context.sent.push(message);
+      await gate;
+      return { title: 'T', message: '<p>Copy of the first student</p>' };
+    });
+    await act(async () => {
+      shadowAll('.wr-a-more button')[0]?.click();
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    fix.remove();
+    await act(async () => {
+      release();
+      await vi.advanceTimersByTimeAsync(400);
+    });
+
+    await start(many(3));
+    await act(async () => {
+      shadowAll('.wr-a-more button')[0]?.click();
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    await flush();
+    expect(sentOf('weekrow:announcement')).toHaveLength(2);
+    expect(shadowAll('article')[0]?.querySelector('.wr-body')?.textContent).toBe('Hello world');
+  });
+
   it('opens the whole title of a long title', async () => {
     await start([row('1', { title: 'T'.repeat(90) })]);
     await act(async () => {

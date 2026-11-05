@@ -797,12 +797,15 @@ function studentCanvas() {
   let signedIn = scenario.self.id;
   // The answers that name the student take this long.
   let delayMs = 0;
+  // The profile request fails, so the cache never gets a session.
+  let profileFails = false;
   const answerLate = () => new Promise<void>((resolve) => setTimeout(resolve, delayMs));
   const routesOfStudent: FakeCanvasRoute[] = [
     {
       path: '/api/v1/users/self/profile',
       respond: async () => {
         await answerLate();
+        if (profileFails) return { status: 503, body: 'Unavailable' };
         return { body: json({ ...scenario.profile, id: signedIn }) };
       },
     },
@@ -817,6 +820,10 @@ function studentCanvas() {
   return {
     first: scenario.self.id,
     routes: routesOfStudent,
+    /** Makes the profile request fail, so the cache holds no session. */
+    failProfile(): void {
+      profileFails = true;
+    },
     /** Makes the answers that name the student late, so a check of the cookie takes a while. */
     slowChecks(ms: number): void {
       delayMs = ms;
@@ -995,6 +1002,35 @@ test('the pane closes when another student signs in, in this tab and in every ot
   const frame = await pane(page);
   await slowExpect(pageBox(frame, 1).locator('canvas')).toBeVisible();
   await expect(frame.getByRole('tab')).toHaveCount(1);
+});
+
+test('the pane closes when another student signs in and the cache has no session', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  // This test starts a second page and a second student, so a loaded machine needs more time.
+  test.setTimeout(90_000);
+  const student = studentCanvas();
+  student.failProfile();
+  const canvas = await openCoursePage(context, page, background, html, [
+    ...student.routes,
+    ...routes(fileHost),
+  ]);
+  await openFirstFile(page, 'Read notes');
+  await slowExpect(pageBox(await pane(page), 1).locator('canvas')).toBeVisible();
+  const host = page.locator('#tools-file-viewer');
+  await expect(host).toBeVisible();
+
+  // The other student signs in, and the first request of a pane of that student finds the change.
+  // No session is cached, yet the pane of the earlier student must go.
+  await student.switchStudent(context, background, canvas.origin);
+  const other = await context.newPage();
+  await other.goto(page.url());
+  await openFirstFile(other, 'Read notes');
+  await slowExpect(pageBox(await pane(other), 1).locator('canvas')).toBeVisible();
+  await slowExpect(host).toHaveCount(0);
 });
 
 test('a pane that stayed open cannot save its position for the next student', async ({

@@ -39,7 +39,7 @@ import {
   type PeoplePageMessage,
   type PeoplePageReply,
 } from '../../dashboard-fixes/protocol';
-import { normalizeCanvasId } from '../../../shared/canvas/ids';
+import { normalizeCanvasId, sameCanvasId } from '../../../shared/canvas/ids';
 import { assignmentIdsToLookup } from '../model/normalize';
 import {
   DEFAULT_LIST_TABS,
@@ -521,7 +521,7 @@ async function createOrRecoverOverride(
     if (existing === undefined) throw error;
     // The override list belongs to the user who is signed in now. Another user's flags never
     // go onto it.
-    if (existing.user_id !== userId) throw new UserChangedError();
+    if (!sameCanvasId(existing.user_id, userId)) throw new UserChangedError();
     return api.updateOverride(existing.id, flags);
   }
 }
@@ -1065,6 +1065,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
             (async () => {
               if (!(await bindingHolds(binding))) return;
               if (gen !== generation || cache === null || cache.session !== null) return;
+              if (viewerProof?.origin === origin && viewerProof.userId !== session.profile.id)
+                userDataCleared();
               cache = { ...cache, session };
               recordUserCheck(binding.fingerprint);
               persist();
@@ -1860,7 +1862,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         patch.override.id !== ''
           ? await writer.updateOverride(patch.override.id, flags)
           : await createOrRecoverOverride(writer, patch.target, flags, stamp.userId);
-      if (saved.user_id !== stamp.userId) {
+      if (!sameCanvasId(saved.user_id, stamp.userId)) {
         // Another student signed in after the check. The flags went into the wrong account, so
         // they go back, before the cache of the first student goes. A POST made the override,
         // so the other student had none before it.
@@ -1904,7 +1906,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       // The user check above can take a while, so the guard reads the cookie again right before
       // each attempt. The text reaches Canvas only under a cookie that a check confirmed.
       const response = await api.withGuard(writeGuard(stamp)).createNote(noteInput(note));
-      if (response.user_id !== stamp.userId) {
+      if (!sameCanvasId(response.user_id, stamp.userId)) {
         // Another student signed in after the check. The text went into the wrong account, so
         // it comes out again, before the cache of the first student goes.
         await api.deleteNote(response.id).catch((error: unknown) => deps.log('write', error));
@@ -1961,7 +1963,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       if (operation === 'delete') await writer.deleteNote(patch.noteId);
       else if (patch.note !== null) {
         const response = await writer.updateNote(patch.noteId, noteInput(patch.note));
-        if (isCurrent(stamp) && response.user_id !== stamp.userId) return userChanged(stamp);
+        if (isCurrent(stamp) && !sameCanvasId(response.user_id, stamp.userId))
+          return userChanged(stamp);
         saved = noteValue(response);
       }
       // A DELETE that is out ended the task, whatever happened to the queue after it left.
@@ -2533,6 +2536,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         if (!isCurrent(stamp)) return false;
       }
       if (stamp.userId === null && fingerprint !== null) {
+        // With no session in the cache, a change of student still clears what the first one left.
+        if (viewerProof?.origin === stamp.origin && viewerProof.userId !== self.id)
+          userDataCleared();
         viewerProof = { origin: stamp.origin, gen: generation, userId: self.id, fingerprint };
         return true;
       }
