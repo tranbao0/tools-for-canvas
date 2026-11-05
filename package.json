@@ -31,6 +31,7 @@
     "test:firefox:file-check": "node tests/firefox/file-check.mjs",
     "test:firefox:submission-pages": "node tests/firefox/submission-pages.mjs",
     "test:firefox:announcements": "node tests/firefox/announcements.mjs",
+    "test:firefox:dashboard-dock": "node tests/firefox/dashboard-dock.mjs",
     "test:gallery": "node tests/gallery/screenshot.mjs",
     "setup:firefox": "bash tests/firefox/install-firefox.sh",
     "check:size": "node scripts/check-size.mjs",

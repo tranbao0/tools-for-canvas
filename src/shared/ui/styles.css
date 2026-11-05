@@ -82,11 +82,11 @@
  * A panel is the list as a card beside the widgets of the widget dashboard. The layout code sets
  * data-panel on the host (src/features/weekly-list/inpage/layout.ts). The card has the look of a
  * Canvas widget: no border, the widget shadow, theme corners, 24px of padding, and a bold heading.
- * A docked list in the narrow right column of the classic dashboard has less padding.
+ * A docked list in the narrow right column of a course home page has less padding.
  *
  * The card scrolls inside when it is taller than --wr-panel-max-height. Its header stays in view.
- * Where the card floats (float and dock), the host fills the tall container that the layout
- * sets, so that the card can stick to the top of the viewport inside it.
+ * Where the card docks, the host fills the tall container that the dock sets, so that the card
+ * can stick to the top of the viewport inside it.
  */
 :host([data-panel]) {
   --wr-pad-x: 24px;
@@ -98,13 +98,13 @@
   --wr-pad-y: 16px;
 }
 
-:host(:is([data-panel='float'], [data-panel='dock'])) {
+:host([data-panel='dock']) {
   height: 100% !important;
   /* The host is as tall as the page area, so only the card takes clicks. */
   pointer-events: none !important;
 }
 
-:host(:is([data-panel='float'], [data-panel='dock'])) .wr-mount {
+:host([data-panel='dock']) .wr-mount {
   height: 100%;
 }
 
@@ -263,7 +263,7 @@
   outline-offset: -2px;
 }
 
-:host(:is([data-panel='float'], [data-panel='dock'])) .wr[data-surface='inpage'] {
+:host([data-panel='dock']) .wr[data-surface='inpage'] {
   position: sticky;
   top: var(--wr-panel-top, 24px);
 }
@@ -329,7 +329,7 @@
 }
 
 /* In a card that scrolls inside, the header and the Undo notice stay in view. */
-:host(:is([data-panel='float'], [data-panel='dock'])) .wr-header {
+:host([data-panel='dock']) .wr-header {
   position: sticky;
   top: 0;
   z-index: 3;

@@ -3,6 +3,7 @@
  * See docs/design.md, decision 4, "In-page rules".
  */
 import {
+  type AdapterResult,
   MOUNT_CONTAINER_ID,
   createMountContainer,
   findCourseHomeAnchors,
@@ -19,9 +20,12 @@ export interface InpageMount {
   courseId: string | null;
   /**
    * The empty container. It starts as a sibling before `#right-side` inside `#right-side-wrapper`.
-   * On the widget dashboard and in List View the layout moves it into the page content.
+   * On the widget dashboard the layout moves it into the page content, and in the weekly dock it
+   * moves into the dock.
    */
   container: HTMLElement;
+  /** The list sits in the weekly dock, which changes nothing else in the page layout. */
+  docked: boolean;
   /** The list shows the Tasks and Announcements tabs (design decision 24). */
   announcements: boolean;
   /** Undoes what the mount changed in the page layout, other than the container. */
@@ -67,6 +71,18 @@ export function removeStaleMount(doc: Document = document): boolean {
   return stale.length > 0;
 }
 
+/** Places the container as the page asks and returns the function that undoes the placement. */
+function releaseOf(doc: Document, container: HTMLElement, found: AdapterResult): () => void {
+  switch (found.placement) {
+    case 'dock':
+      return () => undefined;
+    case 'layout':
+      return claimDashboardLayout(doc, container, { waitForGrid: found.widgetDashboard });
+    case 'column':
+      return dockWhenColumnScrolledPast(doc, container, found.anchors.wrapper);
+  }
+}
+
 /**
  * Waits until the page meets the mount condition, then creates the container and calls
  * `onMount` once. A `MutationObserver` watches the page, and the wait ends after the timeout.
@@ -110,9 +126,8 @@ export function mountWhenReady(
         courseId: found.courseId,
         announcements: found.announcements,
         container,
-        release: found.claimsLayout
-          ? claimDashboardLayout(doc, container, { waitForGrid: found.widgetDashboard })
-          : dockWhenColumnScrolledPast(doc, container, found.anchors.wrapper),
+        docked: found.placement === 'dock',
+        release: releaseOf(doc, container, found),
       };
       finish({ kind: 'mounted', mount });
       onMount(mount);

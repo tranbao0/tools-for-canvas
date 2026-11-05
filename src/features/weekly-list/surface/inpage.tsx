@@ -8,6 +8,7 @@ import { showNativeTodo, syncNativeTodo } from '../inpage/nativeTodo';
 import type { InpageMount } from '../inpage/mount';
 import { attempt, startInpage } from '../inpage/start';
 import { findWidgetGrid } from '../../../shared/canvas/widgetDashboard';
+import { removeStaleWeeklyDock } from '../../file-viewer/dock';
 import { detectPageTheme } from '../../../shared/ui/pageTheme';
 import { logFailure } from '../../../shared/platform/log';
 import { App } from '../ui/App';
@@ -19,12 +20,15 @@ import { createPageChannel, type PageChannel } from './pageChannel';
 import type { PageScriptContext } from './pageScript';
 import { createSurfaceRuntime, type SurfaceRuntime } from './runtime';
 import { attachShadowMount } from './shadowMount';
+import { hideOnCoursesTab } from './coursesTab';
+import { DOCK_LIST_CSS, SIDE_PANEL, mountWeeklyDock, type WeeklyDock } from './weeklyDock';
 import {
   followTheme,
   inpageTheme,
   setThemeAttribute,
   type ThemeSource,
 } from '../../../shared/ui/theme';
+import type { PageTheme } from '../../../shared/ui/pageTheme';
 
 interface InpageView {
   /** Renders the current state into the container and updates the native To Do. */
@@ -98,6 +102,10 @@ interface InpageListDeps extends InpageViewOptions {
   runtime: SurfaceRuntime;
   /** The stored settings, for the Theme setting. */
   settings: ThemeSource;
+  /** The list sits in the weekly dock: it gets the dock look (`data-panel`) and its extra rules. */
+  dock?: boolean;
+  /** Called with the theme that the host and the UI root now carry. */
+  onTheme?(theme: PageTheme): void;
 }
 
 /**
@@ -108,16 +116,20 @@ interface InpageListDeps extends InpageViewOptions {
 export function mountInpageList(mount: InpageMount, deps: InpageListDeps): () => void {
   const doc = deps.doc ?? document;
   const { runtime } = deps;
-  const ui = attachShadowMount(mount.container, { css: APP_CSS, theme: detectPageTheme(doc) });
+  const ui = attachShadowMount(mount.container, {
+    css: deps.dock === true ? `${APP_CSS}\n${DOCK_LIST_CSS}` : APP_CSS,
+    theme: detectPageTheme(doc),
+  });
+  if (deps.dock === true) ui.host.setAttribute('data-panel', SIDE_PANEL);
   // The host and the UI root always carry a theme: the student's choice, or with Automatic
   // the theme of the Canvas page (decision 19).
   const stopTheme = followTheme(
     deps.settings,
-    (theme) =>
-      setThemeAttribute(
-        [ui.host, ui.root],
-        inpageTheme(theme, () => detectPageTheme(doc)),
-      ),
+    (theme) => {
+      const applied = inpageTheme(theme, () => detectPageTheme(doc));
+      setThemeAttribute([ui.host, ui.root], applied);
+      deps.onTheme?.(applied);
+    },
     logFailure,
   );
   const view = createInpageView(runtime, { doc });
@@ -161,11 +173,39 @@ function mountList(
     // The widget grid renders late, so a page that looked like List View is checked again.
     announcementTabs: () => mount.announcements && findWidgetGrid(document) === null,
   });
-  const remove = mountInpageList(mount, { runtime, settings: channel.settings });
+  const { docked } = mount;
+  let weekly: WeeklyDock | null = null;
+  let theme: PageTheme = detectPageTheme(document);
+  const remove = mountInpageList(mount, {
+    runtime,
+    settings: channel.settings,
+    dock: docked,
+    onTheme(next) {
+      theme = next;
+      weekly?.setTheme(next);
+    },
+  });
+  if (docked) {
+    weekly = mountWeeklyDock({
+      doc: document,
+      container: mount.container,
+      runtime,
+      settings: channel.settings,
+      tools: channel.tools,
+      theme,
+      invalid: () => ctx.isInvalid,
+      log: logFailure,
+    });
+  }
+  // The Courses tab of the widget dashboard shows no card.
+  const stopCoursesTab =
+    docked || mount.courseId !== null ? null : hideOnCoursesTab(document, mount.container);
   // The context ending stops the page flow, and that removes the list.
   const stopWatching = ctx.watchValidity(CONTEXT_CHECK_MS);
   return () => {
     stopWatching();
+    stopCoursesTab?.();
+    weekly?.stop();
     remove();
   };
 }
@@ -186,6 +226,9 @@ function listenToBackground(handler: (message: unknown) => void): () => void {
  * removes the list and gives the page its own To Do back. Pages without the anchors get nothing.
  */
 export async function startInpageSurface(ctx: PageScriptContext): Promise<void> {
+  // An update can end a copy of the script with its dock on the page, and this copy has no
+  // reference to it.
+  removeStaleWeeklyDock();
   const channel = createPageChannel({
     send: (message) => sendFromContentScript(message, ctx),
     pageOrigin: window.location.origin,

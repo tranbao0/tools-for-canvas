@@ -109,7 +109,8 @@ The adapter treats Recent Activity the same as Card View, so `src/features/weekl
 
 The List View dashboard at `/`, with the planner and `#dashboard-planner-header`.
 The body has no `with-right-side`, `#right-side-wrapper` has `display: none` and `#right-side` is empty.
-The extension must inject nothing here.
+The weekly dock takes this page, as it takes the classic dashboard.
+The "+ To Do" button opens the Add To Do tray (`#planner-todo-tray`), which has the `z-index` of an InstUI Tray (9999) and stands at the right edge of the window, as the planner trays do.
 
 ### dashboard-widgets.html
 

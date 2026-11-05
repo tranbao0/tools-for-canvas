@@ -23,6 +23,7 @@ describe('toolsSettingsItem', () => {
       toolsSettings: {
         fileViewer: true,
         fileViewerWidth: 480,
+        weeklyDockWidth: 360,
         dashboardFixes: {
           courseColors: false,
           announcementsInPlace: 'off',
@@ -36,6 +37,7 @@ describe('toolsSettingsItem', () => {
     expect(await toolsSettingsItem.getValue()).toEqual({
       fileViewer: true,
       fileViewerWidth: 480,
+      weeklyDockWidth: 360,
       dashboardFixes: {
         courseColors: false,
         announcementsInPlace: true,
@@ -57,6 +59,7 @@ describe('toolsSettingsItem', () => {
     const tools: ToolsSettings = {
       fileViewer: true,
       fileViewerWidth: 480,
+      weeklyDockWidth: 360,
       dashboardFixes: {
         courseColors: true,
         announcementsInPlace: false,

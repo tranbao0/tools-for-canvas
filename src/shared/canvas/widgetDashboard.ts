@@ -395,6 +395,31 @@ export function findPagedWidgets(doc: Document): PagedWidget[] {
   return found;
 }
 
+/** The ids of the dashboard tabs (`TAB_IDS` in `react/constants.ts`). */
+export const DASHBOARD_TAB_ID = 'dashboard';
+export const COURSES_TAB_ID = 'courses';
+
+const TAB_TITLE = '[data-testid^="tab-"]';
+
+/**
+ * The id of the selected tab of the widget dashboard (`dashboard` or `courses`), or `null` when the
+ * tabs are not drawn yet.
+ *
+ * As of package version 16.2.0, `DashboardTabs` renders InstUI `Tabs` (`@instructure/ui-tabs`
+ * 11.7.4, `Tabs/v1`). `Tabs` draws each tab as `div[role="tab"][id="tab-<id>"]` in a
+ * `div[role="tablist"]`, and the title of the tab, `span[data-testid="tab-<id>"]`, is its child.
+ * Only the selected tab has `aria-selected="true"`: the other tab has no such attribute at all. The
+ * panel of a tab that is not selected is not rendered (`unmountOnExit`). Canvas picks the first
+ * tab from the saved preference `learner_dashboard_tab_selection`, so a page can load with the
+ * Courses tab selected.
+ */
+export function findSelectedDashboardTab(doc: Document): string | null {
+  const tabs = doc.querySelector('[data-testid="dashboard-tabs"]');
+  const selected = tabs?.querySelector('[role="tab"][aria-selected="true"]');
+  const title = selected?.querySelector(TAB_TITLE)?.getAttribute('data-testid');
+  return title === null || title === undefined ? null : title.slice('tab-'.length);
+}
+
 /** The active dashboard tab panel. */
 export function findDashboardPanel(doc: Document): HTMLElement | null {
   return doc.querySelector<HTMLElement>('[data-testid="dashboard-tab-content"]');

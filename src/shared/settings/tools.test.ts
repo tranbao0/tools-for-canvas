@@ -4,12 +4,14 @@ import {
   DEFAULT_TOOLS_SETTINGS,
   isToolsSettings,
   normalizeToolsSettings,
+  normalizeWeeklyDockWidth,
   type ToolsSettings,
 } from './tools';
 
 const ALL_OFF: ToolsSettings = {
   fileViewer: true,
   fileViewerWidth: 480,
+  weeklyDockWidth: 360,
   dashboardFixes: {
     courseColors: false,
     announcementsInPlace: false,
@@ -64,6 +66,7 @@ describe('normalizeToolsSettings', () => {
     expect(normalizeToolsSettings(stored)).toEqual({
       fileViewer: true,
       fileViewerWidth: 480,
+      weeklyDockWidth: 360,
       dashboardFixes: {
         courseColors: false,
         announcementsInPlace: true,
@@ -87,6 +90,7 @@ describe('normalizeToolsSettings', () => {
     expect(normalizeToolsSettings({ dashboardFixes: { allCourseGrades: false } })).toEqual({
       fileViewer: true,
       fileViewerWidth: 480,
+      weeklyDockWidth: 360,
       dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, allCourseGrades: false },
       assignmentView: true,
     });
@@ -157,12 +161,40 @@ it('normalizes the viewer switch and saved width', () => {
   expect(normalizeToolsSettings({ fileViewer: false, fileViewerWidth: 100 })).toMatchObject({
     fileViewer: false,
     fileViewerWidth: 360,
+    weeklyDockWidth: 360,
   });
   expect(normalizeToolsSettings({ fileViewer: 'yes', fileViewerWidth: Infinity })).toMatchObject({
     fileViewer: true,
     fileViewerWidth: 480,
+    weeklyDockWidth: 360,
   });
   expect(normalizeToolsSettings({ fileViewerWidth: 9000 }).fileViewerWidth).toBe(1344);
+});
+
+describe('the width of the weekly dock', () => {
+  it('opens at 360 px and takes that default for a value that is not a number', () => {
+    expect(DEFAULT_TOOLS_SETTINGS.weeklyDockWidth).toBe(360);
+    expect(normalizeToolsSettings(undefined).weeklyDockWidth).toBe(360);
+    expect(normalizeToolsSettings({ weeklyDockWidth: '500' }).weeklyDockWidth).toBe(360);
+    expect(normalizeToolsSettings({ weeklyDockWidth: Infinity }).weeklyDockWidth).toBe(360);
+    expect(normalizeWeeklyDockWidth(undefined)).toBe(360);
+  });
+
+  it('follows the width rules of the file pane: at least 360 px, at most 70% of the window', () => {
+    expect(normalizeToolsSettings({ weeklyDockWidth: 100 }).weeklyDockWidth).toBe(360);
+    expect(normalizeToolsSettings({ weeklyDockWidth: 520 }).weeklyDockWidth).toBe(520);
+    expect(normalizeToolsSettings({ weeklyDockWidth: 9000 }).weeklyDockWidth).toBe(1344);
+    expect(normalizeWeeklyDockWidth(900, 1000)).toBe(700);
+  });
+
+  it('never changes the width of the file pane, and the file pane never changes this one', () => {
+    const stored = { fileViewerWidth: 700, weeklyDockWidth: 400 };
+    const result = normalizeToolsSettings(stored);
+    expect(result.fileViewerWidth).toBe(700);
+    expect(result.weeklyDockWidth).toBe(400);
+    expect(normalizeToolsSettings({ fileViewerWidth: 700 }).weeklyDockWidth).toBe(360);
+    expect(normalizeToolsSettings({ weeklyDockWidth: 400 }).fileViewerWidth).toBe(480);
+  });
 });
 
 it('turns the one assignment view on by default and keeps only a real boolean', () => {

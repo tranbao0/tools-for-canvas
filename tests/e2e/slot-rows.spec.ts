@@ -339,13 +339,14 @@ for (const rowSize of ['comfortable', 'compact'] as const) {
 
 // The Row size setting changes only the card in the Course work slot.
 for (const rowSize of ['compact', 'comfortable'] as const) {
-  test(`rows of the classic right column are unchanged with ${rowSize} rows`, async ({
+  test(`rows of the dock of the classic dashboard are unchanged with ${rowSize} rows`, async ({
     context,
     page,
     background,
   }) => {
     const list = await openPlain(context, page, background, rowSize, 'dashboard-card-view');
-    await expectPlainRows(list, '20px 16px 186px', 64.1875);
+    await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'side');
+    await expectPlainRows(list, '20px 16px 273px', 64.1875);
   });
 
   test(`rows of a course home page are unchanged with ${rowSize} rows`, async ({
@@ -370,8 +371,8 @@ for (const rowSize of ['compact', 'comfortable'] as const) {
     background,
   }) => {
     const list = await openPlain(context, page, background, rowSize, 'dashboard-list-view');
-    await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'stack');
-    await expectPlainRows(list, '20px 16px 1254px', 64.1875);
+    await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'side');
+    await expectPlainRows(list, '20px 16px 273px', 64.1875);
   });
 
   test(`rows of the side panel are unchanged with ${rowSize} rows`, async ({

@@ -28,6 +28,8 @@ export interface DashboardFixesSettings {
 export interface ToolsSettings {
   fileViewer: boolean;
   fileViewerWidth: number;
+  /** The width of the weekly list dock on the classic dashboard. The other docks never change it. */
+  weeklyDockWidth: number;
   dashboardFixes: DashboardFixesSettings;
   /** The Submission Details view and the expand rows of the Assignments list (decision 26). */
   assignmentView: boolean;
@@ -41,9 +43,23 @@ export const DASHBOARD_FIX_KEYS = [
   'steadyPager',
 ] as const satisfies readonly (keyof DashboardFixesSettings)[];
 
+/** The weekly list dock opens at the narrowest width that a dock can have. */
+export const DEFAULT_WEEKLY_DOCK_WIDTH = 360;
+
+/**
+ * The width of the weekly list dock: the width rules of the file pane (at least 360 px, at most
+ * 70% of the window), with a default of 360 px for a value that is missing or not a number.
+ */
+export function normalizeWeeklyDockWidth(value: unknown, viewportWidth?: number): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? normalizeWidth(value, viewportWidth)
+    : DEFAULT_WEEKLY_DOCK_WIDTH;
+}
+
 export const DEFAULT_TOOLS_SETTINGS: ToolsSettings = {
   fileViewer: true,
   fileViewerWidth: normalizeWidth(undefined),
+  weeklyDockWidth: DEFAULT_WEEKLY_DOCK_WIDTH,
   dashboardFixes: {
     courseColors: true,
     announcementsInPlace: true,
@@ -73,6 +89,9 @@ export function normalizeToolsSettings(stored: unknown): ToolsSettings {
     fileViewer:
       isRecord(stored) && typeof stored['fileViewer'] === 'boolean' ? stored['fileViewer'] : true,
     fileViewerWidth: normalizeWidth(isRecord(stored) ? stored['fileViewerWidth'] : undefined),
+    weeklyDockWidth: normalizeWeeklyDockWidth(
+      isRecord(stored) ? stored['weeklyDockWidth'] : undefined,
+    ),
     dashboardFixes: fixes,
     assignmentView:
       isRecord(stored) && typeof stored['assignmentView'] === 'boolean'

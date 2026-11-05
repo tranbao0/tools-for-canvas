@@ -157,6 +157,7 @@ describe('routeDataMessage', () => {
       const tools = {
         fileViewer: true,
         fileViewerWidth: 480,
+        weeklyDockWidth: 360,
         dashboardFixes: { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes, courseColors: false },
         assignmentView: true,
       };

@@ -15,6 +15,11 @@
         if (target) {
           target.innerHTML = step.innerHTML;
           const params = new URLSearchParams(location.search);
+          // A page that loads on the Courses tab, from the saved preference of the student.
+          if (params.get('fixture_tab') === 'courses') {
+            const courses = target.querySelector('.fixture-widget-tabs [role="tab"]:not([aria-selected])');
+            if (courses && window.fixtureSelectTab) window.fixtureSelectTab(courses);
+          }
           const section = target.querySelector('[data-testid="widget-course-work-combined-widget"]');
           if (section) {
             const state = params.get('fixture_course_work');
@@ -73,19 +78,26 @@ window.fixtureFreshClone = function (node) {
   return copy;
 };
 
-document.addEventListener('click', (event) => {
-  const tab = event.target.closest('[role="tab"]');
-  if (!tab || !tab.dataset.testid?.startsWith('tab-')) return;
+// Selects a tab as InstUI Tabs does: the selected tab has aria-selected="true", and the other tab
+// has no such attribute. The panel of the tab that is not selected is not rendered.
+window.fixtureSelectTab = function (tab) {
+  const title = tab.querySelector('[data-testid^="tab-"]');
   const panel = document.querySelector('[data-testid="dashboard-tab-content"]');
-  if (!panel) return;
+  if (!title || !panel) return;
   if (window.fixtureDashboardHTML === undefined) {
     const copy = window.fixtureFreshClone(panel);
     window.fixtureDashboardHTML = copy.innerHTML;
   }
-  panel.innerHTML = tab.dataset.testid === 'tab-courses'
+  panel.innerHTML = title.dataset.testid === 'tab-courses'
     ? document.getElementById('fixture-courses-panel').innerHTML
     : window.fixtureDashboardHTML;
   for (const item of document.querySelectorAll('.fixture-widget-tabs [role="tab"]')) {
-    item.setAttribute('aria-selected', String(item === tab));
+    if (item === tab) item.setAttribute('aria-selected', 'true');
+    else item.removeAttribute('aria-selected');
   }
+};
+
+document.addEventListener('click', (event) => {
+  const tab = event.target.closest('.fixture-widget-tabs [role="tab"]');
+  if (tab) window.fixtureSelectTab(tab);
 });
