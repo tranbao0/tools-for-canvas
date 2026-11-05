@@ -1444,6 +1444,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | Announcements (decision 24) | `GET /api/v1/announcements?context_codes[]=course_:id...&start_date=...&end_date=...&active_only=true&per_page=100` | A surface with the Announcements tab asks, and the list is missing or older than 60 seconds; one request for each 20 courses |
 | Announcement message | `GET /api/v1/courses/:id/discussion_topics/:id` | The student opens a row (decision 22 and 24) |
 | Announcement page of the dashboard widget (decision 22) | `POST /api/graphql`, query `WeekrowAnnouncements` (`discussionParticipantsConnection`, a read, no mutation) | The list of the widget loads 10 rows, and 10 more when the end of its scroll area comes near; the search by topic loads pages of 100, up to 20, once for the page view |
+| People page of the dashboard widget (decision 22) | `POST /api/graphql`, query `WeekrowPeople` (`courseInstructorsConnection`, a read, no mutation, no email) | The list of the widget loads 10 people, and 10 more when the end of its scroll area comes near; one request for each page of each pair of course and role, once for the page view |
 | Announcement range of the dashboard widget (decision 22) | `GET /api/v1/announcements?context_codes[]=course_:id...&start_date=yyyy-mm-dd&end_date=yyyy-mm-dd&active_only=true&per_page=100` | The student sets From or To in the search by date; one request for each 20 courses of the session |
 | Announcement read mark | `PUT` and `DELETE /api/v1/courses/:id/discussion_topics/:id/read` | The student presses "Mark as read" or Undo, or clicks the read control of the dashboard widget (decision 22), with the sign-in check before it |
 
@@ -1981,9 +1982,12 @@ The owner asked for it after testing an early build: the list should feel like p
 
 **Question:** How does the extension fix the gaps of the new Canvas widget dashboard (roadmap item 2)?
 
-**Decision:** Three fixes, each with its own switch in one setting group, "New dashboard fixes".
-All three are on by default.
+**Decision:** Four fixes, each with its own switch in one setting group, "New dashboard fixes".
+All four are on by default.
 The owner chose the list on 2026-10-30 (see `docs/roadmap.md`).
+The owner added the People list on 2026-11-05.
+The owner asked that a fix like the announcements list apply Canvas wide where that is possible, not only to one widget.
+So the scroll list is one shared module, and a widget needs only an adapter for it.
 The owner removed two fixes on 2026-11-04: "Course colors on Course work icons" and "Course work extras".
 The weekly card covers the Course work widget, so the two switches did nothing while the card was on.
 With the card off, the student sees the plain widget of Canvas.
@@ -2001,6 +2005,7 @@ The cache writes of the weekly list follow the cookie rule of decision 11, and t
 | Announcements in place | One steady list with infinite scroll replaces the list of the widget: a message opens in its row, the card keeps its height, and a course filter, a search by topic and a search by date join the read filter |
 | All course grades | A grade card for every course, not only six |
 | Steady page buttons | One page navigator with nine fixed places for the paged widgets |
+| People list | The same steady list with infinite scroll replaces the list and the pager of the People widget: the card keeps its height, the Course filter and the Role filter stay Canvas's own, and each person shows every course and role on its own line |
 
 **Facts.**
 They come from the source of the widget package `@instructure/platform-widget-dashboard`, version 16.2.0, and from canvas-lms at commit 1c9f0bb [10] [13].
@@ -2116,6 +2121,13 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
   `findPagedWidgets` in `src/shared/canvas/widgetDashboard.ts` finds each pager, its current page, its total and its buttons, and skips the widget whose wrapper has `data-weekrow-replaced`.
 - Announcements in place is in `inpage/announcements.tsx` (the view), `inpage/announcementStore.ts` (the lists, the offsets, the marks, the search index and the ranges, with no DOM) and `inpage/announcementSearch.ts` (the pure search).
   The background side is `data/announcementRows.ts` (the projection of a row with a limit on every text), the page, range and mark methods of the data owner, and `announcementPageQuery` and `readAnnouncementPage` in `src/shared/canvas/graphql.ts`.
+- The shared scroll list is in `inpage/scrollList.tsx`.
+  It holds the store of the pages (`createPagedLists`, with no DOM), the view of the scroll area (`ScrollList`), the avatar and the shadow host.
+  A widget adds an adapter: a function that loads a page, a renderer for its rows and the reading of its filters.
+  Announcements in place is the first adapter, and the People list is the second.
+- The People list is in `inpage/people.tsx` (the adapter and the view).
+  The background side is `data/peopleRows.ts` (the projection of a row with a limit on every text), the `peoplePage` method of the data owner, and `peoplePageQuery` and `readPeoplePage` in `src/shared/canvas/graphql.ts`.
+  `findPeopleWidgets` in `src/shared/canvas/widgetDashboard.ts` finds the widget, its two filters and the column that holds them.
 - One `MutationObserver` serves the whole feature.
   It watches the content of the page, and a batch of changes (50 ms) runs one pass of the enabled fixes.
   The observer ignores the nodes that the fixes add, so a pass never starts another.
@@ -2172,6 +2184,9 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
      When the data of the background names another student than before, the controller removes the whole fix, as it removes the grade cards.
      The lists, the open messages and the state of the open rows then go, and the next pass builds them again for the new student.
    **Paging.**
+   The scroll area and the paging of this choice are the shared list of `inpage/scrollList.tsx`, and the People list uses them unchanged (choice 4).
+   The store keeps the lists, the offsets and the fallback.
+   The announcements adapter adds what only it needs: the rule of the offset for a read mark, the wait for a mark on its way and the search.
    - The list loads 10 rows.
      A sentinel at the end of the area, watched by an `IntersectionObserver` with the area as its root and a margin of 200 px, loads 10 more when it comes near.
      The observer starts again after each load.
@@ -2300,6 +2315,9 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    Cached dashboard data never waits for this read.
    Copies hide their grades while preferences are unknown.
 3. **Steady page buttons.**
+   The paged widgets that have no list of their own stay on this fix: Recent Grades and To-do.
+   Each of them needs only an adapter for the shared list (a loader, a row and its filters) to get the same steady list.
+   Course work stays on it while the weekly card is off, and Course grades stays on it while "All course grades" is off.
    The navigator is a `nav` of nine places of equal width in one row, with the same accessible name as the pager of Canvas.
    The places are the previous arrow, the first page, a gap, the page before the current one, the current page, the page after it, a gap, the last page and the next arrow.
    The current page always stands in the middle place, with the look of the current page of Canvas (a filled dark blue square and a white bold number).
@@ -2318,10 +2336,71 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    Another fix that hides the pager (the grade cards, and the own list of the announcements) hides the navigator too.
    The navigator follows the dark theme of the widget, with the link color `#5A9FD4`, the ink `#FFFFFF` and the disabled color `#4A5B68` of the package, and the current page keeps its blue square.
    A widget with one page has no pager of Canvas, so it has no navigator.
+4. **People list.**
+   The own list replaces the list and the pager of the widget only while it shows.
+   The Course filter and the Role filter stay Canvas's own, above the list, and the fix reads their values as the widget shows them.
+   The fix reads the text of each input: "All Courses" or the name of a course, and "All Roles", "Teacher" or "Teaching Assistant".
+   It finds the widget by the Role filter (`role-filter-select`), because the Course filter (`course-filter-select`) is a shared component that other widgets use too.
+   The Course filter text is matched to the name of one course of the dashboard data.
+   Canvas fills that filter from `ENV.SHARED_COURSE_DATA`, which `users_controller.rb` builds in `fetch_courses_with_grades`.
+   Its `courseName` is the nickname that the signed-in user set for the course, or else the course name, and `originalName` holds the course name.
+   The REST course list gives `name` the same way (`apply_nickname` in `lib/api/v1/course.rb` puts the nickname in `name` and the course name in `original_name`).
+   So `DashboardCourse.name` is the text of the filter, and the fix needs no other field.
+   When the fix cannot tell a filter, Canvas's own list stays: the Role text is not one of the three English labels, the Course text names no course or names two courses alike, or the data has not come yet.
+   The own list reads the courses of the session, which are the courses of the student.
+   A parent who observes a child has no student course, so the session has none, and the fix leaves Canvas's list alone and marks nothing.
+   Canvas's filter and list then follow the child (`OBSERVED_USER_ID`), and the own list would show "No instructors found".
+   A user who is a student and also an observer: when the Course filter text is not one of the courses of the session, Canvas's own list stays, because the text names a course of the child.
+   A school with another language therefore sees Canvas's own list, and the fix does nothing there.
+   The Announcements fix reads any other text as All, and this fix does not, because a list for the wrong person group is worse than Canvas's own list.
+   - The card keeps its height, as in the approved mockup of 2026-11-05.
+     Below the filters the fix draws a host with a shadow root that holds one scroll area, with the rules of choice 1: `overflow-y: auto`, `overscroll-behavior: contain`, a fixed height and the focus stop.
+     The height is `max(20rem, min(22rem, calc(100vh - 14rem)))`, which is 352 px in a window of 1,000 px.
+     The People widget has no search row, so the host is the scroll area alone.
+   - A row shows the avatar (2.5rem: the image, or the initials on a color of the fixed set of choice 1), the name bold at 0.875rem, and at the right the message button (a square of 1.875rem with an envelope).
+     Under the name, each course and role of the person stands on its own line.
+     A person in several courses shows every course and role, with no toggle ("2 enrollments" of Canvas), because the list has the room.
+     The role is the enrollment type, as in the widget: "Teacher" or "Teaching Assistant".
+     The row has no email.
+     Canvas shows one when the profile has it, and the fix does not ask for it, so it never reaches the page.
+   - The list loads 10 people, and 10 more when the end of the area comes near, with the paging of choice 1: the "Loading more" line, the error line with Retry, the end line "No more people", the dedupe by user id and a list in memory for each pair of course and role.
+     A change of a filter shows the list of the new pair from its top.
+   - The message button keeps the action of Canvas.
+     The widget opens `MessageStudents` in a modal, with the user, the name, the email and the context code of the first course (`PeopleWidget.tsx`).
+     That modal is a part of the React state of the widget, and the rows of the own list are not rows of the widget, so the fix cannot open it.
+     The button is a link to the compose page of Canvas with the same user and course: `/conversations?user_id=ID&user_name=NAME&context_id=course_ID`.
+     `CanvasInbox.tsx` reads these three values from the address and opens its compose window with the person and the course filled in.
+     The link opens in a new tab with `rel="noopener noreferrer"`, so the dashboard stays.
+     The page builds the address with `URL` and `searchParams.set`, never by iterating a `URLSearchParams`.
+   - The fallback is the one of choice 1.
+     If the first page fails and no list of the page view has loaded yet, the fix takes its list and its marks off the widget, and the list and the pager of Canvas show again.
+     A later load of the data asks for that page again without a sign.
+   - The marks of this fix are its own (`data-wr-own="people"` on its nodes, and `data-wr-people`, `data-wr-pbar`, `data-wr-pfb` and `data-wr-pdark` on the nodes of Canvas), so a fix that goes off removes only its own marks.
+     The stylesheet hides the list of Canvas (the children of the column that are neither the filters nor the fix) and the pager, and the steady navigator, only while the mark `data-wr-people` stands.
+   - `weekrow:people-page { courseId: string | null, role: 'all' | 'teacher' | 'ta', offset, first }` reads a page.
+     `role` is the filter as Canvas has it, `offset` is a whole number from 0 to 100000, and `first` is 10.
+     The background takes the student and the courses from its session, never from the page: no course means all the courses of the session, one course that is in the session means that course alone, and a course that is not in it gets an empty reply with no request.
+     It never sends an empty course list, because Canvas reads that as all of its own courses.
+     It builds `after` as `btoa(String(offset))` and `enrollmentTypes` from the role (`TeacherEnrollment` or `TaEnrollment`, and none for all roles).
+     It runs the checks and the cookie rule of `weekrow:announcement-page`: the cookie store of the tab, the saved Canvas, the sign-in check and `cookieBound`, and it rejects when the cookie or the student changed while the request ran.
+     It projects each row with a limit on every text (the id, the name, the course name, at most 50 enrollments of a person) and the avatar rule of choice 1.
+     A row whose id is no Canvas id drops out, as does an enrollment of a course that is not in the session or that is not a teacher or assistant enrollment, and a row with no enrollment left.
+     The reply is `{ userId, items, count, total, hasNext }`, and the offset logic is that of choice 1: the next offset counts the rows of the server that the page held, whether the projection kept them or not.
+   - The router accepts the message only from the top frame of a tab whose page has the saved origin, never from an extension page, and it checks every value for its bounds.
+   **Source facts for the People list (canvas-lms at 1c9f0bb).**
+   - `PeopleWidget.tsx` and `PeopleFilters.tsx` keep the Course filter and the Role filter with `useWidgetConfig` (`selectedCourse` and `selectedRole`), and the widget shows 5 people a page (`DEFAULT_PAGE_SIZE.PEOPLE`) with the pager "Instructors pagination".
+   - `coursePeople.ts` reads `courseInstructorsConnection(courseIds, first, after, observedUserId, enrollmentTypes)` with `user { _id name sortableName shortName avatarUrl email }` and `enrollments { course { _id name courseCode } type role { _id name } enrollmentState }`, and `pageInfo` with `totalCount`.
+     The variable types are `[ID!]!`, `Int`, `String`, `ID` and `[String!]`.
+   - `useCourseInstructors.ts` sends the offset as `btoa(String(offset))`, as the announcements do.
+   - `query_type.rb` keeps only the courses of the user in `courseIds` (`course_ids & user_course_ids`) and reads an empty list as all of them.
+     It allows only `TeacherEnrollment` and `TaEnrollment`.
+   - `avatarUrl` is `null` for a user with no picture (`use_fallback: false` in `user_type.rb`), so the initials show.
+   - The default Role filter is "All Roles", and the default Course filter is "All Courses".
 
 **Settings.**
 The switches are the tools settings, a trusted item (`toolsSettings`) under decision 5: the storage lock on Chrome and Edge, the vault on Firefox, and a check of each field when it is read.
 Each tool is a group under its own key, so a future tool adds a group and nothing else.
+The fixes of the group are the keys `announcementsInPlace`, `allCourseGrades`, `steadyPager` and `peopleList`, and a stored group without a key takes the default (on) for that key.
 The weekly list settings keep their five fields.
 The background sends the same `changed` message when the switches change.
 The group shows in the three places of decision 18.
@@ -2365,6 +2444,14 @@ The page scripts of the fixes and of the weekly list share one sanitizer, `src/s
   The extension reads the color of the card to choose the colors of its pills.
 - The read filter and the course filter labels are English.
   A school with another language sees the filter act as "All", and "All Courses" as a course name that matches no course.
+- The People list reads the Course filter by the name of the course, and the dashboard data names a course by its nickname when the student set one.
+  If Canvas shows another name than the data holds, or two courses have one name, the fix cannot tell the course, and Canvas's own list stays.
+  The query `WeekrowPeople` follows `coursePeople.ts` of Canvas, and the finder follows the test ids of `PeopleWidget`.
+  If Canvas changes its schema, the first page fails and the list of Canvas shows again.
+- The People list has one limit for a user who is a student and also an observer.
+  The session holds only the courses of the student, and the fix cannot read which user the dashboard shows.
+  With "All Courses" chosen, the own list then shows the people of the courses of the student, while Canvas's list and its filter follow the observed child (`OBSERVED_USER_ID`).
+  A Course filter text that is not a course of the session keeps Canvas's list, and a session with no course keeps it too.
 - The dashboard fixes and weekly list share the same session fingerprint check from decision 11.
   A page of another cookie store gets no grades, and a page without a session cookie gets none either.
   A read of the cache that the cookie check does not confirm gets no data, and a cookie store that cannot be read gets none either.

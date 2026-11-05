@@ -27,6 +27,7 @@ const OFF: DashboardFixesSettings = {
   announcementsInPlace: false,
   allCourseGrades: false,
   steadyPager: false,
+  peopleList: false,
 };
 /** Only the pager fix runs, so the widgets keep the markup that Canvas draws. */
 const ONLY_PAGER: DashboardFixesSettings = { ...OFF, steadyPager: true };

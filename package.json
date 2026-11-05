@@ -32,6 +32,7 @@
     "test:firefox:submission-pages": "node tests/firefox/submission-pages.mjs",
     "test:firefox:assignments-preview": "node tests/firefox/assignments-preview.mjs",
     "test:firefox:announcements": "node tests/firefox/announcements.mjs",
+    "test:firefox:people": "node tests/firefox/people.mjs",
     "test:firefox:dashboard-dock": "node tests/firefox/dashboard-dock.mjs",
     "test:gallery": "node tests/gallery/screenshot.mjs",
     "setup:firefox": "bash tests/firefox/install-firefox.sh",

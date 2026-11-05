@@ -21,6 +21,7 @@ import { announcementsFix } from './announcements';
 import { isFixNode, type Fix, type FixContext } from './context';
 import { gradesFix, type GradeVisibilityStore } from './grades';
 import { pagerFix } from './pager';
+import { peopleFix } from './people';
 import { findGradeWidgets } from '../../../shared/canvas/widgetDashboard';
 import { FIXES_CSS } from './styles';
 
@@ -68,6 +69,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     announcementsInPlace: announcementsFix(),
     allCourseGrades: gradesFix(gradeStore),
     steadyPager: pagerFix(),
+    peopleList: peopleFix(),
   };
   const keys = Object.keys(fixes) as FixKey[];
   let settings: DashboardFixesSettings | null = null;
@@ -356,6 +358,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
             gradeStore.observed.clear();
             // The announcements, their messages and their marks belong to the first student.
             fixes.announcementsInPlace.remove();
+            fixes.peopleList.remove();
           }
           markBlind();
         }

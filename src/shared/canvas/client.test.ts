@@ -1478,3 +1478,59 @@ describe('listAnnouncementPage', () => {
     });
   });
 });
+
+describe('listPeoplePage', () => {
+  const request = { courseIds: ['101', '102'], role: 'teacher', offset: 10, first: 10 } as const;
+
+  it('posts the query with the token of the other queries and reads the page', async () => {
+    const seen: { variables: unknown; csrf: string | null }[] = [];
+    server.use(
+      http.post(api('/api/graphql'), async ({ request: incoming }) => {
+        const body = (await incoming.json()) as { variables: unknown };
+        seen.push({ variables: body.variables, csrf: incoming.headers.get('X-CSRF-Token') });
+        return HttpResponse.json({
+          data: {
+            courseInstructorsConnection: {
+              nodes: [
+                {
+                  user: { _id: '7001', name: 'Dr. Okafor', avatarUrl: null },
+                  enrollments: [
+                    { course: { _id: '101', name: 'BIO 110' }, type: 'TeacherEnrollment' },
+                  ],
+                },
+              ],
+              pageInfo: { hasNextPage: true, totalCount: 31 },
+            },
+          },
+        });
+      }),
+    );
+
+    const page = await testClient().listPeoplePage(request);
+
+    expect(seen).toEqual([
+      {
+        csrf: CSRF_TOKEN,
+        variables: {
+          courseIds: ['101', '102'],
+          first: 10,
+          after: btoa('10'),
+          enrollmentTypes: ['TeacherEnrollment'],
+        },
+      },
+    ]);
+    expect(page).toMatchObject({ total: 31, hasNext: true, count: 1 });
+    expect(page.nodes[0]).toMatchObject({ id: '7001', name: 'Dr. Okafor' });
+  });
+
+  it('rejects a 200 answer that holds errors', async () => {
+    server.use(
+      http.post(api('/api/graphql'), () =>
+        HttpResponse.json({ data: null, errors: [{ message: 'internal error' }] }),
+      ),
+    );
+    await expect(testClient().listPeoplePage(request)).rejects.toMatchObject({
+      kind: 'bad_request',
+    });
+  });
+});

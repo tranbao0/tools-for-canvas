@@ -16,6 +16,7 @@ const ALL_OFF: ToolsSettings = {
     announcementsInPlace: false,
     allCourseGrades: false,
     steadyPager: false,
+    peopleList: false,
   },
   assignmentView: true,
 };
@@ -67,6 +68,7 @@ describe('normalizeToolsSettings', () => {
         announcementsInPlace: true,
         allCourseGrades: true,
         steadyPager: true,
+        peopleList: true,
       },
       assignmentView: true,
     });
@@ -78,6 +80,15 @@ describe('normalizeToolsSettings', () => {
     expect(normalizeToolsSettings({ dashboardFixes: before }).dashboardFixes.steadyPager).toBe(
       true,
     );
+  });
+
+  it('turns the People list on for a group stored before it existed', () => {
+    const { peopleList: _removed, ...before } = ALL_OFF.dashboardFixes;
+
+    expect(normalizeToolsSettings({ dashboardFixes: before }).dashboardFixes).toEqual({
+      ...before,
+      peopleList: true,
+    });
   });
 
   it('takes the default for a missing field', () => {

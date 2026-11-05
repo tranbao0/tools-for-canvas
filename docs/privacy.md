@@ -8,7 +8,7 @@ Last updated: 2026-11-05.
 Tools for Canvas has no account, no server of its own and no telemetry.
 It reads your Canvas data in your browser and shows it to you.
 It writes only done marks, skip marks, custom tasks, announcement read marks and the read mark of your rubric comments, and only to your own Canvas.
-Nothing goes anywhere else, except the images that a teacher put into an announcement (see "What the extension sends elsewhere").
+Nothing goes anywhere else, except the images that a teacher put into an announcement and the profile pictures of the people in the People widget (see "What the extension sends elsewhere").
 
 ## What the extension reads
 
@@ -26,6 +26,7 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - the full text of an announcement that you open;
 - the announcements that the Announcements widget of the new dashboard shows, a page at a time as you scroll: the title, author, date, course name, read state and text of each (the extension keeps the first 4,000 characters of each text in memory for the page view, and reads all your announcements once, 100 at a time and at most 2,000, when you search by topic);
 - the announcements that you find with the search by date, read from the announcements list of your Canvas for the days that you choose, at most 500;
+- the people that the People widget of the new dashboard shows, a page at a time as you scroll: the name, the address of the profile picture, and the course and the role (teacher or teaching assistant) of each teacher and assistant of your courses (the extension does not ask for their email addresses, and keeps the rows in memory for the page view);
 - the details of an assignment on a page of the one assignment view (the Assignments list, the Submission Details page of your own work, and the assignment page): its instructions and submission types, and your own submission with its status, time, attempt, text, address, the names and sizes of your files, the signed address of the preview of each file, and the similarity scores of your files and your text.
   The extension reads them with two requests of your own Canvas: `GET /api/v1/courses/:id/assignments/:id` and `GET /api/v1/courses/:id/assignments/:id/submissions/self`.
   The Submission Details page sends them when it loads, and the Assignments list sends them when you show an assignment in the assignment pane, and again now and then while the pane is open.
@@ -107,7 +108,9 @@ On a module item, Canvas can count a done mark as the module's "Mark as done" re
 ## What the new dashboard fixes do
 
 The fixes work on the new Canvas dashboard and use only the requests that this policy lists.
-They show the Announcements widget as one steady list that opens a message in place and searches by topic and by date, and show a grade card for each course.
+They show the Announcements widget as one steady list that opens a message in place and searches by topic and by date, show the People widget as one steady list, and show a grade card for each course.
+The message button of a person in that list is a link to the compose page of your own Canvas, and it opens in a new tab.
+The extension sends nothing when you press it, and Canvas gets the same request as from a link that you open yourself.
 The text of an announcement is written by your teacher.
 The extension shows it only after it removes everything that could run code, load a frame or send a form.
 The fixes read the grade of each course from the course list, in your browser, and show it only to you on your own dashboard.
@@ -166,6 +169,7 @@ It has no analytics, no error reporting, no advertising and no remote configurat
 It opens no web page on install or uninstall.
 All requests of the extension go to the one Canvas address that you saved.
 The one exception is an image in an announcement, in the instructions of an assignment or in a comment that you open in place: the browser loads it from the address that your teacher chose, with no referrer, as the Canvas page does.
+A profile picture in the People widget or in the Announcements widget of the new dashboard is the same kind of exception: when Canvas keeps the picture on another host, the browser loads it from there with no referrer, and a picture on your Canvas host loads only from a file or an image path.
 
 The code enforces this.
 All network requests go through one function that allows only your Canvas address.

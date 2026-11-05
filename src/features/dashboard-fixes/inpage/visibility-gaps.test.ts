@@ -18,6 +18,7 @@ const ALL_OFF: DashboardFixesSettings = {
   announcementsInPlace: false,
   allCourseGrades: false,
   steadyPager: false,
+  peopleList: false,
 };
 const NOTHING = { origin: ORIGIN, courses: [] };
 

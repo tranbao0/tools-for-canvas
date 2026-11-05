@@ -133,6 +133,12 @@ jobs:
           export GECKODRIVER_BIN="$GECKOWEBDRIVER/geckodriver"
           npm run test:firefox:announcements
 
+      - name: Firefox People test
+        run: |
+          export FIREFOX_BIN="$(command -v firefox)"
+          export GECKODRIVER_BIN="$GECKOWEBDRIVER/geckodriver"
+          npm run test:firefox:people
+
       - name: Firefox dashboard dock test
         run: |
           export FIREFOX_BIN="$(command -v firefox)"

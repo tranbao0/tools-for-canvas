@@ -13,6 +13,7 @@ import {
   type AnnouncementTopic,
   type CanvasApi,
   type NoteInput,
+  type PeoplePageNode,
   type PlannerItem,
   type PlannerNote,
   type PlannerOverride,
@@ -62,6 +63,11 @@ export interface FakeCanvas extends CanvasApi {
    * A page answers by read state, course, offset and size, as the connection does.
    */
   setAnnouncementPageRows(rows: AnnouncementPageNode[]): void;
+  /**
+   * Sets the rows of the People query as Canvas holds them for the student. A page answers by
+   * course, role, offset and size, as the connection does.
+   */
+  setPeoplePageRows(rows: PeoplePageNode[]): void;
   /** Sets the two records that Canvas gives for the one assignment view. */
   setAssignmentView(
     courseId: string,
@@ -113,6 +119,7 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
   const notes = new Map<string, PlannerNote | null>();
   const announcements = new Map<string, AnnouncementTopic[]>();
   let pageRows: AnnouncementPageNode[] = [];
+  let peopleRows: PeoplePageNode[] = [];
   const assignmentViews = new Map<
     string,
     { assignment: Record<string, unknown>; submission: Record<string, unknown> }
@@ -344,6 +351,31 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
           priority,
           guard,
         ),
+      listPeoplePage: (request) =>
+        call(
+          'listPeoplePage',
+          [request],
+          () => {
+            const type = { teacher: 'TeacherEnrollment', ta: 'TaEnrollment' } as const;
+            const filtered = peopleRows.flatMap((row) => {
+              const enrollments = row.enrollments.filter(
+                (enrollment) =>
+                  request.courseIds.includes(enrollment.courseId) &&
+                  (request.role === 'all' || enrollment.type === type[request.role]),
+              );
+              return enrollments.length === 0 ? [] : [{ ...row, enrollments }];
+            });
+            const nodes = filtered.slice(request.offset, request.offset + request.first);
+            return {
+              nodes: structuredClone(nodes),
+              count: nodes.length,
+              total: filtered.length,
+              hasNext: request.offset + request.first < filtered.length,
+            };
+          },
+          priority,
+          guard,
+        ),
       listGroups: () => call('listGroups', [], () => scenario.groups, priority, guard),
       getColors: () => call('getColors', [], () => scenario.colors, priority, guard),
       getDashboardPositions: () =>
@@ -504,6 +536,9 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
     },
     setAnnouncementPageRows(rows) {
       pageRows = rows;
+    },
+    setPeoplePageRows(rows) {
+      peopleRows = rows;
     },
     setAssignmentView(courseId, assignmentId, records) {
       assignmentViews.set(`${courseId}/${assignmentId}`, records);
