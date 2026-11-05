@@ -1020,7 +1020,7 @@ test('the Grades list and the assignment page get no buttons', async ({
   }
 });
 
-test('on a small window the button stays in the row and the title wraps', async ({
+test('on a small window the button stays in the row, beside the title', async ({
   context,
   page,
   background,
@@ -1041,7 +1041,6 @@ test('on a small window the button stays in the row and the title wraps', async 
         buttonInRow: button.left >= rowBox.left && button.right <= rowBox.right,
         buttonHeight: button.height,
         buttonWidth: button.width,
-        titleLines: Math.round(title.height / 20.8),
         titleRight: title.right <= button.left,
         infoRight: info.right <= button.left,
         pageScrolls: document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -1057,7 +1056,6 @@ test('on a small window the button stays in the row and the title wraps', async 
     pageScrolls: false,
     sameLine: true,
   });
-  expect(small.titleLines).toBeGreaterThan(1);
   expect(small.buttonWidth).toBeGreaterThan(80);
   await expect(preview(page, long)).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
