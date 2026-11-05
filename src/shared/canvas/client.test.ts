@@ -924,6 +924,34 @@ describe('request guard', () => {
     expect(state.calls).toBe(3);
   });
 
+  it('retries the rubric read mark once at most, and runs the guard before each attempt', async () => {
+    useRetryFakeTimers();
+    const events: string[] = [];
+    server.use(
+      http.put(
+        api('/api/v1/courses/12/assignments/8/submissions/42/rubric_assessments/read'),
+        () => {
+          events.push('put');
+          return tooMany();
+        },
+      ),
+    );
+    const guard = vi.fn(async () => {
+      events.push('guard');
+      return true;
+    });
+    const error = catchError(testClient().withGuard(guard).markRubricCommentsRead('12', '8', '42'));
+
+    await settleUntil(() => events.length === 2);
+    await vi.advanceTimersByTimeAsync(1000);
+    await settleUntil(() => events.length === 4);
+    // A second retry would wait 2 s. The request ends at once instead.
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(await error).toMatchObject({ kind: 'rate_limited', status: 429 });
+    expect(events).toEqual(['guard', 'put', 'guard', 'put']);
+  });
+
   it('runs once the request holds a slot of the queue, not when it joined', async () => {
     const gate = deferred();
     let colorCalls = 0;

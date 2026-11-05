@@ -16,7 +16,7 @@ import {
   type HttpMethod,
 } from './http';
 import { createLimiter, type RequestPriority } from './limiter';
-import { withRateLimitRetry } from './retry';
+import { sleep, withRateLimitRetry } from './retry';
 import {
   CanvasError,
   type AnnouncementTopic,
@@ -60,6 +60,9 @@ export const PER_PAGE = 100;
 export const MAX_FEED_COURSES_PER_REQUEST = 20;
 /** Canvas rejects more ids, and `per_page` must be at least the number of ids. */
 export const MAX_ASSIGNMENT_IDS_PER_REQUEST = 100;
+
+/** The retries after a rate limit for the rubric read mark (decision 26). */
+export const RUBRIC_READ_RETRIES = 1;
 
 type QueryParam = readonly [name: string, value: string | number | boolean];
 
@@ -135,8 +138,31 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
       }
       return transport(request);
     };
+    /** Retries a rate limit answer at most `maxRetries` times. The last answer ends the request. */
+    const retryAtMost = (request: CanvasRequest, maxRetries: number): Promise<CanvasResponse> => {
+      let retries = 0;
+      let lastError: unknown;
+      return withRateLimitRetry(
+        () =>
+          attempt(request).catch((error: unknown) => {
+            lastError = error;
+            throw error;
+          }),
+        async (ms) => {
+          if (retries >= maxRetries) throw lastError;
+          retries += 1;
+          await sleep(ms);
+        },
+      );
+    };
     const send = (request: CanvasRequest): Promise<CanvasResponse> =>
-      limit(() => withRateLimitRetry(() => attempt(request)), priority);
+      limit(
+        () =>
+          request.maxRetries === undefined
+            ? withRateLimitRetry(() => attempt(request))
+            : retryAtMost(request, request.maxRetries),
+        priority,
+      );
 
     const getObject = async <T>(url: string): Promise<T> =>
       expectObject<T>((await send({ method: 'GET', url })).data, url);
@@ -161,7 +187,13 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
       method: Exclude<HttpMethod, 'GET' | 'HEAD'>,
       url: string,
       body: unknown,
-    ): Promise<T> => expectObject<T>((await send({ method, url, body })).data, url);
+      maxRetries?: number,
+    ): Promise<T> =>
+      expectObject<T>(
+        (await send({ method, url, body, ...(maxRetries === undefined ? {} : { maxRetries }) }))
+          .data,
+        url,
+      );
 
     const listAssignmentBatch = (courseId: string, ids: readonly string[]): Promise<Assignment[]> =>
       getAll<Assignment>(
@@ -193,7 +225,8 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
         ),
       markRubricCommentsRead: (courseId, assignmentId, userId) => {
         const url = `${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/${pathId(userId)}/rubric_assessments/read`;
-        return write('PUT', url, undefined).then(() => undefined);
+        // Canvas's page sends this once and drops it on a failure, so one retry is enough.
+        return write('PUT', url, undefined, RUBRIC_READ_RETRIES).then(() => undefined);
       },
       getOwnSubmissionRecord: (courseId, assignmentId) =>
         getObject(
