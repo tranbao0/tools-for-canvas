@@ -3155,7 +3155,7 @@ So a student switches pages to read the instructions next to the feedback on a f
      The frame stays in the page, hidden, so the view can read it.
      The frame iframe is never moved or changed.
    - A mount that throws an error gives the page back and mounts the mode 'above' of item 5 in its place, and the view stays in that mode.
-     A mount of the mode 'above' that throws too leaves the page as Canvas drew it.
+     A mount of the mode 'above' that throws too gives the whole page back as Canvas drew it: the hosts, the rules of the style element (the right column, the width cap, the hidden button), the own link and the watch of the frame all go.
      Both log one line, and no error leaves the view unhandled.
    - In the replace mode, Canvas's own comments column moves into the box (`comments.ts`).
      - The node `div.submission-details-comments` moves, and a copy never replaces it.
