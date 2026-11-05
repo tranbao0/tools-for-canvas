@@ -33,6 +33,7 @@ const MONTH: Settings = {
   hiddenCourseIds: [],
   showRings: true,
   minimized: false,
+  openGroup: null,
   theme: 'auto',
   rowSize: 'compact',
 };

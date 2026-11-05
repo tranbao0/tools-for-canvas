@@ -73,6 +73,10 @@ export interface Span {
 
 export const DEFAULT_SPAN: Span = { kind: 'week', days: 7 };
 
+/** The groups that sit in the bottom bar of the in-page list, and that open in the list area. */
+export const BOTTOM_GROUPS = ['no_due_date', 'done'] as const;
+export type BottomGroupKind = (typeof BOTTOM_GROUPS)[number];
+
 export interface Settings {
   /** The span the list shows. */
   span: Span;
@@ -83,6 +87,12 @@ export interface Settings {
    * and in every tab. The side panel ignores it.
    */
   minimized: boolean;
+  /**
+   * The bottom group that the in-page list shows in its list area, in place of the days, or
+   * `null` for the days. The state is the same for every span, on every Canvas page and in every
+   * tab. The side panel ignores it.
+   */
+  openGroup: BottomGroupKind | null;
   /**
    * `auto` follows the color scheme the browser reports to extension pages; the in-page list
    * then follows the Canvas page. `light` and `dark` apply to every surface (decision 19).
@@ -100,6 +110,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hiddenCourseIds: [],
   showRings: true,
   minimized: false,
+  openGroup: null,
   theme: 'auto',
   rowSize: 'compact',
 };
