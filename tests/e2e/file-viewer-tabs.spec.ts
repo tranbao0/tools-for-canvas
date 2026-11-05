@@ -95,7 +95,7 @@ test('closing a tab activates the next one, and the last tab closes the pane', a
   await (await pane(page)).getByRole('button', { name: 'Close Syllabus.docx' }).click();
   await expect(tabs).toHaveCount(1);
   await expect((await pane(page)).locator(FILE_NAME)).toContainText('Lecture photo');
-  await expect(page.locator('html')).toHaveCSS('padding-right', '480px');
+  await expect(page.locator('html')).toHaveCSS('padding-right', '492px');
   // The pane frame goes away during the click, so the answer of the frame never arrives.
   await (
     await pane(page)

@@ -567,7 +567,7 @@ test.describe('one dock at a time with the file pane', () => {
     // Only the file pane shows: no dock, no tab, one resize handle, and the room of the file pane.
     await expect(page.locator(DOCK)).toBeHidden();
     await expect(page.locator(TAB)).toHaveCount(0);
-    expect(await padding(page)).toBe('480px');
+    expect(await padding(page)).toBe('492px');
     const file = await boxOf(page, '#tools-file-viewer');
     expect(file.x + file.width).toBe(1797);
     await closePane(page);
@@ -586,7 +586,7 @@ test.describe('one dock at a time with the file pane', () => {
     await openFirstFile(page, FILE_LINK, () => addFileLink(page));
     await expect(page.locator(TAB)).toHaveCount(0);
     await expect(page.locator(DOCK)).toHaveCount(0);
-    expect(await padding(page)).toBe('480px');
+    expect(await padding(page)).toBe('492px');
     await closePane(page);
     await expect(tab(page)).toBeVisible();
     await expect(page.locator(DOCK)).toHaveCount(0);
@@ -606,7 +606,7 @@ test.describe('one dock at a time with the file pane', () => {
     await saveSettings(background, { ...DEFAULT_SETTINGS, minimized: true });
     await page.waitForTimeout(300);
     await expect(page.locator(TAB)).toHaveCount(0);
-    expect(await padding(page)).toBe('480px');
+    expect(await padding(page)).toBe('492px');
     await closePane(page);
     await expect(tab(page)).toBeVisible();
     await expect(page.locator(DOCK)).toBeHidden();
@@ -622,8 +622,9 @@ test.describe('one dock at a time with the file pane', () => {
     await openFirstFile(page, FILE_LINK, () => addFileLink(page));
     await focusPaneHandle(page);
     await page.keyboard.press('ArrowLeft');
-    await expect.poll(async () => (await boxOf(page, '#tools-file-viewer')).width).toBe(500);
-    expect(await padding(page)).toBe('500px');
+    // The card is 500 px wide, and the host holds the 12 px gap beside it.
+    await expect.poll(async () => (await boxOf(page, '#tools-file-viewer')).width).toBe(512);
+    expect(await padding(page)).toBe('512px');
     await closePane(page);
     expect(await boxOf(page, DOCK)).toMatchObject({ width: 360 });
     expect(await padding(page)).toBe('360px');
@@ -633,7 +634,7 @@ test.describe('one dock at a time with the file pane', () => {
     expect(stored['fileViewerWidth']).toBe(500);
     expect(stored['weeklyDockWidth']).toBe(450);
     await openFirstFile(page, FILE_LINK, () => addFileLink(page));
-    expect((await boxOf(page, '#tools-file-viewer')).width).toBe(500);
+    expect((await boxOf(page, '#tools-file-viewer')).width).toBe(512);
     await closePane(page);
     expect((await boxOf(page, DOCK)).width).toBe(450);
   });
@@ -663,7 +664,7 @@ test.describe('one dock at a time with the file pane', () => {
     await saveTools(background, DEFAULT_TOOLS_SETTINGS);
     await openFirstFile(page, FILE_LINK, () => addFileLink(page));
     await expect(page.locator(DOCK)).toBeHidden();
-    expect(await padding(page)).toBe('480px');
+    expect(await padding(page)).toBe('492px');
     // The switch goes off while the file is open: the pane closes and the dock comes back.
     await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
     await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
@@ -699,10 +700,10 @@ test.describe('the load order with a file pane that opens at the start', () => {
     const values = await page.evaluate(
       () => (window as unknown as { paddings: string[] }).paddings,
     );
-    expect(values).toContain('480px');
+    expect(values).toContain('492px');
     expect(values).not.toContain('360px');
     await expect(page.locator(DOCK)).toBeHidden();
-    expect(await padding(page)).toBe('480px');
+    expect(await padding(page)).toBe('492px');
     await closePane(page);
     await expect(page.locator(DOCK)).toBeVisible();
     expect(await padding(page)).toBe('360px');
@@ -745,7 +746,7 @@ test.describe('a page that removes the host of a pane', () => {
     await open(context, page, background, { withFile: true, settings: { minimized: true } });
     await openFirstFile(page, FILE_LINK, () => addFileLink(page));
     await expect(page.locator(TAB)).toHaveCount(0);
-    expect(await padding(page)).toBe('480px');
+    expect(await padding(page)).toBe('492px');
     // A click that the helper repeated on a slow machine ends before the page removes the host.
     await expect((await pane(page)).locator('[data-part="download"]')).toBeVisible();
     await page.evaluate(() => document.getElementById('tools-file-viewer')?.remove());

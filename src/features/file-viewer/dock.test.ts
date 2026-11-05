@@ -441,6 +441,25 @@ describe('full view', () => {
     expect(next.host.style.width).toBe('492px');
   });
 
+  it('does not start the next pane in full view when a page removed the host of the last one', () => {
+    const turnIn = dock('turn-in', 480, true);
+    turnIn.open();
+    setFullView(true);
+    turnIn.host.remove();
+    const next = dock('feedback', 480, true);
+    next.open();
+    expect(next.full).toBe(false);
+    expect(isFullView()).toBe(false);
+  });
+
+  it('ends full view when the last pane is forgotten', () => {
+    const turnIn = dock('turn-in', 480, true);
+    turnIn.open();
+    setFullView(true);
+    turnIn.forget();
+    expect(isFullView()).toBe(false);
+  });
+
   it('ends when a page removed the host of the only pane', () => {
     const turnIn = dock('turn-in', 480, true);
     turnIn.open();
