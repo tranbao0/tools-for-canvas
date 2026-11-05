@@ -250,6 +250,9 @@ export interface WeeklyDock {
 /** How long focus follows an open from the tab: the list may draw its minimize button late. */
 const FOCUS_FOLLOW_MS = 1500;
 
+/** How long the minimize button keeps the focus against a drop to the page, once it has it. */
+const FOCUS_SETTLE_MS = 300;
+
 /**
  * Puts the container into a dock on the right edge and keeps it in line with the minimized state
  * of the list and with the file pane. Returns the function that removes everything it added.
@@ -273,6 +276,8 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
   const holdEnd = Date.now() + FILE_PANE_WAIT_MS;
   let holdTimer: ReturnType<typeof setTimeout> | undefined;
   let focusRetry: number | undefined;
+  /** When the minimize button took the focus after an open from the tab, or 0. */
+  let focusedAt = 0;
   /** The minimized state that the stored settings last told, for the time before the list has them. */
   let stored: Settings | null = null;
   let focusUntil = 0;
@@ -317,22 +322,34 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
     return inPlace === undefined ? (stored?.minimized ?? false) : inPlace.value.minimized;
   };
 
+  /**
+   * Moves the focus to the minimize button after an open from the tab, and keeps it there for a
+   * moment. The tab had the focus and left the page in the same click, and a browser can drop the
+   * focus to the page after it, so the focus is checked again at the next frames, and only a focus
+   * that fell to the page itself is put back.
+   */
   const focusMinimizeButton = (): void => {
     if (focusUntil === 0) return;
-    if (Date.now() > focusUntil) {
+    const now = Date.now();
+    if (now > focusUntil || (focusedAt !== 0 && now > focusedAt + FOCUS_SETTLE_MS)) {
       focusUntil = 0;
+      focusedAt = 0;
       return;
     }
     const button =
       container.firstElementChild?.shadowRoot?.querySelector<HTMLElement>('[data-part="minimize"]');
-    if (button == null || !dock.shown) return;
-    button.focus();
-    if ((button.getRootNode() as ShadowRoot).activeElement === button) {
-      focusUntil = 0;
-      return;
+    const active = doc.activeElement;
+    if (
+      button != null &&
+      dock.shown &&
+      (focusedAt === 0 || active === null || active === doc.body)
+    ) {
+      button.focus();
+      if (focusedAt === 0 && (button.getRootNode() as ShadowRoot).activeElement === button)
+        focusedAt = now;
     }
-    // A browser can ignore a focus on a control that it has not drawn yet. Try again at the next
-    // frame, until the follow time ends.
+    // The list may not have drawn the button yet, and a browser can ignore a focus on a control
+    // that it has not drawn. Look again at the next frame.
     focusRetry ??= win.requestAnimationFrame(() => {
       focusRetry = undefined;
       sync();
@@ -423,6 +440,7 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
   function open(): void {
     const base = runtime.settings()?.value ?? stored;
     focusUntil = Date.now() + FOCUS_FOLLOW_MS;
+    focusedAt = 0;
     if (base !== null) {
       // The list shows the change at once, and the stored value follows.
       stored = { ...base, minimized: false };
