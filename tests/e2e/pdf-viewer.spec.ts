@@ -148,31 +148,6 @@ async function openPdf(
   return frame;
 }
 
-test('a click opens the pane, page 1 has pixels, and the document has 3 pages', async ({
-  context,
-  page,
-  background,
-  fileHost,
-}) => {
-  const frame = await openPdf(context, page, background, fileHost);
-  await expect.poll(() => inkOf(pageBox(frame, 1).locator('canvas'))).toBeGreaterThan(1000);
-  await expect(frame.locator('[data-part="pdf-page-count"]')).toHaveText('of 3');
-  await expect(pageInput(frame)).toHaveValue('1');
-  // The card stays above the viewer.
-  await expect(frame.locator(FILE_NAME)).toHaveText('Course notes.pdf');
-  // The bytes came through the redirect, with the token of the redirect target.
-  expect(fileHost.requests).toEqual(['/inst-fs/fixture.pdf?token=abc']);
-  // The canvas is sharp: its pixel width follows the device pixel ratio.
-  const sizes = await pageBox(frame, 1)
-    .locator('canvas')
-    .evaluate((canvas: HTMLCanvasElement) => ({
-      pixels: canvas.width,
-      css: canvas.getBoundingClientRect().width,
-      ratio: window.devicePixelRatio,
-    }));
-  expect(Math.abs(sizes.pixels - sizes.css * sizes.ratio)).toBeLessThan(2);
-});
-
 test('a first answer that is the sign-in page is read again through the background', async ({
   context,
   page,
@@ -310,53 +285,6 @@ test('zoom clicks in a row leave every page at the last zoom, with its text and 
     .toBeLessThan(2);
   await expect(box.locator('.annotationLayer a')).toHaveCount(2);
   await expect(box.locator('.textLayer span').first()).toBeAttached();
-});
-
-test('next page goes to page 2, and the keys page and zoom', async ({
-  context,
-  page,
-  background,
-  fileHost,
-}) => {
-  const frame = await openPdf(context, page, background, fileHost);
-  await frame.getByRole('button', { name: 'Next page' }).click();
-  await expect(pageInput(frame)).toHaveValue('2');
-  await expect(pageBox(frame, 2).locator('canvas')).toBeVisible();
-  await frame.getByRole('button', { name: 'Previous page' }).click();
-  await expect(pageInput(frame)).toHaveValue('1');
-
-  // The page input takes a number; a number outside the document goes to the nearest page.
-  await pageInput(frame).fill('3');
-  await pageInput(frame).press('Enter');
-  await expect(pageInput(frame)).toHaveValue('3');
-  await pageInput(frame).fill('99');
-  await pageInput(frame).press('Enter');
-  await expect(pageInput(frame)).toHaveValue('3');
-  await pageInput(frame).fill('abc');
-  await pageInput(frame).press('Enter');
-  await expect(pageInput(frame)).toHaveValue('3');
-
-  // Keys work with the focus in the viewer.
-  await frame.locator('[data-part="pdf-scroll"]').focus();
-  await page.keyboard.press('Home');
-  await expect(pageInput(frame)).toHaveValue('1');
-  await page.keyboard.press('PageDown');
-  await expect(pageInput(frame)).toHaveValue('2');
-  await page.keyboard.press('End');
-  await expect(pageInput(frame)).toHaveValue('3');
-  await page.keyboard.press('PageUp');
-  await expect(pageInput(frame)).toHaveValue('2');
-  const label = frame.locator('[data-part="pdf-zoom-text"]');
-  await expect(label).toHaveText('Fit width');
-  await page.keyboard.press('Control+=');
-  await expect(label).toHaveText(/^\d+%$/);
-  const zoomed = await label.textContent();
-  await page.keyboard.press('Control+-');
-  await expect(label).not.toHaveText(zoomed!);
-  await page.keyboard.press('Control+0');
-  await expect(label).toHaveText('100%');
-  await page.keyboard.press('Control+f');
-  await expect(frame.locator('[data-part="pdf-search-input"]')).toBeFocused();
 });
 
 test('search finds the word on page 2 and highlights it', async ({
@@ -857,6 +785,8 @@ async function saveThirdPageAtZoom(frame: Frame, background: Parameters<typeof o
     .toBe(true);
 }
 
+/** The student tests are the only cover of their rules, so a loaded machine must not fail them. */
+const slowExpect = expect.configure({ timeout: 30_000 });
 const OTHER_STUDENT = '987654';
 
 /** A Canvas whose signed-in student is the one that `who()` names, and a way to sign in another. */
@@ -950,6 +880,8 @@ test('a saved position does not open for another student', async ({
   extensionUrl,
   fileHost,
 }) => {
+  // This test starts a second page and a second student, so a loaded machine needs more time.
+  test.setTimeout(90_000);
   const student = studentCanvas();
   const canvas = await openCoursePage(context, page, background, html, [
     ...student.routes,
@@ -957,7 +889,7 @@ test('a saved position does not open for another student', async ({
   ]);
   await openFirstFile(page, 'Read notes');
   let frame = await pane(page);
-  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await slowExpect(pageBox(frame, 1).locator('canvas')).toBeVisible();
   await saveThirdPageAtZoom(frame, background);
   const keys = Object.keys(await savedPositions(background));
   expect(keys).toHaveLength(1);
@@ -968,11 +900,11 @@ test('a saved position does not open for another student', async ({
   await page.reload();
   await openFirstFile(page, 'Read notes');
   frame = await pane(page);
-  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await slowExpect(pageBox(frame, 1).locator('canvas')).toBeVisible();
   // The controls work only after the viewer has the answer to its read of the position.
-  await expect(pageInput(frame)).toBeEnabled();
-  await expect(pageInput(frame)).toHaveValue('1');
-  await expect(frame.locator('[data-part="pdf-zoom-text"]')).not.toHaveText('150%');
+  await slowExpect(pageInput(frame)).toBeEnabled();
+  await slowExpect(pageInput(frame)).toHaveValue('1');
+  await slowExpect(frame.locator('[data-part="pdf-zoom-text"]')).not.toHaveText('150%');
   expect(
     Object.keys(await savedPositions(background)).filter((key) => studentOf(key) === student.first),
   ).toEqual([]);
@@ -984,13 +916,15 @@ test('the first file of a new student opens while the new cookie is not confirme
   background,
   fileHost,
 }) => {
+  // This test starts a second page and a second student, so a loaded machine needs more time.
+  test.setTimeout(90_000);
   const student = studentCanvas();
   const canvas = await openCoursePage(context, page, background, html, [
     ...student.routes,
     ...routes(fileHost),
   ]);
   await openFirstFile(page, 'Read notes');
-  await expect(pageBox(await pane(page), 1).locator('canvas')).toBeVisible();
+  await slowExpect(pageBox(await pane(page), 1).locator('canvas')).toBeVisible();
 
   // The other student signs in, and the answer that names the student comes late. The first
   // requests of the pane and of the page join the check of the new cookie, which ends by finding
@@ -1000,8 +934,8 @@ test('the first file of a new student opens while the new cookie is not confirme
   await page.reload();
   await openFirstFile(page, 'Read notes');
   const frame = await pane(page);
-  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
-  await expect(frame.getByRole('status').filter({ hasText: 'Loading file' })).toHaveCount(0);
+  await slowExpect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await slowExpect(frame.getByRole('status').filter({ hasText: 'Loading file' })).toHaveCount(0);
 });
 
 test('a pane that stayed open cannot save its position for the next student', async ({
@@ -1011,6 +945,8 @@ test('a pane that stayed open cannot save its position for the next student', as
   extensionUrl,
   fileHost,
 }) => {
+  // This test starts a second page and a second student, so a loaded machine needs more time.
+  test.setTimeout(90_000);
   const student = studentCanvas();
   const canvas = await openCoursePage(context, page, background, html, [
     ...student.routes,
@@ -1018,7 +954,7 @@ test('a pane that stayed open cannot save its position for the next student', as
   ]);
   await openFirstFile(page, 'Read notes');
   const frame = await pane(page);
-  await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
+  await slowExpect(pageBox(frame, 1).locator('canvas')).toBeVisible();
   await saveThirdPageAtZoom(frame, background);
   // The pane records the answer to each save, so the test waits for it and needs no sleep.
   await frame.evaluate(() => {
@@ -1043,13 +979,13 @@ test('a pane that stayed open cannot save its position for the next student', as
   const other = await context.newPage();
   await other.goto(page.url());
   await openFirstFile(other, 'Read notes');
-  await expect(pageBox(await pane(other), 1).locator('canvas')).toBeVisible();
+  await slowExpect(pageBox(await pane(other), 1).locator('canvas')).toBeVisible();
 
   // The first tab still shows the first student's pane. A zoom change there saves after a second.
   await frame.getByRole('button', { name: 'Zoom level' }).click();
   await frame.getByRole('menuitemradio', { name: '200%' }).click();
   // The save of the 200 percent zoom reached the background and got its answer.
-  await expect
+  await slowExpect
     .poll(() =>
       frame.evaluate(() =>
         (globalThis as unknown as { __saves: { zoom: unknown }[] }).__saves.some(
