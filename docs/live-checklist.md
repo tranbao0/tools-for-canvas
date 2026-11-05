@@ -680,7 +680,7 @@ Run them on `/courses/:id/assignments`.
    Expect: Canvas asks whether to leave the page.
    Say no.
    Expect: the pane and the marks stay on the first assignment, with your text.
-   Then click a link in the page in the pane, such as a link to a file page or to the modules of the course.
+   Then click a link in the page in the pane, such as a link to a file page, to the modules of the course or to a discussion.
    Expect: Canvas may ask again, and the page in the pane changes, but the title, the "Open in new tab" link and the marks stay on the first assignment.
 5. Click "Preview" on the row that the pane shows.
    Expect: the pane closes, the page has its width back, and the marks go.
@@ -710,5 +710,7 @@ Run them on `/courses/:id/assignments`.
     Expect: the button stays in its row, a long title wraps, and each control is clear.
 13. Submit an assignment inside the pane, then look at the weekly list.
     Expect: the weekly list shows the new state within about a minute.
-14. Open a pane on an assignment and switch to another student on the same tab (sign out and sign in), then open the Assignments list and click "Preview" on the same assignment.
+14. Open a pane on an assignment and keep the list open.
+    Switch to another student in a second tab (sign out and sign in there), because a sign-in on the same tab reloads the page.
+    Then go back to the list tab and click "Preview" on the same assignment.
     Expect: the first pane closed at the switch, and the new pane stays open for the new student.
