@@ -973,7 +973,7 @@ function expectNamesOnly(lines: readonly string[], origin: string) {
   return about;
 }
 
-test('a session address that is not the one of this Canvas is replaced by the address of the frame row, with one line', async ({
+test('a session address that is not the one of this Canvas is replaced by the address of the frame row, with two lines', async ({
   context,
   page,
   background,
@@ -1039,7 +1039,7 @@ test("a session address with a new parameter, and a button that the view cannot 
         session: `${SESSION_PATH}&new=1`,
       },
     ]),
-    "document.querySelector('a.preview_button').addEventListener('click',function(event){event.preventDefault();var notes=document.createElement('p');notes.id='notes';notes.textContent='Teacher notes on the paper';document.body.append(notes)})",
+    "document.querySelector('a.preview_button').addEventListener('click',function(event){event.preventDefault();var viewer=document.createElement('iframe');viewer.src=this.getAttribute('data-canvadoc_session_url');document.body.append(viewer)})",
   );
   await open(context, page, background, {
     switchOff: true,
@@ -1051,8 +1051,10 @@ test("a session address with a new parameter, and a button that the view cannot 
   const original = await canvasOriginal(page);
   await turnOn(page, background);
   await expectFrameKept(page, original);
-  await page.frameLocator('#preview_frame').locator('a.preview_button').click();
-  await expect(page.frameLocator('#preview_frame').locator('#notes')).toHaveText(
+  // Canvas's own button opens the session of its row in a frame, as `loadDocPreview` does.
+  const canvasFrame = page.frameLocator('#preview_frame');
+  await canvasFrame.locator('a.preview_button').click();
+  await expect(canvasFrame.frameLocator('iframe').locator('#notes')).toHaveText(
     'Teacher notes on the paper',
   );
   expect(expectNamesOnly(lines, new URL(page.url()).origin)).toEqual([
