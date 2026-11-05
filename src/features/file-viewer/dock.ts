@@ -94,6 +94,8 @@ interface Shared {
   panes?: Set<Dock>;
   /** Whether the pane that shows fills the window. It is never saved. */
   fullView?: boolean;
+  /** The role of the pane that turned full view on. */
+  fullViewOf?: DockRole | null;
   fullWatchers?: Set<() => void>;
 }
 
@@ -311,6 +313,9 @@ export function setFullView(on: boolean): void {
   const next = on && openPanes().size > 0;
   if (next === (state.fullView === true)) return;
   state.fullView = next;
+  // The pane in view at this moment owns the full view: a file pane that closes gives it back to
+  // an assignment pane under it only when that pane had it first.
+  state.fullViewOf = next ? ([...openPanes()].find((pane) => pane.shown)?.role ?? null) : null;
   for (const pane of [...openPanes()]) pane.layout();
   for (const watcher of [...(state.fullWatchers ??= new Set())]) watcher();
 }
@@ -396,7 +401,7 @@ export function createDock(options: DockOptions): Dock {
   host.id = options.id;
   host.setAttribute(DOCK_ATTRIBUTE, '');
   if (card) host.setAttribute('data-card', '');
-  host.style.cssText = `position:fixed;right:0;top:0;height:100vh;z-index:${options.zIndex ?? TOPMOST_Z_INDEX};`;
+  host.style.cssText = `position:fixed;right:0;top:0;bottom:0;z-index:${options.zIndex ?? TOPMOST_Z_INDEX};`;
   // A closed root keeps a script of the Canvas page from reaching the frame element. A frame of the
   // Canvas origin inside the root still reaches the root, so such a frame belongs in a root of its own.
   const root = host.attachShadow({ mode: 'closed' });
@@ -425,11 +430,12 @@ export function createDock(options: DockOptions): Dock {
     const room = narrow ? '100vw' : `${normalizeWidth(width, win.innerWidth) + gap}px`;
     full = card && !narrow && shared().fullView === true;
     host.toggleAttribute('data-full', full);
-    // Full view stretches the host from the left edge to the right edge of the window, which are
-    // the edges without the scroll bar of the page (`100vw` includes the scroll bar). The room
-    // stays as it is, so the page stays put.
-    host.style.left = full ? '0' : '';
-    host.style.width = full ? '' : room;
+    // Full view and a narrow window stretch the host from the left edge to the right edge of the
+    // window, which are the edges without the scroll bar of the page (`100vw` includes the scroll
+    // bar). In full view the room stays as it is, so the page stays put.
+    const stretched = full || narrow;
+    host.style.left = stretched ? '0' : '';
+    host.style.width = stretched ? '' : room;
     // A host that a page removed takes no room.
     if (hidden || !host.isConnected) return;
     writePadding(page, room, narrow);
@@ -444,7 +450,7 @@ export function createDock(options: DockOptions): Dock {
     if (!event.isTrusted) return;
     handle.setPointerCapture(event.pointerId);
     const move = (moved: PointerEvent): void => {
-      if (moved.isTrusted) setWidth(win.innerWidth - moved.clientX - gap);
+      if (moved.isTrusted) setWidth(page.clientWidth - moved.clientX - gap);
     };
     const end = (): void => {
       handle.removeEventListener('pointermove', move);
@@ -518,7 +524,9 @@ export function createDock(options: DockOptions): Dock {
         // while an assignment pane waits under it leaves that pane in full view.
         const keeps =
           hidden ||
-          (options.role === 'file' && [...openPanes()].some((pane) => pane.role === 'turn-in'));
+          (options.role === 'file' &&
+            shared().fullViewOf === 'turn-in' &&
+            [...openPanes()].some((pane) => pane.role === 'turn-in'));
         if (openPanes().size === 0 || !keeps) setFullView(false);
       }
       if (options.role === 'file' && shared().file === dock) {

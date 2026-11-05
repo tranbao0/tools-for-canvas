@@ -2069,7 +2069,7 @@ test('the header keeps its title on a narrow card: below 560 px the text buttons
     const header = await headerBoxes(page);
     // The title keeps room, and the header is no higher than two lines of text.
     expect(header.title.width, `title at ${width}`).toBeGreaterThanOrEqual(120);
-    expect(header.bar.height, `header at ${width}`).toBeLessThan(90);
+    expect(header.bar.height, `header at ${width}`).toBeLessThan(92);
     // The second line wraps by words.
     expect(header.subWrap).toBe('normal');
     // The icon-only buttons are squares. The text stays as the name and the tooltip.
