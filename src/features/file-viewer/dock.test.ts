@@ -542,7 +542,7 @@ describe('full view', () => {
       expect(fullViewAvailable()).toBe(false);
       expect(turnIn.full).toBe(false);
       expect(turnIn.host.style.width).toBe('');
-      expect(turnIn.host.style.left).toBe('0');
+      expect(turnIn.host.style.left).toBe('0px');
       expect(turnIn.host.hasAttribute('data-full')).toBe(false);
       window.innerWidth = 1200;
       window.dispatchEvent(new Event('resize'));
