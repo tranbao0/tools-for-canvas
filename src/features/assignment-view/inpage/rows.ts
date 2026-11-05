@@ -21,16 +21,12 @@ import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import type { AssignmentDetailsMessage, AssignmentDetailsReply } from '../protocol';
 import { isDetailsReply, renderDetails, renderError, renderLoading } from './details';
+import { restoreStaleComments } from './comments';
+import { ORIGINAL, OWN } from './own';
 import { RUBRIC_WRAPPER_ID, restoreStaleRubric } from './rubric';
 import { PAGE_CSS, PANEL_CSS } from './styles';
 
-/** Marks every node that the view adds, so the observer and the cleanup can tell them. */
-export const OWN = 'data-av-own';
-/**
- * Marks an own node that holds nodes of Canvas, which the view moved into it. Giving the nodes
- * back must come before any removal of own nodes.
- */
-export const ORIGINAL = 'data-av-original';
+export { OWN, ORIGINAL };
 const STYLE_ID = 'av-styles';
 /** How long a batch of page changes waits for the next one. */
 const BATCH_MS = 50;
@@ -112,8 +108,10 @@ export const STALE_PANE_IDS: readonly string[] = ['tools-feedback', 'tools-turn-
  * The parts of the page where the view of this page puts its nodes, and nothing else. The text of
  * other authors (a description, a comment) sits elsewhere, so a sweep never reaches it:
  * - the assignment page: the content of the Submission box, `#sidebar_content .details .content`;
- * - the Submission Details page: the head, which holds the style, the host, by its id, and the
- *   container of the title row's buttons, `.ic-Action-header__Secondary`, which holds the own link;
+ * - the Submission Details page: the head, which holds the style, the host, by its id, the
+ *   container of the title row's buttons, `.ic-Action-header__Secondary`, which holds the own link,
+ *   and the right column `#right-side`, which holds the Submission box. The comments column goes
+ *   home before the sweep, so a comment of another author is never inside this root;
  * - the Assignments list: the head, and the lists that hold the rows and their detail rows.
  * The panes in the body go by their ids on the pages that dock them.
  */
@@ -134,6 +132,8 @@ function ownedRoots(doc: Document, pathname: string): Element[] {
     if (host?.hasAttribute(OWN)) host.remove();
     const buttons = doc.querySelector('.ic-Action-header__Secondary');
     if (buttons) roots.add(buttons);
+    const column = doc.querySelector('#right-side-wrapper > #right-side');
+    if (column) roots.add(column);
     return [...roots];
   }
   for (const row of doc.querySelectorAll('.ig-row[id^=assignment_],[data-av-details]')) {
@@ -147,8 +147,11 @@ export function removeStaleView(
   doc: Document = document,
   pathname: string = doc.defaultView?.location.pathname ?? '',
 ): void {
-  // Canvas's rubric goes back home first, while the wrapper that holds it is still on the page.
+  // Canvas's rubric and comments go back home first, while the wrappers that hold them are still
+  // on the page. A comment of another author can hold marks of the view, so the comments must be
+  // home before the sweep.
   restoreStaleRubric(doc);
+  restoreStaleComments(doc);
   const rubric = doc.getElementById(RUBRIC_WRAPPER_ID);
   if (rubric?.hasAttribute(OWN)) rubric.remove();
   const roots = ownedRoots(doc, pathname);

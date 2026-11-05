@@ -48,6 +48,17 @@ describe('projectAssignmentView', () => {
     });
   });
 
+  it('keeps whether Canvas counts the submission as late, and only for a true value', () => {
+    const { assignment, submission } = rawRecords();
+    expect(projectAssignmentView(assignment, { ...submission, late: true }).submission.late).toBe(
+      true,
+    );
+    expect(projectAssignmentView(assignment, { ...submission, late: 'yes' }).submission.late).toBe(
+      false,
+    );
+    expect(projectAssignmentView(assignment, submission).submission.late).toBe(false);
+  });
+
   it('keeps the size of a file, the type, the text and the address of a submission', () => {
     const { assignment, submission } = rawRecords();
     const details = projectAssignmentView(assignment, {
