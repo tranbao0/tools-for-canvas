@@ -2010,9 +2010,10 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
      With the Unread filter, a row that the student marked stays on screen with its check until the student leaves that filter.
      When the student comes back to the filter, the row is gone, because the list is drawn again then.
      A row with a pending mark is the exception: it stays when the student leaves the filter and when the student comes back during the write, because Canvas may refuse the mark and the row must be there to go back.
-     A refused mark puts back the state that Canvas last confirmed for the row, not the state that the row showed when the mark began, so two refused marks of one row leave it as it was.
-     The list is cleared again when the marks of its rows settle, also when a refused mark put a row out of the set.
-     A settled mark can forget a list: the lists of the other filters go when a row is marked, and the list of the filter goes when the row returns to its set and the list holds no row for it.
+     When the last pending mark of a row settles, the row shows the state that Canvas last confirmed for it, not the state that the row showed when the mark began, so two refused marks of one row (a double click) leave it as it was.
+     A list that holds a row with a pending mark stays unpruned until the marks settle, whether the row is in the set or not, and then the rows that are out of its set go.
+     A mark forgets the lists of the other filters when it begins, and the list of its own filter when the row returns to its set and the list holds no row for it.
+     A refused mark can forget a list in the same way, when it puts the row back into the set of a list that holds no row for it.
      The rows of a list that a mark took out of its set go when the student leaves the filter, and the offset does not change, because it counts only the rows of the set.
      A search does not count as leaving the filter.
    - A mark names the student of the row.
