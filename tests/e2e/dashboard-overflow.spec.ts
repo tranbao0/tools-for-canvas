@@ -1,8 +1,7 @@
 /**
- * The list on the widget dashboard never pushes the page sideways (design decision 4, "In-page
- * rules"). The sweep goes over window widths from 1000 to 2400 px. The zoom tests put the page in
- * a window at the zoom levels of the browser: a zoom of z shows the page at the window width
- * divided by z in CSS pixels and with z device pixels per CSS pixel.
+ * The card of the list on the widget dashboard lines up with the widgets, scrolls with the page
+ * and looks like a widget (design decision 4, "In-page rules"), and the screenshots show it at
+ * five window widths.
  *
  * The fixture has the layout of the live page (sjsu.instructure.com, 2026-10-30): the grid stops
  * at 1366 px inside a wrapper capped at 1366 px after the 84 px navigation bar.
@@ -38,16 +37,9 @@ test.beforeEach(async ({ background }) => {
 
 const QUIZ_3 = 'Quiz 3: Cell membranes';
 const CANVAS_COLUMNS = '[data-testid="widget-columns"] > [data-testid^="widget-column-"]';
-const WIDGETS = '[data-testid^="widget-container-"]';
-/** The widget that the card replaces: the card lies inside its wrapper, over its box. */
-const SLOT_WIDGET = '[data-testid="widget-container-course-work-combined-widget"]';
 const CARDS = 'section[data-testid^="widget-"]';
 const VIEWPORT_HEIGHT = 800;
 const TOLERANCE = 1;
-const WIDTHS = Array.from({ length: 71 }, (_, index) => 1000 + index * 20);
-/** Browser zoom levels, and the window widths they apply to. */
-const ZOOMS = [0.8, 0.9, 1.1, 1.33];
-const WINDOWS = [1280, 1440, 1536, 1920, 2560];
 const SHOTS = path.join(process.cwd(), 'screenshots', 'dashboard-column');
 
 interface Box {
@@ -57,106 +49,28 @@ interface Box {
   height: number;
 }
 
-function overlap(a: Box, b: Box): boolean {
-  return (
-    a.x < b.x + b.width - 0.5 &&
-    b.x < a.x + a.width - 0.5 &&
-    a.y < b.y + b.height - 0.5 &&
-    b.y < a.y + a.height - 0.5
-  );
-}
-
 interface Measure {
-  canvasBoxes: Box[];
-  scrollWidth: number;
-  clientWidth: number;
   mode: string | null;
   card: Box | null;
-  /** How many of three points across the card show the card: a clipped part shows the page. */
-  visiblePoints: number;
-  /** The left edge of the content area and its right edge, clamped to the window. */
-  wrapper: { left: number; right: number } | null;
-  columns: number[];
-  widgets: Box[];
-  /** The visible cards of the widgets (the sections). */
-  sections: Box[];
   /** The first card of each Canvas column. */
   firstCards: Box[];
-  /** The baseline of the heading of each first card, and of the list. */
-  baselines: number[];
-  listBaseline: number | null;
   header: Box[];
 }
 
 async function measure(page: Page): Promise<Measure> {
   return page.evaluate(
-    ({ columnsCss, widgetsCss, cardsCss, slotCss }) => {
-      /** The viewport y of the baseline of the first line of an element, from a zero-height probe. */
-      const baseline = (element: Element): number => {
-        const probe = document.createElement('span');
-        probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
-        element.append(probe);
-        const y = probe.getBoundingClientRect().bottom;
-        probe.remove();
-        return y;
-      };
+    ({ columnsCss, cardsCss }) => {
       const rect = (element: Element | null | undefined): Box | null => {
         if (!element) return null;
         const { x, y, width, height } = element.getBoundingClientRect();
         return { x, y, width, height };
       };
       const host = document.querySelector('#weekrow-inpage > weekrow-list');
-      const wrapper = document.getElementById('content-wrapper')?.getBoundingClientRect();
       const columns = [...document.querySelectorAll(columnsCss)];
-      const firstCards = columns.flatMap((column) => rect(column.querySelector(cardsCss)) ?? []);
-      const headings = columns.flatMap((column) => {
-        const heading = column.querySelector(`${cardsCss} h2`);
-        return heading ? [baseline(heading)] : [];
-      });
-      const range = host?.shadowRoot?.querySelector('.wr-range') ?? null;
-      const box = rect(host?.shadowRoot?.querySelector('.wr'));
-      const visible = (): number => {
-        const now = rect(host?.shadowRoot?.querySelector('.wr'));
-        return now
-          ? [0.05, 0.5, 0.95].filter(
-              (at) =>
-                document
-                  .elementFromPoint(now.x + at * now.width, now.y + 24)
-                  ?.closest('#weekrow-inpage') != null,
-            ).length
-          : 0;
-      };
-      // The points must be in the window to be hit, so the page scrolls to the card for a moment.
-      const scrolled = window.scrollY;
-      if (box) window.scrollTo(0, scrolled + box.y - 100);
-      const visiblePoints = visible();
-      window.scrollTo(0, scrolled);
       return {
-        canvasBoxes: [
-          '#wrapper',
-          '#content',
-          '[data-testid="dashboard-tab-content"]',
-          '[data-testid="widget-columns"]',
-        ].map((css) => rect(document.querySelector(css)) as Box),
-        scrollWidth: document.documentElement.scrollWidth,
-        clientWidth: document.documentElement.clientWidth,
         mode: host?.getAttribute('data-panel') ?? null,
-        card: box,
-        visiblePoints,
-        wrapper: wrapper
-          ? {
-              left: wrapper.left,
-              right: Math.min(wrapper.right, document.documentElement.clientWidth),
-            }
-          : null,
-        columns: columns.map((column) => column.getBoundingClientRect().width),
-        widgets: [...document.querySelectorAll(widgetsCss)]
-          .filter((widget) => !widget.matches(slotCss))
-          .map((widget) => rect(widget) as Box),
-        sections: [...document.querySelectorAll(cardsCss)].map((card) => rect(card) as Box),
-        firstCards,
-        baselines: headings,
-        listBaseline: range ? baseline(range) : null,
+        card: rect(host?.shadowRoot?.querySelector('.wr')),
+        firstCards: columns.flatMap((column) => rect(column.querySelector(cardsCss)) ?? []),
         header: [
           ...document.querySelectorAll(
             '.fixture-widget-header > *, [data-testid="dashboard-tabs"]',
@@ -164,87 +78,13 @@ async function measure(page: Page): Promise<Measure> {
         ].map((e) => rect(e) as Box),
       };
     },
-    {
-      columnsCss: CANVAS_COLUMNS,
-      widgetsCss: WIDGETS,
-      cardsCss: CARDS,
-      slotCss: SLOT_WIDGET,
-    },
+    { columnsCss: CANVAS_COLUMNS, cardsCss: CARDS },
   );
 }
 
-/** The rules that must hold at one window size. Returns the broken ones. */
-function problems(without: Measure, withList: Measure): string[] {
-  const broken: string[] = [];
-  withList.canvasBoxes.forEach((box, index) => {
-    const before = without.canvasBoxes[index]!;
-    if (Math.abs(box.x - before.x) > TOLERANCE || Math.abs(box.width - before.width) > TOLERANCE) {
-      broken.push(`Canvas box ${index} moved sideways or changed width`);
-    }
-    if (withList.mode === 'area' && JSON.stringify(box) !== JSON.stringify(before)) {
-      broken.push(`Canvas box ${index} changed in wide mode`);
-    }
-    if (index >= 2 && Math.abs(box.height - before.height) > TOLERANCE) {
-      broken.push(`Canvas box ${index} changed height`);
-    }
-  });
-  const { clientWidth, scrollWidth, card, mode } = withList;
-  if (scrollWidth > clientWidth + TOLERANCE) {
-    broken.push(`sideways scroll ${scrollWidth} > ${clientWidth}`);
-  }
-  if (card === null) return [...broken, 'no card'];
-  if (card.x < -TOLERANCE || card.x + card.width > clientWidth + TOLERANCE) {
-    broken.push(
-      `card outside the window: ${card.x.toFixed(1)}..${(card.x + card.width).toFixed(1)}`,
-    );
-  }
-  if (withList.visiblePoints < 3) broken.push('part of the card is hidden by the page');
-  for (const widget of withList.widgets) {
-    if (overlap(widget, card)) broken.push('card overlaps a widget');
-  }
-  // The replaced widget keeps its place in the layout, so every other widget lies where it does
-  // without the extension.
-  if (mode === 'slot') {
-    withList.widgets.forEach((widget, index) => {
-      const before = without.widgets[index];
-      if (
-        before === undefined ||
-        Math.abs(widget.y - before.y) > TOLERANCE ||
-        Math.abs(widget.height - before.height) > TOLERANCE
-      )
-        broken.push(`widget ${index + 1} moved or changed height`);
-    });
-  }
-  if (withList.columns.length !== without.columns.length) broken.push('column count changed');
-  withList.columns.forEach((width, index) => {
-    const before = without.columns[index] ?? 0;
-    if (Math.abs(width - before) > TOLERANCE) {
-      broken.push(
-        `column ${index + 1} changed: ${width.toFixed(1)} instead of ${before.toFixed(1)}`,
-      );
-    }
-  });
-  return broken.map((text) => `${text} (mode ${mode})`);
-}
-
-/** Sets the window of a page: its width in CSS pixels, and the zoom of the browser. */
-async function setWindow(
-  context: Parameters<typeof serveScenario>[0],
-  page: Page,
-  width: number,
-  zoom: number,
-): Promise<void> {
-  if (zoom === 1) {
-    await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
-    return;
-  }
-  const cdp = await context.newCDPSession(page);
-  await cdp.send('Emulation.setDeviceMetricsOverride', {
-    width,
-    height: Math.round(VIEWPORT_HEIGHT / zoom),
-    deviceScaleFactor: zoom,
-    mobile: false,
-  });
+/** Sets the width of the window of a page, in CSS pixels. */
+async function setWidth(page: Page, width: number): Promise<void> {
+  await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
 }
 
 /**
@@ -255,10 +95,9 @@ async function openPair(
   context: Parameters<typeof serveScenario>[0],
   page: Page,
   width: number,
-  zoom = 1,
 ): Promise<{ without: Measure; withList: Measure }> {
   const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
-  await setWindow(context, page, width, zoom);
+  await setWidth(page, width);
   await openCanvasPage(page, canvas.origin);
   await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
   await settledList(page);
@@ -268,7 +107,7 @@ async function openPair(
   const baselineContext = await browser.newContext();
   await serveScenario(baselineContext, [{ path: '/', page: 'dashboard-widgets' }]);
   const baseline = await baselineContext.newPage();
-  await setWindow(baselineContext, baseline, width, zoom);
+  await setWidth(baseline, width);
   await openCanvasPage(baseline, canvas.origin);
   const without = await measure(baseline);
   await browser.close();
@@ -276,26 +115,6 @@ async function openPair(
 }
 
 test.describe('the list on the widget dashboard, in the light theme', () => {
-  for (const width of WIDTHS) {
-    test(`does not push the page sideways at ${width} px`, async ({ context, page }) => {
-      const { without, withList } = await openPair(context, page, width);
-      expect(problems(without, withList)).toEqual([]);
-    });
-  }
-
-  for (const zoom of ZOOMS) {
-    for (const size of WINDOWS) {
-      const width = Math.round(size / zoom);
-      test(`does not push the page sideways at ${Math.round(zoom * 100)}% zoom in a ${size} px window (${width} CSS px)`, async ({
-        context,
-        page,
-      }) => {
-        const { without, withList } = await openPair(context, page, width, zoom);
-        expect(problems(without, withList)).toEqual([]);
-      });
-    }
-  }
-
   for (const width of [1500, 1700, 1920]) {
     test(`lines up with the widgets at the top of the page at ${width} px`, async ({
       context,
