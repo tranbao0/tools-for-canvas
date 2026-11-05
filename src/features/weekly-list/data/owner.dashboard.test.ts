@@ -66,14 +66,20 @@ it('shares one user request across simultaneous cache readers', async () => {
 });
 
 it('uses the checked announcement origin without reading storage again', async () => {
-  const h = await createHarness({ origin: 'https://other.instructure.com' });
+  const h = await loaded();
   h.canvas.setAnnouncements(C.biology, [topic('11')]);
   const readOrigin = vi.spyOn(h.deps.store.origin, 'getValue');
   await h.owner.announcement(C.biology, '11', ORIGIN);
   expect(readOrigin).not.toHaveBeenCalled();
   expect(h.createApi).toHaveBeenCalledWith(ORIGIN);
-  expect(h.createApi).not.toHaveBeenCalledWith('https://other.instructure.com');
   readOrigin.mockRestore();
+});
+
+it('rejects an announcement for a Canvas address that is not the saved one', async () => {
+  const h = await createHarness({ origin: 'https://other.instructure.com' });
+  h.canvas.setAnnouncements(C.biology, [topic('11')]);
+  await expect(h.owner.announcement(C.biology, '11', ORIGIN)).rejects.toThrow();
+  expect(h.createApi).not.toHaveBeenCalledWith(ORIGIN);
 });
 
 it.each(['network', 'server'] as const)(

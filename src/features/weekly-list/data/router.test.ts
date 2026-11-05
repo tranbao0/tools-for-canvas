@@ -32,8 +32,14 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
       gradeVisibilities: {},
     })),
     announcement: vi.fn(async () => ({ title: 'Hello', message: '<p>Hi</p>' })),
-    announcementPage: vi.fn(async () => ({ items: [], total: 0, hasNext: false })),
-    announcementRange: vi.fn(async () => ({ items: [], truncated: false })),
+    announcementPage: vi.fn(async () => ({
+      userId: '42',
+      items: [],
+      count: 0,
+      total: 0,
+      hasNext: false,
+    })),
+    announcementRange: vi.fn(async () => ({ userId: '42', items: [], truncated: false })),
     markDashboardAnnouncement: vi.fn(async () => ({ ok: true })),
     announcementFeed: vi.fn(async () => ({ status: 'unavailable', tab: 'tasks' })),
     markRubricRead: vi.fn(async () => undefined),
@@ -441,6 +447,7 @@ describe('routeDataMessage', () => {
       type: 'weekrow:announcement-mark',
       courseId: '101',
       topicId: '31901',
+      userId: '42',
       read: true,
     };
 
@@ -461,11 +468,14 @@ describe('routeDataMessage', () => {
 
     it('answer the announcement page, range and mark for the page of the saved Canvas only', async () => {
       await expect(routeDataMessage(owner, PAGE, CONTENT_SCRIPT, host)).resolves.toEqual({
+        userId: '42',
         items: [],
+        count: 0,
         total: 0,
         hasNext: false,
       });
       await expect(routeDataMessage(owner, RANGE, CONTENT_SCRIPT, host)).resolves.toEqual({
+        userId: '42',
         items: [],
         truncated: false,
       });
@@ -482,7 +492,7 @@ describe('routeDataMessage', () => {
         SAVED,
         3,
       );
-      expect(owner.markDashboardAnnouncement).toHaveBeenCalledWith('101', '31901', true, 3);
+      expect(owner.markDashboardAnnouncement).toHaveBeenCalledWith('101', '31901', true, '42', 3);
     });
 
     it.each([
@@ -518,6 +528,8 @@ describe('routeDataMessage', () => {
         { ...RANGE, from: '2026-11-01' },
         { ...MARK, courseId: '../x' },
         { ...MARK, topicId: '1/read' },
+        { ...MARK, userId: undefined },
+        { ...MARK, userId: '4/2' },
         { ...MARK, read: 'true' },
         { ...MARK, read: undefined },
       ];

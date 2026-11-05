@@ -56,12 +56,14 @@ export interface AnnouncementPageMessage {
 
 /**
  * In-page script to background: the student marks an announcement as read or as unread. The reply
- * is an `AnnouncementMarkReply`.
+ * is an `AnnouncementMarkReply`. `userId` is the student whose list held the row, as the reply of
+ * that list named them. The background refuses the mark when the signed-in student is another.
  */
 export interface AnnouncementMarkMessage {
   type: 'weekrow:announcement-mark';
   courseId: string;
   topicId: string;
+  userId: string;
   read: boolean;
 }
 
@@ -159,7 +161,14 @@ export interface AnnouncementListRow {
 }
 
 export interface AnnouncementPageReply {
+  /** The signed-in student whom the rows belong to. */
+  userId: string;
   items: AnnouncementListRow[];
+  /**
+   * How many rows of the filtered set the page of Canvas held. It can be more than `items`,
+   * because a row without valid ids is not passed on. The next offset advances by it.
+   */
+  count: number;
   /** Canvas's count of the filtered set, or `null` when it sent none. */
   total: number | null;
   hasNext: boolean;
@@ -170,6 +179,8 @@ export interface AnnouncementMarkReply {
 }
 
 export interface AnnouncementRangeReply {
+  /** The signed-in student whom the rows belong to. */
+  userId: string;
   items: AnnouncementListRow[];
   /** More announcements lay in the range than the reply holds. */
   truncated: boolean;
@@ -236,6 +247,7 @@ export function isAnnouncementMarkMessage(value: unknown): value is Announcement
     hasType(value, 'weekrow:announcement-mark') &&
     isCanvasId(value['courseId']) &&
     isCanvasId(value['topicId']) &&
+    isCanvasId(value['userId']) &&
     typeof value['read'] === 'boolean'
   );
 }

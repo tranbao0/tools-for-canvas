@@ -83,7 +83,7 @@ describe('announcementPage', () => {
       [{ userId: IDS.user, courseId: null, read: 'all', offset: 1, first: 10 }],
     ]);
     expect(reply.items.map((row) => row.id)).toEqual(['2', '3']);
-    expect(reply).toMatchObject({ total: 3, hasNext: false });
+    expect(reply).toMatchObject({ total: 3, hasNext: false, count: 2, userId: IDS.user });
     expect(reply.items[0]).toEqual({
       id: '2',
       courseId: C.biology,
@@ -125,9 +125,11 @@ describe('announcementPage', () => {
       node('5', { courseId: '../users/self' }),
     ]);
 
-    const { items } = await h.owner.announcementPage(PAGE, ORIGIN);
+    const { items, count } = await h.owner.announcementPage(PAGE, ORIGIN);
 
     expect(items.map((row) => row.id)).toEqual(['1', '2', '3']);
+    // The two rows with bad ids are not passed on, but the server held them: the offset counts them.
+    expect(count).toBe(5);
     expect(items[0]).toMatchObject({
       title: 't'.repeat(1_000),
       courseName: 'c'.repeat(300),
@@ -205,6 +207,57 @@ describe('announcementPage', () => {
 
     expect(await settled).toBe('rejected');
   });
+
+  it('drops a page when the cookie changed during the request', async () => {
+    const h = await loaded();
+    h.canvas.setAnnouncementPageRows([node('1')]);
+    const release = h.canvas.hold('listAnnouncementPage');
+    const pending = h.owner.announcementPage(PAGE, ORIGIN);
+    const settled = pending.then(
+      () => 'rows',
+      () => 'rejected',
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+    release();
+
+    expect(await settled).toBe('rejected');
+  });
+});
+
+describe('announcement', () => {
+  it('rejects for a student that the sign-in check does not confirm, and asks Canvas nothing', async () => {
+    const h = await loaded();
+    h.canvas.setAnnouncements(C.biology, [topic('11')]);
+    signInOtherUser(h);
+
+    await expect(h.owner.announcement(C.biology, '11', ORIGIN)).rejects.toThrow();
+    expect(h.canvas.callsOf('getAnnouncement')).toEqual([]);
+  });
+
+  it('rejects after a sign-out', async () => {
+    const h = await loaded();
+    h.canvas.setAnnouncements(C.biology, [topic('11')]);
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
+
+    await expect(h.owner.announcement(C.biology, '11', ORIGIN)).rejects.toThrow();
+    expect(h.canvas.callsOf('getAnnouncement')).toEqual([]);
+  });
+
+  it('drops a message when the cookie changed during the request', async () => {
+    const h = await loaded();
+    h.canvas.setAnnouncements(C.biology, [topic('11', { message: '<p>secret</p>' })]);
+    const release = h.canvas.hold('getAnnouncement');
+    const settled = h.owner.announcement(C.biology, '11', ORIGIN).then(
+      () => 'message',
+      () => 'rejected',
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+    release();
+
+    expect(await settled).toBe('rejected');
+  });
 });
 
 describe('announcementRange', () => {
@@ -253,6 +306,7 @@ describe('announcementRange', () => {
 
     h.canvas.resetCalls();
     expect(await h.owner.announcementRange({ ...RANGE, courseId: '99999' }, ORIGIN)).toEqual({
+      userId: IDS.user,
       items: [],
       truncated: false,
     });
@@ -315,12 +369,53 @@ describe('announcementRange', () => {
   });
 });
 
+describe('announcementRange and the cookie', () => {
+  it('names the student in the reply', async () => {
+    const h = await loaded();
+    h.canvas.setAnnouncements(C.biology, [topic('11')]);
+    expect(await h.owner.announcementRange(RANGE, ORIGIN)).toMatchObject({ userId: IDS.user });
+  });
+
+  it('drops a range when the cookie changed during the request', async () => {
+    const h = await loaded();
+    h.canvas.setAnnouncements(C.biology, [topic('11')]);
+    const release = h.canvas.hold('listAnnouncementFeed');
+    const settled = h.owner.announcementRange(RANGE, ORIGIN).then(
+      () => 'rows',
+      () => 'rejected',
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+    release();
+
+    expect(await settled).toBe('rejected');
+  });
+});
+
 describe('markDashboardAnnouncement', () => {
+  it('refuses a row of another student and sends nothing', async () => {
+    const h = await loaded();
+    h.canvas.setAnnouncements(C.biology, [topic('11')]);
+    await h.owner.announcementFeed(PANEL_FEED);
+    await h.owner.settled();
+
+    expect(await h.owner.markDashboardAnnouncement(C.biology, '11', true, '999')).toEqual({
+      ok: false,
+    });
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([]);
+    // The refused mark left nothing behind: the tab still shows the topic as unread.
+    const feed = await h.owner.announcementFeed(PANEL_FEED);
+    if (feed.status !== 'ready') throw new Error('No feed');
+    expect(feed.rows.find((row) => row.id === '11')?.read).toBe(false);
+  });
+
   it('writes for a topic that no cached list holds, and says that Canvas took it', async () => {
     const h = await loaded();
     h.canvas.setAnnouncementPageRows([node('11')]);
 
-    const reply = await h.owner.markDashboardAnnouncement(C.biology, '11', true);
+    const reply = await h.owner.markDashboardAnnouncement(C.biology, '11', true, IDS.user);
 
     expect(reply).toEqual({ ok: true });
     expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([[C.biology, '11', true]]);
@@ -332,7 +427,7 @@ describe('markDashboardAnnouncement', () => {
     const h = await loaded();
     h.canvas.setAnnouncementPageRows([node('11', { read: true })]);
 
-    await h.owner.markDashboardAnnouncement(C.biology, '11', true);
+    await h.owner.markDashboardAnnouncement(C.biology, '11', true, IDS.user);
 
     expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([[C.biology, '11', true]]);
   });
@@ -347,7 +442,7 @@ describe('markDashboardAnnouncement', () => {
     if (before.status !== 'ready') throw new Error('No feed');
     expect(before.rows.find((row) => row.id === '11')?.read).toBe(false);
 
-    const reply = await h.owner.markDashboardAnnouncement(C.biology, '11', true);
+    const reply = await h.owner.markDashboardAnnouncement(C.biology, '11', true, IDS.user);
 
     expect(reply).toEqual({ ok: true });
     const after = await h.owner.announcementFeed(PANEL_FEED);
@@ -358,7 +453,7 @@ describe('markDashboardAnnouncement', () => {
   it('leaves no mark behind for a topic that the tab does not hold', async () => {
     const h = await loaded();
     h.canvas.setAnnouncementPageRows([node('11')]);
-    await h.owner.markDashboardAnnouncement(C.biology, '11', true);
+    await h.owner.markDashboardAnnouncement(C.biology, '11', true, IDS.user);
     await h.owner.settled();
 
     const feed = await h.owner.announcementFeed(PANEL_FEED);
@@ -374,7 +469,7 @@ describe('markDashboardAnnouncement', () => {
     await h.owner.settled();
     h.canvas.fail('setAnnouncementRead', canvasError('server', 500), { times: 1 });
 
-    const reply = await h.owner.markDashboardAnnouncement(C.biology, '11', true);
+    const reply = await h.owner.markDashboardAnnouncement(C.biology, '11', true, IDS.user);
     await h.owner.settled();
 
     expect(reply).toEqual({ ok: false });
@@ -387,7 +482,9 @@ describe('markDashboardAnnouncement', () => {
     const h = await loaded();
     signInOtherUser(h);
 
-    expect(await h.owner.markDashboardAnnouncement(C.biology, '11', true)).toEqual({ ok: false });
+    expect(await h.owner.markDashboardAnnouncement(C.biology, '11', true, IDS.user)).toEqual({
+      ok: false,
+    });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([]);
@@ -395,11 +492,17 @@ describe('markDashboardAnnouncement', () => {
 
   it('sends nothing after a sign-out, and nothing for an id that is no Canvas id', async () => {
     const h = await loaded();
-    expect(await h.owner.markDashboardAnnouncement('1/2', '11', true)).toEqual({ ok: false });
-    expect(await h.owner.markDashboardAnnouncement(C.biology, '../x', true)).toEqual({ ok: false });
+    expect(await h.owner.markDashboardAnnouncement('1/2', '11', true, IDS.user)).toEqual({
+      ok: false,
+    });
+    expect(await h.owner.markDashboardAnnouncement(C.biology, '../x', true, IDS.user)).toEqual({
+      ok: false,
+    });
 
     vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
-    expect(await h.owner.markDashboardAnnouncement(C.biology, '11', true)).toEqual({ ok: false });
+    expect(await h.owner.markDashboardAnnouncement(C.biology, '11', true, IDS.user)).toEqual({
+      ok: false,
+    });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([]);
@@ -408,7 +511,7 @@ describe('markDashboardAnnouncement', () => {
   it('sends no mark when the cookie changed during the sign-in check of the write', async () => {
     const h = await loaded();
     const releaseSelf = h.canvas.hold('getSelf');
-    const pending = h.owner.markDashboardAnnouncement(C.biology, '11', true);
+    const pending = h.owner.markDashboardAnnouncement(C.biology, '11', true, IDS.user);
     await vi.advanceTimersByTimeAsync(0);
     vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
     releaseSelf();
@@ -421,7 +524,7 @@ describe('markDashboardAnnouncement', () => {
     const h = await loaded();
     vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
 
-    expect(await h.owner.markDashboardAnnouncement(C.biology, '11', true, 9)).toEqual({
+    expect(await h.owner.markDashboardAnnouncement(C.biology, '11', true, IDS.user, 9)).toEqual({
       ok: false,
     });
     expect(h.canvas.calls).toEqual([]);

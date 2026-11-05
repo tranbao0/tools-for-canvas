@@ -162,6 +162,8 @@ describe('readAnnouncementPage', () => {
       body([node('1', { author: null }), null, { id: 'x' }], { hasNextPage: false }),
     );
     expect(page.nodes).toHaveLength(1);
+    // The count is the rows of the connection, also those that the reader skipped.
+    expect(page.count).toBe(3);
     expect(page.nodes[0]).toMatchObject({ authorName: null, avatarUrl: null });
     expect(page.total).toBeNull();
     expect(page.hasNext).toBe(false);

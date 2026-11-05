@@ -251,7 +251,7 @@ export interface DataOwner {
   dashboardGradeVisibility(token?: string, tabId?: number): Promise<DashboardData>;
   /**
    * One announcement of the saved Canvas with its full message. A tab in another cookie store
-   * gets an empty one.
+   * gets an empty one. It runs the checks of `announcementPage` and rejects like it.
    */
   announcement(
     courseId: string,
@@ -281,12 +281,15 @@ export interface DataOwner {
   ): Promise<AnnouncementRangeReply>;
   /**
    * The student marks an announcement of the dashboard as read or as unread. It runs the checks of
-   * the read mark of the Announcements tab, and replies with whether Canvas took the mark.
+   * the read mark of the Announcements tab, and replies with whether Canvas took the mark. `userId`
+   * is the student whose list held the row. A mark for any other student than the signed-in one is
+   * refused, as an Undo is.
    */
   markDashboardAnnouncement(
     courseId: string,
     topicId: string,
     read: boolean,
+    userId: string,
     tabId?: number,
   ): Promise<AnnouncementMarkReply>;
   /**
@@ -2887,11 +2890,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
   }
 
-  async function announcementApi(origin: string | null): Promise<CanvasApi> {
-    if (origin === null) throw new Error('No Canvas address is saved');
-    return apiFor(origin);
-  }
-
   async function announcement(
     courseId: string,
     topicId: string,
@@ -2899,7 +2897,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     tabId?: number,
   ): Promise<AnnouncementBody> {
     if (!(await surfaceMayRead(tabId))) return { title: '', message: '' };
-    const topic = await (await announcementApi(origin)).getAnnouncement(courseId, topicId);
+    if (origin === null) throw new Error('No Canvas address is saved');
+    const reader = await signedInReader(origin);
+    const topic = await cookieBound(() => reader.api.getAnnouncement(courseId, topicId));
+    // The message goes to the page only for the student and the cookie that asked.
+    if (topic === DROPPED || !isCurrent(reader.stamp)) {
+      throw new Error('The student or the cookie changed');
+    }
     return {
       title: String(topic.title ?? ''),
       message: String(topic.message ?? '').slice(0, MAX_MESSAGE_CHARS),
@@ -2907,13 +2911,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   /**
-   * The checks that every read of the student's announcements runs first: the saved Canvas, a tab
-   * in the cookie store of the requests, and a student whom the sign-in check confirms now. It
-   * returns the stamp of the cache, so the reply can be dropped when the student changed.
+   * The checks that every read of the student's announcements runs first: the saved Canvas and a
+   * student whom the sign-in check confirms now. It returns the stamp of the cache, so the reply
+   * can be dropped when the student changed.
    */
-  async function announcementReader(
+  async function signedInReader(
     origin: string | null,
-    tabId: number | undefined,
   ): Promise<{ api: CanvasApi; stamp: WriteStamp; session: SessionData; origin: string }> {
     await ready();
     if (
@@ -2921,12 +2924,21 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       origin !== knownOrigin ||
       cache === null ||
       cache.session === null ||
-      !(await surfaceMayRead(tabId)) ||
       !(await signedInStudentOwnsCache())
     ) {
       throw new Error('The announcements are not available');
     }
     return { api: apiFor(origin), stamp: writeStamp(), session: cache.session, origin };
+  }
+
+  /** `signedInReader` for a tab in the cookie store of the requests. */
+  async function announcementReader(
+    origin: string | null,
+    tabId: number | undefined,
+  ): Promise<{ api: CanvasApi; stamp: WriteStamp; session: SessionData; origin: string }> {
+    await ready();
+    if (!(await surfaceMayRead(tabId))) throw new Error('The announcements are not available');
+    return signedInReader(origin);
   }
 
   async function announcementPage(
@@ -2946,17 +2958,24 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const reader = await announcementReader(origin, tabId);
     const userId = reader.stamp.userId;
     if (userId === null) throw new Error('The announcements are not available');
-    const page = await reader.api.listAnnouncementPage({
-      userId,
-      courseId: request.courseId,
-      read: request.read,
-      offset: request.offset,
-      first: request.first,
-    });
-    // The student can change while the request runs. Nothing of this page may then reach the surface.
-    if (!isCurrent(reader.stamp)) throw new Error('The student changed');
+    const page = await cookieBound(() =>
+      reader.api.listAnnouncementPage({
+        userId,
+        courseId: request.courseId,
+        read: request.read,
+        offset: request.offset,
+        first: request.first,
+      }),
+    );
+    // The student or the cookie can change while the request runs. Nothing of this page may then
+    // reach the surface.
+    if (page === DROPPED || !isCurrent(reader.stamp)) {
+      throw new Error('The student or the cookie changed');
+    }
     return {
+      userId,
       items: page.nodes.flatMap((node) => rowFromNode(node, reader.origin) ?? []),
+      count: page.count,
       total: page.total,
       hasNext: page.hasNext,
     };
@@ -2984,14 +3003,20 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         : names.has(request.courseId)
           ? [request.courseId]
           : [];
-    if (wanted.length === 0) return { items: [], truncated: false };
-    const topics = await reader.api.listAnnouncementFeed(wanted, {
-      start: request.from,
-      end: request.to,
-    });
-    if (!isCurrent(reader.stamp)) throw new Error('The student changed');
+    const userId = reader.session.profile.id;
+    if (wanted.length === 0) return { userId, items: [], truncated: false };
+    const topics = await cookieBound(() =>
+      reader.api.listAnnouncementFeed(wanted, { start: request.from, end: request.to }),
+    );
+    if (topics === DROPPED || !isCurrent(reader.stamp)) {
+      throw new Error('The student or the cookie changed');
+    }
     const rows = topics.flatMap((topic) => rowFromTopic(topic, names, reader.origin) ?? []);
-    return { items: rows.slice(0, MAX_RANGE_ROWS), truncated: rows.length > MAX_RANGE_ROWS };
+    return {
+      userId,
+      items: rows.slice(0, MAX_RANGE_ROWS),
+      truncated: rows.length > MAX_RANGE_ROWS,
+    };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -3261,13 +3286,17 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     courseId: string,
     topicId: string,
     read: boolean,
+    userId: string,
     tabId?: number,
   ): Promise<AnnouncementMarkReply> {
     await ready();
     const refused: AnnouncementMarkReply = { ok: false };
     if (!isCanvasId(courseId) || !isCanvasId(topicId) || typeof read !== 'boolean') return refused;
+    if (!isCanvasId(userId)) return refused;
     if (!(await surfaceMayRead(tabId)) || !(await signedInStudentOwnsCache())) return refused;
     if (knownOrigin === null || cache === null || cache.session == null) return refused;
+    // The row came from the list of a student. Another signed-in student must not mark it.
+    if (cache.session.profile.id !== userId) return refused;
     const key = announcementKey(courseId, topicId);
     const listed =
       cache.announcements?.topics?.some(

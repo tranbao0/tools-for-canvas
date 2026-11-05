@@ -341,7 +341,9 @@ describe('a tab in another cookie store', () => {
         9,
       ),
     ).rejects.toThrow();
-    expect(await h.owner.markDashboardAnnouncement(IDS.courses.biology, '11', true, 9)).toEqual({
+    expect(
+      await h.owner.markDashboardAnnouncement(IDS.courses.biology, '11', true, IDS.user, 9),
+    ).toEqual({
       ok: false,
     });
     await h.owner.settled();
