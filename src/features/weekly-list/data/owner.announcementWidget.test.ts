@@ -215,7 +215,7 @@ describe('announcementRange', () => {
         posted_at: '2026-10-20T15:00:00Z',
         read_state: 'read',
         user_name: 'Dr. Rivera',
-        author: { avatar_image_url: 'https://school.instructure.com/a.png' },
+        author: { avatar_image_url: 'https://school.instructure.com/images/thumbnails/1/a.png' },
       }),
     ]);
 
@@ -236,7 +236,7 @@ describe('announcementRange', () => {
         title: 'Topic 11',
         postedAt: '2026-10-20T15:00:00Z',
         author: 'Dr. Rivera',
-        avatarUrl: 'https://school.instructure.com/a.png',
+        avatarUrl: 'https://school.instructure.com/images/thumbnails/1/a.png',
         read: true,
         message: '<p>11</p>',
       },

@@ -427,7 +427,8 @@ Run them on the classic dashboard in Card View, then in List View, then on a cou
 47. Open the new widget dashboard.
     Expect: the weekly list shows no switch, and the Announcements widget of Canvas is the place for announcements.
     Open the network tab of the browser's developer tools.
-    Expect: the extension sends no request to `/api/v1/announcements`.
+    Expect: the weekly list sends no request to `/api/v1/announcements`.
+    The only request of the extension to it on this page is the date search of the Announcements widget, and it waits until you set a date.
     Switch the dashboard to List View.
     Expect: the switch shows.
 48. Make the window 240 px wide with the side panel (Firefox) or make the card narrow, then choose "Announcements".

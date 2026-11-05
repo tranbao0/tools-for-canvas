@@ -258,7 +258,9 @@ export function announcementsFix(): Fix {
     const { row } = props;
     const [failed, setFailed] = useState<string | null>(null);
     const color = AVATAR_COLORS[hash(row.author ?? row.id) % AVATAR_COLORS.length];
-    const image = row.avatarUrl !== null && failed !== row.avatarUrl;
+    // The background keeps only an http or https address, and the page checks it again.
+    const image =
+      row.avatarUrl !== null && /^https?:\/\//i.test(row.avatarUrl) && failed !== row.avatarUrl;
     return (
       <span class="wr-a-avatar" style={{ backgroundColor: color }} aria-hidden="true">
         {image ? (
@@ -664,8 +666,9 @@ export function announcementsFix(): Fix {
             </label>
           </div>
         ) : null}
+        {/* The line takes room only when it has something to say, and the area gives it back. */}
         <div class="wr-a-res">
-          <span role="status">{view.note ?? model.line ?? ''}</span>
+          <span role="status">{view.note ?? model.line}</span>
           {model.dated ? (
             <button type="button" class="wr-x-link" onClick={() => clearDates(view)}>
               {t('annDateClear')}

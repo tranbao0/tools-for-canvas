@@ -17,12 +17,26 @@ function limited(value: unknown, max: number): string {
   return typeof value === 'string' ? value.slice(0, max) : '';
 }
 
-/** The address as an absolute http or https address on or off Canvas, or `null`. */
+/**
+ * The paths on the Canvas origin that an image may load: files, equation images and assets. It is
+ * the rule of the sanitizer (`CANVAS_IMAGE_PATH` in src/shared/ui/sanitize.ts). Any other Canvas
+ * page as an image address would be a GET of that page, and a GET of a topic page marks the topic
+ * as read, so such an avatar address is dropped.
+ */
+const CANVAS_IMAGE_PATH =
+  /^\/(?:(?:courses|groups|users|accounts)\/\d+(?:~\d+)?\/files\/|files\/|equation_images\/|images\/|dist\/)/;
+
+/**
+ * The address of an image as an absolute http or https address, or `null`. An address on the Canvas
+ * origin must be a file, an equation image or an asset path.
+ */
 export function webAddress(value: unknown, origin: string): string | null {
   if (typeof value !== 'string' || value === '' || value.length > MAX_URL_CHARS) return null;
   try {
     const url = new URL(value, origin);
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    if (url.origin === new URL(origin).origin && !CANVAS_IMAGE_PATH.test(url.pathname)) return null;
+    return url.href;
   } catch {
     return null;
   }

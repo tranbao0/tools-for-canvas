@@ -316,6 +316,42 @@ test.describe('announcements: one steady list', () => {
     expect(await heightOf(card)).toBe(before.card);
   });
 
+  test('keep the height of the card in the four states: list, open message, search and dates', async ({
+    context,
+    page,
+  }) => {
+    await open(context, page);
+    await expect(articles(page)).toHaveCount(10);
+    const card = page.locator(WIDGET);
+    const list = await heightOf(card);
+    const sizes: Record<string, number> = { list };
+
+    await articles(page).first().getByRole('button', { name: 'Read more' }).click();
+    await expect(message(page)).toBeVisible();
+    sizes['open'] = await heightOf(card);
+    await articles(page).first().getByRole('button', { name: 'Show less' }).click();
+
+    await page.locator(`${LIST} input[type="search"]`).fill('lockdown');
+    await expect(articles(page)).toHaveCount(2);
+    await expect(page.locator(`${LIST} .wr-a-res`)).toContainText('2 results');
+    sizes['search'] = await heightOf(card);
+    await page.locator(LIST).getByRole('button', { name: 'Clear search' }).click();
+
+    await page.locator(LIST).getByRole('button', { name: 'Search by date' }).click();
+    await page.locator(LIST).getByLabel('From', { exact: true }).fill('2026-10-01');
+    await page.locator(LIST).getByLabel('To', { exact: true }).fill('2026-10-31');
+    await expect(page.locator(`${LIST} .wr-a-res`)).toContainText('results');
+    sizes['dates'] = await heightOf(card);
+    // The note of a wrong order takes the place of the line of the results.
+    await page.locator(LIST).getByLabel('From', { exact: true }).fill('2026-11-15');
+    await expect(page.locator(`${LIST} .wr-a-res`)).toContainText('must be on or before');
+    sizes['note'] = await heightOf(card);
+
+    expect(sizes).toEqual({ list, open: list, search: list, dates: list, note: list });
+    // The scroll area gives its room back to the rows that appear above it.
+    expect(await heightOf(feed(page))).toBeLessThan(576);
+  });
+
   test('keep a shorter window at the minimum height of 20rem', async ({ context, page }) => {
     await open(context, page, { height: 500 });
     await expect(articles(page)).toHaveCount(10);
