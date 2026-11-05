@@ -431,7 +431,10 @@ describe('files list frame', () => {
       expect(await routeViewerMessage(open, discussion, host)).toEqual({ opened: true });
     });
     it.each([
-      ['a page without content_only', { ...pane, url: 'https://school.edu/courses/2/assignments/3' }],
+      [
+        'a page without content_only',
+        { ...pane, url: 'https://school.edu/courses/2/assignments/3' },
+      ],
       [
         'a page of another course',
         { ...pane, url: 'https://school.edu/courses/9/assignments/3?content_only=1' },
@@ -466,11 +469,7 @@ describe('files list frame', () => {
     it('injects the catcher for the top frame of the list, and for no other course page', async () => {
       const { host, sender } = setup();
       vi.mocked(host.tabUrl).mockResolvedValue(LIST);
-      await routeViewerMessage(
-        { type: 'viewer:inject-frames' },
-        { ...sender, url: LIST },
-        host,
-      );
+      await routeViewerMessage({ type: 'viewer:inject-frames' }, { ...sender, url: LIST }, host);
       expect(host.injectFrames).toHaveBeenCalledWith(7, 'https://school.edu');
       vi.mocked(host.tabUrl).mockResolvedValue('https://school.edu/courses/2/assignments/3');
       await expect(

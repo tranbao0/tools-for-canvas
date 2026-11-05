@@ -161,7 +161,7 @@ export function createBox(options: BoxOptions): Box {
       const link = node(doc, 'a', 'av-file', label(file));
       link.setAttribute(
         'href',
-        submissionFileUrl(details, { origin, courseId: options.courseId, doc }, file.fileId).href,
+        submissionFileUrl(details, { origin, courseId: options.courseId }, file.fileId).href,
       );
       top.append(fileIcon(doc, file.name), link);
       item.append(top);

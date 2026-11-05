@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AssignmentOwnerMessage } from '../protocol';
-import { removeStaleView } from './rows';
+import { removeStaleView } from './stale';
 import { createSidebarEngine, type SidebarEngine } from './sidebar';
 
 const ORIGIN = 'https://school.instructure.com';
