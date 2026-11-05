@@ -65,6 +65,18 @@ export default defineConfig([
   {
     files: ['src/**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser } },
+    rules: {
+      // Firefox 159 throws "is not iterable" when a content script spreads these iterators.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(keys|values|entries)$/][callee.object.property.name='searchParams']",
+          message:
+            'A Firefox content script cannot iterate url.searchParams.keys(), values() or entries() (TypeError: is not iterable), and Chromium and jsdom accept it. Spread url.searchParams itself, as in [...url.searchParams].map(([key]) => key).',
+        },
+      ],
+    },
   },
   {
     files: ['*.{js,mjs,cjs,ts}', 'scripts/**/*.{js,mjs}', 'tests/**/*.{js,mjs,ts,tsx}'],
