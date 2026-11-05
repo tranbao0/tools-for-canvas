@@ -3264,7 +3264,7 @@ So a student switches pages to read the instructions next to the feedback on a f
        Both switches work without a reload: the label and the click catcher change together (decision 25, item 6).
      - The own submission is known from one read: `GET /api/v1/courses/:id/assignments/:id/submissions/self` with no include.
        The box needs only the `user_id` of that record to compare it with the user in the file link.
-       So this page does not ask for the assignment record, the comments or the rubric, which the other pages read (item 8).
+       So this page does not ask for the assignment record, which the other pages read (item 8).
      - Canvas's other sidebar links stay as they are.
    - **Assignments list (`/courses/:id/assignments`).**
      - Each row keeps Canvas's own markup and gets a "Preview" button as the last child of its layout.

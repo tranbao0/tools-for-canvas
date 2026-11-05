@@ -583,7 +583,9 @@ A store build or a build from `npm run build` does not.
 - Repeat the restore check in Firefox.
   Expect the saved page.
 
-## One assignment view, Submission Details page
+## One assignment view
+
+### Submission Details page and assignment page
 
 These steps need a student account with a course that has: a graded assignment with a file upload, a rubric, a teacher comment with a file and a student comment; an assignment with a text entry; an assignment whose instructions are longer than 15 lines; an assignment of another type (a quiz, a graded discussion or an LTI tool) with a submission; and an assignment that is handed in outside Canvas (Gradescope or on paper).
 Run steps 1 to 11 on the Submission Details page of your own submission (`/courses/:id/assignments/:id/submissions/:user`).
@@ -678,12 +680,16 @@ Run them on `/courses/:id/assignments`.
    Expect: Canvas asks whether to leave the page.
    Say no.
    Expect: the pane and the marks stay on the first assignment, with your text.
+   Then click a link in the page in the pane, such as a link to a file page or to the modules of the course.
+   Expect: Canvas may ask again, and the page in the pane changes, but the title, the "Open in new tab" link and the marks stay on the first assignment.
 5. Click "Preview" on the row that the pane shows.
    Expect: the pane closes, the page has its width back, and the marks go.
    Open the pane again and click the close button of the pane.
    Expect: the same, and the button of the row is not filled.
 6. Click "Preview" on the graded discussion.
    Expect: the pane shows the discussion page of Canvas with no header or menus, and the title of the pane is the title of the assignment.
+   If the account is in a student group with a group graded discussion, click "Preview" on it while the pane shows another assignment.
+   Expect: the pane follows to the discussion page of the group (`/groups/:id/discussion_topics/:id`), and the title, the link and the marks move to the discussion.
 7. Click the name of a file in the assignment page in the pane, such as a file in the instructions or in the Submission section.
    Expect: the file opens in the file pane, which covers the assignment pane, and the page has the width of one pane.
    Close the file pane.
@@ -704,3 +710,5 @@ Run them on `/courses/:id/assignments`.
     Expect: the button stays in its row, a long title wraps, and each control is clear.
 13. Submit an assignment inside the pane, then look at the weekly list.
     Expect: the weekly list shows the new state within about a minute.
+14. Open a pane on an assignment and switch to another student on the same tab (sign out and sign in), then open the Assignments list and click "Preview" on the same assignment.
+    Expect: the first pane closed at the switch, and the new pane stays open for the new student.
