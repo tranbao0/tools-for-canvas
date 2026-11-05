@@ -18,7 +18,7 @@
  * inherit both through the slot. The wrapper takes the direction and the language of the page, so
  * the comments read as they do on Canvas's own page.
  */
-import { OWN, copyPageText, rightColumn } from './own';
+import { OWN, copyPageText, realContainer, rightColumn } from './own';
 
 const HOME = 'av-comments-home';
 
@@ -52,7 +52,7 @@ export const COMMENTS_CSS = [
 
 /** The column of the page, or `null`. Both columns of the container must be there. */
 export function findComments(doc: Document): HTMLElement | null {
-  const container = doc.querySelector('.submission-details-container');
+  const container = realContainer(doc);
   const column = [...(container?.children ?? [])].find((child) =>
     child.classList.contains('submission-details-comments'),
   );
@@ -149,7 +149,7 @@ export function restoreStaleComments(doc: Document): void {
     else mark.remove();
   });
   if (column && marks.length === 0) {
-    const container = doc.querySelector('.submission-details-container');
+    const container = realContainer(doc);
     keepingFocus(doc, column, () => (container ?? doc.body).append(column));
   }
 }

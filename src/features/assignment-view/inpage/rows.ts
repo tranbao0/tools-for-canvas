@@ -22,7 +22,7 @@ import type { PageTheme } from '../../../shared/ui/pageTheme';
 import type { AssignmentDetailsMessage, AssignmentDetailsReply } from '../protocol';
 import { isDetailsReply, renderDetails, renderError, renderLoading } from './details';
 import { restoreStaleComments } from './comments';
-import { ORIGINAL, OWN, rightColumn } from './own';
+import { COMMENT_TEXT, ORIGINAL, OWN, realContainer, rightColumn } from './own';
 import { RUBRIC_WRAPPER_ID, restoreStaleRubric } from './rubric';
 import { PAGE_CSS, PANEL_CSS } from './styles';
 
@@ -80,12 +80,6 @@ interface RowState {
 /** The text of other people that Canvas shows in the Submission box. A sweep never goes into it. */
 const COMMENTS = '.comments';
 
-/**
- * Every place where the text of another author can stand: a comment of Canvas, also while the
- * column is in the box, and the rubric, which the view moves into its wrapper.
- */
-const COMMENT_TEXT = '.comments,.submission-details-comments,#av-comments,#rubric_holder';
-
 /** The nodes of the root that match, except those in the comments of Canvas. */
 function inOwnedPart(root: ParentNode, selector: string): Element[] {
   return [...root.querySelectorAll(selector)].filter((node) => node.closest(COMMENTS) === null);
@@ -99,14 +93,6 @@ function inOwnedPart(root: ParentNode, selector: string): Element[] {
 function ownNode(doc: Document, id: string, at: (node: Element) => boolean): Element | null {
   for (const node of doc.querySelectorAll(`[id="${id}"]`)) {
     if (node.hasAttribute(OWN) && node.closest(COMMENT_TEXT) === null && at(node)) return node;
-  }
-  return null;
-}
-
-/** The container of the two columns that Canvas draws, outside the text of other authors. */
-function realContainer(doc: Document): Element | null {
-  for (const node of doc.querySelectorAll('.submission-details-container')) {
-    if (node.closest(COMMENT_TEXT) === null) return node;
   }
   return null;
 }
