@@ -17,6 +17,8 @@ const MAX_URL = 2000;
 const MAX_FILES = 50;
 const MAX_TYPES = 20;
 const MAX_REPORTS = 100;
+/** How many more keys past `MAX_REPORTS` still get an entry that says they cannot be shown. */
+const MAX_UNREADABLE = 100;
 
 type Fields = Record<string, unknown>;
 
@@ -32,6 +34,11 @@ function list(value: unknown, max: number): unknown[] {
 
 function text(value: unknown, max = MAX_TEXT): string | null {
   return typeof value === 'string' ? value.slice(0, max) : null;
+}
+
+/** A text that fits the limit whole, else `null`. A cut address would be another address. */
+function wholeText(value: unknown, max: number): string | null {
+  return typeof value === 'string' && value.length <= max ? value : null;
 }
 
 function plain(value: unknown, max = MAX_TEXT): string {
@@ -54,7 +61,7 @@ function files(value: unknown): AssignmentFile[] {
     const fileId = id(fields?.['id']);
     if (fields !== null && fileId !== null) {
       const size = finite(fields['size']);
-      const session = text(fields['preview_url'], MAX_URL);
+      const session = wholeText(fields['preview_url'], MAX_URL);
       result.push({
         id: fileId,
         display_name: plain(fields['display_name'] ?? fields['filename']),
@@ -79,13 +86,27 @@ function optionalText(value: unknown, max: number): string | null | undefined {
   return typeof value === 'string' ? value.slice(0, max) : undefined;
 }
 
+/** An entry for a key that the view cannot show: it makes the file that selects it unreadable. */
+function unreadable(asset: string, kind: AssignmentReport['kind']): AssignmentReport {
+  return { asset, kind, score: null, state: null, status: null, error: null, readable: false };
+}
+
+/**
+ * Adds the entries of one report object. A valid key never vanishes: a value that is no object, and
+ * a key past `MAX_REPORTS`, give an entry with `readable: false`, so the file that selects the key
+ * stays in Canvas's frame. The keys past the limit are bounded by `MAX_UNREADABLE`.
+ */
 function reportsOf(data: unknown, kind: AssignmentReport['kind'], into: AssignmentReport[]): void {
   const fields = record(data);
   if (fields === null) return;
   for (const asset of Object.keys(fields)) {
-    if (into.length >= MAX_REPORTS) return;
+    if (!ASSET_KEY.test(asset)) continue;
+    if (into.length >= MAX_REPORTS + MAX_UNREADABLE) return;
     const entry = record(fields[asset]);
-    if (entry === null || !ASSET_KEY.test(asset)) continue;
+    if (entry === null || into.length >= MAX_REPORTS) {
+      into.push(unreadable(asset, kind));
+      continue;
+    }
     const score = entry['similarity_score'];
     const state = optionalText(entry['state'], 20);
     const status = optionalText(entry['status'], 20);
