@@ -207,9 +207,40 @@ export function routeDataMessage(
       return allowed.then((origin) =>
         owner.announcement(message.courseId, message.topicId, origin, sender.tab?.id),
       );
-    case 'weekrow:announcement-list':
+    case 'weekrow:announcement-page':
+      // Only the page of the saved Canvas asks. An extension page has no widget to fill.
+      if (host.isExtensionPage(sender)) return reject('Only the page of the saved Canvas may ask');
       return allowed.then((origin) =>
-        owner.announcements(message.courseId, origin, sender.tab?.id),
+        owner.announcementPage(
+          {
+            courseId: message.courseId,
+            read: message.read,
+            offset: message.offset,
+            first: message.first,
+          },
+          origin,
+          sender.tab?.id,
+        ),
+      );
+    case 'weekrow:announcement-range':
+      if (host.isExtensionPage(sender)) return reject('Only the page of the saved Canvas may ask');
+      return allowed.then((origin) =>
+        owner.announcementRange(
+          { courseId: message.courseId, from: message.from, to: message.to },
+          origin,
+          sender.tab?.id,
+        ),
+      );
+    case 'weekrow:announcement-mark':
+      // Only the page of the saved Canvas marks, and only for a tab of its top frame.
+      if (host.isExtensionPage(sender)) return reject('Only the page of the saved Canvas may ask');
+      return allowed.then(() =>
+        owner.markDashboardAnnouncement(
+          message.courseId,
+          message.topicId,
+          message.read,
+          sender.tab?.id,
+        ),
       );
     case 'assignment:details':
       // Only the in-page script of a tab asks. An extension page has no row to open.
