@@ -31,7 +31,7 @@ This extension has no account, no server of its own and no telemetry.
 | 1 | Version 1 scope | The core of the original, plus work Canvas hides |
 | 2 | Where done marks and custom tasks live | In Canvas, as planner overrides and planner notes |
 | 3 | What counts as a task | All work the student must do; no calendar events or announcements (announcements are not tasks, and have their own tab, see decision 24) |
-| 4 | Where the list appears | In the Canvas page: the right column of the classic dashboard and of course home pages, and a card in the Course work slot on the widget dashboard; an optional side panel for other pages. The Announcements tab shows everywhere except the widget dashboard (decision 24) |
+| 4 | Where the list appears | In the Canvas page: a dock on the right edge of the classic dashboard and of List View, the right column of course home pages, and a card in the Course work slot on the widget dashboard (no card on its Courses tab); an optional side panel for other pages. The Announcements tab shows everywhere except the widget dashboard (decision 24) |
 | 5 | Site access and onboarding | Access to all sites, a tiny Canvas detector, and no setup step |
 | 6 | List layout and item placement | Items are placed by date and done state only, each in one group |
 | 7 | Item status | One set of status chips, the same on every item in every view |
@@ -45,14 +45,14 @@ This extension has no account, no server of its own and no telemetry.
 | 15 | Publishing and privacy | Three stores, one privacy policy, no data collection |
 | 16 | License | GPL-3.0-only, with DCO sign-off for contributions |
 | 17 | Name | Tools for Canvas |
-| 18 | Settings | Five settings, also shown inside the panel and the in-page list, and a minimize button on the in-page list |
+| 18 | Settings | Five settings, also shown inside the panel and the in-page list, and a minimize button on the in-page list (a slim bar, or a tab on the right edge for the dock of the classic dashboard) |
 | 19 | Accessibility, language and theme | WCAG 2.2 AA, English text, a Theme setting with Automatic, Light and Dark |
 | 20 | No-telemetry guarantee | One fetch wrapper that only reaches the student's Canvas |
 | 21 | Visual design | Looks like a native part of Canvas, not an add-on sidebar |
 | 22 | New dashboard fixes | Four small fixes for the widgets of the new Canvas dashboard, each with its own switch, in a page script of their own |
 | 23 | File access check | A read-only check that runs on the owner's live Canvas in test builds only, and answers the open questions for the file viewer |
 | 24 | Announcements in the weekly list | A Tasks and Announcements switch under the rings on the classic dashboard, List View, course home pages and the side panel, with a read mark that only an explicit student action writes |
-| 25 | File viewer | Files open in a docked, resizable pane with tabs beside Canvas; PDFs in a bundled PDF.js viewer that saves the page, other types in the browser's own players or an "Open in Canvas" card |
+| 25 | File viewer | Files open in a docked, resizable pane with tabs beside Canvas (the weekly list dock steps aside while it is open); PDFs in a bundled PDF.js viewer that saves the page, other types in the browser's own players or an "Open in Canvas" card |
 | 26 | One assignment view | The Submission Details page of the student's own submission shows the instructions and the files in place of Canvas's files frame, with a feedback pane for View Feedback; the Assignments list rows expand in place, and Submit opens Canvas's own turn-in page in the docked pane |
 
 ## Decisions
@@ -214,13 +214,22 @@ On the same day the owner asked for three more changes.
 The in-page list shows the full list, as the side panel does, with no short glance.
 The card has a height limit, and the groups scroll inside it.
 A minimize button replaces the setting "Show the weekly list on Canvas pages" (decision 18).
+On 2026-10-30 the owner also reported that on the old dashboard the card sits at the top of a page that scrolls up without end, so reaching the list means scrolling up through the planner.
+On 2026-11-04 the owner drew the new place on a 1797 px window of the old dashboard.
+The old dashboard is List View (the planner), Card View and Recent Activity.
+The drawing crosses out any change to the content of Canvas, and it marks the right part of the window, from about x 1420 to the edge and from the top to the bottom, as the place of the list.
+So the list lives in a dock fixed to the right edge of the window (see "The dock on the classic dashboard").
+This replaces the card in the right column and the dock under the column for these three views.
+Course home pages keep the card in Canvas's right column, and the new widget dashboard keeps its card.
+The owner also crossed out the floating card on the Courses tab of the new widget dashboard: that tab shows no card.
 The owner also asked for relief on a long classic dashboard: after a long scroll, the list must not stay at the top of a column that is far out of view.
 
 The Canvas page is the main home.
 The in-page list replaces the Canvas To Do list on the classic dashboard (Card View and Recent Activity) and on course home pages, like the original Tasks for Canvas.
 The list also shows on the new widget dashboard and in List View.
 Those two views have no right column, and the extension does not turn Canvas's column on.
-It mounts the list as a card in the page content instead (see "In-page rules").
+List View gets the dock of the classic dashboard.
+The widget dashboard gets a card in the page content (see "In-page rules").
 It always shows on these pages, also while the side panel is open.
 On a course home page, the in-page list shows only that course.
 The extension injects nothing on any other page, and nothing on a page without the expected anchors.
@@ -270,21 +279,91 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The card never covers a visible Canvas element.
   Its width is 320 to 400 px.
   The viewport must also have room for a 24 px right margin.
-  On Dashboard, its top matches the first widget row.
-  On Courses, its top matches `dashboard-tab-content`.
+  On the Dashboard tab, its top matches the first widget row.
+  The Courses tab shows no card.
   When the viewport has too little room, the card sits in normal flow above the tab content and below the tabs.
   Canvas keeps its own widths, padding, margins and maximum widths.
   The card never enters a widget column.
   Mutation and size observers measure the placement again after tab changes and redraws.
-  The Courses view uses the last measured grid inset when it has no grid.
   The widget dashboard has no grid when the page loads, and the fallback position differs from the position at the grid.
   So the card waits for the grid on this page, and it stays hidden for up to 10 seconds.
   The card is then placed once, at the grid.
   After 10 seconds with no grid, the card uses the fallback: one gutter right of the main column of `#content`, or above `#content` when there is no room.
   When the grid arrives later, the card moves once, and only when its mode or its position changes.
-- The card of List View scrolls with the page.
-- The dock under the right column needs a column that is as tall as the page, as Canvas's flex layout makes it.
+- The dock under the right column of a course home page needs a column that is as tall as the page, as Canvas's flex layout makes it.
   With less than 240 px of free space under the column items, the list does not dock.
+- The dock on the classic dashboard takes room with the padding of the `html` element, so a narrow window narrows the content of Canvas, as the PDF pane does (see "The dock on the classic dashboard").
+
+**The dock on the classic dashboard:**
+
+- It applies to List View (the planner), Card View and Recent Activity, which are the dashboards with the body class `with-right-side` or `dashboard-is-planner`.
+  Course home pages keep the card in the right column, and the new widget dashboard keeps its card.
+  The side panel does not change.
+- The list lives in a dock made with `createDock` (decision 25, `src/features/file-viewer/dock.ts`), with the role `weekly` and the host id `tools-weekly`.
+  The host is fixed to the right edge of the window at the full window height, with the resize handle on its left edge, as the PDF pane has.
+  The container of the list is a light DOM child of the host, and a `<slot>` in the dock shows it.
+  So the list keeps its open shadow root and its place for the page selectors, and it keeps its state while the dock is hidden.
+- The default width is 360 px, which is the narrowest width that a dock can have.
+  The setting `weeklyDockWidth` stores it with the rules of `fileViewerWidth`: at least 360 px, at most 70 percent of the window, and 360 px for a missing value.
+  The file pane and the weekly dock never change each other's width.
+- The dock takes room with the same padding lease as the other panes: the `html` element gets a right padding of the width of the dock.
+  Canvas's `.ic-Layout-wrapper` has `max-width: 1366px` and stays at the left of the window, with a `margin-left` of 54 px when the global navigation is collapsed, and 84 px when the student expanded it.
+  That is the source fact for the width cap.
+  The rules are `body:not(.full-width):not(.outcomes):not(.body--login-confirmation):not(.content-only) .ic-Layout-wrapper` and `body:not(.no-headers):not(.content-only):not(.hide-global-nav) .ic-Layout-wrapper` in `app/stylesheets/base/_ic_app_layout.scss` (canvas-lms `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`, where `$ic-header-primary-width` is 84 px), shipped in `common.css`.
+  So the content of Canvas ends at 1420 px with the collapsed navigation, which is the left edge of the place that the owner drew.
+  A window that is at least 1420 px plus the width of the dock wide shows no change in the content: at 1797 px with a 360 px dock, the left and the right edge of the content are the same with the dock open and minimized.
+  With the expanded navigation the content ends at 1450 px, so at 1797 px with a 360 px dock it narrows by the 13 px that do not fit.
+  On a narrower window the content narrows, as it does for the PDF pane.
+  Below 900 px the dock covers the page, as the other panes do.
+- The look: no card shadow, no card corners and no gap above, a line on the left edge, and the same inside as the card (the header, the arrows, the rings, the tabs, the scroll region and the bottom bar, in the same order).
+  The inside fills the window height, and a short list leaves room above the bottom bar.
+  The host of the list carries `data-panel="side"`, which keeps the padding and the header rules of a card, and the rules of the dock take away the shadow, the corners and the fixed card height.
+- The list keeps its open groups, its scroll position and its state, as the card does.
+  Hiding the dock never removes the list, and the scroll positions are recorded while the list shows and put back when it shows again.
+  The other content of Canvas's right column (Coming Up, Recent Feedback and so on) stays where Canvas draws it.
+  The student To Do list stays hidden by the existing rules.
+- The existing minimize button of the header closes the dock and gives the room back (decision 18).
+  A tab stays on the right edge of the window, 96 px from the top, 38 px wide and about 140 px high.
+  It has its left corners rounded at 8 px, a 1 px `#c7cdd1` border, a small shadow and a white background (a dark pair in the dark theme).
+  It shows a calendar check icon, the text of the span written vertically (for example "Nov 4 - 10"), and a pill with the count of open work of the shown span.
+  The count is the number of items in the day groups of the span: Today, Tomorrow and the later days.
+  It leaves out Past due, No due date and Done, and the pill is hidden when the count is zero.
+  The tab is a real button with `aria-expanded="false"` and a name such as "Open weekly list, Nov 4 - 10, 2 open".
+  A click opens the dock at once.
+  Focus goes to the tab after a minimize that the student made inside the dock, and to the minimize button after an open from the tab.
+  The tab takes no room, and its host has its own id (`tools-weekly-tab`) and the mark of a dock.
+  The state is the field `minimized` of the stored settings, as for the card, so it holds on every Canvas page and in every tab, and it stays after a reload.
+- Only one dock shows at a time.
+  While a file pane is open (decision 25), the dock and its tab are hidden, with no state lost.
+  When the file pane closes, they come back in the state they had, open or minimized, with the same width, groups and scroll position.
+  The dock uses `watchFilePane` and `filePaneOpen` of the dock module, and `setHidden`, as the turn-in pane does.
+  The two scripts share the lease through the shared state of the dock module, and the file pane script may be injected later, when the File viewer switch goes on.
+  A dock never opens while a file pane is open, because opening would write the padding of the dock over the padding of the file pane.
+  A page that opens with a file pane already open starts with the dock hidden.
+  A file pane script that ends with no word, and a page that removes a host, are seen by an observer of the body, and the dock follows.
+  The tab never sits on the file pane, the two resize handles never overlap, and Escape in the file pane closes only the file pane.
+  After the last pane closes, the padding of the page is what the page had.
+- An extension update removes the dock and the tab of a dead copy and gives the room back, by the stale cleanup rules of the dock module (`removeStaleWeeklyDock`).
+  A host without the mark of a dock stays.
+- The code that docked the card under the right column of the classic dashboard no longer runs on the dashboard.
+  The mount of the page calls its release at once for the dock, and the code that course home pages use is unchanged.
+- `tests/e2e/weekly-dock.spec.ts` checks the place, the room at 1797 px, the tab and its focus, every order of the swap with the file pane with the padding read from the page, the dark theme and the Courses tab on a click and on load.
+  `tests/fixtures/pages/canvas-layout.css` has the real rules of `.ic-Layout-wrapper` and of the right column, and the widget dashboard fixture has the tab markup of InstUI Tabs.
+  `tests/firefox/dashboard-dock.mjs` (`npm run test:firefox:dashboard-dock`) runs the dock, the tab and the swap with a file pane in real Firefox with a fake Canvas over HTTPS.
+
+**Live checks for the owner (the weekly dock):**
+
+1. On the Recent Activity dashboard of sjsu.instructure.com, in a window of about 1,800 px, check the list: it is fixed at the right edge from the top to the bottom, and the content of Canvas does not move when you minimize and open it.
+2. Scroll the page a long way: the dock stays.
+3. Click "Minimize list": the room goes back and a tab shows on the right edge, with the span and the count.
+   A click on the tab opens the dock.
+4. Open a PDF from a link: only the PDF pane shows.
+   Close the pane: the dock is back in the state it had, with the same scroll position.
+5. Do the same with the list minimized: the tab hides while the pane is open and comes back after.
+6. Drag the left edge of the dock and of the PDF pane: each keeps its own width.
+7. Open the new widget dashboard and click the Courses tab: no list shows.
+   Click the Dashboard tab: the card is back with no reload.
+   Select the Courses tab, reload, and check that nothing shows until you click the Dashboard tab.
 
 **Opening and closing the panel:**
 
@@ -322,7 +401,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   A `MutationObserver` waits for them, as the original did [9].
 - On the dashboard, when the body has no `with-right-side` (the widget dashboard and List View [13]), mount at once, when the page has `#content`.
   The list does not add `with-right-side` and does not show `#right-side-wrapper`.
-  It takes one of these places in the page content, and `layout.ts` decides which.
+  List View, which has the body class `dashboard-is-planner`, gives the list to the dock (see "The dock on the classic dashboard").
+  The widget dashboard takes one of these places in the page content, and `layout.ts` decides which.
   - **In the Course work slot**, replace the first single or combined Course work widget in document order.
     Keep every other Course work widget, including summary widgets.
     The widget keeps its place in the page layout, invisible: its wrapper gets `visibility: hidden` and never `display: none` while the card is in the slot.
@@ -377,17 +457,18 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The card is under `body`, outside the widget tray and outside every Canvas layout box, and it uses document coordinates.
     It grows to 400 px.
     Its left edge is one column gap past the real `widget-columns` box.
-    Its top matches the first widget row on Dashboard and the tab content on Courses.
+    Its top matches the first widget row.
     It scrolls with the page.
   - **Above the tab content**, below the tabs, when the viewport has too little room.
     The card fills the tab content width in normal flow.
     The widgets move down and keep their width.
     The extension changes no width, maximum width, padding or margin on Canvas boxes.
-  - List View uses the same white area under `body`, one gutter right of its main content column, when it fits, or normal flow above `#content`.
-    The main content column is `#content` without its right padding.
-    The gutter is 24 px when the page has no grid to measure.
-    The extension never sets layout styles on any Canvas box, including during loading.
-    List View has content from the server, so its card is placed at once.
+  - The Courses tab shows no card and no floating panel.
+    The card stays on the page with its state, only hidden, and the Dashboard tab shows it again with no reload.
+    A page that loads on the Courses tab, from the saved preference `learner_dashboard_tab_selection`, shows nothing until the student goes to the Dashboard tab.
+    The selected tab is the `div[role="tab"]` with `aria-selected="true"` that holds `span[data-testid="tab-<id>"]` inside `[data-testid="dashboard-tabs"]`.
+    The finder is in `src/shared/canvas/widgetDashboard.ts`.
+    Other uses of the floating fallback stay as they are.
   - The adapter tells the widget dashboard from the other dashboards with stable signals.
     The route is `/`, the body has no `with-right-side` and no `dashboard-is-planner`, and the page is not the K-5 dashboard.
     The server sends the widget dashboard with an empty `#content` (`UsersController#user_dashboard` renders `html: ""`), and React draws the whole app into it.
@@ -406,10 +487,12 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - When the list unmounts, for example when the student switches to another Canvas address, remove the inline styles and the marker.
     A list that fails to mount does the same.
     The student cannot turn the list off.
-    A minimized list is a slim bar in the same place, and it keeps the same placement rules.
+    On the widget dashboard and on course home pages, a minimized list is a slim bar in the same place, and it keeps the same placement rules.
+    On the classic dashboard and in List View, a minimized list is a tab on the right edge (see "The dock on the classic dashboard").
   - The K-5 dashboard (`#dashboard-app-container`) gets nothing.
-- On the classic dashboard and on course home pages, when the whole right column has scrolled above the viewport, the list docks.
-  Recent Activity is a very long page, and the list sits at the top of the column.
+- On a course home page, when the whole right column has scrolled above the viewport, the list docks.
+  A course home page can be much longer than its right column, and the list sits at the top of the column.
+  The classic dashboard has no such dock: its list lives in the dock on the right edge.
   - A sentinel at the bottom of the column (`#right-side-wrapper`) is watched with an `IntersectionObserver`, and a scroll listener catches a jump over it.
   - The container stays in the DOM, and a spacer of the same height holds its place in the column, so nothing in the column moves.
     The container takes `position: absolute` under the column, at the width of the column content, with a card look and the sticky 24 px gap.
@@ -420,7 +503,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - On a course home page, mount only when the path is exactly `/courses/:id` and the body has `with-right-side`, as the original did [9].
 - Mount the list as a sibling before `#right-side`, inside `#right-side-wrapper`.
   Canvas replaces the contents of `#right-side`, so a node inside it would be lost [13].
-  On the widget dashboard and in List View, the container starts there and then moves into the page content.
+  On the classic dashboard and in List View, the container starts there and then moves into the dock.
+  On the widget dashboard, it moves into the page content.
 - The card has the look of a Canvas widget card: no border, 8 px corners, the widget shadow, a white background in the light theme, and 24 px of padding.
 - Hide only the student To Do list (`.Sidebar__TodoListContainer`).
   Keep Coming Up, Recent Feedback and the other sidebar content.
@@ -463,7 +547,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - The day list keeps at least 128 px.
     When the card is too low for 128 px and the bottom bar, the whole card scrolls instead.
   - Keyboard access, focus rings, aria-expanded, collapse memory, older and skipped lists, and Skip all older stay available.
-  - These rules also apply to the docked classic dashboard card, but do not affect the side panel or the minimized card.
+  - These rules also apply to the docked card of a course home page and to the list in the dock of the classic dashboard, but do not affect the side panel or the minimized card.
   - The scroll bar of the groups sits in the side padding of the card, 4 px from its edge, so it never covers the day counts.
   - The header (the dates, Add task, the gear, the minimize button, the arrows, Today and the span picker), the notices and the rings stay at the top of the card.
     The groups scroll below them in one element.
@@ -472,7 +556,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - The scroll position stays over a redraw, a data refresh, the settings, the task form, a change of tab and a minimize, while the page stays open.
     A new span starts at the top.
   - The card scrolls with the page, and it is not sticky.
-    The docked card of the classic dashboard keeps its sticky 24 px gap, with the same height limit and scroll region.
+    The docked card of a course home page keeps its sticky 24 px gap, with the same height limit and scroll region.
   - The scroll region keeps at least 128 px in every card, so with the tab strip (decision 24) a low window still shows a row.
     The whole card then scrolls, and the header does not stay in view.
   - The side panel scrolls as one page, and it has no such region and no minimize button.
@@ -485,9 +569,9 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 
 **Widths:**
 
-- The in-page column on the classic dashboard gives about 240 px of content width [13].
+- The in-page column on a course home page gives about 240 px of content width [13].
+- The dock on the classic dashboard is 360 px wide at the start, and the student can resize it (see "The dock on the classic dashboard").
 - The card beside the widget grid is 320 to 400 px wide, and 360 px when there is room for no more.
-  The card of List View is 372 px wide.
   With 24 px of padding on each side, the list content is at least 272 px wide.
 - The Chrome and Edge panel opens at 360 px, which is the Chromium minimum [11].
 - The Firefox sidebar opens at 18em and can shrink to 14em [12].
@@ -1677,6 +1761,10 @@ It has a minimize button instead (see below).
   - So the student always knows that the list is filtered.
 - The in-page list has a minimize button next to the gear.
   - The button is labeled "Minimize list".
+    On the classic dashboard and in List View, where the list lives in a dock (decision 4), a click closes the dock and gives the room back, and a tab stays on the right edge of the window.
+    The tab is a button with `aria-expanded="false"` and the name "Open weekly list, <span>, <count> open".
+    A click on the tab opens the dock at once, and focus goes to the tab after a minimize and to the minimize button after an open.
+    The next lines describe the slim bar, which the other places keep.
     A click shrinks the card to a slim bar in the same place, one header row high, with the look of a widget card.
   - The bar shows the name "Weekly list", a short status such as "3 due today · 11 past due" (a part with a zero count is left out), and a chevron.
     A click anywhere on the bar, or Enter or Space on it, expands the card again.
@@ -1684,6 +1772,7 @@ It has a minimize button instead (see below).
     A change that comes from another tab leaves focus alone.
   - The state is saved as the field `minimized` of the stored settings (a boolean, false by default).
     It holds on every Canvas page and in every tab, and it stays after a reload.
+    The dock and the card use the same field.
     An expanded card keeps the scroll positions of its day list and of its Announcements list from before the minimize, while the page stays open; the card itself starts at its top, and an open No due date or Done group closes.
   - The side panel has no minimize button and ignores the field.
   - The page channel accepts `minimized` in `weekrow:save-settings`, and it rejects any other shape.
@@ -2529,6 +2618,11 @@ With the pane read alone, the default run of the test failed before the fix.
      Closing restores its exact inline value and priority.
    - The pane has a close button, and Escape closes it when focus is inside.
    - Below 900 px of window width, the pane covers the page instead, with the same close button.
+   - The weekly list dock of the classic dashboard (decision 4) uses the same dock module, with the role `weekly`, so the file pane and the dock sit in the same place.
+     Only one of them shows at a time: while a file pane is open, the weekly dock and its tab are hidden, and they come back in the state they had when the pane closes.
+     The two scripts share the room lease, and the weekly dock opens only when no file pane is open.
+     The file pane keeps its width in `fileViewerWidth`, and the weekly dock keeps its own in `weeklyDockWidth`, so neither changes the other.
+     Escape in the file pane closes only the file pane.
 2. **Tabs.**
    - Each file opens in its own tab inside the pane, up to 8 tabs; the 9th file replaces the oldest tab that is not active.
    - A file that is already open becomes the active tab.
@@ -3523,7 +3617,9 @@ Submit and Re-submit open the Canvas assignment in a docked pane.
     A frame of the Canvas origin can reach the closed shadow root that holds it, through `window.frameElement.getRootNode()`.
     The closed root of the file pane therefore holds only extension content.
     Every listener in the turn-in root accepts only trusted events.
-  - Both panes use one dock module (`src/features/file-viewer/dock.ts`): the position, the width, the resize handle and the `html` padding-right rule.
+  - Both panes, and the weekly list dock of decision 4, use one dock module (`src/features/file-viewer/dock.ts`): the position, the width, the resize handle and the `html` padding-right rule.
+    The ids that the stale cleanup knows are the hosts `tools-file-viewer`, `tools-turn-in`, `tools-feedback` and `tools-weekly`.
+    The tab of the minimized weekly list (`tools-weekly-tab`) takes no room, so it is not one of them, and the cleanup of the weekly dock removes it with the dock.
     The width is the saved file viewer width.
   - The two scripts run in one isolated world and share a small lease for the padding.
     The first pane that takes room records the inline padding, and the last pane that gives room back restores it exactly.
