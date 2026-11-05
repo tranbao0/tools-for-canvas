@@ -96,7 +96,10 @@ function courseTitles(scenario: Scenario, courseId: string): Set<string> {
   return titles;
 }
 
-/** Opens every "Show N more" line and every collapsed group and line of the list. */
+/**
+ * Opens every "Show N more" line and every collapsed line of the list. The headers of the bottom
+ * bar stay as they are: the bar opens one group at a time.
+ */
 async function expandEverything(list: Locator): Promise<void> {
   for (;;) {
     const more = list.getByRole('button', { name: /^Show \d+ more$/ });
@@ -104,7 +107,7 @@ async function expandEverything(list: Locator): Promise<void> {
       await more.first().click();
       continue;
     }
-    const closed = list.locator('button[aria-expanded="false"]:not([title])');
+    const closed = list.locator('button[aria-expanded="false"]:not([title]):not(.wr-pinned *)');
     if ((await closed.count()) > 0) {
       await closed.first().click();
       continue;
@@ -174,9 +177,15 @@ test.describe('course home page', () => {
     await settledList(page);
 
     await expandEverything(list);
+    const titles = await list.locator('.wr-scroll [data-part="title"]').allTextContents();
+    // The bar opens the undated and the done work, one group at a time.
+    for (const kind of ['no_due_date', 'done']) {
+      await list.locator(`.wr-pinned [data-group="${kind}"] .wr-group-toggle`).click();
+      await expandEverything(list);
+      titles.push(...(await list.locator('.wr-group-area [data-part="title"]').allTextContents()));
+    }
 
     const biology = courseTitles(scenario, IDS.courses.biology);
-    const titles = await list.locator('[data-part="title"]').allTextContents();
     expect(titles.length).toBeGreaterThan(5);
     for (const title of titles) expect(biology, title).toContain(title);
     for (const other of ['Lab 7: Titration notebook', 'Problem set 6', 'Return library books']) {
