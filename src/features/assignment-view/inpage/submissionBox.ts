@@ -2,8 +2,8 @@
  * The Submission box on the Submission Details page (design decision 26). It stands in the right
  * column, where Canvas's own box stands on the assignment page. It shows the status line and the
  * date as Canvas's sidebar does (`app/views/assignments/_submission_sidebar.html.erb`). In the
- * replace mode it also holds the files with their similarity scores and the feedback buttons, and
- * a slot under "Comments:" that shows the moved comments column (`comments.ts`).
+ * replace mode it also holds the files with their similarity scores and the feedback buttons, the
+ * score of a text entry, and a slot under "Comments:" that shows the moved comments column (`comments.ts`).
  */
 import { PANEL_HOST_ATTRIBUTE } from '../../file-viewer/model';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
@@ -11,7 +11,7 @@ import { formatSubmittedAt } from '../format';
 import type { AssignmentDetails } from '../protocol';
 import { submissionFileUrl } from '../render';
 import { OWN, actionTarget } from './own';
-import { sameFiles, type FrameFile } from './submissionFrame';
+import { sameFiles, type BoxFile, type FileReport } from './files';
 import { BOX_CSS, PANEL_CSS, SUBMISSION_CSS } from './styles';
 
 export const BOX_ID = 'av-submission-box';
@@ -90,6 +90,17 @@ function node(doc: Document, tag: string, className: string, text?: string): HTM
   return made;
 }
 
+/** The similarity score as a link that opens the report in a new tab, with Canvas's colors. */
+function scoreLink(doc: Document, report: FileReport): HTMLElement {
+  const score = node(doc, 'a', 'av-score', report.text);
+  if (report.state !== null) score.dataset['state'] = report.state;
+  score.setAttribute('href', report.url);
+  score.setAttribute('target', '_blank');
+  score.setAttribute('rel', 'noopener noreferrer');
+  score.setAttribute('title', 'Similarity score');
+  return score;
+}
+
 export interface BoxOptions {
   doc: Document;
   /** The origin of the page, which is the saved Canvas. */
@@ -104,15 +115,17 @@ export interface BoxOptions {
   replace: boolean;
   /** Whether the file pane takes the links. With the switch off, the links download. */
   fileViewer: boolean;
-  files: readonly FrameFile[];
+  files: readonly BoxFile[];
+  /** The similarity score of a text entry, or `null`. */
+  submissionReport?: FileReport | null;
   /** Called when the student opens the feedback of a file. A page script cannot call it. */
-  openFeedback(file: FrameFile): void;
+  openFeedback(file: BoxFile): void;
 }
 
 export interface Box {
   host: HTMLElement;
   /** Draws the files again only when they changed, so the focus in the list stays. */
-  setFiles(next: readonly FrameFile[]): void;
+  setFiles(next: readonly BoxFile[]): void;
   /** Changes the labels of the file links without a redraw. */
   setFileViewer(on: boolean): void;
 }
@@ -149,8 +162,8 @@ export function createBox(options: BoxOptions): Box {
   if (date !== null) panel.append(node(doc, 'div', 'av-date', date));
 
   let fileViewer = options.fileViewer;
-  let files: readonly FrameFile[] = options.files;
-  const label = (file: FrameFile): string => `${fileViewer ? 'View' : 'Download'} ${file.name}`;
+  let files: readonly BoxFile[] = options.files;
+  const label = (file: BoxFile): string => `${fileViewer ? 'View' : 'Download'} ${file.name}`;
 
   const list = node(doc, 'ul', 'av-box-files');
   const drawFiles = (): void => {
@@ -167,22 +180,7 @@ export function createBox(options: BoxOptions): Box {
       item.append(top);
       const meta = node(doc, 'div', 'av-box-file-meta');
       if (file.size !== null) meta.append(node(doc, 'span', 'av-size', file.size));
-      if (file.report !== null) {
-        const score = node(
-          doc,
-          file.report.url === null ? 'span' : 'a',
-          'av-score',
-          file.report.text,
-        );
-        if (file.report.state !== null) score.dataset['state'] = file.report.state;
-        if (file.report.url !== null) {
-          score.setAttribute('href', file.report.url);
-          score.setAttribute('target', '_blank');
-          score.setAttribute('rel', 'noopener noreferrer');
-          score.setAttribute('title', 'Similarity score');
-        }
-        meta.append(score);
-      }
+      if (file.report !== null) meta.append(scoreLink(doc, file.report));
       if (file.feedbackLabel !== null && file.sessionUrl !== null) {
         const button = node(doc, 'button', 'av-feedback', file.feedbackLabel);
         button.setAttribute('type', 'button');
@@ -201,6 +199,14 @@ export function createBox(options: BoxOptions): Box {
   if (options.replace) {
     drawFiles();
     panel.append(list);
+    if (options.submissionReport) {
+      const line = node(doc, 'div', 'av-box-report');
+      line.append(
+        node(doc, 'span', 'av-size', 'Similarity score'),
+        scoreLink(doc, options.submissionReport),
+      );
+      panel.append(line);
+    }
     const comments = node(doc, 'section', 'av-box-comments');
     comments.append(node(doc, 'h3', 'av-box-subtitle', 'Comments:'), doc.createElement('slot'));
     panel.append(comments);

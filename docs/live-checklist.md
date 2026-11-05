@@ -632,6 +632,11 @@ The Assignments list and its pane have their own steps below.
    Expect: the title, the "Submission Details" header and the grade look as before.
    Open the network tab of the browser's developer tools.
    Expect: two requests went out: the assignment and `submissions/self`, both with no include.
+   Open the console of the page.
+   Expect: no line that starts with `[weekrow] submission details` shows.
+   If Canvas's "Files" table and its comments column are still there, read the line `[weekrow] submission details keeps the Canvas frame, reason: CODE`, and write down the code (`type`, `report-data`, `asset-reports`, `no-session` or `mount-failed`).
+   Then open the reply of `submissions/self` and write down, without any address, whether each attachment has a `preview_url` and the names of its query parameters (`blob`, and `hmac` if it has one; never the values), the keys of `turnitin_data` and `vericite_data`, and the fields of each entry.
+   Inspect the frame `#preview_frame` and write down whether `td.asset-report-status-container` holds anything.
 2. Look at the content area.
    Expect: "Instructions" shows the description of the assignment, and there is no "Your files" section.
    Open the assignment whose instructions are longer than 15 lines.
@@ -651,6 +656,9 @@ The Assignments list and its pane have their own steps below.
    Expect: the link says "View NAME" again.
 5. Look at the line under the file link.
    Expect: it shows the size, the similarity score if there is one, and "View Feedback" (or "Preview" when the teacher left no notes) with the unread dot of Canvas.
+   Expect: the score is the number with one decimal and a percent sign, such as "5.0%", in the color of its state.
+   Expect: the line is there at once, and no step waits for the frame.
+   Expect: the score and the button stay the same if you block the frame request (`?preview=1`) in the network tab and reload.
    Click "View Feedback".
    Expect: a feedback pane docks on the right with the DocViewer page of Canvas.
    Click the similarity score.
@@ -683,9 +691,10 @@ The Assignments list and its pane have their own steps below.
     Expect: the view is back.
 12. Open the assignment page of the assignment with a submitted file.
     Expect: the "Submission" sidebar of Canvas keeps its links, and each file link shows a file icon and "View NAME".
+    Expect: a file with a Turnitin score shows the score after the link, with the color of its state, and a click on the score opens the report in a new tab and not the file pane.
     Click the link.
     Expect: the file opens in the file pane.
-    Expect: the extension sent one request to `submissions/self` with no include, and none to the assignment record.
+    Expect: the extension sent one request to `submissions/self` with no include, and none to the assignment record, and none for the score.
     Turn off the file viewer in the settings.
     Expect: Canvas's own "Download NAME" link is back.
 13. Repeat steps 1, 3 and 5 in the light and the dark theme of the extension (Theme in the settings) and in a Canvas with a dark theme, at 1920 and 1280 px, in Chrome, Edge and Firefox.

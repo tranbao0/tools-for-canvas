@@ -11,7 +11,7 @@ import {
   type AssignmentDetailsMessage,
   type AssignmentDetailsReply,
 } from '../protocol';
-import { submissionChanged } from '../preview';
+import { submissionChanged, type SubmissionMark } from '../preview';
 import { createListRefresh } from './listRefresh';
 
 export interface SubmissionWatchOptions {
@@ -44,8 +44,11 @@ export interface SubmissionWatch {
 export function createSubmissionWatch(options: SubmissionWatchOptions): SubmissionWatch {
   const { courseId, send } = options;
   const listRefresh = createListRefresh(send);
-  /** The last good reply of each assignment, by assignment id. */
-  const known = new Map<string, AssignmentDetailsReply>();
+  /**
+   * The compared fields of the last good reply of each assignment, by assignment id. The reply
+   * holds signed session addresses, so only a copy of these fields stays in memory.
+   */
+  const known = new Map<string, SubmissionMark>();
   let stopped = false;
   /** Counts the times the baselines were forgotten, so a read that began before cannot write one. */
   let generation = 0;
@@ -68,19 +71,15 @@ export function createSubmissionWatch(options: SubmissionWatchOptions): Submissi
       const began = generation;
       const next = await load(assignmentId);
       if (stopped || !options.active() || began !== generation) return;
-      if (
-        previous !== undefined &&
-        previous.details.submission.user_id !== next.details.submission.user_id
-      ) {
+      const { user_id, submitted_at, workflow_state, attempt } = next.details.submission;
+      const mark: SubmissionMark = { user_id, submitted_at, workflow_state, attempt };
+      if (previous !== undefined && previous.user_id !== mark.user_id) {
         known.clear();
         options.onOtherStudent();
         return;
       }
-      known.set(assignmentId, next);
-      if (
-        previous !== undefined &&
-        submissionChanged(previous.details.submission, next.details.submission)
-      ) {
+      known.set(assignmentId, mark);
+      if (previous !== undefined && submissionChanged(previous, mark)) {
         // The visible refresh keeps the Canvas rate limit and the backoff of the weekly list.
         listRefresh.request();
       }
