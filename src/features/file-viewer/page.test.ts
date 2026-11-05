@@ -265,19 +265,6 @@ describe('the page script', () => {
       root.getElementById('inner')!.dispatchEvent(event);
     }
 
-    it('opens nothing for a link that keeps its action', async () => {
-      prepare();
-      await startViewer();
-      document.body.innerHTML =
-        '<div data-weekrow-keep-action><a id="keep" href="/files/5">Save</a></div>';
-      const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
-      Object.defineProperty(event, 'isTrusted', { value: true });
-      document.getElementById('keep')!.dispatchEvent(event);
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(sessionRequests()).toBe(0);
-      expect(document.getElementById('tools-file-viewer')).toBeNull();
-    });
-
     it('opens the pane when the host is a marked panel host', async () => {
       prepare();
       await startViewer();

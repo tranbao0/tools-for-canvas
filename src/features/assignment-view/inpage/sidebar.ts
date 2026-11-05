@@ -6,17 +6,16 @@
  * file pane already opens that link on a click (decision 25), so the word is wrong. The view keeps
  * Canvas's link and its address, and changes what the link shows: a file icon and "View NAME". The
  * nodes of Canvas inside the link move into a hidden node of the view, and they go back when the
- * view stops. Under the link the view adds a small "Download" link of its own with the same
- * address and a `download` attribute, which the pane never takes.
+ * view stops. The file pane has a Download button for every kind of file, so the box needs no
+ * download link of its own.
  *
  * The view changes the box only for the signed-in student's own submission: the user in the file
  * address must be the user of the `submissions/self` record that the background reads, with no
- * include, because the box needs only that user. A teacher or another user sees Canvas's box as it is. A link that does not read "Download NAME" stays as
- * it is.
+ * include, because the box needs only that user. A teacher or another user sees Canvas's box as it
+ * is. A link that does not read "Download NAME" stays as it is.
  */
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { logFailure } from '../../../shared/platform/log';
-import { KEEP_ACTION_ATTRIBUTE } from '../../file-viewer/model';
 import { isOwnerReply, type AssignmentOwnerMessage } from '../protocol';
 import { ORIGINAL, OWN } from './rows';
 
@@ -31,7 +30,6 @@ interface Treatment {
   /** The own node that holds the nodes of Canvas that the anchor had. */
   held: HTMLElement;
   view: HTMLElement;
-  line: HTMLElement;
 }
 
 /** How long a batch of changes of the box waits for the next one. */
@@ -128,10 +126,9 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
 
   /** Takes one treatment away. The nodes of Canvas go back into the link if it is still there. */
   function release(treatment: Treatment): void {
-    const { held, view, line } = treatment;
+    const { held, view } = treatment;
     if (held.parentNode === treatment.anchor) held.replaceWith(...held.childNodes);
     view.remove();
-    line.remove();
   }
 
   /** Gives the box back as Canvas drew it. */
@@ -142,7 +139,6 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
   function treat(anchor: HTMLAnchorElement): void {
     const name = /^\s*Download\s+(\S[\s\S]*?)\s*$/.exec(anchor.textContent ?? '')?.[1];
     if (name === undefined) return;
-    const href = anchor.getAttribute('href')!;
     const label = name.replace(/\s+/g, ' ');
 
     const held = own(doc, 'span', 'display:none');
@@ -158,24 +154,14 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     view.append(file, text);
     anchor.append(held, view);
 
-    const line = own(doc, 'div', 'margin-inline-start:24px;font-size:14px');
-    const download = own(doc, 'a', 'display:inline-flex;align-items:center;gap:4px');
-    download.setAttribute('href', href);
-    download.setAttribute('download', '');
-    download.setAttribute('aria-label', `Download ${label}`);
-    download.setAttribute(KEEP_ACTION_ATTRIBUTE, '');
-    download.append(icon(doc, 14, '2', ['M12 4v11M7 10l5 5 5-5M5 20h14']), 'Download');
-    line.append(download);
-    const parent = anchor.parentElement;
-    (parent !== null && parent.matches(BOX) ? anchor : (parent ?? anchor)).after(line);
-    treatments.push({ anchor, held, view, line });
+    treatments.push({ anchor, held, view });
   }
 
   /** Treats the file links that are not treated yet, for the student's own files only. */
   function render(): void {
     if (stopped || !active || student === null) return;
     observer?.disconnect();
-    // A link that Canvas took out of the page leaves no line of the view behind.
+    // A link that Canvas took out of the page leaves no node of the view behind.
     for (const treatment of treatments.filter((entry) => !entry.anchor.isConnected)) {
       release(treatment);
       treatments.splice(treatments.indexOf(treatment), 1);
