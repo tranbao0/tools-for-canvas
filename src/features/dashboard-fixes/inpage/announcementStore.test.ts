@@ -672,3 +672,103 @@ describe('a row that a mark took out of its filter', () => {
     expect(list.items).toHaveLength(10);
   });
 });
+
+describe('a row that is back in the set of a list', () => {
+  const unread = { read: 'unread', courseId: null } as const;
+
+  it('keeps a row whose mark is on its way when the student leaves, so a refused mark puts it back', async () => {
+    const { store, state, sent } = setup(many(40));
+    const list = store.ensure('unread', null);
+    await flush();
+    store.more('unread', null);
+    await flush();
+    state.markOk = false;
+    let release = (): void => undefined;
+    state.markGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const marking = store.mark(list.items[2]!, true, unread);
+    store.leave('unread', null);
+    expect(list.items).toHaveLength(20);
+    state.markGate = null;
+    release();
+    expect(await marking).toBe(false);
+
+    expect(list.items).toHaveLength(20);
+    expect(list.items[2]).toMatchObject({ id: '3', read: false });
+    expect(nextOffset(list)).toBe(20);
+    store.more('unread', null);
+    await flush();
+    expect(sent.at(-1)).toMatchObject({ type: 'weekrow:announcement-page', offset: 20 });
+    expect(list.items).toHaveLength(30);
+  });
+
+  it('takes the row out when its mark settles after the student left', async () => {
+    const { store, state } = setup(many(40));
+    const list = store.ensure('unread', null);
+    await flush();
+    let release = (): void => undefined;
+    state.markGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const marking = store.mark(list.items[2]!, true, unread);
+    store.leave('unread', null);
+    expect(list.items).toHaveLength(10);
+    state.markGate = null;
+    release();
+    expect(await marking).toBe(true);
+
+    expect(list.items).toHaveLength(9);
+    expect(list.items.map((entry) => entry.id)).not.toContain('3');
+    expect(nextOffset(list)).toBe(9);
+  });
+
+  it('keeps a pending row of the list when the student comes back', async () => {
+    const { store, state } = setup(many(40));
+    const list = store.ensure('unread', null);
+    await flush();
+    let release = (): void => undefined;
+    state.markGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const marking = store.mark(list.items[2]!, true, unread);
+    store.leave('unread', null);
+    store.ensure('unread', null);
+    state.markGate = null;
+    release();
+    await marking;
+    expect(list.items).toHaveLength(10);
+  });
+
+  it('forgets the list of a filter when an unmark from the search returns a pruned row', async () => {
+    const { store, sent } = setup(many(40));
+    const list = store.ensure('unread', null);
+    await flush();
+    const marked = list.items[2]!;
+    expect(await store.mark(marked, true, unread)).toBe(true);
+    store.leave('unread', null);
+    expect(list.items.map((entry) => entry.id)).not.toContain('3');
+
+    // The student comes back, searches, and unmarks the row from the results.
+    store.ensure('unread', null);
+    const found = { ...marked, read: true };
+    expect(await store.mark(found, false, unread)).toBe(true);
+
+    const again = store.ensure('unread', null);
+    expect(again).not.toBe(list);
+    await flush();
+    expect(sent.at(-1)).toMatchObject({ type: 'weekrow:announcement-page', offset: 0 });
+    expect(again.items.map((entry) => entry.id)).toContain('3');
+    expect(again.items).toHaveLength(10);
+  });
+
+  it('keeps a list that holds the row when the row returns to its set', async () => {
+    const { store } = setup(many(40));
+    const list = store.ensure('unread', null);
+    await flush();
+    await store.mark(list.items[2]!, true, unread);
+    await store.mark(list.items[2]!, false, unread);
+    expect(store.list('unread', null)).toBe(list);
+    expect(list.items[2]?.read).toBe(false);
+  });
+});

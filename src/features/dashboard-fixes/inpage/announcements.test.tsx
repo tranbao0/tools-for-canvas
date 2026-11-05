@@ -55,6 +55,8 @@ interface Server {
   markOk: boolean;
   /** The range reply says that the range holds more rows than it carries. */
   truncated: boolean;
+  /** The first page holds rows of the server that the projection drops, so it shows no row. */
+  dropFirstPage: boolean;
 }
 
 function serve(context: FakeContext, server: Server): void {
@@ -71,6 +73,15 @@ function serve(context: FakeContext, server: Server): void {
         const offset = request['offset'] as number;
         const first = request['first'] as number;
         const slice = filtered.slice(offset, offset + first);
+        if (server.dropFirstPage && offset === 0) {
+          return {
+            items: [],
+            count: slice.length,
+            userId: '7',
+            total: filtered.length,
+            hasNext: true,
+          };
+        }
         return {
           items: slice,
           count: slice.length,
@@ -144,7 +155,14 @@ beforeEach(() => {
   drawDashboard();
   fix = announcementsFix();
   context = fakeContext();
-  server = { rows: [], failPages: false, failRanges: false, markOk: true, truncated: false };
+  server = {
+    rows: [],
+    failPages: false,
+    failRanges: false,
+    markOk: true,
+    truncated: false,
+    dropFirstPage: false,
+  };
   serve(context, server);
 });
 afterEach(() => {
@@ -433,6 +451,22 @@ describe('paging', () => {
     expect(shadow('.wr-a-sentinel')).toBeNull();
   });
 
+  it('keeps asking for pages after a first page that shows no row, and shows no empty text', async () => {
+    server.dropFirstPage = true;
+    await start(many(25));
+    expect(shadowAll('article')).toHaveLength(0);
+    expect(shadow('.wr-a-scroll')?.textContent).not.toContain('No unread announcements');
+    expect(shadow('.wr-a-sentinel')).not.toBeNull();
+
+    await act(async () => {
+      observers.at(-1)?.callback([{ isIntersecting: true }]);
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    await flush();
+    expect(sentOf('weekrow:announcement-page').at(-1)).toMatchObject({ offset: 10, first: 10 });
+    expect(shadowAll('article')).toHaveLength(10);
+  });
+
   it('shows Retry when a later page fails, and loads it on a click', async () => {
     await start(many(25));
     server.failPages = true;
@@ -647,6 +681,14 @@ describe('search by date', () => {
     const line = shadow('.wr-a-res [role=status]')?.textContent ?? '';
     expect(line).toContain('Showing the first 500');
     expect(line).toMatch(/3 results/);
+    expect(shadow('.wr-a-scroll')?.textContent).not.toContain('No more announcements');
+  });
+
+  it('ends a range that holds every row with the end line', async () => {
+    await start(many(3));
+    await openDates();
+    await setDate('From', '2026-10-01');
+    expect(shadow('.wr-a-scroll')?.textContent).toContain('No more announcements');
   });
 
   it('shows a note and sends nothing when From is after To', async () => {

@@ -108,14 +108,14 @@ function isRangeReply(value: unknown): value is AnnouncementRangeReply {
   );
 }
 
-/** Whether a row belongs to the set that the server holds for a read filter. */
-function inFilter(row: AnnRow, read: AnnouncementRead): boolean {
-  return read === 'all' || row.read === (read === 'read');
+/** Whether a row with this read state belongs to the set that the server holds for a filter. */
+function inFilter(isRead: boolean, filter: AnnouncementRead): boolean {
+  return filter === 'all' || isRead === (filter === 'read');
 }
 
 /** The offset of the next page of a list: the rows of the server's set that the page holds. */
 export function nextOffset(list: ListState): number {
-  return list.items.filter((row) => inFilter(row, list.read)).length + list.dropped;
+  return list.items.filter((row) => inFilter(row.read, list.read)).length + list.dropped;
 }
 
 export function createAnnouncementStore(options: StoreOptions) {
@@ -136,6 +136,10 @@ export function createAnnouncementStore(options: StoreOptions) {
   let markEpoch = 0;
   /** The lists that asked for a page while a mark was on its way. */
   const waiting = new Set<ListState>();
+  /** The rows with a mark on its way, by key, and how many marks each has. */
+  const pendingRows = new Map<string, number>();
+  /** The lists that left a filter with a row of the set kept for a mark that was on its way. */
+  const unpruned = new Set<ListState>();
 
   const changed = (): void => {
     if (!disposed) options.changed();
@@ -224,6 +228,7 @@ export function createAnnouncementStore(options: StoreOptions) {
   /** Loads the first page of a list that has none yet. */
   function ensure(read: AnnouncementRead, courseId: string | null): ListState {
     const state = list(read, courseId);
+    unpruned.delete(state);
     if (!state.started && state.status === 'idle' && !waiting.has(state)) launch(state);
     return state;
   }
@@ -237,15 +242,45 @@ export function createAnnouncementStore(options: StoreOptions) {
   }
 
   /**
-   * The student leaves a filter. The rows that a mark took out of its set go, so the list is as
-   * the server holds it when the student comes back. The offset counts only the rows of the set,
-   * so it does not change.
+   * Takes the rows out of a list that a mark took out of its set, except a row whose mark is still
+   * on its way: Canvas may refuse that mark, and the row must be there to go back. The list is
+   * pruned again when the marks settle. The offset counts only the rows of the set, so it does not
+   * change.
    */
+  function prune(state: ListState): void {
+    const keep = (row: AnnRow): boolean =>
+      inFilter(row.read, state.read) || pendingRows.has(rowKey(row));
+    if (!state.items.every(keep)) {
+      state.items = state.items.filter(keep);
+      changed();
+    }
+    if (state.items.every((row) => inFilter(row.read, state.read))) unpruned.delete(state);
+    else unpruned.add(state);
+  }
+
+  /** The student leaves a filter, so the list is as the server holds it when the student returns. */
   function leave(read: AnnouncementRead, courseId: string | null): void {
     const state = lists.get(listKey(read, courseId));
-    if (state === undefined || state.items.every((row) => inFilter(row, read))) return;
-    state.items = state.items.filter((row) => inFilter(row, read));
-    changed();
+    if (state !== undefined) prune(state);
+  }
+
+  /**
+   * Whether a list is out of step after a row changed from one read state to another: the row is
+   * in the set of the list now and was not before, and the list holds no row for it. The rows that
+   * the list holds no longer make up the first rows of the set, so the offset is wrong.
+   */
+  function missesRow(state: ListState, key: string, from: boolean, to: boolean): boolean {
+    return (
+      !inFilter(from, state.read) &&
+      inFilter(to, state.read) &&
+      !state.items.some((candidate) => rowKey(candidate) === key)
+    );
+  }
+
+  function forget(state: ListState): void {
+    lists.delete(state.key);
+    waiting.delete(state);
+    unpruned.delete(state);
   }
 
   /** Asks again for the page that failed. */
@@ -256,7 +291,8 @@ export function createAnnouncementStore(options: StoreOptions) {
 
   /**
    * The student marks a row. Every copy of the row changes at once, and the lists of the other
-   * filters go, because their sets and offsets changed. A reply that is not ok puts the row back.
+   * filters go, because their sets and offsets changed. A list of the filter goes too when the row
+   * returns to its set and the list holds no row for it. A reply that is not ok puts the row back.
    */
   async function mark(
     row: AnnRow,
@@ -264,11 +300,14 @@ export function createAnnouncementStore(options: StoreOptions) {
     current: { read: AnnouncementRead; courseId: string | null },
   ): Promise<boolean> {
     const previous = row.read;
-    setRead(rowKey(row), read);
+    const key = rowKey(row);
+    setRead(key, read);
     const currentKey = listKey(current.read, current.courseId);
-    const forgotten = [...lists].filter(([key]) => key !== currentKey);
-    for (const [key] of forgotten) lists.delete(key);
+    for (const state of [...lists.values()]) {
+      if (state.key !== currentKey || missesRow(state, key, previous, read)) forget(state);
+    }
     pendingMarks += 1;
+    pendingRows.set(key, (pendingRows.get(key) ?? 0) + 1);
     markEpoch += 1;
     changed();
     let ok = false;
@@ -285,11 +324,18 @@ export function createAnnouncementStore(options: StoreOptions) {
       options.log('announcement mark', error);
     }
     if (!ok) {
-      setRead(rowKey(row), previous);
+      setRead(key, previous);
       // The forgotten lists are not brought back: they load again from the server.
+      for (const state of [...lists.values()]) {
+        if (missesRow(state, key, read, previous)) forget(state);
+      }
     }
+    const marks = (pendingRows.get(key) ?? 1) - 1;
+    if (marks > 0) pendingRows.set(key, marks);
+    else pendingRows.delete(key);
     pendingMarks -= 1;
     markEpoch += 1;
+    for (const state of [...unpruned]) prune(state);
     changed();
     // The pages that waited for the mark ask now, from the offset that the settled marks give.
     if (pendingMarks === 0 && !disposed) {
