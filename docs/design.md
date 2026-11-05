@@ -1972,6 +1972,8 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
   `scripts/check-storage.mjs`, `check-fetch.mjs` and `check-size.mjs` check it like the list script, and each script has its own size budget.
 - Steady page buttons is in `inpage/pager.ts`.
   `findPagedWidgets` in `src/shared/canvas/widgetDashboard.ts` finds each pager, its current page, its total and its buttons, and skips the widget whose wrapper has `data-weekrow-replaced`.
+- Announcements in place is in `inpage/announcements.tsx` (the view), `inpage/announcementStore.ts` (the lists, the offsets, the marks, the search index and the ranges, with no DOM) and `inpage/announcementSearch.ts` (the pure search).
+  The background side is `data/announcementRows.ts` (the projection of a row with a limit on every text), the page, range and mark methods of the data owner, and `announcementPageQuery` and `readAnnouncementPage` in `src/shared/canvas/graphql.ts`.
 - One `MutationObserver` serves the whole feature.
   It watches the content of the page, and a batch of changes (50 ms) runs one pass of the enabled fixes.
   The observer ignores the nodes that the fixes add, so a pass never starts another.
