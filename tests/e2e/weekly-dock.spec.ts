@@ -496,7 +496,7 @@ test.describe('minimize and the tab', () => {
     await tab(page).click();
     await doneBox(inpageList(page), QUIZ_3).click();
     await settledList(page);
-    expect(await ringsOpen()).toBe(before - 1);
+    await expect.poll(ringsOpen).toBe(before - 1);
     await minimize(page);
     const after = await tab(page).evaluate((button) => button.querySelector('.pill')?.textContent);
     expect(Number(after)).toBe(before - 1);
