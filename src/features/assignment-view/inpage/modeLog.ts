@@ -20,7 +20,7 @@ export function logAbove(reason: AboveReason): void {
   console.warn(`[weekrow] submission details keeps the Canvas frame, reason: ${reason}`);
 }
 
-/** A file whose session address failed the check gets no feedback button. */
+/** A file whose session address failed the check has only the frame as a source for its button. */
 export function logNoFeedbackAddress(count: number): void {
   console.warn(`[weekrow] submission details: ${count} file(s) without a usable feedback address`);
 }

@@ -101,7 +101,11 @@ function reportsOf(data: unknown, kind: AssignmentReport['kind'], into: Assignme
   if (fields === null) return;
   for (const asset of Object.keys(fields)) {
     if (!ASSET_KEY.test(asset)) continue;
-    if (into.length >= MAX_REPORTS + MAX_UNREADABLE) return;
+    if (into.length >= MAX_REPORTS + MAX_UNREADABLE) {
+      // Past both limits a key can no longer have its own entry, so the whole record counts.
+      into.push(unreadable('*', kind));
+      return;
+    }
     const entry = record(fields[asset]);
     if (entry === null || into.length >= MAX_REPORTS) {
       into.push(unreadable(asset, kind));

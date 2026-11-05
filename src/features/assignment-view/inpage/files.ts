@@ -1,7 +1,8 @@
 /**
  * The files of the Submission box, built from the details that the background reads (design
  * decision 26, item 5). Nothing here reads the page: the name, the size, the score and the session
- * address of a file come from the Canvas records, and the files frame only refines two marks.
+ * address of a file come from the Canvas records. The files frame refines the label and the unread
+ * mark, and its button gives the address of a file whose record has none.
  *
  * The score follows `app/views/submissions/_originality_score.html.erb`: a VeriCite score comes
  * first, and a Turnitin or originality report score otherwise. The data of an attachment comes
@@ -279,7 +280,7 @@ export interface BoxFiles {
   files: BoxFile[];
   /** False when the report data of a file cannot be shown. */
   readable: boolean;
-  /** How many files have a session address that fails the check, so they get no feedback button. */
+  /** How many files have a session address that fails the check, so only the frame can give one. */
   withoutSession: number;
 }
 
@@ -290,7 +291,8 @@ export function filesFromDetails(
   context: ReportContext,
 ): BoxFiles {
   const files: BoxFile[] = [];
-  let readable = true;
+  // The record marks a report object that held more keys than the limits keep.
+  let readable = !source.reports?.some((entry) => entry.asset === '*');
   let withoutSession = 0;
   for (const file of attachments) {
     const { report, readable: shown } = fileReport(source, file.id, context);
@@ -345,6 +347,9 @@ export function refineFiles(
   hints: ReadonlyMap<string, FrameHint>,
 ): RefinedFiles {
   let withoutSession = 0;
+  const shown = new Set(files.map((file) => normalizeCanvasId(file.fileId)));
+  // A frame button for a file that the box does not list, such as one past the limit of the record.
+  for (const key of hints.keys()) if (!shown.has(key)) withoutSession += 1;
   const refined = files.map((file) => {
     const hint = hints.get(normalizeCanvasId(file.fileId));
     if (hint === undefined) return file;
