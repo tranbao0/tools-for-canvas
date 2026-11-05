@@ -62,6 +62,42 @@ function titleOf(row: HTMLElement, assignmentId: string): string {
   return text !== undefined && text !== '' ? text : `assignment ${assignmentId}`;
 }
 
+/** The most characters of the second line of the pane header. */
+const DETAILS_LIMIT = 160;
+
+/**
+ * The text of a node as a student sees it: Canvas draws each date and score twice, once for screen
+ * readers (`screenreader-only`) and once for the eye. The walk goes by index and never iterates a
+ * list, because the list belongs to the page.
+ */
+function visibleText(node: Node): string {
+  if (node.nodeType === 3) return node.nodeValue ?? '';
+  if (node.nodeType !== 1) return '';
+  const element = node as Element;
+  if (element.classList.contains('screenreader-only')) return '';
+  let text = '';
+  const children = element.childNodes;
+  for (let index = 0; index < children.length; index += 1) text += visibleText(children[index]!);
+  return text;
+}
+
+/**
+ * The second line of the pane header: the due text and the points of the row, from Canvas's own
+ * `.ig-details`, joined with a bar. A row with neither has none.
+ */
+function detailsOf(row: HTMLElement): string | undefined {
+  const details = row.querySelector('.ig-details');
+  if (!details) return undefined;
+  const parts: string[] = [];
+  for (const selector of ['.assignment-date-due', '.js-score']) {
+    const item = details.querySelector(selector);
+    const text = item ? visibleText(item).replace(/\s+/g, ' ').trim() : '';
+    if (text !== '') parts.push(text);
+  }
+  const line = parts.join(' | ').slice(0, DETAILS_LIMIT);
+  return line === '' ? undefined : line;
+}
+
 /** Whether a batch of changes is more than the view's own nodes. */
 function isForeign(records: readonly MutationRecord[]): boolean {
   return records.some((record) => {
@@ -137,7 +173,10 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
     button.append(icon(doc), doc.createTextNode('Preview'));
     button.addEventListener('click', (event) => {
       // A script of the page can click the button, but only the student opens the pane.
-      if (event.isTrusted) options.onPreview({ assignmentId, title });
+      if (!event.isTrusted) return;
+      // The row is read at the click, so the line is the one that Canvas shows now.
+      const details = detailsOf(row);
+      options.onPreview({ assignmentId, title, ...(details === undefined ? {} : { details }) });
     });
     layout.append(button);
     const state: RowState = { assignmentId, row, layout, button };

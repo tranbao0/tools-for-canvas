@@ -124,7 +124,7 @@ describe('the assignment pane', () => {
     expect(barLink()).toBe(`${ORIGIN}/courses/12/assignments/101`);
     expect(frames[0]?.src).toBe(`${ORIGIN}/courses/12/assignments/101?content_only=1`);
     expect(frames[0]?.parentElement?.className).toBe('frame');
-    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
     pane.reset();
     expect(host()).toBeNull();
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
@@ -233,7 +233,7 @@ describe('the assignment pane', () => {
     expect(preview.style.display).toBe('');
     expect(pane.shown).toBe('101');
     expect(onShown).toHaveBeenLastCalledWith('101');
-    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
     pane.reset();
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('');
   });
@@ -259,7 +259,7 @@ describe('the assignment pane', () => {
     expect(host()?.style.display).toBe('');
     expect(file.host.style.display).toBe('none');
     expect(onShown).toHaveBeenLastCalledWith('101');
-    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
     pane.close();
     expect(file.host.style.display).toBe('');
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('600px');
@@ -277,7 +277,7 @@ describe('the assignment pane', () => {
     expect(pane.shown).toBe('101');
     expect(file.host.style.display).toBe('none');
     expect(frames).toHaveLength(1);
-    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
     pane.close();
     expect(file.host.style.display).toBe('');
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('600px');
@@ -589,7 +589,7 @@ describe('one frame for each previewed assignment', () => {
     expect(frames[2]?.src).toBe(SLIM('102'));
     expect(pane.shown).toBe('102');
     expect(onShown).toHaveBeenLastCalledWith('102');
-    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
     pane.close();
     open(pane, '101');
     expect(frames).toHaveLength(4);
@@ -690,7 +690,7 @@ describe('one frame for each previewed assignment', () => {
     expect(shows()).toEqual([false, true]);
     expect(pane.shown).toBe('102');
     expect(onShown).toHaveBeenLastCalledWith('102');
-    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('492px');
   });
 
   it('keeps the padding and the shown row right in each order with a file pane', () => {
@@ -701,7 +701,7 @@ describe('one frame for each previewed assignment', () => {
     const file = fileDock();
     file.open();
     open(pane, '101');
-    expect(padding()).toBe('480px');
+    expect(padding()).toBe('492px');
     expect(onShown).toHaveBeenLastCalledWith('101');
     // The file pane covers again, and a Preview click on another row brings the pane back over it.
     file.close();
@@ -711,7 +711,7 @@ describe('one frame for each previewed assignment', () => {
     open(pane, '102');
     expect(file.host.style.display).toBe('none');
     expect(pane.shown).toBe('102');
-    expect(padding()).toBe('480px');
+    expect(padding()).toBe('492px');
     // A close shows the file pane again, and a later Preview click covers it once more.
     pane.close();
     expect(file.host.style.display).toBe('');
@@ -719,7 +719,7 @@ describe('one frame for each previewed assignment', () => {
     expect(padding()).toBe('600px');
     open(pane, '101');
     expect(pane.shown).toBe('101');
-    expect(padding()).toBe('480px');
+    expect(padding()).toBe('492px');
     // The file pane closes after the pane closed: nothing shows, and the page is its own.
     pane.close();
     file.close();
@@ -734,7 +734,7 @@ describe('one frame for each previewed assignment', () => {
     expect(host()).toBeNull();
     expect(padding()).toBe('13px');
     open(pane, '102');
-    expect(padding()).toBe('480px');
+    expect(padding()).toBe('492px');
     expect(pane.shown).toBe('102');
   });
 

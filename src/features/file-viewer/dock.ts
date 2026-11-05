@@ -372,7 +372,7 @@ iframe{border:0;width:100%;flex:1;min-height:0;background:transparent}
 @media(max-width:899px){.handle{display:none}}
 :host([data-card]){box-sizing:border-box;padding:${CARD_GAP_PX}px ${CARD_GAP_PX}px ${CARD_GAP_PX}px 0;pointer-events:none}
 :host([data-card][data-full]){padding:${CARD_GAP_PX}px;pointer-events:auto}
-:host([data-card]) section{overflow:hidden;border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.2);pointer-events:auto}
+:host([data-card]) section{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.2);pointer-events:auto}
 :host([data-card][data-theme='dark']) section{box-shadow:0 2px 14px rgba(0,0,0,.55)}
 :host([data-card]) .handle{top:${CARD_GAP_PX}px;height:calc(100% - ${2 * CARD_GAP_PX}px);pointer-events:auto}
 :host([data-card][data-full]) .handle{display:none}
