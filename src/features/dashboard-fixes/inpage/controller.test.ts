@@ -484,6 +484,54 @@ describe('createFixesEngine', () => {
   });
 });
 
+describe('a change of the student', () => {
+  const list = () =>
+    [
+      ...(document
+        .querySelector<HTMLElement>('[data-wr-list]')
+        ?.shadowRoot?.querySelectorAll('article') ?? []),
+    ].map((article) => article.getAttribute('aria-label'));
+
+  it('drops the announcements of the first student, and loads the list of the second', async () => {
+    let student = '5';
+    send.mockImplementation(async (message) => {
+      if (message.type === 'weekrow:announcement-page') {
+        const title = student === '5' ? 'Topic of A' : 'Topic of B';
+        return {
+          userId: student,
+          count: 1,
+          total: 1,
+          hasNext: false,
+          items: [
+            {
+              id: student === '5' ? '1' : '2',
+              courseId: '101',
+              courseName: 'BIO 110',
+              title,
+              postedAt: null,
+              author: null,
+              avatarUrl: null,
+              read: false,
+              message: '',
+            },
+          ],
+        };
+      }
+      return { ...DATA, userId: student };
+    });
+    engine.setSettings({ ...OFF, announcementsInPlace: true });
+    engine.setActive(true);
+    await settle();
+    expect(list()).toEqual(['Topic of A']);
+
+    student = '6';
+    engine.reload();
+    await settle(400);
+
+    expect(list()).toEqual(['Topic of B']);
+  });
+});
+
 describe('removeStaleFixes', () => {
   it('removes the nodes, the marks and the stylesheet that an earlier copy left', async () => {
     const before = document.body.innerHTML;

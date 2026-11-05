@@ -27,7 +27,12 @@ import {
 } from '../../../shared/canvas/widgetDashboard';
 import { logFailure } from '../../../shared/platform/log';
 import { t, tp } from '../../../shared/ui/i18n';
-import type { AnnouncementBody, DashboardCourse } from '../protocol';
+import {
+  isCalendarDate,
+  MAX_RANGE_ROWS,
+  type AnnouncementBody,
+  type DashboardCourse,
+} from '../protocol';
 import type { Fix, FixContext } from './context';
 import { sanitizeHtml } from '../../../shared/ui/sanitize';
 import {
@@ -104,13 +109,6 @@ export function rangeDays(from: string, to: string, today: string): { from: stri
   return { from: from === '' ? FIRST_DAY : from, to: to === '' ? today : to };
 }
 
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-
-/** Whether the value of a date input is a day. */
-function isDay(value: string): boolean {
-  return DAY.test(value);
-}
-
 interface View {
   widget: AnnouncementsWidget;
   host: HTMLElement;
@@ -134,6 +132,8 @@ interface View {
   /** The key of what the scroll area shows, and the key and position of the list that it left. */
   scrollKey: string;
   saved: { key: string; top: number } | null;
+  /** The list that the view showed last, which a search does not change. */
+  listAt: { key: string; read: ReadFilter; course: string | null } | null;
 }
 
 type Mode = 'list' | 'search' | 'range';
@@ -403,7 +403,9 @@ export function announcementsFix(): Fix {
             ? t('annSearchingRange')
             : state.status === 'error'
               ? null
-              : tp('annResults', rows.length),
+              : state.truncated
+                ? `${tp('annResults', rows.length)}. ${t('annTruncated', String(MAX_RANGE_ROWS))}`
+                : tp('annResults', rows.length),
       };
     }
     if (words !== null) {
@@ -475,8 +477,8 @@ export function announcementsFix(): Fix {
       view.askTimer = null;
       const days = rangeDays(view.from, view.to, localToday());
       const bad =
-        (view.from !== '' && !isDay(view.from)) ||
-        (view.to !== '' && !isDay(view.to)) ||
+        (view.from !== '' && !isCalendarDate(view.from)) ||
+        (view.to !== '' && !isCalendarDate(view.to)) ||
         (view.from === '' && view.to === '');
       if (bad) {
         view.asked = null;
@@ -710,7 +712,7 @@ export function announcementsFix(): Fix {
                   if (model.mode === 'list') data.retry(view.read, course);
                   else if (model.mode === 'search') data.retryIndex();
                   else if (view.asked !== null)
-                    data.ensureRange(course, view.asked.from, view.asked.to);
+                    data.retryRange(course, view.asked.from, view.asked.to);
                 }}
               >
                 {t('annRetry')}
@@ -741,6 +743,18 @@ export function announcementsFix(): Fix {
       return;
     }
     const model = modelOf(view, store);
+    if (model.mode === 'list') {
+      // The student left a filter: the rows that a mark took out of its set go, unless another
+      // widget shows that list.
+      const left = view.listAt;
+      if (left !== null && left.key !== model.scrollKey) {
+        const shown = [...views.values()].some(
+          (other) => other !== view && other.listAt?.key === left.key,
+        );
+        if (!shown) store.leave(left.read, left.course);
+      }
+      view.listAt = { key: model.scrollKey, read: view.read, course: courseOf(view) };
+    }
     const area = view.scroll;
     if (area !== null && model.scrollKey !== view.scrollKey) {
       // The area leaves a list: its position waits for the way back.
@@ -816,6 +830,7 @@ export function announcementsFix(): Fix {
       scroll: null,
       scrollKey: '',
       saved: null,
+      listAt: null,
     };
     views.set(widget.widget, made);
     return made;
@@ -1037,6 +1052,8 @@ export function announcementsFix(): Fix {
       }
       views.clear();
       open.clear();
+      bodies.clear();
+      focusOpened = null;
       doc?.querySelectorAll(MINE).forEach(unmount);
       for (const attribute of ATTRIBUTES) {
         doc?.querySelectorAll(`[${attribute}]`).forEach((node) => node.removeAttribute(attribute));

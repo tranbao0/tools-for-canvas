@@ -740,6 +740,9 @@
   "annResults_other": {
     "message": "$1 results, read and unread"
   },
+  "annTruncated": {
+    "message": "Showing the first $1"
+  },
   "annSearching": {
     "message": "Searching $1 of $2"
   },
