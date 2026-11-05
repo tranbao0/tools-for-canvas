@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sendToFailingRouter } from '../../../../tests/fixtures/router-reply';
 import type { AssignmentOwnerMessage } from '../protocol';
 import { removeStaleView } from './stale';
 import { createSidebarEngine, type SidebarEngine } from './sidebar';
@@ -237,6 +238,20 @@ describe('the Submission box of the assignment page', () => {
       engine.setActive(false);
       await vi.advanceTimersByTimeAsync(5000);
       expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks once more after 2 seconds for the reply of a router whose owner failed, and then gives up', async () => {
+      const router = sendToFailingRouter(ORIGIN);
+      failing();
+      send.mockImplementation(async (message) => router.send(message));
+      engine.setActive(true);
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(send).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(send).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(send).toHaveBeenCalledTimes(2);
+      router.stop();
     });
 
     it('does not ask again for a refusal', async () => {

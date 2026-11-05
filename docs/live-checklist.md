@@ -597,7 +597,7 @@ The Assignments list and its pane have their own steps below.
    Expect: a "Submission" box stands right of the content, with the status line "Submitted!", the date in the form of Canvas ("Oct 15 at 8:59pm") in the time zone of your Canvas profile, the file, and "Comments:".
    Expect: the title, the "Submission Details" header and the grade look as before.
    Open the network tab of the browser's developer tools.
-   Expect: two requests went out: the assignment with `include[]=submission`, and `submissions/self` with no include.
+   Expect: two requests went out: the assignment and `submissions/self`, both with no include.
 2. Look at the content area.
    Expect: "Instructions" shows the description of the assignment, and there is no "Your files" section.
    Open the assignment whose instructions are longer than 15 lines.
@@ -675,21 +675,25 @@ Run them on `/courses/:id/assignments`.
    Expect: the row has a soft blue background with a bar of the school color at its left edge, and its button is filled with the school color.
    Expect: the page narrows beside the pane, and the pane has no header, menu or breadcrumbs of Canvas.
 4. Click "Preview" on another row.
-   Expect: the pane moves to that assignment, and the marks move to the other row.
+   Expect: the pane shows that assignment, and the marks move to the other row.
    Type text into a field of the first assignment, then click "Preview" on another row.
-   Expect: Canvas asks whether to leave the page.
-   Say no.
-   Expect: the pane and the marks stay on the first assignment, with your text.
+   Expect: Canvas asks no question, the pane shows the other assignment, and the title and the "Open in new tab" link belong to it.
+   Click "Preview" on the first row.
+   Expect: the pane shows the first page again, as you left it, with your text and its scroll position.
    Then click a link in the page in the pane, such as a link to a file page, to the modules of the course or to a discussion.
-   Expect: Canvas may ask again, and the page in the pane changes, but the title, the "Open in new tab" link and the marks stay on the first assignment.
+   Expect: Canvas may ask whether to leave, and the page in the pane changes, but the title, the "Open in new tab" link and the marks stay on the assignment of the row.
 5. Click "Preview" on the row that the pane shows.
-   Expect: the pane closes, the page has its width back, and the marks go.
-   Open the pane again and click the close button of the pane.
-   Expect: the same, and the button of the row is not filled.
+   Expect: the pane hides, the page has its width back, and the marks go.
+   Click "Preview" on the same row.
+   Expect: the pane shows the same page, with your text.
+   Click the close button of the pane.
+   Expect: the same as above, and the button of the row is not filled.
+   Click "Preview" on seven different rows, one after the other.
+   Expect: the pane shows the seventh assignment, and a click on the first row makes its page load again, because the pane keeps at most 6 pages.
 6. Click "Preview" on the graded discussion.
    Expect: the pane shows the discussion page of Canvas with no header or menus, and the title of the pane is the title of the assignment.
    If the account is in a student group with a group graded discussion, click "Preview" on it while the pane shows another assignment.
-   Expect: the pane follows to the discussion page of the group (`/groups/:id/discussion_topics/:id`), and the title, the link and the marks move to the discussion.
+   Expect: the pane shows the discussion page of the group (`/groups/:id/discussion_topics/:id`), and the title, the link and the marks belong to the discussion row.
 7. Click the name of a file in the assignment page in the pane, such as a file in the instructions or in the Submission section.
    Expect: the file opens in the file pane, which covers the assignment pane, and the page has the width of one pane.
    Close the file pane.
@@ -713,4 +717,4 @@ Run them on `/courses/:id/assignments`.
 14. Open a pane on an assignment and keep the list open.
     Switch to another student in a second tab (sign out and sign in there), because a sign-in on the same tab reloads the page.
     Then go back to the list tab and click "Preview" on the same assignment.
-    Expect: the first pane closed at the switch, and the new pane stays open for the new student.
+    Expect: the first pane closed at the switch with all its pages, and the new pane stays open for the new student.

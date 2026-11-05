@@ -7,6 +7,7 @@ import {
   turnitinScores,
   frameRows,
 } from '../../../../tests/fixtures/submission-frame';
+import { sendToFailingRouter } from '../../../../tests/fixtures/router-reply';
 import { submissionDetailsPage } from '../../../../tests/fixtures/submission-page';
 import type { AssignmentDetailsMessage, RubricReadMessage } from '../protocol';
 import type { FeedbackRequest } from './feedbackPane';
@@ -593,6 +594,20 @@ describe('every page that is not the own submission', () => {
     start();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks once more after 2 seconds for the reply of a router whose owner failed, and then gives up', async () => {
+    const router = sendToFailingRouter(ORIGIN);
+    send.mockImplementation(async (message) => router.send(message));
+    start();
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(send).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(send).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(host()).toBeNull();
+    router.stop();
   });
 
   it('does not ask again for a refusal', async () => {

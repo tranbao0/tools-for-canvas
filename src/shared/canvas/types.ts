@@ -320,8 +320,8 @@ export interface CanvasClientOptions {
  */
 export interface CanvasApi {
   /**
-   * One assignment with `include[]=submission`, for the one assignment view. The record is checked
-   * field by field by `projectAssignmentView`.
+   * One assignment with no include, so the record holds no submission and no grade, for the one
+   * assignment view. The record is checked field by field by `projectAssignmentView`.
    */
   getAssignmentRecord(courseId: string, assignmentId: string): Promise<Record<string, unknown>>;
   /** The signed-in student's own submission, with no include, for the one assignment view. */

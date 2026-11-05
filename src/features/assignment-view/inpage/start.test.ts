@@ -160,7 +160,7 @@ describe('startAssignmentView', () => {
       document.documentElement.removeAttribute('style');
     });
 
-    it('opens the pane on a trusted click, marks the row, and closes it on a click on the same row', async () => {
+    it('opens the pane on a trusted click, marks the row, and hides it on a click on the same row', async () => {
       const channel = fakeChannel();
       const controller = await startAssignmentView(options(channel));
       preview('101').click();
@@ -170,19 +170,27 @@ describe('startAssignmentView', () => {
       expect(preview('101').getAttribute('aria-pressed')).toBe('true');
       expect(document.getElementById('assignment_101')?.hasAttribute('data-av-open')).toBe(true);
       press(preview('101'));
-      expect(host()).toBeNull();
+      // The frame stays in the page with its state, and the pane gives the room back.
+      expect(host()?.isConnected).toBe(true);
+      expect(host()?.style.display).toBe('none');
       expect(preview('101').getAttribute('aria-pressed')).toBe('false');
       expect(document.querySelector('[data-av-open]')).toBeNull();
+      press(preview('101'));
+      expect(host()?.style.display).toBe('');
+      expect(preview('101').getAttribute('aria-pressed')).toBe('true');
       controller.stop();
     });
 
-    it('moves the pane to another row, and keeps the mark on the first row until the page has loaded', async () => {
+    it('shows the frame of another row at once, and moves the mark to that row', async () => {
       const channel = fakeChannel();
       const controller = await startAssignmentView(options(channel));
       press(preview('101'));
       const first = host();
       press(preview('102'));
       expect(host()).toBe(first);
+      expect(preview('101').getAttribute('aria-pressed')).toBe('false');
+      expect(preview('102').getAttribute('aria-pressed')).toBe('true');
+      press(preview('101'));
       expect(preview('101').getAttribute('aria-pressed')).toBe('true');
       expect(preview('102').getAttribute('aria-pressed')).toBe('false');
       controller.stop();

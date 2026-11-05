@@ -1,7 +1,12 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDock } from '../../file-viewer/dock';
-import { createPreviewPane, PREVIEW_HOST_ID, PREVIEW_POLL_MS } from './previewPane';
+import {
+  createPreviewPane,
+  MAX_PREVIEW_FRAMES,
+  PREVIEW_HOST_ID,
+  PREVIEW_POLL_MS,
+} from './previewPane';
 
 const ORIGIN = 'https://school.instructure.com';
 
@@ -84,51 +89,21 @@ function fileDock() {
   return file;
 }
 
-/**
- * The frame of the pane, with the address that its page has now, a place to see a rewrite, and the
- * listeners that the pane put on the window of the frame.
- */
-function frameAt(href: string) {
-  const frame = frames[0]!;
+/** The frame of the pane at this place in the order they were made, with the address that its page has now and a place to see a rewrite. */
+function frameAt(href: string, index = 0) {
+  const frame = frames[index]!;
   const replace = vi.fn();
   const location = { href, replace };
-  const listeners = new Map<string, { listener: EventListener; capture: unknown }[]>();
-  const addEventListener = vi.fn((type: string, listener: EventListener, capture?: unknown) => {
-    const list = listeners.get(type) ?? [];
-    if (!list.some((entry) => entry.listener === listener)) list.push({ listener, capture });
-    listeners.set(type, list);
-  });
-  Object.defineProperty(frame, 'contentWindow', {
-    value: { location, addEventListener },
-    configurable: true,
-  });
-  const fire = (event: Event, trusted: boolean) => {
-    Object.defineProperty(event, 'isTrusted', { value: trusted });
-    for (const entry of listeners.get(event.type) ?? []) entry.listener(event);
-  };
+  Object.defineProperty(frame, 'contentWindow', { value: { location }, configurable: true });
   return {
     frame,
     replace,
-    addEventListener,
-    /** The types that have a capture listener on the window of the frame. */
-    captured: () =>
-      [...listeners]
-        .filter(([, list]) => list.some((entry) => entry.capture === true))
-        .map(([type]) => type),
     /** The page loaded: the frame has this address now. */
     load(next: string, trusted = true) {
       location.href = next;
       const event = new Event('load');
       Object.defineProperty(event, 'isTrusted', { value: trusted });
       frame.dispatchEvent(event);
-    },
-    /** The student presses the pointer in the page of the frame. */
-    pointer(trusted = true) {
-      fire(new Event('pointerdown'), trusted);
-    },
-    /** The student presses a key in the page of the frame. */
-    key(trusted = true) {
-      fire(new Event('keydown'), trusted);
     },
   };
 }
@@ -167,19 +142,6 @@ describe('the assignment pane', () => {
     expect(onShown).not.toHaveBeenCalled();
   });
 
-  it('keeps the open frame when another assignment is previewed', () => {
-    const { pane } = setup();
-    pane.open({ assignmentId: '101', title: 'Essay' });
-    const first = host();
-    pane.open({ assignmentId: '102', title: 'Reading' });
-    expect(host()).toBe(first);
-    expect(frames).toHaveLength(1);
-    expect(frames[0]?.src).toBe(`${ORIGIN}/courses/12/assignments/102?content_only=1`);
-    // The pane keeps the first assignment until the frame has loaded the page of the second.
-    expect(pane.shown).toBe('101');
-    expect(barText()).toBe('Essay');
-  });
-
   it('says which assignment it shows, and none when it closes', () => {
     const { pane, onShown } = setup();
     pane.open({ assignmentId: '101', title: 'Essay' });
@@ -197,7 +159,7 @@ describe('the assignment pane', () => {
     pane.open({ assignmentId: '101', title: 'Essay' });
     reload.mockClear();
     pane.close();
-    expect(host()).toBeNull();
+    expect(host()?.style.display).toBe('none');
     expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
     await vi.advanceTimersByTimeAsync(0);
     expect(reload).toHaveBeenCalledExactlyOnceWith('101');
@@ -216,7 +178,7 @@ describe('the assignment pane', () => {
     Object.defineProperty(real, 'isTrusted', { value: true });
     close.dispatchEvent(real);
     expect(pane.shown).toBeNull();
-    expect(host()).toBeNull();
+    expect(host()?.style.display).toBe('none');
   });
 
   it('reads the submission when it opens, which the later reads compare with', () => {
@@ -482,300 +444,335 @@ describe('the frame of the pane', () => {
     page.load(address);
     expect(page.replace).not.toHaveBeenCalled();
   });
+});
 
-  it('follows a preview of another assignment when the frame has loaded its page', async () => {
-    const { pane, reload, onShown } = setup();
-    pane.open({ assignmentId: '101', title: 'Essay' });
-    const page = frameAt(SLIM);
-    page.load(SLIM);
-    pane.open({ assignmentId: '102', title: 'Reading' });
-    reload.mockClear();
-    page.load(`${ORIGIN}/courses/12/assignments/102?content_only=1`);
+describe('one frame for each previewed assignment', () => {
+  const SLIM = (id: string) => `${ORIGIN}/courses/12/assignments/${id}?content_only=1`;
+  const shows = () => frames.map((frame) => frame.style.display !== 'none');
+  const open = (
+    pane: { open(request: { assignmentId: string; title: string }): void },
+    id: string,
+  ) => pane.open({ assignmentId: id, title: `Title ${id}` });
+
+  it('makes a second frame for another assignment and never changes the first', () => {
+    const { pane } = setup();
+    open(pane, '101');
+    const first = frames[0]!;
+    const wrapper = first.parentElement!;
+    open(pane, '102');
+    expect(frames).toHaveLength(2);
+    expect(first.src).toBe(SLIM('101'));
+    expect(frames[1]?.src).toBe(SLIM('102'));
+    // The frames sit in one wrapper, in the order they were made, and none moved.
+    expect([...wrapper.children]).toEqual(frames);
+    expect(shows()).toEqual([false, true]);
+    expect(first.style.display).toBe('none');
+    expect(host()).not.toBeNull();
+  });
+
+  it('shows the frame of an assignment as it was, without a new frame or a new address', () => {
+    const { pane } = setup();
+    open(pane, '101');
+    open(pane, '102');
+    open(pane, '101');
+    expect(frames).toHaveLength(2);
+    expect(shows()).toEqual([true, false]);
+    expect(frames[0]?.src).toBe(SLIM('101'));
+    expect([...frames[0]!.parentElement!.children]).toEqual(frames);
+    expect(pane.shown).toBe('101');
+  });
+
+  it('gives the header, the link, the frame title and the shown row to the assignment of the frame that shows', () => {
+    const { pane, onShown } = setup();
+    open(pane, '101');
+    open(pane, '102');
+    open(pane, '103');
+    for (const id of ['101', '103', '102', '101']) {
+      open(pane, id);
+      const at = frames.findIndex((frame) => frame.src === SLIM(id));
+      expect(shows()).toEqual(frames.map((_frame, index) => index === at));
+      expect(barText()).toBe(`Title ${id}`);
+      expect(barLink()).toBe(`${ORIGIN}/courses/12/assignments/${id}`);
+      expect(frames[at]?.title).toBe(`Assignment Title ${id}`);
+      expect(pane.shown).toBe(id);
+      expect(onShown).toHaveBeenLastCalledWith(id);
+    }
+  });
+
+  it('keeps the header of the row when a frame redirects to a discussion or a page of a group', async () => {
+    const { pane, onShown } = setup();
+    open(pane, '101');
+    open(pane, '102');
+    const second = frameAt(SLIM('102'), 1);
+    second.load(SLIM('102'));
+    second.load(`${ORIGIN}/courses/12/discussion_topics/9`);
+    second.load(`${ORIGIN}/groups/7/discussion_topics/44`);
+    // A frame that does not show can load too.
+    const first = frameAt(SLIM('101'), 0);
+    first.load(`${ORIGIN}/groups/7/discussion_topics/45`);
     await vi.advanceTimersByTimeAsync(0);
-    expect(barText()).toBe('Reading');
+    expect(barText()).toBe('Title 102');
     expect(barLink()).toBe(`${ORIGIN}/courses/12/assignments/102`);
     expect(pane.shown).toBe('102');
-    expect(onShown).toHaveBeenLastCalledWith('102');
-    expect(reload.mock.calls.map((call) => call[0]).sort()).toEqual(['101', '102']);
-    // The new assignment is the one that the later loads and polls read.
-    reload.mockClear();
-    page.load(`${ORIGIN}/courses/12/assignments/102?content_only=1`);
+    expect(onShown.mock.calls.map((call) => call[0])).toEqual(['101', '102']);
+  });
+
+  it('removes the frame that was shown longest ago for a frame beyond the limit', () => {
+    expect(MAX_PREVIEW_FRAMES).toBe(6);
+    const { pane } = setup();
+    const ids = ['101', '102', '103', '104', '105', '106'];
+    for (const id of ids) open(pane, id);
+    expect(frames.filter((frame) => frame.isConnected)).toHaveLength(6);
+    // Showing 101 again makes it the newest, so the next frame removes 102.
+    open(pane, '101');
+    open(pane, '107');
+    expect(frames).toHaveLength(7);
+    expect(frames.map((frame) => frame.isConnected)).toEqual([
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
+    expect(shows().at(-1)).toBe(true);
+    expect(pane.shown).toBe('107');
+    // The assignment that lost its frame gets a new frame, and the oldest one goes.
+    open(pane, '102');
+    expect(frames).toHaveLength(8);
+    expect(frames[2]?.isConnected).toBe(false);
+    expect(frames.filter((frame) => frame.isConnected)).toHaveLength(6);
+    expect(frames[7]?.src).toBe(SLIM('102'));
+  });
+
+  it('keeps the frames when the pane closes, and shows the same state when it opens again', async () => {
+    document.documentElement.style.setProperty('padding-right', '13px');
+    const { pane, reload, onShown } = setup();
+    open(pane, '101');
+    open(pane, '102');
+    const before = [...frames];
     await vi.advanceTimersByTimeAsync(0);
+    reload.mockClear();
+    pane.close();
+    expect(host()?.style.display).toBe('none');
+    expect(frames.every((frame) => frame.isConnected)).toBe(true);
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
+    expect(pane.shown).toBeNull();
+    expect(onShown).toHaveBeenLastCalledWith(null);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reload).toHaveBeenCalledExactlyOnceWith('102');
+    // The poll stops while the pane is closed.
+    reload.mockClear();
+    await vi.advanceTimersByTimeAsync(PREVIEW_POLL_MS * 3);
+    expect(reload).not.toHaveBeenCalled();
+    // A Preview click on the row that was open shows the same frame, and so does another row's.
+    open(pane, '102');
+    expect(host()?.style.display).toBe('');
+    expect(frames).toEqual(before);
+    expect(shows()).toEqual([false, true]);
+    expect(pane.shown).toBe('102');
+    expect(onShown).toHaveBeenLastCalledWith('102');
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
+    pane.close();
+    open(pane, '101');
+    expect(frames).toEqual(before);
+    expect(shows()).toEqual([true, false]);
+    expect(barText()).toBe('Title 101');
+    pane.reset();
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
+  });
+
+  it('polls again after a reopen, for the assignment that shows', async () => {
+    const { pane, reload } = setup();
+    open(pane, '101');
+    pane.close();
+    open(pane, '102');
+    await vi.advanceTimersByTimeAsync(0);
+    reload.mockClear();
+    await vi.advanceTimersByTimeAsync(PREVIEW_POLL_MS);
     expect(reload).toHaveBeenCalledExactlyOnceWith('102');
   });
 
-  it('follows a preview of a graded discussion, which Canvas redirects to its own page', async () => {
+  it('removes every frame and the host on reset, and makes a new frame afterwards', () => {
+    document.documentElement.style.setProperty('padding-right', '13px');
     const { pane, onShown } = setup();
-    pane.open({ assignmentId: '101', title: 'Essay' });
-    const page = frameAt(SLIM);
-    page.load(SLIM);
-    pane.open({ assignmentId: '102', title: 'Discuss' });
-    page.load(`${ORIGIN}/courses/12/discussion_topics/9`);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(barText()).toBe('Discuss');
+    open(pane, '101');
+    open(pane, '102');
+    pane.close();
+    open(pane, '101');
+    pane.reset();
+    expect(host()).toBeNull();
+    expect(frames.some((frame) => frame.isConnected)).toBe(false);
+    expect(pane.shown).toBeNull();
+    expect(onShown).toHaveBeenLastCalledWith(null);
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('13px');
+    open(pane, '101');
+    expect(frames).toHaveLength(3);
+    expect(frames.filter((frame) => frame.isConnected)).toHaveLength(1);
+    expect(pane.shown).toBe('101');
+  });
+
+  it('removes every frame on reset also while the pane is closed', () => {
+    const { pane } = setup();
+    open(pane, '101');
+    open(pane, '102');
+    pane.close();
+    pane.reset();
+    expect(host()).toBeNull();
+    expect(frames.some((frame) => frame.isConnected)).toBe(false);
+  });
+
+  it('keeps the frames when a file pane covers the pane and closes again', () => {
+    const { pane, onShown } = setup();
+    open(pane, '101');
+    open(pane, '102');
+    const before = [...frames];
+    const file = fileDock();
+    file.open();
+    expect(host()?.style.display).toBe('none');
+    expect(pane.shown).toBeNull();
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('600px');
+    file.close();
+    expect(frames).toEqual(before);
+    expect(shows()).toEqual([false, true]);
     expect(pane.shown).toBe('102');
     expect(onShown).toHaveBeenLastCalledWith('102');
-    // The redirect page is loaded again with content_only=1, once.
-    expect(page.replace).toHaveBeenCalledExactlyOnceWith(
-      `${ORIGIN}/courses/12/discussion_topics/9?content_only=1`,
-    );
+    expect(document.documentElement.style.getPropertyValue('padding-right')).toBe('480px');
   });
 
-  it('keeps the first assignment while no page loads after the click', async () => {
+  it('keeps the padding and the shown row right in each order with a file pane', () => {
+    document.documentElement.style.setProperty('padding-right', '13px');
     const { pane, onShown } = setup();
-    pane.open({ assignmentId: '101', title: 'Essay' });
-    const page = frameAt(SLIM);
-    page.load(SLIM);
-    pane.open({ assignmentId: '102', title: 'Reading' });
-    // A cancelled leave question: nothing loads, and the pane stays on the first assignment.
-    await vi.advanceTimersByTimeAsync(PREVIEW_POLL_MS * 3);
-    expect(barText()).toBe('Essay');
+    const padding = () => document.documentElement.style.getPropertyValue('padding-right');
+    // A file pane first, then a frame over it.
+    const file = fileDock();
+    file.open();
+    open(pane, '101');
+    expect(padding()).toBe('480px');
+    expect(onShown).toHaveBeenLastCalledWith('101');
+    // The file pane covers again, and a Preview click on another row brings the pane back over it.
+    file.close();
+    file.open();
+    expect(pane.shown).toBeNull();
+    expect(padding()).toBe('600px');
+    open(pane, '102');
+    expect(file.host.style.display).toBe('none');
+    expect(pane.shown).toBe('102');
+    expect(padding()).toBe('480px');
+    // A close shows the file pane again, and a later Preview click covers it once more.
+    pane.close();
+    expect(file.host.style.display).toBe('');
+    expect(pane.shown).toBeNull();
+    expect(padding()).toBe('600px');
+    open(pane, '101');
     expect(pane.shown).toBe('101');
-    expect(onShown).not.toHaveBeenCalledWith('102');
+    expect(padding()).toBe('480px');
+    // The file pane closes while a closed pane is hidden: nothing shows, and the page is its own.
+    pane.close();
+    file.close();
+    expect(padding()).toBe('13px');
+    expect(pane.shown).toBeNull();
+    expect(onShown).toHaveBeenLastCalledWith(null);
+    // A file pane that opens while the pane is closed does not show the pane.
+    file.open();
+    expect(host()?.style.display).toBe('none');
+    expect(padding()).toBe('600px');
+    file.close();
+    expect(host()?.style.display).toBe('none');
+    expect(padding()).toBe('13px');
+    open(pane, '102');
+    expect(padding()).toBe('480px');
+    expect(pane.shown).toBe('102');
   });
 
-  it('takes a load by itself after a cancelled question, with no action of the student, for the arrival', () => {
-    const { pane } = setup();
-    pane.open({ assignmentId: '101', title: 'Essay' });
-    const page = frameAt(SLIM);
-    page.load(SLIM);
-    pane.open({ assignmentId: '102', title: 'Reading' });
-    page.load(SLIM);
-    expect(barText()).toBe('Reading');
-  });
-
-  describe('the listeners on the window of the frame', () => {
-    it('go in at each trusted load, in the capture phase, and not at a script load', () => {
-      const { pane } = setup();
-      pane.open({ assignmentId: '101', title: 'Essay' });
-      const page = frameAt(SLIM);
-      page.load(SLIM, false);
-      expect(page.addEventListener).not.toHaveBeenCalled();
-      page.load(SLIM);
-      expect(page.captured().sort()).toEqual(['keydown', 'pointerdown']);
-    });
-
-    it('survive a frame that went to another site, which is not ours to listen on', () => {
-      const { pane } = setup();
-      pane.open({ assignmentId: '101', title: 'Essay' });
-      const page = frameAt(SLIM);
-      page.addEventListener.mockImplementation(() => {
-        throw new DOMException('Blocked a frame', 'SecurityError');
-      });
-      expect(() => page.load('https://other.example/')).not.toThrow();
-      // The pane still follows a click once the frame is back on the site of the list.
-      pane.open({ assignmentId: '102', title: 'Reading' });
-      page.load(SLIM);
-      expect(barText()).toBe('Reading');
-    });
-  });
-
-  describe('after a Preview click that the leave question of the page declined', () => {
-    const QUIZ = `${ORIGIN}/courses/12/quizzes/5?content_only=1`;
-    const TAKE = `${ORIGIN}/courses/12/quizzes/5/take?content_only=1`;
-
-    /** The pane shows a page at `start`, the student previews Reading, and no load follows. */
-    function declined(start: string) {
-      const view = setup();
-      view.pane.open({ assignmentId: '101', title: 'Essay' });
-      const page = frameAt(start);
-      page.load(start);
-      view.pane.open({ assignmentId: '102', title: 'Reading' });
-      return { ...view, page };
-    }
-
-    it.each([
-      ['a pointer press', 'pointer'],
-      ['a key press', 'key'],
-    ] as const)(
-      'keeps the first assignment when %s in the frame comes before the next load',
-      async (_name, act) => {
-        const { pane, onShown, reload, page } = declined(SLIM);
-        expect(pane.shown).toBe('101');
-        page[act]();
-        reload.mockClear();
-        page.load(`${ORIGIN}/courses/12/discussion_topics/9`);
-        await vi.advanceTimersByTimeAsync(0);
-        expect(barText()).toBe('Essay');
-        expect(barLink()).toBe(`${PLAIN}`);
-        expect(pane.shown).toBe('101');
-        expect(onShown).not.toHaveBeenCalledWith('102');
-        expect(reload).toHaveBeenCalledExactlyOnceWith('101');
-      },
-    );
-
-    it('keeps the first assignment for a link to a discussion of the course (a)', async () => {
-      const { pane, page } = declined(SLIM);
-      page.pointer();
-      page.load(`${ORIGIN}/courses/12/discussion_topics/9`);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(barText()).toBe('Essay');
-      expect(barLink()).toBe(PLAIN);
-      expect(pane.shown).toBe('101');
-      // The page of the course is loaded again with content_only=1, as for any page of the course.
-      expect(page.replace).toHaveBeenCalledExactlyOnceWith(
-        `${ORIGIN}/courses/12/discussion_topics/9?content_only=1`,
-      );
-    });
-
-    it('keeps the first assignment when a quiz reached by a link returns to its page after a click (b)', async () => {
-      const view = setup();
-      view.pane.open({ assignmentId: '101', title: 'Essay' });
-      const page = frameAt(SLIM);
-      page.load(SLIM);
-      // A link of the page leads to the quiz, and no move is pending.
-      page.pointer();
-      page.load(QUIZ);
-      page.pointer();
-      page.load(TAKE);
-      view.pane.open({ assignmentId: '102', title: 'Reading' });
-      page.pointer();
-      page.load(QUIZ);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(barText()).toBe('Essay');
-      expect(view.pane.shown).toBe('101');
-    });
-
-    it('keeps the first assignment for a link to a discussion of a group (c)', async () => {
-      const { pane, onShown, page } = declined(SLIM);
-      page.pointer();
-      page.load(`${ORIGIN}/groups/7/discussion_topics/44`);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(barText()).toBe('Essay');
-      expect(pane.shown).toBe('101');
-      expect(onShown).not.toHaveBeenCalledWith('102');
-    });
-
-    it.each([
-      ['the next page of a classic quiz', TAKE, `${ORIGIN}/courses/12/quizzes/5/take/questions/7`],
-      ['a link in a plain assignment page', SLIM, `${ORIGIN}/courses/12/modules`],
-      ['a link to a page of another course', SLIM, `${ORIGIN}/courses/13/discussion_topics/9`],
-    ])('keeps the first assignment when %s loads after a click', async (_name, start, next) => {
-      const { pane, page } = declined(start);
-      page.pointer();
-      page.load(next);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(barText()).toBe('Essay');
-      expect(pane.shown).toBe('101');
-    });
-
-    it('keeps the first assignment on later loads too, because the move is over', async () => {
-      const { pane, page } = declined(SLIM);
-      page.key();
-      page.load(`${ORIGIN}/courses/12/modules`);
-      page.load(SLIM);
-      page.load(`${ORIGIN}/courses/12/discussion_topics/9?content_only=1`);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(barText()).toBe('Essay');
-      expect(pane.shown).toBe('101');
-    });
-
-    it('is not ended by a press that a script of the page made', () => {
-      const { page } = declined(SLIM);
-      page.pointer(false);
-      page.key(false);
-      page.load(`${ORIGIN}/courses/12/discussion_topics/9`);
-      expect(barText()).toBe('Reading');
-    });
-
-    it('moves on the first load of a new click, and a press before that click does not count', () => {
-      const { pane, page } = declined(SLIM);
-      page.pointer();
-      pane.open({ assignmentId: '102', title: 'Reading' });
-      page.load(`${ORIGIN}/courses/12/modules`);
-      expect(barText()).toBe('Reading');
-      expect(pane.shown).toBe('102');
-    });
-
-    it('lets a new Preview click replace the move that waits', async () => {
-      const { pane, page } = declined(SLIM);
-      pane.open({ assignmentId: '103', title: 'Discuss' });
-      page.load(`${ORIGIN}/courses/12/discussion_topics/9`);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(barText()).toBe('Discuss');
-      expect(pane.shown).toBe('103');
-      expect(barLink()).toBe(`${ORIGIN}/courses/12/assignments/103`);
-    });
-  });
-
-  it('moves to a graded discussion that the frame already shows, on the first click (d)', async () => {
-    const DISCUSSION = `${ORIGIN}/courses/12/discussion_topics/9?content_only=1`;
-    const { pane, onShown } = setup();
-    pane.open({ assignmentId: '101', title: 'Essay' });
-    const page = frameAt(SLIM);
-    page.load(SLIM);
-    // A link of the page leads to the discussion of row 103. No move is pending, so the header stays.
-    page.pointer();
-    page.load(DISCUSSION);
-    expect(barText()).toBe('Essay');
-    pane.open({ assignmentId: '103', title: 'Discuss' });
-    expect(frames[0]?.src).toBe(`${ORIGIN}/courses/12/assignments/103?content_only=1`);
-    // The click loads the assignment page, which Canvas sends to the same discussion path.
-    page.load(DISCUSSION);
+  it('reads the assignment that shows, and the one that it left', async () => {
+    const { pane, reload } = setup();
+    open(pane, '101');
+    reload.mockClear();
+    open(pane, '102');
     await vi.advanceTimersByTimeAsync(0);
-    expect(barText()).toBe('Discuss');
-    expect(pane.shown).toBe('103');
-    expect(onShown).toHaveBeenLastCalledWith('103');
+    expect(reload.mock.calls.map((call) => call[0]).sort()).toEqual(['101', '102']);
   });
 
-  describe('an accepted move (e)', () => {
-    it.each([
-      ['a plain assignment', `${ORIGIN}/courses/12/assignments/102?content_only=1`],
-      ['a redirect to a discussion of the course', `${ORIGIN}/courses/12/discussion_topics/9`],
-      ['a redirect to a quiz of the course', `${ORIGIN}/courses/12/quizzes/5`],
-      ['a redirect to a discussion of a group', `${ORIGIN}/groups/7/discussion_topics/44`],
-      ['a redirect to a page of a shard group', `${ORIGIN}/groups/20000000000007/pages/x`],
-    ])('moves the header on a load of %s', async (_name, next) => {
-      const { pane, onShown, reload } = setup();
-      pane.open({ assignmentId: '101', title: 'Essay' });
-      const page = frameAt(SLIM);
-      page.load(SLIM);
-      pane.open({ assignmentId: '102', title: 'Reading' });
-      reload.mockClear();
-      page.load(next);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(barText()).toBe('Reading');
-      expect(barLink()).toBe(`${ORIGIN}/courses/12/assignments/102`);
-      expect(pane.shown).toBe('102');
-      expect(onShown).toHaveBeenLastCalledWith('102');
-      expect(reload.mock.calls.map((call) => call[0]).sort()).toEqual(['101', '102']);
-    });
-
-    it('keeps the content_only=1 rewrite in the course of the list', () => {
-      const { pane } = setup();
-      pane.open({ assignmentId: '101', title: 'Essay' });
-      const page = frameAt(SLIM);
-      page.load(SLIM);
-      pane.open({ assignmentId: '102', title: 'Discuss' });
-      page.load(`${ORIGIN}/groups/7/discussion_topics/44`);
-      expect(page.replace).not.toHaveBeenCalled();
-      pane.open({ assignmentId: '103', title: 'Course discussion' });
-      page.load(`${ORIGIN}/courses/12/discussion_topics/9`);
-      expect(page.replace).toHaveBeenCalledExactlyOnceWith(
-        `${ORIGIN}/courses/12/discussion_topics/9?content_only=1`,
-      );
-    });
-
-    it('does not move on a page of another site, and the move is over', () => {
-      const { pane } = setup();
-      pane.open({ assignmentId: '101', title: 'Essay' });
-      const page = frameAt(SLIM);
-      page.load(SLIM);
-      pane.open({ assignmentId: '102', title: 'Discuss' });
-      page.load('https://other.example/groups/7/discussion_topics/9');
-      expect(barText()).toBe('Essay');
-      page.load(`${ORIGIN}/groups/7/discussion_topics/9`);
-      expect(barText()).toBe('Essay');
-    });
+  it('polls the assignment that shows', async () => {
+    const { pane, reload } = setup();
+    open(pane, '101');
+    open(pane, '102');
+    await vi.advanceTimersByTimeAsync(0);
+    reload.mockClear();
+    await vi.advanceTimersByTimeAsync(PREVIEW_POLL_MS);
+    expect(reload).toHaveBeenCalledExactlyOnceWith('102');
+    open(pane, '101');
+    await vi.advanceTimersByTimeAsync(0);
+    reload.mockClear();
+    await vi.advanceTimersByTimeAsync(PREVIEW_POLL_MS);
+    expect(reload.mock.calls.map((call) => call[0])).toContain('101');
+    expect(reload).not.toHaveBeenCalledWith('102');
   });
 
-  it('keeps the first assignment when the page of another site loads', () => {
+  it('keeps the rewrite, the read and the catcher request with the frame that loaded', async () => {
+    const { pane, reload, onFrameLoad } = setup();
+    open(pane, '101');
+    open(pane, '102');
+    const first = frameAt(SLIM('101'), 0);
+    const second = frameAt(SLIM('102'), 1);
+    await vi.advanceTimersByTimeAsync(0);
+    reload.mockClear();
+    // The frame that does not show loads its plain page: it rewrites, and the other frame is not affected.
+    first.load(`${ORIGIN}/courses/12/assignments/101`);
+    expect(first.replace).toHaveBeenCalledExactlyOnceWith(SLIM('101'));
+    expect(second.replace).not.toHaveBeenCalled();
+    expect(onFrameLoad).not.toHaveBeenCalled();
+    first.load(`${ORIGIN}/courses/12/assignments/101`);
+    expect(first.replace).toHaveBeenCalledTimes(1);
+    expect(onFrameLoad).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reload).toHaveBeenCalledExactlyOnceWith('101');
+    // The first load of the other frame is no sign of a submission.
+    reload.mockClear();
+    second.load(SLIM('102'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reload).not.toHaveBeenCalled();
+    second.load(SLIM('102'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reload).toHaveBeenCalledExactlyOnceWith('102');
+    expect(onFrameLoad).toHaveBeenCalledTimes(3);
+  });
+
+  it('asks for the file catcher when the switch goes on and a closed pane keeps frames', () => {
+    const { pane, onFrameLoad } = setup();
+    open(pane, '101');
+    pane.close();
+    pane.setFileViewer(true);
+    expect(onFrameLoad).toHaveBeenCalledOnce();
+  });
+
+  it('listens to nothing on the window of a frame', () => {
     const { pane } = setup();
-    pane.open({ assignmentId: '101', title: 'Essay' });
-    const page = frameAt(SLIM);
-    page.load(SLIM);
-    pane.open({ assignmentId: '102', title: 'Reading' });
-    page.load('https://other.example/');
-    expect(barText()).toBe('Essay');
+    open(pane, '101');
+    const page = frameAt(SLIM('101'));
+    const listen = vi.fn();
+    Object.defineProperty(page.frame, 'contentWindow', {
+      value: { location: { href: SLIM('101'), replace: vi.fn() }, addEventListener: listen },
+      configurable: true,
+    });
+    const event = new Event('load');
+    Object.defineProperty(event, 'isTrusted', { value: true });
+    page.frame.dispatchEvent(event);
+    expect(listen).not.toHaveBeenCalled();
+  });
+
+  it('removes the frames with the host when a page removes the host of a closed pane', async () => {
+    const { pane } = setup();
+    open(pane, '101');
+    open(pane, '102');
+    pane.close();
+    host()!.remove();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pane.shown).toBeNull();
+    open(pane, '101');
+    expect(frames).toHaveLength(3);
+    expect(pane.shown).toBe('101');
   });
 });
