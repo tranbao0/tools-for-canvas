@@ -3337,7 +3337,8 @@ So a student switches pages to read the instructions next to the feedback on a f
        - Under the link, one line shows the size, the similarity score and the feedback button.
          All three come from the Canvas records of the submission (item 5), so the box never waits for the files frame.
          The button says "View Feedback" by default.
-         When the files frame can be read, it refines the label to "Preview" for a file that has no notes of the teacher, and it shows the unread dot of Canvas.
+         When the files frame can be read, the button takes the label of Canvas's button, "Preview" for a file that has no notes of the teacher or the word of a translated Canvas, and it shows the unread dot of Canvas.
+         A file with no address in the details gets its button from the address of the frame row (item 5).
          The button opens the DocViewer session of Canvas in a docked feedback pane (item 6).
          The score has Canvas's look and color, and it opens the report in a new tab (item 5, "The similarity score").
        - "Comments:" shows Canvas's own comments list and form, moved into the box (item 4).
