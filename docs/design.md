@@ -1923,7 +1923,8 @@ I read each of them in the package source.
   `GET /api/v1/announcements` (`AnnouncementsApiController#index`) only lists the announcements.
   `GET /api/v1/courses/:id/discussion_topics/:id/view` (the `view` action) logs the access and renders the materialized view of the entries, and it does not change the read state of the topic.
   The topic HTML page does mark it: `DiscussionTopicsController#show` calls `change_read_state("read")` for the signed-in user when the student can read the topic.
-  So the extension never loads the topic page itself, and it reads announcements with only the first two requests.
+  So the extension never loads the topic page itself.
+  It reads announcements with these two requests and with the GraphQL read of the widget list (decision 22, choice 2), which `discussionParticipantsConnection` serves with no change of the read state.
   The read mark of decision 24 uses `PUT` and `DELETE` on `/api/v1/courses/:id/discussion_topics/:id/read` (`mark_topic_read` and `mark_topic_unread`), which change only the read state of the topic.
   A page that the student opens on Canvas, such as with Ctrl+click on "Read more", marks the topic as read by Canvas, as it does without the extension.
 
@@ -2008,6 +2009,9 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    - A row shows the avatar, the title, "Sent by NAME | Nov 2, 2026", the course name, the snippet, "Read more" and the read control at the right.
      The avatar is the image of the author, or the initials on a color of a fixed set (white text, contrast 4.5 or more) when there is no image or it fails.
      The image has an empty `alt`, `loading="lazy"` and `referrerpolicy="no-referrer"`, and only an http or https address passes.
+     An address on the Canvas origin passes only as a file, an equation image or an asset path (`/files/`, `/courses/:id/files/`, `/users/:id/files/`, `/groups/:id/files/`, `/accounts/:id/files/`, `/equation_images/`, `/images/`, `/dist/`), the same rule as for an image in a message, because a GET of a topic page marks the topic as read.
+     Any other Canvas page as an avatar address drops, and the initials show.
+     The background applies the rule when it projects the row, and the page checks the scheme again.
      The sizes are the rem sizes of the widget: the avatar 3.125rem, the title bold 0.75rem cut at 75 characters, the meta line 0.75rem, the snippet 0.75rem cut at 120 characters with the tags taken out, "Read more" 0.875rem.
      The title shows whole while the message is open.
    - "Read more" opens the whole message in the row, with the message component and the sanitizer of this decision, and "Show less" closes it.
