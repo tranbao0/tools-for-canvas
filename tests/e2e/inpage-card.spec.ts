@@ -3,6 +3,7 @@
  * height (design decision 4, "In-page rules"). The header and the rings stay at the top of the
  * card, and the groups scroll below them.
  */
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Locator, Page, Worker } from '@playwright/test';
 import { errorReply, type CanvasState } from './support/canvas-state';
@@ -22,6 +23,18 @@ import {
 } from './support/weekrow';
 
 const QUIZ_3 = 'Quiz 3: Cell membranes';
+/** The Lato of the fixture pages, as faces for the family that the card asks for first. */
+const LATO_FACES = [
+  ['Regular', 400],
+  ['Bold', 700],
+]
+  .map(
+    ([name, weight]) =>
+      `@font-face { font-family: "Lato Extended"; font-weight: ${weight}; src: url(data:font/woff2;base64,${readFileSync(
+        path.join('tests', 'fixtures', 'pages', 'fonts', `Lato-${name}.woff2`),
+      ).toString('base64')}) format("woff2"); }`,
+  )
+  .join('\n');
 const MONTH: Settings = { ...DEFAULT_SETTINGS, span: { kind: 'month', days: 30 } };
 const SHOTS = path.join(process.cwd(), 'screenshots', 'dashboard-column');
 
@@ -1114,6 +1127,13 @@ test.describe('the full list in the card', () => {
       background,
     }) => {
       await openBottomLayout(context, page, background, LAYOUTS[2]!, 800);
+      // Canvas draws the card in Lato, which is wider than the font of a test machine, so the
+      // page loads the fixture Lato, and the names are measured in it.
+      await page.addStyleTag({ content: LATO_FACES });
+      await page.evaluate(() => document.fonts.ready);
+      await expect
+        .poll(() => page.evaluate(() => document.fonts.check('700 14px "Lato Extended"')))
+        .toBe(true);
       const list = inpageList(page);
       await list.locator('.wr').evaluate((card, px) => {
         card.style.width = `${px}px`;
@@ -1124,14 +1144,24 @@ test.describe('the full list in the card', () => {
       const parts = await list.locator('.wr-views .wr-segment').evaluateAll((labels) =>
         labels.map((label) => {
           const box = label.getBoundingClientRect();
-          // Every visible piece of text lies inside its part.
+          // Every visible piece of text lies inside its part, in width and in height: a name
+          // that wraps to a third line would stand taller than the part.
           const outside = [...label.children]
             .filter((child) => child.getBoundingClientRect().width > 0)
             .filter((child) => {
               const inner = child.getBoundingClientRect();
-              return inner.left < box.left - 0.5 || inner.right > box.right + 0.5;
+              return (
+                inner.left < box.left - 0.5 ||
+                inner.right > box.right + 0.5 ||
+                inner.top < box.top - 0.5 ||
+                inner.bottom > box.bottom + 0.5
+              );
             });
-          return { clipped: label.scrollWidth > label.clientWidth, outside: outside.length };
+          return {
+            clipped:
+              label.scrollWidth > label.clientWidth || label.scrollHeight > label.clientHeight,
+            outside: outside.length,
+          };
         }),
       );
       expect(parts).toEqual([
@@ -1545,4 +1575,33 @@ test.describe('screenshots of the Month span', () => {
       });
     }
   }
+});
+
+test.describe('while the list loads', () => {
+  test('the parts of the switch and the heading of the open group show no count, and say that they load', async ({
+    context,
+    page,
+    background,
+  }) => {
+    // Canvas answers in 1.5 s and Done is saved as open, so the card draws before any item came.
+    await saveSettings(background, { ...MONTH, openGroup: 'done' });
+    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }], {
+      latencyMs: 1500,
+    });
+    await addCsrfCookie(context, canvas.origin);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openCanvasPage(page, canvas.origin);
+    const list = inpageList(page);
+    await expect(list.getByRole('status')).toHaveText('Loading your list');
+    for (const kind of ['todo', 'no_due_date', 'done']) {
+      const part = list.locator(`.wr-pinned [data-group="${kind}"]`);
+      await expect(part.locator('.wr-count')).toHaveText('?');
+      await expect(part.locator('.wr-sr')).toHaveText('Loading');
+    }
+    const heading = groupArea(list).locator('.wr-group-head');
+    await expect(heading.locator('.wr-count')).toHaveText('?');
+    await expect(heading.locator('.wr-sr')).toHaveText('Loading');
+    // Once the items arrive, the counts are numbers again.
+    await expect(list.locator('.wr-pinned [data-group="todo"] .wr-count')).toHaveText(/^\d+$/);
+  });
 });

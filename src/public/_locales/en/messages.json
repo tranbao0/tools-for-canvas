@@ -200,6 +200,9 @@
   "countNotLoaded": {
     "message": "Not loaded"
   },
+  "countLoading": {
+    "message": "Loading"
+  },
   "nothingUndatedInSpan": {
     "message": "Nothing without a due date in this span."
   },
