@@ -259,6 +259,30 @@ it('asks the reader to stop a text file after 2 MB and a few bytes', async () =>
   expect((host.readFile.mock.calls[0] as unknown[])[3]).toBeUndefined();
 });
 
+it('puts the scroll offset of a text file back when its tab shows again', async () => {
+  canPlay('maybe');
+  const host = { readFile: vi.fn(async () => new Uint8Array([104, 105])), loadPdfjs: vi.fn() };
+  const text = (active: boolean) => (
+    <MediaTab
+      {...base}
+      host={host as unknown as PdfHost}
+      name="n.txt"
+      contentType="text/plain"
+      active={active}
+    />
+  );
+  const view = render(text(true));
+  await waitFor(() => expect(document.querySelector('pre')?.textContent).toBe('hi'));
+  const scroller = document.querySelector('.fv-media')!;
+  scroller.scrollTop = 300;
+  scroller.dispatchEvent(new Event('scroll'));
+  view.rerender(text(false));
+  // Firefox resets the offset of a hidden scroller and fires no scroll event.
+  scroller.scrollTop = 0;
+  view.rerender(text(true));
+  expect(scroller.scrollTop).toBe(300);
+});
+
 it('shows an empty text file as a pre element', async () => {
   const host = {
     readFile: vi.fn(async () => new Uint8Array()),

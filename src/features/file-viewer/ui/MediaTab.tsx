@@ -245,6 +245,18 @@ export function MediaTab(props: {
     if (props.active) setReleased(false);
     else if (heavy.current) setReleased(true);
   }, [props.active]);
+  // Firefox resets the offset of a scroller that `display: none` hides, and no scroll event
+  // follows. The tab keeps the offsets it had while it showed and puts them back when it shows.
+  const places = useRef(new Map<Element, number>());
+  const keepPlace = (event: Event) => {
+    if (shown.current && event.target instanceof Element)
+      places.current.set(event.target, event.target.scrollTop);
+  };
+  useLayoutEffect(() => {
+    if (!props.active) return;
+    for (const [scroller, top] of places.current)
+      if (scroller.isConnected && scroller.scrollTop !== top) scroller.scrollTop = top;
+  }, [props.active]);
   // A tab that is not shown must not keep playing.
   useEffect(() => {
     if (props.active) return;
@@ -273,7 +285,7 @@ export function MediaTab(props: {
     return zoom ?? (fitted > 0 ? fitted : 1);
   };
   return (
-    <div ref={root} hidden={!props.active} class="fv-media">
+    <div ref={root} hidden={!props.active} class="fv-media" onScrollCapture={keepPlace}>
       {error && (
         <div role="alert">
           <p>{error.text}</p>

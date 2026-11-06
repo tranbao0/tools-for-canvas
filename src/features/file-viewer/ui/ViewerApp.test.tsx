@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Tabs } from '../model';
 import type { PdfjsLib } from '../pdf/types';
 import type { PaneFile } from './FileCard';
+import { createCoveredStore } from './covered';
 import { createFullViewStore } from './fullView';
 import { createOpenSource } from './openSource';
 import { ViewerApp, type PaneHost } from './ViewerApp';
@@ -48,6 +49,7 @@ function setup(overrides: Partial<PaneHost> = {}, stored: Tabs = { ids: [], acti
     }),
     closePane: vi.fn(),
     fullView: createFullViewStore(vi.fn()),
+    covered: createCoveredStore(),
     readFile: vi.fn(() => new Promise<Uint8Array>(() => undefined)),
     loadPdfjs: vi.fn(() => new Promise<PdfjsLib>(() => undefined)),
     ...overrides,
@@ -110,6 +112,38 @@ describe('the Full view button', () => {
     expect(screen.getByRole('button', { name: 'Exit full view' })).not.toBeNull();
     await act(async () => fullView.receive({ on: true, available: false }));
     expect(screen.queryByRole('button', { name: /full view/i })).toBeNull();
+  });
+});
+
+describe('a pane that another pane covers', () => {
+  it('pauses the media of the active tab, and treats no tab as active until the pane shows again', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fixture');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('maybe');
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+    const covered = createCoveredStore();
+    const loadFile = vi.fn(async () => ({
+      name: 'tone.wav',
+      contentType: 'audio/wav',
+      size: 1,
+      url: '/files/4/download',
+      courseId: null,
+    }));
+    const { open } = setup({
+      covered,
+      loadFile,
+      readFile: vi.fn(async () => new Uint8Array([1])),
+    });
+    await open('4');
+    await waitFor(() => expect(document.querySelector('audio')).not.toBeNull());
+    const tab = document.querySelector('.fv-media')!;
+    expect(tab.hasAttribute('hidden')).toBe(false);
+    pause.mockClear();
+    await act(async () => covered.receive(true));
+    await waitFor(() => expect(pause).toHaveBeenCalled());
+    expect(tab.hasAttribute('hidden')).toBe(true);
+    await act(async () => covered.receive(false));
+    expect(tab.hasAttribute('hidden')).toBe(false);
   });
 });
 
