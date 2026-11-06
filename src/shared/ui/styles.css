@@ -173,6 +173,9 @@
   /* The scroll bar sits in the side padding of the card, so it never covers the day counts. */
   margin-inline-end: calc(4px - var(--wr-pad-x));
   padding-inline-end: calc(var(--wr-pad-x) - 4px);
+  /* The tint of the row that the pane shows reaches 6 px past the row, so the region has that room. */
+  margin-inline-start: -6px;
+  padding-inline-start: 6px;
   /* The last row keeps some room above the line of the bottom section. */
   padding-block-end: 8px;
   overflow-y: auto;
@@ -1092,6 +1095,19 @@
   height: 15px;
 }
 
+/* A card too narrow for the word keeps the icon, and the button keeps its name. */
+@container wr (width < 160px) {
+  .wr-preview {
+    justify-content: center;
+    width: 26px;
+    padding: 0;
+  }
+
+  .wr-preview-text {
+    display: none;
+  }
+}
+
 .wr-preview .av-pane-fill {
   display: none;
 }
@@ -1111,8 +1127,18 @@
   display: inline;
 }
 
-/* The row of the assignment that the pane shows. */
+/* The row of the assignment that the pane shows. The tint reaches 6 px past the row on both sides,
+   behind it, so the text of the row stays where it was. */
 .wr-item.is-open {
+  position: relative;
+  isolation: isolate;
+}
+
+.wr-item.is-open::before {
+  content: '';
+  position: absolute;
+  inset: 0 -6px;
+  z-index: -1;
   border-radius: 6px;
   background: light-dark(#e9f2fb, var(--wr-selected));
   box-shadow: inset 3px 0 0 var(--wr-brand);
