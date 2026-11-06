@@ -141,6 +141,21 @@ const paneFrames = (page: Page): Frame[] =>
 const paddingRight = (page: Page): Promise<number> =>
   page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).paddingRight) || 0);
 
+/**
+ * Clicks the close button of the assignment pane with the mouse. The root of the pane is closed,
+ * but a frame of the Canvas origin reaches it, which is how a test finds the button.
+ */
+async function closeAssignment(page: Page): Promise<void> {
+  const frame = paneFrames(page)[0];
+  if (frame === undefined) throw new Error('The pane has no frame');
+  const box = await frame.evaluate(() => {
+    const root = window.frameElement!.getRootNode() as ShadowRoot;
+    const rect = root.querySelector('.icon-btn')!.getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.click(box.x, box.y);
+}
+
 async function shot(page: Page, name: string): Promise<void> {
   if (SHOTS !== '') await page.screenshot({ path: `${SHOTS}/${name}.png` });
 }
@@ -231,7 +246,7 @@ test('on the classic dashboard the weekly dock steps aside for the pane and come
   const box = (await page.locator(PANE_HOST).boundingBox())!;
   expect(await paddingRight(page)).toBe(box.width);
   await shot(page, 'classic-dock-open');
-  await page.locator(PANE_HOST).getByRole('button', { name: 'Close assignment' }).click();
+  await closeAssignment(page);
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
   await expect(page.locator(WEEKLY_DOCK)).toBeVisible();
 });
