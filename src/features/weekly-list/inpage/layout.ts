@@ -13,6 +13,7 @@ import {
   setInlineStyles,
   keepCardScroll,
   moveContainer,
+  pixels,
   restoreScrollPositions,
   scrollPartOf,
   setContainerStyle,
@@ -57,11 +58,6 @@ export interface LayoutOptions {
    * of the same length.
    */
   waitForGrid?: boolean;
-}
-
-function pixels(value: string, fallback: number): number {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 /** The point that `top` and `left` of an absolutely positioned element count from. */

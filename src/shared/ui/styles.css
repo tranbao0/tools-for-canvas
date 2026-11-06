@@ -497,7 +497,8 @@
 
 .wr-link-btn,
 .wr-this-week,
-.wr-sub-toggle {
+.wr-sub-toggle,
+.wr-ann-read {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -506,7 +507,9 @@
   white-space: nowrap;
 }
 
-:is(.wr-link-btn, .wr-sub-toggle, .wr-title, .wr-this-week):hover:not([aria-disabled='true']) {
+:is(.wr-link-btn, .wr-sub-toggle, .wr-title, .wr-this-week, .wr-ann-read, .wr-ann-title):hover:not(
+    [aria-disabled='true']
+  ) {
   color: var(--wr-link-hover);
   text-decoration: underline;
 }
@@ -1653,11 +1656,6 @@ input:checked + .wr-switch-track > .wr-switch-knob {
   overflow-wrap: anywhere;
 }
 
-.wr-ann-title:hover {
-  color: var(--wr-link-hover);
-  text-decoration: underline;
-}
-
 .wr-ann.is-unread .wr-ann-title {
   font-weight: 700;
 }
@@ -1689,20 +1687,6 @@ input:checked + .wr-switch-track > .wr-switch-knob {
 
 .wr-ann-actions:not(:empty) {
   margin-top: 4px;
-}
-
-.wr-ann-read {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 24px;
-  color: var(--wr-link);
-  white-space: nowrap;
-}
-
-.wr-ann-read:hover {
-  color: var(--wr-link-hover);
-  text-decoration: underline;
 }
 
 .wr-ann-circle {

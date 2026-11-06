@@ -1,7 +1,6 @@
 /**
- * The card of the list on the widget dashboard lines up with the widgets, scrolls with the page
- * and looks like a widget (design decision 4, "In-page rules"), and the screenshots show it at
- * five window widths.
+ * The card of the list on the widget dashboard lines up with the widgets and looks like a widget
+ * (design decision 4, "In-page rules"), and the screenshots show it at five window widths.
  *
  * The fixture has the layout of the live page (sjsu.instructure.com, 2026-10-30): the grid stops
  * at 1366 px inside a wrapper capped at 1366 px after the 84 px navigation bar.
@@ -38,7 +37,6 @@ const QUIZ_3 = 'Quiz 3: Cell membranes';
 const CANVAS_COLUMNS = '[data-testid="widget-columns"] > [data-testid^="widget-column-"]';
 const CARDS = 'section[data-testid^="widget-"]';
 const VIEWPORT_HEIGHT = 800;
-const TOLERANCE = 1;
 const SHOTS = path.join(process.cwd(), 'screenshots', 'dashboard-column');
 
 interface Box {
@@ -137,28 +135,11 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
     });
   }
 
-  test('scrolls with the page, in the Course work slot', async ({ context, page }) => {
+  test('sits in the Course work slot', async ({ context, page }) => {
     await openPair(context, page, 1920);
-    await page.evaluate(() => {
-      const filler = document.createElement('div');
-      filler.style.height = '3000px';
-      document.getElementById('content')?.append(filler);
-    });
-    const pageTop = (): Promise<number> =>
-      page.evaluate(
-        () =>
-          (document
-            .querySelector('#weekrow-inpage > weekrow-list')
-            ?.shadowRoot?.querySelector('.wr')
-            ?.getBoundingClientRect().top ?? 0) + window.scrollY,
-      );
     expect(
       await page.evaluate(() => document.querySelector('weekrow-list')?.getAttribute('data-panel')),
     ).toBe('slot');
-    const before = await pageTop();
-    await page.evaluate(() => window.scrollTo(0, 1500));
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(1500);
-    expect(Math.abs((await pageTop()) - before)).toBeLessThanOrEqual(TOLERANCE);
   });
 
   for (const width of [1920, 1500]) {

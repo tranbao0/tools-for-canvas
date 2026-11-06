@@ -15,7 +15,7 @@ beforeEach(() => drawDashboard());
 
 describe('the grid', () => {
   it('finds the columns and the edit mode', () => {
-    expect(findWidgetGrid(document)?.canvasColumns).toHaveLength(2);
+    expect(findWidgetGrid(document)?.firstCards).toHaveLength(2);
     expect(inEditMode(document)).toBe(false);
   });
 });

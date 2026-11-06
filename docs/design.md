@@ -1526,7 +1526,7 @@ Notes on these states:
 - C. Svelte 5.
 - D. Lit.
 
-**Decision:** WXT 0.21 with the exact version pinned, TypeScript in strict mode, and Preact 11 with `@preact/signals`.
+**Decision:** WXT 0.21 with the exact version pinned, TypeScript in strict mode, and Preact 11.
 
 **Why WXT:**
 
@@ -1566,7 +1566,7 @@ These sizes come from one test build of the same small app [19].
   The library adds about 4 KB gzip to each content script.
 - The in-page UI uses px units, because rem units follow the page's font size [19].
 - Plain CSS with custom properties for colors and spacing; no CSS framework.
-- No runtime dependencies besides Preact and `@preact/signals`.
+- No runtime dependencies besides Preact.
 - Each entry point must stay under 45 KB after gzip, except `inpage.js`, which may reach 48 KB, and the detector must stay under 2 KB, because the detector runs on every https page.
   Every entry point loads from the extension's own files, not over the network.
   The limit was 30 KB until 2026-10-29, when the span feature and the dashboard column filled it.

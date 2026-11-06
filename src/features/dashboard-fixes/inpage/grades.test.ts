@@ -79,7 +79,6 @@ describe('gradesFix', () => {
     'combines server main, server course, and observation (%s, %s, %s)',
     (server, course, observation, expected) => {
       gradesFix({
-        serverStates: new Map(),
         observed: new Map([['course-grades-widget', new Map([['107', observation]])]]),
       }).apply(
         fakeContext({
@@ -231,7 +230,6 @@ it('keeps an observed hide in the page store', () => {
   drawDashboard();
   const store = {
     observed: new Map([['course-grades-widget', new Map([['107', false]])]]),
-    serverStates: new Map(),
   };
   const fix = gradesFix(store);
   fix.apply(

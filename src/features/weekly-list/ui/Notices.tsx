@@ -2,10 +2,11 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { t, tp, type MessageKey, type PluralKey } from '../../../shared/ui/i18n';
-import type { ItemView, Offer, UndoInfo, WeekView } from '../model/types';
+import type { Offer, UndoInfo, WeekView } from '../model/types';
 import { formatTimeOrDateTime, hostOf } from './format';
 import { CloseIcon } from '../../../shared/ui/icons';
 import { HostText, MARKER, withNode } from '../../../shared/ui/parts';
+import { viewItems } from '../surface/runtime';
 import { ringName } from './Rings';
 
 /** The browser says it has no network. `navigator.onLine` is `true` when it does not know. */
@@ -133,15 +134,6 @@ export function joinNames(names: readonly string[]): string {
   return t('listAnd', names.slice(0, -1).join(', '), last);
 }
 
-function groupItems(view: WeekView): ItemView[] {
-  return view.groups.flatMap((group) => [
-    ...group.items,
-    ...group.older,
-    ...group.skipped,
-    ...group.doneUndated,
-  ]);
-}
-
 /**
  * The name of the filtered course: from its ring, else from an item of the view (the rings may
  * be off), else from the course list. `null` when there is no filter or no name.
@@ -155,7 +147,7 @@ export function filterName(
   if (filter === null) return t('personal');
   const ring = view.rings.find((r) => r.courseId === filter);
   if (ring) return ringName(ring);
-  const item = groupItems(view).find((entry) => entry.courseId === filter);
+  const item = viewItems(view).find((entry) => entry.courseId === filter);
   if (item) return item.contextLabel;
   return courses.find((course) => course.id === filter)?.name ?? null;
 }
