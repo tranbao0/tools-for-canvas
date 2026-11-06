@@ -14,8 +14,9 @@
  * For a submission type that the view shows (the replace mode), it hides the frame. The box then
  * also holds the files with their similarity scores and the feedback buttons, and Canvas's own
  * comments column, moved into it (`comments.ts`). The files, the scores and the session addresses
- * come from the Canvas records, so the page never depends on the markup of the frame and never
- * waits for it (`files.ts`). The frame refines the label of a feedback button and its unread mark,
+ * come from the Canvas records, so a normal page does not wait for the frame (`files.ts`). A file
+ * whose session address failed the check is the exception, because only a row of the frame can
+ * prove its button. The frame refines the label of a feedback button and its unread mark,
  * and its row gives the session address of a file whose details have none
  * (`submissionFrame.ts`). The host in the content area holds the instructions, the text or
  * address of the submission, and the rubric. In the mode 'above' the frame and the comments column
@@ -23,8 +24,8 @@
  * area. That is the case in four situations, and each writes a console line with its reason
  * (`modeLog.ts`): a submission type that the view does not show (media recording, quiz, LTI tool,
  * student annotation, discussion), content in a report cell of an LTI 1.3 asset processor in the
- * frame, report data of a file that the view cannot show, and a preview button of Canvas in the
- * frame for a file that has no usable session address from the details or from the frame row. A
+ * frame, report data of a file that the view cannot show, and a file whose session address failed the
+ * check, until a row of the frame gives it a good one. A
  * mount that fails also leads to that mode. A
  * style element in the head carries the rules of the page, and those of the mode: the hidden frame,
  * the rules for the comments, and the rules for Canvas's own rubric when the view shows it
