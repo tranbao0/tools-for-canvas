@@ -834,3 +834,53 @@ it('confirms the cookie of a first load that stays the same', async () => {
   expect((await sessionCacheItem.getValue())?.userCheck?.fingerprints).toEqual(['load-start']);
   expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
 });
+
+it.each(['dashboard', 'visibility', 'feed', 'viewer', 'state', 'reader'] as const)(
+  'drops a %s read when another Canvas loads during the surface check',
+  async (surface) => {
+    const h = await loaded();
+    vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+    h.canvas.getWidgetGradeVisibility = async () => ({ gradeVisibilities: {}, showGrades: {} });
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    vi.mocked(h.deps.surfaceUsesRequestStore).mockImplementationOnce(async () => {
+      entered();
+      return new Promise<boolean>((resolve) => {
+        release = () => resolve(true);
+      });
+    });
+    const reply =
+      surface === 'dashboard'
+        ? h.owner.dashboardData(ORIGIN, 1)
+        : surface === 'visibility'
+          ? h.owner.dashboardGradeVisibility(undefined, 1)
+          : surface === 'feed'
+            ? h.owner.announcementFeed(
+                { surface: 'panel', scopeCourseId: null, tab: null, force: false },
+                1,
+              )
+            : surface === 'viewer'
+              ? h.owner.viewerUserId(ORIGIN, 1)
+              : surface === 'reader'
+                ? h.owner.announcement(C.biology, '11', ORIGIN, 1).catch(() => null)
+                : h.owner.getState(PANEL, 1);
+    await waiting;
+    signInOtherUser(h);
+    const other = 'https://other.instructure.com';
+    await h.deps.store.origin.setValue(other);
+    await h.owner.originChanged(other);
+    await h.owner.settled();
+    expect((await h.owner.dashboardData()).userId).not.toBe(IDS.user);
+    release();
+    const result = await reply;
+    if (surface === 'dashboard') expect(result).toEqual({ origin: ORIGIN, courses: [] });
+    else if (surface === 'visibility')
+      expect(result).toEqual({ origin: ORIGIN, courses: [], gradeVisibilities: null });
+    else if (surface === 'feed') expect(result).toMatchObject({ status: 'unavailable' });
+    else if (surface === 'viewer' || surface === 'reader') expect(result).toBeNull();
+    else expect(result).toEqual({ kind: 'loading' });
+  },
+);
