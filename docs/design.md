@@ -2934,7 +2934,11 @@ With the pane read alone, the default run of the test failed before the fix.
      It writes the name when a pane gets a token, and the data owner writes it at every sign-in proof, at both commits of a first session and when it loads a stored session.
      The data owner compares the name with the student each time, so a change of student clears the viewer also when the worker stopped in between and lost its memory.
      Another stored name at a new token starts the same clear, so a change that the data owner missed still clears.
-     The clearing sets the round first and removes the name last, and the new name comes after the clearing ended, so a stop in between repeats the clear.
+     The clearing sets the round first and removes the name last, and the new name comes after a clearing that worked, so a stop or a failed step leaves the old name, and the next compare repeats the clear.
+     A compare at a new token writes the new name also after a failed clear, so a step that keeps failing cannot close the panes at every read.
+     The reset needs no answer, because a tab with an open dialog gives none, so a clear waits at most 1 second for the tabs.
+     A viewer read waits at most 3 seconds for a running claim, and refuses at the limit.
+     A worker that starts with a stored session and cannot read the name clears nothing, and the next token compares again.
      A pane whose first read of the tabs was refused has no token and reads the tabs again before each file loads, and the file loads even when that read fails.
      The reads and writes of one browser tab run in the order they arrive.
      A pane or page script whose read was refused keeps its tabs in memory, writes nothing, and reads again at the next request.

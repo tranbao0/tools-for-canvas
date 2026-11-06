@@ -78,6 +78,44 @@ describe('the student of the viewer data', () => {
     send.mockRestore();
   });
 
+  it('ends a clear when a tab never answers the reset', async () => {
+    vi.useFakeTimers();
+    const query = vi.spyOn(fakeBrowser.tabs, 'query').mockResolvedValue([{ id: 3 }] as never);
+    const send = vi
+      .spyOn(fakeBrowser.tabs, 'sendMessage')
+      .mockReturnValue(new Promise(() => undefined) as never);
+    let done = false;
+    void clearViewerTabs().then(() => (done = true));
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(done).toBe(true);
+    query.mockRestore();
+    send.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('names the new student after a clear that failed, so the repeats end', async () => {
+    const { host, sender, store } = setup();
+    store.set('viewer:session:student', 'u9');
+    const failed = vi.spyOn(fakeBrowser.tabs, 'query').mockRejectedValue(new Error('busy'));
+    await tabsGet(sender, host);
+    expect(store.get('viewer:session:student')).toBe('u1');
+    failed.mockRestore();
+  });
+
+  it('finds a saved position under the other form of one student id', async () => {
+    const { host, pane } = setup();
+    const userId = vi.mocked(host.userId);
+    const position = { type: 'viewer:position-get', fileId: '7' };
+    userId.mockResolvedValue('2~5');
+    const { token } = (await routeViewerMessage(position, pane, host)) as { token: string };
+    const save = { type: 'viewer:position-set', fileId: '7', page: 3, zoom: 1, token };
+    await routeViewerMessage(save, pane, host);
+    userId.mockResolvedValue('20000000000005');
+    expect(await routeViewerMessage(position, pane, host)).toMatchObject({
+      position: { page: 3 },
+    });
+  });
+
   it('keeps the student until every step of a clear ended', async () => {
     await fakeBrowser.storage.session.set({ 'viewer:session:student': 'u9' });
     const failed = vi.spyOn(fakeBrowser.tabs, 'query').mockRejectedValue(new Error('busy'));

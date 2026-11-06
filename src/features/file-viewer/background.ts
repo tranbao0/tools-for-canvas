@@ -391,6 +391,8 @@ function enqueue<T>(tabId: number, run: () => Promise<T>): Promise<T> {
 }
 
 const EPOCH_KEY = `${SESSION_PREFIX}epoch`;
+/** How long a clear waits for the tabs to take the reset. */
+const RESET_WAIT_MS = 1000;
 
 /**
  * Records the student that a pane got a token for as the owner of the viewer data. The data owner
@@ -402,7 +404,11 @@ async function recordStudent(host: Pick<ViewerHost, 'get' | 'set'>, id: string):
   const student = studentName(id);
   const held = await host.get(STUDENT_KEY);
   if (held === student) return;
-  if (typeof held === 'string') await clearViewerTabs();
+  // The new name ends the repeats: a step that keeps failing must not close the panes at every
+  // read. The tokens of the earlier student fail either way.
+  if (typeof held === 'string') {
+    await clearViewerTabs().catch((error: unknown) => logFailure('viewer tabs', error));
+  }
   await host.set(STUDENT_KEY, student);
 }
 async function readEpoch(host: Pick<ViewerHost, 'get'>): Promise<number> {
@@ -632,11 +638,15 @@ export function clearViewerTabs(): Promise<void> {
     );
     const results = await Promise.allSettled([
       browser.tabs.query({}).then(async (tabs) => {
-        await Promise.allSettled(
-          tabs
-            .filter((tab) => tab.id !== undefined)
-            .map(async (tab) => browser.tabs.sendMessage(tab.id!, { type: 'viewer:reset' })),
-        );
+        // The reset needs no answer, and a tab with an open dialog or a blocked page gives none.
+        await Promise.race([
+          Promise.allSettled(
+            tabs
+              .filter((tab) => tab.id !== undefined)
+              .map(async (tab) => browser.tabs.sendMessage(tab.id!, { type: 'viewer:reset' })),
+          ),
+          new Promise((resolve) => setTimeout(resolve, RESET_WAIT_MS)),
+        ]);
       }),
       clearPositions(),
       keys.length > 0 ? browser.storage.session.remove(keys) : Promise.resolve(),
