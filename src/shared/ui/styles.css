@@ -177,8 +177,18 @@
   padding-block-end: 8px;
   overflow-y: auto;
   overflow-anchor: none;
-  overscroll-behavior: contain;
   scrollbar-width: thin;
+}
+
+/* At the end of a list the wheel pulls the rows a little (see pull.ts), and they spring back. */
+.wr-scroll > *,
+.wr-group-area > * {
+  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.wr-pulling > * {
+  transform: translateY(var(--wr-pull));
+  transition: none;
 }
 
 .wr-task-panel {
@@ -1923,6 +1933,10 @@ input:checked + .wr-switch-track > .wr-switch-knob {
 
   .wr-ring-arc {
     transition: none;
+  }
+
+  .wr-pulling > * {
+    transform: none;
   }
 }
 
