@@ -3231,6 +3231,7 @@ With the pane read alone, the default run of the test failed before the fix.
      The input takes a whole number.
      A number outside the document goes to the nearest page.
      Other text is rejected and the input shows the page in view again.
+     Escape cancels the typed number: the input shows the page in view again, no page change follows, and the pane stays open.
    - **Zoom.**
      The default is "Fit width".
      The menu offers "Fit width", "Fit page", 50, 75, 100, 125, 150, 200, 300 and 400 percent.
