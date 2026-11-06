@@ -2,21 +2,14 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { IDS, SCENARIO_NOW, buildScenario, type Scenario } from '../fixtures/scenario';
 import { test as realClockTest } from './support/extension';
 import { apiRoutes, saveAddress, savedAddress } from './support/scenario-api';
-import { serveFakeCanvas, type FakeCanvas, type RecordedRequest } from './support/fake-canvas';
-import { expect, openCanvasPage as openFixturePage, test } from './support/weekrow';
+import { overrideWrites } from './support/canvas-state';
+import { serveFakeCanvas } from './support/fake-canvas';
+import { CSRF_TOKEN, addCsrfCookie, expect, openCanvasPage, test } from './support/weekrow';
 
-/** The raw `_csrf_token` cookie value is URL-encoded; the header carries the decoded value. */
-const CSRF_TOKEN = 'tok+en/==';
 const QUIZ_3 = 'Quiz 3: Cell membranes';
 const LAB_7 = 'Lab 7: Titration notebook';
 const LIBRARY_BOOKS = 'Return library books';
 const LIBRARY_BOOKS_ID = IDS.notes.libraryBooksToday;
-
-function overrideWrites(canvas: FakeCanvas): RecordedRequest[] {
-  return canvas.requests.filter(
-    (request) => request.path.startsWith('/api/v1/planner/overrides') && request.method !== 'GET',
-  );
-}
 
 interface OverrideWrites {
   /** The JSON bodies of the override POST and PUT requests, in order. */
@@ -83,23 +76,6 @@ async function rememberOverrideWrites(
   return writes;
 }
 
-async function openCanvasPage(page: Page, canvas: FakeCanvas, path = '/'): Promise<void> {
-  await openFixturePage(page, canvas.origin, path);
-}
-
-async function addCsrfCookie(context: BrowserContext, canvas: FakeCanvas): Promise<void> {
-  await context.addCookies([
-    {
-      name: '_csrf_token',
-      value: encodeURIComponent(CSRF_TOKEN),
-      domain: new URL(canvas.origin).hostname,
-      path: '/',
-      secure: true,
-      sameSite: 'Lax',
-    },
-  ]);
-}
-
 /**
  * Stops the extension service worker, as Chrome does after 30 idle seconds, and waits until the
  * open panel has started it again. Everything the old worker kept in memory is then gone.
@@ -151,7 +127,7 @@ test.describe('side panel page', () => {
     const scenario = buildScenario(SCENARIO_NOW);
     const canvas = await serveFakeCanvas(context, apiRoutes(scenario));
     const writes = await rememberOverrideWrites(context, scenario);
-    await addCsrfCookie(context, canvas);
+    await addCsrfCookie(context, canvas.origin);
     await saveAddress(serviceWorker, canvas.origin);
     await page.goto(extensionUrl('sidepanel.html'));
     const today = page.locator('section[data-group="today"]');
@@ -192,7 +168,7 @@ test.describe('undo', () => {
         { method: 'DELETE', path: `/api/v1/planner_notes/${LIBRARY_BOOKS_ID}`, body: {} },
         ...apiRoutes(scenario),
       ]);
-      await addCsrfCookie(context, canvas);
+      await addCsrfCookie(context, canvas.origin);
       await saveAddress(serviceWorker, canvas.origin);
       await page.goto(extensionUrl('sidepanel.html'));
       const today = page.locator('section[data-group="today"]');
@@ -221,7 +197,7 @@ test.describe('in-page list', () => {
       ...apiRoutes(scenario),
     ]);
 
-    await openCanvasPage(page, canvas);
+    await openCanvasPage(page, canvas.origin);
 
     const host = page.locator('#weekrow-inpage > weekrow-list');
     await expect(host).toHaveAttribute('data-theme', 'light');
@@ -245,7 +221,7 @@ test.describe('in-page list', () => {
       ...apiRoutes(scenario),
     ]);
 
-    await openCanvasPage(page, canvas, `/courses/${IDS.courses.biology}`);
+    await openCanvasPage(page, canvas.origin, `/courses/${IDS.courses.biology}`);
 
     const list = page.locator('#weekrow-inpage');
     await expect(list.getByRole('checkbox', { name: `Done: ${QUIZ_3}` })).toBeVisible();
@@ -265,7 +241,7 @@ test.describe('in-page list', () => {
       ...apiRoutes(scenario),
     ]);
 
-    await openCanvasPage(page, canvas);
+    await openCanvasPage(page, canvas.origin);
 
     // The list is in the dock on the right edge, and the right column keeps the rest.
     const list = page.locator('#tools-weekly > #weekrow-inpage');
@@ -297,7 +273,7 @@ test.describe('in-page list', () => {
         ...apiRoutes(scenario),
       ]);
 
-      await openCanvasPage(page, canvas);
+      await openCanvasPage(page, canvas.origin);
 
       const list = page.locator('#weekrow-inpage');
       await expect(list.getByRole('checkbox', { name: `Done: ${QUIZ_3}` })).toBeVisible();

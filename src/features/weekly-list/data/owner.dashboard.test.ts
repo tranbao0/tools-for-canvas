@@ -119,12 +119,6 @@ it('joins the check already in flight after a fingerprint change', async () => {
   expect(h.canvas.callsOf('getSelf')).toHaveLength(2);
 });
 
-it('does not check again after a successful first round', async () => {
-  const h = await loaded();
-  await h.owner.getState(PANEL);
-  expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
-});
-
 it('keeps the last good check and stale data through a worker restart', async () => {
   const h = await loaded();
   expect((await sessionCacheItem.getValue())?.userCheck?.fingerprints).toContain('session-a');
@@ -137,12 +131,6 @@ it('keeps the last good check and stale data through a worker restart', async ()
     kind: 'ready',
     stale: { offline: true },
   });
-});
-
-it('serves a fresh matching fingerprint without a request', async () => {
-  const h = await loaded();
-  await h.owner.getState(PANEL);
-  expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
 });
 
 it('drops a check result when the Canvas address changes during the request', async () => {

@@ -12,7 +12,7 @@ import {
   linkName,
   normalizeTabs,
   openFile,
-  validRequest,
+  isFileId,
   plainClick,
   isSubmissionPage,
   frameFileTarget,
@@ -51,10 +51,11 @@ describe('tabs', () => {
   });
 });
 describe('channel', () => {
-  it('accepts only ids and structural paths', () => {
-    expect(validRequest('42')).toBe(true);
-    expect(validRequest('/courses/12/files/42')).toBe(true);
+  it('accepts only the id of a file', () => {
+    expect(isFileId('42')).toBe(true);
+    expect(isFileId('9~12345')).toBe(true);
     for (const value of [
+      '/courses/12/files/42',
       'https://school.edu/files/42',
       '//other.edu/files/42',
       '/files/42?url=https://other.edu',
@@ -62,7 +63,7 @@ describe('channel', () => {
       {},
       null,
     ])
-      expect(validRequest(value)).toBe(false);
+      expect(isFileId(value)).toBe(false);
   });
 });
 describe('width', () => {
