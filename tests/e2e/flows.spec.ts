@@ -137,6 +137,13 @@ test.describe('side panel page', () => {
     // The item moves to the collapsed Done group at once, with an Undo notice.
     await expect(today.getByText(QUIZ_3)).toHaveCount(0);
     await expect(page.getByText('Marked done')).toBeVisible();
+    // The notice and the rows keep the side gutter of the panel.
+    const gutter = 16;
+    const width = page.viewportSize()!.width;
+    const notice = (await page.locator('.wr-toast').boundingBox())!;
+    expect(notice.x).toBe(gutter);
+    expect(notice.x + notice.width).toBe(width - gutter);
+    expect((await today.boundingBox())!.x).toBe(gutter);
     await expect.poll(() => writes.bodies.length).toBe(1);
     expect(writes.bodies).toEqual([
       {

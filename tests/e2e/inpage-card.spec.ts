@@ -361,6 +361,31 @@ test.describe('the full list in the card', () => {
     await expect(panel.getByRole('region', { name: 'Tasks by day' })).toHaveCount(0);
   });
 
+  for (const layout of BAR_LAYOUTS.filter((entry) => entry.docked)) {
+    test(`keeps the Undo notice in view when the card scrolls on ${layout.name}`, async ({
+      context,
+      page,
+      background,
+    }) => {
+      await openBottomLayout(context, page, background, layout, 400);
+      const list = inpageList(page);
+      const root = list.locator('.wr');
+      await dayList(list).getByRole('checkbox').first().click();
+      const toast = list.locator('.wr-toast');
+      await expect(toast).toBeVisible();
+      await root.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+      await expect
+        .poll(async () => {
+          const notice = (await toast.boundingBox())!;
+          const card = (await root.boundingBox())!;
+          return notice.y + notice.height <= card.y + card.height;
+        })
+        .toBe(true);
+    });
+  }
+
   for (const layout of BAR_LAYOUTS) {
     for (const height of [400, 500, 700, 800, 1000]) {
       test(`keeps the bottom bar still on ${layout.name} in a ${height} px window`, async ({

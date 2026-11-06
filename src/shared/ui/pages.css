@@ -32,18 +32,21 @@ body {
   flex-direction: column;
 }
 
-.wr[data-surface='panel'] > * {
+.wr[data-surface='panel'] > *,
+.wr[data-surface='panel'] > .wr-task-panel > * {
   padding-inline: 16px;
 }
 
 @container wr (width < 360px) {
-  .wr[data-surface='panel'] > * {
+  .wr[data-surface='panel'] > *,
+  .wr[data-surface='panel'] > .wr-task-panel > * {
     padding-inline: 12px;
   }
 }
 
 @container wr (width < 240px) {
-  .wr[data-surface='panel'] > * {
+  .wr[data-surface='panel'] > *,
+  .wr[data-surface='panel'] > .wr-task-panel > * {
     padding-inline: 8px;
   }
 }
