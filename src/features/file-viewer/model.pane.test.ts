@@ -1,6 +1,12 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { isAssignmentsList, isPaneFramePage, paneFileTarget } from './model';
+import {
+  isAssignmentsList,
+  isPaneCoursePage,
+  isPaneFramePage,
+  isPaneTopPage,
+  paneFileTarget,
+} from './model';
 
 const ORIGIN = 'https://school.edu';
 
@@ -19,6 +25,35 @@ describe('isAssignmentsList', () => {
     '/courses/12x/assignments',
   ])('refuses %s', (path) => {
     expect(isAssignmentsList(path)).toBe(false);
+  });
+});
+
+describe('the pages that hold the assignment pane', () => {
+  it.each([
+    '/courses/12/assignments',
+    '/courses/12',
+    '/courses/5~120/',
+    '/',
+    '/dashboard',
+    '/dashboard/',
+  ])('takes %s', (path) => expect(isPaneTopPage(path)).toBe(true));
+  it.each([
+    '/courses/12/assignments/101',
+    '/courses/12/modules',
+    '/courses/0',
+    '/courses/12x',
+    '/calendar',
+    '/dashboards',
+  ])('refuses %s', (path) => expect(isPaneTopPage(path)).toBe(false));
+
+  it('serves the pages of any course on the dashboard, and of the course of the top page elsewhere', () => {
+    expect(isPaneCoursePage('/', '/courses/13/assignments/4')).toBe(true);
+    expect(isPaneCoursePage('/dashboard', '/courses/13')).toBe(true);
+    expect(isPaneCoursePage('/', '/files/4')).toBe(false);
+    expect(isPaneCoursePage('/courses/12', '/courses/12/assignments/4')).toBe(true);
+    expect(isPaneCoursePage('/courses/12', '/courses/13/assignments/4')).toBe(false);
+    expect(isPaneCoursePage('/courses/5~120', '/courses/50000000000120/pages/a')).toBe(true);
+    expect(isPaneCoursePage('/courses/12/modules', '/courses/12/pages/a')).toBe(false);
   });
 });
 

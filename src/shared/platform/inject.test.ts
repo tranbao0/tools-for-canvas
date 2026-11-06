@@ -32,7 +32,7 @@ beforeEach(() => {
   fakeBrowser.reset();
   scripting = installFakeScripting();
   query = vi.fn<() => Promise<unknown[]>>(async () => []);
-  tabUrls = new Map([[7, 'https://canvas.school.edu/courses/5']]);
+  tabUrls = new Map([[7, 'https://canvas.school.edu/calendar']]);
   const get = vi.fn(async (id: number) => {
     const pages = (await query()) as { id?: number; url?: string }[];
     return { id, url: tabUrls.get(id) ?? pages.find((page) => page.id === id)?.url };
@@ -78,24 +78,21 @@ describe('injectInpage', () => {
 
       expect(scripting.executeScript).toHaveBeenCalledWith({
         target: { tabId: 7, frameIds: [0] },
-        files: [INPAGE_FILE, DASHBOARD_FILE, '/viewer.js'],
+        files: [INPAGE_FILE, DASHBOARD_FILE, ASSIGNMENT_VIEW_FILE, '/viewer.js'],
       });
     },
   );
 
-  it.each(['/courses/5', '/calendar', '/dashboards'])(
-    'adds no dashboard fixes script on %s',
-    async (path) => {
-      tabUrls.set(7, `${ORIGIN}${path}`);
+  it.each(['/calendar', '/dashboards'])('adds no dashboard fixes script on %s', async (path) => {
+    tabUrls.set(7, `${ORIGIN}${path}`);
 
-      await injectInpage(7, ORIGIN);
+    await injectInpage(7, ORIGIN);
 
-      expect(scripting.executeScript).toHaveBeenCalledWith({
-        target: { tabId: 7, frameIds: [0] },
-        files: [INPAGE_FILE, '/viewer.js'],
-      });
-    },
-  );
+    expect(scripting.executeScript).toHaveBeenCalledWith({
+      target: { tabId: 7, frameIds: [0] },
+      files: [INPAGE_FILE, '/viewer.js'],
+    });
+  });
 
   it('targets the document that sent the report, so a tab that moved on gets nothing', async () => {
     await injectInpage(7, ORIGIN, 'doc-1');
@@ -410,6 +407,39 @@ describe('injectFrameCatchers', () => {
     });
   });
 
+  describe('on a page that shows the weekly card', () => {
+    const frameProbes = () =>
+      probes(
+        { frameId: 0, origin: ORIGIN, path: '/' },
+        { frameId: 4, origin: ORIGIN, path: '/courses/5/assignments/3' },
+        { frameId: 5, origin: ORIGIN, path: '/courses/6/discussion_topics/8' },
+        { frameId: 6, origin: 'https://video.example', path: '/courses/5/assignments/3' },
+        { frameId: 7, origin: ORIGIN, path: '/files/9' },
+      ) as never;
+
+    it('puts the catcher into the frames of every course on the dashboard', async () => {
+      tabUrls.set(7, `${ORIGIN}/?x=1`);
+      scripting.executeScript.mockResolvedValueOnce(frameProbes());
+      await injectFrameCatchers(7, ORIGIN);
+      expect(scripting.executeScript).toHaveBeenLastCalledWith({
+        target: { tabId: 7, frameIds: [4, 5] },
+        files: [FRAME_FILE],
+        injectImmediately: true,
+      });
+    });
+
+    it('puts the catcher into the frames of the course of a course home page only', async () => {
+      tabUrls.set(7, `${ORIGIN}/courses/5`);
+      scripting.executeScript.mockResolvedValueOnce(frameProbes());
+      await injectFrameCatchers(7, ORIGIN);
+      expect(scripting.executeScript).toHaveBeenLastCalledWith({
+        target: { tabId: 7, frameIds: [4] },
+        files: [FRAME_FILE],
+        injectImmediately: true,
+      });
+    });
+  });
+
   it('injects nothing when no frame qualifies', async () => {
     scripting.executeScript.mockResolvedValueOnce(
       probes({ frameId: 0, origin: ORIGIN, path: PATH }) as never,
@@ -420,7 +450,7 @@ describe('injectFrameCatchers', () => {
 
   it('refuses a tab that no longer shows a submission page of the origin', async () => {
     for (const url of [
-      `${ORIGIN}/courses/5`,
+      `${ORIGIN}/courses/5/modules`,
       `${ORIGIN}/courses/5/assignments/3?content_only=1`,
       'https://other.school.edu/courses/5/assignments/3/submissions/9',
     ]) {
@@ -464,7 +494,7 @@ describe('the assignment view script', () => {
   });
 
   it.each([
-    '/courses/5',
+    '/calendar',
     '/courses/5/grades',
     '/courses/5/grades/42',
     '/courses/5/gradebook',
@@ -481,6 +511,17 @@ describe('the assignment view script', () => {
       files: [INPAGE_FILE, '/viewer.js'],
     });
   });
+
+  it.each(['/', '/dashboard', '/courses/5', '/courses/5/', '/courses/12~345'])(
+    'is added on the page %s, which shows the weekly card, to hold the pane',
+    async (path) => {
+      tabUrls.set(7, `https://canvas.school.edu${path}`);
+      await injectInpage(7, 'https://canvas.school.edu');
+      const files = scripting.executeScript.mock.calls.at(-1)![0].files;
+      expect(files).toContain(INPAGE_FILE);
+      expect(files).toContain(ASSIGNMENT_VIEW_FILE);
+    },
+  );
 
   it('is present to follow the switch when it is off', async () => {
     await toolsSettingsItem.setValue({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });

@@ -521,7 +521,7 @@ describe('files list frame', () => {
     );
     for (const url of [
       'https://other.edu/courses/2/assignments/3/submissions/4',
-      'https://school.edu/courses/2',
+      'https://school.edu/courses/2/modules',
       null,
     ]) {
       vi.mocked(host.tabUrl).mockResolvedValue(url);
@@ -584,6 +584,16 @@ describe('files list frame', () => {
       await expect(routeViewerMessage(open, pane, host)).rejects.toThrow();
       expect(host.openInTop).not.toHaveBeenCalled();
     });
+    it('passes the file of a pane frame of any course when the top frame is the dashboard, and of the course of a course home page', async () => {
+      const { host } = setup();
+      vi.mocked(host.tabUrl).mockResolvedValue('https://school.edu/');
+      expect(await routeViewerMessage(open, pane, host)).toEqual({ opened: true });
+      const other = { ...pane, url: 'https://school.edu/courses/9/assignments/3?content_only=1' };
+      expect(await routeViewerMessage(open, other, host)).toEqual({ opened: true });
+      vi.mocked(host.tabUrl).mockResolvedValue('https://school.edu/courses/2');
+      expect(await routeViewerMessage(open, pane, host)).toEqual({ opened: true });
+      await expect(routeViewerMessage(open, other, host)).rejects.toThrow();
+    });
     it('injects the catcher for the top frame of the list, and for no other course page', async () => {
       const { host, sender } = setup();
       vi.mocked(host.tabUrl).mockResolvedValue(LIST);
@@ -595,6 +605,14 @@ describe('files list frame', () => {
       ).rejects.toThrow('submission page');
       expect(host.injectFrames).toHaveBeenCalledTimes(1);
     });
+  });
+  it('injects the catcher for the top frame of the dashboard and of a course home page', async () => {
+    const { host, sender } = setup();
+    for (const page of ['https://school.edu/', 'https://school.edu/courses/2']) {
+      vi.mocked(host.tabUrl).mockResolvedValue(page);
+      await routeViewerMessage({ type: 'viewer:inject-frames' }, { ...sender, url: page }, host);
+    }
+    expect(host.injectFrames).toHaveBeenCalledTimes(2);
   });
   it('injects the catcher only for the top frame of a submission page of the saved Canvas', async () => {
     const { host, sender } = setup();
@@ -609,7 +627,7 @@ describe('files list frame', () => {
     ]) {
       await expect(routeViewerMessage(ask, refused, host)).rejects.toThrow();
     }
-    vi.mocked(host.tabUrl).mockResolvedValue('https://school.edu/courses/2');
+    vi.mocked(host.tabUrl).mockResolvedValue('https://school.edu/courses/2/modules');
     await expect(routeViewerMessage(ask, top, host)).rejects.toThrow('submission page');
     await expect(
       routeViewerMessage(
