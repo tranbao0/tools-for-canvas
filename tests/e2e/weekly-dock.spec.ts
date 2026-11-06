@@ -548,6 +548,19 @@ test.describe('minimize and the tab', () => {
     await page.keyboard.press('ArrowLeft');
     await expect.poll(async () => (await boxOf(page, DOCK)).width).toBe(517);
   });
+
+  test('keeps a width above 1344 px on a wide window after a reload', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background, { width: 2560 });
+    await dragEdge(page, DOCK, 1060);
+    await expect.poll(async () => (await boxOf(page, DOCK)).width).toBe(1500);
+    await expect.poll(async () => (await storedTools(background))['weeklyDockWidth']).toBe(1500);
+    await page.reload();
+    await expect.poll(async () => (await boxOf(page, DOCK)).width).toBe(1500);
+  });
 });
 
 test.describe('one dock at a time with the file pane', () => {
