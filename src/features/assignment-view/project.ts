@@ -61,12 +61,16 @@ function files(value: unknown): AssignmentFile[] {
     const fileId = id(fields?.['id']);
     if (fields !== null && fileId !== null) {
       const size = finite(fields['size']);
-      const session = wholeText(fields['preview_url'], MAX_URL);
+      const offered = fields['preview_url'];
+      const session = wholeText(offered, MAX_URL);
       result.push({
         id: fileId,
         display_name: plain(fields['display_name'] ?? fields['filename']),
         ...(size !== null && size >= 0 ? { size } : {}),
         ...(session !== null && session !== '' ? { preview_url: session } : {}),
+        ...(session === null && offered !== null && offered !== undefined
+          ? { preview_unusable: true as const }
+          : {}),
       });
     }
   }

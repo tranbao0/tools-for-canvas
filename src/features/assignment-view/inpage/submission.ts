@@ -14,8 +14,9 @@
  * For a submission type that the view shows (the replace mode), it hides the frame. The box then
  * also holds the files with their similarity scores and the feedback buttons, and Canvas's own
  * comments column, moved into it (`comments.ts`). The files, the scores and the session addresses
- * come from the Canvas records, so the page never depends on the markup of the frame and never
- * waits for it (`files.ts`). The frame refines the label of a feedback button and its unread mark,
+ * come from the Canvas records, so a normal page does not wait for the frame (`files.ts`). A file
+ * whose session address failed the check is the exception, because only a row of the frame can
+ * prove its button. The frame refines the label of a feedback button and its unread mark,
  * and its row gives the session address of a file whose details have none
  * (`submissionFrame.ts`). The host in the content area holds the instructions, the text or
  * address of the submission, and the rubric. In the mode 'above' the frame and the comments column
@@ -23,8 +24,8 @@
  * area. That is the case in four situations, and each writes a console line with its reason
  * (`modeLog.ts`): a submission type that the view does not show (media recording, quiz, LTI tool,
  * student annotation, discussion), content in a report cell of an LTI 1.3 asset processor in the
- * frame, report data of a file that the view cannot show, and a preview button of Canvas in the
- * frame for a file that has no usable session address from the details or from the frame row. A
+ * frame, report data of a file that the view cannot show, and a file whose session address failed the
+ * check, until a row of the frame gives it a good one. A
  * mount that fails also leads to that mode. A
  * style element in the head carries the rules of the page, and those of the mode: the hidden frame,
  * the rules for the comments, and the rules for Canvas's own rubric when the view shows it
@@ -504,11 +505,11 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
 
   /**
    * Shows the page for the details. The files, their scores and their feedback buttons come from
-   * the details, so the box never waits for the frame. The frame refines the label of a button
+   * the details, so the box does not wait for the frame. The frame refines the label of a button
    * and its unread mark, and gives the session address of a file whose record has none. The view
    * keeps Canvas's frame for a submission type that it does not show, for report data that it
    * cannot show, for a report of an asset processor that Canvas's script draws in the frame, and
-   * for a frame button whose file has no usable session address.
+   * for a file whose session address failed the check, until a frame row has given it one.
    */
   function show(reply: AssignmentDetailsReply, anchors: Anchors, token: number): void {
     const { submission } = reply.details;
@@ -569,7 +570,15 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       }
     };
     if (upload.withoutSession > 0) logNoFeedbackAddress(upload.withoutSession);
-    let setFiles = mountMode(fixed === null ? 'replace' : 'above', fixed, base);
+    // A file whose session address failed the check keeps Canvas's frame in view until a row of
+    // the frame proves that its button can go (`assess`). A page with no such file hides the frame
+    // at once.
+    const unproven = upload.withoutSession > 0;
+    let setFiles = mountMode(
+      fixed === null && !unproven ? 'replace' : 'above',
+      fixed ?? (unproven ? 'no-session' : null),
+      base,
+    );
     // Nothing in the frame changes these, and no submission at all needs no frame read.
     if (fixed !== null || type === null || type === undefined) return;
 

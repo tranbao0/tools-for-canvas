@@ -177,12 +177,33 @@ describe('readFrame', () => {
       state: 'pending',
     });
     expect(readFrame(frame(rows, 'about:blank'), ORIGIN, PAGE)).toEqual({ state: 'pending' });
-    expect(readFrame(frame(rows, `${ORIGIN}${PAGE}?rand=1`), ORIGIN, PAGE)).toEqual({
+    // A page of the submission path that has none of the markup of the preview page.
+    expect(readFrame(frame('', `${ORIGIN}${PAGE}?rand=1`), ORIGIN, PAGE)).toEqual({
       state: 'pending',
     });
     expect(
       readFrame(
         frame(rows, `${ORIGIN}/courses/12/assignments/101/submissions/43?preview=1`),
+        ORIGIN,
+        PAGE,
+      ),
+    ).toEqual({ state: 'pending' });
+  });
+
+  it('is ready for the preview page at an address with other parameters than preview=1', () => {
+    for (const query of ['?rand=1', '?preview=2&rand=1', '?embed=true', '']) {
+      const read = ready(frame(rows, `${ORIGIN}${PAGE}${query}`));
+      expect([...read.hints.keys()]).toEqual(['501', '502']);
+    }
+    const cell =
+      '<table><tr><td class="asset-report-status-container"><a href="#">r</a></td></tr></table>';
+    expect(ready(frame(cell, `${ORIGIN}${PAGE}?rand=1`)).assetReports).toBe(true);
+  });
+
+  it('is pending for another submission path whatever the markup holds', () => {
+    expect(
+      readFrame(
+        frame(rows, `${ORIGIN}/courses/12/assignments/101/submissions/43?rand=1`),
         ORIGIN,
         PAGE,
       ),
