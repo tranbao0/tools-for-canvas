@@ -31,7 +31,7 @@ function renderRow(item: ReturnType<typeof mkItem>, control: PreviewControl | nu
 
 const control = (shown: PreviewControl['shown'] = null) => ({ shown, request: vi.fn() });
 
-const button = (container: HTMLElement) =>
+const button = (container: Element) =>
   container.querySelector<HTMLButtonElement>('[data-part="preview"]');
 
 /** A click that the browser counts as the student's. A dispatched event is never trusted. */
