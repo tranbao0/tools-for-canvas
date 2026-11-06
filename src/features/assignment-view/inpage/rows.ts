@@ -12,7 +12,7 @@
  * added.
  */
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
-import type { PreviewRequest } from '../preview';
+import { samePane, type PaneRef, type PreviewRequest } from '../preview';
 import { OWN } from './own';
 import { PAGE_CSS } from './styles';
 
@@ -42,9 +42,10 @@ export interface RowsEngine {
   setActive(active: boolean): void;
   /**
    * Marks the row of the assignment that the pane shows, and the button in it, and clears the mark
-   * of every other row. `null` marks no row. The mark survives a redraw of the rows.
+   * of every other row. An assignment of another course marks no row of this page. `null` marks
+   * no row. The mark survives a redraw of the rows.
    */
-  setOpen(assignmentId: string | null): void;
+  setOpen(shown: PaneRef | null): void;
   /** Removes everything and stops. */
   stop(): void;
 }
@@ -152,11 +153,11 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
   let observer: MutationObserver | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let style: HTMLStyleElement | null = null;
-  let openId: string | null = null;
+  let shown: PaneRef | null = null;
   const states = new Map<HTMLElement, RowState>();
 
   const isOpen = (state: RowState): boolean =>
-    openId !== null && normalizeCanvasId(state.assignmentId) === normalizeCanvasId(openId);
+    shown !== null && samePane(shown, { courseId, assignmentId: state.assignmentId });
 
   /** Sets the mark of a row and the state of its button, and only when they differ. */
   function mark(state: RowState): void {
@@ -181,7 +182,12 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
       // The line is read from the row at the click. A frame that already exists keeps the line of
       // the click that made it.
       const details = detailsOf(row);
-      options.onPreview({ assignmentId, title, ...(details === undefined ? {} : { details }) });
+      options.onPreview({
+        courseId,
+        assignmentId,
+        title,
+        ...(details === undefined ? {} : { details }),
+      });
     });
     layout.append(button);
     const state: RowState = { assignmentId, row, layout, button };
@@ -266,8 +272,8 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
       });
       observer.observe(doc.body, { childList: true, subtree: true });
     },
-    setOpen(assignmentId) {
-      openId = assignmentId;
+    setOpen(next) {
+      shown = next;
       for (const state of states.values()) mark(state);
     },
     stop() {

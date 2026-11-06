@@ -1,15 +1,46 @@
-import { isCanvasId } from '../../shared/canvas/ids';
+import { isCanvasId, normalizeCanvasId } from '../../shared/canvas/ids';
 import type { AssignmentDetails } from './protocol';
 
-/**
- * What a Preview click asks for: the assignment, its title as the row shows it, and the second
- * line of the header: the due text and the points of the row, as plain text. A row with neither
- * has no second line.
- */
-export interface PreviewRequest {
+/** An assignment in a course. The same assignment id can name two assignments in two courses. */
+export interface PaneRef {
+  courseId: string;
   assignmentId: string;
+}
+
+/**
+ * What a Preview click asks for: the assignment and its course, its title as the row shows it,
+ * and the second line of the header: the due text and the points of the row, as plain text. A row
+ * with neither has no second line.
+ */
+export interface PreviewRequest extends PaneRef {
   title: string;
   details?: string;
+}
+
+/** The longest title that the pane takes. Canvas allows 255 characters. */
+const TITLE_LIMIT = 500;
+
+/** Whether a value is a request that the pane can show: valid ids, a title, and a plain second line or none. */
+export function isPreviewRequest(value: unknown): value is PreviewRequest {
+  if (typeof value !== 'object' || value === null) return false;
+  const { courseId, assignmentId, title, details } = value as Partial<PreviewRequest>;
+  return (
+    isCanvasId(courseId) &&
+    isCanvasId(assignmentId) &&
+    typeof title === 'string' &&
+    title.length <= TITLE_LIMIT &&
+    (details === undefined || (typeof details === 'string' && details.length <= TITLE_LIMIT))
+  );
+}
+
+/** The key of an assignment in a course. Both ids compare as decimal global ids, and both must be valid. */
+export function paneKey(ref: PaneRef): string {
+  return `${normalizeCanvasId(ref.courseId)}/${normalizeCanvasId(ref.assignmentId)}`;
+}
+
+/** Whether two references name the same assignment of the same course. Two missing references are the same. */
+export function samePane(a: PaneRef | null, b: PaneRef | null): boolean {
+  return a === null || b === null ? a === b : paneKey(a) === paneKey(b);
 }
 
 /** The address of an assignment page of Canvas, or `null` for an id that is not valid. */

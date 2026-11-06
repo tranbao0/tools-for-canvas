@@ -11,12 +11,10 @@ import {
   type AssignmentDetailsMessage,
   type AssignmentDetailsReply,
 } from '../protocol';
-import { submissionChanged, type SubmissionMark } from '../preview';
+import { paneKey, submissionChanged, type PaneRef, type SubmissionMark } from '../preview';
 import { createListRefresh } from './listRefresh';
 
 export interface SubmissionWatchOptions {
-  /** The course of the page. */
-  courseId: string;
   send(message: AssignmentDetailsMessage | DataMessage): Promise<unknown>;
   /** Whether the view is on. A read while it is off does nothing. */
   active(): boolean;
@@ -26,12 +24,13 @@ export interface SubmissionWatchOptions {
 
 export interface SubmissionWatch {
   /**
-   * Reads the submission of an assignment. The first read of an assignment is its baseline, and
-   * each later read is compared with the read before it. A change in `submitted_at`,
-   * `workflow_state` or `attempt` asks the weekly list to refresh. A failed read leaves the
-   * baseline as it is and rejects.
+   * Reads the submission of an assignment of a course. The first read of an assignment is its
+   * baseline, and each later read is compared with the read before it. The baseline of an
+   * assignment belongs to its course, so the same id in two courses has two baselines. A change in
+   * `submitted_at`, `workflow_state` or `attempt` asks the weekly list to refresh. A failed read
+   * leaves the baseline as it is and rejects.
    */
-  read(assignmentId: string): Promise<void>;
+  read(ref: PaneRef): Promise<void>;
   /**
    * Forgets the baselines, also those of a read that is on its way, and keeps the waiting
    * refresh. The next read of each assignment is a baseline again.
@@ -42,10 +41,10 @@ export interface SubmissionWatch {
 }
 
 export function createSubmissionWatch(options: SubmissionWatchOptions): SubmissionWatch {
-  const { courseId, send } = options;
+  const { send } = options;
   const listRefresh = createListRefresh(send);
   /**
-   * The compared fields of the last good reply of each assignment, by assignment id. The reply
+   * The compared fields of the last good reply of each assignment, by course and assignment. The reply
    * holds signed session addresses, so only a copy of these fields stays in memory.
    */
   const known = new Map<string, SubmissionMark>();
@@ -53,7 +52,7 @@ export function createSubmissionWatch(options: SubmissionWatchOptions): Submissi
   /** Counts the times the baselines were forgotten, so a read that began before cannot write one. */
   let generation = 0;
 
-  async function load(assignmentId: string): Promise<AssignmentDetailsReply> {
+  async function load({ courseId, assignmentId }: PaneRef): Promise<AssignmentDetailsReply> {
     const reply = await send({ type: 'assignment:details', courseId, assignmentId });
     if (
       !isDetailsReply(reply) ||
@@ -65,11 +64,12 @@ export function createSubmissionWatch(options: SubmissionWatchOptions): Submissi
   }
 
   return {
-    async read(assignmentId) {
+    async read(ref) {
       if (stopped || !options.active()) return;
-      const previous = known.get(assignmentId);
+      const key = paneKey(ref);
+      const previous = known.get(key);
       const began = generation;
-      const next = await load(assignmentId);
+      const next = await load(ref);
       if (stopped || !options.active() || began !== generation) return;
       const { user_id, submitted_at, workflow_state, attempt } = next.details.submission;
       const mark: SubmissionMark = { user_id, submitted_at, workflow_state, attempt };
@@ -78,7 +78,7 @@ export function createSubmissionWatch(options: SubmissionWatchOptions): Submissi
         options.onOtherStudent();
         return;
       }
-      known.set(assignmentId, mark);
+      known.set(key, mark);
       if (previous !== undefined && submissionChanged(previous, mark)) {
         // The visible refresh keeps the Canvas rate limit and the backoff of the weekly list.
         listRefresh.request();
