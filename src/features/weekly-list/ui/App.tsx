@@ -20,7 +20,6 @@ import { RowSizeContext } from './slotMode';
 import {
   Dock,
   filterText,
-  isUndoShortcut,
   joinNames,
   noteText,
   NoticeLine,
@@ -415,33 +414,6 @@ function LoadingView(props: {
 }
 
 /**
- * Ctrl+Z (Cmd+Z on a Mac) undoes while the Undo notice shows (design decision 6). The key works
- * anywhere in the surface root, the panel document or the in-page shadow root, but never in a
- * text field. The listener is in place as soon as the notice is on screen, so a fast key press
- * right after the action is not lost.
- */
-function useUndoShortcut(
-  rootRef: RefObject<HTMLDivElement | null>,
-  active: boolean,
-  onUndo: () => void,
-): void {
-  const latest = useRef(onUndo);
-  latest.current = onUndo;
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!active || !root) return;
-    const scope = root.getRootNode() as Document | ShadowRoot;
-    const onKeyDown = (event: Event) => {
-      if (!isUndoShortcut(event as KeyboardEvent)) return;
-      event.preventDefault();
-      latest.current();
-    };
-    scope.addEventListener('keydown', onKeyDown);
-    return () => scope.removeEventListener('keydown', onKeyDown);
-  }, [rootRef, active]);
-}
-
-/**
  * Keeps `--wr-inset-top` and `--wr-inset-bottom` on the root at the heights of the sticky header
  * (side panel only) and the sticky dock. The stylesheet turns them into scroll margins, so a
  * focused control never hides under either (WCAG 2.4.11).
@@ -556,7 +528,6 @@ function ReadyView(props: {
     restoredRow.current = null;
     control.focus();
   });
-  useUndoShortcut(rootRef, form === null && state.undo !== null, undo);
   useStickyInsets(rootRef, surface, form === null);
   // The side panel has no list that scrolls: its page does, so the task panel is the list there.
   // The card, the dock and the widgets pull in the lists that own the scroll, which mount and
