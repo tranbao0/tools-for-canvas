@@ -18,7 +18,7 @@
  * and pager show again, so it does nothing where it cannot work.
  */
 import { render } from 'preact';
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   findAnnouncementsWidgets,
   isDarkWidget,
@@ -46,6 +46,7 @@ import {
 } from './announcementSearch';
 import {
   createAnnouncementStore,
+  inFilter,
   listKey,
   rowKey,
   type AnnouncementStore,
@@ -73,6 +74,10 @@ const RESULT_STEP = 100;
 /** The wait after the last change of a date, so a typed date asks once. */
 const DATE_WAIT_MS = 350;
 const NOTE_MS = 6_000;
+/** How long a row that a mark took out of its list stays after the click, so a second click can undo it. */
+const HOLD_MS = 450;
+/** The row ends its leave by this time even when no transition ends, such as in a hidden tab. */
+const LEAVE_FALLBACK_MS = 400;
 const FIRST_DAY = '2000-01-01';
 
 export { AVATAR_COLORS, initialsOf };
@@ -113,6 +118,11 @@ interface View {
   saved: { key: string; top: number } | null;
   /** The list that the view showed last, which a search does not change. */
   listAt: { key: string; read: ReadFilter; course: string | null } | null;
+  /**
+   * The rows of the plain list that a mark took out of its set, by key. A row stays through its
+   * hold (`over` is false), then leaves once Canvas has taken the mark.
+   */
+  leaving: Map<string, { over: boolean; timer: ReturnType<typeof setTimeout> | null }>;
 }
 
 type Mode = 'list' | 'search' | 'range';
@@ -239,14 +249,52 @@ export function announcementsFix(): Fix {
   function Row(props: {
     row: AnnRow;
     words: string[] | null;
+    /** The hold is over and Canvas has taken the mark: the row fades and closes, then goes. */
+    leaving: boolean;
     onMark(row: AnnRow, event: MouseEvent): void;
     onToggle(row: AnnRow, on: boolean): void;
+    onGone(row: AnnRow): void;
   }) {
     const { row, words } = props;
     const key = rowKey(row);
     const on = open.has(key);
+    const article = useRef<HTMLElement>(null);
     const more = useRef<HTMLButtonElement>(null);
     const wasOpen = useRef(on);
+    const latest = useRef(props);
+    latest.current = props;
+    useLayoutEffect(() => {
+      const node = article.current;
+      const win = node?.ownerDocument.defaultView;
+      if (!props.leaving || node == null || !win) return;
+      if (win.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        latest.current.onGone(latest.current.row);
+        return;
+      }
+      let finished = false;
+      const stop = (): void => {
+        clearTimeout(timer);
+        node.removeEventListener('transitionend', ended);
+        node.removeAttribute('data-leaving');
+        node.style.removeProperty('height');
+      };
+      const finish = (): void => {
+        if (finished) return;
+        finished = true;
+        stop();
+        latest.current.onGone(latest.current.row);
+      };
+      const ended = (event: TransitionEvent): void => {
+        if (event.target === node && event.propertyName === 'height') finish();
+      };
+      // The transition needs a height in pixels to start from, and a style pass between the two.
+      node.style.height = win.getComputedStyle(node).height;
+      void node.offsetHeight;
+      node.setAttribute('data-leaving', '');
+      node.addEventListener('transitionend', ended);
+      const timer = setTimeout(finish, LEAVE_FALLBACK_MS);
+      return stop;
+    }, [props.leaving]);
     useEffect(() => {
       // Closing the message gives the focus back to the button that opened it.
       if (wasOpen.current && !on) more.current?.focus();
@@ -265,7 +313,7 @@ export function announcementsFix(): Fix {
       : clippedParts(row.title, TITLE_LIMIT, found);
     const snippet = snippetParts(row.text, SNIPPET_LIMIT, found);
     return (
-      <article class="wr-a-row" aria-label={row.title} data-wr-row={key}>
+      <article class="wr-a-row" ref={article} aria-label={row.title} data-wr-row={key}>
         <Avatar name={row.author} seed={row.id} url={row.avatarUrl} class="wr-a-avatar" />
         <div class="wr-a-head">
           <div class="wr-a-title">{parts(title)}</div>
@@ -485,6 +533,13 @@ export function announcementsFix(): Fix {
         paint(view);
       });
     };
+    const onGone = (row: AnnRow): void => {
+      const key = rowKey(row);
+      clearLeave(view, key);
+      // The message closes with its row, in the same pass that takes the row out of the list.
+      open.delete(key);
+      data.drop(view.read, courseOf(view), key);
+    };
     const onToggle = (row: AnnRow, on: boolean): void => {
       const key = rowKey(row);
       if (on) {
@@ -622,8 +677,10 @@ export function announcementsFix(): Fix {
               key={rowKey(row)}
               row={row}
               words={model.words}
+              leaving={view.leaving.get(rowKey(row))?.over === true && !data.pending(rowKey(row))}
               onMark={onMark}
               onToggle={onToggle}
+              onGone={onGone}
             />
           ))}
           loadingFirst={model.loadingFirst}
@@ -652,6 +709,73 @@ export function announcementsFix(): Fix {
     );
   }
 
+  function clearLeave(view: View, key: string): void {
+    const entry = view.leaving.get(key);
+    if (entry?.timer != null) clearTimeout(entry.timer);
+    view.leaving.delete(key);
+  }
+
+  function clearLeaves(view: View): void {
+    for (const key of [...view.leaving.keys()]) clearLeave(view, key);
+  }
+
+  /**
+   * Keeps the holds of the plain list in step with its rows: a row that a mark took out of the
+   * set of the list starts a hold, and a row that is back in the set (marked again, or refused
+   * by Canvas) ends it. A search and a range keep every row, and so does the list of All.
+   */
+  function syncLeaving(view: View, model: Model): void {
+    const out = new Set<string>();
+    if (model.mode === 'list') {
+      for (const row of model.rows) if (!inFilter(row.read, view.read)) out.add(rowKey(row));
+    }
+    for (const key of [...view.leaving.keys()]) if (!out.has(key)) clearLeave(view, key);
+    for (const key of out) {
+      if (view.leaving.has(key)) continue;
+      const entry = { over: false, timer: null as ReturnType<typeof setTimeout> | null };
+      entry.timer = setTimeout(() => {
+        entry.over = true;
+        entry.timer = null;
+        paint(view);
+      }, HOLD_MS);
+      view.leaving.set(key, entry);
+    }
+  }
+
+  /** The row of the shadow root that holds the focus, and the rows around it that stay. */
+  function focusedRow(view: View): { key: string; after: string[]; before: string[] } | null {
+    const active = (view.root.getRootNode() as ShadowRoot).activeElement;
+    const held = active?.closest<HTMLElement>('article[data-wr-row]');
+    if (held == null) return null;
+    const all = [...view.root.querySelectorAll<HTMLElement>('article[data-wr-row]')];
+    const at = all.indexOf(held);
+    const keys = (rows: HTMLElement[]): string[] =>
+      rows
+        .filter((row) => !row.hasAttribute('data-leaving'))
+        .map((row) => row.dataset['wrRow'] ?? '');
+    return {
+      key: held.dataset['wrRow'] ?? '',
+      after: keys(all.slice(at + 1)),
+      before: keys(all.slice(0, at).reverse()),
+    };
+  }
+
+  /** The row that held the focus went: the focus goes to the next row, else the previous row. */
+  function refocus(view: View, held: NonNullable<ReturnType<typeof focusedRow>>): void {
+    const rows = [...view.root.querySelectorAll<HTMLElement>('article[data-wr-row]')];
+    const find = (key: string): HTMLElement | undefined =>
+      rows.find((row) => row.dataset['wrRow'] === key);
+    if (find(held.key) !== undefined) return;
+    for (const key of [...held.after, ...held.before]) {
+      const button = find(key)?.querySelector<HTMLElement>('.wr-a-read');
+      if (button != null) {
+        button.focus();
+        return;
+      }
+    }
+    view.scroll?.focus();
+  }
+
   /** Draws one view, and keeps the position of the scroll area where it belongs. */
   function paint(view: View): void {
     if (store === null || current === null || !view.host.isConnected) return;
@@ -660,6 +784,7 @@ export function announcementsFix(): Fix {
       return;
     }
     const model = modelOf(view, store);
+    syncLeaving(view, model);
     if (model.mode === 'list') {
       // The student left a filter: the rows that a mark took out of its set go, unless another
       // widget shows that list.
@@ -679,7 +804,10 @@ export function announcementsFix(): Fix {
         view.saved = { key: view.scrollKey, top: area.scrollTop };
       }
     }
+    const held =
+      model.mode === 'list' && model.scrollKey === view.scrollKey ? focusedRow(view) : null;
     render(<AnnouncementList view={view} model={model} data={store} />, view.root);
+    if (held !== null) refocus(view, held);
     const next = view.root.querySelector<HTMLElement>('.wr-a-scroll');
     view.scroll = next;
     if (next !== null && model.scrollKey !== view.scrollKey) {
@@ -729,6 +857,7 @@ export function announcementsFix(): Fix {
       scrollKey: '',
       saved: null,
       listAt: null,
+      leaving: new Map(),
     };
     views.set(widget.widget, made);
     return made;
@@ -878,6 +1007,7 @@ export function announcementsFix(): Fix {
   function release(widget: AnnouncementsWidget): void {
     const view = views.get(widget.widget);
     if (view !== undefined) {
+      clearLeaves(view);
       unmountHost(view.host);
       views.delete(widget.widget);
     }
@@ -930,6 +1060,7 @@ export function announcementsFix(): Fix {
       // A widget that React removed has no list any more.
       for (const [element, view] of views) {
         if (!widgets.some((widget) => widget.widget === element)) {
+          clearLeaves(view);
           unmountHost(view.host);
           views.delete(element);
         }
@@ -947,6 +1078,7 @@ export function announcementsFix(): Fix {
       for (const view of views.values()) {
         if (view.askTimer !== null) clearTimeout(view.askTimer);
         if (view.noteTimer !== null) clearTimeout(view.noteTimer);
+        clearLeaves(view);
       }
       views.clear();
       open.clear();

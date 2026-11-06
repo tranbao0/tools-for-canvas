@@ -10,6 +10,9 @@
  * read mark that takes a row out of the filtered set (a row that is read now leaves the Unread
  * set) lowers the offset, because the offset counts the server's rows. A page waits while a mark
  * is on its way to Canvas, because the set of the server changes when Canvas takes the mark.
+ *
+ * The view takes a marked row out of a plain list one row at a time (`drop`), after a hold in
+ * which the student can mark it back and after Canvas has taken the mark.
  */
 import { htmlToText } from '../../../shared/ui/sanitize';
 import type {
@@ -105,7 +108,7 @@ function isRangeReply(value: unknown): value is AnnouncementRangeReply {
 }
 
 /** Whether a row with this read state belongs to the set that the server holds for a filter. */
-function inFilter(isRead: boolean, filter: AnnouncementRead): boolean {
+export function inFilter(isRead: boolean, filter: AnnouncementRead): boolean {
   return filter === 'all' || isRead === (filter === 'read');
 }
 
@@ -207,6 +210,26 @@ export function createAnnouncementStore(options: StoreOptions) {
   function leave(read: AnnouncementRead, courseId: string | null): void {
     const state = paged.values().find((candidate) => candidate.key === listKey(read, courseId));
     if (state !== undefined) prune(state);
+  }
+
+  /** Whether a mark of the row is on its way to Canvas. */
+  const pending = (key: string): boolean => pendingRows.has(key);
+
+  /**
+   * Takes one row out of a list when it is out of the set of the list and no mark of it is on its
+   * way. It touches no other row, so a row that waits in its own hold stays. The offset counts
+   * only the rows of the set, so it does not change. It does nothing, and returns false, when the
+   * list is gone, the row is gone, the row is back in the set, or a mark is on its way.
+   */
+  function drop(read: AnnouncementRead, courseId: string | null, key: string): boolean {
+    const state = paged.values().find((candidate) => candidate.key === listKey(read, courseId));
+    if (state === undefined || pendingRows.has(key)) return false;
+    const at = state.items.findIndex((candidate) => rowKey(candidate) === key);
+    const row = state.items[at];
+    if (row === undefined || inFilter(row.read, state.filter.read)) return false;
+    state.items = state.items.filter((_row, index) => index !== at);
+    changed();
+    return true;
   }
 
   /**
@@ -428,6 +451,8 @@ export function createAnnouncementStore(options: StoreOptions) {
     retry: (read: AnnouncementRead, courseId: string | null): void =>
       paged.retry(filterOf(read, courseId)),
     mark,
+    pending,
+    drop,
     ensureIndex,
     retryIndex,
     ensureRange,

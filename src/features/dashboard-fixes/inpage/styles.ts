@@ -89,6 +89,8 @@ export const FIXES_CSS = `
 .wr-a-res .wr-x-link{margin-top:0;font-size:.75rem}
 .wr-a-scroll{box-sizing:border-box;flex:1 1 0;min-height:0;overflow-y:auto;overscroll-behavior:contain;border-top:.0625rem solid var(--wr-line)}
 .wr-a-row{display:grid;grid-template-columns:3.125rem minmax(0,1fr) auto;column-gap:.5rem;padding:.625rem .5rem .625rem 0;border-bottom:.0625rem solid var(--wr-line)}
+.wr-a-row[data-leaving]{overflow:hidden;pointer-events:none;height:0!important;padding-block:0;border-bottom-width:0;opacity:0;transition:height .26s cubic-bezier(.4,0,.2,1),padding-top .26s cubic-bezier(.4,0,.2,1),padding-bottom .26s cubic-bezier(.4,0,.2,1),border-bottom-width .26s cubic-bezier(.4,0,.2,1),opacity .16s linear}
+@media (prefers-reduced-motion:reduce){.wr-a-row[data-leaving]{transition:none}}
 .wr-a-avatar{grid-column:1;grid-row:1;align-self:center;display:flex;align-items:center;justify-content:center;width:3.125rem;height:3.125rem;overflow:hidden;border-radius:50%;color:#fff;font-size:1.0625rem;font-weight:700;line-height:1;letter-spacing:.02em}
 .wr-a-avatar img{display:block;width:100%;height:100%;object-fit:cover}
 .wr-a-head{grid-column:2;grid-row:1;min-width:0}
