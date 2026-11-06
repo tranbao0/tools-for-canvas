@@ -137,6 +137,7 @@ describe('pane tabs', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.docx' })).toBeTruthy());
     await act(async () => {
       finishOld(undefined);
+      await new Promise((resolve) => setTimeout(resolve));
     });
     expect(screen.getByRole('heading', { name: 'Notes.docx' })).toBeTruthy();
     expect(screen.queryByText("Couldn't load this file")).toBeNull();
@@ -466,6 +467,36 @@ describe('site access', () => {
     });
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Allow access' })).toBeNull());
     expect(host.loadFile).toHaveBeenCalledTimes(2);
+  });
+
+  it('loads a file that left the tabs while its access request ran', async () => {
+    let granted = false;
+    let finishRequest!: (allowed: boolean) => void;
+    const { open, host } = setup({
+      hasAccess: vi.fn(async () => granted),
+      requestAccess: vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finishRequest = resolve;
+          }),
+      ),
+    });
+    await open('1');
+    const allow = await screen.findByRole('button', { name: 'Allow access' });
+    await act(async () => {
+      fireEvent.click(allow);
+    });
+    for (let id = 2; id <= 9; id += 1) await open(String(id));
+    await waitFor(() => expect(host.loadFile).toHaveBeenCalledTimes(9));
+    await act(async () => {
+      granted = true;
+      finishRequest(true);
+      await new Promise((resolve) => setTimeout(resolve));
+    });
+    vi.mocked(host.loadFile).mockClear();
+    await open('1');
+    await waitFor(() => expect(host.loadFile).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.queryByText('Loading file')).toBeNull());
   });
 
   it('hides Allow access when the permission is granted', async () => {
