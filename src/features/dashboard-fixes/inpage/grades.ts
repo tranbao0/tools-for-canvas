@@ -2,20 +2,27 @@
  * A grade card for every course (design decision 22).
  *
  * The Course grades widget pages its cards six at a time and shows a pager under them. This fix
- * hides the pager and adds a card for each course that has no card on the page. The cards are
+ * adds a card for each course that has no card on the page, and hides the pager once the page has
+ * a card for every page that the pager reaches. The cards are
  * copies of a card that the widget drew, so they look the same in every theme. The copy keeps its
  * layout and loses its buttons, because they belong to React. The color of the header is the
  * course color, the grade is the total that Canvas sends for the course, and `N/A` shows when
  * Canvas sends none (a course that hides its totals, or one with no score yet). While the
  * native main toggle is off, every copy shows dots.
  */
-import { findGradeWidgets, type GradeCards } from '../../../shared/canvas/widgetDashboard';
+import {
+  findGradeWidgets,
+  findPagedWidgets,
+  type GradeCards,
+} from '../../../shared/canvas/widgetDashboard';
 import { t } from '../../../shared/ui/i18n';
 import type { DashboardCourse } from '../protocol';
 import type { Fix, FixContext } from './context';
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 const HIDDEN_GRADE = '•••';
+/** The cards on one page of the Course grades widget, which its pager counts in. */
+const CARDS_PER_PAGE = 6;
 
 /** The grade a card shows: the letter, else the whole percent, else `N/A`. */
 export function gradeText(course: Pick<DashboardCourse, 'score' | 'grade'>): string {
@@ -122,7 +129,12 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
     const native = found.cards.filter((card) => !card.hasAttribute('data-wr-card'));
     const shown = new Set(native.map(cardCourseId));
     const missing = template === undefined ? [] : courses.filter((course) => !shown.has(course.id));
-    found.widget.toggleAttribute('data-wr-grades', true);
+    // Canvas's pager and the steady navigator give way only when the page shows a card for every
+    // page that the pager of Canvas reaches. A grid that is short of cards keeps the pager.
+    const pages = findPagedWidgets(context.doc).find(({ widget }) => widget === found.widget);
+    const covered =
+      pages === undefined || native.length + missing.length > (pages.total - 1) * CARDS_PER_PAGE;
+    found.widget.toggleAttribute('data-wr-grades', covered);
     const widgetId = (found.widget.getAttribute('data-testid') ?? '').replace(/^widget-/, '');
     const visibility = context.data?.gradeVisibilities;
     let overrides = observed.get(widgetId);

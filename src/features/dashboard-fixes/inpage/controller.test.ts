@@ -81,6 +81,20 @@ describe('createFixesEngine', () => {
     expect(send).toHaveBeenCalledWith({ type: 'weekrow:dashboard-data' });
   });
 
+  it('keeps its courses when a later reply has no student and no course', async () => {
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    const copies = () => document.querySelectorAll('[data-wr-card]').length;
+    const before = copies();
+    expect(before).toBeGreaterThan(0);
+    // A tab in another cookie store, or a failed sign-in check, answers with no course.
+    send.mockImplementation(async () => ({ origin: ORIGIN, courses: [] }));
+    engine.reload();
+    await settle();
+    expect(copies()).toBe(before);
+  });
+
   it('draws cached fixes while the preference request stays pending', async () => {
     send.mockImplementation(async (message) => {
       if (message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility) {
