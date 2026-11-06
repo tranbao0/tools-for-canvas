@@ -636,21 +636,18 @@ test.describe('the full list in the card', () => {
     await expect(list.getByRole('radiogroup', { name: 'Show' })).toBeVisible();
     await expect(parts[0]!).toBeChecked();
     await parts[0]!.focus();
-    // The arrow keys move focus and choose at once. The next key waits for the stored choice.
+    // The arrow keys move focus and choose at once, and the next key need not wait for the storage.
     await page.keyboard.press('ArrowRight');
     await expect(parts[1]!).toBeChecked();
     await expect(parts[1]!).toBeFocused();
     await expect(groupArea(list)).toBeVisible();
-    await groupStored(background, page, 'no_due_date');
     await page.keyboard.press('ArrowRight');
     await expect(parts[2]!).toBeChecked();
     await expect(parts[2]!).toBeFocused();
-    await groupStored(background, page, 'done');
     await page.keyboard.press('ArrowRight');
     await expect(parts[0]!).toBeChecked();
     await expect(parts[0]!).toBeFocused();
     await expect(dayList(list)).toBeVisible();
-    await groupStored(background, page, null);
     await page.keyboard.press('ArrowLeft');
     await expect(parts[2]!).toBeChecked();
     await expect(parts[2]!).toBeFocused();
@@ -661,6 +658,59 @@ test.describe('the full list in the card', () => {
     await expect(settings).toBeFocused();
     await page.keyboard.press('Shift+Tab');
     await expect(parts[2]!).toBeFocused();
+  });
+
+  test('never shows an earlier part again when the choices come faster than the storage echoes them', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
+    const list = inpageList(page);
+    const parts = ['todo', 'no_due_date', 'done'].map((kind) =>
+      toggleOf(list.locator(`.wr-pinned [data-group="${kind}"]`)),
+    );
+    // The page notes the part that is on after every change of the card.
+    await list.locator('.wr').evaluate((card) => {
+      const seen: string[] = [];
+      (window as unknown as { __parts: string[] }).__parts = seen;
+      const note = () => {
+        const on = card.querySelector<HTMLInputElement>('.wr-views input:checked');
+        const kind = on?.closest<HTMLElement>('[data-group]')?.dataset['group'] ?? '';
+        if (seen.at(-1) !== kind) seen.push(kind);
+      };
+      new MutationObserver(note).observe(card, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+      });
+      note();
+    });
+    // A choice on every frame, round and round, so the echoes of the storage come in between.
+    await list.locator('.wr').evaluate(async (card) => {
+      for (let step = 0; step < 9; step += 1) {
+        const kind = ['no_due_date', 'done', 'todo'][step % 3];
+        card.querySelector<HTMLInputElement>(`.wr-views [data-group="${kind}"] input`)!.click();
+        await new Promise((next) => requestAnimationFrame(next));
+      }
+    });
+    await expect(parts[0]!).toBeChecked();
+    await groupStored(background, page, null);
+    // A write of another setting is the barrier: its echo comes after the echoes of the two
+    // presses, so once the card shows it, a late echo of the first press would have shown.
+    await saveSettings(background, {
+      ...MONTH,
+      hiddenCourseIds: ['102'],
+      rowSize: 'comfortable',
+      openGroup: null,
+    });
+    await expect(list.locator('.wr')).toHaveAttribute('data-rows', 'comfortable');
+    const seen = await page.evaluate(() => (window as unknown as { __parts: string[] }).__parts);
+    expect(seen).toEqual([
+      'todo',
+      ...Array.from({ length: 3 }, () => ['no_due_date', 'done', 'todo']).flat(),
+    ]);
+    await expect(parts[0]!).toBeChecked();
   });
 
   test('keeps focus on the part that is chosen', async ({ context, page, background }) => {

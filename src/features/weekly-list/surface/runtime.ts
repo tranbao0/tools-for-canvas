@@ -28,7 +28,7 @@ import {
   type SurfaceRequest,
   type UndoData,
 } from '../data/protocol';
-import { sameSpan } from '../model/settings';
+import { sameSettings, sameSpan } from '../model/settings';
 import type { ToolsSettings } from '../../../shared/settings/tools';
 import { nextDayStart } from '../model/time';
 import type { ItemView, Settings, SurfaceState, UndoInfo, WeekView } from '../model/types';
@@ -298,7 +298,21 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     return changed;
   }
 
+  /**
+   * The settings that this surface saved and whose echo from the storage has not come yet, oldest
+   * first. The echo of a save that a newer save already replaced is late: it shows a value that the
+   * student has left, so it is dropped. A value that matches no save of this surface is a change
+   * from another tab or page, and it arrives.
+   */
+  let saves: Settings[] = [];
+
   function onSettings(value: Settings): void {
+    const echo = saves.findIndex((save) => sameSettings(save, value));
+    if (echo >= 0) {
+      const late = echo < saves.length - 1;
+      saves = saves.slice(echo + 1);
+      if (late) return;
+    }
     const changed = followSpan(value);
     settings = value;
     emit();
@@ -681,9 +695,15 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       // The view in place shows the change at once; the stored value follows.
       const changed = followSpan(next);
       settings = next;
+      saves.push(next);
       emit();
       host.settings
         .setValue(next)
+        .catch((error: unknown) => {
+          // No echo comes for a save that failed.
+          saves = saves.filter((save) => save !== next);
+          throw error;
+        })
         .then(() => sendRefresh('settings'))
         .then(() => {
           // The new span is in storage now, so the data owner reads it for this request.

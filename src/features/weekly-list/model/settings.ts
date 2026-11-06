@@ -69,6 +69,11 @@ function isCourseIdList(value: unknown): value is string[] {
   return Array.isArray(value) && value.length <= MAX_HIDDEN_COURSES && value.every(isCourseId);
 }
 
+/** Whether two settings hold the same values, whatever the order of their keys. */
+export function sameSettings(a: Settings, b: Settings): boolean {
+  return JSON.stringify(normalizeSettings(a)) === JSON.stringify(normalizeSettings(b));
+}
+
 /** Whether the value has the exact shape of the settings, with every field valid. */
 export function isSettings(value: unknown): value is Settings {
   return (
