@@ -791,6 +791,7 @@ function ReadyView(props: {
             )}
           </GroupArea>
         )}
+        <Dock undo={state.undo} onUndo={undo} onClose={() => actions.dismissUndo()} />
         {surface === 'inpage' && tab === 'tasks' && (
           <div
             class="wr-pinned"
@@ -811,7 +812,6 @@ function ReadyView(props: {
           </div>
         )}
       </div>
-      <Dock undo={state.undo} onUndo={undo} onClose={() => actions.dismissUndo()} />
     </>
   );
 }

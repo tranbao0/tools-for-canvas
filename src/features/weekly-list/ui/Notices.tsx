@@ -202,7 +202,8 @@ export function noteText(note: OneTimeNote): string {
 }
 
 /**
- * The sticky bottom dock with the Undo notice. It is a live region, so screen readers announce
+ * The dock with the Undo notice: sticky at the bottom of the side panel, and over the end of the
+ * list in the card, where the bottom bar stays in place. It is a live region, so screen readers announce
  * the notice. The notice has no timer: it stays until the student acts again or closes it.
  * Ctrl+Z (Cmd+Z on a Mac) also undoes while it shows; `App` handles that key.
  */

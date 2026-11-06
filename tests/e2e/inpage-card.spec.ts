@@ -1075,6 +1075,39 @@ test.describe('the full list in the card', () => {
     });
   }
 
+  test('moves nothing in the bottom bar when the Undo notice shows, and keeps the last row in reach', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background, {
+      width: 1280,
+      height: 700,
+      settings: { ...MONTH, hiddenCourseIds: ['102'] },
+    });
+    const list = inpageList(page);
+    const root = list.locator('.wr');
+    const closed = await barState(root);
+    const days = dayList(list);
+    await days.getByRole('checkbox').first().click();
+    const toast = list.locator('.wr-toast');
+    await expect(toast).toBeVisible();
+    expectSameBar(await barState(root), closed);
+    // The notice lies over the end of the list, right above the bottom bar.
+    const notice = (await toast.boundingBox())!;
+    const bar = (await list.locator('.wr-pinned').boundingBox())!;
+    expect(notice.y + notice.height).toBeLessThanOrEqual(bar.y);
+    // The end of the list scrolls clear of the notice.
+    await days.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    const last = (await days.getByRole('checkbox').last().boundingBox())!;
+    expect(last.y + last.height).toBeLessThanOrEqual(notice.y);
+    await toast.getByRole('button', { name: 'Close' }).click();
+    await expect(toast).toHaveCount(0);
+    expectSameBar(await barState(root), closed);
+  });
+
   test('keeps the scroll of the open Done list when the card moves', async ({
     context,
     page,
