@@ -250,3 +250,109 @@ test('on the classic dashboard the weekly dock steps aside for the pane and come
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
   await expect(page.locator(WEEKLY_DOCK)).toBeVisible();
 });
+
+for (const [name, options] of [
+  ['light', { settings: { theme: 'light' as const } }],
+  ['dark', { settings: { theme: 'dark' as const } }],
+  ['compact-light', { settings: { rowSize: 'compact' as const } }],
+  ['course-home', { fixture: 'course-home', path: '/courses/101', width: 1280 }],
+  [
+    'course-home-dark',
+    {
+      fixture: 'course-home',
+      path: '/courses/101',
+      width: 1280,
+      settings: { theme: 'dark' as const },
+    },
+  ],
+] as const) {
+  test(`shows the row that the pane shows, and its button, in the look ${name}`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background, options);
+    await expect(preview(page, LAB_4)).toBeVisible();
+    await preview(page, LAB_4).click();
+    await expect(preview(page, LAB_4)).toHaveAttribute('aria-pressed', 'true');
+    const row = rowOf(page, LAB_4);
+    await expect(row).toHaveClass(/is-open/);
+    await row.scrollIntoViewIfNeeded();
+    const style = await row.evaluate((element) => {
+      const css = getComputedStyle(element, '::before');
+      return { shadow: css.boxShadow, background: css.backgroundColor };
+    });
+    // The bar at the left edge is 3 px wide and inset, and the row has a tint.
+
+    expect(style.shadow).toMatch(/ 3px 0px 0px 0px inset$/);
+    expect(style.background).not.toBe('rgba(0, 0, 0, 0)');
+    await shot(page, `open-${name}`);
+  });
+}
+
+/** The rows whose Preview button sticks out of the row, or whose row sticks out of the card. */
+async function overflowing(page: Page): Promise<string[]> {
+  return card(page)
+    .locator('li.wr-item')
+    .evaluateAll((rows) => {
+      const found: string[] = [];
+      for (const row of rows) {
+        const button = row.querySelector<HTMLElement>('[data-part="preview"]');
+        if (button === null) continue;
+        const box = row.getBoundingClientRect();
+        const inner = button.getBoundingClientRect();
+        const title = row.querySelector('[data-part="title"]')?.textContent ?? '';
+        const out =
+          inner.left < box.left - 0.5 ||
+          inner.right > box.right + 0.5 ||
+          row.scrollWidth > row.clientWidth + 1;
+        if (out)
+          found.push(`${title}: button ${inner.left}-${inner.right}, row ${box.left}-${box.right}`);
+      }
+      return found;
+    });
+}
+
+const PLACES = [
+  { place: 'the Course work slot', options: {} },
+  {
+    place: 'the column of a course home page',
+    options: { fixture: 'course-home', path: '/courses/101' },
+  },
+] as const;
+
+for (const { place, options } of PLACES) {
+  for (const rowSize of ['compact', 'comfortable'] as const) {
+    for (const width of [150, 208, 240, 320, 400, 620]) {
+      test(`rows with Preview stay inside a ${width} px card of ${rowSize} rows in ${place}`, async ({
+        context,
+        page,
+        background,
+      }) => {
+        await open(context, page, background, { ...options, settings: { rowSize } });
+        await card(page)
+          .locator('.wr')
+          .evaluate((element, px) => {
+            element.style.width = `${px}px`;
+          }, width);
+        await expect
+          .poll(() =>
+            card(page)
+              .locator('.wr')
+              .evaluate((element) => element.getBoundingClientRect().width),
+          )
+          .toBe(width);
+        await expect(preview(page, LAB_4)).toBeVisible();
+        // A card of 150 px is narrower than the card of the widget dashboard can be, so only the button is checked there.
+        if (width >= 208) expect(await overflowing(page)).toEqual([]);
+        // A card too narrow for the word keeps the icon and the name, and the button is 26 px high.
+        await expect(preview(page, LAB_4).locator('.wr-preview-text')).toBeVisible({
+          visible: width >= 160,
+        });
+        expect((await preview(page, LAB_4).boundingBox())!.height).toBe(26);
+        await preview(page, LAB_4).scrollIntoViewIfNeeded();
+        await shot(page, `narrow-${rowSize}-${width}-${'fixture' in options ? 'home' : 'slot'}`);
+      });
+    }
+  }
+}
