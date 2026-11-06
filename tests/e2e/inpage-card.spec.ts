@@ -660,6 +660,25 @@ test.describe('the full list in the card', () => {
     await expect(parts[2]!).toBeFocused();
   });
 
+  test('hears another tab after two fast choices that end where they began', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
+    const list = inpageList(page);
+    const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
+    await list.locator('.wr').evaluate(async (card) => {
+      for (const kind of ['done', 'todo']) {
+        card.querySelector<HTMLInputElement>(`.wr-views [data-group="${kind}"] input`)!.click();
+        await new Promise((next) => requestAnimationFrame(next));
+      }
+    });
+    await groupStored(background, page, null);
+    await saveSettings(background, { ...DEFAULT_SETTINGS, openGroup: 'done' });
+    await expect(done).toBeChecked();
+  });
+
   test('never shows an earlier part again when the choices come faster than the storage echoes them', async ({
     context,
     page,

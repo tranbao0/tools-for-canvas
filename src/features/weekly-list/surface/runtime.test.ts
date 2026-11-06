@@ -1041,6 +1041,7 @@ describe('the shown span', () => {
     fake.host.settings.setValue = async (next) => {
       order.push('saved');
       fake.saved.push(next);
+      fake.stored = next;
     };
     fake.reply = (message) => {
       if (message.type === 'weekrow:get-state') order.push('state');
@@ -1163,13 +1164,33 @@ describe('settings in place', () => {
     });
   });
 
-  it('drops the late echo of an earlier save, so the newer value stays', async () => {
+  /** A store whose saves wait: `finish` ends the oldest save, as the storage does. */
+  function slowSaves(fake: FakeHost) {
+    const waiting: { next: Settings; end(ok: boolean): void }[] = [];
+    fake.host.settings.setValue = (next) =>
+      new Promise<void>((resolve, reject) => {
+        waiting.push({
+          next,
+          end: (ok) => {
+            if (ok) {
+              fake.stored = next;
+              resolve();
+            } else reject(new Error('quota'));
+          },
+        });
+      });
+    return {
+      finish: async (ok = true) => {
+        waiting.shift()?.end(ok);
+        await settle();
+      },
+    };
+  }
+
+  it('keeps the newest choice while an older save echoes, and reads the store after the last', async () => {
     const fake = fakeHost();
     const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
-    // The storage answers the saves later, as a real one does.
-    fake.host.settings.setValue = async (next) => {
-      fake.saved.push(next);
-    };
+    const saves = slowSaves(fake);
     runtime.start();
     await settle();
     const first: Settings = { ...DEFAULT_SETTINGS, openGroup: 'no_due_date' };
@@ -1177,45 +1198,61 @@ describe('settings in place', () => {
     runtime.actions.saveSettings(first);
     runtime.actions.saveSettings(second);
 
+    await saves.finish();
     fake.storeSettings(first);
     expect(runtime.settings()?.value.openGroup).toBe('done');
-    fake.storeSettings(second);
+    await saves.finish();
     expect(runtime.settings()?.value.openGroup).toBe('done');
-    // The echoes are gone: a change that another tab saves later still arrives.
+
+    // With no save on its way, a change from another tab arrives.
     fake.storeSettings(first);
     expect(runtime.settings()?.value.openGroup).toBe('no_due_date');
   });
 
-  it('lets a change from another tab arrive while saves wait for their echoes', async () => {
+  it('arrives at a change that another tab made during a save, when the save ends', async () => {
     const fake = fakeHost();
     const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
-    fake.host.settings.setValue = async (next) => {
-      fake.saved.push(next);
-    };
+    const saves = slowSaves(fake);
     runtime.start();
     await settle();
     runtime.actions.saveSettings({ ...DEFAULT_SETTINGS, openGroup: 'done' });
-
-    fake.storeSettings({ ...DEFAULT_SETTINGS, showRings: false });
+    await saves.finish();
+    fake.stored = { ...DEFAULT_SETTINGS, openGroup: 'done', showRings: false };
+    runtime.actions.saveSettings(fake.stored);
+    fake.storeSettings({ ...DEFAULT_SETTINGS, openGroup: 'done', showRings: false });
+    await saves.finish();
 
     expect(runtime.settings()?.value.showRings).toBe(false);
   });
 
-  it('expects no echo of a save that failed', async () => {
+  it('hears another tab after saves that brought no echo', async () => {
     const fake = fakeHost();
     const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
-    fake.host.settings.setValue = () => Promise.reject(new Error('quota'));
+    const saves = slowSaves(fake);
     runtime.start();
     await settle();
-    const failed: Settings = { ...DEFAULT_SETTINGS, openGroup: 'done' };
-    runtime.actions.saveSettings(failed);
+    runtime.actions.saveSettings({ ...DEFAULT_SETTINGS, openGroup: 'done' });
+    runtime.actions.saveSettings({ ...DEFAULT_SETTINGS });
+    await saves.finish();
+    await saves.finish();
+
+    fake.storeSettings({ ...DEFAULT_SETTINGS, openGroup: 'done' });
+    expect(runtime.settings()?.value.openGroup).toBe('done');
+  });
+
+  it('goes back to the stored value when the newest save fails', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
+    const saves = slowSaves(fake);
+    runtime.start();
     await settle();
     runtime.actions.saveSettings({ ...DEFAULT_SETTINGS, openGroup: 'no_due_date' });
-    await settle();
+    runtime.actions.saveSettings({ ...DEFAULT_SETTINGS, openGroup: 'done' });
+    await saves.finish();
+    fake.storeSettings({ ...DEFAULT_SETTINGS, openGroup: 'no_due_date' });
+    await saves.finish(false);
 
-    // Another tab saves the value of the failed save: it is a change, not an echo.
-    fake.storeSettings(failed);
-    expect(runtime.settings()?.value.openGroup).toBe('done');
+    expect(runtime.settings()?.value.openGroup).toBe('no_due_date');
   });
 
   it('follows settings that another surface saves', async () => {

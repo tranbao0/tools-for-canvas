@@ -638,7 +638,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The task panel is the list there: at the top and at the end of the page the rows of the task panel pull, and the header and the Undo notice stay.
     A page that cannot scroll gets `overflow-y: hidden` on its root while the rows are away, so no scroll bar appears.
   - The file pane lives in a frame, which cannot see the page behind it.
-    There the pull runs at each end of the pages, the thumbnails, a text and an image, also when they have nothing to scroll, and the wheel never moves the Canvas page behind the pane: the wheel is stopped at the end, even with reduced motion.
+    There the pull runs at each end of the pages, the thumbnails, a text and an image, also when they have nothing to scroll, and a wheel over one of them never moves the Canvas page behind the pane: the wheel is stopped at the end, even with reduced motion.
     A player (audio or video) has no pull.
     Touch scrolling and the keyboard scroll as the browser does, with the default chaining: at the end of a list they go on to the page.
   - The scroll position stays over a redraw, a data refresh, the settings, the task form, a change of tab and a minimize, while the page stays open.
