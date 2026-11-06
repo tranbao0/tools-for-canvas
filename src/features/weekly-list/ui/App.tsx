@@ -34,6 +34,7 @@ import type { ListTab } from '../data/announcements';
 import { Announcements } from './Announcements';
 import { ListTabs, tabId } from './ListTabs';
 import { ChevronDownIcon } from '../../../shared/ui/icons';
+import { usePull } from './pull';
 import { Rings } from './Rings';
 import { SettingsPanel } from './Settings';
 import { Spinner, StateBody } from './States';
@@ -520,6 +521,7 @@ function ReadyView(props: {
   });
   useUndoShortcut(rootRef, form === null && state.undo !== null, undo);
   useStickyInsets(rootRef, surface, form === null);
+  usePull(rootRef, surface === 'inpage');
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;

@@ -470,7 +470,7 @@ test.describe('the full list in the card', () => {
           expect(Math.abs(area.height - sizes.days)).toBeLessThanOrEqual(0.5);
           expect(area.height).toBeGreaterThanOrEqual(127.5);
           expect(area.thin).toBe('thin');
-          expect(area.overscroll).toBe('contain');
+          expect(area.overscroll).toBe('auto');
           // The list scrolls when its rows are taller than the area, and not otherwise. Done holds
           // 10 or more items: taller than the area with Comfortable rows, shorter with Compact
           // rows in the slot of the widget dashboard, whose list area is 509 px high, the height
@@ -1240,16 +1240,10 @@ test.describe('the full list in the card', () => {
     expect(after.rings).toBeCloseTo(before.rings, 0);
     expect(after.card.top).toBeCloseTo(before.card.top, 0);
     expect(after.card.height).toBeCloseTo(before.card.height, 0);
-    // A scroll inside the region does not scroll the page behind it.
-    await region(page).evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-      element.dispatchEvent(new WheelEvent('wheel', { deltaY: 400, bubbles: true }));
-    });
-    const style = await region(page).evaluate((element) => {
-      const computed = getComputedStyle(element);
-      return { behavior: computed.overscrollBehaviorY, width: computed.scrollbarWidth };
-    });
-    expect(style).toEqual({ behavior: 'contain', width: 'thin' });
+    // The region has a thin scroll bar. The wheel at its end is in inpage-wheel.spec.ts.
+    expect(await region(page).evaluate((element) => getComputedStyle(element).scrollbarWidth)).toBe(
+      'thin',
+    );
   });
 
   test('can be scrolled with the keyboard', async ({ context, page, background }) => {

@@ -13,6 +13,8 @@
 //      keeps 38 px of room. A click on the tab opens the dock and focuses the button.
 //   c. A file pane covers the dock and its tab, and the dock comes back in the state it had, with
 //      the padding of the page exact, for an open dock and for a minimized one.
+//   d. The wheel over the day list scrolls it in the middle, and at its end the page stays still
+//      while the rows pull and spring back, also for a wheel that counts lines.
 //   The list waits for its data before it scrolls: a check that reads the list before the rows
 //   arrive reads a list with no room to scroll.
 //
@@ -442,6 +444,119 @@ async function checkFilePane(driver, problems) {
   console.log('File pane: the dock and the tab hide while it is open, and come back as they were');
 }
 
+/** The day list of the dock, and the pull that its rows show. It runs in the page. */
+const LIST = `
+  const host = document.querySelector('#weekrow-inpage > weekrow-list');
+  const list = host.shadowRoot.querySelector('.wr-scroll:not([hidden]), .wr-group-area:not([hidden])');
+`;
+
+/** Starts to record the pull of the rows of the list that is on show. */
+const watchPull = (driver) =>
+  driver.executeScript(`${LIST}
+    window.__pulls = [];
+    new MutationObserver(() => {
+      const value = parseFloat(list.style.getPropertyValue('--wr-pull'));
+      if (!Number.isNaN(value)) window.__pulls.push(value);
+    }).observe(list, { attributes: true, attributeFilter: ['style'] });
+  `);
+
+const pulls = (driver) => driver.executeScript('return window.__pulls.splice(0)');
+
+/** Turns the wheel over the middle of the dock, as a mouse does. */
+async function wheel(driver, deltaY) {
+  const host = await driver.findElement(By.css('#weekrow-inpage > weekrow-list'));
+  await driver.actions().scroll(0, 0, 0, deltaY, host).perform();
+}
+
+/** Check d: the wheel over the day list (design decision 4), also with a wheel that counts lines. */
+async function checkWheel(driver, problems) {
+  await waitFor(() => state(driver), listLoaded, 'the loaded list');
+  await driver.executeScript('window.scrollTo(0, 0)');
+  await watchPull(driver);
+  const listState = () =>
+    driver.executeScript(
+      `${LIST} return { top: list.scrollTop, room: list.scrollHeight - list.clientHeight };`,
+    );
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 700));
+
+  // In the middle of the list the wheel scrolls it: no pull, and the page stays.
+  await scrollList(driver, 200);
+  await wheel(driver, 100);
+  const middle = await waitFor(listState, (value) => value.top > 250, 'the list to scroll');
+  expect(problems, 'the wheel scrolls the list in the middle', middle.top > 250, middle);
+  await settle();
+  expect(problems, 'the list makes no pull in the middle', (await pulls(driver)).length === 0);
+
+  // At the end of the list the page stays still and the rows pull and spring back.
+  await driver.executeScript(`${LIST} list.scrollTop = list.scrollHeight;`);
+  await waitFor(listState, (value) => value.room - value.top < 2, 'the end of the list');
+  await wheel(driver, 100);
+  await settle();
+  const pulled = await pulls(driver);
+  const most = Math.max(0, ...pulled.map(Math.abs));
+  expect(problems, 'the rows pull at the end of the list', most > 8 && most <= 28, pulled);
+  expect(
+    problems,
+    'the rows spring back',
+    (await driver.executeScript(`${LIST} return list.style.getPropertyValue('--wr-pull');`)) === '',
+  );
+  expect(
+    problems,
+    'the page stays still at the end of the list',
+    (await state(driver)).scrollY === 0,
+  );
+
+  // A wheel that counts lines (Firefox reports deltaMode 1 for a mouse wheel on some systems) pulls
+  // about as much as one that counts pixels.
+  await driver.executeScript(`${LIST}
+    list.firstElementChild.dispatchEvent(new WheelEvent('wheel', {
+      deltaY: 3, deltaMode: 1, bubbles: true, cancelable: true, composed: true,
+    }));
+  `);
+  await settle();
+  const lines = Math.max(0, ...(await pulls(driver)).map(Math.abs));
+  expect(
+    problems,
+    'a wheel in lines pulls the rows like a wheel in pixels',
+    lines > 8 && lines <= 28,
+    lines,
+  );
+  // A list with nothing to scroll gives the wheel to the page.
+  await driver.executeScript(`
+    const host = document.querySelector('#weekrow-inpage > weekrow-list');
+    host.shadowRoot.querySelector('[data-group="done"] input').click();
+  `);
+  await waitFor(
+    () => driver.executeScript(`${LIST} return list.className === 'wr-group-area';`),
+    Boolean,
+    'the Done group',
+  );
+  await driver.executeScript(`${LIST}
+    list.firstElementChild.style.cssText = 'max-height: 60px; overflow: hidden';
+  `);
+  await watchPull(driver);
+  await wheel(driver, 300);
+  await waitFor(
+    () => state(driver),
+    (value) => value.scrollY > 100,
+    'the page to take the wheel from a short list',
+  );
+  await settle();
+  expect(
+    problems,
+    'a short list makes no pull when the page scrolls',
+    (await pulls(driver)).length === 0,
+  );
+  await driver.executeScript(`
+    const host = document.querySelector('#weekrow-inpage > weekrow-list');
+    host.shadowRoot.querySelector('[data-group="todo"] input').click();
+    window.scrollTo(0, 0);
+  `);
+  console.log(
+    `Wheel: the list scrolls in the middle, and the rows pull ${most.toFixed(1)} px at the end (${lines.toFixed(1)} px for a wheel in lines)`,
+  );
+}
+
 async function main() {
   // Selenium Manager must never download a browser or a driver during a test.
   process.env.SE_OFFLINE = 'true';
@@ -516,6 +631,7 @@ async function main() {
     const open = await checkOpenDock(driver, problems, process.env.DASHBOARD_DOCK_SHOT);
     await checkMinimize(driver, problems, open);
     await checkFilePane(driver, problems);
+    await checkWheel(driver, problems);
     if (problems.length > 0) {
       for (const problem of problems) console.error(`FAILED ${problem}`);
       return 1;

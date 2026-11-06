@@ -609,8 +609,23 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - The scroll bar of the groups sits in the side padding of the card, 4 px from its edge, so it never covers the day counts.
   - The header (the dates, Add task, the gear, the minimize button, the arrows, Today and the span picker), the notices and the rings stay at the top of the card.
     The groups scroll below them in one element.
-    The element has a thin native scroll bar and `overscroll-behavior: contain`.
+    The element has a thin native scroll bar and the default `overscroll-behavior`.
+    `overscroll-behavior: contain` is not used: in Chromium 156 it stops the page from taking the wheel over a list that has nothing to scroll.
     It is a region with the label "Tasks by day" and `tabindex="0"`, so the keyboard reaches it and scrolls it, and it shows a focus ring.
+  - The wheel over the day list, the open group (the list area of the view switch) and the Announcements list, which share the scroll region, works as follows.
+    A list in the middle of its scroll, or a card or a page that can still move in the direction of the wheel, scrolls as the browser does.
+    The order is the list, then the card (`.wr`), then the page (`document.scrollingElement`), so a card that scrolls as a whole in a low window scrolls before the rows pull.
+    A scroller of the page other than the window is not looked at.
+    A list with nothing to scroll gives the wheel to the page, as anywhere else on the page.
+    A list with rows to scroll that is at its top or its end keeps the page still, as before.
+    When nothing can move in that direction, the rows pull and spring back: the pull follows each wheel step by 0.18 of its delta, damped by how far the rows already are, at most 28 px.
+    The rows spring back 110 ms after the last wheel event, over 0.24 s with `cubic-bezier(.2,.8,.2,1)`.
+    Only the rows move (a `transform` on the children of the region, so nothing changes in the layout): the header, the notice, the rings and the view switch stay.
+    A list with nothing to scroll gets `overflow-y: hidden` while the rows are away from their place, so the moved rows never show a scroll bar.
+    A list with rows to scroll pulls its rows down at its top: its scroll height then grows by up to 20 px (28 px less the 8 px of end padding), which shortens its scroll bar thumb by about 0.5 px for a list that is six times as tall as its area.
+    A wheel that counts lines (`deltaMode` 1) counts 33 px a line, so Firefox pulls as Chromium does.
+    With `prefers-reduced-motion: reduce` the rows do not pull, and the page still stays still at the end of a list with rows to scroll.
+    Touch scrolling and the keyboard scroll as the browser does, with the default chaining: at the end of a list they go on to the page.
   - The scroll position stays over a redraw, a data refresh, the settings, the task form, a change of tab and a minimize, while the page stays open.
     A new span starts at the top.
   - The card scrolls with the page, and it is not sticky.
