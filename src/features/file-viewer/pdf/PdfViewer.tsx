@@ -538,6 +538,7 @@ export function PdfViewer(props: {
             doc={engine.document}
             pageCount={state.pageCount}
             page={state.page}
+            active={props.active}
             aspect={engine.aspect}
             onPick={(number) => engine.goToPage(number)}
           />

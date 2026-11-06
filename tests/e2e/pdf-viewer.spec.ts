@@ -451,7 +451,7 @@ test('the thumbnails toggle shows 3 thumbnails that draw, and a click goes to th
 }) => {
   const frame = await openPdf(context, page, background, fileHost);
   await expect(frame.locator('[data-part="pdf-thumb"]')).toHaveCount(0);
-  await frame.getByRole('button', { name: 'Thumbnails' }).click();
+  await clickInFrame(frame, frame.getByRole('button', { name: 'Thumbnails' }));
   const thumbs = frame.locator('[data-part="pdf-thumb"]');
   await expect(thumbs).toHaveCount(3);
   await expect(frame.locator('.pv-thumb-slot[data-drawn="true"]')).toHaveCount(3);

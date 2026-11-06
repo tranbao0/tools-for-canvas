@@ -11,11 +11,13 @@ export function Thumbnails(props: {
   page: number;
   /** The height of a thumbnail slot before it draws, as a part of its width. */
   aspect: number;
+  /** Whether the tab of this document is the active tab. */
+  active: boolean;
   onPick(page: number): void;
 }) {
   const list = useRef<HTMLDivElement>(null);
   // The thumbnails are in the frame of the pane too: the wheel never moves the Canvas page.
-  usePull(list, undefined, true);
+  usePull(list, undefined, true, props.active);
 
   useEffect(() => {
     const root = list.current;

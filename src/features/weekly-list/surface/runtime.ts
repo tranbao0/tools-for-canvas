@@ -299,24 +299,29 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   }
 
   /**
-   * The settings that this surface saved and whose echo from the storage has not come yet, oldest
-   * first. The echo of a save that a newer save already replaced is late: it shows a value that the
-   * student has left, so it is dropped. A value that matches no save of this surface is a change
-   * from another tab or page, and it arrives.
+   * How many saves of this surface are on their way. A change from the storage in that time can be
+   * the echo of an older save, which shows a value that the student has left, so it is dropped.
+   * The read after the last save tells what the storage holds, whether the save worked or not.
    */
-  let saves: Settings[] = [];
+  let saving = 0;
 
-  function onSettings(value: Settings): void {
-    const echo = saves.findIndex((save) => sameSettings(save, value));
-    if (echo >= 0) {
-      const late = echo < saves.length - 1;
-      saves = saves.slice(echo + 1);
-      if (late) return;
-    }
+  function applySettings(value: Settings): void {
+    if (settings !== null && sameSettings(settings, value)) return;
     const changed = followSpan(value);
     settings = value;
     emit();
     if (changed && started && host.visibility.isVisible()) reload();
+  }
+
+  function onSettings(value: Settings): void {
+    if (saving === 0) applySettings(value);
+  }
+
+  async function readAfterSave(): Promise<void> {
+    saving -= 1;
+    if (saving > 0) return;
+    const stored = await host.settings.getValue();
+    if (saving === 0) applySettings(stored);
   }
 
   /**
@@ -695,15 +700,11 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       // The view in place shows the change at once; the stored value follows.
       const changed = followSpan(next);
       settings = next;
-      saves.push(next);
+      saving += 1;
       emit();
       host.settings
         .setValue(next)
-        .catch((error: unknown) => {
-          // No echo comes for a save that failed.
-          saves = saves.filter((save) => save !== next);
-          throw error;
-        })
+        .finally(readAfterSave)
         .then(() => sendRefresh('settings'))
         .then(() => {
           // The new span is in storage now, so the data owner reads it for this request.
