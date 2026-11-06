@@ -166,7 +166,7 @@ const UNDO_TEXT = {
   done: 'undoDone',
   deleted: 'undoDeleted',
   announcement_read: 'undoAnnouncementRead',
-} as const satisfies Record<UndoInfo['kind'], PluralKey>;
+} as const satisfies Record<Exclude<UndoInfo['kind'], 'not_restored'>, PluralKey>;
 
 export type OneTimeNote = 'firstDone';
 
@@ -209,16 +209,22 @@ export function Dock(props: { undo: UndoInfo | null; onUndo(): void; onClose(): 
     <div class="wr-dock" role="status" aria-live="polite">
       {props.undo && (
         <div class="wr-toast">
-          <span class="wr-toast-text">{tp(UNDO_TEXT[props.undo.kind], props.undo.count)}</span>
-          <button
-            type="button"
-            class="wr-link-btn wr-toast-action"
-            data-part="undo"
-            aria-keyshortcuts="Control+Z Meta+Z"
-            onClick={props.onUndo}
-          >
-            {t('undo')}
-          </button>
+          <span class="wr-toast-text">
+            {props.undo.kind === 'not_restored'
+              ? t('undoFailed')
+              : tp(UNDO_TEXT[props.undo.kind], props.undo.count)}
+          </span>
+          {props.undo.kind !== 'not_restored' && (
+            <button
+              type="button"
+              class="wr-link-btn wr-toast-action"
+              data-part="undo"
+              aria-keyshortcuts="Control+Z Meta+Z"
+              onClick={props.onUndo}
+            >
+              {t('undo')}
+            </button>
+          )}
           <button
             type="button"
             class="wr-icon-btn"

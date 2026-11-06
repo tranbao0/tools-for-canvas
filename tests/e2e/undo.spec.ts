@@ -1,12 +1,14 @@
 /**
  * The Undo notice (design decisions 6 and 10). It has no timer: it stays until the student acts
  * again, closes it, or the surface goes away. Ctrl+Z undoes while it shows. A task DELETE goes
- * out only when the notice ends.
+ * out when the notice ends, or when the background sends it at the cap, and then the notice ends
+ * too. An Undo that cannot restore says so.
  */
 import type { BrowserContext, Locator, Page, Worker } from '@playwright/test';
 import { IDS } from '../fixtures/scenario';
 import { overrideWrites, writesTo } from './support/canvas-state';
 import { saveAddress } from './support/scenario-api';
+import { shortenTimer } from './support/clock';
 import { requestsQuiet } from './support/settle';
 import {
   addCsrfCookie,
@@ -174,6 +176,30 @@ test.describe('the Undo notice', () => {
     expect(state.note(NOTES.bioStudyGroup)?.deleted).toBe(false);
     expect(state.note(NOTES.libraryBooksToday)?.deleted).toBe(true);
     expect(state.note(NOTES.financialAidYesterday)?.deleted).toBe(true);
+  });
+});
+
+/** The cap on a delayed task DELETE in the background (`MAX_DELETE_DELAY_MS`). */
+const DELETE_CAP_MS = 2 * 60_000;
+
+test.describe('an Undo that cannot restore', () => {
+  test('a delete notice ends when the background sends the DELETE, so Undo is not offered for a gone task', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const { canvas } = await openPanel(context, page, background, extensionUrl('sidepanel.html'));
+    // The cap passes in seconds of real time instead of two minutes.
+    await shortenTimer(background, DELETE_CAP_MS, 4000);
+    const toast = page.locator('.wr-toast');
+    const deletes = () => writesTo(canvas, 'DELETE', '/api/v1/planner_notes').map((w) => w.path);
+
+    await deleteTask(page, group(page, 'today'), 'Return library books');
+    await expect(toast).toContainText('Task deleted');
+
+    await expect.poll(deletes).toEqual([`/api/v1/planner_notes/${NOTES.libraryBooksToday}`]);
+    await expect(toast).toHaveCount(0);
   });
 });
 

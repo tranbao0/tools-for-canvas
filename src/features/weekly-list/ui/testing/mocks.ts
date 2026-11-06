@@ -615,6 +615,7 @@ export function readyState(
     refreshing: false,
     offer: null,
     undo: null,
+    openDeletes: [],
     seenNotes: { firstDone: true },
     taskCourses: Object.values(COURSES).map(({ id, name }) => ({ id, name })),
     allCourses: Object.values(COURSES).map(({ id, name }) => ({ id, name })),

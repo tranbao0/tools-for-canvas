@@ -388,10 +388,13 @@ describe('actions', () => {
   }
 
   /** Every undoable write answers with the data that Undo needs. */
-  function undoHost(): FakeHost {
+  /** The tasks whose DELETE the fake background has not started, as the state reply names them. */
+  function undoHost(open = new Set<string>()): FakeHost {
     const fake = fakeHost();
     fake.reply = (message) => {
-      if (message.type === 'weekrow:get-state') return readyFor(fake.user, { origin: fake.origin });
+      if (message.type === 'weekrow:get-state') {
+        return readyFor(fake.user, { origin: fake.origin, openDeletes: [...open] });
+      }
       if (message.type === 'weekrow:refresh') return { ok: true, retryAt: null };
       if (message.type !== 'weekrow:action') return { ok: true };
       const { action } = message;
@@ -408,9 +411,16 @@ describe('actions', () => {
               }
             : { undo: null };
         case 'deleteTask':
+          open.add(action.noteId);
           return {
             undo: { kind: 'delete', userId: fake.user, origin: fake.origin, noteId: action.noteId },
           };
+        case 'cancelDelete':
+          open.delete(action.noteId);
+          return { undo: null, restored: true };
+        case 'sendDelete':
+          open.delete(action.noteId);
+          return { undo: null };
         default:
           return { undo: null };
       }
@@ -496,6 +506,68 @@ describe('actions', () => {
     runtime.actions.dismissUndo();
     expect(runtime.state()).toMatchObject({ kind: 'cant_load' });
     expect(runtime.state()).not.toMatchObject({ undo: DONE_INFO });
+  });
+
+  it('says in one line when an Undo restored nothing, and the line stays until the student closes it', async () => {
+    const fake = undoHost();
+    const { runtime } = await started(fake);
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+    const answer = fake.reply;
+    fake.reply = (message) =>
+      message.type === 'weekrow:action' && message.action.kind === 'restore'
+        ? { undo: null, restored: false }
+        : answer(message);
+
+    runtime.actions.undo();
+    await settle();
+    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: { kind: 'not_restored' } });
+
+    // A later state reply of the same student keeps the line.
+    fake.changed();
+    await settle();
+    expect(runtime.state()).toMatchObject({ undo: { kind: 'not_restored' } });
+
+    fake.sent.length = 0;
+    runtime.actions.dismissUndo();
+    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: null });
+    expect(sentActions(fake.sent)).toEqual([]);
+  });
+
+  it('ends a delete notice when the state says that its DELETE has started, and sends no end', async () => {
+    const open = new Set<string>();
+    const { fake, runtime } = await started(undoHost(open));
+    runtime.actions.deleteTask('8');
+    await settle();
+    expect(runtime.state()).toMatchObject({ undo: { kind: 'deleted' } });
+    fake.sent.length = 0;
+
+    // The background sent the DELETE: it left `openDeletes` and changed the marker.
+    open.delete('8');
+    fake.changed();
+    await settle();
+
+    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: null });
+    expect(sentActions(fake.sent)).toEqual([]);
+  });
+
+  it('keeps a delete notice when an answer to a request sent before the delete arrives late', async () => {
+    const fake = undoHost();
+    const answers: ((state: StateReply) => void)[] = [];
+    const { runtime } = await started(fake);
+    const base = fake.reply;
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state'
+        ? new Promise((resolve) => answers.push(resolve))
+        : base(message);
+    fake.changed();
+    runtime.actions.deleteTask('8');
+    await settle();
+
+    // The old request cannot name the new delete.
+    answers[0]?.(readyFor(USER, { openDeletes: [] }));
+    await settle();
+    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: { kind: 'deleted' } });
   });
 
   it('checks the items of the "N older" list that it shows, with one notice', async () => {

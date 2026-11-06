@@ -768,11 +768,38 @@ describe('custom tasks', () => {
     await vi.advanceTimersByTimeAsync(MAX_DELETE_DELAY_MS);
     expect(h.canvas.callsOf('deleteNote')).toHaveLength(1);
 
-    await h.owner.act({ kind: 'cancelDelete', noteId: N.libraryBooksToday });
+    expect(expectReady(await h.owner.getState(PANEL)).openDeletes).toEqual([]);
+    const reply = await h.owner.act({ kind: 'cancelDelete', noteId: N.libraryBooksToday });
     release();
     await h.owner.settled();
 
+    expect(reply).toEqual({ undo: null, restored: false });
     expect(await item(h, key)).toBeUndefined();
+    expect(h.canvas.callsOf('createNote')).toEqual([]);
+  });
+
+  it('names the delete in openDeletes until its DELETE starts, and an Undo says whether it restored the task', async () => {
+    const h = await loaded();
+    const key = `planner_note:${N.libraryBooksToday}`;
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    expect(expectReady(await h.owner.getState(PANEL)).openDeletes).toEqual([N.libraryBooksToday]);
+
+    // The background sends the DELETE at the cap, while a surface still shows the notice.
+    await advance(h, MAX_DELETE_DELAY_MS + 60_000);
+    expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday]]);
+    expect(expectReady(await h.owner.getState(PANEL)).openDeletes).toEqual([]);
+
+    const late = await h.owner.act({ kind: 'cancelDelete', noteId: N.libraryBooksToday });
+    await h.owner.settled();
+    expect(late).toEqual({ undo: null, restored: false });
+    expect(await item(h, key)).toBeUndefined();
+    expect(h.canvas.callsOf('createNote')).toEqual([]);
+
+    // An Undo in time restores the task.
+    await h.owner.act({ kind: 'deleteTask', noteId: N.bioStudyGroup });
+    const early = await h.owner.act({ kind: 'cancelDelete', noteId: N.bioStudyGroup });
+    expect(early).toEqual({ undo: null, restored: true });
+    expect(expectReady(await h.owner.getState(PANEL)).openDeletes).toEqual([]);
   });
 
   it('sends a delayed DELETE after a service worker restart', async () => {

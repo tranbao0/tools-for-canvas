@@ -1709,6 +1709,14 @@ describe('notices', () => {
     expect(actions.undo).not.toHaveBeenCalled();
   });
 
+  it('says in one line that an Undo could not restore, with no Undo button', () => {
+    const { actions } = setup(readyState({ undo: { kind: 'not_restored', count: 0 } }));
+    expect(screen.getByText("Couldn't undo that")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close notice' }));
+    expect(actions.dismissUndo).toHaveBeenCalledTimes(1);
+  });
+
   it('names the undo keys on the Undo button', () => {
     setup(readyState({ undo: { kind: 'done', count: 1 } }));
     expect(screen.getByRole('button', { name: 'Undo' }).getAttribute('aria-keyshortcuts')).toBe(
