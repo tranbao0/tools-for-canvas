@@ -3081,6 +3081,7 @@ With the pane read alone, the default run of the test failed before the fix.
      Many links in teacher content carry a `verifier` or a `location`, and the student can usually read that file without them, so the pane still takes the click.
      Canvas's `api_show` reads both parameters, but the pane sends them to no API and to no read.
      When the clicked address is on the saved Canvas and has a `verifier` or a `location`, the page script keeps the whole address in its memory for that file, and sends it with the open request.
+     The click catcher of a frame sends the same address with `viewer:frame-open`, and the background and the page script check it again.
      The pane keeps it in memory with the tab, and the error card uses it as its "Open in Canvas" link, so a student whose file does not load has one way out that works.
      A click on a link without the parameters drops the older address of that file.
      The address is never written to storage, goes away with `viewer:reset` and with the pane, is never logged, and is never used for a read.

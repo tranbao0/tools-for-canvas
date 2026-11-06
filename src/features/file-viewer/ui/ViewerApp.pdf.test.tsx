@@ -101,7 +101,9 @@ describe('pdf tabs', () => {
     });
     await open('1');
     await waitFor(() => expect(host.readFile).toHaveBeenCalledOnce());
-    expect(vi.mocked(host.readFile).mock.calls[0]![0]).toBe(`${ORIGIN}/files/1/download?download_frd=1`);
+    expect(vi.mocked(host.readFile).mock.calls[0]![0]).toBe(
+      `${ORIGIN}/files/1/download?download_frd=1`,
+    );
   });
 
   it('shows a determinate bar with the part read, clamped to 100 percent', async () => {
