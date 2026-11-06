@@ -21,7 +21,7 @@ import {
   test,
   type ScenarioOptions,
 } from './support/weekrow';
-import type { FakeReply } from './support/fake-canvas';
+import type { FakeCanvasRoute, FakeReply } from './support/fake-canvas';
 import { requestsQuiet, stableValue } from './support/settle';
 
 const PAGE = [{ path: '/', page: 'dashboard-widgets' }] as const;
@@ -151,6 +151,107 @@ async function setReadFilter(page: Page, label: string): Promise<void> {
 
 async function heightOf(locator: Locator): Promise<number> {
   return (await locator.boundingBox())?.height ?? -1;
+}
+
+/** Records, in the page, when the student clicked and when a row began to leave or went. */
+async function watchLeaves(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const record = {
+      clicks: [] as number[],
+      leaves: [] as { key: string; at: number }[],
+      gone: [] as number[],
+    };
+    (window as unknown as { __leaves: typeof record }).__leaves = record;
+    document.addEventListener('click', (event) => record.clicks.push(event.timeStamp), true);
+    const root = document.querySelector('[data-wr-list]')?.shadowRoot;
+    if (!root) return;
+    new MutationObserver((changes) => {
+      for (const change of changes) {
+        if (change.type === 'attributes' && change.target instanceof Element) {
+          if (change.target.hasAttribute('data-leaving')) {
+            record.leaves.push({
+              key: change.target.getAttribute('data-wr-row') ?? '',
+              at: performance.now(),
+            });
+          }
+        }
+        for (const node of change.removedNodes) {
+          if (node instanceof Element && node.matches('article'))
+            record.gone.push(performance.now());
+        }
+      }
+    }).observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['data-leaving'],
+    });
+  });
+}
+
+async function leavesOf(page: Page) {
+  const record = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __leaves: { clicks: number[]; leaves: { key: string; at: number }[]; gone: number[] };
+        }
+      ).__leaves,
+  );
+  return { click: record.clicks[0] ?? 0, leaves: record.leaves, gone: record.gone[0] ?? 0 };
+}
+
+/**
+ * A Canvas that answers the read mark of a topic only when the test lets it, and that can refuse
+ * it. The answers of the other topics are immediate.
+ */
+function slowMarks() {
+  const gates = new Map<string, Promise<void>>();
+  const opens = new Map<string, () => void>();
+  const refused = new Set<string>();
+  let canvas: { readAnnouncements: Set<string> } | null = null;
+  const route: FakeCanvasRoute = {
+    method: 'PUT',
+    path: /^\/api\/v1\/courses\/\d+\/discussion_topics\/\d+\/read$/,
+    respond: async (request) => {
+      const [, course, topic] =
+        /courses\/(\d+)\/discussion_topics\/(\d+)\//.exec(request.path) ?? [];
+      const key = `${course}:${topic}`;
+      await gates.get(key);
+      if (refused.has(key)) return { status: 500, body: 'Server error' };
+      canvas?.readAnnouncements.add(key);
+      return { status: 204 };
+    },
+  };
+  return {
+    route,
+    bind(state: { readAnnouncements: Set<string> }): void {
+      canvas = state;
+    },
+    hold(key: string): void {
+      gates.set(key, new Promise<void>((resolve) => opens.set(key, resolve)));
+    },
+    refuse(key: string): void {
+      refused.add(key);
+    },
+    release(key: string): void {
+      opens.get(key)?.();
+    },
+  };
+}
+
+/** Opens the dashboard with extra routes of the fake Canvas ahead of its own. */
+async function openWith(
+  context: Parameters<typeof serveScenario>[0],
+  page: Page,
+  routes: readonly FakeCanvasRoute[],
+) {
+  const served = await serveScenario(context, [...PAGE, ...routes], {});
+  await addCsrfCookie(context, served.canvas.origin);
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+  await expect(articles(page)).toHaveCount(10);
+  return served;
 }
 
 test.describe('announcements: one steady list', () => {
@@ -430,21 +531,22 @@ test.describe('announcements: one steady list', () => {
     await expect(articles(page)).toHaveCount(10);
   });
 
-  test('mark a row as read with one PUT, and keep it on screen with its check', async ({
+  test('mark a row as read: the check shows at once, one PUT goes out, and the row leaves after the hold', async ({
     context,
     page,
   }) => {
     const { canvas, state } = await open(context, page);
+    await watchLeaves(page);
     const row = articles(page).first();
     const control = row.getByRole('button', { name: 'Mark Lab room change for Thursday as read' });
     await expect(control).toHaveAttribute('aria-pressed', 'false');
     await control.click();
 
+    // The check shows at once, and the row holds.
     await expect(
       row.getByRole('button', { name: 'Mark Lab room change for Thursday as unread' }),
     ).toHaveAttribute('aria-pressed', 'true');
     await expect(row).toBeVisible();
-    await expect(articles(page)).toHaveCount(10);
     await expect
       .poll(() => canvas.requests.filter((r) => r.method === 'PUT').map((r) => r.path))
       .toEqual(['/api/v1/courses/101/discussion_topics/31901/read']);
@@ -452,22 +554,288 @@ test.describe('announcements: one steady list', () => {
     const headers = canvas.requests.find((r) => r.method === 'PUT')?.headers ?? {};
     expect(headers['x-csrf-token']).toBe('tok+en/==');
 
+    // The row leaves 450 ms or more after the click, then the list is one row shorter.
+    await expect(articles(page)).toHaveCount(9);
+    await expect(
+      page.locator(`${LIST} article[aria-label="Lab room change for Thursday"]`),
+    ).toHaveCount(0);
+    const { click, leaves } = await leavesOf(page);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0]?.at ?? 0).toBeGreaterThanOrEqual(click + 440);
+
     // The next page continues after the 9 rows that are still unread on the server, so no row is
     // skipped and none repeats.
     await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
-    await expect(articles(page)).toHaveCount(20);
+    await expect(articles(page)).toHaveCount(19);
     expect(pageQueries(canvas)[1]).toMatchObject({ after: btoa('9') });
     const labels = await articles(page).evaluateAll((nodes) =>
       nodes.map((node) => node.getAttribute('aria-label')),
     );
-    expect(new Set(labels).size).toBe(20);
+    expect(new Set(labels).size).toBe(19);
+  });
 
-    // The mark can go back, with one DELETE.
+  test('keep the row in All, where it still belongs, and send the DELETE when it is marked back', async ({
+    context,
+    page,
+  }) => {
+    const { canvas, state } = await open(context, page);
+    await setReadFilter(page, 'All');
+    await expect.poll(() => pageQueries(canvas).at(-1)?.['readState']).toBe('all');
+    const row = articles(page).first();
+    await expect(row).toHaveAttribute('aria-label', 'Lab room change for Thursday');
+    await row.getByRole('button', { name: 'Mark Lab room change for Thursday as read' }).click();
+    await expect(
+      row.getByRole('button', { name: 'Mark Lab room change for Thursday as unread' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => canvas.requests.filter((r) => r.method === 'PUT').length).toBe(1);
+    await page.waitForTimeout(800);
+    await expect(articles(page)).toHaveCount(10);
+    await expect(row).toBeVisible();
+
     await row.getByRole('button', { name: 'Mark Lab room change for Thursday as unread' }).click();
     await expect
       .poll(() => canvas.requests.filter((r) => r.method === 'DELETE').map((r) => r.path))
       .toEqual(['/api/v1/courses/101/discussion_topics/31901/read']);
     expect(state.readAnnouncements.has('101:31901')).toBe(false);
+    await page.waitForTimeout(800);
+    await expect(articles(page)).toHaveCount(10);
+  });
+
+  test('take a read row out of the Read filter when it is marked unread', async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await open(context, page);
+    await setReadFilter(page, 'Read');
+    const row = articles(page).first();
+    await expect(row).toHaveAttribute('aria-label', 'Syllabus quiz reminder');
+    const before = await articles(page).count();
+    await row.getByRole('button', { name: 'Mark Syllabus quiz reminder as unread' }).click();
+    await expect(
+      row.getByRole('button', { name: 'Mark Syllabus quiz reminder as read' }),
+    ).toHaveAttribute('aria-pressed', 'false');
+    await expect(articles(page)).toHaveCount(before - 1);
+    await expect(page.locator(`${LIST} article[aria-label="Syllabus quiz reminder"]`)).toHaveCount(
+      0,
+    );
+    expect(canvas.requests.filter((r) => r.method === 'DELETE')).toHaveLength(1);
+  });
+
+  test('keep the row in the results of a search', async ({ context, page }) => {
+    await open(context, page);
+    await page.locator(`${LIST} input[type="search"]`).fill('lab');
+    await expect(articles(page).first()).toBeVisible();
+    const count = await articles(page).count();
+    const unread = page.locator(`${LIST} .wr-a-read[data-read="false"]`).first();
+    const key = await unread.evaluate((button) =>
+      button.closest('article')?.getAttribute('data-wr-row'),
+    );
+    await unread.click();
+    const mark = page.locator(`${LIST} article[data-wr-row="${key}"] .wr-a-read`);
+    await expect(mark).toHaveAttribute('aria-pressed', 'true');
+    await page.waitForTimeout(800);
+    await expect(articles(page)).toHaveCount(count);
+    await expect(mark).toBeVisible();
+  });
+
+  test('let the second click reverse the mark during the hold, and keep the row', async ({
+    context,
+    page,
+  }) => {
+    const { canvas, state } = await open(context, page);
+    const row = articles(page).first();
+    // Both clicks come in one action, so the second one is always inside the hold.
+    await row
+      .getByRole('button', { name: 'Mark Lab room change for Thursday as read' })
+      .click({ clickCount: 2 });
+    await expect(
+      row.getByRole('button', { name: 'Mark Lab room change for Thursday as read' }),
+    ).toHaveAttribute('aria-pressed', 'false');
+    await expect.poll(() => canvas.requests.filter((r) => r.method === 'DELETE').length).toBe(1);
+    // Well after the hold, the row is still there.
+    await page.waitForTimeout(900);
+    await expect(articles(page)).toHaveCount(10);
+    await expect(row).toBeVisible();
+    expect(state.readAnnouncements.has('101:31901')).toBe(false);
+  });
+
+  test('keep a row with its check while Canvas is slow, then take it out when Canvas accepts', async ({
+    context,
+    page,
+  }) => {
+    const slow = slowMarks();
+    const served = await openWith(context, page, [slow.route]);
+    slow.bind(served.state);
+    slow.hold('101:31901');
+    const row = articles(page).first();
+    await row.getByRole('button', { name: 'Mark Lab room change for Thursday as read' }).click();
+    await expect
+      .poll(() => served.canvas.requests.filter((r) => r.method === 'PUT').length)
+      .toBe(1);
+    // The hold is long over, and the row waits with its check.
+    await page.waitForTimeout(900);
+    await expect(row).toBeVisible();
+    await expect(
+      row.getByRole('button', { name: 'Mark Lab room change for Thursday as unread' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
+    await expect(articles(page)).toHaveCount(10);
+
+    slow.release('101:31901');
+    await expect(articles(page)).toHaveCount(9);
+  });
+
+  test('keep the row, with the state of Canvas and the note, when Canvas refuses after the hold', async ({
+    context,
+    page,
+  }) => {
+    const slow = slowMarks();
+    const served = await openWith(context, page, [slow.route]);
+    slow.bind(served.state);
+    slow.hold('101:31901');
+    slow.refuse('101:31901');
+    const row = articles(page).first();
+    await row.getByRole('button', { name: 'Mark Lab room change for Thursday as read' }).click();
+    await page.waitForTimeout(700);
+    await expect(row.locator('.wr-a-read')).toHaveAttribute('aria-pressed', 'true');
+    slow.release('101:31901');
+    await expect(page.locator(`${LIST} [role="status"]`).first()).toContainText(
+      "Couldn't change the read mark.",
+    );
+    await expect(row.locator('.wr-a-read')).toHaveAttribute('aria-pressed', 'false');
+    await page.waitForTimeout(500);
+    await expect(articles(page)).toHaveCount(10);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
+  });
+
+  test('let two rows in a hold leave one by one, and not the second one early', async ({
+    context,
+    page,
+  }) => {
+    const slow = slowMarks();
+    const served = await openWith(context, page, [slow.route]);
+    slow.bind(served.state);
+    const secondKey = (await articles(page).nth(1).getAttribute('data-wr-row')) ?? '';
+    const second = page.locator(`article[data-wr-row="${secondKey}"]`);
+    slow.hold(secondKey);
+    await articles(page).first().locator('.wr-a-read').click();
+    await second.locator('.wr-a-read').click();
+    // The first row leaves. The second waits for Canvas, with its check.
+    await expect(articles(page)).toHaveCount(9);
+    await page.waitForTimeout(500);
+    await expect(articles(page)).toHaveCount(9);
+    await expect(second).toBeVisible();
+    await expect(second.locator('.wr-a-read')).toHaveAttribute('aria-pressed', 'true');
+    slow.release(secondKey);
+    await expect(articles(page)).toHaveCount(8);
+  });
+
+  test('leave at once after the hold when the computer asks for less motion', async ({
+    context,
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await open(context, page);
+    await watchLeaves(page);
+    await articles(page).first().locator('.wr-a-read').click();
+    await expect(articles(page)).toHaveCount(9);
+    const { click, leaves, gone } = await leavesOf(page);
+    expect(leaves).toEqual([]);
+    expect(gone).toBeGreaterThanOrEqual(click + 440);
+  });
+
+  test('move the focus to the next row, and to the scroll area when no row is left', async ({
+    context,
+    page,
+  }) => {
+    await open(context, page);
+    const first = articles(page).first();
+    const next = await articles(page).nth(1).getAttribute('data-wr-row');
+    await first.locator('.wr-a-read').click();
+    await expect(first.locator('.wr-a-read')).toBeFocused();
+    await expect(articles(page)).toHaveCount(9);
+    await expect(page.locator(`article[data-wr-row="${next}"] .wr-a-read`)).toBeFocused();
+
+    // Course 104 holds one unread row: the area takes the focus, and the empty line shows.
+    await page.locator(WIDGET).getByLabel('Course filter:').selectOption('104');
+    await expect(articles(page)).toHaveCount(1);
+    await articles(page).first().locator('.wr-a-read').click();
+    await expect(articles(page)).toHaveCount(0);
+    await expect(feed(page)).toBeFocused();
+    await expect(feed(page)).toContainText('No unread announcements');
+  });
+
+  test('move the focus to the previous row when the last row leaves', async ({ context, page }) => {
+    await open(context, page);
+    await page.locator(WIDGET).getByLabel('Course filter:').selectOption('102');
+    await expect(articles(page)).toHaveCount(10);
+    await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(articles(page)).toHaveCount(12);
+    await expect(feed(page)).toContainText('No more announcements');
+    const previous = await articles(page).nth(10).getAttribute('data-wr-row');
+    await articles(page).last().locator('.wr-a-read').click();
+    await expect(articles(page)).toHaveCount(11);
+    await expect(page.locator(`article[data-wr-row="${previous}"] .wr-a-read`)).toBeFocused();
+  });
+
+  test('close an open message with its row', async ({ context, page }) => {
+    await open(context, page);
+    const row = articles(page).first();
+    await row.getByRole('button', { name: 'Read more' }).click();
+    await expect(message(page)).toContainText('Science Hall 214');
+    await row.locator('.wr-a-read').click();
+    await expect(articles(page)).toHaveCount(9);
+    await expect(message(page)).toHaveCount(0);
+    // The row shows closed where it still belongs.
+    await setReadFilter(page, 'All');
+    await expect(articles(page).first()).toHaveAttribute(
+      'aria-label',
+      'Lab room change for Thursday',
+    );
+    await expect(message(page)).toHaveCount(0);
+    await expect(articles(page).first().getByRole('button', { name: 'Read more' })).toBeVisible();
+  });
+
+  test('load the next page when rows have left and the end comes near', async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await open(context, page);
+    for (let index = 0; index < 5; index += 1) {
+      await articles(page).nth(index).locator('.wr-a-read').click();
+    }
+    // Five rows are left, which do not fill the area, so the next page loads by itself.
+    await expect(articles(page)).toHaveCount(15);
+    expect(pageQueries(canvas).at(-1)).toMatchObject({ after: btoa('5') });
+    const labels = await articles(page).evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute('aria-label')),
+    );
+    expect(new Set(labels).size).toBe(15);
+  });
+
+  test('take the row out of both widgets that show the same list', async ({ context, page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await open(context, page);
+    await page.evaluate(() => {
+      const widget = document.querySelector(
+        '[data-testid="widget-container-announcements-widget"]',
+      );
+      const clone = (
+        window as unknown as { fixtureFreshClone(node: Element): Element }
+      ).fixtureFreshClone(widget as Element);
+      widget?.after(clone);
+    });
+    const lists = page.locator(`${WIDGET} [data-wr-list]`);
+    await expect(lists).toHaveCount(2);
+    const rowsOf = (index: number): Locator => lists.nth(index).locator('article');
+    await expect(rowsOf(0)).toHaveCount(10);
+    await expect(rowsOf(1)).toHaveCount(10);
+    await rowsOf(0).first().locator('.wr-a-read').click();
+    await expect(rowsOf(0)).toHaveCount(9);
+    await expect(rowsOf(1)).toHaveCount(9);
+    await page.waitForTimeout(600);
+    expect(errors).toEqual([]);
   });
 
   test('take the check back with a short note when Canvas refuses the mark', async ({

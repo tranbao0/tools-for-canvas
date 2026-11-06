@@ -694,6 +694,89 @@ describe('a row that a mark took out of its filter', () => {
   });
 });
 
+describe('taking one row out of a list', () => {
+  const unread = { read: 'unread', courseId: null } as const;
+
+  it('takes out only the row that a mark took out of the set, and keeps the offset', async () => {
+    const { store, sent } = setup(many(25));
+    const list = store.ensure('unread', null);
+    await flush();
+    await store.mark(list.items[0]!, true, unread);
+    await store.mark(list.items[1]!, true, unread);
+
+    expect(store.drop('unread', null, rowKey(list.items[0]!))).toBe(true);
+    // The second row is out of the set too, and it stays until its own turn.
+    expect(list.items.map((entry) => entry.id)).toEqual([
+      '2',
+      '3',
+      '4',
+      '5',
+      '6',
+      '7',
+      '8',
+      '9',
+      '10',
+    ]);
+    expect(nextOffset(list)).toBe(8);
+    store.more('unread', null);
+    await flush();
+    expect(sent.at(-1)).toMatchObject({ offset: 8 });
+    expect(store.drop('unread', null, rowKey(list.items[0]!))).toBe(true);
+    expect(list.items.map((entry) => entry.id)).not.toContain('2');
+    expect(list.items).toHaveLength(18);
+    expect(nextOffset(list)).toBe(18);
+  });
+
+  it('does nothing for a row in the set, a row that is gone, a list that is gone or a mark on its way', async () => {
+    const { store, state } = setup(many(25));
+    const list = store.ensure('unread', null);
+    await flush();
+    const first = list.items[0]!;
+    expect(store.drop('unread', null, rowKey(first))).toBe(false);
+    expect(store.drop('unread', null, '101:none')).toBe(false);
+    expect(store.drop('read', null, rowKey(first))).toBe(false);
+    expect(list.items).toHaveLength(10);
+
+    let release = (): void => undefined;
+    state.markGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const marking = store.mark(first, true, unread);
+    expect(store.pending(rowKey(first))).toBe(true);
+    expect(store.drop('unread', null, rowKey(first))).toBe(false);
+    state.markGate = null;
+    release();
+    await marking;
+    expect(store.pending(rowKey(first))).toBe(false);
+    expect(store.drop('unread', null, rowKey(first))).toBe(true);
+    // A second call, as from a second widget that shows the same list, changes nothing.
+    expect(store.drop('unread', null, rowKey(first))).toBe(false);
+    expect(list.items).toHaveLength(9);
+  });
+
+  it('keeps a row that a refused mark put back into the set', async () => {
+    const { store, state } = setup(many(25));
+    const list = store.ensure('unread', null);
+    await flush();
+    state.markOk = false;
+    const first = list.items[0]!;
+    expect(await store.mark(first, true, unread)).toBe(false);
+    expect(store.drop('unread', null, rowKey(first))).toBe(false);
+    expect(list.items).toHaveLength(10);
+    expect(list.items[0]).toMatchObject({ id: '1', read: false });
+  });
+
+  it('takes a row marked unread out of the Read list', async () => {
+    const { store } = setup(many(25, (index) => ({ read: index % 2 === 0 })));
+    const list = store.ensure('read', null);
+    await flush();
+    const first = list.items[0]!;
+    await store.mark(first, false, { read: 'read', courseId: null });
+    expect(store.drop('read', null, rowKey(first))).toBe(true);
+    expect(list.items.map((entry) => entry.id)).not.toContain(first.id);
+  });
+});
+
 describe('a row that is back in the set of a list', () => {
   const unread = { read: 'unread', courseId: null } as const;
 

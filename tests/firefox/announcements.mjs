@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Firefox check of the Announcements widget of the new dashboard (design decision 22): the list
-// that replaces the list of Canvas, the infinite scroll and the search by topic.
+// that replaces the list of Canvas, the read mark, the infinite scroll and the search by topic.
 //
 // It installs .output/firefox-mv3 as a temporary add-on, serves a fake Canvas over HTTPS (the
 // dashboard page of the widget fixture and the GraphQL answer of the Announcements widget), and
 // checks in real Firefox:
 //   a. The list shows 10 rows, and the list and the pager of Canvas are hidden.
-//   b. A scroll to the end of the scroll area loads 10 more rows.
-//   c. A search for "lockdown" shows 2 results with the match in <mark>.
+//   b. A click on the read control takes the row out of the Unread list after its hold.
+//   c. A scroll to the end of the scroll area loads 10 more rows after the 9 that are left.
+//   d. A search for "lockdown" shows 2 results with the match in <mark>.
 // A content script of Firefox cannot spread the iterator of URLSearchParams, Headers or FormData,
 // and Chromium and jsdom accept it, so only a real Firefox shows such a fault in the page script.
 //
@@ -54,6 +55,9 @@ const { SCENARIO_NOW, buildScenario } = await import('../fixtures/scenario.ts');
 
 const json = (value) => ({ type: 'application/json', body: JSON.stringify(value) });
 
+/** The topics that the student marked as read, by id. */
+const marked = new Set();
+
 /** The announcements of the fixture, as the query of the widget lists them. */
 function graphqlAnswer(postData) {
   if (postData.includes('WeekrowAnnouncements')) {
@@ -68,7 +72,7 @@ function graphqlAnswer(postData) {
           postedAt: topic.posted_at ?? '',
           authorName: topic.user_name ?? null,
           avatarUrl: null,
-          read: topic.read,
+          read: topic.read || marked.has(topic.id),
         })),
         (courseId) => COURSES[courseId] ?? null,
       ),
@@ -98,6 +102,13 @@ async function startCanvas(routes) {
       request.on('data', (chunk) => chunks.push(chunk));
       request.on('end', () => {
         const body = Buffer.concat(chunks).toString('utf8');
+        // Canvas takes a read mark with a 204 and lists the topic as read from then on.
+        const mark = /^\/api\/v1\/courses\/\d+\/discussion_topics\/(\d+)\/read$/.exec(url.pathname);
+        if (mark !== null && request.method === 'PUT') {
+          marked.add(mark[1]);
+          response.writeHead(204).end();
+          return;
+        }
         const route =
           url.pathname === '/api/graphql' && request.method === 'POST'
             ? graphqlAnswer(body)
@@ -233,15 +244,29 @@ async function main() {
       writeFileSync(process.env.ANNOUNCEMENTS_SHOT, await card.takeScreenshot(), 'base64');
     }
 
-    // b. A scroll to the end of the scroll area loads 10 more rows.
+    // b. A mark takes the row out of the Unread list after its hold, a click of the student that
+    // the page accepts, and the row fades and closes with a transition of CSS.
     if (first.articles === 10) {
+      const area = await driver.findElement(
+        By.css('[data-testid="widget-announcements-widget"] [data-wr-list]'),
+      );
+      const control = await (await area.getShadowRoot()).findElement(By.css('article .wr-a-read'));
+      await control.click();
+      const marked = await waitFor(state, (value) => value.articles === 9);
+      if (marked.articles !== 9) problems.push(`a mark left ${marked.articles} rows, not 9`);
+      else console.log('Mark: the row left the Unread list');
+    }
+
+    // c. A scroll to the end of the scroll area loads 10 more rows, from the offset of the rows
+    // that the server holds, so no row repeats and none is missing.
+    if (first.articles === 10 && problems.length === 0) {
       await driver.executeScript(`
         const host = document.querySelector('[data-testid="widget-announcements-widget"] [data-wr-list]');
         const feed = host.shadowRoot.querySelector('[role="feed"]');
         feed.scrollTop = feed.scrollHeight;
       `);
-      const more = await waitFor(state, (value) => value.articles >= 20);
-      if (more.articles !== 20) problems.push(`a scroll gave ${more.articles} rows, not 20`);
+      const more = await waitFor(state, (value) => value.articles >= 19);
+      if (more.articles !== 19) problems.push(`a scroll gave ${more.articles} rows, not 19`);
       else console.log('Scroll: 10 more rows loaded');
     }
 
@@ -258,7 +283,7 @@ async function main() {
       return 1;
     }
 
-    // c. A search for "lockdown" shows 2 results with the match in <mark>.
+    // d. A search for "lockdown" shows 2 results with the match in <mark>.
     const host = await driver.findElement(
       By.css('[data-testid="widget-announcements-widget"] [data-wr-list]'),
     );

@@ -2213,8 +2213,23 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    - The read control is a circle that is empty when the row is unread and a green check when it is read, with `aria-pressed`, as in the widget.
      Only a trusted click on it sends `weekrow:announcement-mark` with the course, the topic and the new state.
      The row changes at once, and it goes back with a short note when the reply is not ok.
-     With the Unread filter, a row that the student marked stays on screen with its check until the student leaves that filter.
-     When the student comes back to the filter, the row is gone, because the list is drawn again then.
+     In the plain list, a mark that takes the row out of the set of the list makes the row leave: marking read in the Unread filter, or marking unread in the Read filter.
+     The check shows at once, and the row holds for 450 ms from the click, so a second click can reverse the mark and the row stays.
+     The row leaves only when the hold has ended and Canvas has taken the mark.
+     If Canvas is slow, the row waits with its check.
+     If Canvas refuses, the row stays, shows the state that Canvas confirmed, and the note "Couldn't change the read mark." shows.
+     The row then fades and closes: its height, its vertical padding and its bottom border go to 0 in 260 ms with `cubic-bezier(.4,0,.2,1)`, and its opacity goes to 0 in 160 ms, so the rows below slide up.
+     The row has a height in pixels before the transition starts, hides its overflow and takes no pointer events while it leaves.
+     The fix uses CSS transitions with a `transitionend` listener and a timer of 400 ms as a fallback, because a hidden tab runs no transition, and it does not use `element.animate`, because the code must work in a content script of Firefox.
+     With `prefers-reduced-motion: reduce` the row has no transition and no fade, and it goes at once when the hold has ended and Canvas has taken the mark.
+     When the transition ends, the store takes out that row only (`drop`), and no other row, so a second row in its own hold stays until its own turn.
+     The offset does not change, because it counts only the rows of the set.
+     If the focus is in the leaving row when it goes, the focus moves to the read control of the next row, else of the previous row, else to the scroll area.
+     An open message closes with its row, and the key of the row leaves the set of open messages.
+     The next page still loads when the end of the area comes near, and the empty line shows when the last row goes.
+     All, the search and a date range keep the row, because it still belongs there.
+     Two widgets that show the same list each hold and close the row, and the second removal does nothing.
+     A row that stays out of the set of its list in another way, such as a row marked in a search, goes when the student leaves the filter, or after its hold when the plain list shows it again.
      A row with a pending mark is the exception: it stays when the student leaves the filter and when the student comes back during the write, because Canvas may refuse the mark and the row must be there to go back.
      When the last pending mark of a row settles, the row shows the state that Canvas last confirmed for it, not the state that the row showed when the mark began, so two refused marks of one row (a double click) leave it as it was.
      A list that holds a row with a pending mark stays unpruned until the marks settle, whether the row is in the set or not, and then the rows that are out of its set go.

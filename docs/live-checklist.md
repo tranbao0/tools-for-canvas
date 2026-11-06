@@ -336,11 +336,13 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
     Expect: the list shows the announcements of that course, filtered by the read filter, and the pager of the widget is gone.
     Choose "All courses".
     Click the circle of an unread announcement in the Unread filter.
-    Expect: the circle becomes a green check at once, the row stays in the list, and in Canvas the announcement is read (check the unread count of Canvas).
+    Expect: the circle becomes a green check at once, the row stays for about half a second, then it fades and closes, and in Canvas the announcement is read (check the unread count of Canvas).
+    Click the circle of another unread announcement, and click the check again at once.
+    Expect: the circle comes back, the row stays, and the announcement is unread in Canvas.
     Scroll to load more rows.
     Expect: no row of the list repeats, and no row is missing.
-    Click the check again.
-    Expect: the circle comes back, and the announcement is unread in Canvas.
+    Choose the All filter and click the circle of an announcement.
+    Expect: the circle becomes a check and the row stays, because it still belongs to All.
     Type a word of a title in the search field, then a word of a message that is not in the title.
     Expect: after the first search, the line "Searching 100 of N" can show while the announcements load, then the line "N results, read and unread", with the matches marked in the titles and in the snippets, and read announcements in the results.
     Expect: with two words, only the announcements that hold both show.
