@@ -4270,9 +4270,13 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     A graded group discussion goes on to `/groups/:g/discussion_topics/:n`, and `child_topic` drops every parameter.
     A link in the frame can go to any page of Canvas.
     So one rule covers every page of the saved origin, of any course or of none, including a page of a group, another course, `/users/:id` and `/calendar`.
-    These give no rewrite: `/login`, `/logout` and `/api` with everything under them, an address whose path ends in `/download`, the classic quiz take page `/quizzes/:id/take` of any course with everything under it, an address that has `content_only=1` already, and an address of another origin.
+    These give no rewrite: `/login`, `/logout` and `/api` with everything under them, a file download route (`/files/:id/download`, with or without a file name), a `blob:` address, the classic quiz take page `/quizzes/:id/take` of any course with everything under it, an address that has `content_only=1` already, and an address of another origin.
     A quiz that runs never reloads, because Canvas treats the unload of the take page as a student who leaves the quiz.
     Such a page keeps the full Canvas layout, and "Open in new tab" is always in the bar.
+    The rule reads the address only, so it has two accepted limits.
+    A page that shows the result of a POST at a plain address loads again as a GET, so its typed values and its error go, as at a failed `PUT /groups/:id`.
+    A slim page that sends the frame back to its plain address by script would reload without end, because each slim load ends the chain.
+    No page of Canvas that the pinned source shows does that.
   - **Poll for the address.**
     A plain page must not show the full Canvas layout until its `load` event, which comes after every image and script of the page.
     So the script reads the address of the frame every 100 ms from the moment the frame is made, and again from each `pagehide` of the window of a page.
