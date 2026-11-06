@@ -49,11 +49,11 @@ test('the background refuses data messages from a content script on another Canv
     { type: 'weekrow:refresh', reason: 'retry', surface: 'inpage' },
     {
       type: 'weekrow:action',
-      action: { kind: 'setDone', key: `assignment:${IDS.assignments.bioQuiz3Today}`, done: true },
-    },
-    {
-      type: 'weekrow:action',
-      action: { kind: 'skip', keys: [`assignment:${IDS.assignments.bioQuiz3Today}`] },
+      action: {
+        kind: 'setDone',
+        keys: [`assignment:${IDS.assignments.bioQuiz3Today}`],
+        done: true,
+      },
     },
     {
       type: 'weekrow:action',

@@ -609,7 +609,6 @@ test.describe('the full list in the card', () => {
       await expect(area.getByRole('button', { name: 'Back to days' })).toHaveCount(0);
       await expect(area.locator('[data-row-key]').first()).toBeVisible();
       await expect(area.getByRole('button', { name: /^\d+ done$/ })).toBeVisible();
-      await expect(area.getByRole('button', { name: /^\d+ skipped$/ })).toBeVisible();
       await expect(dayList(list)).toBeHidden();
 
       await toggleOf(list.locator('.wr-pinned [data-group="done"]')).click();

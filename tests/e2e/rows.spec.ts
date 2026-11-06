@@ -16,6 +16,7 @@ import {
 
 const OUTSIDE = 'Lab 6: Calorimetry notebook';
 const MISSING = 'Pre-lab worksheet 7';
+const TASK = 'Call financial aid office';
 
 /** The row of an item in the open panel. */
 function rowOf(page: Page, title: string): Locator {
@@ -72,20 +73,22 @@ for (const width of [240, 360]) {
     }) => {
       const setup = await serveScenario(context);
       await openPanel(page, setup, background, extensionUrl('sidepanel.html'), width);
-      const row = rowOf(page, MISSING);
+      const row = rowOf(page, TASK);
 
       const due = row.locator('.wr-due');
       await expect(due.locator('.wr-when')).toBeVisible();
-      const skip = due.getByRole('button', { name: `Skip ${MISSING}` });
-      await expect(skip).toBeVisible();
-      await expect(row.locator('.wr-item-tags').getByRole('button', { name: /^Skip/ })).toHaveCount(
-        0,
-      );
+      const move = due.getByRole('button', { name: `Move ${TASK} to today` });
+      await expect(move).toBeVisible();
+      await expect(
+        row.locator('.wr-item-tags').getByRole('button', { name: /^Move / }),
+      ).toHaveCount(0);
+      // Work with a due date and no custom task has no action link on its due line.
+      await expect(rowOf(page, MISSING).locator('.wr-due').getByRole('button')).toHaveCount(0);
 
       for (const target of [
         row.getByRole('checkbox'),
         row.locator('[data-part="title"]'),
-        skip,
+        move,
         ...(await row.locator('.wr-item-tags button').all()),
       ]) {
         const box = await target.boundingBox();
