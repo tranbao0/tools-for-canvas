@@ -199,16 +199,25 @@ test('the Preview button of a row, a script click and a comment attachment keep 
   const preview = page.waitForEvent('download');
   await list.getByRole('button', { name: 'Preview' }).click();
   await preview;
-  // A click that a script of the frame makes opens nothing.
-  const scripted = page.waitForEvent('download');
-  await page
-    .frame({ url: /preview=1/ })!
-    .evaluate(() =>
-      document
-        .querySelector('a.file-upload-submission-info__link')!
-        .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })),
+  // The catcher leaves a click that a script of the frame makes. The browser would then save the
+  // file, but a second download with no user click can wait for a permission, so the test stops
+  // the click after the catcher had its turn.
+  const taken = await page.frame({ url: /preview=1/ })!.evaluate(() => {
+    let prevented: boolean | null = null;
+    window.addEventListener(
+      'click',
+      (event) => {
+        prevented = event.defaultPrevented;
+        event.preventDefault();
+      },
+      { once: true },
     );
-  await scripted;
+    document
+      .querySelector('a.file-upload-submission-info__link')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return prevented;
+  });
+  expect(taken).toBe(false);
   // A comment attachment is in the top frame and keeps its download.
   const attachment = page.waitForEvent('download');
   await page.getByRole('link', { name: 'Teacher comment file' }).click();
