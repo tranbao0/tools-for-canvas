@@ -819,6 +819,109 @@ describe('the page script', () => {
       expect(paneHost()).not.toBeNull();
     });
 
+    it('keeps a pane that a port has told about a file, with empty stored tabs', async () => {
+      prepare();
+      document.body.innerHTML = `${MODULE_HTML}<a id="second" href="/files/5">Notes</a>`;
+      let read = 0;
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'viewer:module-item')
+          return (read += 1) === 1 ? { fileId: '4' } : undefined;
+        return reply(message);
+      });
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(paneHost()).not.toBeNull());
+      const seen = followed();
+      await vi.waitFor(() => expect(read).toBe(1));
+      click(true);
+      await vi.waitFor(() => expect(read).toBe(2));
+      await vi.waitFor(() => expect(seen).toHaveLength(1));
+      expect(paneHost()).not.toBeNull();
+    });
+
+    it('gives the link no click when the student closed the pane during the read', async () => {
+      prepare();
+      document.body.innerHTML = MODULE_HTML;
+      let answer = (_file: { fileId: string }): void => undefined;
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'viewer:module-item') {
+          return new Promise((resolve) => (answer = resolve));
+        }
+        return reply(message);
+      });
+      const seen = followed();
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(paneHost()).not.toBeNull());
+      paneHost()!.remove();
+      answer({ fileId: '4' });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(seen).toHaveLength(0);
+    });
+
+    it('gives the link no click after a reset during the click', async () => {
+      prepare();
+      document.body.innerHTML = MODULE_HTML;
+      let answer = (_file: undefined): void => undefined;
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'viewer:module-item') {
+          return new Promise((resolve) => (answer = resolve));
+        }
+        return reply(message);
+      });
+      const seen = followed();
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(paneHost()).not.toBeNull());
+      const listener = addListener.mock.calls.at(-1)![0] as (
+        message: unknown,
+        sender: { id: string },
+        respond: () => void,
+      ) => unknown;
+      listener({ type: 'viewer:reset' }, { id: 'my-extension' }, () => undefined);
+      answer(undefined);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(seen).toHaveLength(0);
+    });
+
+    it('lets a newer click win over a failed older one', async () => {
+      prepare();
+      document.body.innerHTML = `${MODULE_HTML}<a id="second" href="/files/5">Notes</a>`;
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'viewer:module-item') return undefined;
+        return reply(message);
+      });
+      const seen = followed();
+      await startViewer();
+      click(true);
+      const newer = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+      Object.defineProperty(newer, 'isTrusted', { value: true });
+      document.getElementById('second')!.dispatchEvent(newer);
+      await vi.waitFor(() => expect(paneHost()).not.toBeNull());
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(seen).toHaveLength(0);
+      expect(paneHost()).not.toBeNull();
+    });
+
+    it('clicks no button whose address the page changed', async () => {
+      prepare();
+      document.body.innerHTML =
+        '<div data-module-id="3"><button id="file" class="attachment" data-url="/courses/12/modules/items/9">Notes</button></div>';
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'viewer:module-item') {
+          document.getElementById('file')!.dataset['url'] = '/courses/12/pages/other';
+          return undefined;
+        }
+        return reply(message);
+      });
+      const seen = followed();
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(sendMessage.mock.calls.length).toBeGreaterThan(1));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(seen).toHaveLength(0);
+    });
+
     it('clicks no link that the page changed while the pane was opening', async () => {
       prepare();
       document.body.innerHTML = MODULE_HTML;
