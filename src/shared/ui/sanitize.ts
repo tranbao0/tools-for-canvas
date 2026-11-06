@@ -136,10 +136,6 @@ export function sanitizeHtml(html: string, options: SanitizeOptions): DocumentFr
         walk(element, into, depth, level + 1);
         continue;
       }
-      if (tag === 'img') {
-        into.appendChild(made);
-        continue;
-      }
       into.appendChild(made);
       walk(element, made, depth + 1, level + 1);
     }

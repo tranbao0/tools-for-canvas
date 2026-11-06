@@ -73,35 +73,6 @@ function ItemList(props: {
   );
 }
 
-/** A collapsed line such as "12 older" that opens `children` in place. */
-function Disclosure(props: {
-  label: string;
-  open: boolean;
-  onToggle(): void;
-  action?: ComponentChildren;
-  children: ComponentChildren;
-}) {
-  const [id] = useState(() => newId('region'));
-  return (
-    <>
-      <div class="wr-subline">
-        <button
-          type="button"
-          class="wr-sub-toggle"
-          aria-expanded={props.open}
-          aria-controls={id}
-          onClick={props.onToggle}
-        >
-          <ChevronDownIcon />
-          {props.label}
-        </button>
-        {props.action}
-      </div>
-      <div id={id}>{props.open && props.children}</div>
-    </>
-  );
-}
-
 /** A collapsed line such as "12 older" that opens a nested list. */
 function SubList(props: {
   label: string;
@@ -112,22 +83,35 @@ function SubList(props: {
   action?: ComponentChildren;
 }) {
   const [open, setOpen] = useState(false);
+  const [id] = useState(() => newId('region'));
   if (props.items.length === 0) return null;
   return (
-    <Disclosure
-      label={props.label}
-      open={open}
-      onToggle={() => setOpen(!open)}
-      action={props.action}
-    >
-      <ItemList
-        items={props.items}
-        view={props.view}
-        when={props.when}
-        handlers={props.handlers}
-        nested
-      />
-    </Disclosure>
+    <>
+      <div class="wr-subline">
+        <button
+          type="button"
+          class="wr-sub-toggle"
+          aria-expanded={open}
+          aria-controls={id}
+          onClick={() => setOpen(!open)}
+        >
+          <ChevronDownIcon />
+          {props.label}
+        </button>
+        {props.action}
+      </div>
+      <div id={id}>
+        {open && (
+          <ItemList
+            items={props.items}
+            view={props.view}
+            when={props.when}
+            handlers={props.handlers}
+            nested
+          />
+        )}
+      </div>
+    </>
   );
 }
 
