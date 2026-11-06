@@ -1613,11 +1613,12 @@ These sizes come from one test build of the same small app [19].
 - The in-page UI uses px units, because rem units follow the page's font size [19].
 - Plain CSS with custom properties for colors and spacing; no CSS framework.
 - No runtime dependencies besides Preact.
-- Each entry point must stay under 45 KB after gzip, except `inpage.js`, which may reach 48 KB, and the detector must stay under 2 KB, because the detector runs on every https page.
+- Each entry point must stay under 45 KB after gzip, except `inpage.js`, which may reach 50 KB, and the detector must stay under 2 KB, because the detector runs on every https page.
   Every entry point loads from the extension's own files, not over the network.
   The limit was 30 KB until 2026-10-29, when the span feature and the dashboard column filled it.
   The limit was 40 KB until 2026-11-03, when the Course work slot filled it.
-  The limit of `inpage.js` alone is 48 KB since 2026-11-05: the page script now holds the weekly dock, its tab and the shared room lease, which the card did not need.
+  The limit of `inpage.js` alone is 50 KB since 2026-11-06: the page script now holds the weekly dock, its tab and the shared room lease, which the card did not need.
+  The owner chose 50 KB over moving the Announcements tab to its own script, which saves about 2 KB but adds a second load path for a change a student does not see.
   The other entry points keep 45 KB, and the script is not split (decision 25 keeps the file pane in its own script).
   CI checks these limits.
   The budget applies to the store builds.

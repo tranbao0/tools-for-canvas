@@ -22,7 +22,7 @@ export const BUDGET_BYTES = 45_000;
  * The gzip budget for the in-page list script, in bytes. The page holds the weekly dock, its tab
  * and the shared room lease besides the list (design decision 12).
  */
-export const INPAGE_BUDGET_BYTES = 48_000;
+export const INPAGE_BUDGET_BYTES = 50_000;
 
 /** The built in-page list script. */
 export const INPAGE_ENTRY = 'inpage.js';
