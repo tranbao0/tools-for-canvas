@@ -107,14 +107,21 @@ describe('slim address after a redirect', () => {
       '/courses/12/files/5/download?download_frd=1',
       '/files/5/download',
       '/files/5/download/',
+      '/courses/12/files/5/download.pdf',
     ])
       expect(slim(`${ORIGIN}${denied}`)).toBeNull();
+  });
+  it('slims a page that is only named download', () => {
+    expect(slim(`${ORIGIN}/courses/12/pages/download`)).toBe(
+      `${ORIGIN}/courses/12/pages/download?content_only=1`,
+    );
   });
   it('leaves no page of another origin and no text that is not an address', () => {
     for (const other of [
       'https://other.test/courses/12/assignments/101',
       `${ORIGIN}.evil.test/courses/12`,
       'http://canvas.test/courses/12',
+      `blob:${ORIGIN}/2f4e`,
       'about:blank',
       'not an address',
       '',
