@@ -180,6 +180,7 @@ describe('a Canvas without a session cookie', () => {
   it('shows the list again after a sign-out by a missing cookie and a return of the cookie', async () => {
     const h = await loaded();
     vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
+    expect((await h.owner.getState(PANEL)).kind).toBe('loading');
     expect((await h.owner.getState(PANEL)).kind).toBe('signed_out');
     vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-a');
     await h.owner.pageLoaded(ORIGIN);

@@ -230,8 +230,8 @@ export interface DataOwner {
   /** Restores delayed deletes when the worker wakes. */
   resumeDeletes(): Promise<void>;
   /** `tabId` is the tab of the surface, when it has one. */
-  getState(request: SurfaceRequest, tabId?: number): Promise<StateReply>;
-  refresh(reason: RefreshReason): Promise<RefreshResult>;
+  getState(request: SurfaceRequest, tabId?: number, origin?: string | null): Promise<StateReply>;
+  refresh(reason: RefreshReason, origin?: string | null): Promise<RefreshResult>;
   trigger(reason: BrowserTrigger): Promise<void>;
   /** A page of `origin` loaded. Only the saved Canvas counts. */
   pageLoaded(origin: string): Promise<void>;
@@ -251,7 +251,7 @@ export interface DataOwner {
    */
   acceptOffer(origin: string): Promise<boolean>;
   /** `tabId` is the tab of the surface, when it has one. A tab in another cookie store may not act. */
-  act(action: DataAction, tabId?: number): Promise<ActionReply>;
+  act(action: DataAction, tabId?: number, origin?: string | null): Promise<ActionReply>;
   /** The data of the dashboard fixes, from the cache. It makes no request (decision 22). */
   dashboardData(origin?: string | null, tabId?: number): Promise<DashboardData>;
   /**
@@ -259,7 +259,11 @@ export interface DataOwner {
    * student first, and the reply names that student. `token` names the read for a late result.
    * A tab in another cookie store gets no grade visibilities.
    */
-  dashboardGradeVisibility(token?: string, tabId?: number): Promise<DashboardData>;
+  dashboardGradeVisibility(
+    token?: string,
+    tabId?: number,
+    origin?: string | null,
+  ): Promise<DashboardData>;
   /**
    * One announcement of the saved Canvas with its full message. A tab in another cookie store
    * gets an empty one. It runs the checks of `announcementPage` and rejects like it.
@@ -312,13 +316,18 @@ export interface DataOwner {
     read: boolean,
     userId: string,
     tabId?: number,
+    checkedOrigin?: string | null,
   ): Promise<AnnouncementMarkReply>;
   /**
    * The Announcements tab of one surface: the announcements of the last 14 days of the courses
    * the student shows, with the read marks applied (decision 24). The first request loads them
    * and replies at once with `loading`; the change marker tells the surface when they are in.
    */
-  announcementFeed(request: AnnouncementFeedRequest, tabId?: number): Promise<AnnouncementFeed>;
+  announcementFeed(
+    request: AnnouncementFeedRequest,
+    tabId?: number,
+    origin?: string | null,
+  ): Promise<AnnouncementFeed>;
   /**
    * A read of the file viewer (decision 25). It runs only for a tab in the cookie store of the
    * requests, for the saved Canvas, and while the cookie is confirmed for the student of the
@@ -1192,14 +1201,16 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   /** Applies the refresh policy. Resolves with the time of a full round it put off, if any. */
-  async function applyTrigger(trigger: LimitedTrigger): Promise<number | null> {
+  async function applyTrigger(trigger: LimitedTrigger, stamp?: WriteStamp): Promise<number | null> {
     await ready();
-    if (knownOrigin === null || cache === null) return null;
+    if (knownOrigin === null || cache === null || (stamp !== undefined && !isCurrent(stamp)))
+      return null;
     // A Canvas page load after a sign-out is the sign-in signal, so it skips the limit. Without
     // a session cookie there is no sign-in, and the limit holds.
     if (trigger === 'page_loaded' && cache.failure?.kind === 'signed_out') {
       const fingerprint = await readFingerprint(knownOrigin);
-      if (knownOrigin === null || cache === null) return null;
+      if (knownOrigin === null || cache === null || (stamp !== undefined && !isCurrent(stamp)))
+        return null;
       if (fingerprint !== null && fingerprint !== undefined) {
         scheduleForcedFull();
         return null;
@@ -1714,8 +1725,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   function enqueueWrite(
     job: (stamp: WriteStamp) => Promise<boolean>,
     queue: keyof typeof chains = 'writes',
+    stamp: WriteStamp = writeStamp(),
   ): Promise<void> {
-    const stamp = writeStamp();
     pendingWrites += 1;
     const done = chains[queue].then(async () => {
       try {
@@ -2090,6 +2101,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     previous: OverrideFlags,
     overrideId: string,
     userId: string,
+    stamp: WriteStamp,
   ): void {
     const patch: OverridePatch = {
       kind: 'override',
@@ -2100,7 +2112,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       confirmedAt: null,
     };
     addPatch(patch);
-    void enqueueWrite((stamp) => runOverrideWrite(patch.id, previous, stamp));
+    void enqueueWrite((stamp) => runOverrideWrite(patch.id, previous, stamp), 'writes', stamp);
   }
 
   function addNotePatch(noteId: string, note: NoteValue | null): NotePatch {
@@ -2122,7 +2134,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   /** Queues the DELETE of a delayed task delete, once. */
-  function sendDelete(noteId: string): void {
+  function sendDelete(noteId: string, stamp: WriteStamp = writeStamp()): void {
     const timer = deleteTimers.get(noteId);
     if (timer !== undefined) {
       timers.clearTimeout(timer);
@@ -2134,7 +2146,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     // A worker that restarts before the job runs sends it at once.
     setPendingDelete(noteId, clock.now());
     persist();
-    void enqueueWrite((stamp) => runNoteWrite(patch.id, 'delete', stamp));
+    void enqueueWrite((stamp) => runNoteWrite(patch.id, 'delete', stamp), 'writes', stamp);
   }
 
   /** Undo of a task delete. Once the DELETE has started, the task is gone in Canvas. */
@@ -2148,12 +2160,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     bumpLater();
   }
 
-  async function writeContext(): Promise<WriteContext | null> {
+  async function writeContext(stamp: WriteStamp): Promise<WriteContext | null> {
     await ready();
-    const origin = knownOrigin;
+    const origin = stamp.origin;
     if (origin === null || cache === null || cache.session === null) return null;
     const context = await viewContext(origin);
-    if (cache === null || cache.session === null) return null;
+    if (!isCurrent(stamp) || cache === null || cache.session === null) return null;
     const session = cache.session;
     const items = new Map(allItems(cache, session, context).map((item) => [item.key, item]));
     return { origin, session, context, items };
@@ -2167,11 +2179,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     keys: readonly string[],
     flagsFor: (item: Item) => OverrideFlags | null,
     undoable: boolean,
+    stamp: WriteStamp,
   ): Promise<ActionReply> {
     // A mark is a write for the student of the cache, so the cookie check comes first.
     await ready();
     if (!(await signedInStudentOwnsCache())) return NO_UNDO;
-    const write = await writeContext();
+    const write = await writeContext(stamp);
     if (write === null) return NO_UNDO;
     const entries: PreviousOverride[] = [];
     for (const key of new Set(keys)) {
@@ -2187,6 +2200,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         previous,
         item.override?.id ?? '',
         write.session.profile.id,
+        stamp,
       );
       entries.push({ key, previous });
     }
@@ -2204,8 +2218,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     userId: string,
     origin: string,
     entries: readonly PreviousOverride[],
+    stamp: WriteStamp,
   ): Promise<ActionReply> {
-    const write = await writeContext();
+    const write = await writeContext(stamp);
     if (write === null || write.session.profile.id !== userId || write.origin !== origin) {
       return NO_UNDO;
     }
@@ -2217,7 +2232,15 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       const item = write.items.get(key);
       const target = item === undefined ? null : overrideTargetFor(item);
       if (item === undefined || target === null) continue;
-      addOverridePatch(key, target, previous, previousFlags(item), item.override?.id ?? '', userId);
+      addOverridePatch(
+        key,
+        target,
+        previous,
+        previousFlags(item),
+        item.override?.id ?? '',
+        userId,
+        stamp,
+      );
       changed = true;
     }
     if (changed) {
@@ -2231,10 +2254,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     noteId: string,
     build: (write: WriteContext, timeZone: string, current: Item) => NoteValue | null,
     operation: NoteOperation,
+    stamp: WriteStamp,
   ): Promise<ActionReply> {
     // A task write is a write for the student of the cache, so the cookie check comes first.
     if (!(await signedInStudentOwnsCache())) return NO_UNDO;
-    const write = await writeContext();
+    const write = await writeContext(stamp);
     if (write === null || cache === null || cache.limited) return NO_UNDO;
     const current = write.items.get(noteKey(noteId));
     if (current === undefined) return NO_UNDO;
@@ -2242,7 +2266,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (operation === 'update' && note === null) return NO_UNDO;
     const patch = addNotePatch(noteId, note === null ? null : { ...note, id: noteId });
     if (operation === 'update') {
-      void enqueueWrite((stamp) => runNoteWrite(patch.id, 'update', stamp));
+      void enqueueWrite((stamp) => runNoteWrite(patch.id, 'update', stamp), 'writes', stamp);
     } else {
       const deleteAt = clock.now() + MAX_DELETE_DELAY_MS;
       setPendingDelete(noteId, deleteAt);
@@ -2259,18 +2283,22 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   /** Creates a task. The reply comes after Canvas answered, so the task shows with its real id. */
-  async function createTask(input: TaskInput): Promise<ActionReply> {
+  async function createTask(input: TaskInput, stamp: WriteStamp): Promise<ActionReply> {
     // The text of the task goes to the account of the cookie, so the cookie check comes first.
     if (!(await signedInStudentOwnsCache())) return { undo: null, created: false };
-    const write = await writeContext();
+    const write = await writeContext(stamp);
     if (write === null || cache === null || cache.limited) return NO_UNDO;
     const timeZone = canvasTimeZone(write.session, write.context);
     let created = false;
-    await enqueueWrite(async (stamp) => {
-      const result = await runNoteCreate(taskNote('', input, timeZone), stamp);
-      created = result.created;
-      return result.sync;
-    }, 'creates');
+    await enqueueWrite(
+      async (stamp) => {
+        const result = await runNoteCreate(taskNote('', input, timeZone), stamp);
+        created = result.created;
+        return result.sync;
+      },
+      'creates',
+      stamp,
+    );
     return { undo: null, created };
   }
 
@@ -2293,7 +2321,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return cache?.session?.profile.id === userId ? UNDO_REFUSED : NO_UNDO;
   }
 
-  async function act(action: DataAction): Promise<ActionReply> {
+  async function act(action: DataAction, stamp: WriteStamp): Promise<ActionReply> {
     switch (action.kind) {
       case 'setDone':
         return changeOverrides(
@@ -2303,14 +2331,16 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
               ? { markedComplete: true, dismissed: item.override?.dismissed ?? false }
               : { markedComplete: false, dismissed: false },
           action.done,
+          stamp,
         );
       case 'skip':
-        return changeOverrides(action.keys, skipFlags, true);
+        return changeOverrides(action.keys, skipFlags, true, stamp);
       case 'unskip':
         return changeOverrides(
           [action.key],
           (item) => ({ markedComplete: item.override?.markedComplete ?? false, dismissed: false }),
           false,
+          stamp,
         );
       case 'restore':
         // An Undo can outlive the state that showed it, so it writes only for a student that the
@@ -2319,17 +2349,18 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         // A refused Undo says so, and the surface shows its notice again, but only while the
         // cache still belongs to the student of the Undo.
         if (!(await signedInStudentOwnsCache(true))) return refusedUndo(action.userId);
-        return restoreOverrides(action.userId, action.origin, action.entries);
+        return restoreOverrides(action.userId, action.origin, action.entries, stamp);
       case 'createTask':
-        return createTask(action.input);
+        return createTask(action.input, stamp);
       case 'updateTask':
         return writeNote(
           action.noteId,
           (_write, timeZone, current) => taskNote(current.plannableId, action.input, timeZone),
           'update',
+          stamp,
         );
       case 'deleteTask':
-        return writeNote(action.noteId, () => null, 'delete');
+        return writeNote(action.noteId, () => null, 'delete', stamp);
       case 'moveTaskToToday':
         return writeNote(
           action.noteId,
@@ -2348,26 +2379,34 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
                   courseId: current.courseId,
                 },
           'update',
+          stamp,
         );
       case 'sendDelete':
         // A refused check leaves the delete to its timer, which sends it after a check.
         if (
           (await signedInStudentOwnsCache()) &&
+          isCurrent(stamp) &&
           (action.deleteToken === undefined ||
             findDeletePatch(action.noteId)?.id === action.deleteToken)
         )
-          sendDelete(action.noteId);
+          sendDelete(action.noteId, stamp);
         return NO_UNDO;
       case 'cancelDelete':
         cancelDelete(action.noteId);
         return NO_UNDO;
       case 'markAnnouncement':
-        return markAnnouncement(action.courseId, action.topicId, true, null);
+        return markAnnouncement(action.courseId, action.topicId, true, null, stamp);
       case 'restoreAnnouncement':
-        return markAnnouncement(action.courseId, action.topicId, false, {
-          userId: action.userId,
-          origin: action.origin,
-        });
+        return markAnnouncement(
+          action.courseId,
+          action.topicId,
+          false,
+          {
+            userId: action.userId,
+            origin: action.origin,
+          },
+          stamp,
+        );
     }
   }
 
@@ -2634,17 +2673,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
   }
 
-  /** Whether the live cache belongs to the Canvas that requested the read. */
-  function cacheBelongsTo(origin: string | null): boolean {
-    return origin !== null && origin === knownOrigin && cache?.origin === origin;
-  }
-
   async function dashboardData(
     checkedOrigin?: string | null,
     tabId?: number,
   ): Promise<DashboardData> {
     await ready();
-    const origin = checkedOrigin === undefined ? await savedOrigin() : checkedOrigin;
+    const origin = checkedOrigin === undefined ? knownOrigin : checkedOrigin;
+    const stamp = writeStamp();
     if (
       origin === null ||
       origin !== knownOrigin ||
@@ -2652,7 +2687,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       cache.session === null ||
       !(await surfaceMayRead(tabId)) ||
       !(await signedInStudentOwnsCache()) ||
-      !cacheBelongsTo(origin)
+      !isCurrent(stamp)
     ) {
       return { origin: origin ?? '', courses: [] };
     }
@@ -2710,22 +2745,31 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
   }
 
-  /** The saved Canvas a viewer surface may use now under the rules of the cookie, or `null`. */
-  async function viewerOrigin(
+  /** Accepts a first session only within the origin and generation of a cold viewer entry. */
+  async function viewerSessionStamp(origin: string, stamp: WriteStamp): Promise<WriteStamp | null> {
+    if (stamp.userId !== null) return isCurrent(stamp) && stamp.origin === origin ? stamp : null;
+    if (stamp.gen !== generation || stamp.origin !== knownOrigin || stamp.origin !== origin)
+      return null;
+    if (cache?.session == null) return stamp;
+    const first = writeStamp();
+    if (!(await signedInStudentOwnsCache()) || !isCurrent(first)) return null;
+    return writeStamp();
+  }
+
+  /** The origin and student a viewer entry may use under the cookie rules. */
+  async function viewerContext(
     origin: string | null,
     tabId: number | undefined,
     allowColdCheck = false,
-  ): Promise<string | null> {
+    entryStamp?: WriteStamp,
+  ): Promise<{ origin: string; stamp: WriteStamp } | null> {
     await ready();
+    if (origin === null || origin !== knownOrigin || tabId === undefined) return null;
+    const stamp = entryStamp ?? writeStamp();
+    if (stamp.origin !== origin) return null;
     if (!(await viewerClaimsEnded())) return null;
     const claim = viewerClaim;
-    if (
-      tabId === undefined ||
-      origin === null ||
-      origin !== knownOrigin ||
-      !(await surfaceMayRead(tabId))
-    )
-      return null;
+    if (!(await surfaceMayRead(tabId))) return null;
     if (cache?.session == null) {
       if (!(await viewerProofHolds(origin))) {
         if (!allowColdCheck) return null;
@@ -2735,7 +2779,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     } else if (!(await signedInStudentOwnsCache())) return null;
     // A session can commit during these checks, and its claim comes before the read.
     if (claim !== viewerClaim && !(await viewerClaimsEnded())) return null;
-    return cacheBelongsTo(origin) ? origin : null;
+    const current = await viewerSessionStamp(origin, stamp);
+    return current === null ? null : { origin, stamp: current };
   }
 
   async function viewerProofHolds(origin: string): Promise<boolean> {
@@ -2755,21 +2800,21 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   async function viewerRead<T>(
     origin: string | null,
     tabId: number | undefined,
-    read: (api: CanvasApi) => Promise<T>,
+    read: (api: CanvasApi, stamp: WriteStamp) => Promise<T>,
+    entryStamp?: WriteStamp,
   ): Promise<T> {
-    const allowed = await viewerOrigin(origin, tabId, true);
-    if (allowed === null) throw new ViewerUnconfirmedError();
-    if (cache?.session == null) {
+    const context = await viewerContext(origin, tabId, true, entryStamp);
+    if (context === null) throw new ViewerUnconfirmedError();
+    const { origin: allowed, stamp } = context;
+    if (stamp.userId === null) {
       const proof = viewerProof;
       if (!(await viewerProofHolds(allowed))) throw new Error('The viewer cookie changed');
-      const response = await read(apiFor(allowed));
+      const response = await read(apiFor(allowed), stamp);
       if (proof !== viewerProof || !(await viewerProofHolds(allowed)))
         throw new Error('The viewer cookie changed');
       return response;
     }
-    if (!cacheBelongsTo(allowed)) throw new ViewerUnconfirmedError();
-    const stamp = writeStamp();
-    const response = await cookieBound(() => read(apiFor(allowed)));
+    const response = await cookieBound(() => read(apiFor(allowed), stamp));
     if (response === DROPPED || !isCurrent(stamp))
       throw new Error('The cookie changed during the viewer read');
     return response;
@@ -2783,16 +2828,19 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   async function readForAssignmentView<T>(
     origin: string | null,
     tabId: number | undefined,
-    read: (api: CanvasApi) => Promise<T | null>,
-  ): Promise<T | null> {
-    const urgent = (api: CanvasApi): Promise<T | null> => read(api.withPriority(() => 'high'));
+    read: (api: CanvasApi) => Promise<T>,
+  ): Promise<T> {
+    await ready();
+    if (origin !== knownOrigin) throw new ViewerUnconfirmedError();
+    const stamp = writeStamp();
+    const urgent = (api: CanvasApi): Promise<T> => read(api.withPriority(() => 'high'));
     try {
-      return await viewerRead(origin, tabId, urgent);
+      return await viewerRead(origin, tabId, urgent, stamp);
     } catch (error) {
       // As in the viewer: a cookie that is not confirmed yet waits for one check and tries once more.
       if (!(error instanceof ViewerUnconfirmedError) || !(await viewerConfirm(origin, tabId)))
         throw error;
-      return viewerRead(origin, tabId, urgent);
+      return viewerRead(origin, tabId, urgent, stamp);
     }
   }
 
@@ -2807,23 +2855,19 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     origin: string | null,
     tabId: number | undefined,
   ): Promise<AssignmentDetailsReply | NoSubmissionAccess> {
-    const details = await readForAssignmentView(origin, tabId, async (api) => {
+    return readForAssignmentView(origin, tabId, async (api) => {
+      const session = cache?.session ?? null;
       const [assignment, submission] = await Promise.all([
         api.getAssignmentRecord(courseId, assignmentId),
         api.getOwnSubmissionRecord(courseId, assignmentId).catch(notFoundIsNull),
       ]);
-      return submission === null ? null : projectAssignmentView(assignment, submission);
+      if (submission === null) return { kind: 'no_submission_access' } as const;
+      const timeZone =
+        session !== null && origin !== null
+          ? canvasTimeZone(session, await viewContext(origin))
+          : deps.browserTimeZone();
+      return { details: projectAssignmentView(assignment, submission), timeZone };
     });
-    if (!cacheBelongsTo(origin)) throw new ViewerUnconfirmedError();
-    if (details === null) return { kind: 'no_submission_access' };
-    const stamp = writeStamp();
-    const session = cache?.session ?? null;
-    const timeZone =
-      session !== null && origin !== null
-        ? canvasTimeZone(session, await viewContext(origin))
-        : deps.browserTimeZone();
-    if (!isCurrent(stamp)) throw new ViewerUnconfirmedError();
-    return { details, timeZone };
   }
 
   async function assignmentOwner(
@@ -2886,16 +2930,24 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     origin: string | null,
     tabId: number | undefined,
   ): Promise<void> {
+    await ready();
+    if (origin !== knownOrigin) throw new ViewerUnconfirmedError();
+    const stamp = writeStamp();
     const send = () =>
-      viewerRead(origin, tabId, async (api) => {
-        // Canvas refuses another user's path, and the request is not even sent for one. A shard
-        // student's page writes `2~123` where Canvas's profile writes the global id.
-        const viewer = await viewerUserId(origin, tabId);
-        if (viewer === null || normalizeCanvasId(viewer) !== normalizeCanvasId(userId))
-          throw new Error('Not the signed-in student');
-        const guard = readMarkGuard(origin, tabId, writeStamp(), viewerProof, userId);
-        await api.withGuard(guard).markRubricCommentsRead(courseId, assignmentId, userId);
-      });
+      viewerRead(
+        origin,
+        tabId,
+        async (api, boundStamp) => {
+          // Canvas refuses another user's path, and the request is not even sent for one. A shard
+          // student's page writes `2~123` where Canvas's profile writes the global id.
+          const viewer = await viewerUserId(origin, tabId);
+          if (viewer === null || normalizeCanvasId(viewer) !== normalizeCanvasId(userId))
+            throw new Error('Not the signed-in student');
+          const guard = readMarkGuard(origin, tabId, boundStamp, viewerProof, userId);
+          await api.withGuard(guard).markRubricCommentsRead(courseId, assignmentId, userId);
+        },
+        stamp,
+      );
     try {
       await send();
     } catch (error) {
@@ -2910,32 +2962,43 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     origin: string | null,
     tabId: number | undefined,
   ): Promise<string | null> {
-    if ((await viewerOrigin(origin, tabId)) === null || !cacheBelongsTo(origin)) return null;
-    return cache?.session?.profile.id ?? viewerProof?.userId ?? null;
+    const context = await viewerContext(origin, tabId);
+    if (context === null || !isCurrent(context.stamp)) return null;
+    return context.stamp.userId ?? viewerProof?.userId ?? null;
   }
 
   async function viewerMayFetch(
     origin: string | null,
     tabId: number | undefined,
   ): Promise<boolean> {
-    return (await viewerOrigin(origin, tabId)) !== null;
+    const context = await viewerContext(origin, tabId);
+    return context !== null && isCurrent(context.stamp);
   }
 
   async function viewerConfirm(origin: string | null, tabId: number | undefined): Promise<boolean> {
     await ready();
+    if (origin === null || origin !== knownOrigin) return false;
+    const stamp = writeStamp();
     // Without a readable cookie there is nothing to confirm, and a check would sign the student out
     // again, so the surfaces would refresh for every page load.
     if (origin === null || origin !== knownOrigin || !(await readFingerprint(origin))) return false;
-    return (await viewerOrigin(origin, tabId, true)) !== null;
+    const context = await viewerContext(origin, tabId, true, stamp);
+    return context !== null && isCurrent(context.stamp);
   }
 
-  async function dashboardGradeVisibility(token?: string, tabId?: number): Promise<DashboardData> {
+  async function dashboardGradeVisibility(
+    token?: string,
+    tabId?: number,
+    checkedOrigin?: string | null,
+  ): Promise<DashboardData> {
     await ready();
-    const origin = await savedOrigin();
+    const origin = checkedOrigin === undefined ? knownOrigin : checkedOrigin;
     const base: DashboardData = { origin: origin ?? '', courses: [] };
+    if (origin !== knownOrigin) return { ...base, gradeVisibilities: null };
+    const stamp = writeStamp();
     // A tab in another cookie store gets nothing and touches nothing, so it cannot cancel the
     // late result of a read that a valid tab started.
-    if (!(await surfaceMayRead(tabId)) || !cacheBelongsTo(origin))
+    if (!(await surfaceMayRead(tabId)) || !isCurrent(stamp))
       return { ...base, gradeVisibilities: null };
     const readId = ++visibilityRead;
     lateVisibility = undefined;
@@ -2946,25 +3009,18 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       // of an older cache.
       const confirmed =
         origin !== null && cache?.session != null && (await signedInStudentOwnsCache());
-      const stamp = writeStamp();
       const userId = stamp.userId;
       const read =
         confirmed && origin !== null
           ? apiFor(origin).withPriority(() => 'high').getWidgetGradeVisibility
           : null;
-      if (!confirmed || !cacheBelongsTo(origin) || origin === null || userId === null || !read) {
+      if (!confirmed || origin === null || userId === null || !read) {
         return { ...base, gradeVisibilities: null };
       }
       const gradeVisibilities = await Promise.race([
         read(userId).then(async (raw) => {
           const value = await confirmedPreferences(origin, stamp, raw);
-          if (
-            value !== null &&
-            timedOut &&
-            readId === visibilityRead &&
-            isCurrent(stamp) &&
-            (await savedOrigin()) === origin
-          ) {
+          if (value !== null && timedOut && readId === visibilityRead && isCurrent(stamp)) {
             lateVisibility = { origin, userId, generation: stamp.gen, token, value };
             await bump();
           }
@@ -2993,9 +3049,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     origin: string | null,
     tabId?: number,
   ): Promise<AnnouncementBody> {
+    await ready();
+    if (origin !== knownOrigin) throw new Error('The announcements are not available');
+    const stamp = writeStamp();
     if (!(await surfaceMayRead(tabId))) return { title: '', message: '' };
     if (origin === null) throw new Error('No Canvas address is saved');
-    const reader = await signedInReader(origin);
+    const reader = await signedInReader(origin, stamp);
     const topic = await cookieBound(() => reader.api.getAnnouncement(courseId, topicId));
     // The message goes to the page only for the student and the cookie that asked.
     if (topic === DROPPED || !isCurrent(reader.stamp)) {
@@ -3014,6 +3073,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    */
   async function signedInReader(
     origin: string | null,
+    stamp: WriteStamp,
   ): Promise<{ api: CanvasApi; stamp: WriteStamp; session: SessionData; origin: string }> {
     await ready();
     if (
@@ -3022,11 +3082,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       cache === null ||
       cache.session === null ||
       !(await signedInStudentOwnsCache()) ||
-      !cacheBelongsTo(origin)
+      cache?.session == null
     ) {
       throw new Error('The announcements are not available');
     }
-    return { api: apiFor(origin), stamp: writeStamp(), session: cache.session, origin };
+    return { api: apiFor(origin), stamp, session: cache.session, origin };
   }
 
   /** `signedInReader` for a tab in the cookie store of the requests. */
@@ -3035,8 +3095,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     tabId: number | undefined,
   ): Promise<{ api: CanvasApi; stamp: WriteStamp; session: SessionData; origin: string }> {
     await ready();
+    if (origin !== knownOrigin) throw new Error('The announcements are not available');
+    const stamp = writeStamp();
     if (!(await surfaceMayRead(tabId))) throw new Error('The announcements are not available');
-    return signedInReader(origin);
+    return signedInReader(origin, stamp);
   }
 
   async function announcementPage(
@@ -3231,30 +3293,33 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   async function announcementFeed(
     request: AnnouncementFeedRequest,
     tabId?: number,
+    checkedOrigin?: string | null,
   ): Promise<AnnouncementFeed> {
     await ready();
-    const origin = await savedOrigin();
+    const origin = checkedOrigin === undefined ? knownOrigin : checkedOrigin;
     if (origin !== knownOrigin) await handleOrigin(origin);
     const unavailable = (): AnnouncementFeed => ({
       status: 'unavailable',
       tab: cache?.listTabs[request.surface] ?? DEFAULT_LIST_TABS[request.surface],
     });
-    if (!(await surfaceMayRead(tabId)) || !cacheBelongsTo(origin)) return unavailable();
+    if (origin !== knownOrigin) return unavailable();
+    const stamp = writeStamp();
+    if (!(await surfaceMayRead(tabId))) return unavailable();
     if (origin === null || cache === null || cache.session === null) return unavailable();
     if (cache.failure?.kind === 'signed_out' || !(await deps.hasAccess(origin))) {
       return unavailable();
     }
     // The list holds one student's data, so Canvas confirms who is signed in, as for the
     // dashboard data (at most every 30 seconds).
-    if (!cacheBelongsTo(origin)) return unavailable();
-    const checkedUser = cache.session.profile.id;
+    if (cache?.session == null) return unavailable();
+    const checkedUser = stamp.userId;
     if (!(await signedInStudentOwnsCache())) {
       // Another student or a 401 cleared the cache: there is nothing to show. A check that only
       // failed (offline, a server error) leaves the cache of the same student, and the tab shows
       // its error with Retry, as the Tasks tab shows "Couldn't refresh".
       const kept = (cache as SessionCache | null)?.session;
       if (
-        !cacheBelongsTo(origin) ||
+        !isCurrent(stamp) ||
         kept == null ||
         kept.profile.id !== checkedUser ||
         (cache as SessionCache | null)?.failure?.kind === 'signed_out'
@@ -3273,7 +3338,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       };
     }
     const settings = await store.settings.getValue();
-    if (!cacheBelongsTo(origin) || cache === null || cache.session === null) return unavailable();
+    if (!isCurrent(stamp) || cache === null || cache.session === null) return unavailable();
     const session = cache.session;
     if (request.tab !== null && cache.listTabs[request.surface] !== request.tab) {
       cache = { ...cache, listTabs: { ...cache.listTabs, [request.surface]: request.tab } };
@@ -3384,6 +3449,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     topicId: string,
     read: boolean,
     undoing: { userId: string; origin: string } | null,
+    stamp: WriteStamp,
   ): Promise<ActionReply> {
     await ready();
     // A mark or an Undo writes only for a student that the session cookie check confirms. An Undo
@@ -3391,7 +3457,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (!(await signedInStudentOwnsCache(undoing !== null))) {
       return undoing === null ? NO_UNDO : refusedUndo(undoing.userId);
     }
-    const origin = knownOrigin;
+    if (!isCurrent(stamp)) return NO_UNDO;
+    const origin = stamp.origin;
     const session = cache?.session;
     if (origin === null || cache === null || session == null) return NO_UNDO;
     const userId = session.profile.id;
@@ -3415,10 +3482,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     };
     persist();
     bumpLater();
-    void enqueueWrite(async (stamp) => {
-      await runAnnouncementWrite(courseId, topicId, read, seq, stamp);
-      return false;
-    });
+    void enqueueWrite(
+      async (stamp) => {
+        await runAnnouncementWrite(courseId, topicId, read, seq, stamp);
+        return false;
+      },
+      'writes',
+      stamp,
+    );
     return read ? { undo: { kind: 'announcement', userId, origin, courseId, topicId } } : NO_UNDO;
   }
 
@@ -3437,13 +3508,24 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     read: boolean,
     userId: string,
     tabId?: number,
+    checkedOrigin?: string | null,
   ): Promise<AnnouncementMarkReply> {
     await ready();
     const refused: AnnouncementMarkReply = { ok: false };
+    const origin = checkedOrigin === undefined ? knownOrigin : checkedOrigin;
+    if (origin !== knownOrigin) return refused;
+    const stamp = writeStamp();
     if (!isCanvasId(courseId) || !isCanvasId(topicId) || typeof read !== 'boolean') return refused;
     if (!isCanvasId(userId)) return refused;
     if (!(await surfaceMayRead(tabId)) || !(await signedInStudentOwnsCache())) return refused;
-    if (knownOrigin === null || cache === null || cache.session == null) return refused;
+    if (
+      !isCurrent(stamp) ||
+      stamp.origin !== origin ||
+      knownOrigin === null ||
+      cache === null ||
+      cache.session == null
+    )
+      return refused;
     // The row came from the list of a student. Another signed-in student must not mark it.
     if (cache.session.profile.id !== userId) return refused;
     const key = announcementKey(courseId, topicId);
@@ -3459,25 +3541,41 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     persist();
     if (listed) bumpLater();
     let ok = false;
-    await enqueueWrite(async (stamp) => {
-      ok = await runAnnouncementWrite(courseId, topicId, read, seq, stamp);
-      return false;
-    });
-    return { ok };
+    await enqueueWrite(
+      async (stamp) => {
+        ok = await runAnnouncementWrite(courseId, topicId, read, seq, stamp);
+        return false;
+      },
+      'writes',
+      stamp,
+    );
+    return { ok: isCurrent(stamp) && ok };
   }
 
   // ---------------------------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------------------------
 
-  async function getState(request: SurfaceRequest, tabId?: number): Promise<StateReply> {
+  async function getState(
+    request: SurfaceRequest,
+    tabId?: number,
+    checkedOrigin?: string | null,
+  ): Promise<StateReply> {
     await ready();
-    const origin = await savedOrigin();
+    const origin = checkedOrigin === undefined ? knownOrigin : checkedOrigin;
     if (origin !== knownOrigin) await handleOrigin(origin);
+    if (origin !== knownOrigin) return { kind: 'loading' };
+    const stamp = writeStamp();
     const offer = offerForSurface(await store.offer.getValue(), origin, request.surface);
-    if (origin === null) return { kind: 'not_set_up', offer };
-    if (!(await deps.hasAccess(origin))) return { kind: 'no_access', origin, offer };
-    if (!cacheBelongsTo(origin) || cache === null) return { kind: 'loading' };
+    if (origin === null) {
+      return stamp.gen === generation && stamp.origin === knownOrigin
+        ? { kind: 'not_set_up', offer }
+        : { kind: 'loading' };
+    }
+    const access = await deps.hasAccess(origin);
+    if (!access)
+      return isCurrent(stamp) ? { kind: 'no_access', origin, offer } : { kind: 'loading' };
+    if (cache === null) return { kind: 'loading' };
     if (cache.session !== null) {
       const cantLoad = (offline: boolean): StateReply => ({
         kind: 'cant_load',
@@ -3486,14 +3584,15 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         offline,
         offer,
       });
-      if (!(await surfaceMayRead(tabId))) return cantLoad(false);
+      if (!(await surfaceMayRead(tabId)))
+        return isCurrent(stamp) ? cantLoad(false) : { kind: 'loading' };
       // A cache that the check cleared, for a sign-out or another student, falls through.
       if (!(await signedInStudentOwnsCache()) && cache?.session != null) {
-        if (origin !== knownOrigin) return { kind: 'loading' };
+        if (!isCurrent(stamp)) return { kind: 'loading' };
         return cantLoad(cache.failure?.kind === 'stale' && cache.failure.offline);
       }
     }
-    if (!cacheBelongsTo(origin) || cache === null) return { kind: 'loading' };
+    if (!isCurrent(stamp) || cache === null) return { kind: 'loading' };
     const failure = cache.failure;
     const offline = failure?.kind === 'stale' && failure.offline;
     if (failure?.kind === 'signed_out') {
@@ -3519,7 +3618,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     if (session.courses.length === 0) return { kind: 'no_courses', origin, offer, allCourses: [] };
 
-    const stamp = writeStamp();
     const context = await viewContext(origin);
     if (cache === null || !isCurrent(stamp)) return { kind: 'loading' };
     const range = plannerRangeForView(session, request.spanOffset, context);
@@ -3585,24 +3683,38 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     },
     getState,
 
-    async refresh(reason) {
+    async refresh(reason, checkedOrigin) {
       await ready();
+      const origin = checkedOrigin === undefined ? knownOrigin : checkedOrigin;
+      if (origin !== knownOrigin) return NO_RETRY;
+      const stamp = writeStamp();
       switch (reason) {
         case 'visible':
-        case 'timer':
-          return { retryAt: await applyTrigger(reason) };
-        case 'midnight':
-          return { retryAt: await applyTrigger(reason) };
+        case 'timer': {
+          const retryAt = await applyTrigger(reason, stamp);
+          return isCurrent(stamp) ? { retryAt } : NO_RETRY;
+        }
+        case 'midnight': {
+          const retryAt = await applyTrigger(reason, stamp);
+          return isCurrent(stamp) ? { retryAt } : NO_RETRY;
+        }
         case 'settings':
           // The surfaces build their views from the saved settings. Only a course that shows
           // again has data to load, and that takes a light round under the 60-second limit.
-          if (await showsUnloadedCourse()) deferLight(await applyTrigger(reason));
+          if (await showsUnloadedCourse()) {
+            if (!isCurrent(stamp)) return NO_RETRY;
+            const retryAt = await applyTrigger(reason, stamp);
+            if (!isCurrent(stamp)) return NO_RETRY;
+            deferLight(retryAt);
+          }
+          if (!isCurrent(stamp)) return NO_RETRY;
           await bump();
           return NO_RETRY;
         case 'retry':
           plannerBackoff = [];
           retryAt = -Infinity;
           if (cache?.session != null && !(await signedInStudentOwnsCache(true))) return NO_RETRY;
+          if (!isCurrent(stamp)) return NO_RETRY;
           scheduleForcedFull();
           return NO_RETRY;
       }
@@ -3614,16 +3726,19 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
     async pageLoaded(origin) {
       await ready();
-      if (origin !== (await savedOrigin())) return;
-      await applyTrigger('page_loaded');
+      if (origin !== knownOrigin) return;
+      const stamp = writeStamp();
+      await applyTrigger('page_loaded', stamp);
+      if (!isCurrent(stamp)) return;
       // A page load is the first sign of a sign-out or of another student. A surface that shows
       // the list asks again, and the cookie check ends the list when the cookie is not the one
       // of the cache. This reads the cookie only and makes no request.
       if (cache?.session != null) {
         const fingerprint = await readFingerprint(origin);
         if (
-          fingerprint === null ||
-          (fingerprint !== undefined && !confirmedFingerprint(fingerprint))
+          isCurrent(stamp) &&
+          (fingerprint === null ||
+            (fingerprint !== undefined && !confirmedFingerprint(fingerprint)))
         )
           await bump();
       }
@@ -3662,13 +3777,20 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       });
     },
 
-    async act(action, tabId) {
+    async act(action, tabId, checkedOrigin) {
       await ready();
+      const origin = checkedOrigin === undefined ? knownOrigin : checkedOrigin;
+      const refused = action.kind === 'createTask' ? { undo: null, created: false } : NO_UNDO;
+      if (origin !== knownOrigin) return refused;
+      const stamp = writeStamp();
+      if (stamp.origin !== origin) return refused;
       // A tab in another cookie store gets nothing, as for the routes that read.
       if (!(await surfaceMayRead(tabId))) {
         return action.kind === 'createTask' ? { undo: null, created: false } : NO_UNDO;
       }
-      return act(action);
+      if (!isCurrent(stamp)) return refused;
+      const reply = await act(action, stamp);
+      return isCurrent(stamp) ? reply : refused;
     },
 
     dashboardData,
