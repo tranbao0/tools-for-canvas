@@ -93,6 +93,27 @@ describe('the student of the viewer data', () => {
     vi.useRealTimers();
   });
 
+  it('starts the reset before the storage steps of a clear', async () => {
+    const query = vi.spyOn(fakeBrowser.tabs, 'query').mockResolvedValue([{ id: 3 }] as never);
+    const send = vi.spyOn(fakeBrowser.tabs, 'sendMessage').mockResolvedValue(undefined);
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const get = fakeBrowser.storage.session.get.bind(fakeBrowser.storage.session);
+    const read = vi.spyOn(fakeBrowser.storage.session, 'get').mockImplementationOnce((async (
+      keys: never,
+    ) => {
+      await held;
+      return get(keys);
+    }) as never);
+    const clearing = clearViewerTabs();
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith(3, { type: 'viewer:reset' }));
+    release();
+    await clearing;
+    query.mockRestore();
+    send.mockRestore();
+    read.mockRestore();
+  });
+
   it('names the new student after a clear that failed, so the repeats end', async () => {
     const { host, sender, store } = setup();
     store.set('viewer:session:student', 'u9');

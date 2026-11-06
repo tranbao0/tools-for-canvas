@@ -624,6 +624,18 @@ export function wireViewerRouter(
 export function clearViewerTabs(): Promise<void> {
   return withPositions(async () => {
     const failures: unknown[] = [];
+    // The reset starts first, so slow storage cannot delay it past a pane of the next student.
+    const reset = browser.tabs.query({}).then(async (tabs) => {
+      // The reset needs no answer, and a tab with an open dialog or a blocked page gives none.
+      await Promise.race([
+        Promise.allSettled(
+          tabs
+            .filter((tab) => tab.id !== undefined)
+            .map(async (tab) => browser.tabs.sendMessage(tab.id!, { type: 'viewer:reset' })),
+        ),
+        new Promise((resolve) => setTimeout(resolve, RESET_WAIT_MS)),
+      ]);
+    });
     let values: Record<string, unknown> = {};
     try {
       values = await browser.storage.session.get(null);
@@ -637,17 +649,7 @@ export function clearViewerTabs(): Promise<void> {
       (key) => key.startsWith('viewer:') && !key.startsWith(SESSION_PREFIX),
     );
     const results = await Promise.allSettled([
-      browser.tabs.query({}).then(async (tabs) => {
-        // The reset needs no answer, and a tab with an open dialog or a blocked page gives none.
-        await Promise.race([
-          Promise.allSettled(
-            tabs
-              .filter((tab) => tab.id !== undefined)
-              .map(async (tab) => browser.tabs.sendMessage(tab.id!, { type: 'viewer:reset' })),
-          ),
-          new Promise((resolve) => setTimeout(resolve, RESET_WAIT_MS)),
-        ]);
-      }),
+      reset,
       clearPositions(),
       keys.length > 0 ? browser.storage.session.remove(keys) : Promise.resolve(),
     ]);

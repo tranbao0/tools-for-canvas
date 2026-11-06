@@ -684,7 +684,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     cache = restored.cache;
     // A worker that stopped between the commit of a session and its claim repeats the claim here.
-    if (cache.session !== null) startViewerClaim(cache.session.profile.id, true);
+    if (cache.session !== null) startViewerClaim(cache.session.profile.id);
     for (const [noteId, deleteAt] of Object.entries(cache.pendingDeletes)) {
       scheduleDelete(noteId, deleteAt);
     }
@@ -980,33 +980,30 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   /**
    * A student is signed in whom Canvas named. When the viewer data belongs to another student, the
    * viewer clears it first. The name comes from `storage.session`, not from this worker's memory,
-   * which a restart erases. Then the viewer data belongs to this student. A worker that starts
-   * again with a stored session clears nothing on a name that it cannot read: nothing shows a
-   * change of student, and the next token of a pane compares again.
+   * which a restart erases. Then the viewer data belongs to this student. A name that cannot be
+   * read clears nothing: nothing shows a change of student, a clear cannot be undone, and the next
+   * token of a pane compares again.
    */
-  async function claimViewer(userId: string, restored = false): Promise<void> {
+  async function claimViewer(userId: string): Promise<void> {
     // One change of student makes one clear, so a claim comes after a clear that still runs.
     await viewerClearing;
     const held = await deps.store.viewerStudent.getValue().catch(() => undefined);
-    if (held === undefined && restored) return;
-    // A name that cannot be read counts as another student: the reset is safe.
-    if (held === undefined || (held !== null && !sameCanvasId(held, userId))) {
-      // The old name stays after a failed clear, so the next token of a pane repeats the clear.
-      if (!(await userDataCleared())) return;
-    }
+    if (held === undefined) return;
+    // The old name stays after a failed clear, so the next token of a pane repeats the clear.
+    if (held !== null && !sameCanvasId(held, userId) && !(await userDataCleared())) return;
     await writeViewerStudent(studentName(userId));
   }
 
   /** Runs after the claims before it, so one change of student makes one reset. */
-  function startViewerClaim(userId: string, restored = false): void {
+  function startViewerClaim(userId: string): void {
     viewerClaim = viewerClaim
-      .then(() => claimViewer(userId, restored))
+      .then(() => claimViewer(userId))
       .catch((error: unknown) => deps.log('viewer student', error));
   }
 
   /**
-   * Whether the claims have ended. A viewer read never passes a claim that still runs, and it
-   * never waits for one without a limit, because a storage call can hang.
+   * Whether the claims have ended. A viewer read refuses at the limit and never waits without
+   * one, because a storage call can hang.
    */
   function viewerClaimsEnded(): Promise<boolean> {
     return new Promise((resolve) => {
@@ -2715,6 +2712,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   ): Promise<string | null> {
     await ready();
     if (!(await viewerClaimsEnded())) return null;
+    const claim = viewerClaim;
     if (
       tabId === undefined ||
       origin === null ||
@@ -2729,6 +2727,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         if (!(await startUserCheck()) || !(await viewerProofHolds(origin))) return null;
       }
     } else if (!(await signedInStudentOwnsCache())) return null;
+    // A session can commit during these checks, and its claim comes before the read.
+    if (claim !== viewerClaim && !(await viewerClaimsEnded())) return null;
     return origin;
   }
 
