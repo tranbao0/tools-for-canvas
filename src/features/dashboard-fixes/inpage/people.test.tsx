@@ -294,7 +294,7 @@ function type(searchHost: HTMLElement, query: string): void {
   });
 }
 const lineOf = (searchHost: HTMLElement): string | undefined =>
-  searchHost.shadowRoot!.querySelector('.wr-a-res')?.textContent ?? undefined;
+  searchHost.shadowRoot!.querySelector('.wr-a-res [role="status"]')?.textContent ?? undefined;
 const namesOf = (searchHost: HTMLElement): (string | null)[] =>
   [...searchHost.shadowRoot!.querySelectorAll('article')].map((node) =>
     node.getAttribute('aria-label'),
