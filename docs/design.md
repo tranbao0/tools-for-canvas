@@ -803,6 +803,7 @@ A span that ended before today has one exception: open work dated inside it stay
   A done undated item with a warning chip, such as Redo requested or Missing in Canvas, goes to Done instead, so the Done header counts the warning.
 - When the student marks an item done, skips it or deletes a task, an "Undo" notice shows.
   The notice has no timer: it stays until the student acts again or closes it.
+  In the in-page list it lies over the end of the list, right above the bottom bar, so the headers of No due date and Done never move, and the end of the list scrolls clear of it.
   Ctrl+Z (Cmd+Z on a Mac) also undoes while the notice shows.
   A fixed time limit would fail keyboard and screen reader users, who need time to reach the notice.
 

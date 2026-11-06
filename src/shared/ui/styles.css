@@ -1200,6 +1200,36 @@ button.wr-marker:hover {
   pointer-events: auto;
 }
 
+/* In the card the notice lies over the end of the list, so the bottom bar never moves. */
+.wr[data-surface='inpage'] > .wr-task-panel > .wr-dock {
+  position: relative;
+  height: 0;
+  margin-top: 0;
+  padding-block: 0;
+}
+
+.wr[data-surface='inpage'] > .wr-task-panel > .wr-dock > .wr-toast {
+  position: absolute;
+  bottom: 8px;
+  inset-inline: 0;
+}
+
+/* The gap under the notice shows no cut text of the list behind it. */
+.wr[data-surface='inpage'] > .wr-task-panel > .wr-dock:not(:empty)::after {
+  position: absolute;
+  bottom: 0;
+  height: 8px;
+  background: var(--wr-bg);
+  content: '';
+  inset-inline: 0;
+}
+
+/* The end of the list and a focused row scroll clear of the notice. */
+.wr[data-surface='inpage'] > .wr-task-panel:has(.wr-toast) > :is(.wr-scroll, .wr-group-area) {
+  --wr-inset-bottom: 56px;
+  padding-block-end: 64px;
+}
+
 .wr-toast-text {
   flex: 1;
   min-width: 0;
