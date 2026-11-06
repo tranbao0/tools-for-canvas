@@ -231,6 +231,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     if (wasActive) focusAfter.current = next.active;
   };
   const reload = (fileId: string) => {
+    if (!tabsRef.current.ids.includes(fileId)) return;
     requested.current.add(fileId);
     failedReads.current.delete(fileId);
     load(fileId);
