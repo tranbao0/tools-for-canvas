@@ -93,7 +93,8 @@ function fileDock() {
 function frameAt(href: string, index = 0) {
   const frame = frames[index]!;
   const replace = vi.fn();
-  const location = { href, replace };
+  let address = href;
+  const location = { href: '', replace };
   /** What the pane listens for in the window of the frame: the type, the listener and the capture flag. */
   const listened: { type: string; listener: (event: KeyboardEvent) => void; capture: unknown }[] =
     [];
@@ -102,6 +103,14 @@ function frameAt(href: string, index = 0) {
     listener: (event: KeyboardEvent) => void,
     capture: unknown,
   ) => listened.push({ type, listener, capture });
+  const reads: string[] = [];
+  Object.defineProperty(location, 'href', {
+    get: () => (reads.push(address), address),
+    set: (next: string) => {
+      address = next;
+    },
+    enumerable: true,
+  });
   Object.defineProperty(frame, 'contentWindow', {
     value: { location, addEventListener },
     configurable: true,
@@ -116,6 +125,17 @@ function frameAt(href: string, index = 0) {
       Object.defineProperty(event, 'isTrusted', { value: trusted });
       for (const entry of listened) if (entry.type === 'keydown') entry.listener(event);
       return event;
+    },
+    /** Every address that the pane read from the frame, in order. */
+    reads,
+    /** The frame has this address now, and no load came yet: a redirect that is still loading. */
+    go(next: string) {
+      location.href = next;
+    },
+    /** The page of the frame goes away, as it does when the frame starts another page. */
+    leave() {
+      for (const entry of listened)
+        if (entry.type === 'pagehide') entry.listener(new Event('pagehide') as never);
     },
     /** The page loaded: the frame has this address now. */
     load(next: string, trusted = true) {
@@ -438,20 +458,60 @@ describe('the frame of the pane', () => {
     expect(joined).toEqual([SLIM]);
   });
 
-  it('loads the plain page of the course again with content_only=1, once', () => {
+  it('loads a plain page again with content_only=1, and never asks the same address twice in a row', () => {
     const { pane, onFrameLoad } = setup();
     pane.open({ assignmentId: '101', title: 'Essay' });
     const page = frameAt(SLIM);
     page.load(PLAIN);
     expect(page.replace).toHaveBeenCalledExactlyOnceWith(SLIM);
-    // The load of the rewrite never rewrites, even when the page keeps the plain address.
+    // The load of the rewrite target is the same plain page: it stays, and nothing loops.
     expect(onFrameLoad).not.toHaveBeenCalled();
     page.load(PLAIN);
     expect(page.replace).toHaveBeenCalledTimes(1);
     expect(onFrameLoad).toHaveBeenCalledTimes(1);
-    // A later plain page rewrites again, once.
-    page.load(PLAIN);
+    // Another plain page is another address, so it rewrites.
+    page.load(`${ORIGIN}/courses/12/assignments/102`);
+    expect(page.replace).toHaveBeenLastCalledWith(
+      `${ORIGIN}/courses/12/assignments/102?content_only=1`,
+    );
     expect(page.replace).toHaveBeenCalledTimes(2);
+  });
+
+  it('rewrites the page that follows a rewrite that redirected, and a rewrite that nobody finished', () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(SLIM);
+    // The rewrite target redirects to another plain page.
+    page.load(`${ORIGIN}/courses/12/pages/a`);
+    page.load(`${ORIGIN}/courses/12/pages/b`);
+    expect(page.replace).toHaveBeenLastCalledWith(`${ORIGIN}/courses/12/pages/b?content_only=1`);
+    expect(page.replace).toHaveBeenCalledTimes(2);
+    // The student declined a leave question: no load came. The next plain page still rewrites.
+    page.load(`${ORIGIN}/courses/12/pages/c`);
+    expect(page.replace).toHaveBeenCalledTimes(3);
+  });
+
+  it('runs at most 3 rewrites in a chain, and a page with no rewrite ends the chain', () => {
+    const { pane, onFrameLoad } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(SLIM);
+    for (const name of ['a', 'b', 'c', 'd', 'e']) page.load(`${ORIGIN}/pages/${name}`);
+    expect(page.replace).toHaveBeenCalledTimes(3);
+    // The pages after the third stay, and onFrameLoad runs for them.
+    expect(onFrameLoad).toHaveBeenCalledTimes(2);
+    page.load(`${ORIGIN}/pages/f?content_only=1`);
+    page.load(`${ORIGIN}/pages/g`);
+    expect(page.replace).toHaveBeenCalledTimes(4);
+  });
+
+  it('rewrites a page that the student opened during a rewrite', () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(SLIM);
+    page.load(PLAIN);
+    // The student clicked a link as the replace started: this load is the clicked page.
+    page.load(`${ORIGIN}/users/5`);
+    expect(page.replace).toHaveBeenLastCalledWith(`${ORIGIN}/users/5?content_only=1`);
   });
 
   it('loads the page that a graded discussion or quiz redirects to with content_only=1, once', () => {
@@ -466,10 +526,20 @@ describe('the frame of the pane', () => {
     expect(page.replace).toHaveBeenCalledTimes(1);
   });
 
+  it('loads a group page, another course and a user page with content_only=1', () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(SLIM);
+    for (const path of ['/groups/7/discussion_topics/44', '/courses/13/pages/x', '/users/5']) {
+      page.load(`${ORIGIN}${path}`);
+      expect(page.replace).toHaveBeenLastCalledWith(`${ORIGIN}${path}?content_only=1`);
+    }
+  });
+
   it.each([
-    ['a page of another course', `${ORIGIN}/courses/13/discussion_topics/9`],
+    ['a quiz that runs', `${ORIGIN}/courses/12/quizzes/9/take`],
     ['a page of another site', 'https://other.example/courses/12/assignments/101'],
-    ['a page of no course', `${ORIGIN}/login/canvas`],
+    ['the sign-in', `${ORIGIN}/login/canvas`],
     ['a page that has content_only=1 already', `${ORIGIN}/courses/12/quizzes/9?content_only=1`],
     ['an address that is not an address', 'about:blank'],
   ])('leaves %s as it is', (_name, address) => {
@@ -478,6 +548,108 @@ describe('the frame of the pane', () => {
     const page = frameAt(SLIM);
     page.load(address);
     expect(page.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe('the poll of the frame address', () => {
+  const PLAIN = `${ORIGIN}/courses/12/quizzes/7`;
+  const SLIM = `${PLAIN}?content_only=1`;
+
+  it('rewrites a plain page 100 ms after it is the page of the frame, before its load', async () => {
+    const { pane, onFrameLoad } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(`${ORIGIN}/courses/12/assignments/101?content_only=1`);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(page.replace).not.toHaveBeenCalled();
+    page.go(PLAIN);
+    await vi.advanceTimersByTimeAsync(99);
+    expect(page.replace).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(page.replace).toHaveBeenCalledExactlyOnceWith(SLIM);
+    // The old page is still the page of the frame: it is not asked again.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(page.replace).toHaveBeenCalledTimes(1);
+    // The slim page loads: this is the first load, so it reads nothing and the catcher goes in.
+    page.load(SLIM);
+    expect(onFrameLoad).toHaveBeenCalledTimes(1);
+    expect(page.replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends at the trusted load, and a script load does not end it', async () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(SLIM);
+    page.load(SLIM, false);
+    page.go(PLAIN);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(page.replace).toHaveBeenCalledTimes(1);
+    page.load(SLIM);
+    page.reads.length = 0;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(page.reads).toEqual([]);
+  });
+
+  it('ends 30 seconds after it started', async () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(SLIM);
+    await vi.advanceTimersByTimeAsync(30_000);
+    page.reads.length = 0;
+    page.go(PLAIN);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(page.reads).toEqual([]);
+    expect(page.replace).not.toHaveBeenCalled();
+  });
+
+  it('starts again at each pagehide of a page, and rewrites the next page before its load', async () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(SLIM);
+    page.load(SLIM);
+    expect(page.listened.filter((entry) => entry.type === 'pagehide')).toHaveLength(1);
+    page.leave();
+    page.go(`${ORIGIN}/users/5`);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(page.replace).toHaveBeenCalledExactlyOnceWith(`${ORIGIN}/users/5?content_only=1`);
+    // A second pagehide does not start a second poll.
+    page.leave();
+    page.reads.length = 0;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(page.reads).toHaveLength(10);
+  });
+
+  it('ends when the frame is removed, and reads nothing but the address', async () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(SLIM);
+    pane.reset();
+    page.reads.length = 0;
+    page.go(PLAIN);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(page.reads).toEqual([]);
+    expect(page.replace).not.toHaveBeenCalled();
+  });
+
+  it('goes on when the frame is on another origin and gives no address', async () => {
+    const { pane } = setup();
+    pane.open({ assignmentId: '101', title: 'Essay' });
+    const page = frameAt(SLIM);
+    let open = false;
+    Object.defineProperty(frames[0], 'contentWindow', {
+      get() {
+        if (!open) throw new Error('Blocked a frame with another origin');
+        return {
+          location: { href: PLAIN, replace: page.replace },
+          addEventListener: () => undefined,
+        };
+      },
+      configurable: true,
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(page.replace).not.toHaveBeenCalled();
+    open = true;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(page.replace).toHaveBeenCalledExactlyOnceWith(SLIM);
   });
 });
 
@@ -834,7 +1006,7 @@ describe('one frame for each previewed assignment', () => {
     const event = new Event('load');
     Object.defineProperty(event, 'isTrusted', { value: true });
     page.frame.dispatchEvent(event);
-    expect(listen.mock.calls.map((call) => call[0])).toEqual(['keydown']);
+    expect(listen.mock.calls.map((call) => call[0])).toEqual(['keydown', 'pagehide']);
   });
 
   it('removes the frames with the host when a page removes the host, and reads nothing for them', async () => {
@@ -866,7 +1038,9 @@ describe('Escape in the frame of the pane', () => {
     pane.open({ assignmentId: '101', title: 'Essay' });
     const page = frameAt(address);
     page.load(address);
-    expect(page.listened.map((entry) => [entry.type, entry.capture])).toEqual([['keydown', true]]);
+    const keydowns = page.listened.filter((entry) => entry.type === 'keydown');
+    expect(keydowns.map((entry) => entry.capture)).toEqual([true]);
+    expect(page.listened.map((entry) => entry.type)).toEqual(['keydown', 'pagehide']);
     setFullView(true);
     // Another key, and a key that a script of the page made, change nothing.
     expect(page.press('a').defaultPrevented).toBe(false);
@@ -909,8 +1083,9 @@ describe('Escape in the frame of the pane', () => {
     const page = frameAt(address);
     page.load(address);
     page.load(address);
-    expect(page.listened).toHaveLength(2);
-    expect(page.listened[1]!.listener).toBe(page.listened[0]!.listener);
+    const keydowns = page.listened.filter((entry) => entry.type === 'keydown');
+    expect(keydowns).toHaveLength(2);
+    expect(keydowns[1]!.listener).toBe(keydowns[0]!.listener);
   });
 
   it('works on with a frame on another origin, which keeps the Escape of the header only', () => {
