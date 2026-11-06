@@ -834,6 +834,23 @@ describe('nothing due', () => {
     expect(view.groups.map((group) => group.kind)).toEqual(['tomorrow']);
   });
 
+  it('is true when a checked reminder is the only item of the span, which has no ring', () => {
+    const view = buildWeekView(
+      input({
+        plannerItems: [
+          task('r-today', '2026-10-27T15:00:00Z', {
+            override: override('o1', { markedComplete: true, dismissed: false }),
+          }),
+        ],
+        assignmentDetails: detailsById([
+          assignment({ id: 'r-today', courseId: '101', types: ['not_graded'] }),
+        ]),
+      }),
+    );
+    expect(placesOf(view)).toEqual({ 'assignment:r-today': 'done.items' });
+    expect(view).toMatchObject({ nothingDue: true, rings: [] });
+  });
+
   it('is true when the only reminders are dated before the span, which do not show', () => {
     const view = buildWeekView(
       input({

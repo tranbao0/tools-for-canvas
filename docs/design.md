@@ -883,6 +883,8 @@ Planner items do not include it, so the extension looks it up (decision 11).
 - A reminder shows on its day, with a neutral "No hand-in" chip and a checkbox.
 - A checked reminder goes to Done like any other done item, and the Done header counts it.
 - A reminder never goes to Past due or No due date, and it does not count in a ring, also when it is checked.
+- A reminder from before the span does not show, also when it is checked and has a warning chip, because it has no day in the list.
+- A checked reminder is no work that is due: when it is all that the span holds, the list says that nothing is due.
 - An undated reminder does not show at all, because it has no day.
 - Why: Canvas has no way to know whether such an item is finished, and many of them are gradebook columns.
   One rule for dated and undated reminders keeps them from sitting in Past due until a teacher grades them.

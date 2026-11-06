@@ -1223,12 +1223,13 @@ button.wr-marker:hover {
   inset-inline: 0;
 }
 
-/* The end of the list and a focused control scroll clear of the notice. */
-.wr[data-surface='inpage']
-  > .wr-task-panel:has(.wr-toast)
-  > :is(.wr-scroll, .wr-group-area, .wr-pinned) {
+/* A focused control scrolls clear of the notice, which sticks to the end of a card that scrolls. */
+.wr[data-surface='inpage']:has(.wr-toast) > *,
+.wr[data-surface='inpage']:has(.wr-toast) > .wr-task-panel > * {
   --wr-inset-bottom: 56px;
 }
+
+/* The end of the list scrolls clear of the notice. */
 
 .wr[data-surface='inpage'] > .wr-task-panel:has(.wr-toast) > :is(.wr-scroll, .wr-group-area) {
   padding-block-end: 64px;
