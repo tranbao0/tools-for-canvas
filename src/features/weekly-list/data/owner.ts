@@ -2240,24 +2240,31 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   ): Promise<ActionReply> {
     const write = await writeContext();
     if (write === null || write.session.profile.id !== userId || write.origin !== origin) {
-      return NO_UNDO;
+      return NOT_RESTORED;
     }
     let changed = false;
+    // An item that the cache no longer holds cannot be written, so it is not restored.
+    let restored = true;
     const done = new Set<string>();
     for (const { key, previous } of entries) {
       if (done.has(key)) continue;
       done.add(key);
       const item = write.items.get(key);
       const target = item === undefined ? null : overrideTargetFor(item);
-      if (item === undefined || target === null) continue;
-      addOverridePatch(key, target, previous, previousFlags(item), item.override?.id ?? '', userId);
+      if (item === undefined || target === null) {
+        restored = false;
+        continue;
+      }
+      const shown = shownFlags(item);
+      if (sameFlags(shown, previous)) continue;
+      addOverridePatch(key, target, previous, shown, item.override?.id ?? '', userId);
       changed = true;
     }
     if (changed) {
       persist();
       bumpLater();
     }
-    return NO_UNDO;
+    return restored ? RESTORED : NOT_RESTORED;
   }
 
   async function writeNote(
@@ -2323,7 +2330,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    * sign-out or another student, nothing can be restored, so the notice ends.
    */
   function refusedUndo(userId: string): ActionReply {
-    return cache?.session?.profile.id === userId ? UNDO_REFUSED : NO_UNDO;
+    return cache?.session?.profile.id === userId ? UNDO_REFUSED : NOT_RESTORED;
   }
 
   async function act(action: DataAction): Promise<ActionReply> {
@@ -3422,18 +3429,22 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     const origin = knownOrigin;
     const session = cache?.session;
-    if (origin === null || cache === null || session == null) return NO_UNDO;
+    if (origin === null || cache === null || session == null) {
+      return undoing === null ? NO_UNDO : NOT_RESTORED;
+    }
     const userId = session.profile.id;
     if (undoing !== null && (undoing.userId !== userId || undoing.origin !== origin)) {
-      return NO_UNDO;
+      return NOT_RESTORED;
     }
     // Only an announcement that the list shows can get a mark.
     const topic = cache.announcements?.topics?.find(
       (candidate) => candidate.courseId === courseId && candidate.id === topicId,
     );
     const key = announcementKey(courseId, topicId);
-    if (topic === undefined) return NO_UNDO;
-    if ((cache.announcementMarks[key]?.read ?? topic.read) === read) return NO_UNDO;
+    if (topic === undefined) return undoing === null ? NO_UNDO : NOT_RESTORED;
+    if ((cache.announcementMarks[key]?.read ?? topic.read) === read) {
+      return undoing === null ? NO_UNDO : RESTORED;
+    }
     const seq = nextId();
     cache = {
       ...cache,
@@ -3448,7 +3459,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       await runAnnouncementWrite(courseId, topicId, read, seq, stamp);
       return false;
     });
-    return read ? { undo: { kind: 'announcement', userId, origin, courseId, topicId } } : NO_UNDO;
+    return read ? { undo: { kind: 'announcement', userId, origin, courseId, topicId } } : RESTORED;
   }
 
   /**

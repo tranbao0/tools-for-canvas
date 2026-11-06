@@ -3,7 +3,7 @@ import { moveToTodayTodoDate, todoDateFor } from '../model/tasks';
 import { canvasOriginItem, changeMarkerItem, offerItem } from '../../../shared/platform/storage';
 import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
 import { sessionCacheItem, type SessionCache } from './cache';
-import { MAX_DELETE_DELAY_MS } from './owner';
+import { ACTIVE_RANGE_MS, MAX_DELETE_DELAY_MS } from './owner';
 import { pendingOverride, type NotePatch, type OverridePatch } from './patches';
 import type { ActionReply } from './protocol';
 import type { TaskInput } from '../ui/contract';
@@ -213,7 +213,7 @@ describe('done marks', () => {
     await h.owner.settled();
     const [created] = h.canvas.overrides().filter((o) => o.assignment_id === A.bioQuiz3Today);
 
-    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null, restored: true });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('updateOverride')).toEqual([[created?.id, NOT_DONE]]);
@@ -228,7 +228,7 @@ describe('done marks', () => {
     signInOtherUser(h);
 
     // The cache of the first student is gone, so a later tap cannot succeed: the notice ends.
-    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null, restored: false });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('updateOverride')).toEqual([]);
@@ -242,8 +242,8 @@ describe('done marks', () => {
     h.canvas.resetCalls();
     vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
 
-    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
-    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null, restored: false });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null, restored: false });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('updateOverride')).toEqual([]);
@@ -262,7 +262,7 @@ describe('done marks', () => {
     expect(h.canvas.callsOf('updateOverride')).toEqual([]);
 
     // The Undo is a tap of the student, so a second tap checks again at once.
-    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null, restored: true });
     await h.owner.settled();
     expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
   });
@@ -332,14 +332,53 @@ describe('done marks', () => {
     h.canvas.resetCalls();
     const undo = restoreOf(reply);
 
-    await h.owner.act({
+    const partial = await h.owner.act({
       ...undo,
       entries: [...undo.entries, { key: 'assignment:gone', previous: NOT_DONE }],
     });
     await h.owner.settled();
 
+    // The item that is still there comes back, and the reply says that not every item did.
+    expect(partial).toEqual({ undo: null, restored: false });
     expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
     expect((await item(h, QUIZ_3))?.state).toBe('open');
+  });
+
+  it('says it restored nothing when the week of the item left the cache before the Undo', async () => {
+    const h = await loaded();
+    const later = new Date(Date.now() + 42 * 86_400_000).toISOString();
+    const template = h.canvas.scenario.plannerItems.find(
+      (i) => i.plannable_type === 'planner_note',
+    );
+    if (template === undefined) throw new Error('No note in the scenario');
+    h.canvas.scenario.plannerItems.push({
+      ...template,
+      plannable_id: '8899',
+      plannable_date: later,
+      planner_override: null,
+      plannable: { ...template.plannable, id: '8899', title: 'Far task', todo_date: later },
+    } as never);
+    const far = { ...PANEL, spanOffset: 6 };
+    await loadReady(h, far);
+    const marked = await h.owner.act({ kind: 'setDone', keys: ['planner_note:8899'], done: true });
+    await h.owner.settled();
+    expect(marked.undo?.kind).toBe('overrides');
+
+    // The student goes back to this week, and the far week is pruned.
+    await loadReady(h, PANEL);
+    await advance(h, ACTIVE_RANGE_MS + 5 * 60_000);
+    await h.owner.refresh('timer');
+    await h.owner.settled();
+    await h.owner.getState(PANEL);
+    await h.owner.settled();
+    h.canvas.resetCalls();
+
+    const reply = await h.owner.act(restoreOf(marked));
+    await h.owner.settled();
+
+    expect(reply).toEqual({ undo: null, restored: false });
+    expect(h.canvas.callsOf('updateOverride')).toEqual([]);
+    expect(h.canvas.callsOf('createOverride')).toEqual([]);
   });
 
   it('writes a key once, however often an action names it', async () => {

@@ -8,7 +8,7 @@ import type { BrowserContext, Locator, Page, Worker } from '@playwright/test';
 import { IDS } from '../fixtures/scenario';
 import { overrideWrites, writesTo } from './support/canvas-state';
 import { saveAddress } from './support/scenario-api';
-import { shortenTimer } from './support/clock';
+import { advanceBackgroundClock, shortenTimer } from './support/clock';
 import { requestsQuiet } from './support/settle';
 import {
   addCsrfCookie,
@@ -200,6 +200,57 @@ test.describe('an Undo that cannot restore', () => {
 
     await expect.poll(deletes).toEqual([`/api/v1/planner_notes/${NOTES.libraryBooksToday}`]);
     await expect(toast).toHaveCount(0);
+  });
+
+  test('says so in one line when the item of a done mark left the cache', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const served = await serveScenario(context, [], {
+      extend: (scenario) => {
+        const template = scenario.plannerNotes[0];
+        if (template === undefined) throw new Error('No note in the scenario');
+        const date = new Date(Date.parse(scenario.now) + 42 * 86_400_000).toISOString();
+        scenario.plannerNotes.push({ ...template, id: '8899', title: 'Far task', todo_date: date });
+      },
+    });
+    await addCsrfCookie(context, served.canvas.origin);
+    await saveAddress(background, served.canvas.origin);
+    await page.clock.install();
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await expect(doneBox(page, QUIZ_3)).toBeVisible();
+    await settledList(page);
+
+    // Six weeks ahead, where the far task lives.
+    await page.getByRole('button', { name: 'Next week' }).evaluate((button) => {
+      for (let step = 0; step < 6; step++) (button as HTMLButtonElement).click();
+    });
+    const far = doneBox(page, 'Far task');
+    await far.click();
+    const toast = page.locator('.wr-toast');
+    await expect(toast).toContainText('Marked done');
+    await expect.poll(() => overrideWrites(served.canvas)).toHaveLength(1);
+
+    // Back to this week, and a refresh after the far week went unused for more than 10 minutes.
+    await page.getByRole('button', { name: 'Today', exact: true }).click();
+    await expect(doneBox(page, QUIZ_3)).toBeVisible();
+    await advanceBackgroundClock(background, 16 * 60_000);
+    await page.evaluate(async () => {
+      const api = (
+        globalThis as unknown as {
+          chrome: { runtime: { sendMessage(message: unknown): Promise<unknown> } };
+        }
+      ).chrome;
+      await api.runtime.sendMessage({ type: 'weekrow:refresh', reason: 'timer' });
+    });
+    await settledList(page);
+
+    await toast.getByRole('button', { name: 'Undo' }).click();
+    await expect(toast).toHaveText("Couldn't undo that");
+    await expect(toast.getByRole('button', { name: 'Undo' })).toHaveCount(0);
+    expect(overrideWrites(served.canvas)).toHaveLength(1);
   });
 });
 
