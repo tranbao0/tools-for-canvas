@@ -67,6 +67,7 @@ describe('assignment owner', () => {
   it('confirms the cookie of a new student once, and then reads for that student', async () => {
     const h = await loaded();
     signInOtherUser(h);
+    await expect(h.owner.assignmentOwner('12', '101', ORIGIN, TAB)).rejects.toThrow();
     await expect(h.owner.assignmentOwner('12', '101', ORIGIN, TAB)).resolves.toMatchObject({
       userId: expect.any(String),
     });
@@ -172,6 +173,7 @@ describe('assignment details', () => {
   it('confirms the cookie of a new student once, and then reads for that student', async () => {
     const h = await loaded();
     signInOtherUser(h);
+    await expect(h.owner.assignmentDetails('12', '101', ORIGIN, TAB)).rejects.toThrow();
     const reply = await h.owner.assignmentDetails('12', '101', ORIGIN, TAB);
     if ('kind' in reply) throw new Error('Expected details');
     expect(reply.details.assignment.id).toBe('101');

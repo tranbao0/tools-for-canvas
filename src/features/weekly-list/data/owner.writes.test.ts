@@ -315,6 +315,7 @@ describe('done marks', () => {
     const reply = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
     await h.owner.settled();
     await canvasOriginItem.setValue('https://other.instructure.com');
+    await h.owner.originChanged('https://other.instructure.com');
     await loadReady(h);
     h.canvas.resetCalls();
 
@@ -1409,7 +1410,7 @@ describe('writes across a sign-out, another user or another Canvas', () => {
     const reply = await created;
     await h.owner.settled();
 
-    expect(reply.created).toBe(true);
+    expect(reply.created).toBe(false);
     expect(h.canvas.callsOf('createNote')).toHaveLength(1);
     const state = expectReady(await h.owner.getState(PANEL));
     expect(
