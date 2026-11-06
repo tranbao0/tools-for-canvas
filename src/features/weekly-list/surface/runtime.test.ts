@@ -514,6 +514,19 @@ describe('actions', () => {
     expect(runtime.state()).toMatchObject({ undo: { kind: 'done', count: keys.length } });
   });
 
+  it('takes one press of "Mark all older done" until the first has ended', async () => {
+    const { fake, runtime } = await started(undoHost());
+
+    runtime.actions.markAllOlderDone();
+    runtime.actions.markAllOlderDone();
+    await settle();
+    expect(sentActions(fake.sent)).toHaveLength(1);
+
+    runtime.actions.markAllOlderDone();
+    await settle();
+    expect(sentActions(fake.sent)).toHaveLength(2);
+  });
+
   it('leaves out an older item whose redo request turns its checkbox off', async () => {
     const fake = undoHost();
     const base = fake.reply;

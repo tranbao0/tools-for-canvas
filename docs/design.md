@@ -869,9 +869,11 @@ The owner decided on 2026-11-06 to merge Skip into Done, because Skip was too cl
 A student now has one way to clear work: Done.
 
 - An item whose override has `dismissed` set to true and `marked_complete` set to false is done.
-  A dismiss that an earlier version of the extension wrote and a dismiss made in Canvas both show the item as done, in the Done view, with a check, and the rings count it as done.
+  A dismiss that an earlier version of the extension wrote and a dismiss made in Canvas both show the item as done, with a check, and the rings count it as done.
+  Like any done item, it shows in the Done view of the span that holds its date, so old work leaves the current view and its own past span shows it.
   Canvas also sets `dismissed` to true when a student uses a module's "Mark as done" [10].
 - Work handed in on Canvas with a redo request stays open, with a dismiss on it or not (decision 8, rule 1).
+  Its checkbox is off and "Mark all older done" leaves it out, so it stays in Past due until Canvas clears the request.
   So a dismiss that finished work or an earlier version left on such work does not hide it.
 - A check sends `marked_complete` true and leaves `dismissed` as it was.
   A check never changes `dismissed`.
