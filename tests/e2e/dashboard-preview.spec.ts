@@ -293,9 +293,40 @@ for (const [name, options] of [
 
     expect(style.shadow).toMatch(/ 3px 0px 0px 0px inset$/);
     expect(style.background).not.toBe('rgba(0, 0, 0, 0)');
+    // The bar is inside the part of the card that shows, on every surface.
+    const clip = await row.evaluate((element) => {
+      const left = element.getBoundingClientRect().left;
+      const offset = parseFloat(getComputedStyle(element, '::before').left);
+      const card = element.closest('.wr')!;
+      const inset = parseFloat(getComputedStyle(card).paddingLeft);
+      return { bar: left + offset, edge: card.getBoundingClientRect().left + Math.min(inset, 0) };
+    });
+    expect(clip.bar).toBeGreaterThanOrEqual(clip.edge);
     await shot(page, `open-${name}`);
   });
 }
+
+test('the pane leaves the page when the extension context ends', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background);
+  await preview(page, LAB_4).click();
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  // The worker goes with the reload, so the answer of this call may never come.
+  void background
+    .evaluate(() =>
+      (
+        globalThis as unknown as { chrome: { runtime: { reload(): void } } }
+      ).chrome.runtime.reload(),
+    )
+    .catch(() => undefined);
+  await expect(page.locator(PANE_HOST)).toHaveCount(0, { timeout: 15_000 });
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.style.paddingRight))
+    .toBe('');
+});
 
 /** The height of a row, whose title is `title`. */
 const heightOf = async (page: Page, title: string): Promise<number> =>

@@ -1144,6 +1144,11 @@
   box-shadow: inset 3px 0 0 var(--wr-brand);
 }
 
+/* The card in a page column has no side padding, so the tint stays inside the row. */
+:host(:not([data-panel])) .wr-item.is-open::before {
+  inset: 0;
+}
+
 .wr-item-tip {
   margin-top: 6px;
   padding: 6px 8px;

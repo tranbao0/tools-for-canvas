@@ -3967,6 +3967,8 @@ So a student switches pages to read the instructions next to the feedback on a f
     The e2e test measures the rows of the scenario: at 620 px, a Compact row with Preview is 56 px high and a Compact row of an own task is 44 px, so the button adds 12 px.
     At 400 px, where the pill and the actions go to a line under the text, the rows are 70 px and 64 px, so the button adds 6 px.
     A Comfortable row keeps its height (92 px at 620 px and 87 px at 400 px), because its side column is higher than the button.
+  - On the classic dock, a course home page and List View, a row with Preview is 10 px higher, because the 26 px button sits in the 16 px due line.
+    The heights of the other rows do not change, and with the switch of the assignment view off every row is as it was.
 - **Pane.**
   - The pane is per course and assignment: `PreviewRequest` carries `courseId`, and the frames, the slots, the readers, the baselines of the submission watch and the marks are keyed by `paneKey` (both ids as decimal global ids), so the same assignment id in two courses is two assignments.
   - The rules of the pane stay: the slim address, the frame catcher, the student reset, the read after close, and the refresh of the weekly list after a hand-in.

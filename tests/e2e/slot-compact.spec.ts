@@ -5,6 +5,7 @@
  */
 import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/model/types';
+import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import {
   addCsrfCookie,
   doneBox,
@@ -12,6 +13,7 @@ import {
   inpageList,
   openCanvasPage,
   saveSettings,
+  saveTools,
   serveScenario,
   settledList,
   test,
@@ -26,9 +28,19 @@ type Context = Parameters<typeof serveScenario>[0];
 async function openSlot(
   context: Context,
   page: Page,
-  options: { width?: number; height?: number; rowSize?: Settings['rowSize']; theme?: 'dark' } = {},
+  options: {
+    width?: number;
+    height?: number;
+    rowSize?: Settings['rowSize'];
+    theme?: 'dark';
+    /** Turns the assignment view off, so the rows have no Preview button. */
+    noPreview?: boolean;
+  } = {},
   background?: Parameters<typeof saveSettings>[0],
 ): Promise<Locator> {
+  if (background && options.noPreview) {
+    await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  }
   if (background && (options.rowSize || options.theme)) {
     await saveSettings(background, {
       ...DEFAULT_SETTINGS,
@@ -182,7 +194,7 @@ test('a row without actions is 44 px high, and Compact fits 1.7 times the rows',
   page,
   background,
 }) => {
-  const list = await openSlot(context, page, {}, background);
+  const list = await openSlot(context, page, { noPreview: true }, background);
   const compact = await plainRowCapacity(list);
   expect(Math.abs(compact.height - 44)).toBeLessThanOrEqual(2);
   // The check box, the block, the text column and the pill sit on one row without overflow.

@@ -29,6 +29,18 @@ it('sends a request to the handler of the pane that is on offer', () => {
   expect(handler).toHaveBeenCalledExactlyOnceWith(request);
 });
 
+it('tells the other watchers, and the caller goes on, when a watcher throws', () => {
+  const heard = vi.fn();
+  const stopBad = watchPane(() => {
+    throw new Error('Extension context invalidated.');
+  });
+  const stopGood = watchPane(heard);
+  expect(() => setShownPane(null)).not.toThrow();
+  expect(heard).toHaveBeenCalledOnce();
+  stopBad();
+  stopGood();
+});
+
 it('tells the watchers about an offer, a shown assignment, and a withdrawal, until they stop', () => {
   const watcher = vi.fn();
   const stop = watchPane(watcher);

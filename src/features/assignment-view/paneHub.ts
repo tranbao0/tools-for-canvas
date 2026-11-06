@@ -29,7 +29,13 @@ function hub(): Hub {
 }
 
 function tell(): void {
-  for (const watcher of [...hub().watchers]) watcher();
+  for (const watcher of [...hub().watchers]) {
+    try {
+      watcher();
+    } catch {
+      // A card in an extension context that ended throws when it draws, and the pane must still go.
+    }
+  }
 }
 
 /**
