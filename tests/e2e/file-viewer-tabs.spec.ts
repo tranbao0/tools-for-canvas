@@ -5,6 +5,8 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './support/weekrow';
 import {
+  courseHomeHtml,
+  SYLLABUS,
   FILE_META,
   FILE_NAME,
   openCoursePage,
@@ -209,6 +211,58 @@ test('a file that does not load shows the error with Retry', async ({
   });
   await (await pane(page)).getByRole('button', { name: 'Retry' }).click();
   await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
+});
+
+test('an evicted file loads fresh after its failed read succeeds', async ({
+  context,
+  page,
+  background,
+}) => {
+  const ids = Array.from({ length: 8 }, (_, index) => String(50 + index));
+  const html = courseHomeHtml.replace(
+    '</p>',
+    ids
+      .map((id) => `<a class="instructure_file_link" href="/files/${id}">File ${id}</a>`)
+      .join(' ') + '</p>',
+  );
+  const canvas = await openCoursePage(
+    context,
+    page,
+    background,
+    html,
+    ids.map((id) => ({
+      path: `/api/v1/files/${id}`,
+      body: { ...SYLLABUS, id, display_name: `File ${id}.docx` },
+    })),
+  );
+  await waitForListLoaded(canvas);
+  await background.evaluate(() => {
+    const api = globalThis as unknown as { fetch: typeof fetch; __realFetch?: typeof fetch };
+    api.__realFetch = api.fetch;
+    api.fetch = (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (new URL(url).pathname === '/api/v1/files/42')
+        return Promise.reject(new TypeError('offline'));
+      return api.__realFetch!(input, init);
+    };
+  });
+  await openFirstFile(page, 'Read notes');
+  const frame = await pane(page);
+  await expect(frame.getByText("Couldn't load this file")).toBeVisible();
+  for (const id of ids) {
+    await fileLink(page, `File ${id}`).click();
+    await expect(frame.locator(FILE_NAME)).toHaveText(`File ${id}.docx`);
+  }
+  await expect(frame.getByRole('tab')).toHaveCount(8);
+  await expect(frame.getByRole('tab', { name: 'Unavailable file', exact: true })).toHaveCount(0);
+  await background.evaluate(() => {
+    const api = globalThis as unknown as { fetch: typeof fetch; __realFetch?: typeof fetch };
+    api.fetch = api.__realFetch!;
+  });
+  await fileLink(page, 'Read notes').click();
+  await expect(frame.locator(FILE_NAME)).toHaveText('Course notes.pdf');
+  await expect(frame.getByText("Couldn't load this file")).toHaveCount(0);
+  await page.screenshot({ path: 'screenshots/file-viewer-tabs-fresh.png' });
 });
 
 test('a withheld permission shows Allow access, which asks the browser and reloads the card', async ({
