@@ -339,6 +339,62 @@ describe('viewer reads', () => {
     expect((await fakeBrowser.storage.session.get(STUDENT))[STUDENT]).toBe('7777');
   });
 
+  /** Whether the promise settles while the fake clock runs for a while. */
+  async function settles(work: Promise<unknown>): Promise<boolean> {
+    let done = false;
+    const mark = () => (done = true);
+    void work.then(mark, mark);
+    await vi.advanceTimersByTimeAsync(10_000);
+    return done;
+  }
+
+  it('refuses a viewer read and keeps the list when a clear never ends', async () => {
+    const h = await createHarness();
+    await fakeBrowser.storage.session.set({ [STUDENT]: h.canvas.scenario.profile.id });
+    h.deps.onUserDataCleared = () => new Promise<void>(() => undefined);
+    signInOtherUser(h);
+    const owner = h.restart();
+    await expect(settles(owner.viewerConfirm(ORIGIN, TAB))).resolves.toBe(true);
+    let refusal: unknown;
+    const reading = owner.viewerRead(ORIGIN, TAB, async () => 'file');
+    await expect(settles(reading.catch((error: unknown) => (refusal = error)))).resolves.toBe(true);
+    expect(refusal).toBeInstanceOf(Error);
+    await expect(settles(owner.getState(PANEL))).resolves.toBe(true);
+  });
+
+  it('keeps the old name after a failed clear, so the next claim repeats the clear', async () => {
+    const h = await createHarness();
+    const earlier = h.canvas.scenario.profile.id;
+    await fakeBrowser.storage.session.set({ [STUDENT]: earlier });
+    const hook = vi.fn<() => Promise<void>>();
+    hook.mockRejectedValueOnce(new Error('busy'));
+    hook.mockResolvedValue(undefined);
+    h.deps.onUserDataCleared = hook;
+    signInOtherUser(h);
+    const owner = h.restart();
+    await owner.viewerConfirm(ORIGIN, TAB);
+    await owner.settled();
+    expect((await fakeBrowser.storage.session.get(STUDENT))[STUDENT]).toBe(earlier);
+    const next = h.restart();
+    await next.viewerConfirm(ORIGIN, TAB);
+    await next.settled();
+    expect(hook).toHaveBeenCalledTimes(2);
+    expect((await fakeBrowser.storage.session.get(STUDENT))[STUDENT]).toBe('7777');
+  });
+
+  it('clears nothing at a restart when the stored name cannot be read', async () => {
+    const h = await loaded();
+    await h.owner.settled();
+    const hook = vi.fn();
+    h.deps.onUserDataCleared = hook;
+    const read = h.deps.store.viewerStudent.getValue;
+    h.deps.store.viewerStudent.getValue = () => Promise.reject(new Error('busy'));
+    const owner = h.restart();
+    await owner.viewerMayFetch(ORIGIN, TAB);
+    h.deps.store.viewerStudent.getValue = read;
+    expect(hook).not.toHaveBeenCalled();
+  });
+
   it('gives one change of student one clear, with the proof of the earlier student gone', async () => {
     const h = await loaded();
     const cleared = vi.fn();

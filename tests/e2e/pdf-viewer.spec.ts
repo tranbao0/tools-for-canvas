@@ -1175,12 +1175,29 @@ test('the error card keeps the address of a link with a verifier in memory, and 
     );
   await sendToPage({ type: 'viewer:reset' });
   await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
-  await sendToPage({ type: 'viewer:open-from-frame', fileId: '42' });
+  // The page script takes an address from a frame only on its own origin.
+  await sendToPage({
+    type: 'viewer:open-from-frame',
+    fileId: '42',
+    address: 'https://evil.example/files/42?verifier=SECRETV',
+  });
   frame = await pane(page);
   await expect(frame.getByText("Couldn't load this file")).toBeVisible();
   await expect(frame.getByRole('link', { name: 'Open in Canvas' })).toHaveAttribute(
     'href',
     `${canvas.origin}/files/42`,
+  );
+  await sendToPage({ type: 'viewer:reset' });
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+  await sendToPage({
+    type: 'viewer:open-from-frame',
+    fileId: '42',
+    address: `${canvas.origin}/courses/101/files/42?verifier=SECRETV`,
+  });
+  frame = await pane(page);
+  await expect(frame.getByRole('link', { name: 'Open in Canvas' })).toHaveAttribute(
+    'href',
+    `${canvas.origin}/courses/101/files/42?verifier=SECRETV`,
   );
 });
 

@@ -686,19 +686,6 @@ describe('the page script', () => {
       expect(document.getElementById('tools-file-viewer')).not.toBeNull();
     });
 
-    it('keeps the address of the clicked link for the pane, on the page origin only', async () => {
-      prepare();
-      await startViewer();
-      const kept = `${location.origin}/files/5?verifier=abc`;
-      const { respond } = ask({ ...open, address: kept }, fromBackground);
-      await vi.waitFor(() => expect(respond).toHaveBeenCalledWith({ opened: true }));
-      const other = ask(
-        { ...open, address: 'https://evil.example/files/5?verifier=abc' },
-        fromBackground,
-      );
-      await vi.waitFor(() => expect(other.respond).toHaveBeenCalledWith({ opened: true }));
-    });
-
     it.each([
       [
         'a sender with a tab, which is a content script or a page',
