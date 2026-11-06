@@ -98,7 +98,7 @@ export const IDS = {
     bioLabReport5: '1007',
     bioLabReport6: '1008',
     bioExtraCreditUndated: '1009',
-    bioOptionalReflectionUndatedSkipped: '1010',
+    bioOptionalReflectionUndatedDismissed: '1010',
     bioQuiz2: '1011',
     bioQuiz3Today: '1012',
     bioQuiz4: '1013',
@@ -121,8 +121,8 @@ export const IDS = {
     mathProblemSet6Extended: '2010',
     /** Missing and closed by its lock date. */
     mathProblemSet5LockedMissing: '2011',
-    /** Missing and skipped. */
-    mathProblemSet4Skipped: '2012',
+    /** Missing, and dismissed in Canvas with no marked_complete. */
+    mathProblemSet4Dismissed: '2012',
     /** Due at 00:00 on Nov 1, the day the clocks go back. */
     mathProblemSet7Midnight: '2013',
     mathFinalExam: '2014',
@@ -625,7 +625,7 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       submission: {},
     },
     {
-      id: A.bioOptionalReflectionUndatedSkipped,
+      id: A.bioOptionalReflectionUndatedDismissed,
       courseId: C.biology,
       name: 'Optional: Lab tour reflection',
       due: null,
@@ -638,7 +638,7 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       },
     },
 
-    // Calculus: Gradescope work, New Quizzes, an extension, a locked missing item and a skip.
+    // Calculus: Gradescope work, New Quizzes, an extension, a locked missing item and a dismissed one.
     {
       ...tool(C.calculus, A.mathHomework3, 'Homework 3', due(-30), GRADESCOPE_URL),
       points: 10,
@@ -704,7 +704,7 @@ function scenarioSpecs(now: string): ScenarioSpecs {
       newQuiz: true,
     },
     {
-      ...lab(C.calculus, A.mathProblemSet4Skipped, 'Problem set 4', due(-19)),
+      ...lab(C.calculus, A.mathProblemSet4Dismissed, 'Problem set 4', due(-19)),
       override: {
         id: O.mathProblemSet4,
         markedComplete: false,
