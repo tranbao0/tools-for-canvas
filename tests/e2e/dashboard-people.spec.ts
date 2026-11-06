@@ -430,10 +430,12 @@ test.describe('people: the search', () => {
     await expect(rows(page)).toHaveCount(10);
     await requestsQuiet(page, canvas.requests, background);
     await field(page).fill('Hartley');
-    await expect(feed(page)).toContainText("Couldn't load more people.");
+    // The failure shows above the rows, so a long list of matches cannot hide it.
+    await expect(resultLine(page)).toHaveText('The search stopped after 10 people.');
     // The matches of the first page stay: 5 of the first 10 people.
     await expect(rows(page)).toHaveCount(5);
-    await feed(page).getByRole('button', { name: 'Retry' }).click();
+    await expect(feed(page).getByRole('button', { name: 'Retry' })).toHaveCount(0);
+    await page.locator(`${LIST} .wr-a-res`).getByRole('button', { name: 'Retry' }).click();
     await expect(resultLine(page)).toHaveText(`${hartley().length} results`);
     await expect(rows(page)).toHaveCount(hartley().length);
     expect(queries(canvas).map((variables) => variables['after'])).toEqual([

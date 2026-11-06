@@ -617,6 +617,12 @@
   "peopleSearching_other": {
     "message": "Searching… looked at $1 people"
   },
+  "peopleSearchStopped_one": {
+    "message": "The search stopped after $1 person."
+  },
+  "peopleSearchStopped_other": {
+    "message": "The search stopped after $1 people."
+  },
   "peopleMessage": {
     "message": "Send a message to $1"
   },

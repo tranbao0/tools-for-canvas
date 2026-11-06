@@ -130,6 +130,8 @@ interface Model {
   ended: boolean;
   /** The line under the search row. */
   line: string | null;
+  /** A page of the search failed, so the line says so and has the Retry. */
+  stopped: boolean;
   empty: string;
 }
 
@@ -268,6 +270,11 @@ export function peopleFix(): Fix {
         {/* The line takes room only when it has something to say, and the area gives it back. */}
         <div class="wr-a-res">
           <span role="status">{model.line}</span>
+          {model.stopped ? (
+            <button type="button" class="wr-x-link" onClick={() => data.retry(view.filter)}>
+              {t('annRetry')}
+            </button>
+          ) : null}
         </div>
         <ScrollList
           scrollKey={model.scrollKey}
@@ -317,12 +324,15 @@ export function peopleFix(): Fix {
         failed,
         ended: list.started && !list.hasNext && list.items.length > 0,
         line: null,
+        stopped: false,
         empty: t('peopleEmpty'),
       };
     }
     data.more(view.filter);
     const rows = searchPeople(list.items, view.query);
     const running = failed === 'none' && !(list.started && !list.hasNext);
+    // A search loads its pages with no scroll, so a failure shows above the rows and not after them.
+    const stopped = failed === 'more';
     return {
       rows,
       words,
@@ -330,14 +340,16 @@ export function peopleFix(): Fix {
       loadingFirst: running && rows.length === 0,
       hasMore: false,
       loadingMore: false,
-      failed,
+      failed: stopped ? 'none' : failed,
       ended: false,
-      line:
-        failed !== 'none'
+      line: stopped
+        ? tp('peopleSearchStopped', list.items.length)
+        : failed !== 'none'
           ? null
           : running
             ? tp('peopleSearching', list.items.length)
             : tp('peopleResults', rows.length),
+      stopped,
       empty: t('peopleNoResults'),
     };
   }

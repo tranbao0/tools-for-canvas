@@ -2446,6 +2446,8 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
      A list that holds all its pages loads nothing more, and more typing starts no request.
      While pages load, the line under the row says "Searching… looked at N people" and the matches that the list holds show.
      When the search ends the line says "1 result" or "N results", and an empty result shows "No results".
+     A search loads its pages with no scroll, so a page that fails shows in that line: "The search stopped after N people." with a Retry, above the matches that the list holds.
+     The query belongs to the widget as the page draws it, as in Announcements, so it goes when React replaces the widget or when Canvas's own list takes over.
      Each match in the name and in a course name is a `<mark>` text node, never markup.
      Escape in the field and the X clear the query, the list shows as it was at the place where it was left, and the focus stays in the field.
      A change of the Course filter or the Role filter keeps the query, and the search runs in the new filter.
