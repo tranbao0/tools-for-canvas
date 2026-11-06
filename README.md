@@ -1,27 +1,122 @@
 # Tools for Canvas
 
-Tools for Canvas is a set of fixes for Canvas LMS students.
-The first fix is a weekly to-do list that shows your Canvas coursework for the week, with a progress ring for each course.
-It is a browser extension for Chrome, Edge and Firefox.
+Tools for Canvas is a free browser extension that makes Canvas LMS easier to use for students.
+See your coursework as a to-do list, and open files, assignments and announcements in place on your own Canvas.
+It works in Chrome, Edge and Firefox.
 It has no account, no server of its own and no telemetry.
 
-## Features
+## What you get
 
-- One list of all the work you must do this week: assignments, quizzes, discussions, pages with a to-do date, peer reviews and your own tasks.
+### Weekly list
+
+One to-do list for all your courses.
+
+- It holds your assignments, quizzes, discussions, pages with a to-do date, peer reviews and your own tasks.
+  If your school limits the Canvas planner, pages, ungraded discussions, ungraded quizzes, peer reviews, discussions with reply due dates and your own tasks can't show.
 - Work with no due date and work that you hand in outside Canvas, such as Gradescope or paper, is in the same list.
-- The list has groups for Past due, Today, Tomorrow, each later day of the week, No due date and Done.
-- Arrows move one week at a time, and a "This week" button brings you back.
-- Each course has a progress ring in its Canvas color.
-  The ring counts the items done this week, and a click on it shows only that course.
+- You choose what it shows: Day, Week, 2 weeks, Month or a custom number of days.
+  Each span starts today, the arrows move one span at a time, and the "Today" button brings you back.
+- The groups are Past due, Today, Tomorrow, each later day, No due date and Done.
+  Past due work stays in view when you move to a later span.
+- Progress rings in your Canvas course colors show how much of the work in the shown span is done.
+  A click on a ring shows only that course, and a second click shows all courses again.
 - A status chip on each item shows what Canvas knows about it, such as Missing, Redo requested, Extended or a status that your teacher set.
 - Work that you hand in outside Canvas shows a "Can't confirm" chip after its due date, because Canvas cannot see that hand-in.
 - You can check items off, skip work that you will not do, and add, edit and delete your own tasks.
-- Weeks and times follow the time zone of your Canvas account.
-- The list opens in the browser side panel (the sidebar in Firefox).
-  On the Canvas Card View and Recent Activity dashboards and on course home pages, it also replaces the Canvas To Do list.
-- The toolbar button and the keyboard shortcut Alt+Shift+W open and close the panel.
+- The Announcements tab shows your unread announcements of the last 14 days, with a count on the tab.
+  "Show read" adds the ones that you have read.
+- Dates and times follow the time zone of your Canvas account.
 
-## Done marks change Canvas
+The list sits on your Canvas pages: as a card on the new dashboard, in a dock on the right edge of the window on the classic dashboard and in List View, and in the right column of a course home page.
+On a course home page, the list shows only that course.
+The card on the new dashboard has no Announcements tab, because that dashboard has its own Announcements widget.
+
+The list also opens in the browser side panel (the sidebar in Firefox).
+The toolbar button and the keyboard shortcut Alt+Shift+W open and close the panel.
+
+In Settings, you can hide a course from your list, turn the rings off, and choose the theme and the row size.
+
+### File viewer
+
+Canvas opens a file in a full-window overlay that hides the page.
+The file viewer opens it in a resizable pane beside the page instead.
+
+- Tabs keep several files open at once.
+- PDFs have search, page thumbnails and zoom, and each PDF remembers your page and zoom.
+- Images, text, audio and video show in the pane.
+- Word, PowerPoint and other files that the pane cannot show get a card with Download and Open in Canvas.
+- Your own submitted files open in the pane, not only as downloads.
+
+### One assignment view
+
+Canvas splits one assignment over several pages.
+This tool brings the parts together.
+
+- On the Submission Details page of your own work, the instructions, the rubric, your files and the comments are on one page.
+  This works for file uploads, text entries and website URLs.
+  For other kinds of work, such as a quiz, the instructions show above the Canvas page.
+- On the Assignments list, each row has a "Preview" button that opens the assignment in a pane beside the list.
+  You can read the instructions and turn in your work without leaving the list.
+
+### New dashboard fixes
+
+These are four small fixes for the widgets of the new Canvas dashboard.
+
+- **Announcements in place:** one steady list with infinite scroll.
+  A message opens in its row, and you can filter by course, search by topic and search by date.
+- **All course grades:** a grade card for every course, not only six.
+- **Steady page buttons:** each paged widget keeps one width and one place for each page button.
+- **People list:** the same steady list for your teachers and teaching assistants, with each course and role of a person and a message button.
+
+The File viewer, the One assignment view and each dashboard fix have their own switch in Settings.
+All of them are on by default.
+
+The [roadmap](docs/roadmap.md) lists the tools that come next.
+
+## Install
+
+Tools for Canvas is not in the browser stores yet.
+For now, you build it yourself and load it into your browser.
+
+### Build from source
+
+You need Node.js 26 (see `.nvmrc`) and npm.
+
+```sh
+git clone https://github.com/tranbao0/tools-for-canvas.git
+cd tools-for-canvas
+npm ci
+npm run build
+```
+
+The build writes one folder for each browser: `.output/chrome-mv3`, `.output/edge-mv3` and `.output/firefox-mv3`.
+To build only the Firefox package, as the Firefox Add-ons reviewers do, run `npm run build-for-amo`.
+
+To load a build:
+
+1. In Chrome, open `chrome://extensions`, turn on Developer mode, click "Load unpacked" and select `.output/chrome-mv3`.
+2. In Edge, open `edge://extensions`, turn on Developer mode, click "Load unpacked" and select `.output/edge-mv3`.
+3. In Firefox, open `about:debugging#/runtime/this-firefox`, click "Load Temporary Add-on" and select `.output/firefox-mv3/manifest.json`.
+   Firefox removes a temporary add-on when it closes.
+
+### First use
+
+Open your school's Canvas in a browser tab.
+Tools for Canvas finds it by itself.
+On a Canvas with its own address, click "Use it" when the welcome page or the side panel asks "Use canvas.example.edu as your Canvas?".
+Then open your Canvas dashboard to see your list.
+
+## Browsers
+
+- Chrome 144 or later.
+- Microsoft Edge 144 or later.
+- Firefox 140 or later.
+- Firefox for Android 142 or later is allowed, but nobody has tested it on a phone yet.
+
+Chrome and Edge are supported on desktop only.
+Safari is not supported.
+
+## What changes in Canvas
 
 Tools for Canvas keeps no copy of your work.
 Done marks, skip marks and your own tasks live in your Canvas account, as Canvas planner data.
@@ -34,27 +129,26 @@ The first time you check an item off, Tools for Canvas shows this note: "Done ma
 Skip uses the Canvas "dismissed" flag.
 The first time you skip an item, Tools for Canvas shows this note: "Skipping also hides this item in Canvas's list of missing work."
 
-## Browsers
+Some other actions also count in Canvas:
 
-- Chrome 144 or later.
-- Microsoft Edge 144 or later.
-- Firefox 140 or later.
-- Firefox for Android 142 or later is allowed, but nobody has tested it on a phone yet.
+- A file that you open in the pane counts as opened, so Canvas can mark the view requirement of a module as done.
+- When you open View Feedback, Canvas marks the notes on that file as read.
+- On the Submission Details page of your own work, unread rubric comments are marked as read when the rubric comes into view, as they are when you open the rubric in Canvas.
 
-Chrome and Edge are supported on desktop only.
-Safari is not supported.
+An announcement that opens in its row stays unread until you mark it as read.
 
 ## Site access
 
 Tools for Canvas asks for access to all websites (`https://*/*`) when you install it.
 Canvas runs on many school addresses, such as `canvas.example.edu`, so the extension cannot know your address in advance.
 With this access, it works right after you install it, with no setup step.
+
 A tiny script runs on each web page and checks only for the Canvas page markers.
-It keeps no page text, announces nothing to the page and sends nothing anywhere.
-On a Canvas page, it asks the extension to show your list.
+It keeps no page text, announces nothing to the page and sends nothing outside the extension.
+On a Canvas page, it tells the extension the page address, and the extension shows your list only on your saved Canvas.
+
 The first Canvas page that you open on `instructure.com` sets your Canvas address.
-On a Canvas with its own address, the welcome page and the side panel ask "Use canvas.example.edu as your Canvas?", and one click on "Use it" sets the address.
-A page can copy the Canvas markers, so the extension asks once, in its own pages, before it trusts an address outside `instructure.com`.
+A page can copy the Canvas markers, so the extension asks once, in its own pages, before it trusts a test or beta Canvas or an address outside `instructure.com`.
 The extension reads and writes data only on that Canvas address.
 On another Canvas, the side panel offers "Switch to this Canvas?".
 
@@ -62,85 +156,23 @@ On another Canvas, the side panel offers "Switch to this Canvas?".
 
 Tools for Canvas reads your Canvas data in your browser and shows it to you.
 It writes only done marks, skip marks, your own tasks, announcement read and unread marks and the read mark of your rubric comments, and only to your own Canvas.
-On your device, it stores its settings, your Canvas address, a change time stamp, which one-time notes you have seen, a fingerprint salt and the page of your PDFs.
+On your device, it stores its settings, which tools are on, your Canvas address, a change time stamp, which one-time notes you have seen, a fingerprint salt and the page and zoom of your PDFs.
 Nothing goes to the developer: there are no analytics, no error reports and no remote configuration.
 A lint rule and a CI check enforce this in the code.
+
+Canvas can send a file, View Feedback or Preview to its own storage and DocViewer hosts.
+Images and profile pictures can load from other hosts that a teacher or Canvas chose.
+
 Read the full [privacy policy](docs/privacy.md).
 
-## Build from source
+## Report a problem
 
-You need Node.js 26 (see `.nvmrc`) and npm.
-
-```sh
-git clone https://github.com/tranbao0/tools-for-canvas.git
-cd tools-for-canvas
-npm ci
-npm run build
-```
-
-The build writes one folder for each browser: `.output/chrome-mv3`, `.output/edge-mv3` and `.output/firefox-mv3`.
-
-To load a build:
-
-1. In Chrome, open `chrome://extensions`, turn on Developer mode, click "Load unpacked" and select `.output/chrome-mv3`.
-2. In Edge, open `edge://extensions`, turn on Developer mode, click "Load unpacked" and select `.output/edge-mv3`.
-3. In Firefox, open `about:debugging#/runtime/this-firefox`, click "Load Temporary Add-on" and select `.output/firefox-mv3/manifest.json`.
-
-Other commands:
-
-| Command                 | What it does                                                     |
-| ----------------------- | ---------------------------------------------------------------- |
-| `npm run dev`           | Starts a development build for Chrome that reloads on changes    |
-| `npm run dev:firefox`   | Starts a development build for Firefox                           |
-| `npm run zip`           | Makes the store packages and the Firefox source zip in `.output` |
-| `npm run build-for-amo` | Builds the Firefox package as the Firefox Add-ons reviewers do   |
-
-## Project layout
-
-Tools for Canvas is a set of fixes, and the weekly list is the first one.
-Each fix lives in its own folder, and code that any fix can use is shared.
-
-| Folder                       | What it holds                                                                     |
-| ---------------------------- | --------------------------------------------------------------------------------- |
-| `src/entrypoints`            | The entry points that WXT builds: background, detector, in-page script and pages  |
-| `src/shared/canvas`          | The Canvas client, its types, the request limiter and paging                      |
-| `src/shared/platform`        | Storage, access, install and welcome, injection, messages and browser helpers     |
-| `src/shared/ui`              | Parts with the Canvas look: icons, buttons, the theme, styles and the page layout |
-| `src/features/weekly-list`   | The weekly list, in the subfolders `model`, `data`, `inpage`, `surface` and `ui`  |
-| `tests/e2e`, `tests/firefox` | End-to-end tests in Chromium and the Firefox smoke test                           |
-| `tests/fixtures`             | The fake Canvas data, with the tests that check it                                |
-| `tests/gallery`              | The screenshot gallery of the views                                               |
-
-A unit test sits next to its code as `name.test.ts` or `name.test.tsx`.
-A `testing` folder holds the helpers that several tests of one folder share.
-
-## Test and check
-
-| Command                  | What it does                                                                                         |
-| ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `npm run lint`           | ESLint, including the rule that allows network calls only in the Canvas fetch wrapper                |
-| `npm run format:check`   | Prettier check                                                                                       |
-| `npm run typecheck`      | TypeScript check                                                                                     |
-| `npm test`               | Unit tests with Vitest                                                                               |
-| `npm run test:scripts`   | Tests for the build checks                                                                           |
-| `npm run check`          | Builds all browsers, then runs the four build checks below                                           |
-| `npm run check:size`     | Fails if an entry point is over its gzip limit (45 KB, 48 KB for `inpage.js`, 2 KB for the detector) |
-| `npm run check:urls`     | Fails if the build contains a URL that is not in `scripts/url-allowlist.json`                        |
-| `npm run check:manifest` | Checks the permissions and browser settings in each built manifest                                   |
-| `npm run check:fetch`    | Fails if a built bundle other than the background script calls `fetch`                               |
-| `npm run lint:webext`    | Runs `web-ext lint` on the Firefox build                                                             |
-| `npm run test:e2e`       | End-to-end tests in Chromium with Playwright, against a fake Canvas site                             |
-| `npm run test:firefox`   | Firefox smoke test with Selenium and geckodriver                                                     |
-
-Before the first end-to-end run, install the Playwright browser with `npx playwright install chromium`.
-For the Firefox smoke test on Linux, `npm run setup:firefox` downloads a pinned Firefox and geckodriver into `~/.cache/weekrow-test`.
-
-Before each release, a person runs the [live checklist](docs/live-checklist.md) with a real student account.
+[Open an issue on GitHub](https://github.com/tranbao0/tools-for-canvas/issues).
+Do not include your Canvas address, your name or any course data in the issue.
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md).
-Every commit needs a DCO sign-off.
+To change the code, run the tests or see how the project is built, read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
