@@ -749,4 +749,95 @@ describe('the page script', () => {
     const write = sendMessage.mock.calls.find(([m]) => m.type === 'viewer:tabs-set')![0];
     expect(write).toMatchObject({ tabs: { ids: ['5'], active: '5' }, token: '4:7' });
   });
+  describe('a click that the pane could not open', () => {
+    const MODULE_HTML =
+      '<div data-module-id="3"><a id="file" class="attachment" href="/courses/12/modules/items/9">Notes</a></div>';
+    const paneHost = () => document.getElementById('tools-file-viewer');
+
+    /** Listens on the link for the click that the script makes again. */
+    function followed() {
+      const seen: { trusted: boolean; prevented: boolean }[] = [];
+      document.getElementById('file')!.addEventListener('click', (event) => {
+        seen.push({ trusted: Boolean(event.isTrusted), prevented: event.defaultPrevented });
+      });
+      return seen;
+    }
+
+    it('clicks the link again and closes the empty pane when the module item read fails', async () => {
+      prepare();
+      document.body.innerHTML = MODULE_HTML;
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'viewer:module-item') throw new Error('the session ended');
+        return reply(message);
+      });
+      const seen = followed();
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(seen).toEqual([{ trusted: false, prevented: false }]));
+      expect(paneHost()).toBeNull();
+      expect(sendMessage.mock.calls.some(([m]) => m.type === 'viewer:tabs-set')).toBe(false);
+    });
+
+    it('clicks the link again when the module item has no file', async () => {
+      prepare();
+      document.body.innerHTML = MODULE_HTML;
+      sendMessage.mockImplementation(async (message: { type: string }) =>
+        message.type === 'viewer:module-item' ? undefined : reply(message),
+      );
+      const seen = followed();
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(seen).toHaveLength(1));
+      expect(paneHost()).toBeNull();
+    });
+
+    it('clicks the link again when the background gives no session', async () => {
+      prepare();
+      sendMessage.mockImplementation(async (message: { type: string }) =>
+        message.type === 'viewer:session' ? undefined : reply(message),
+      );
+      const seen = followed();
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(seen).toEqual([{ trusted: false, prevented: false }]));
+      expect(paneHost()).toBeNull();
+    });
+
+    it('keeps a pane that shows other files', async () => {
+      prepare();
+      document.body.innerHTML = MODULE_HTML;
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'viewer:tabs-get') return { ids: ['4'], active: '4' };
+        if (message.type === 'viewer:module-item') return undefined;
+        return reply(message);
+      });
+      const seen = followed();
+      await startViewer();
+      await vi.waitFor(() => expect(paneHost()).not.toBeNull());
+      click(true);
+      await vi.waitFor(() => expect(seen).toHaveLength(1));
+      expect(paneHost()).not.toBeNull();
+    });
+
+    it('clicks no link that the page changed while the pane was opening', async () => {
+      prepare();
+      document.body.innerHTML = MODULE_HTML;
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'viewer:module-item') {
+          document.getElementById('file')!.setAttribute('href', 'https://evil.example/');
+          return undefined;
+        }
+        return reply(message);
+      });
+      const seen = followed();
+      await startViewer();
+      click(true);
+      await vi.waitFor(() =>
+        expect(sendMessage.mock.calls.some(([m]) => m.type === 'viewer:module-item')).toBe(true),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(seen).toEqual([]);
+      expect(paneHost()).toBeNull();
+    });
+  });
 });

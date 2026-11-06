@@ -235,7 +235,8 @@ export async function saveSetting(worker: Worker, change: Record<string, unknown
 /**
  * Clicks a file link until the pane opens. A page that just loaded may not have its click
  * listener yet, and then the click follows the link. The page then loads again and the click
- * repeats. `prepare` runs after each load, before the click.
+ * repeats. A click that the pane could not take follows its link, and the page then loads again
+ * in the same way. `prepare` runs after each load, before the click.
  */
 export async function openFirstFile(
   page: Page,
@@ -251,9 +252,11 @@ export async function openFirstFile(
       await page.goto(url);
       await prepare?.();
     }
+    // A click that the pane could not take follows its link, so the page may have left by now.
+    // The click then fails soon, and the next round loads the page again.
     await (typeof scope === 'string' ? page.locator(scope) : scope)
       .getByRole('link', { name })
-      .click();
+      .click({ timeout: 3000 });
     await expect(page.locator('#tools-file-viewer')).toBeVisible({ timeout: 1500 });
   }).toPass({ timeout: 20_000 });
 }

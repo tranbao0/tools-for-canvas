@@ -51,6 +51,12 @@ describe('wireInstall', () => {
     expect(await fakeBrowser.storage.local.get(null)).toEqual({ other: 7 });
   });
 
+  it('keeps the fingerprint salt in storage.local on update where no vault holds it', async () => {
+    await fakeBrowser.storage.local.set({ sessionFingerprintSalt: 'salt' });
+    await fakeBrowser.runtime.onInstalled.trigger({ reason: 'update', previousVersion: '0.1.0' });
+    expect(await fakeBrowser.storage.local.get(null)).toEqual({ sessionFingerprintSalt: 'salt' });
+  });
+
   it('opens the local welcome page on install when no tab is open', async () => {
     await fakeBrowser.runtime.onInstalled.trigger({ reason: 'install' });
 

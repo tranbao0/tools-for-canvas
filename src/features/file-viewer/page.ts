@@ -423,22 +423,28 @@ export async function startViewer(): Promise<void> {
         else addresses.delete(target.fileId);
       }
       const checkedHref = link.getAttribute('href');
+      // The click that the script makes is not trusted, so the listener above ignores it, and the
+      // browser does what the link says: it follows the link, saves a download, or opens a new tab.
+      // A page script that changed the link in the meantime gets no click on the new address.
+      const followLink = () => {
+        if (link.isConnected && link.getAttribute('href') === checkedHref) link.click();
+      };
       // A reset that comes while the click waits ends it: the click belongs to this moment.
       const taken = generation;
       void (async () => {
         // The click is taken at once, even while the settings and the tabs are still loading.
         await starting;
-        if (!enabled) {
-          // The viewer is off, so the click goes to the link after all, also when this copy has
-          // ended by now. The click that the script
-          // makes is not trusted, so the listener above ignores it, and the browser does what the
-          // link says: it follows the link, saves a download, or opens a new tab.
-          // A page script that changed the link in the meantime gets no click on the new address.
-          if (link.isConnected && link.getAttribute('href') === checkedHref) link.click();
+        // The viewer is off, or this copy has ended by now: the click goes to the link after all.
+        if (!enabled || !live) {
+          followLink();
           return;
         }
-        if (!live) return;
-        await openTarget(target, href, taken);
+        const opened = await openTarget(target, href, taken).catch(() => false);
+        if (opened) return;
+        // The pane could not take the file, so the student gets the link, and never a dead click
+        // or a card that loads forever. A pane with no file in it has nothing to show.
+        if (live && generation === taken && paneOpen() && tabs.ids.length === 0) drop();
+        followLink();
       })().catch(() => undefined);
     },
     { capture: true, signal: lifetime.signal },

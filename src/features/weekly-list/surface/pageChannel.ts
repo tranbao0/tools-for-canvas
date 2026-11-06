@@ -80,9 +80,14 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
   const settingsListeners = new Set<(settings: Settings) => void>();
   const toolsListeners = new Set<(tools: ToolsSettings) => void>();
   let last: PageContext | null = null;
+  let retry: ReturnType<typeof setTimeout> | null = null;
 
-  /** Asks the background. A refusal or a missing background means that the page is not saved. */
-  async function read(): Promise<PageContext> {
+  /**
+   * Asks the background. A refusal means that the page is not the saved Canvas, but a background
+   * that is down looks the same, such as one that restarts. So a failed read keeps the last origin
+   * and schedules one more read, and only a failed `final` read gives no origin.
+   */
+  async function read(final: boolean): Promise<PageContext> {
     let reply: unknown;
     try {
       reply = await deps.send({ type: 'weekrow:page-context' });
@@ -92,8 +97,14 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
     const fields = reply as Partial<PageContextReply> | undefined;
     const { settings, tools } = fields ?? {};
     if (!isSettings(settings)) {
+      if (!final) {
+        retry ??= setTimeout(() => {
+          retry = null;
+          refresh(undefined, true).catch(() => undefined);
+        }, RETRY_MS);
+      }
       return {
-        origin: null,
+        origin: final ? null : (last?.origin ?? null),
         settings: last?.settings ?? defaultSettings(),
         tools: last?.tools ?? structuredClone(DEFAULT_TOOLS_SETTINGS),
       };
@@ -127,6 +138,8 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
   let announcing: ReturnType<typeof setTimeout> | null = null;
   let forced: ReturnType<typeof setTimeout> | null = null;
 
+  /** How long a failed read waits before the one more read. */
+  const RETRY_MS = 1_000;
   /** How long a caller that waits for a read may hold back the watchers. */
   const HOLD_MS = 2_000;
 
@@ -180,10 +193,10 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
    * newer answer that differs from it, after the caller has applied it, so a change during the
    * first read is not lost.
    */
-  async function refresh(wanted?: keyof PageContext): Promise<PageContext> {
+  async function refresh(wanted?: keyof PageContext, final = false): Promise<PageContext> {
     const number = ++started;
     if (wanted !== undefined) waiting += 1;
-    const next = await read();
+    const next = await read(final);
     if (number > kept) {
       kept = number;
       if (last !== null) {
@@ -249,8 +262,10 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
       stopListening();
       if (announcing !== null) clearTimeout(announcing);
       if (forced !== null) clearTimeout(forced);
+      if (retry !== null) clearTimeout(retry);
       announcing = null;
       forced = null;
+      retry = null;
     },
   };
 }
