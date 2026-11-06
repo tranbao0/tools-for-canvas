@@ -47,6 +47,15 @@ import {
   type PreviewRequest,
 } from '../preview';
 
+/** How often the frame address is read while the page of the frame has not loaded. */
+const SLIM_POLL_MS = 100;
+
+/** How long one poll of the frame address runs without a trusted load. */
+const SLIM_POLL_LIMIT_MS = 30_000;
+
+/** The most rewrites in a row, until a page that needs no rewrite ends the chain. */
+const MAX_REWRITES = 3;
+
 /** How often the submission is read again while the pane is open and the page is in view. */
 export const PREVIEW_POLL_MS = 20_000;
 
@@ -243,11 +252,59 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     // The address is set before the frame joins the page. A frame that joins with no address
     // fires a load for its blank page, which would use up the load that the first page is.
     frame.src = first.url;
-    // The old submission view redirects to the plain assignment page, and a graded discussion or
-    // quiz redirects to its own page. The frame then loads the same page with content_only=1,
-    // once. The load after that one never rewrites again, so a page that keeps the plain
-    // address cannot make a loop.
-    let slimming = false;
+    // A page of the frame can come without content_only=1: the old submission view redirects to the
+    // plain assignment page, a graded discussion or quiz redirects to its own page, and a link can
+    // go to any page of Canvas. The frame then loads that page again with content_only=1. The
+    // last address that was asked for and the number of rewrites in a row guard the chain: the same
+    // address is never asked twice in a row, so a page that keeps the plain address cannot make a
+    // loop, and no more than MAX_REWRITES rewrites run until a page that needs none ends the chain.
+    let requested: string | null = null;
+    let rewrites = 0;
+    /**
+     * Reads the address of the frame, and asks for the slim page when the address needs it. Only a
+     * trusted load ends the chain, because a page that is still loading can be a step of it.
+     */
+    const slimFrame = (loaded = false): boolean => {
+      try {
+        const current = frame.contentWindow?.location.href;
+        if (current === undefined) return false;
+        const slim = slimAddress(current, origin);
+        if (slim === null) {
+          if (loaded) {
+            requested = null;
+            rewrites = 0;
+          }
+          return false;
+        }
+        if (slim === requested || rewrites >= MAX_REWRITES) return false;
+        requested = slim;
+        rewrites++;
+        frame.contentWindow?.location.replace(slim);
+        return true;
+      } catch {
+        // The frame went to another origin. Its address is not ours to read.
+        return false;
+      }
+    };
+    // Until the page of the frame has loaded, the address is read every 100 ms, so the slim page
+    // replaces a plain page as soon as the plain page is the page of the frame, and not after
+    // every image and script of the plain page. A poll starts with the frame and at each pagehide
+    // of a page. It ends at the next trusted load, when the frame is removed, and after 30 seconds.
+    let poll: number | undefined;
+    let pollEnd: number | undefined;
+    const stopPolling = (): void => {
+      win.clearInterval(poll);
+      win.clearTimeout(pollEnd);
+      poll = undefined;
+      pollEnd = undefined;
+    };
+    const startPolling = (): void => {
+      stopPolling();
+      if (removed) return;
+      poll = win.setInterval(() => slimFrame(), SLIM_POLL_MS);
+      pollEnd = win.setTimeout(stopPolling, SLIM_POLL_LIMIT_MS);
+    };
+    startPolling();
     // A student who types in the frame has the focus there, and the page of the frame gets the
     // key. This listener reacts to Escape only, and only in full view. It reads no other key and
     // nothing of the frame.
@@ -260,28 +317,16 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     frame.addEventListener('load', (event) => {
       // A page script can fire a load event on the frame, so only a real load counts.
       if (!event.isTrusted || removed) return;
+      stopPolling();
       // Each page has its own window. A frame on another origin has no window to listen on, and
       // keeps the Escape of the header only.
       try {
         frame.contentWindow?.addEventListener('keydown', leaveOnEscape, true);
+        frame.contentWindow?.addEventListener('pagehide', startPolling);
       } catch {
         // The frame went to another origin.
       }
-      let rewriting = false;
-      if (slimming) {
-        slimming = false;
-      } else {
-        try {
-          const slim = slimAddress(frame.contentWindow?.location.href ?? '', origin, courseId);
-          if (slim !== null) {
-            slimming = true;
-            rewriting = true;
-            frame.contentWindow?.location.replace(slim);
-          }
-        } catch {
-          // The frame went to another origin. Its address is not ours to read.
-        }
-      }
+      const rewriting = slimFrame(true);
       // The first page of an assignment is no sign of a submission.
       if (++loads > 1) void read(first.assignmentId);
       if (!rewriting) options.onFrameLoad();
@@ -291,6 +336,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       frame,
       remove() {
         removed = true;
+        stopPolling();
         frame.remove();
       },
     };

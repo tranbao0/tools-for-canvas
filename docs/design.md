@@ -3242,7 +3242,7 @@ With the pane read alone, the default run of the test failed before the fix.
       The assignment pane of the Assignments list (decision 26, step 3) holds a Canvas page in a same-origin frame for each assignment that the student previewed, and a file link in any of them must open in the file pane too.
       The catcher serves this frame as well, in a second mode.
       - The mode needs all of these: the top frame is a same-origin Assignments list of a course (`/courses/:id/assignments`), the frame is a direct child of the top frame, its path is a page of the same course (`/courses/:id` or any path under it, with the ids compared as decimal global ids), and its address has `content_only=1`.
-        The pane loads its frame with that parameter, and it loads every other page of the course that the frame reaches (a graded discussion, a quiz or a page) with the parameter too (decision 26, "Frames").
+        The pane loads its frame with that parameter, and it loads every other page of the saved origin that the frame reaches (a graded discussion, a quiz, a page, a page of a group) with the parameter too (decision 26, "Frames").
         A page that has the parameter but no course of the list, and a page of the course without the parameter, get no catcher.
       - The catcher takes the links that the top frame takes, for a file id only (`paneFileTarget`): a plain `/files/:id`, a `?preview=:id` of the files page, and a submission route with `?download=:id`.
         It never takes a comment attachment, a module item, a link of another origin, or a link with a `download` attribute except the student's own submission files in the Submission box (`catchesDownload`).
@@ -4296,15 +4296,37 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     It reads no other key and nothing of the DOM of the frame.
     The call is in `try` and `catch`.
     A frame on another origin, such as DocViewer in the feedback pane, gives no window to listen on, and it keeps the Escape of the header only.
-  - When the frame lands on a page of the same course on the saved origin without `content_only=1`, the frame loads that address with `content_only=1`, once.
+  - When the frame shows a page of the saved origin without `content_only=1`, the frame loads that address with `content_only=1` (`slimAddress`).
     The old submission view redirects to the plain assignment page after a submission.
     A graded discussion, a quiz and a graded page redirect away from their assignment page to the page of the discussion, the quiz or the page, which has no parameter (`AssignmentsController#show`, `redirect_to` with `context_discussion_topic_url`, `context_quiz_url` and `context_wiki_page_url`).
-    The course and the path use the same strict id rules as before: a plain or a sharded id on both sides, compared as decimal global ids.
-    A page that is not of this course, or not on this origin, stays as it is, because "Open in new tab" is always in the bar.
-    The load after a rewrite never rewrites again.
+    A graded group discussion goes on to `/groups/:g/discussion_topics/:n`, and `child_topic` drops every parameter.
+    A link in the frame can go to any page of Canvas.
+    So one rule covers every page of the saved origin, of any course or of none, including a page of a group, another course, `/users/:id` and `/calendar`.
+    These give no rewrite: `/login`, `/logout` and `/api` with everything under them, a file download route (`/files/:id/download`, with or without a file name), a `blob:` address, the classic quiz take page `/quizzes/:id/take` of any course with everything under it, an address that has `content_only=1` already, and an address of another origin.
+    A quiz that runs never reloads, because Canvas treats the unload of the take page as a student who leaves the quiz.
+    Such a page keeps the full Canvas layout, and "Open in new tab" is always in the bar.
+    The rule reads the address only, so it has two accepted limits.
+    A page that shows the result of a POST at a plain address loads again as a GET, so its typed values and its error go, as at a failed `PUT /groups/:id`.
+    A slim page that sends the frame back to its plain address by script would reload without end, because each slim load ends the chain.
+    No page of Canvas that the pinned source shows does that.
+  - **Poll for the address.**
+    A plain page must not show the full Canvas layout until its `load` event, which comes after every image and script of the page.
+    So the script reads the address of the frame every 100 ms from the moment the frame is made, and again from each `pagehide` of the window of a page.
+    It asks for the slim page as soon as `slimAddress` gives an address.
+    A poll ends at the next trusted load, when the frame is removed, and after 30 seconds.
+    The `pagehide` listener goes on the window of each page at each trusted load, next to the `keydown` listener and in the same `try` and `catch`, because a frame on another origin gives no window.
+    A poll reads the address only.
+  - **Guard against loops.**
+    Each frame keeps the last address that it asked for and the number of rewrites since the chain began.
+    The frame never asks for the same address twice in a row, and it runs at most 3 rewrites until a page that needs no rewrite ends the chain.
+    Only a trusted load clears the address and the count, when `slimAddress` gives `null` for the page that loaded.
+    So a page that keeps the plain address after a rewrite does not loop, a rewrite that Canvas redirects to another plain page is rewritten again, a declined question of the page ("leave this page?") does not repeat, and a link that the student clicks during a rewrite is rewritten like any other page.
     The rewrite, the request for the file catcher after each trusted load, and the read after each trusted load but the first belong to the frame.
+    The file catcher keeps its own rule (`isPaneFramePage`): only a page of the list's course gets a catcher, so a page of a group or of another course has none.
     A frame gets its address before it joins the page, because Chromium fires a load for the blank page of a frame that joins with no address, and that load would use up the first load.
-    So one Preview makes one read, and a row that redirects makes one more, for the load after the slim rewrite.
+    So one Preview makes one read at the click, the first trusted load makes none, and each later trusted load makes one.
+    A row that redirects to a plain page usually gets the slim page from the poll before the plain page has loaded.
+    A small plain page can load before the next tick, and then the load handler asks for the slim page.
   - A load that a script of the page fires is not a load: only a trusted `load` event counts.
 - **Header.**
   - The header is the one of "Card and header" above: a bold 18 px title with an ellipsis, a second line, and three 30 px buttons with 16 px icons.
