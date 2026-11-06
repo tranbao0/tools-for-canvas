@@ -1580,14 +1580,11 @@ describe('the similarity score in the box', () => {
     expect(score.getAttribute('target')).toBe('_blank');
     expect(score.getAttribute('rel')).toBe('noopener noreferrer');
     expect(score.getAttribute('title')).toBe('Similarity score');
-    // The score sits on the line of the size and the button, under the file link.
+    // The score sits on the line of the size under the file link, and the button has its own line.
     const meta = score.parentElement!;
     expect(meta.className).toBe('av-box-file-meta');
-    expect([...meta.children].map((child) => child.className)).toEqual([
-      'av-size',
-      'av-score',
-      'av-feedback',
-    ]);
+    expect([...meta.children].map((child) => child.className)).toEqual(['av-size', 'av-score']);
+    expect(meta.nextElementSibling?.className).toBe('av-feedback');
   });
 
   it('puts the attempt in the address of an originality report', async () => {
