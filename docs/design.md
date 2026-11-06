@@ -3530,7 +3530,7 @@ So a student switches pages to read the instructions next to the feedback on a f
        - Each submitted file has a file icon and a link "View NAME", which opens the file in the file viewer pane (decision 25).
          With the File viewer switch off, the link says "Download NAME", because the pane cannot take it.
          The switch works without a reload.
-       - Under the link, one line shows the size, the similarity score and the feedback button.
+       - Under the link, one line shows the size and the similarity score, and under that line the feedback button fills the width of the box, in Canvas's primary button color.
          All three come from the Canvas records of the submission (item 5), so the box does not wait for the files frame, except for a file whose session address failed the check (item 5).
          The button says "View Feedback" by default.
          When the files frame can be read, the button takes the label of Canvas's button, "Preview" for a file that has no notes of the teacher or the word of a translated Canvas, and it shows the unread dot of Canvas.

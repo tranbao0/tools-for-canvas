@@ -181,6 +181,7 @@ export function createBox(options: BoxOptions): Box {
       const meta = node(doc, 'div', 'av-box-file-meta');
       if (file.size !== null) meta.append(node(doc, 'span', 'av-size', file.size));
       if (file.report !== null) meta.append(scoreLink(doc, file.report));
+      if (meta.childElementCount > 0) item.append(meta);
       if (file.feedbackLabel !== null && file.sessionUrl !== null) {
         const button = node(doc, 'button', 'av-feedback', file.feedbackLabel);
         button.setAttribute('type', 'button');
@@ -190,9 +191,8 @@ export function createBox(options: BoxOptions): Box {
           button.title = 'There are unread comments.';
           button.append(node(doc, 'span', 'av-unread'));
         }
-        meta.append(button);
+        item.append(button);
       }
-      if (meta.childElementCount > 0) item.append(meta);
       list.append(item);
     });
   };

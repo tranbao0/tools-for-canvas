@@ -108,10 +108,10 @@ export const BOX_CSS = `
 .av-score[data-state=warning]{--av-score-bg:#897b01;--av-score-fg:#000}
 .av-score[data-state=problem]{--av-score-bg:#c86604;--av-score-fg:#000}
 .av-score[data-state=failure]{--av-score-bg:#ad393a;--av-score-fg:#fff}
-.av-feedback{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;color:var(--av-link);font-size:13px;line-height:1.4;white-space:nowrap;cursor:pointer}
-.av-feedback:hover{text-decoration:underline}
+.av-feedback{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:38px;margin-top:10px;padding:8px 12px;border-radius:3px;background:var(--ic-brand-button--primary-bgd,#0374b5);color:var(--ic-brand-button--primary-text,#fff);font-size:14px;font-weight:700;line-height:1.2;text-align:center;cursor:pointer}
+.av-feedback:hover{background:color-mix(in srgb,var(--ic-brand-button--primary-bgd,#0374b5) 88%,#000)}
 .av-feedback:focus-visible{outline:2px solid var(--av-ring);outline-offset:2px}
-.av-unread{flex:none;width:8px;height:8px;border-radius:50%;background:var(--av-ring)}
+.av-unread{flex:none;width:8px;height:8px;border-radius:50%;background:currentColor}
 .av-box-comments{margin-top:18px}
 .av-box-subtitle{margin:0 0 2px;font-size:.75rem;font-weight:700;line-height:1.5}
 `;
