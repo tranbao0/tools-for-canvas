@@ -596,6 +596,27 @@
   "peopleEnd": {
     "message": "No more people"
   },
+  "peopleSearch": {
+    "message": "Search people"
+  },
+  "peopleSearchClear": {
+    "message": "Clear the people search"
+  },
+  "peopleNoResults": {
+    "message": "No results"
+  },
+  "peopleResults_one": {
+    "message": "$1 result"
+  },
+  "peopleResults_other": {
+    "message": "$1 results"
+  },
+  "peopleSearching_one": {
+    "message": "Searching… looked at $1 person"
+  },
+  "peopleSearching_other": {
+    "message": "Searching… looked at $1 people"
+  },
   "peopleMessage": {
     "message": "Send a message to $1"
   },

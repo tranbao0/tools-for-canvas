@@ -9,9 +9,15 @@
  * load, or a filter cannot be read, Canvas's own list and pager show again.
  *
  * The scroll area and the paging are the shared list of `scrollList.tsx`. This file is the adapter
- * of the People widget: the page loader, the rows and the reading of the filters.
+ * of the People widget: the page loader, the rows, the reading of the filters and the search.
+ *
+ * The search row sits under the filters. Canvas's query has no search argument, so the search runs
+ * in the page over the rows that the list loaded: a query loads the rest of the pages of the
+ * current filter, one after another, and shows the people whose name or course names hold every
+ * word. The role is not searched.
  */
 import { render } from 'preact';
+import { useRef } from 'preact/hooks';
 import {
   ALL_COURSES_LABEL,
   findPeopleWidgets,
@@ -19,7 +25,7 @@ import {
   type PeopleWidget,
 } from '../../../shared/canvas/widgetDashboard';
 import { logFailure } from '../../../shared/platform/log';
-import { t } from '../../../shared/ui/i18n';
+import { t, tp } from '../../../shared/ui/i18n';
 import {
   PEOPLE_PAGE_SIZE,
   type DashboardCourse,
@@ -27,12 +33,12 @@ import {
   type PeopleRole,
   type PersonRow,
 } from '../protocol';
+import { matchRanges, queryWords, searchAnnouncements, splitParts } from './announcementSearch';
 import type { Fix, FixContext } from './context';
 import {
   Avatar,
   createPagedLists,
   ScrollList,
-  type PagedList,
   shadowHost,
   unmountHost,
   type PagedLists,
@@ -105,6 +111,46 @@ interface View {
   scroll: HTMLElement | null;
   /** What the scroll area shows, so a change of filter starts at the top. */
   scrollKey: string;
+  /** The search of this widget. Two widgets keep a query each. */
+  query: string;
+  /** The place of the list while a search shows, for the way back. */
+  saved: { key: string; top: number } | null;
+}
+
+/** What the scroll area shows now. */
+interface Model {
+  rows: PersonRow[];
+  /** The words that mark the rows, or `null` when there is no search. */
+  words: string[] | null;
+  scrollKey: string;
+  loadingFirst: boolean;
+  hasMore: boolean;
+  loadingMore: boolean;
+  failed: 'none' | 'first' | 'more';
+  ended: boolean;
+  /** The line under the search row. */
+  line: string | null;
+  empty: string;
+}
+
+/** The text of a part of a row, with a `<mark>` text node around each match. */
+function marked(text: string, words: readonly string[] | null) {
+  if (words === null) return text;
+  return splitParts(text, matchRanges(text, words)).map((part) =>
+    part.match ? <mark>{part.text}</mark> : part.text,
+  );
+}
+
+/** The people that hold every word of the query in the name or in a course name. */
+function searchPeople(people: readonly PersonRow[], query: string): PersonRow[] {
+  return searchAnnouncements(
+    people.map((person) => ({
+      title: person.name,
+      text: person.enrollments.map((enrollment) => enrollment.courseName).join('\n'),
+      person,
+    })),
+    query,
+  ).map((found) => found.person);
 }
 
 export function peopleFix(): Fix {
@@ -113,16 +159,16 @@ export function peopleFix(): Fix {
   let current: FixContext | null = null;
   let painting = false;
 
-  function Person(props: { person: PersonRow; origin: string }) {
+  function Person(props: { person: PersonRow; words: string[] | null; origin: string }) {
     const { person } = props;
     return (
       <article class="wr-p-row" aria-label={person.name}>
         <Avatar name={person.name} seed={person.id} url={person.avatarUrl} class="wr-a-avatar" />
         <div class="wr-p-info">
-          <div class="wr-p-name">{person.name}</div>
+          <div class="wr-p-name">{marked(person.name, props.words)}</div>
           {person.enrollments.map((enrollment, index) => (
             <div class="wr-p-enrollment" key={index}>
-              <div class="wr-p-course">{enrollment.courseName}</div>
+              <div class="wr-p-course">{marked(enrollment.courseName, props.words)}</div>
               <div class="wr-p-role">
                 {t(enrollment.role === 'teacher' ? 'peopleTeacher' : 'peopleTa')}
               </div>
@@ -154,28 +200,86 @@ export function peopleFix(): Fix {
     );
   }
 
-  function PeopleList(props: {
-    view: View;
-    data: PeopleStore;
-    list: PagedList<PersonRow, PeopleFilter>;
-    origin: string;
-  }) {
-    const { view, data, list } = props;
-    const loadingFirst = !list.started && list.status !== 'error';
-    const hasMore = list.started && list.hasNext;
+  function PeopleList(props: { view: View; model: Model; data: PeopleStore; origin: string }) {
+    const { view, model, data } = props;
+    const input = useRef<HTMLInputElement>(null);
+    const setQuery = (query: string): void => {
+      view.query = query;
+      paint(view);
+    };
     return (
       <div class="wr-p">
+        <div class="wr-a-search">
+          <div class="wr-a-field">
+            <svg
+              viewBox="0 0 24 24"
+              width="15"
+              height="15"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-4-4" />
+            </svg>
+            <input
+              ref={input}
+              type="search"
+              class="wr-a-input"
+              placeholder={t('peopleSearch')}
+              aria-label={t('peopleSearch')}
+              autocomplete="off"
+              value={view.query}
+              onInput={(event) => setQuery(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && view.query !== '') {
+                  setQuery('');
+                  event.stopPropagation();
+                }
+              }}
+            />
+            {view.query !== '' ? (
+              <button
+                type="button"
+                class="wr-a-x"
+                aria-label={t('peopleSearchClear')}
+                onClick={() => {
+                  setQuery('');
+                  // The button leaves with the query, so the focus goes back to the field.
+                  input.current?.focus();
+                }}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="12"
+                  height="12"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  aria-hidden="true"
+                >
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {/* The line takes room only when it has something to say, and the area gives it back. */}
+        <div class="wr-a-res">
+          <span role="status">{model.line}</span>
+        </div>
         <ScrollList
-          scrollKey={`people|${peopleKey(view.filter)}`}
-          rowCount={list.items.length}
-          rows={list.items.map((person) => (
-            <Person key={person.id} person={person} origin={props.origin} />
+          scrollKey={model.scrollKey}
+          rowCount={model.rows.length}
+          rows={model.rows.map((person) => (
+            <Person key={person.id} person={person} words={model.words} origin={props.origin} />
           ))}
-          loadingFirst={loadingFirst}
-          hasMore={hasMore}
-          loadingMore={list.started && list.status === 'loading'}
-          failed={list.status === 'error' ? (list.started ? 'more' : 'first') : 'none'}
-          ended={list.started && !list.hasNext && list.items.length > 0}
+          loadingFirst={model.loadingFirst}
+          hasMore={model.hasMore}
+          loadingMore={model.loadingMore}
+          failed={model.failed}
+          ended={model.ended}
           text={{
             feed: t('peopleFeedLabel'),
             loading: t('peopleLoading'),
@@ -184,7 +288,7 @@ export function peopleFix(): Fix {
             moreFailed: t('peopleMoreFailed'),
             retry: t('annRetry'),
             end: t('peopleEnd'),
-            empty: t('peopleEmpty'),
+            empty: model.empty,
           }}
           onMore={() => data.more(view.filter)}
           onRetry={() => data.retry(view.filter)}
@@ -193,20 +297,82 @@ export function peopleFix(): Fix {
     );
   }
 
-  /** Draws one view, and starts a change of filter at the top of the area. */
+  /**
+   * What the scroll area shows now. It loads the first page of a list that has none. A search asks
+   * for the next page until the list has no more: a page on its way, or a list with no next page,
+   * asks for nothing.
+   */
+  function modelOf(view: View, data: PeopleStore): Model {
+    const list = data.ensure(view.filter);
+    const words = queryWords(view.query);
+    const failed = list.status === 'error' ? (list.started ? 'more' : 'first') : 'none';
+    if (words === null) {
+      return {
+        rows: list.items,
+        words,
+        scrollKey: `people|${peopleKey(view.filter)}`,
+        loadingFirst: !list.started && list.status !== 'error',
+        hasMore: list.started && list.hasNext,
+        loadingMore: list.started && list.status === 'loading',
+        failed,
+        ended: list.started && !list.hasNext && list.items.length > 0,
+        line: null,
+        empty: t('peopleEmpty'),
+      };
+    }
+    data.more(view.filter);
+    const rows = searchPeople(list.items, view.query);
+    const running = failed === 'none' && !(list.started && !list.hasNext);
+    return {
+      rows,
+      words,
+      scrollKey: `search|${peopleKey(view.filter)}`,
+      loadingFirst: running && rows.length === 0,
+      hasMore: false,
+      loadingMore: false,
+      failed,
+      ended: false,
+      line:
+        failed !== 'none'
+          ? null
+          : running
+            ? tp('peopleSearching', list.items.length)
+            : tp('peopleResults', rows.length),
+      empty: t('peopleNoResults'),
+    };
+  }
+
+  /**
+   * Draws one view. A change of the area starts at the top, except the way back from a search to
+   * the list that it left, which keeps its place.
+   */
   function paint(view: View): void {
     if (store === null || current === null || !view.host.isConnected) return;
     if (store.broken) {
       current.again();
       return;
     }
-    // The list loads its first page when it has none yet.
-    const list = store.ensure(view.filter);
-    render(<PeopleList view={view} data={store} list={list} origin={current.origin} />, view.root);
-    const key = `people|${peopleKey(view.filter)}`;
+    const model = modelOf(view, store);
+    const key = model.scrollKey;
+    const moved = key !== view.scrollKey;
+    if (
+      moved &&
+      view.scroll !== null &&
+      key.startsWith('search|') &&
+      view.scrollKey.startsWith('people|')
+    ) {
+      view.saved = { key: view.scrollKey, top: view.scroll.scrollTop };
+    }
+    render(
+      <PeopleList view={view} model={model} data={store} origin={current.origin} />,
+      view.root,
+    );
     const area = view.root.querySelector<HTMLElement>('.wr-a-scroll');
     view.scroll = area;
-    if (area !== null && key !== view.scrollKey) area.scrollTop = 0;
+    if (area !== null && moved) {
+      area.scrollTop = view.saved?.key === key ? view.saved.top : 0;
+      if (!key.startsWith('search|')) view.saved = null;
+    }
     view.scrollKey = key;
   }
 
@@ -264,7 +430,16 @@ export function peopleFix(): Fix {
       return known;
     }
     const { host, root } = shadowHost(context.doc, 'people', FIXES_CSS);
-    const made: View = { widget, host, root, filter, scroll: null, scrollKey: '' };
+    const made: View = {
+      widget,
+      host,
+      root,
+      filter,
+      scroll: null,
+      scrollKey: '',
+      query: '',
+      saved: null,
+    };
     views.set(widget.widget, made);
     return made;
   }
