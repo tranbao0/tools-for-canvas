@@ -4,15 +4,7 @@
  */
 import { resolveLocale, hourCycleFor } from './locale';
 import { collectItems } from './normalize';
-import {
-  type PlacementContext,
-  type Slot,
-  isCountedPastDue,
-  isInSpan,
-  isLookAheadSlot,
-  slotFor,
-  slotOffersSkip,
-} from './placement';
+import { type PlacementContext, type Slot, isInSpan, isLookAheadSlot, slotFor } from './placement';
 import { buildRings, contextComparator, ringLabel, type RingEntry } from './rings';
 import {
   availabilityFor,
@@ -119,7 +111,6 @@ function placeItem(item: Item, input: ModelInput, context: PlacementContext): Pl
     doneChips,
     hasWarning,
     checkboxDisabled: redoBlocksDone(item),
-    canSkip: state === 'open' && slotOffersSkip(slot),
     canMoveToToday: canMoveToToday(item, state, context),
     isLookAhead: isLookAheadSlot(slot),
   };
@@ -135,9 +126,9 @@ function ringEntry(placed: Placed, hidePastDue: boolean): RingEntry {
   return {
     courseId: view.courseId,
     contextLabel: view.contextLabel,
-    counted: placed.datedInSpan && view.state !== 'skipped' && !view.isReminder,
+    counted: placed.datedInSpan && !view.isReminder,
     done: view.state === 'done',
-    pastDue: !hidePastDue && isCountedPastDue(placed.slot),
+    pastDue: !hidePastDue && placed.slot.group === 'past_due',
   };
 }
 
@@ -147,16 +138,22 @@ function emptyGroup(kind: GroupKind, date: string | null): ListGroup {
     date,
     items: [],
     older: [],
-    skipped: [],
     doneUndated: [],
     warningCount: 0,
   };
 }
 
+/**
+ * The items of "N older" that "Mark all older done" checks. An item whose redo request blocks
+ * done has no checkbox to use, so it stays in the list.
+ */
+export function olderToMarkDone(group: ListGroup): ItemView[] {
+  return group.older.filter((item) => !item.checkboxDisabled);
+}
+
 function hasContent(group: ListGroup): boolean {
   return (
-    group.loading === true ||
-    group.items.length + group.older.length + group.skipped.length + group.doneUndated.length > 0
+    group.loading === true || group.items.length + group.older.length + group.doneUndated.length > 0
   );
 }
 
@@ -240,9 +237,7 @@ function buildGroups(
   const byCourseThenTitle = thenBy(byCourse, byTitle, byKey);
   pastDue.items.sort(newestFirst);
   pastDue.older.sort(newestFirst);
-  pastDue.skipped.sort(newestFirst);
   noDueDate.items.sort(byCourseThenTitle);
-  noDueDate.skipped.sort(byCourseThenTitle);
   noDueDate.doneUndated.sort(byCourseThenTitle);
   done.items.sort(chronological);
   done.warningCount = done.items.filter((view) => view.hasWarning).length;

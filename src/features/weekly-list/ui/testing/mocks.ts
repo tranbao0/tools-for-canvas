@@ -93,7 +93,6 @@ export function mkItem(
     doneChips: [],
     hasWarning: false,
     checkboxDisabled: false,
-    canSkip: false,
     canMoveToToday: false,
     isLookAhead: false,
   };
@@ -124,7 +123,6 @@ export function mkGroup(patch: Partial<ListGroup> & { kind: ListGroup['kind'] })
     date: null,
     items: [],
     older: [],
-    skipped: [],
     doneUndated: [],
     warningCount: 0,
     ...patch,
@@ -154,7 +152,7 @@ export function et(date: string, time: string): string {
 
 /**
  * Paper work the student checked off that the teacher still marks missing in Canvas: it is done,
- * in Done, with the "Missing in Canvas" chip and no Skip (decision 6, "Checked but missing").
+ * in Done, with the "Missing in Canvas" chip (decision 6, "Checked but missing").
  */
 export function checkedButMissing(patch: Partial<ItemView> = {}): ItemView {
   return mkItem({
@@ -168,7 +166,6 @@ export function checkedButMissing(patch: Partial<ItemView> = {}): ItemView {
     facts: { ...NO_FACTS, missing: true, latePolicyStatus: 'missing' },
     doneChips: [{ kind: 'missing_in_canvas', teacherSet: true }],
     hasWarning: true,
-    canSkip: false,
     ...patch,
   });
 }
@@ -186,12 +183,10 @@ export function currentWeekGroups(): ListGroup[] {
           toolName: 'Gradescope',
           handInChip: { kind: 'tool', name: 'Gradescope' },
           chip: { kind: 'cant_confirm', tool: 'Gradescope', onPaper: false },
-          canSkip: true,
         }),
         mkNote({
           title: 'Buy lab goggles',
           due: et('2026-10-25', '23:59'),
-          canSkip: true,
           canMoveToToday: true,
         }),
         mkItem({
@@ -200,7 +195,6 @@ export function currentWeekGroups(): ListGroup[] {
           due: et('2026-10-23', '17:00'),
           chip: { kind: 'missing' },
           availability: { kind: 'closed' },
-          canSkip: true,
         }),
       ],
       older: [
@@ -209,30 +203,18 @@ export function currentWeekGroups(): ListGroup[] {
           course: 'chem',
           kind: 'quiz',
           due: et('2026-10-16', '23:59'),
-          canSkip: true,
         }),
         mkItem({
           title: 'Week 6 reflection',
           course: 'hist',
           kind: 'discussion',
           due: et('2026-10-12', '23:59'),
-          canSkip: true,
         }),
         mkItem({
           title: 'Essay 2 outline',
           course: 'engl',
           due: et('2026-10-09', '12:00'),
           chip: { kind: 'missing' },
-          canSkip: true,
-        }),
-      ],
-      skipped: [
-        mkItem({
-          title: 'Optional reading response 4',
-          course: 'engl',
-          due: et('2026-10-24', '23:59'),
-          state: 'skipped',
-          chip: { kind: 'skipped' },
         }),
       ],
     }),
@@ -338,24 +320,18 @@ export function currentWeekGroups(): ListGroup[] {
     mkGroup({
       kind: 'no_due_date',
       items: [
-        mkItem({ title: 'Course survey', course: 'hist', canSkip: true }),
+        mkItem({ title: 'Course survey', course: 'hist' }),
         mkItem({
           title: 'Extra credit: museum visit write-up',
           course: 'hist',
           handIn: 'outside',
           onPaper: true,
           handInChip: { kind: 'on_paper' },
-          canSkip: true,
         }),
       ],
-      doneUndated: [mkItem({ title: 'Syllabus quiz', course: 'bio', kind: 'quiz', state: 'done' })],
-      skipped: [
-        mkItem({
-          title: 'Optional: intro video',
-          course: 'psyc',
-          state: 'skipped',
-          chip: { kind: 'skipped' },
-        }),
+      doneUndated: [
+        mkItem({ title: 'Syllabus quiz', course: 'bio', kind: 'quiz', state: 'done' }),
+        mkItem({ title: 'Optional: intro video', course: 'psyc', state: 'done' }),
       ],
     }),
     mkGroup({
@@ -508,7 +484,6 @@ export function pastSpanView(): WeekView {
             course: 'chem',
             due: et('2026-10-20', '14:00'),
             chip: { kind: 'past_due' },
-            canSkip: false,
           }),
         ],
       }),
@@ -516,13 +491,6 @@ export function pastSpanView(): WeekView {
         kind: 'day',
         date: '2026-10-22',
         items: [
-          mkItem({
-            title: 'Reading response 4',
-            course: 'engl',
-            due: et('2026-10-22', '23:59'),
-            state: 'skipped',
-            chip: { kind: 'skipped' },
-          }),
           mkItem({
             title: 'Annotated bibliography',
             course: 'engl',
@@ -611,7 +579,6 @@ export function limitedFilteredView(): WeekView {
       ...g,
       items: g.items.filter((i) => i.courseId === math),
       older: [],
-      skipped: [],
       doneUndated: [],
       warningCount: 0,
     }))
@@ -648,7 +615,7 @@ export function readyState(
     refreshing: false,
     offer: null,
     undo: null,
-    seenNotes: { firstDone: true, firstSkip: true },
+    seenNotes: { firstDone: true },
     taskCourses: Object.values(COURSES).map(({ id, name }) => ({ id, name })),
     allCourses: Object.values(COURSES).map(({ id, name }) => ({ id, name })),
     skippedCourses: [],
@@ -712,9 +679,7 @@ export function noopActions(
     stepSpan: record('stepSpan'),
     setCourseFilter: record('setCourseFilter'),
     setDone: record('setDone'),
-    skip: record('skip'),
-    unskip: record('unskip'),
-    skipAllOlder: record('skipAllOlder'),
+    markAllOlderDone: record('markAllOlderDone'),
     undo: record('undo'),
     dismissUndo: record('dismissUndo'),
     createTask: async (...args) => {

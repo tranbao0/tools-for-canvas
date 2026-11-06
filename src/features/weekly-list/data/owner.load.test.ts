@@ -56,7 +56,7 @@ const SUBMISSION_KEYS = [
 /** The item keys of each group and list, to show that nothing moved. */
 function groupKeys(state: ReturnType<typeof expectReady>): string[][] {
   return state.view.groups.flatMap((group) =>
-    [group.items, group.older, group.skipped, group.doneUndated].map((list) =>
+    [group.items, group.older, group.doneUndated].map((list) =>
       list.map((item) => `${group.kind}:${item.key}`),
     ),
   );
@@ -158,7 +158,7 @@ describe('first load', () => {
       refreshing: false,
       offer: null,
       undo: null,
-      seenNotes: { firstDone: false, firstSkip: false },
+      seenNotes: { firstDone: false },
     });
     expect(state.view.isCurrentSpan).toBe(true);
     expect(state.view.groups.map((group) => group.kind)).toEqual([

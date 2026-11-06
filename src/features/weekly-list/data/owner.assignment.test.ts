@@ -105,7 +105,7 @@ describe('the queue of the assignment view reads', () => {
     await vi.waitFor(() => expect(h.canvas.callsOf('getOwnSubmissionRecord')).toHaveLength(1));
     await h.owner.act({
       kind: 'setDone',
-      key: `assignment:${IDS.assignments.bioQuiz3Today}`,
+      keys: [`assignment:${IDS.assignments.bioQuiz3Today}`],
       done: true,
     });
     await vi.advanceTimersByTimeAsync(0);

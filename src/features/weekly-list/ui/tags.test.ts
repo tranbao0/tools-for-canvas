@@ -5,7 +5,6 @@ import { et, mkItem } from './testing/mocks';
 
 describe('status chips', () => {
   const all: StatusChip[] = [
-    { kind: 'skipped' },
     { kind: 'redo_requested' },
     { kind: 'missing' },
     { kind: 'teacher_status', name: 'Incomplete' },
@@ -18,7 +17,6 @@ describe('status chips', () => {
   it('has one label per status, and only Missing is red', () => {
     const tags = all.map((status) => statusTag(status, false));
     expect(tags.map((tag) => tag.label)).toEqual([
-      'Skipped',
       'Redo requested',
       'Missing',
       'Incomplete',

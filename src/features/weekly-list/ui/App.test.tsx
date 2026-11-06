@@ -528,9 +528,8 @@ describe('groups', () => {
 
     const section = toggle.closest('section');
     if (!section) throw new Error('no section');
-    fireEvent.click(within(section).getByRole('button', { name: '1 done' }));
+    fireEvent.click(within(section).getByRole('button', { name: '2 done' }));
     expect(screen.getByText('Syllabus quiz')).toBeTruthy();
-    fireEvent.click(within(section).getByRole('button', { name: '1 skipped' }));
     expect(screen.getByText('Optional: intro video')).toBeTruthy();
   });
 
@@ -542,13 +541,25 @@ describe('groups', () => {
     expect(within(row('Essay 1 revision')).getByText('Redo requested')).toBeTruthy();
   });
 
-  it('collapses older past-due work and skips all of it', () => {
+  it('collapses older past-due work and marks all of it done', () => {
     const { actions } = setup();
     expect(screen.queryByText('Quiz 3: Stoichiometry')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '3 older' }));
     expect(screen.getByText('Quiz 3: Stoichiometry')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Skip all older' }));
-    expect(actions.skipAllOlder).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Mark all older done' }));
+    expect(actions.markAllOlderDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers Mark all older done only while an older item has a checkbox to use', () => {
+    const redo = mkItem({
+      title: 'Redo work',
+      chip: { kind: 'redo_requested' },
+      checkboxDisabled: true,
+    });
+    const view = mkView({ groups: [mkGroup({ kind: 'past_due', older: [redo] })] });
+    setup(readyState({ view }));
+    expect(screen.getByRole('button', { name: '1 older' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Mark all older done' })).toBeNull();
   });
 
   it('puts "Nothing due in these 7 days" after Past due and before No due date', () => {
@@ -581,9 +592,6 @@ describe('groups', () => {
   it('shows the status chip on items in other weeks', () => {
     setup(readyState({ view: pastSpanView() }));
     expect(within(row('Lab 5 notebook check')).getByText('Past due')).toBeTruthy();
-    const skipped = row('Reading response 4');
-    expect(within(skipped).getByText('Skipped')).toBeTruthy();
-    expect(within(skipped).getByRole('button', { name: 'Unskip Reading response 4' })).toBeTruthy();
   });
 });
 
@@ -599,13 +607,12 @@ describe('in-page list', () => {
   const pastDue = (missing = 0) =>
     mkGroup({
       kind: 'past_due',
-      items: dueItems(['Late one', 'Late two'], { canSkip: true }).map((item, i) =>
+      items: dueItems(['Late one', 'Late two']).map((item, i) =>
         i < missing
           ? { ...item, chip: { kind: 'missing' } as const, facts: { ...item.facts, missing: true } }
           : item,
       ),
-      older: [mkItem({ title: 'Old one', canSkip: true })],
-      skipped: [mkItem({ title: 'Skipped one', state: 'skipped', chip: { kind: 'skipped' } })],
+      older: [mkItem({ title: 'Old one' })],
     });
 
   it('shows every row of a group, with no link that opens more', () => {
@@ -704,14 +711,12 @@ describe('in-page list', () => {
       return id === null ? null : document.getElementById(id);
     };
 
-    it('also name the regions of the "N older" and "N skipped" lines', () => {
+    it('also name the region of the "N older" line', () => {
       setup(stateOf(pastDue(1)), 'inpage');
-      for (const name of ['1 older', '1 skipped']) {
-        const link = screen.getByRole('button', { name });
-        expect(regionOf(link)).not.toBeNull();
-        fireEvent.click(link);
-        expect(regionOf(link)?.querySelector('li')).not.toBeNull();
-      }
+      const link = screen.getByRole('button', { name: '1 older' });
+      expect(regionOf(link)).not.toBeNull();
+      fireEvent.click(link);
+      expect(regionOf(link)?.querySelector('li')).not.toBeNull();
     });
 
     it('name the region of a collapsible group', () => {
@@ -738,14 +743,13 @@ describe('in-page list', () => {
   });
 
   describe('past due', () => {
-    it('is a full group, with every row, "N older" and "N skipped"', () => {
+    it('is a full group, with every row and "N older"', () => {
       const { actions } = setup(stateOf(pastDue(1)), 'inpage');
       expect(screen.queryByRole('button', { name: /3 past due/ })).toBeNull();
       expect(shown()).toEqual(['Late one', 'Late two']);
       expect(screen.getByRole('button', { name: '1 older' })).toBeTruthy();
-      expect(screen.getByRole('button', { name: '1 skipped' })).toBeTruthy();
-      fireEvent.click(screen.getByRole('button', { name: 'Skip all older' }));
-      expect(actions.skipAllOlder).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByRole('button', { name: 'Mark all older done' }));
+      expect(actions.markAllOlderDone).toHaveBeenCalledTimes(1);
     });
   });
 });
@@ -1219,19 +1223,19 @@ describe('items', () => {
     const due = item.querySelector('.wr-due');
     expect(due?.querySelector('.wr-when')?.textContent).toBe('Oct 25, 11:59 pm');
     const buttons = Array.from(due?.querySelectorAll('button') ?? []).map((b) => b.textContent);
-    expect(buttons).toEqual(['Skip', 'Move to today']);
+    expect(buttons).toEqual(['Move to today']);
     expect(item.querySelector('.wr-item-tags')).toBeNull();
   });
 
   it('keeps the actions of a row with no due line on a line of their own', () => {
-    const item = mkItem({ title: 'Undated one', canSkip: true });
+    const item = mkNote({ title: 'Undated one', canMoveToToday: true });
     setup(
       readyState({ view: mkView({ groups: [mkGroup({ kind: 'no_due_date', items: [item] })] }) }),
     );
     fireEvent.click(screen.getByRole('button', { name: /^No due date/ }));
     const due = row('Undated one').querySelector('.wr-due');
     expect(due?.querySelector('.wr-info')).toBeNull();
-    expect(due?.querySelector('button')?.textContent).toBe('Skip');
+    expect(due?.querySelector('button')?.textContent).toBe('Move to today');
   });
 
   it('colors the type icon from the item, also with the rings off', () => {
@@ -1339,15 +1343,10 @@ describe('items', () => {
     expect(tip?.isConnected).toBe(false);
   });
 
-  it('skips, unskips and moves a task to today', () => {
+  it('moves a task to today', () => {
     const { actions } = setup();
-    fireEvent.click(screen.getByRole('button', { name: 'Skip Problem Set 6' }));
-    expect(actions.skip).toHaveBeenCalledWith(expect.stringMatching(/^assignment:/));
     fireEvent.click(screen.getByRole('button', { name: 'Move Buy lab goggles to today' }));
     expect(actions.moveTaskToToday).toHaveBeenCalledWith(expect.any(String));
-    fireEvent.click(screen.getAllByRole('button', { name: '1 skipped' })[0] as HTMLElement);
-    fireEvent.click(screen.getByRole('button', { name: 'Unskip Optional reading response 4' }));
-    expect(actions.unskip).toHaveBeenCalledTimes(1);
   });
 
   it('shows the date of look-ahead items', () => {
@@ -1388,7 +1387,7 @@ describe('items', () => {
 });
 
 describe('checked but missing', () => {
-  it('is a done item in Done, checked, with its chip and no Skip', () => {
+  it('is a done item in Done, checked, with its chip', () => {
     const { actions } = setup();
     fireEvent.click(screen.getByRole('button', { name: /^Done/ }));
     const done = document.querySelector<HTMLElement>('section[data-group="done"]');
@@ -1400,18 +1399,10 @@ describe('checked but missing', () => {
     }) as HTMLInputElement;
     expect(box.checked).toBe(true);
     expect(within(item).getByRole('button', { name: /Missing in Canvas/ })).toBeTruthy();
-    expect(within(item).queryByRole('button', { name: /^Skip/ })).toBeNull();
     expect(item.classList.contains('is-done')).toBe(true);
     // Unchecking sends the done mark away, and the item is late again.
     fireEvent.click(box);
     expect(actions.setDone).toHaveBeenCalledWith(item.dataset.rowKey, false);
-  });
-
-  it('shows Skip only where the model offers it', () => {
-    setup();
-    fireEvent.click(screen.getByRole('button', { name: /^Done/ }));
-    expect(within(row('Essay 1 revision')).queryByRole('button', { name: /^Skip/ })).toBeNull();
-    expect(row('Essay 1 revision').classList.contains('is-done')).toBe(true);
   });
 });
 
@@ -1556,7 +1547,7 @@ describe('settings in place', () => {
 
 describe('one-time notes', () => {
   it('shows the first done note until the student confirms it', () => {
-    const { actions } = setup(readyState({ seenNotes: { firstDone: false, firstSkip: true } }));
+    const { actions } = setup(readyState({ seenNotes: { firstDone: false } }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Done: Quiz 7: Integration techniques' }));
     const note = screen.getByText(
       "Done marks sync to Canvas and its apps. On a module item, this can count as 'Mark as done'.",
@@ -1567,18 +1558,17 @@ describe('one-time notes', () => {
     expect(screen.queryByText(/Done marks sync/)).toBeNull();
   });
 
-  it('shows the first skip note after a Skip', () => {
-    const { actions } = setup(readyState({ seenNotes: { firstDone: true, firstSkip: false } }));
-    fireEvent.click(screen.getByRole('button', { name: 'Skip Problem Set 6' }));
-    expect(
-      screen.getByText("Skipping also hides this item in Canvas's list of missing work."),
-    ).toBeTruthy();
+  it('shows the first done note after Mark all older done', () => {
+    const { actions } = setup(readyState({ seenNotes: { firstDone: false } }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mark all older done' }));
+    expect(actions.markAllOlderDone).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/^Done marks sync/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
-    expect(actions.markNoteSeen).toHaveBeenCalledWith('firstSkip');
+    expect(actions.markNoteSeen).toHaveBeenCalledWith('firstDone');
   });
 
   it('shows the note inline above the rings, not in the sticky dock', () => {
-    setup(readyState({ seenNotes: { firstDone: false, firstSkip: true } }));
+    setup(readyState({ seenNotes: { firstDone: false } }));
     const notes = document.querySelector('.wr-notices');
     expect(notes?.getAttribute('role')).toBe('status');
     expect(notes?.children).toHaveLength(0);
@@ -1593,7 +1583,7 @@ describe('one-time notes', () => {
   it('does not show a note that was already seen', () => {
     setup();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Done: Quiz 7: Integration techniques' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Skip Problem Set 6' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mark all older done' }));
     expect(screen.queryByRole('button', { name: 'Got it' })).toBeNull();
   });
 });
@@ -1606,7 +1596,7 @@ describe('notice queue', () => {
       stale: { since: '2026-10-27T19:05:00Z', offline: false },
       skippedCourses: [{ id: '101', name: 'BIO 110' }],
       view: limitedFilteredView(),
-      seenNotes: { firstDone: false, firstSkip: true },
+      seenNotes: { firstDone: false },
     });
 
   it('shows one notice at a time, the offer first, and counts the others', () => {
@@ -1642,7 +1632,7 @@ describe('notice queue', () => {
   it('shows a one-time note before the lines that stay, so the note is never stuck behind them', () => {
     const state = readyState({
       stale: { since: '2026-10-27T19:05:00Z', offline: false },
-      seenNotes: { firstDone: false, firstSkip: true },
+      seenNotes: { firstDone: false },
     });
     setup(state);
     expect(visible()[0]?.textContent).toMatch(/^Couldn't refresh/);
@@ -1684,8 +1674,8 @@ describe('notice queue', () => {
 
 describe('notices', () => {
   it('shows the Undo notice and calls undo', () => {
-    const { actions } = setup(readyState({ undo: { kind: 'skipped_all', count: 4 } }));
-    expect(screen.getByText('Skipped 4 older items')).toBeTruthy();
+    const { actions } = setup(readyState({ undo: { kind: 'done', count: 4 } }));
+    expect(screen.getByText('4 marked done')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(actions.undo).toHaveBeenCalledTimes(1);
   });
@@ -1729,8 +1719,8 @@ describe('notices', () => {
   it('names each kind of undo', () => {
     const { rerender } = setup(readyState({ undo: { kind: 'done', count: 1 } }));
     expect(screen.getByText('Marked done')).toBeTruthy();
-    rerender(readyState({ undo: { kind: 'skipped', count: 1 } }));
-    expect(screen.getByText('Skipped', { selector: '.wr-toast-text' })).toBeTruthy();
+    rerender(readyState({ undo: { kind: 'done', count: 3 } }));
+    expect(screen.getByText('3 marked done')).toBeTruthy();
     rerender(readyState({ undo: { kind: 'deleted', count: 1 } }));
     expect(screen.getByText('Task deleted')).toBeTruthy();
     rerender(readyState({ undo: null }));
@@ -2011,17 +2001,17 @@ describe('keyboard focus', () => {
     );
   });
 
-  it('keeps the same control, such as Skip, on the next row', () => {
-    const state = readyState();
+  it('keeps the same control, such as Move to today, on the next row', () => {
+    const tasks = ['Task one', 'Task two'].map((title) => mkNote({ title, canMoveToToday: true }));
+    const state = readyState({
+      view: mkView({ groups: [mkGroup({ kind: 'past_due', items: tasks })] }),
+    });
     const { rerender } = setup(state);
-    const skip = screen.getByRole('button', { name: 'Skip Problem Set 6' });
-    skip.focus();
-    const groups = state.view.groups.map((group) =>
-      group.kind === 'past_due' ? { ...group, items: group.items.slice(1) } : group,
-    );
+    screen.getByRole('button', { name: 'Move Task one to today' }).focus();
+    const groups = state.view.groups.map((group) => ({ ...group, items: group.items.slice(1) }));
     rerender({ ...state, view: { ...state.view, groups } });
     expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: 'Skip Buy lab goggles' }),
+      screen.getByRole('button', { name: 'Move Task two to today' }),
     );
   });
 
@@ -2069,7 +2059,7 @@ describe('focus when the last row of a group leaves the list', () => {
     const late = mkGroup({
       kind: 'past_due',
       items: [item('Late one')],
-      skipped: [mkItem({ title: 'Skipped one', state: 'skipped', chip: { kind: 'skipped' } })],
+      older: [item('Old one')],
     });
     const state = readyState({ view: mkView({ groups: [late] }) });
     const { rerender } = setup(state, 'panel');
@@ -2197,16 +2187,16 @@ describe('Undo keys', () => {
 describe('focus when the Undo notice closes', () => {
   // Each `readyState()` call makes new item keys, so these tests keep one state and change `undo`.
   it('goes back to the control the student used last', () => {
-    const state = readyState({ undo: { kind: 'skipped', count: 1 } });
+    const state = readyState({ undo: { kind: 'done', count: 1 } });
     const { actions, rerender } = setup(state);
-    const skip = screen.getByRole('button', { name: 'Skip Buy lab goggles' });
-    skip.focus();
+    const move = screen.getByRole('button', { name: 'Move Buy lab goggles to today' });
+    move.focus();
     const undo = screen.getByRole('button', { name: 'Undo' });
     undo.focus();
     fireEvent.click(undo);
     expect(actions.undo).toHaveBeenCalledTimes(1);
     rerender({ ...state, undo: null });
-    expect(document.activeElement).toBe(skip);
+    expect(document.activeElement).toBe(move);
   });
 
   it('goes to the Add button when the last control is gone', () => {
@@ -2227,32 +2217,23 @@ describe('focus when the Undo notice closes', () => {
   });
 });
 
-describe('focus after "Skip all older"', () => {
+describe('focus after "Mark all older done"', () => {
   it('moves to the Past due heading when the older list empties', () => {
     const state = readyState();
     const { rerender } = setup(state);
     fireEvent.click(screen.getByRole('button', { name: '3 older' }));
-    const skipAll = screen.getByRole('button', { name: 'Skip all older' });
-    skipAll.focus();
-    fireEvent.click(skipAll);
+    const markAll = screen.getByRole('button', { name: 'Mark all older done' });
+    markAll.focus();
+    fireEvent.click(markAll);
     const groups = state.view.groups.map((group) =>
-      group.kind === 'past_due'
-        ? {
-            ...group,
-            older: [],
-            skipped: [
-              ...group.skipped,
-              ...group.older.map((item) => ({ ...item, state: 'skipped' as const })),
-            ],
-          }
-        : group,
+      group.kind === 'past_due' ? { ...group, older: [] } : group,
     );
     rerender({
       ...state,
       view: { ...state.view, groups },
-      undo: { kind: 'skipped_all', count: 3 },
+      undo: { kind: 'done', count: 3 },
     });
-    expect(screen.queryByRole('button', { name: 'Skip all older' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mark all older done' })).toBeNull();
     const heading = document.activeElement as HTMLElement;
     expect(heading.tagName).toBe('H2');
     expect(heading.textContent).toContain('Past due');
@@ -2263,7 +2244,7 @@ describe('focus after "Skip all older"', () => {
     const state = readyState();
     const { rerender } = setup(state);
     fireEvent.click(screen.getByRole('button', { name: '3 older' }));
-    screen.getByRole('button', { name: 'Skip all older' }).focus();
+    screen.getByRole('button', { name: 'Mark all older done' }).focus();
     const groups = state.view.groups.filter((group) => group.kind !== 'past_due');
     rerender({ ...state, view: { ...state.view, groups } });
     expect(document.activeElement).toBe(

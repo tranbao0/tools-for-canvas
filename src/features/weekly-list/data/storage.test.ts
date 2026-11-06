@@ -16,11 +16,11 @@ describe('the list items in storage.local', () => {
   it('keep the settings and the notes under their own keys', async () => {
     const settings = { ...DEFAULT_SETTINGS, showRings: false, hiddenCourseIds: ['7'] };
     await settingsItem.setValue(settings);
-    await seenNotesItem.setValue({ firstDone: true, firstSkip: false });
+    await seenNotesItem.setValue({ firstDone: true });
 
     expect(await fakeBrowser.storage.local.get(null)).toEqual({
       settings,
-      seenNotes: { firstDone: true, firstSkip: false },
+      seenNotes: { firstDone: true },
     });
   });
 
@@ -28,8 +28,8 @@ describe('the list items in storage.local', () => {
     const first = await seenNotesItem.getValue();
     first.firstDone = true;
 
-    expect(await seenNotesItem.getValue()).toEqual({ firstDone: false, firstSkip: false });
-    expect(DEFAULT_SEEN_NOTES).toEqual({ firstDone: false, firstSkip: false });
+    expect(await seenNotesItem.getValue()).toEqual({ firstDone: false });
+    expect(DEFAULT_SEEN_NOTES).toEqual({ firstDone: false });
   });
 
   it('ignore other areas, other keys and writes of an equal value when watched', async () => {
@@ -37,7 +37,7 @@ describe('the list items in storage.local', () => {
     const stop = settingsItem.watch(listener);
 
     await fakeBrowser.storage.session.set({ settings: { ...DEFAULT_SETTINGS, showRings: false } });
-    await seenNotesItem.setValue({ firstDone: true, firstSkip: false });
+    await seenNotesItem.setValue({ firstDone: true });
     await settingsItem.setValue({ ...DEFAULT_SETTINGS });
     await settingsItem.setValue({ ...DEFAULT_SETTINGS });
 
@@ -105,18 +105,13 @@ describe('settings defaults', () => {
 
 describe('normalizeSeenNotes', () => {
   it.each([
-    [undefined, { firstDone: false, firstSkip: false }],
-    [null, { firstDone: false, firstSkip: false }],
-    ['seen', { firstDone: false, firstSkip: false }],
-    [{ firstDone: true }, { firstDone: true, firstSkip: false }],
-    [
-      { firstDone: 'yes', firstSkip: 1 },
-      { firstDone: false, firstSkip: false },
-    ],
-    [
-      { firstDone: true, firstSkip: true, extra: 1 },
-      { firstDone: true, firstSkip: true },
-    ],
+    [undefined, { firstDone: false }],
+    [null, { firstDone: false }],
+    ['seen', { firstDone: false }],
+    [{ firstDone: true }, { firstDone: true }],
+    [{ firstDone: 'yes' }, { firstDone: false }],
+    // The note of the removed Skip, and any other field, is dropped.
+    [{ firstDone: true, firstSkip: true, extra: 1 }, { firstDone: true }],
   ])('reads %j as %j', (stored, expected) => {
     expect(normalizeSeenNotes(stored)).toEqual(expected);
   });
@@ -124,7 +119,7 @@ describe('normalizeSeenNotes', () => {
   it('cleans what the notes item reads from storage', async () => {
     await fakeBrowser.storage.local.set({ seenNotes: { firstDone: 'x', firstSkip: true } });
 
-    expect(await seenNotesItem.getValue()).toEqual({ firstDone: false, firstSkip: true });
+    expect(await seenNotesItem.getValue()).toEqual({ firstDone: false });
   });
 });
 

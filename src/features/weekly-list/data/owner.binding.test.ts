@@ -228,7 +228,7 @@ describe('writes and Undo go through the cookie check', () => {
     vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
     h.canvas.fail('getSelf', canvasError('network'), { times: 5 });
 
-    const reply = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    const reply = await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true });
     await h.owner.settled();
 
     expect(reply).toEqual({ undo: null });
@@ -236,11 +236,11 @@ describe('writes and Undo go through the cookie check', () => {
     expect(h.canvas.callsOf('updateOverride')).toEqual([]);
   });
 
-  it('writes no skip for another student who signed in', async () => {
+  it('writes no done mark for another student who signed in', async () => {
     const h = await loaded();
     signInOtherUser(h);
 
-    await h.owner.act({ kind: 'skip', keys: [QUIZ_3] });
+    await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('createOverride')).toEqual([]);
@@ -285,7 +285,7 @@ describe('writes and Undo go through the cookie check', () => {
 
   it('checks again at once for an Undo, although checks failed within 30 seconds', async () => {
     const h = await loaded();
-    const done = await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    const done = await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true });
     await h.owner.settled();
     if (done.undo?.kind !== 'overrides') throw new Error('No Undo data');
     const undo = {
@@ -394,7 +394,7 @@ describe('queued writes go through the cookie check just before they go out', ()
       .filter((name) => name === 'createOverride' || name === 'updateOverride');
   }
 
-  it('sends no write of "Skip all older" under student B after the cookie changed', async () => {
+  it('sends no write of "Mark all older done" under student B after the cookie changed', async () => {
     const h = await loaded();
     const before = await h.owner.getState(PANEL);
     if (before.kind !== 'ready') throw new Error('The list is not ready');
@@ -402,7 +402,11 @@ describe('queued writes go through the cookie check just before they go out', ()
     expect(older.length).toBeGreaterThan(2);
     // The first request waits, and the other writes wait behind it in the queue.
     const release = h.canvas.hold('createOverride');
-    const reply = await h.owner.act({ kind: 'skip', keys: older.map((entry) => entry.key) });
+    const reply = await h.owner.act({
+      kind: 'setDone',
+      keys: older.map((entry) => entry.key),
+      done: true,
+    });
     await vi.advanceTimersByTimeAsync(0);
     expect(reply.undo?.kind).toBe('overrides');
     expect(overrideWrites(h)).toHaveLength(1);
@@ -420,13 +424,13 @@ describe('queued writes go through the cookie check just before they go out', ()
     });
   });
 
-  it('sends no queued write of "Skip all older" when only the cookie changed', async () => {
+  it('sends no queued write of "Mark all older done" when only the cookie changed', async () => {
     const h = await loaded();
     const before = await h.owner.getState(PANEL);
     if (before.kind !== 'ready') throw new Error('The list is not ready');
     const older = before.view.groups.find((group) => group.kind === 'past_due')?.older ?? [];
     const release = h.canvas.hold('createOverride');
-    await h.owner.act({ kind: 'skip', keys: older.map((entry) => entry.key) });
+    await h.owner.act({ kind: 'setDone', keys: older.map((entry) => entry.key), done: true });
     await vi.advanceTimersByTimeAsync(0);
     expect(overrideWrites(h)).toHaveLength(1);
 
@@ -442,8 +446,8 @@ describe('queued writes go through the cookie check just before they go out', ()
   it('abandons the queue when the cookie changes and no check confirms the new one', async () => {
     const h = await loaded();
     const release = h.canvas.hold('createOverride');
-    await h.owner.act({ kind: 'setDone', key: BIO_QUIZ_3, done: true });
-    await h.owner.act({ kind: 'setDone', key: BIO_QUIZ_3, done: false });
+    await h.owner.act({ kind: 'setDone', keys: [BIO_QUIZ_3], done: true });
+    await h.owner.act({ kind: 'setDone', keys: [BIO_QUIZ_3], done: false });
     await vi.advanceTimersByTimeAsync(0);
     expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
 
@@ -639,7 +643,7 @@ describe('a surface that reads before a round finishes', () => {
     // A write starts a full round without Retry and without advancing the clock.
     await h.owner.act({
       kind: 'setDone',
-      key: `assignment:${IDS.assignments.bioQuiz3Today}`,
+      keys: [`assignment:${IDS.assignments.bioQuiz3Today}`],
       done: true,
     });
     await h.owner.settled();

@@ -58,12 +58,14 @@ test.describe('mark done', () => {
     );
     expect(writes.map((write) => write.body)).toEqual(
       expect.arrayContaining(
-        [A.mathProblemSet5LockedMissing, A.mathHomework5, A.orientationModule3Missing].map((id) => ({
-          plannable_type: 'assignment',
-          plannable_id: id,
-          marked_complete: true,
-          dismissed: false,
-        })),
+        [A.mathProblemSet5LockedMissing, A.mathHomework5, A.orientationModule3Missing].map(
+          (id) => ({
+            plannable_type: 'assignment',
+            plannable_id: id,
+            marked_complete: true,
+            dismissed: false,
+          }),
+        ),
       ),
     );
 
@@ -72,7 +74,11 @@ test.describe('mark done', () => {
 
     await expect(pastDue.getByRole('button', { name: '4 older' })).toBeVisible();
     await expect.poll(() => overrideWrites(canvas).length).toBe(6);
-    for (const id of [A.mathProblemSet5LockedMissing, A.mathHomework5, A.orientationModule3Missing]) {
+    for (const id of [
+      A.mathProblemSet5LockedMissing,
+      A.mathHomework5,
+      A.orientationModule3Missing,
+    ]) {
       expect(state.overrideFor('assignment', id), id).toMatchObject({
         marked_complete: false,
         dismissed: false,

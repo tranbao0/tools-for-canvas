@@ -18,31 +18,20 @@ export function redoBlocksDone(item: Item): boolean {
 /**
  * The done rule in decision 8. A checked item is done even when Canvas still marks the work
  * missing: it then shows the "Missing in Canvas" warning chip, and it is never late.
+ * An item that Canvas has as dismissed, with no `marked_complete`, is done too: a dismiss from
+ * Canvas or from an earlier version clears work like a check does. Rule 1 comes first, so a
+ * dismiss never hides work with a redo request: that item is open.
  */
 export function isDone(item: Item): boolean {
   if (redoBlocksDone(item)) return false;
-  if (item.override !== null) return item.override.markedComplete;
+  if (item.override !== null) return item.override.markedComplete || item.override.dismissed;
   if (item.plannableType === 'assessment_request') return item.facts.peerReviewCompleted;
   const facts = item.facts;
   return facts.submitted || facts.excused || (facts.graded && !facts.missing);
 }
 
-/**
- * A dismiss that the student's own work replaced: done rule 1 blocks the item, and the override
- * is also marked complete. Canvas marks the override complete when the student submits, and
- * "Mark as done" sets both flags, so the dismiss came with or before finished work. The redo
- * request then wins: the item is open, with its "Redo requested" chip.
- * A Skip of such an item sends `marked_complete` false, so a deliberate Skip stays skipped.
- */
-function isDismissReplacedByRedo(item: Item): boolean {
-  return redoBlocksDone(item) && item.override?.markedComplete === true;
-}
-
-/** Done, then skipped (not done and dismissed), then open. */
 export function itemState(item: Item): ItemState {
-  if (isDone(item)) return 'done';
-  if (item.override?.dismissed === true && !isDismissReplacedByRedo(item)) return 'skipped';
-  return 'open';
+  return isDone(item) ? 'done' : 'open';
 }
 
 export interface ChipContext {
@@ -56,7 +45,6 @@ export interface ChipContext {
 /** The one status chip of an item that is not done, in the priority order of decision 7. */
 export function statusChip(item: Item, state: ItemState, context: ChipContext): StatusChip | null {
   if (state === 'done') return null;
-  if (state === 'skipped') return { kind: 'skipped' };
   const facts = item.facts;
   if (facts.redoRequest) return { kind: 'redo_requested' };
   if (facts.missing) return { kind: 'missing' };

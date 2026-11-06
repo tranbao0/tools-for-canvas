@@ -32,8 +32,6 @@ function chip(
 
 export function statusTag(status: StatusChip, checkboxDisabled: boolean): Tag {
   switch (status.kind) {
-    case 'skipped':
-      return chip('status', t('chipSkipped'));
     case 'redo_requested':
       return chip(
         'status',

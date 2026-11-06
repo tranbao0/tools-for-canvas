@@ -54,7 +54,6 @@ import {
   type AnnouncementFeedRequest,
   type AnnouncementMark,
 } from './announcements';
-import { redoBlocksDone } from '../model/rules';
 import { moveToTodayTodoDate, todoDateFor } from '../model/tasks';
 import type { Item, Offer, Settings } from '../model/types';
 import { canAutoSaveOrigin, isUsableOrigin } from '../../../shared/platform/address';
@@ -462,17 +461,6 @@ function previousFlags(item: Item): OverrideFlags {
   return item.override === null
     ? { markedComplete: false, dismissed: false }
     : { markedComplete: item.override.markedComplete, dismissed: item.override.dismissed };
-}
-
-/**
- * The flags of a Skip: dismissed, with the current done flag. The done flag goes false on work
- * whose redo request blocks done, so a later submission that marks it done clears the skip.
- */
-function skipFlags(item: Item): OverrideFlags {
-  return {
-    markedComplete: redoBlocksDone(item) ? false : (item.override?.markedComplete ?? false),
-    dismissed: true,
-  };
 }
 
 const NOTE_KEY_PREFIX = 'planner_note:';
@@ -2297,20 +2285,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     switch (action.kind) {
       case 'setDone':
         return changeOverrides(
-          [action.key],
+          action.keys,
           (item) =>
             action.done
               ? { markedComplete: true, dismissed: item.override?.dismissed ?? false }
               : { markedComplete: false, dismissed: false },
           action.done,
-        );
-      case 'skip':
-        return changeOverrides(action.keys, skipFlags, true);
-      case 'unskip':
-        return changeOverrides(
-          [action.key],
-          (item) => ({ markedComplete: item.override?.markedComplete ?? false, dismissed: false }),
-          false,
         );
       case 'restore':
         // An Undo can outlive the state that showed it, so it writes only for a student that the
@@ -3537,7 +3517,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       // The surface holds its own Undo notice.
       undo: null,
       userId: session.profile.id,
-      seenNotes: { firstDone: seenNotes.firstDone, firstSkip: seenNotes.firstSkip },
+      seenNotes: { firstDone: seenNotes.firstDone },
       taskCourses: courseChoices(
         session.courses,
         session.positions,

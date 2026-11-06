@@ -59,10 +59,8 @@ export interface PreviousOverride {
 }
 
 export type DataAction =
-  | { kind: 'setDone'; key: string; done: boolean }
-  /** Skips every item in `keys`: one item, or the items of the "N older" list. */
-  | { kind: 'skip'; keys: readonly string[] }
-  | { kind: 'unskip'; key: string }
+  /** Checks or unchecks every item in `keys`: one item, or the items of the "N older" list. */
+  | { kind: 'setDone'; keys: readonly string[]; done: boolean }
   /**
    * Undo of an override action. The owner ignores it when `userId` is not the signed-in user or
    * `origin` is not the saved Canvas, so a notice never writes onto the overrides of another
@@ -177,7 +175,7 @@ interface SaveSettingsMessage {
   settings: Settings;
 }
 
-export type SeenNote = 'firstDone' | 'firstSkip';
+export type SeenNote = 'firstDone';
 
 /** In-page script to background: the student saw a one-time note. */
 interface MarkNoteSeenMessage {
@@ -345,16 +343,13 @@ export function isDataAction(value: unknown): value is DataAction {
   const kind = value['kind'] as DataActionKind;
   switch (kind) {
     case 'setDone':
-      return isNonEmptyString(value['key']) && typeof value['done'] === 'boolean';
-    case 'skip':
       return (
         Array.isArray(value['keys']) &&
         value['keys'].length > 0 &&
         value['keys'].length <= MAX_ACTION_KEYS &&
-        value['keys'].every(isNonEmptyString)
+        value['keys'].every(isNonEmptyString) &&
+        typeof value['done'] === 'boolean'
       );
-    case 'unskip':
-      return isNonEmptyString(value['key']);
     case 'restore':
       return (
         isNonEmptyString(value['userId']) &&
@@ -423,10 +418,7 @@ export function isSaveSettingsMessage(value: unknown): value is SaveSettingsMess
 }
 
 export function isMarkNoteSeenMessage(value: unknown): value is MarkNoteSeenMessage {
-  return (
-    hasType(value, 'weekrow:mark-note-seen') &&
-    (value['note'] === 'firstDone' || value['note'] === 'firstSkip')
-  );
+  return hasType(value, 'weekrow:mark-note-seen') && value['note'] === 'firstDone';
 }
 
 export function isOpenPageMessage(value: unknown): value is OpenPageMessage {

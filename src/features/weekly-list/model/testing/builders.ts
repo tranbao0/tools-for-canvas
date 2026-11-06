@@ -214,7 +214,6 @@ export function placements(view: WeekView): Map<string, string[]> {
     const lists = {
       items: group.items,
       older: group.older,
-      skipped: group.skipped,
       doneUndated: group.doneUndated,
     };
     for (const [listName, list] of Object.entries(lists)) {
@@ -236,12 +235,7 @@ export function placeOf(view: WeekView, key: string): string | undefined {
 }
 
 export function allItems(view: WeekView): ItemView[] {
-  return view.groups.flatMap((group) => [
-    ...group.items,
-    ...group.older,
-    ...group.skipped,
-    ...group.doneUndated,
-  ]);
+  return view.groups.flatMap((group) => [...group.items, ...group.older, ...group.doneUndated]);
 }
 
 export function findItem(view: WeekView, key: string): ItemView {
@@ -254,7 +248,7 @@ export function findItem(view: WeekView, key: string): ItemView {
 export function keysIn(
   view: WeekView,
   groupName: string,
-  list: 'items' | 'older' | 'skipped' | 'doneUndated' = 'items',
+  list: 'items' | 'older' | 'doneUndated' = 'items',
 ): string[] {
   const group = view.groups.find((candidate) =>
     candidate.date !== null

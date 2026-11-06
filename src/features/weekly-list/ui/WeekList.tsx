@@ -9,12 +9,13 @@ import { ItemRow, type ItemHandlers, type WhenMode } from './ItemRow';
 import { Heading, newId, type HeadingLevel } from '../../../shared/ui/parts';
 import { NothingDue } from './Rings';
 import { Spinner } from './States';
+import { olderToMarkDone } from '../model/view';
 
 /** The groups that the view switch of the in-page list opens in the list area. */
 export type BottomKind = BottomGroupKind;
 
 export interface ListHandlers extends ItemHandlers {
-  onSkipAllOlder(): void;
+  onMarkAllOlderDone(): void;
 }
 
 /** How each group shows the due time of its items. */
@@ -46,7 +47,7 @@ export function groupCount(group: ListGroup): number {
 export function isGroupEmpty(group: ListGroup): boolean {
   return (
     group.loading !== true &&
-    group.items.length + group.older.length + group.skipped.length + group.doneUndated.length === 0
+    group.items.length + group.older.length + group.doneUndated.length === 0
   );
 }
 
@@ -187,7 +188,7 @@ function LoadingGroup(props: { group: ListGroup; level: HeadingLevel; bars: numb
   );
 }
 
-/** The rows of a group, then its sub-lists such as "10 done" and "1 skipped". */
+/** The rows of a group, then its sub-lists such as "10 done" and "4 older". */
 function GroupBody(props: { group: ListGroup; view: WeekView; handlers: ListHandlers }) {
   const { group, view, handlers } = props;
   const rows = { view, when: whenMode(group.kind), handlers };
@@ -200,14 +201,16 @@ function GroupBody(props: { group: ListGroup; view: WeekView; handlers: ListHand
           label={tp('olderCount', group.older.length)}
           items={group.older}
           action={
-            <button
-              type="button"
-              class="wr-link-btn"
-              data-part="skip-older"
-              onClick={handlers.onSkipAllOlder}
-            >
-              {t('skipAllOlder')}
-            </button>
+            olderToMarkDone(group).length > 0 && (
+              <button
+                type="button"
+                class="wr-link-btn"
+                data-part="done-older"
+                onClick={handlers.onMarkAllOlderDone}
+              >
+                {t('markAllOlderDone')}
+              </button>
+            )
           }
         />
       )}
@@ -216,7 +219,6 @@ function GroupBody(props: { group: ListGroup; view: WeekView; handlers: ListHand
         label={tp('doneCount', group.doneUndated.length)}
         items={group.doneUndated}
       />
-      <SubList {...rows} label={tp('skippedCount', group.skipped.length)} items={group.skipped} />
     </>
   );
 }

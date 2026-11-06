@@ -128,7 +128,8 @@ it('puts the parts of a slot row in reading order: text, chips, subtitle, pill, 
   const item = mkItem({
     ...SLOT_ITEM,
     kind: 'peer_review',
-    canSkip: true,
+    noteId: '5',
+    canMoveToToday: true,
     state: 'open',
   });
   const { container } = renderRow(item, { slot: true });
@@ -138,7 +139,7 @@ it('puts the parts of a slot row in reading order: text, chips, subtitle, pill, 
     '.wr-points',
     '.wr-subtitle',
     '.wr-slot-pill',
-    '[data-part="skip"]',
+    '[data-part="move"]',
   ].map((selector) => container.querySelector(selector));
   order.forEach((el) => expect(el).not.toBeNull());
   for (let i = 1; i < order.length; i++) {

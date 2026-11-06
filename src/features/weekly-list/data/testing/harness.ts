@@ -149,12 +149,7 @@ export async function loadReady(
 }
 
 export function viewItems(view: WeekView): ItemView[] {
-  return view.groups.flatMap((group) => [
-    ...group.items,
-    ...group.older,
-    ...group.skipped,
-    ...group.doneUndated,
-  ]);
+  return view.groups.flatMap((group) => [...group.items, ...group.older, ...group.doneUndated]);
 }
 
 export function findItem(state: ReadyState, key: string): ItemView | undefined {

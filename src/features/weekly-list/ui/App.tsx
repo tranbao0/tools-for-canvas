@@ -566,13 +566,6 @@ function ReadyView(props: {
       actions.setDone(item.key, done);
       if (done) showNote('firstDone');
     },
-    onSkip(item) {
-      actions.skip(item.key);
-      showNote('firstSkip');
-    },
-    onUnskip(item) {
-      actions.unskip(item.key);
-    },
     onMoveToToday(item) {
       if (item.noteId !== null) actions.moveTaskToToday(item.noteId);
     },
@@ -582,9 +575,9 @@ function ReadyView(props: {
     onEditNote(item: ItemView) {
       openForm({ kind: 'edit', item });
     },
-    onSkipAllOlder() {
-      actions.skipAllOlder();
-      showNote('firstSkip');
+    onMarkAllOlderDone() {
+      actions.markAllOlderDone();
+      showNote('firstDone');
     },
   };
 

@@ -4,8 +4,8 @@
 import { plainDateOf, parseInstant } from './time';
 import type { Item, ItemState } from './types';
 
-export type PastDueList = 'items' | 'older' | 'skipped';
-export type NoDueDateList = 'items' | 'skipped' | 'doneUndated';
+export type PastDueList = 'items' | 'older';
+export type NoDueDateList = 'items' | 'doneUndated';
 
 export type Slot =
   | { group: 'past_due'; list: PastDueList }
@@ -65,8 +65,6 @@ function undatedSlot(
       return hasWarning
         ? { group: 'done', lookAhead: false }
         : { group: 'no_due_date', list: 'doneUndated' };
-    case 'skipped':
-      return { group: 'no_due_date', list: 'skipped' };
     case 'open':
       return { group: 'no_due_date', list: 'items' };
   }
@@ -105,7 +103,6 @@ function pastDueSlot(
   context: PlacementContext,
 ): Slot | null {
   if (compareInstants(due, context.horizonFor(item.courseId)) < 0) return null;
-  if (state === 'skipped') return { group: 'past_due', list: 'skipped' };
   return {
     group: 'past_due',
     list: compareInstants(due, context.olderBefore) < 0 ? 'older' : 'items',
@@ -140,14 +137,4 @@ export function slotFor(
 
 export function isLookAheadSlot(slot: Slot): boolean {
   return (slot.group === 'day' || slot.group === 'done') && slot.lookAhead;
-}
-
-/** Skip is offered on open items in Past due and No due date. */
-export function slotOffersSkip(slot: Slot): boolean {
-  return slot.group === 'past_due' || slot.group === 'no_due_date';
-}
-
-/** An item in the Past due group that counts as past due: shown in full or under "N older", not skipped. */
-export function isCountedPastDue(slot: Slot): boolean {
-  return slot.group === 'past_due' && slot.list !== 'skipped';
 }

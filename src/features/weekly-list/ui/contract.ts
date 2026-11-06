@@ -30,9 +30,8 @@ export interface Actions {
   /** `undefined`: no filter. `null`: the Personal ring. */
   setCourseFilter(courseId: string | null | undefined): void;
   setDone(key: string, done: boolean): void;
-  skip(key: string): void;
-  unskip(key: string): void;
-  skipAllOlder(): void;
+  /** Checks every older item of the Past due group that a student can check. */
+  markAllOlderDone(): void;
   undo(): void;
   /** Closes the Undo notice. A pending task delete is sent then. */
   dismissUndo(): void;
@@ -57,7 +56,7 @@ export interface Actions {
   saveSettings(settings: Settings): void;
   /** Saves the switches of the small tools shown in place (decision 22). */
   saveTools(tools: ToolsSettings): void;
-  markNoteSeen(note: 'firstDone' | 'firstSkip'): void;
+  markNoteSeen(note: 'firstDone'): void;
   /** Shows the Tasks or the Announcements tab, and keeps the choice for the session. */
   setListTab(tab: ListTab): void;
   /** Shows or hides the announcements that the student has read. */

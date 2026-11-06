@@ -164,17 +164,14 @@ export function filterText(
 
 const UNDO_TEXT = {
   done: 'undoDone',
-  skipped: 'undoSkipped',
-  skipped_all: 'undoSkippedAll',
   deleted: 'undoDeleted',
   announcement_read: 'undoAnnouncementRead',
 } as const satisfies Record<UndoInfo['kind'], PluralKey>;
 
-export type OneTimeNote = 'firstDone' | 'firstSkip';
+export type OneTimeNote = 'firstDone';
 
 const NOTE_TEXT = {
   firstDone: 'noteFirstDone',
-  firstSkip: 'noteFirstSkip',
 } as const satisfies Record<OneTimeNote, MessageKey>;
 
 /**

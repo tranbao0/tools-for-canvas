@@ -462,11 +462,11 @@ describe('the writes of the page', () => {
     const { channel, sent } = setup();
 
     await channel.settings.setValue(DARK);
-    await channel.markNoteSeen('firstSkip');
+    await channel.markNoteSeen('firstDone');
 
     expect(sent).toEqual([
       { type: 'weekrow:save-settings', settings: DARK },
-      { type: 'weekrow:mark-note-seen', note: 'firstSkip' },
+      { type: 'weekrow:mark-note-seen', note: 'firstDone' },
     ]);
   });
 });

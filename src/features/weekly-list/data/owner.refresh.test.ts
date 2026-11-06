@@ -303,7 +303,7 @@ describe('the 60-second limit', () => {
 
     await h.owner.act({
       kind: 'setDone',
-      key: `assignment:${IDS.assignments.bioQuiz3Today}`,
+      keys: [`assignment:${IDS.assignments.bioQuiz3Today}`],
       done: true,
     });
     await h.owner.settled();

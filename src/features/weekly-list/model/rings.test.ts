@@ -170,7 +170,7 @@ describe('rings in the week view', () => {
     ]);
   });
 
-  it('leaves skipped items out of the ring', () => {
+  it('counts an item that Canvas has as dismissed as done', () => {
     const view = buildWeekView(
       modelInput({
         now: '2026-10-27T18:00:00Z',
@@ -188,7 +188,7 @@ describe('rings in the week view', () => {
       }),
     );
     expect(view.rings).toEqual([
-      expect.objectContaining({ courseId: '1', done: 0, total: 1, pastDue: 1 }),
+      expect.objectContaining({ courseId: '1', done: 1, total: 2, pastDue: 1 }),
     ]);
   });
 });

@@ -10,18 +10,19 @@ import { DEFAULT_SETTINGS, type Settings } from '../model/types';
 
 export interface SeenNotes {
   firstDone: boolean;
-  firstSkip: boolean;
 }
 
-export const DEFAULT_SEEN_NOTES: SeenNotes = { firstDone: false, firstSkip: false };
+export const DEFAULT_SEEN_NOTES: SeenNotes = { firstDone: false };
 
-/** Seen notes from a stored value. A field that is not a boolean reads as not seen. */
+/**
+ * Seen notes from a stored value. A field that is not a boolean reads as not seen, and a field
+ * that is no note any more is dropped.
+ */
 export function normalizeSeenNotes(stored: unknown): SeenNotes {
   const input =
     typeof stored === 'object' && stored !== null ? (stored as Record<string, unknown>) : {};
   return {
     firstDone: input['firstDone'] === true,
-    firstSkip: input['firstSkip'] === true,
   };
 }
 

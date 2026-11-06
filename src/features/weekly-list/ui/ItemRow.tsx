@@ -23,8 +23,6 @@ export type WhenMode = 'time' | 'datetime' | 'none';
 
 export interface ItemHandlers {
   onToggleDone(item: ItemView, done: boolean): void;
-  onSkip(item: ItemView): void;
-  onUnskip(item: ItemView): void;
   onMoveToToday(item: ItemView): void;
   onOpen(item: ItemView): void;
   onEditNote(item: ItemView): void;
@@ -160,12 +158,7 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
     handlers.onOpen(item);
   };
 
-  const rowClass = [
-    'wr-item',
-    done ? 'is-done' : '',
-    item.state === 'skipped' ? 'is-skipped' : '',
-    preview?.open === true ? 'is-open' : '',
-  ]
+  const rowClass = ['wr-item', done ? 'is-done' : '', preview?.open === true ? 'is-open' : '']
     .filter(Boolean)
     .join(' ');
 
@@ -329,13 +322,13 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
   );
 }
 
+/** "Move to today" shows on a custom task with a past date. */
+function canMove(item: ItemView): boolean {
+  return item.canMoveToToday && item.noteId !== null;
+}
+
 function hasActions(item: ItemView, preview: PreviewButton | null): boolean {
-  return (
-    preview !== null ||
-    item.canSkip ||
-    item.state === 'skipped' ||
-    (item.canMoveToToday && item.noteId !== null)
-  );
+  return preview !== null || canMove(item);
 }
 
 /** The icon of the Preview button, drawn from the description that the Assignments list shares. */
@@ -356,25 +349,7 @@ function ItemActions({
   handlers: ItemHandlers;
   preview: PreviewButton | null;
 }) {
-  // `canSkip` alone decides: it is also set on checked work that Canvas still marks missing.
-  const actions: [part: string, label: string, name: string, run: () => void][] = [];
-  if (item.canSkip)
-    actions.push(['skip', t('skip'), t('skipItem', item.title), () => handlers.onSkip(item)]);
-  if (item.state === 'skipped')
-    actions.push([
-      'unskip',
-      t('unskip'),
-      t('unskipItem', item.title),
-      () => handlers.onUnskip(item),
-    ]);
-  if (item.canMoveToToday && item.noteId !== null)
-    actions.push([
-      'move',
-      t('moveToToday'),
-      t('moveItemToToday', item.title),
-      () => handlers.onMoveToToday(item),
-    ]);
-  if (actions.length === 0 && preview === null) return null;
+  if (!hasActions(item, preview)) return null;
   return (
     <div class="wr-item-actions">
       {preview && (
@@ -399,18 +374,17 @@ function ItemActions({
           <span class="wr-preview-text">{t('preview')}</span>
         </button>
       )}
-      {actions.map(([part, label, name, run]) => (
+      {canMove(item) && (
         <button
-          key={part}
           type="button"
           class="wr-link-btn"
-          data-part={part}
-          aria-label={name}
-          onClick={run}
+          data-part="move"
+          aria-label={t('moveItemToToday', item.title)}
+          onClick={() => handlers.onMoveToToday(item)}
         >
-          {label}
+          {t('moveToToday')}
         </button>
-      ))}
+      )}
     </div>
   );
 }

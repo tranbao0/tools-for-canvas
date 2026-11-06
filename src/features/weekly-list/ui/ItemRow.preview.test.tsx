@@ -52,17 +52,21 @@ it('gives a row of an assignment a Preview button named with its title, and not 
   expect(container.querySelector('.is-open')).toBeNull();
 });
 
-it('puts the button in the actions of a slot row and of a plain row, with or without Skip', () => {
+it('puts the button in the actions of a slot row and of a plain row, with or without Move to today', () => {
   for (const slot of [false, true]) {
     const plain = renderRow(mkItem({ title: 'Essay', due: DUE }), control(), slot);
     expect(button(plain.container)?.closest('.wr-item-actions')).not.toBeNull();
     cleanup();
-    const skipped = renderRow(mkItem({ title: 'Essay', canSkip: true }), control(), slot);
-    const actions = skipped.container.querySelector('.wr-item-actions')!;
-    // Skip keeps its place after the button.
+    const moved = renderRow(
+      mkItem({ title: 'Essay', noteId: '5', canMoveToToday: true }),
+      control(),
+      slot,
+    );
+    const actions = moved.container.querySelector('.wr-item-actions')!;
+    // Move to today keeps its place after the button.
     expect([...actions.children].map((child) => child.getAttribute('data-part'))).toEqual([
       'preview',
-      'skip',
+      'move',
     ]);
     cleanup();
   }

@@ -1002,7 +1002,7 @@
   overflow-wrap: anywhere;
 }
 
-.wr-item:is(.is-done, .is-skipped) .wr-title {
+.wr-item.is-done .wr-title {
   color: var(--wr-text-2);
 }
 
