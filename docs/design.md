@@ -2187,6 +2187,9 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The own list always replaces the list and the pager of the widget.
    The read filter of Canvas and the course filter of the fix stay above it, and the fix reads the value of the read filter as the widget shows it.
    The fix reads that value from the English labels of the input of Canvas: "Unread" is the Unread filter, "Read" is the Read filter, and any other text counts as All.
+   The course filter takes the look of the read filter, and it lines up with it on screen: the two filters share one top, the labels share one top, and the boxes share one top and one height, within 1 px.
+   The fix measures the label and the box of the read filter and gives its own label the same height, padding and gap, because rules of Canvas, such as a margin under every input, change the size of the read filter and its label.
+   The filter bar aligns its items at the top, so no rule under the box moves one filter against the other.
    From the first pass on, the list of Canvas is hidden, so no flash shows while the first page loads.
    One rule of the stylesheet, scoped to the widget mark `data-wr-filtered`, hides every child of the filter bar except the filter block and the nodes of the fix, and the pager.
    The reason is that Canvas shows 3 announcements a page, and an open message changes the height of the card, which moves the pager, so the next page is hard to reach.

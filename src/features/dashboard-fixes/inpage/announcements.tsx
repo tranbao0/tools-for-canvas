@@ -914,6 +914,38 @@ export function announcementsFix(): Fix {
   }
 
   /**
+   * Gives the label of the course filter the place that the label of the read filter has inside
+   * its filter block: the same height and padding, the same distance from the top of the block,
+   * and the same gap above the box. Rules of Canvas, such as a margin under every input, change
+   * the size of the read filter, and the bar aligns both filters at the top, so the labels share
+   * one top and the boxes share one top. A filter that is not laid out, such as one in a hidden
+   * tab, has no box to follow, so nothing changes then.
+   */
+  function lineUp(
+    text: HTMLElement,
+    label: HTMLElement,
+    box: HTMLElement,
+    block: HTMLElement,
+    view: Window,
+  ): void {
+    const nativeLabel = label.getBoundingClientRect();
+    const nativeBox = box.getBoundingClientRect();
+    const nativeBlock = block.getBoundingClientRect();
+    if (nativeLabel.height === 0 || nativeBox.height === 0) return;
+    const own = view.getComputedStyle(label);
+    const above =
+      nativeLabel.top - nativeBlock.top + (parseFloat(view.getComputedStyle(block).marginTop) || 0);
+    const set = (name: string, value: string): void => {
+      if (text.style.getPropertyValue(name) !== value) text.style.setProperty(name, value);
+    };
+    set('box-sizing', 'border-box');
+    set('height', `${nativeLabel.height}px`);
+    set('margin-top', `${above}px`);
+    set('margin-bottom', `${nativeBox.top - nativeLabel.bottom}px`);
+    for (const name of ['padding-top', 'padding-bottom']) set(name, own.getPropertyValue(name));
+  }
+
+  /**
    * Gives the course filter the look of the read filter next to it, from the computed style of
    * the read filter: its box, its type and its colors, in any theme. The widget's own select is
    * the reference, so a change of the package follows.
@@ -971,6 +1003,7 @@ export function announcementsFix(): Fix {
       for (const name of ['font-family', 'font-size', 'font-weight', 'line-height', 'color']) {
         text.style.setProperty(name, own.getPropertyValue(name));
       }
+      lineUp(text, label, box, widget.filterBlock, view);
     }
     // The arrow takes the color of the arrow that the widget draws, when it can be told.
     const arrow = input.nextElementSibling;

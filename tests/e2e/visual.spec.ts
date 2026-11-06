@@ -1,10 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import path from 'node:path';
 import type { Locator, Page, Worker } from '@playwright/test';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/model/types';
 import { FIXTURE_READY_SELECTOR } from '../fixtures/pages';
 import { buildScenario } from '../fixtures/scenario';
+import { useRealCanvasCss } from './support/canvas-css';
 import { expect, test } from './support/extension';
 import { serveFakeCanvas, type FakeCanvas } from './support/fake-canvas';
 import { apiRoutes, saveAddress, type StorageArea } from './support/scenario-api';
@@ -27,32 +25,6 @@ import { animationsDone, pageQuiet } from './support/settle';
 test.skip(!process.env['WEEKROW_VISUAL'], 'Set WEEKROW_VISUAL=1 to take review screenshots.');
 
 const OUT = process.env['WEEKROW_VISUAL_OUT'] ?? 'test-results/visual';
-const CANVAS_CSS = path.join(homedir(), '.cache', 'weekrow-test', 'canvas-css');
-
-/** The cached Canvas sheets, in the order a Canvas page links them. */
-const CANVAS_SHEETS = ['local/fonts.css', 'local/variables-default.css', 'local/common.css'];
-
-/**
- * The cached sheets as one string, with the fonts they use inlined as data URLs, so the fake
- * origin needs no font routes. `null` when the cache is missing.
- */
-function canvasCss(): string | null {
-  if (!CANVAS_SHEETS.every((sheet) => existsSync(path.join(CANVAS_CSS, sheet)))) return null;
-  const fontsDir = path.join(CANVAS_CSS, 'fonts');
-  return CANVAS_SHEETS.map((sheet) =>
-    readFileSync(path.join(CANVAS_CSS, sheet), 'utf8').replace(
-      /url\("?\.\.\/fonts\/([^")]+\.woff2?)"?\)/g,
-      (match, file: string) => {
-        const font = path.join(fontsDir, file);
-        if (!/^(Lato|InstructureIcons)/.test(file) || !existsSync(font)) return match;
-        const type = file.endsWith('.woff2') ? 'woff2' : 'woff';
-        return `url("data:font/${type};base64,${readFileSync(font).toString('base64')}")`;
-      },
-    ),
-  ).join('\n');
-}
-
-const REAL_CSS = canvasCss();
 
 /**
  * The one request that the saved Canvas pages make off the fake origin: the Canvas logo. The fake
@@ -109,13 +81,6 @@ async function saveSettings(worker: Worker, settings: Settings): Promise<void> {
     const api = (globalThis as unknown as { chrome: { storage: { local: StorageArea } } }).chrome;
     await api.storage.local.set({ settings: value });
   }, settings);
-}
-
-/** Adds Canvas's real CSS to a fake page, when the cache has it, and waits for its fonts. */
-async function useRealCanvasCss(page: Page): Promise<void> {
-  if (REAL_CSS === null) return;
-  await page.addStyleTag({ content: REAL_CSS });
-  await page.evaluate('document.fonts.ready.then(() => true)');
 }
 
 for (const scheme of ['light', 'dark'] as const) {
