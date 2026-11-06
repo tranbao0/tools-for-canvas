@@ -148,6 +148,8 @@ interface Model {
 export function announcementsFix(): Fix {
   /** The announcements the student opened, which stay open while the list draws again. */
   const open = new Set<string>();
+  /** The rows whose last mark Canvas refused: they stay, so the student can try again there. */
+  const refused = new Set<string>();
   const bodies = new Map<string, AnnouncementBody>();
   const views = new Map<HTMLElement, View>();
   let store: AnnouncementStore | null = null;
@@ -527,9 +529,16 @@ export function announcementsFix(): Fix {
     const onMark = (row: AnnRow, event: MouseEvent): void => {
       // Only a click of the student marks. A script cannot.
       if (!event.isTrusted) return;
+      const key = rowKey(row);
+      // A row on its way out takes no more marks.
+      if (view.leaving.get(key)?.over === true && !data.pending(key)) return;
       setNote(view, null);
+      refused.delete(key);
       void data.mark(row, !row.read, { read: view.read, courseId: course }).then((ok) => {
-        if (!ok) setNote(view, t('annMarkFailed'));
+        if (!ok) {
+          refused.add(key);
+          setNote(view, t('annMarkFailed'));
+        }
         paint(view);
       });
     };
@@ -722,12 +731,15 @@ export function announcementsFix(): Fix {
   /**
    * Keeps the holds of the plain list in step with its rows: a row that a mark took out of the
    * set of the list starts a hold, and a row that is back in the set (marked again, or refused
-   * by Canvas) ends it. A search and a range keep every row, and so does the list of All.
+   * by Canvas) ends it. A row whose last mark Canvas refused stays, whichever state it has. A
+   * search and a range keep every row, and so does the list of All.
    */
   function syncLeaving(view: View, model: Model): void {
     const out = new Set<string>();
     if (model.mode === 'list') {
-      for (const row of model.rows) if (!inFilter(row.read, view.read)) out.add(rowKey(row));
+      for (const row of model.rows) {
+        if (!inFilter(row.read, view.read) && !refused.has(rowKey(row))) out.add(rowKey(row));
+      }
     }
     for (const key of [...view.leaving.keys()]) if (!out.has(key)) clearLeave(view, key);
     for (const key of out) {
@@ -769,11 +781,11 @@ export function announcementsFix(): Fix {
     for (const key of [...held.after, ...held.before]) {
       const button = find(key)?.querySelector<HTMLElement>('.wr-a-read');
       if (button != null) {
-        button.focus();
+        button.focus({ preventScroll: true });
         return;
       }
     }
-    view.scroll?.focus();
+    view.scroll?.focus({ preventScroll: true });
   }
 
   /** Draws one view, and keeps the position of the scroll area where it belongs. */
@@ -783,18 +795,26 @@ export function announcementsFix(): Fix {
       current.again();
       return;
     }
-    const model = modelOf(view, store);
+    const data = store;
+    /** Takes the rows that a mark took out of the set of a list, unless another widget shows it. */
+    const leaveList = (key: string, read: ReadFilter, course: string | null): void => {
+      const shown = [...views.values()].some(
+        (other) => other !== view && other.listAt?.key === key,
+      );
+      if (!shown) data.leave(read, course);
+    };
+    let model = modelOf(view, store);
+    if (model.mode === 'list' && view.scrollKey !== '' && !view.scrollKey.startsWith('list|')) {
+      // The list comes back after a search or a range, with no row that a mark took out of it.
+      leaveList(model.scrollKey, view.read, courseOf(view));
+      model = modelOf(view, store);
+    }
     syncLeaving(view, model);
     if (model.mode === 'list') {
-      // The student left a filter: the rows that a mark took out of its set go, unless another
-      // widget shows that list.
+      // The student left a filter: the rows that a mark took out of its set go.
       const left = view.listAt;
-      if (left !== null && left.key !== model.scrollKey) {
-        const shown = [...views.values()].some(
-          (other) => other !== view && other.listAt?.key === left.key,
-        );
-        if (!shown) store.leave(left.read, left.course);
-      }
+      if (left !== null && left.key !== model.scrollKey)
+        leaveList(left.key, left.read, left.course);
       view.listAt = { key: model.scrollKey, read: view.read, course: courseOf(view) };
     }
     const area = view.scroll;
@@ -1115,6 +1135,7 @@ export function announcementsFix(): Fix {
       }
       views.clear();
       open.clear();
+      refused.clear();
       bodies.clear();
       focusOpened = null;
       doc?.querySelectorAll(MINE).forEach(unmountHost);

@@ -709,6 +709,84 @@ test.describe('announcements: one steady list', () => {
     await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
   });
 
+  test('keep the row, with the check and the note, when Canvas takes the mark and refuses the way back', async ({
+    context,
+    page,
+  }) => {
+    await openWith(context, page, [
+      {
+        method: 'DELETE',
+        path: /^\/api\/v1\/courses\/\d+\/discussion_topics\/\d+\/read$/,
+        respond: () => ({ status: 500, body: 'Server error' }),
+      },
+    ]);
+    const row = articles(page).first();
+    await row
+      .getByRole('button', { name: 'Mark Lab room change for Thursday as read' })
+      .click({ clickCount: 2 });
+    await expect(page.locator(`${LIST} [role="status"]`).first()).toContainText(
+      "Couldn't change the read mark.",
+    );
+    await expect(row.locator('.wr-a-read')).toHaveAttribute('aria-pressed', 'true');
+    // Well after the hold, the student can still try again in this list.
+    await page.waitForTimeout(900);
+    await expect(articles(page)).toHaveCount(10);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
+  });
+
+  test('keep the place in the list when the row leaves after the student scrolled', async ({
+    context,
+    page,
+  }) => {
+    await open(context, page);
+    const row = articles(page).first();
+    const height = await row.evaluate((node) => node.getBoundingClientRect().height);
+    await row.getByRole('button', { name: 'Mark Lab room change for Thursday as read' }).click();
+    const scrolled = await feed(page).evaluate((area) => {
+      area.scrollTop = 260;
+      return area.scrollTop;
+    });
+    await expect(articles(page)).toHaveCount(9);
+    const top = await feed(page).evaluate((area) => area.scrollTop);
+    expect(top).toBeGreaterThanOrEqual(scrolled - height - 1);
+  });
+
+  test('take no key press on a row that is leaving', async ({ context, page }) => {
+    const { canvas } = await open(context, page);
+    const control = articles(page)
+      .first()
+      .getByRole('button', { name: 'Mark Lab room change for Thursday as read' });
+    await control.click();
+    // The leave lasts 260 ms, so the check runs on each frame.
+    await page.waitForFunction(
+      () =>
+        [...document.querySelectorAll('[data-wr-list]')].some(
+          (host) => host.shadowRoot?.querySelector('[data-leaving]') != null,
+        ),
+      null,
+      { polling: 'raf' },
+    );
+    await page.keyboard.press('Space');
+    await expect(articles(page)).toHaveCount(9);
+    expect(canvas.requests.filter((r) => r.method === 'DELETE')).toEqual([]);
+  });
+
+  test('show the plain list without the row marked in a search, and with no fade', async ({
+    context,
+    page,
+  }) => {
+    await open(context, page);
+    const search = page.locator(`${LIST} input[type="search"]`);
+    await search.fill('lab');
+    await expect(articles(page).first()).toBeVisible();
+    await page.locator(`${LIST} .wr-a-read[data-read="false"]`).first().click();
+    await expect(page.locator(`${LIST} .wr-a-read[data-read="true"]`).first()).toBeVisible();
+    await page.waitForTimeout(300);
+    await search.fill('');
+    await expect(articles(page)).toHaveCount(9, { timeout: 300 });
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
+  });
+
   test('let two rows in a hold leave one by one, and not the second one early', async ({
     context,
     page,

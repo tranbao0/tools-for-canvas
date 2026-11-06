@@ -369,7 +369,7 @@ describe('the read control', () => {
     expect(sentOf('weekrow:announcement-mark')).toEqual([]);
   });
 
-  it('shows the check at once, keeps the row in the Unread list, and sends the mark', async () => {
+  it('shows the check at once, sends the mark, and takes the row out after the hold', async () => {
     await start(many(3));
     const control = shadowAll('.wr-a-read')[0]!;
     // happy-dom marks every event as trusted only through a native click.
@@ -395,6 +395,15 @@ describe('the read control', () => {
     expect(shadowAll('article')).toHaveLength(3);
     expect(shadowAll('.wr-a-read')[0]?.getAttribute('aria-pressed')).toBe('true');
     expect(shadowAll('.wr-a-read')[0]?.getAttribute('aria-label')).toBe('Mark Topic 1 as unread');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    await flush();
+    expect(shadowAll('article').map((article) => article.getAttribute('aria-label'))).toEqual([
+      'Topic 2',
+      'Topic 3',
+    ]);
   });
 
   it('puts the row back with a short note when the reply is not ok', async () => {
@@ -422,7 +431,7 @@ describe('the filter round trip', () => {
     fix.apply(context);
   };
 
-  it('keeps a marked row in the Unread list until the student leaves the filter', async () => {
+  it('takes a row in its hold out of the Unread list when the student leaves the filter', async () => {
     await start(many(3));
     await clickTrusted(shadowAll('.wr-a-read')[0]);
     expect(shadowAll('article')).toHaveLength(3);
