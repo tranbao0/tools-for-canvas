@@ -210,6 +210,7 @@ function slowMarks() {
   const gates = new Map<string, Promise<void>>();
   const opens = new Map<string, () => void>();
   const refused = new Set<string>();
+  const refusedOnce = new Set<string>();
   let canvas: { readAnnouncements: Set<string> } | null = null;
   const route: FakeCanvasRoute = {
     method: 'PUT',
@@ -219,7 +220,7 @@ function slowMarks() {
         /courses\/(\d+)\/discussion_topics\/(\d+)\//.exec(request.path) ?? [];
       const key = `${course}:${topic}`;
       await gates.get(key);
-      if (refused.has(key)) return { status: 500, body: 'Server error' };
+      if (refused.has(key) || refusedOnce.delete(key)) return { status: 500, body: 'Server error' };
       canvas?.readAnnouncements.add(key);
       return { status: 204 };
     },
@@ -234,6 +235,10 @@ function slowMarks() {
     },
     refuse(key: string): void {
       refused.add(key);
+    },
+    /** Refuses the first mark of the topic that gets an answer, and takes the ones after it. */
+    refuseFirst(key: string): void {
+      refusedOnce.add(key);
     },
     release(key: string): void {
       opens.get(key)?.();
@@ -707,6 +712,32 @@ test.describe('announcements: one steady list', () => {
     await page.waitForTimeout(500);
     await expect(articles(page)).toHaveCount(10);
     await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
+  });
+
+  test('take the row out of Unread when Canvas refuses an older mark and takes the newest', async ({
+    context,
+    page,
+  }) => {
+    const slow = slowMarks();
+    const served = await openWith(context, page, [slow.route]);
+    slow.bind(served.state);
+    slow.hold('101:31901');
+    slow.refuseFirst('101:31901');
+    const row = articles(page).first();
+    // Read, unread, read: three marks of the same row, and the first one is still on its way.
+    for (const wanted of ['true', 'false', 'true']) {
+      await row.locator('.wr-a-read').click();
+      await expect(row.locator('.wr-a-read')).toHaveAttribute('aria-pressed', wanted);
+    }
+    slow.release('101:31901');
+    // Canvas took the newest mark, so the row leaves, and no note says that a mark failed.
+    await expect(articles(page)).toHaveCount(9);
+    await expect(
+      page.locator(`${LIST} article[aria-label="Lab room change for Thursday"]`),
+    ).toHaveCount(0);
+    await expect(page.locator(`${LIST} [role="status"]`).first()).not.toContainText(
+      "Couldn't change the read mark.",
+    );
   });
 
   test('keep the row, with the check and the note, when Canvas takes the mark and refuses the way back', async ({
