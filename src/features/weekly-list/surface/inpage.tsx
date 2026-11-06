@@ -13,7 +13,9 @@ import { detectPageTheme } from '../../../shared/ui/pageTheme';
 import { logFailure } from '../../../shared/platform/log';
 import { App } from '../ui/App';
 import { activeElementIn } from '../ui/focus';
+import { PreviewContext } from '../ui/previewContext';
 import { SlotModeContext, watchSlotMode } from '../ui/slotMode';
+import { paneOffered, requestPane, shownPane, watchPane } from '../../assignment-view/paneHub';
 import { APP_CSS } from '../../../shared/ui/styles';
 import { inpageHost, sendFromContentScript } from './inpageHost';
 import { createPageChannel, type PageChannel } from './pageChannel';
@@ -58,16 +60,20 @@ export function createInpageView(
   const draw = (): void => {
     if (container === null) return;
     const state = runtime.state();
+    // The rows have a Preview button only while the assignment view offers its pane.
+    const preview = paneOffered() ? { shown: shownPane(), request: requestPane } : null;
     render(
-      <SlotModeContext.Provider value={slot}>
-        <App
-          surface="inpage"
-          state={state}
-          actions={runtime.actions}
-          settings={runtime.settings()}
-          announcements={runtime.announcements()}
-        />
-      </SlotModeContext.Provider>,
+      <PreviewContext.Provider value={preview}>
+        <SlotModeContext.Provider value={slot}>
+          <App
+            surface="inpage"
+            state={state}
+            actions={runtime.actions}
+            settings={runtime.settings()}
+            announcements={runtime.announcements()}
+          />
+        </SlotModeContext.Provider>
+      </PreviewContext.Provider>,
       container,
     );
     syncNativeTodo(state, doc);
@@ -136,6 +142,8 @@ export function mountInpageList(mount: InpageMount, deps: InpageListDeps): () =>
   view.setContainer(ui.root);
   const stopSlotWatch = watchSlotMode(ui.host, (slot) => view.setSlot(slot));
   const stopDrawing = runtime.subscribe(() => view.draw());
+  // The pane comes and goes with the switch of the assignment view, and shows one assignment.
+  const stopPane = watchPane(() => view.draw());
   runtime.start();
   let removed = false;
   return () => {
@@ -143,6 +151,7 @@ export function mountInpageList(mount: InpageMount, deps: InpageListDeps): () =>
     removed = true;
     // The page comes back first: in an orphaned content script, extension calls can throw.
     stopDrawing();
+    stopPane();
     stopSlotWatch();
     attempt('in-page list removal', () => view.setContainer(null));
     ui.remove();

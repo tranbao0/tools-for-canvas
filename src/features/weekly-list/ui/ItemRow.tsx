@@ -1,15 +1,20 @@
 /**
  * One item in the list, as a row of Canvas's planner: check box, type icon in the course color,
  * title in the link color, the course name as quiet text, the due line with the row actions, then
- * pills.
+ * pills. An item of an assignment gets a Preview button among the row actions while the card can
+ * open the assignment pane.
  */
+import { h, type TargetedMouseEvent } from 'preact';
 import { useContext, useState } from 'preact/hooks';
-import type { TargetedMouseEvent } from 'preact';
+import { isCanvasId } from '../../../shared/canvas/ids';
 import { t } from '../../../shared/ui/i18n';
 import type { ItemView, WeekView } from '../model/types';
+import { samePane, type PaneRef } from '../../assignment-view/preview';
 import { formatDateTime, formatNumber, formatTime } from './format';
 import { CalendarIcon, CheckIcon, ChevronDownIcon, TypeIcon } from '../../../shared/ui/icons';
+import { PANE_ICON_ATTRIBUTES, PANE_ICON_SHAPES } from '../../../shared/ui/paneIcon';
 import { newId } from '../../../shared/ui/parts';
+import { PreviewContext, type PreviewControl } from './previewContext';
 import { RowSizeContext, SlotModeContext } from './slotMode';
 import { itemTags, type Tag } from './tags';
 
@@ -93,8 +98,44 @@ function TagView(props: { tag: Tag; tipId: string; open: boolean; onToggle(): vo
   );
 }
 
+/** The Preview button of a row: what it asks for, and whether the pane shows this assignment. */
+interface PreviewButton {
+  control: PreviewControl;
+  ref: PaneRef;
+  open: boolean;
+  /** The due text and the points of the item, which the header of the pane shows under the title. */
+  details: string | undefined;
+}
+
+/**
+ * The Preview button of an item: it has one when it has an assignment and a course, both with a
+ * valid Canvas id (a group item has an id that is no Canvas id), and the card can open the pane.
+ */
+function previewOf(
+  item: ItemView,
+  view: WeekView,
+  control: PreviewControl | null,
+): PreviewButton | null {
+  const { courseId, assignmentId } = item;
+  if (control === null || !isCanvasId(courseId) || !isCanvasId(assignmentId)) return null;
+  const ref = { courseId, assignmentId };
+  const parts = [
+    item.due === null
+      ? null
+      : t('previewDue', formatDateTime(item.due, view.timeZone, view.hourCycle)),
+    item.points === null ? null : t('itemPoints', formatNumber(item.points, view.locale)),
+  ].filter((part) => part !== null);
+  return {
+    control,
+    ref,
+    open: samePane(control.shown, ref),
+    details: parts.length === 0 ? undefined : parts.join(' | '),
+  };
+}
+
 export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
   const slot = useContext(SlotModeContext);
+  const preview = previewOf(item, view, useContext(PreviewContext));
   // A compact title has one line, and its hover text gives the whole title.
   const compact = useContext(RowSizeContext) === 'compact' && slot;
   const [ids] = useState(() => ({ tip: newId('tip'), redo: newId('redo') }));
@@ -119,7 +160,12 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
     handlers.onOpen(item);
   };
 
-  const rowClass = ['wr-item', done ? 'is-done' : '', item.state === 'skipped' ? 'is-skipped' : '']
+  const rowClass = [
+    'wr-item',
+    done ? 'is-done' : '',
+    item.state === 'skipped' ? 'is-skipped' : '',
+    preview?.open === true ? 'is-open' : '',
+  ]
     .filter(Boolean)
     .join(' ');
 
@@ -193,7 +239,7 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
   );
 
   if (slot) {
-    const showActions = hasActions(item);
+    const showActions = hasActions(item, preview);
     return (
       <li class={rowClass} data-row-key={item.key} style={{ '--wr-course': item.color }}>
         {check}
@@ -250,7 +296,7 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
                 {whenLabel}
               </span>
             )}
-            <ItemActions item={item} handlers={handlers} />
+            <ItemActions item={item} handlers={handlers} preview={preview} />
           </div>
         )}
       </li>
@@ -265,7 +311,7 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
       <div class="wr-item-body">
         {title}
         {showCourse && <span class="wr-course">{courseLabel(item)}</span>}
-        {(hasInfo || hasActions(item)) && (
+        {(hasInfo || hasActions(item, preview)) && (
           <div class="wr-due">
             {hasInfo && (
               <span class="wr-info">
@@ -273,7 +319,7 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
                 {whenLabel && <span class="wr-when">{whenLabel}</span>}
               </span>
             )}
-            <ItemActions item={item} handlers={handlers} />
+            <ItemActions item={item} handlers={handlers} preview={preview} />
           </div>
         )}
         {tags.length > 0 && <div class="wr-item-tags">{tagViews}</div>}
@@ -283,11 +329,33 @@ export function ItemRow({ item, view, when, handlers }: ItemRowProps) {
   );
 }
 
-function hasActions(item: ItemView): boolean {
-  return item.canSkip || item.state === 'skipped' || (item.canMoveToToday && item.noteId !== null);
+function hasActions(item: ItemView, preview: PreviewButton | null): boolean {
+  return (
+    preview !== null ||
+    item.canSkip ||
+    item.state === 'skipped' ||
+    (item.canMoveToToday && item.noteId !== null)
+  );
 }
 
-function ItemActions({ item, handlers }: { item: ItemView; handlers: ItemHandlers }) {
+/** The icon of the Preview button, drawn from the description that the Assignments list shares. */
+function PaneIcon() {
+  return (
+    <svg class="wr-preview-icon" {...PANE_ICON_ATTRIBUTES}>
+      {PANE_ICON_SHAPES.map(([tag, attributes]) => h(tag, attributes))}
+    </svg>
+  );
+}
+
+function ItemActions({
+  item,
+  handlers,
+  preview,
+}: {
+  item: ItemView;
+  handlers: ItemHandlers;
+  preview: PreviewButton | null;
+}) {
   // `canSkip` alone decides: it is also set on checked work that Canvas still marks missing.
   const actions: [part: string, label: string, name: string, run: () => void][] = [];
   if (item.canSkip)
@@ -306,9 +374,31 @@ function ItemActions({ item, handlers }: { item: ItemView; handlers: ItemHandler
       t('moveItemToToday', item.title),
       () => handlers.onMoveToToday(item),
     ]);
-  if (actions.length === 0) return null;
+  if (actions.length === 0 && preview === null) return null;
   return (
     <div class="wr-item-actions">
+      {preview && (
+        <button
+          type="button"
+          class="wr-preview"
+          data-part="preview"
+          aria-pressed={preview.open}
+          aria-label={t('previewItem', item.title)}
+          onClick={(event) => {
+            // A script of the page can click a button of the open shadow root, but only the
+            // student opens the pane.
+            if (!event.isTrusted) return;
+            preview.control.request({
+              ...preview.ref,
+              title: item.title,
+              ...(preview.details === undefined ? {} : { details: preview.details }),
+            });
+          }}
+        >
+          <PaneIcon />
+          <span class="wr-preview-text">{t('preview')}</span>
+        </button>
+      )}
       {actions.map(([part, label, name, run]) => (
         <button
           key={part}

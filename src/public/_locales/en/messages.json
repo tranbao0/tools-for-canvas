@@ -1106,6 +1106,15 @@
   "itemPoints": {
     "message": "$1 pts"
   },
+  "preview": {
+    "message": "Preview"
+  },
+  "previewItem": {
+    "message": "Preview $1"
+  },
+  "previewDue": {
+    "message": "Due $1"
+  },
   "goToCourse": {
     "message": "Go to course"
   },

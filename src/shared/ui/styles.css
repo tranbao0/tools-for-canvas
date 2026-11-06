@@ -43,6 +43,7 @@
   --wr-error: light-dark(#c71f23, #f08a8d);
   --wr-on: light-dark(#03893d, #6fcf8a);
   --wr-selected: light-dark(#e0ebf5, #253443);
+  --wr-preview-on: light-dark(var(--ic-brand-primary, #0374b5), #4798e3);
 
   margin: 0;
   background: var(--wr-bg);
@@ -1061,8 +1062,60 @@
 .wr-item-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0 12px;
   margin-left: auto;
+}
+
+/* The Preview button of a row: the button of the Assignments list at 26 px high. Its colors are the
+   colors of that button, and it is blue while the pane shows the row. */
+.wr-preview {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid light-dark(#c7cdd1, #4a5b68);
+  border-radius: 4px;
+  background: var(--wr-bg);
+  color: var(--wr-text);
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.wr-preview-icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+
+.wr-preview .av-pane-fill {
+  display: none;
+}
+
+.wr-item:hover .wr-preview {
+  border-color: var(--wr-link);
+  color: var(--wr-link);
+}
+
+.wr-item .wr-preview[aria-pressed='true'] {
+  border-color: var(--wr-preview-on);
+  background: var(--wr-preview-on);
+  color: var(--wr-on-primary);
+}
+
+.wr-preview[aria-pressed='true'] .av-pane-fill {
+  display: inline;
+}
+
+/* The row of the assignment that the pane shows. */
+.wr-item.is-open {
+  border-radius: 6px;
+  background: light-dark(#e9f2fb, var(--wr-selected));
+  box-shadow: inset 3px 0 0 var(--wr-brand);
 }
 
 .wr-item-tip {

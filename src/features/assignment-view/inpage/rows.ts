@@ -12,6 +12,7 @@
  * added.
  */
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
+import { PANE_ICON_ATTRIBUTES, PANE_ICON_SHAPES } from '../../../shared/ui/paneIcon';
 import { samePane, type PaneRef, type PreviewRequest } from '../preview';
 import { OWN } from './own';
 import { PAGE_CSS } from './styles';
@@ -115,34 +116,17 @@ function isForeign(records: readonly MutationRecord[]): boolean {
   });
 }
 
-/** The side panel icon: a window with a pane on its right, which is filled while the pane is open. */
+/** The side panel icon, which the pane fills while it is open (`PANE_ICON_SHAPES`). */
 function icon(doc: Document): SVGElement {
   const svg = doc.createElementNS(SVG, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('width', '16');
   svg.setAttribute('height', '16');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '2');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('focusable', 'false');
-  const shape = (tag: string, attributes: Record<string, string>): SVGElement => {
+  for (const [name, value] of Object.entries(PANE_ICON_ATTRIBUTES)) svg.setAttribute(name, value);
+  for (const [tag, attributes] of PANE_ICON_SHAPES) {
     const node = doc.createElementNS(SVG, tag);
     for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
-    return node;
-  };
-  svg.append(
-    shape('rect', { x: '3', y: '4', width: '18', height: '16', rx: '2' }),
-    shape('path', { d: 'M15 4v16' }),
-    shape('rect', {
-      class: 'av-pane-fill',
-      x: '15',
-      y: '4',
-      width: '6',
-      height: '16',
-      fill: 'currentColor',
-    }),
-  );
+    svg.append(node);
+  }
   return svg;
 }
 
