@@ -357,3 +357,34 @@ test.describe('hidden courses', () => {
     }
   });
 });
+
+test.describe('a load that the cookie rule drops', () => {
+  test('is asked for again, so the tab fills without a tap', async ({ context, page }) => {
+    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }]);
+    await addCsrfCookie(context, canvas.origin);
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // The first feed request waits, as a slow Canvas does.
+    let asked = 0;
+    await context.route(/\/api\/v1\/announcements/, async (route) => {
+      asked += 1;
+      await held;
+      await route.fallback();
+    });
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await openCanvasPage(page, canvas.origin, '/');
+    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await expect.poll(() => asked).toBeGreaterThan(0);
+
+    // Canvas renews the session cookie while the load runs, so the answer belongs to no cookie.
+    await context.addCookies([
+      { name: 'canvas_session', value: 'session-a2', url: canvas.origin, secure: true },
+    ]);
+    release();
+
+    const list = inpageList(page);
+    await expect(tab(list, /^Announcements/)).toHaveAccessibleName('Announcements, 3 unread');
+  });
+});
