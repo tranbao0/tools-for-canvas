@@ -18,7 +18,7 @@ import {
   frameFileTarget,
   catchesDownload,
 } from './model';
-import { normalizeWidth } from './width';
+import { MAX_STORED_WIDTH, normalizeWidth } from './width';
 
 describe('file targets', () => {
   for (const path of [
@@ -71,7 +71,9 @@ describe('width', () => {
     expect(normalizeWidth(null)).toBe(480);
     expect(normalizeWidth(NaN)).toBe(480);
     expect(normalizeWidth(100)).toBe(360);
-    expect(normalizeWidth(10000)).toBe(1344);
+    expect(normalizeWidth(10000, 1920)).toBe(1344);
+    expect(normalizeWidth(1500, 2560)).toBe(1500);
+    expect(normalizeWidth(99999)).toBe(MAX_STORED_WIDTH);
   });
 });
 

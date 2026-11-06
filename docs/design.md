@@ -304,7 +304,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The container of the list is a light DOM child of the host, and a `<slot>` in the dock shows it.
   So the list keeps its open shadow root and its place for the page selectors, and it keeps its state while the dock is hidden.
 - The default width is 360 px, which is the narrowest width that a dock can have.
-  The setting `weeklyDockWidth` stores it with the rules of `fileViewerWidth`: at least 360 px, at most 70 percent of the window, and 360 px for a missing value.
+  The setting `weeklyDockWidth` stores it with the rules of `fileViewerWidth`: at least 360 px, at most 70 percent of the window where the dock uses it, and 360 px for a missing value.
+  The stored value has no window limit, only an absolute one of 8192 px, so a width that fits a wide window is saved and comes back after a reload.
   The file pane and the weekly dock never change each other's width.
 - The dock takes room with the same padding lease as the other panes: the `html` element gets a right padding of the width of the dock.
   Canvas's `.ic-Layout-wrapper` has `max-width: 1366px` and stays at the left of the window.
