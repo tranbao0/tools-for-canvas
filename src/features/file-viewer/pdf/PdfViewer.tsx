@@ -8,6 +8,7 @@ import { parsePositionReply, validPosition } from '../positions';
 import type { TargetedKeyboardEvent } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../../../shared/ui/i18n';
+import { usePull } from '../../../shared/ui/pull';
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -75,6 +76,9 @@ export function PdfViewer(props: {
     return () => query.removeEventListener('change', update);
   }, []);
   const scroller = useRef<HTMLDivElement>(null);
+  // The pane is in a frame: at the end of the pages the rows pull, and the wheel never moves the
+  // Canvas page behind the pane.
+  usePull(scroller, undefined, true, props.active);
   const pages = useRef<HTMLDivElement>(null);
   const searchField = useRef<HTMLInputElement>(null);
   const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 440px)').matches);

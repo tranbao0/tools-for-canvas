@@ -25,6 +25,7 @@ import {
 import { advanceBackgroundClock } from './support/clock';
 import { isExtensionWorker } from './support/extension';
 import { json } from './support/scenario-api';
+import { shootPulled } from './support/pull';
 import { expect, test as base } from './support/weekrow';
 import { SCENARIO_NOW, buildScenario } from '../fixtures/scenario';
 import {
@@ -61,6 +62,7 @@ const test = base.extend<HostFixtures>({
     const host = await startFileHost({
       '/inst-fs/fixture.pdf': { body: FIXTURE, contentType: 'application/pdf' },
       '/inst-fs/lecture.pdf': { body: lecturePdf(), contentType: 'application/pdf' },
+      '/inst-fs/one-page.pdf': { body: lecturePdf(1), contentType: 'application/pdf' },
       '/inst-fs/hostile.pdf': { body: hostilePdf(), contentType: 'application/pdf' },
       '/inst-fs/long-run.pdf': { body: LONG_RUN, contentType: 'application/pdf' },
       '/inst-fs/long-run-valid.pdf': { body: LONG_RUN_VALID, contentType: 'application/pdf' },
@@ -295,6 +297,64 @@ test('zoom clicks in a row leave every page at the last zoom, with its text and 
     .toBeLessThan(2);
   await expect(box.locator('.annotationLayer a')).toHaveCount(2);
   await expect(box.locator('.textLayer span').first()).toBeAttached();
+});
+
+test('pulls the pages at the end of a one-page PDF, and the wheel never moves the Canvas page', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost, '/inst-fs/one-page.pdf');
+  await expect(frame.locator('[data-part="pdf-page-count"]')).toHaveText('of 1');
+  const scroll = frame.locator('.pv-scroll');
+  // The Canvas page can move both ways, so a wheel that chains out of the pane would show.
+  await page.evaluate(() => {
+    const filler = document.createElement('div');
+    filler.style.height = `${window.innerHeight * 3}px`;
+    document.body.append(filler);
+    window.scrollTo(0, 200);
+  });
+  const behind = await page.evaluate(() => window.scrollY);
+  expect(behind).toBeGreaterThan(100);
+  // The pane records which wheel the viewer kept from the page, after its own handlers have run.
+  await frame.evaluate(() => {
+    const kept: string[] = [];
+    (window as unknown as { __kept: string[] }).__kept = kept;
+    window.addEventListener('wheel', (event) => kept.push(String(event.defaultPrevented)));
+  });
+  const kept = () => frame.evaluate(() => (window as unknown as { __kept: string[] }).__kept);
+  const box = (await scroll.boundingBox())!;
+  const middle = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  // At the top of the pages a wheel up pulls them, and the Canvas page stays.
+  await page.mouse.move(middle.x, middle.y);
+  await page.mouse.wheel(0, -300);
+  await expect.poll(kept).toEqual(['true']);
+  await expect(scroll).not.toHaveClass(/wr-pulling/);
+  expect(await page.evaluate(() => window.scrollY)).toBe(behind);
+  // At the end of the pages a wheel down does the same.
+  await scroll.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  await expect
+    .poll(() => scroll.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1))
+    .toBe(true);
+  await page.mouse.wheel(0, 300);
+  await expect.poll(kept).toEqual(['true', 'true']);
+  await expect(scroll).not.toHaveClass(/wr-pulling/);
+  expect(await page.evaluate(() => window.scrollY)).toBe(behind);
+  // A wheel with Ctrl and a wheel that is mostly sideways are not the pull's.
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, 300);
+  await page.keyboard.up('Control');
+  await page.mouse.wheel(300, 10);
+  await expect.poll(kept).toEqual(['true', 'true', 'false', 'false']);
+
+  // The pages away from their place, in a screenshot of the pane.
+  const pulled = await shootPulled(scroll, 100, { file: 'pdf-one-page.png', of: page });
+  expect(pulled).toBeGreaterThan(8);
+  expect(pulled).toBeLessThanOrEqual(28);
 });
 
 test('search finds the word on page 2 and highlights it', async ({

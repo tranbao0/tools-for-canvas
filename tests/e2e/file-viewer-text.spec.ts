@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { shootPulled } from './support/pull';
 import { test, expect, serveScenario } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
 import {
@@ -59,6 +60,47 @@ test('a submission file opens as passive text in the pane', async ({
       await expect(frame.locator('html')).toHaveAttribute('data-theme', theme);
       await page.screenshot({ path: `screenshots/file-viewer-text-${width}-${theme}.png` });
     }
+});
+
+test('the wheel over a short text pulls its rows, and never moves the Canvas page', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await serveScenario(context, [
+    submissionRoute,
+    textRecord('42', 'submission.txt', notes.length),
+    { path: '/files/42/download', contentType: 'text/plain', body: notes },
+  ]);
+  await saveAddress(background, canvas.origin);
+  await page.goto(`${canvas.origin}${PAGE}`);
+  await openFirstFile(page, 'Submission text', undefined, previewFrame(page).locator('body'));
+  const frame = await pane(page);
+  await expect(frame.locator('pre')).toHaveText(notes);
+  await page.evaluate(() => {
+    const filler = document.createElement('div');
+    filler.style.height = `${window.innerHeight * 3}px`;
+    document.body.append(filler);
+    window.scrollTo(0, 200);
+  });
+  const behind = await page.evaluate(() => window.scrollY);
+  expect(behind).toBeGreaterThan(100);
+  const text = frame.locator('.fv-media');
+  await frame.evaluate(() => {
+    const kept: string[] = [];
+    (window as unknown as { __kept: string[] }).__kept = kept;
+    window.addEventListener('wheel', (event) => kept.push(String(event.defaultPrevented)));
+  });
+  const box = (await text.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 40);
+  await page.mouse.wheel(0, 200);
+  await expect
+    .poll(() => frame.evaluate(() => (window as unknown as { __kept: string[] }).__kept))
+    .toEqual(['true']);
+  await expect(text).not.toHaveClass(/wr-pulling/);
+  expect(await page.evaluate(() => window.scrollY)).toBe(behind);
+  // The pull itself, away from its place.
+  expect(await shootPulled(text, 100, { file: 'text-file.png', of: page })).toBeGreaterThan(8);
 });
 
 test('text stops reading at 2 MB and shows the start of a long file', async ({

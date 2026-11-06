@@ -612,19 +612,30 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The element has a thin native scroll bar and the default `overscroll-behavior`.
     `overscroll-behavior: contain` is not used: in Chromium 156 it stops the page from taking the wheel over a list that has nothing to scroll.
     It is a region with the label "Tasks by day" and `tabindex="0"`, so the keyboard reaches it and scrolls it, and it shows a focus ring.
-  - The wheel over the day list, the open group (the list area of the view switch) and the Announcements list, which share the scroll region, works as follows.
-    A list in the middle of its scroll, or a card or a page that can still move in the direction of the wheel, scrolls as the browser does.
-    The order is the list, then the card (`.wr`), then the page (`document.scrollingElement`), so a card that scrolls as a whole in a low window scrolls before the rows pull.
+  - The wheel over a list that scrolls works as follows, in the whole product.
+    The lists are the day list, the open group (the list area of the view switch) and the Announcements list of the card, the task panel of the side panel, the feed of the Announcements widget and the list of the People widget on the widget dashboard, and the pages, the thumbnails, the text and the image of the file pane.
+    A list in the middle of its scroll, or an element around it, a card or a page that can still move in the direction of the wheel, scrolls as the browser does.
+    The order is the list, then what scrolls around it (the card `.wr`, or the panel of the file pane), then the page (`document.scrollingElement`), so a card that scrolls as a whole in a low window scrolls before the rows pull.
     A scroller of the page other than the window is not looked at.
     A list with nothing to scroll gives the wheel to the page, as anywhere else on the page.
     A list with rows to scroll that is at its top or its end keeps the page still, as before.
     When nothing can move in that direction, the rows pull and spring back: the pull follows each wheel step by 0.18 of its delta, damped by how far the rows already are, at most 28 px.
     The rows spring back 110 ms after the last wheel event, over 0.24 s with `cubic-bezier(.2,.8,.2,1)`.
-    Only the rows move (a `transform` on the children of the region, so nothing changes in the layout): the header, the notice, the rings and the view switch stay.
+    Only the rows move (a `transform` on the children of the list, so nothing changes in the layout): the header, the notice, the rings and the view switch stay.
+    The state of each list is its own, so a pull on one list never ends the pull of another.
+    A list that leaves, or is hidden, while its rows are away is put back at once, and keeps no timer that touches it.
     A list with nothing to scroll gets `overflow-y: hidden` while the rows are away from their place, so the moved rows never show a scroll bar.
     A list with rows to scroll pulls its rows down at its top: its scroll height then grows by up to 20 px (28 px less the 8 px of end padding), which shortens its scroll bar thumb by about 0.5 px for a list that is six times as tall as its area.
     A wheel that counts lines (`deltaMode` 1) counts 33 px a line, so Firefox pulls as Chromium does.
     With `prefers-reduced-motion: reduce` the rows do not pull, and the page still stays still at the end of a list with rows to scroll.
+    A wheel with Ctrl (zoom) and a wheel that is mostly sideways, or has Shift, are never the pull's.
+    No list sets `overscroll-behavior: contain`: in Chromium 156 it stops the page from taking the wheel over a list that has nothing to scroll.
+  - The side panel has no list that scrolls: its page does, and no page lies behind it.
+    The task panel is the list there: at the top and at the end of the page the rows of the task panel pull, and the header and the Undo notice stay.
+    A page that cannot scroll gets `overflow-y: hidden` on its root while the rows are away, so no scroll bar appears.
+  - The file pane lives in a frame, which cannot see the page behind it.
+    There the pull runs at each end of the pages, the thumbnails, a text and an image, also when they have nothing to scroll, and the wheel never moves the Canvas page behind the pane: the wheel is stopped at the end, even with reduced motion.
+    A player (audio or video) has no pull.
     Touch scrolling and the keyboard scroll as the browser does, with the default chaining: at the end of a list they go on to the page.
   - The scroll position stays over a redraw, a data refresh, the settings, the task form, a change of tab and a minimize, while the page stays open.
     A new span starts at the top.
@@ -2195,7 +2206,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The reason is that Canvas shows 3 announcements a page, and an open message changes the height of the card, which moves the pager, so the next page is hard to reach.
    The owner approved a mockup of four states: the list, an open message, a search by topic and a search by date.
    Below the filters the fix draws a host with a shadow root that holds the search row and one scroll area.
-   - The scroll area has `height: min(36rem, calc(100vh - 14rem))`, `min-height: 20rem`, `overflow-y: auto` and `overscroll-behavior: contain`.
+   - The scroll area has `height: min(36rem, calc(100vh - 14rem))`, `min-height: 20rem`, `overflow-y: auto` and the default `overscroll-behavior`.
      Its height does not change, whatever happens inside.
      An open message grows inside the area only.
    - The area is a `role="feed"` with `aria-busy` and `tabindex="0"`, and each row is an `article` with its title as the label.
@@ -2417,7 +2428,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    A school with another language therefore sees Canvas's own list, and the fix does nothing there.
    The Announcements fix reads any other text as All, and this fix does not, because a list for the wrong person group is worse than Canvas's own list.
    - The card keeps its height, as in the approved mockup of 2026-11-05.
-     Below the filters the fix draws a host with a shadow root that holds one scroll area, with the rules of choice 1: `overflow-y: auto`, `overscroll-behavior: contain`, a fixed height and the focus stop.
+     Below the filters the fix draws a host with a shadow root that holds one scroll area, with the rules of choice 1: `overflow-y: auto`, the default `overscroll-behavior`, a fixed height and the focus stop.
      The height is `max(20rem, min(22rem, calc(100vh - 14rem)))`, which is 352 px in a window of 1,000 px.
      The People widget has no search row, so the host is the scroll area alone.
    - A row shows the avatar (2.5rem: the image, or the initials on a color of the fixed set of choice 1), the name bold at 0.875rem, and at the right the message button (a square of 1.875rem with an envelope).

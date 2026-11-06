@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { FileBytesError } from '../../../shared/canvas/fileBytes';
 import { t } from '../../../shared/ui/i18n';
+import { usePull } from '../../../shared/ui/pull';
 import { Progress, type PdfHost } from './PdfTab';
 import {
   decodeText,
@@ -74,6 +75,10 @@ export function MediaTab(props: {
   failed.current = props.onReadFailed;
   const limit = props.hiddenLimit ?? HIDDEN_MEDIA_LIMIT_BYTES;
   const kind = type?.kind;
+  // The text and the image scroll inside the frame of the pane: at their ends the rows pull, and
+  // the wheel never moves the Canvas page. A player has no rows to pull.
+  usePull(root, undefined, true, props.active && kind === 'text');
+  usePull(holder, undefined, true, props.active && kind === 'image' && visual !== null);
   const mime = type?.mime;
   useEffect(() => {
     if (!begin || !kind || !mime) return;

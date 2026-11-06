@@ -34,7 +34,7 @@ import type { ListTab } from '../data/announcements';
 import { Announcements } from './Announcements';
 import { ListTabs, tabId } from './ListTabs';
 import { ChevronDownIcon } from '../../../shared/ui/icons';
-import { usePull } from './pull';
+import { usePull } from '../../../shared/ui/pull';
 import { Rings } from './Rings';
 import { SettingsPanel } from './Settings';
 import { Spinner, StateBody } from './States';
@@ -75,6 +75,8 @@ function ScrollRegion(props: {
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const { memory } = props;
+  // A hidden region puts its rows back at once.
+  usePull(ref, undefined, false, props.hidden !== true);
   useLayoutEffect(() => {
     const element = ref.current;
     if (element === null || props.hidden === true) return;
@@ -107,6 +109,7 @@ function ScrollRegion(props: {
  */
 function GroupArea(props: { kind: string | null; resetKey: string; children: ComponentChildren }) {
   const ref = useRef<HTMLDivElement>(null);
+  usePull(ref, undefined, false, props.kind !== null);
   useLayoutEffect(() => {
     if (ref.current !== null) ref.current.scrollTop = 0;
   }, [props.kind, props.resetKey]);
@@ -521,7 +524,10 @@ function ReadyView(props: {
   });
   useUndoShortcut(rootRef, form === null && state.undo !== null, undo);
   useStickyInsets(rootRef, surface, form === null);
-  usePull(rootRef, surface === 'inpage');
+  // The side panel has no list that scrolls: its page does, so the task panel is the list there.
+  // The card, the dock and the widgets pull in the lists that own the scroll, which mount and
+  // leave with the view.
+  usePull(rootRef, '.wr-task-panel', false, surface === 'panel' && form === null);
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;
