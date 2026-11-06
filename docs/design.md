@@ -3963,8 +3963,10 @@ So a student switches pages to read the instructions next to the feedback on a f
     The side panel has no pane, so its rows have none.
 - **Compact rows.**
   - A Compact row of the Course work slot keeps the full button.
-    The button sits in the side column under the due pill, as the row actions do, so a row with Preview is about 12 px higher than a Compact row with none (56 px against 44 px).
-    A narrow card (under 480 px) puts the pill and the actions on a line under the text, as before, and the button joins that line.
+    The button sits in the side column under the due pill, as the row actions do.
+    The e2e test measures the rows of the scenario: at 620 px, a Compact row with Preview is 56 px high and a Compact row of an own task is 44 px, so the button adds 12 px.
+    At 400 px, where the pill and the actions go to a line under the text, the rows are 70 px and 64 px, so the button adds 6 px.
+    A Comfortable row keeps its height (92 px at 620 px and 87 px at 400 px), because its side column is higher than the button.
 - **Pane.**
   - The pane is per course and assignment: `PreviewRequest` carries `courseId`, and the frames, the slots, the readers, the baselines of the submission watch and the marks are keyed by `paneKey` (both ids as decimal global ids), so the same assignment id in two courses is two assignments.
   - The rules of the pane stay: the slim address, the frame catcher, the student reset, the read after close, and the refresh of the weekly list after a hand-in.

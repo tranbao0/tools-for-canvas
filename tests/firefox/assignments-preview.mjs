@@ -23,6 +23,14 @@
 //      link in the fast row opens the file pane.
 //   h. A row that redirects to a plain page gets the slim page before the plain page has loaded: a
 //      script of the plain page waits, and the frame still asks for the page with content_only=1.
+//   i. The Preview button of a row of the weekly card on the classic dashboard (decision 26):
+//      - a script of the page cannot open the pane: a click and an event that it makes, and a
+//        request through a value that it can reach, change nothing, and the shared value of the
+//        content scripts is not visible to it;
+//      - a real click on a card row opens the pane over the dock, the dock steps aside, the row is
+//        pressed, and the frame loads the page of the course of the row with content_only=1;
+//      - a file link in that frame opens the file pane, and closing it shows the pane again;
+//      - a second real click closes the pane and the dock comes back.
 //
 // Usage: node tests/firefox/assignments-preview.mjs
 // Set ASSIGNMENTS_PREVIEW_SHOT to a file name to save a screenshot of the list with the pane open.
@@ -35,6 +43,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { By } from 'selenium-webdriver';
 import { ensureBuild, ROOT } from '../../scripts/lib/ensure-build.mjs';
+import { DASHBOARD } from './dashboard-dock.mjs';
 import { findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
 
 const UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
@@ -63,6 +72,8 @@ registerHooks({
 });
 process.chdir(ROOT);
 const { rawRecords } = await import('../fixtures/assignment-view.ts');
+const { buildScenario } = await import('../fixtures/scenario.ts');
+const { apiRoutes } = await import('../e2e/support/scenario-api.ts');
 
 const listPage = readFileSync('tests/fixtures/pages/assignments.html', 'utf8');
 
@@ -77,8 +88,11 @@ function assignmentPage(mode) {
 
 const json = (value) => ({ type: 'application/json', body: JSON.stringify(value) });
 
-/** Starts the fake Canvas. `routes` maps a path to `{ type, body }` or to a function of the URL. */
-async function startCanvas(routes) {
+/**
+ * Starts the fake Canvas. `routes` maps a path to `{ type, body }` or to a function of the URL. A
+ * path that `routes` does not hold goes to `fallback`, when there is one.
+ */
+async function startCanvas(routes, fallback = () => undefined) {
   const dir = mkdtempSync(path.join(tmpdir(), 'weekrow-assignments-preview-'));
   const key = path.join(dir, 'key.pem');
   const cert = path.join(dir, 'cert.pem');
@@ -94,7 +108,7 @@ async function startCanvas(routes) {
     { key: readFileSync(key), cert: readFileSync(cert) },
     async (request, response) => {
       const url = new URL(request.url ?? '/', 'https://127.0.0.1');
-      const route = routes[url.pathname];
+      const route = routes[url.pathname] ?? fallback;
       const answer = await (typeof route === 'function' ? route(url) : route);
       if (answer === undefined) {
         response.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
@@ -194,6 +208,145 @@ async function clickFileLinkUntilFilePane(driver) {
   }
 }
 
+/** What the dashboard shows of the card, the docks and the room. It runs in the page. */
+const CARD_STATE = `
+  const list = document.querySelector('weekrow-list');
+  const root = list && list.shadowRoot;
+  const shown = (node) => node !== null && node.isConnected && node.getClientRects().length > 0;
+  const pane = document.getElementById('tools-turn-in');
+  return {
+    buttons: root ? root.querySelectorAll('[data-part="preview"]').length : 0,
+    pressed: root ? root.querySelectorAll('[data-part="preview"][aria-pressed="true"]').length : 0,
+    marked: root ? root.querySelectorAll('li.is-open').length : 0,
+    dock: shown(document.getElementById('tools-weekly')),
+    pane: shown(pane),
+    paneWidth: pane ? pane.getBoundingClientRect().width : 0,
+    padding: parseFloat(document.documentElement.style.getPropertyValue('padding-right')) || 0,
+    file: shown(document.getElementById('tools-file-viewer')),
+  };
+`;
+
+/**
+ * A script of the Canvas page, which runs in the world of the page like a script of Canvas does.
+ * It tries every way it has to open the pane, and reports what it can see of the content scripts.
+ */
+const PAGE_SCRIPT = `
+  (() => {
+    const out = {};
+    const key = Symbol.for('tools-for-canvas.preview');
+    out.sees = [key in window, typeof globalThis[key], Symbol.for('tools-for-canvas.dock') in window];
+    const button = document.querySelector('weekrow-list').shadowRoot.querySelector('[data-part="preview"]');
+    button.click();
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+    const detail = { courseId: '101', assignmentId: '1004', title: 'Forged' };
+    window.dispatchEvent(new CustomEvent('weekrow:preview', { detail }));
+    document.dispatchEvent(new CustomEvent('weekrow:preview', { detail }));
+    window.postMessage({ type: 'weekrow:preview', ...detail }, '*');
+    // A value that the page can reach is not the hub of the content scripts.
+    window[key] = { request: (request) => (out.forged = request), shown: null, watchers: new Set() };
+    document.documentElement.setAttribute('data-probe', JSON.stringify(out));
+  })();
+`;
+
+/** Check i: the Preview button of a row of the weekly card, and the page script that tries to open the pane. */
+async function checkCard(driver, origin, cardLoads) {
+  await driver.get(`${origin}/`);
+  const cardState = () => driver.executeScript(CARD_STATE);
+  const cardButton = async () => {
+    const host = await driver.findElement(By.css('weekrow-list'));
+    return (await host.getShadowRoot()).findElement(By.css('[data-part="preview"]'));
+  };
+  const ready = await waitFor(
+    cardState,
+    (value) => value.buttons > 0 && value.dock,
+    'the weekly card with Preview buttons',
+  );
+  console.log(`Card: ${ready.buttons} rows have a Preview button, and the dock shows.`);
+
+  // A script of the page tries to open the pane in every way it has, and it sees none of the hub.
+  await driver.executeScript(
+    `
+    const script = document.createElement('script');
+    script.textContent = arguments[0];
+    document.head.append(script);
+  `,
+    PAGE_SCRIPT,
+  );
+  const probe = JSON.parse(
+    await driver.executeScript("return document.documentElement.getAttribute('data-probe')"),
+  );
+  if (JSON.stringify(probe.sees) !== JSON.stringify([false, 'undefined', false]) || probe.forged)
+    throw new Error(`The page script saw the content scripts: ${JSON.stringify(probe)}`);
+  await sleep(1500);
+  const quiet = await cardState();
+  if (quiet.pane || quiet.pressed !== 0 || quiet.padding !== 0 || !quiet.dock)
+    throw new Error(`A script of the page opened the pane: ${JSON.stringify(quiet)}`);
+  console.log('Card: a script of the page cannot open the pane, and it sees no shared value.');
+
+  // A real click opens the pane over the dock.
+  const button = await cardButton();
+  const label = await button.getAttribute('aria-label');
+  const title = label.replace(/^Preview /, '');
+  await driver.actions().move({ origin: button }).click().perform();
+  const opened = await waitFor(
+    cardState,
+    (value) => value.pane && !value.dock && value.pressed === 1,
+    'the pane to open over the dock',
+  );
+  if (opened.padding !== opened.paneWidth)
+    throw new Error(
+      `The page has ${opened.padding} px of padding, the pane ${opened.paneWidth} px`,
+    );
+  const header = async () =>
+    (
+      await (
+        await (await driver.findElement(By.css(PANE))).getShadowRoot()
+      ).findElement(By.css('.title'))
+    ).getText();
+  await waitFor(header, (text) => text === title, 'the header to show the title of the row');
+  await waitFor(
+    async () => cardLoads.slice(),
+    (loads) => loads.length === 1 && loads[0].endsWith('?1'),
+    'the frame to load the page of the row with content_only=1',
+  );
+  console.log(
+    'Card: a real click opens the pane, the dock steps aside, and the frame loads the row.',
+  );
+
+  // A file link in the frame opens the file pane, and closing it shows the pane again.
+  await clickFileLinkUntilFilePane(driver);
+  const covered = await cardState();
+  if (!covered.file || covered.pane)
+    throw new Error(`The file pane did not cover the pane: ${JSON.stringify(covered)}`);
+  const fileFrame = await frameOf(driver, FILE_PANE);
+  await driver.switchTo().frame(fileFrame);
+  const close = await driver.wait(
+    async () => (await driver.findElements(By.css('[aria-label="Close file viewer"]')))[0] ?? false,
+    10_000,
+  );
+  await driver.actions().move({ origin: close }).click().perform();
+  await driver.switchTo().defaultContent();
+  await waitFor(
+    cardState,
+    (value) => value.pane && !value.file && !value.dock,
+    'the pane to come back over the dock',
+  );
+  console.log('Card: a file link in the frame opens the file pane, and closing it shows the pane.');
+
+  // The close button of the pane gives the dock back, with no pressed row.
+  const closeButton = await (
+    await (await driver.findElement(By.css(PANE))).getShadowRoot()
+  ).findElement(By.css('.icon-btn'));
+  await driver.actions().move({ origin: closeButton }).click().perform();
+  const closed = await waitFor(
+    cardState,
+    (value) => !value.pane && value.dock && value.pressed === 0 && value.marked === 0,
+    'the dock to come back',
+  );
+  if (closed.padding !== 360) throw new Error(`The dock has ${closed.padding} px of room, not 360`);
+  console.log('Card: closing the pane brings the dock back with no pressed row.');
+}
+
 async function main() {
   // Selenium Manager must never download a browser or a driver during a test.
   process.env.SE_OFFLINE = 'true';
@@ -235,72 +388,105 @@ async function main() {
   const holdScript = new Promise((resolve) => {
     releaseHold = resolve;
   });
-  const canvas = await startCanvas({
-    [LIST_PATH]: { type: 'text/html', body: listPage },
-    [`${LIST_PATH}/103`]: {
-      type: 'text/html',
-      body: `<script>location.replace("${LANDING_PATH}")</script>`,
-    },
-    [LANDING_PATH]: (url) => {
-      const mode = url.searchParams.get('content_only') === '1' ? 'slim' : 'full';
-      landingLoads.push(mode);
-      const page = assignmentPage(mode);
+  // The weekly card of the dashboard (check i): the data of the scenario of the Playwright tests,
+  // around the real clock. Every assignment page and record of any course answers from `cardRoutes`.
+  const scenarioRoutes = {};
+  for (const route of apiRoutes(buildScenario(new Date().toISOString()))) {
+    if (typeof route.path === 'string' && route.method === undefined && route.body !== undefined)
+      scenarioRoutes[route.path] = json(route.body);
+  }
+  const cardLoads = [];
+  const cardRoutes = (url) => {
+    const page = /^\/courses\/(\d+)\/assignments\/(\d+)$/.exec(url.pathname);
+    if (page !== null) {
+      cardLoads.push(`${url.pathname}?${url.searchParams.get('content_only') ?? ''}`);
       return {
         type: 'text/html',
-        body:
-          mode === 'full'
-            ? page.replace('</body>', '<script src="/hold.js"></script></body>')
-            : page,
+        body: `<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>Card ${page[1]}/${page[2]}</h1><p><a id="file" href="/courses/${page[1]}/files/501" onclick="return false">notes.txt</a></p></body></html>`,
       };
-    },
-    '/hold.js': async () => {
-      await holdScript;
-      return { type: 'text/plain', body: '' };
-    },
-    [ASSIGNMENT_PATH]: (url) => {
-      const mode = url.searchParams.get('content_only') === '1' ? 'slim' : 'full';
-      frameLoads.push(mode);
-      return { type: 'text/html', body: assignmentPage(mode) };
-    },
-    [`${LIST_PATH}/102`]: (url) => {
-      readingLoads.push(url.searchParams.get('content_only') ?? '');
-      const page = assignmentPage('reading');
-      return {
+    }
+    const record = /^\/api\/v1\/courses\/(\d+)\/assignments\/(\d+)(\/submissions\/self)?$/.exec(
+      url.pathname,
+    );
+    if (record === null) return undefined;
+    const made = rawRecords({
+      assignment: { id: record[2], description: '<p>Write.</p>' },
+      submission: { user_id: USER, submitted_at: null, workflow_state: 'unsubmitted' },
+    });
+    return json(record[3] === undefined ? made.assignment : made.submission);
+  };
+  const canvas = await startCanvas(
+    {
+      [LIST_PATH]: { type: 'text/html', body: listPage },
+      [`${LIST_PATH}/103`]: {
         type: 'text/html',
-        body: slowRow ? page.replace('</body>', '<script src="/slow.js"></script></body>') : page,
-      };
+        body: `<script>location.replace("${LANDING_PATH}")</script>`,
+      },
+      [LANDING_PATH]: (url) => {
+        const mode = url.searchParams.get('content_only') === '1' ? 'slim' : 'full';
+        landingLoads.push(mode);
+        const page = assignmentPage(mode);
+        return {
+          type: 'text/html',
+          body:
+            mode === 'full'
+              ? page.replace('</body>', '<script src="/hold.js"></script></body>')
+              : page,
+        };
+      },
+      '/hold.js': async () => {
+        await holdScript;
+        return { type: 'text/plain', body: '' };
+      },
+      [ASSIGNMENT_PATH]: (url) => {
+        const mode = url.searchParams.get('content_only') === '1' ? 'slim' : 'full';
+        frameLoads.push(mode);
+        return { type: 'text/html', body: assignmentPage(mode) };
+      },
+      [`${LIST_PATH}/102`]: (url) => {
+        readingLoads.push(url.searchParams.get('content_only') ?? '');
+        const page = assignmentPage('reading');
+        return {
+          type: 'text/html',
+          body: slowRow ? page.replace('</body>', '<script src="/slow.js"></script></body>') : page,
+        };
+      },
+      '/slow.js': async () => {
+        slowRequests.push('slow.js');
+        await slowScript;
+        return { type: 'text/plain', body: '' };
+      },
+      [`/api/v1/files/501`]: json({
+        id: '501',
+        display_name: 'notes.txt',
+        filename: 'notes.txt',
+        'content-type': 'text/plain',
+        size: NOTES.length,
+        url: '/files/501/download',
+        context_type: 'Course',
+        context_id: COURSE,
+      }),
+      '/files/501/download': { type: 'text/plain', body: NOTES },
+      '/api/v1/users/self': json(student),
+      '/api/v1/users/self/profile': json(student),
+      '/api/v1/courses': json([]),
+      '/api/v1/users/self/groups': json([]),
+      '/api/v1/users/self/colors': json({ custom_colors: {} }),
+      '/api/v1/users/self/dashboard_positions': json({ dashboard_positions: {} }),
+      '/api/v1/planner/items': json([]),
+      [`/api/v1/courses/${COURSE}/assignments/101`]: json(records.assignment),
+      [`/api/v1/courses/${COURSE}/assignments/101/submissions/self`]: json(records.submission),
+      [`/api/v1/courses/${COURSE}/assignments/102`]: json({ ...records.assignment, id: '102' }),
+      [`/api/v1/courses/${COURSE}/assignments/102/submissions/self`]: json({
+        ...records.submission,
+        assignment_id: '102',
+      }),
+      ...scenarioRoutes,
+      '/': { type: 'text/html', body: DASHBOARD },
+      '/api/graphql': json({ data: { legacyNode: { widgetDashboardConfig: '{}' } } }),
     },
-    '/slow.js': async () => {
-      slowRequests.push('slow.js');
-      await slowScript;
-      return { type: 'text/plain', body: '' };
-    },
-    [`/api/v1/files/501`]: json({
-      id: '501',
-      display_name: 'notes.txt',
-      filename: 'notes.txt',
-      'content-type': 'text/plain',
-      size: NOTES.length,
-      url: '/files/501/download',
-      context_type: 'Course',
-      context_id: COURSE,
-    }),
-    '/files/501/download': { type: 'text/plain', body: NOTES },
-    '/api/v1/users/self': json(student),
-    '/api/v1/users/self/profile': json(student),
-    '/api/v1/courses': json([]),
-    '/api/v1/users/self/groups': json([]),
-    '/api/v1/users/self/colors': json({ custom_colors: {} }),
-    '/api/v1/users/self/dashboard_positions': json({ dashboard_positions: {} }),
-    '/api/v1/planner/items': json([]),
-    [`/api/v1/courses/${COURSE}/assignments/101`]: json(records.assignment),
-    [`/api/v1/courses/${COURSE}/assignments/101/submissions/self`]: json(records.submission),
-    [`/api/v1/courses/${COURSE}/assignments/102`]: json({ ...records.assignment, id: '102' }),
-    [`/api/v1/courses/${COURSE}/assignments/102/submissions/self`]: json({
-      ...records.submission,
-      assignment_id: '102',
-    }),
-  });
+    cardRoutes,
+  );
   const origin = `https://school.instructure.com:${canvas.port}`;
   const driver = await startFirefox({
     firefoxBin,
@@ -608,6 +794,7 @@ async function main() {
       releaseHold();
     }
     console.log('Redirect: the frame asks for the slim page while the plain page still loads.');
+    await checkCard(driver, origin, cardLoads);
     console.log('Firefox assignments preview: passed.');
     return 0;
   } finally {

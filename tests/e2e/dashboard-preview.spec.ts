@@ -10,6 +10,9 @@ import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import { ASSIGNMENT_DETAILS, rawRecords } from '../fixtures/assignment-view';
 import type { FakeCanvasRoute } from './support/fake-canvas';
 import { CHROME_E2E_EXTENSION_DIR } from './support/extension';
+import { SCENARIO_NOW, buildScenario } from '../fixtures/scenario';
+import { advanceBackgroundClock } from './support/clock';
+import { closePane, pane } from './support/file-viewer';
 import { json, saveAddress } from './support/scenario-api';
 import {
   addCsrfCookie,
@@ -17,6 +20,7 @@ import {
   expect,
   inpageList,
   openCanvasPage,
+  openExtensionPage,
   saveSettings,
   saveTools,
   serveScenario,
@@ -77,6 +81,8 @@ interface OpenOptions {
   height?: number;
   settings?: Partial<Settings>;
   switchOff?: boolean;
+  /** Routes that win over the others, such as another student's profile. */
+  extra?: FakeCanvasRoute[];
 }
 
 async function open(
@@ -91,6 +97,7 @@ async function open(
   const state = { submitted: false };
   const path = options.path ?? '/';
   const served = await serveScenario(context, [
+    ...(options.extra ?? []),
     { path: path.split('?')[0]!, page: options.fixture ?? 'dashboard-widgets' },
     ...ASSIGNMENTS.flatMap(({ course, id, name }) => [
       {
@@ -290,6 +297,38 @@ for (const [name, options] of [
   });
 }
 
+/** The height of a row, whose title is `title`. */
+const heightOf = async (page: Page, title: string): Promise<number> =>
+  (await rowOf(page, title).boundingBox())!.height;
+
+for (const rowSize of ['compact', 'comfortable'] as const) {
+  for (const width of [620, 400]) {
+    test(`measures a ${rowSize} row with Preview against one without, in a ${width} px card`, async ({
+      context,
+      page,
+      background,
+    }) => {
+      await open(context, page, background, { settings: { rowSize } });
+      await card(page)
+        .locator('.wr')
+        .evaluate((element, px) => {
+          element.style.width = `${px}px`;
+        }, width);
+      await expect(preview(page, LAB_4)).toBeVisible();
+      // The rows differ in more than the button (a course link, a chip), so the pair is two
+      // rows of the same kind: a plain row with the button, and a plain row of a note without it.
+      const heights = {
+        withPreview: await heightOf(page, LAB_4),
+        quiz: await heightOf(page, QUIZ_3),
+        withoutPreview: await heightOf(page, NOTE),
+      };
+      console.log(`${rowSize} ${width}px: ${JSON.stringify(heights)}`);
+      // A row with the button is taller by the button and no more than a line of text.
+      expect(heights.withPreview - heights.withoutPreview).toBeLessThanOrEqual(32);
+    });
+  }
+}
+
 /** The rows whose Preview button sticks out of the row, or whose row sticks out of the card. */
 async function overflowing(page: Page): Promise<string[]> {
   return card(page)
@@ -356,3 +395,241 @@ for (const { place, options } of PLACES) {
     }
   }
 }
+
+/**
+ * Records the `weekrow:refresh` messages that the background receives, and returns a function that
+ * reads their reasons. The pane sends one when a read finds that the submission changed.
+ */
+async function watchRefreshes(worker: Parameters<typeof saveSettings>[0]) {
+  await worker.evaluate(() => {
+    const scope = globalThis as unknown as {
+      __refreshes?: string[];
+      chrome: {
+        runtime: {
+          onMessage: {
+            addListener(listener: (message: { type?: string; reason?: string }) => undefined): void;
+          };
+        };
+      };
+    };
+    scope.__refreshes = [];
+    scope.chrome.runtime.onMessage.addListener((message) => {
+      if (message?.type === 'weekrow:refresh') scope.__refreshes!.push(String(message.reason));
+      return undefined;
+    });
+  });
+  return () =>
+    worker.evaluate(() => (globalThis as unknown as { __refreshes?: string[] }).__refreshes ?? []);
+}
+
+test('closing a pane that the card opened reads the submission and refreshes the weekly list after a hand-in', async ({
+  context,
+  page,
+  background,
+}) => {
+  const refreshes = await watchRefreshes(background);
+  const { canvas, state } = await open(context, page, background);
+  await preview(page, LAB_4).click();
+  // The first read of the assignment is its baseline.
+  await expect
+    .poll(
+      () =>
+        canvas.requests.filter((request) =>
+          request.path.includes('/courses/101/assignments/1004/submissions/self'),
+        ).length,
+    )
+    .toBeGreaterThan(0);
+  state.submitted = true;
+  const earlier = (await refreshes()).length;
+  await closeAssignment(page);
+  await expect
+    .poll(async () => (await refreshes()).length, { timeout: 8000 })
+    .toBeGreaterThan(earlier);
+  expect((await refreshes()).at(-1)).toBe('visible');
+});
+
+test('the buttons follow the switch of the assignment view, and an open pane stays', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { switchOff: true });
+  await expect(card(page).locator('[data-part="preview"]')).toHaveCount(0);
+  // The row looks as it does without the feature: no extra action.
+  await expect(rowOf(page, LAB_4).locator('.wr-item-actions')).toHaveCount(0);
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: true });
+  await expect(preview(page, LAB_4)).toBeVisible();
+  await preview(page, LAB_4).click();
+  await expect(preview(page, LAB_4)).toHaveAttribute('aria-pressed', 'true');
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  await expect(card(page).locator('[data-part="preview"]')).toHaveCount(0);
+  await expect(card(page).locator('li.is-open')).toHaveCount(0);
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: true });
+  await expect(preview(page, LAB_4)).toHaveAttribute('aria-pressed', 'true');
+  await expect(rowOf(page, LAB_4)).toHaveClass(/is-open/);
+});
+
+test('the side panel has no Preview button', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await expect(preview(page, LAB_4)).toBeVisible();
+  const panel = await context.newPage();
+  await openExtensionPage(panel, extensionUrl('sidepanel.html'));
+  await expect(doneBox(panel, QUIZ_3)).toBeVisible();
+  await expect(panel.locator('[data-part="preview"]')).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: /^Preview/ })).toHaveCount(0);
+  expect(canvas.unmatched).toEqual([]);
+});
+
+test('the pane and every frame go when another student signs in', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const scenario = buildScenario(SCENARIO_NOW);
+  let signedIn = scenario.self.id;
+  const { canvas } = await open(context, page, background, {
+    extra: [
+      {
+        path: '/api/v1/users/self/profile',
+        respond: () => ({ body: json({ ...scenario.profile, id: signedIn }) }),
+      },
+      {
+        path: '/api/v1/users/self',
+        respond: () => ({ body: json({ ...scenario.self, id: signedIn }) }),
+      },
+    ],
+  });
+  await preview(page, LAB_4).click();
+  await preview(page, HOMEWORK_7).click();
+  await expect.poll(() => paneFrames(page).length).toBe(2);
+  signedIn = '9001';
+  // The owner starts at most two sign-in checks in 30 seconds, so the clock moves on.
+  await advanceBackgroundClock(background, 2 * 60_000);
+  await context.addCookies([
+    {
+      name: 'canvas_session',
+      value: 'student-b',
+      url: canvas.origin,
+      secure: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  // A side panel page asks for the state, which makes the owner check the new cookie.
+  const panel = await context.newPage();
+  await panel.goto(extensionUrl('sidepanel.html'));
+  await expect
+    .poll(() =>
+      panel.evaluate(async () => {
+        const api = (
+          globalThis as unknown as {
+            chrome: {
+              runtime: {
+                sendMessage(message: unknown): Promise<{ kind: string; userId?: string }>;
+              };
+            };
+          }
+        ).chrome;
+        const reply = await api.runtime.sendMessage({
+          type: 'weekrow:get-state',
+          request: { surface: 'panel', spanOffset: 0, scopeCourseId: null },
+        });
+        return reply.kind === 'ready' ? reply.userId : reply.kind;
+      }),
+    )
+    .toBe('9001');
+  await panel.close();
+  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  expect(paneFrames(page)).toHaveLength(0);
+  expect(await paddingRight(page)).toBe(0);
+  // The next student starts with no frame: a click makes a new one.
+  await preview(page, LAB_4).click();
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await expect.poll(() => paneFrames(page).length).toBe(1);
+});
+
+const FILE_PANE = '#tools-file-viewer';
+
+/** Adds a link that opens the file pane to the content of the page. */
+async function addFileLink(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const link = document.createElement('a');
+    link.id = 'page-file';
+    link.className = 'instructure_file_link';
+    link.href = '/courses/101/files/501';
+    link.textContent = 'notes.txt in the page';
+    link.style.cssText = 'display:block;margin:12px 24px';
+    document.querySelector('#content')!.prepend(link);
+  });
+}
+
+/**
+ * Clicks until the file pane opens. A click that comes early does nothing, and a click that opened
+ * the pane late is not repeated.
+ */
+async function openFilePane(page: Page, click: () => Promise<void>): Promise<void> {
+  const filePane = page.locator(FILE_PANE);
+  await expect(async () => {
+    if (!(await filePane.isVisible())) await click();
+    await expect(filePane).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 20_000 });
+  await expect((await pane(page)).locator('pre')).toHaveText(notes);
+}
+
+test('a file pane and a pane from the card cover each other in turn, and nothing overlaps', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background);
+  await addFileLink(page);
+  // File pane first, then Preview: the assignment pane shows over the file pane.
+  await openFilePane(page, () => page.locator('#page-file').click({ timeout: 2000 }));
+  await preview(page, LAB_4).click();
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await expect(page.locator(FILE_PANE)).toBeHidden();
+  const first = (await page.locator(PANE_HOST).boundingBox())!;
+  await expect.poll(() => paddingRight(page)).toBe(first.width);
+  // A file link inside the pane opens the file pane over it.
+  const frame = paneFrames(page)[0]!;
+  await openFilePane(page, () => frame.locator('#file').click({ timeout: 2000 }));
+  await expect(page.locator(PANE_HOST)).toBeHidden();
+  const second = (await page.locator(FILE_PANE).boundingBox())!;
+  await expect.poll(() => paddingRight(page)).toBe(second.width);
+  await expect(preview(page, LAB_4)).toHaveAttribute('aria-pressed', 'false');
+  // Closing the file pane shows the assignment pane again, with its frame.
+  await closePane(page);
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await expect(preview(page, LAB_4)).toHaveAttribute('aria-pressed', 'true');
+  expect(paneFrames(page)[0]).toBe(frame);
+  await expect.poll(() => paddingRight(page)).toBe(first.width);
+});
+
+test('a file link in the pane of the classic dashboard opens the file pane, and the dock stays aside', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    fixture: 'dashboard-card-view',
+    width: 1797,
+    height: 1074,
+  });
+  await preview(page, LAB_4).click();
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  const frame = paneFrames(page)[0]!;
+  await openFilePane(page, () => frame.locator('#file').click({ timeout: 2000 }));
+  await expect(page.locator(WEEKLY_DOCK)).toBeHidden();
+  await closePane(page);
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await expect(page.locator(WEEKLY_DOCK)).toBeHidden();
+  await closeAssignment(page);
+  await expect(page.locator(WEEKLY_DOCK)).toBeVisible();
+  expect(await paddingRight(page)).toBe(360);
+});
