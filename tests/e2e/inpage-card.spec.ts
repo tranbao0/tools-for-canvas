@@ -1054,18 +1054,19 @@ test.describe('the full list in the card', () => {
       expect(closed.background).toBe('rgba(0, 0, 0, 0)');
       expect(closed.angle).toBe(-90);
       await undated.click();
-      const opened = await look(undated);
-      expect(opened).toMatchObject({
-        ...selected,
-        count: selected.color,
-        radius: '6px',
-        angle: 180,
-      });
-      expect(opened.overhang).toBe(-8);
+      await expect
+        .poll(() => look(undated))
+        .toMatchObject({
+          ...selected,
+          count: selected.color,
+          radius: '6px',
+          angle: 180,
+        });
+      expect((await look(undated)).overhang).toBe(-8);
       // The other header keeps its closed look.
       expect((await look(done)).background).toBe('rgba(0, 0, 0, 0)');
       await done.click();
-      expect(await look(done)).toMatchObject({ ...selected, angle: 180 });
+      await expect.poll(() => look(done)).toMatchObject({ ...selected, angle: 180 });
       expect((await look(undated)).background).toBe('rgba(0, 0, 0, 0)');
       expect((await look(undated)).angle).toBe(-90);
       // The arrow is the icon of the sub-lists, not a text glyph.
