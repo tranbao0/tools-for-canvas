@@ -96,12 +96,7 @@ function doneSlot(
   return earlierWithWarning ? { group: 'done', lookAhead: false } : null;
 }
 
-function pastDueSlot(
-  due: Temporal.Instant,
-  state: ItemState,
-  item: Item,
-  context: PlacementContext,
-): Slot | null {
+function pastDueSlot(due: Temporal.Instant, item: Item, context: PlacementContext): Slot | null {
   if (compareInstants(due, context.horizonFor(item.courseId)) < 0) return null;
   return {
     group: 'past_due',
@@ -129,7 +124,7 @@ export function slotFor(
   // In a span that ended before today, work dated inside it stays on its day, so the span does
   // not look empty. Every other overdue item is in Past due, in any span.
   const staysOnItsDay = overdue && isInSpan(date, context) && isPastSpan(context);
-  if (overdue && !staysOnItsDay) return pastDueSlot(due, state, item, context);
+  if (overdue && !staysOnItsDay) return pastDueSlot(due, item, context);
   return isInSpan(date, context) || lookAhead
     ? { group: 'day', date: date.toString(), lookAhead }
     : null;

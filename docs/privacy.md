@@ -1,7 +1,7 @@
 # Privacy policy
 
 This policy covers the Tools for Canvas browser extension for Chrome, Microsoft Edge and Firefox.
-Last updated: 2026-11-05.
+Last updated: 2026-11-06.
 
 ## Summary
 

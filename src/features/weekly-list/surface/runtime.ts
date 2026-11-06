@@ -298,6 +298,8 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
    * The read after the last save tells what the storage holds, whether the save worked or not.
    */
   let saving = 0;
+  /** A press of "Mark all older done" is on its way. */
+  let markingOlder = false;
 
   function applySettings(value: Settings): void {
     if (settings !== null && sameSettings(settings, value)) return;
@@ -600,10 +602,16 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       sendAction({ kind: 'setDone', keys: [key], done }, done ? 'done' : undefined);
     },
     markAllOlderDone() {
-      if (base.kind !== 'ready') return;
+      // The list has not drawn the first press yet, so a second one would read its marks as the
+      // state to go back to, and Undo could not restore the items.
+      if (markingOlder || base.kind !== 'ready') return;
       const past = base.view.groups.find((group) => group.kind === 'past_due');
       const keys = (past ? olderToMarkDone(past) : []).map((item) => item.key);
-      if (keys.length > 0) sendAction({ kind: 'setDone', keys, done: true }, 'done');
+      if (keys.length === 0) return;
+      markingOlder = true;
+      void sendAction({ kind: 'setDone', keys, done: true }, 'done').finally(() => {
+        markingOlder = false;
+      });
     },
     undo() {
       const last = notice;
