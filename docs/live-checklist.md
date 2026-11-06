@@ -376,6 +376,12 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
     Expect: the line "No more people" shows, and the number of rows matches the number that Canvas counts for the filters.
     Choose a course in the Course filter, then a role in the Role filter.
     Expect: the list shows only the people of that course and role from its top, and the list of "All Courses" and "All Roles" comes back with its rows when you choose them again.
+    Scroll the area part of the way down, then type a name or a course name in "Search people".
+    Expect: the line under the row counts the people that it has looked at, then says "N results", the matches in the name and the course are marked, and the card does not change its height.
+    Clear the search with the X or Escape.
+    Expect: the list comes back at the place where you left it, and the focus stays in the field.
+    Type a query, then choose a course in the Course filter.
+    Expect: the query stays in the field, and the results are those of that course.
     Press the message button of a person.
     Expect: a new tab opens the compose page of Canvas with that person and that course filled in, and the dashboard stays where it is.
     Use the dark theme of the dashboard.

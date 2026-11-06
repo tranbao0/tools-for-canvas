@@ -285,6 +285,121 @@ describe('the list replaces the one of Canvas', () => {
   });
 });
 
+/** Types a query into the search field of a host, as the student does. */
+function type(searchHost: HTMLElement, query: string): void {
+  const input = searchHost.shadowRoot!.querySelector<HTMLInputElement>('.wr-a-input')!;
+  act(() => {
+    input.value = query;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+const lineOf = (searchHost: HTMLElement): string | undefined =>
+  searchHost.shadowRoot!.querySelector('.wr-a-res')?.textContent ?? undefined;
+const namesOf = (searchHost: HTMLElement): (string | null)[] =>
+  [...searchHost.shadowRoot!.querySelectorAll('article')].map((node) =>
+    node.getAttribute('aria-label'),
+  );
+
+describe('the search', () => {
+  const rows = [
+    ...many(24),
+    person('30', { name: 'Zed Quill', enrollments: [] }),
+    person('31', {
+      name: 'Ada Quill',
+      enrollments: [{ courseId: '102', courseName: 'MATH 221', role: 'ta' }],
+    }),
+  ];
+
+  it('says how many people it has looked at while a page is on its way, then counts the results', async () => {
+    await start(rows);
+    const release: (() => void)[] = [];
+    const before = pages().length;
+    // The pages after the first wait until the test lets them go.
+    const gated = context.send;
+    context.send = vi.fn(async (message) => {
+      await new Promise<void>((resolve) => release.push(resolve));
+      return gated(message);
+    });
+    type(host()!, 'quill');
+    await flush();
+    expect(lineOf(host()!)).toBe('Searching… looked at 10 people');
+    expect(namesOf(host()!)).toEqual([]);
+
+    // The two pages that follow come one after another.
+    for (let page = 0; page < 2; page++) {
+      release.shift()?.();
+      await settle();
+    }
+    expect(pages()).toHaveLength(before + 2);
+    expect(lineOf(host()!)).toBe('2 results');
+    expect(namesOf(host()!)).toEqual(['Zed Quill', 'Ada Quill']);
+    // The role is not searched, and a person with no course is found by the name.
+    type(host()!, 'Teacher');
+    expect(namesOf(host()!)).toEqual([]);
+    expect(shadow('.wr-a-scroll')?.textContent).toBe('No results');
+  });
+
+  it('marks the match with a text node of a mark, and never with markup', async () => {
+    await start(rows);
+    type(host()!, 'ada <b>');
+    await settle();
+    expect(shadow('.wr-a-scroll')?.textContent).toBe('No results');
+    type(host()!, 'ada 221');
+    await settle();
+    const article = shadow('article')!;
+    expect([...article.querySelectorAll('mark')].map((node) => node.textContent)).toEqual([
+      'Ada',
+      '221',
+    ]);
+    expect(article.querySelector('.wr-p-role mark')).toBeNull();
+    expect(article.querySelector('b')).toBeNull();
+  });
+
+  it('keeps a query for each widget and shares the rows that the list loaded', async () => {
+    const first = document.querySelector<HTMLElement>(WIDGET)!;
+    const second = first.cloneNode(true) as HTMLElement;
+    first.after(second);
+    await start(rows);
+    const hosts = [...document.querySelectorAll<HTMLElement>(`${WIDGET} [data-wr-list]`)];
+    expect(hosts).toHaveLength(2);
+    expect(pages()).toHaveLength(1);
+
+    type(hosts[0]!, 'ada');
+    await settle();
+    expect(namesOf(hosts[0]!)).toEqual(['Ada Quill']);
+    expect(namesOf(hosts[1]!)).toHaveLength(rows.length);
+    expect(lineOf(hosts[1]!)).toBe('');
+    type(hosts[1]!, 'zed');
+    await settle();
+    expect(namesOf(hosts[0]!)).toEqual(['Ada Quill']);
+    expect(namesOf(hosts[1]!)).toEqual(['Zed Quill']);
+    // Both widgets looked at the same list: its pages were asked for once.
+    expect(pages().map((message) => message['offset'])).toEqual([0, 10, 20]);
+  });
+
+  it('keeps the matches when a page fails, and goes on from that page after Retry', async () => {
+    await start(rows);
+    server.failPages = true;
+    type(host()!, 'person');
+    await settle();
+    expect(shadow('.wr-a-scroll')?.textContent).toContain("Couldn't load more people.");
+    expect(namesOf(host()!)).toHaveLength(10);
+    expect(lineOf(host()!)).toBe('');
+    server.failPages = false;
+    shadow('.wr-x-link')!.click();
+    await settle();
+    expect(lineOf(host()!)).toBe('24 results');
+    expect(pages().at(-1)).toMatchObject({ offset: 20 });
+  });
+
+  it('draws no search row where Canvas shows its own list', async () => {
+    setFilter('role-filter-select', 'Alle Rollen');
+    await start(rows);
+    expect(document.querySelector('.wr-a-input')).toBeNull();
+    expect(host()).toBeNull();
+  });
+});
+
 describe('the fallback', () => {
   it('leaves Canvas its own list when the data has no course, and marks nothing', async () => {
     context.data = dashboardData([]);

@@ -308,6 +308,226 @@ test.describe('people: the filters of Canvas', () => {
   });
 });
 
+const field = (page: Page): Locator => page.locator(`${LIST} .wr-a-input`);
+const resultLine = (page: Page): Locator => page.locator(`${LIST} .wr-a-res [role="status"]`);
+const marks = (page: Page): Promise<string[]> =>
+  page.locator(`${LIST} mark`).evaluateAll((nodes) => nodes.map((node) => node.textContent ?? ''));
+const hartley = (courseId?: string) =>
+  PEOPLE.filter(
+    (person) =>
+      person.name.includes('Hartley') &&
+      (courseId === undefined || person.enrollments.some((item) => item.courseId === courseId)),
+  );
+
+test.describe('people: the search', () => {
+  test('look for a name on the pages that follow, and ask for no page twice', async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await open(context, page);
+    await expect(rows(page)).toHaveCount(10);
+    await expect(field(page)).toHaveAttribute('placeholder', 'Search people');
+    await expect(field(page)).toHaveAccessibleName('Search people');
+    await expect(page.locator(`${LIST} .wr-a-cal`)).toHaveCount(0);
+    expect(queries(canvas)).toHaveLength(1);
+
+    // The person is on the third page, so the search loads the pages one after another.
+    await field(page).pressSequentially('Instructor 25');
+    await expect(resultLine(page)).toHaveText('1 result');
+    await expect(rows(page)).toHaveCount(1);
+    await expect(rows(page).first()).toHaveAttribute('aria-label', 'Instructor 25 Hartley');
+    expect(queries(canvas).map((variables) => variables['after'])).toEqual([
+      null,
+      btoa('10'),
+      btoa('20'),
+    ]);
+
+    // More typing and a new query ask for nothing: the list holds all of its pages.
+    await field(page).fill('Hartley');
+    await expect(resultLine(page)).toHaveText(`${hartley().length} results`);
+    expect(queries(canvas)).toHaveLength(3);
+  });
+
+  test('mark the match in the name and in the course, and leave the role alone', async ({
+    context,
+    page,
+  }) => {
+    await open(context, page);
+    await expect(rows(page)).toHaveCount(10);
+    await field(page).fill('maya OKAFOR');
+    await expect(resultLine(page)).toHaveText('1 result');
+    expect(await marks(page)).toEqual(['Maya', 'Okafor']);
+    await expect(rows(page).first().locator('.wr-p-name mark')).toHaveCount(2);
+
+    const calculus = PEOPLE.filter((p) => p.enrollments.some((e) => e.courseId === '102'));
+    await field(page).fill('calculus');
+    await expect(resultLine(page)).toHaveText(`${calculus.length} results`);
+    await expect(rows(page).first().locator('.wr-p-course mark')).toHaveText('Calculus');
+    expect(new Set(await marks(page))).toEqual(new Set(['Calculus']));
+    // The marks are text nodes of the page: a query with markup is only text.
+    await field(page).fill('<b>x</b>');
+    await expect(resultLine(page)).toHaveText('0 results');
+    await expect(page.locator(`${LIST} b`)).toHaveCount(0);
+
+    // The role is not searched.
+    await field(page).fill('Teaching');
+    await expect(feed(page)).toContainText('No results');
+    await expect(rows(page)).toHaveCount(0);
+  });
+
+  test('keep the query when a filter changes, and search in the new filter', async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await open(context, page);
+    await expect(rows(page)).toHaveCount(10);
+    await field(page).fill('Hartley');
+    await expect(resultLine(page)).toHaveText(`${hartley().length} results`);
+
+    await setFilter(page, 'course-filter-select', 'MATH 221: Calculus II');
+    await expect(field(page)).toHaveValue('Hartley');
+    await expect(resultLine(page)).toHaveText(`${hartley('102').length} results`);
+    await expect(rows(page)).toHaveCount(hartley('102').length);
+    // The list of the pair holds under 10 people, so one page served it.
+    expect(queries(canvas).filter((v) => String(v['courseIds']) === '102')).toHaveLength(1);
+
+    await setFilter(page, 'role-filter-select', 'Teacher');
+    await expect(field(page)).toHaveValue('Hartley');
+    const teachers = hartley('102').filter((p) =>
+      p.enrollments.some((e) => e.courseId === '102' && e.type === 'TeacherEnrollment'),
+    );
+    await expect(resultLine(page)).toHaveText(`${teachers.length} results`);
+    await expect(rows(page)).toHaveCount(teachers.length);
+  });
+
+  test('show a failed page with Retry, keep the matches, and go on from that page', async ({
+    context,
+    page,
+    background,
+  }) => {
+    let calls = 0;
+    const { canvas } = await open(context, page, {
+      routes: [
+        {
+          method: 'POST',
+          path: '/api/graphql',
+          respond: (request) => {
+            if (!(request.postData ?? '').includes('WeekrowPeople')) return { body: { data: {} } };
+            calls += 1;
+            return calls === 2
+              ? { status: 500, body: 'Server error' }
+              : {
+                  body: peoplePageAnswer(
+                    request.postData,
+                    PEOPLE,
+                    (courseId) => COURSE_NAMES[courseId] ?? null,
+                  ) as never,
+                };
+          },
+        },
+      ],
+    });
+    await expect(rows(page)).toHaveCount(10);
+    await requestsQuiet(page, canvas.requests, background);
+    await field(page).fill('Hartley');
+    await expect(feed(page)).toContainText("Couldn't load more people.");
+    // The matches of the first page stay: 5 of the first 10 people.
+    await expect(rows(page)).toHaveCount(5);
+    await feed(page).getByRole('button', { name: 'Retry' }).click();
+    await expect(resultLine(page)).toHaveText(`${hartley().length} results`);
+    await expect(rows(page)).toHaveCount(hartley().length);
+    expect(queries(canvas).map((variables) => variables['after'])).toEqual([
+      null,
+      btoa('10'),
+      btoa('10'),
+      btoa('20'),
+    ]);
+  });
+
+  test('show No results, and keep the card where it is while the search comes and goes', async ({
+    context,
+    page,
+  }) => {
+    await open(context, page);
+    await expect(rows(page)).toHaveCount(10);
+    const widget = page.locator(WIDGET);
+    const before = await heightOf(widget);
+    const area = await heightOf(feed(page));
+    const bottom = () =>
+      widget.evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
+    const below = await bottom();
+
+    await field(page).fill('zzzz');
+    await expect(feed(page)).toContainText('No results');
+    await expect(resultLine(page)).toHaveText('0 results');
+    expect(await heightOf(widget)).toBe(before);
+    await field(page).fill('Hartley');
+    await expect(resultLine(page)).toHaveText(`${hartley().length} results`);
+    expect(await heightOf(widget)).toBe(before);
+    // The area keeps its height as far as it can: the result line takes at most its own line.
+    expect(await heightOf(feed(page))).toBeGreaterThan(area - 24);
+    expect(await heightOf(feed(page))).toBeLessThanOrEqual(area);
+    await field(page).fill('');
+    await expect(resultLine(page)).toHaveText('');
+    expect(await heightOf(widget)).toBe(before);
+    expect(await heightOf(feed(page))).toBe(area);
+    expect(await bottom()).toBe(below);
+  });
+
+  test('clear with Escape or the X, bring the place back, and keep the focus in the field', async ({
+    context,
+    page,
+  }) => {
+    await open(context, page);
+    await expect(rows(page)).toHaveCount(10);
+    await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(rows(page)).toHaveCount(20);
+    await feed(page).evaluate((el) => (el.scrollTop = 400));
+    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(400);
+
+    await field(page).fill('Hartley');
+    await expect(resultLine(page)).toHaveText(`${hartley().length} results`);
+    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(0);
+    await page.locator(`${LIST} .wr-a-x`).click();
+    await expect(field(page)).toHaveValue('');
+    await expect(field(page)).toBeFocused();
+    await expect(resultLine(page)).toHaveText('');
+    await expect(rows(page).first()).toHaveAttribute('aria-label', 'Dr. Maya Okafor');
+    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(400);
+
+    await field(page).fill('Okafor');
+    await expect(rows(page)).toHaveCount(1);
+    await field(page).press('Escape');
+    await expect(field(page)).toHaveValue('');
+    await expect(field(page)).toBeFocused();
+    await expect(rows(page).first()).toBeAttached();
+    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(400);
+  });
+
+  test('keep the wheel pull of the area over the results', async ({ context, page }) => {
+    await open(context, page, { height: 900 });
+    await expect(rows(page)).toHaveCount(10);
+    await field(page).fill('Hartley');
+    await expect(resultLine(page)).toHaveText(`${hartley().length} results`);
+    await page.evaluate(() => {
+      const filler = document.createElement('div');
+      filler.style.height = `${window.innerHeight * 2}px`;
+      document.body.append(filler);
+      const kept: string[] = [];
+      (window as unknown as { __kept: string[] }).__kept = kept;
+      window.addEventListener('wheel', (event) => kept.push(String(event.defaultPrevented)));
+    });
+    await feed(page).scrollIntoViewIfNeeded();
+    const box = (await feed(page).boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + Math.min(box.height, 300) / 2);
+    await page.mouse.wheel(0, -100);
+    // At the top of the results, the script keeps the wheel from the page.
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __kept: string[] }).__kept))
+      .toEqual(['true']);
+  });
+});
+
 test.describe('people: the fallback', () => {
   test('leave Canvas its own list for a session with no student course', async ({
     context,
