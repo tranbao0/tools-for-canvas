@@ -107,16 +107,38 @@ function ScrollRegion(props: {
 
 /**
  * The list area that shows the open bottom group in place of the day list. The element stays in
- * the card and is hidden while no group is open. A group starts at the top, also for another span.
+ * the card and is hidden while no group is open. A group starts at the top, also for another
+ * span, and the same group in the same span gets its position back after the settings or the
+ * task form replaced the list.
  */
-function GroupArea(props: { kind: string | null; resetKey: string; children: ComponentChildren }) {
+function GroupArea(props: {
+  kind: string | null;
+  memory: ScrollMemory;
+  resetKey: string;
+  children: ComponentChildren;
+}) {
   const ref = useRef<HTMLDivElement>(null);
+  const { memory } = props;
   usePull(ref, undefined, false, props.kind !== null);
   useLayoutEffect(() => {
-    if (ref.current !== null) ref.current.scrollTop = 0;
-  }, [props.kind, props.resetKey]);
+    const element = ref.current;
+    if (element === null) return;
+    const key = props.kind === null ? '' : `${props.kind}:${props.resetKey}`;
+    if (memory.key !== key) {
+      memory.key = key;
+      memory.top = 0;
+    }
+    if (props.kind !== null && element.scrollTop !== memory.top) element.scrollTop = memory.top;
+  }, [memory, props.kind, props.resetKey]);
   return (
-    <div ref={ref} class="wr-group-area" hidden={props.kind === null}>
+    <div
+      ref={ref}
+      class="wr-group-area"
+      hidden={props.kind === null}
+      onScroll={(event) => {
+        if (!event.currentTarget.hidden) memory.top = event.currentTarget.scrollTop;
+      }}
+    >
       {props.children}
     </div>
   );
@@ -175,6 +197,8 @@ export function App(props: AppProps) {
   const openMemory = useRef<OpenMemory>(new Map());
   /** The scroll position of the Announcements tab. Each tab keeps its own (decision 24). */
   const announcementsScroll = useRef<ScrollMemory>({ top: 0, key: '' });
+  /** The scroll position of the open bottom group, which takes the place of the day list. */
+  const groupScroll = useRef<ScrollMemory>({ top: 0, key: '' });
   const saved = props.settings?.value;
   const rowSize = saved?.rowSize ?? DEFAULT_SETTINGS.rowSize;
   const minimized = surface === 'inpage' && saved?.minimized === true;
@@ -267,7 +291,11 @@ export function App(props: AppProps) {
         rootRef={rootRef}
         scrollMemory={
           surface === 'inpage'
-            ? { tasks: scrollMemory.current, announcements: announcementsScroll.current }
+            ? {
+                tasks: scrollMemory.current,
+                announcements: announcementsScroll.current,
+                group: groupScroll.current,
+              }
             : null
         }
         announcements={props.announcements}
@@ -449,7 +477,7 @@ function ReadyView(props: {
   actions: Actions;
   rootRef: RefObject<HTMLDivElement | null>;
   /** The scroll position of each tab, for the in-page list. The side panel scrolls as a page. */
-  scrollMemory: Record<ListTab, ScrollMemory> | null;
+  scrollMemory: Record<ListTab | 'group', ScrollMemory> | null;
   /** The Announcements tab, or `undefined` on a surface without the tabs. */
   announcements: AppProps['announcements'];
   /** The saved settings, or `undefined` until they load. */
@@ -777,8 +805,8 @@ function ReadyView(props: {
         aria-labelledby={ann === undefined ? undefined : tabId(tabIds, tab)}
       >
         {scrolling}
-        {surface === 'inpage' && tab === 'tasks' && (
-          <GroupArea kind={shownGroup} resetKey={spanKey}>
+        {props.scrollMemory !== null && tab === 'tasks' && (
+          <GroupArea kind={shownGroup} memory={props.scrollMemory.group} resetKey={spanKey}>
             {shownGroup !== null && (
               <GroupView
                 key={shownGroup}

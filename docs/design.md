@@ -603,6 +603,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     When the last row of an open group leaves, for example when the student unchecks the last Done item, focus goes to the heading of the group.
     When the last row of the day list leaves, focus goes to the part of the switch that is on.
   - A group starts at the top of the list area, also for another span.
+    The same group of the same span keeps its scroll position over the settings, the task form and a minimize, as the day list does.
     The day list keeps its scroll position while a group is open and gets it back on To do.
     The scroll positions stay when the card moves.
   - The day list keeps at least 128 px.
