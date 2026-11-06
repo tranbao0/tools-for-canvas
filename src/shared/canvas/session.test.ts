@@ -61,6 +61,13 @@ it('tries the salt again after a failed read', async () => {
   expect(await sessionFingerprint(ORIGIN)).toMatch(/^canvas_session:[a-f0-9]{64}$/);
 });
 
+it('rejects when the cookie store cannot be read', async () => {
+  const { sessionFingerprint } = await load();
+  const cookie = vi.spyOn(browser.cookies, 'get');
+  cookie.mockRejectedValueOnce(new Error('store denied'));
+  await expect(sessionFingerprint(ORIGIN)).rejects.toThrow('store denied');
+});
+
 it('lets only a tab in the default store use cached data', async () => {
   const { surfaceUsesRequestStore } = await load();
   stores({ id: '0', tabIds: [4] }, { id: '1', tabIds: [9] });
