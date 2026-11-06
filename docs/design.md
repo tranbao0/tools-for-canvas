@@ -1490,7 +1490,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | Announcements (decision 24) | `GET /api/v1/announcements?context_codes[]=course_:id...&start_date=...&end_date=...&active_only=true&per_page=100` | A surface with the Announcements tab asks, and the list is missing or older than 60 seconds; one request for each 20 courses |
 | Announcement message | `GET /api/v1/courses/:id/discussion_topics/:id` | The student opens a row (decision 22 and 24) |
 | Announcement page of the dashboard widget (decision 22) | `POST /api/graphql`, query `WeekrowAnnouncements` (`discussionParticipantsConnection`, a read, no mutation) | The list of the widget loads 10 rows, and 10 more when the end of its scroll area comes near; the search by topic loads pages of 100, up to 20, once for the page view |
-| People page of the dashboard widget (decision 22) | `POST /api/graphql`, query `WeekrowPeople` (`courseInstructorsConnection`, a read, no mutation, no email) | The list of the widget loads 10 people, and 10 more when the end of its scroll area comes near; one request for each page of each pair of course and role, once for the page view |
+| People page of the dashboard widget (decision 22) | `POST /api/graphql`, query `WeekrowPeople` (`courseInstructorsConnection`, a read, no mutation, no email) | The list of the widget loads 10 people, and 10 more when the end of its scroll area comes near, and a query in the search row loads the rest of the pages of the pair; one request for each page of each pair of course and role, once for the page view |
 | Announcement range of the dashboard widget (decision 22) | `GET /api/v1/announcements?context_codes[]=course_:id...&start_date=yyyy-mm-dd&end_date=yyyy-mm-dd&active_only=true&per_page=100` | The student sets From or To in the search by date; one request for each 20 courses of the session |
 | Announcement read mark | `PUT` and `DELETE /api/v1/courses/:id/discussion_topics/:id/read` | The student presses "Mark as read" or Undo, or clicks the read control of the dashboard widget (decision 22), with the sign-in check before it |
 
@@ -2064,7 +2064,7 @@ The cache writes of the weekly list follow the cookie rule of decision 11, and t
 | Announcements in place | One steady list with infinite scroll replaces the list of the widget: a message opens in its row, the card keeps its height, and a course filter, a search by topic and a search by date join the read filter |
 | All course grades | A grade card for every course, not only six |
 | Steady page buttons | One page navigator with nine fixed places for the paged widgets |
-| People list | The same steady list with infinite scroll replaces the list and the pager of the People widget: the card keeps its height, the Course filter and the Role filter stay Canvas's own, and each person shows every course and role on its own line |
+| People list | The same steady list with infinite scroll replaces the list and the pager of the People widget: the card keeps its height, the Course filter and the Role filter stay Canvas's own, a search by name and course joins them, and each person shows every course and role on its own line |
 
 **Facts.**
 They come from the source of the widget package `@instructure/platform-widget-dashboard`, version 16.2.0, and from canvas-lms at commit 1c9f0bb [10] [13].
@@ -2434,8 +2434,26 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The Announcements fix reads any other text as All, and this fix does not, because a list for the wrong person group is worse than Canvas's own list.
    - The card keeps its height, as in the approved mockup of 2026-11-05.
      Below the filters the fix draws a host with a shadow root that holds one scroll area, with the rules of choice 1: `overflow-y: auto`, the default `overscroll-behavior`, a fixed height and the focus stop.
-     The height is `max(20rem, min(22rem, calc(100vh - 14rem)))`, which is 352 px in a window of 1,000 px.
-     The People widget has no search row, so the host is the scroll area alone.
+     The scroll area keeps the height `max(20rem, min(22rem, calc(100vh - 14rem)))`, which is 352 px in a window of 1,000 px, while the search row has no result line under it.
+     The host is the search row (2rem and a margin of 0.5rem) above the scroll area, so its fixed height is that number plus 2.5rem, as in the Announcements widget.
+     The result line takes its own height from the scroll area, and the card and the widgets below it do not move.
+   - The search row has the look and the classes of the one of Announcements (`wr-a-search`, `wr-a-field`, `wr-a-input`, `wr-a-x`), with no date button.
+     The placeholder and the accessible name are "Search people", and the clear button is named "Clear the people search".
+     Canvas's `courseInstructorsConnection` has no search argument (`query_type.rb`), so the search runs in the page over the rows that the list loaded.
+     It looks in the name and in the course names of a person, and not in the role.
+     It uses the rules of `announcementSearch.ts`: a query needs 2 characters, every word must match, and case does not matter.
+     The first query of a filter loads the rest of the pages of that filter, one after another, through the shared store, and stops when the list has no next page.
+     A list that holds all its pages loads nothing more, and more typing starts no request.
+     While pages load, the line under the row says "Searching… looked at N people" and the matches that the list holds show.
+     When the search ends the line says "1 result" or "N results", and an empty result shows "No results".
+     A search loads its pages with no scroll, so a page that fails shows in that line: "The search stopped after N people." with a Retry, above the matches that the list holds.
+     The query belongs to the widget as the page draws it, as in Announcements, so it goes when React replaces the widget or when Canvas's own list takes over.
+     Each match in the name and in a course name is a `<mark>` text node, never markup.
+     Escape in the field and the X clear the query, the list shows as it was at the place where it was left, and the focus stays in the field.
+     A change of the Course filter or the Role filter keeps the query, and the search runs in the new filter.
+     A page that fails during a search shows the error line with Retry and keeps the matches, and Retry goes on from that page.
+     Each People widget keeps its own query, and the widgets share the loaded rows.
+     Where Canvas's own list shows, there is no search row.
    - A row shows the avatar (2.5rem: the image, or the initials on a color of the fixed set of choice 1), the name bold at 0.875rem, and at the right the message button (a square of 1.875rem with an envelope).
      Under the name, each course and role of the person stands on its own line.
      A person in several courses shows every course and role, with no toggle ("2 enrollments" of Canvas), because the list has the room.
