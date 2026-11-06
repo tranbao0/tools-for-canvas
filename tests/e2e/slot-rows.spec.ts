@@ -14,11 +14,13 @@ import {
   openCanvasPage,
   openExtensionPage,
   saveSettings,
+  saveTools,
   serveScenario,
   settledList,
   test,
 } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
+import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import { IDS } from '../fixtures/scenario';
 
 const HOST = '#weekrow-inpage > weekrow-list';
@@ -153,7 +155,7 @@ for (const rowSize of ['comfortable', 'compact'] as const) {
     const row = list.locator('.wr-item', { hasText: 'Homework 7' });
     await row.locator('[data-part="check"]').focus();
     const seen: string[] = [];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       seen.push(
         await row.evaluate((el) => {
           const active = (el.getRootNode() as ShadowRoot).activeElement as HTMLElement | null;
@@ -169,7 +171,8 @@ for (const rowSize of ['comfortable', 'compact'] as const) {
     expect(seen[1]).toBe('title');
     expect(seen[2]).toMatch(/^Go to course /);
     expect(seen[3]).toMatch(/confirm/i);
-    expect(seen[4]).toBe('skip');
+    expect(seen[4]).toBe('preview');
+    expect(seen[5]).toBe('skip');
   });
 }
 
@@ -299,6 +302,8 @@ async function openPlain(
   path = '/',
 ): Promise<Locator> {
   await saveSettings(background, { ...DEFAULT_SETTINGS, rowSize });
+  // The Preview button makes a row of an assignment taller. With its switch off, a row is as it was.
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
   const { canvas } = await serveScenario(context, [{ path, page: pageName }]);
   await page.setViewportSize({ width: 1440, height: 900 });
   await addCsrfCookie(context, canvas.origin);
