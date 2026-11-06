@@ -1255,6 +1255,8 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   The cookie comes from the store that the requests of the extension use: the default store of the browser (`0` on Chrome and Edge, `firefox-default` on Firefox).
   The owner does not take the store from `getAllCookieStores`, because that list holds only stores with an open tab.
   A tab in another store, such as a private window or a container, gets `cant_load` and never cached data.
+  The store check is the first step of every message that comes from a tab, before any state branch, so the tab gets `cant_load` also while the cache has no session yet.
+  Its Retry, its refresh and its page load start no request.
   It causes no check and no sign-out.
   The router passes the tab of the sender, and the owner asks the browser which store lists the tab.
   A surface without a tab, such as the side panel, uses the default store.

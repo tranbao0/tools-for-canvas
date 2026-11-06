@@ -230,10 +230,11 @@ export interface DataOwner {
   resumeDeletes(): Promise<void>;
   /** `tabId` is the tab of the surface, when it has one. */
   getState(request: SurfaceRequest, tabId?: number): Promise<StateReply>;
-  refresh(reason: RefreshReason): Promise<RefreshResult>;
+  /** `tabId` is the tab of the surface, when it has one. A tab in another cookie store causes no request. */
+  refresh(reason: RefreshReason, tabId?: number): Promise<RefreshResult>;
   trigger(reason: BrowserTrigger): Promise<void>;
-  /** A page of `origin` loaded. Only the saved Canvas counts. */
-  pageLoaded(origin: string): Promise<void>;
+  /** A page of `origin` loaded in the tab `tabId`. Only the saved Canvas counts, and only in the request store. */
+  pageLoaded(origin: string, tabId?: number): Promise<void>;
   /**
    * The detector found Canvas on a page of `origin`. Saves the origin when no address is saved
    * yet and it may be saved without asking (an `instructure.com` host). Resolves with:
@@ -3457,16 +3458,17 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const offer = offerForSurface(await store.offer.getValue(), origin, request.surface);
     if (origin === null) return { kind: 'not_set_up', offer };
     if (!(await deps.hasAccess(origin))) return { kind: 'no_access', origin, offer };
+    const cantLoad = (offline: boolean): StateReply => ({
+      kind: 'cant_load',
+      cacheCheckFailed: true,
+      origin,
+      offline,
+      offer,
+    });
+    // A tab in another cookie store never gets a list, whether the cache has a session or not.
+    if (!(await surfaceMayRead(tabId))) return cantLoad(false);
     if (!cacheBelongsTo(origin) || cache === null) return { kind: 'loading' };
     if (cache.session !== null) {
-      const cantLoad = (offline: boolean): StateReply => ({
-        kind: 'cant_load',
-        cacheCheckFailed: true,
-        origin,
-        offline,
-        offer,
-      });
-      if (!(await surfaceMayRead(tabId))) return cantLoad(false);
       // A cache that the check cleared, for a sign-out or another student, falls through.
       if (!(await signedInStudentOwnsCache()) && cache?.session != null) {
         if (origin !== knownOrigin) return { kind: 'loading' };
@@ -3564,8 +3566,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     },
     getState,
 
-    async refresh(reason) {
+    async refresh(reason, tabId) {
       await ready();
+      // A tab in another cookie store causes no request, as for the routes that read.
+      if (!(await surfaceMayRead(tabId))) return NO_RETRY;
       switch (reason) {
         case 'visible':
         case 'timer':
@@ -3591,9 +3595,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       await applyTrigger(reason);
     },
 
-    async pageLoaded(origin) {
+    async pageLoaded(origin, tabId) {
       await ready();
-      if (origin !== (await savedOrigin())) return;
+      if (origin !== (await savedOrigin()) || !(await surfaceMayRead(tabId))) return;
       await applyTrigger('page_loaded');
       // A page load is the first sign of a sign-out or of another student. A surface that shows
       // the list asks again, and the cookie check ends the list when the cookie is not the one

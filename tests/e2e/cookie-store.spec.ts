@@ -59,3 +59,50 @@ test('a cookie store that cannot be read on a cold start shows the error with Re
   await expect(doneBox(page, 'Quiz 3: Cell membranes')).toBeVisible();
   await settledList(page);
 });
+
+type Stores = { getAllCookieStores: () => Promise<{ id: string; tabIds: number[] }[]> };
+
+/** Puts every tab in a cookie store other than the one that the requests use, as a container does. */
+async function moveTabsToAnotherStore(worker: Worker): Promise<void> {
+  await worker.evaluate(() => {
+    (globalThis as unknown as { chrome: { cookies: Stores } }).chrome.cookies.getAllCookieStores =
+      async () => [{ id: '7', tabIds: [] }];
+  });
+}
+
+test('a tab in another cookie store gets the error at once, not a spinner, while the first load runs', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  // The first load stays open: the cache has no session yet, which is the cold start.
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const { canvas, scenario } = await serveScenario(context, [
+    {
+      path: '/api/v1/courses',
+      respond: async () => {
+        await held;
+        return { body: JSON.parse(JSON.stringify(scenario.courses)) };
+      },
+    },
+  ]);
+  await addCsrfCookie(context, canvas.origin);
+  await moveTabsToAnotherStore(background);
+  await saveAddress(background, canvas.origin);
+
+  try {
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await expect(page.getByRole('heading', { name: "Couldn't load your list" })).toBeVisible();
+    await expect(page.getByRole('status', { name: 'Loading your list' })).toHaveCount(0);
+  } finally {
+    release();
+  }
+  // The list of the default store never reaches the tab, also after the load ends.
+  await page.waitForTimeout(500);
+  await expect(page.getByRole('heading', { name: "Couldn't load your list" })).toBeVisible();
+  await expect(doneBox(page, 'Quiz 3: Cell membranes')).toHaveCount(0);
+});
