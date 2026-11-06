@@ -1,6 +1,7 @@
 /** The side list of page thumbnails (design decision 25). Each thumbnail draws when it comes near the view. */
 import { useEffect, useRef } from 'preact/hooks';
 import { t } from '../../../shared/ui/i18n';
+import { usePull } from '../../../shared/ui/pull';
 import type { PdfDocument } from './types';
 import { THUMBNAIL_WIDTH, ThumbnailRenderer } from './thumbnails';
 
@@ -13,6 +14,8 @@ export function Thumbnails(props: {
   onPick(page: number): void;
 }) {
   const list = useRef<HTMLDivElement>(null);
+  // The thumbnails are in the frame of the pane too: the wheel never moves the Canvas page.
+  usePull(list, undefined, true);
 
   useEffect(() => {
     const root = list.current;

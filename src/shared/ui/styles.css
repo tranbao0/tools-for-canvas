@@ -180,13 +180,17 @@
   scrollbar-width: thin;
 }
 
-/* At the end of a list the wheel pulls the rows a little (see pull.ts), and they spring back. */
+/*
+ * At the end of a list the wheel pulls the rows a little (see pull.ts), and they spring back. In
+ * the side panel the page scrolls, so the task panel is the list, and its notice stays.
+ */
 .wr-scroll > *,
-.wr-group-area > * {
+.wr-group-area > *,
+.wr-task-panel > :not(.wr-dock) {
   transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.wr-pulling > * {
+.wr-pulling > :not(.wr-dock) {
   transform: translateY(var(--wr-pull));
   transition: none;
 }
@@ -1935,7 +1939,7 @@ input:checked + .wr-switch-track > .wr-switch-knob {
     transition: none;
   }
 
-  .wr-pulling > * {
+  .wr-pulling > :not(.wr-dock) {
     transform: none;
   }
 }

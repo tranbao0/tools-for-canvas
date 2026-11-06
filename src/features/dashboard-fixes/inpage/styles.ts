@@ -87,7 +87,7 @@ export const FIXES_CSS = `
 .wr-a-res{flex:none;display:flex;justify-content:space-between;align-items:baseline;gap:.5rem;font-size:.75rem;color:var(--wr-secondary)}
 .wr-a-res>span:not(:empty),.wr-a-res>.wr-x-link{margin-bottom:.25rem}
 .wr-a-res .wr-x-link{margin-top:0;font-size:.75rem}
-.wr-a-scroll{box-sizing:border-box;flex:1 1 0;min-height:0;overflow-y:auto;overscroll-behavior:contain;border-top:.0625rem solid var(--wr-line)}
+.wr-a-scroll{box-sizing:border-box;flex:1 1 0;min-height:0;overflow-y:auto;border-top:.0625rem solid var(--wr-line)}
 .wr-a-row{display:grid;grid-template-columns:3.125rem minmax(0,1fr) auto;column-gap:.5rem;padding:.625rem .5rem .625rem 0;border-bottom:.0625rem solid var(--wr-line)}
 .wr-a-row[data-leaving]{overflow:hidden;pointer-events:none;height:0!important;padding-block:0;border-bottom-width:0;opacity:0;transition:height .26s cubic-bezier(.4,0,.2,1),padding-top .26s cubic-bezier(.4,0,.2,1),padding-bottom .26s cubic-bezier(.4,0,.2,1),border-bottom-width .26s cubic-bezier(.4,0,.2,1),opacity .16s linear}
 @media (prefers-reduced-motion:reduce){.wr-a-row[data-leaving]{transition:none}}
@@ -117,4 +117,7 @@ export const FIXES_CSS = `
 .wr-p-message:hover{background:color-mix(in srgb,currentColor 10%,var(--wr-msg-bg))}
 mark{background:#fdeeb5;color:#273540;padding:0 .0625rem;border-radius:.125rem}
 :host([data-wr-dark]) mark{background:#6b5810;color:#fff}
+.wr-a-scroll>*{transition:transform .24s cubic-bezier(.2,.8,.2,1)}
+.wr-a-scroll.wr-pulling>*{transform:translateY(var(--wr-pull));transition:none}
+@media (prefers-reduced-motion:reduce){.wr-a-scroll.wr-pulling>*{transform:none}}
 `;

@@ -19,6 +19,7 @@
 import type { ComponentChildren } from 'preact';
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { usePull } from '../../../shared/ui/pull';
 
 /** How many rows a list asks for each time. */
 export const LIST_PAGE = 10;
@@ -323,6 +324,7 @@ export interface ScrollListProps {
 export function ScrollList(props: ScrollListProps) {
   const scroll = useRef<HTMLDivElement>(null);
   const sentinel = useRef<HTMLDivElement>(null);
+  usePull(scroll);
   const { text, hasMore, loadingMore, failed, loadingFirst } = props;
   const onMore = useRef(props.onMore);
   onMore.current = props.onMore;

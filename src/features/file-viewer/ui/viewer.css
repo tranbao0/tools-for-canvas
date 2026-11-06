@@ -270,3 +270,18 @@ html:not([data-theme]) #app {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* At the end of the pages, the thumbnails, a text or an image the rows pull (see pull.ts). */
+.pv-scroll > *,
+.pv-thumbs > *,
+.fv-media > *,
+.fv-image-scroll > * {
+  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.pv-scroll.wr-pulling > *,
+.pv-thumbs.wr-pulling > *,
+.fv-media.wr-pulling > *,
+.fv-image-scroll.wr-pulling > * {
+  transition: none;
+}

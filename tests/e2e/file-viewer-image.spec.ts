@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { shootPulled } from './support/pull';
 import { test, expect } from './support/weekrow';
 import {
   openCoursePage,
@@ -62,6 +63,58 @@ test('image zoom, early blob cleanup and file card', async ({ context, page, bac
     await page.locator('#content').getByRole('link', { name: 'Syllabus', exact: true }).click();
     await expect(frame.locator('[data-part="card-name"]')).toHaveText('Syllabus.docx');
     await expect(frame.getByRole('link', { name: 'Download', exact: true })).toBeVisible();
+  } finally {
+    await host.close();
+  }
+});
+
+test('the wheel over an image that fits pulls it, and never moves the Canvas page', async ({
+  context,
+  page,
+  background,
+}) => {
+  const host = await startFileHost({
+    '/photo': { body: readFileSync('tests/fixtures/files/image.png'), contentType: 'image/png' },
+  });
+  try {
+    await openCoursePage(context, page, background, undefined, [
+      {
+        path: '/files/43/download',
+        status: 302,
+        headers: { location: `${host.origin}/photo` },
+        body: '',
+      },
+    ]);
+    await openFirstFile(page, 'Read notes');
+    const frame = await pane(page);
+    await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
+    const image = frame.getByRole('img', { name: /Lecture photo/ });
+    await expect
+      .poll(() => image.evaluate((node: HTMLImageElement) => node.naturalWidth))
+      .toBe(640);
+    await page.evaluate(() => {
+      const filler = document.createElement('div');
+      filler.style.height = `${window.innerHeight * 3}px`;
+      document.body.append(filler);
+      window.scrollTo(0, 200);
+    });
+    const behind = await page.evaluate(() => window.scrollY);
+    expect(behind).toBeGreaterThan(100);
+    const area = frame.locator('.fv-image-scroll');
+    await frame.evaluate(() => {
+      const kept: string[] = [];
+      (window as unknown as { __kept: string[] }).__kept = kept;
+      window.addEventListener('wheel', (event) => kept.push(String(event.defaultPrevented)));
+    });
+    const box = (await area.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 200);
+    await expect
+      .poll(() => frame.evaluate(() => (window as unknown as { __kept: string[] }).__kept))
+      .toEqual(['true']);
+    await expect(area).not.toHaveClass(/wr-pulling/);
+    expect(await page.evaluate(() => window.scrollY)).toBe(behind);
+    expect(await shootPulled(area, 100, { file: 'image-file.png', of: page })).toBeGreaterThan(8);
   } finally {
     await host.close();
   }

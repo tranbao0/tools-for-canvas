@@ -64,13 +64,17 @@ async function pageY(page: Page): Promise<number> {
   return page.evaluate(() => window.scrollY);
 }
 
-/** Moves the mouse over the list and turns the wheel once. */
-async function wheel(page: Page, list: Locator, deltaY: number): Promise<void> {
+/** Moves the mouse over the middle of the part of the list that is on screen. */
+async function aim(page: Page, list: Locator): Promise<void> {
   const box = (await list.boundingBox())!;
   const { height } = page.viewportSize()!;
-  // The middle of the part of the list that is on screen.
   const top = Math.max(box.y, 0);
   await page.mouse.move(box.x + box.width / 2, (top + Math.min(box.y + box.height, height)) / 2);
+}
+
+/** Moves the mouse over the list and turns the wheel once. */
+async function wheel(page: Page, list: Locator, deltaY: number): Promise<void> {
+  await aim(page, list);
   await page.mouse.wheel(0, deltaY);
 }
 
@@ -249,6 +253,54 @@ test.describe('the wheel over a list of the card', () => {
     expect(seen.pull).toBeGreaterThan(8);
     expectOnlyRowsMoved(seen);
     expect(await pageY(page)).toBe(300);
+  });
+
+  test('leaves no pull behind on either list when the view changes between two wheel turns', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openCard(context, page, background, {
+      page: 'course-home',
+      settings: {},
+      pageOverflow: 150,
+    });
+    const card = inpageList(page);
+    const days = card.locator('.wr-scroll');
+    const group = card.locator('.wr-group-area');
+    await expect(days.locator('[data-row-key]').first()).toBeVisible();
+    // Only the first rows stay, so the day list has nothing to scroll.
+    await days.evaluate((el) => {
+      el.querySelectorAll<HTMLElement>('.wr-group').forEach((section, index) => {
+        if (index > 0) section.style.display = 'none';
+      });
+    });
+    expect(await days.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+    await scrollPage(page, 'end');
+    const parts = ['todo', 'no_due_date'].map((kind) =>
+      card.locator(`.wr-pinned [data-group="${kind}"] input`),
+    );
+
+    // Both lists fill the same slot, so one mouse position serves both. The turns come within
+    // 360 ms of each other, the time that a pulled list needs to spring back and settle.
+    await aim(page, days);
+    await parts[0]!.focus();
+    await page.mouse.wheel(0, 100);
+    await page.waitForTimeout(30);
+    await page.keyboard.press('ArrowRight');
+    await page.mouse.wheel(0, 100);
+    await page.waitForTimeout(30);
+    await page.keyboard.press('ArrowLeft');
+    await expect(days).toBeVisible();
+
+    // Both lists end clean: no class, no inline style, so the scroll bar and the rows are back.
+    for (const list of [days, group]) {
+      await expect
+        .poll(() => list.evaluate((el) => `${el.className}|${el.getAttribute('style') ?? ''}`), {
+          timeout: 2000,
+        })
+        .not.toMatch(/wr-pulling|overflow|--wr-pull/);
+    }
   });
 
   test('scrolls a long list in the middle, with no pull and no move of the page', async ({
