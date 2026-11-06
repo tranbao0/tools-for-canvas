@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nativeTodoHidden } from '../inpage/testing/fixtures';
 import { DEFAULT_SETTINGS, type Settings, type SurfaceState } from '../model/types';
 import { hiddenCourseView, noopActions, readyState } from '../ui/testing/mocks';
+import { offerPane, setShownPane } from '../../assignment-view/paneHub';
 import { createInpageView, mountInpageList } from './inpage';
 import type { SurfaceRuntime } from './runtime';
 import { HOST_RESET_CSS, SHADOW_HOST_NAME } from './shadowMount';
@@ -135,6 +136,49 @@ describe('mountInpageList', () => {
     expect(shadow.querySelectorAll('input[type="checkbox"]').length).toBeGreaterThan(0);
     expect(nativeTodoHidden()).toBe(true);
     expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  describe('the Preview buttons', () => {
+    const previews = (host: HTMLElement) =>
+      host.shadowRoot!.querySelectorAll('[data-part="preview"]').length;
+
+    it('shows no button until the assignment view offers its pane, and follows the offer', () => {
+      const { host } = setup();
+      expect(previews(host())).toBe(0);
+      const withdraw = offerPane(vi.fn());
+      expect(previews(host())).toBeGreaterThan(0);
+      withdraw();
+      expect(previews(host())).toBe(0);
+    });
+
+    it('presses the button of the row that the pane shows, and stops following when the list goes', () => {
+      const { host, dispose } = setup();
+      const withdraw = offerPane(vi.fn());
+      try {
+        const root = host().shadowRoot!;
+        expect(root.querySelector('[aria-pressed="true"]')).toBeNull();
+        const first = root.querySelector('[data-part="preview"]')!;
+        const key = first.closest('[data-row-key]')!.getAttribute('data-row-key')!;
+        expect(key).toMatch(/^assignment:/);
+        // The mock rows are of several courses, and each assignment id is used once.
+        const id = key.slice('assignment:'.length);
+        const pressed: number[] = [];
+        for (const course of ['101', '102', '103', '104', '105', '106']) {
+          setShownPane({ courseId: course, assignmentId: id });
+          pressed.push(root.querySelectorAll('[aria-pressed="true"]').length);
+        }
+        // Only the course of the row presses its button.
+        expect(pressed.filter((count) => count === 1)).toHaveLength(1);
+        expect(pressed.every((count) => count <= 1)).toBe(true);
+        dispose();
+        const before = root.innerHTML;
+        setShownPane(null);
+        expect(root.innerHTML).toBe(before);
+      } finally {
+        withdraw();
+        setShownPane(null);
+      }
+    });
   });
 
   it('keeps key presses in the list away from the page', () => {
