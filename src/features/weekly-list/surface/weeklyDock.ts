@@ -3,8 +3,9 @@
  *
  * The list sits in a dock on the right edge of the window, made with `createDock`, so it keeps its
  * place while the page scrolls. The minimize button of the list closes the dock and gives the room
- * back, and a tab stays on the edge. The file pane and the dock show one at a time: while a file
- * pane is open, the dock and its tab are hidden, and they come back in the state they had.
+ * back, and a tab stays on the edge. The file pane, the assignment pane and the dock show one at a
+ * time: while a pane is open, the dock and its tab are hidden, and they come back in the state they
+ * had.
  *
  * The container of the list is a light DOM child of the dock host, and a `<slot>` in the dock
  * shows it. So the list keeps its open shadow root and the place that the page selectors know.
@@ -14,7 +15,7 @@ import {
   createDock,
   DOCK_ATTRIBUTE,
   DOCK_CSS,
-  filePaneOpen,
+  paneInView,
   filePaneReported,
   leaseRoom,
   watchFilePane,
@@ -405,10 +406,11 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
     }
     tab.update(tabText(runtime.state()));
     const ready = settingsRead && toolsRead && !holding();
-    const file = filePaneOpen();
+    // The dock and the tab step aside for a pane on the right edge: the file pane or the assignment pane.
+    const covered = paneInView();
     const minimized = isMinimized();
-    const wantDock = ready && !minimized && !file;
-    const wantTab = ready && minimized && !file;
+    const wantDock = ready && !minimized && !covered;
+    const wantTab = ready && minimized && !covered;
     if (wantDock || wantTab) shownOnce = true;
     const hadFocus = focusInDock();
     // The tab takes its room before the dock gives its room back, and the dock takes its room

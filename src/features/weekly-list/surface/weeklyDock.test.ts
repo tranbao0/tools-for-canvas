@@ -231,6 +231,21 @@ function fileDock(width = 600): Dock {
   return made;
 }
 
+/** The assignment pane, which is a card dock like the file pane. */
+function assignmentDock(width = 480): Dock {
+  const made = createDock({
+    role: 'turn-in',
+    id: 'tools-turn-in',
+    label: 'Assignment',
+    resizeLabel: 'Resize assignment',
+    card: true,
+    width,
+    onResized: () => undefined,
+  });
+  docks.push(made);
+  return made;
+}
+
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i += 1) await Promise.resolve();
 }
@@ -471,6 +486,47 @@ describe('one dock at a time with the file pane', () => {
     expect(padding()).toBe('38px');
     expect(shown(tab())).toBe(true);
     expect(shown(host())).toBe(false);
+  });
+
+  it('hides the dock and its tab while the assignment pane shows, and brings them back when it closes', async () => {
+    html.style.setProperty('padding-right', '13px');
+    const { container, setMinimized } = await rig();
+    container.dataset['mark'] = 'same list';
+    const pane = assignmentDock(500);
+    pane.open();
+    expect(shown(host())).toBe(false);
+    expect(padding()).toBe('512px');
+    expect(container.dataset['mark']).toBe('same list');
+    pane.close();
+    expect(shown(host())).toBe(true);
+    expect(padding()).toBe('360px');
+    setMinimized(true);
+    expect(shown(tab())).toBe(true);
+    pane.open();
+    expect(shown(tab())).toBe(false);
+    expect(padding()).toBe('512px');
+    pane.close();
+    expect(shown(tab())).toBe(true);
+    expect(padding()).toBe('38px');
+  });
+
+  it('keeps the dock hidden while the assignment pane hides behind a file pane, and shows it when both are gone', async () => {
+    html.style.setProperty('padding-right', '13px');
+    await rig();
+    const pane = assignmentDock(500);
+    pane.open();
+    const file = fileDock(600);
+    file.open();
+    pane.setHidden(true);
+    expect(shown(host())).toBe(false);
+    file.setHidden(true);
+    pane.setHidden(false);
+    expect(shown(host())).toBe(false);
+    file.close();
+    expect(shown(host())).toBe(false);
+    pane.close();
+    expect(shown(host())).toBe(true);
+    expect(padding()).toBe('360px');
   });
 
   it('a resize of each dock changes only its own room', async () => {
