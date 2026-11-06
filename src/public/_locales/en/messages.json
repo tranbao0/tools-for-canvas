@@ -617,6 +617,12 @@
   "assignmentViewHelp": {
     "message": "On the Submission Details page of your own work, the instructions and your files replace the files area of Canvas. On the Assignments list, each row has a Preview button that opens the assignment in a pane. A change of this switch works without a reload."
   },
+  "settingFileViewer": {
+    "message": "File viewer"
+  },
+  "fileViewerHelp": {
+    "message": "Open Canvas files in a pane beside the page."
+  },
   "settingShowRings": {
     "message": "Show progress rings"
   },

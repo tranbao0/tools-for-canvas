@@ -191,12 +191,12 @@ export function SettingsFields(props: {
           </section>
           <section class="wr-setting">
             <Heading level={props.level} class="wr-setting-name">
-              File viewer
+              {t('settingFileViewer')}
             </Heading>
-            <p class="wr-setting-help">Open Canvas files in a pane beside the page.</p>
+            <p class="wr-setting-help">{t('fileViewerHelp')}</p>
             <ul class="wr-course-list">
               <li>
-                <label for={ids['fileViewer']}>File viewer</label>
+                <label for={ids['fileViewer']}>{t('settingFileViewer')}</label>
                 <Switch
                   id={ids['fileViewer']!}
                   checked={props.tools.fileViewer}

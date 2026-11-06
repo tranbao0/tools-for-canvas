@@ -109,8 +109,6 @@ const EDIT_MODE =
 export interface WidgetGrid {
   /** The element that holds the columns. */
   columns: HTMLElement;
-  /** The columns that Canvas renders, in order. At least one. */
-  canvasColumns: HTMLElement[];
   /**
    * The visible card of the first widget of each column, in the order of the columns. A column
    * without a widget has none. The card is the section of the widget, with its margin and shadow.
@@ -139,7 +137,7 @@ export function findWidgetGrid(doc: Document): WidgetGrid | null {
   );
   if (canvasColumns.length === 0) return null;
   const firstCards = canvasColumns.flatMap((column) => firstCardOf(column) ?? []);
-  return { columns, canvasColumns, firstCards };
+  return { columns, firstCards };
 }
 
 /** Whether the student is rearranging the widgets. The grid takes drops in this mode. */
