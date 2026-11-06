@@ -20,22 +20,46 @@ import {
 } from './support/weekrow';
 
 const QUIZ_3 = 'Quiz 3: Cell membranes';
+const MONTH: Settings = { ...DEFAULT_SETTINGS, span: { kind: 'month', days: 30 } };
 
 async function openCard(
   context: Parameters<typeof serveScenario>[0],
   page: Page,
   background: Parameters<typeof saveSettings>[0],
   settings: Settings,
-  height = 700,
+  options: { height?: number; manyDone?: boolean } = {},
 ): Promise<Locator> {
   await saveSettings(background, settings);
-  const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
+  const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }], {
+    extend(scenario) {
+      if (options.manyDone !== true) return;
+      // Every assignment but Quiz 3 is done, so the Done group has more rows than it shows.
+      const template = scenario.plannerOverrides[0]!;
+      scenario.plannerItems
+        .filter((item) => item.plannable_type === 'assignment' && item.plannable.title !== QUIZ_3)
+        .forEach((item, index) => {
+          const override = {
+            ...template,
+            id: String(99000 + index),
+            plannable_id: item.plannable_id,
+            assignment_id: item.plannable_id,
+            plannable_type: 'assignment' as const,
+            marked_complete: true,
+            dismissed: false,
+          };
+          item.planner_override = override;
+          scenario.plannerOverrides.push(override);
+        });
+    },
+  });
   await addCsrfCookie(context, canvas.origin);
   await saveAddress(background, canvas.origin);
-  await page.setViewportSize({ width: 1440, height });
+  await page.setViewportSize({ width: 1440, height: options.height ?? 700 });
   await openCanvasPage(page, canvas.origin);
   const list = inpageList(page);
-  await expect(doneBox(list, QUIZ_3)).toBeVisible();
+  // An open group hides the day list, so the first row of the group shows that the list is in.
+  if (settings.openGroup === null) await expect(doneBox(list, QUIZ_3)).toBeVisible();
+  else await expect(list.locator('.wr-group-area li').first()).toBeVisible();
   await settledList(page);
   return list;
 }
@@ -94,5 +118,31 @@ test.describe('what stays open when another view replaces the list', () => {
     await page.getByRole('button', { name: 'Add task' }).click();
     await page.getByRole('button', { name: 'Cancel' }).click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  test('the open Done group of the card keeps its scroll position over the settings', async ({
+    context,
+    page,
+    background,
+  }) => {
+    const list = await openCard(
+      context,
+      page,
+      background,
+      { ...MONTH, openGroup: 'done' },
+      { height: 500, manyDone: true },
+    );
+    const area = list.locator('.wr-group-area');
+    await expect(area).toBeVisible();
+    const canScroll = await area.evaluate((element) => element.scrollHeight > element.clientHeight);
+    expect(canScroll).toBe(true);
+    await area.evaluate((element) => {
+      element.scrollTop = 150;
+    });
+    await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(150);
+
+    await list.getByRole('button', { name: 'Settings' }).click();
+    await list.getByRole('button', { name: /Back/ }).click();
+    await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(150);
   });
 });
