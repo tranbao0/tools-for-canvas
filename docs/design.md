@@ -33,7 +33,7 @@ This extension has no account, no server of its own and no telemetry.
 | 3 | What counts as a task | All work the student must do; no calendar events or announcements (announcements are not tasks, and have their own tab, see decision 24) |
 | 4 | Where the list appears | In the Canvas page: a dock on the right edge of the classic dashboard and of List View, the right column of course home pages, and a card in the Course work slot on the widget dashboard (no card on its Courses tab); an optional side panel for other pages. The Announcements tab shows everywhere except the widget dashboard (decision 24) |
 | 5 | Site access and onboarding | Access to all sites, a tiny Canvas detector, and no setup step |
-| 6 | List layout and item placement | Items are placed by date and done state only, each in one group |
+| 6 | List layout and item placement | Items are placed by date and done state only, each in one group; a dismissed item is done, and Skip is merged into Done (2026-11-06) |
 | 7 | Item status | One set of status chips, the same on every item in every view |
 | 8 | What counts as done, and the rings | The Canvas planner rule, plus excused and graded work; rings count items |
 | 9 | The shown span, time zone and past-due work | A span the student picks (Day, Week, 2 weeks, Month or 2 to 90 days) that starts today in the Canvas time zone, a Past due group in every span back to the term start (at most 16 weeks), and a look-ahead for tomorrow |
@@ -338,7 +338,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The count is the open work that the rings count in the shown span: the ring total minus its done count, summed over the rings.
   On a span with the rings 2/4, the tab shows 2.
   The view holds the number (`openCount`), so the tab shows it also when the rings setting is off.
-  It leaves out reminders, items that the student skipped, Past due, No due date and the look-ahead rows of the next day.
+  It leaves out reminders, Past due, No due date and the look-ahead rows of the next day.
   The tab is a real button with `aria-expanded="false"` and a name such as "Open weekly list, Nov 4 - 10, 2 open".
   A click opens the dock at once.
   Focus goes to the tab after a minimize that the student made inside the dock, and to the minimize button after an open from the tab.
@@ -461,7 +461,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     Restoring the card goes back to the overlay.
     Release restores the inline styles of the wrapper and the section and removes the marker.
     The scroll regions of the card turn the browser's scroll anchoring off, and the layout code ignores the scroll event of a card that is not rendered, so a move of the card keeps the scroll positions.
-  - **The rows of the slot card** have the look of the items of the Course work widget: the check box, a block in the course color with the type icon, the text column, and a right column with the due pill and the row actions (Skip, Undo skip, Move to today) under it.
+  - **The rows of the slot card** have the look of the items of the Course work widget: the check box, a block in the course color with the type icon, the text column, and a right column with the due pill and the row actions (Preview, Move to today) under it.
     The Row size setting (decision 18) picks the size.
     The rows of the card are the only rows that it changes.
     - Comfortable: an 80 px block with a 32 px icon, a title of 14 px bold, the course name with "| Go to course", the points and the chips on their own lines, and a due pill with 8 px padding and 8 px corners.
@@ -550,7 +550,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The owner chose a short glance after a design review on 2026-10-28 measured the list at about 1,380 px.
   On 2026-10-30 the owner replaced it: the card has a fixed height, so a long list no longer pushes the page.
   - Every group and every item shows: Past due in full, Today, Tomorrow, the later days, No due date and Done.
-    "N older", "N skipped" and "Skip all older" work as in the side panel.
+    "N older" and "Mark all older done" work as in the side panel.
   - The glance had a "N past due" summary line, "Show N more" links and a link for the rest of the span.
     These are gone.
   - Outside the Course work slot, the card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
@@ -580,7 +580,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     No due date and Done show their group in the list area, in place of the day list.
     Which part is on (To do, No due date or Done) is one saved setting, the field `openGroup` of the stored settings (decision 18), where To do is no open group, the same way the minimized state is saved.
     So it is the same for every span, on every Canvas page, in every tab and on every surface that has the bottom bar: the card, the docked card of a course home page, the card in the Course work slot and the list in the dock of the classic dashboard.
-    The open group shows in the list area: a heading line with the group name at the left and its count at the right, in line with the day counts, then the rows of the group and its sub-lists such as "10 done" and "1 skipped".
+    The open group shows in the list area: a heading line with the group name at the left and its count at the right, in line with the day counts, then the rows of the group and its sub-lists such as "10 done".
     The list area has the height of the day list, so the card keeps its height, and it scrolls with the same thin scroll bar.
     There is no "Back to days" control: To do is the way back.
   - Stepping the span with the arrows, Today or the span picker keeps the group open, and the list area shows that group for the new span.
@@ -607,7 +607,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The scroll positions stay when the card moves.
   - The day list keeps at least 128 px.
     When the card is too low for 128 px and the bottom bar, the whole card scrolls instead.
-  - Keyboard access, focus rings, collapse memory, older and skipped lists, and Skip all older stay available.
+  - Keyboard access, focus rings, collapse memory, the older list, and Mark all older done stay available.
   - These rules also apply to the docked card of a course home page and to the list in the dock of the classic dashboard, but do not affect the side panel or the minimized card.
     The side panel has no bottom bar, so it ignores `openGroup`: its No due date and Done groups open in place, one by one, and each keeps its own state.
   - The scroll bar of the groups sits in the side padding of the card, 4 px from its edge, so it never covers the day counts.
@@ -797,20 +797,20 @@ An earlier version used option B; schools on their own domain then needed an "Al
 
 **Item states:**
 
-Each item is in one of three states, checked in this order:
+Each item is in one of two states:
 
 1. **Done:** the done rule in decision 8 says so.
-2. **Skipped:** not done, and its override has `dismissed` set to true.
-   One exception: work handed in on Canvas with a redo request and an override that is both marked complete and dismissed counts as open.
-   Canvas sets both flags when the student submits or uses a module's "Mark as done", so that pair means the student finished the work before the redo request.
-3. **Open:** everything else.
+   An override that is marked complete or dismissed makes the item done (see "Done, and work that Canvas has as dismissed" below).
+2. **Open:** everything else.
 
 **Groups in the span that starts today, from top to bottom:**
 
 1. **Past due:** open work with a due date before now.
    - Items due in the last 7 days show in full, newest first.
    - Older items collapse under "N older".
-     That line has a "Skip all older" action with an Undo notice, so a student who installs in the middle of a term can clear old work at once.
+     That line has a "Mark all older done" action with an Undo notice, so a student who installs in the middle of a term can clear old work at once.
+     It checks each older item with the write of a check.
+     An item whose checkbox is off because of a redo request stays in the list, and the action shows only while an older item has a checkbox to use.
 2. **Today**, **Tomorrow**, then each later day of the span that has items.
 3. **No due date:** collapsed, with a count.
 4. **Done:** collapsed, with a count.
@@ -818,7 +818,7 @@ Each item is in one of three states, checked in this order:
 When the span has no items, "Nothing due in these 7 days" replaces the day groups only.
 Past due, No due date and Done still show.
 
-**Other spans:** Past due comes first, with the same items, the same "N older" line and the same "N skipped" line.
+**Other spans:** Past due comes first, with the same items and the same "N older" line.
 Then comes one group for each day with items, and Done.
 No due date holds items only in the span that starts today.
 Its part in the view switch of the in-page list shows in every span, with the count 0 when it holds none (decision 4).
@@ -832,8 +832,7 @@ A span that ended before today has one exception: open work dated inside it stay
   - done, even when Canvas still marks it missing (see "Checked but missing" below), and dated in the shown span: Done;
   - open and past due, in every span: Past due, except open work dated inside a span that ended before today, which stays on its day;
   - open and due later: its day;
-  - open with no due date: No due date;
-  - skipped: the "N skipped" line of its group (see Skip).
+  - open with no due date: No due date.
 - In the span that starts today, Done also holds done items from before today that still have a warning chip (decision 7).
   So the warning count on the Done header covers them.
 - Reminders (decision 7) follow their own rule: until they are checked, they show only on their day.
@@ -842,7 +841,7 @@ A span that ended before today has one exception: open work dated inside it stay
 - Done items with no due date show at the end of the No due date group, under a small "N done" line.
   So the student can undo a wrong mark at any time.
   A done undated item with a warning chip, such as Redo requested or Missing in Canvas, goes to Done instead, so the Done header counts the warning.
-- When the student marks an item done, skips it or deletes a task, an "Undo" notice shows.
+- When the student marks an item done, marks all older items done or deletes a task, an "Undo" notice shows.
   The notice has no timer: it stays until the student acts again or closes it.
   In the in-page list it lies over the end of the list, right above the bottom bar, so the view switch never moves, and the end of the list scrolls clear of it.
   Ctrl+Z (Cmd+Z on a Mac) also undoes while the notice shows.
@@ -859,30 +858,35 @@ A checked item never counts as late.
   It adds nothing to Past due or to any "N late" badge.
 - It keeps the red "Missing in Canvas" chip, because Canvas still counts the work as missing (decision 7).
   The Done header counts that chip as a warning, so the student sees it without opening the group.
-- A done item has no Skip action.
-  When the student unchecks it, it is open again: it goes back to Past due with the red "Missing" chip, and Skip is offered there.
+- When the student unchecks it, it is open again: it goes back to Past due with the red "Missing" chip.
 - Why: a student who checked an item has decided that it is finished.
   A list that keeps calling that item late hides the student's own progress.
   The red chip still tells the student what Canvas thinks.
 
-**Skip:**
+**Done, and work that Canvas has as dismissed:**
 
-- Every open item in Past due or No due date has a "Skip" action on its due line, at the right of the due text.
-  A row with no due text, such as an undated item, shows its actions on a line of their own.
-  The actions of a row, such as "Skip" and "Move to today", always share that one line, so a past-due row has no separate row of action targets.
-- Skip means "I will not do this".
-  Done means "I finished this".
-  They stay separate, because a skipped item is not finished, and a done mark can complete a module requirement (decision 2).
-- Skip sends the override with `dismissed` set to true and the current `marked_complete` value [10].
-  For work handed in on Canvas with a redo request, Skip sends `marked_complete` false, because the done mark no longer applies.
-- Canvas uses the same flag for its own list of missing work [10].
-  The first Skip shows a one-time note: "Skipping also hides this item in Canvas's list of missing work."
-- In Past due and No due date, skipped items leave the group.
-  An "N skipped" line at the end of the group shows them again, with an "Unskip" action.
-- In a day group of any span, a skipped item stays on its day with a neutral "Skipped" chip and an "Unskip" action.
-- When the student unchecks a done item, the extension sends `dismissed` false with `marked_complete` false.
+The owner decided on 2026-11-06 to merge Skip into Done.
+Skip was too much like "mark as done", and its word did not say what it did.
+A student now has one way to clear work: Done.
+There is no skipped state, no Skip or Unskip action, no "N skipped" line and no "Skipped" chip.
+
+- An item whose override has `dismissed` set to true and `marked_complete` set to false is done.
+  A dismiss that an earlier version of the extension wrote and a dismiss made in Canvas both show the item as done, in the Done view, with a check, and the rings count it as done.
   Canvas also sets `dismissed` to true when a student uses a module's "Mark as done" [10].
-  Without this rule, an unchecked item would turn into a skipped item.
+- Work handed in on Canvas with a redo request stays open, with a dismiss on it or not (decision 8, rule 1).
+  So a dismiss that finished work or an earlier version left on such work does not hide it.
+- A check sends `marked_complete` true and leaves `dismissed` as it was.
+  A check never changes `dismissed`, and it does nothing else on Canvas [10].
+- An uncheck sends `dismissed` false with `marked_complete` false.
+  So it is also the way back from a dismissed item: the item is open again.
+- "Mark all older done" in the Past due group sends the write of a check for each older item whose checkbox the student can use.
+  Its Undo notice says how many items it marked done, and the first-done note shows if it has not shown yet.
+  Undo sends the flags of each item from before.
+- A row action stays on the due line, at the right of the due text: "Move to today" for a custom task with a past date, and the Preview button (decision 26).
+  A row with no due text, such as an undated item, shows its actions on a line of their own.
+  The actions of a row always share that one line, so a past-due row has no separate row of action targets.
+- Why: a student who clears an item by either action has decided that the work needs no more attention.
+  Two actions for one decision made students think about the difference between the words instead of about the work.
 
 **Rings and filters:**
 
@@ -935,17 +939,16 @@ Planner items do not include it, so the extension looks it up (decision 11).
 An item that is not done can have one status chip.
 The first rule that matches wins.
 
-1. **Skipped:** the student skipped the item (decision 6).
-2. **Redo requested:** the teacher asked for a redo [10].
-3. **Missing:** Canvas marks the work missing [10].
+1. **Redo requested:** the teacher asked for a redo [10].
+2. **Missing:** Canvas marks the work missing [10].
    Only this chip is red, because only this status counts against the grade and shows to the teacher.
-4. **Teacher status:** the name of a custom grade status that the teacher set, such as "Incomplete" [10].
-5. **Extended:** the teacher gave an extension (`late_policy_status` is `extended`) [10].
-6. **Can't confirm:** the work is past due, and it is handed in outside Canvas.
+3. **Teacher status:** the name of a custom grade status that the teacher set, such as "Incomplete" [10].
+4. **Extended:** the teacher gave an extension (`late_policy_status` is `extended`) [10].
+5. **Can't confirm:** the work is past due, and it is handed in outside Canvas.
    The chip reads "Can't confirm: Gradescope", "Can't confirm: On paper" or "Can't confirm: External tool".
    It takes the place of the hand-in chip, because both chips would state one fact about the same hand-in.
    Its tip says: "Canvas can't see this hand-in. If you handed it in, check it off."
-7. **Past due:** any other open item with a date before now that is not in the Past due group, such as work dated inside a span that ended before today.
+6. **Past due:** any other open item with a date before now that is not in the Past due group, such as work dated inside a span that ended before today.
    The Past due group already says this for its items, so the chip does not show there.
 
 There is no warning color on any chip except Missing.
@@ -958,7 +961,7 @@ Availability is a separate small marker next to the status chip, because it answ
 - **Closed:** the lock date has passed, so Canvas no longer accepts a hand-in [10].
   This marker shows only for work handed in on Canvas.
   For work handed in outside Canvas, the Canvas lock date says nothing about the outside tool.
-- A Missing item that is also Closed tells the student that Skip is the right action.
+- A Missing item that is also Closed tells the student that the work can no longer be handed in on Canvas.
 
 **Chips on done items:**
 
@@ -1010,7 +1013,8 @@ Availability is a separate small marker next to the status chip, because it answ
 
 1. Work handed in on Canvas with a redo request is not done, even if the student checked it off.
    Its checkbox is disabled, with the tip "Resubmit in Canvas to finish this."
-2. Otherwise, if the item has a planner override, it is done when `marked_complete` is true.
+2. Otherwise, if the item has a planner override, it is done when `marked_complete` or `dismissed` is true.
+   A dismissed item with no check is done since 2026-11-06 (decision 6).
 3. Otherwise, a peer review is done when its `workflow_state` is `completed`.
 4. Otherwise, an item is done when one of these is true:
    - it is submitted;
@@ -1040,7 +1044,8 @@ Availability is a separate small marker next to the status chip, because it answ
 - There is one ring per course that has items dated in the shown span.
   In every span, every course with items in Past due also has a ring.
 - A ring counts items, not points, as in the original [9].
-  Skipped items and reminders do not count.
+  Reminders do not count.
+  An item that Canvas has as dismissed counts as done.
   A checked item that Canvas still marks missing counts as done.
 - A course with no items in the span shows an empty ring.
 - The chart center shows a check mark at 100 percent only when no course has an item in Past due.
@@ -1153,7 +1158,7 @@ Option A was the first decision, and it put the first days of a long span in the
 
 **Past-due work:**
 
-- Past due shows in every span, with the same items, the same "N older" line and the same "N skipped" line.
+- Past due shows in every span, with the same items and the same "N older" line.
   An open item with a date before now is in Past due, whether its date falls before, inside or after the shown span.
 - One exception: in a span that ended before today, an open item dated inside that span stays on its day, with its status chip.
   This keeps a past span from looking empty.
@@ -1258,7 +1263,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   Every route that reads for a tab makes this check first: the weekly list state, the dashboard data, the grade visibility read, the Announcements tab, one announcement, and the announcement page, range and read mark of the dashboard widget.
   For a tab in another store, the Announcements tab is `unavailable`, the grade visibility read has no visibilities, one announcement is empty, and the announcement page, range and read mark of the widget are refused.
   Canvas hears nothing for such a tab.
-  The router passes the tab to every action too (a done mark, a skip mark, an Undo, a read mark and every task write), and the owner makes the same check first.
+  The router passes the tab to every action too (a done mark, an Undo, a read mark and every task write), and the owner makes the same check first.
   A refused action does nothing, and its reply is the plain one with no Undo.
   A refused tab touches no state of the owner, so it cannot cancel the late grade result of a valid tab.
 - After each good user check, `storage.session` keeps the user id, the check time and the fingerprints that the checks confirmed, beside the cache.
@@ -1304,7 +1309,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 - Checks are rare.
   No more than two checks start in any 30 seconds, from all readers together.
   After a failed check, or after a follow-up that sees a change, the next check waits 30 seconds, also after a restart of the worker.
-  The Retry button skips both limits, and so does the Undo of a done or skip mark, because both are taps of the student.
+  The Retry button skips both limits, and so does the Undo of a done mark, because both are taps of the student.
 - A check uses its own client method.
   It skips the request queue, has no retry, and ends after 10 seconds.
   A timeout is `Couldn't reach Canvas`, not offline.
@@ -1321,11 +1326,11 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   A one-minute browser alarm runs only while deletes wait, and every worker start restores pending deletes and sends those that are due.
   A worker restart can delay a delete until the next wake, but cannot discard it.
   Session storage clears when the browser exits or the extension updates, so a delete that still waits then is lost.
-  An Undo of a done mark, a skip mark or an announcement read mark first passes the same cookie check, and it does nothing when the check fails.
+  An Undo of a done mark or an announcement read mark first passes the same cookie check, and it does nothing when the check fails.
   The reply of a refused Undo says `refused`, and the surface shows the Undo notice again, also beside the `cant_load` state.
   A refused Undo is `refused` only while the cache still belongs to the student of the Undo.
   After a sign-out or a change of student nothing can be restored, so the reply is the plain one and the notice ends.
-  A done mark, a skip mark, an unskip mark, an announcement read mark, a task create, a task update, a move to today, a task delete and the "send now" of a delayed task delete pass the same check at the tap.
+  A done mark, an announcement read mark, a task create, a task update, a move to today, a task delete and the "send now" of a delayed task delete pass the same check at the tap.
   A refused tap does nothing, and the reply of a task create says that Canvas saved nothing.
   A "send now" that the check refuses leaves the delete to its timer, which sends it after a check.
 - A write waits in a queue, so the check at the tap is not enough.
@@ -1344,7 +1349,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   An Undo that runs while the guard waits removes the patch, and then no DELETE goes out.
   The reply of an override write names its user.
   When it names another user than the student of the write, the owner writes the old flags back to that override (best effort, and a failure is only logged), and then drops the cache of the first student.
-  An override that this write created goes back to not done and not skipped, because the other student had none before.
+  An override that this write created goes back to not done, because the other student had none before.
 - A read that finds that `cookies.get` fails is the same as a check that fails: the reply is `cant_load` with Retry, and Retry reads the cookie again.
   `cant_load` always shows the Retry button.
 - A Canvas page load of the saved origin reads the cookie, and the owner wakes the open surfaces when the cookie is gone or not confirmed.
@@ -1655,7 +1660,7 @@ These sizes come from one test build of the same small app [19].
      One full Canvas reply for each request holds every field that Canvas sends, as the canvas-lms serializers write them.
      A unit test runs each full reply through the production code and checks that the extra fields change nothing.
    - Fixtures include a checkpoint course, Gradescope and on-paper work, a no-submission column, an extension, a teacher-set status, a redo request after a done mark, a locked item, a locked missing item, a Gradescope item past its lock date, a peer review due in a later span, a module "Mark as done" override with both flags true, a long-running course for the horizon cap, a mixed-role layout, the Limited Access 403, the rate-limit 403 and 429, and every UI state.
-   - Tests cover week math across time zones and daylight saving changes, the month clamping at the end of a short month, the done rule, the placement rules in the span that starts today, in later spans and in past spans, every status chip and availability marker, reminders, the undated-work rules, peer reviews placed on their real date, the term horizon and its 16-week cap, the Tomorrow look-ahead, the chart center check mark and the legend past-due count, the planner-off list, paging, the override sequence including the 400 recovery, Skip, and the CSRF header.
+   - Tests cover week math across time zones and daylight saving changes, the month clamping at the end of a short month, the done rule, the placement rules in the span that starts today, in later spans and in past spans, every status chip and availability marker, reminders, the undated-work rules, peer reviews placed on their real date, the term horizon and its 16-week cap, the Tomorrow look-ahead, the chart center check mark and the legend past-due count, the planner-off list, paging, the override sequence including the 400 recovery, Mark all older done, and the CSRF header.
    - Tests also cover a background restart while a panel is open, ten page-loaded messages in ten seconds (one refresh round), and the content script sync for both kinds of address.
 3. **Chromium end-to-end tests:** Playwright with the `chromium` channel, in headless mode [19].
    - `context.route` serves a fake `https://school.instructure.com` with saved copies of the classic dashboard, the widget dashboard, a course home page and a mixed-role dashboard, plus the API [19].
@@ -1730,7 +1735,7 @@ These sizes come from one test build of the same small app [19].
 - Publish the same version on the Chrome Web Store, Microsoft Edge Add-ons and Firefox Add-ons.
 - Host one privacy policy page on the project's GitHub Pages site.
   - It says the extension reads Canvas data in the browser.
-  - It says the extension writes only these items, and only to the student's own Canvas: planner overrides for done and skip marks (POST and PUT), planner notes for custom tasks (POST, PUT and DELETE), announcement read and unread marks (PUT and DELETE on the `read` route, from the Announcements tab and the widget), and the read mark of the student's rubric comments (PUT on `rubric_assessments/read`).
+  - It says the extension writes only these items, and only to the student's own Canvas: planner overrides for done marks (POST and PUT), which set and clear the `marked_complete` and `dismissed` flags, planner notes for custom tasks (POST, PUT and DELETE), announcement read and unread marks (PUT and DELETE on the `read` route, from the Announcements tab and the widget), and the read mark of the student's rubric comments (PUT on `rubric_assessments/read`).
   - It says that a write that reached another account gets one corrective write.
   - It says that View Feedback and Preview load the DocViewer session of Canvas, and that Canvas then marks the notes of that file as read.
   - It says that a read of a file in the pane counts as opening that file, so Canvas can mark the view requirement of a module as done and record the access.
@@ -1916,7 +1921,7 @@ It has a minimize button instead (see below).
   An earlier draft used dashboard favorites, but students often leave favorites out of date, and the list would then drop a course with no sign.
 - The setting names describe what the student gets, not how the extension works.
 - There is no switch for undated work.
-  The No due date group starts collapsed, and Skip clears single items.
+  The No due date group starts collapsed, and Done clears single items.
 
 The small tools have their own switches, one group for each tool (decision 22).
 They show in the same three places, below Row size, and they are stored apart from these five settings.
@@ -1931,7 +1936,7 @@ They show in the same three places, below Row size, and they are stored apart fr
 - Every action works with the keyboard alone.
 - Each ring has a text label, such as "3 of 5 done".
 - Done marks are real checkboxes.
-- When a done mark or a skip removes the focused row, focus moves to the same control of the row that takes its place in the same list.
+- When a done mark removes the focused row, focus moves to the same control of the row that takes its place in the same list.
   With no such row, focus moves to the same control of the next row, or of the previous row.
   When no row is left, focus moves to the heading of the group if the group stays.
   Then it moves to the first button that opens a part of the list and comes after the place of the row, such as "12 older", or to the last such button before that place when none comes after.
@@ -2018,7 +2023,7 @@ The owner asked for it after testing an early build: the list should feel like p
   Canvas's own To Do sidebar draws these icons in the dark text color; the course color helps scanning a full week.
   - The title is the main line of the row.
     The course name sits under it in regular weight and the secondary text color, never in bold, so it does not outweigh the title.
-  - The due line holds the due text and the row actions, such as "Skip".
+  - The due line holds the due text and the row actions, such as "Move to today".
     The chips come after it.
   - A chip that is too long for the column wraps onto a second line instead of cutting its text.
   - Every target is at least 24 px high, as WCAG 2.2 AA asks.
@@ -3668,7 +3673,7 @@ So a student switches pages to read the instructions next to the feedback on a f
        The button opens the same pane on the same dock as the Assignments list does (step 4 below).
        An own task, a plain page, and any item with no assignment id get none.
      - The owner approved a mockup of this.
-       The mockup also showed a Skip link, which this decision leaves as it is.
+       The mockup also showed the other row actions, which this decision leaves as they are.
    - **Grades list (`/courses/:id/grades`).**
      - Canvas's own look.
 2. **What was removed and why.**
@@ -3965,8 +3970,8 @@ So a student switches pages to read the instructions next to the feedback on a f
   - An item has the button when it has an assignment id and a course id that are both Canvas ids (`isCanvasId`).
     A quiz or a discussion has an assignment id only when it is graded.
     A group item has a course id that is no Canvas id, so it has none.
-  - The button is among the row actions (`.wr-item-actions`), before Skip, in the slot row and in the plain row.
-    The row actions show when the item has Preview, Skip, Unskip or Move to today.
+  - The button is among the row actions (`.wr-item-actions`), before Move to today, in the slot row and in the plain row.
+    The row actions show when the item has Preview or Move to today.
   - It is the button of the Assignments list: the same pane icon (one description in `src/shared/ui/paneIcon.ts` that both buttons draw from, so they cannot drift apart), the word "Preview", a 1 px border of #c7cdd1 in the light theme, the text color of the card, and the link color on a row under the mouse.
     It is 26 px high, a 4 px radius, 13 px text and a 15 px icon.
     While the pane shows the item it is blue, with the right part of the icon filled.

@@ -238,7 +238,7 @@ async function checkBadSettings(driver) {
           minimized: true,
           theme: 'auto',
         },
-        // `firstSkip` is the field of a note that no longer exists, left by an older version.
+        // "firstSkip" is the field of a note that no longer exists, left by an older version.
         seenNotes: { firstDone: 'yes', firstSkip: true },
       });
       const state = await browser.runtime.sendMessage({ type: 'weekrow:get-state', request });

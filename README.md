@@ -22,7 +22,7 @@ One to-do list for all your courses.
   A click on a ring shows only that course, and a second click shows all courses again.
 - A status chip on each item shows what Canvas knows about it, such as Missing, Redo requested, Extended or a status that your teacher set.
 - Work that you hand in outside Canvas shows a "Can't confirm" chip after its due date, because Canvas cannot see that hand-in.
-- You can check items off, skip work that you will not do, and add, edit and delete your own tasks.
+- You can check items off, mark all older past-due work done at once, and add, edit and delete your own tasks.
 - The Announcements tab shows your unread announcements of the last 14 days, with a count on the tab.
   "Show read" adds the ones that you have read.
 - Dates and times follow the time zone of your Canvas account.
@@ -119,15 +119,16 @@ Safari is not supported.
 ## What changes in Canvas
 
 Tools for Canvas keeps no copy of your work.
-Done marks, skip marks and your own tasks live in your Canvas account, as Canvas planner data.
+Done marks and your own tasks live in your Canvas account, as Canvas planner data.
 So the Canvas To Do list and the Canvas mobile apps show the same done marks.
 
 A done mark can have a side effect in Canvas.
 On a module item, Canvas can count a done mark as the module's "Mark as done" requirement.
 The first time you check an item off, Tools for Canvas shows this note: "Done marks sync to Canvas and its apps. On a module item, this can count as 'Mark as done'."
 
-Skip uses the Canvas "dismissed" flag.
-The first time you skip an item, Tools for Canvas shows this note: "Skipping also hides this item in Canvas's list of missing work."
+A done mark sets the Canvas `marked_complete` flag and leaves the `dismissed` flag as it was.
+Unchecking an item clears both flags.
+An item that Canvas has as dismissed, with no done mark, shows as done in Tools for Canvas.
 
 Some other actions also count in Canvas:
 
@@ -155,7 +156,7 @@ On another Canvas, the side panel offers "Switch to this Canvas?".
 ## Privacy
 
 Tools for Canvas reads your Canvas data in your browser and shows it to you.
-It writes only done marks, skip marks, your own tasks, announcement read and unread marks and the read mark of your rubric comments, and only to your own Canvas.
+It writes only done marks, your own tasks, announcement read and unread marks and the read mark of your rubric comments, and only to your own Canvas.
 On your device, it stores its settings, which tools are on, your Canvas address, a change time stamp, which one-time notes you have seen, a fingerprint salt and the page and zoom of your PDFs.
 Nothing goes to the developer: there are no analytics, no error reports and no remote configuration.
 A lint rule and a CI check enforce this in the code.
