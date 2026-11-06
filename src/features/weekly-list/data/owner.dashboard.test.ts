@@ -606,6 +606,7 @@ it('refuses cached data, without signing out, when the store of the requests is 
 it('signs out, and drops the cache, when the session cookie is gone', async () => {
   const h = await loaded();
   vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
+  expect((await h.owner.getState(PANEL)).kind).toBe('loading');
   expect((await h.owner.getState(PANEL)).kind).toBe('signed_out');
   expect(await h.owner.dashboardData()).toMatchObject({ courses: [] });
   expect((await sessionCacheItem.getValue())?.session).toBeNull();

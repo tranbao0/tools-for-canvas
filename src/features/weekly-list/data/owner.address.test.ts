@@ -221,7 +221,7 @@ describe('the saved address', () => {
 
     await canvasOriginItem.setValue(ORIGIN);
     // The session loads at once, so the frame may already show.
-    expect(['loading', 'ready']).toContain((await h.owner.getState(PANEL)).kind);
+    expect(['loading', 'ready']).toContain((await h.owner.getState(PANEL, undefined, ORIGIN)).kind);
     await h.owner.settled();
 
     expect((await h.owner.getState(PANEL)).kind).toBe('ready');
