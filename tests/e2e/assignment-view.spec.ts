@@ -346,11 +346,18 @@ async function addFileLinkToList(page: Page) {
   });
 }
 
-/** Clicks a file link until the file pane opens. A click that comes early does nothing. */
+/**
+ * Clicks a file link until the file pane opens. A click that comes early does nothing. A click
+ * that did open the pane, but late, is not repeated: the pane then covers the link, and a second
+ * click would wait for a link that no longer shows.
+ */
 async function openFilePane(page: Page, click: () => Promise<void>) {
+  const filePane = page.locator(FILE_PANE);
+  // A pane that shows already would skip the click, so every caller starts without one.
+  await expect(filePane).toBeHidden();
   await expect(async () => {
-    await click();
-    await expect(page.locator(FILE_PANE)).toBeVisible({ timeout: 1500 });
+    if (!(await filePane.isVisible())) await click();
+    await expect(filePane).toBeVisible({ timeout: 1500 });
   }).toPass({ timeout: 20_000 });
   await expect((await pane(page)).locator('pre')).toHaveText(notes);
 }

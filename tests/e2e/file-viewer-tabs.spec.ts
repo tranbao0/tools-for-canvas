@@ -6,6 +6,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './support/weekrow';
 import {
   FILE_META,
+  clickInFrame,
   FILE_NAME,
   openCoursePage,
   openFirstFile,
@@ -246,7 +247,7 @@ test('a withheld permission shows Allow access, which asks the browser and reloa
     ).chrome;
     api.permissions.contains = () => Promise.resolve(true);
   });
-  await allow.click();
+  await clickInFrame(frame, allow);
   await expect(allow).toHaveCount(0);
   expect(
     await frame.evaluate(() => (globalThis as unknown as { requests: unknown[] }).requests),
