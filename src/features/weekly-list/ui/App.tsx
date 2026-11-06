@@ -46,6 +46,8 @@ import {
   ViewSwitch,
   WeekList,
   type ListHandlers,
+  type OpenMemory,
+  OpenMemoryContext,
 } from './WeekList';
 import { captureFocus, firstRowControl, restoreFocus, usable, type FocusSnapshot } from './focus';
 
@@ -169,6 +171,8 @@ export function App(props: AppProps) {
   const [settingsFrom, setSettingsFrom] = useState<string | null>(null);
   /** The scroll position of the groups, which a redraw, a refresh or the settings keep. */
   const scrollMemory = useRef<ScrollMemory>({ top: 0, key: '' });
+  /** The groups and "N older" lines that the student opened, which the views in between keep. */
+  const openMemory = useRef<OpenMemory>(new Map());
   /** The scroll position of the Announcements tab. Each tab keeps its own (decision 24). */
   const announcementsScroll = useRef<ScrollMemory>({ top: 0, key: '' });
   const saved = props.settings?.value;
@@ -327,7 +331,9 @@ export function App(props: AppProps) {
       aria-busy={settingsFrom === null && state.kind === 'loading' ? true : undefined}
       ref={rootRef}
     >
-      <RowSizeContext.Provider value={rowSize}>{body}</RowSizeContext.Provider>
+      <RowSizeContext.Provider value={rowSize}>
+        <OpenMemoryContext.Provider value={openMemory.current}>{body}</OpenMemoryContext.Provider>
+      </RowSizeContext.Provider>
       {showDock && (
         <Dock
           undo={state.undo ?? null}
