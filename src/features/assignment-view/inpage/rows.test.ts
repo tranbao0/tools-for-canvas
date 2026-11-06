@@ -88,7 +88,11 @@ describe('the Preview buttons', () => {
     button('101').click();
     expect(onPreview).not.toHaveBeenCalled();
     click(button('102'), true);
-    expect(onPreview).toHaveBeenCalledExactlyOnceWith({ assignmentId: '102', title: 'Reading' });
+    expect(onPreview).toHaveBeenCalledExactlyOnceWith({
+      courseId: '12',
+      assignmentId: '102',
+      title: 'Reading',
+    });
   });
 
   it('keep their place at the end when Canvas adds a control after them', async () => {
@@ -104,11 +108,11 @@ describe('the Preview buttons', () => {
 describe('the open row', () => {
   it('marks the row and presses its button, and clears the others', () => {
     start();
-    engine.setOpen('101');
+    engine.setOpen({ courseId: '12', assignmentId: '101' });
     expect(rowOf('101').hasAttribute('data-av-open')).toBe(true);
     expect(button('101').getAttribute('aria-pressed')).toBe('true');
     expect(button('102').getAttribute('aria-pressed')).toBe('false');
-    engine.setOpen('102');
+    engine.setOpen({ courseId: '12', assignmentId: '102' });
     expect(rowOf('101').hasAttribute('data-av-open')).toBe(false);
     expect(button('101').getAttribute('aria-pressed')).toBe('false');
     expect(rowOf('102').hasAttribute('data-av-open')).toBe(true);
@@ -121,14 +125,14 @@ describe('the open row', () => {
   it('keeps the button, so the keyboard focus stays on it', () => {
     start();
     button('101').focus();
-    engine.setOpen('101');
+    engine.setOpen({ courseId: '12', assignmentId: '101' });
     engine.setOpen(null);
     expect(document.activeElement).toBe(button('101'));
   });
 
   it('follows a redraw of the row, and of the whole list', async () => {
     start();
-    engine.setOpen('101');
+    engine.setOpen({ courseId: '12', assignmentId: '101' });
     // Canvas draws the row again: the row element is new, and so is its content.
     rowOf('101').parentElement!.innerHTML = row('101', 'Essay').replace(/^<li[^>]*>|<\/li>$/g, '');
     await vi.advanceTimersByTimeAsync(200);
@@ -142,7 +146,7 @@ describe('the open row', () => {
 
   it('draws the content of the row again, and the button comes back pressed', async () => {
     start();
-    engine.setOpen('102');
+    engine.setOpen({ courseId: '12', assignmentId: '102' });
     rowOf('102').innerHTML = rowOf('102').innerHTML.replace(
       /<button type="button"[^]*?<\/button>/,
       '',
@@ -154,13 +158,20 @@ describe('the open row', () => {
 
   it('compares a shard id as a global id', () => {
     start();
-    engine.setOpen('0101');
+    engine.setOpen({ courseId: '12', assignmentId: '0101' });
     expect(button('101').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('marks nothing for the same assignment id in another course', () => {
+    start();
+    engine.setOpen({ courseId: '13', assignmentId: '101' });
+    expect(document.querySelector('[data-av-open]')).toBeNull();
+    expect(button('101').getAttribute('aria-pressed')).toBe('false');
   });
 
   it('marks nothing for an assignment that has no row', () => {
     start();
-    engine.setOpen('999');
+    engine.setOpen({ courseId: '12', assignmentId: '999' });
     expect(document.querySelector('[data-av-open]')).toBeNull();
   });
 });
@@ -168,7 +179,7 @@ describe('the open row', () => {
 describe('turning the view off', () => {
   it('removes the buttons, the marks and the style at once, and brings them back with the open row', async () => {
     start();
-    engine.setOpen('101');
+    engine.setOpen({ courseId: '12', assignmentId: '101' });
     expect(document.getElementById('av-styles')).not.toBeNull();
     engine.setActive(false);
     expect(
@@ -190,11 +201,11 @@ describe('turning the view off', () => {
 
   it('removes everything when it stops, and ignores a later change', async () => {
     start();
-    engine.setOpen('101');
+    engine.setOpen({ courseId: '12', assignmentId: '101' });
     engine.stop();
     expect(document.querySelector('[data-av-own], [data-av-open]')).toBeNull();
     engine.setActive(true);
-    engine.setOpen('102');
+    engine.setOpen({ courseId: '12', assignmentId: '102' });
     expect(document.querySelector('[data-av-own], [data-av-open]')).toBeNull();
   });
 });
@@ -210,6 +221,7 @@ describe('the second line of the pane header', () => {
     start();
     press('101');
     expect(onPreview).toHaveBeenCalledExactlyOnceWith({
+      courseId: '12',
       assignmentId: '101',
       title: 'Essay',
       details: 'Due Nov 3 at 10pm | 10 pts',
@@ -224,6 +236,7 @@ describe('the second line of the pane header', () => {
     );
     press('101');
     expect(onPreview).toHaveBeenLastCalledWith({
+      courseId: '12',
       assignmentId: '101',
       title: 'Essay',
       details: 'Due Nov 3 at 10pm',
@@ -233,11 +246,19 @@ describe('the second line of the pane header', () => {
   it('has no text for a row with nothing to show, and never reads the points that only a screen reader has', () => {
     start();
     press('101');
-    expect(onPreview).toHaveBeenLastCalledWith({ assignmentId: '101', title: 'Essay' });
+    expect(onPreview).toHaveBeenLastCalledWith({
+      courseId: '12',
+      assignmentId: '101',
+      title: 'Essay',
+    });
     rowOf('102').querySelector('.ig-details')!.innerHTML =
       '<span class="js-score screenreader-only">No Points Possible</span>';
     press('102');
-    expect(onPreview).toHaveBeenLastCalledWith({ assignmentId: '102', title: 'Reading' });
+    expect(onPreview).toHaveBeenLastCalledWith({
+      courseId: '12',
+      assignmentId: '102',
+      title: 'Reading',
+    });
   });
 
   it('is plain text with a limit, whatever the row holds', () => {

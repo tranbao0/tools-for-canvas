@@ -3,7 +3,10 @@ import { ASSIGNMENT_DETAILS } from '../../../tests/fixtures/assignment-view';
 import {
   assignmentPageUrl,
   createCoalescer,
+  isPreviewRequest,
   nextPollDelay,
+  paneKey,
+  samePane,
   slimAddress,
   submissionChanged,
   previewUrl,
@@ -180,5 +183,42 @@ describe('poll delay', () => {
     }
     expect(seen).toEqual([40_000, 80_000, 160_000, 300_000, 300_000, 300_000]);
     expect(nextPollDelay(delay, base, true)).toBe(base);
+  });
+});
+
+describe('the pane request', () => {
+  const request = { courseId: '12', assignmentId: '101', title: 'Essay' };
+
+  it('takes valid ids with a title and a plain second line, and nothing else', () => {
+    expect(isPreviewRequest(request)).toBe(true);
+    expect(isPreviewRequest({ ...request, details: 'Due Nov 3 | 10 pts' })).toBe(true);
+    expect(isPreviewRequest({ ...request, courseId: '1~2', assignmentId: '3~4' })).toBe(true);
+    for (const bad of [
+      null,
+      'x',
+      {},
+      { ...request, courseId: 12 },
+      { ...request, assignmentId: '1/2' },
+      { ...request, assignmentId: '' },
+      { ...request, title: 4 },
+      { ...request, title: 'x'.repeat(501) },
+      { ...request, details: 4 },
+      { ...request, details: 'x'.repeat(501) },
+    ])
+      expect(isPreviewRequest(bad)).toBe(false);
+  });
+
+  it('names an assignment by its course and its id, both as global ids', () => {
+    expect(paneKey({ courseId: '12', assignmentId: '101' })).not.toBe(
+      paneKey({ courseId: '13', assignmentId: '101' }),
+    );
+    expect(paneKey({ courseId: '0012', assignmentId: '0101' })).toBe(
+      paneKey({ courseId: '12', assignmentId: '101' }),
+    );
+    expect(
+      samePane({ courseId: '12', assignmentId: '101' }, { courseId: '13', assignmentId: '101' }),
+    ).toBe(false);
+    expect(samePane(null, null)).toBe(true);
+    expect(samePane(null, { courseId: '12', assignmentId: '101' })).toBe(false);
   });
 });

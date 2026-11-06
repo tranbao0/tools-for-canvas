@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_TOOLS_SETTINGS, type ToolsSettings } from '../../../shared/settings/tools';
 import type { DataMessage } from '../../weekly-list/data/protocol';
 import { DEFAULT_SETTINGS, type Settings } from '../../weekly-list/model/types';
+import { paneOffered, requestPane, shownPane } from '../paneHub';
 import { startAssignmentView, type AssignmentViewChannel } from './start';
 
 const ORIGIN = 'https://school.instructure.com';
@@ -509,4 +510,109 @@ describe('on an assignment page', () => {
     await vi.advanceTimersByTimeAsync(5);
     expect(channel.send).not.toHaveBeenCalled();
   });
+});
+
+describe('on a page that shows the weekly card', () => {
+  const PAGES = ['/', '/dashboard', '/courses/12'];
+  const request = { courseId: '12', assignmentId: '101', title: 'Essay' };
+  const paneHost = () => document.getElementById('tools-turn-in');
+  const controllers: { stop(): void }[] = [];
+  const hold = async (channel: Fake, pathname: string) => {
+    const controller = await startAssignmentView(options(channel, { pathname }));
+    controllers.push(controller);
+    return controller;
+  };
+  beforeEach(() => {
+    // happy-dom writes a line to stderr for each iframe that it does not load. The pane needs no load.
+    const write = process.stderr.write.bind(process.stderr) as (chunk: unknown) => boolean;
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) =>
+      String(chunk).includes('Iframe page loading is disabled') ? true : write(chunk),
+    );
+  });
+  afterEach(() => {
+    for (const controller of controllers.splice(0)) controller.stop();
+    vi.restoreAllMocks();
+  });
+
+  it.each(PAGES)(
+    'offers the pane on %s and changes nothing in the page until a request',
+    async (pathname) => {
+      document.body.innerHTML = '<main id="content"><p>Canvas</p></main>';
+      const before = document.documentElement.outerHTML;
+      await hold(fakeChannel(), pathname);
+      expect(paneOffered()).toBe(true);
+      expect(document.documentElement.outerHTML).toBe(before);
+      expect(toggles()).toHaveLength(0);
+      expect(paneHost()).toBeNull();
+    },
+  );
+
+  it('opens the pane for a request, shows its assignment, and closes it on a second request', async () => {
+    await hold(fakeChannel(), '/');
+    requestPane(request);
+    expect(paneHost()).not.toBeNull();
+    expect(shownPane()).toEqual({ courseId: '12', assignmentId: '101' });
+    requestPane({ ...request, courseId: '13' });
+    expect(shownPane()).toEqual({ courseId: '13', assignmentId: '101' });
+    requestPane({ ...request, courseId: '13' });
+    expect(paneHost()).toBeNull();
+    expect(shownPane()).toBeNull();
+  });
+
+  it('takes no request that has an invalid id or a title that is no text', async () => {
+    await hold(fakeChannel(), '/');
+    for (const bad of [
+      { ...request, assignmentId: '1/../2' },
+      { ...request, courseId: 'x' },
+      { ...request, title: 5 },
+      null,
+    ])
+      requestPane(bad as never);
+    expect(paneHost()).toBeNull();
+  });
+
+  it('offers the pane only while the switch is on and the page is the saved Canvas', async () => {
+    const channel = fakeChannel('https://other.instructure.com', {
+      ...DEFAULT_TOOLS_SETTINGS,
+      assignmentView: false,
+    });
+    await hold(channel, '/');
+    expect(paneOffered()).toBe(false);
+    requestPane(request);
+    expect(paneHost()).toBeNull();
+    channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: true });
+    expect(paneOffered()).toBe(false);
+    channel.setOrigin(ORIGIN);
+    expect(paneOffered()).toBe(true);
+    channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+    expect(paneOffered()).toBe(false);
+  });
+
+  it('keeps an open pane when the switch goes off, and shows its assignment to the card when it comes back', async () => {
+    const channel = fakeChannel();
+    await hold(channel, '/');
+    requestPane(request);
+    channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+    expect(paneOffered()).toBe(false);
+    expect(paneHost()).not.toBeNull();
+    channel.setTools({ ...DEFAULT_TOOLS_SETTINGS, assignmentView: true });
+    expect(paneOffered()).toBe(true);
+    expect(shownPane()).toEqual({ courseId: '12', assignmentId: '101' });
+  });
+
+  it('removes the pane and the offer on stop', async () => {
+    const controller = await hold(fakeChannel(), '/');
+    requestPane(request);
+    controller.stop();
+    expect(paneOffered()).toBe(false);
+    expect(paneHost()).toBeNull();
+  });
+
+  it.each(['/courses/12/grades', '/groups/3', '/calendar'])(
+    'offers no pane on %s',
+    async (pathname) => {
+      await hold(fakeChannel(), pathname);
+      expect(paneOffered()).toBe(false);
+    },
+  );
 });

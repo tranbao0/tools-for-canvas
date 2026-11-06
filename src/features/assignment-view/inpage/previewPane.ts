@@ -27,7 +27,6 @@ import {
 } from '../../file-viewer/dock';
 import { CLOSE_PATH } from '../../../shared/ui/iconPaths';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
-import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { OWN } from './own';
 import {
   PANE_CSS,
@@ -42,8 +41,11 @@ import {
   assignmentPageUrl,
   createCoalescer,
   nextPollDelay,
+  paneKey,
   previewUrl,
+  samePane,
   slimAddress,
+  type PaneRef,
   type PreviewRequest,
 } from '../preview';
 
@@ -69,26 +71,26 @@ export interface PreviewPaneOptions {
   doc: Document;
   /** The origin of the page, which is the saved Canvas. */
   origin: string;
-  courseId: string;
   theme(): PageTheme;
   /** The width of the dock now. */
   width(): number;
   saveWidth(width: number): void;
   /** Reads the submission of the assignment again, and tells the weekly list when it changed. */
-  reload(assignmentId: string): Promise<void>;
+  reload(ref: PaneRef): Promise<void>;
   /**
-   * Called when the assignment that the pane shows changes: the id of the assignment, or `null`
-   * when the pane is closed or hidden behind a file pane.
+   * Called when the assignment that the pane shows changes: the assignment and its course, or
+   * `null` when the pane is closed or hidden behind a file pane.
    */
-  onShown(assignmentId: string | null): void;
+  onShown(ref: PaneRef | null): void;
   /** Called after each trusted load of a frame that stays, so the file catcher can go in. */
   onFrameLoad(): void;
 }
 
 export interface PreviewPane {
   /**
-   * Shows the frame of an assignment, and makes the frame when the assignment has none. It opens
-   * the pane when it is closed, and shows it over a file pane.
+   * Shows the frame of an assignment of a course, and makes the frame when the assignment has
+   * none. It opens the pane when it is closed, and shows it over a file pane. A request with an id
+   * that is no Canvas id does nothing.
    */
   open(request: PreviewRequest): void;
   /**
@@ -105,7 +107,7 @@ export interface PreviewPane {
   /** Removes the pane. */
   stop(): void;
   /** The assignment that the pane shows now, or `null` when it is closed or hidden. */
-  readonly shown: string | null;
+  readonly shown: PaneRef | null;
 }
 
 /**
@@ -149,30 +151,33 @@ interface Parts {
 }
 
 export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
-  const { doc, origin, courseId } = options;
+  const { doc, origin } = options;
   const win = doc.defaultView ?? window;
   let dock: Dock | undefined;
   let parts: Parts | undefined;
-  /** The frames by assignment, in the order they were shown: the first one was shown longest ago. */
+  /** The frames by course and assignment, in the order they were shown: the first one was shown longest ago. */
   const slots = new Map<string, Slot>();
   /** The frame that shows when the pane is open. */
   let visible: Slot | undefined;
   let stopWatching: (() => void) | undefined;
   let observer: MutationObserver | undefined;
   let stopped = false;
-  let announced: string | null = null;
+  let announced: PaneRef | null = null;
   /** Counts the student changes and stops, so the reads of an earlier close end. */
   let session = 0;
   let fileViewerOn = false;
 
+  /** The course and the assignment of a slot or a request, with nothing else that it holds. */
+  const refOf = ({ courseId, assignmentId }: PaneRef): PaneRef => ({ courseId, assignmentId });
+
   // One read at a time and one waiting for an assignment, whatever asks for it. A read that a
   // close starts joins the reads of a pane that opens at once.
   const readers = new Map<string, () => Promise<boolean>>();
-  const reader = (assignmentId: string): (() => Promise<boolean>) => {
-    const key = normalizeCanvasId(assignmentId);
+  const reader = (ref: PaneRef): (() => Promise<boolean>) => {
+    const key = paneKey(ref);
     let read = readers.get(key);
     if (!read) {
-      read = createCoalescer(() => options.reload(assignmentId));
+      read = createCoalescer(() => options.reload(refOf(ref)));
       readers.set(key, read);
     }
     return read;
@@ -180,17 +185,17 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
 
   let delay = PREVIEW_POLL_MS;
   // A failed read makes the next poll wait longer, and a good read starts over.
-  const read = async (assignmentId: string): Promise<void> => {
-    delay = nextPollDelay(delay, PREVIEW_POLL_MS, await reader(assignmentId)());
+  const read = async (ref: PaneRef): Promise<void> => {
+    delay = nextPollDelay(delay, PREVIEW_POLL_MS, await reader(ref)());
   };
 
-  const shownId = (): string | null =>
-    visible !== undefined && dock?.shown === true ? visible.assignmentId : null;
+  const shownRef = (): PaneRef | null =>
+    visible !== undefined && dock?.shown === true ? refOf(visible) : null;
 
   /** Tells the list which assignment the pane shows, once for each change. */
   const publish = (): void => {
-    const next = shownId();
-    if (next === announced) return;
+    const next = shownRef();
+    if (samePane(next, announced)) return;
     announced = next;
     options.onShown(next);
   };
@@ -224,7 +229,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       if (polling && poll === undefined) schedule();
     };
     if (doc.visibilityState !== 'visible' || visible === undefined) next();
-    else void read(visible.assignmentId).then(next);
+    else void read(visible).then(next);
   }
   const startPoll = (): void => {
     if (polling) return;
@@ -238,8 +243,8 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
   };
 
   function target(request: PreviewRequest): Target | null {
-    const url = previewUrl(origin, courseId, request.assignmentId);
-    const pageUrl = assignmentPageUrl(origin, courseId, request.assignmentId);
+    const url = previewUrl(origin, request.courseId, request.assignmentId);
+    const pageUrl = assignmentPageUrl(origin, request.courseId, request.assignmentId);
     return url === null || pageUrl === null ? null : { ...request, url, pageUrl };
   }
 
@@ -328,7 +333,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       }
       const rewriting = slimFrame(true);
       // The first page of an assignment is no sign of a submission.
-      if (++loads > 1) void read(first.assignmentId);
+      if (++loads > 1) void read(first);
       if (!rewriting) options.onFrameLoad();
     });
     return {
@@ -376,7 +381,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
   function show(slot: Slot): void {
     if (!parts) return;
     // The map keeps the order of showing, so the first entry is the one shown longest ago.
-    const key = normalizeCanvasId(slot.assignmentId);
+    const key = paneKey(slot);
     slots.delete(key);
     slots.set(key, slot);
     for (const other of slots.values()) other.frame.style.display = other === slot ? '' : 'none';
@@ -421,20 +426,20 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
    */
   function closeAndRead(): void {
     if (!dock) return;
-    const ids = [...slots.values()].reverse().map((slot) => slot.assignmentId);
+    const refs = [...slots.values()].reverse().map(refOf);
     shut();
     const mine = session;
     void (async () => {
-      for (const id of ids) {
+      for (const ref of refs) {
         if (session !== mine) return;
-        await reader(id)();
+        await reader(ref)();
       }
     })();
   }
 
   return {
     get shown() {
-      return shownId();
+      return shownRef();
     },
     open(request) {
       if (stopped) return;
@@ -467,7 +472,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       } else {
         hideFilePane(true);
       }
-      let slot = slots.get(normalizeCanvasId(next.assignmentId));
+      let slot = slots.get(paneKey(next));
       if (!slot) {
         evict();
         slot = makeSlot(next);
@@ -478,8 +483,8 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       startPoll();
       // The first read of an assignment is its baseline, and each later read compares with it. The
       // student may have submitted the assignment that the pane just left.
-      void read(slot.assignmentId);
-      if (left && left !== slot) void read(left.assignmentId);
+      void read(slot);
+      if (left && left !== slot) void read(left);
     },
     close() {
       closeAndRead();
