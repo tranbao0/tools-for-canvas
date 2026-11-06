@@ -458,6 +458,10 @@ function blocksLoads(failure: Failure | null): boolean {
 
 const NO_FLAGS: OverrideFlags = { markedComplete: false, dismissed: false };
 
+function sameFlags(a: OverrideFlags, b: OverrideFlags): boolean {
+  return a.markedComplete === b.markedComplete && a.dismissed === b.dismissed;
+}
+
 function previousFlags(item: Item): OverrideFlags {
   return item.override === null
     ? { markedComplete: false, dismissed: false }
@@ -2149,12 +2153,27 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   /**
+   * The override flags that the list shows for an item: those of the newest waiting write to its
+   * key, else those of the item. It reads the cache at call time, so a write that an earlier
+   * action added after the item was read counts.
+   */
+  function shownFlags(item: Item): OverrideFlags {
+    const waiting = cache?.patches.filter(
+      (patch) => patch.kind === 'override' && patch.key === item.key,
+    );
+    const newest = waiting?.at(-1);
+    return newest?.kind === 'override'
+      ? { markedComplete: newest.override.marked_complete, dismissed: newest.override.dismissed }
+      : previousFlags(item);
+  }
+
+  /**
    * Writes the override flags that `flagsFor` picks for each item. With `undoable`, the reply
    * returns the flags from before, so the surface can keep them for its Undo notice.
    */
   async function changeOverrides(
     keys: readonly string[],
-    flagsFor: (item: Item) => OverrideFlags | null,
+    flagsFor: (shown: OverrideFlags) => OverrideFlags,
     undoable: boolean,
   ): Promise<ActionReply> {
     // A mark is a write for the student of the cache, so the cookie check comes first.
@@ -2166,9 +2185,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     for (const key of new Set(keys)) {
       const item = write.items.get(key);
       const target = item === undefined ? null : overrideTargetFor(item);
-      const flags = item === undefined ? null : flagsFor(item);
-      if (item === undefined || target === null || flags === null) continue;
-      const previous = previousFlags(item);
+      if (item === undefined || target === null) continue;
+      // What the list shows now, with the writes that wait. A key that shows the target flags
+      // already writes nothing and has no Undo entry: a later entry would hold the flags of the
+      // first write as its "before", and its Undo could not restore the item.
+      const previous = shownFlags(item);
+      const flags = flagsFor(previous);
+      if (sameFlags(previous, flags)) continue;
       addOverridePatch(
         key,
         target,
@@ -2287,9 +2310,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       case 'setDone':
         return changeOverrides(
           action.keys,
-          (item) =>
+          (shown) =>
             action.done
-              ? { markedComplete: true, dismissed: item.override?.dismissed ?? false }
+              ? { markedComplete: true, dismissed: shown.dismissed }
               : { markedComplete: false, dismissed: false },
           action.done,
         );
