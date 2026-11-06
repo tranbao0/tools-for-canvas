@@ -9,7 +9,7 @@ Tools for Canvas has no account, no server of its own and no telemetry.
 It reads your Canvas data in your browser and shows it to you.
 It writes only done marks, skip marks, custom tasks, announcement read and unread marks and the read mark of your rubric comments, and only to your own Canvas.
 Nothing goes to the developer.
-Canvas can send a file or View Feedback to its own storage and DocViewer hosts, and images and profile pictures can load from other hosts that a teacher or Canvas chose (see "What the extension sends elsewhere").
+Canvas can send a file, View Feedback or Preview to its own storage and DocViewer hosts, and images and profile pictures can load from other hosts that a teacher or Canvas chose (see "What the extension sends elsewhere").
 
 ## What the extension reads
 
@@ -66,7 +66,7 @@ It never stores or sends the session cookie value.
 It reads the fingerprint before and after each request that fills its cache.
 It keeps the answer only when both fingerprints match and the check confirmed that fingerprint for the same student.
 It starts no load of Canvas data when there is no session cookie or when the cookie cannot be read.
-The one request that it can send without that check is the question to Canvas who is signed in, which comes before a write.
+The one request that it can send without that check is the question to Canvas who is signed in, which comes before a write or after a request that Canvas refused.
 It reads the fingerprint again right before each request that writes to Canvas, also before a retry after a rate limit.
 It sends a write only when a check confirmed that fingerprint for the same student.
 This covers done marks, skip marks, read marks of announcements, the read mark of rubric comments, and the creation, change and deletion of your own tasks.
@@ -95,7 +95,8 @@ The extension writes only to your own Canvas, and only for something that you do
 - a read mark on an announcement when you press "Mark as read" in the Announcements tab, or an unread mark when you press Undo;
 - a read mark or an unread mark on an announcement when you click the read control in the Announcements widget of the new dashboard;
 - a read mark on the rubric comments of your own submission (`PUT /api/v1/courses/:id/assignments/:id/submissions/:id/rubric_assessments/read`), when you open the Submission Details page of your own work and its rubric, with unread comments, is in view;
-- nothing of its own when you open View Feedback, but the session address that it loads makes Canvas mark the notes on that file as read, as Canvas's own dialog does.
+- nothing of its own when you open View Feedback, but the session address that it loads makes Canvas mark the notes on that file as read, as Canvas's own dialog does;
+- nothing of its own when you open a file in the pane, but the read counts as opening that file: Canvas can mark the view requirement of a module as done and record the access, as it does for a download.
 
 The one write that is not in this list is the correction of a write that reached another account (see "What the extension checks on web pages").
 
@@ -163,7 +164,7 @@ The extension stores only these items in browser storage on your device:
 - which one-time notes you have seen;
 - which small fixes for the new Canvas dashboard are on;
 - whether the one assignment view is on;
-- the page and the zoom of up to 200 PDFs that you opened, with your Canvas user id and the file ids, until you sign out, another student opens a PDF or you remove the extension (see "Saved PDF positions");
+- the page and the zoom of up to 200 PDFs that you opened, with your Canvas user id and the file ids (for a file attached to a comment, its address in Canvas, with the course, assignment and comment ids), until you sign out, another student opens a PDF or you remove the extension (see "Saved PDF positions");
 - a random salt for the sign-in fingerprint.
 
 The extension also keeps these items in browser memory (`storage.session`) for the browser session only: the Canvas data of your list, the announcements of the Announcements tab, the read marks that Canvas has not shown yet, your waiting changes and task deletes, the confirmed sign-in fingerprints, the tab (Tasks or Announcements) that each list shows, the open file ids of each browser tab, the id of the student that those file ids belong to and the secret of each pane.
@@ -179,12 +180,13 @@ In Firefox, they live in the extension's own IndexedDB, with a copy in `storage.
 The extension sends no data to the developer.
 It has no analytics, no error reporting, no advertising and no remote configuration.
 It opens no web page on install or uninstall.
-Every request of the extension starts at the one Canvas address that you saved.
+Every request to Canvas starts at the one Canvas address that you saved.
+A task delete that waits when you switch Canvas goes to the Canvas that you left.
 When you open a file, Canvas can redirect the read to its file storage on another host, such as `cdn.inst-fs-iad-prod.inscloudgate.net`, and the extension follows that redirect and reads the file there.
-When you open View Feedback, the extension loads the session address of your Canvas in a frame, and Canvas sends that frame to DocViewer.
+When you open View Feedback or Preview on the Submission Details page, the extension loads the session address of your Canvas in a frame, and Canvas sends that frame to DocViewer.
 The assignment pane shows pages of your Canvas, and these pages load what they load in a normal tab.
 An image in an announcement, in the instructions of an assignment or in your own text entry loads from the address that its author chose, with no referrer, as the Canvas page does.
-A profile picture in the People widget or in the Announcements widget of the new dashboard is the same kind of exception: when Canvas keeps the picture on another host, the browser loads it from there with no referrer, and a picture on your Canvas host loads only from a file or an image path.
+A profile picture in the People widget or in the Announcements widget of the new dashboard works the same way: when Canvas keeps the picture on another host, the browser loads it from there with no referrer, and a picture on your Canvas host loads only from a file or an image path.
 
 The code enforces this.
 The background sends each Canvas request through one function that allows only your Canvas address.
@@ -215,6 +217,7 @@ In particular:
 - The extension uses your data only to make your Canvas easier to use: it shows your coursework, files, assignments, announcements and teachers to you, and it saves the marks and tasks that you ask for.
   That is its single purpose.
 - The extension transfers no user data to any third party.
+  Images and profile pictures load as "What the extension sends elsewhere" says.
 - No person reads your data.
 - The extension does not use or transfer your data for advertising, for credit checks or for any other purpose.
 
@@ -222,7 +225,8 @@ In particular:
 
 In Firefox, the extension declares that it collects no data (`data_collection_permissions` is `none`).
 The extension sends your Canvas requests only to your own Canvas and to the hosts that Canvas redirects to.
-It sends nothing to the developer or to any other party.
+It sends nothing to the developer.
+Images and profile pictures load as "What the extension sends elsewhere" says.
 
 ## Remove your data
 

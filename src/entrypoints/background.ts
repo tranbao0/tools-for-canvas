@@ -25,9 +25,8 @@ export default defineBackground(() => {
   wireActionClick({ registry });
   wireInstall();
   const owner = createBackgroundDataOwner({
-    onUserDataCleared: () => {
-      clearViewerTabs().catch((error: unknown) => logFailure('viewer tabs', error));
-    },
+    onUserDataCleared: () =>
+      clearViewerTabs().catch((error: unknown) => logFailure('viewer tabs', error)),
   });
   wireDataRouter(owner);
   wireViewerRouter(owner);

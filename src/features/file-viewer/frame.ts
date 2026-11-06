@@ -3,6 +3,7 @@ import {
   frameFileTarget,
   isPaneFramePage,
   isSubmissionPage,
+  keptAddress,
   paneFileTarget,
   plainClick,
 } from './model';
@@ -89,7 +90,7 @@ export function startFrameCatcher(): void {
       if (!target) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      void forward(target.fileId).then((opened) => {
+      void forward(target.fileId, keptAddress(resolved(href), location.origin)).then((opened) => {
         // A page script that changed the link in the meantime gets no click on the new address.
         if (!opened && link.isConnected && link.getAttribute('href') === href) {
           (link as HTMLElement).click();
@@ -110,10 +111,10 @@ function resolved(href: string): string {
 }
 
 /** Asks the background to open the file in the top frame. `false` when nothing opened it. */
-async function forward(fileId: string): Promise<boolean> {
+async function forward(fileId: string, address: string | undefined): Promise<boolean> {
   try {
-    const reply = (await browser.runtime.sendMessage({ type: FRAME_OPEN, fileId })) as
-      { opened?: unknown } | undefined;
+    const message = { type: FRAME_OPEN, fileId, ...(address === undefined ? {} : { address }) };
+    const reply = (await browser.runtime.sendMessage(message)) as { opened?: unknown } | undefined;
     return reply?.opened === true;
   } catch {
     return false;

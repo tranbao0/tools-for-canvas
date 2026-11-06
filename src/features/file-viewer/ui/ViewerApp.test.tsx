@@ -316,7 +316,7 @@ describe('the address that the student clicked', () => {
     );
     // The Download link stays on the file id alone.
     expect((screen.getByRole('link', { name: 'Download' }) as HTMLAnchorElement).href).toBe(
-      `${ORIGIN}/files/1/download`,
+      `${ORIGIN}/files/1/download?download_frd=1`,
     );
   });
 
@@ -363,7 +363,7 @@ describe('file card', () => {
     expect(screen.getByText('Word document · 265 KB')).toBeTruthy();
     const download = screen.getByRole('link', { name: 'Download' }) as HTMLAnchorElement;
     const canvas = screen.getByRole('link', { name: 'Open in Canvas' }) as HTMLAnchorElement;
-    expect(download.href).toBe(`${ORIGIN}/files/1/download`);
+    expect(download.href).toBe(`${ORIGIN}/files/1/download?download_frd=1`);
     expect(canvas.href).toBe(`${ORIGIN}/courses/7/files/1`);
     for (const link of [download, canvas]) {
       expect(link.target).toBe('_blank');
@@ -378,7 +378,7 @@ describe('file card', () => {
     await open('1');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.docx' })).toBeTruthy());
     const download = screen.getByRole('link', { name: 'Download' }) as HTMLAnchorElement;
-    expect(download.href).toBe(`${ORIGIN}/files/1/download`);
+    expect(download.href).toBe(`${ORIGIN}/files/1/download?download_frd=1`);
   });
 
   it('links to the plain file path when the file has no course', async () => {

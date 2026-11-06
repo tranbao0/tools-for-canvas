@@ -475,7 +475,7 @@ export async function startViewer(): Promise<void> {
     sender: Browser.runtime.MessageSender,
     respond: (reply: { opened: boolean }) => void,
   ): boolean | undefined => {
-    const request = message as { type?: unknown; fileId?: unknown } | null;
+    const request = message as { type?: unknown; fileId?: unknown; address?: unknown } | null;
     if (request?.type === 'weekrow:changed') {
       void readContext().then(
         (latest) => {
@@ -514,6 +514,9 @@ export async function startViewer(): Promise<void> {
     }
     const fileId = request.fileId;
     const taken = generation;
+    const address = keptAddress(String(request.address ?? ''), location.origin);
+    if (address === undefined) addresses.delete(fileId);
+    else addresses.set(fileId, address);
     void (async () => {
       await starting;
       // The catcher saves the file in the usual way unless the pane has it, so the answer comes

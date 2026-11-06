@@ -212,7 +212,7 @@ export interface DataOwnerDeps {
    * Called when the data of the student goes: a sign-out, another student, or a new address. The
    * file viewer clears the tabs that it keeps for each browser tab.
    */
-  onUserDataCleared?(): void;
+  onUserDataCleared?(): void | Promise<void>;
 }
 
 /** What the page of a detected Canvas shows. See {@link DataOwner.canvasDetected}. */
@@ -681,6 +681,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       return;
     }
     cache = restored.cache;
+    // A worker that stopped between the commit of a session and its claim repeats the claim here.
+    if (cache.session !== null) void startViewerClaim(cache.session.profile.id);
     for (const [noteId, deleteAt] of Object.entries(cache.pendingDeletes)) {
       scheduleDelete(noteId, deleteAt);
     }
@@ -940,17 +942,22 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     await bump();
   }
 
-  function userDataCleared(): void {
+  function userDataCleared(): Promise<void> {
+    let cleared: void | Promise<void> = undefined;
     try {
-      deps.onUserDataCleared?.();
+      cleared = deps.onUserDataCleared?.();
     } catch (error) {
       deps.log('user data cleared', error);
     }
-    // The viewer data of the earlier student is going, so no student owns it, and no proof of
-    // that student stays. The next proof or session names its student, and a compare against
-    // the old one can neither repeat this reset nor report a change that never happened.
+    // No proof of the earlier student stays. The next proof or session names its student, and a
+    // compare against the old one can neither repeat this reset nor report a change that never
+    // happened. The stored name goes only after the reset: a worker that stops before that
+    // finds the same name again, and repeats the reset.
     viewerProof = null;
-    writeViewerStudent(null).catch(() => undefined);
+    return Promise.resolve(cleared)
+      .catch((error: unknown) => deps.log('user data cleared', error))
+      .then(() => writeViewerStudent(null))
+      .catch(() => undefined);
   }
 
   /** The claim of the newest session. A viewer read waits for it, so no pane reads before the reset. */
@@ -972,8 +979,18 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   async function claimViewer(userId: string): Promise<void> {
     const held = await deps.store.viewerStudent.getValue().catch(() => undefined);
     // A name that cannot be read counts as another student: the reset is safe.
-    if (held === undefined || (held !== null && !sameCanvasId(held, userId))) userDataCleared();
+    if (held === undefined || (held !== null && !sameCanvasId(held, userId))) {
+      await userDataCleared();
+    }
     await writeViewerStudent(studentName(userId));
+  }
+
+  /** Runs after the claims before it, so one change of student makes one reset. */
+  function startViewerClaim(userId: string): Promise<unknown> {
+    viewerClaim = viewerClaim
+      .then(() => claimViewer(userId))
+      .catch((error: unknown) => deps.log('viewer student', error));
+    return viewerClaim;
   }
 
   /**
@@ -1103,9 +1120,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
               recordUserCheck(binding.fingerprint);
               persist();
               // The commit does not wait for the viewer: the viewer reads wait for the claim.
-              viewerClaim = claimViewer(session.profile.id).catch((error: unknown) =>
-                deps.log('viewer student', error),
-              );
+              void startViewerClaim(session.profile.id);
               await bump();
             })(),
           );
@@ -1131,7 +1146,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     if (update !== null) {
       plannerBackoff = [];
+      const firstSession = cache.session === null;
       cache = prune(settlePatches(commitUpdate(cache, update, clock.now()), startedAt), context);
+      if (firstSession && cache.session !== null) void startViewerClaim(cache.session.profile.id);
       recordUserCheck(binding.fingerprint);
       loadStatusNames(context.settings, true);
     } else if (failure?.kind === 'signed_out') {
@@ -1804,7 +1821,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     try {
       const self = await apiFor(stamp.origin).getSelf();
       if (!isCurrent(stamp)) return false;
-      if (self.id === stamp.userId) return true;
+      if (sameCanvasId(self.id, stamp.userId)) return true;
       await dropUserData();
     } catch (error) {
       if (!isCurrent(stamp)) return false;
@@ -2573,7 +2590,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       }
       if (stamp.userId === null && fingerprint !== null) {
         // With no session in the cache, a change of student still clears what the first one left.
-        await claimViewer(self.id);
+        await startViewerClaim(self.id);
         if (!isCurrent(stamp)) return false;
         viewerProof = { origin: stamp.origin, gen: generation, userId: self.id, fingerprint };
         return true;
@@ -2657,7 +2674,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       const self = await apiFor(origin)
         .withPriority(() => 'high')
         .getSelf();
-      return isCurrent(stamp) && self.id === stamp.userId
+      return isCurrent(stamp) && sameCanvasId(self.id, stamp.userId)
         ? { gradeVisibilities: {}, showGrades: {} }
         : null;
     } catch {

@@ -63,6 +63,21 @@ describe('the frame catcher in the frame of the assignment pane', () => {
     );
   });
 
+  it('sends the address of a link with a verifier, and of no other link', async () => {
+    openPage(PANE_PATH);
+    const plain = document.getElementById('plain') as HTMLAnchorElement;
+    plain.setAttribute('href', '/courses/9/files/42?verifier=abc');
+    startFrameCatcher();
+    click('plain');
+    await vi.waitFor(() =>
+      expect(sendMessage).toHaveBeenCalledExactlyOnceWith({
+        type: FRAME_OPEN,
+        fileId: '42',
+        address: `${location.origin}/courses/9/files/42?verifier=abc`,
+      }),
+    );
+  });
+
   it('leaves a script click, a modifier click, a download button, a comment attachment, a page link and another site alone', async () => {
     openPage(PANE_PATH);
     startFrameCatcher();
