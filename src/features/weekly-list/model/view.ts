@@ -399,8 +399,14 @@ export function buildWeekView(input: ModelInput): WeekView {
     openCount,
     courseFilter: input.courseFilter,
     hiddenCourseCount: input.courses.filter((course) => hidden.has(course.id)).length,
-    // Nothing is due only once every day of the span has arrived.
-    nothingDue: !isLoading && !incomplete && !visible.some((placed) => placed.datedInSpan),
+    // Nothing is due only once every day of the span has arrived. A checked reminder is no work
+    // that is due, and it has no ring that could stand for the span.
+    nothingDue:
+      !isLoading &&
+      !incomplete &&
+      !visible.some(
+        ({ datedInSpan, view }) => datedInSpan && !(view.isReminder && view.state === 'done'),
+      ),
     loading: isLoading,
     incomplete,
     limited: input.limited,

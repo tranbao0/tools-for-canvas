@@ -383,6 +383,12 @@ test.describe('the full list in the card', () => {
           return notice.y + notice.height <= card.y + card.height;
         })
         .toBe(true);
+      // A control in the top part of the card scrolls clear of the notice when it gets focus.
+      expect(
+        await root
+          .locator('> .wr-header')
+          .evaluate((element) => getComputedStyle(element).getPropertyValue('--wr-inset-bottom')),
+      ).toBe('56px');
     });
   }
 
