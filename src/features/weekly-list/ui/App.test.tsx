@@ -25,6 +25,7 @@ import {
   mkGroup,
   mkItem,
   mkNote,
+  announcementsProps,
   mkView,
   nothingDueView,
   pastSpanView,
@@ -2249,6 +2250,29 @@ describe('focus after "Mark all older done"', () => {
     rerender({ ...state, view: { ...state.view, groups } });
     expect(document.activeElement).toBe(
       screen.getByRole('checkbox', { name: 'Done: Industrial revolution discussion' }),
+    );
+  });
+});
+
+describe('open groups over the views that replace the list', () => {
+  it('keeps "N older" open over the Announcements tab', () => {
+    const state = readyState();
+    const actions: SpyActions = spyActions();
+    const draw = (tab: 'tasks' | 'announcements') => (
+      <App
+        surface="panel"
+        state={state}
+        actions={actions}
+        announcements={announcementsProps({ tab })}
+      />
+    );
+    const { rerender } = render(draw('tasks'));
+    fireEvent.click(screen.getByRole('button', { name: '3 older' }));
+    rerender(draw('announcements'));
+    expect(screen.queryByRole('button', { name: '3 older' })).toBeNull();
+    rerender(draw('tasks'));
+    expect(screen.getByRole('button', { name: '3 older' }).getAttribute('aria-expanded')).toBe(
+      'true',
     );
   });
 });

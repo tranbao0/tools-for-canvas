@@ -608,6 +608,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - The day list keeps at least 128 px.
     When the card is too low for 128 px and the bottom bar, the whole card scrolls instead.
   - Keyboard access, focus rings, collapse memory, the older list, and Mark all older done stay available.
+  - The groups and the "N older" lines that the student opened stay open while the task form, the settings, a minimize or the Announcements tab replaces the list.
+    The page keeps this state above those views, as it keeps the scroll positions.
   - These rules also apply to the docked card of a course home page and to the list in the dock of the classic dashboard, but do not affect the side panel or the minimized card.
     The side panel has no bottom bar, so it ignores `openGroup`: its No due date and Done groups open in place, one by one, and each keeps its own state.
   - The scroll bar of the groups sits in the side padding of the card, 4 px from its edge, so it never covers the day counts.
