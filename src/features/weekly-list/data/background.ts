@@ -2,6 +2,7 @@
  * The data owner as the background runs it: the real Canvas client, storage, clock and browser
  * events. See docs/design.md, decision 11, option A.
  */
+import { extensionOrigin } from './router';
 import { browser } from 'wxt/browser';
 import { sessionFingerprint, surfaceUsesRequestStore } from '../../../shared/canvas/session';
 import { createCanvasClient } from '../../../shared/canvas/client';
@@ -82,14 +83,23 @@ export function wireDataTriggers(owner: DataOwner): () => void {
       return;
     const noteId = port.name.slice('weekrow-delete:'.length);
     let closed = false;
-    const pending = owner.act({ kind: 'deleteTask', noteId });
+    const origin = extensionOrigin(() => canvasOriginItem.getValue());
+    const pending = origin.then((checked) =>
+      owner.act({ kind: 'deleteTask', noteId }, undefined, checked),
+    );
     port.onDisconnect.addListener(() => {
       void browser.runtime.lastError;
       closed = true;
       void pending
         .then((reply) => {
           if (reply.deleteToken !== undefined)
-            return owner.act({ kind: 'sendDelete', noteId, deleteToken: reply.deleteToken });
+            return origin.then((checked) =>
+              owner.act(
+                { kind: 'sendDelete', noteId, deleteToken: reply.deleteToken },
+                undefined,
+                checked,
+              ),
+            );
         })
         .catch(report('closed delete'));
     });
