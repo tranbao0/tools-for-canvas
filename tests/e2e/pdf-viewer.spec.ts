@@ -1130,7 +1130,7 @@ test('the error card keeps the address of a link with a verifier in memory, and 
   // The Download link is built from the file id alone.
   await expect(frame.getByRole('link', { name: 'Download' })).toHaveAttribute(
     'href',
-    `${canvas.origin}/files/42/download`,
+    `${canvas.origin}/files/42/download?download_frd=1`,
   );
   // The address is in no read and in no storage. The click itself is never a navigation.
   expect(

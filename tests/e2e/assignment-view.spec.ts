@@ -1219,6 +1219,30 @@ test('Escape on the page leaves a file pane open, and Escape inside it closes it
   await pressEscapeToClosePane(page);
 });
 
+test('a link with a verifier in the pane keeps its address for the error card of the file pane', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  // A teacher's link to a file that the student can read only with its verifier.
+  await frame.evaluate(() => {
+    document.querySelector('#file')!.setAttribute('href', '/courses/99/files/777?verifier=SECRETV');
+  });
+  await expect(async () => {
+    await frame.locator('#file').click({ timeout: 2000 });
+    await expect(page.locator(FILE_PANE)).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 20_000 });
+  const files = await pane(page);
+  await expect(files.getByText("Couldn't load this file")).toBeVisible();
+  await expect(files.getByRole('link', { name: 'Open in Canvas' })).toHaveAttribute(
+    'href',
+    `${canvas.origin}/courses/99/files/777?verifier=SECRETV`,
+  );
+});
+
 test('a file link in the pane opens the file pane over it, and closing the file shows the same frame again', async ({
   context,
   page,
