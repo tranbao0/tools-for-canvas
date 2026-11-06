@@ -847,7 +847,7 @@ A span that ended before today has one exception: open work dated inside it stay
 - When the student marks an item done, marks all older items done or deletes a task, an "Undo" notice shows.
   The notice has no timer: it stays until the student acts again or closes it.
   In the in-page list it lies over the end of the list, right above the bottom bar, so the view switch never moves, and the end of the list scrolls clear of it.
-  Ctrl+Z (Cmd+Z on a Mac) also undoes while the notice shows.
+  Ctrl+Z (Cmd+Z on a Mac) also undoes while the notice shows, also over a state that is not the list, such as the signed-out page.
   A fixed time limit would fail keyboard and screen reader users, who need time to reach the notice.
 
 **Checked but missing:**

@@ -3,15 +3,20 @@
  * form, the settings, a minimized bar or the Announcements tab (design decisions 4 and 18).
  */
 import type { Locator, Page } from '@playwright/test';
+import { CANVAS_ERRORS } from '../fixtures/errors';
+import { errorReply } from './support/canvas-state';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/model/types';
-import { saveAddress } from './support/scenario-api';
+import { SCENARIO_NOW, buildScenario } from '../fixtures/scenario';
+import { json, saveAddress } from './support/scenario-api';
 import {
   addCsrfCookie,
+  doneBox,
   expect,
   group,
   inpageList,
   openCanvasPage,
   openExtensionPage,
+  refreshedSince,
   saveSettings,
   serveScenario,
   settledList,
@@ -170,5 +175,45 @@ test.describe('focus when the last row leaves', () => {
     await expect(markAll).toHaveCount(0);
     // Decision 4: focus goes to the part of the view switch that is on.
     await expect(list.locator('.wr-views input:checked')).toBeFocused();
+  });
+});
+
+test.describe('Ctrl+Z', () => {
+  test('undoes while the Undo notice shows on a list that failed to load', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const scenario = buildScenario(SCENARIO_NOW);
+    let signedOut = false;
+    const { canvas, state } = await serveScenario(context, [
+      {
+        path: '/api/v1/users/self',
+        respond: () =>
+          signedOut ? errorReply(CANVAS_ERRORS.signedOut) : { body: json(scenario.self) },
+      },
+    ]);
+    await addCsrfCookie(context, canvas.origin);
+    await saveAddress(background, canvas.origin);
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await expect(doneBox(page, QUIZ_3)).toBeVisible();
+    await settledList(page);
+    const from = canvas.requests.length;
+    await doneBox(page, QUIZ_3).click();
+    const toast = page.locator('.wr-toast');
+    await expect(toast).toContainText('Marked done');
+    // The refresh round that follows the write ends before the session does.
+    await refreshedSince(page, canvas, from);
+
+    // The session ends. The next span cannot load, and the notice stays over the signed-out page.
+    signedOut = true;
+    state.plannerReply = errorReply(CANVAS_ERRORS.signedOut);
+    await page.getByRole('button', { name: /^Next/ }).click();
+    await expect(page.getByRole('heading', { name: "You're signed out of Canvas" })).toBeVisible();
+    await expect(toast).toBeVisible();
+
+    await page.keyboard.press('Control+Z');
+    await expect(toast).toHaveCount(0);
   });
 });
