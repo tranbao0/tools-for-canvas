@@ -3,6 +3,7 @@ import { browser } from 'wxt/browser';
 import { IDS } from '../../../../tests/fixtures/scenario';
 import { loadReady } from './testing/harness';
 import { wireDataTriggers } from './background';
+import { createDataOwner } from './owner';
 import { createHarness, settleAll, useScenarioClock } from './testing/harness';
 
 beforeEach(() => {
@@ -114,4 +115,39 @@ it('limits disconnect to its delete token and maintains the alarm', async () => 
   alarm({ name: 'weekrow-deletes', scheduledTime: 0, persistAcrossSessions: false });
   expect(resume).toHaveBeenCalledOnce();
   stop();
+});
+
+it('uses the saved origin for a panel delete port when the owner still holds another Canvas', async () => {
+  const h = await createHarness();
+  await loadReady(h);
+  const owner = createDataOwner(h.deps);
+  await owner.resumeDeletes();
+  const act = vi.spyOn(owner, 'act');
+  await h.deps.store.origin.setValue('https://other.instructure.com');
+  let connect!: Parameters<typeof browser.runtime.onConnect.addListener>[0];
+  vi.spyOn(browser.runtime.onConnect, 'addListener').mockImplementation((fn) => {
+    connect = fn;
+  });
+  vi.spyOn(browser.runtime.onConnect, 'removeListener').mockImplementation(() => undefined);
+  vi.spyOn(browser.alarms, 'get').mockResolvedValue(undefined);
+  vi.spyOn(browser.alarms, 'clear').mockResolvedValue(undefined);
+  const stop = wireDataTriggers(owner);
+  const postMessage = vi.fn();
+  connect({
+    name: `weekrow-delete:${IDS.notes.libraryBooksToday}`,
+    sender: { url: browser.runtime.getURL('/sidepanel.html') },
+    postMessage,
+    onDisconnect: { addListener: () => {} },
+  } as unknown as import('wxt/browser').Browser.runtime.Port);
+  await vi.advanceTimersByTimeAsync(0);
+  await owner.settled();
+  expect(act).toHaveBeenCalledWith(
+    { kind: 'deleteTask', noteId: IDS.notes.libraryBooksToday },
+    undefined,
+    'https://other.instructure.com',
+  );
+  expect(postMessage).toHaveBeenCalledWith({ reply: { undo: null } });
+  expect((await h.deps.store.cache.getValue())?.pendingDeletes).toEqual({});
+  stop();
+  owner.dispose();
 });

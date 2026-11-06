@@ -3,6 +3,7 @@ import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { DEFAULT_SETTINGS } from '../model/types';
 import type { DataOwner } from './owner';
+import type { TestDataOwner } from './testing/harness';
 import { routeDataMessage, wireDataRouter, type RouterHost } from './router';
 
 const SAVED = 'https://school.instructure.com';
@@ -11,7 +12,7 @@ const EXTENSION_PAGE = { url: 'chrome-extension://test-extension-id/sidepanel.ht
 const CONTENT_SCRIPT = { url: `${SAVED}/courses/5`, tab: { id: 3 }, frameId: 0 };
 const OTHER_CANVAS = { url: 'https://other.instructure.com/', tab: { id: 4 }, frameId: 0 };
 
-function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi.fn> } {
+function fakeOwner(): TestDataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi.fn> } {
   return {
     getState: vi.fn(async () => ({ kind: 'loading' })),
     refresh: vi.fn(async () => ({ retryAt: null })),
@@ -54,7 +55,7 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
     })),
     assignmentOwner: vi.fn(async () => ({ userId: '42' })),
     dispose: vi.fn(),
-  } as unknown as DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi.fn> };
+  } as unknown as TestDataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi.fn> };
 }
 
 function fakeHost(saved: string | null = SAVED): RouterHost & {

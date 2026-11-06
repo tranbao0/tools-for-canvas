@@ -2,6 +2,7 @@
  * Builds a data owner on fake Canvas data, the real storage items on the fake browser,
  * and the Vitest fake clock. Tests only.
  */
+import { extensionOrigin } from '../router';
 import { vi, type Mock } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import type { TimeRange } from '../../../../shared/canvas/types';
@@ -42,15 +43,53 @@ interface HarnessOptions {
   isFirefox?: boolean;
 }
 
+type OriginMethod =
+  | 'getState'
+  | 'refresh'
+  | 'act'
+  | 'dashboardData'
+  | 'dashboardGradeVisibility'
+  | 'announcementFeed'
+  | 'markDashboardAnnouncement';
+export type TestDataOwner = Omit<DataOwner, OriginMethod> & {
+  [K in OriginMethod]: (...args: Partial<Parameters<DataOwner[K]>>) => ReturnType<DataOwner[K]>;
+};
+
+/** Direct test calls use the stored origin unless they supply one. */
+function withTestOrigin(owner: DataOwner): TestDataOwner {
+  const positions: Record<OriginMethod, number> = {
+    getState: 2,
+    refresh: 1,
+    act: 2,
+    dashboardData: 0,
+    dashboardGradeVisibility: 2,
+    announcementFeed: 2,
+    markDashboardAnnouncement: 5,
+  };
+  return new Proxy(owner, {
+    get(target, property) {
+      if (Object.hasOwn(positions, property)) {
+        const position = positions[property as OriginMethod];
+        return async (...args: unknown[]) => {
+          if (args[position] === undefined)
+            args[position] = await extensionOrigin(() => canvasOriginItem.getValue());
+          return Reflect.apply(target[property as OriginMethod], target, args);
+        };
+      }
+      return Reflect.get(target, property);
+    },
+  }) as TestDataOwner;
+}
+
 export interface Harness {
   canvas: FakeCanvas;
-  owner: DataOwner;
+  owner: TestDataOwner;
   deps: DataOwnerDeps;
   hasAccess: Mock<(origin: string) => Promise<boolean>>;
   createApi: Mock<(origin: string) => FakeCanvas>;
   log: Mock<(step: string, error: unknown) => void>;
   /** Builds a second owner on the same storage, as after a service worker restart. */
-  restart(): DataOwner;
+  restart(): TestDataOwner;
 }
 
 /** Starts the Vitest fake clock at the scenario's "now". Real promises keep working. */
@@ -66,9 +105,9 @@ export async function settleAll(): Promise<void> {
   await Promise.all(owners.splice(0).map((owner) => owner.settled()));
 }
 
-function track(owner: DataOwner): DataOwner {
+function track(owner: DataOwner): TestDataOwner {
   owners.push(owner);
-  return owner;
+  return withTestOrigin(owner);
 }
 
 export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
