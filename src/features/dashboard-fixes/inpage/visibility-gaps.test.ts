@@ -355,3 +355,77 @@ describe('a result that came after the read gave up', () => {
     expect(grade('107')).toBe('•••');
   });
 });
+
+describe('a hidden grade whose card left the page', () => {
+  const grade103 = () => grade('103');
+
+  async function hide103AndLeave(): Promise<void> {
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    document.querySelector('[data-testid="course-103-grade"]')!.textContent = '•••';
+    stored = { '103': false };
+    await settle();
+    document.querySelector('[data-testid="course-grade-card-103"]')!.remove();
+    await settle();
+    expect(grade103()).toBe('•••');
+  }
+
+  it('keeps the observation through a reply with no student, and starts no new read', async () => {
+    await hide103AndLeave();
+    send.mockImplementationOnce(async () => NOTHING);
+    engine.reload();
+    await settle();
+    const before = reads();
+    engine.reload();
+    await settle();
+    expect(reads()).toBe(before);
+    expect(grade103()).toBe('•••');
+  });
+
+  it('keeps the observation for the same confirmed student, and clears it for a new student', async () => {
+    await hide103AndLeave();
+    const before = reads();
+    engine.reload();
+    await settle();
+    expect(reads()).toBe(before);
+    expect(grade103()).toBe('•••');
+    student = '6';
+    readStudent = '6';
+    stored = {};
+    engine.reload();
+    await settle();
+    expect(reads()).toBe(before + 1);
+    expect(grade103()).not.toBe('•••');
+  });
+});
+
+it('starts one read for the first confirmed student', async () => {
+  engine.setSettings(ON);
+  engine.setActive(true);
+  await settle();
+  expect(reads()).toBe(1);
+});
+
+it('runs a read that ended with no result again when the data changes', async () => {
+  let failing = true;
+  send.mockImplementation(async (message: DataMessage) =>
+    isRead(message)
+      ? {
+          ...NOTHING,
+          userId: '5',
+          gradeVisibilities: failing ? null : { [WIDGET]: {} },
+        }
+      : { ...dashboardData(), userId: '5' },
+  );
+  engine.setSettings(ON);
+  engine.setActive(true);
+  await settle();
+  expect(reads()).toBe(1);
+  expect(grade('107')).toBe('•••');
+  failing = false;
+  engine.reload();
+  await settle();
+  expect(reads()).toBe(2);
+  expect(grade('107')).toBe('95%');
+});

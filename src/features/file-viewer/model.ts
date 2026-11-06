@@ -137,9 +137,6 @@ export function courseOfLink(href: string, origin: string): string | null {
     return null;
   }
 }
-export function validRequest(value: unknown): value is string {
-  return typeof value === 'string' && (ID.test(value) || FILE.test(value));
-}
 /** Whether a value names a tab: the id of a file, or the address of a comment attachment. */
 export function isTabId(value: unknown): value is string {
   return typeof value === 'string' && (ID.test(value) || COMMENT_TAB.test(value));

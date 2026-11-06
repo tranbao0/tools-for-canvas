@@ -1,13 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  describeUrl,
-  escapeBytes,
-  mediaType,
-  redactCsp,
-  redactPath,
-  redactUrl,
-  scrubReport,
-} from './redact';
+import { escapeBytes, mediaType, redactCsp, redactPath, redactUrl, scrubReport } from './redact';
 
 /** Text that must never reach a report. */
 const SECRETS = [
@@ -70,7 +62,7 @@ describe('redactPath', () => {
   });
 });
 
-describe('redactUrl and describeUrl', () => {
+describe('redactUrl', () => {
   const corpus = [
     'https://school.instructure.com/files/12/download?download_frd=1&verifier=SECRETVERIFIER',
     'https://school.instructure.com/courses/5/files/Alice-Smith-resume.pdf?verifier=SECRETVERIFIER#hunter2',
@@ -85,7 +77,9 @@ describe('redactUrl and describeUrl', () => {
 
   it('never shows a query, a token, a user name or a name', () => {
     for (const address of corpus) {
-      expectClean(describeUrl(address, 'https://school.instructure.com'));
+      const url = redactUrl(address, 'https://school.instructure.com');
+      expect(url).not.toBeNull();
+      expectClean(`${url?.host ?? ''}${url?.path ?? ''}`);
     }
   });
 
@@ -94,7 +88,10 @@ describe('redactUrl and describeUrl', () => {
       host: 'school.instructure.com',
       path: '/files/:id/download',
     });
-    expect(describeUrl(corpus[3] ?? '')).toBe('inst-fs-iad-prod.inscloudgate.net/files');
+    expect(redactUrl(corpus[3] ?? '')).toEqual({
+      host: 'inst-fs-iad-prod.inscloudgate.net',
+      path: '/files',
+    });
     expect(redactUrl(corpus[2] ?? '')?.host).toBe('school.instructure.com');
     expect(redactUrl(corpus[4] ?? '')?.host).toBe('school.instructure.com:8443');
   });
@@ -105,9 +102,8 @@ describe('redactUrl and describeUrl', () => {
     expect(redactUrl('javascript:alert(Alice)')?.host).toBe('(javascript)');
   });
 
-  it('answers null or a marker for text that is not an address', () => {
+  it('answers null for text that is not an address', () => {
     expect(redactUrl('http://')).toBeNull();
-    expect(describeUrl('http://')).toBe('(not an address)');
   });
 });
 

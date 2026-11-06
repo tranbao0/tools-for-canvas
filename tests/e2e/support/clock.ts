@@ -44,11 +44,6 @@ export async function advanceBackgroundClock(worker: Worker, ms: number): Promis
   }, ms);
 }
 
-/** The service worker time, in epoch milliseconds. */
-export function backgroundNow(worker: Worker): Promise<number> {
-  return worker.evaluate(() => Date.now());
-}
-
 /** Stops real time while explicit clock steps continue to work. */
 export async function freezeBackgroundClock(worker: Worker): Promise<void> {
   await worker.evaluate(() => {
