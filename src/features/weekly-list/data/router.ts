@@ -112,11 +112,16 @@ async function answerDetection(
   return OK_REPLY;
 }
 
+/** The saved origin that an extension page may use. */
+export async function extensionOrigin(read: () => Promise<string | null>): Promise<string | null> {
+  const saved = await read();
+  return saved !== null && isUsableOrigin(saved) ? saved : null;
+}
+
 /** Resolves when the sender may use the data of the saved Canvas, and rejects otherwise. */
 async function checkSender(sender: SenderInfo, host: RouterHost): Promise<string | null> {
   if (host.isExtensionPage(sender)) {
-    const saved = await host.savedOrigin();
-    return saved !== null && isUsableOrigin(saved) ? saved : null;
+    return extensionOrigin(() => host.savedOrigin());
   }
   const origin = senderPageOrigin(sender);
   const saved = await host.savedOrigin();

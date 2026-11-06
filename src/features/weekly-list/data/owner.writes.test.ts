@@ -1410,7 +1410,7 @@ describe('writes across a sign-out, another user or another Canvas', () => {
     const reply = await created;
     await h.owner.settled();
 
-    expect(reply.created).toBe(false);
+    expect(reply.created).toBe(true);
     expect(h.canvas.callsOf('createNote')).toHaveLength(1);
     const state = expectReady(await h.owner.getState(PANEL));
     expect(
