@@ -127,8 +127,6 @@ export const FIXTURE_PAGES = {
   },
 } as const satisfies Record<string, FixturePage>;
 
-export type FixturePageName = keyof typeof FIXTURE_PAGES;
-
 const PAGES_DIR = join(dirname(fileURLToPath(import.meta.url)), 'pages');
 
 function readPagesFile(file: string): string {

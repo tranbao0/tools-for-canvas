@@ -54,17 +54,3 @@ export const CANVAS_ERRORS = {
 export function invalidAssignmentIds(ids: readonly string[]): CanvasErrorFixture {
   return jsonError(400, { message: `Invalid assignment_ids: ${ids.join(',')}` });
 }
-
-/** Responses from a site that is not Canvas, for the setup check. */
-export const NOT_CANVAS_RESPONSES = {
-  /** A normal web page at `/api/v1/users/self`. */
-  htmlPage: {
-    status: 200,
-    body: '<!DOCTYPE html><html><head><title>Northfield State University</title></head><body><h1>Page not found</h1></body></html>',
-  },
-  /** A school address that sends the browser to its sign-in service. */
-  redirectToSignIn: { status: 302, body: '' },
-} as const satisfies Record<string, CanvasErrorFixture>;
-
-/** Canvas puts this prefix before some JSON bodies. The client removes it. */
-export const WHILE_ONE_PREFIX = 'while(1);';

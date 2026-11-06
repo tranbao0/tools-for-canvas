@@ -35,11 +35,3 @@ export interface Fix {
 export function isFixNode(node: Node): boolean {
   return node.nodeType === 1 && (node as Element).hasAttribute('data-wr-own');
 }
-
-/** A new element with a class and text. */
-export function h(doc: Document, tag: string, className: string, text?: string): HTMLElement {
-  const node = doc.createElement(tag);
-  node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
