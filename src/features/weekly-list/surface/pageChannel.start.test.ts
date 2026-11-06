@@ -198,6 +198,9 @@ describe.each(CALLERS)('the start of $name', (caller) => {
       await page.finish(...startReads.slice(1));
       const controller = await page.started;
       await page.finish(changeRead);
+      // A refused read keeps the address until the read after it is refused too.
+      await vi.advanceTimersByTimeAsync(1_000);
+      await page.finish(changeRead + 1, changeRead + 2);
       expect(caller.shown()).toBe(false);
       controller.stop();
     });
@@ -258,6 +261,9 @@ describe('the assignment view after its start', () => {
     await vi.advanceTimersByTimeAsync(1_000);
     expect(view.shown()).toBe(true);
     await vi.advanceTimersByTimeAsync(1_200);
+    // The refused read 4 kept the address, and the read after it is refused too.
+    await page.finish(5);
+    await vi.advanceTimersByTimeAsync(2_200);
     expect(view.shown()).toBe(false);
     (await page.controller).stop();
   });

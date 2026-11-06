@@ -1200,7 +1200,8 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   When both cookies exist, the fingerprint includes both hashes in the order of the cookie names.
   The salt is a trusted item (decision 5).
   On Chrome and Edge, it lives in `storage.local`, which the browser locks to trusted extension contexts, so content scripts can neither read nor write it.
-  On Firefox, it lives in the IndexedDB vault of the extension, which content scripts cannot open, and `createTrustedItem` also mirrors it to `storage.local`, which content scripts can read.
+  On Firefox, it lives in the IndexedDB vault of the extension, which content scripts cannot open, and `saltItem` sets `mirror: false`, so no copy goes to `storage.local`, which content scripts can read.
+  An update removes the copy that an earlier build left there.
   The extension never stores or sends the cookie value.
   The cookie names are one ordered constant in `src/shared/canvas/session.ts`.
   The cookie comes from the store that the requests of the extension use: the default store of the browser (`0` on Chrome and Edge, `firefox-default` on Firefox).

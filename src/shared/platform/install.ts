@@ -8,6 +8,7 @@
  * and never opens by itself (decision 4), so the Firefox sidebar does not open at install either.
  */
 import { browser, type Browser } from 'wxt/browser';
+import { removeSaltMirror } from '../canvas/session';
 import { anyAutoSavedCanvasTab, injectDetectorIntoOpenTabs, type InjectedTab } from './inject';
 import { removeOldPositionMap } from '../../features/file-viewer/positions';
 import { logFailure } from './log';
@@ -45,8 +46,10 @@ export function openWelcomePrompt(): Promise<void> {
 
 /** Runs the detector in the open tabs and, on install, opens the welcome page when it is needed. */
 async function handleInstalled(reason: 'install' | 'update'): Promise<void> {
-  if (reason === 'update')
+  if (reason === 'update') {
     await removeOldPositionMap().catch((error: unknown) => logFailure('old positions', error));
+    await removeSaltMirror().catch((error: unknown) => logFailure('old salt copy', error));
+  }
   let injected: InjectedTab[] = [];
   try {
     injected = await injectDetectorIntoOpenTabs();

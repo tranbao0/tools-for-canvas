@@ -128,6 +128,9 @@ export default defineConfig({
     },
   }),
   zip: {
+    // WXT skips dotfiles, and the README names `.nvmrc` as the Node version of the build. A list
+    // of patterns replaces the default `**/*`, so the list keeps it.
+    includeSources: ['**/*', '.nvmrc'],
     excludeSources: [
       'test-results/**',
       'screenshots/**',
