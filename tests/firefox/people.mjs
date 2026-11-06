@@ -8,7 +8,8 @@
 //   a. The list shows 10 rows with a message link, and the list and the pager of Canvas are hidden.
 //   b. A scroll to the end of the scroll area loads 10 more rows.
 //   c. The Course filter of Canvas, set to a course, shows only the people of that course.
-//   d. When the first page fails, Canvas's own list and pager show again.
+//   d. A typed query loads the rest of the pages, marks the match, and a clear brings the list back.
+//   e. When the first page fails, Canvas's own list and pager show again.
 // A content script of Firefox cannot spread the iterator of URLSearchParams, Headers or FormData,
 // and Chromium and jsdom accept it, so only a real Firefox shows such a fault in the page script.
 // The address of the message link is built from URLSearchParams, so step a covers it.
@@ -280,7 +281,60 @@ async function main() {
       problems.push(`the course filter shows ${JSON.stringify(course.texts)}`);
     } else console.log(`Course filter: ${course.articles} people of MATH 221`);
 
-    // d. When the first page fails, Canvas's own list and pager show again.
+    // d. A typed query loads the rest of the pages, marks the match, and a clear brings the list back.
+    await driver.executeScript(`
+      const input = document.querySelector('[data-testid="widget-people-widget"] [data-testid="course-filter-select"]');
+      input.value = 'All Courses';
+      input.setAttribute('value', 'All Courses');
+    `);
+    await waitFor(state, (value) => value.articles >= 20);
+    const field = await driver.executeScript(`
+      const host = document.querySelector('[data-testid="widget-people-widget"] [data-wr-list]');
+      return host.shadowRoot.querySelector('.wr-a-input') !== null;
+    `);
+    if (!field) problems.push('the search field is missing');
+    else {
+      await driver.executeScript(`
+        const host = document.querySelector('[data-testid="widget-people-widget"] [data-wr-list]');
+        const input = host.shadowRoot.querySelector('.wr-a-input');
+        input.focus();
+        input.value = 'Instructor 25';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      `);
+      const search = () =>
+        driver.executeScript(`
+          const host = document.querySelector('[data-testid="widget-people-widget"] [data-wr-list]');
+          const root = host.shadowRoot;
+          return {
+            line: root.querySelector('.wr-a-res').textContent,
+            names: Array.from(root.querySelectorAll('article')).map((node) => node.getAttribute('aria-label')),
+            marks: Array.from(root.querySelectorAll('mark')).map((node) => node.textContent),
+            query: root.querySelector('.wr-a-input').value,
+            focused: root.activeElement !== null && root.activeElement.classList.contains('wr-a-input'),
+          };
+        `);
+      const found = await waitFor(search, (value) => value.line === '1 result');
+      if (
+        found.line !== '1 result' ||
+        found.names.join() !== 'Instructor 25 Hartley' ||
+        found.marks.join() !== 'Instructor,25'
+      ) {
+        problems.push(`the search shows ${JSON.stringify(found)}`);
+      } else console.log('Search: a person of the third page found, with the match marked');
+      await driver.executeScript(`
+        const host = document.querySelector('[data-testid="widget-people-widget"] [data-wr-list]');
+        host.shadowRoot.querySelector('.wr-a-x').click();
+      `);
+      const cleared = await waitFor(
+        search,
+        (value) => value.query === '' && value.names.length > 1,
+      );
+      if (cleared.query !== '' || cleared.line !== '' || !cleared.focused) {
+        problems.push(`the clear left ${JSON.stringify(cleared)}`);
+      } else console.log('Search: the clear brings the list back, with the focus in the field');
+    }
+
+    // e. When the first page fails, Canvas's own list and pager show again.
     failPeople = true;
     await driver.get(page);
     const fallback = await waitFor(state, (value) => !value.hasHost && value.nativeShown);
