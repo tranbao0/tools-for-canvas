@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnnouncementTopic } from '../../../shared/canvas/types';
 import { IDS } from '../../../../tests/fixtures/scenario';
 import type { AnnouncementFeed } from './announcements';
+import { changeMarkerItem } from '../../../shared/platform/storage';
 import { sessionCacheItem } from './cache';
 import { canvasError } from './testing/fakeCanvas';
 import {
@@ -195,6 +196,29 @@ describe('announcementFeed', () => {
     release();
     await h.owner.settled();
 
+    expect(h.canvas.callsOf('listAnnouncementFeed')).toHaveLength(2);
+  });
+
+  it('tells the surfaces to ask again after the cookie rule drops a load, and loads once more', async () => {
+    const h = await loaded();
+    const release = h.canvas.hold('listAnnouncementFeed');
+    const first = ready(await h.owner.announcementFeed(PANEL_FEED));
+    expect(first.loading).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    // The cookie changes while the load runs, so its answer belongs to no confirmed cookie.
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-a2');
+    const before = await changeMarkerItem.getValue();
+    release();
+    await h.owner.settled();
+    expect(await changeMarkerItem.getValue()).toBeGreaterThan(before);
+
+    // The surface asks again: one more load, and no loop of drops and marker changes.
+    ready(await h.owner.announcementFeed(PANEL_FEED));
+    await h.owner.settled();
+    const marker = await changeMarkerItem.getValue();
+    expect(ready(await h.owner.announcementFeed(PANEL_FEED))).toMatchObject({ loading: false });
+    await h.owner.settled();
+    expect(await changeMarkerItem.getValue()).toBe(marker);
     expect(h.canvas.callsOf('listAnnouncementFeed')).toHaveLength(2);
   });
 

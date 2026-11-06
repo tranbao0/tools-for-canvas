@@ -3186,8 +3186,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         // A load that a newer one replaced (the hidden courses changed) must not overwrite it.
         const current = announcementLoad === entry;
         if (current) announcementLoad = null;
-        // A dropped answer leaves the cache as it was, and the next request loads again.
-        if (dropped || !current || !isCurrent(stamp) || cache === null) return;
+        if (!current || !isCurrent(stamp) || cache === null) return;
+        // A dropped answer leaves the cache as it was. The surfaces that wait for this load ask
+        // again, and that request loads again.
+        if (dropped) {
+          await bump();
+          return;
+        }
         const previous = cache.announcements;
         const kept = previous?.courseKey === key ? previous.topics : null;
         cache = {
