@@ -156,6 +156,38 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  platforms:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js from .nvmrc
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Tests for the build checks
+        run: npm run test:scripts
+
+      - name: Build Chrome, Edge and Firefox, then check size, URLs and manifests
+        run: npm run check
+
   amo-reproducible-build:
     name: Firefox Add-ons rebuild on ARM64
     # Firefox Add-ons reviewers rebuild the source zip on Ubuntu 24.04 ARM64 with Node 24.14.0 and

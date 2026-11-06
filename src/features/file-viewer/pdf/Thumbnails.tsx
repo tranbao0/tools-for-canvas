@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import { t } from '../../../shared/ui/i18n';
 import { usePull } from '../../../shared/ui/pull';
 import type { PdfDocument } from './types';
-import { THUMBNAIL_WIDTH, ThumbnailRenderer } from './thumbnails';
+import { THUMBNAIL_WIDTH, ThumbnailRenderer } from './thumbnailRenderer';
 
 export function Thumbnails(props: {
   doc: PdfDocument;
