@@ -1202,7 +1202,6 @@ button.wr-marker:hover {
 
 /* In the card the notice lies over the end of the list, so the bottom bar never moves. */
 .wr[data-surface='inpage'] > .wr-task-panel > .wr-dock {
-  position: relative;
   height: 0;
   margin-top: 0;
   padding-block: 0;
@@ -1224,9 +1223,14 @@ button.wr-marker:hover {
   inset-inline: 0;
 }
 
-/* The end of the list and a focused row scroll clear of the notice. */
-.wr[data-surface='inpage'] > .wr-task-panel:has(.wr-toast) > :is(.wr-scroll, .wr-group-area) {
+/* The end of the list and a focused control scroll clear of the notice. */
+.wr[data-surface='inpage']
+  > .wr-task-panel:has(.wr-toast)
+  > :is(.wr-scroll, .wr-group-area, .wr-pinned) {
   --wr-inset-bottom: 56px;
+}
+
+.wr[data-surface='inpage'] > .wr-task-panel:has(.wr-toast) > :is(.wr-scroll, .wr-group-area) {
   padding-block-end: 64px;
 }
 
