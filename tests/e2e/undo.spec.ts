@@ -7,6 +7,7 @@ import type { BrowserContext, Locator, Page, Worker } from '@playwright/test';
 import { IDS } from '../fixtures/scenario';
 import { overrideWrites, writesTo } from './support/canvas-state';
 import { saveAddress } from './support/scenario-api';
+import { requestsQuiet } from './support/settle';
 import {
   addCsrfCookie,
   doneBox,
@@ -92,6 +93,30 @@ test.describe('the Undo notice', () => {
     await page.keyboard.press('Control+z');
     await expect(quiz).not.toBeChecked();
     expect(overrideWrites(canvas)).toHaveLength(2);
+  });
+
+  test('a second click before the row redraws writes nothing more and leaves no Undo that cannot restore', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const { canvas } = await openPanel(context, page, background, extensionUrl('sidepanel.html'));
+    const toast = page.locator('.wr-toast');
+    const quiz = doneBox(group(page, 'today'), QUIZ_3);
+
+    // Both clicks land before the list redraws, as on a slow reply of the background.
+    await quiz.evaluate((box) => {
+      (box as HTMLInputElement).click();
+      (box as HTMLInputElement).click();
+    });
+    await expect(quiz).toHaveCount(0);
+    await expect.poll(() => overrideWrites(canvas).length).toBeGreaterThan(0);
+    await requestsQuiet(page, canvas.requests, background);
+
+    expect(overrideWrites(canvas)).toHaveLength(1);
+    // The mark stands, and no notice offers an Undo that would leave the item done.
+    await expect(toast).toHaveCount(0);
   });
 
   test('sends a task DELETE only when the notice ends, and never after Ctrl+Z', async ({

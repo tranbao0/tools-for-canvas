@@ -882,6 +882,8 @@ A student now has one way to clear work: Done.
 - "Mark all older done" in the Past due group sends the write of a check for each older item whose checkbox the student can use.
   Its Undo notice says how many items it marked done, and the first-done note shows if it has not shown yet.
   Undo sends the flags of each item from before.
+- A check or uncheck of an item that already shows the target flags, or that has a waiting write to them, writes nothing and gives no Undo entry.
+  The owner decides this for every caller, so a second click before the row redraws, a double send and a stale second surface cannot give a later Undo the flags of the first write as its "before".
 - A row action stays on the due line, at the right of the due text: "Move to today" for a custom task with a past date, and the Preview button (decision 26).
   A row with no due text, such as an undated item, shows its actions on a line of their own.
   The actions of a row always share that one line, so a past-due row has no separate row of action targets.

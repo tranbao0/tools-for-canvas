@@ -363,6 +363,30 @@ describe('done marks', () => {
     expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
   });
 
+  it('writes nothing and gives no Undo for a key that has the target flags or a waiting write to them', async () => {
+    const h = await loaded();
+
+    // Two sends before the list redraws, as from a double click or a stale second surface.
+    const [first, second] = await Promise.all([
+      h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true }),
+      h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true }),
+    ]);
+    await h.owner.settled();
+    const third = await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true });
+    await h.owner.settled();
+
+    expect(first.undo?.kind).toBe('overrides');
+    expect(second).toEqual({ undo: null });
+    expect(third).toEqual({ undo: null });
+    expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
+    expect(h.canvas.callsOf('updateOverride')).toHaveLength(0);
+
+    // The one notice undoes the mark.
+    await h.owner.act(restoreOf(first));
+    await h.owner.settled();
+    expect((await item(h, QUIZ_3))?.state).toBe('open');
+  });
+
   it('writes a new change marker after a write', async () => {
     const h = await loaded();
     const before = await changeMarkerItem.getValue();
@@ -1109,17 +1133,29 @@ describe('writes across a sign-out, another user or another Canvas', () => {
       'createOverride',
       canvasError('server', 500),
       (keys: string[]) => keys,
+      false,
     ],
     [
       'a 404 on a change of an override that exists',
       'updateOverride',
       canvasError('not_found', 404),
       (keys: string[]) => [`assignment:${A.bioLabReport2}`, ...keys],
+      true,
     ],
   ] as const)(
     'ends the queue at %s when Canvas has another student signed in, without a 401',
-    async (_name, method, error, order) => {
+    async (_name, method, error, order, uncheckFirst) => {
       const h = await loaded();
+      if (uncheckFirst) {
+        // The saved override of the lab report is a done mark, so it is unchecked first.
+        await h.owner.act({
+          kind: 'setDone',
+          keys: [`assignment:${A.bioLabReport2}`],
+          done: false,
+        });
+        await h.owner.settled();
+        h.canvas.resetCalls();
+      }
       const keys = order(await olderKeys(h));
       expect(keys.length).toBeGreaterThan(2);
       h.canvas.fail(method, error, { times: 1 });
