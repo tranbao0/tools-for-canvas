@@ -13,7 +13,7 @@ export type AboveReason =
   | 'report-data'
   /** Canvas's script drew a report of an asset processor in the frame. */
   | 'asset-reports'
-  /** The frame shows a preview button for a file that has no usable session address. */
+  /** A session address failed the check, and no row of the frame has given a good one yet. */
   | 'no-session';
 
 export function logAbove(reason: AboveReason): void {

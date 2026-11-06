@@ -190,12 +190,22 @@ describe('the file addresses and the report data', () => {
         { id: '2', display_name: 'b' },
         { id: '3', display_name: 'c', preview_url: 5 },
         { id: '4', display_name: 'd', preview_url: 'p'.repeat(5000) },
+        { id: '5', display_name: 'e', preview_url: null },
       ],
     });
     expect(details.submission.attachments?.map((file) => file.preview_url)).toEqual([
       '/api/v1/canvadoc_session?blob=a&hmac=b',
       undefined,
       undefined,
+      undefined,
+      undefined,
+    ]);
+    // An address that the projection drops stays a known offer. A null is no offer.
+    expect(details.submission.attachments?.map((file) => file.preview_unusable)).toEqual([
+      undefined,
+      undefined,
+      true,
+      true,
       undefined,
     ]);
   });

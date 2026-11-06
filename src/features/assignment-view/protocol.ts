@@ -80,6 +80,8 @@ export interface AssignmentFile {
    * preview has. The page checks it and keeps it out of the DOM.
    */
   preview_url?: string;
+  /** Canvas sent a `preview_url` that the projection cannot keep: not a text, or over the limit. */
+  preview_unusable?: true;
 }
 
 /**

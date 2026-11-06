@@ -308,9 +308,11 @@ export function filesFromDetails(
     if (!shown) readable = false;
     const session = sessionUrl(file.preview_url, context.origin);
     // Canvas writes `preview_url: null` for a file it cannot preview (`Attachment#canvadoc_url`),
-    // such as a zip, and the background keeps no address for it. Only a text counts as an offer.
+    // such as a zip, and the background keeps no address for it. A text or a value that the
+    // projection dropped counts as an offer.
     const failed =
-      session === null && typeof file.preview_url === 'string' && file.preview_url !== '';
+      file.preview_unusable === true ||
+      (session === null && typeof file.preview_url === 'string' && file.preview_url !== '');
     if (failed) withoutSession += 1;
     files.push({
       fileId: file.id,
@@ -323,6 +325,8 @@ export function filesFromDetails(
       report,
     });
   }
+  // A full list can leave out a file whose address failed the check, so the frame has to prove it.
+  if (attachments.length >= MAX_LISTED_FILES) withoutSession += 1;
   return { files, readable, withoutSession };
 }
 

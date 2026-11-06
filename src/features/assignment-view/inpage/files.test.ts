@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SESSION_PATH } from '../../../../tests/fixtures/submission-frame';
-import type { AssignmentReport } from '../protocol';
+import type { AssignmentFile, AssignmentReport } from '../protocol';
 import {
   fileReport,
   filesFromDetails,
@@ -440,6 +440,19 @@ describe('filesFromDetails', () => {
         report: null,
       },
     ]);
+  });
+
+  it('counts an address that the projection dropped, and a full list, but no file without an offer', () => {
+    const count = (attachments: AssignmentFile[]): number =>
+      filesFromDetails(attachments, {}, CONTEXT).withoutSession;
+    expect(count([{ id: '1', display_name: 'a', preview_unusable: true }])).toBe(1);
+    expect(count([{ id: '1', display_name: 'zip' }])).toBe(0);
+    const full = Array.from({ length: 50 }, (_, index) => ({
+      id: String(index + 1),
+      display_name: 'a',
+    }));
+    expect(count(full)).toBe(1);
+    expect(count(full.slice(1))).toBe(0);
   });
 
   it('counts a session address that fails the check, and gives that file no button', () => {
