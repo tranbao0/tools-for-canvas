@@ -1937,7 +1937,7 @@ They show in the same three places, below Row size, and they are stored apart fr
   A CI step fails when a built bundle other than the background and `viewer-frame.js` contains a `fetch(` call.
   Pinned PDF.js files are reviewed by their hash.
 - A CI step scans the built bundles for URLs.
-  It allows a reviewed list of inert strings: XML namespace URIs, match patterns, and the project's repository and privacy policy links.
+  It allows a reviewed list of inert strings: XML namespace URIs, match patterns and the support link.
   Preact and WXT put namespace strings into the bundles, so the list is needed [19].
 - No analytics, no error reporting and no remote configuration.
 - The welcome page is a local file inside the extension.

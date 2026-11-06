@@ -2,7 +2,6 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { IDS, SCENARIO_NOW, buildScenario, type Scenario } from '../fixtures/scenario';
 import { test as realClockTest } from './support/extension';
 import { apiRoutes, saveAddress, savedAddress } from './support/scenario-api';
-import { overrideWrites } from './support/canvas-state';
 import { serveFakeCanvas } from './support/fake-canvas';
 import { CSRF_TOKEN, addCsrfCookie, expect, openCanvasPage, test } from './support/weekrow';
 
@@ -148,7 +147,10 @@ test.describe('side panel page', () => {
       },
     ]);
     expect(writes.csrfHeaders).toEqual([CSRF_TOKEN]);
-    expect(overrideWrites(canvas).map((request) => request.method)).toEqual(['POST']);
+    const writesToOverrides = canvas.requests.filter(
+      (request) => request.method !== 'GET' && request.path.startsWith('/api/v1/planner/overrides'),
+    );
+    expect(writesToOverrides.map((request) => request.method)).toEqual(['POST']);
 
     // The refresh after the write reads the mark back from Canvas, and it stays done.
     await expect.poll(() => writes.plannerReadsAfterWrite).toBeGreaterThan(0);
