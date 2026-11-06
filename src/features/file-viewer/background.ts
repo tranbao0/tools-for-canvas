@@ -26,7 +26,7 @@ import { logFailure } from '../../shared/platform/log';
 import { createViewerSecret, isViewerSecret } from './channel';
 import { FRAME_OPEN, TOP_OPEN } from './frame';
 import {
-  isAssignmentsList,
+  isPaneTopPage,
   isCommentTab,
   isFileId,
   isPaneFramePage,
@@ -71,7 +71,7 @@ export interface ViewerHost {
   permission(origin: string): Promise<boolean>;
   /** The address that a browser tab shows now, or `null` when it cannot be read. */
   tabUrl(tabId: number): Promise<string | null>;
-  /** Puts the click catcher into the same-origin child frames of a submission page or the Assignments list. */
+  /** Puts the click catcher into the same-origin child frames of a submission page or a page that holds the assignment pane. */
   injectFrames(tabId: number, origin: string): Promise<void>;
   /** Passes a file to the viewer script of the top frame. `true` when it took the file. */
   openInTop(tabId: number, fileId: string, address?: string): Promise<boolean>;
@@ -140,7 +140,8 @@ function childFrameUrl(sender: ViewerSender): URL | null {
 
 /**
  * The page that the top frame of a tab shows when it holds frames that this viewer serves: a
- * submission details page, or the Assignments list of a course, which holds the assignment pane.
+ * submission details page, or a page that holds the assignment pane (the Assignments list of a
+ * course, the dashboard and a course home page).
  * `null` for any other page, another origin and an unreadable tab.
  */
 async function topFrameHost(host: ViewerHost, tabId: number, origin: string): Promise<URL | null> {
@@ -148,8 +149,7 @@ async function topFrameHost(host: ViewerHost, tabId: number, origin: string): Pr
   if (url === null) return null;
   try {
     const top = new URL(url);
-    return top.origin === origin &&
-      (isSubmissionPage(top.pathname) || isAssignmentsList(top.pathname))
+    return top.origin === origin && (isSubmissionPage(top.pathname) || isPaneTopPage(top.pathname))
       ? top
       : null;
   } catch {
@@ -159,7 +159,7 @@ async function topFrameHost(host: ViewerHost, tabId: number, origin: string): Pr
 
 /**
  * Whether a child frame is one that the page `top` serves: the files list frame of a submission
- * page, or a frame of the assignment pane on the Assignments list (a page of the same course with
+ * page, or a frame of the assignment pane (a page of a course that the top page serves, with
  * `content_only=1`).
  */
 function servesFrame(top: URL, frame: URL, origin: string): boolean {
@@ -171,8 +171,8 @@ function servesFrame(top: URL, frame: URL, origin: string): boolean {
 
 /**
  * The click catcher of a child frame asks to open a file (decision 25, item 11). The frame must
- * be on the saved Canvas, in a tab whose top frame shows a submission page or the Assignments list
- * of the saved Canvas, and a frame that the top page serves. The reply tells the catcher whether
+ * be on the saved Canvas, in a tab whose top frame shows a submission page or a page that holds the
+ * assignment pane, and a frame that the top page serves. The reply tells the catcher whether
  * the pane took the file.
  */
 async function openFromFrame(
@@ -189,7 +189,7 @@ async function openFromFrame(
   const top = await topFrameHost(host, tabId, origin);
   if (top === null)
     throw new Error(
-      'The tab does not show a submission page or the Assignments list of the saved Canvas',
+      'The tab does not show a submission page or a page that holds the assignment pane of the saved Canvas',
     );
   if (!servesFrame(top, frame, origin))
     throw new Error('The frame is no frame that the page of the tab serves');
@@ -309,11 +309,11 @@ export function routeViewerMessage(
         if (!(await host.mayFetch(origin, tabId))) throw new ViewerUnconfirmedError();
         return true;
       case 'viewer:inject-frames': {
-        // Only the top frame of the saved Canvas asks, on a submission details page or the Assignments list.
+        // Only the top frame of the saved Canvas asks, on a submission details page or a page that holds the assignment pane.
         if (fromPane || tabId === undefined) throw new Error('Only the page script may ask');
         if ((await topFrameHost(host, tabId, origin)) === null)
           throw new Error(
-            'The tab does not show a submission page or the Assignments list of the saved Canvas',
+            'The tab does not show a submission page or a page that holds the assignment pane of the saved Canvas',
           );
         await host.injectFrames(tabId, origin);
         return { ok: true };

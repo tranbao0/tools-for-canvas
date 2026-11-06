@@ -33,8 +33,9 @@ type Mode = 'submission' | 'pane';
 
 /**
  * The mode of this frame, or `null` when it is no frame that the catcher serves. The assignment pane
- * of the Assignments list holds a direct child frame with a page of the same course and
- * `content_only=1`. Any other frame serves only when its own page is a submission details page.
+ * of the Assignments list, the dashboard or a course home page holds a direct child frame with a
+ * page of a course that the top page serves and `content_only=1`. Any other frame serves only when
+ * its own page is a submission details page.
  */
 function modeOf(top: Location): Mode | null {
   if (

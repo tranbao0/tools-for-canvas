@@ -239,22 +239,43 @@ export function isAssignmentsList(pagePath: string): boolean {
 }
 
 /**
- * Whether a frame page is in the course of the Assignments list at `topPath`. The ids compare as
- * decimal global ids, because a shard id can be written in two forms.
+ * The pages that show the weekly card, which can open the assignment pane: the dashboard and the
+ * course home page (`/courses/:id`).
  */
-export function isPaneCoursePage(topPath: string, framePath: string): boolean {
-  const list = ASSIGNMENTS_LIST.exec(topPath)?.[1];
-  const own = COURSE_PAGE.exec(framePath)?.[1];
+const DASHBOARD_PAGE = /^\/(?:dashboard\/?)?$/;
+const COURSE_HOME = new RegExp(`^/courses/(${ID_PART})/?$`);
+
+/**
+ * Whether a page of the saved Canvas can hold the assignment pane: the Assignments list of a
+ * course, the dashboard and the course home page. The two last show the weekly card.
+ */
+export function isPaneTopPage(pagePath: string): boolean {
   return (
-    list !== undefined && own !== undefined && normalizeCanvasId(list) === normalizeCanvasId(own)
+    ASSIGNMENTS_LIST.test(pagePath) || COURSE_HOME.test(pagePath) || DASHBOARD_PAGE.test(pagePath)
   );
 }
 
 /**
+ * Whether a frame page is a page that the assignment pane of the top page at `topPath` can hold.
+ * The pane of the Assignments list and of a course home page holds pages of that course, and the
+ * pane of the dashboard holds pages of any course, because its card lists the work of every
+ * course. The ids compare as decimal global ids, because a shard id can be written in two forms.
+ */
+export function isPaneCoursePage(topPath: string, framePath: string): boolean {
+  const own = COURSE_PAGE.exec(framePath)?.[1];
+  if (own === undefined) return false;
+  const course = ASSIGNMENTS_LIST.exec(topPath)?.[1] ?? COURSE_HOME.exec(topPath)?.[1];
+  return course === undefined
+    ? DASHBOARD_PAGE.test(topPath)
+    : normalizeCanvasId(course) === normalizeCanvasId(own);
+}
+
+/**
  * Whether a frame page is a page that the assignment pane holds in a tab that shows the
- * Assignments list at `topPath`: a page of the same course with `content_only=1`. The pane loads
- * its frame with that parameter, and it loads every other page of the course that the frame
- * reaches (a graded discussion or quiz) with the parameter too.
+ * Assignments list, the dashboard or a course home page at `topPath`: a page of a course that the
+ * top page serves (`isPaneCoursePage`) with `content_only=1`. The pane loads its frame with that
+ * parameter, and it loads every other page of the course that the frame reaches (a graded
+ * discussion or quiz) with the parameter too.
  */
 export function isPaneFramePage(topPath: string, framePath: string, frameSearch: string): boolean {
   return (

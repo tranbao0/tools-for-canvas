@@ -9,10 +9,11 @@ import { toolsSettingsItem } from '../settings/toolsItem';
 import { browser, type Browser } from 'wxt/browser';
 import { canAutoSaveOrigin, originMatchPattern, parseUrl } from './address';
 import {
-  isAssignmentsList,
   isPaneCoursePage,
+  isPaneTopPage,
   isSubmissionPage,
 } from '../../features/file-viewer/model';
+import { isAdapterPath } from '../../features/weekly-list/inpage/adapters';
 import { isCanvasDocument } from './detectCanvas';
 import { logFailure } from './log';
 
@@ -24,7 +25,10 @@ export const INPAGE_FILE = '/inpage.js';
 /** The fixes for the widget dashboard, which only a dashboard page needs (decision 22). */
 export const DASHBOARD_FILE = '/dashboard.js';
 
-/** The one assignment view, for the Assignments list, the assignment page and the Submission Details page (decision 26). */
+/**
+ * The one assignment view, for the Assignments list, the assignment page and the Submission Details
+ * page, and the holder of the assignment pane on the pages that show the weekly card (decision 26).
+ */
 export const ASSIGNMENT_VIEW_FILE = '/assignment-view.js';
 
 /** The pane's click catcher, which only a page with the File viewer switch on needs (decision 25). */
@@ -45,13 +49,18 @@ type PageScript = typeof INPAGE_FILE | typeof DASHBOARD_FILE | typeof ASSIGNMENT
 
 /**
  * The page scripts for a tab: the list script, the fixes script on the dashboard, and the
- * assignment view script on the Assignments list, an assignment page and a Submission Details page to follow its switch.
+ * assignment view script on the Assignments list, an assignment page and a Submission Details page
+ * to follow its switch. The view script also goes onto the dashboards and the course home pages,
+ * where the card sits: there it holds the assignment pane for the Preview buttons of the card.
  */
 function pageScripts(url: string): PageScript[] {
   const path = parseUrl(url)?.pathname ?? '';
-  if (DASHBOARD_PATH.test(path)) return [INPAGE_FILE, DASHBOARD_FILE];
-  if (ASSIGNMENT_VIEW_PATH.test(path)) return [INPAGE_FILE, ASSIGNMENT_VIEW_FILE];
-  return [INPAGE_FILE];
+  const view = isAdapterPath(path) || ASSIGNMENT_VIEW_PATH.test(path);
+  return [
+    INPAGE_FILE,
+    ...(DASHBOARD_PATH.test(path) ? ([DASHBOARD_FILE] as const) : []),
+    ...(view ? ([ASSIGNMENT_VIEW_FILE] as const) : []),
+  ];
 }
 
 /** The tabs the detector runs in. The host permission lets `tabs.query` see their URLs. */
@@ -125,15 +134,17 @@ interface FrameProbe {
 
 /**
  * Runs the click catcher in the same-origin child frames of a tab that shows a submission details
- * page, or the Assignments list, of `origin` (decision 25, item 11). Canvas draws the student's
- * file list of a submission page in such a frame, and the assignment pane of the list holds a
- * Canvas page in one.
+ * page, or a page that holds the assignment pane, of `origin` (decision 25, item 11). Canvas draws
+ * the student's file list of a submission page in such a frame, and the assignment pane holds a
+ * Canvas page in one. The pages that hold the pane are the Assignments list, the dashboard and a
+ * course home page.
  *
  * `scripting.executeScript` cannot name a frame by its origin, and the `webNavigation` permission
  * would add a browser history warning, so a probe asks every frame of the tab for its origin and
  * path. The probe only reads those two strings. On a submission page, the catcher goes into the
- * frames of the saved origin whose path is a submission page. On the list, it goes into the frames
- * of the saved origin whose path is in the course of the list. It goes into no other frame. The
+ * frames of the saved origin whose path is a submission page. On a page that holds the pane, it
+ * goes into the frames of the saved origin whose path is in a course that the page serves
+ * (`isPaneCoursePage`). It goes into no other frame. The
  * frame can still move between the probe and the injection, and the catcher needs `content_only=1`
  * in the pane, which the probe does not read. So the catcher checks its own page again.
  */
@@ -141,10 +152,10 @@ export async function injectFrameCatchers(tabId: number, origin: string): Promis
   if (!(await toolsSettingsItem.getValue()).fileViewer) return;
   const top = await browser.tabs.get(tabId);
   const topUrl = top.url === undefined ? null : parseUrl(top.url);
-  const onList = topUrl !== null && isAssignmentsList(topUrl.pathname);
-  if (topUrl?.origin !== origin || !(onList || isSubmissionPage(topUrl.pathname)))
+  const holdsPane = topUrl !== null && isPaneTopPage(topUrl.pathname);
+  if (topUrl?.origin !== origin || !(holdsPane || isSubmissionPage(topUrl.pathname)))
     throw new Error(
-      'The tab does not show a submission page or the Assignments list of the saved Canvas',
+      'The tab does not show a submission page or a page that holds the assignment pane of the saved Canvas',
     );
   const probes = await browser.scripting.executeScript({
     target: { tabId, allFrames: true },
@@ -155,7 +166,7 @@ export async function injectFrameCatchers(tabId: number, origin: string): Promis
     func: (): FrameProbe => ({ origin: self.origin, path: location.pathname }),
   });
   const served = (path: string): boolean =>
-    onList ? isPaneCoursePage(topUrl.pathname, path) : isSubmissionPage(path);
+    holdsPane ? isPaneCoursePage(topUrl.pathname, path) : isSubmissionPage(path);
   const found = probes.filter(
     (probe) =>
       probe.frameId !== 0 &&
