@@ -29,9 +29,9 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - the announcements that the Announcements widget of the new dashboard shows, a page at a time as you scroll: the title, author, date, course name, read state and text of each (the extension keeps the first 4,000 characters of each text in memory for the page view, and reads all your announcements once, 100 at a time and at most 2,000, when you search by topic);
 - the announcements that you find with the search by date, read from the announcements list of your Canvas for the days that you choose, at most 500;
 - the people that the People widget of the new dashboard shows, a page at a time as you scroll: the name, the address of the profile picture, and the course and the role (teacher or teaching assistant) of each teacher and assistant of your courses (the extension does not ask for their email addresses, and keeps the rows in memory for the page view);
-- the details of an assignment on a page of the one assignment view (the Assignments list, the Submission Details page of your own work, and the assignment page): its instructions and submission types, and your own submission with its status, time, attempt, text, address, the names and sizes of your files, the signed address of the preview of each file, and the similarity scores of your files and your text.
+- the details of an assignment on a page of the one assignment view (the Assignments list, the weekly list on the dashboard and on a course home page, the Submission Details page of your own work, and the assignment page): its instructions and submission types, and your own submission with its status, time, attempt, text, address, the names and sizes of your files, the signed address of the preview of each file, and the similarity scores of your files and your text.
   The extension reads them with two requests of your own Canvas: `GET /api/v1/courses/:id/assignments/:id` and `GET /api/v1/courses/:id/assignments/:id/submissions/self`.
-  The Submission Details page sends them when it loads, and the Assignments list sends them when you show an assignment in the assignment pane, and again about every 20 seconds while the pane is open and the page is in view (less often after a failed read).
+  The Submission Details page sends them when it loads, and the Assignments list and the weekly list send them when you show an assignment in the assignment pane, and again about every 20 seconds while the pane is open and the page is in view (less often after a failed read).
   The assignment page asks only for who owns the submission and for the similarity scores, with the second request alone, when it loads.
   The request for the assignment asks for no included submission, so its reply holds no submission and no grade.
   The reply of Canvas for the assignment still holds its rubric, and the extension keeps none of it.
@@ -53,7 +53,7 @@ The markers are one page element and the settings that Canvas writes in its inli
 The script looks at the text of inline scripts only to find those settings, and it keeps none of that text.
 It reads nothing else on the page.
 The detector does not read your cookies, your text input or your history.
-With the File viewer on, on a Submission Details page and on the Assignments list, the extension also asks each frame of the tab for its origin and path, after a frame of the page loads, to find the frames of your Canvas.
+With the File viewer on, on a Submission Details page, on the Assignments list, on the dashboard and on a course home page, the extension also asks each frame of the tab for its origin and path, after a frame of the page loads, to find the frames of your Canvas.
 It keeps no answer, and it runs nothing else in a frame of another site.
 The extension reads the Canvas session cookie (`canvas_session` and `_normandy_session`) only to compare a salted fingerprint.
 It does this before it shows cached data, to know that the same student is signed in.
@@ -81,7 +81,8 @@ Session storage stays in browser memory and the browser clears it when it closes
 The extension opens its welcome page once per browser session when it finds a Canvas that waits for your answer.
 The extension shows its list only on the Canvas address that you saved.
 The list script, the script of the dashboard fixes, the script of the one assignment view and the script that catches clicks on file links run only there.
-The script of the one assignment view runs only on the Assignments list, the Submission Details page and the assignment page of that Canvas, and does its work only while its switch is on.
+The script of the one assignment view runs only on the Assignments list, the Submission Details page, the assignment page, the dashboard and the course home pages of that Canvas, and does its work only while its switch is on.
+On the dashboard and on the course home pages it only waits for a click on a button of the weekly list.
 It sends no message and no event to the page.
 None of the page scripts can read or write the storage of the extension: the background answers them through checked messages.
 
@@ -129,14 +130,21 @@ Each fix has a switch in the settings, and each is on by default.
 
 ## What the one assignment view does
 
-The one assignment view works on the Assignments list, on the Submission Details page of your own work, and on the assignment page.
+The one assignment view works on the Assignments list, on the weekly list on the dashboard and on a course home page, on the Submission Details page of your own work, and on the assignment page.
 On the Assignments list, it adds a "Preview" button to each assignment row.
+In the weekly list, each row of an assignment, a graded quiz or a graded discussion gets a "Preview" button among its row actions, and the rows of your own tasks and of pages get none.
+The weekly list is in the same part of the extension as the rest of the list, and the pane is in the part of the assignment view.
+The two talk through a value that only the extension's scripts of that page can reach, and a script of the Canvas page cannot reach it or open the pane.
+On the dashboard and on a course home page the assignment view only waits there until you click a button of the weekly list.
+It adds nothing to those pages and sends nothing before that click.
 The button opens Canvas's own assignment page in a pane beside the list.
+On the classic dashboard the pane covers the weekly list while it is open, as a file does.
 The pane is a frame of your Canvas site, so it shows what Canvas shows when you open that page, and it works as that page does.
 The pane keeps one frame for each assignment that you previewed, up to 6, so each frame keeps its page and your typed text while you move between rows.
 When you close the pane, the extension removes every frame at once, with no question, and the text that you typed in them is gone.
 The frames also go when you change the student or the pane needs room for a new frame.
 The extension reads the address of a frame, and nothing else of its content, except that with the File viewer on it reads the address of the file link that you click in a frame (see "File viewer").
+The pane of the weekly list can hold a page of any course that the list shows, and the pane of the Assignments list holds pages of its own course.
 The extension listens only for the Escape key in that frame, and it uses that key only to leave full view.
 While the pane is open and the page is in view, the extension reads your submission status of the assignment that it shows about every 20 seconds (less often after a failed read), and also of the assignment that the pane just left when you move to another row.
 When you close the pane, the frames go, and it reads the status of the assignment of each frame once.
