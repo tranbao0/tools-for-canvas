@@ -97,8 +97,8 @@ function courseTitles(scenario: Scenario, courseId: string): Set<string> {
 }
 
 /**
- * Opens every "Show N more" line and every collapsed line of the list. The headers of the bottom
- * bar stay as they are: the bar opens one group at a time.
+ * Opens every "Show N more" line and every collapsed line of the list. The view switch
+ * stays as it is: it opens one group at a time.
  */
 async function expandEverything(list: Locator): Promise<void> {
   for (;;) {
@@ -180,7 +180,7 @@ test.describe('course home page', () => {
     const titles = await list.locator('.wr-scroll [data-part="title"]').allTextContents();
     // The bar opens the undated and the done work, one group at a time.
     for (const kind of ['no_due_date', 'done']) {
-      await list.locator(`.wr-pinned [data-group="${kind}"] .wr-group-toggle`).click();
+      await list.locator(`.wr-pinned [data-group="${kind}"]  input`).click();
       await expandEverything(list);
       titles.push(...(await list.locator('.wr-group-area [data-part="title"]').allTextContents()));
     }
@@ -346,8 +346,8 @@ test.describe('in-page list', () => {
     await settledList(page);
 
     await expect(group(list, 'day').first()).toBeVisible();
-    await expect(group(list, 'no_due_date')).toHaveCount(1);
-    await expect(group(list, 'done')).toHaveCount(1);
+    await expect(list.locator('.wr-pinned [data-group="no_due_date"]')).toHaveCount(1);
+    await expect(list.locator('.wr-pinned [data-group="done"]')).toHaveCount(1);
     await expect(list.getByRole('button', { name: /^(Next 7 days|Rest of)/ })).toHaveCount(0);
   });
 
@@ -381,13 +381,10 @@ test.describe('in-page links and focus', () => {
     await settledList(page);
 
     const older = group(list, 'past_due').getByRole('button', { name: /\d+ older/ });
-    const links = [older, group(list, 'done').getByRole('button').first()];
-    for (const link of links) {
-      await expect(link).toHaveAttribute('aria-expanded', 'false');
-      const id = await link.getAttribute('aria-controls');
-      expect(id).toBeTruthy();
-      await expect(list.locator(`[id="${id}"]`)).toHaveCount(1);
-    }
+    await expect(older).toHaveAttribute('aria-expanded', 'false');
+    const id = await older.getAttribute('aria-controls');
+    expect(id).toBeTruthy();
+    await expect(list.locator(`[id="${id}"]`)).toHaveCount(1);
 
     // The region that a link opens is the element that holds the new rows.
     const region = list.locator(`[id="${await older.getAttribute('aria-controls')}"]`);

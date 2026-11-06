@@ -274,7 +274,8 @@ test('the panel and the in-page list share one span', async ({
 
   await picker(list).selectOption('day');
   await expect(listTitle).toHaveText(/Tuesday, October 27/);
-  expect(await groupKinds(list)).toEqual(['past_due', 'today', 'tomorrow', 'no_due_date', 'done']);
+  // No due date and Done are parts of the view switch, not groups of the day list.
+  expect(await groupKinds(list)).toEqual(['past_due', 'today', 'tomorrow']);
   await page.getByRole('button', { name: 'Next day' }).click();
 
   await picker(list).selectOption('custom');

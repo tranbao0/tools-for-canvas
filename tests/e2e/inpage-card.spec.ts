@@ -4,7 +4,7 @@
  * card, and the groups scroll below them.
  */
 import path from 'node:path';
-import type { Locator, Page } from '@playwright/test';
+import type { Locator, Page, Worker } from '@playwright/test';
 import { errorReply, type CanvasState } from './support/canvas-state';
 import { CANVAS_ERRORS } from '../fixtures/errors';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/model/types';
@@ -244,6 +244,7 @@ async function openBottomLayout(
   layout: BottomLayout,
   height: number,
   query?: string,
+  theme?: 'light' | 'dark',
 ): Promise<void> {
   await open(context, page, background, {
     query,
@@ -256,14 +257,15 @@ async function openBottomLayout(
       ...MONTH,
       hiddenCourseIds: ['102'],
       ...(layout.rowSize ? { rowSize: layout.rowSize } : {}),
+      ...(theme ? { theme } : {}),
     },
   });
   if (layout.docked) await dockCard(page);
 }
 
-/** The button that opens and closes a group. */
+/** The radio input of a part of the view switch. */
 function toggleOf(group: Locator): Locator {
-  return group.locator('.wr-group-toggle');
+  return group.locator('input');
 }
 
 interface Box {
@@ -276,10 +278,10 @@ interface Box {
 /** The parts of the bottom bar that never move, as the card sees them. */
 const BAR_PARTS = [
   '.wr-pinned',
-  '.wr-pinned [data-group="no_due_date"] .wr-group-head',
-  '.wr-pinned [data-group="no_due_date"] .wr-group-toggle',
-  '.wr-pinned [data-group="done"] .wr-group-head',
-  '.wr-pinned [data-group="done"] .wr-group-toggle',
+  '.wr-views',
+  '.wr-pinned [data-group="todo"]',
+  '.wr-pinned [data-group="no_due_date"]',
+  '.wr-pinned [data-group="done"]',
   '.wr-pinned .wr-foot',
 ];
 
@@ -330,9 +332,37 @@ function dayList(list: Locator): Locator {
   return list.getByRole('region', { name: 'Tasks by day' });
 }
 
-/** The back link of the open group. */
+/**
+ * Waits until the open group is stored and the page has seen it. A press that follows at once
+ * would race the stored value of the press before it: the page takes a stored value as the truth.
+ */
+async function groupStored(
+  worker: Worker,
+  page: Page,
+  kind: 'no_due_date' | 'done' | null,
+): Promise<void> {
+  await expect
+    .poll(() =>
+      worker.evaluate(async () => {
+        const api = (
+          globalThis as unknown as {
+            chrome: {
+              storage: {
+                local: { get(k: string): Promise<{ settings?: { openGroup?: string | null } }> };
+              };
+            };
+          }
+        ).chrome;
+        return (await api.storage.local.get('settings')).settings?.openGroup ?? null;
+      }),
+    )
+    .toBe(kind);
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => done(0))));
+}
+
+/** The To do part of the view switch, which brings the day list back. */
 function backOf(list: Locator): Locator {
-  return groupArea(list).getByRole('button', { name: 'Back to days' });
+  return toggleOf(list.locator('.wr-pinned [data-group="todo"]'));
 }
 
 test.describe('the full list in the card', () => {
@@ -407,31 +437,25 @@ test.describe('the full list in the card', () => {
         await expect(list.locator('.wr-scroll [data-group="no_due_date"]')).toHaveCount(0);
         await expect(groupArea(list)).toBeHidden();
 
-        // The day list keeps 128 px, and the counts of the bar line up with the day counts.
-        // When the card is too low for that and the bar, the whole card scrolls instead.
+        // The day list keeps 128 px. When the card is too low for that and the bar, the whole
+        // card scrolls instead.
         const closed = await barState(root);
         const sizes = await root.evaluate((card) => {
           const scroll = card.querySelector('.wr-scroll')!;
           return {
             days: scroll.clientHeight,
-            dayRight: scroll.querySelector('.wr-count')!.getBoundingClientRect().right,
-            counts: [...card.querySelectorAll('.wr-pinned .wr-count')].map(
-              (count) => count.getBoundingClientRect().right,
-            ),
             cardScrolls: card.scrollHeight > card.clientHeight + 1,
             bottom: card.querySelector('.wr-pinned .wr-foot')!.getBoundingClientRect().bottom,
             cardBottom: card.getBoundingClientRect().bottom,
           };
         });
         expect(sizes.days).toBeGreaterThanOrEqual(127.5);
-        for (const right of sizes.counts)
-          expect(Math.abs(right - sizes.dayRight)).toBeLessThanOrEqual(1);
         if (sizes.cardScrolls) expect(sizes.days).toBeLessThanOrEqual(128.5);
         else expect(sizes.bottom).toBeLessThanOrEqual(sizes.cardBottom + 0.5);
 
         for (const group of [undated, done]) {
           await toggleOf(group).click();
-          await expect(toggleOf(group)).toHaveAttribute('aria-expanded', 'true');
+          await expect(toggleOf(group)).toBeChecked();
           await expect(groupArea(list)).toBeVisible();
           await expect(dayList(list)).toBeHidden();
           await expect(groupArea(list).locator('[data-row-key]').first()).toBeVisible();
@@ -480,17 +504,17 @@ test.describe('the full list in the card', () => {
           await backOf(list).click();
           await expect(dayList(list)).toBeVisible();
           await expect(groupArea(list)).toBeHidden();
-          await expect(toggleOf(group)).toHaveAttribute('aria-expanded', 'false');
+          await expect(toggleOf(group)).not.toBeChecked();
           expectSameBar(await barState(root), closed);
         }
 
-        // Another header switches the group, and a second click on the open header closes it.
+        // Another part switches the group, and To do brings the day list back.
         await toggleOf(undated).click();
         await toggleOf(done).click();
-        await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'true');
-        await expect(toggleOf(undated)).toHaveAttribute('aria-expanded', 'false');
+        await expect(toggleOf(done)).toBeChecked();
+        await expect(toggleOf(undated)).not.toBeChecked();
         expectSameBar(await barState(root), closed);
-        await toggleOf(done).click();
+        await backOf(list).click();
         await expect(dayList(list)).toBeVisible();
         expectSameBar(await barState(root), closed);
         // The hidden courses line and the Settings link take a click too.
@@ -520,30 +544,30 @@ test.describe('the full list in the card', () => {
 
       for (const toggle of [undated, done]) {
         await toggle.click();
-        await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(toggle).toBeChecked();
         expect(await height()).toBe(barHeight);
         expectSameBar(await barState(root), closed);
-        await toggle.click();
-        await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        await backOf(list).click();
+        await expect(toggle).not.toBeChecked();
         expect(await height()).toBe(barHeight);
       }
 
-      // Two months ahead the span holds nothing undated and nothing done. Both headers stay, with
-      // the count 0, so a click on either one adds nothing and removes nothing.
+      // Two months ahead the span holds nothing undated and nothing done. All three parts stay,
+      // with the count 0, so a click on one adds nothing and removes nothing.
       await list.getByRole('button', { name: 'Next month' }).click();
       await list.getByRole('button', { name: 'Next month' }).click();
       await settledList(page);
       for (const toggle of [undated, done]) {
-        await expect(toggle.locator('.wr-count')).toHaveText('0');
+        await expect(toggle.locator('xpath=..').locator('.wr-count')).toHaveText('0');
         expect(await height()).toBe(barHeight);
         expectSameBar(await barState(root), closed);
         await toggle.click();
-        await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(toggle).toBeChecked();
         await expect(groupArea(list).locator('.wr-empty')).toBeVisible();
         expect(await height()).toBe(barHeight);
         expectSameBar(await barState(root), closed);
-        await toggle.click();
-        await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        await backOf(list).click();
+        await expect(toggle).not.toBeChecked();
         expect(await height()).toBe(barHeight);
         expectSameBar(await barState(root), closed);
       }
@@ -559,27 +583,25 @@ test.describe('the full list in the card', () => {
       await openBottomLayout(context, page, background, layout, 900);
       const list = inpageList(page);
       const area = groupArea(list);
-      const rowsOf = (name: string) => area.getByRole('region', { name });
+      const rowsOf = (name: RegExp) => area.getByRole('region', { name });
 
       await toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]')).click();
-      await expect(rowsOf('No due date')).toBeVisible();
-      await expect(area.getByRole('heading', { name: 'No due date' })).toBeVisible();
-      await expect(backOf(list)).toBeVisible();
+      await expect(rowsOf(/^No due date/)).toBeVisible();
+      // The heading line has the name at the left and the count at the right, in line with the
+      // counts of the days.
+      const heading = area.getByRole('heading', { name: /^No due date/ });
+      await expect(heading).toBeVisible();
+      await expect(heading.locator('.wr-count')).toHaveText(/^\d+$/);
+      expect(await heading.locator('.wr-count').boundingBox()).not.toBeNull();
+      await expect(area.getByRole('button', { name: 'Back to days' })).toHaveCount(0);
       await expect(area.locator('[data-row-key]').first()).toBeVisible();
       await expect(area.getByRole('button', { name: /^\d+ done$/ })).toBeVisible();
       await expect(area.getByRole('button', { name: /^\d+ skipped$/ })).toBeVisible();
-      // The heading line has the name at the left and the back link at the right.
-      const [name, back] = await Promise.all([
-        area.getByRole('heading', { name: 'No due date' }).boundingBox(),
-        backOf(list).boundingBox(),
-      ]);
-      expect(name!.x).toBeLessThan(back!.x);
-      expect(Math.abs(name!.y + name!.height / 2 - (back!.y + back!.height / 2))).toBeLessThan(8);
       await expect(dayList(list)).toBeHidden();
 
       await toggleOf(list.locator('.wr-pinned [data-group="done"]')).click();
-      await expect(rowsOf('Done')).toBeVisible();
-      await expect(rowsOf('No due date')).toHaveCount(0);
+      await expect(rowsOf(/^Done/)).toBeVisible();
+      await expect(rowsOf(/^No due date/)).toHaveCount(0);
       await expect(area.locator('[data-row-key]').first()).toBeVisible();
 
       await backOf(list).click();
@@ -588,75 +610,73 @@ test.describe('the full list in the card', () => {
     });
   }
 
-  test('opens and closes a bottom group with Enter and Space', async ({
-    context,
-    page,
-    background,
-  }) => {
-    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
-    const done = inpageList(page).locator('.wr-pinned [data-group="done"]');
-    await toggleOf(done).focus();
-    await page.keyboard.press('Enter');
-    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'true');
-    await expect(toggleOf(done)).toBeFocused();
-    await page.keyboard.press('Enter');
-    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'false');
-    await page.keyboard.press('Space');
-    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'true');
-    await page.keyboard.press('Space');
-    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'false');
-  });
-
-  test('keeps focus on the header that opens a group, and Back to days returns to it', async ({
+  test('moves and chooses with the arrow keys, with one tab stop', async ({
     context,
     page,
     background,
   }) => {
     await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
     const list = inpageList(page);
-    const undated = toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]'));
-    const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
-    await undated.focus();
-    await page.keyboard.press('Enter');
-    await expect(backOf(list)).toBeVisible();
-    await expect(undated).toBeFocused();
-    await page.keyboard.press('Enter');
+    const parts = ['todo', 'no_due_date', 'done'].map((kind) =>
+      toggleOf(list.locator(`.wr-pinned [data-group="${kind}"]`)),
+    );
+    await expect(list.getByRole('radiogroup', { name: 'Show' })).toBeVisible();
+    await expect(parts[0]!).toBeChecked();
+    await parts[0]!.focus();
+    // The arrow keys move focus and choose at once. The next key waits for the stored choice.
+    await page.keyboard.press('ArrowRight');
+    await expect(parts[1]!).toBeChecked();
+    await expect(parts[1]!).toBeFocused();
+    await expect(groupArea(list)).toBeVisible();
+    await groupStored(background, page, 'no_due_date');
+    await page.keyboard.press('ArrowRight');
+    await expect(parts[2]!).toBeChecked();
+    await expect(parts[2]!).toBeFocused();
+    await groupStored(background, page, 'done');
+    await page.keyboard.press('ArrowRight');
+    await expect(parts[0]!).toBeChecked();
+    await expect(parts[0]!).toBeFocused();
     await expect(dayList(list)).toBeVisible();
-    await expect(undated).toBeFocused();
-
-    await done.click();
-    await expect(done).toBeFocused();
-    await backOf(list).focus();
-    await page.keyboard.press('Enter');
-    await expect(dayList(list)).toBeVisible();
-    await expect(done).toBeFocused();
-
-    await undated.click();
-    await done.click();
-    await expect(done).toBeFocused();
-    await backOf(list).click();
-    await expect(done).toBeFocused();
-  });
-
-  test('keeps the tab order: day list, bottom headers, footer', async ({
-    context,
-    page,
-    background,
-  }) => {
-    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
-    const list = inpageList(page);
-    const undated = toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]'));
-    const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
+    await groupStored(background, page, null);
+    await page.keyboard.press('ArrowLeft');
+    await expect(parts[2]!).toBeChecked();
+    await expect(parts[2]!).toBeFocused();
+    await groupStored(background, page, 'done');
+    // One tab stop: Tab leaves the switch for the footer, Shift+Tab comes back to the part on.
     const settings = list.locator('.wr-pinned .wr-foot').getByRole('button', { name: 'Settings' });
-    await undated.focus();
-    await page.keyboard.press('Tab');
-    await expect(done).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(settings).toBeFocused();
     await page.keyboard.press('Shift+Tab');
-    await expect(done).toBeFocused();
-    await page.keyboard.press('Shift+Tab');
+    await expect(parts[2]!).toBeFocused();
+  });
+
+  test('keeps focus on the part that is chosen', async ({ context, page, background }) => {
+    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
+    const list = inpageList(page);
+    const undated = toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]'));
+    await undated.click();
+    await expect(undated).toBeChecked();
     await expect(undated).toBeFocused();
+    await expect(groupArea(list)).toBeVisible();
+    await backOf(list).click();
+    await expect(dayList(list)).toBeVisible();
+    await expect(backOf(list)).toBeFocused();
+  });
+
+  test('keeps the tab order: day list, view switch, footer', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
+    const list = inpageList(page);
+    const todo = backOf(list);
+    const settings = list.locator('.wr-pinned .wr-foot').getByRole('button', { name: 'Settings' });
+    await todo.focus();
+    await page.keyboard.press('Tab');
+    await expect(settings).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(todo).toBeFocused();
     await page.keyboard.press('Shift+Tab');
     const inScroll = await page.evaluate(() => {
       const root = document.querySelector('#weekrow-inpage > weekrow-list')!.shadowRoot!;
@@ -665,23 +685,26 @@ test.describe('the full list in the card', () => {
     expect(inScroll).toBe(true);
   });
 
-  test('puts the bottom section in the tab panel with a label', async ({
+  test('puts the view switch in the tab panel with a label', async ({
     context,
     page,
     background,
   }) => {
     await openBottomLayout(context, page, background, LAYOUTS[1]!, 800);
     const list = inpageList(page);
-    const region = list.getByRole('region', { name: 'Undated and done tasks' });
+    const group = list.getByRole('radiogroup', { name: 'Show' });
     await expect(
-      list.getByRole('tabpanel').getByRole('region', { name: 'Undated and done tasks' }),
+      list.getByRole('tabpanel').getByRole('radiogroup', { name: 'Show' }),
     ).toBeVisible();
-    await expect(region.getByRole('button', { name: /^Done/ })).toBeVisible();
-    await expect(region.getByRole('button', { name: 'Settings' })).toBeVisible();
+    await expect(group.getByRole('radio')).toHaveCount(3);
+    await expect(group.getByRole('radio', { name: /^Done/ })).toBeVisible();
+    await expect(
+      list.locator('.wr-pinned .wr-foot').getByRole('button', { name: 'Settings' }),
+    ).toBeVisible();
     await list.getByRole('tab', { name: /^Announcements/ }).click();
-    await expect(region).toHaveCount(0);
+    await expect(group).toHaveCount(0);
     await list.getByRole('tab', { name: 'Tasks' }).click();
-    await expect(region).toBeVisible();
+    await expect(group).toBeVisible();
   });
 
   // The group list must be taller than its area to scroll, which the 10 Done rows are with
@@ -763,10 +786,10 @@ test.describe('the full list in the card', () => {
       });
       expect(inside, `focus after the mark with ${left - 1} rows left`).toBe(true);
     }
-    await expect(area.getByRole('heading', { name: 'No due date' })).toBeFocused();
+    await expect(area.getByRole('heading', { name: /^No due date/ })).toBeFocused();
   });
 
-  test('names only the open group as a region, not the bar header', async ({
+  test('names only the open group as a region, not the view switch', async ({
     context,
     page,
     background,
@@ -776,56 +799,100 @@ test.describe('the full list in the card', () => {
     await toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]')).click();
     await expect(list.getByRole('region', { name: /^No due date/ })).toHaveCount(1);
     await expect(groupArea(list).getByRole('region', { name: /^No due date/ })).toHaveCount(1);
-    await expect(list.getByRole('region', { name: 'Undated and done tasks' })).toBeVisible();
     await backOf(list).click();
     await expect(list.getByRole('region', { name: /^(No due date|Done)/ })).toHaveCount(0);
   });
 
-  test('keeps the highlight of the open header inside the card where it has no side padding', async ({
-    context,
-    page,
-    background,
-  }) => {
-    await openBottomLayout(context, page, background, LAYOUTS[2]!, 800);
-    const list = inpageList(page);
-    const toggle = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
-    await toggle.click();
-    const sizes = await list.locator('.wr').evaluate((card) => {
-      const style = getComputedStyle(card);
-      const content = card.getBoundingClientRect();
-      const left = content.left + parseFloat(style.paddingLeft);
-      const right = content.right - parseFloat(style.paddingRight);
-      const open = card.querySelector('.wr-pinned [aria-expanded="true"]')!;
-      const box = open.getBoundingClientRect();
-      const day = card.querySelector('.wr-scroll .wr-count, .wr-group-area .wr-count');
-      const count = open.querySelector('.wr-count')!.getBoundingClientRect();
-      return {
-        padding: parseFloat(style.paddingLeft),
-        insideLeft: box.left - left,
-        insideRight: right - box.right,
-        radius: getComputedStyle(open).borderTopLeftRadius,
-        outline: getComputedStyle(open).outlineOffset,
-        countRight: count.right,
-        contentRight: right,
-        day: day === null,
-      };
+  for (const theme of ['light', 'dark'] as const) {
+    test(`keeps the view switch a 40 px row of three equal parts inside the card, ${theme}`, async ({
+      context,
+      page,
+      background,
+    }) => {
+      await openBottomLayout(context, page, background, LAYOUTS[2]!, 800, undefined, theme);
+      const list = inpageList(page);
+      const looks = async () =>
+        list.locator('.wr').evaluate((card) => {
+          const style = getComputedStyle(card);
+          const content = card.getBoundingClientRect();
+          const left = content.left + parseFloat(style.paddingLeft);
+          const right = content.right - parseFloat(style.paddingRight);
+          const row = card.querySelector('.wr-views')!;
+          const box = row.getBoundingClientRect();
+          const parts = [...row.querySelectorAll('.wr-segment')].map((part) => {
+            const partBox = part.getBoundingClientRect();
+            const look = getComputedStyle(part);
+            return {
+              width: partBox.width,
+              height: partBox.height,
+              checked: part.querySelector('input')!.checked,
+              background: look.backgroundColor,
+              color: look.color,
+              weight: look.fontWeight,
+            };
+          });
+          return {
+            height: box.height,
+            insideLeft: box.left - left,
+            insideRight: right - box.right,
+            radius: getComputedStyle(row).borderTopLeftRadius,
+            line: getComputedStyle(row).borderTopWidth,
+            parts,
+            onPrimary: getComputedStyle(card).getPropertyValue('--wr-on-primary'),
+          };
+        });
+      const first = await looks();
+      expect(first.height).toBe(40);
+      expect(first.radius).toBe('6px');
+      expect(first.line).toBe('1px');
+      expect(first.insideLeft).toBeGreaterThanOrEqual(-0.5);
+      expect(first.insideRight).toBeGreaterThanOrEqual(-0.5);
+      for (const part of first.parts) {
+        expect(part.height).toBe(38);
+        expect(Math.abs(part.width - first.parts[0]!.width)).toBeLessThanOrEqual(1);
+        expect(part.weight).toBe('700');
+      }
+      // Exactly one part is on, with the primary fill, and the others have none.
+      expect(first.parts.map((part) => part.checked)).toEqual([true, false, false]);
+      const fill = first.parts[0]!.background;
+      expect(fill).not.toBe('rgba(0, 0, 0, 0)');
+      expect(first.parts[1]!.background).toBe('rgba(0, 0, 0, 0)');
+      // The part that is on has the fill of the primary button, with its text color.
+      const primary = await list.locator('.wr').evaluate((card) => {
+        const probe = document.createElement('i');
+        probe.style.cssText = 'background:var(--wr-primary);color:var(--wr-on-primary)';
+        card.append(probe);
+        const look = getComputedStyle(probe);
+        const found = { background: look.backgroundColor, color: look.color };
+        probe.remove();
+        return found;
+      });
+      expect(first.parts[0]).toMatchObject(primary);
+      await toggleOf(list.locator('.wr-pinned [data-group="done"]')).click();
+      await expect
+        .poll(async () => (await looks()).parts.map((part) => part.checked))
+        .toEqual([false, false, true]);
+      expect((await looks()).parts[2]).toMatchObject(primary);
+      // Keyboard focus: the ring is drawn inside the part, in the color of its text.
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      const ring = await toggleOf(list.locator('.wr-pinned [data-group="done"]')).evaluate(
+        (input) => {
+          const part = input.parentElement!;
+          const look = getComputedStyle(part);
+          return {
+            visible: input.matches(':focus-visible'),
+            offset: look.outlineOffset,
+            color: look.outlineColor,
+            text: look.color,
+          };
+        },
+      );
+      expect(ring.visible).toBe(true);
+      expect(ring.offset).toBe('-4px');
+      expect(ring.color).toBe(ring.text);
     });
-    expect(sizes.padding).toBeLessThan(8);
-    expect(sizes.insideLeft).toBeGreaterThanOrEqual(-0.5);
-    expect(sizes.insideRight).toBeGreaterThanOrEqual(-0.5);
-    expect(sizes.radius).toBe('6px');
-    // The count stays at the right edge of the content, in line with the day counts.
-    expect(Math.abs(sizes.countRight - sizes.contentRight)).toBeLessThanOrEqual(1);
-    // Keyboard focus: away and back, so the ring shows as it does for a keyboard user.
-    await page.keyboard.press('Tab');
-    await page.keyboard.press('Shift+Tab');
-    const ring = await toggle.evaluate((element) => ({
-      visible: element.matches(':focus-visible'),
-      offset: getComputedStyle(element).outlineOffset,
-    }));
-    // The focus ring is drawn inside the toggle, so no edge clips it.
-    expect(ring).toEqual({ visible: true, offset: '-2px' });
-  });
+  }
 
   for (const layout of LAYOUTS) {
     test(`keeps the open group when the span steps, on ${layout.name}`, async ({
@@ -846,11 +913,10 @@ test.describe('the full list in the card', () => {
       await list.getByRole('button', { name: 'Next month' }).click();
       await list.getByRole('button', { name: 'Next month' }).click();
       await expect(area.getByText('Nothing done in this span.')).toBeVisible();
-      await expect(area.getByRole('heading', { name: 'Done' })).toBeVisible();
-      await expect(backOf(list)).toBeVisible();
+      await expect(area.getByRole('heading', { name: /^Done/ })).toBeVisible();
       await expect(rows).toHaveCount(0);
       await expect(dayList(list)).toBeHidden();
-      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await expect(done).toBeChecked();
       await settledList(page);
       await expect(area.getByText('Nothing done in this span.')).toBeVisible();
 
@@ -858,16 +924,16 @@ test.describe('the full list in the card', () => {
       await list.getByRole('button', { name: 'Today', exact: true }).click();
       await expect(rows.first()).toBeVisible();
       await expect(area.getByText('Nothing done in this span.')).toHaveCount(0);
-      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await expect(done).toBeChecked();
       await settledList(page);
 
       // The span picker and the arrow back keep it open too.
       await list.getByRole('combobox').selectOption({ label: 'Week' });
-      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await expect(done).toBeChecked();
       await expect(area).toBeVisible();
       await expect(dayList(list)).toBeHidden();
       await list.getByRole('button', { name: 'Previous week' }).click();
-      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await expect(done).toBeChecked();
       await expect(area).toBeVisible();
     });
   }
@@ -882,7 +948,7 @@ test.describe('the full list in the card', () => {
       const list = inpageList(page);
       const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
       await done.click();
-      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await expect(done).toBeChecked();
       await list.getByRole('button', { name: 'Minimize list' }).click();
       await expect(done).toHaveCount(0);
       // The classic dashboard keeps a tab on the right edge, the widget dashboard a slim bar.
@@ -891,7 +957,7 @@ test.describe('the full list in the card', () => {
           ? page.getByRole('button', { name: /^Open weekly list/ })
           : list.getByRole('button', { name: /^Weekly list/ })
       ).click();
-      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await expect(done).toBeChecked();
       await expect(groupArea(list).locator('[data-row-key]').first()).toBeVisible();
       await expect(dayList(list)).toBeHidden();
     });
@@ -911,17 +977,15 @@ test.describe('the full list in the card', () => {
     await list.getByRole('button', { name: 'Next month' }).click();
     await list.getByRole('button', { name: 'Next month' }).click();
     await expect(area.getByText('Nothing without a due date in this span.')).toBeVisible();
-    await expect(undated).toHaveAttribute('aria-expanded', 'true');
+    await expect(undated).toBeChecked();
     await settledList(page);
-    // Back to days closes it. The header of the empty group stays, with the count 0, and takes
-    // focus.
-    await backOf(list).focus();
-    await page.keyboard.press('Enter');
+    // To do closes it. The part of the empty group stays, with the count 0.
+    await backOf(list).click();
     await expect(dayList(list)).toBeVisible();
-    await expect(undated).toBeFocused();
+    await expect(backOf(list)).toBeFocused();
     await expect(area).toBeHidden();
-    await expect(undated).toHaveAttribute('aria-expanded', 'false');
-    await expect(undated.locator('.wr-count')).toHaveText('0');
+    await expect(undated).not.toBeChecked();
+    await expect(undated.locator('xpath=..').locator('.wr-count')).toHaveText('0');
 
     // A closed empty group opens to show its empty line.
     await undated.click();
@@ -960,7 +1024,7 @@ test.describe('the full list in the card', () => {
     await expect(area.getByText('Loading your list')).toHaveCount(0);
     await expect(area.getByText('Nothing done in this span.')).toHaveCount(0);
     // The count does not claim 0 for a span that did not load.
-    await expect(toggleOf(done).locator('.wr-count')).toHaveText('?');
+    await expect(toggleOf(done).locator('xpath=..').locator('.wr-count')).toHaveText('?');
 
     // Retry asks again, and the span fills in when Canvas answers.
     state.plannerReply = null;
@@ -969,7 +1033,7 @@ test.describe('the full list in the card', () => {
     await expect(area.getByText('Nothing done in this span.')).toBeVisible();
   });
 
-  test('keeps the open group when it becomes empty, and a second click on its header closes it', async ({
+  test('keeps the open group when it becomes empty, and To do closes it', async ({
     context,
     page,
     background,
@@ -986,17 +1050,16 @@ test.describe('the full list in the card', () => {
     await expect(groupArea(list).locator('[data-row-key]')).toHaveCount(1);
     await groupArea(list).getByRole('checkbox').click();
     await expect(groupArea(list).getByText('Nothing done in this span.')).toBeVisible();
-    await expect(groupArea(list).getByRole('heading', { name: 'Done' })).toBeFocused();
+    await expect(groupArea(list).getByRole('heading', { name: /^Done/ })).toBeFocused();
     await expect(dayList(list)).toBeHidden();
-    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'true');
-    await expect(toggleOf(done).locator('.wr-count')).toHaveText('0');
-    await toggleOf(done).focus();
-    await page.keyboard.press('Enter');
+    await expect(toggleOf(done)).toBeChecked();
+    await expect(toggleOf(done).locator('xpath=..').locator('.wr-count')).toHaveText('0');
+    await backOf(list).click();
     await expect(dayList(list)).toBeVisible();
-    await expect(toggleOf(done)).toBeFocused();
+    await expect(backOf(list)).toBeFocused();
     await expect(groupArea(list)).toBeHidden();
-    await expect(toggleOf(done)).toHaveAttribute('aria-expanded', 'false');
-    await expect(toggleOf(done).locator('.wr-count')).toHaveText('0');
+    await expect(toggleOf(done)).not.toBeChecked();
+    await expect(toggleOf(done).locator('xpath=..').locator('.wr-count')).toHaveText('0');
   });
 
   for (const layout of LAYOUTS) {
@@ -1010,11 +1073,11 @@ test.describe('the full list in the card', () => {
       const list = inpageList(page);
       const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
       await done.click();
-      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await expect(done).toBeChecked();
 
       await page.reload();
       await page.locator('html[data-fixture-ready="true"]').waitFor({ state: 'attached' });
-      await expect(done).toHaveAttribute('aria-expanded', 'true');
+      await expect(done).toBeChecked();
       if (layout.docked) await dockCard(page);
       await expect(groupArea(list).locator('[data-row-key]').first()).toBeVisible();
       await expect(dayList(list)).toBeHidden();
@@ -1026,12 +1089,12 @@ test.describe('the full list in the card', () => {
       const otherList = inpageList(other);
       if (layout.docked) await dockCard(other);
       const otherDone = toggleOf(otherList.locator('.wr-pinned [data-group="done"]'));
-      await expect(otherDone).toHaveAttribute('aria-expanded', 'true');
+      await expect(otherDone).toBeChecked();
       await backOf(otherList).click();
       await expect(dayList(list)).toBeVisible();
-      await expect(done).toHaveAttribute('aria-expanded', 'false');
+      await expect(done).not.toBeChecked();
       await done.click();
-      await expect(otherDone).toHaveAttribute('aria-expanded', 'true');
+      await expect(otherDone).toBeChecked();
 
       // The side panel has no bottom bar. Its Done group stays closed and works on its own.
       const panel = await context.newPage();
@@ -1044,65 +1107,46 @@ test.describe('the full list in the card', () => {
     });
   }
 
-  for (const theme of ['light', 'dark'] as const) {
-    test(`gives the open header the selected look and a rising arrow, ${theme}`, async ({
+  for (const width of [208, 240, 620]) {
+    test(`shows every part of the view switch whole in a card ${width} px wide`, async ({
       context,
       page,
       background,
     }) => {
-      await open(context, page, background, {
-        width: 1280,
-        height: 900,
-        settings: { ...MONTH, theme, hiddenCourseIds: ['102'] },
-      });
+      await openBottomLayout(context, page, background, LAYOUTS[2]!, 800);
       const list = inpageList(page);
-      const undated = toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]'));
-      const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
-      const look = (toggle: Locator) =>
-        toggle.evaluate((element) => {
-          const style = getComputedStyle(element);
-          const chevron = element.querySelector('.wr-chevron')!;
-          const { a, b } = new DOMMatrix(getComputedStyle(chevron).transform);
-          const text = (selector: string) =>
-            getComputedStyle(element.querySelector(selector)!).color;
-          return {
-            background: style.backgroundColor,
-            color: style.color,
-            radius: style.borderTopLeftRadius,
-            angle: Math.round((Math.atan2(b, a) * 180) / Math.PI),
-            count: text('.wr-count'),
-            overhang:
-              element.getBoundingClientRect().left -
-              element.parentElement!.getBoundingClientRect().left,
-          };
-        });
-      const selected =
-        theme === 'light'
-          ? { background: 'rgb(224, 235, 245)', color: 'rgb(26, 90, 142)' }
-          : { background: 'rgb(37, 52, 67)', color: 'rgb(127, 180, 241)' };
-
-      const closed = await look(undated);
-      expect(closed.background).toBe('rgba(0, 0, 0, 0)');
-      expect(closed.angle).toBe(-90);
-      await undated.click();
+      await list.locator('.wr').evaluate((card, px) => {
+        card.style.width = `${px}px`;
+      }, width);
       await expect
-        .poll(() => look(undated))
-        .toMatchObject({
-          ...selected,
-          count: selected.color,
-          radius: '6px',
-          angle: 180,
-        });
-      expect((await look(undated)).overhang).toBe(-8);
-      // The other header keeps its closed look.
-      expect((await look(done)).background).toBe('rgba(0, 0, 0, 0)');
-      await done.click();
-      await expect.poll(() => look(done)).toMatchObject({ ...selected, angle: 180 });
-      expect((await look(undated)).background).toBe('rgba(0, 0, 0, 0)');
-      expect((await look(undated)).angle).toBe(-90);
-      // The arrow is the icon of the sub-lists, not a text glyph.
-      await expect(done.locator('svg.wr-chevron')).toHaveCount(1);
-      await expect(done).not.toContainText(/[\u2039\u203a\u2227\u2228\u25b8]/);
+        .poll(() => list.locator('.wr').evaluate((card) => card.getBoundingClientRect().width))
+        .toBe(width);
+      const parts = await list.locator('.wr-views .wr-segment').evaluateAll((labels) =>
+        labels.map((label) => {
+          const box = label.getBoundingClientRect();
+          // Every visible piece of text lies inside its part.
+          const outside = [...label.children]
+            .filter((child) => child.getBoundingClientRect().width > 0)
+            .filter((child) => {
+              const inner = child.getBoundingClientRect();
+              return inner.left < box.left - 0.5 || inner.right > box.right + 0.5;
+            });
+          return { clipped: label.scrollWidth > label.clientWidth, outside: outside.length };
+        }),
+      );
+      expect(parts).toEqual([
+        { clipped: false, outside: 0 },
+        { clipped: false, outside: 0 },
+        { clipped: false, outside: 0 },
+      ]);
+      // The names stay, with or without the counts.
+      for (const name of ['To do', 'No due date', 'Done'])
+        await expect(list.locator('.wr-views').getByText(name, { exact: true })).toBeVisible();
+      // The counts show where they fit and the accessible name always has them.
+      await expect(list.locator('.wr-views .wr-segment[data-group="done"] .wr-count')).toBeVisible({
+        visible: width >= 320,
+      });
+      await expect(list.getByRole('radio', { name: /^Done .*\d+ items?/ })).toBeAttached();
     });
   }
 
@@ -1174,10 +1218,7 @@ test.describe('the full list in the card', () => {
       )
       .toBe('stack');
     await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(120);
-    await expect(toggleOf(list.locator('.wr-pinned [data-group="done"]'))).toHaveAttribute(
-      'aria-expanded',
-      'true',
-    );
+    await expect(toggleOf(list.locator('.wr-pinned [data-group="done"]'))).toBeChecked();
     await backOf(list).click();
     await expect.poll(() => days.evaluate((element) => element.scrollTop)).toBe(150);
   });

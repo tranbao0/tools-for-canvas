@@ -10,7 +10,7 @@ import { Heading, newId, type HeadingLevel } from '../../../shared/ui/parts';
 import { NothingDue } from './Rings';
 import { Spinner } from './States';
 
-/** The groups that sit in the bottom bar of the in-page list. */
+/** The groups that the view switch of the in-page list opens in the list area. */
 export type BottomKind = BottomGroupKind;
 
 export interface ListHandlers extends ItemHandlers {
@@ -29,13 +29,14 @@ const GROUP_NAMES = {
   done: 'groupDone',
 } as const;
 
-/** The headers of the bottom bar, in order. */
-const BOTTOM_KINDS: readonly BottomKind[] = ['no_due_date', 'done'];
+/** The parts of the view switch, in order. To do is `null`: the day list. */
+const VIEWS = [
+  [null, 'viewTodo'],
+  ['no_due_date', 'groupNoDueDate'],
+  ['done', 'groupDone'],
+] as const;
 
-/** A bottom group with no rows, for the header that the bar always shows. */
-function emptyBottomGroup(kind: BottomKind): ListGroup {
-  return { kind, date: null, items: [], older: [], skipped: [], doneUndated: [], warningCount: 0 };
-}
+const isBottom = (kind: GroupKind) => kind === 'no_due_date' || kind === 'done';
 
 /** The number in the group heading. */
 export function groupCount(group: ListGroup): number {
@@ -46,6 +47,22 @@ export function isGroupEmpty(group: ListGroup): boolean {
   return (
     group.loading !== true &&
     group.items.length + group.older.length + group.skipped.length + group.doneUndated.length === 0
+  );
+}
+
+/** A group with no rows in a span that did not load does not claim that it holds 0. */
+const isUnknown = (view: WeekView, group: ListGroup | undefined): boolean =>
+  view.incomplete && (group === undefined || isGroupEmpty(group));
+
+/** The count of a group or of a view, and the item count that a screen reader hears. */
+function Count(props: { n: number; unknown: boolean }) {
+  return (
+    <>
+      <span class="wr-count" aria-hidden="true">
+        {props.unknown ? '?' : props.n}
+      </span>
+      <span class="wr-sr">{props.unknown ? t('countNotLoaded') : tp('itemCount', props.n)}</span>
+    </>
   );
 }
 
@@ -192,30 +209,19 @@ function GroupBody(props: { group: ListGroup; view: WeekView; handlers: ListHand
   );
 }
 
-/**
- * One group. In the bottom bar of the in-page list (`bar`) the group is only its header, a tab
- * that opens the group in the list area (`controls`): the bar never changes size.
- */
+/** One group of the side panel or of the day list. */
 function GroupSection(props: {
   group: ListGroup;
   view: WeekView;
   level: HeadingLevel;
   handlers: ListHandlers;
-  open?: boolean;
-  onToggle?(): void;
-  bar?: boolean;
-  controls?: string;
 }) {
   const { group, view, handlers } = props;
   const collapsible = group.kind === 'no_due_date' || group.kind === 'done';
-  const [localOpen, setOpen] = useState(!collapsible);
-  const open = props.open ?? localOpen;
+  const [open, setOpen] = useState(!collapsible);
   const [id] = useState(() => newId('group'));
   const [bodyId] = useState(() => newId('body'));
   const { kind, date } = group;
-  const count = groupCount(group);
-  // A group with no rows in a span that did not load does not claim that it holds 0.
-  const unknown = view.incomplete && isGroupEmpty(group);
 
   const headContent = (
     <>
@@ -226,28 +232,20 @@ function GroupSection(props: {
       {group.kind === 'done' && group.warningCount > 0 && (
         <span class="wr-warn">{tp('warningCount', group.warningCount)}</span>
       )}
-      <span class="wr-count" aria-hidden="true">
-        {unknown ? '?' : count}
-      </span>
-      <span class="wr-sr">{unknown ? t('countNotLoaded') : tp('itemCount', count)}</span>
+      <Count n={groupCount(group)} unknown={isUnknown(view, group)} />
     </>
   );
 
   return (
-    <section
-      class="wr-group"
-      // In the bottom bar a group is only a header: the open group is the region, in the list area.
-      aria-labelledby={props.bar === true ? undefined : id}
-      data-group={group.kind}
-    >
+    <section class="wr-group" aria-labelledby={id} data-group={group.kind}>
       <Heading level={props.level} class="wr-group-head" id={id} part="group-head" tabIndex={-1}>
         {collapsible ? (
           <button
             type="button"
             class="wr-group-toggle"
             aria-expanded={open}
-            aria-controls={props.bar ? props.controls : bodyId}
-            onClick={() => (props.onToggle ? props.onToggle() : setOpen(!open))}
+            aria-controls={bodyId}
+            onClick={() => setOpen(!open)}
           >
             <ChevronDownIcon />
             {headContent}
@@ -256,40 +254,81 @@ function GroupSection(props: {
           headContent
         )}
       </Heading>
-      {props.bar !== true && (
-        <div id={bodyId} class="wr-group-body">
-          {open && <GroupBody group={group} view={view} handlers={handlers} />}
-        </div>
-      )}
+      <div id={bodyId} class="wr-group-body">
+        {open && <GroupBody group={group} view={view} handlers={handlers} />}
+      </div>
     </section>
   );
 }
 
 /**
- * The open bottom group, in the list area in place of the day list: its name, a way back to the
- * days, its rows and its sub-lists.
+ * The view switch of the in-page list, in the bottom bar: To do, No due date and Done, three
+ * equal parts of which exactly one is on. To do shows the day list, the other two show their
+ * group in the list area. It is a radio group of real radio inputs: one tab stop, and the arrow
+ * keys move and choose.
  */
+export function ViewSwitch(props: {
+  view: WeekView;
+  /** The group in the list area, or `null` for the day list. */
+  open: BottomKind | null;
+  /** `null` until the saved settings load, which keeps the parts from being chosen. */
+  onSelect: ((kind: BottomKind | null) => void) | null;
+}) {
+  const { view } = props;
+  const [name] = useState(() => newId('view'));
+  const todo = view.groups.reduce(
+    (sum, group) => sum + (isBottom(group.kind) ? 0 : groupCount(group)),
+    0,
+  );
+  return (
+    <div class="wr-views" role="radiogroup" aria-label={t('viewSwitchLabel')}>
+      {VIEWS.map(([kind, label]) => {
+        const group = view.groups.find((g) => g.kind === kind);
+        const n = kind === null ? todo : group ? groupCount(group) : 0;
+        const warnings = group?.kind === 'done' ? group.warningCount : 0;
+        return (
+          <label key={kind} class="wr-segment" data-group={kind ?? 'todo'}>
+            <input
+              type="radio"
+              name={name}
+              checked={props.open === kind}
+              disabled={props.onSelect === null}
+              onChange={() => props.onSelect?.(kind)}
+            />
+            <span>{t(label)}</span>
+            <Count
+              n={n}
+              unknown={kind === null ? view.incomplete && todo === 0 : isUnknown(view, group)}
+            />
+            {warnings > 0 && (
+              <span class="wr-warn" role="img" aria-label={tp('warningCount', warnings)}>
+                {'\u26a0\ufe0e'}
+                <span>{warnings}</span>
+              </span>
+            )}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The open bottom group, in the list area in place of the day list: its name and count, its rows and its sub-lists. */
 export function GroupView(props: {
   view: WeekView;
   kind: BottomKind;
   level: HeadingLevel;
   handlers: ListHandlers;
-  onBack(): void;
   onRetry(): void;
 }) {
   const group = props.view.groups.find((g) => g.kind === props.kind);
   const [id] = useState(() => newId('group'));
   return (
     <section class="wr-group" aria-labelledby={id} data-group={props.kind}>
-      <div class="wr-group-view-head">
-        <Heading level={props.level} class="wr-group-head" id={id} part="group-head" tabIndex={-1}>
-          <span class="wr-group-name">{t(GROUP_NAMES[props.kind])}</span>
-        </Heading>
-        <button type="button" class="wr-link-btn wr-back" data-part="back" onClick={props.onBack}>
-          <ChevronDownIcon />
-          {t('backToDays')}
-        </button>
-      </div>
+      <Heading level={props.level} class="wr-group-head" id={id} part="group-head" tabIndex={-1}>
+        <span class="wr-group-name">{t(GROUP_NAMES[props.kind])}</span>
+        <Count n={group ? groupCount(group) : 0} unknown={isUnknown(props.view, group)} />
+      </Heading>
       {group !== undefined ? (
         <GroupBody group={group} view={props.view} handlers={props.handlers} />
       ) : props.view.loading ? (
@@ -312,31 +351,19 @@ export function GroupView(props: {
 
 /**
  * Renders the groups in order. "Nothing due in these 7 days" takes the place of the day groups,
- * before No due date and Done. The side panel and the in-page list show every group in full.
+ * before No due date and Done. The side panel shows every group in full. The in-page list
+ * (`part="days"`) leaves out No due date and Done, which its view switch opens.
  */
 export function WeekList(props: {
   view: WeekView;
   level: HeadingLevel;
   handlers: ListHandlers;
-  part?: 'days' | 'bottom';
-  openGroup?: BottomKind | null;
-  onToggleGroup?(kind: BottomKind): void;
-  /** The id of the list area that shows an open bottom group. */
-  controls?: string;
+  part?: 'days';
 }) {
   const { view } = props;
-  // The bottom bar always has both headers, also with a count of 0, so a click never adds or
-  // removes one and the bar never changes size.
-  const live =
-    props.part === 'bottom'
-      ? BOTTOM_KINDS.map(
-          (kind) => view.groups.find((group) => group.kind === kind) ?? emptyBottomGroup(kind),
-        )
-      : view.groups.filter(
-          (group) =>
-            !isGroupEmpty(group) &&
-            (props.part === undefined || (group.kind !== 'done' && group.kind !== 'no_due_date')),
-        );
+  const live = view.groups.filter(
+    (group) => !isGroupEmpty(group) && (props.part === undefined || !isBottom(group.kind)),
+  );
   // The nearest day that still loads shows two bars, the later ones one, so a long span does not
   // fill the list with placeholders.
   const firstLoading = live.find((g) => g.loading === true && g.kind !== 'past_due');
@@ -355,21 +382,11 @@ export function WeekList(props: {
         view={view}
         level={props.level}
         handlers={props.handlers}
-        open={props.onToggleGroup ? props.openGroup === group.kind : undefined}
-        onToggle={
-          props.onToggleGroup ? () => props.onToggleGroup?.(group.kind as BottomKind) : undefined
-        }
-        bar={props.part === 'bottom'}
-        controls={props.controls}
       />
     ),
   );
   // The chart says "Nothing due in these 7 days" itself when no class has work.
-  if (
-    props.part !== 'bottom' &&
-    view.nothingDue &&
-    (!view.rings.length || view.rings.some((ring) => ring.total))
-  )
+  if (view.nothingDue && (!view.rings.length || view.rings.some((ring) => ring.total)))
     nodes.splice(live[0]?.kind === 'past_due' ? 1 : 0, 0, <NothingDue span={view.span} />);
   return <div class="wr-list">{nodes}</div>;
 }

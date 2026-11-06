@@ -539,11 +539,9 @@ test('keeps its box when its content changes', async ({ background, context, pag
   await saveSettings(background, { ...DEFAULT_SETTINGS, span: { kind: 'month', days: 30 } });
   await expect.poll(() => rows.count()).toBeGreaterThan(first);
   await settledList(page);
-  const undated = inpageList(page).locator(
-    '.wr-pinned [data-group="no_due_date"] .wr-group-toggle',
-  );
+  const undated = inpageList(page).locator('.wr-pinned [data-group="no_due_date"] input');
   await undated.click();
-  await expect(undated).toHaveAttribute('aria-expanded', 'true');
+  await expect(undated).toBeChecked();
   await frames(page, 5);
   const after = await slotBoxes(page);
   // The page may scroll for the click, so the boxes are compared by size and by place in the column.
