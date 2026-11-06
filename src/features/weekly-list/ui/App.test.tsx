@@ -2252,6 +2252,15 @@ describe('focus after "Mark all older done"', () => {
       screen.getByRole('checkbox', { name: 'Done: Industrial revolution discussion' }),
     );
   });
+
+  it('moves to the Add button of the side panel when the marks empty the list', () => {
+    const state = readyState();
+    const { rerender } = setup(state);
+    fireEvent.click(screen.getByRole('button', { name: '3 older' }));
+    screen.getByRole('button', { name: 'Mark all older done' }).focus();
+    rerender({ ...state, view: { ...state.view, groups: [] } });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Add task' }));
+  });
 });
 
 describe('open groups over the views that replace the list', () => {

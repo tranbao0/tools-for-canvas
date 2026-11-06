@@ -7,7 +7,6 @@ import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/
 import { saveAddress } from './support/scenario-api';
 import {
   addCsrfCookie,
-  doneBox,
   expect,
   group,
   inpageList,
@@ -27,11 +26,18 @@ async function openCard(
   page: Page,
   background: Parameters<typeof saveSettings>[0],
   settings: Settings,
-  options: { height?: number; manyDone?: boolean } = {},
+  options: { height?: number; manyDone?: boolean; only?: string[] } = {},
 ): Promise<Locator> {
   await saveSettings(background, settings);
   const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }], {
     extend(scenario) {
+      const keep = options.only;
+      if (keep !== undefined) {
+        scenario.plannerItems = scenario.plannerItems.filter((item) =>
+          keep.includes(item.plannable.title),
+        );
+        scenario.plannerNotes = scenario.plannerNotes.filter((note) => keep.includes(note.title));
+      }
       if (options.manyDone !== true) return;
       // Every assignment but Quiz 3 is done, so the Done group has more rows than it shows.
       const template = scenario.plannerOverrides[0]!;
@@ -58,8 +64,9 @@ async function openCard(
   await openCanvasPage(page, canvas.origin);
   const list = inpageList(page);
   // An open group hides the day list, so the first row of the group shows that the list is in.
-  if (settings.openGroup === null) await expect(doneBox(list, QUIZ_3)).toBeVisible();
-  else await expect(list.locator('.wr-group-area li').first()).toBeVisible();
+  if (settings.openGroup !== null)
+    await expect(list.locator('.wr-group-area li').first()).toBeVisible();
+  else await expect(olderToggle(list)).toBeVisible();
   await settledList(page);
   return list;
 }
@@ -144,5 +151,24 @@ test.describe('what stays open when another view replaces the list', () => {
     await list.getByRole('button', { name: 'Settings' }).click();
     await list.getByRole('button', { name: /Back/ }).click();
     await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(150);
+  });
+});
+
+test.describe('focus when the last row leaves', () => {
+  test('Mark all older done keeps focus in the card when it clears the whole list', async ({
+    context,
+    page,
+    background,
+  }) => {
+    // Only the three older items that a student can check, so the list is empty after the press.
+    const list = await openCard(context, page, background, DEFAULT_SETTINGS, {
+      only: ['Homework 5', 'Problem set 5', 'Module 3 reflection'],
+    });
+    const markAll = list.getByRole('button', { name: 'Mark all older done' });
+    await markAll.focus();
+    await page.keyboard.press('Enter');
+    await expect(markAll).toHaveCount(0);
+    // Decision 4: focus goes to the part of the view switch that is on.
+    await expect(list.locator('.wr-views input:checked')).toBeFocused();
   });
 });
