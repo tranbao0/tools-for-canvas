@@ -191,7 +191,9 @@ Use a new, empty profile, and the student account.
     Press Undo.
     Expect: the items return to the line, and the Canvas To Do list shows them as before.
     Find an item that Canvas has as dismissed, such as one you removed from the Canvas To Do list.
-    Expect: Tools for Canvas shows it as done, with a check, in the Done view or under the "N done" line of No due date.
+    Pick one that is due in the shown span, one that Canvas marks missing, or one with no due date.
+    Expect: Tools for Canvas shows it as done, with a check, in the Done group or under the "N done" line of No due date.
+    A dismissed item from before the shown span, with no warning chip, shows in the span of its due date.
     Uncheck it.
     Expect: the item is open again.
 13. Add a custom task, edit its title and date, check it off, then delete it.
