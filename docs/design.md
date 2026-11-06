@@ -1389,6 +1389,14 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   The user check runs outside this queue.
   A free request slot goes first to the days of a span that a surface shows, then to the past-due range of that view, refresh rounds and writes (the same level), then to weeks that load ahead.
   A load for a view that the surface no longer shows drops to the lowest level.
+- Every request of the queue has one limit in the transport: 25 seconds from the start of an attempt to the end of its body (`REQUEST_TIMEOUT_MS`).
+  A slow Canvas answers in well under 10 seconds, so 25 seconds is a wide margin for a bad link.
+  The limit stays below the 30 seconds after which Chrome stops a service worker that waits for a reply [24], because a stopped worker drops the writes that Canvas has not confirmed.
+  A longer limit would let three stalled replies hold all three slots for that long.
+  A request that passes the limit fails with `Couldn't reach Canvas` (not offline) and frees its slot, so the round fails as stale, Retry starts a new round, and the writes behind it go out.
+  A retry after a rate limit starts a new attempt with a new limit.
+  The sign-in check and the grade visibility read keep their shorter limits.
+  File reads for the viewer and the file check do not use the transport and keep their own rules (decisions 23 and 25).
 - After each write, the background stores a change marker (a time stamp only) in `storage.local`.
   Every surface listens to `storage.onChanged` and refreshes.
   `runtime.sendMessage` does not reach content scripts, so it cannot do this job [24].

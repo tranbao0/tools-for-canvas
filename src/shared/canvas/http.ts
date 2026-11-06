@@ -172,10 +172,21 @@ async function headersFor(
   return headers;
 }
 
-/** Creates the request function that sends, classifies failures and parses Canvas JSON. */
+/**
+ * How long one attempt may take, from its start to the end of its body. A slow Canvas answers in
+ * well under 10 seconds. The limit stays below the 30 seconds after which Chrome stops a service
+ * worker that waits for a reply, which would drop the writes that Canvas has not confirmed.
+ */
+export const REQUEST_TIMEOUT_MS = 25_000;
+
+/**
+ * Creates the request function that sends, classifies failures and parses Canvas JSON. Each
+ * attempt has the one limit `REQUEST_TIMEOUT_MS`, also for a fetch that never ends: the attempt
+ * then fails with `Couldn't reach Canvas` and frees its slot in the queue.
+ */
 export function createCanvasTransport(options: CanvasTransportOptions): CanvasTransport {
   const origin = toCanvasOrigin(options.origin);
-  return async (request) => {
+  const send = async (request: CanvasRequest, signal: AbortSignal): Promise<CanvasResponse> => {
     const headers = await headersFor(request, options.getCsrfToken);
     const body = request.body === undefined ? undefined : JSON.stringify(request.body);
     const response = await canvasFetch(
@@ -186,7 +197,7 @@ export function createCanvasTransport(options: CanvasTransportOptions): CanvasTr
         headers,
         body,
         ...(request.cache ? { cache: request.cache } : {}),
-        ...(request.signal ? { signal: request.signal } : {}),
+        signal,
       },
       options.fetchImpl,
     );
@@ -199,5 +210,22 @@ export function createCanvasTransport(options: CanvasTransportOptions): CanvasTr
       throw new CanvasError('not_canvas', 'The response is not Canvas JSON', response.status);
     }
     return { data: parsed.value, link: response.headers.get('Link') };
+  };
+  return async (request) => {
+    const limit = new AbortController();
+    const signal =
+      request.signal === undefined ? limit.signal : AbortSignal.any([request.signal, limit.signal]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        limit.abort();
+        reject(new CanvasError('server', "Couldn't reach Canvas"));
+      }, REQUEST_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([send(request, signal), expired]);
+    } finally {
+      clearTimeout(timer);
+    }
   };
 }
