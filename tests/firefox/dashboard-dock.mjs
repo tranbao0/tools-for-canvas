@@ -71,7 +71,7 @@ body:not(.full-width):not(.outcomes):not(.body--login-confirmation):not(.content
 a { color: #0e68b3; }
 `;
 
-const DASHBOARD = `<!DOCTYPE html>
+export const DASHBOARD = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>Dashboard</title><style>${CSS}</style>
 <script>INST = { environment: 'production' }; ENV = { current_user_id: '5501' };</script></head>
 <body class="with-right-side">
