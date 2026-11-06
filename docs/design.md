@@ -353,6 +353,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - Only one dock shows at a time.
   While a file pane is open (decision 25), the dock and its tab are hidden, with no state lost.
   When the file pane closes, they come back in the state they had, open or minimized, with the same width, groups and scroll position.
+  When a pane hides the dock with the keyboard focus inside it, for example after Enter on a Preview button, the focus moves into the pane, and the next Tab reaches its header.
+  When the dock comes back and the focus has fallen to the page, the focus returns to the control that had it.
   The dock uses `watchFilePane` and `filePaneOpen` of the dock module, and `setHidden`, as the assignment pane does.
   The two scripts share the lease through the shared state of the dock module, and the file pane script may be injected later, when the File viewer switch goes on.
   A dock never opens while a file pane is open, because opening would write the padding of the dock over the padding of the file pane.
