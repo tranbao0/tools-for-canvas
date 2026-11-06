@@ -114,6 +114,34 @@ describe('the Full view button', () => {
 });
 
 describe('pane tabs', () => {
+  it('ignores a late result after an evicted file loads again', async () => {
+    let finishOld!: (file: PaneFile | undefined) => void;
+    const loadFile = vi
+      .fn<PaneHost['loadFile']>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOld = resolve;
+          }),
+      )
+      .mockResolvedValue(FILES['1']);
+    const { open } = setup({ loadFile });
+    await open('1');
+    await waitFor(() => expect(loadFile).toHaveBeenCalledTimes(1));
+    for (let id = 2; id <= 9; id += 1) {
+      await open(String(id));
+      await waitFor(() => expect(loadFile).toHaveBeenCalledTimes(id));
+    }
+    await open('1');
+    await waitFor(() => expect(loadFile).toHaveBeenCalledTimes(10));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.docx' })).toBeTruthy());
+    await act(async () => {
+      finishOld(undefined);
+    });
+    expect(screen.getByRole('heading', { name: 'Notes.docx' })).toBeTruthy();
+    expect(screen.queryByText("Couldn't load this file")).toBeNull();
+  });
+
   it('shows a placeholder before a file opens', () => {
     setup();
     expect(screen.getByRole('status').textContent).toBe('Loading file');

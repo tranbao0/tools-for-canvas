@@ -67,6 +67,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const [access, setAccess] = useState(true);
   const tabsRef = useRef<Tabs>(EMPTY);
   const requested = useRef(new Set<string>());
+  const loads = useRef(new Map<string, symbol>());
   const courseHints = useRef(new Map<string, string>());
   const nameHints = useRef(new Map<string, string>());
   const addresses = useRef(new Map<string, string>());
@@ -114,6 +115,8 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
 
   const load = useCallback(
     (fileId: string) => {
+      const call = Symbol();
+      loads.current.set(fileId, call);
       setFiles((all) => ({ ...all, [fileId]: { kind: 'loading' } }));
       // A pane without a token, because its first read of the tabs was refused, asks again before
       // the file loads: a comment attachment reads its bytes only with a token. A read that
@@ -131,6 +134,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
           (): FileState => ({ kind: 'error' }),
         )
         .then((state) => {
+          if (loads.current.get(fileId) !== call || !tabsRef.current.ids.includes(fileId)) return;
           setFiles((all) => ({ ...all, [fileId]: state }));
           refreshAccess();
           if (state.kind === 'ready' && !loaded.current) {
@@ -189,6 +193,17 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   );
 
   useEffect(() => {
+    const ids = new Set(tabs.ids);
+    const removed = [...requested.current].filter((id) => !ids.has(id));
+    for (const fileId of removed) {
+      requested.current.delete(fileId);
+      failedReads.current.delete(fileId);
+      loads.current.delete(fileId);
+    }
+    if (removed.length > 0) {
+      setFiles((all) => Object.fromEntries(Object.entries(all).filter(([id]) => ids.has(id))));
+      setAttempts((all) => Object.fromEntries(Object.entries(all).filter(([id]) => ids.has(id))));
+    }
     for (const fileId of tabs.ids) {
       if (requested.current.has(fileId)) continue;
       requested.current.add(fileId);
@@ -208,10 +223,6 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const close = (fileId: string) => {
     const wasActive = tabsRef.current.active === fileId;
     const next = closeFile(tabsRef.current, fileId);
-    // A file that opens again loads again, also after an error.
-    requested.current.delete(fileId);
-    failedReads.current.delete(fileId);
-    setFiles((all) => Object.fromEntries(Object.entries(all).filter(([id]) => id !== fileId)));
     commit(next);
     if (next.ids.length === 0) {
       host.closePane();
