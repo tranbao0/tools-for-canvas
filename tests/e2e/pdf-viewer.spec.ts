@@ -364,7 +364,9 @@ test('search finds the word on page 2 and highlights it', async ({
   fileHost,
 }) => {
   const frame = await openPdf(context, page, background, fileHost);
-  await frame.getByRole('button', { name: 'Search', exact: true }).click();
+  // The first click into the pane can reach the page and do nothing, and then the field never
+  // opens, so the fill below would wait until the test times out.
+  await clickInFrame(frame, frame.getByRole('button', { name: 'Search', exact: true }));
   const field = frame.locator('[data-part="pdf-search-input"]');
   await field.fill(FIXTURE_WORD.toUpperCase());
   await expect(frame.locator('[data-part="pdf-search-count"]')).toHaveText('1 of 1');
@@ -689,7 +691,7 @@ test('a failed read with a withheld permission shows Allow access, which reads t
     api.permissions.contains = () => Promise.resolve(true);
   });
   failing = false;
-  await allow.click();
+  await clickInFrame(frame, allow);
   await expect(frame.locator(VIEWER)).toBeVisible();
   await expect(pageBox(frame, 1).locator('canvas')).toBeVisible();
   await expect(allow).toHaveCount(0);
@@ -846,7 +848,7 @@ test('saved page and zoom return after reload', async ({ context, page, backgrou
 async function saveThirdPageAtZoom(frame: Frame, background: Parameters<typeof openCoursePage>[2]) {
   await pageInput(frame).fill('3');
   await pageInput(frame).press('Enter');
-  await frame.getByRole('button', { name: 'Zoom level' }).click();
+  await clickInFrame(frame, frame.getByRole('button', { name: 'Zoom level' }));
   await frame.getByRole('menuitemradio', { name: '150%' }).click();
   await expect
     .poll(async () =>
