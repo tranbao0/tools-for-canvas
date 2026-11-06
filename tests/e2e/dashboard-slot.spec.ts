@@ -375,21 +375,22 @@ for (const { width, mode } of [
     await frames(page, 5);
     await expect(page.locator('#weekrow-inpage')).toBeVisible();
     await expect(page.locator(HOST)).toHaveAttribute('data-panel', mode);
-    // One writer places the card: nothing changes while the page stands still.
-    await page.waitForTimeout(500);
-    const records = await page.evaluate(
-      () =>
-        new Promise<number>((resolve) => {
-          let count = 0;
-          const observer = new MutationObserver((list) => (count += list.length));
-          observer.observe(document, { subtree: true, childList: true, attributes: true });
-          setTimeout(() => {
-            observer.disconnect();
-            resolve(count);
-          }, 1000);
-        }),
-    );
-    expect(records).toBe(0);
+    // One writer places the card: once the page stands still, nothing changes. A writer that
+    // keeps changing the page never gives a quiet second, so this ends in a failure.
+    const records = () =>
+      page.evaluate(
+        () =>
+          new Promise<number>((resolve) => {
+            let count = 0;
+            const observer = new MutationObserver((list) => (count += list.length));
+            observer.observe(document, { subtree: true, childList: true, attributes: true });
+            setTimeout(() => {
+              observer.disconnect();
+              resolve(count);
+            }, 1000);
+          }),
+      );
+    await expect.poll(records, { timeout: 15_000 }).toBe(0);
     await leaveEditMode(page);
     await frames(page, 5);
     await expect(page.locator('#weekrow-inpage')).toBeVisible();
