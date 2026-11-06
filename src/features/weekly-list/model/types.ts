@@ -182,11 +182,10 @@ export interface Item {
   noteDetails: string | null;
 }
 
-export type ItemState = 'done' | 'skipped' | 'open';
+export type ItemState = 'done' | 'open';
 
 /** At most one per item that is not done. Decision 7, in priority order. */
 export type StatusChip =
-  | { kind: 'skipped' }
   | { kind: 'redo_requested' }
   | { kind: 'missing' }
   | { kind: 'teacher_status'; name: string | null }
@@ -220,8 +219,6 @@ export interface ItemView extends Item {
   hasWarning: boolean;
   /** Work handed in on Canvas with a redo request. */
   checkboxDisabled: boolean;
-  /** Skip shows next to the checkbox: open work in Past due or No due date. */
-  canSkip: boolean;
   /** A custom task with a past date. */
   canMoveToToday: boolean;
   /** Shown in Tomorrow after a one-day span. Not counted in the rings. */
@@ -238,8 +235,6 @@ export interface ListGroup {
   items: ItemView[];
   /** `past_due` only: items older than 7 days, collapsed under "N older". */
   older: ItemView[];
-  /** `past_due` and `no_due_date`: skipped items, behind "N skipped". */
-  skipped: ItemView[];
   /** `no_due_date` only: done undated items, behind "N done". */
   doneUndated: ItemView[];
   /** `done` only: done items with a warning chip. */
@@ -371,7 +366,7 @@ export type { Offer };
  * It has no timer, so keyboard and screen reader users can reach it.
  */
 export interface UndoInfo {
-  kind: 'done' | 'skipped' | 'skipped_all' | 'deleted' | 'announcement_read';
+  kind: 'done' | 'deleted' | 'announcement_read';
   count: number;
   /** The key of the Announcements row that Undo brings back, so focus can follow it. */
   target?: string;
@@ -412,7 +407,7 @@ export type SurfaceState = { undo?: UndoInfo | null } & (
       offer: Offer | null;
       undo: UndoInfo | null;
       /** One-time notes the student has already seen. */
-      seenNotes: { firstDone: boolean; firstSkip: boolean };
+      seenNotes: { firstDone: boolean };
       /** Courses for the task form, not hidden. */
       taskCourses: { id: string; name: string }[];
       /** Every active student course, hidden ones included, for the settings. */

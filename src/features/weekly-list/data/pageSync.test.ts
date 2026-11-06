@@ -50,7 +50,7 @@ describe('wirePageSync', () => {
   it.each([
     ['the change marker', () => changeMarkerItem.setValue(5)],
     ['the settings', () => settingsItem.setValue({ ...DEFAULT_SETTINGS, showRings: false })],
-    ['the seen notes', () => seenNotesItem.setValue({ firstDone: true, firstSkip: false })],
+    ['the seen notes', () => seenNotesItem.setValue({ firstDone: true })],
     [
       'the tools settings',
       () =>

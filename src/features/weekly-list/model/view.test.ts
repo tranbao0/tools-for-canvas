@@ -459,7 +459,7 @@ describe('checked but missing', () => {
   const checked = override('o1', { markedComplete: true, dismissed: false });
   const missingChecked = { submissions: { missing: true }, override: checked };
 
-  it('is done: it goes to Done with the red chip, offers no Skip, and adds nothing to the late count', () => {
+  it('is done: it goes to Done with the red chip and adds nothing to the late count', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
@@ -497,7 +497,6 @@ describe('checked but missing', () => {
       chip: null,
       doneChips: [{ kind: 'missing_in_canvas', teacherSet: false }],
       hasWarning: true,
-      canSkip: false,
       // A done item shows no availability marker, even when the lock date has passed.
       availability: null,
     });
@@ -533,7 +532,6 @@ describe('checked but missing', () => {
     expect(findItem(past, 'assignment:last-week')).toMatchObject({
       state: 'done',
       chip: null,
-      canSkip: false,
     });
     expect(past.rings[0]).toMatchObject({ done: 1, total: 1, pastDue: 0 });
   });
@@ -550,13 +548,12 @@ describe('checked but missing', () => {
     expect(placesOf(view)).toEqual({ 'assignment:undated': 'done.items' });
     expect(findItem(view, 'assignment:undated')).toMatchObject({
       state: 'done',
-      canSkip: false,
       doneChips: [{ kind: 'missing_in_canvas', teacherSet: false }],
     });
     expect(view.groups.find((group) => group.kind === 'done')?.warningCount).toBe(1);
   });
 
-  it('is late again when unchecked, and leaves only when skipped or Canvas clears missing', () => {
+  it('is late again when unchecked, and leaves only when dismissed or Canvas clears missing', () => {
     const place = (flags: { markedComplete: boolean; dismissed: boolean }, missing: boolean) =>
       placesOf(
         buildWeekView(
@@ -575,7 +572,8 @@ describe('checked but missing', () => {
     expect(place({ markedComplete: false, dismissed: false }, true)).toBe('past_due.items');
     // A module "Mark as done" sets both flags: it counts as done.
     expect(place({ markedComplete: true, dismissed: true }, true)).toBe('done.items');
-    expect(place({ markedComplete: false, dismissed: true }, true)).toBe('past_due.skipped');
+    // A dismiss with no check is done too.
+    expect(place({ markedComplete: false, dismissed: true }, true)).toBe('done.items');
     expect(place({ markedComplete: true, dismissed: false }, false)).toBe('done.items');
   });
 
@@ -625,7 +623,6 @@ describe('reminders', () => {
     });
     expect(findItem(view, 'assignment:r-today-past')).toMatchObject({
       chip: null,
-      canSkip: false,
       state: 'open',
     });
     expect(findItem(view, 'assignment:r-today-done').state).toBe('done');
@@ -766,7 +763,6 @@ describe('No due date', () => {
     expect(findItem(view, 'assignment:u2')).toMatchObject({
       handInChip: { kind: 'on_paper' },
       chip: null,
-      canSkip: true,
     });
   });
 });
@@ -1006,7 +1002,7 @@ describe('the open count', () => {
     expect(view.openCount).toBe(3);
   });
 
-  it('leaves out reminders, skipped items and Past due', () => {
+  it('leaves out reminders and Past due', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
@@ -1073,19 +1069,7 @@ describe('the planner-off list', () => {
 });
 
 describe('item actions', () => {
-  it('offers Skip only on open items in Past due and No due date', () => {
-    const view = buildWeekView(
-      input({
-        plannerItems: [task('late', '2026-10-26T16:00:00Z'), task('soon', '2026-10-29T16:00:00Z')],
-        undatedAssignments: [upload('u')],
-      }),
-    );
-    expect(findItem(view, 'assignment:late').canSkip).toBe(true);
-    expect(findItem(view, 'assignment:u').canSkip).toBe(true);
-    expect(findItem(view, 'assignment:soon').canSkip).toBe(false);
-  });
-
-  it('shows a redo request on dismissed Canvas work that was marked done, in Past due and the ring', () => {
+  it('shows a redo request on dismissed Canvas work, whether it was marked done or not, in Past due and the ring', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
@@ -1093,32 +1077,32 @@ describe('item actions', () => {
             submissions: { submitted: true, redo_request: true },
             override: override('o', { markedComplete: true, dismissed: true }),
           }),
-          task('skipped-redo', '2026-10-27T15:00:00Z', {
+          task('dismissed-redo', '2026-10-27T15:00:00Z', {
             submissions: { submitted: true, redo_request: true },
             override: override('p', { markedComplete: false, dismissed: true }),
           }),
         ],
-        assignmentDetails: detailsById([upload('redo'), upload('skipped-redo')]),
+        assignmentDetails: detailsById([upload('redo'), upload('dismissed-redo')]),
       }),
     );
     expect(placesOf(view)).toEqual({
       'assignment:redo': 'past_due.items',
-      'assignment:skipped-redo': 'past_due.skipped',
+      'assignment:dismissed-redo': 'past_due.items',
     });
     expect(findItem(view, 'assignment:redo')).toMatchObject({
       state: 'open',
       chip: { kind: 'redo_requested' },
       checkboxDisabled: true,
-      canSkip: true,
     });
-    expect(findItem(view, 'assignment:skipped-redo')).toMatchObject({
-      state: 'skipped',
-      chip: { kind: 'skipped' },
+    expect(findItem(view, 'assignment:dismissed-redo')).toMatchObject({
+      state: 'open',
+      chip: { kind: 'redo_requested' },
+      checkboxDisabled: true,
     });
-    expect(view.rings[0]).toMatchObject({ done: 0, total: 1, pastDue: 1 });
+    expect(view.rings[0]).toMatchObject({ done: 0, total: 2, pastDue: 2 });
   });
 
-  it('keeps a skipped item on its day with a Skipped chip', () => {
+  it('puts an item that Canvas has as dismissed in Done, with a check, on any day of the span', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
@@ -1128,12 +1112,9 @@ describe('item actions', () => {
         ],
       }),
     );
-    expect(placeOf(view, 'assignment:s')).toBe('day@2026-10-29.items');
-    expect(findItem(view, 'assignment:s')).toMatchObject({
-      chip: { kind: 'skipped' },
-      canSkip: false,
-    });
-    expect(view.rings).toEqual([]);
+    expect(placeOf(view, 'assignment:s')).toBe('done.items');
+    expect(findItem(view, 'assignment:s')).toMatchObject({ state: 'done', chip: null });
+    expect(view.rings[0]).toMatchObject({ done: 1, total: 1, pastDue: 0 });
   });
 
   it('offers Move to today on a custom task dated before today, in any week', () => {

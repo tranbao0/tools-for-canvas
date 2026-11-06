@@ -126,7 +126,6 @@ function busyWeekView() {
       title,
       course: index === 0 ? 'bio' : 'hist',
       due: et('2026-10-24', '09:00'),
-      canSkip: true,
     }),
   );
   const today = mkGroup({
@@ -191,7 +190,6 @@ function checkedMissingView() {
             due: et('2026-10-23', '17:00'),
             chip: { kind: 'missing' },
             availability: { kind: 'closed' },
-            canSkip: true,
           }),
         ],
       }),
@@ -263,12 +261,11 @@ const scenes: Scene[] = [
         refreshing: true,
         offer: { origin: 'https://canvas.state.edu' },
         undo: { kind: 'done', count: 1 },
-        seenNotes: { firstDone: false, firstSkip: false },
+        seenNotes: { firstDone: false },
       }),
     ),
     async setup(root) {
       root.querySelector<HTMLElement>('.wr-check-input:not(:checked):not(:disabled)')?.click();
-      root.querySelector<HTMLElement>('[data-part="skip"]')?.click();
       await tick();
     },
   },
@@ -276,7 +273,7 @@ const scenes: Scene[] = [
     name: 'ready-viewport',
     widths: [240, 360],
     height: 560,
-    render: app('panel', readyState({ undo: { kind: 'skipped_all', count: 3 } })),
+    render: app('panel', readyState({ undo: { kind: 'done', count: 3 } })),
   },
   {
     name: 'ready-past-week',
@@ -580,7 +577,7 @@ const scenes: Scene[] = [
   {
     name: 'ready-note',
     widths: PANEL_WIDTHS,
-    render: app('panel', readyState({ seenNotes: { firstDone: false, firstSkip: true } })),
+    render: app('panel', readyState({ seenNotes: { firstDone: false } })),
     async setup(root) {
       root.querySelector<HTMLElement>('.wr-check-input:not(:checked):not(:disabled)')?.click();
       await tick();

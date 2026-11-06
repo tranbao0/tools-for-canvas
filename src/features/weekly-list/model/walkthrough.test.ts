@@ -353,7 +353,6 @@ const EXPECTED_PLACES: Record<string, string> = {
   'assignment:1006': 'past_due.older',
   'assignment:3003': 'done.items',
   'assignment:5002': 'past_due.older',
-  'assignment:1008': 'past_due.skipped',
   'assignment:2003': 'today@2026-10-27.items',
   'assignment:3001': 'tomorrow@2026-10-28.items',
   'planner_note:8001': 'tomorrow@2026-10-28.items',
@@ -363,7 +362,7 @@ const EXPECTED_PLACES: Record<string, string> = {
   'discussion_topic:7501': 'day@2026-10-31.items',
   'assignment:1012': 'day@2026-10-31.items',
   'assignment:1003': 'no_due_date.items',
-  'assignment:2005': 'no_due_date.skipped',
+  'assignment:2005': 'no_due_date.doneUndated',
   'assignment:1005': 'no_due_date.doneUndated',
   'assignment:2002': 'done.items',
   'wiki_page:6001': 'done.items',
@@ -463,7 +462,6 @@ describe('walk-through: the span that starts today', () => {
       chip: { kind: 'cant_confirm', tool: 'Gradescope', onPaper: false },
       handInChip: { kind: 'tool', name: 'Gradescope' },
       availability: null,
-      canSkip: true,
       checkboxDisabled: false,
     });
   });
@@ -473,7 +471,6 @@ describe('walk-through: the span that starts today', () => {
       state: 'open',
       chip: { kind: 'redo_requested' },
       checkboxDisabled: true,
-      canSkip: true,
     });
   });
 
@@ -496,7 +493,6 @@ describe('walk-through: the span that starts today', () => {
       state: 'open',
       chip: { kind: 'missing' },
       availability: { kind: 'closed' },
-      canSkip: true,
     });
   });
 
@@ -511,7 +507,6 @@ describe('walk-through: the span that starts today', () => {
       handIn: 'none',
       handInChip: { kind: 'no_hand_in' },
       chip: null,
-      canSkip: false,
     });
     expect(findItem(view, 'sub_assignment:9101')).toMatchObject({
       kind: 'checkpoint',
@@ -521,7 +516,7 @@ describe('walk-through: the span that starts today', () => {
     });
   });
 
-  it('treats an override with both flags true as done, not skipped', () => {
+  it('treats an override with both flags true as done', () => {
     expect(findItem(view, 'wiki_page:6001')).toMatchObject({
       state: 'done',
       chip: null,
@@ -530,27 +525,19 @@ describe('walk-through: the span that starts today', () => {
     });
   });
 
-  it('shows the skipped item behind the skipped line with an Unskip and no Skip action', () => {
-    expect(findItem(view, 'assignment:1008')).toMatchObject({
-      state: 'skipped',
-      chip: { kind: 'skipped' },
-      canSkip: false,
-    });
-    expect(findItem(view, 'assignment:2005')).toMatchObject({
-      state: 'skipped',
-      chip: { kind: 'skipped' },
-    });
+  it('shows an item that Canvas has as dismissed as done, with no chip', () => {
+    expect(findItem(view, 'assignment:2005')).toMatchObject({ state: 'done', chip: null });
+    // Dated before the span, without a warning: done work outside the span does not show.
+    expect(placeOf(view, 'assignment:1008')).toBeUndefined();
   });
 
   it('offers Move to today only on the past custom task', () => {
     expect(findItem(view, 'planner_note:8002')).toMatchObject({
       canMoveToToday: true,
-      canSkip: true,
       courseId: null,
     });
     expect(findItem(view, 'planner_note:8001')).toMatchObject({
       canMoveToToday: false,
-      canSkip: false,
     });
   });
 
@@ -580,7 +567,6 @@ describe('walk-through: the span that starts today', () => {
       chip: null,
       doneChips: [{ kind: 'missing_in_canvas', teacherSet: true }],
       hasWarning: true,
-      canSkip: false,
     });
     expect(findItem(view, 'assignment:1010')).toMatchObject({
       doneChips: [{ kind: 'excused' }],
@@ -591,7 +577,6 @@ describe('walk-through: the span that starts today', () => {
   it('shows undated work only when there is something to hand in', () => {
     expect(findItem(view, 'assignment:1003')).toMatchObject({
       state: 'open',
-      canSkip: true,
       due: null,
     });
     expect(findItem(view, 'assignment:1005')).toMatchObject({ state: 'done' });
@@ -729,7 +714,6 @@ describe('walk-through: other spans', () => {
       'planner_note:8002': 'day@2026-10-26.items',
       // Overdue work from outside the span is in Past due, and each item shows once.
       'assignment:1006': 'past_due.older',
-      'assignment:1008': 'past_due.skipped',
       'assignment:2001': 'past_due.items',
       'assignment:5002': 'past_due.older',
     });
@@ -739,11 +723,9 @@ describe('walk-through: other spans', () => {
     });
     expect(findItem(view, 'assignment:2004')).toMatchObject({
       chip: { kind: 'past_due' },
-      canSkip: false,
     });
     expect(findItem(view, 'assignment:1007')).toMatchObject({
       chip: { kind: 'redo_requested' },
-      canSkip: false,
     });
     expect(
       view.rings.map(({ courseId, done, total, pastDue }) => ({ courseId, done, total, pastDue })),
@@ -755,12 +737,9 @@ describe('walk-through: other spans', () => {
     ]);
   });
 
-  it('shows a skipped item on its day with the Skipped chip', () => {
+  it('shows an item that Canvas has as dismissed in Done in the span of its day', () => {
     const view = buildWeekView(walkthroughInput({ spanOffset: -2 }));
-    expect(findItem(view, 'assignment:1008')).toMatchObject({
-      chip: { kind: 'skipped' },
-      canSkip: false,
-    });
-    expect(placeOf(view, 'assignment:1008')).toBe('day@2026-10-19.items');
+    expect(findItem(view, 'assignment:1008')).toMatchObject({ state: 'done', chip: null });
+    expect(placeOf(view, 'assignment:1008')).toBe('done.items');
   });
 });

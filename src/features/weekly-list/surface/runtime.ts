@@ -31,6 +31,7 @@ import {
 import { sameSettings, sameSpan } from '../model/settings';
 import type { ToolsSettings } from '../../../shared/settings/tools';
 import { nextDayStart } from '../model/time';
+import { olderToMarkDone } from '../model/view';
 import type { ItemView, Settings, SurfaceState, UndoInfo, WeekView } from '../model/types';
 import type { SeenNotes } from '../data/storage';
 import { announcementKey, type AnnouncementFeed, type ListTab } from '../data/announcements';
@@ -135,8 +136,6 @@ export interface SurfaceRuntime {
 /** Actions that change data. A new one ends the Undo notice of the last one. */
 const DATA_WRITES: ReadonlySet<DataAction['kind']> = new Set([
   'setDone',
-  'skip',
-  'unskip',
   'restore',
   'createTask',
   'updateTask',
@@ -154,24 +153,19 @@ interface Notice {
   data: UndoData[];
 }
 
-/** A skip with more keys than one message may carry goes out in parts. */
+/** A mark with more keys than one message may carry goes out in parts. */
 function inParts(action: DataAction): DataAction[] {
-  if (action.kind !== 'skip') return [action];
+  if (action.kind !== 'setDone') return [action];
   const parts: DataAction[] = [];
   for (let start = 0; start < action.keys.length; start += MAX_ACTION_KEYS) {
-    parts.push({ kind: 'skip', keys: action.keys.slice(start, start + MAX_ACTION_KEYS) });
+    parts.push({ ...action, keys: action.keys.slice(start, start + MAX_ACTION_KEYS) });
   }
   return parts;
 }
 
 /** Every item of the view, in every list of every group. */
 export function viewItems(view: WeekView): ItemView[] {
-  return view.groups.flatMap((group) => [
-    ...group.items,
-    ...group.older,
-    ...group.skipped,
-    ...group.doneUndated,
-  ]);
+  return view.groups.flatMap((group) => [...group.items, ...group.older, ...group.doneUndated]);
 }
 
 /** The saved origin that a state shows, if any. */
@@ -603,19 +597,13 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       reload();
     },
     setDone(key: string, done: boolean) {
-      sendAction({ kind: 'setDone', key, done }, done ? 'done' : undefined);
+      sendAction({ kind: 'setDone', keys: [key], done }, done ? 'done' : undefined);
     },
-    skip(key: string) {
-      sendAction({ kind: 'skip', keys: [key] }, 'skipped');
-    },
-    unskip(key: string) {
-      sendAction({ kind: 'unskip', key });
-    },
-    skipAllOlder() {
+    markAllOlderDone() {
       if (base.kind !== 'ready') return;
-      const older = base.view.groups.find((group) => group.kind === 'past_due')?.older ?? [];
-      const keys = older.filter((item) => item.canSkip).map((item) => item.key);
-      if (keys.length > 0) sendAction({ kind: 'skip', keys }, 'skipped_all');
+      const past = base.view.groups.find((group) => group.kind === 'past_due');
+      const keys = (past ? olderToMarkDone(past) : []).map((item) => item.key);
+      if (keys.length > 0) sendAction({ kind: 'setDone', keys, done: true }, 'done');
     },
     undo() {
       const last = notice;
@@ -717,7 +705,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       emit();
       host.tools.setValue(next).catch(report('save tools settings'));
     },
-    markNoteSeen(note: 'firstDone' | 'firstSkip') {
+    markNoteSeen(note: 'firstDone') {
       host.markNoteSeen(note).then(reload).catch(report('seen note'));
     },
     setListTab(next: ListTab) {

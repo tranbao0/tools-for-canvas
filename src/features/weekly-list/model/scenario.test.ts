@@ -91,7 +91,8 @@ describe('the fixture scenario: the span that starts today', () => {
       [assignment(A.mathHomework5)]: 'past_due.older',
       [assignment(A.bioLabReport2)]: 'past_due.older',
       [assignment(A.orientationModule3Missing)]: 'past_due.older',
-      [assignment(A.mathProblemSet4Dismissed)]: 'past_due.skipped',
+      // Dismissed in Canvas with no check: it is done, and the teacher marked it missing.
+      [assignment(A.mathProblemSet4Dismissed)]: 'done.items',
       [`sub_assignment:${IDS.subAssignments.historyDebate2ReplyToTopic}`]: 'today@2026-10-27.items',
       [assignment(A.historyParticipationWeek9)]: 'today@2026-10-27.items',
       [assignment(A.bioQuiz3Today)]: 'today@2026-10-27.items',
@@ -116,7 +117,7 @@ describe('the fixture scenario: the span that starts today', () => {
       [assignment(A.bioExtraCreditUndated)]: 'no_due_date.items',
       [assignment(A.mathPracticeExamUndated)]: 'no_due_date.items',
       [assignment(A.chemSafetyContractUndated)]: 'no_due_date.items',
-      [assignment(A.bioOptionalReflectionUndatedDismissed)]: 'no_due_date.skipped',
+      [assignment(A.bioOptionalReflectionUndatedDismissed)]: 'no_due_date.doneUndated',
       [assignment(A.orientationIntegrityPledge)]: 'no_due_date.doneUndated',
       [assignment(A.mathHomework4)]: 'done.items',
       [assignment(A.historyEquianoDiscussion)]: 'done.items',
@@ -170,19 +171,19 @@ describe('the fixture scenario: the span that starts today', () => {
       isReminder: true,
       handInChip: { kind: 'no_hand_in' },
     });
-    // Checked but missing: it is done, with the red chip, and offers no Skip.
+    // Checked but missing: it is done, with the red chip, with the warning counted.
     expect(findItem(view, assignment(A.mathHomework3))).toMatchObject({
       state: 'done',
       chip: null,
       doneChips: [{ kind: 'missing_in_canvas', teacherSet: true }],
       hasWarning: true,
-      canSkip: false,
     });
     expect(findItem(view, assignment(A.mathHomework4)).doneChips).toEqual([
       { kind: 'redo_requested' },
     ]);
-    // Done counts its warnings: Homework 3 is missing in Canvas, and Homework 4 has a redo request.
-    expect(view.groups.find((group) => group.kind === 'done')?.warningCount).toBe(2);
+    // Done counts its warnings: Homework 3 and Problem set 4 are missing in Canvas, and Homework 4
+    // has a redo request.
+    expect(view.groups.find((group) => group.kind === 'done')?.warningCount).toBe(3);
   });
 
   it('builds the rings in dashboard order with course codes and colors', () => {

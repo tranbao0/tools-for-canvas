@@ -63,7 +63,7 @@ function item(partial: Partial<Omit<Item, 'facts'>> & { facts?: Partial<CanvasFa
 
 const marked = { id: 'o1', markedComplete: true, dismissed: false };
 const unmarked = { id: 'o1', markedComplete: false, dismissed: false };
-const skipped = { id: 'o1', markedComplete: false, dismissed: true };
+const dismissed = { id: 'o1', markedComplete: false, dismissed: true };
 const both = { id: 'o1', markedComplete: true, dismissed: true };
 
 describe('the done rule', () => {
@@ -117,13 +117,21 @@ describe('the done rule', () => {
 });
 
 describe('itemState', () => {
-  it('checks done, then skipped, then open', () => {
+  it('is done for a check, and for a dismiss with no check', () => {
+    expect(itemState(item({ override: marked }))).toBe('done');
     expect(itemState(item({ override: both }))).toBe('done');
-    expect(itemState(item({ override: skipped }))).toBe('skipped');
+    expect(itemState(item({ override: dismissed }))).toBe('done');
     expect(itemState(item({ override: unmarked }))).toBe('open');
   });
 
-  it('shows a redo request on Canvas work that was marked done and dismissed: open, not skipped', () => {
+  it('lets an override with no flags win over the facts of the work', () => {
+    expect(itemState(item({ override: unmarked, facts: { submitted: true } }))).toBe('open');
+    expect(itemState(item({ override: dismissed, due: PAST, facts: { missing: true } }))).toBe(
+      'done',
+    );
+  });
+
+  it('shows a redo request on Canvas work that was marked done and dismissed: open', () => {
     const redo = item({ due: PAST, override: both, facts: { submitted: true, redoRequest: true } });
     const state = itemState(redo);
 
@@ -136,14 +144,14 @@ describe('itemState', () => {
     );
   });
 
-  it('keeps a deliberate Skip of work with a redo request skipped', () => {
-    const redo = item({ due: PAST, override: skipped, facts: { redoRequest: true } });
+  it('shows work with a redo request open when only a dismiss is on it', () => {
+    const redo = item({ due: PAST, override: dismissed, facts: { redoRequest: true } });
     const state = itemState(redo);
 
-    expect(state).toBe('skipped');
+    expect(state).toBe('open');
     expect(
       statusChip(redo, state, { now: NOW, showPastDueChip: false, gradeStatuses: [] }),
-    ).toEqual({ kind: 'skipped' });
+    ).toEqual({ kind: 'redo_requested' });
   });
 
   it('keeps work outside Canvas with a redo request done when checked off and dismissed', () => {
@@ -202,7 +210,6 @@ describe('statusChip', () => {
       customGradeStatusId: '77',
       latePolicyStatus: 'extended' as const,
     };
-    expect(chipOf(item({ override: skipped, due: PAST, facts: all }))).toEqual({ kind: 'skipped' });
     expect(chipOf(item({ due: PAST, facts: all }))).toEqual({ kind: 'redo_requested' });
     expect(chipOf(item({ due: PAST, facts: { ...all, redoRequest: false } }))).toEqual({
       kind: 'missing',

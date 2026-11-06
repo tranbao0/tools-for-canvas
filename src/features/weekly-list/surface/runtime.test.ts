@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_TOOLS_SETTINGS, type ToolsSettings } from '../../../shared/settings/tools';
-import type { DataMessage, StateReply, UndoData } from '../data/protocol';
+import type { DataMessage, StateReply } from '../data/protocol';
 import {
   DEFAULT_SETTINGS,
   type ItemView,
@@ -21,13 +21,6 @@ const NOW = '2026-10-27T18:00:00Z';
 const NEXT_MIDNIGHT = Date.parse('2026-10-28T04:00:00Z');
 const USER = 'user-1';
 const NOT_DONE = { markedComplete: false, dismissed: false };
-/** What the data owner answers to a done mark of one item. */
-const UNDO: UndoData = {
-  kind: 'overrides',
-  userId: USER,
-  origin: ORIGIN,
-  entries: [{ key: 'assignment:1', previous: NOT_DONE }],
-};
 const COLORS_OFF: ToolsSettings = {
   fileViewer: true,
   fileViewerWidth: 480,
@@ -404,16 +397,16 @@ describe('actions', () => {
       const { action } = message;
       switch (action.kind) {
         case 'setDone':
-          return action.done ? { undo: UNDO } : { undo: null };
-        case 'skip':
-          return {
-            undo: {
-              kind: 'overrides',
-              userId: fake.user,
-              origin: fake.origin,
-              entries: action.keys.map((key) => ({ key, previous: NOT_DONE })),
-            },
-          };
+          return action.done
+            ? {
+                undo: {
+                  kind: 'overrides',
+                  userId: fake.user,
+                  origin: fake.origin,
+                  entries: action.keys.map((key) => ({ key, previous: NOT_DONE })),
+                },
+              }
+            : { undo: null };
         case 'deleteTask':
           return {
             undo: { kind: 'delete', userId: fake.user, origin: fake.origin, noteId: action.noteId },
@@ -433,7 +426,7 @@ describe('actions', () => {
 
     expect(fake.sent[0]).toEqual({
       type: 'weekrow:action',
-      action: { kind: 'setDone', key: 'assignment:1', done: true },
+      action: { kind: 'setDone', keys: ['assignment:1'], done: true },
     });
     expect(runtime.state()).toMatchObject({ kind: 'ready', undo: DONE_INFO });
     await vi.advanceTimersByTimeAsync(60 * 60_000);
@@ -505,23 +498,42 @@ describe('actions', () => {
     expect(runtime.state()).not.toMatchObject({ undo: DONE_INFO });
   });
 
-  it('skips the items of the "N older" list that it shows, with one notice', async () => {
+  it('checks the items of the "N older" list that it shows, with one notice', async () => {
     const { fake, runtime } = await started(undoHost());
     const state = runtime.state();
     if (state.kind !== 'ready') throw new Error('not ready');
-    const keys = (state.view.groups.find((group) => group.kind === 'past_due')?.older ?? [])
-      .filter((item) => item.canSkip)
-      .map((item) => item.key);
+    const keys = (state.view.groups.find((group) => group.kind === 'past_due')?.older ?? []).map(
+      (item) => item.key,
+    );
     expect(keys.length).toBeGreaterThan(1);
 
-    runtime.actions.skipAllOlder();
+    runtime.actions.markAllOlderDone();
     await settle();
 
-    expect(sentActions(fake.sent)).toEqual([{ kind: 'skip', keys }]);
-    expect(runtime.state()).toMatchObject({ undo: { kind: 'skipped_all', count: keys.length } });
+    expect(sentActions(fake.sent)).toEqual([{ kind: 'setDone', keys, done: true }]);
+    expect(runtime.state()).toMatchObject({ undo: { kind: 'done', count: keys.length } });
   });
 
-  it('sends nothing for Skip all older when the view has no older items', async () => {
+  it('leaves out an older item whose redo request turns its checkbox off', async () => {
+    const fake = undoHost();
+    const base = fake.reply;
+    const template = readyState().view.groups.find((group) => group.kind === 'past_due');
+    const [first, ...rest] = template?.older ?? [];
+    const older = [{ ...(first as ItemView), checkboxDisabled: true }, ...rest];
+    const view = mkView({ groups: [{ ...(template as ListGroup), older }] });
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state' ? readyFor(fake.user, { view }) : base(message);
+    const { runtime } = await started(fake);
+
+    runtime.actions.markAllOlderDone();
+    await settle();
+
+    expect(sentActions(fake.sent)).toEqual([
+      { kind: 'setDone', keys: rest.map((item) => item.key), done: true },
+    ]);
+  });
+
+  it('sends nothing for Mark all older done when the view has no older items', async () => {
     const fake = undoHost();
     const base = fake.reply;
     fake.reply = (message) =>
@@ -530,7 +542,7 @@ describe('actions', () => {
         : base(message);
     const { runtime } = await started(fake);
 
-    runtime.actions.skipAllOlder();
+    runtime.actions.markAllOlderDone();
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([]);
@@ -681,7 +693,9 @@ describe('actions', () => {
     await settle();
     runtime.actions.dismissUndo();
     await settle();
-    expect(sentActions(fake.sent)).toEqual([{ kind: 'setDone', key: 'assignment:1', done: true }]);
+    expect(sentActions(fake.sent)).toEqual([
+      { kind: 'setDone', keys: ['assignment:1'], done: true },
+    ]);
   });
 
   it('ends the notice of the last write when the student acts again', async () => {
@@ -689,15 +703,15 @@ describe('actions', () => {
     runtime.actions.deleteTask('8');
     await settle();
 
-    runtime.actions.skip('assignment:2');
+    runtime.actions.setDone('assignment:2', true);
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([
       { kind: 'deleteTask', noteId: '8' },
       { kind: 'sendDelete', noteId: '8' },
-      { kind: 'skip', keys: ['assignment:2'] },
+      { kind: 'setDone', keys: ['assignment:2'], done: true },
     ]);
-    expect(runtime.state()).toMatchObject({ undo: { kind: 'skipped', count: 1 } });
+    expect(runtime.state()).toMatchObject({ undo: DONE_INFO });
   });
 
   it('ends a notice whose reply comes after a newer write', async () => {
@@ -714,13 +728,13 @@ describe('actions', () => {
     };
 
     runtime.actions.deleteTask('8');
-    runtime.actions.skip('assignment:2');
+    runtime.actions.setDone('assignment:2', true);
     await settle();
     first();
     await settle();
 
     expect(sentActions(fake.sent)).toContainEqual({ kind: 'sendDelete', noteId: '8' });
-    expect(runtime.state()).toMatchObject({ undo: { kind: 'skipped', count: 1 } });
+    expect(runtime.state()).toMatchObject({ undo: DONE_INFO });
   });
 
   it('ends the notice when the surface goes away or stops', async () => {
@@ -742,7 +756,7 @@ describe('actions', () => {
 
   it('sends Undo of an override action with the previous flags and the user, once', async () => {
     const { fake, runtime } = await started(undoHost());
-    runtime.actions.skip('assignment:1');
+    runtime.actions.setDone('assignment:1', true);
     await settle();
 
     runtime.actions.undo();
@@ -826,11 +840,11 @@ describe('actions', () => {
   it('writes a seen note and a dismissed offer through the host, then asks for the state', async () => {
     const { fake, runtime } = await started();
 
-    runtime.actions.markNoteSeen('firstSkip');
+    runtime.actions.markNoteSeen('firstDone');
     runtime.actions.dismissOffer();
     await settle();
 
-    expect(fake.host.markNoteSeen).toHaveBeenCalledWith('firstSkip');
+    expect(fake.host.markNoteSeen).toHaveBeenCalledWith('firstDone');
     expect(fake.host.dismissOffer).toHaveBeenCalledTimes(1);
     expect(sentActions(fake.sent)).toEqual([]);
     expect(types(fake.sent)).toEqual(['weekrow:get-state', 'weekrow:get-state']);
@@ -856,7 +870,7 @@ describe('actions', () => {
     await expect(result).resolves.toBe(saved);
   });
 
-  it('sends Skip all older in parts of at most 2000 keys, and shows one notice with every item', async () => {
+  it('sends Mark all older done in parts of at most 2000 keys, and shows one notice with every item', async () => {
     const fake = undoHost();
     const base = fake.reply;
     const template = readyState().view.groups.find((group) => group.kind === 'past_due');
@@ -871,14 +885,14 @@ describe('actions', () => {
       message.type === 'weekrow:get-state' ? readyFor(fake.user, { view }) : base(message);
     const { runtime } = await started(fake);
 
-    runtime.actions.skipAllOlder();
+    runtime.actions.markAllOlderDone();
     await settle();
 
     const sizes = sentActions(fake.sent).map((action) =>
-      action.kind === 'skip' ? action.keys.length : 0,
+      action.kind === 'setDone' ? action.keys.length : 0,
     );
     expect(sizes).toEqual([2000, 2000, 500]);
-    expect(runtime.state()).toMatchObject({ undo: { kind: 'skipped_all', count: 4500 } });
+    expect(runtime.state()).toMatchObject({ undo: { kind: 'done', count: 4500 } });
 
     fake.sent.length = 0;
     runtime.actions.undo();
@@ -893,14 +907,12 @@ describe('actions', () => {
   it('sends every other write with its arguments', async () => {
     const { fake, runtime } = await started();
     const input = { title: 'A', date: '2026-10-28', time: '08:00', courseId: '101', details: 'x' };
-    runtime.actions.unskip('k');
     runtime.actions.updateTask('8', input);
     runtime.actions.moveTaskToToday('8');
     runtime.actions.createTask(input);
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([
-      { kind: 'unskip', key: 'k' },
       { kind: 'updateTask', noteId: '8', input },
       { kind: 'moveTaskToToday', noteId: '8' },
       { kind: 'createTask', input },

@@ -10,10 +10,10 @@ export interface RingEntry {
   courseId: string | null;
   /** Label from the item, used when the course is unknown. */
   contextLabel: string;
-  /** Dated in the shown span, not skipped and not a reminder. */
+  /** Dated in the shown span and not a reminder. */
   counted: boolean;
   done: boolean;
-  /** Shown in the Past due group and not skipped. */
+  /** Shown in the Past due group. */
   pastDue: boolean;
 }
 

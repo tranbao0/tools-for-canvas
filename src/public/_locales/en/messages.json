@@ -230,14 +230,8 @@
   "olderCount_other": {
     "message": "$1 older"
   },
-  "skipAllOlder": {
-    "message": "Skip all older"
-  },
-  "skippedCount_one": {
-    "message": "$1 skipped"
-  },
-  "skippedCount_other": {
-    "message": "$1 skipped"
+  "markAllOlderDone": {
+    "message": "Mark all older done"
   },
   "doneCount_one": {
     "message": "$1 done"
@@ -253,18 +247,6 @@
   },
   "doneCheckbox": {
     "message": "Done: $1"
-  },
-  "skip": {
-    "message": "Skip"
-  },
-  "skipItem": {
-    "message": "Skip $1"
-  },
-  "unskip": {
-    "message": "Unskip"
-  },
-  "unskipItem": {
-    "message": "Unskip $1"
   },
   "moveToToday": {
     "message": "Move to today"
@@ -289,9 +271,6 @@
   },
   "peerReviewSubtitle": {
     "message": "Peer review"
-  },
-  "chipSkipped": {
-    "message": "Skipped"
   },
   "chipRedoRequested": {
     "message": "Redo requested"
@@ -407,18 +386,6 @@
   "undoDone_other": {
     "message": "$1 marked done"
   },
-  "undoSkipped_one": {
-    "message": "Skipped"
-  },
-  "undoSkipped_other": {
-    "message": "$1 skipped"
-  },
-  "undoSkippedAll_one": {
-    "message": "Skipped $1 older item"
-  },
-  "undoSkippedAll_other": {
-    "message": "Skipped $1 older items"
-  },
   "undoDeleted_one": {
     "message": "Task deleted"
   },
@@ -430,9 +397,6 @@
   },
   "noteFirstDone": {
     "message": "Done marks sync to Canvas and its apps. On a module item, this can count as 'Mark as done'."
-  },
-  "noteFirstSkip": {
-    "message": "Skipping also hides this item in Canvas's list of missing work."
   },
   "moreNotices_one": {
     "message": "$1 more notice"

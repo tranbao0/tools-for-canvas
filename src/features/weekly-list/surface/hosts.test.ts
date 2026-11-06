@@ -93,7 +93,7 @@ describe('watchChanges', () => {
     expect(listener).toHaveBeenCalledTimes(1);
     await offerItem.setValue({ origin: CUSTOM });
     expect(listener).toHaveBeenCalledTimes(2);
-    await seenNotesItem.setValue({ firstDone: true, firstSkip: false });
+    await seenNotesItem.setValue({ firstDone: true });
     expect(listener).toHaveBeenCalledTimes(3);
 
     stop();
@@ -119,12 +119,14 @@ describe('watchChanges', () => {
 });
 
 describe('writes of the surface', () => {
-  it('saves a seen note and keeps the other one on extension pages', async () => {
-    await seenNotesItem.setValue({ firstDone: true, firstSkip: false });
+  it('saves a seen note on extension pages, over a stored value of an older version', async () => {
+    await fakeBrowser.storage.local.set({ seenNotes: { firstDone: false, firstSkip: true } });
 
-    await extensionPageHost().markNoteSeen('firstSkip');
+    await extensionPageHost().markNoteSeen('firstDone');
 
-    expect(await seenNotesItem.getValue()).toEqual({ firstDone: true, firstSkip: true });
+    expect(await fakeBrowser.storage.local.get('seenNotes')).toEqual({
+      seenNotes: { firstDone: true },
+    });
   });
 
   it('sends the seen note and the settings of the page through the channel, not to storage', async () => {
@@ -136,7 +138,7 @@ describe('writes of the surface', () => {
 
     expect(channel.markNoteSeen).toHaveBeenCalledWith('firstDone');
     expect(channel.settings.setValue).toHaveBeenCalledWith(DEFAULT_SETTINGS);
-    expect(await seenNotesItem.getValue()).toEqual({ firstDone: false, firstSkip: false });
+    expect(await seenNotesItem.getValue()).toEqual({ firstDone: false });
     expect(await fakeBrowser.storage.local.get(null)).toEqual({});
   });
 

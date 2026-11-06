@@ -282,7 +282,7 @@ function courseFilterApplies(
   return (
     view.rings.some((ring) => ring.courseId === filter) ||
     view.groups.some((group) =>
-      [...group.items, ...group.older, ...group.skipped, ...group.doneUndated].some(
+      [...group.items, ...group.older, ...group.doneUndated].some(
         (item) => item.courseId === filter,
       ),
     )

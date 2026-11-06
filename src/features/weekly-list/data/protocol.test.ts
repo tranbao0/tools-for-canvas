@@ -63,10 +63,8 @@ describe('task input', () => {
 
 describe('actions', () => {
   const valid: DataAction[] = [
-    { kind: 'setDone', key: 'assignment:1', done: true },
-    { kind: 'skip', keys: ['assignment:1'] },
-    { kind: 'skip', keys: ['assignment:1', 'planner_note:4'] },
-    { kind: 'unskip', key: 'assignment:1' },
+    { kind: 'setDone', keys: ['assignment:1'], done: true },
+    { kind: 'setDone', keys: ['assignment:1', 'planner_note:4'], done: false },
     {
       kind: 'restore',
       userId: '9',
@@ -96,12 +94,19 @@ describe('actions', () => {
   });
 
   it.each([
-    { kind: 'setDone', key: 'assignment:1' },
-    { kind: 'setDone', key: '', done: true },
-    { kind: 'skip', key: 'assignment:1' },
-    { kind: 'skip', keys: [] },
-    { kind: 'skip', keys: Array.from({ length: 2001 }, (_, index) => `assignment:${index}`) },
-    { kind: 'skip', keys: ['assignment:1', ''] },
+    { kind: 'setDone', keys: ['assignment:1'] },
+    { kind: 'setDone', keys: [''], done: true },
+    { kind: 'setDone', key: 'assignment:1', done: true },
+    { kind: 'setDone', keys: [], done: true },
+    {
+      kind: 'setDone',
+      keys: Array.from({ length: 2001 }, (_, index) => `assignment:${index}`),
+      done: true,
+    },
+    { kind: 'setDone', keys: ['assignment:1', ''], done: true },
+    // Actions of the removed Skip, as an older script of a tab still sends them.
+    { kind: 'skip', keys: ['assignment:1'] },
+    { kind: 'unskip', key: 'assignment:1' },
     { kind: 'restore', userId: '', origin: 'https://a.edu', entries: [] },
     { kind: 'restore', userId: '9', origin: '', entries: [] },
     { kind: 'restore', userId: '9', entries: [] },
@@ -253,7 +258,9 @@ describe('the messages of the in-page script', () => {
 
   it('recognize the note, context and change messages', () => {
     expect(isMarkNoteSeenMessage({ type: 'weekrow:mark-note-seen', note: 'firstDone' })).toBe(true);
-    expect(isMarkNoteSeenMessage({ type: 'weekrow:mark-note-seen', note: 'firstSkip' })).toBe(true);
+    expect(isMarkNoteSeenMessage({ type: 'weekrow:mark-note-seen', note: 'firstSkip' })).toBe(
+      false,
+    );
     expect(isMarkNoteSeenMessage({ type: 'weekrow:mark-note-seen', note: 'other' })).toBe(false);
     expect(isPageContextMessage({ type: 'weekrow:page-context' })).toBe(true);
     expect(isDataMessage({ type: 'weekrow:page-context' })).toBe(true);

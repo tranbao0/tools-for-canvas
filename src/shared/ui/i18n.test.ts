@@ -41,7 +41,7 @@ describe('tp', () => {
     expect(tp('hiddenCourses', 1)).toBe('1 course hidden');
     expect(tp('hiddenCourses', 2)).toBe('2 courses hidden');
     expect(tp('hiddenCourses', 0)).toBe('0 courses hidden');
-    expect(tp('undoSkippedAll', 3)).toBe('Skipped 3 older items');
+    expect(tp('undoDone', 3)).toBe('3 marked done');
   });
 });
 

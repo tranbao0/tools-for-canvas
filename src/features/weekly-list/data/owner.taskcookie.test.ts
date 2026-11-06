@@ -111,7 +111,7 @@ describe('a task update, move or delete', () => {
     const h = await loaded({ maxConcurrency: 1 });
     // A write that waits in the queue is out, and the update waits for the slot behind it.
     const release = h.canvas.hold('createOverride');
-    await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true });
     await vi.advanceTimersByTimeAsync(0);
     expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
     await h.owner.act(action);
@@ -162,7 +162,7 @@ describe('a task update, move or delete', () => {
     // Two marks are in the queue: the first request is out, and the second one waits. Both
     // deletes go to the queue behind them when their time comes.
     const release = h.canvas.hold('createOverride');
-    await h.owner.act({ kind: 'skip', keys: [QUIZ_3, HOMEWORK_3] });
+    await h.owner.act({ kind: 'setDone', keys: [QUIZ_3, HOMEWORK_3], done: true });
     await vi.advanceTimersByTimeAsync(MAX_DELETE_DELAY_MS);
     expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
 
@@ -217,8 +217,7 @@ describe('a task update, move or delete', () => {
 
 describe('an action from a tab in another cookie store', () => {
   it.each([
-    ['a done mark', { kind: 'setDone', key: QUIZ_3, done: true } as const, { undo: null }],
-    ['a skip mark', { kind: 'skip', keys: [QUIZ_3] } as const, { undo: null }],
+    ['a done mark', { kind: 'setDone', keys: [QUIZ_3], done: true } as const, { undo: null }],
     [
       'a task create',
       { kind: 'createTask', input: SECRET } as const,
@@ -245,8 +244,12 @@ describe('an action from a tab in another cookie store', () => {
   it('acts as before in the store of the requests, and with no tab', async () => {
     const h = await loaded();
 
-    await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true }, 9);
-    await h.owner.act({ kind: 'skip', keys: [`assignment:${IDS.assignments.bioQuiz3Today}`] });
+    await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true }, 9);
+    await h.owner.act({
+      kind: 'setDone',
+      keys: [`assignment:${IDS.assignments.bioQuiz3Today}`],
+      done: true,
+    });
     await h.owner.settled();
 
     expect(vi.mocked(h.deps.surfaceUsesRequestStore).mock.calls).toEqual([[9]]);
@@ -257,7 +260,7 @@ describe('an action from a tab in another cookie store', () => {
     const h = await loaded();
     vi.mocked(h.deps.surfaceUsesRequestStore).mockRejectedValue(new Error('no stores'));
 
-    expect(await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true }, 9)).toEqual({
+    expect(await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true }, 9)).toEqual({
       undo: null,
     });
     await h.owner.settled();
@@ -272,7 +275,7 @@ describe('a queued override write checks the cookie when its request gets a slot
     const read = h.owner.getState({ ...PANEL, spanOffset: 3 });
     await vi.advanceTimersByTimeAsync(0);
     expect(h.canvas.callsOf('listPlannerItems').length).toBeGreaterThan(0);
-    await h.owner.act({ kind: 'setDone', key: QUIZ_3, done: true });
+    await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true });
     await vi.advanceTimersByTimeAsync(0);
     expect(h.canvas.callsOf('createOverride')).toEqual([]);
 

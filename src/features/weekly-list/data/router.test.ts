@@ -180,11 +180,11 @@ describe('routeDataMessage', () => {
       expect(host.saveSettings).toHaveBeenCalledWith(SETTINGS);
       await routeDataMessage(
         owner,
-        { type: 'weekrow:mark-note-seen', note: 'firstSkip' },
+        { type: 'weekrow:mark-note-seen', note: 'firstDone' },
         CONTENT_SCRIPT,
         host,
       );
-      expect(host.markNoteSeen).toHaveBeenCalledWith('firstSkip');
+      expect(host.markNoteSeen).toHaveBeenCalledWith('firstDone');
     });
 
     it('answer a feed request, and make a content script an in-page list whatever it says', async () => {
@@ -672,7 +672,7 @@ describe('routeDataMessage', () => {
     );
     expect(owner.refresh).toHaveBeenLastCalledWith('retry');
 
-    const action = { kind: 'skip', keys: ['assignment:1'] };
+    const action = { kind: 'setDone', keys: ['assignment:1'], done: true };
     await expect(
       routeDataMessage(owner, { type: 'weekrow:action', action }, CONTENT_SCRIPT, host),
     ).resolves.toEqual({ undo: null });
@@ -705,7 +705,7 @@ describe('routeDataMessage', () => {
     const messages = [
       { type: 'weekrow:get-state', request: REQUEST },
       { type: 'weekrow:refresh', reason: 'retry' },
-      { type: 'weekrow:action', action: { kind: 'skip', keys: ['assignment:1'] } },
+      { type: 'weekrow:action', action: { kind: 'setDone', keys: ['assignment:1'], done: true } },
       { type: 'weekrow:open-page', page: 'welcome' },
     ];
     for (const message of messages) {
@@ -884,6 +884,27 @@ describe('routeDataMessage', () => {
       ),
     ).toBeNull();
     expect(routeDataMessage(owner, 42, EXTENSION_PAGE, host)).toBeNull();
+  });
+
+  it('does not answer the Skip messages of a tab that still runs an older script', () => {
+    for (const action of [
+      { kind: 'skip', keys: ['assignment:1'] },
+      { kind: 'unskip', key: 'assignment:1' },
+    ]) {
+      expect(
+        routeDataMessage(owner, { type: 'weekrow:action', action }, CONTENT_SCRIPT, host),
+      ).toBeNull();
+    }
+    expect(
+      routeDataMessage(
+        owner,
+        { type: 'weekrow:mark-note-seen', note: 'firstSkip' },
+        CONTENT_SCRIPT,
+        host,
+      ),
+    ).toBeNull();
+    expect(owner.act).not.toHaveBeenCalled();
+    expect(host.markNoteSeen).not.toHaveBeenCalled();
   });
 });
 
