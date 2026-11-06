@@ -2370,7 +2370,10 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The extension never loads the Canvas page of an announcement itself, because it marks the topic as read.
    The ids are checked as Canvas ids at the message boundary and again before they enter a path.
 2. **All course grades.**
-   The fix hides the pager and adds a card for each course that has no card on the page.
+   The fix adds a card for each course that has no card on the page.
+   It hides the pager of Canvas, and the steady navigator, only when the page has a card for every page that the pager reaches: more cards than six for each page before the last.
+   While the extension has no course to draw, such as in a tab of another cookie store or after a failed course read, the pager of Canvas and the steady navigator stay, so the cards of the other pages can be reached.
+   A reply with no user id and no course leaves the courses of the earlier reply in place.
    A card is a copy of a card that the widget drew, so it has the same markup, classes and theme.
    The copy loses its buttons, which belong to React, and its ids.
    Its header takes the course color, and it shows the letter grade when Canvas sends one, else the whole percent, else "N/A".
@@ -2416,7 +2419,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The pager of Canvas, with its spinner, stays in the page and takes no room: one rule of the stylesheet, scoped to the widget mark `data-wr-paged`, hides it with `display: none`.
    So it is out of the accessibility tree and the tab order, and Canvas does not move the focus into it.
    The navigator has `data-wr-own`, so the observer ignores it.
-   Another fix that hides the pager (the grade cards, and the own list of the announcements) hides the navigator too.
+   Another fix that hides the pager (the grade cards when they cover every page, and the own list of the announcements) hides the navigator too.
    The navigator follows the dark theme of the widget, with the link color `#5A9FD4`, the ink `#FFFFFF` and the disabled color `#4A5B68` of the package, and the current page keeps its blue square.
    A widget with one page has no pager of Canvas, so it has no navigator.
 4. **People list.**
