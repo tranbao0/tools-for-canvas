@@ -217,15 +217,15 @@ test('covers the box of the widget after the wait, and follows it when the widge
   await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot', { timeout: 15_000 });
   const card = inpageList(page).locator('.wr');
   // The widget still shows its loading box, so the card covers it.
-  expectOverSection(await slotBoxes(page));
+  await waitOverSection(page);
   expect((await card.boundingBox())!.height).toBeGreaterThanOrEqual(420);
   await page.locator(SECTION).evaluate((node) => {
     node.innerHTML =
       '<input data-testid="submission-status-filter-select"><div style="height:1200px">Loaded</div>';
   });
-  await frames(page, 5);
-  expectOverSection(await slotBoxes(page));
-  expect((await card.boundingBox())!.height).toBeGreaterThan(1200);
+  // The card follows the new box when the placement runs, which is after the change.
+  await expect.poll(async () => (await card.boundingBox())!.height).toBeGreaterThan(1200);
+  await waitOverSection(page);
 });
 
 async function openFixture(
@@ -454,6 +454,20 @@ function slotBoxes(page: Page): Promise<SlotBoxes> {
 function expectOverSection(boxes: SlotBoxes): void {
   for (const side of ['left', 'top', 'right', 'bottom'] as const)
     expect(Math.abs(boxes.card[side] - boxes.section[side]), side).toBeLessThanOrEqual(0.5);
+}
+
+/** Waits until the card is over the box of the section, to half a pixel. */
+async function waitOverSection(page: Page): Promise<void> {
+  await expect
+    .poll(async () => {
+      const { card, section } = await slotBoxes(page);
+      return Math.max(
+        ...(['left', 'top', 'right', 'bottom'] as const).map((side) =>
+          Math.abs(card[side] - section[side]),
+        ),
+      );
+    })
+    .toBeLessThanOrEqual(0.5);
 }
 
 /**

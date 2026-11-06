@@ -371,9 +371,13 @@ test.describe('people: the fallback', () => {
     });
   }
 
-  test('show a failed later page with Retry, and keep the rows', async ({ context, page }) => {
+  test('show a failed later page with Retry, and keep the rows', async ({
+    context,
+    page,
+    background,
+  }) => {
     let calls = 0;
-    await open(context, page, {
+    const { canvas } = await open(context, page, {
       routes: [
         {
           method: 'POST',
@@ -396,6 +400,9 @@ test.describe('people: the fallback', () => {
       ],
     });
     await expect(rows(page)).toHaveCount(10);
+    // New data from the background asks again for a page that failed. On a loaded machine it can
+    // come after the first rows, so the page must not fail until the requests are quiet.
+    await requestsQuiet(page, canvas.requests, background);
     await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
     await expect(feed(page)).toContainText("Couldn't load more people.");
     await expect(rows(page)).toHaveCount(10);

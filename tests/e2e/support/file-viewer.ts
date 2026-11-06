@@ -154,6 +154,28 @@ async function paneBox(page: Page) {
   return box;
 }
 
+/**
+ * Clicks a part of a frame until the frame gets the mouse press. A mouse event that comes before
+ * the frame has its hit test data goes to the page, not to the frame, and then the click does
+ * nothing. A press that arrived is counted, so a click is not repeated after it landed.
+ */
+export async function clickInFrame(frame: Frame, target: Locator): Promise<void> {
+  const presses = () =>
+    frame.evaluate(() => {
+      const counter = window as unknown as { pointerPresses?: number };
+      if (counter.pointerPresses === undefined) {
+        counter.pointerPresses = 0;
+        window.addEventListener('pointerdown', () => (counter.pointerPresses! += 1), true);
+      }
+      return counter.pointerPresses;
+    });
+  const before = await presses();
+  await expect(async () => {
+    if ((await presses()) === before) await target.click({ timeout: 2000 });
+    await expect.poll(presses, { timeout: 1500 }).toBeGreaterThan(before);
+  }).toPass({ timeout: 20_000 });
+}
+
 const PANE_HOST = '#tools-file-viewer';
 const CLOSE_BUTTON = { name: 'Close file viewer', exact: true } as const;
 

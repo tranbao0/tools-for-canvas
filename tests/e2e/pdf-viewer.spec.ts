@@ -12,6 +12,7 @@ import { startFileHost, TRUST_TEST_CERTIFICATE, type FileHost } from './support/
 import {
   FILE_NAME,
   FILE_META,
+  clickInFrame,
   NOTES,
   courseHomeHtml,
   openCoursePage,
@@ -455,7 +456,7 @@ test('a PDF tab keeps its document and position while another tab is active', as
   fileHost,
 }) => {
   const frame = await openPdf(context, page, background, fileHost);
-  await frame.getByRole('button', { name: 'Next page' }).click();
+  await clickInFrame(frame, frame.getByRole('button', { name: 'Next page' }));
   await frame.getByRole('button', { name: 'Next page' }).click();
   await expect(pageInput(frame)).toHaveValue('3');
   await page.locator('#content').getByRole('link', { name: 'Second notes' }).click();
@@ -485,7 +486,7 @@ test('closing the tab of a PDF ends its worker', async ({
   await expect(frame.locator(`${VIEWER}:visible .pv-page[data-page="1"] canvas`)).toBeVisible();
   const workers = () => page.workers().filter((worker) => worker.url().includes('/pdfjs/'));
   await expect.poll(() => workers().length).toBe(2);
-  await frame.getByRole('button', { name: 'Close Second notes.pdf' }).click();
+  await clickInFrame(frame, frame.getByRole('button', { name: 'Close Second notes.pdf' }));
   await expect(frame.getByRole('tab')).toHaveCount(1);
   await expect.poll(() => workers().length).toBe(1);
 });
@@ -764,7 +765,7 @@ test('saved page and zoom return after reload', async ({ context, page, backgrou
   let frame = await openPdf(context, page, background, fileHost);
   await pageInput(frame).fill('3');
   await pageInput(frame).press('Enter');
-  await frame.getByRole('button', { name: 'Zoom level' }).click();
+  await clickInFrame(frame, frame.getByRole('button', { name: 'Zoom level' }));
   await frame.getByRole('menuitemradio', { name: '150%' }).click();
   await expect
     .poll(async () =>
