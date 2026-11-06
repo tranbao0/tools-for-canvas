@@ -404,6 +404,30 @@ test('search finds the word on page 2 and highlights it', async ({
   await expect(page.locator('#tools-file-viewer')).toBeVisible();
 });
 
+test('Escape on any control of the search bar closes the bar only, and the pane keeps its tabs', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost);
+  await page.locator('#content').getByRole('link', { name: 'Second notes' }).click();
+  await expect(frame.getByRole('tab')).toHaveCount(2);
+  for (const part of ['pdf-search-previous', 'pdf-search-next', 'pdf-search-close']) {
+    await frame.locator('[data-part="pdf-search-toggle"]:visible').click();
+    const field = frame.locator('[data-part="pdf-search-input"]:visible');
+    await field.fill(FIXTURE_WORD);
+    await expect(frame.locator('[data-part="pdf-search-count"]:visible')).toContainText('1');
+    await frame.locator(`[data-part="${part}"]:visible`).focus();
+    await page.keyboard.press('Escape');
+    await expect(field).toHaveCount(0);
+    // The key would reach the document and close the pane a moment later.
+    await page.waitForTimeout(400);
+    await expect(page.locator('#tools-file-viewer')).toHaveCount(1);
+    await expect(frame.getByRole('tab')).toHaveCount(2);
+  }
+});
+
 test('zoom in changes the width of the canvas, and the menu sets fit modes', async ({
   context,
   page,

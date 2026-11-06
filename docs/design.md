@@ -3257,7 +3257,7 @@ With the pane read alone, the default run of the test failed before the fix.
      The bar shows "N of M", "No matches" or "Searching…".
      Enter and Shift+Enter, and the arrow buttons, go to the next and the previous match, and wrap around.
      The matches show in the text layer, and the selected match has a stronger color.
-     Escape closes the bar and clears the marks, and it does not close the pane.
+     Escape closes the bar and clears the marks, and it does not close the pane, whichever control of the bar has the focus.
      At most 5,000 matches count.
    - **Thumbnails.**
      The list shows one slot for each page.

@@ -301,13 +301,17 @@ export function PdfViewer(props: {
     return () => clearTimeout(timer);
   }, [engine, query, searchOpen]);
 
+  // Escape on any control of the bar closes the bar. The pane closes on Escape only when the
+  // search bar is not open.
+  const onSearchBarKey = (event: TargetedKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeSearch();
+  };
+
   const onSearchKey = (event: TargetedKeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Escape') {
-      // Escape closes the search. The pane closes on Escape only when the search is not open.
-      event.preventDefault();
-      event.stopPropagation();
-      closeSearch();
-    } else if (event.key === 'Enter' && engine) {
+    if (event.key === 'Enter' && engine) {
       event.preventDefault();
       if (searched.current !== query) {
         searched.current = query;
@@ -481,7 +485,7 @@ export function PdfViewer(props: {
         )}
       </div>
       {searchOpen && (
-        <div class="pv-search" role="search">
+        <div class="pv-search" role="search" onKeyDown={onSearchBarKey}>
           <input
             ref={searchField}
             class="pv-search-input"
