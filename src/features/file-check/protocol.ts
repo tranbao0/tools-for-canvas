@@ -55,10 +55,6 @@ export const PROBE_MESSAGE_TYPE = 'weekrow:file-probe';
 
 type Fields = Record<string, unknown>;
 
-function hasType(value: unknown, type: string): value is Fields {
-  return typeof value === 'object' && value !== null && (value as Fields)['type'] === type;
-}
-
 export function isFileCheckMessage(value: unknown): value is FileCheckMessage {
   if (typeof value !== 'object' || value === null) return false;
   switch ((value as Fields)['type']) {
@@ -72,8 +68,4 @@ export function isFileCheckMessage(value: unknown): value is FileCheckMessage {
     default:
       return false;
   }
-}
-
-export function isOpenMessage(value: unknown): value is FileCheckOpenMessage {
-  return hasType(value, 'weekrow:file-check-open');
 }

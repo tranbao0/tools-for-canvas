@@ -131,6 +131,12 @@ describe('sanitizeHtml: what stays', () => {
     expect(image?.getAttribute('alt')).toBe('');
   });
 
+  it('keeps an image empty, and the text after it beside it', () => {
+    const box = parsed('<p><img src="https://cdn.example.org/a.png">after</img></p>');
+    expect(box.querySelector('img')?.childNodes).toHaveLength(0);
+    expect(box.querySelector('p')?.lastChild?.textContent).toBe('after');
+  });
+
   it('allows mailto and http links', () => {
     const box = parsed('<a href="mailto:a@b.org">m</a><a href="http://example.org">h</a>');
     expect([...box.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual([

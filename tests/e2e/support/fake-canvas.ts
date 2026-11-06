@@ -1,14 +1,8 @@
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import type { BrowserContext, Request, Route } from '@playwright/test';
-import { ROOT } from '../../../scripts/lib/ensure-build.mjs';
 import { renderFixturePageByName } from '../../fixtures/pages';
 
 /** The origin of the fake Canvas site. */
 export const FAKE_CANVAS_ORIGIN = 'https://school.instructure.com';
-
-/** JSON fixtures with the real Canvas response shape, read by name: `<name>.json`. */
-export const FIXTURES_DIR = path.join(ROOT, 'tests', 'fixtures');
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 
@@ -32,14 +26,6 @@ interface RouteMatch {
 /** Serves the fake page built from `tests/fixtures/pages/<page>.html`. */
 export interface PageRoute extends RouteMatch {
   page: string;
-  json?: never;
-  body?: never;
-}
-
-/** Serves `tests/fixtures/<json>.json` byte for byte, so string ids and large numbers stay exact. */
-export interface JsonFixtureRoute extends RouteMatch {
-  json: string;
-  page?: never;
   body?: never;
 }
 
@@ -49,7 +35,6 @@ export interface BodyRoute extends RouteMatch {
   /** Defaults to `text/plain` for a string body and `application/json` otherwise. */
   contentType?: string;
   page?: never;
-  json?: never;
 }
 
 /** The answer of a {@link HandlerRoute}. */
@@ -71,11 +56,10 @@ export interface FakeReply {
 export interface HandlerRoute extends Omit<RouteMatch, 'status' | 'headers'> {
   respond(request: RecordedRequest): FakeReply | Promise<FakeReply>;
   page?: never;
-  json?: never;
   body?: never;
 }
 
-export type FakeCanvasRoute = PageRoute | JsonFixtureRoute | BodyRoute | HandlerRoute;
+export type FakeCanvasRoute = PageRoute | BodyRoute | HandlerRoute;
 
 export interface RecordedRequest {
   method: string;
@@ -128,23 +112,6 @@ const NOT_FOUND_BODY = JSON.stringify({
   errors: [{ message: 'The specified resource does not exist.' }],
 });
 
-/**
- * Returns the path of a fixture file inside a folder.
- * Throws when the name leaves the folder.
- */
-function fixturePath(dir: string, name: string, extension: string): string {
-  const file = path.resolve(dir, `${name}${extension}`);
-  if (!file.startsWith(dir + path.sep)) {
-    throw new Error(`Fixture name "${name}" must stay inside ${path.relative(ROOT, dir)}`);
-  }
-  return file;
-}
-
-/** Reads `tests/fixtures/<name>.json` as text. */
-export function readJsonFixture(name: string): string {
-  return readFileSync(fixturePath(FIXTURES_DIR, name, '.json'), 'utf8');
-}
-
 /** Builds the full HTML of the fake page in `tests/fixtures/pages/<name>.html`. */
 export function readPageFixture(name: string): string {
   return renderFixturePageByName(name);
@@ -168,20 +135,13 @@ function toReply(answer: FakeReply): Reply {
   };
 }
 
-function replyFor(route: PageRoute | JsonFixtureRoute | BodyRoute): Reply {
+function replyFor(route: PageRoute | BodyRoute): Reply {
   const status = route.status ?? 200;
   if (route.page !== undefined) {
     return {
       status,
       headers: { 'content-type': HTML_TYPE, ...route.headers },
       body: readPageFixture(route.page),
-    };
-  }
-  if (route.json !== undefined) {
-    return {
-      status,
-      headers: { 'content-type': JSON_TYPE, ...route.headers },
-      body: readJsonFixture(route.json),
     };
   }
   const isText = typeof route.body === 'string';

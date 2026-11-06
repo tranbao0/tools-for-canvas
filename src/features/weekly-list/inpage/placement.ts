@@ -34,6 +34,12 @@ export const PANEL_EDGE_GAP_PX = 24;
 export const AREA_MIN_PX = 320;
 export const AREA_MAX_PX = 400;
 
+/** The number of pixels in a CSS length such as `12px`, or `fallback` when it is not a number. */
+export function pixels(value: string, fallback = 0): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 /** What an element had in an inline property before the list set it: the value and the priority. */
 type StyleRecord = Record<string, [value: string, priority: string]>;
 

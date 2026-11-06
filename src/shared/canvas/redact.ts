@@ -68,12 +68,6 @@ export function redactUrl(address: string, base?: string): RedactedUrl | null {
   return { host, path: redactPath(url.pathname) };
 }
 
-/** `host/path` for a report, or `(not an address)`. */
-export function describeUrl(address: string, base?: string): string {
-  const url = redactUrl(address, base);
-  return url === null ? '(not an address)' : `${url.host}${url.path === '/' ? '' : url.path}`;
-}
-
 /** The media type of a `content-type` value, such as `application/pdf`, without parameters. */
 export function mediaType(value: unknown): string | null {
   if (typeof value !== 'string') return null;

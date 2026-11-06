@@ -31,13 +31,10 @@ function cardCourseId(card: HTMLElement): string {
 
 export interface GradeVisibilityStore {
   userId?: string;
-  serverStates: Map<string, Record<string, boolean>>;
   observed: Map<string, Map<string, boolean>>;
 }
 
-export function gradesFix(
-  store: GradeVisibilityStore = { serverStates: new Map(), observed: new Map() },
-): Fix {
+export function gradesFix(store: GradeVisibilityStore = { observed: new Map() }): Fix {
   let doc: Document | null = null;
   /** What each grid shows. It stays out of the page, where a script could read the grades. */
   const signatures = new WeakMap<Element, string>();

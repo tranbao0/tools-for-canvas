@@ -64,7 +64,7 @@ function isForeign(records: readonly MutationRecord[]): boolean {
 
 export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   const { doc, origin } = options;
-  const gradeStore: GradeVisibilityStore = { serverStates: new Map(), observed: new Map() };
+  const gradeStore: GradeVisibilityStore = { observed: new Map() };
   const fixes: Record<FixKey, Fix> = {
     announcementsInPlace: announcementsFix(),
     allCourseGrades: gradesFix(gradeStore),

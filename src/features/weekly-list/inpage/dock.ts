@@ -20,6 +20,7 @@ import {
   SPACER_ID,
   clearInlineStyles,
   keepCardScroll,
+  pixels,
   setContainerStyle,
   setInlineStyles,
   setPanelMode,
@@ -27,11 +28,6 @@ import {
 
 /** The column needs at least this much empty space under its items for the docked list. */
 const MIN_ROOM_PX = 240;
-
-function pixels(value: string): number {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
 
 /**
  * Watches the right column and docks the list when the column is above the viewport. Returns
