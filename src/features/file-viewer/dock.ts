@@ -334,6 +334,14 @@ export function filePaneOpen(): boolean {
 }
 
 /**
+ * Whether a pane (the file pane or the assignment pane) is on the page and in view now. The weekly
+ * list dock steps aside for it, because both sit on the right edge.
+ */
+export function paneInView(): boolean {
+  return filePaneOpen() || [...openPanes()].some((pane) => pane.shown);
+}
+
+/**
  * Hides the file pane behind the turn-in, or shows it again. The pane keeps its state, because
  * it is hidden and never removed.
  */
@@ -356,7 +364,10 @@ export function filePaneReported(): boolean {
   return shared().fileScriptReported === true;
 }
 
-/** Calls the listener when the file pane opens or closes. Returns a remover. */
+/**
+ * Calls the listener when the file pane or the assignment pane opens, closes, or hides or shows
+ * again. Returns a remover.
+ */
 export function watchFilePane(listener: () => void): () => void {
   const { watchers } = shared();
   watchers.add(listener);
@@ -394,6 +405,8 @@ export function createDock(options: DockOptions): Dock {
   let full = false;
   let stopResize: (() => void) | undefined;
   const card = options.card === true;
+  /** The panes that cover the weekly list tell the watchers when they open, close, hide or show. */
+  const tellsPanes = options.role === 'file' || options.role === 'turn-in';
   /** The gap that the host holds beside the card, which is part of the room that the page keeps. */
   const gap = card ? CARD_GAP_PX : 0;
 
@@ -505,10 +518,8 @@ export function createDock(options: DockOptions): Dock {
         openPanes().add(dock);
       }
       layout();
-      if (options.role === 'file') {
-        shared().file = dock;
-        tell();
-      }
+      if (options.role === 'file') shared().file = dock;
+      if (tellsPanes) tell();
     },
     close() {
       if (!opened) return;
@@ -529,10 +540,8 @@ export function createDock(options: DockOptions): Dock {
             [...openPanes()].some((pane) => pane.role === 'turn-in'));
         if (openPanes().size === 0 || !keeps) setFullView(false);
       }
-      if (options.role === 'file' && shared().file === dock) {
-        shared().file = null;
-        tell();
-      }
+      if (options.role === 'file' && shared().file === dock) shared().file = null;
+      if (tellsPanes) tell();
     },
     setHidden(next) {
       if (!opened || next === hidden) return;
@@ -543,7 +552,7 @@ export function createDock(options: DockOptions): Dock {
       if (next) releaseRoom(page, dock);
       else claimRoom(page, dock);
       layout();
-      if (options.role === 'file') tell();
+      if (tellsPanes) tell();
     },
     forget() {
       opened = false;
