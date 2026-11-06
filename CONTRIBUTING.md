@@ -96,7 +96,7 @@ You can also run each build check alone:
 | `npm run check:file-check` | Fails if a store build holds any part of the file access check                                  |
 
 CI runs the same checks on Linux on every pull request.
-CI also installs dependencies, checks types, runs unit tests and tests for the build checks, and builds all browsers on macOS 15 and Windows 2025.
+CI also checks types, runs the unit tests and the tests for the build checks, and runs `npm run check` on macOS 15 and Windows 2025.
 CI also runs the screenshot gallery (`npm run test:gallery`) and the Firefox tests for single pages, such as `npm run test:firefox:people`.
 CI also rebuilds the Firefox source zip on ARM64 Linux with Node 24.14.0 and npm 11.9.0, and compares the result byte for byte with the normal build.
 That is how the Firefox Add-ons reviewers rebuild the extension.
