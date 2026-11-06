@@ -8,6 +8,7 @@ import {
   isExtensionOrigin,
   secretMessage,
   validOpenFile,
+  validCovered,
   validFullView,
   validPaneReady,
   validPaneRequest,
@@ -97,6 +98,21 @@ describe('viewer theme', () => {
     }
     expect(validTheme({ ...theme, color: 'red' })).toBe(false);
     expect(validTheme(null)).toBe(false);
+  });
+});
+
+describe('covered messages', () => {
+  it('accepts the state of the file pane, and nothing with another shape', () => {
+    expect(validCovered({ type: 'covered', covered: true })).toBe(true);
+    expect(validCovered({ type: 'covered', covered: false })).toBe(true);
+    for (const bad of [
+      { type: 'covered' },
+      { type: 'covered', covered: 'yes' },
+      { type: 'covered', covered: true, url: 'https://school.edu' },
+      { type: 'theme', covered: true },
+      null,
+    ])
+      expect(validCovered(bad)).toBe(false);
   });
 });
 
@@ -259,6 +275,10 @@ describe('port of the pane', () => {
     port.deliver({ type: 'full-view', on: true, available: true });
     expect(receive).toHaveBeenCalledTimes(3);
     expect(receive).toHaveBeenNthCalledWith(3, { type: 'full-view', on: true, available: true });
+    port.deliver({ type: 'covered', covered: 'yes' });
+    port.deliver({ type: 'covered', covered: true });
+    expect(receive).toHaveBeenCalledTimes(4);
+    expect(receive).toHaveBeenNthCalledWith(4, { type: 'covered', covered: true });
     unbind();
     expect(port.close).toHaveBeenCalledOnce();
   });

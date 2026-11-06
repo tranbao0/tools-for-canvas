@@ -9,6 +9,7 @@ import {
 } from '@/features/file-viewer/channel';
 import { isCommentTab, normalizeTabs, type Tabs } from '@/features/file-viewer/model';
 import { loadCommentFile } from '@/features/file-viewer/ui/commentFile';
+import { createCoveredStore } from '@/features/file-viewer/ui/covered';
 import { createFullViewStore } from '@/features/file-viewer/ui/fullView';
 import { createOpenSource } from '@/features/file-viewer/ui/openSource';
 import { ViewerApp, type PaneHost } from '@/features/file-viewer/ui/ViewerApp';
@@ -39,6 +40,7 @@ export default defineUnlistedScript(() => {
   const opens = createOpenSource();
   let port: MessagePort | undefined;
   const fullView = createFullViewStore((on) => port?.postMessage({ type: 'full-view', on }));
+  const covered = createCoveredStore();
   // The token that the last read of the tabs gave. A write carries it back.
   let tabsToken: string | undefined;
 
@@ -115,6 +117,7 @@ export default defineUnlistedScript(() => {
     },
     closePane: () => port?.postMessage({ type: 'close' }),
     fullView,
+    covered,
   });
 
   // The secret of this pane, from the background. It is in no address and in no window message.
@@ -135,6 +138,10 @@ export default defineUnlistedScript(() => {
       receive(message) {
         if (message.type === 'theme') {
           document.documentElement.setAttribute('data-theme', message.theme);
+          return;
+        }
+        if (message.type === 'covered') {
+          covered.receive(message.covered);
           return;
         }
         if (message.type === 'full-view') {

@@ -3432,7 +3432,7 @@ With the pane read alone, the default run of the test failed before the fix.
     Every load of the frame after the first drops the port of the document before it.
     If no valid answer with the secret arrives within 15 seconds of the open, or no hello follows a load, the page script removes the pane and restores the padding of the page.
     The stored tabs stay, so the next click opens the pane again.
-  - After the proof, the pane accepts only two messages from the page: `open-file`, with a file id and an optional course id, and `theme`, with the value `light` or `dark`.
+  - After the proof, the pane accepts only four messages from the page: `open-file`, with a file id and an optional course id, `theme`, with the value `light` or `dark`, `full-view`, with the full view state, and `covered`, which says whether another pane hides the file pane.
     It never accepts a path or a full URL to load, and it drops a message with another key or value.
   - The pane frame sits in a closed shadow root, which keeps the frame element and its address from the page.
     A script can still get the window of the pane from the event of the hello, so the channel does not rely on the root.
@@ -4513,6 +4513,9 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     A file click, in the page or in a frame of the pane (decision 25, item 11), opens the file pane as usual, and the pane host is only hidden.
     When the file pane closes, the pane shows again with the same frame.
   - Preview while a file pane is open shows the pane over the file pane, which is hidden and keeps its tabs.
+    The page script tells the file pane page over the port that its host is hidden or shown (the message `covered`).
+    While the host is hidden, the pane page treats every tab as hidden: a hidden tab pauses its media (decision 25, item 10) and keeps its scroll position.
+    Firefox resets the scroll offset of a scroller in a hidden frame, so the PDF tabs restore the position that they saved, and the text and image tabs restore the offset that they last had while they showed.
     The close button of the pane shows the file pane again.
     The page has the padding of the one pane that shows, and its own padding when none shows, after every order of these steps.
   - A page that removes the pane host removes the pane and its frames: the poll stops, the room is given back, and a file pane that it covered shows again.

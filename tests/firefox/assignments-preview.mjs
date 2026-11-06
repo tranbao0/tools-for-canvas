@@ -18,6 +18,8 @@
 //      the page without a new load and is hidden, and a click on the first row shows it again.
 //   f. A click on Preview on the open row closes the pane, removes both frames, and gives the page
 //      its own padding back.
+//   f2. A PDF and a text file keep their place while the assignment pane covers the file pane:
+//      the offset of the pages, the page number of the toolbar, and the offset of the text.
 //   g. A frame that is hidden and still loads (a script of its page has not come) does not stop the
 //      file catcher of the frame that shows: Preview on a slow row, then on a fast row, then a file
 //      link in the fast row opens the file pane.
@@ -52,6 +54,10 @@ const USER = '5501';
 const LIST_PATH = `/courses/${COURSE}/assignments`;
 const ASSIGNMENT_PATH = `${LIST_PATH}/101`;
 const NOTES = 'File from the assignment pane.';
+const PDF = readFileSync('tests/fixtures/pdf/fixture.pdf');
+const LONG_TEXT = Array.from({ length: 300 }, (_, line) => `Line ${line + 1} of a long file.`).join(
+  '\n',
+);
 const WAIT_MS = 20_000;
 const PANE = '#tools-turn-in';
 const FILE_PANE = '#tools-file-viewer';
@@ -469,6 +475,28 @@ async function main() {
         context_id: COURSE,
       }),
       '/files/501/download': { type: 'text/plain', body: NOTES },
+      [`/api/v1/files/502`]: json({
+        id: '502',
+        display_name: 'reading.pdf',
+        filename: 'reading.pdf',
+        'content-type': 'application/pdf',
+        size: PDF.length,
+        url: '/files/502/download',
+        context_type: 'Course',
+        context_id: COURSE,
+      }),
+      '/files/502/download': { type: 'application/pdf', body: PDF },
+      [`/api/v1/files/503`]: json({
+        id: '503',
+        display_name: 'long.txt',
+        filename: 'long.txt',
+        'content-type': 'text/plain',
+        size: LONG_TEXT.length,
+        url: '/files/503/download',
+        context_type: 'Course',
+        context_id: COURSE,
+      }),
+      '/files/503/download': { type: 'text/plain', body: LONG_TEXT },
       '/api/v1/users/self': json(student),
       '/api/v1/users/self/profile': json(student),
       '/api/v1/courses': json([]),
@@ -750,6 +778,98 @@ async function main() {
     console.log(
       'Preview on the open row: the pane closes with its frames, and the page has its own padding.',
     );
+
+    // f2. A file keeps its place, and a PDF the page number of its toolbar, while the assignment
+    // pane covers the file pane. Firefox resets the scroll offset of an element inside a hidden
+    // frame or a hidden element.
+    for (const kind of [
+      { name: 'PDF', id: '502', scroller: '[data-part="pdf-scroll"]', pages: true },
+      { name: 'text', id: '503', scroller: '.fv-media:not([hidden])', pages: false },
+    ]) {
+      await driver.executeScript(`
+        const link = document.createElement('a');
+        link.id = 'covered-link';
+        link.href = '/courses/${COURSE}/files/${kind.id}';
+        link.textContent = 'covered file';
+        link.style.cssText = 'display:block;margin:12px 24px';
+        document.querySelector('#content').prepend(link);
+      `);
+      const fileLink = await driver.findElement(By.id('covered-link'));
+      await driver.actions().move({ origin: fileLink }).click().perform();
+      await waitFor(
+        () => state(driver),
+        (value) => value.file !== null,
+        `the file pane to open on the ${kind.name} file`,
+      );
+      const coveredFrame = await frameOf(driver, FILE_PANE);
+      const placeOf = async () => {
+        await driver.switchTo().defaultContent();
+        await driver.switchTo().frame(coveredFrame);
+        return driver.executeScript(
+          `
+          const scroller = document.querySelector(arguments[0]);
+          const input = document.querySelector('[data-part="pdf-page-input"]');
+          return {
+            top: scroller ? scroller.scrollTop : -1,
+            room: scroller ? scroller.scrollHeight - scroller.clientHeight : -1,
+            page: input ? input.value : '',
+          };
+        `,
+          kind.scroller,
+        );
+      };
+      await waitFor(placeOf, (value) => value.room > 800, `the ${kind.name} file to draw`);
+      await driver.executeScript(
+        `document.querySelector(arguments[0]).scrollTop = 800`,
+        kind.scroller,
+      );
+      const placed = await waitFor(
+        placeOf,
+        (value) => value.top === 800 && (!kind.pages || value.page === '2'),
+        'the file to settle at its place',
+      );
+      await driver.switchTo().defaultContent();
+      await driver
+        .actions()
+        .move({ origin: await driver.findElement(By.css('button[aria-label="Preview Essay"]')) })
+        .click()
+        .perform();
+      await waitFor(
+        () => state(driver),
+        (value) => value.file?.display === 'none' && value.pane?.display !== 'none',
+        'the assignment pane to cover the file pane',
+      );
+      const paneRoot = await (await driver.findElement(By.css(PANE))).getShadowRoot();
+      await driver
+        .actions()
+        .move({ origin: await paneRoot.findElement(By.css('[aria-label="Close assignment"]')) })
+        .click()
+        .perform();
+      await waitFor(
+        () => state(driver),
+        (value) => value.file !== null && value.file.display !== 'none' && value.pane === null,
+        'the file pane to show again',
+      );
+      await sleep(1000);
+      const shownAgain = await placeOf();
+      if (shownAgain.top !== placed.top || shownAgain.page !== placed.page)
+        throw new Error(
+          `The ${kind.name} file was at ${JSON.stringify(placed)} before the cover and at ${JSON.stringify(shownAgain)} after it`,
+        );
+      await driver
+        .actions()
+        .move({ origin: await driver.findElement(By.css('[aria-label="Close file viewer"]')) })
+        .click()
+        .perform();
+      await driver.switchTo().defaultContent();
+      await waitFor(
+        () => state(driver),
+        (value) => value.file === null,
+        'the file pane to close',
+      );
+      await driver.executeScript("document.getElementById('covered-link').remove()");
+    }
+    console.log('Covered file: the place in a PDF and in a text file, and the toolbar, survive.');
 
     // g. A hidden frame that still loads does not stop the file catcher of the frame that shows.
     slowRow = true;
