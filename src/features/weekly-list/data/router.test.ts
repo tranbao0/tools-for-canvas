@@ -662,7 +662,7 @@ describe('routeDataMessage', () => {
     await expect(
       routeDataMessage(owner, { type: 'weekrow:refresh', reason: 'timer' }, EXTENSION_PAGE, host),
     ).resolves.toEqual({ ok: true, retryAt: 1234 });
-    expect(owner.refresh).toHaveBeenCalledWith('timer');
+    expect(owner.refresh).toHaveBeenCalledWith('timer', undefined);
 
     await routeDataMessage(
       owner,
@@ -670,7 +670,7 @@ describe('routeDataMessage', () => {
       CONTENT_SCRIPT,
       host,
     );
-    expect(owner.refresh).toHaveBeenLastCalledWith('retry');
+    expect(owner.refresh).toHaveBeenLastCalledWith('retry', 3);
 
     const action = { kind: 'setDone', keys: ['assignment:1'], done: true };
     await expect(
@@ -688,7 +688,7 @@ describe('routeDataMessage', () => {
     await expect(routeDataMessage(owner, message, CONTENT_SCRIPT, host)).resolves.toEqual({
       ok: true,
     });
-    expect(owner.pageLoaded).toHaveBeenCalledWith(SAVED);
+    expect(owner.pageLoaded).toHaveBeenCalledWith(SAVED, 3);
 
     await expect(
       routeDataMessage(owner, message, { ...CONTENT_SCRIPT, frameId: 2 }, host),

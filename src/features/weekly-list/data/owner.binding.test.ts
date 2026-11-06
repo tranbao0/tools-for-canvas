@@ -220,6 +220,20 @@ describe('a cookie store that cannot be read', () => {
   });
 });
 
+describe('a tab in another cookie store', () => {
+  it('gets cant_load on a cold cache, and its refresh and page load make no Canvas request', async () => {
+    const h = await createHarness();
+    vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
+
+    expect(await h.owner.getState(PANEL, 7)).toMatchObject({ kind: 'cant_load' });
+    await h.owner.refresh('retry', 7);
+    await h.owner.pageLoaded(ORIGIN, 7);
+    await h.owner.settled();
+
+    expect(h.canvas.calls).toEqual([]);
+  });
+});
+
 describe('writes and Undo go through the cookie check', () => {
   const QUIZ_3 = `assignment:${IDS.assignments.bioQuiz3Today}`;
 
