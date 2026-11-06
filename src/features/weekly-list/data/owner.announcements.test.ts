@@ -483,7 +483,7 @@ describe('marking an announcement as read', () => {
     });
     await h.owner.settled();
 
-    expect(reply.undo).toBeNull();
+    expect(reply).toEqual({ undo: null, restored: true });
     expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([
       [C.biology, '11', true],
       [C.biology, '11', false],
@@ -499,7 +499,7 @@ describe('marking an announcement as read', () => {
     h.canvas.resetCalls();
 
     for (const patch of [{ userId: '1234' }, { origin: 'https://other.instructure.com' }]) {
-      await h.owner.act({
+      const reply = await h.owner.act({
         kind: 'restoreAnnouncement',
         userId: undo.userId,
         origin: undo.origin,
@@ -507,9 +507,28 @@ describe('marking an announcement as read', () => {
         topicId: undo.topicId,
         ...patch,
       });
+      expect(reply).toEqual({ undo: null, restored: false });
     }
     await h.owner.settled();
 
+    expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([]);
+  });
+
+  it('says it restored nothing when the row left the list before the Undo', async () => {
+    const { h, undo } = await marked();
+    await h.owner.settled();
+    if (undo.kind !== 'announcement') throw new Error('Wrong Undo data');
+    h.canvas.resetCalls();
+
+    const reply = await h.owner.act({
+      kind: 'restoreAnnouncement',
+      userId: undo.userId,
+      origin: undo.origin,
+      courseId: undo.courseId,
+      topicId: '999',
+    });
+
+    expect(reply).toEqual({ undo: null, restored: false });
     expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([]);
   });
 

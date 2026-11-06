@@ -316,7 +316,7 @@ describe('writes and Undo go through the cookie check', () => {
     // Three taps in a row: every one of them checks, and the last one finds Canvas again.
     expect(await h.owner.act(undo)).toEqual({ undo: null, refused: true });
     expect(await h.owner.act(undo)).toEqual({ undo: null, refused: true });
-    expect(await h.owner.act(undo)).toEqual({ undo: null });
+    expect(await h.owner.act(undo)).toEqual({ undo: null, restored: true });
     expect(h.canvas.callsOf('getSelf')).toHaveLength(3);
     await h.owner.settled();
     expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
