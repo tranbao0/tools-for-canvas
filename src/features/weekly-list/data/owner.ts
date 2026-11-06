@@ -3481,8 +3481,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     const session = cache.session;
     if (session === null) {
-      if (blocksLoads(failure) && !(failure?.kind === 'stale' && failure.check))
-        return { kind: 'cant_load', origin, offline, offer };
+      if (blocksLoads(failure)) return { kind: 'cant_load', origin, offline, offer };
       // The first round loads the session. Every state request waits for it.
       if (!running && !anyPending()) {
         const decision = decideRound('full', cache.limits, clock.now());

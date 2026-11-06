@@ -1302,7 +1302,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   A dropped response is not a failure of the course or of the load, so it sets no failure line.
 - A round starts only with a readable session cookie.
   No cookie: no request starts, the student is signed out, and the round keeps the 60-second limit.
-  A cookie store that cannot be read: no request starts, and the state is `cant_load` with Retry.
+  A cookie store that cannot be read: no request starts, and the state is `cant_load` with Retry, on a cold start as well as with a cached session.
   A Canvas page load after a sign-out skips the limit only when the session cookie is there, because only then it is a sign-in.
 - Checks are rare.
   No more than two checks start in any 30 seconds, from all readers together.
