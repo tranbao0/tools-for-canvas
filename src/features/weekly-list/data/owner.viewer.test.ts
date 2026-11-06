@@ -395,6 +395,18 @@ describe('viewer reads', () => {
     expect(hook).not.toHaveBeenCalled();
   });
 
+  it('clears nothing at a sign-in check or a first session when the name cannot be read', async () => {
+    const h = await createHarness();
+    const hook = vi.fn();
+    h.deps.onUserDataCleared = hook;
+    h.deps.store.viewerStudent.getValue = () => Promise.reject(new Error('busy'));
+    const owner = h.restart();
+    await owner.viewerConfirm(ORIGIN, TAB);
+    await loadReady({ ...h, owner });
+    await owner.settled();
+    expect(hook).not.toHaveBeenCalled();
+  });
+
   it('gives one change of student one clear, with the proof of the earlier student gone', async () => {
     const h = await loaded();
     const cleared = vi.fn();
