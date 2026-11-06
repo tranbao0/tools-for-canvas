@@ -74,7 +74,6 @@ These helpers compute local days and Canvas-style instants from one given `now`.
 
 `CANVAS_ERRORS` holds Canvas error responses with the status and body that the extension reads: signed out, Limited Access, the 403 and 429 throttle, a duplicate override, 404 and 500.
 `invalidAssignmentIds(ids)` builds the 400 that Canvas sends when one id is not an assignment.
-`NOT_CANVAS_RESPONSES` holds answers from a site that is not Canvas, for the setup check.
 
 ## pages.ts
 

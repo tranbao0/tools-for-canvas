@@ -72,7 +72,7 @@ On other systems, install Firefox and geckodriver yourself and set `FIREFOX_BIN`
 - Each entry point must stay under 45 KB after gzip, except these:
   `inpage.js` 48 KB, the detector 2 KB, `viewer.js` 15 KB, `submission-frame.js` 4 KB and `viewer.html` 1.5 MB (with PDF.js).
   The limits apply to the store builds.
-- Do not add runtime dependencies besides Preact and `@preact/signals`.
+- Do not add runtime dependencies besides Preact.
 - Use TypeScript in strict mode.
 - Tests must be deterministic: no real clock, no network and no retries.
   A flaky test is a bug, so fix its cause.

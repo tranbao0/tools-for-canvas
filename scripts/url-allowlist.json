@@ -18,14 +18,6 @@
       "reason": "Match pattern of the host permission and of the detector content script (decision 5)."
     },
     {
-      "url": "https://github.com/tranbao0/tools-for-canvas",
-      "reason": "Project repository link."
-    },
-    {
-      "url": "https://tranbao0.github.io/tools-for-canvas/privacy",
-      "reason": "Privacy policy link (decision 15)."
-    },
-    {
       "url": "https://ko-fi.com/baowows",
       "reason": "Support link at the bottom of the settings and the welcome page. A plain link the student opens; the extension sends no request to it."
     }

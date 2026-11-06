@@ -26,9 +26,6 @@
   "resizeWeeklyList": {
     "message": "Resize weekly list"
   },
-  "minimizedBarName": {
-    "message": "Weekly list, minimized"
-  },
   "dueTodayCount_one": {
     "message": "$1 due today"
   },
@@ -811,9 +808,6 @@
   },
   "annListLoading": {
     "message": "Loading announcements…"
-  },
-  "annShowMore": {
-    "message": "Show more"
   },
   "gradeNA": {
     "message": "N/A"

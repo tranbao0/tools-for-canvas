@@ -9,10 +9,3 @@ export type PdfjsLib = typeof Pdfjs;
 export type PdfDocument = Pdfjs.PDFDocumentProxy;
 export type PdfPage = Pdfjs.PDFPageProxy;
 export type PdfRenderTask = Pdfjs.RenderTask;
-export type PdfViewport = Pdfjs.PageViewport;
-
-/** The text of a page, as the search and the text layer share it. */
-export interface PdfTextItem {
-  str: string;
-  hasEOL?: boolean;
-}
