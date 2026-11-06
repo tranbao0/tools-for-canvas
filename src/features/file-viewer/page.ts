@@ -133,6 +133,8 @@ export async function startViewer(): Promise<void> {
   // copy is older than the pane, so it never goes out again, or it would undo what the student
   // did in the pane since.
   let synced = false;
+  // The file of an open that has not reached the pane yet.
+  let waitingFile: string | null = null;
   // Sends the active file to a pane that has not been told yet, and the theme to any pane.
   const send = async () => {
     const [latest, stored] = await Promise.all([
@@ -142,13 +144,14 @@ export async function startViewer(): Promise<void> {
     if (!live) return;
     if (latest?.settings?.theme) themeChoice = latest.settings.theme;
     if (stored) {
-      tabs = stored.tabs;
+      tabs = waitingFile ? openFile(stored.tabs, waitingFile) : stored.tabs;
       tabsToken = stored.token;
     }
     applyTheme();
     sendFullView();
     if (tabs.active && port && !synced) {
       synced = true;
+      waitingFile = null;
       port.postMessage(openMessage(tabs.active));
     }
   };
@@ -157,6 +160,7 @@ export async function startViewer(): Promise<void> {
   let lastHelloAt = -Infinity;
   /** Removes the pane and gives the page its padding back. The stored tabs stay. */
   const drop = () => {
+    waitingFile = null;
     clearTimeout(handshake);
     handshake = undefined;
     removeHello?.();
@@ -400,6 +404,7 @@ export async function startViewer(): Promise<void> {
       // The pane is open and owns the tabs, so it opens the file and saves the tabs itself. This
       // request also makes a pane that has not been told yet restore the stored tabs.
       synced = true;
+      waitingFile = null;
       port?.postMessage(openMessage(file.fileId));
       return 'opened' as const;
     };
@@ -408,7 +413,8 @@ export async function startViewer(): Promise<void> {
     if (ended()) return 'ended';
     if (stored) tabsToken = stored.token;
     tabs = openFile(stored?.tabs ?? tabs, file.fileId);
-    // A refused write leaves the tabs in this memory, and the pane still gets the file from them.
+    // A refused write leaves the file out of the stored tabs, so it waits here for the pane.
+    waitingFile = file.fileId;
     await writeTabs(tabs).catch(() => undefined);
     if (ended()) return 'ended';
     // The pane may have connected while the tabs were written. It owns them from then on, and
@@ -563,10 +569,10 @@ export async function startViewer(): Promise<void> {
       await starting;
       // The catcher saves the file in the usual way unless the pane has it, so the answer comes
       // after the open.
-      respond({
-        opened:
-          live && enabled && (await openTarget({ fileId }, `/files/${fileId}`, taken)) === 'opened',
-      });
+      // The catcher clicks the link again on `false`, and only a failed open wants that.
+      const result =
+        live && enabled ? await openTarget({ fileId }, `/files/${fileId}`, taken) : null;
+      respond({ opened: live && result !== null && result !== 'failed' });
     })().catch(() => respond({ opened: false }));
     return true;
   };

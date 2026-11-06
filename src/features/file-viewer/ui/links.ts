@@ -12,8 +12,9 @@ export interface FileLinks {
 /**
  * The two links of a file card. Both stay on the saved Canvas and come from the file id and the
  * course id alone, never from a query: an address with a `verifier` would open the file for any
- * session, and these links open in a tab without any check of the extension. A course id that is
- * not an id is left out. A comment attachment downloads from its own submission route.
+ * session, and these links open in a tab without any check of the extension. The one exception is
+ * the error card, which shows the address that the student clicked, as the page shows it. A
+ * course id that is not an id is left out. A comment attachment downloads from its own submission route.
  */
 export function fileLinks(
   origin: string,
