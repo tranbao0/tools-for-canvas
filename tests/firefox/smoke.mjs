@@ -238,8 +238,7 @@ async function checkBadSettings(driver) {
           minimized: true,
           theme: 'auto',
         },
-        // "firstSkip" is the field of a note that no longer exists, left by an older version.
-        seenNotes: { firstDone: 'yes', firstSkip: true },
+        seenNotes: { firstDone: true },
       });
       const state = await browser.runtime.sendMessage({ type: 'weekrow:get-state', request });
       const context = await browser.runtime.sendMessage({ type: 'weekrow:page-context' });
@@ -278,7 +277,7 @@ async function checkBadSettings(driver) {
     !Array.isArray(result.settings?.hiddenCourseIds) ||
     result.settings.minimized !== false ||
     result.settings.span?.kind !== 'week' ||
-    result.notes?.firstDone === 'yes'
+    result.notes?.firstDone === true
   ) {
     throw new Error(`The mirror was not repaired from the vault: ${JSON.stringify(result)}`);
   }
