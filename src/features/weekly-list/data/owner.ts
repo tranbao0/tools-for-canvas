@@ -2614,6 +2614,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
   }
 
+  /** Whether the live cache belongs to the Canvas that requested the read. */
+  function cacheBelongsTo(origin: string | null): boolean {
+    return origin !== null && origin === knownOrigin && cache?.origin === origin;
+  }
+
   async function dashboardData(
     checkedOrigin?: string | null,
     tabId?: number,
@@ -2626,7 +2631,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       cache === null ||
       cache.session === null ||
       !(await surfaceMayRead(tabId)) ||
-      !(await signedInStudentOwnsCache())
+      !(await signedInStudentOwnsCache()) ||
+      !cacheBelongsTo(origin)
     ) {
       return { origin: origin ?? '', courses: [] };
     }
@@ -2709,7 +2715,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     } else if (!(await signedInStudentOwnsCache())) return null;
     // A session can commit during these checks, and its claim comes before the read.
     if (claim !== viewerClaim && !(await viewerClaimsEnded())) return null;
-    return origin;
+    return cacheBelongsTo(origin) ? origin : null;
   }
 
   async function viewerProofHolds(origin: string): Promise<boolean> {
@@ -2741,8 +2747,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         throw new Error('The viewer cookie changed');
       return response;
     }
+    if (!cacheBelongsTo(allowed)) throw new ViewerUnconfirmedError();
+    const stamp = writeStamp();
     const response = await cookieBound(() => read(apiFor(allowed)));
-    if (response === DROPPED) throw new Error('The cookie changed during the viewer read');
+    if (response === DROPPED || !isCurrent(stamp))
+      throw new Error('The cookie changed during the viewer read');
     return response;
   }
 
@@ -2785,12 +2794,15 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       ]);
       return submission === null ? null : projectAssignmentView(assignment, submission);
     });
+    if (!cacheBelongsTo(origin)) throw new ViewerUnconfirmedError();
     if (details === null) return { kind: 'no_submission_access' };
+    const stamp = writeStamp();
     const session = cache?.session ?? null;
     const timeZone =
       session !== null && origin !== null
         ? canvasTimeZone(session, await viewContext(origin))
         : deps.browserTimeZone();
+    if (!isCurrent(stamp)) throw new ViewerUnconfirmedError();
     return { details, timeZone };
   }
 
@@ -2878,7 +2890,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     origin: string | null,
     tabId: number | undefined,
   ): Promise<string | null> {
-    if ((await viewerOrigin(origin, tabId)) === null) return null;
+    if ((await viewerOrigin(origin, tabId)) === null || !cacheBelongsTo(origin)) return null;
     return cache?.session?.profile.id ?? viewerProof?.userId ?? null;
   }
 
@@ -2903,7 +2915,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const base: DashboardData = { origin: origin ?? '', courses: [] };
     // A tab in another cookie store gets nothing and touches nothing, so it cannot cancel the
     // late result of a read that a valid tab started.
-    if (!(await surfaceMayRead(tabId))) return { ...base, gradeVisibilities: null };
+    if (!(await surfaceMayRead(tabId)) || !cacheBelongsTo(origin))
+      return { ...base, gradeVisibilities: null };
     const readId = ++visibilityRead;
     lateVisibility = undefined;
     let timedOut = false;
@@ -2919,7 +2932,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         confirmed && origin !== null
           ? apiFor(origin).withPriority(() => 'high').getWidgetGradeVisibility
           : null;
-      if (!confirmed || origin === null || userId === null || !read) {
+      if (!confirmed || !cacheBelongsTo(origin) || origin === null || userId === null || !read) {
         return { ...base, gradeVisibilities: null };
       }
       const gradeVisibilities = await Promise.race([
@@ -2944,7 +2957,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           }, 5000);
         }),
       ]);
-      return gradeVisibilities === null
+      return gradeVisibilities === null || !isCurrent(stamp)
         ? { ...base, gradeVisibilities: null }
         : { ...base, userId, ...gradeVisibilities };
     } catch {
@@ -2988,7 +3001,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       origin !== knownOrigin ||
       cache === null ||
       cache.session === null ||
-      !(await signedInStudentOwnsCache())
+      !(await signedInStudentOwnsCache()) ||
+      !cacheBelongsTo(origin)
     ) {
       throw new Error('The announcements are not available');
     }
@@ -3205,13 +3219,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       status: 'unavailable',
       tab: cache?.listTabs[request.surface] ?? DEFAULT_LIST_TABS[request.surface],
     });
-    if (!(await surfaceMayRead(tabId))) return unavailable();
+    if (!(await surfaceMayRead(tabId)) || !cacheBelongsTo(origin)) return unavailable();
     if (origin === null || cache === null || cache.session === null) return unavailable();
     if (cache.failure?.kind === 'signed_out' || !(await deps.hasAccess(origin))) {
       return unavailable();
     }
     // The list holds one student's data, so Canvas confirms who is signed in, as for the
     // dashboard data (at most every 30 seconds).
+    if (!cacheBelongsTo(origin)) return unavailable();
     const checkedUser = cache.session.profile.id;
     if (!(await signedInStudentOwnsCache())) {
       // Another student or a 401 cleared the cache: there is nothing to show. A check that only
@@ -3219,6 +3234,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       // its error with Retry, as the Tasks tab shows "Couldn't refresh".
       const kept = (cache as SessionCache | null)?.session;
       if (
+        !cacheBelongsTo(origin) ||
         kept == null ||
         kept.profile.id !== checkedUser ||
         (cache as SessionCache | null)?.failure?.kind === 'signed_out'
@@ -3237,7 +3253,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       };
     }
     const settings = await store.settings.getValue();
-    if (cache === null || cache.session === null) return unavailable();
+    if (!cacheBelongsTo(origin) || cache === null || cache.session === null) return unavailable();
     const session = cache.session;
     if (request.tab !== null && cache.listTabs[request.surface] !== request.tab) {
       cache = { ...cache, listTabs: { ...cache.listTabs, [request.surface]: request.tab } };
@@ -3441,7 +3457,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const offer = offerForSurface(await store.offer.getValue(), origin, request.surface);
     if (origin === null) return { kind: 'not_set_up', offer };
     if (!(await deps.hasAccess(origin))) return { kind: 'no_access', origin, offer };
-    if (cache === null) return { kind: 'loading' };
+    if (!cacheBelongsTo(origin) || cache === null) return { kind: 'loading' };
     if (cache.session !== null) {
       const cantLoad = (offline: boolean): StateReply => ({
         kind: 'cant_load',
@@ -3457,7 +3473,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         return cantLoad(cache.failure?.kind === 'stale' && cache.failure.offline);
       }
     }
-    if (cache === null) return { kind: 'loading' };
+    if (!cacheBelongsTo(origin) || cache === null) return { kind: 'loading' };
     const failure = cache.failure;
     const offline = failure?.kind === 'stale' && failure.offline;
     if (failure?.kind === 'signed_out') {

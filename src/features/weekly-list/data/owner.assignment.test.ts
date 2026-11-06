@@ -277,3 +277,30 @@ describe('rubric comments read', () => {
     expect(h.canvas.callsOf('markRubricCommentsRead')).toHaveLength(1);
   });
 });
+
+it('drops assignment details when another Canvas loads during the settings read', async () => {
+  const h = await loaded();
+  const settings = await h.deps.store.settings.getValue();
+  let release!: () => void;
+  let entered!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  vi.spyOn(h.deps.store.settings, 'getValue').mockImplementationOnce(async () => {
+    entered();
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return settings;
+  });
+  const pending = h.owner.assignmentDetails('12', '101', ORIGIN, TAB);
+  const failed = expect(pending).rejects.toThrow();
+  await waiting;
+  signInOtherUser(h);
+  const other = 'https://other.instructure.com';
+  await h.deps.store.origin.setValue(other);
+  await h.owner.originChanged(other);
+  await h.owner.settled();
+  release();
+  await failed;
+});
