@@ -382,9 +382,9 @@ describe('the search', () => {
     server.failPages = true;
     type(host()!, 'person');
     await settle();
-    expect(shadow('.wr-a-scroll')?.textContent).toContain("Couldn't load more people.");
     expect(namesOf(host()!)).toHaveLength(10);
-    expect(lineOf(host()!)).toBe('');
+    expect(lineOf(host()!)).toBe('The search stopped after 10 people.');
+    expect(shadow('.wr-a-scroll')?.textContent).not.toContain("Couldn't load more people.");
     server.failPages = false;
     shadow('.wr-x-link')!.click();
     await settle();
