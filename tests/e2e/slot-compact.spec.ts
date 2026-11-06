@@ -287,13 +287,12 @@ test('the course name shrinks first, and the points and the chips keep their wid
 test('the actions stay under the pill in a Compact row', async ({ context, page, background }) => {
   const list = await openSlot(context, page, {}, background);
   const row = list.locator('.wr-item', { hasText: 'Homework 7' });
-  const skip = row.getByRole('button', { name: /^Skip/ });
-  await expect(skip).toBeVisible();
-  await expect(skip).toHaveCSS('font-size', '12px');
+  const preview = row.locator('[data-part="preview"]');
+  await expect(preview).toBeVisible();
   const pillBox = (await row.locator('.wr-slot-pill').boundingBox())!;
-  const skipBox = (await skip.boundingBox())!;
-  expect(skipBox.y).toBeGreaterThanOrEqual(pillBox.y + pillBox.height - 0.5);
-  expect(skipBox.x + skipBox.width).toBeCloseTo(pillBox.x + pillBox.width, 0);
+  const previewBox = (await preview.boundingBox())!;
+  expect(previewBox.y).toBeGreaterThanOrEqual(pillBox.y + pillBox.height - 0.5);
+  expect(previewBox.x + previewBox.width).toBeCloseTo(pillBox.x + pillBox.width, 0);
 });
 
 test('opening a tip in a Compact row moves nothing above it', async ({

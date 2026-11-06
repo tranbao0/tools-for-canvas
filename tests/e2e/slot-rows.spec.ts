@@ -135,14 +135,14 @@ test('a slot row with actions keeps the 92 px step, and the actions sit under th
 }) => {
   const list = await openSlot(context, page, background);
   const row = list.locator('.wr-item', { hasText: 'Homework 7' });
-  const skip = row.getByRole('button', { name: /^Skip/ });
-  await expect(skip).toBeVisible();
+  const preview = row.locator('[data-part="preview"]');
+  await expect(preview).toBeVisible();
   const rowBox = (await row.boundingBox())!;
   expect(Math.abs(rowBox.height - 92)).toBeLessThan(0.5);
   const pillBox = (await row.locator('.wr-slot-pill').boundingBox())!;
-  const skipBox = (await skip.boundingBox())!;
-  expect(skipBox.y).toBeGreaterThanOrEqual(pillBox.y + pillBox.height - 0.5);
-  expect(skipBox.x + skipBox.width).toBeCloseTo(pillBox.x + pillBox.width, 0);
+  const previewBox = (await preview.boundingBox())!;
+  expect(previewBox.y).toBeGreaterThanOrEqual(pillBox.y + pillBox.height - 0.5);
+  expect(previewBox.x + previewBox.width).toBeCloseTo(pillBox.x + pillBox.width, 0);
 });
 
 for (const rowSize of ['comfortable', 'compact'] as const) {
@@ -155,7 +155,7 @@ for (const rowSize of ['comfortable', 'compact'] as const) {
     const row = list.locator('.wr-item', { hasText: 'Homework 7' });
     await row.locator('[data-part="check"]').focus();
     const seen: string[] = [];
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 5; i++) {
       seen.push(
         await row.evaluate((el) => {
           const active = (el.getRootNode() as ShadowRoot).activeElement as HTMLElement | null;
@@ -172,7 +172,6 @@ for (const rowSize of ['comfortable', 'compact'] as const) {
     expect(seen[2]).toMatch(/^Go to course /);
     expect(seen[3]).toMatch(/confirm/i);
     expect(seen[4]).toBe('preview');
-    expect(seen[5]).toBe('skip');
   });
 }
 
@@ -188,7 +187,7 @@ test('opening a tip moves nothing above it', async ({ context, page, background 
         title: top('.wr-title'),
         chip: top('.wr-chip, .wr-marker'),
         pill: top('.wr-slot-pill'),
-        skip: top('[data-part="skip"]'),
+        preview: top('[data-part="preview"]'),
       };
     });
   const before = await tops();

@@ -141,7 +141,7 @@ export function group(scope: Page | Locator, kind: string): Locator {
   return scope.locator(`section[data-group="${kind}"]`);
 }
 
-/** The rows a group shows in its main list, without "N older", "N skipped" or "N done" lines. */
+/** The rows a group shows in its main list, without "N older" or "N done" lines. */
 export function mainRows(section: Locator): Locator {
   return section.locator(':scope > div > ul:not(.wr-sublist) > li');
 }

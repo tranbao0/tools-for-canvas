@@ -55,7 +55,6 @@ test('checked work that Canvas marks missing is done, never late, and late again
   const rows = await mainRows(pastDue).count();
   const open = row(pastDue);
   await expect(open.getByText('Missing', { exact: true })).toBeVisible();
-  await expect(open.getByRole('button', { name: `Skip ${PRE_LAB_7}` })).toBeVisible();
 
   // Check: it leaves Past due and the late count, and goes to Done with the red chip.
   let from = canvas.requests.length;
@@ -79,7 +78,6 @@ test('checked work that Canvas marks missing is done, never late, and late again
   const doneRow = done.locator('li').filter({ hasText: PRE_LAB_7 });
   await expect(doneBox(doneRow, PRE_LAB_7)).toBeChecked();
   await expect(doneRow.getByText('Missing in Canvas', { exact: true })).toBeVisible();
-  await expect(doneRow.getByRole('button', { name: `Skip ${PRE_LAB_7}` })).toHaveCount(0);
   expect(await lateCount(page)).toBe(late - 1);
 
   // It is no part of Past due or of a late badge in the next span either.
@@ -90,7 +88,7 @@ test('checked work that Canvas marks missing is done, never late, and late again
   await page.getByRole('button', { name: 'Today', exact: true }).click();
   await settledList(page);
 
-  // Uncheck: it is late again, with the red Missing chip and Skip.
+  // Uncheck: it is late again, with the red Missing chip.
   from = canvas.requests.length;
   await group(page, 'done').getByRole('button').first().click();
   await doneBox(
@@ -99,7 +97,6 @@ test('checked work that Canvas marks missing is done, never late, and late again
   ).click();
   await expect(row(pastDue)).toHaveCount(1);
   await expect(row(pastDue).getByText('Missing', { exact: true })).toBeVisible();
-  await expect(row(pastDue).getByRole('button', { name: `Skip ${PRE_LAB_7}` })).toBeVisible();
   await expect.poll(() => lateCount(page)).toBe(late);
   await expect.poll(() => overrideWrites(canvas).length).toBe(2);
   expect(overrideWrites(canvas)[1]).toMatchObject({
@@ -108,17 +105,5 @@ test('checked work that Canvas marks missing is done, never late, and late again
   });
   await refreshedSince(page, canvas, from);
   await expect(row(pastDue)).toHaveCount(1);
-
-  // Skip is the way out from there.
-  await row(pastDue)
-    .getByRole('button', { name: `Skip ${PRE_LAB_7}` })
-    .click();
-  await expect(row(pastDue)).toHaveCount(0);
-  await expect(pastDue.getByRole('button', { name: '2 skipped' })).toBeVisible();
-  await expect.poll(() => overrideWrites(canvas).length).toBe(3);
-  expect(overrideWrites(canvas)[2]).toMatchObject({
-    method: 'PUT',
-    body: { marked_complete: false, dismissed: true },
-  });
   expect(canvas.unmatched).toEqual([]);
 });
