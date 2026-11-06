@@ -579,7 +579,7 @@ describe('checked but missing', () => {
     expect(place({ markedComplete: true, dismissed: false }, false)).toBe('done.items');
   });
 
-  it('leaves reminders on their own day', () => {
+  it('moves a checked reminder of the span to Done', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
@@ -592,7 +592,7 @@ describe('checked but missing', () => {
         ]),
       }),
     );
-    expect(placesOf(view)).toEqual({ 'assignment:reminder': 'tomorrow@2026-10-28.items' });
+    expect(placesOf(view)).toEqual({ 'assignment:reminder': 'done.items' });
   });
 });
 
@@ -603,7 +603,7 @@ describe('reminders', () => {
     ),
   );
 
-  it('show only on their day, never in Past due, No due date or the rings', () => {
+  it('show on their day until they are checked, and never in Past due, No due date or the rings', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
@@ -620,7 +620,7 @@ describe('reminders', () => {
     );
     expect(placesOf(view)).toEqual({
       'assignment:r-today-past': 'today@2026-10-27.items',
-      'assignment:r-today-done': 'today@2026-10-27.items',
+      'assignment:r-today-done': 'done.items',
       'assignment:r-friday': 'day@2026-10-30.items',
     });
     expect(findItem(view, 'assignment:r-today-past')).toMatchObject({
