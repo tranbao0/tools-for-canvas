@@ -43,7 +43,6 @@
   --wr-error: light-dark(#c71f23, #f08a8d);
   --wr-on: light-dark(#03893d, #6fcf8a);
   --wr-selected: light-dark(#e0ebf5, #253443);
-  --wr-selected-text: light-dark(#1a5a8e, #7fb4f1);
 
   margin: 0;
   background: var(--wr-bg);

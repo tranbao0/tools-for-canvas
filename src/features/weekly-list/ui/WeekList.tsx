@@ -50,18 +50,30 @@ export function isGroupEmpty(group: ListGroup): boolean {
   );
 }
 
-/** A group with no rows in a span that did not load does not claim that it holds 0. */
-const isUnknown = (view: WeekView, group: ListGroup | undefined): boolean =>
-  view.incomplete && (group === undefined || isGroupEmpty(group));
+/** Why a count is no number: its days are still on their way, or they never arrived. */
+type Unknown = 'loading' | 'failed' | null;
+
+/** A count with no rows behind it, in a span that is loading or did not load, does not claim 0. */
+const unknownCount = (view: WeekView, empty: boolean): Unknown =>
+  !empty ? null : view.loading ? 'loading' : view.incomplete ? 'failed' : null;
+
+const isUnknown = (view: WeekView, group: ListGroup | undefined): Unknown =>
+  unknownCount(view, group === undefined || isGroupEmpty(group));
 
 /** The count of a group or of a view, and the item count that a screen reader hears. */
-function Count(props: { n: number; unknown: boolean }) {
+function Count(props: { n: number; unknown: Unknown }) {
   return (
     <>
       <span class="wr-count" aria-hidden="true">
         {props.unknown ? '?' : props.n}
       </span>
-      <span class="wr-sr">{props.unknown ? t('countNotLoaded') : tp('itemCount', props.n)}</span>
+      <span class="wr-sr">
+        {props.unknown === 'loading'
+          ? t('countLoading')
+          : props.unknown
+            ? t('countNotLoaded')
+            : tp('itemCount', props.n)}
+      </span>
     </>
   );
 }
@@ -298,7 +310,7 @@ export function ViewSwitch(props: {
             <span>{t(label)}</span>
             <Count
               n={n}
-              unknown={kind === null ? view.incomplete && todo === 0 : isUnknown(view, group)}
+              unknown={kind === null ? unknownCount(view, todo === 0) : isUnknown(view, group)}
             />
             {warnings > 0 && (
               <span class="wr-warn" role="img" aria-label={tp('warningCount', warnings)}>

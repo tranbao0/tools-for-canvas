@@ -594,6 +594,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The open group then shows the rows it has, and in place of the empty line it says "Couldn't load this span." with the Retry button.
     It never says "Nothing done in this span." for a span that did not load.
     A part of a group or a view with no rows shows "?" in place of the count 0 in that case, and a screen reader hears "Not loaded".
+    The same holds while the days still load: a part or a heading with no rows shows "?", and a screen reader hears "Loading".
   - Until the saved settings load, the parts cannot be chosen (they are disabled), so a click never leaves a part on that the state does not show.
   - Focus stays on the part that the student chooses.
     When the last row of an open group leaves, for example when the student unchecks the last Done item, focus goes to the heading of the group.
