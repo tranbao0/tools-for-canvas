@@ -395,6 +395,9 @@ export interface DataOwner {
 const NO_UNDO: ActionReply = { undo: null };
 /** The reply to an Undo that the cookie check refused. The surface shows the notice again. */
 const UNDO_REFUSED: ActionReply = { undo: null, refused: true };
+/** The replies to an Undo: whether it brought the item back. */
+const RESTORED: ActionReply = { undo: null, restored: true };
+const NOT_RESTORED: ActionReply = { undo: null, restored: false };
 /** The result of a request whose response the cookie rule kept out of the cache. */
 const DROPPED = Symbol('dropped');
 const NO_RETRY: RefreshResult = { retryAt: null };
@@ -2021,6 +2024,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           ? () => {
               if (findDeletePatch(patch.noteId)?.id !== patch.id) return false;
               startedDeletes.add(patch.noteId);
+              // A surface that shows the Undo notice of this task ends it.
+              bumpLater();
               return true;
             }
           : undefined,
@@ -2130,15 +2135,31 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     void enqueueWrite((stamp) => runNoteWrite(patch.id, 'delete', stamp));
   }
 
-  /** Undo of a task delete. Once the DELETE has started, the task is gone in Canvas. */
-  function cancelDelete(noteId: string): void {
+  /**
+   * Undo of a task delete. Once the DELETE has started, the task is gone in Canvas and nothing
+   * brings it back, so the reply says that nothing was restored.
+   */
+  function cancelDelete(noteId: string): ActionReply {
     const patch = findDeletePatch(noteId);
-    if (patch === undefined || startedDeletes.has(noteId)) return;
+    if (patch === undefined || startedDeletes.has(noteId)) return NOT_RESTORED;
     forgetDelete(noteId);
     // A queued DELETE job finds no patch and sends nothing.
     dropPatch(patch.id);
     persist();
     bumpLater();
+    return RESTORED;
+  }
+
+  /** The tasks whose DELETE has not started: an Undo can still stop it. */
+  function openDeletes(): string[] {
+    return (cache?.patches ?? []).flatMap((patch) =>
+      patch.kind === 'note' &&
+      patch.note === null &&
+      patch.confirmedAt === null &&
+      !startedDeletes.has(patch.noteId)
+        ? [patch.noteId]
+        : [],
+    );
   }
 
   async function writeContext(): Promise<WriteContext | null> {
@@ -2363,8 +2384,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           sendDelete(action.noteId);
         return NO_UNDO;
       case 'cancelDelete':
-        cancelDelete(action.noteId);
-        return NO_UNDO;
+        return cancelDelete(action.noteId);
       case 'markAnnouncement':
         return markAnnouncement(action.courseId, action.topicId, true, null);
       case 'restoreAnnouncement':
@@ -3561,6 +3581,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       offer,
       // The surface holds its own Undo notice.
       undo: null,
+      openDeletes: openDeletes(),
       userId: session.profile.id,
       seenNotes: { firstDone: seenNotes.firstDone },
       taskCourses: courseChoices(

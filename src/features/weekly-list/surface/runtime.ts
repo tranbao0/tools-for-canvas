@@ -212,6 +212,8 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   let coursesOrigin: string | null = null;
   let courseFilter: string | null | undefined = undefined;
   let notice: Notice | null = null;
+  /** The number of the last state request that went out before the notice showed. */
+  let noticeSeq = 0;
   const tabsOption = options.announcementTabs ?? false;
   const tabsShown = (): boolean =>
     isTabSurface(options.surface) && (typeof tabsOption === 'function' ? tabsOption() : tabsOption);
@@ -359,10 +361,17 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     ) {
       courseFilter = undefined;
     }
+    const noticed = notice?.data[0];
     if (
-      notice !== null &&
+      noticed !== undefined &&
       reply.kind === 'ready' &&
-      (reply.userId !== notice.data[0]?.userId || reply.origin !== notice.data[0]?.origin)
+      (reply.userId !== noticed.userId ||
+        reply.origin !== noticed.origin ||
+        // The DELETE of the task is out or on its way, so Undo cannot bring the task back. A
+        // reply to a request that went out before the notice cannot say.
+        (noticed.kind === 'delete' &&
+          seq > noticeSeq &&
+          !reply.openDeletes.includes(noticed.noteId)))
     ) {
       notice = null;
     }
@@ -505,6 +514,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
               info: target === undefined ? { kind: shows, count } : { kind: shows, count, target },
               data,
             };
+            noticeSeq = requestSeq;
             emit();
           } else {
             for (const d of data) if (d.kind === 'delete') endDelete(d.noteId);
@@ -644,9 +654,11 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       // to send twice.
       Promise.all(sends)
         .then((replies) => {
-          if (!replies.some((reply) => reply?.refused === true)) return;
           if (stopped || seq !== writeSeq || notice !== null) return;
-          notice = last;
+          if (replies.some((reply) => reply?.refused === true)) notice = last;
+          else if (replies.some((reply) => reply?.restored === false)) {
+            notice = { info: { kind: 'not_restored', count: 0 }, data: [] };
+          } else return;
           emit();
         })
         .catch(report('undo'));

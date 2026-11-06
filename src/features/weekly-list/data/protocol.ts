@@ -246,6 +246,11 @@ export interface ActionReply {
   /** Only the reply to a task create has it: whether Canvas saved the task. */
   created?: boolean;
   /**
+   * Only the reply to an Undo has it: whether the Undo restored the item. An Undo that cannot
+   * restore says so, and the surface tells the student.
+   */
+  restored?: boolean;
+  /**
    * Only the reply to an Undo has it: the sign-in check refused the Undo, so nothing was
    * restored. The surface shows the Undo notice again.
    */

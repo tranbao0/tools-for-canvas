@@ -846,6 +846,10 @@ A span that ended before today has one exception: open work dated inside it stay
   In the in-page list it lies over the end of the list, right above the bottom bar, so the view switch never moves, and the end of the list scrolls clear of it.
   Ctrl+Z (Cmd+Z on a Mac) also undoes while the notice shows.
   A fixed time limit would fail keyboard and screen reader users, who need time to reach the notice.
+- The Undo of a task delete says whether it restored the task: its reply has `restored`, true or false.
+  An Undo that restored nothing ends its notice and shows one short line in the notice area: "Couldn't undo that".
+  The line has no Undo button and no timer, and it stays until the student acts again or closes it.
+  The refusal of the sign-in check is the other case: the reply has `refused`, nothing was restored, and the Undo notice shows again.
 
 **Checked but missing:**
 
@@ -1205,6 +1209,11 @@ Option A was the first decision, and it put the first days of a long span in the
 - Delete shows the "Undo" notice.
   The DELETE is sent when the notice ends: the student acts again, closes the notice or closes the surface.
   The background sends it after 2 minutes at the latest, so a closed panel cannot keep a task alive.
+  The state reply names the tasks whose DELETE has not started (`openDeletes`), and the background changes the marker when a DELETE starts.
+  A surface that shows the notice of a task that is no longer in that list ends the notice without a message, because Undo can no longer stop the DELETE.
+  A reply to a state request that went out before the notice cannot end it.
+  An Undo that still arrives, because the DELETE started in the same moment, changes nothing and does not create the task again.
+  Its reply says `restored: false`, and the notice area shows the line "Couldn't undo that" (decision 6).
 - The default date is today when today is in the shown span.
   Otherwise, it is the first day of the shown span.
   So a new task never vanishes from the view.
