@@ -8,6 +8,7 @@ import { IDS } from '../fixtures/scenario';
 import { overrideWrites } from './support/canvas-state';
 import { saveAddress } from './support/scenario-api';
 import {
+  CSRF_TOKEN,
   addCsrfCookie,
   doneBox,
   expect,
@@ -68,6 +69,11 @@ test.describe('mark done', () => {
         ),
       ),
     );
+
+    const post = canvas.requests.find(
+      (request) => request.method === 'POST' && request.path === '/api/v1/planner/overrides',
+    );
+    expect(post?.headers['x-csrf-token']).toBe(CSRF_TOKEN);
 
     const from = canvas.requests.length;
     await page.locator('.wr-toast').getByRole('button', { name: 'Undo' }).click();

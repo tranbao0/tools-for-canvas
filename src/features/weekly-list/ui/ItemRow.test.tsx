@@ -43,8 +43,6 @@ it.each([
 
 const HANDLERS = {
   onToggleDone: vi.fn(),
-  onSkip: vi.fn(),
-  onUnskip: vi.fn(),
   onMoveToToday: vi.fn(),
   onOpen: vi.fn(),
   onEditNote: vi.fn(),

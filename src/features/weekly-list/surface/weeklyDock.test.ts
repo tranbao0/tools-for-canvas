@@ -45,16 +45,15 @@ function ready(
       spanStart: '2026-11-04',
       spanEnd: '2026-11-10',
       groups: [
-        { kind: 'past_due', items: [{}, {}, {}], older: [], skipped: [], doneUndated: [] },
+        { kind: 'past_due', items: [{}, {}, {}], older: [], doneUndated: [] },
         ...days.map(({ kind, open }, index) => ({
           kind,
           items: Array.from({ length: open }, () => ({})),
           older: index === 0 ? Array.from({ length: older }, () => ({})) : [],
-          skipped: [],
           doneUndated: [],
         })),
-        { kind: 'no_due_date', items: [{}, {}], older: [], skipped: [], doneUndated: [] },
-        { kind: 'done', items: [{}, {}, {}, {}], older: [], skipped: [], doneUndated: [] },
+        { kind: 'no_due_date', items: [{}, {}], older: [], doneUndated: [] },
+        { kind: 'done', items: [{}, {}, {}, {}], older: [], doneUndated: [] },
       ],
     },
   } as unknown as SurfaceState;

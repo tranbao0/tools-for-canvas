@@ -33,7 +33,7 @@ This extension has no account, no server of its own and no telemetry.
 | 3 | What counts as a task | All work the student must do; no calendar events or announcements (announcements are not tasks, and have their own tab, see decision 24) |
 | 4 | Where the list appears | In the Canvas page: a dock on the right edge of the classic dashboard and of List View, the right column of course home pages, and a card in the Course work slot on the widget dashboard (no card on its Courses tab); an optional side panel for other pages. The Announcements tab shows everywhere except the widget dashboard (decision 24) |
 | 5 | Site access and onboarding | Access to all sites, a tiny Canvas detector, and no setup step |
-| 6 | List layout and item placement | Items are placed by date and done state only, each in one group; a dismissed item is done, and Skip is merged into Done (2026-11-06) |
+| 6 | List layout and item placement | Items are placed by date and done state only, each in one group; a dismissed item is done |
 | 7 | Item status | One set of status chips, the same on every item in every view |
 | 8 | What counts as done, and the rings | The Canvas planner rule, plus excused and graded work; rings count items |
 | 9 | The shown span, time zone and past-due work | A span the student picks (Day, Week, 2 weeks, Month or 2 to 90 days) that starts today in the Canvas time zone, a Past due group in every span back to the term start (at most 16 weeks), and a look-ahead for tomorrow |
@@ -865,10 +865,8 @@ A checked item never counts as late.
 
 **Done, and work that Canvas has as dismissed:**
 
-The owner decided on 2026-11-06 to merge Skip into Done.
-Skip was too much like "mark as done", and its word did not say what it did.
+The owner decided on 2026-11-06 to merge Skip into Done, because Skip was too close to "mark as done" and its word did not say what it does.
 A student now has one way to clear work: Done.
-There is no skipped state, no Skip or Unskip action, no "N skipped" line and no "Skipped" chip.
 
 - An item whose override has `dismissed` set to true and `marked_complete` set to false is done.
   A dismiss that an earlier version of the extension wrote and a dismiss made in Canvas both show the item as done, in the Done view, with a check, and the rings count it as done.
@@ -876,7 +874,7 @@ There is no skipped state, no Skip or Unskip action, no "N skipped" line and no 
 - Work handed in on Canvas with a redo request stays open, with a dismiss on it or not (decision 8, rule 1).
   So a dismiss that finished work or an earlier version left on such work does not hide it.
 - A check sends `marked_complete` true and leaves `dismissed` as it was.
-  A check never changes `dismissed`, and it does nothing else on Canvas [10].
+  A check never changes `dismissed`.
 - An uncheck sends `dismissed` false with `marked_complete` false.
   So it is also the way back from a dismissed item: the item is open again.
 - "Mark all older done" in the Past due group sends the write of a check for each older item whose checkbox the student can use.
@@ -885,8 +883,6 @@ There is no skipped state, no Skip or Unskip action, no "N skipped" line and no 
 - A row action stays on the due line, at the right of the due text: "Move to today" for a custom task with a past date, and the Preview button (decision 26).
   A row with no due text, such as an undated item, shows its actions on a line of their own.
   The actions of a row always share that one line, so a past-due row has no separate row of action targets.
-- Why: a student who clears an item by either action has decided that the work needs no more attention.
-  Two actions for one decision made students think about the difference between the words instead of about the work.
 
 **Rings and filters:**
 

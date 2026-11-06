@@ -238,7 +238,8 @@ async function checkBadSettings(driver) {
           minimized: true,
           theme: 'auto',
         },
-        seenNotes: { firstDone: true },
+        // "firstSkip" is the field of a note that no longer exists, left by an older version.
+        seenNotes: { firstDone: true, firstSkip: true },
       });
       const state = await browser.runtime.sendMessage({ type: 'weekrow:get-state', request });
       const context = await browser.runtime.sendMessage({ type: 'weekrow:page-context' });

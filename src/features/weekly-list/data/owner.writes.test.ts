@@ -436,6 +436,20 @@ describe('several done marks and dismissed items', () => {
   });
 });
 
+describe('a check on an item that Canvas has as dismissed', () => {
+  it('sets marked_complete and leaves the dismissed flag as it was', async () => {
+    const h = await loaded();
+    const key = `assignment:${A.mathProblemSet4Dismissed}`;
+
+    await h.owner.act({ kind: 'setDone', keys: [key], done: true });
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('updateOverride')).toEqual([
+      [IDS.overrides.mathProblemSet4, { markedComplete: true, dismissed: true }],
+    ]);
+  });
+});
+
 describe('checked but missing', () => {
   /** Where an item shows in the span, such as `past_due.older` or `done.items`. */
   async function placeOf(h: Harness, key: string): Promise<string | null> {
