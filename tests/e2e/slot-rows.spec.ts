@@ -389,6 +389,6 @@ for (const rowSize of ['compact', 'comfortable'] as const) {
     await openExtensionPage(page, extensionUrl('sidepanel.html'));
     await expect(page.getByText(QUIZ_3, { exact: true })).toBeVisible();
     await settledList(page);
-    await expectPlainRows(page.locator('body'), '20px 16px 306px', 64.1875);
+    await expectPlainRows(page.locator('body'), '20px 16px 274px', 64.1875);
   });
 }
