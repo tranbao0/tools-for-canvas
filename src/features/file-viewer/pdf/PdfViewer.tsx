@@ -95,6 +95,13 @@ export function PdfViewer(props: {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState<string | null>(null);
+  // The page field commits on blur. A blur that a key press causes comes before the next render,
+  // so the commit reads the draft from here and not from the last render.
+  const draftNow = useRef<string | null>(null);
+  const changeDraft = (next: string | null) => {
+    draftNow.current = next;
+    setDraft(next);
+  };
   const live = useRef({ active: props.active, engine: null as PdfEngine | null });
   live.current.active = props.active;
   live.current.engine = engine;
@@ -323,9 +330,10 @@ export function PdfViewer(props: {
   };
 
   const commitPage = () => {
-    if (draft === null || !engine) return;
-    const page = parsePageInput(draft, engine.pageCount);
-    setDraft(null);
+    const typed = draftNow.current;
+    if (typed === null || !engine) return;
+    const page = parsePageInput(typed, engine.pageCount);
+    changeDraft(null);
     if (page !== null) engine.goToPage(page);
   };
 
@@ -400,7 +408,7 @@ export function PdfViewer(props: {
             value={draft ?? String(page)}
             disabled={!ready}
             onFocus={(event) => event.currentTarget.select()}
-            onInput={(event) => setDraft(event.currentTarget.value)}
+            onInput={(event) => changeDraft(event.currentTarget.value)}
             onBlur={commitPage}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
@@ -409,7 +417,7 @@ export function PdfViewer(props: {
               } else if (event.key === 'Escape') {
                 event.preventDefault();
                 event.stopPropagation();
-                setDraft(null);
+                changeDraft(null);
                 event.currentTarget.blur();
               }
             }}

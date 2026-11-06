@@ -428,6 +428,24 @@ test('Escape on any control of the search bar closes the bar only, and the pane 
   }
 });
 
+test('Escape in the page number field cancels the typed page and leaves the pages where they are', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost);
+  const scroller = frame.locator('[data-part="pdf-scroll"]');
+  const input = pageInput(frame);
+  await input.click();
+  await input.fill('3');
+  await page.keyboard.press('Escape');
+  await expect(input).toHaveValue('1');
+  await page.waitForTimeout(400);
+  expect(await scroller.evaluate((element) => element.scrollTop)).toBe(0);
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(1);
+});
+
 test('zoom in changes the width of the canvas, and the menu sets fit modes', async ({
   context,
   page,
