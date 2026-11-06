@@ -53,7 +53,7 @@ This extension has no account, no server of its own and no telemetry.
 | 23 | File access check | A read-only check that runs on the owner's live Canvas in test builds only, and answers the open questions for the file viewer |
 | 24 | Announcements in the weekly list | A Tasks and Announcements switch under the rings on the classic dashboard, List View, course home pages and the side panel, with a read mark that only an explicit student action writes |
 | 25 | File viewer | Files open in a docked, resizable pane with tabs beside Canvas (the weekly list dock steps aside while it is open); PDFs in a bundled PDF.js viewer that saves the page, other types in the browser's own players or an "Open in Canvas" card |
-| 26 | One assignment view | The Submission Details page of the student's own submission shows the instructions and the files in place of Canvas's files frame, with a feedback pane for View Feedback; each row of the Assignments list has a Preview button that opens Canvas's own assignment page in the docked pane |
+| 26 | One assignment view | The Submission Details page of the student's own submission shows the instructions and the files in place of Canvas's files frame, with a feedback pane for View Feedback; each row of the Assignments list, and each row of an assignment in the weekly card, has a Preview button that opens Canvas's own assignment page in the docked pane |
 
 ## Decisions
 
@@ -3645,6 +3645,12 @@ So a student switches pages to read the instructions next to the feedback on a f
        No row opens in place, and no row has a Submit button, because Canvas's own "Start Assignment" or "Re-submit" button works inside the pane.
      - The owner approved a mockup of this on 2026-11-05.
        The owner's words: the control of the row opens the panel instead of the dropdown, the dropdown goes, the control must not look like an arrow, and it helps students check which assignment is which, because teachers name them badly.
+   - **Weekly card (the dashboards and the course home pages).**
+     - Each row of an assignment, a graded quiz or a graded discussion gets the same "Preview" button among its row actions, in Done and No due date too.
+       The button opens the same pane on the same dock as the Assignments list does (step 4 below).
+       An own task, a plain page, and any item with no assignment id get none.
+     - The owner approved a mockup of this.
+       The mockup also showed a Skip link, which this decision leaves as it is.
    - **Grades list (`/courses/:id/grades`).**
      - Canvas's own look.
 2. **What was removed and why.**
@@ -3872,6 +3878,8 @@ So a student switches pages to read the instructions next to the feedback on a f
   - The page script is `assignment-view.js`, which is its own small entry point like `dashboard.js`.
   - The background injects it next to the list script, into the top frame of the Assignments list (`/courses/:id/assignments`) or a Submission Details page (`/courses/:id/assignments/:assignment/submissions/:user`) of the saved Canvas, also with shard ids, including while the switch is off so it can follow changes.
   - An assignment page (`/courses/:id/assignments/:id`) gets it too, for the Submission box.
+  - The dashboard and the course home page (`/courses/:id`) get it for the weekly card (step 4).
+    There it only holds the pane: it adds no button, no style and no node, and changes nothing until the card sends a request.
   - The Grades list and the page of an anonymous submission (`anonymous_submissions/:id`) get nothing.
   - A newer injection retires the copy of an earlier one, and a start removes the nodes that a destroyed copy left (every node and mark starts with `data-av-`).
     The removal looks only in the parts that the view of the page owns: the content of the Submission box (`#sidebar_content .details .content`, never its `.comments`) on the assignment page, the head, the two hosts, the one header container `.ic-Action-header__Secondary` and the right column `#right-side` (and nothing more) on the Submission Details page, and the head and the lists of rows on the Assignments list.
@@ -3932,6 +3940,56 @@ So a student switches pages to read the instructions next to the feedback on a f
   - A comment attachment has no "Open in Canvas" there, because it has no Canvas page (Ticket F2b).
     Its error card shows one only when the clicked link carried a `verifier` or a `location`, and then it is that address.
 - **Settings.** "One assignment view" is in the tools settings, on by default, in the same three places as the other settings.
+
+**The weekly card (step 4, as built):**
+
+- **Button.**
+  - An item has the button when it has an assignment id and a course id that are both Canvas ids (`isCanvasId`).
+    A quiz or a discussion has an assignment id only when it is graded.
+    A group item has a course id that is no Canvas id, so it has none.
+  - The button is among the row actions (`.wr-item-actions`), before Skip, in the slot row and in the plain row.
+    The row actions show when the item has Preview, Skip, Unskip or Move to today.
+  - It is the button of the Assignments list: the same pane icon (one description in `src/shared/ui/paneIcon.ts` that both buttons draw from, so they cannot drift apart), the word "Preview", a 1 px border of #c7cdd1 in the light theme, the text color of the card, and the link color on a row under the mouse.
+    It is 26 px high, a 4 px radius, 13 px text and a 15 px icon.
+    While the pane shows the item it is blue, with the right part of the icon filled.
+    The blue is `--ic-brand-primary` with #0374b5 as the fallback in the light theme, and #4798e3 in the dark theme, where the text is dark.
+  - Its name is "Preview <title>", and it has `aria-pressed`.
+  - A card narrower than 160 px shows the icon only and keeps the name.
+    A card of 208 px, the narrowest that the widget dashboard draws, shows the word.
+  - The row that the pane shows has the class `is-open`: a tint (#e9f2fb in the light theme) that reaches 6 px past the row on both sides, behind it, and a 3 px bar of the brand color at its left edge.
+    The scroll region of the card has 6 px of room on its left, with an equal negative margin, so the tint and the bar are not clipped.
+    The text of the row does not move.
+  - The weekly card shows the button only while the assignment view offers its pane (below), so with the switch off a row looks as it did before.
+    The side panel has no pane, so its rows have none.
+- **Compact rows.**
+  - A Compact row of the Course work slot keeps the full button.
+    The button sits in the side column under the due pill, as the row actions do, so a row with Preview is about 12 px higher than a Compact row with none (56 px against 44 px).
+    A narrow card (under 480 px) puts the pill and the actions on a line under the text, as before, and the button joins that line.
+- **Pane.**
+  - The pane is per course and assignment: `PreviewRequest` carries `courseId`, and the frames, the slots, the readers, the baselines of the submission watch and the marks are keyed by `paneKey` (both ids as decimal global ids), so the same assignment id in two courses is two assignments.
+  - The rules of the pane stay: the slim address, the frame catcher, the student reset, the read after close, and the refresh of the weekly list after a hand-in.
+    The refresh is the same `weekrow:refresh` that the Assignments list sends, so the card refreshes after a hand-in in a pane that it opened.
+  - The dock is shared with the file pane, and the weekly dock on the classic dashboard steps aside for any pane in view (`paneInView`), as it did for the file pane.
+    The pane covers the dock, so a student who opened it from the dock cannot click another row until the pane closes.
+    The tab of a minimized list steps aside too.
+    A pane over a file pane, and a file pane over a pane, keep their rules.
+- **Link between the card and the pane.**
+  - The card is in `inpage.js` and the pane is in `assignment-view.js`, two scripts in one isolated world.
+    They share a value under `Symbol.for('tools-for-canvas.preview')` on the global object of that world, as the docks share their room lease (`file-viewer/dock.ts`).
+    It holds the handler of the pane (set only while the pane is offered), the assignment that the pane shows, and the watchers.
+  - A script of the Canvas page runs in another world and cannot read or write the value, so it cannot open the pane, read its state or forge a request.
+    A DOM event or a `postMessage` would reach the page, so neither carries a request.
+    The Firefox check (`tests/firefox/assignments-preview.mjs`, check i) runs a script in the page that clicks the button, sends a DOM event and a message, and forges a value under the same symbol, and it sees that none opens the pane and that the page cannot see the value.
+  - The pane is offered while the switch is on and the page is the saved Canvas.
+    When the switch goes off, the buttons go and an open pane stays with its unsent work, as on the Assignments list.
+  - The button needs a trusted click, as the button of the list does, because the shadow root of the card is open.
+  - The pane checks each request again: both ids must be Canvas ids, the title and the second line must be text of at most 500 characters, and the address of the frame is built by `previewUrl` for the origin of the page, which is the saved Canvas.
+  - The second line of the header is "Due <date and time> | <points> pts", from the item.
+- **Frames and files.**
+  - The pages that hold the pane are the Assignments list, the dashboard and a course home page (`isPaneTopPage`).
+    The pane of the dashboard holds pages of any course, because its card lists every course.
+    The pane of a course home page and of the Assignments list holds pages of that course.
+    Every pane frame still needs `content_only=1`, and the background injects the file catcher into such frames only.
 
 **Security:**
 

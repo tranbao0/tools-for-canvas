@@ -816,6 +816,32 @@ Run them on `/courses/:id/assignments`.
     Make the window wide again.
     Expect: the button comes back.
 
+### Weekly card Preview
+
+These steps need a student account with work due this week in two courses, and the "One assignment view" and "File viewer" switches on.
+Run them on the widget dashboard, on the classic dashboard and on a course home page.
+
+1. Look at the weekly card.
+   Expect: each row of an assignment, a graded quiz or a graded discussion has a "Preview" button with the side panel icon, next to "Skip" where the row has it.
+   Expect: a row of an own task or of a page has no button, and a Done row and a No due date row have one.
+2. Click "Preview" on a row.
+   Expect: the pane opens as on the Assignments list, and the row has a soft blue tint with a bar at its left edge and a filled button.
+   Click "Preview" on a row of the other course.
+   Expect: the pane shows that assignment, and the marks move to that row.
+   Click "Preview" on the open row.
+   Expect: the pane closes and the marks go.
+   On the classic dashboard, expect that the weekly list steps aside while the pane is open and comes back when it closes.
+3. Open a pane from the card, then click the name of a file in the page in the pane.
+   Expect: the file opens in the file pane, and closing it shows the assignment pane again.
+4. Open a file pane first, then click "Preview" on a row.
+   Expect: the assignment pane shows over the file pane, and nothing overlaps.
+5. Turn off "One assignment view" in the settings.
+   Expect: every "Preview" button goes, and an open pane stays with its text.
+6. Submit an assignment inside a pane that the card opened, then look at the weekly list.
+   Expect: the weekly list shows the new state within about a minute.
+7. Look at the card at its narrowest width, with Compact rows and with Comfortable rows, in the light and the dark theme.
+   Expect: no row sticks out of the card, and the button keeps its name.
+
 ## Firefox for Android
 
 1. Install the Firefox build on a phone with Firefox 142 or later, and open the in-page list on a Canvas page.
