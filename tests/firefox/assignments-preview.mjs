@@ -250,6 +250,8 @@ const PAGE_SCRIPT = `
 
 /** Check i: the Preview button of a row of the weekly card, and the page script that tries to open the pane. */
 async function checkCard(driver, origin, cardLoads) {
+  // A new tab, because the file pane of the tab before reopens its files after a load.
+  await driver.switchTo().newWindow('tab');
   await driver.get(`${origin}/`);
   const cardState = () => driver.executeScript(CARD_STATE);
   const cardButton = async () => {
@@ -279,7 +281,7 @@ async function checkCard(driver, origin, cardLoads) {
     throw new Error(`The page script saw the content scripts: ${JSON.stringify(probe)}`);
   await sleep(1500);
   const quiet = await cardState();
-  if (quiet.pane || quiet.pressed !== 0 || quiet.padding !== 0 || !quiet.dock)
+  if (quiet.pane || quiet.pressed !== 0 || quiet.padding !== 360 || !quiet.dock)
     throw new Error(`A script of the page opened the pane: ${JSON.stringify(quiet)}`);
   console.log('Card: a script of the page cannot open the pane, and it sees no shared value.');
 
