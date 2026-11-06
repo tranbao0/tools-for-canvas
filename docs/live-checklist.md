@@ -178,17 +178,22 @@ Use a new, empty profile, and the student account.
     Expect: the Undo notice stays until you act again or close it, and Ctrl+Z (Cmd+Z on a Mac) undoes while it shows.
     Expect: the Canvas To Do list and the Canvas mobile app show the item as done.
 11. Uncheck the same item.
-    Expect: the item is open again, not skipped.
+    Expect: the item is open again.
     Check off a past-due item that Canvas marks missing, such as a paper worksheet that the teacher marked missing.
-    Expect: the item leaves Past due and goes to Done, with the red "Missing in Canvas" chip and no Skip link.
+    Expect: the item leaves Past due and goes to Done, with the red "Missing in Canvas" chip.
     Expect: the ring of its course counts the item as done, and no "N late" badge counts it.
     Expect: the Done header shows a warning count that includes the item.
     Uncheck it.
     Expect: the item is in Past due again, with the red "Missing" chip.
-12. Skip a past-due item with the Skip link on its due line.
-    Expect: the one-time note says "Skipping also hides this item in Canvas's list of missing work.", and the item moves to the "N skipped" line.
-    Unskip it.
-    Expect: the item returns to its group.
+12. Press "Mark all older done" on the "N older" line of Past due.
+    Expect: the Undo notice says how many items it marked done, and the older items you could check leave the line.
+    Expect: the one-time note about done marks shows if you have not seen it yet.
+    Press Undo.
+    Expect: the items return to the line, and the Canvas To Do list shows them as before.
+    Find an item that Canvas has as dismissed, such as one you removed from the Canvas To Do list.
+    Expect: Tools for Canvas shows it as done, with a check, in the Done view or under the "N done" line of No due date.
+    Uncheck it.
+    Expect: the item is open again.
 13. Add a custom task, edit its title and date, check it off, then delete it.
     Expect: each change shows in the Canvas planner, and Delete shows an Undo notice.
     Expect: the task leaves the Canvas planner only when the notice closes, and at the latest 2 minutes after the delete.
@@ -560,7 +565,7 @@ Use Firefox first, and then Chrome and Edge.
 59. Check the Edge Add-ons listing.
     Expect: the description has the license link and does not mention other browsers.
 60. Check the Firefox Add-ons listing.
-    Expect: the source zip and the lockfile are attached, the reviewer notes say that the only writes are done marks, skip marks, custom tasks and announcement read marks sent to the student's own Canvas at the student's request, and two-factor authentication is on.
+    Expect: the source zip and the lockfile are attached, the reviewer notes say that the only writes are done marks, custom tasks and announcement read marks sent to the student's own Canvas at the student's request, and two-factor authentication is on.
 61. Check every listing.
     Expect: the privacy policy link opens `docs/privacy.md` on the project site.
     Expect: the description ends with the trademark notice at the end of the README.
@@ -828,7 +833,7 @@ These steps need a student account with work due this week in two courses, and t
 Run them on the widget dashboard, on the classic dashboard and on a course home page.
 
 1. Look at the weekly card.
-   Expect: each row of an assignment, a graded quiz or a graded discussion has a "Preview" button with the side panel icon, next to "Skip" where the row has it.
+   Expect: each row of an assignment, a graded quiz or a graded discussion has a "Preview" button with the side panel icon, next to "Move to today" where the row has it.
    Expect: a row of an own task or of a page has no button, and a Done row and a No due date row have one.
 2. Click "Preview" on a row.
    Expect: the pane opens as on the Assignments list, and the row has a soft blue tint with a bar at its left edge and a filled button.

@@ -7,7 +7,7 @@ Last updated: 2026-11-05.
 
 Tools for Canvas has no account, no server of its own and no telemetry.
 It reads your Canvas data in your browser and shows it to you.
-It writes only done marks, skip marks, custom tasks, announcement read and unread marks and the read mark of your rubric comments, and only to your own Canvas.
+It writes only done marks, custom tasks, announcement read and unread marks and the read mark of your rubric comments, and only to your own Canvas.
 Nothing goes to the developer.
 Canvas can send a file, View Feedback or Preview to its own storage and DocViewer hosts, and images and profile pictures can load from other hosts that a teacher or Canvas chose (see "What the extension sends elsewhere").
 
@@ -20,7 +20,7 @@ For a Canvas with its own address, you answer "Use <address> as your Canvas?" in
 - your name, time zone and Canvas language;
 - your active courses, your course groups, your course colors and your dashboard order;
 - your planner items, assignments, submissions and their status, such as missing, excused or graded;
-- your done marks, skip marks and custom tasks;
+- your done marks and custom tasks;
 - the names of custom grade statuses in your courses;
 - your current grade and grade letter in each course, which Canvas sends with the course list, unless the course hides them;
 - the preference of the new dashboard that says which grades you hide, so that the grade cards keep them hidden;
@@ -69,7 +69,7 @@ It starts no load of Canvas data when there is no session cookie or when the coo
 The one request that it can send without that check is the question to Canvas who is signed in, which comes before a write or after a request that Canvas refused.
 It reads the fingerprint again right before each request that writes to Canvas, also before a retry after a rate limit.
 It sends a write only when a check confirmed that fingerprint for the same student.
-This covers done marks, skip marks, read marks of announcements, the read mark of rubric comments, and the creation, change and deletion of your own tasks.
+This covers done marks, read marks of announcements, the read mark of rubric comments, and the creation, change and deletion of your own tasks.
 The one exception is a correction: if a write reached another account because the sign-in changed during the request, the extension sends one more request to take that write back.
 The detector does not announce itself to the page.
 The detector sends nothing to any server.
@@ -90,8 +90,10 @@ None of the page scripts can read or write the storage of the extension: the bac
 
 The extension writes only to your own Canvas, and only for something that you do or open:
 
-- a done mark when you check an item off, or remove it when you uncheck the item;
-- a skip mark when you skip an item, or remove it when you unskip the item;
+- a done mark when you check an item off: it sets the Canvas `marked_complete` flag to true and leaves the `dismissed` flag as it was;
+- the same done mark for each older past-due item when you press "Mark all older done";
+- a clear of both flags, `marked_complete` and `dismissed`, when you uncheck an item, which also opens again an item that Canvas has as dismissed;
+- the flags that an item had before, when you press Undo on a done mark;
 - a custom task when you create, edit or delete one;
 - a read mark on an announcement when you press "Mark as read" in the Announcements tab, or an unread mark when you press Undo;
 - a read mark or an unread mark on an announcement when you click the read control in the Announcements widget of the new dashboard;
@@ -112,7 +114,7 @@ Before it sends a read mark, the extension asks Canvas who is signed in, so that
 A read mark from the Announcements widget also names the student whose list held the row, and the extension refuses it when another student is signed in.
 The page keeps that student ID in memory only while the page is open.
 
-Done marks and skip marks are Canvas planner overrides.
+Done marks are Canvas planner overrides.
 Custom tasks are Canvas planner notes.
 Canvas, its To Do list and its mobile apps show the same data.
 On a module item, Canvas can count a done mark as the module's "Mark as done" requirement.
@@ -240,7 +242,7 @@ Images and profile pictures load as "What the extension sends elsewhere" says.
 ## Remove your data
 
 To remove the data on your device, remove the extension.
-Your done marks, skip marks and custom tasks stay in Canvas, like any other Canvas planner data.
+Your done marks and custom tasks stay in Canvas, like any other Canvas planner data.
 A read mark on an announcement stays in Canvas too.
 You can change them in Canvas, or with the extension before you remove it.
 
