@@ -24,7 +24,10 @@ export function fileLinks(
   if (!ID.test(fileId)) return null;
   const course = typeof courseId === 'string' && ID.test(courseId) ? courseId : null;
   const page = new URL(course ? `/courses/${course}/files/${fileId}` : `/files/${fileId}`, origin);
-  return { download: new URL(`/files/${fileId}/download`, origin).href, canvas: page.href };
+  const download = new URL(`/files/${fileId}/download`, origin);
+  // Canvas shows a text or HTML file in the tab unless this parameter asks for the file.
+  download.searchParams.set('download_frd', '1');
+  return { download: download.href, canvas: page.href };
 }
 
 /**

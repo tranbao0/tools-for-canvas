@@ -1575,8 +1575,8 @@ These sizes come from one test build of the same small app [19].
   The other entry points keep 45 KB, and the script is not split (decision 25 keeps the file pane in its own script).
   CI checks these limits.
   The budget applies to the store builds.
-  The signed test-channel build and the E2E build also hold the file check code (decision 23), and they sit above the store limits: in the test-channel build `background.js` is 47,551 bytes and `inpage.js` is 48,031 bytes after gzip, and the E2E build is over on the same two files.
-  `npm run check` removes the test switches from the build, so it measures only the store builds.
+  The signed test-channel build and the E2E build also hold the file check code (decision 23), and they sit above the store limits on `background.js` and `inpage.js`.
+  CI runs `npm run check` with no test switch, so it measures only the store builds.
   The extension pages load one shared chunk for all code under `src/shared` and `src/features`, because several small chunks cost more after gzip.
   A test build with Preact had a 9.3 KB content script [19].
 - The package manager is npm.
@@ -1685,13 +1685,14 @@ These sizes come from one test build of the same small app [19].
   - It says the extension reads Canvas data in the browser.
   - It says the extension writes only these items, and only to the student's own Canvas: planner overrides for done and skip marks (POST and PUT), planner notes for custom tasks (POST, PUT and DELETE), announcement read and unread marks (PUT and DELETE on the `read` route, from the Announcements tab and the widget), and the read mark of the student's rubric comments (PUT on `rubric_assessments/read`).
   - It says that a write that reached another account gets one corrective write.
-  - It says that View Feedback loads the DocViewer session of Canvas, and that Canvas then marks the notes of that file as read.
-  - It says the extension stores on the device only the settings, the Canvas address, a change time stamp, the one-time notes that were seen, a fingerprint salt, and the page and zoom of up to 200 PDFs with the student id and the file ids.
+  - It says that View Feedback and Preview load the DocViewer session of Canvas, and that Canvas then marks the notes of that file as read.
+  - It says that a read of a file in the pane counts as opening that file, so Canvas can mark the view requirement of a module as done and record the access.
+  - It says the extension stores on the device only the settings, the Canvas address, a change time stamp, the one-time notes that were seen, a fingerprint salt, and the page and zoom of up to 200 PDFs with the student id and the file ids, or the address in Canvas of a file attached to a comment.
   - It says nothing goes to the developer, and it names the storage, DocViewer and image hosts that Canvas or a teacher chooses.
   - It includes the Chrome Web Store Limited Use statement [20].
 - Chrome Web Store [20]:
   - Single purpose: "Make the Canvas site easier for students to use: see coursework as a to-do list, and open files, assignments, announcements and teachers in place on your own Canvas."
-  - Data usage: tick "Website content", "Personally identifiable information" (name and user id) and "Authentication information" (the CSRF token, and the session cookie that the extension reads only to hash it), and say that the data is processed only on the device and sent only to the student's own Canvas.
+  - Data usage: tick "Website content", "Personally identifiable information" (name and user id) and "Authentication information" (the CSRF token, and the session cookie that the extension reads only to hash it), and say that the data is processed only on the device and sent only to the student's own Canvas and to the file storage and DocViewer hosts that Canvas redirects to.
     Chrome requires disclosure even when data stays on the device.
   - Declare "non-trader".
   - Turn on 2-Step Verification.
@@ -1926,12 +1927,14 @@ They show in the same three places, below Row size, and they are stored apart fr
 - All network calls go through the fetch wrapper in `src/shared/canvas`.
   It has two functions.
   `canvasFetch` sends each Canvas request, and `fetchFileBytes` reads the bytes of a file.
+  The test-channel and E2E builds also hold `probeFileFetch`, the read of the file access check (decision 23), and no store build holds it.
 - `canvasFetch` allows only the saved Canvas address, and it follows no redirect.
   A unit test checks this.
 - `fetchFileBytes` starts only on the saved Canvas address, and it follows the redirect that Canvas chooses, because Canvas serves a file from its storage host (decision 25).
 - A lint rule forbids `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource` and `navigator.sendBeacon` outside the wrapper.
 - The build turns off Vite's module preload polyfill, which calls `fetch` by itself.
-  A CI step fails when a built bundle other than the background contains a `fetch(` call.
+  A CI step fails when a built bundle other than the background and `viewer-frame.js` contains a `fetch(` call.
+  Pinned PDF.js files are reviewed by their hash.
 - A CI step scans the built bundles for URLs.
   It allows a reviewed list of inert strings: XML namespace URIs, match patterns, and the project's repository and privacy policy links.
   Preact and WXT put namespace strings into the bundles, so the list is needed [19].
@@ -2928,9 +2931,10 @@ With the pane read alone, the default run of the test failed before the fix.
      A read gives a token (the clearing round and the student in its global decimal form), and a write must send the token of the last read.
      So an open pane cannot write the tabs of one student back as the tabs of another, or after a clearing.
      The background also keeps the name of that student in `storage.session` as `viewer:session:student`, next to the clearing round.
-     It writes the name when a pane gets a token, and the data owner writes it at every sign-in proof and at the commit of every session.
-     The data owner compares the name with the student of every new proof and of the first session, so a change of student clears the viewer also when the worker stopped in between and lost its memory.
-     The clearing sets the round and removes the name in one write.
+     It writes the name when a pane gets a token, and the data owner writes it at every sign-in proof, at both commits of a first session and when it loads a stored session.
+     The data owner compares the name with the student each time, so a change of student clears the viewer also when the worker stopped in between and lost its memory.
+     Another stored name at a new token starts the same clear, so a change that the data owner missed still clears.
+     The clearing sets the round first and removes the name last, and the new name comes after the clearing ended, so a stop in between repeats the clear.
      A pane whose first read of the tabs was refused has no token and reads the tabs again before each file loads, and the file loads even when that read fails.
      The reads and writes of one browser tab run in the order they arrive.
      A pane or page script whose read was refused keeps its tabs in memory, writes nothing, and reads again at the next request.

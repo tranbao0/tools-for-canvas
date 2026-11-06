@@ -92,7 +92,7 @@ describe('pdf tabs', () => {
     await waitFor(() => expect(host.readFile).toHaveBeenCalledOnce());
     expect(vi.mocked(host.readFile).mock.calls[0]![0]).toBe(url);
     const download = (await screen.findByRole('link', { name: 'Download' })) as HTMLAnchorElement;
-    expect(download.href).toBe(`${ORIGIN}/files/1/download`);
+    expect(download.href).toBe(`${ORIGIN}/files/1/download?download_frd=1`);
   });
 
   it('keeps a download address on another host out of the read', async () => {
@@ -101,7 +101,7 @@ describe('pdf tabs', () => {
     });
     await open('1');
     await waitFor(() => expect(host.readFile).toHaveBeenCalledOnce());
-    expect(vi.mocked(host.readFile).mock.calls[0]![0]).toBe(`${ORIGIN}/files/1/download`);
+    expect(vi.mocked(host.readFile).mock.calls[0]![0]).toBe(`${ORIGIN}/files/1/download?download_frd=1`);
   });
 
   it('shows a determinate bar with the part read, clamped to 100 percent', async () => {
@@ -138,7 +138,7 @@ describe('pdf tabs', () => {
     expect(document.querySelector('[data-part="pdf-meta"]')?.textContent).toBe('PDF · 265 KB');
     const download = screen.getByRole('link', { name: 'Download' }) as HTMLAnchorElement;
     const canvas = screen.getByRole('link', { name: 'Open in Canvas' }) as HTMLAnchorElement;
-    expect(download.href).toBe(`${ORIGIN}/files/1/download`);
+    expect(download.href).toBe(`${ORIGIN}/files/1/download?download_frd=1`);
     expect(canvas.href).toBe(`${ORIGIN}/courses/7/files/1`);
     for (const link of [download, canvas]) {
       expect(link.title).toBe(link.getAttribute('aria-label'));

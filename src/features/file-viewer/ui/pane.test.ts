@@ -72,13 +72,13 @@ describe('file links', () => {
   const origin = 'https://school.instructure.com';
   it('links to the course file page and to the download', () => {
     expect(fileLinks(origin, '42', '101')).toEqual({
-      download: `${origin}/files/42/download`,
+      download: `${origin}/files/42/download?download_frd=1`,
       canvas: `${origin}/courses/101/files/42`,
     });
   });
   it('uses the plain file path without a course', () => {
     expect(fileLinks(origin, '42', null)).toEqual({
-      download: `${origin}/files/42/download`,
+      download: `${origin}/files/42/download?download_frd=1`,
       canvas: `${origin}/files/42`,
     });
   });
@@ -99,10 +99,10 @@ describe('the address of a pane read', () => {
     );
   });
   it('replaces an empty address, and an address on another host', () => {
-    expect(readAddress(origin, '42', '')).toBe(`${origin}/files/42/download`);
-    expect(readAddress(origin, '42', undefined)).toBe(`${origin}/files/42/download`);
+    expect(readAddress(origin, '42', '')).toBe(`${origin}/files/42/download?download_frd=1`);
+    expect(readAddress(origin, '42', undefined)).toBe(`${origin}/files/42/download?download_frd=1`);
     for (const url of ['https://evil.example/x', '//evil.example/x', 'javascript:alert(1)']) {
-      expect(readAddress(origin, '42', url)).toBe(`${origin}/files/42/download`);
+      expect(readAddress(origin, '42', url)).toBe(`${origin}/files/42/download?download_frd=1`);
     }
   });
   it('rejects a file that is not an id, and leaves a comment attachment on its route', () => {

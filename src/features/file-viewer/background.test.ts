@@ -65,6 +65,30 @@ const tabsGet = async (sender: Sender, host: ViewerHost) =>
 const tabsSet = (sender: Sender, host: ViewerHost, tabs: unknown, token: unknown) =>
   routeViewerMessage({ type: 'viewer:tabs-set', tabs, token }, sender, host);
 
+describe('the student of the viewer data', () => {
+  it('clears the viewer data before it names another student', async () => {
+    const { host, sender, store } = setup();
+    store.set('viewer:session:student', 'u9');
+    const message = vi.spyOn(fakeBrowser.tabs, 'query').mockResolvedValue([{ id: 3 }] as never);
+    const send = vi.spyOn(fakeBrowser.tabs, 'sendMessage').mockResolvedValue(undefined);
+    await tabsGet(sender, host);
+    expect(send).toHaveBeenCalledWith(3, { type: 'viewer:reset' });
+    expect(store.get('viewer:session:student')).toBe('u1');
+    message.mockRestore();
+    send.mockRestore();
+  });
+
+  it('keeps the student until every step of a clear ended', async () => {
+    await fakeBrowser.storage.session.set({ 'viewer:session:student': 'u9' });
+    const failed = vi.spyOn(fakeBrowser.tabs, 'query').mockRejectedValue(new Error('busy'));
+    await expect(clearViewerTabs()).rejects.toThrow('busy');
+    expect(
+      (await fakeBrowser.storage.session.get('viewer:session:student'))['viewer:session:student'],
+    ).toBe('u9');
+    failed.mockRestore();
+  });
+});
+
 describe('viewer owner', () => {
   it('maps the file record and resolves module files, under the tab of the sender', async () => {
     const { host, api, read } = setup();
@@ -392,6 +416,22 @@ describe('files list frame', () => {
     tab: { id: 7 },
   };
   const open = { type: 'viewer:frame-open', fileId: '42' };
+
+  it('passes the address of the clicked link on only under the check of a top frame click', async () => {
+    const { host } = setup();
+    const kept = 'https://school.edu/courses/9/files/42?verifier=x';
+    await routeViewerMessage({ ...open, address: kept }, frame, host);
+    expect(host.openInTop).toHaveBeenLastCalledWith(7, '42', kept);
+    for (const address of [
+      'https://evil.example/files/42?verifier=x',
+      'https://school.edu/files/42',
+      'javascript:alert(1)',
+      7,
+    ]) {
+      await routeViewerMessage({ ...open, address }, frame, host);
+      expect(host.openInTop).toHaveBeenLastCalledWith(7, '42');
+    }
+  });
 
   it('passes the file of a child frame of the saved Canvas to the top frame of its tab', async () => {
     const { host } = setup();
@@ -877,7 +917,7 @@ describe('file bytes port', () => {
     p.send({ fileId: '1' });
     await settle();
     expect(fetchBytes).toHaveBeenCalledWith(
-      expect.objectContaining({ url: 'https://school.edu/files/1/download' }),
+      expect.objectContaining({ url: 'https://school.edu/files/1/download?download_frd=1' }),
     );
   });
 

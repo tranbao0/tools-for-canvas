@@ -32,6 +32,7 @@ import {
   isPaneFramePage,
   isSubmissionPage,
   isTabId,
+  keptAddress,
   normalizeTabs,
 } from './model';
 import { STUDENT_KEY, studentName } from './student';
@@ -73,7 +74,7 @@ export interface ViewerHost {
   /** Puts the click catcher into the same-origin child frames of a submission page or the Assignments list. */
   injectFrames(tabId: number, origin: string): Promise<void>;
   /** Passes a file to the viewer script of the top frame. `true` when it took the file. */
-  openInTop(tabId: number, fileId: string): Promise<boolean>;
+  openInTop(tabId: number, fileId: string, address?: string): Promise<boolean>;
 }
 
 /** The session storage key of the secret of one browser tab. A closed tab clears it. */
@@ -192,7 +193,13 @@ async function openFromFrame(
     );
   if (!servesFrame(top, frame, origin))
     throw new Error('The frame is no frame that the page of the tab serves');
-  return { opened: await host.openInTop(tabId, request['fileId']) };
+  // The address of the clicked link goes on only under the same check as a click in the top frame.
+  const address = keptAddress(String(request['address'] ?? ''), origin);
+  return {
+    opened: await (address === undefined
+      ? host.openInTop(tabId, request['fileId'])
+      : host.openInTop(tabId, request['fileId'], address)),
+  };
 }
 
 export function routeViewerMessage(
@@ -258,12 +265,12 @@ export function routeViewerMessage(
           const file = request['fileId'] as string;
           if (!writing) {
             // The earlier student's entries leave the disk as soon as another student opens a PDF.
-            await keepOnlyStudent(origin, student);
-            return { position: await readPosition(origin, student, file), token };
+            await keepOnlyStudent(origin, studentName(student));
+            return { position: await readPosition(origin, studentName(student), file), token };
           }
           await savePosition(
             origin,
-            student,
+            studentName(student),
             file,
             { page: request['page'] as number, zoom: request['zoom'] as SavedZoom },
             Date.now(),
@@ -388,11 +395,15 @@ const EPOCH_KEY = `${SESSION_PREFIX}epoch`;
 /**
  * Records the student that a pane got a token for as the owner of the viewer data. The data owner
  * compares this name with the student of every new proof, so it still finds a change of student
- * after the worker stopped and lost its memory.
+ * after the worker stopped and lost its memory. Another stored name is a change that nothing has
+ * cleared yet, so the clear comes before the new name.
  */
 async function recordStudent(host: Pick<ViewerHost, 'get' | 'set'>, id: string): Promise<void> {
   const student = studentName(id);
-  if ((await host.get(STUDENT_KEY)) !== student) await host.set(STUDENT_KEY, student);
+  const held = await host.get(STUDENT_KEY);
+  if (held === student) return;
+  if (typeof held === 'string') await clearViewerTabs();
+  await host.set(STUDENT_KEY, student);
 }
 async function readEpoch(host: Pick<ViewerHost, 'get'>): Promise<number> {
   const value = await host.get(EPOCH_KEY);
@@ -551,11 +562,11 @@ export function wireViewerRouter(
       browser.permissions.contains({ origins: [`${origin}/*`, 'https://*/*'] }),
     tabUrl: async (tabId) => (await browser.tabs.get(tabId).catch(() => undefined))?.url ?? null,
     injectFrames: (tabId, origin) => injectFrameCatchers(tabId, origin),
-    openInTop: async (tabId, fileId) => {
+    openInTop: async (tabId, fileId, address) => {
       try {
         const reply = (await browser.tabs.sendMessage(
           tabId,
-          { type: TOP_OPEN, fileId },
+          { type: TOP_OPEN, fileId, ...(address === undefined ? {} : { address }) },
           { frameId: 0 },
         )) as { opened?: unknown } | undefined;
         return reply?.opened === true;
@@ -612,8 +623,7 @@ export function clearViewerTabs(): Promise<void> {
       values = await browser.storage.session.get(null);
       const epoch = typeof values[EPOCH_KEY] === 'number' ? values[EPOCH_KEY] : 0;
       // The new epoch comes first, so a write with an old token fails even while the data goes.
-      // The same write drops the student, because the data of that student is going.
-      await browser.storage.session.set({ [EPOCH_KEY]: epoch + 1, [STUDENT_KEY]: null });
+      await browser.storage.session.set({ [EPOCH_KEY]: epoch + 1 });
     } catch (error) {
       failures.push(error);
     }
@@ -633,5 +643,8 @@ export function clearViewerTabs(): Promise<void> {
     ]);
     for (const result of results) if (result.status === 'rejected') failures.push(result.reason);
     if (failures.length > 0) throw failures[0];
+    // The student goes last. A worker that stops in a step above finds the same name again, and
+    // the data owner repeats the whole clear.
+    await browser.storage.session.set({ [STUDENT_KEY]: null });
   });
 }

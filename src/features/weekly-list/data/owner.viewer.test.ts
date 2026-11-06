@@ -281,6 +281,64 @@ describe('viewer reads', () => {
     expect(cleared).not.toHaveBeenCalled();
   });
 
+  it('claims the viewer data at the commit at the end of a round', async () => {
+    const h = await createHarness();
+    await fakeBrowser.storage.session.set({ [STUDENT]: h.canvas.scenario.profile.id });
+    const cleared = vi.fn();
+    h.deps.onUserDataCleared = cleared;
+    signInOtherUser(h);
+    // One failed cookie read stops the commit of the session in the middle of the round.
+    const base = h.deps.sessionFingerprint;
+    let calls = 0;
+    h.deps.sessionFingerprint = vi.fn(async (origin: string) => {
+      calls += 1;
+      if (calls === 2) throw new Error('cookie store busy');
+      return base(origin);
+    });
+    const owner = h.restart();
+    await loadReady({ ...h, owner });
+    await owner.settled();
+    expect((await sessionCacheItem.getValue())?.session?.profile.id).toBe('7777');
+    expect(cleared).toHaveBeenCalledOnce();
+    expect((await fakeBrowser.storage.session.get(STUDENT))[STUDENT]).toBe('7777');
+  });
+
+  it('repeats the claim of a restored session when the worker stopped before the claim', async () => {
+    const h = await createHarness();
+    await fakeBrowser.storage.session.set({ [STUDENT]: h.canvas.scenario.profile.id });
+    const cleared = vi.fn();
+    h.deps.onUserDataCleared = cleared;
+    const read = h.deps.store.viewerStudent.getValue;
+    h.deps.store.viewerStudent.getValue = () => new Promise(() => undefined);
+    const stopped = h.restart();
+    signInOtherUser(h);
+    await loadReady({ ...h, owner: stopped }).catch(() => undefined);
+    await stopped.settled();
+    h.deps.store.viewerStudent.getValue = read;
+    expect((await sessionCacheItem.getValue())?.session?.profile.id).toBe('7777');
+    expect(cleared).not.toHaveBeenCalled();
+    const owner = h.restart();
+    await expect(owner.viewerUserId(ORIGIN, TAB)).resolves.toBe('7777');
+    expect(cleared).toHaveBeenCalledOnce();
+  });
+
+  it('names the new student only after the clear ended, so a stop repeats the clear', async () => {
+    const h = await createHarness();
+    const earlier = h.canvas.scenario.profile.id;
+    await fakeBrowser.storage.session.set({ [STUDENT]: earlier });
+    let finish = (): void => undefined;
+    const cleared = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    h.deps.onUserDataCleared = cleared;
+    const owner = h.restart();
+    signInOtherUser(h);
+    const confirming = owner.viewerConfirm(ORIGIN, TAB);
+    await vi.waitFor(() => expect(cleared).toHaveBeenCalledOnce());
+    expect((await fakeBrowser.storage.session.get(STUDENT))[STUDENT]).toBe(earlier);
+    finish();
+    await expect(confirming).resolves.toBe(true);
+    expect((await fakeBrowser.storage.session.get(STUDENT))[STUDENT]).toBe('7777');
+  });
+
   it('gives one change of student one clear, with the proof of the earlier student gone', async () => {
     const h = await loaded();
     const cleared = vi.fn();
