@@ -22,6 +22,7 @@ import {
   type ScenarioOptions,
 } from './support/weekrow';
 import type { FakeCanvasRoute, FakeReply } from './support/fake-canvas';
+import { HAS_REAL_CANVAS_CSS, useRealCanvasCss } from './support/canvas-css';
 import { requestsQuiet, stableValue } from './support/settle';
 
 const PAGE = [{ path: '/', page: 'dashboard-widgets' }] as const;
@@ -1598,6 +1599,81 @@ test.describe('the switches', () => {
     await expect(page.locator('[data-wr-grades]').first()).toBeAttached();
     await expect(page.locator('[data-wr-filter]')).toBeVisible();
   });
+});
+
+/**
+ * The course filter lines up with the read filter whatever Canvas's own rules do to the read
+ * filter: its labels share one top, and its box shares one top and one height. The cases add the
+ * rules that moved the filters in a real Canvas: the global margin of an input, and a label with
+ * a larger gap under it. The last case uses Canvas's own sheets, where the cache has them.
+ */
+const FILTER_CASES = [
+  { name: 'the fixture as it is', css: '' },
+  { name: 'a global margin under an input', css: '.fx-field input{margin-bottom:11px}' },
+  { name: 'a larger gap under the label', css: '.fx-field label{margin-bottom:9px}' },
+  {
+    name: 'a taller label and a margin under the input',
+    css: '.fx-field label{padding-top:5px;margin-bottom:7px}.fx-field input{margin-bottom:13px}',
+  },
+  { name: "Canvas's own sheets", css: null },
+] as const;
+
+for (const { name, css } of FILTER_CASES) {
+  test(`line up the course filter with the read filter with ${name}`, async ({ context, page }) => {
+    test.skip(css === null && !HAS_REAL_CANVAS_CSS, "The cache of Canvas's sheets is missing.");
+    await open(context, page, { width: 1280 });
+    if (css === null) await useRealCanvasCss(page);
+    else if (css !== '') await page.addStyleTag({ content: css });
+    // A change that the widget observer sees, as React draws the widget again.
+    await page.locator('#ann-read').evaluate((el) => el.setAttribute('value', 'Unread'));
+    const gaps = () =>
+      page.evaluate(() => {
+        const top = (el: Element | null): number => el?.getBoundingClientRect().top ?? NaN;
+        const height = (el: Element | null): number => el?.getBoundingClientRect().height ?? NaN;
+        const mine = document.querySelector('[data-wr-filter]');
+        const native = document.querySelector('#ann-read');
+        const label = document.querySelector('label[for="ann-read"]');
+        const box = mine?.querySelector('select') ?? null;
+        return {
+          labelTop: top(mine?.querySelector('label') ?? null) - top(label),
+          boxTop: top(box) - top(native),
+          boxHeight: height(box) - height(native),
+        };
+      });
+    await expect
+      .poll(async () => Object.values(await gaps()).every((gap) => Math.abs(gap) <= 1), {
+        message: JSON.stringify(await gaps()),
+      })
+      .toBe(true);
+    const final = await gaps();
+    expect(Math.abs(final.labelTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(final.boxTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(final.boxHeight)).toBeLessThanOrEqual(1);
+  });
+}
+
+test('keep the course filter below the read filter, and not over it, when the filters wrap', async ({
+  context,
+  page,
+}) => {
+  await open(context, page, { width: 360 });
+  await page.addStyleTag({
+    content: '.fx-field input{margin-bottom:11px}.fx-field label{margin-bottom:9px}',
+  });
+  await page.locator('#ann-read').evaluate((el) => el.setAttribute('value', 'Unread'));
+  const rects = () =>
+    page.evaluate(() => {
+      const read = document
+        .querySelector('#ann-read')
+        ?.closest('.fx-field')
+        ?.getBoundingClientRect();
+      const mine = document.querySelector('[data-wr-filter]')?.getBoundingClientRect();
+      return { readBottom: read?.bottom ?? NaN, mineTop: mine?.top ?? NaN };
+    });
+  // The window is narrow enough for the course filter to wrap under the read filter.
+  await expect
+    .poll(async () => (await rects()).mineTop)
+    .toBeGreaterThanOrEqual((await rects()).readBottom - 1);
 });
 
 for (const frame of ['input', 'wrapper', 'none']) {

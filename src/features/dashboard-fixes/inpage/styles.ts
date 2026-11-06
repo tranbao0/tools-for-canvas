@@ -31,7 +31,7 @@ export const FIXES_CSS = `
 .wr-pg[data-wr-dark] .wr-pg-arrow-prev,.wr-pg[data-wr-dark] .wr-pg-arrow-next{color:#fff}
 .wr-pg[data-wr-dark] button[aria-disabled=true]{color:#4a5b68}
 .wr-pg[data-wr-dark] button:focus-visible{outline-color:#5a9fd4}
-[data-wr-bar]{flex-flow:row wrap!important;align-items:flex-end!important;column-gap:.75rem}
+[data-wr-bar]{flex-flow:row wrap!important;align-items:flex-start!important;column-gap:.75rem}
 [data-wr-bar]>[data-wr-list]{flex:1 1 100%!important;min-width:0}
 .wr-filter-label{display:block;margin-bottom:.25rem}
 .wr-select{position:relative;width:12rem;max-width:100%}
