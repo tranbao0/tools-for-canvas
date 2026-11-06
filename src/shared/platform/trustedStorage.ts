@@ -101,6 +101,15 @@ export function createTrustedItem<T>(
   };
 }
 
+/**
+ * Removes the copy of a trusted item from `storage.local` where a vault holds the item, such as
+ * the copy of an item that had a mirror in an earlier build. With no vault, `storage.local` holds
+ * the item itself, so nothing is removed.
+ */
+export async function removeMirror(key: string, vault: Vault | null = defaultVault): Promise<void> {
+  if (vault !== null) await browser.storage.local.remove(key);
+}
+
 const VAULT_DATABASE = 'weekrow-trusted';
 const VAULT_STORE = 'values';
 

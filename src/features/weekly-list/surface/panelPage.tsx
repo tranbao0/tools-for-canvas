@@ -33,8 +33,10 @@ export function startPanel(root: HTMLElement): SurfaceRuntime {
       announcements={announcements}
     />
   ));
-  browser.windows
-    .getCurrent()
+  // Firefox for Android has no windows API, so the panel page has no window to name in its port.
+  const windows = browser.windows as typeof browser.windows | undefined;
+  windows
+    ?.getCurrent()
     .then((win) => {
       if (win.id !== undefined) connectPanelPort(win.id);
     })

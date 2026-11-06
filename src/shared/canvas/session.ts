@@ -1,6 +1,6 @@
 import { browser } from 'wxt/browser';
 import { BROWSER_KIND } from '../platform/browserKind';
-import { createTrustedItem } from '../platform/trustedStorage';
+import { createTrustedItem, removeMirror } from '../platform/trustedStorage';
 
 /** Hosted Canvas at sjsu.instructure.com uses canvas_session (owner's live check, 2026-10-30). */
 export const SESSION_COOKIE_NAMES = ['canvas_session', '_normandy_session'] as const;
@@ -11,11 +11,20 @@ export const SESSION_COOKIE_NAMES = ['canvas_session', '_normandy_session'] as c
  */
 const REQUEST_STORE_ID = BROWSER_KIND === 'firefox' ? 'firefox-default' : '0';
 
+const SALT_KEY = 'sessionFingerprintSalt';
+
+// Content scripts can read `storage.local`, so on Firefox only the vault holds the salt.
 const saltItem = createTrustedItem<string | null>({
-  key: 'sessionFingerprintSalt',
+  key: SALT_KEY,
   fallback: () => null,
   normalize: (value) => (typeof value === 'string' ? value : null),
+  mirror: false,
 });
+
+/** Removes the copy of the salt that an earlier build left in `storage.local` on Firefox. */
+export function removeSaltMirror(): Promise<void> {
+  return removeMirror(SALT_KEY);
+}
 let salt: Promise<string> | null = null;
 
 async function installSalt(): Promise<string> {

@@ -174,6 +174,7 @@ The extension also drops the Canvas data, the announcements, the read marks, the
 The settings, the address, the notes, the switches of the fixes and the salt are in storage that web pages cannot reach.
 In Chrome and Edge, the extension locks its `storage.local` against page scripts.
 In Firefox, they live in the extension's own IndexedDB, with a copy in `storage.local` that the extension checks and repairs.
+The salt has no such copy.
 
 ## What the extension sends elsewhere
 

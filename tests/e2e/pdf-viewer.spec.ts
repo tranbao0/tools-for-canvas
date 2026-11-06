@@ -18,6 +18,7 @@ import {
   openFirstFile,
   pane,
   saveSetting,
+  simpleHtml,
   waitForListLoaded,
 } from './support/file-viewer';
 import { advanceBackgroundClock } from './support/clock';
@@ -1460,4 +1461,36 @@ test('a broken PDF has safe details and no document Retry', async ({
   expect(report).toContain('Stage: document load');
   expect(report).not.toMatch(/https:|token=|notes.pdf/);
   writeFileSync('test-results/pdf-error-broken.txt', report);
+});
+
+test('a module file whose item read fails ends with the link followed, and never a card that loads forever', async ({
+  context,
+  page,
+  background,
+}) => {
+  const canvas = await openCoursePage(context, page, background, simpleHtml, [
+    {
+      path: '/api/v1/courses/101/modules/7/items/9',
+      respond: () => ({ status: 500, body: { errors: [] } }),
+    },
+    {
+      path: '/courses/101/modules/items/9',
+      body: '<!doctype html><html><body><h1>Module item page</h1></body></html>',
+      contentType: 'text/html',
+    },
+  ]);
+  await waitForListLoaded(canvas);
+  await page.getByRole('link', { name: 'Module notes' }).click();
+  // The page script took the click and asked for the item. The read failed.
+  await expect
+    .poll(() =>
+      canvas.requests.some((request) =>
+        request.path.startsWith('/api/v1/courses/101/modules/7/items/9'),
+      ),
+    )
+    .toBe(true);
+  // The student gets the link, not an empty pane.
+  await expect(page).toHaveURL(`${canvas.origin}/courses/101/modules/items/9`);
+  await expect(page.getByRole('heading', { name: 'Module item page' })).toBeVisible();
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
 });

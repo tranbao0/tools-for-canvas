@@ -4,6 +4,7 @@ import { canvasOriginItem } from './storage';
 import {
   createTrustedItem,
   createTrustedRecords,
+  removeMirror,
   restrictStorageToTrustedContexts,
   type TrustedItemOptions,
   type Vault,
@@ -134,6 +135,22 @@ describe('with a vault, as on Firefox', () => {
     expect(vault.values.get('canvasOrigin')).toBe(SCHOOL);
     expect(await item.getValue()).toBe(SCHOOL);
     expect(await fakeBrowser.storage.local.get(null)).toEqual({});
+  });
+
+  it('removes the old mirror copy where a vault holds the item', async () => {
+    await fakeBrowser.storage.local.set({ canvasOrigin: SCHOOL, other: 1 });
+
+    await removeMirror('canvasOrigin', memoryVault());
+
+    expect(await fakeBrowser.storage.local.get(null)).toEqual({ other: 1 });
+  });
+
+  it('keeps the item in storage.local when there is no vault', async () => {
+    await fakeBrowser.storage.local.set({ canvasOrigin: SCHOOL });
+
+    await removeMirror('canvasOrigin', null);
+
+    expect(await fakeBrowser.storage.local.get(null)).toEqual({ canvasOrigin: SCHOOL });
   });
 
   it('does not copy an item without a mirror to storage.local when a page writes there', async () => {

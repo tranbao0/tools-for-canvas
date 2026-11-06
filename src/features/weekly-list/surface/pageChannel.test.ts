@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_TOOLS_SETTINGS, type ToolsSettings } from '../../../shared/settings/tools';
 import type { DataMessage } from '../data/protocol';
 import { DEFAULT_SETTINGS, type Settings } from '../model/types';
@@ -219,7 +219,72 @@ describe('what the background pushes', () => {
     answer('refuse');
     push({ type: 'weekrow:changed' });
     await settle();
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
     expect(onOrigin).toHaveBeenCalledWith(null);
+  });
+
+  describe('a read that fails while the page was the saved Canvas', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('keeps the origin and reads once more, so a restart of the background removes nothing', async () => {
+      vi.useFakeTimers();
+      const { channel, push, answer, sent } = setup();
+      await channel.choices.origin.getValue();
+      const onOrigin = vi.fn();
+      channel.choices.origin.watch(onOrigin);
+
+      answer('down');
+      push({ type: 'weekrow:changed' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onOrigin).not.toHaveBeenCalled();
+      const readsBefore = sent.length;
+
+      answer(DEFAULT_SETTINGS);
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(sent.length).toBe(readsBefore + 1);
+      expect(onOrigin).not.toHaveBeenCalled();
+      expect(await channel.choices.origin.getValue()).toBe(SCHOOL);
+    });
+
+    it('keeps the origin for a read with no reply, too', async () => {
+      vi.useFakeTimers();
+      const { channel, push, answer } = setup();
+      await channel.choices.origin.getValue();
+      const onOrigin = vi.fn();
+      channel.choices.origin.watch(onOrigin);
+
+      answer('refuse');
+      push({ type: 'weekrow:changed' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onOrigin).not.toHaveBeenCalled();
+    });
+
+    it('gives no origin when the read after it fails too, as for another Canvas', async () => {
+      vi.useFakeTimers();
+      const { channel, push, answer } = setup();
+      await channel.choices.origin.getValue();
+      const onOrigin = vi.fn();
+      channel.choices.origin.watch(onOrigin);
+
+      answer('down');
+      push({ type: 'weekrow:changed' });
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(onOrigin).toHaveBeenCalledTimes(1);
+      expect(onOrigin).toHaveBeenCalledWith(null);
+    });
+
+    it('finds the origin when the first read fails and the next one works', async () => {
+      vi.useFakeTimers();
+      const { channel, answer } = setup();
+      answer('down');
+      expect(await channel.choices.origin.getValue()).toBeNull();
+      const onOrigin = vi.fn();
+      channel.choices.origin.watch(onOrigin);
+
+      answer(DEFAULT_SETTINGS);
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(onOrigin).toHaveBeenCalledWith(SCHOOL);
+    });
   });
 
   it('ignores every other message', async () => {
