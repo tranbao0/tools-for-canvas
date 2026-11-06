@@ -186,77 +186,81 @@
 }
 
 /*
- * The bottom bar holds the headers of No due date and Done and the footer. It never moves and
- * never changes size: an open group shows in the list area above, in place of the day list, and
- * its header only gets the selected look.
+ * The bottom bar holds the view switch and the footer. It never moves and never changes size: an
+ * open group shows in the list area above, in place of the day list, and the switch only moves
+ * its fill.
  */
 .wr-pinned {
   flex: none;
-  padding-top: 6px;
+  padding-top: 12px;
   border-top: 1px solid var(--wr-line);
 }
 
-.wr-pinned .wr-group {
-  margin-top: 0;
-}
-
-.wr-pinned .wr-group-head {
-  min-height: 34px;
+.wr-pinned .wr-foot {
+  margin-top: 10px;
 }
 
 /*
- * The selected look reaches 8px past the text on both sides, as far as the side padding of the
- * card allows: a card with no side padding keeps the look inside its edges. The focus ring is
- * drawn inside, so no edge clips it.
+ * The view switch: three equal parts in one row, 38 px high inside a 1 px line. The part that is
+ * on has the primary fill. Arrow keys check the part they reach, so the focus ring sits inside
+ * the part, in the color of its text.
  */
-.wr-pinned .wr-group-toggle {
-  --wr-bleed: min(8px, var(--wr-pad-x, 0px));
-
-  min-height: 34px;
-  margin-inline: calc(-1 * var(--wr-bleed));
-  padding-inline: var(--wr-bleed);
+.wr-views {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--wr-stroke);
   border-radius: 6px;
-  outline-offset: -2px;
 }
 
-/* Ahead of the general focus rule, which draws the ring outside. */
-.wr-pinned .wr-group-toggle:focus-visible {
-  outline-offset: -2px;
+.wr-views > .wr-segment {
+  display: flex;
+  align-items: center;
+  justify-content: safe center;
+  gap: 6px;
+  height: 38px;
+  min-height: 0;
+  padding: 0 4px;
+  font-weight: 700;
 }
 
-/* The dark list on a Canvas page has 12 px of room around its text, so the highlight uses 8. */
-:host([data-theme='dark']:not([data-panel])) .wr-pinned .wr-group-toggle {
-  --wr-bleed: 8px;
+.wr-views > .wr-segment > span:first-of-type {
+  min-width: 0;
+  text-align: center;
 }
 
-.wr-pinned .wr-group-toggle[aria-expanded='true'] {
-  background: var(--wr-selected);
-  color: var(--wr-selected-text);
+.wr-views .wr-count {
+  margin: 0;
 }
 
-.wr-pinned .wr-group-toggle[aria-expanded='true'] :is(.wr-count, .wr-warn) {
+.wr-views > .wr-segment:has(input:focus-visible) {
+  outline: 2px solid var(--wr-brand);
+  outline-offset: -4px;
+}
+
+.wr-views > .wr-segment:has(input:checked) {
+  outline-color: var(--wr-on-primary);
+}
+
+.wr-views input:checked ~ :is(.wr-count, .wr-warn) {
   color: inherit;
 }
 
-/* An open group points up, toward the list that shows it. */
-.wr-pinned .wr-group-toggle[aria-expanded='true'] > .wr-chevron {
-  transform: rotate(180deg);
+.wr-views .wr-warn {
+  display: inline-flex;
+  gap: 2px;
+  color: var(--wr-error);
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.wr-pinned .wr-foot {
-  margin-top: 6px;
-}
-
-/* The open group: its name at the left, the way back to the days at the right. */
-.wr-group-view-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.wr-back > .wr-chevron {
-  transform: rotate(90deg);
+/* A part is about a third of the card. Where the counts would not fit beside the names, the
+   names keep the room: the numbers go, and a name may take two lines. */
+@container wr (width < 320px) {
+  .wr-views .wr-count,
+  .wr-views .wr-warn > span {
+    display: none;
+  }
 }
 
 .wr-scroll:focus-visible {

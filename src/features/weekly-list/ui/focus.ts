@@ -37,8 +37,8 @@ export type FocusSnapshot =
 
 const ROW = '[data-row-key]';
 
-/** The buttons that open a group or a line of the list. */
-const TOGGLE = '.wr-group-toggle, .wr-sub-toggle';
+/** The controls that open a group or a line of the list, and the view switch. */
+const TOGGLE = '.wr-group-toggle, .wr-sub-toggle, .wr-views input:checked';
 
 /** The Past due heading, which takes focus when "Skip all older" goes away. */
 export const PAST_DUE_HEADING = '[data-group="past_due"] [data-part="group-head"]';

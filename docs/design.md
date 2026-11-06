@@ -555,44 +555,55 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     These are gone.
   - Outside the Course work slot, the card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
     A short list leaves empty room at the bottom, so the card keeps its size from span to span.
-  - No due date, Done and the footer stay in a bottom bar outside the day scroll region, with a thin border in the card line color.
-    The bar is a region with the label "Undated and done tasks".
-    It sits inside the tab panel, after the day list, so the tab order is the day list, the bottom headers, and then the footer.
+  - A view switch and the footer stay in a bottom bar outside the day scroll region, with a thin border in the card line color.
+    The switch has three equal parts: "To do", "No due date" and "Done".
+    The bar sits inside the tab panel, after the day list, so the tab order is the day list, the switch (one tab stop), and then the footer.
+    The footer line stays under the switch.
   - The bar never moves and never changes size, whether a group is open or not.
-    The headers work like tabs.
-  - The bar always shows both headers, No due date and Done, in every span, also with a count of 0.
-    So a click never adds or removes a header, and a closed group with no rows can be opened to see its empty line.
-  - Each header keeps its arrow, name, count and warning text, with the count aligned with the day counts.
-    The arrow is the chevron icon of the sub-lists: it points right when the group is closed and up when it is open.
-  - Only one bottom group opens at a time.
-    Which group is open (No due date, Done, or none) is one saved setting, the field `openGroup` of the stored settings (decision 18), the same way the minimized state is saved.
+    The switch is one row with a fixed height: each part is 38 px high inside a 1 px line, so the row is 40 px, with a 6 px radius and a 1 px line between the parts.
+  - The switch is a radio group of real radio inputs with the name "Show", the same markup as the Row size control of the settings.
+    So it has one tab stop, the arrow keys move and choose at once, and a screen reader says "radio, 1 of 3".
+    Exactly one part is on, and a click on the part that is on changes nothing.
+    The accessible name of a part holds its name, its item count and the warnings of Done, such as "Done 3 items 1 warning".
+  - The part that is on has the primary fill and the text color of the primary button, from the `--wr` tokens, so the dark theme has its own pair.
+    Hover on another part uses `--wr-hover`.
+    The focus ring is drawn inside the part, 4 px from its edge, in the text color of the part, so the fill does not hide it.
+  - Each part shows its count, in a lighter weight than the name.
+    To do counts the rows that its view shows: the Past due rows (with "N older") and the day rows.
+    Done keeps a red warning mark with its number, such as "1" after a triangle, with the accessible name "1 warning" (the mark is white on the fill when Done is on).
+    A part with no rows shows the count 0, so a click never adds or removes a part.
+  - In a card narrower than 320 px (the inside of the card, as the container query measures it) the counts and the number of the warning mark are hidden, and a name that does not fit takes two lines.
+    So no part overflows or hides a name.
+    The accessible name keeps the counts.
+  - The side panel has no bottom bar and no switch: it keeps the groups, which open in place one by one.
+  - To do shows the day list.
+    No due date and Done show their group in the list area, in place of the day list.
+    Which part is on (To do, No due date or Done) is one saved setting, the field `openGroup` of the stored settings (decision 18), where To do is no open group, the same way the minimized state is saved.
     So it is the same for every span, on every Canvas page, in every tab and on every surface that has the bottom bar: the card, the docked card of a course home page, the card in the Course work slot and the list in the dock of the classic dashboard.
-    The open group shows in the list area, in place of the day list: a heading line with the group name at the left and a "Back to days" link button at the right, then the rows of the group and its sub-lists such as "10 done" and "1 skipped".
+    The open group shows in the list area: a heading line with the group name at the left and its count at the right, in line with the day counts, then the rows of the group and its sub-lists such as "10 done" and "1 skipped".
     The list area has the height of the day list, so the card keeps its height, and it scrolls with the same thin scroll bar.
-  - The header of the open group has a selected look: the light blue background and the dark blue text of the Canvas selected state (a dark pair in the dark theme), rounded corners, and 8 px of room past the text on both sides.
-  - "Back to days", a second click on the open header, and a click on the other header (which switches the group) are the ways out.
-    Each of them changes the saved setting.
+    There is no "Back to days" control: To do is the way back.
   - Stepping the span with the arrows, Today or the span picker keeps the group open, and the list area shows that group for the new span.
     The group works as a toggle that the student sets once for all pages and all spans, so the student can step through the weeks and look at the done work of each.
     A group stays open when the card is minimized and expanded, when the settings open and close, and after a reload.
-  - A group with no rows in the shown span stays open, with its heading, "Back to days" and one line in place of the rows: "Nothing done in this span." for Done, and "Nothing without a due date in this span." for No due date.
-    The header of the open group keeps the count 0 and the selected look, in its usual place (No due date before Done), so the student can close the group with a second click on it.
-    A group that is not open and has no rows keeps its header too, with the count 0.
+  - A group with no rows in the shown span stays open, with its heading and one line in place of the rows: "Nothing done in this span." for Done, and "Nothing without a due date in this span." for No due date.
+    The heading and the part keep the count 0.
     The loading line shows only while a load is on its way.
     While the days of the span still load, the open group shows the loading line in place of the empty line, so it never says that nothing is done before the answer is in.
     After a failed load, nothing is on its way, and some days of the span may never have arrived.
     The open group then shows the rows it has, and in place of the empty line it says "Couldn't load this span." with the Retry button.
     It never says "Nothing done in this span." for a span that did not load.
-    A header of a group with no rows shows "?" in place of the count 0 in that case, and a screen reader hears "Not loaded".
-  - Focus stays on the header button when it opens or closes a group.
-    "Back to days" moves focus to the header of the group that was open.
+    A part of a group or a view with no rows shows "?" in place of the count 0 in that case, and a screen reader hears "Not loaded".
+  - Until the saved settings load, the parts cannot be chosen (they are disabled), so a click never leaves a part on that the state does not show.
+  - Focus stays on the part that the student chooses.
     When the last row of an open group leaves, for example when the student unchecks the last Done item, focus goes to the heading of the group.
+    When the last row of the day list leaves, focus goes to the part of the switch that is on.
   - A group starts at the top of the list area, also for another span.
-    The day list keeps its scroll position while a group is open and gets it back on "Back to days".
+    The day list keeps its scroll position while a group is open and gets it back on To do.
     The scroll positions stay when the card moves.
   - The day list keeps at least 128 px.
     When the card is too low for 128 px and the bottom bar, the whole card scrolls instead.
-  - Keyboard access, focus rings, aria-expanded, collapse memory, older and skipped lists, and Skip all older stay available.
+  - Keyboard access, focus rings, collapse memory, older and skipped lists, and Skip all older stay available.
   - These rules also apply to the docked card of a course home page and to the list in the dock of the classic dashboard, but do not affect the side panel or the minimized card.
     The side panel has no bottom bar, so it ignores `openGroup`: its No due date and Done groups open in place, one by one, and each keeps its own state.
   - The scroll bar of the groups sits in the side padding of the card, 4 px from its edge, so it never covers the day counts.
@@ -780,7 +791,7 @@ Past due, No due date and Done still show.
 **Other spans:** Past due comes first, with the same items, the same "N older" line and the same "N skipped" line.
 Then comes one group for each day with items, and Done.
 No due date holds items only in the span that starts today.
-Its header in the bottom bar of the in-page list shows in every span, with the count 0 when it holds none (decision 4).
+Its part in the view switch of the in-page list shows in every span, with the count 0 when it holds none (decision 4).
 Open work that is not past due stays in its day group, with its status chip (decision 7).
 A span that ended before today has one exception: open work dated inside it stays in its day group, with its status chip, so the span does not look empty.
 
@@ -803,7 +814,7 @@ A span that ended before today has one exception: open work dated inside it stay
   A done undated item with a warning chip, such as Redo requested or Missing in Canvas, goes to Done instead, so the Done header counts the warning.
 - When the student marks an item done, skips it or deletes a task, an "Undo" notice shows.
   The notice has no timer: it stays until the student acts again or closes it.
-  In the in-page list it lies over the end of the list, right above the bottom bar, so the headers of No due date and Done never move, and the end of the list scrolls clear of it.
+  In the in-page list it lies over the end of the list, right above the bottom bar, so the view switch never moves, and the end of the list scrolls clear of it.
   Ctrl+Z (Cmd+Z on a Mac) also undoes while the notice shows.
   A fixed time limit would fail keyboard and screen reader users, who need time to reach the notice.
 
@@ -1848,8 +1859,8 @@ It has a minimize button instead (see below).
   - The side panel has no minimize button and ignores the field.
   - The page channel accepts `minimized` in `weekrow:save-settings`, and it rejects any other shape.
     Stored settings from an earlier version that hold `showOnCanvasPages` read without it, and the field is dropped.
-- The open bottom group of the in-page list (decision 4) is saved as the field `openGroup` of the stored settings: `no_due_date`, `done` or `null` (none, the default).
-  It has no control in the settings view: the headers of the bottom bar set it.
+- The open bottom group of the in-page list (decision 4) is saved as the field `openGroup` of the stored settings: `no_due_date`, `done` or `null` (To do, the default).
+  It has no control in the settings view: the view switch of the bottom bar sets it.
   It holds on every Canvas page, in every tab and for every span, and it stays after a reload.
   A missing or unknown value reads as `null`, so settings stored before the field existed read as no open group.
   The side panel ignores the field.

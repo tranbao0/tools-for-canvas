@@ -41,11 +41,11 @@
   "scrollRegionLabel": {
     "message": "Tasks by day"
   },
-  "bottomRegionLabel": {
-    "message": "Undated and done tasks"
+  "viewSwitchLabel": {
+    "message": "Show"
   },
-  "backToDays": {
-    "message": "Back to days"
+  "viewTodo": {
+    "message": "To do"
   },
   "weekRange": {
     "message": "$1 - $2"

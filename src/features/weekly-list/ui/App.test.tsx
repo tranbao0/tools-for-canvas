@@ -633,7 +633,7 @@ describe('in-page list', () => {
     expect(shown()).toEqual(['Today one', 'Tomorrow one', 'Thursday one']);
     expect(
       [...document.querySelectorAll('[data-group]')].map((el) => el.getAttribute('data-group')),
-    ).toEqual(['today', 'tomorrow', 'day', 'no_due_date', 'done']);
+    ).toEqual(['today', 'tomorrow', 'day', 'todo', 'no_due_date', 'done']);
     expect(screen.queryByRole('button', { name: /^(Next 7 days|Rest of)/ })).toBeNull();
   });
 
@@ -715,26 +715,25 @@ describe('in-page list', () => {
     });
 
     it('name the region of a collapsible group', () => {
-      setupSaved(stateOf(mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) })));
+      setupSaved(
+        stateOf(mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) })),
+        'panel',
+      );
       const toggle = screen.getByRole('button', { name: /^No due date/ });
       expect(regionOf(toggle)).not.toBeNull();
       fireEvent.click(toggle);
       expect(regionOf(toggle)?.querySelector('li')).not.toBeNull();
     });
 
-    it('show an open bottom group in the list area, and Back to days returns to its header', () => {
+    it('show an open bottom group in the list area, and To do returns to the days', () => {
       setupSaved(stateOf(mkGroup({ kind: 'no_due_date', items: dueItems(['Undated one']) })));
-      const toggle = screen.getByRole('button', { name: /^No due date/ });
-      const area = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+      const area = document.querySelector<HTMLElement>('.wr-group-area');
       expect(area?.hidden).toBe(true);
-      fireEvent.click(toggle);
+      fireEvent.click(screen.getByRole('radio', { name: /^No due date/ }));
       expect(area?.hidden).toBe(false);
       expect(area?.contains(screen.getByText('Undated one'))).toBe(true);
-      expect(toggle.closest('section')?.querySelector('li')).toBeNull();
-      fireEvent.click(screen.getByRole('button', { name: 'Back to days' }));
-      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(screen.getByRole('radio', { name: /^To do/ }));
       expect(area?.hidden).toBe(true);
-      expect(document.activeElement).toBe(toggle);
     });
   });
 
@@ -876,27 +875,28 @@ describe('the open bottom group', () => {
         isCurrentSpan: false,
       }),
     });
-  const header = (name: RegExp) => screen.getByRole('button', { name });
+  const header = (name: RegExp) => screen.getByRole<HTMLInputElement>('radio', { name });
   const area = () => document.querySelector<HTMLElement>('.wr-group-area');
 
-  it('saves the open group as a setting, and a second click on the header saves none', () => {
+  it('saves the open group as a setting, and To do saves none', () => {
     const { actions } = setupSaved(full());
     fireEvent.click(header(/^Done/));
     expect(actions.saveSettings).toHaveBeenLastCalledWith({
       ...DEFAULT_SETTINGS,
       openGroup: 'done',
     });
-    expect(header(/^Done/).getAttribute('aria-expanded')).toBe('true');
+    expect(header(/^Done/).checked).toBe(true);
     expect(area()?.hidden).toBe(false);
-    fireEvent.click(header(/^Done/));
+    fireEvent.click(header(/^To do/));
     expect(actions.saveSettings).toHaveBeenLastCalledWith({
       ...DEFAULT_SETTINGS,
       openGroup: null,
     });
+    expect(header(/^To do/).checked).toBe(true);
     expect(area()?.hidden).toBe(true);
   });
 
-  it('switches the group on a click on the other header', () => {
+  it('switches the group on a click on the other part', () => {
     const { saved } = setupSaved(full());
     fireEvent.click(header(/^Done/));
     fireEvent.click(header(/^No due date/));
@@ -907,7 +907,7 @@ describe('the open bottom group', () => {
 
   it('starts open when the saved settings hold an open group', () => {
     setupSaved(full(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
-    expect(header(/^Done/).getAttribute('aria-expanded')).toBe('true');
+    expect(header(/^Done/).checked).toBe(true);
     expect(area()?.textContent).toContain('Finished one');
     expect(document.querySelector<HTMLElement>('.wr-scroll')?.hidden).toBe(true);
   });
@@ -968,20 +968,21 @@ describe('the open bottom group', () => {
       expect(saved().openGroup).toBe(kind);
       const shown = area() as HTMLElement;
       expect(shown.hidden).toBe(false);
-      expect(within(shown).getByRole('heading').textContent).toBe(
-        kind === 'done' ? 'Done' : 'No due date',
+      // The heading keeps the name and the count, also with no rows.
+      expect(within(shown).getByRole('heading').textContent).toMatch(
+        kind === 'done' ? /^Done0/ : /^No due date0/,
       );
-      expect(within(shown).getByRole('button', { name: 'Back to days' })).toBeTruthy();
+      expect(within(shown).queryByRole('button', { name: 'Back to days' })).toBeNull();
       expect(shown.textContent).toContain(line);
       expect(shown.querySelector('li')).toBeNull();
-      // The bar keeps the header of the open group, selected and with a zero count.
+      // The switch keeps the part of the open group, on and with a zero count.
       const toggle = header(kind === 'done' ? /^Done/ : /^No due date/);
-      expect(toggle.getAttribute('aria-expanded')).toBe('true');
-      expect(toggle.querySelector('.wr-count')?.textContent).toBe('0');
+      expect(toggle.checked).toBe(true);
+      expect(toggle.parentElement?.querySelector('.wr-count')?.textContent).toBe('0');
       // The other group has no rows and is not open, and its header stays with the count 0.
       const other = header(kind === 'done' ? /^No due date/ : /^Done/);
-      expect(other.getAttribute('aria-expanded')).toBe('false');
-      expect(other.querySelector('.wr-count')?.textContent).toBe('0');
+      expect(other.checked).toBe(false);
+      expect(other.parentElement?.querySelector('.wr-count')?.textContent).toBe('0');
       // The rows come back with the next span that has some.
       rerender(full());
       expect(area()?.textContent).not.toContain(line);
@@ -997,32 +998,69 @@ describe('the open bottom group', () => {
     const bar = document.querySelector('.wr-pinned') as HTMLElement;
     expect(
       [...bar.querySelectorAll('[data-group]')].map((el) => el.getAttribute('data-group')),
-    ).toEqual(['no_due_date', 'done']);
+    ).toEqual(['todo', 'no_due_date', 'done']);
   });
 
-  it('closes an empty open group with Back to days and with a click on its header, and its header stays', () => {
-    const first = setupSaved(bare(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
-    const back = screen.getByRole('button', { name: 'Back to days' });
-    back.focus();
-    fireEvent.click(back);
-    expect(first.saved().openGroup).toBeNull();
+  it('closes an empty open group with To do, and its part stays', () => {
+    const { saved } = setupSaved(bare(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
+    fireEvent.click(header(/^To do/));
+    expect(saved().openGroup).toBeNull();
     expect(area()?.hidden).toBe(true);
-    expect(header(/^Done/).getAttribute('aria-expanded')).toBe('false');
-    expect(document.activeElement).toBe(header(/^Done/));
-    cleanup();
-    const second = setupSaved(bare(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
-    header(/^Done/).focus();
-    fireEvent.click(header(/^Done/));
-    expect(second.saved().openGroup).toBeNull();
-    expect(header(/^Done/).getAttribute('aria-expanded')).toBe('false');
+    expect(header(/^Done/).checked).toBe(false);
   });
 
-  it('always shows both headers in the bar, in every span, with a count of 0 for an empty group', () => {
+  it('is one radio group with exactly one part on, whatever the saved setting', () => {
+    for (const [openGroup, on] of [
+      [null, 'To do'],
+      ['no_due_date', 'No due date'],
+      ['done', 'Done'],
+    ] as const) {
+      setupSaved(full(), 'inpage', { ...DEFAULT_SETTINGS, openGroup });
+      const radios = screen.getAllByRole<HTMLInputElement>('radio');
+      expect(radios).toHaveLength(3);
+      expect(
+        radios.filter((radio) => radio.checked).map((radio) => radio.parentElement?.textContent),
+      ).toEqual([expect.stringMatching(new RegExp(`^${on}`))]);
+      expect(new Set(radios.map((radio) => radio.name)).size).toBe(1);
+      expect(screen.getByRole('radiogroup', { name: 'Show' })).toBeTruthy();
+      cleanup();
+    }
+  });
+
+  it('counts the rows of the day list in To do, and shows the warnings of Done', () => {
+    setupSaved(
+      readyState({
+        view: mkView({
+          groups: [
+            mkGroup({ kind: 'past_due', items: dueItems(['Late one']) }),
+            todayGroup,
+            undatedGroup,
+            mkGroup({
+              kind: 'done',
+              items: dueItems(['Finished one'], { state: 'done' }),
+              warningCount: 2,
+            }),
+          ],
+        }),
+      }),
+    );
+    expect(header(/^To do/).parentElement?.querySelector('.wr-count')?.textContent).toBe('2');
+    const done = header(/^Done/).parentElement as HTMLElement;
+    expect(done.querySelector('.wr-warn')?.getAttribute('aria-label')).toBe('2 warnings');
+    expect(header(/^Done/).disabled).toBe(false);
+  });
+
+  it('keeps the parts from being chosen until the saved settings load', () => {
+    setup(full(), 'inpage');
+    for (const radio of screen.getAllByRole<HTMLInputElement>('radio'))
+      expect(radio.disabled).toBe(true);
+  });
+
+  it('always shows the three parts in the bar, in every span, with a count of 0 for an empty group', () => {
     const closed = () =>
-      [...document.querySelectorAll('.wr-pinned [data-group]')].map((el) => [
-        el.getAttribute('data-group'),
-        el.querySelector('.wr-count')?.textContent,
-      ]);
+      [...document.querySelectorAll('.wr-pinned [data-group]')]
+        .filter((el) => el.getAttribute('data-group') !== 'todo')
+        .map((el) => [el.getAttribute('data-group'), el.querySelector('.wr-count')?.textContent]);
     setupSaved(bare());
     expect(closed()).toEqual([
       ['no_due_date', '0'],
@@ -1067,9 +1105,10 @@ describe('the open bottom group', () => {
 
     it('does not claim a count of 0 for a group with no rows', () => {
       setupSaved(failed([todayGroup, doneGroup]));
-      const count = (name: RegExp) => header(name).querySelector('.wr-count')?.textContent;
+      const count = (name: RegExp) =>
+        header(name).parentElement?.querySelector('.wr-count')?.textContent;
       expect(count(/^No due date/)).toBe('?');
-      expect(header(/^No due date/).textContent).toContain('Not loaded');
+      expect(header(/^No due date/).parentElement?.textContent).toContain('Not loaded');
       expect(count(/^Done/)).toBe('1');
     });
 
@@ -1081,14 +1120,6 @@ describe('the open bottom group', () => {
       expect(area()?.textContent).toContain('Finished one');
       expect(area()?.textContent).not.toContain("Couldn't load this span.");
     });
-  });
-
-  it('moves focus to the header on Back to days when the group has rows', () => {
-    setupSaved(full(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
-    const back = screen.getByRole('button', { name: 'Back to days' });
-    back.focus();
-    fireEvent.click(back);
-    expect(document.activeElement).toBe(header(/^Done/));
   });
 
   it('shows a loading line, not "Nothing done", while the days of the span load', () => {
@@ -1132,9 +1163,11 @@ describe('the open bottom group', () => {
   it('is ignored by the side panel, which has no bottom bar', () => {
     setupSaved(full(), 'panel', { ...DEFAULT_SETTINGS, openGroup: 'done' });
     expect(area()).toBeNull();
-    expect(header(/^Done/).getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('radio')).toBeNull();
+    const toggle = screen.getByRole('button', { name: /^Done/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByText('Finished one')).toBeNull();
-    fireEvent.click(header(/^Done/));
+    fireEvent.click(toggle);
     expect(screen.getByText('Finished one')).toBeTruthy();
   });
 
@@ -1144,7 +1177,7 @@ describe('the open bottom group', () => {
     expect(saved()).toEqual({ ...DEFAULT_SETTINGS, openGroup: 'done', minimized: true });
     fireEvent.click(screen.getByRole('button', { name: /Weekly list/ }));
     expect(saved().openGroup).toBe('done');
-    expect(header(/^Done/).getAttribute('aria-expanded')).toBe('true');
+    expect(header(/^Done/).checked).toBe(true);
   });
 });
 
@@ -1160,7 +1193,7 @@ describe('one-course view', () => {
 
   it('shows no empty info line on a row with nothing to say', () => {
     setupSaved(readyState({ view: mkView({ scopeCourseId: COURSES.bio.id }) }));
-    fireEvent.click(screen.getByRole('button', { name: /No due date/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /No due date/ }));
     expect(row('Course survey').querySelector('.wr-info')).toBeNull();
     expect(row('Course survey').querySelector('.wr-course')).toBeNull();
   });
@@ -2011,15 +2044,14 @@ describe('focus when the last row of a group leaves the list', () => {
     view: { ...state.view, groups },
   });
 
-  it('goes to the next header when no row or heading is left above it', () => {
+  it('goes to the view switch when no row or heading is left above it', () => {
     const state = readyState({ view: mkView({ groups: [today('Only one'), done('Old one')] }) });
-    const { rerender } = setup(state, 'inpage');
+    const { rerender } = setupSaved(state, 'inpage');
     screen.getByRole('checkbox', { name: 'Done: Only one' }).focus();
 
     rerender(withGroups(state, done('Old one', 'Only one')));
 
-    const toggle = screen.getByRole('button', { name: /^No due date/ });
-    expect(document.activeElement).toBe(toggle);
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: /^To do/ }));
   });
 
   it('goes to the previous row when no row follows and no opener is left', () => {
