@@ -795,7 +795,7 @@ A span that ended before today has one exception: open work dated inside it stay
   - skipped: the "N skipped" line of its group (see Skip).
 - In the span that starts today, Done also holds done items from before today that still have a warning chip (decision 7).
   So the warning count on the Done header covers them.
-- Reminders (decision 7) follow their own rule: they show only on their day.
+- Reminders (decision 7) follow their own rule: until they are checked, they show only on their day.
 - A status never moves an item.
   So the list renders as soon as the planner items arrive, and the chips fill in later without any item moving.
 - Done items with no due date show at the end of the No due date group, under a small "N done" line.
@@ -880,8 +880,9 @@ Planner items do not include it, so the extension looks it up (decision 11).
 **Reminders:**
 
 - An assignment with nothing to hand in is a reminder for a day, such as "Participation, week 9" or "Read chapter 3".
-- A reminder shows only on its day, with a neutral "No hand-in" chip and a checkbox.
-- A reminder never goes to Past due or No due date, and it does not count in a ring.
+- A reminder shows on its day, with a neutral "No hand-in" chip and a checkbox.
+- A checked reminder goes to Done like any other done item, and the Done header counts it.
+- A reminder never goes to Past due or No due date, and it does not count in a ring, also when it is checked.
 - An undated reminder does not show at all, because it has no day.
 - Why: Canvas has no way to know whether such an item is finished, and many of them are gradebook columns.
   One rule for dated and undated reminders keeps them from sitting in Past due until a teacher grades them.

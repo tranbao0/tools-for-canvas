@@ -72,7 +72,7 @@ function undatedSlot(
   }
 }
 
-/** A reminder shows only on its day, in any state, and never in Past due. */
+/** A reminder that is not done shows only on its day, and never in Past due. */
 function reminderSlot(date: Temporal.PlainDate, context: PlacementContext): Slot | null {
   const lookAhead = isLookAheadDate(date, context);
   return isInSpan(date, context) || lookAhead
@@ -92,6 +92,7 @@ function doneSlot(
   const earlierWithWarning =
     context.isCurrentSpan &&
     hasWarning &&
+    !item.isReminder &&
     compareDates(date, context.spanStart) < 0 &&
     compareInstants(due, context.horizonFor(item.courseId)) >= 0;
   return earlierWithWarning ? { group: 'done', lookAhead: false } : null;
@@ -124,8 +125,8 @@ export function slotFor(
   const due = parseInstant(item.due);
   if (due === null) return undatedSlot(item, state, hasWarning, context);
   const date = plainDateOf(due, context.timeZone);
-  if (item.isReminder) return reminderSlot(date, context);
   if (state === 'done') return doneSlot(due, date, hasWarning, item, context);
+  if (item.isReminder) return reminderSlot(date, context);
   const lookAhead = isLookAheadDate(date, context);
   const overdue = compareInstants(due, context.now) < 0;
   // In a span that ended before today, work dated inside it stays on its day, so the span does
