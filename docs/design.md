@@ -2232,7 +2232,9 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
      The next page still loads when the end of the area comes near, and the empty line shows when the last row goes.
      All, the search and a date range keep the row, because it still belongs there.
      Two widgets that show the same list each hold and close the row, and the second removal does nothing.
-     A row that stays out of the set of its list in another way, such as a row marked in a search, goes when the student leaves the filter, or after its hold when the plain list shows it again.
+     If Canvas took a mark and refused the way back, the row stays with its check and the note, so the student can try again in that list, and it goes when the student leaves the filter.
+     A row that is leaving takes no more marks.
+     A row marked in a search or a date range goes with no fade when the plain list shows again, or when the student leaves the filter.
      A row with a pending mark is the exception: it stays when the student leaves the filter and when the student comes back during the write, because Canvas may refuse the mark and the row must be there to go back.
      When the last pending mark of a row settles, the row shows the state that Canvas last confirmed for it, not the state that the row showed when the mark began, so two refused marks of one row (a double click) leave it as it was.
      A list that holds a row with a pending mark stays unpruned until the marks settle, whether the row is in the set or not, and then the rows that are out of its set go.
