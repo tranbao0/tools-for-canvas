@@ -2761,3 +2761,36 @@ test('identity cover: a fullscreen frame exits before content can show', async (
   await holdPaneIdentity(page);
   await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
 });
+
+test('a second injection retires the old assignment view through later page changes', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  await background.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        chrome: {
+          tabs: { query(query: object): Promise<{ id: number; url?: string }[]> };
+          scripting: { executeScript(details: object): Promise<unknown> };
+        };
+      }
+    ).chrome;
+    const tab = (await api.tabs.query({})).find((tab) =>
+      tab.url?.includes('/courses/12/assignments'),
+    )!;
+    await api.scripting.executeScript({ target: { tabId: tab.id }, files: ['assignment-view.js'] });
+  });
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    const list = document.querySelector('.assignment-list') ?? document.querySelector('#content')!;
+    list.innerHTML = list.innerHTML.replace(/<button[^>]*data-av-preview[^]*?<\/button>/g, '');
+  });
+  await expect(page.locator('[data-av-preview]')).toHaveCount(3);
+  await page.waitForTimeout(500);
+  await expect(page.locator('[data-av-preview]')).toHaveCount(3);
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  await expect(page.locator('[data-av-preview]')).toHaveCount(0);
+});
