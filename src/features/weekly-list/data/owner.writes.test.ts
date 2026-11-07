@@ -3,7 +3,7 @@ import { moveToTodayTodoDate, todoDateFor } from '../model/tasks';
 import { canvasOriginItem, changeMarkerItem, offerItem } from '../../../shared/platform/storage';
 import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
 import { sessionCacheItem, type SessionCache } from './cache';
-import { MAX_DELETE_DELAY_MS } from './owner';
+import { ACTIVE_RANGE_MS, MAX_DELETE_DELAY_MS } from './owner';
 import { pendingOverride, type NotePatch, type OverridePatch } from './patches';
 import type { ActionReply } from './protocol';
 import type { TaskInput } from '../ui/contract';
@@ -213,7 +213,7 @@ describe('done marks', () => {
     await h.owner.settled();
     const [created] = h.canvas.overrides().filter((o) => o.assignment_id === A.bioQuiz3Today);
 
-    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null, restored: true });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('updateOverride')).toEqual([[created?.id, NOT_DONE]]);
@@ -228,7 +228,7 @@ describe('done marks', () => {
     signInOtherUser(h);
 
     // The cache of the first student is gone, so a later tap cannot succeed: the notice ends.
-    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null, restored: false });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('updateOverride')).toEqual([]);
@@ -242,8 +242,8 @@ describe('done marks', () => {
     h.canvas.resetCalls();
     vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
 
-    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
-    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null, restored: false });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null, restored: false });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('updateOverride')).toEqual([]);
@@ -262,7 +262,7 @@ describe('done marks', () => {
     expect(h.canvas.callsOf('updateOverride')).toEqual([]);
 
     // The Undo is a tap of the student, so a second tap checks again at once.
-    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null });
+    expect(await h.owner.act(restoreOf(reply))).toEqual({ undo: null, restored: true });
     await h.owner.settled();
     expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
   });
@@ -332,14 +332,53 @@ describe('done marks', () => {
     h.canvas.resetCalls();
     const undo = restoreOf(reply);
 
-    await h.owner.act({
+    const partial = await h.owner.act({
       ...undo,
       entries: [...undo.entries, { key: 'assignment:gone', previous: NOT_DONE }],
     });
     await h.owner.settled();
 
+    // The item that is still there comes back, and the reply says that not every item did.
+    expect(partial).toEqual({ undo: null, restored: false });
     expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
     expect((await item(h, QUIZ_3))?.state).toBe('open');
+  });
+
+  it('says it restored nothing when the week of the item left the cache before the Undo', async () => {
+    const h = await loaded();
+    const later = new Date(Date.now() + 42 * 86_400_000).toISOString();
+    const template = h.canvas.scenario.plannerItems.find(
+      (i) => i.plannable_type === 'planner_note',
+    );
+    if (template === undefined) throw new Error('No note in the scenario');
+    h.canvas.scenario.plannerItems.push({
+      ...template,
+      plannable_id: '8899',
+      plannable_date: later,
+      planner_override: null,
+      plannable: { ...template.plannable, id: '8899', title: 'Far task', todo_date: later },
+    } as never);
+    const far = { ...PANEL, spanOffset: 6 };
+    await loadReady(h, far);
+    const marked = await h.owner.act({ kind: 'setDone', keys: ['planner_note:8899'], done: true });
+    await h.owner.settled();
+    expect(marked.undo?.kind).toBe('overrides');
+
+    // The student goes back to this week, and the far week is pruned.
+    await loadReady(h, PANEL);
+    await advance(h, ACTIVE_RANGE_MS + 5 * 60_000);
+    await h.owner.refresh('timer');
+    await h.owner.settled();
+    await h.owner.getState(PANEL);
+    await h.owner.settled();
+    h.canvas.resetCalls();
+
+    const reply = await h.owner.act(restoreOf(marked));
+    await h.owner.settled();
+
+    expect(reply).toEqual({ undo: null, restored: false });
+    expect(h.canvas.callsOf('updateOverride')).toEqual([]);
+    expect(h.canvas.callsOf('createOverride')).toEqual([]);
   });
 
   it('writes a key once, however often an action names it', async () => {
@@ -361,6 +400,65 @@ describe('done marks', () => {
     });
     await h.owner.settled();
     expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
+  });
+
+  it('writes nothing and gives no Undo for a key that has the target flags or a waiting write to them', async () => {
+    const h = await loaded();
+
+    // Two sends before the list redraws, as from a double click or a stale second surface.
+    const [first, second] = await Promise.all([
+      h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true }),
+      h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true }),
+    ]);
+    await h.owner.settled();
+    const third = await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true });
+    await h.owner.settled();
+
+    expect(first.undo?.kind).toBe('overrides');
+    expect(second).toEqual({ undo: null });
+    expect(third).toEqual({ undo: null });
+    expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
+    expect(h.canvas.callsOf('updateOverride')).toHaveLength(0);
+
+    // The one notice undoes the mark.
+    await h.owner.act(restoreOf(first));
+    await h.owner.settled();
+    expect((await item(h, QUIZ_3))?.state).toBe('open');
+  });
+
+  it('unchecks work that is done only because Canvas counts it as submitted', async () => {
+    const h = await createHarness();
+    for (const row of h.canvas.scenario.plannerItems) {
+      if (row.plannable.title === 'Quiz 3: Cell membranes' && row.submissions !== false) {
+        row.submissions.submitted = true;
+      }
+    }
+    await loadReady(h);
+    h.canvas.resetCalls();
+    expect((await item(h, QUIZ_3))?.state).toBe('done');
+
+    await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: false });
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('createOverride')).toEqual([[expect.objectContaining(NOT_DONE)]]);
+    expect((await item(h, QUIZ_3))?.state).toBe('open');
+    // A second uncheck shows the target flags already, so it writes nothing.
+    await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: false });
+    await h.owner.settled();
+    expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
+  });
+
+  it('says an Undo restored nothing when Canvas refuses its write', async () => {
+    const h = await loaded();
+    const marked = await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true });
+    await h.owner.settled();
+    h.canvas.fail('updateOverride', canvasError('server', 500), { times: 1 });
+
+    const reply = await h.owner.act(restoreOf(marked));
+    await h.owner.settled();
+
+    expect(reply).toEqual({ undo: null, restored: false });
+    expect((await item(h, QUIZ_3))?.state).toBe('done');
   });
 
   it('writes a new change marker after a write', async () => {
@@ -744,11 +842,38 @@ describe('custom tasks', () => {
     await vi.advanceTimersByTimeAsync(MAX_DELETE_DELAY_MS);
     expect(h.canvas.callsOf('deleteNote')).toHaveLength(1);
 
-    await h.owner.act({ kind: 'cancelDelete', noteId: N.libraryBooksToday });
+    expect(expectReady(await h.owner.getState(PANEL)).openDeletes).toEqual([]);
+    const reply = await h.owner.act({ kind: 'cancelDelete', noteId: N.libraryBooksToday });
     release();
     await h.owner.settled();
 
+    expect(reply).toEqual({ undo: null, restored: false });
     expect(await item(h, key)).toBeUndefined();
+    expect(h.canvas.callsOf('createNote')).toEqual([]);
+  });
+
+  it('names the delete in openDeletes until its DELETE starts, and an Undo says whether it restored the task', async () => {
+    const h = await loaded();
+    const key = `planner_note:${N.libraryBooksToday}`;
+    await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
+    expect(expectReady(await h.owner.getState(PANEL)).openDeletes).toEqual([N.libraryBooksToday]);
+
+    // The background sends the DELETE at the cap, while a surface still shows the notice.
+    await advance(h, MAX_DELETE_DELAY_MS + 60_000);
+    expect(h.canvas.callsOf('deleteNote')).toEqual([[N.libraryBooksToday]]);
+    expect(expectReady(await h.owner.getState(PANEL)).openDeletes).toEqual([]);
+
+    const late = await h.owner.act({ kind: 'cancelDelete', noteId: N.libraryBooksToday });
+    await h.owner.settled();
+    expect(late).toEqual({ undo: null, restored: false });
+    expect(await item(h, key)).toBeUndefined();
+    expect(h.canvas.callsOf('createNote')).toEqual([]);
+
+    // An Undo in time restores the task.
+    await h.owner.act({ kind: 'deleteTask', noteId: N.bioStudyGroup });
+    const early = await h.owner.act({ kind: 'cancelDelete', noteId: N.bioStudyGroup });
+    expect(early).toEqual({ undo: null, restored: true });
+    expect(expectReady(await h.owner.getState(PANEL)).openDeletes).toEqual([]);
   });
 
   it('sends a delayed DELETE after a service worker restart', async () => {
@@ -980,6 +1105,117 @@ describe('optimistic updates', () => {
   });
 });
 
+describe('a task create whose answer is lost', () => {
+  it.each([canvasError('server', 504), canvasError('network')])(
+    'reads the planner back and counts a saved task as created, so a retry cannot make two ($kind)',
+    async (error) => {
+      const h = await loaded();
+      h.canvas.fail('createNote', error, { times: 1, saved: true });
+
+      const reply = await h.owner.act({ kind: 'createTask', input });
+      await h.owner.settled();
+
+      expect(reply.created).toBe(true);
+      expect(h.canvas.callsOf('createNote')).toHaveLength(1);
+      expect(shownTask(expectReady(await h.owner.getState(PANEL)))).toBeDefined();
+    },
+  );
+
+  it('finds the task when a round brought it into the cache while the POST waited', async () => {
+    const h = await loaded();
+    const real = h.canvas.createNote.bind(h.canvas);
+    h.canvas.createNote = async (body) => {
+      await real(body);
+      await h.owner.refresh('retry');
+      await h.owner.settled();
+      throw canvasError('server', 504);
+    };
+
+    const reply = await h.owner.act({ kind: 'createTask', input });
+    await h.owner.settled();
+
+    expect(reply.created).toBe(true);
+    expect(h.canvas.callsOf('createNote')).toHaveLength(1);
+    expect(shownTask(expectReady(await h.owner.getState(PANEL)))).toBeDefined();
+  });
+
+  it('reads once more when the read back fails, so a slow Canvas makes no second task', async () => {
+    const h = await loaded();
+    h.canvas.fail('createNote', canvasError('server', 504), { times: 1, saved: true });
+    h.canvas.fail('listPlannerItems', canvasError('server', 504), { times: 1 });
+
+    const pending = h.owner.act({ kind: 'createTask', input });
+    await advance(h, 5000);
+    const reply = await pending;
+    await h.owner.settled();
+
+    expect(reply.created).toBe(true);
+    expect(h.canvas.callsOf('createNote')).toHaveLength(1);
+  });
+
+  it('finds the task when a failed write ends the queue for the same student in the pause', async () => {
+    const h = await loaded();
+    h.canvas.fail('createNote', canvasError('server', 504), { times: 1, saved: true });
+    h.canvas.fail('listPlannerItems', canvasError('server', 504), { times: 1 });
+
+    const pending = h.owner.act({ kind: 'createTask', input });
+    await vi.advanceTimersByTimeAsync(100);
+    h.canvas.fail('createOverride', canvasError('server', 502), { times: 1 });
+    h.canvas.fail('getSelf', canvasError('server', 502), { times: 1 });
+    await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true });
+    await vi.advanceTimersByTimeAsync(3000);
+    const reply = await pending;
+    await h.owner.settled();
+
+    expect(reply.created).toBe(true);
+    expect(h.canvas.callsOf('createNote')).toHaveLength(1);
+  });
+
+  it('counts no task of another account, and no read under another cookie', async () => {
+    const h = await loaded();
+    h.canvas.fail('createNote', canvasError('server', 504), { times: 2 });
+    const realRead = h.canvas.listPlannerItems.bind(h.canvas);
+    const foreign = async (range: Parameters<typeof realRead>[0], user: string) => [
+      ...(await realRead(range)),
+      {
+        plannable_id: '555000',
+        plannable_type: 'planner_note' as const,
+        plannable_date: (h.canvas.callsOf('createNote')[0]?.[0] as { todoDate: string }).todoDate,
+        new_activity: false,
+        submissions: false as const,
+        planner_override: null,
+        plannable: {
+          id: '555000',
+          title: 'Buy lab coat',
+          details: null,
+          course_id: null,
+          user_id: user,
+        },
+      },
+    ];
+    const spy = vi.spyOn(h.canvas, 'listPlannerItems');
+    spy.mockImplementation((range) => foreign(range, '7777') as never);
+    expect((await h.owner.act({ kind: 'createTask', input })).created).toBe(false);
+
+    spy.mockImplementation(async (range) => {
+      vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+      return foreign(range, '5501') as never;
+    });
+    expect((await h.owner.act({ kind: 'createTask', input })).created).toBe(false);
+  });
+
+  it('says the task was not saved when the read back finds nothing', async () => {
+    const h = await loaded();
+    h.canvas.fail('createNote', canvasError('server', 504), { times: 1 });
+
+    const reply = await h.owner.act({ kind: 'createTask', input });
+    await h.owner.settled();
+
+    expect(reply.created).toBe(false);
+    expect(shownTask(expectReady(await h.owner.getState(PANEL)))).toBeUndefined();
+  });
+});
+
 describe('a failed write', () => {
   const writes = [
     {
@@ -1007,7 +1243,10 @@ describe('a failed write', () => {
       h.canvas.fail(write.method, canvasError('server', 500), { times: 1 });
       h.canvas.fail('listPlannerItems', canvasError('server', 503), { times: 10 });
 
-      const reply = await write.send(h);
+      // The read back of a task create waits before its second try.
+      const pending = write.send(h);
+      await vi.advanceTimersByTimeAsync(4000);
+      const reply = await pending;
       await h.owner.settled();
       const state = expectReady(await h.owner.getState(PANEL));
 
@@ -1109,17 +1348,29 @@ describe('writes across a sign-out, another user or another Canvas', () => {
       'createOverride',
       canvasError('server', 500),
       (keys: string[]) => keys,
+      false,
     ],
     [
       'a 404 on a change of an override that exists',
       'updateOverride',
       canvasError('not_found', 404),
       (keys: string[]) => [`assignment:${A.bioLabReport2}`, ...keys],
+      true,
     ],
   ] as const)(
     'ends the queue at %s when Canvas has another student signed in, without a 401',
-    async (_name, method, error, order) => {
+    async (_name, method, error, order, uncheckFirst) => {
       const h = await loaded();
+      if (uncheckFirst) {
+        // The saved override of the lab report is a done mark, so it is unchecked first.
+        await h.owner.act({
+          kind: 'setDone',
+          keys: [`assignment:${A.bioLabReport2}`],
+          done: false,
+        });
+        await h.owner.settled();
+        h.canvas.resetCalls();
+      }
       const keys = order(await olderKeys(h));
       expect(keys.length).toBeGreaterThan(2);
       h.canvas.fail(method, error, { times: 1 });

@@ -39,6 +39,8 @@ interface Failure {
   remaining: number;
   /** Only calls whose first argument equals this value fail. */
   firstArg?: unknown;
+  /** The call takes effect in Canvas, and only its answer is lost. */
+  saved?: boolean;
 }
 
 export interface FakeCanvas extends CanvasApi {
@@ -49,7 +51,11 @@ export interface FakeCanvas extends CanvasApi {
   /** The planner ranges asked for, in order. */
   plannerRanges(): TimeRange[];
   /** Makes the next `times` calls of a method reject with `error`. */
-  fail(method: FakeMethod, error: unknown, options?: { times?: number; firstArg?: unknown }): void;
+  fail(
+    method: FakeMethod,
+    error: unknown,
+    options?: { times?: number; firstArg?: unknown; saved?: boolean },
+  ): void;
   /** Makes calls of a method wait until the returned function runs. */
   hold(method: FakeMethod): () => void;
   /** Like `hold`, for the calls whose arguments `match` selects. */
@@ -162,6 +168,7 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
       );
       if (failure !== undefined) {
         failure.remaining -= 1;
+        if (failure.saved === true) run();
         throw failure.error;
       }
       return structuredClone(run());
@@ -504,6 +511,7 @@ export function createFakeCanvas(scenario: Scenario, maxConcurrency?: number): F
         error,
         remaining: options.times ?? Number.POSITIVE_INFINITY,
         firstArg: options.firstArg,
+        saved: options.saved,
       });
       failures.set(method, list);
     },

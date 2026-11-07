@@ -1,6 +1,6 @@
 /** The groups of the shown span, in the order the model gives (design decision 6). */
-import { useState } from 'preact/hooks';
-import type { ComponentChildren } from 'preact';
+import { useContext, useReducer, useState } from 'preact/hooks';
+import { createContext, type ComponentChildren } from 'preact';
 import { t, tp } from '../../../shared/ui/i18n';
 import type { BottomGroupKind, GroupKind, ItemView, ListGroup, WeekView } from '../model/types';
 import { formatMonthDay, formatWeekday } from './format';
@@ -16,6 +16,29 @@ export type BottomKind = BottomGroupKind;
 
 export interface ListHandlers extends ItemHandlers {
   onMarkAllOlderDone(): void;
+}
+
+/**
+ * Which groups and "N older" lines the student opened, by the place of each in the list. `App`
+ * holds it, as it holds the scroll positions, so the open state outlives the views that replace
+ * the list for a moment: the task form, the settings, a minimize and the Announcements tab. A list
+ * with no holder keeps the state of each part for as long as that part is on screen.
+ */
+export type OpenMemory = Map<string, boolean>;
+export const OpenMemoryContext = createContext<OpenMemory | null>(null);
+
+/** An open state that the holder of the memory keeps under `key`, or the list itself without one. */
+function useOpen(key: string, initial: boolean): [boolean, (open: boolean) => void] {
+  const own = useState<OpenMemory>(() => new Map())[0];
+  const memory = useContext(OpenMemoryContext) ?? own;
+  const [, redraw] = useReducer((count: number) => count + 1, 0);
+  return [
+    memory.get(key) ?? initial,
+    (next) => {
+      memory.set(key, next);
+      redraw(0);
+    },
+  ];
 }
 
 /** How each group shows the due time of its items. */
@@ -105,6 +128,8 @@ function ItemList(props: {
 
 /** A collapsed line such as "12 older" that opens a nested list. */
 function SubList(props: {
+  /** The place of the line in the list, which the open memory keys on. */
+  memoryKey: string;
   label: string;
   items: ItemView[];
   view: WeekView;
@@ -112,7 +137,7 @@ function SubList(props: {
   handlers: ItemHandlers;
   action?: ComponentChildren;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useOpen(props.memoryKey, false);
   const [id] = useState(() => newId('region'));
   if (props.items.length === 0) return null;
   return (
@@ -192,12 +217,14 @@ function LoadingGroup(props: { group: ListGroup; level: HeadingLevel; bars: numb
 function GroupBody(props: { group: ListGroup; view: WeekView; handlers: ListHandlers }) {
   const { group, view, handlers } = props;
   const rows = { view, when: whenMode(group.kind), handlers };
+  const place = `${group.kind}:${group.date ?? ''}`;
   return (
     <>
       <ItemList {...rows} items={group.items} />
       {group.kind === 'past_due' && (
         <SubList
           {...rows}
+          memoryKey={`older:${place}`}
           label={tp('olderCount', group.older.length)}
           items={group.older}
           action={
@@ -216,6 +243,7 @@ function GroupBody(props: { group: ListGroup; view: WeekView; handlers: ListHand
       )}
       <SubList
         {...rows}
+        memoryKey={`done:${place}`}
         label={tp('doneCount', group.doneUndated.length)}
         items={group.doneUndated}
       />
@@ -232,7 +260,7 @@ function GroupSection(props: {
 }) {
   const { group, view, handlers } = props;
   const collapsible = group.kind === 'no_due_date' || group.kind === 'done';
-  const [open, setOpen] = useState(!collapsible);
+  const [open, setOpen] = useOpen(`group:${group.kind}:${group.date ?? ''}`, !collapsible);
   const [id] = useState(() => newId('group'));
   const [bodyId] = useState(() => newId('body'));
   const { kind, date } = group;

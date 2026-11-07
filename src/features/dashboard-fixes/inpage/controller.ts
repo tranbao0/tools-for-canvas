@@ -348,7 +348,9 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         if (seq !== loadSeq) return;
         const next = reply as DashboardData | undefined;
         if (typeof next?.origin !== 'string' || !Array.isArray(next.courses)) return;
-        // A reply without a user id is a failed sign-in check. It says nothing about the student.
+        // A reply without a user id is a failed sign-in check, or a tab of another cookie store.
+        // It says nothing about the student, so with no course it leaves the last courses alone.
+        if (next.userId === undefined && next.courses.length === 0 && data !== null) return;
         if (next.userId !== undefined && next.userId !== gradeStore.userId) {
           const changed = gradeStore.userId !== undefined;
           gradeStore.userId = next.userId;

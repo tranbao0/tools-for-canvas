@@ -664,3 +664,28 @@ test('a file link in the pane of the classic dashboard opens the file pane, and 
   await expect(page.locator(WEEKLY_DOCK)).toBeVisible();
   expect(await paddingRight(page)).toBe(360);
 });
+
+test('focus follows a keyboard student into the pane of the dock and back to Preview', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    fixture: 'dashboard-card-view',
+    width: 1797,
+    height: 1074,
+  });
+  await preview(page, LAB_4).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await expect(page.locator(WEEKLY_DOCK)).toBeHidden();
+  // The dock is hidden, and focus is in the pane (the host stands for its closed root).
+  await expect(page.locator(PANE_HOST)).toBeFocused();
+
+  // The header of the pane: Full view, Open in a tab, then Close assignment.
+  for (let tab = 0; tab < 3; tab += 1) await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect(page.locator(WEEKLY_DOCK)).toBeVisible();
+  await expect(preview(page, LAB_4)).toBeFocused();
+});

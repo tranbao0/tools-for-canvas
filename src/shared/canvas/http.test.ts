@@ -4,11 +4,19 @@ import {
   CANVAS_ACCEPT,
   canvasFetch,
   createCanvasTransport,
+  REQUEST_TIMEOUT_MS,
   resolveOnOrigin,
   toCanvasOrigin,
 } from './http';
 import { CanvasError, type CanvasErrorKind } from './types';
-import { api, catchError, CSRF_TOKEN, ORIGIN, useMswServer } from './testing/support';
+import {
+  api,
+  catchError,
+  CSRF_TOKEN,
+  ORIGIN,
+  useMswServer,
+  useRetryFakeTimers,
+} from './testing/support';
 
 const server = useMswServer();
 
@@ -364,4 +372,65 @@ it('aborts a hung user check after ten seconds', async () => {
   } finally {
     timeout.mockRestore();
   }
+});
+
+describe('the limit of a transport request', () => {
+  it("fails a fetch that never answers with Couldn't reach Canvas, and aborts it", async () => {
+    useRetryFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      // This fetch ignores the signal, as a stalled connection does.
+      const fetchImpl = vi.fn<typeof fetch>((_input, init) => {
+        signal = init?.signal ?? undefined;
+        return new Promise<Response>(() => undefined);
+      });
+      const result = catchError(
+        transport({ fetchImpl })({ method: 'GET', url: '/api/v1/courses' }),
+      );
+      await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS - 1);
+      expect(signal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const error = await result;
+      expect(error).toBeInstanceOf(CanvasError);
+      expect(error).toMatchObject({ kind: 'server', message: "Couldn't reach Canvas" });
+      expect(signal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('covers a body that stops coming, and keeps the shorter limit of the caller', async () => {
+    useRetryFakeTimers();
+    try {
+      const fetchImpl = vi.fn<typeof fetch>(async () => {
+        const body = new ReadableStream<Uint8Array>({ start: () => undefined });
+        return new Response(body, { status: 200 });
+      });
+      const stalledBody = catchError(
+        transport({ fetchImpl })({ method: 'GET', url: '/api/v1/courses' }),
+      );
+      await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+      expect(await stalledBody).toMatchObject({ kind: 'server' });
+
+      const shorter = new AbortController();
+      const never = vi.fn<typeof fetch>(
+        (_input, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+          }),
+      );
+      const early = kindOf(
+        transport({ fetchImpl: never })({
+          method: 'GET',
+          url: '/api/v1/courses',
+          signal: shorter.signal,
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      shorter.abort(new DOMException('Timed out', 'TimeoutError'));
+      expect(await early).toBe('server');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

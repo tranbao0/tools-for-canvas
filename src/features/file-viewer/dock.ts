@@ -342,6 +342,15 @@ export function paneInView(): boolean {
 }
 
 /**
+ * Moves the keyboard focus into the pane that is in view, the file pane before the assignment
+ * pane. The weekly list dock calls it when a pane covers the dock with the focus inside it, which
+ * would drop the focus to the page.
+ */
+export function focusPaneInView(): void {
+  (filePaneOpen() ? shared().file : [...openPanes()].find((open) => open.shown))?.section.focus();
+}
+
+/**
  * Hides the file pane behind the turn-in, or shows it again. The pane keeps its state, because
  * it is hidden and never removed.
  */
@@ -382,7 +391,7 @@ function tell(): void {
 export const DOCK_CSS = `
 :host{--bg:#fff;--text:#273540;--muted:#586874;--line:#e8eaec;--edge:#c7cdd1;--hover:#f2f4f4;--focus:#0374b5;--btn-line:#d7dade;--btn-hover:#e8eaec;color:var(--text)}
 :host([data-theme='dark']){--bg:#1b2330;--text:#fff;--muted:#aab6c0;--line:#2e3e4e;--edge:#4a5b68;--hover:#253443;--focus:#5a9fd4;--btn-line:#4a5b68;--btn-hover:#2e3e4e}
-section{box-sizing:border-box;height:100%;background:var(--bg);border-left:1px solid var(--edge);display:flex;flex-direction:column;font-family:Lato,Arial,sans-serif}
+section{outline:0;box-sizing:border-box;height:100%;background:var(--bg);border-left:1px solid var(--edge);display:flex;flex-direction:column;font-family:Lato,Arial,sans-serif}
 iframe{border:0;width:100%;flex:1;min-height:0;background:transparent}
 .handle{position:absolute;left:-4px;top:0;width:8px;height:100%;cursor:ew-resize;touch-action:none}
 .handle:hover,.handle:focus-visible{background:var(--focus)}
@@ -422,6 +431,8 @@ export function createDock(options: DockOptions): Dock {
   style.textContent = DOCK_CSS;
   const section = doc.createElement('section');
   section.setAttribute('aria-label', options.label);
+  // A script can take the focus into the pane, and a Tab from there goes to its first control.
+  section.tabIndex = -1;
   const handle = doc.createElement('div');
   handle.className = 'handle';
   handle.setAttribute('role', 'separator');

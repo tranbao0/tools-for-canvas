@@ -25,6 +25,7 @@ const A = IDS.assignments;
 const FIRST_DONE_NOTE =
   "Done marks sync to Canvas and its apps. On a module item, this can count as 'Mark as done'.";
 const PROBLEM_SET_4 = 'Problem set 4';
+const QUIZ_3 = 'Quiz 3: Cell membranes';
 const OPTIONAL_REFLECTION = 'Optional: Lab tour reflection';
 
 test.describe('mark done', () => {
@@ -134,6 +135,46 @@ test.describe('mark done', () => {
     await refreshedSince(page, canvas, from);
     await expect(pastDue.getByRole('button', { name: '5 older' })).toBeVisible();
     await expect(mainRows(done).filter({ hasText: PROBLEM_SET_4 })).toHaveCount(0);
+    expect(canvas.unmatched).toEqual([]);
+  });
+
+  test('work that is done only because Canvas counts it as submitted can be unchecked', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const { canvas } = await serveScenario(context, [], {
+      extend: (scenario) => {
+        for (const row of scenario.plannerItems) {
+          if (row.plannable.title === QUIZ_3 && row.submissions !== false) {
+            row.submissions.submitted = true;
+          }
+        }
+      },
+    });
+    await addCsrfCookie(context, canvas.origin);
+    await saveAddress(background, canvas.origin);
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await expect(group(page, 'past_due').getByRole('button', { name: '4 older' })).toBeVisible();
+    await settledList(page);
+
+    // Quiz 3 is handed in and has no override, so it shows checked in Done.
+    const done = group(page, 'done');
+    await done.getByRole('button').first().click();
+    await expect(doneBox(done, QUIZ_3)).toBeChecked();
+    expect(overrideWrites(canvas)).toHaveLength(0);
+
+    await doneBox(done, QUIZ_3).click();
+
+    await expect.poll(() => overrideWrites(canvas).length).toBe(1);
+    expect(overrideWrites(canvas)[0]).toMatchObject({
+      method: 'POST',
+      body: { marked_complete: false, dismissed: false },
+    });
+    await expect(doneBox(done, QUIZ_3)).toHaveCount(0);
+    await expect(doneBox(group(page, 'today'), QUIZ_3)).not.toBeChecked();
+
     expect(canvas.unmatched).toEqual([]);
   });
 });

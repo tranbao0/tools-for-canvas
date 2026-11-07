@@ -7,6 +7,7 @@ import {
   normalizeWeeklyDockWidth,
   type ToolsSettings,
 } from './tools';
+import { MAX_STORED_WIDTH } from '../../features/file-viewer/width';
 
 const ALL_OFF: ToolsSettings = {
   fileViewer: true,
@@ -190,7 +191,8 @@ it('normalizes the viewer switch and saved width', () => {
     fileViewerWidth: 480,
     weeklyDockWidth: 360,
   });
-  expect(normalizeToolsSettings({ fileViewerWidth: 9000 }).fileViewerWidth).toBe(1344);
+  expect(normalizeToolsSettings({ fileViewerWidth: 1500 }).fileViewerWidth).toBe(1500);
+  expect(normalizeToolsSettings({ fileViewerWidth: 99999 }).fileViewerWidth).toBe(MAX_STORED_WIDTH);
 });
 
 describe('the width of the weekly dock', () => {
@@ -202,10 +204,10 @@ describe('the width of the weekly dock', () => {
     expect(normalizeWeeklyDockWidth(undefined)).toBe(360);
   });
 
-  it('follows the width rules of the file pane: at least 360 px, at most 70% of the window', () => {
+  it('follows the width rules of the file pane: at least 360 px, at most 70% of the window, and no window limit in storage', () => {
     expect(normalizeToolsSettings({ weeklyDockWidth: 100 }).weeklyDockWidth).toBe(360);
     expect(normalizeToolsSettings({ weeklyDockWidth: 520 }).weeklyDockWidth).toBe(520);
-    expect(normalizeToolsSettings({ weeklyDockWidth: 9000 }).weeklyDockWidth).toBe(1344);
+    expect(normalizeToolsSettings({ weeklyDockWidth: 1500 }).weeklyDockWidth).toBe(1500);
     expect(normalizeWeeklyDockWidth(900, 1000)).toBe(700);
   });
 

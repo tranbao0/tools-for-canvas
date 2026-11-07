@@ -396,10 +396,13 @@ describe('actions', () => {
   }
 
   /** Every undoable write answers with the data that Undo needs. */
-  function undoHost(): FakeHost {
+  /** The tasks whose DELETE the fake background has not started, as the state reply names them. */
+  function undoHost(open = new Set<string>()): FakeHost {
     const fake = fakeHost();
     fake.reply = (message) => {
-      if (message.type === 'weekrow:get-state') return readyFor(fake.user, { origin: fake.origin });
+      if (message.type === 'weekrow:get-state') {
+        return readyFor(fake.user, { origin: fake.origin, openDeletes: [...open] });
+      }
       if (message.type === 'weekrow:refresh') return { ok: true, retryAt: null };
       if (message.type !== 'weekrow:action') return { ok: true };
       const { action } = message;
@@ -416,9 +419,16 @@ describe('actions', () => {
               }
             : { undo: null };
         case 'deleteTask':
+          open.add(action.noteId);
           return {
             undo: { kind: 'delete', userId: fake.user, origin: fake.origin, noteId: action.noteId },
           };
+        case 'cancelDelete':
+          open.delete(action.noteId);
+          return { undo: null, restored: true };
+        case 'sendDelete':
+          open.delete(action.noteId);
+          return { undo: null };
         default:
           return { undo: null };
       }
@@ -445,6 +455,33 @@ describe('actions', () => {
     runtime.actions.setDone('assignment:1', false);
     await settle();
     expect(runtime.state()).toMatchObject({ undo: null });
+  });
+
+  it('keeps the Undo notice of a done mark when the same mark repeats before the list shows it', async () => {
+    const { fake, runtime } = await started(undoHost());
+
+    runtime.actions.setDone('assignment:1', true);
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+    expect(sentActions(fake.sent)).toHaveLength(1);
+    expect(runtime.state()).toMatchObject({ undo: DONE_INFO });
+
+    // The opposite direction is a new mark: it ends the notice.
+    runtime.actions.setDone('assignment:1', false);
+    await settle();
+    expect(sentActions(fake.sent)).toHaveLength(2);
+    expect(runtime.state()).toMatchObject({ undo: null });
+  });
+
+  it('sends a mark again when the student reverses it and reverses it back before the first lands', async () => {
+    const { fake, runtime } = await started(undoHost());
+
+    runtime.actions.setDone('assignment:1', true);
+    runtime.actions.setDone('assignment:1', false);
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+
+    expect(sentActions(fake.sent)).toHaveLength(3);
   });
 
   it('shows the notice again when the data owner refuses the Undo, and sends the restore again on the next tap', async () => {
@@ -506,6 +543,68 @@ describe('actions', () => {
     expect(runtime.state()).not.toMatchObject({ undo: DONE_INFO });
   });
 
+  it('says in one line when an Undo restored nothing, and the line stays until the student closes it', async () => {
+    const fake = undoHost();
+    const { runtime } = await started(fake);
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+    const answer = fake.reply;
+    fake.reply = (message) =>
+      message.type === 'weekrow:action' && message.action.kind === 'restore'
+        ? { undo: null, restored: false }
+        : answer(message);
+
+    runtime.actions.undo();
+    await settle();
+    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: { kind: 'not_restored' } });
+
+    // A later state reply of the same student keeps the line.
+    fake.changed();
+    await settle();
+    expect(runtime.state()).toMatchObject({ undo: { kind: 'not_restored' } });
+
+    fake.sent.length = 0;
+    runtime.actions.dismissUndo();
+    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: null });
+    expect(sentActions(fake.sent)).toEqual([]);
+  });
+
+  it('ends a delete notice when the state says that its DELETE has started, and sends no end', async () => {
+    const open = new Set<string>();
+    const { fake, runtime } = await started(undoHost(open));
+    runtime.actions.deleteTask('8');
+    await settle();
+    expect(runtime.state()).toMatchObject({ undo: { kind: 'deleted' } });
+    fake.sent.length = 0;
+
+    // The background sent the DELETE: it left `openDeletes` and changed the marker.
+    open.delete('8');
+    fake.changed();
+    await settle();
+
+    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: null });
+    expect(sentActions(fake.sent)).toEqual([]);
+  });
+
+  it('keeps a delete notice when an answer to a request sent before the delete arrives late', async () => {
+    const fake = undoHost();
+    const answers: ((state: StateReply) => void)[] = [];
+    const { runtime } = await started(fake);
+    const base = fake.reply;
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state'
+        ? new Promise((resolve) => answers.push(resolve))
+        : base(message);
+    fake.changed();
+    runtime.actions.deleteTask('8');
+    await settle();
+
+    // The old request cannot name the new delete.
+    answers[0]?.(readyFor(USER, { openDeletes: [] }));
+    await settle();
+    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: { kind: 'deleted' } });
+  });
+
   it('checks the items of the "N older" list that it shows, with one notice', async () => {
     const { fake, runtime } = await started(undoHost());
     const state = runtime.state();
@@ -522,6 +621,35 @@ describe('actions', () => {
       { userId: USER, origin: ORIGIN, kind: 'setDone', keys, done: true },
     ]);
     expect(runtime.state()).toMatchObject({ undo: { kind: 'done', count: keys.length } });
+  });
+
+  it('shows the line when the reply to an Undo never comes', async () => {
+    const { fake, runtime } = await started(undoHost());
+    const reply = fake.reply;
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+    fake.reply = (message) => {
+      if (message.type === 'weekrow:action' && message.action.kind !== 'setDone') {
+        throw new Error('The message channel closed.');
+      }
+      return reply(message);
+    };
+
+    runtime.actions.undo();
+    await settle();
+
+    expect(runtime.state()).toMatchObject({ undo: { kind: 'not_restored' } });
+  });
+
+  it('keeps the Undo of the first click when a read mark repeats before the list shows it', async () => {
+    const { fake, runtime } = await started(undoHost());
+    runtime.actions.markAnnouncementRead('101', '7');
+    runtime.actions.markAnnouncementRead('101', '7');
+    await settle();
+
+    expect(
+      sentActions(fake.sent).filter((action) => action.kind === 'markAnnouncement'),
+    ).toHaveLength(1);
   });
 
   it('takes one press of "Mark all older done" until the first has ended', async () => {
@@ -1964,7 +2092,7 @@ describe('write identity', () => {
     'drops row identity in %s but keeps delete notice identity',
     async (kind) => {
       const fake = fakeHost();
-      let state: StateReply = readyFor(USER);
+      let state: StateReply = readyFor(USER, { openDeletes: ['8'] });
       fake.reply = (message) =>
         message.type === 'weekrow:get-state'
           ? state
@@ -1994,7 +2122,7 @@ describe('write identity', () => {
   );
   it('ends a delete notice with the identity saved in the notice, not the shown one', async () => {
     const fake = fakeHost();
-    let state: StateReply = readyFor(USER);
+    let state: StateReply = readyFor(USER, { openDeletes: ['8'] });
     fake.reply = (message) =>
       message.type === 'weekrow:get-state'
         ? state

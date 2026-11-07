@@ -220,6 +220,8 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   let coursesOrigin: string | null = null;
   let courseFilter: string | null | undefined = undefined;
   let notice: Notice | null = null;
+  /** The number of the last state request that went out before the notice showed. */
+  let noticeSeq = 0;
   const tabsOption = options.announcementTabs ?? false;
   const tabsShown = (): boolean =>
     isTabSurface(options.surface) && (typeof tabsOption === 'function' ? tabsOption() : tabsOption);
@@ -306,8 +308,11 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
    * The read after the last save tells what the storage holds, whether the save worked or not.
    */
   let saving = 0;
-  /** A press of "Mark all older done" is on its way. */
-  let markingOlder = false;
+  /**
+   * The newest done mark of each key that is on its way, until the list shows it. A repeat of the
+   * same direction writes nothing, but it would end the Undo notice of the first.
+   */
+  const marking = new Map<string, { done: boolean }>();
 
   function applySettings(value: Settings): void {
     if (settings !== null && sameSettings(settings, value)) return;
@@ -367,10 +372,17 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     ) {
       courseFilter = undefined;
     }
+    const noticed = notice?.data[0];
     if (
-      notice !== null &&
+      noticed !== undefined &&
       reply.kind === 'ready' &&
-      (reply.userId !== notice.data[0]?.userId || reply.origin !== notice.data[0]?.origin)
+      (reply.userId !== noticed.userId ||
+        reply.origin !== noticed.origin ||
+        // The DELETE of the task is out or on its way, so Undo cannot bring the task back. A
+        // reply to a request that went out before the notice cannot say.
+        (noticed.kind === 'delete' &&
+          seq > noticeSeq &&
+          !reply.openDeletes.includes(noticed.noteId)))
     ) {
       notice = null;
     }
@@ -531,6 +543,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
               info: target === undefined ? { kind: shows, count } : { kind: shows, count, target },
               data,
             };
+            noticeSeq = requestSeq;
             emit();
           } else {
             for (const d of data) if (d.kind === 'delete') endDelete(d);
@@ -543,6 +556,30 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
         report('action')(error);
         return undefined;
       });
+  }
+
+  /**
+   * Runs `send` for the keys whose newest mark on its way does not have the same direction. A
+   * repeat writes nothing, so it must not end the notice of the first mark.
+   */
+  function markOnce(
+    keys: string[],
+    done: boolean,
+    send: (fresh: string[]) => Promise<unknown>,
+  ): void {
+    const fresh = keys.filter((key) => marking.get(key)?.done !== done);
+    if (fresh.length === 0) return;
+    const mark = { done };
+    for (const key of fresh) marking.set(key, mark);
+    void send(fresh).finally(() => {
+      for (const key of fresh) if (marking.get(key) === mark) marking.delete(key);
+    });
+  }
+
+  function markDone(keys: string[], done: boolean): void {
+    markOnce(keys, done, (fresh) =>
+      sendAction({ kind: 'setDone', keys: fresh, done }, done ? 'done' : undefined),
+    );
   }
 
   function scheduleRefreshTick(): void {
@@ -625,19 +662,15 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       reload();
     },
     setDone(key: string, done: boolean) {
-      sendAction({ kind: 'setDone', keys: [key], done }, done ? 'done' : undefined);
+      markDone([key], done);
     },
     markAllOlderDone() {
-      // The list has not drawn the first press yet, so a second one would read its marks as the
-      // state to go back to, and Undo could not restore the items.
-      if (markingOlder || base.kind !== 'ready') return;
+      if (base.kind !== 'ready') return;
       const past = base.view.groups.find((group) => group.kind === 'past_due');
-      const keys = (past ? olderToMarkDone(past) : []).map((item) => item.key);
-      if (keys.length === 0) return;
-      markingOlder = true;
-      void sendAction({ kind: 'setDone', keys, done: true }, 'done').finally(() => {
-        markingOlder = false;
-      });
+      markDone(
+        (past ? olderToMarkDone(past) : []).map((item) => item.key),
+        true,
+      );
     },
     undo() {
       const last = notice;
@@ -672,12 +705,14 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       const seq = writeSeq;
       // The data owner refuses an Undo while the sign-in check fails. Nothing was restored then,
       // so the notice shows again, unless the student acted or left meanwhile. A restore is safe
-      // to send twice.
+      // to send twice. A reply that never came says nothing about the write, so the line shows.
       Promise.all(sends)
         .then((replies) => {
-          if (!replies.some((reply) => reply?.refused === true)) return;
           if (stopped || seq !== writeSeq || notice !== null) return;
-          notice = last;
+          if (replies.some((reply) => reply?.refused === true)) notice = last;
+          else if (replies.some((reply) => reply === undefined || reply.restored === false)) {
+            notice = { info: { kind: 'not_restored', count: 0 }, data: [] };
+          } else return;
           emit();
         })
         .catch(report('undo'));
@@ -758,7 +793,9 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       emit();
     },
     markAnnouncementRead(courseId: string, topicId: string) {
-      sendAction({ kind: 'markAnnouncement', courseId, topicId }, 'announcement_read');
+      markOnce([announcementKey(courseId, topicId)], true, () =>
+        sendAction({ kind: 'markAnnouncement', courseId, topicId }, 'announcement_read'),
+      );
     },
     async loadAnnouncementMessage(courseId: string, topicId: string) {
       const reply = (await host.send({ type: 'weekrow:announcement', courseId, topicId })) as

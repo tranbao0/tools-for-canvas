@@ -150,6 +150,8 @@ export function announcementsFix(): Fix {
   const open = new Set<string>();
   /** The rows whose last mark Canvas refused: they stay, so the student can try again there. */
   const refused = new Set<string>();
+  /** The number of the newest mark of each row, so that only the reply to that mark judges it. */
+  const newestMark = new Map<string, number>();
   const bodies = new Map<string, AnnouncementBody>();
   const views = new Map<HTMLElement, View>();
   let store: AnnouncementStore | null = null;
@@ -534,8 +536,12 @@ export function announcementsFix(): Fix {
       if (view.leaving.get(key)?.over === true && !data.pending(key)) return;
       setNote(view, null);
       refused.delete(key);
+      const mark = (newestMark.get(key) ?? 0) + 1;
+      newestMark.set(key, mark);
       void data.mark(row, !row.read, { read: view.read, courseId: course }).then((ok) => {
-        if (!ok) {
+        // Only the newest mark of a row decides whether the row counts as refused, whichever
+        // reply comes last.
+        if (!ok && newestMark.get(key) === mark) {
           refused.add(key);
           setNote(view, t('annMarkFailed'));
         }
@@ -1136,6 +1142,7 @@ export function announcementsFix(): Fix {
       views.clear();
       open.clear();
       refused.clear();
+      newestMark.clear();
       bodies.clear();
       focusOpened = null;
       doc?.querySelectorAll(MINE).forEach(unmountHost);

@@ -25,6 +25,7 @@ import {
   mkGroup,
   mkItem,
   mkNote,
+  announcementsProps,
   mkView,
   nothingDueView,
   pastSpanView,
@@ -1709,6 +1710,14 @@ describe('notices', () => {
     expect(actions.undo).not.toHaveBeenCalled();
   });
 
+  it('says in one line that an Undo could not restore, with no Undo button', () => {
+    const { actions } = setup(readyState({ undo: { kind: 'not_restored', count: 0 } }));
+    expect(screen.getByText("Couldn't undo that")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close notice' }));
+    expect(actions.dismissUndo).toHaveBeenCalledTimes(1);
+  });
+
   it('names the undo keys on the Undo button', () => {
     setup(readyState({ undo: { kind: 'done', count: 1 } }));
     expect(screen.getByRole('button', { name: 'Undo' }).getAttribute('aria-keyshortcuts')).toBe(
@@ -2249,6 +2258,38 @@ describe('focus after "Mark all older done"', () => {
     rerender({ ...state, view: { ...state.view, groups } });
     expect(document.activeElement).toBe(
       screen.getByRole('checkbox', { name: 'Done: Industrial revolution discussion' }),
+    );
+  });
+
+  it('moves to the Add button of the side panel when the marks empty the list', () => {
+    const state = readyState();
+    const { rerender } = setup(state);
+    fireEvent.click(screen.getByRole('button', { name: '3 older' }));
+    screen.getByRole('button', { name: 'Mark all older done' }).focus();
+    rerender({ ...state, view: { ...state.view, groups: [] } });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Add task' }));
+  });
+});
+
+describe('open groups over the views that replace the list', () => {
+  it('keeps "N older" open over the Announcements tab', () => {
+    const state = readyState();
+    const actions: SpyActions = spyActions();
+    const draw = (tab: 'tasks' | 'announcements') => (
+      <App
+        surface="panel"
+        state={state}
+        actions={actions}
+        announcements={announcementsProps({ tab })}
+      />
+    );
+    const { rerender } = render(draw('tasks'));
+    fireEvent.click(screen.getByRole('button', { name: '3 older' }));
+    rerender(draw('announcements'));
+    expect(screen.queryByRole('button', { name: '3 older' })).toBeNull();
+    rerender(draw('tasks'));
+    expect(screen.getByRole('button', { name: '3 older' }).getAttribute('aria-expanded')).toBe(
+      'true',
     );
   });
 });

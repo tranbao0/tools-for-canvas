@@ -38,7 +38,16 @@ export interface FullViewMessage {
   available: boolean;
 }
 
-export type PaneMessage = OpenFileMessage | ThemeMessage | FullViewMessage;
+/**
+ * Whether another pane covers the file pane. A covered pane page is hidden, so no tab of it
+ * shows: the tabs pause their media and keep their scroll position (decision 25).
+ */
+export interface CoveredMessage {
+  type: 'covered';
+  covered: boolean;
+}
+
+export type PaneMessage = OpenFileMessage | ThemeMessage | FullViewMessage | CoveredMessage;
 
 /**
  * What the pane page asks of the Canvas page. `close` is the close button. `escape` is the key:
@@ -108,6 +117,16 @@ export function validFullView(value: unknown): value is FullViewMessage {
     message['type'] === 'full-view' &&
     typeof message['on'] === 'boolean' &&
     typeof message['available'] === 'boolean'
+  );
+}
+
+export function validCovered(value: unknown): value is CoveredMessage {
+  if (typeof value !== 'object' || value === null) return false;
+  const message = value as Record<string, unknown>;
+  return (
+    Object.keys(message).every((key) => ['type', 'covered'].includes(key)) &&
+    message['type'] === 'covered' &&
+    typeof message['covered'] === 'boolean'
   );
 }
 
@@ -224,7 +243,12 @@ export function bindViewerPort(
       handlers.bound();
       return;
     }
-    if (validOpenFile(message.data) || validTheme(message.data) || validFullView(message.data))
+    if (
+      validOpenFile(message.data) ||
+      validTheme(message.data) ||
+      validFullView(message.data) ||
+      validCovered(message.data)
+    )
       handlers.receive(message.data);
   };
   port.addEventListener('message', listener);

@@ -19,6 +19,7 @@ import {
   saveSetting,
   waitForListLoaded,
 } from './support/file-viewer';
+import { startFileHost, TRUST_TEST_CERTIFICATE } from './support/file-host';
 import { json, saveAddress } from './support/scenario-api';
 import { addCsrfCookie, expect, saveTools, serveScenario, test } from './support/weekrow';
 
@@ -2458,5 +2459,60 @@ test.describe('with the scroll bars of the page', () => {
     const back = await geometry(page);
     expect(back.host.x + back.host.width).toBe(client);
     expect(back.card.x + back.card.width).toBe(client - 12);
+  });
+});
+
+test.describe('a file pane that the assignment pane covers', () => {
+  test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
+
+  test('stops the sound of an audio file', async ({ context, page, background }) => {
+    const bytes = readFileSync('tests/fixtures/files/tone.wav');
+    const host = await startFileHost({ '/audio': { body: bytes, contentType: 'audio/wav' } });
+    try {
+      const { canvas } = await open(context, page, background, {
+        extra: [
+          {
+            path: '/api/v1/files/501',
+            body: {
+              id: '501',
+              display_name: 'tone.wav',
+              filename: 'tone.wav',
+              'content-type': 'audio/wav',
+              size: bytes.length,
+              url: '/files/501/download',
+              context_type: 'Course',
+              context_id: '12',
+            },
+          },
+          {
+            path: '/files/501/download',
+            status: 302,
+            headers: { location: `${host.origin}/audio` },
+            body: '',
+          },
+        ],
+      });
+      await ready(page, canvas);
+      await addFileLinkToList(page);
+      const filePane = page.locator(FILE_PANE);
+      await expect(async () => {
+        if (!(await filePane.isVisible()))
+          await page.locator('#list-file').click({ timeout: 2000 });
+        await expect(filePane).toBeVisible({ timeout: 1500 });
+      }).toPass({ timeout: 20_000 });
+      const media = (await pane(page)).locator('audio');
+      await expect(media).toBeVisible();
+      // The loop keeps the sound going, and the mute only lets the test start it without a click.
+      await media.evaluate(async (audio: HTMLAudioElement) => {
+        audio.loop = true;
+        audio.muted = true;
+        await audio.play();
+      });
+      await openPane(page, 'Essay');
+      await expect(filePane).toBeHidden();
+      await expect.poll(() => media.evaluate((audio: HTMLAudioElement) => audio.paused)).toBe(true);
+    } finally {
+      await host.close();
+    }
   });
 });

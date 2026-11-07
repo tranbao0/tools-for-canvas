@@ -824,7 +824,11 @@ for (const mismatch of ['student', 'origin'] as const) {
     expect(h.canvas.calls).toEqual([]);
     expect(await sessionCacheItem.getValue()).toEqual(before);
     expect(reply).toEqual(
-      action.kind === 'createTask' ? { undo: null, created: false } : { undo: null },
+      action.kind === 'createTask'
+        ? { undo: null, created: false }
+        : ['restore', 'restoreAnnouncement', 'cancelDelete'].includes(action.kind)
+          ? { undo: null, restored: false }
+          : { undo: null },
     );
   });
 }

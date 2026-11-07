@@ -20,9 +20,7 @@ import { RowSizeContext } from './slotMode';
 import {
   Dock,
   filterText,
-  isUndoShortcut,
   joinNames,
-  noteText,
   NoticeLine,
   NoticeQueue,
   OfferBanner,
@@ -46,6 +44,8 @@ import {
   ViewSwitch,
   WeekList,
   type ListHandlers,
+  type OpenMemory,
+  OpenMemoryContext,
 } from './WeekList';
 import { captureFocus, firstRowControl, restoreFocus, usable, type FocusSnapshot } from './focus';
 
@@ -62,41 +62,56 @@ interface ScrollMemory {
 }
 
 /**
+ * Puts the element back to the position of `memory` for the place `key` names. Another key starts
+ * at the top. A `null` key leaves the memory alone, and an empty key resets it and scrolls nothing.
+ */
+function useScrollMemory(
+  ref: { current: HTMLElement | null },
+  memory: ScrollMemory,
+  key: string | null,
+): void {
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (element === null || key === null) return;
+    if (memory.key !== key) {
+      memory.key = key;
+      memory.top = 0;
+    }
+    if (key !== '' && element.scrollTop !== memory.top) element.scrollTop = memory.top;
+  }, [ref, memory, key]);
+}
+
+/** The scroll handler that records the position of a region, unless it is hidden. */
+const rememberScroll = (memory: ScrollMemory) => (event: { currentTarget: HTMLElement }) => {
+  if (!event.currentTarget.hidden) memory.top = event.currentTarget.scrollTop;
+};
+
+/**
  * The groups of the in-page list, in the one element that scrolls inside the fixed card. The
  * header and the rings stay above it. The element is a region that a keyboard reaches and scrolls.
+ * A hidden region keeps its position and shows it again when it returns.
  */
 function ScrollRegion(props: {
   memory: ScrollMemory;
   resetKey: string;
   label: string;
-  /** The region keeps its position while it is hidden, and shows it again when it returns. */
   hidden?: boolean;
   children: ComponentChildren;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const { memory } = props;
+  const hidden = props.hidden === true;
   // A hidden region puts its rows back at once.
-  usePull(ref, undefined, false, props.hidden !== true);
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (element === null || props.hidden === true) return;
-    if (memory.key !== props.resetKey) {
-      memory.key = props.resetKey;
-      memory.top = 0;
-    }
-    if (element.scrollTop !== memory.top) element.scrollTop = memory.top;
-  }, [memory, props.resetKey, props.hidden]);
+  usePull(ref, undefined, false, !hidden);
+  useScrollMemory(ref, props.memory, hidden ? null : props.resetKey);
   return (
     <div
       ref={ref}
       class="wr-scroll"
-      hidden={props.hidden}
+      hidden={hidden}
       role="region"
       tabIndex={0}
       aria-label={props.label}
-      onScroll={(event) => {
-        if (!event.currentTarget.hidden) memory.top = event.currentTarget.scrollTop;
-      }}
+      onScroll={rememberScroll(props.memory)}
     >
       {props.children}
     </div>
@@ -105,16 +120,26 @@ function ScrollRegion(props: {
 
 /**
  * The list area that shows the open bottom group in place of the day list. The element stays in
- * the card and is hidden while no group is open. A group starts at the top, also for another span.
+ * the card and is hidden while no group is open. A group starts at the top, also for another
+ * span, and the same group in the same span gets its position back after the settings or the
+ * task form replaced the list.
  */
-function GroupArea(props: { kind: string | null; resetKey: string; children: ComponentChildren }) {
+function GroupArea(props: {
+  kind: string | null;
+  memory: ScrollMemory;
+  resetKey: string;
+  children: ComponentChildren;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   usePull(ref, undefined, false, props.kind !== null);
-  useLayoutEffect(() => {
-    if (ref.current !== null) ref.current.scrollTop = 0;
-  }, [props.kind, props.resetKey]);
+  useScrollMemory(ref, props.memory, props.kind === null ? '' : `${props.kind}:${props.resetKey}`);
   return (
-    <div ref={ref} class="wr-group-area" hidden={props.kind === null}>
+    <div
+      ref={ref}
+      class="wr-group-area"
+      hidden={props.kind === null}
+      onScroll={rememberScroll(props.memory)}
+    >
       {props.children}
     </div>
   );
@@ -167,10 +192,17 @@ export function App(props: AppProps) {
   const { surface, state, actions } = props;
   const rootRef = useRef<HTMLDivElement>(null);
   const [settingsFrom, setSettingsFrom] = useState<string | null>(null);
-  /** The scroll position of the groups, which a redraw, a refresh or the settings keep. */
-  const scrollMemory = useRef<ScrollMemory>({ top: 0, key: '' });
-  /** The scroll position of the Announcements tab. Each tab keeps its own (decision 24). */
-  const announcementsScroll = useRef<ScrollMemory>({ top: 0, key: '' });
+  /** The groups and "N older" lines that the student opened, which the views in between keep. */
+  const openMemory = useRef<OpenMemory>(new Map());
+  /**
+   * The scroll positions that a redraw, a refresh, the settings and the task form keep: the days,
+   * the Announcements tab (each tab keeps its own, decision 24) and the open bottom group.
+   */
+  const scrollMemory = useRef({
+    tasks: { top: 0, key: '' },
+    announcements: { top: 0, key: '' },
+    group: { top: 0, key: '' },
+  });
   const saved = props.settings?.value;
   const rowSize = saved?.rowSize ?? DEFAULT_SETTINGS.rowSize;
   const minimized = surface === 'inpage' && saved?.minimized === true;
@@ -261,30 +293,16 @@ export function App(props: AppProps) {
         state={state}
         actions={actions}
         rootRef={rootRef}
-        scrollMemory={
-          surface === 'inpage'
-            ? { tasks: scrollMemory.current, announcements: announcementsScroll.current }
-            : null
-        }
+        scrollMemory={surface === 'inpage' ? scrollMemory.current : null}
         announcements={props.announcements}
         settings={props.settings?.value}
         onSettings={openSettings}
         onMinimize={onMinimize}
       />
     );
-  } else if (state.kind === 'loading') {
-    body = (
-      <LoadingView
-        surface={surface}
-        span={props.settings?.value.span ?? DEFAULT_SPAN}
-        settings={props.settings?.value}
-        actions={actions}
-        onSettings={openSettings}
-        onMinimize={onMinimize}
-      />
-    );
-  } else if (state.kind === 'cant_load') {
-    // The header and the arrows stay, so the student can step to a span that is cached.
+  } else if (state.kind === 'loading' || state.kind === 'cant_load') {
+    // After a failed load the header and the arrows stay, so the student can step to a span that
+    // is cached.
     body = (
       <LoadingView
         surface={surface}
@@ -294,13 +312,15 @@ export function App(props: AppProps) {
         onSettings={openSettings}
         onMinimize={onMinimize}
         failed={
-          <StateBody
-            state={state}
-            actions={actions}
-            level={subLevel(level)}
-            context="surface"
-            showOffer={surface === 'panel'}
-          />
+          state.kind === 'cant_load' ? (
+            <StateBody
+              state={state}
+              actions={actions}
+              level={subLevel(level)}
+              context="surface"
+              showOffer={surface === 'panel'}
+            />
+          ) : undefined
         }
       />
     );
@@ -327,7 +347,9 @@ export function App(props: AppProps) {
       aria-busy={settingsFrom === null && state.kind === 'loading' ? true : undefined}
       ref={rootRef}
     >
-      <RowSizeContext.Provider value={rowSize}>{body}</RowSizeContext.Provider>
+      <RowSizeContext.Provider value={rowSize}>
+        <OpenMemoryContext.Provider value={openMemory.current}>{body}</OpenMemoryContext.Provider>
+      </RowSizeContext.Provider>
       {showDock && (
         <Dock
           undo={state.undo ?? null}
@@ -381,33 +403,6 @@ function LoadingView(props: {
 }
 
 /**
- * Ctrl+Z (Cmd+Z on a Mac) undoes while the Undo notice shows (design decision 6). The key works
- * anywhere in the surface root, the panel document or the in-page shadow root, but never in a
- * text field. The listener is in place as soon as the notice is on screen, so a fast key press
- * right after the action is not lost.
- */
-function useUndoShortcut(
-  rootRef: RefObject<HTMLDivElement | null>,
-  active: boolean,
-  onUndo: () => void,
-): void {
-  const latest = useRef(onUndo);
-  latest.current = onUndo;
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!active || !root) return;
-    const scope = root.getRootNode() as Document | ShadowRoot;
-    const onKeyDown = (event: Event) => {
-      if (!isUndoShortcut(event as KeyboardEvent)) return;
-      event.preventDefault();
-      latest.current();
-    };
-    scope.addEventListener('keydown', onKeyDown);
-    return () => scope.removeEventListener('keydown', onKeyDown);
-  }, [rootRef, active]);
-}
-
-/**
  * Keeps `--wr-inset-top` and `--wr-inset-bottom` on the root at the heights of the sticky header
  * (side panel only) and the sticky dock. The stylesheet turns them into scroll margins, so a
  * focused control never hides under either (WCAG 2.4.11).
@@ -443,7 +438,7 @@ function ReadyView(props: {
   actions: Actions;
   rootRef: RefObject<HTMLDivElement | null>;
   /** The scroll position of each tab, for the in-page list. The side panel scrolls as a page. */
-  scrollMemory: Record<ListTab, ScrollMemory> | null;
+  scrollMemory: Record<ListTab | 'group', ScrollMemory> | null;
   /** The Announcements tab, or `undefined` on a surface without the tabs. */
   announcements: AppProps['announcements'];
   /** The saved settings, or `undefined` until they load. */
@@ -522,7 +517,6 @@ function ReadyView(props: {
     restoredRow.current = null;
     control.focus();
   });
-  useUndoShortcut(rootRef, form === null && state.undo !== null, undo);
   useStickyInsets(rootRef, surface, form === null);
   // The side panel has no list that scrolls: its page does, so the task panel is the list there.
   // The card, the dock and the widgets pull in the lists that own the scroll, which mount and
@@ -602,7 +596,7 @@ function ReadyView(props: {
     notices.push(
       <NoticeLine
         key={note}
-        text={noteText(note)}
+        text={t('noteFirstDone')}
         action={t('gotIt')}
         onAction={() => {
           actions.markNoteSeen(note);
@@ -771,8 +765,8 @@ function ReadyView(props: {
         aria-labelledby={ann === undefined ? undefined : tabId(tabIds, tab)}
       >
         {scrolling}
-        {surface === 'inpage' && tab === 'tasks' && (
-          <GroupArea kind={shownGroup} resetKey={spanKey}>
+        {props.scrollMemory !== null && tab === 'tasks' && (
+          <GroupArea kind={shownGroup} memory={props.scrollMemory.group} resetKey={spanKey}>
             {shownGroup !== null && (
               <GroupView
                 key={shownGroup}

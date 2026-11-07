@@ -366,7 +366,8 @@ export type { Offer };
  * It has no timer, so keyboard and screen reader users can reach it.
  */
 export interface UndoInfo {
-  kind: 'done' | 'deleted' | 'announcement_read';
+  /** `not_restored` is the line after an Undo that could not restore: it has no Undo button. */
+  kind: 'done' | 'deleted' | 'announcement_read' | 'not_restored';
   count: number;
   /** The key of the Announcements row that Undo brings back, so focus can follow it. */
   target?: string;
@@ -406,6 +407,8 @@ export type SurfaceState = { undo?: UndoInfo | null } & (
       refreshing: boolean;
       offer: Offer | null;
       undo: UndoInfo | null;
+      /** The tasks whose delayed DELETE has not started: Undo can still bring them back. */
+      openDeletes: string[];
       /** One-time notes the student has already seen. */
       seenNotes: { firstDone: boolean };
       /** Courses for the task form, not hidden. */

@@ -41,6 +41,7 @@ import {
 } from '../../dashboard-fixes/protocol';
 import { normalizeCanvasId, sameCanvasId } from '../../../shared/canvas/ids';
 import { assignmentIdsToLookup } from '../model/normalize';
+import { isDone } from '../model/rules';
 import {
   DEFAULT_LIST_TABS,
   announcementKey,
@@ -155,6 +156,8 @@ import {
  * A deleted task is sent to Canvas when its Undo notice ends, and at the latest this long after
  * the delete, so a closed panel cannot keep a task alive (decision 10).
  */
+/** The pause before the second read back of a task whose create lost its answer. */
+const SAVED_NOTE_RETRY_MS = 3000;
 export const MAX_DELETE_DELAY_MS = 2 * 60_000;
 /** A view counts as in use for this long after a surface showed it. */
 export const ACTIVE_RANGE_MS = 10 * 60_000;
@@ -235,10 +238,11 @@ export interface DataOwner {
     tabId: number | undefined,
     origin: string | null,
   ): Promise<StateReply>;
-  refresh(reason: RefreshReason, origin: string | null): Promise<RefreshResult>;
+  /** `tabId` is the tab of the surface, when it has one. A tab in another cookie store causes no request. */
+  refresh(reason: RefreshReason, origin: string | null, tabId?: number): Promise<RefreshResult>;
   trigger(reason: BrowserTrigger): Promise<void>;
-  /** A page of `origin` loaded. Only the saved Canvas counts. */
-  pageLoaded(origin: string): Promise<void>;
+  /** A page of `origin` loaded in the tab `tabId`. Only the saved Canvas counts, and only in the request store. */
+  pageLoaded(origin: string, tabId?: number): Promise<void>;
   /**
    * The detector found Canvas on a page of `origin`. Saves the origin when no address is saved
    * yet and it may be saved without asking (an `instructure.com` host). Resolves with:
@@ -408,6 +412,15 @@ export interface DataOwner {
 const NO_UNDO: ActionReply = { undo: null };
 /** The reply to an Undo that the cookie check refused. The surface shows the notice again. */
 const UNDO_REFUSED: ActionReply = { undo: null, refused: true };
+/** The replies to an Undo: whether it brought the item back. */
+const RESTORED: ActionReply = { undo: null, restored: true };
+const NOT_RESTORED: ActionReply = { undo: null, restored: false };
+/** The actions of an Undo: their reply says whether the item came back, also when none could. */
+const UNDO_KINDS: ReadonlySet<DataAction['kind']> = new Set([
+  'restore',
+  'restoreAnnouncement',
+  'cancelDelete',
+]);
 /** The result of a request whose response the cookie rule kept out of the cache. */
 const DROPPED = Symbol('dropped');
 const NO_RETRY: RefreshResult = { retryAt: null };
@@ -471,13 +484,22 @@ function blocksLoads(failure: Failure | null): boolean {
 
 const NO_FLAGS: OverrideFlags = { markedComplete: false, dismissed: false };
 
+function sameFlags(a: OverrideFlags, b: OverrideFlags): boolean {
+  return a.markedComplete === b.markedComplete && a.dismissed === b.dismissed;
+}
+
+/**
+ * The flags that give the done state the list shows for an item. Work with no override is done
+ * when Canvas counts it as submitted, graded, excused or reviewed, so its flags are a check.
+ */
 function previousFlags(item: Item): OverrideFlags {
   return item.override === null
-    ? { markedComplete: false, dismissed: false }
+    ? { markedComplete: isDone(item), dismissed: false }
     : { markedComplete: item.override.markedComplete, dismissed: item.override.dismissed };
 }
 
 const NOTE_KEY_PREFIX = 'planner_note:';
+const DAY_MS = 86_400_000;
 /** How long a viewer read waits for the claim of a student before it refuses. */
 const VIEWER_CLAIM_WAIT_MS = 3000;
 
@@ -2008,8 +2030,108 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   /**
+   * Adds a created task, confirmed, with the id Canvas gave it. An abandoned queue ends the
+   * generation, but Canvas saved the task for the same student: it shows, and a round syncs the
+   * list.
+   */
+  async function addCreated(created: NoteValue, stamp: WriteStamp): Promise<boolean> {
+    if (cache === null || !identityHolds(stamp)) return false;
+    const confirmed: NotePatch = {
+      kind: 'note',
+      id: nextId(),
+      noteId: created.id,
+      note: created,
+      confirmedAt: clock.now(),
+    };
+    cache = bake({ ...cache, patches: [...cache.patches, confirmed] }, confirmed);
+    await finishWrite();
+    return true;
+  }
+
+  /** The keys of the tasks that the cache holds or that a patch names. */
+  function knownNoteKeys(): Set<string> {
+    return new Set([
+      ...Object.keys(cache?.planner.items ?? {}),
+      ...(cache?.patches ?? []).flatMap((patch) =>
+        patch.kind === 'note' ? [noteKey(patch.noteId)] : [],
+      ),
+    ]);
+  }
+
+  /** One read of the planner of a task's day: the task that matches it and is not in `before`. */
+  async function readSavedNote(
+    note: NoteValue,
+    before: ReadonlySet<string>,
+    origin: string,
+    stamp: WriteStamp,
+  ): Promise<NoteValue | null> {
+    const at = Date.parse(note.todoDate);
+    // The answer can enter the cache, so the read runs under the cookie rule, and a task of another
+    // account never counts. It does not need the write queue, which a failed write can end.
+    const items = await cookieBound(() =>
+      apiFor(origin).listPlannerItems(toRange({ start: at - DAY_MS, end: at + DAY_MS })),
+    );
+    if (items === DROPPED || !identityHolds(stamp)) return null;
+    for (const item of items) {
+      const { plannable } = item;
+      if (item.plannable_type !== 'planner_note') continue;
+      if (before.has(noteKey(item.plannable_id))) continue;
+      if (plannable.user_id !== undefined && !sameCanvasId(plannable.user_id, stamp.userId)) {
+        continue;
+      }
+      const found: NoteValue = {
+        id: item.plannable_id,
+        title: plannable.title,
+        details: typeof plannable.details === 'string' ? plannable.details : null,
+        todoDate: item.plannable_date,
+        courseId: plannable.course_id ?? null,
+      };
+      if (
+        found.title === note.title &&
+        (found.details || null) === (note.details || null) &&
+        Date.parse(found.todoDate) === at &&
+        found.courseId === note.courseId
+      )
+        return found;
+    }
+    return null;
+  }
+
+  /**
+   * Looks for a task that a failed create may have saved. A POST has no key that makes a repeat
+   * safe, so a create whose answer is lost must be found before the student saves again. `before`
+   * holds the tasks from before the POST, because a round can bring the new task into the cache
+   * while the POST waits. A slow Canvas is the likely cause of a lost answer, so a read that fails
+   * runs once more after a pause. It returns `null` when nothing matches or both reads fail.
+   */
+  async function findSavedNote(
+    note: NoteValue,
+    before: ReadonlySet<string>,
+    stamp: WriteStamp,
+  ): Promise<NoteValue | null> {
+    const { origin } = stamp;
+    if (origin === null) return null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await readSavedNote(note, before, origin, stamp);
+      } catch (error) {
+        deps.log('write', error);
+      }
+      if (attempt === 0) {
+        await new Promise<void>((resolve) =>
+          timers.setTimeout(() => resolve(), SAVED_NOTE_RETRY_MS),
+        );
+        if (!identityHolds(stamp)) return null;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Creates a custom task and adds it, confirmed, with the id Canvas gave it. `created` tells
-   * whether Canvas saved it. `sync` tells whether the list must sync with Canvas afterward.
+   * whether Canvas saved it. `sync` tells whether the list must sync with Canvas afterward. When
+   * no answer comes in time, Canvas may still hold the task: the planner is read back, and a
+   * match counts as saved.
    */
   async function runNoteCreate(
     note: NoteValue,
@@ -2018,6 +2140,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (stamp.origin === null) return { created: false, sync: false };
     // A create carries free text, so Canvas confirms the student first.
     if (!(await verifyUser(stamp))) return { created: false, sync: false };
+    const before = knownNoteKeys();
     try {
       const api = apiFor(stamp.origin);
       // The user check above can take a while, so the guard reads the cookie again right before
@@ -2032,20 +2155,17 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       }
       // An abandoned queue ends the generation, but Canvas saved the task for the same student:
       // it shows, and a round syncs the list.
-      if (cache === null || !identityHolds(stamp)) return { created: false, sync: false };
-      const created = noteValue(response);
-      const confirmed: NotePatch = {
-        kind: 'note',
-        id: nextId(),
-        noteId: created.id,
-        note: created,
-        confirmedAt: clock.now(),
-      };
-      cache = bake({ ...cache, patches: [...cache.patches, confirmed] }, confirmed);
-      await finishWrite();
-      return { created: true, sync: true };
+      const created = await addCreated(noteValue(response), stamp);
+      return { created, sync: created };
     } catch (error) {
       if (isCanvasError(error, 'refused')) return { created: false, sync: false };
+      if (isCanvasError(error, 'server') || isCanvasError(error, 'network')) {
+        const saved = await findSavedNote(note, before, stamp);
+        if (saved !== null) {
+          const created = await addCreated(saved, stamp);
+          return { created, sync: created };
+        }
+      }
       const gone = await failWrite(undefined, error, stamp);
       await finishWrite();
       return { created: false, sync: !gone };
@@ -2070,6 +2190,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           ? () => {
               if (findDeletePatch(patch.noteId)?.id !== patch.id) return false;
               startedDeletes.add(patch.noteId);
+              // A surface that shows the Undo notice of this task ends it.
+              bumpLater();
               return true;
             }
           : undefined,
@@ -2127,6 +2249,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     cache = { ...cache, patches: [...cache.patches, patch] };
   }
 
+  /** Adds a waiting override write and queues it. Resolves with whether Canvas saved it. */
   function addOverridePatch(
     key: string,
     target: OverrideTarget,
@@ -2135,7 +2258,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     overrideId: string,
     userId: string,
     stamp: WriteStamp,
-  ): void {
+  ): Promise<boolean> {
     const patch: OverridePatch = {
       kind: 'override',
       id: nextId(),
@@ -2145,7 +2268,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       confirmedAt: null,
     };
     addPatch(patch);
-    void enqueueWrite((stamp) => runOverrideWrite(patch.id, previous, stamp), 'writes', stamp);
+    return enqueueWrite(
+      (stamp) => runOverrideWrite(patch.id, previous, stamp),
+      'writes',
+      stamp,
+    ).then(() => {
+      const written = findPatch(patch.id);
+      return written?.kind === 'override' && written.confirmedAt !== null;
+    });
   }
 
   function addNotePatch(noteId: string, note: NoteValue | null): NotePatch {
@@ -2185,15 +2315,31 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     void enqueueWrite((stamp) => runNoteWrite(patch.id, 'delete', stamp), 'writes', stamp);
   }
 
-  /** Undo of a task delete. Once the DELETE has started, the task is gone in Canvas. */
-  function cancelDelete(noteId: string): void {
+  /**
+   * Undo of a task delete. Once the DELETE has started, the task is gone in Canvas and nothing
+   * brings it back, so the reply says that nothing was restored.
+   */
+  function cancelDelete(noteId: string): ActionReply {
     const patch = findDeletePatch(noteId);
-    if (patch === undefined || startedDeletes.has(noteId)) return;
+    if (patch === undefined || startedDeletes.has(noteId)) return NOT_RESTORED;
     forgetDelete(noteId);
     // A queued DELETE job finds no patch and sends nothing.
     dropPatch(patch.id);
     persist();
     bumpLater();
+    return RESTORED;
+  }
+
+  /** The tasks whose DELETE has not started: an Undo can still stop it. */
+  function openDeletes(): string[] {
+    return (cache?.patches ?? []).flatMap((patch) =>
+      patch.kind === 'note' &&
+      patch.note === null &&
+      patch.confirmedAt === null &&
+      !startedDeletes.has(patch.noteId)
+        ? [patch.noteId]
+        : [],
+    );
   }
 
   async function writeContext(stamp: WriteStamp): Promise<WriteContext | null> {
@@ -2209,12 +2355,27 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   /**
+   * The override flags that the list shows for an item: those of the newest waiting write to its
+   * key, else those of the item. It reads the cache at call time, so a write that an earlier
+   * action added after the item was read counts.
+   */
+  function shownFlags(item: Item): OverrideFlags {
+    const waiting = cache?.patches.filter(
+      (patch) => patch.kind === 'override' && patch.key === item.key,
+    );
+    const newest = waiting?.at(-1);
+    return newest?.kind === 'override'
+      ? { markedComplete: newest.override.marked_complete, dismissed: newest.override.dismissed }
+      : previousFlags(item);
+  }
+
+  /**
    * Writes the override flags that `flagsFor` picks for each item. With `undoable`, the reply
    * returns the flags from before, so the surface can keep them for its Undo notice.
    */
   async function changeOverrides(
     keys: readonly string[],
-    flagsFor: (item: Item) => OverrideFlags | null,
+    flagsFor: (shown: OverrideFlags) => OverrideFlags,
     undoable: boolean,
     stamp: WriteStamp,
   ): Promise<ActionReply> {
@@ -2229,10 +2390,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     for (const key of new Set(keys)) {
       const item = write.items.get(key);
       const target = item === undefined ? null : overrideTargetFor(item);
-      const flags = item === undefined ? null : flagsFor(item);
-      if (item === undefined || target === null || flags === null) continue;
-      const previous = previousFlags(item);
-      addOverridePatch(
+      if (item === undefined || target === null) continue;
+      // What the list shows now, with the writes that wait. A key that shows the target flags
+      // already writes nothing and has no Undo entry: a later entry would hold the flags of the
+      // first write as its "before", and its Undo could not restore the item.
+      const previous = shownFlags(item);
+      const flags = flagsFor(previous);
+      if (sameFlags(previous, flags)) continue;
+      void addOverridePatch(
         key,
         target,
         flags,
@@ -2252,40 +2417,52 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     };
   }
 
-  /** Undo of an override action: the flags from before go back, for the same user and Canvas only. */
+  /**
+   * Undo of an override action: the flags from before go back, for the same user and Canvas only.
+   * The reply comes after Canvas answered, and says that the items came back only when it saved
+   * every write.
+   */
   async function restoreOverrides(
     entries: readonly PreviousOverride[],
     stamp: WriteStamp,
   ): Promise<ActionReply> {
     const write = await writeContext(stamp);
     if (!identityHolds(stamp) || write === null) {
-      return NO_UNDO;
+      return NOT_RESTORED;
     }
     stamp = writeStamp();
-    let changed = false;
+    const saved: Promise<boolean>[] = [];
+    // An item that the cache no longer holds cannot be written, so it is not restored.
+    let restored = true;
     const done = new Set<string>();
     for (const { key, previous } of entries) {
       if (done.has(key)) continue;
       done.add(key);
       const item = write.items.get(key);
       const target = item === undefined ? null : overrideTargetFor(item);
-      if (item === undefined || target === null) continue;
-      addOverridePatch(
-        key,
-        target,
-        previous,
-        previousFlags(item),
-        item.override?.id ?? '',
-        write.session.profile.id,
-        stamp,
+      if (item === undefined || target === null) {
+        restored = false;
+        continue;
+      }
+      const shown = shownFlags(item);
+      if (sameFlags(shown, previous)) continue;
+      saved.push(
+        addOverridePatch(
+          key,
+          target,
+          previous,
+          shown,
+          item.override?.id ?? '',
+          write.session.profile.id,
+          stamp,
+        ),
       );
-      changed = true;
     }
-    if (changed) {
+    if (saved.length > 0) {
       persist();
       bumpLater();
     }
-    return NO_UNDO;
+    return (await Promise.all(saved)).every(Boolean) && restored ? RESTORED : NOT_RESTORED;
   }
 
   async function writeNote(
@@ -2358,7 +2535,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    * sign-out or another student, nothing can be restored, so the notice ends.
    */
   function refusedUndo(userId: string): ActionReply {
-    return cache?.session?.profile.id === userId ? UNDO_REFUSED : NO_UNDO;
+    return cache?.session?.profile.id === userId ? UNDO_REFUSED : NOT_RESTORED;
   }
 
   async function act(action: DataAction, stamp: WriteStamp): Promise<ActionReply> {
@@ -2366,9 +2543,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       case 'setDone':
         return changeOverrides(
           action.keys,
-          (item) =>
+          (shown) =>
             action.done
-              ? { markedComplete: true, dismissed: item.override?.dismissed ?? false }
+              ? { markedComplete: true, dismissed: shown.dismissed }
               : { markedComplete: false, dismissed: false },
           action.done,
           stamp,
@@ -2424,8 +2601,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           sendDelete(action.noteId, writeStamp());
         return NO_UNDO;
       case 'cancelDelete':
-        cancelDelete(action.noteId);
-        return NO_UNDO;
+        return cancelDelete(action.noteId);
       case 'markAnnouncement':
         return markAnnouncement(action.courseId, action.topicId, true, null, stamp);
       case 'restoreAnnouncement':
@@ -3347,8 +3523,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         // A load that a newer one replaced (the hidden courses changed) must not overwrite it.
         const current = announcementLoad === entry;
         if (current) announcementLoad = null;
-        // A dropped answer leaves the cache as it was, and the next request loads again.
-        if (dropped || !current || !isCurrent(stamp) || cache === null) return;
+        if (!current || !isCurrent(stamp) || cache === null) return;
+        // A dropped answer leaves the cache as it was. The surfaces that wait for this load ask
+        // again, and that request loads again.
+        if (dropped) {
+          await bump();
+          return;
+        }
         const previous = cache.announcements;
         const kept = previous?.courseKey === key ? previous.topics : null;
         cache = {
@@ -3525,6 +3706,26 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return true;
   }
 
+  /** Queues the read mark write of an announcement. Resolves with whether Canvas took the mark. */
+  async function queueAnnouncementWrite(
+    courseId: string,
+    topicId: string,
+    read: boolean,
+    seq: number,
+    stamp: WriteStamp,
+  ): Promise<boolean> {
+    let ok = false;
+    await enqueueWrite(
+      async (current) => {
+        ok = await runAnnouncementWrite(courseId, topicId, read, seq, current);
+        return false;
+      },
+      'writes',
+      stamp,
+    );
+    return ok;
+  }
+
   async function markAnnouncement(
     courseId: string,
     topicId: string,
@@ -3545,15 +3746,19 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     stamp = writeStamp();
     const origin = stamp.origin;
     const session = cache?.session;
-    if (origin === null || cache === null || session == null) return NO_UNDO;
+    if (origin === null || cache === null || session == null) {
+      return undoing === null ? NO_UNDO : NOT_RESTORED;
+    }
     const userId = session.profile.id;
     // Only an announcement that the list shows can get a mark.
     const topic = cache.announcements?.topics?.find(
       (candidate) => candidate.courseId === courseId && candidate.id === topicId,
     );
     const key = announcementKey(courseId, topicId);
-    if (topic === undefined) return NO_UNDO;
-    if ((cache.announcementMarks[key]?.read ?? topic.read) === read) return NO_UNDO;
+    if (topic === undefined) return undoing === null ? NO_UNDO : NOT_RESTORED;
+    if ((cache.announcementMarks[key]?.read ?? topic.read) === read) {
+      return undoing === null ? NO_UNDO : RESTORED;
+    }
     const seq = nextId();
     cache = {
       ...cache,
@@ -3564,15 +3769,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     };
     persist();
     bumpLater();
-    void enqueueWrite(
-      async (stamp) => {
-        await runAnnouncementWrite(courseId, topicId, read, seq, stamp);
-        return false;
-      },
-      'writes',
-      stamp,
-    );
-    return read ? { undo: { kind: 'announcement', userId, origin, courseId, topicId } } : NO_UNDO;
+    const written = queueAnnouncementWrite(courseId, topicId, read, seq, stamp);
+    if (read) return { undo: { kind: 'announcement', userId, origin, courseId, topicId } };
+    // An Undo says that the announcement is unread again only when Canvas took the mark back.
+    return (await written) ? RESTORED : NOT_RESTORED;
   }
 
   /**
@@ -3624,15 +3824,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     };
     persist();
     if (listed) bumpLater();
-    let ok = false;
-    await enqueueWrite(
-      async (stamp) => {
-        ok = await runAnnouncementWrite(courseId, topicId, read, seq, stamp);
-        return false;
-      },
-      'writes',
-      fresh,
-    );
+    const ok = await queueAnnouncementWrite(courseId, topicId, read, seq, fresh);
     return { ok: identityHolds(stamp) && ok };
   }
 
@@ -3661,19 +3853,19 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (!identityHolds(stamp)) return { kind: 'loading' };
     if (!access)
       return identityHolds(stamp) ? { kind: 'no_access', origin, offer } : { kind: 'loading' };
-    if (cache === null) return { kind: 'loading' };
+    const cantLoad = (offline: boolean): StateReply => ({
+      kind: 'cant_load',
+      userId: cache?.session?.profile.id,
+      cacheCheckFailed: true,
+      origin,
+      offline,
+      offer,
+    });
+    // A tab in another cookie store never gets a list, whether the cache has a session or not.
+    if (!(await surfaceMayRead(tabId)))
+      return identityHolds(stamp) ? cantLoad(false) : { kind: 'loading' };
+    if (!identityHolds(stamp) || cache === null) return { kind: 'loading' };
     if (cache.session !== null) {
-      const cantLoad = (offline: boolean): StateReply => ({
-        kind: 'cant_load',
-        userId: cache?.session?.profile.id,
-        cacheCheckFailed: true,
-        origin,
-        offline,
-        offer,
-      });
-      if (!(await surfaceMayRead(tabId)))
-        return identityHolds(stamp) ? cantLoad(false) : { kind: 'loading' };
-      if (!identityHolds(stamp)) return { kind: 'loading' };
       // A cache that the check cleared, for a sign-out or another student, falls through.
       if (!(await signedInStudentOwnsCache()) && cache?.session != null) {
         if (!identityHolds(stamp)) return { kind: 'loading' };
@@ -3690,8 +3882,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     const session = cache.session;
     if (session === null) {
-      if (blocksLoads(failure) && !(failure?.kind === 'stale' && failure.check))
-        return { kind: 'cant_load', origin, offline, offer };
+      if (blocksLoads(failure)) return { kind: 'cant_load', origin, offline, offer };
       // The first round loads the session. Every state request waits for it.
       if (!running && !anyPending()) {
         const decision = decideRound('full', cache.limits, clock.now());
@@ -3743,6 +3934,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       offer,
       // The surface holds its own Undo notice.
       undo: null,
+      openDeletes: openDeletes(),
       userId: session.profile.id,
       seenNotes: { firstDone: seenNotes.firstDone },
       taskCourses: courseChoices(
@@ -3776,8 +3968,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     },
     getState,
 
-    async refresh(reason, checkedOrigin) {
+    async refresh(reason, checkedOrigin, tabId) {
       await ready();
+      // A tab in another cookie store causes no request, as for the routes that read.
+      if (!(await surfaceMayRead(tabId))) return NO_RETRY;
       const origin = checkedOrigin;
       if (origin !== knownOrigin) return NO_RETRY;
       const stamp = writeStamp();
@@ -3817,9 +4011,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       await applyTrigger(reason);
     },
 
-    async pageLoaded(origin) {
+    async pageLoaded(origin, tabId) {
       await ready();
-      if (origin !== knownOrigin) return;
+      if (!(await surfaceMayRead(tabId)) || origin !== knownOrigin) return;
       const stamp = writeStamp();
       await applyTrigger('page_loaded', stamp);
       if (!identityHolds(stamp)) return;
@@ -3873,14 +4067,17 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     async act(action, tabId, checkedOrigin) {
       await ready();
       const origin = checkedOrigin;
-      const refused = action.kind === 'createTask' ? { undo: null, created: false } : NO_UNDO;
+      const refused =
+        action.kind === 'createTask'
+          ? { undo: null, created: false }
+          : UNDO_KINDS.has(action.kind)
+            ? NOT_RESTORED
+            : NO_UNDO;
       if (origin !== knownOrigin) return refused;
       const stamp = writeStamp(action);
       if (!actionIdentityHolds(stamp) || stamp.origin !== origin) return refused;
       // A tab in another cookie store gets nothing, as for the routes that read.
-      if (!(await surfaceMayRead(tabId))) {
-        return action.kind === 'createTask' ? { undo: null, created: false } : NO_UNDO;
-      }
+      if (!(await surfaceMayRead(tabId))) return refused;
       if (!actionIdentityHolds(stamp)) return refused;
       const reply = await act(action, stamp);
       return actionIdentityHolds(stamp) ? reply : refused;

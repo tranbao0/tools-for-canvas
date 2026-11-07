@@ -202,20 +202,35 @@ describe('a cookie store that cannot be read', () => {
     expect((await h.owner.getState(PANEL)).kind).toBe('ready');
   });
 
-  it('starts no request without a cookie store and retries the first load', async () => {
+  it('starts no request without a cookie store, shows cant_load with Retry, and retries the first load', async () => {
     const h = await createHarness();
     vi.mocked(h.deps.sessionFingerprint).mockRejectedValue(new Error('cookies.get failed'));
     await h.owner.getState(PANEL);
     await h.owner.settled();
 
     expect(h.canvas.calls).toEqual([]);
-    expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'loading' });
+    expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'cant_load' });
     await h.owner.settled();
+    expect(h.canvas.calls).toEqual([]);
 
     vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-a');
     await h.owner.refresh('retry');
     await h.owner.settled();
     await loadReady(h);
+  });
+});
+
+describe('a tab in another cookie store', () => {
+  it('gets cant_load on a cold cache, and its refresh and page load make no Canvas request', async () => {
+    const h = await createHarness();
+    vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
+
+    expect(await h.owner.getState(PANEL, 7)).toMatchObject({ kind: 'cant_load' });
+    await h.owner.refresh('retry', ORIGIN, 7);
+    await h.owner.pageLoaded(ORIGIN, 7);
+    await h.owner.settled();
+
+    expect(h.canvas.calls).toEqual([]);
   });
 });
 
@@ -301,9 +316,9 @@ describe('writes and Undo go through the cookie check', () => {
     // Three taps in a row: every one of them checks, and the last one finds Canvas again.
     expect(await h.owner.act(undo)).toEqual({ undo: null, refused: true });
     expect(await h.owner.act(undo)).toEqual({ undo: null, refused: true });
-    expect(await h.owner.act(undo)).toEqual({ undo: null });
-    expect(h.canvas.callsOf('getSelf')).toHaveLength(3);
-    await h.owner.settled();
+    expect(await h.owner.act(undo)).toEqual({ undo: null, restored: true });
+    // The checks of the three taps, and the profile request of the round that follows the saved write.
+    expect(h.canvas.callsOf('getSelf')).toHaveLength(4);
     expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
   });
 });

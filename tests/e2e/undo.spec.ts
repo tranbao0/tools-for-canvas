@@ -1,18 +1,23 @@
 /**
  * The Undo notice (design decisions 6 and 10). It has no timer: it stays until the student acts
  * again, closes it, or the surface goes away. Ctrl+Z undoes while it shows. A task DELETE goes
- * out only when the notice ends.
+ * out when the notice ends, or when the background sends it at the cap, and then the notice ends
+ * too. An Undo that cannot restore says so.
  */
 import type { BrowserContext, Locator, Page, Worker } from '@playwright/test';
 import { IDS } from '../fixtures/scenario';
-import { overrideWrites, writesTo } from './support/canvas-state';
+import { errorReply, overrideWrites, writesTo } from './support/canvas-state';
+import { CANVAS_ERRORS } from '../fixtures/errors';
 import { saveAddress } from './support/scenario-api';
+import { advanceBackgroundClock, shortenTimer } from './support/clock';
+import { requestsQuiet } from './support/settle';
 import {
   addCsrfCookie,
   doneBox,
   expect,
   group,
   openExtensionPage,
+  refreshedSince,
   serveScenario,
   settledList,
   test,
@@ -94,6 +99,69 @@ test.describe('the Undo notice', () => {
     expect(overrideWrites(canvas)).toHaveLength(2);
   });
 
+  test('a second click before the row redraws writes nothing more and keeps the Undo of the first', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const { canvas } = await openPanel(context, page, background, extensionUrl('sidepanel.html'));
+    const toast = page.locator('.wr-toast');
+    const quiz = doneBox(group(page, 'today'), QUIZ_3);
+
+    // Both clicks land before the list redraws, as on a slow reply of the background.
+    await quiz.evaluate((box) => {
+      (box as HTMLInputElement).click();
+      (box as HTMLInputElement).click();
+    });
+    await expect(quiz).toHaveCount(0);
+    await expect.poll(() => overrideWrites(canvas).length).toBeGreaterThan(0);
+    await requestsQuiet(page, canvas.requests, background);
+
+    expect(overrideWrites(canvas)).toHaveLength(1);
+    // The mark stands, and the notice of the first click still offers the Undo.
+    await expect(toast).toContainText('Marked done');
+    await toast.getByRole('button', { name: 'Undo' }).click();
+    await expect(quiz).not.toBeChecked();
+    await expect.poll(() => overrideWrites(canvas)).toHaveLength(2);
+    expect(overrideWrites(canvas)[1]).toMatchObject({
+      method: 'PUT',
+      body: { marked_complete: false, dismissed: false },
+    });
+  });
+
+  test('says so in one line when Canvas refuses the write of an Undo', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const served = await serveScenario(context, [
+      {
+        method: 'PUT',
+        path: /^\/api\/v1\/planner\/overrides\/\d+$/,
+        respond: () => errorReply(CANVAS_ERRORS.serverError),
+      },
+    ]);
+    await addCsrfCookie(context, served.canvas.origin);
+    await saveAddress(background, served.canvas.origin);
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await expect(doneBox(page, QUIZ_3)).toBeVisible();
+    await settledList(page);
+    const toast = page.locator('.wr-toast');
+
+    await doneBox(page, QUIZ_3).click();
+    await expect(toast).toContainText('Marked done');
+    await expect.poll(() => overrideWrites(served.canvas)).toHaveLength(1);
+
+    await toast.getByRole('button', { name: 'Undo' }).click();
+
+    await expect(toast).toHaveText("Couldn't undo that");
+    await expect(toast.getByRole('button', { name: 'Undo' })).toHaveCount(0);
+    // The item stays done, because Canvas kept the mark.
+    await expect(doneBox(group(page, 'today'), QUIZ_3)).toHaveCount(0);
+  });
+
   test('sends a task DELETE only when the notice ends, and never after Ctrl+Z', async ({
     context,
     page,
@@ -149,6 +217,83 @@ test.describe('the Undo notice', () => {
     expect(state.note(NOTES.bioStudyGroup)?.deleted).toBe(false);
     expect(state.note(NOTES.libraryBooksToday)?.deleted).toBe(true);
     expect(state.note(NOTES.financialAidYesterday)?.deleted).toBe(true);
+  });
+});
+
+/** The cap on a delayed task DELETE in the background (`MAX_DELETE_DELAY_MS`). */
+const DELETE_CAP_MS = 2 * 60_000;
+
+test.describe('an Undo that cannot restore', () => {
+  test('a delete notice ends when the background sends the DELETE, so Undo is not offered for a gone task', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const { canvas } = await openPanel(context, page, background, extensionUrl('sidepanel.html'));
+    // The cap passes in seconds of real time instead of two minutes.
+    await shortenTimer(background, DELETE_CAP_MS, 4000);
+    const toast = page.locator('.wr-toast');
+    const deletes = () => writesTo(canvas, 'DELETE', '/api/v1/planner_notes').map((w) => w.path);
+
+    await deleteTask(page, group(page, 'today'), 'Return library books');
+    await expect(toast).toContainText('Task deleted');
+
+    await expect.poll(deletes).toEqual([`/api/v1/planner_notes/${NOTES.libraryBooksToday}`]);
+    await expect(toast).toHaveCount(0);
+  });
+
+  test('says so in one line when the item of a done mark left the cache', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const served = await serveScenario(context, [], {
+      extend: (scenario) => {
+        const template = scenario.plannerNotes[0];
+        if (template === undefined) throw new Error('No note in the scenario');
+        const date = new Date(Date.parse(scenario.now) + 42 * 86_400_000).toISOString();
+        scenario.plannerNotes.push({ ...template, id: '8899', title: 'Far task', todo_date: date });
+      },
+    });
+    await addCsrfCookie(context, served.canvas.origin);
+    await saveAddress(background, served.canvas.origin);
+    await page.clock.install();
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await expect(doneBox(page, QUIZ_3)).toBeVisible();
+    await settledList(page);
+
+    // Six weeks ahead, where the far task lives.
+    await page.getByRole('button', { name: 'Next week' }).evaluate((button) => {
+      for (let step = 0; step < 6; step++) (button as HTMLButtonElement).click();
+    });
+    const far = doneBox(page, 'Far task');
+    await far.click();
+    const toast = page.locator('.wr-toast');
+    await expect(toast).toContainText('Marked done');
+    await expect.poll(() => overrideWrites(served.canvas)).toHaveLength(1);
+
+    // Back to this week, and a refresh after the far week went unused for more than 10 minutes.
+    await page.getByRole('button', { name: 'Today', exact: true }).click();
+    await expect(doneBox(page, QUIZ_3)).toBeVisible();
+    await advanceBackgroundClock(background, 16 * 60_000);
+    const before = served.canvas.requests.length;
+    await page.evaluate(async () => {
+      const api = (
+        globalThis as unknown as {
+          chrome: { runtime: { sendMessage(message: unknown): Promise<unknown> } };
+        }
+      ).chrome;
+      await api.runtime.sendMessage({ type: 'weekrow:refresh', reason: 'timer' });
+    });
+    await refreshedSince(page, served.canvas, before);
+    await requestsQuiet(page, served.canvas.requests, background);
+
+    await toast.getByRole('button', { name: 'Undo' }).click();
+    await expect(toast).toHaveText("Couldn't undo that");
+    await expect(toast.getByRole('button', { name: 'Undo' })).toHaveCount(0);
+    expect(overrideWrites(served.canvas)).toHaveLength(1);
   });
 });
 

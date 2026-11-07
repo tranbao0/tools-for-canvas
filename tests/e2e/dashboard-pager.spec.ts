@@ -17,7 +17,9 @@ import {
   saveTools,
   serveScenario,
   test,
+  type ScenarioOptions,
 } from './support/weekrow';
+import { EIGHT_COURSES } from './support/eight-courses';
 import { pageQuiet, stableValue } from './support/settle';
 
 const ANNOUNCEMENTS = 'widget-announcements-widget';
@@ -43,6 +45,7 @@ interface Options {
   fixes?: DashboardFixesSettings;
   /** The query of the fixture page. */
   query?: string;
+  scenario?: ScenarioOptions;
 }
 
 async function open(
@@ -51,7 +54,11 @@ async function open(
   background: Worker,
   options: Options = {},
 ) {
-  const served = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
+  const served = await serveScenario(
+    context,
+    [{ path: '/', page: 'dashboard-widgets' }],
+    options.scenario,
+  );
   await addCsrfCookie(context, served.canvas.origin);
   const fixes = options.fixes ?? ONLY_PAGER;
   await saveTools(background, tools(fixes));
@@ -665,6 +672,7 @@ test.describe('every paged widget', () => {
   }) => {
     await open(context, page, background, {
       fixes: { ...OFF, steadyPager: true, allCourseGrades: true },
+      scenario: EIGHT_COURSES,
     });
     await expect(page.locator('[data-wr-grades]')).toBeAttached();
     await expect(navOf(page, GRADES)).toBeHidden();
@@ -728,6 +736,7 @@ test.describe('the switch', () => {
 test('stops writing to the page when nothing changes', async ({ context, page, background }) => {
   await open(context, page, background, {
     fixes: DEFAULT_TOOLS_SETTINGS.dashboardFixes,
+    scenario: EIGHT_COURSES,
   });
   // The other fixes draw after the data arrives, so wait for each of them. The Announcements
   // list is steady once its first page of rows is in.

@@ -1,6 +1,7 @@
 import { http, HttpResponse, type JsonBodyType } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createCanvasClient } from './client';
+import { REQUEST_TIMEOUT_MS } from './http';
 import { CanvasError, type CanvasApi, type PlannerOverride } from './types';
 import {
   api,
@@ -1532,5 +1533,44 @@ describe('listPeoplePage', () => {
     await expect(testClient().listPeoplePage(request)).rejects.toMatchObject({
       kind: 'bad_request',
     });
+  });
+});
+
+describe('a stalled reply', () => {
+  it('frees its slot, so a queued write goes out after the limit', async () => {
+    useRetryFakeTimers();
+    try {
+      // Every fetch ignores the signal and never answers, except the write.
+      const fetchImpl = vi.fn<typeof fetch>((input) =>
+        String(input).includes('/planner/overrides')
+          ? Promise.resolve(Response.json({ id: '1', marked_complete: true }))
+          : new Promise<Response>(() => undefined),
+      );
+      const client = createCanvasClient({
+        origin: ORIGIN,
+        getCsrfToken: async () => CSRF_TOKEN,
+        fetchImpl,
+      });
+      const reads = [client.getProfile(), client.getColors(), client.getDashboardPositions()].map(
+        (read) => catchError(read),
+      );
+      const write = client.createOverride({
+        plannableType: 'assignment',
+        plannableId: '1',
+        markedComplete: true,
+        dismissed: false,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchImpl).toHaveBeenCalledTimes(3);
+
+      await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+      for (const error of await Promise.all(reads)) {
+        expect(error).toMatchObject({ kind: 'server', message: "Couldn't reach Canvas" });
+      }
+      await expect(write).resolves.toMatchObject({ id: '1' });
+      expect(fetchImpl).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
