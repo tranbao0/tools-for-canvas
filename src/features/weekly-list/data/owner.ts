@@ -3293,6 +3293,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       const fingerprint = await readFingerprint(origin);
       if (!identityHolds(stamp) || fingerprint === undefined) return unknown;
       if (fingerprint === null) {
+        if (!(await deps.hasAccess(origin)) || !identityHolds(stamp)) return unknown;
         if (cache?.failure?.kind !== 'signed_out') signOut({ kind: 'signed_out' });
         return { verdict: 'no' };
       }

@@ -533,3 +533,14 @@ it('more Retry taps share the sign-in check that is already running', async () =
   await Promise.all([first, second]);
   check.mockRestore();
 });
+
+it('a null cookie without site access keeps the pane and stored student', async () => {
+  const h = await loaded();
+  const cleared = vi.fn();
+  h.deps.onUserDataCleared = cleared;
+  vi.mocked(h.deps.hasAccess).mockResolvedValue(false);
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
+  await expect(h.owner.viewerPaneCheck(ORIGIN, TAB)).resolves.toEqual({ verdict: 'unknown' });
+  expect(cleared).not.toHaveBeenCalled();
+  expect((await h.deps.store.cache.getValue())?.session?.profile.id).toBe('5501');
+});

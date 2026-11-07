@@ -2817,3 +2817,30 @@ test('identity verdict: a late idle tick never flashes the cover', async ({
   await page.waitForTimeout(2200);
   expect(await world.evaluate('globalThis.__lateCovers')).toBe(0);
 });
+
+test('identity verdict: losing site access preserves the frame and draft', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Keep this draft');
+  await background.evaluate(() => {
+    const api = (
+      globalThis as unknown as {
+        chrome: {
+          cookies: { get: (...args: unknown[]) => Promise<unknown> };
+          permissions: { contains: (...args: unknown[]) => Promise<boolean> };
+        };
+      }
+    ).chrome;
+    api.cookies.get = async () => null;
+    api.permissions.contains = async () => false;
+  });
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown');
+  await page.waitForTimeout(2200);
+  await expect(frame.locator('#marker')).toHaveValue('Keep this draft');
+  expect(frame.isDetached()).toBe(false);
+});
