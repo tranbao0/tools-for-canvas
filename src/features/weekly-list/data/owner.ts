@@ -848,7 +848,20 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (cache === null || cache.limited || !isHandedIn(record)) return;
     const planner = withHandIn(cache.planner, courseId, assignmentId);
     if (planner === null) return;
-    cache = { ...cache, planner };
+    cache = {
+      ...cache,
+      planner,
+      patches: [
+        ...cache.patches,
+        {
+          kind: 'hand-in',
+          id: nextId(),
+          courseId,
+          assignmentId,
+          confirmedAt: clock.now(),
+        },
+      ],
+    };
     persist();
     bumpLater();
   }

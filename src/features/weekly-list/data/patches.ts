@@ -13,6 +13,7 @@ import type {
 } from '../../../shared/canvas/types';
 import { itemKey, plannerAssignmentId } from '../model/normalize';
 import type { Item } from '../model/types';
+import { handedInItem } from './handIn';
 
 /** What a planner override points at. */
 export interface OverrideTarget {
@@ -58,7 +59,15 @@ export interface NotePatch {
   confirmedAt: number | null;
 }
 
-export type Patch = OverridePatch | NotePatch;
+export interface HandInPatch {
+  kind: 'hand-in';
+  id: number;
+  courseId: string;
+  assignmentId: string;
+  confirmedAt: number;
+}
+
+export type Patch = OverridePatch | NotePatch | HandInPatch;
 
 /** Context that patched planner items need. */
 interface PatchContext {
@@ -174,6 +183,8 @@ function applyToItems(
   context: PatchContext,
 ): PlannerItem[] {
   switch (patch.kind) {
+    case 'hand-in':
+      return items.map((item) => handedInItem(item, patch.courseId, patch.assignmentId));
     case 'override':
       return items.map((item) =>
         plannerItemKey(item) === patch.key ? { ...item, planner_override: patch.override } : item,

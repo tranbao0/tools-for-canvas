@@ -7,6 +7,7 @@
  * layer writes the hand-in into the cached planner items and the row moves with no round. The
  * next round comes by the normal timers and replaces the items with what Canvas sends.
  */
+import type { PlannerItem } from '../../../shared/canvas/types';
 import { sameCanvasId } from '../../../shared/canvas/ids';
 import { plannerAssignmentId } from '../model/normalize';
 import type { PlannerCoverage } from './coverage';
@@ -53,23 +54,30 @@ export function withHandIn(
   let changed = false;
   const items = Object.fromEntries(
     Object.entries(coverage.items).map(([key, item]) => {
-      const own = plannerAssignmentId(item);
-      const course = item.course_id ?? item.plannable.course_id;
-      if (
-        own === null ||
-        !sameCanvasId(own, assignmentId) ||
-        !sameCanvasId(course, courseId) ||
-        typeof item.submissions !== 'object' ||
-        item.submissions === null ||
-        item.submissions.submitted === true
-      )
-        return [key, item];
-      changed = true;
-      return [
-        key,
-        { ...item, submissions: { ...item.submissions, submitted: true, missing: false } },
-      ];
+      const next = handedInItem(item, courseId, assignmentId);
+      changed ||= next !== item;
+      return [key, next];
     }),
   );
   return changed ? { ...coverage, items } : null;
+}
+
+/** Marks a matching assignment as handed in without changing other submission fields. */
+export function handedInItem(
+  item: PlannerItem,
+  courseId: string,
+  assignmentId: string,
+): PlannerItem {
+  const own = plannerAssignmentId(item);
+  const course = item.course_id ?? item.plannable.course_id;
+  if (
+    own === null ||
+    !sameCanvasId(own, assignmentId) ||
+    !sameCanvasId(course, courseId) ||
+    typeof item.submissions !== 'object' ||
+    item.submissions === null ||
+    item.submissions.submitted === true
+  )
+    return item;
+  return { ...item, submissions: { ...item.submissions, submitted: true, missing: false } };
 }

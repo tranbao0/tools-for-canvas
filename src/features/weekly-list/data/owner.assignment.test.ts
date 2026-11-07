@@ -331,6 +331,21 @@ describe('a hand-in that the list does not show yet', () => {
     state.view.groups.find((group) => [...group.items, ...group.older].some((i) => i.key === key))
       ?.kind;
 
+  it('keeps a hand-in when an older planner round lands', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    await vi.advanceTimersByTimeAsync(61_000);
+    const release = h.canvas.hold('listPlannerItems');
+    const round = h.owner.refresh('visible');
+    await vi.advanceTimersByTimeAsync(1);
+    handIn(h, '2026-11-02T10:00:00Z');
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    release();
+    await round;
+    await h.owner.settled();
+    expect(groupOf(expectReady(await h.owner.getState(PANEL)))).toBe('done');
+  });
+
   it('moves the row with no round, inside the 60 seconds after the last round', async () => {
     const h = await createHarness();
     const before = await loadReady(h);
