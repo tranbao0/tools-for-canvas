@@ -71,9 +71,11 @@ function hasOpenWork(root: Document | ShadowRoot): boolean {
   );
 }
 
+const SAVE_FAILED_NOTE = 'Could not save grade visibility. Try again.';
+
 function openWorkNote(doc: Document): string | null {
   if (paneInView()) return 'Close the open pane first.';
-  return hasOpenWork(doc) ? 'Close the open form first.' : null;
+  return hasOpenWork(doc) || inEditMode(doc) ? 'Close the open form first.' : null;
 }
 
 function showNote(card: HTMLElement, id: string, text: string): void {
@@ -97,6 +99,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
   let lifetime = 0;
   const notes = new Map<string, string>();
   let focusCourse: string | undefined;
+  let noteTimer: ReturnType<typeof setTimeout> | undefined;
 
   function setSaving(value: boolean): void {
     saving = value;
@@ -104,6 +107,26 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
       if (value) card.setAttribute('aria-busy', 'true');
       else card.removeAttribute('aria-busy');
       for (const eye of card.querySelectorAll('button')) eye.disabled = value;
+    }
+  }
+
+  /**
+   * A note that asks to close open work goes when that work is gone. A form in a shadow root and
+   * a pane change nothing that the page observer sees, so the check comes back each second.
+   */
+  function dropSettledNotes(context: FixContext): void {
+    const waiting = [...notes].filter(([, note]) => note !== SAVE_FAILED_NOTE);
+    if (waiting.length === 0) return;
+    if (openWorkNote(context.doc) !== null) {
+      noteTimer ??= setTimeout(() => {
+        noteTimer = undefined;
+        context.again();
+      }, 1000);
+      return;
+    }
+    for (const [id] of waiting) {
+      notes.delete(id);
+      context.doc.querySelector(`[data-wr-card="${id}"] [data-wr-grade-note]`)?.remove();
     }
   }
 
@@ -175,9 +198,21 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         if (note) {
           notes.set(course.id, note);
           showNote(card, course.id, note);
+          context.again();
           return;
         }
         const started = lifetime;
+        /** Ends the save and draws the card again from what Canvas holds. */
+        const finish = (): void => {
+          setSaving(false);
+          // Focus that moved into a form or a pane stays there.
+          const active = context.doc.activeElement;
+          if (active === null || active === context.doc.body || card.contains(active))
+            focusCourse = course.id;
+          context.refreshGrades();
+          card.remove();
+          context.again();
+        };
         setSaving(true);
         notes.delete(course.id);
         card.querySelector('[data-wr-grade-note]')?.remove();
@@ -191,11 +226,8 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
           if (started !== lifetime) return;
           const note = openWorkNote(context.doc);
           if (note) {
-            setSaving(false);
             notes.set(course.id, note);
-            focusCourse = course.id;
-            card.remove();
-            context.again();
+            finish();
             return;
           }
           const reply = await context.send({
@@ -207,19 +239,17 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
           });
           if (started !== lifetime) return;
           if ((reply as { ok?: boolean } | undefined)?.ok === true) {
-            context.doc.defaultView?.location.reload();
+            // A reload would end the work that opened during the send.
+            if (openWorkNote(context.doc)) finish();
+            else context.doc.defaultView?.location.reload();
             return;
           }
         } catch {
           /* The card carries the failure note below. */
         }
         if (started !== lifetime) return;
-        setSaving(false);
-        notes.set(course.id, 'Could not save grade visibility. Try again.');
-        focusCourse = course.id;
-        context.refreshGrades();
-        card.remove();
-        context.again();
+        notes.set(course.id, SAVE_FAILED_NOTE);
+        finish();
       });
     }
     const note = notes.get(course.id);
@@ -371,11 +401,14 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         doc.addEventListener('click', blockWhileSaving, true);
         doc.addEventListener('change', blockWhileSaving, true);
       }
+      if (!saving) dropSettledNotes(context);
       for (const found of findGradeWidgets(context.doc)) sync(context, found);
     },
     remove() {
       lifetime++;
       saving = false;
+      clearTimeout(noteTimer);
+      noteTimer = undefined;
       doc?.removeEventListener('click', blockWhileSaving, true);
       doc?.removeEventListener('change', blockWhileSaving, true);
       for (const node of doc?.querySelectorAll('[data-wr-card]') ?? []) node.remove();

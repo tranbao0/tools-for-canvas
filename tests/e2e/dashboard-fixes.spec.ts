@@ -2316,3 +2316,159 @@ test('a copied eye restores the saved grade when a form opens during the wait', 
     canvas.requests.filter((request) => request.postData?.includes('updateWidgetDashboardConfig')),
   ).toHaveLength(0);
 });
+
+test('a saved grade does not reload over a pane that opened during the send', async ({
+  context,
+  page,
+}) => {
+  let filters = { gradeVisibilities: {} as Record<string, boolean> };
+  let release: () => void = () => undefined;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let sent = false;
+  const served = await serveScenario(
+    context,
+    [
+      ...PAGE,
+      {
+        path: '/courses/101/assignments/1004',
+        contentType: 'text/html',
+        body: '<!doctype html><html><body><input aria-label="Draft"></body></html>',
+      },
+      {
+        method: 'POST',
+        path: '/api/graphql',
+        respond: async (request): Promise<FakeReply> => {
+          const body = JSON.parse(request.postData ?? '{}');
+          if (body.query?.includes('updateWidgetDashboardConfig')) {
+            sent = true;
+            await pending;
+            filters = body.variables.filters['course-grades-widget'] ?? body.variables.filters;
+            return {
+              body: {
+                data: {
+                  updateWidgetDashboardConfig: { filters: body.variables.filters, errors: [] },
+                },
+              },
+            };
+          }
+          return {
+            body: {
+              data: {
+                legacyNode: {
+                  widgetDashboardConfig: JSON.stringify({
+                    filters: { 'course-grades-widget': filters },
+                  }),
+                },
+              },
+            },
+          };
+        },
+      },
+    ],
+    EIGHT_COURSES,
+  );
+  await addCsrfCookie(context, served.canvas.origin);
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+  await page.evaluate(() => {
+    (window as unknown as { kept: boolean }).kept = true;
+  });
+  await page.locator('[data-wr-card="107"] button').click();
+  await expect.poll(() => sent).toBe(true);
+  await page
+    .getByRole('button', { name: 'Preview Lab report 4: Cellular respiration', exact: true })
+    .click();
+  await expect(page.locator('#tools-turn-in')).toBeVisible();
+  await expect
+    .poll(() => page.frames().some((frame) => frame.url().includes('content_only=1')))
+    .toBe(true);
+  const frame = page.frames().find((frame) => frame.url().includes('content_only=1'))!;
+  await frame.getByRole('textbox', { name: 'Draft' }).fill('Keep this text');
+  release();
+  await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(0);
+  await expect(page.locator('[data-wr-card][aria-busy]')).toHaveCount(0);
+  await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
+  await expect(frame.getByRole('textbox', { name: 'Draft' })).toHaveValue('Keep this text');
+  expect(await page.evaluate(() => (window as unknown as { kept?: boolean }).kept)).toBe(true);
+});
+
+test('an aborted save leaves the focus in the form that stopped it', async ({ context, page }) => {
+  await open(context, page, { scenario: EIGHT_COURSES });
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+  await page
+    .locator('[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]')
+    .click();
+  await page.locator('[data-wr-card="107"] button').click();
+  await page.getByRole('button', { name: 'Add task', exact: true }).click();
+  const title = page.getByRole('textbox', { name: /title/i }).first();
+  await title.fill('abc');
+  await expect(page.locator('[data-wr-card="107"] [role="status"]')).toHaveText(
+    'Close the open form first.',
+  );
+  await page.keyboard.type('def');
+  await expect(title).toHaveValue('abcdef');
+});
+
+test('Customize opened during the wait stops a copied eye save', async ({ context, page }) => {
+  let writes = 0;
+  const served = await serveScenario(
+    context,
+    [
+      ...PAGE,
+      {
+        method: 'POST',
+        path: '/api/graphql',
+        respond: (request): FakeReply => {
+          if (request.postData?.includes('updateWidgetDashboardConfig')) {
+            writes += 1;
+            return { body: { errors: [{ message: 'Refused' }] } };
+          }
+          return {
+            body: {
+              data: {
+                legacyNode: {
+                  widgetDashboardConfig: JSON.stringify({
+                    filters: { 'course-grades-widget': { gradeVisibilities: {} } },
+                  }),
+                },
+              },
+            },
+          };
+        },
+      },
+    ],
+    EIGHT_COURSES,
+  );
+  await addCsrfCookie(context, served.canvas.origin);
+  await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+  await page
+    .locator('[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]')
+    .click();
+  await page.locator('[data-wr-card="107"] button').click();
+  await expect(page.locator('[data-wr-card="107"] button')).toBeDisabled();
+  await page.evaluate(() => {
+    const node = document.createElement('button');
+    node.dataset.testid = 'save-customize-button';
+    document.body.append(node);
+  });
+  await expect(page.locator('[data-wr-card][aria-busy]')).toHaveCount(0, { timeout: 6000 });
+  expect(writes).toBe(0);
+});
+
+test('a close note leaves its card when the form that caused it closes', async ({
+  context,
+  page,
+}) => {
+  await open(context, page, { scenario: EIGHT_COURSES });
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+  await page.getByRole('button', { name: 'Add task', exact: true }).click();
+  await page.locator('[data-wr-card="107"] button').click();
+  const note = page.locator('[data-wr-card="107"] [role="status"]');
+  await expect(note).toHaveText('Close the open form first.');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).first().click();
+  await expect(note).toHaveCount(0);
+});
