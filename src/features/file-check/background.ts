@@ -276,7 +276,10 @@ export function routeFileCheckMessage(
         Object.keys(message).some((key) => key !== 'type')
       )
         throw new Error('Only the diagnostic frame may read its Canvas origin');
-      return { canvasOrigin: await host.savedOrigin() };
+      const origin = await host.savedOrigin();
+      if (!origin || parseUrl((await host.tabUrl(sender.tab.id)) ?? '')?.origin !== origin)
+        throw new Error('Only a tab of the saved Canvas may read its origin');
+      return { canvasOrigin: origin };
     })();
   }
   if (!isFileCheckMessage(message)) return null;

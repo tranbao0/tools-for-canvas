@@ -411,3 +411,23 @@ it('gives only the diagnostic frame its origin through the Firefox test-channel 
     vi.unstubAllEnvs();
   }
 });
+
+it('refuses a diagnostic origin read from another top site', async () => {
+  vi.stubEnv('BROWSER', 'firefox');
+  try {
+    const h = host({ tabUrl: async () => 'https://other.edu/' });
+    await expect(
+      ask(
+        { type: 'weekrow:file-probe-origin' },
+        {
+          url: 'chrome-extension://abc/file-probe.html',
+          tab: { id: 7 },
+          frameId: 3,
+        },
+        h,
+      ),
+    ).rejects.toThrow();
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});

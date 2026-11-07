@@ -210,6 +210,15 @@ async function openFromFrame(
   };
 }
 
+async function tabShowsOrigin(host: ViewerHost, tabId: number, origin: string): Promise<boolean> {
+  try {
+    const url = await host.tabUrl(tabId);
+    return url !== null && new URL(url).origin === origin;
+  } catch {
+    return false;
+  }
+}
+
 export function routeViewerMessage(
   message: unknown,
   sender: ViewerSender,
@@ -230,7 +239,10 @@ export function routeViewerMessage(
         Object.keys(message).some((key) => key !== 'type')
       )
         throw new Error('Only the pane frame may read its Canvas origin');
-      return { canvasOrigin: await host.savedOrigin() };
+      const origin = await host.savedOrigin();
+      if (!origin || !(await tabShowsOrigin(host, sender.tab.id, origin)))
+        throw new Error('Only a tab of the saved Canvas may read its origin');
+      return { canvasOrigin: origin };
     })();
   }
   if (
@@ -262,6 +274,12 @@ export function routeViewerMessage(
     if (!origin || (!fromPane && senderPageOrigin(sender) !== origin))
       throw new Error('Only the saved Canvas may ask for its data');
     const tabId = sender.tab?.id;
+    if (
+      import.meta.env.BROWSER === 'firefox' &&
+      fromPane &&
+      (tabId === undefined || !(await tabShowsOrigin(host, tabId, origin)))
+    )
+      throw new Error('Only a pane on the saved Canvas may ask');
     const owner = createViewerOwner(host, tabId);
     switch (request['type']) {
       case 'viewer:position-get':

@@ -8,6 +8,7 @@ function setup() {
   const savedOrigin = vi.fn(async () => 'https://school.edu');
   const host = {
     savedOrigin,
+    tabUrl: vi.fn(async () => 'https://school.edu/courses/1'),
     isExtensionPage: (sender: { url?: string }) =>
       sender.url?.startsWith('moz-extension://test/') === true,
   } as unknown as ViewerHost;
@@ -38,5 +39,14 @@ it.each([{ key: 'sessionFingerprintSalt' }, { operation: 'keys' }, { value: 'cha
       routeViewerMessage({ type: 'viewer:origin', ...extra }, pane, host),
     ).rejects.toThrow();
     expect(savedOrigin).not.toHaveBeenCalled();
+  },
+);
+
+it.each([null, 'https://other.edu/', 'https://school.edu.evil.example/'])(
+  'refuses the pane origin read when the top page is %s',
+  async (url) => {
+    const { host } = setup();
+    vi.mocked(host.tabUrl).mockResolvedValue(url);
+    await expect(routeViewerMessage({ type: 'viewer:origin' }, pane, host)).rejects.toThrow();
   },
 );
