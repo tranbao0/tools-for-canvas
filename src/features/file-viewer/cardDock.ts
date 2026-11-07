@@ -85,6 +85,8 @@ export function createCardDock(
       confirmed = yes;
       dock.host.setAttribute('data-identity', yes ? 'yes' : 'unknown');
       cover.hidden = yes;
+      if (!yes && doc.activeElement === dock.host && !cover.contains(dock.root.activeElement))
+        retry.focus({ preventScroll: true });
       sync();
       if (changed) options.onIdentityChange?.(yes);
     }, options.identityToken);

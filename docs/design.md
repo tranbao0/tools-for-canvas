@@ -3198,6 +3198,7 @@ With the pane read alone, the default run of the test failed before the fix.
        An opaque panel covers the whole pane, including its header, and shows "Canvas can't confirm your sign-in." and Retry before Close.
        Retry starts one shared check without the automatic check limits; more taps do nothing while it runs.
        The next watcher tick reads the result.
+       When the cover appears with focus anywhere in the dock, focus moves to Retry and leaves any focused frame.
        The frames and typed text stay alive under the cover, which goes on the next `yes`.
        The panel uses the dock's light and dark theme tokens and has no animation.
      The timer does not wait for a reply; a missing reply becomes `unknown` within five seconds of its request.

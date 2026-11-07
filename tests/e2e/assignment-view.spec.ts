@@ -2671,3 +2671,47 @@ test('identity cover: Retry resumes a draft after a failed check', async ({
   await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes', { timeout: 3000 });
   await expect(frame.locator('#marker')).toHaveValue('Keep this draft');
 });
+
+async function holdPaneIdentity(page: Page) {
+  const world = await contentScriptWorld(page);
+  await world.evaluate(`(() => {
+    const runtime = (globalThis.browser?.runtime?.id ? globalThis.browser : chrome).runtime;
+    const send = runtime.sendMessage.bind(runtime);
+    globalThis.__restorePaneIdentity = () => { runtime.sendMessage = send; };
+    runtime.sendMessage = (message) => message.type === 'viewer:pane-check'
+      ? Promise.resolve({ verdict: 'unknown' }) : send(message);
+  })()`);
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown');
+  return world;
+}
+
+test('identity cover: keys leave the frame and cannot submit its form', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas, state } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Keep this draft');
+  await holdPaneIdentity(page);
+  expect(await frame.evaluate(() => document.hasFocus())).toBe(false);
+  expect(
+    await frame.evaluate(
+      () => (window.frameElement!.getRootNode() as ShadowRoot).activeElement?.textContent,
+    ),
+  ).toBe('Retry');
+  await page.keyboard.type('XYZ');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Space');
+  await expect(frame.locator('#marker')).toHaveValue('Keep this draft');
+  expect(state.submitted).toBe(false);
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(1200);
+  expect(
+    await frame.evaluate(
+      () => (window.frameElement!.getRootNode() as ShadowRoot).activeElement?.textContent,
+    ),
+  ).toBe('Close');
+});
