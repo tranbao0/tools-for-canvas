@@ -95,6 +95,13 @@ export function PdfViewer(props: {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState<string | null>(null);
+  // The page field commits on blur. A blur that a key press causes comes before the next render,
+  // so the commit reads the draft from here and not from the last render.
+  const draftNow = useRef<string | null>(null);
+  const changeDraft = (next: string | null) => {
+    draftNow.current = next;
+    setDraft(next);
+  };
   const live = useRef({ active: props.active, engine: null as PdfEngine | null });
   live.current.active = props.active;
   live.current.engine = engine;
@@ -301,13 +308,17 @@ export function PdfViewer(props: {
     return () => clearTimeout(timer);
   }, [engine, query, searchOpen]);
 
+  // Escape on any control of the bar closes the bar. The pane closes on Escape only when the
+  // search bar is not open.
+  const onSearchBarKey = (event: TargetedKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeSearch();
+  };
+
   const onSearchKey = (event: TargetedKeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Escape') {
-      // Escape closes the search. The pane closes on Escape only when the search is not open.
-      event.preventDefault();
-      event.stopPropagation();
-      closeSearch();
-    } else if (event.key === 'Enter' && engine) {
+    if (event.key === 'Enter' && engine) {
       event.preventDefault();
       if (searched.current !== query) {
         searched.current = query;
@@ -319,9 +330,10 @@ export function PdfViewer(props: {
   };
 
   const commitPage = () => {
-    if (draft === null || !engine) return;
-    const page = parsePageInput(draft, engine.pageCount);
-    setDraft(null);
+    const typed = draftNow.current;
+    if (typed === null || !engine) return;
+    const page = parsePageInput(typed, engine.pageCount);
+    changeDraft(null);
     if (page !== null) engine.goToPage(page);
   };
 
@@ -396,7 +408,7 @@ export function PdfViewer(props: {
             value={draft ?? String(page)}
             disabled={!ready}
             onFocus={(event) => event.currentTarget.select()}
-            onInput={(event) => setDraft(event.currentTarget.value)}
+            onInput={(event) => changeDraft(event.currentTarget.value)}
             onBlur={commitPage}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
@@ -405,7 +417,7 @@ export function PdfViewer(props: {
               } else if (event.key === 'Escape') {
                 event.preventDefault();
                 event.stopPropagation();
-                setDraft(null);
+                changeDraft(null);
                 event.currentTarget.blur();
               }
             }}
@@ -481,7 +493,7 @@ export function PdfViewer(props: {
         )}
       </div>
       {searchOpen && (
-        <div class="pv-search" role="search">
+        <div class="pv-search" role="search" onKeyDown={onSearchBarKey}>
           <input
             ref={searchField}
             class="pv-search-input"

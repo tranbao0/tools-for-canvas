@@ -304,7 +304,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The container of the list is a light DOM child of the host, and a `<slot>` in the dock shows it.
   So the list keeps its open shadow root and its place for the page selectors, and it keeps its state while the dock is hidden.
 - The default width is 360 px, which is the narrowest width that a dock can have.
-  The setting `weeklyDockWidth` stores it with the rules of `fileViewerWidth`: at least 360 px, at most 70 percent of the window, and 360 px for a missing value.
+  The setting `weeklyDockWidth` stores it with the rules of `fileViewerWidth`: at least 360 px, at most 70 percent of the window where the dock uses it, and 360 px for a missing value.
+  The stored value has no window limit, only an absolute one of 8192 px, so a width that fits a wide window is saved and comes back after a reload.
   The file pane and the weekly dock never change each other's width.
 - The dock takes room with the same padding lease as the other panes: the `html` element gets a right padding of the width of the dock.
   Canvas's `.ic-Layout-wrapper` has `max-width: 1366px` and stays at the left of the window.
@@ -2392,7 +2393,10 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The extension never loads the Canvas page of an announcement itself, because it marks the topic as read.
    The ids are checked as Canvas ids at the message boundary and again before they enter a path.
 2. **All course grades.**
-   The fix hides the pager and adds a card for each course that has no card on the page.
+   The fix adds a card for each course that has no card on the page.
+   It hides the pager of Canvas, and the steady navigator, only when the page has a card for every page that the pager reaches: more cards than six for each page before the last.
+   While the extension has no course to draw, such as in a tab of another cookie store or after a failed course read, the pager of Canvas and the steady navigator stay, so the cards of the other pages can be reached.
+   A reply with no user id and no course leaves the courses of the earlier reply in place.
    A card is a copy of a card that the widget drew, so it has the same markup, classes and theme.
    The copy loses its buttons, which belong to React, and its ids.
    Its header takes the course color, and it shows the letter grade when Canvas sends one, else the whole percent, else "N/A".
@@ -2438,7 +2442,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The pager of Canvas, with its spinner, stays in the page and takes no room: one rule of the stylesheet, scoped to the widget mark `data-wr-paged`, hides it with `display: none`.
    So it is out of the accessibility tree and the tab order, and Canvas does not move the focus into it.
    The navigator has `data-wr-own`, so the observer ignores it.
-   Another fix that hides the pager (the grade cards, and the own list of the announcements) hides the navigator too.
+   Another fix that hides the pager (the grade cards when they cover every page, and the own list of the announcements) hides the navigator too.
    The navigator follows the dark theme of the widget, with the link color `#5A9FD4`, the ink `#FFFFFF` and the disabled color `#4A5B68` of the package, and the current page keeps its blue square.
    A widget with one page has no pager of Canvas, so it has no navigator.
 4. **People list.**
@@ -3253,6 +3257,7 @@ With the pane read alone, the default run of the test failed before the fix.
      The input takes a whole number.
      A number outside the document goes to the nearest page.
      Other text is rejected and the input shows the page in view again.
+     Escape cancels the typed number: the input shows the page in view again, no page change follows, and the pane stays open.
    - **Zoom.**
      The default is "Fit width".
      The menu offers "Fit width", "Fit page", 50, 75, 100, 125, 150, 200, 300 and 400 percent.
@@ -3279,7 +3284,7 @@ With the pane read alone, the default run of the test failed before the fix.
      The bar shows "N of M", "No matches" or "Searching…".
      Enter and Shift+Enter, and the arrow buttons, go to the next and the previous match, and wrap around.
      The matches show in the text layer, and the selected match has a stronger color.
-     Escape closes the bar and clears the marks, and it does not close the pane.
+     Escape closes the bar and clears the marks, and it does not close the pane, whichever control of the bar has the focus.
      At most 5,000 matches count.
    - **Thumbnails.**
      The list shows one slot for each page.
@@ -3453,7 +3458,7 @@ With the pane read alone, the default run of the test failed before the fix.
     Every load of the frame after the first drops the port of the document before it.
     If no valid answer with the secret arrives within 15 seconds of the open, or no hello follows a load, the page script removes the pane and restores the padding of the page.
     The stored tabs stay, so the next click opens the pane again.
-  - After the proof, the pane accepts only two messages from the page: `open-file`, with a file id and an optional course id, and `theme`, with the value `light` or `dark`.
+  - After the proof, the pane accepts only four messages from the page: `open-file`, with a file id and an optional course id, `theme`, with the value `light` or `dark`, `full-view`, with the full view state, and `covered`, which says whether another pane hides the file pane.
     It never accepts a path or a full URL to load, and it drops a message with another key or value.
   - The pane frame sits in a closed shadow root, which keeps the frame element and its address from the page.
     A script can still get the window of the pane from the event of the hello, so the channel does not rely on the root.
@@ -4534,6 +4539,9 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     A file click, in the page or in a frame of the pane (decision 25, item 11), opens the file pane as usual, and the pane host is only hidden.
     When the file pane closes, the pane shows again with the same frame.
   - Preview while a file pane is open shows the pane over the file pane, which is hidden and keeps its tabs.
+    The page script tells the file pane page over the port that its host is hidden or shown (the message `covered`).
+    While the host is hidden, the pane page treats every tab as hidden: a hidden tab pauses its media (decision 25, item 10) and keeps its scroll position.
+    Firefox resets the scroll offset of a scroller in a hidden frame, so the PDF tabs restore the position that they saved, and the text and image tabs restore the offset that they last had while they showed.
     The close button of the pane shows the file pane again.
     The page has the padding of the one pane that shows, and its own padding when none shows, after every order of these steps.
   - A page that removes the pane host removes the pane and its frames: the poll stops, the room is given back, and a file pane that it covered shows again.

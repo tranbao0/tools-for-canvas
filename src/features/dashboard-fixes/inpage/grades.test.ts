@@ -38,6 +38,34 @@ describe('gradesFix', () => {
     expect(document.querySelector('[data-wr-grades]')).not.toBeNull();
   });
 
+  describe('the pager of Canvas', () => {
+    const widget = () =>
+      document.querySelector<HTMLElement>('[data-testid="widget-course-grades-widget"]')!;
+    beforeEach(() => {
+      widget().insertAdjacentHTML(
+        'beforeend',
+        '<div data-testid="pagination-container"><nav aria-label="Course grades pagination"><ul><li><button aria-current="page">1</button></li><li><button>2</button></li></ul></nav></div>',
+      );
+    });
+
+    it('gives way once the page has a card for every page that the pager reaches', () => {
+      gradesFix().apply(fakeContext());
+      expect(cards()).toHaveLength(7);
+      expect(widget().hasAttribute('data-wr-grades')).toBe(true);
+    });
+
+    it('stays when the course list has no course to draw, and gives way when the courses come', () => {
+      const fix = gradesFix();
+      fix.apply(fakeContext(dashboardData([])));
+      expect(cards()).toHaveLength(6);
+      expect(widget().hasAttribute('data-wr-grades')).toBe(false);
+      fix.apply(fakeContext());
+      expect(widget().hasAttribute('data-wr-grades')).toBe(true);
+      fix.apply(fakeContext(dashboardData([])));
+      expect(widget().hasAttribute('data-wr-grades')).toBe(false);
+    });
+  });
+
   it('shows N/A where Canvas sends no total, and colors the header with the course color', () => {
     const fix = gradesFix();
     const courses = COURSES.slice(0, 6).concat({

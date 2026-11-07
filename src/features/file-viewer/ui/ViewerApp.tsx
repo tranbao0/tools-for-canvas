@@ -12,6 +12,7 @@ import { CloseIcon } from '../../../shared/ui/icons';
 import { t } from '../../../shared/ui/i18n';
 import { closeFile, openFile, type Tabs } from '../model';
 import { FileCard, type FileState, type PaneFile } from './FileCard';
+import type { CoveredHost } from './covered';
 import type { FullViewHost } from './fullView';
 import { FullViewButton } from './FullViewButton';
 import { fileKind, isPdf } from './fileInfo';
@@ -40,6 +41,8 @@ export interface PaneHost extends PdfHost {
   closePane(): void;
   /** The full view state of the pane, which the Canvas page keeps. */
   fullView: FullViewHost;
+  /** Whether another pane covers this one. The Canvas page keeps that too. */
+  covered: CoveredHost;
 }
 
 /** The Canvas page asks the pane to open a file. */
@@ -72,6 +75,13 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const nameHints = useRef(new Map<string, string>());
   const addresses = useRef(new Map<string, string>());
   const focusAfter = useRef<string | null>(null);
+  // While another pane covers this one, no tab is the active tab: media pauses and PDFs save
+  // their place, as for a tab that another tab hides.
+  const [covered, setCovered] = useState(host.covered.get());
+  useEffect(() => {
+    setCovered(host.covered.get());
+    return host.covered.subscribe(setCovered);
+  }, [host]);
 
   // Counts the reads of each PDF. A change makes the tab read its file again.
   const [attempts, setAttempts] = useState<Readonly<Record<string, number>>>({});
@@ -288,7 +298,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
           url={readFrom}
           name={state.file.name}
           contentType={state.file.contentType}
-          active={fileId === active}
+          active={!covered && fileId === active}
           attempt={attempts[fileId] ?? 0}
           onRetry={() => readAgain(fileId)}
           onReadFailed={() => {
@@ -309,7 +319,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
         access={access}
         onAllow={allow}
         host={host}
-        active={fileId === active}
+        active={!covered && fileId === active}
         attempt={attempts[fileId] ?? 0}
         onReadFailed={() => {
           failedReads.current.add(fileId);
