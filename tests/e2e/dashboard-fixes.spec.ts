@@ -2120,68 +2120,93 @@ test('an added Course grades widget saves its own filter', async ({ context, pag
     });
 });
 
-test('a copied eye waits for a native eye write to settle', async ({ context, page }) => {
-  let filters = { gradeVisibilities: {} as Record<string, boolean> };
-  let written: unknown;
-  let savedAt = 0;
-  const served = await serveScenario(
+for (const state of ['covered', 'uncovered', 'native change'])
+  test(`a copied eye waits for a native eye write to settle (${state})`, async ({
     context,
-    [
-      ...PAGE,
-      {
-        method: 'POST',
-        path: '/api/graphql',
-        respond: (request): FakeReply => {
-          const body = JSON.parse(request.postData ?? '{}');
-          if (body.query?.includes('updateWidgetDashboardConfig')) {
-            written = body.variables.filters;
-            savedAt = Date.now();
-            return { body: { errors: [{ message: 'Refused' }] } };
-          }
-          return {
-            body: {
-              data: {
-                legacyNode: {
-                  widgetDashboardConfig: JSON.stringify({
-                    filters: { 'course-grades-widget': filters },
-                  }),
+    page,
+  }) => {
+    let filters = { gradeVisibilities: {} as Record<string, boolean> };
+    let written: unknown;
+    let savedAt = 0;
+    const served = await serveScenario(
+      context,
+      [
+        ...PAGE,
+        {
+          method: 'POST',
+          path: '/api/graphql',
+          respond: (request): FakeReply => {
+            const body = JSON.parse(request.postData ?? '{}');
+            if (body.query?.includes('updateWidgetDashboardConfig')) {
+              written = body.variables.filters;
+              savedAt = Date.now();
+              return { body: { errors: [{ message: 'Refused' }] } };
+            }
+            return {
+              body: {
+                data: {
+                  legacyNode: {
+                    widgetDashboardConfig: JSON.stringify({
+                      filters: { 'course-grades-widget': filters },
+                    }),
+                  },
                 },
               },
-            },
-          };
+            };
+          },
         },
-      },
-    ],
-    EIGHT_COURSES,
-  );
-  await addCsrfCookie(context, served.canvas.origin);
-  await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
-  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
-  await page.exposeFunction('nativeEyeWrite', () => {
-    setTimeout(() => {
-      filters = { gradeVisibilities: { '101': false } };
-    }, 1200);
+      ],
+      EIGHT_COURSES,
+    );
+    await addCsrfCookie(context, served.canvas.origin);
+    await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+    await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+    if (state === 'uncovered') {
+      await page
+        .getByTestId('widget-course-grades-widget')
+        .getByTestId('pagination-container')
+        .locator('li button')
+        .last()
+        .evaluate((button) => {
+          button.textContent = '3';
+        });
+      await expect(page.getByTestId('widget-course-grades-widget')).not.toHaveAttribute(
+        'data-wr-grades',
+      );
+    }
+    await page.exposeFunction('nativeEyeWrite', () => {
+      setTimeout(() => {
+        filters = { gradeVisibilities: { '101': false } };
+      }, 1200);
+    });
+    const nativeEye = page.locator(
+      '[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]',
+    );
+    await nativeEye.evaluate((button) =>
+      button.addEventListener('click', () => {
+        void (window as unknown as { nativeEyeWrite(): Promise<void> }).nativeEyeWrite();
+      }),
+    );
+    const nativeAt = Date.now();
+    await nativeEye.click();
+    await page.locator('[data-wr-card="107"] button').click();
+    await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
+    await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(2);
+    await expect(page.locator('[data-wr-card][aria-busy="true"]')).toHaveCount(2);
+    await page.waitForTimeout(1500);
+    let changedAt = 0;
+    if (state === 'native change') {
+      changedAt = Date.now();
+      await page.getByTestId('course-101-grade').evaluate((grade) => {
+        grade.textContent = '•••';
+      });
+    }
+    await nativeEye.click();
+    await expect.poll(() => written).toEqual({ gradeVisibilities: { '101': false, '107': false } });
+    expect(savedAt - (changedAt || nativeAt)).toBeLessThan(4300);
+    if (changedAt) expect(savedAt - changedAt).toBeGreaterThanOrEqual(3000);
+    expect(savedAt - nativeAt).toBeGreaterThanOrEqual(3000);
   });
-  const nativeEye = page.locator(
-    '[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]',
-  );
-  await nativeEye.evaluate((button) =>
-    button.addEventListener('click', () => {
-      void (window as unknown as { nativeEyeWrite(): Promise<void> }).nativeEyeWrite();
-    }),
-  );
-  const nativeAt = Date.now();
-  await nativeEye.click();
-  await page.locator('[data-wr-card="107"] button').click();
-  await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
-  await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(2);
-  await expect(page.locator('[data-wr-card][aria-busy="true"]')).toHaveCount(2);
-  await page.waitForTimeout(1500);
-  await nativeEye.click();
-  await expect.poll(() => written).toEqual({ gradeVisibilities: { '101': false, '107': false } });
-  expect(savedAt - nativeAt).toBeLessThan(4300);
-  expect(savedAt - nativeAt).toBeGreaterThanOrEqual(3000);
-});
 
 for (const work of ['task', 'search', 'message', 'customize'])
   test(`a copied eye protects ${work}`, async ({ context, page }) => {

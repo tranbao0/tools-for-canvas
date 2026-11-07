@@ -102,18 +102,19 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
   }
 
   function blockWhileSaving(event: Event): void {
-    if (saving && event.target instanceof Element && event.target.closest('[data-wr-grades]')) {
+    const target = event.target;
+    if (
+      !(target instanceof Element) ||
+      !doc ||
+      !findGradeWidgets(doc).some(({ widget }) => widget.contains(target))
+    )
+      return;
+    if (saving) {
       event.preventDefault();
       event.stopImmediatePropagation();
       return;
     }
-    if (
-      event.isTrusted &&
-      event.target instanceof Element &&
-      event.target.closest('[data-wr-grades]') &&
-      !event.target.closest('[data-wr-card]')
-    )
-      nativeChangedAt = Date.now();
+    if (event.isTrusted && !target.closest('[data-wr-card]')) nativeChangedAt = Date.now();
   }
 
   /** Sets the text of the element with `suffix`, and removes it when there is no text. */
@@ -310,6 +311,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
     )
       nativeChangedAt = Date.now();
     nativeStates.set(found.widget, { hidden: found.gradesHidden, values });
+    if (saving) return;
     const hidden = (id: string): boolean =>
       visibility == null ||
       overrides?.get(id) === false ||
@@ -357,7 +359,6 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         doc.addEventListener('click', blockWhileSaving, true);
         doc.addEventListener('change', blockWhileSaving, true);
       }
-      if (saving) return;
       for (const found of findGradeWidgets(context.doc)) sync(context, found);
     },
     remove() {
