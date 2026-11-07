@@ -2613,8 +2613,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const stamp = writeStamp();
     const origin = knownOrigin;
     for (let checks = 0; ; checks++) {
-      const fingerprint = await readFingerprint(origin);
-      if (!identityHolds(stamp)) return false;
+      // A read that overlaps a new generation can predate a sign-in, so it is read again.
+      let readGeneration: number;
+      let fingerprint: string | null | undefined;
+      do {
+        readGeneration = generation;
+        fingerprint = await readFingerprint(origin);
+        if (!identityHolds(stamp)) return false;
+      } while (readGeneration !== generation);
       if (fingerprint === undefined) return false;
       if (fingerprint === null) {
         signOut({ kind: 'signed_out' });
