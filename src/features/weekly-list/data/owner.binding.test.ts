@@ -226,7 +226,7 @@ describe('a tab in another cookie store', () => {
     vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
 
     expect(await h.owner.getState(PANEL, 7)).toMatchObject({ kind: 'cant_load' });
-    await h.owner.refresh('retry', 7);
+    await h.owner.refresh('retry', ORIGIN, 7);
     await h.owner.pageLoaded(ORIGIN, 7);
     await h.owner.settled();
 

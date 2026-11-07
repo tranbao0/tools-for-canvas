@@ -112,11 +112,16 @@ async function answerDetection(
   return OK_REPLY;
 }
 
+/** The saved origin that an extension page may use. */
+export async function extensionOrigin(read: () => Promise<string | null>): Promise<string | null> {
+  const saved = await read();
+  return saved !== null && isUsableOrigin(saved) ? saved : null;
+}
+
 /** Resolves when the sender may use the data of the saved Canvas, and rejects otherwise. */
 async function checkSender(sender: SenderInfo, host: RouterHost): Promise<string | null> {
   if (host.isExtensionPage(sender)) {
-    const saved = await host.savedOrigin();
-    return saved !== null && isUsableOrigin(saved) ? saved : null;
+    return extensionOrigin(() => host.savedOrigin());
   }
   const origin = senderPageOrigin(sender);
   const saved = await host.savedOrigin();
@@ -176,14 +181,14 @@ export function routeDataMessage(
       const request = host.isExtensionPage(sender)
         ? message.request
         : { ...message.request, surface: 'inpage' as const };
-      return allowed.then(() => owner.getState(request, sender.tab?.id));
+      return allowed.then((origin) => owner.getState(request, sender.tab?.id, origin));
     }
     case 'weekrow:announcement-feed': {
       // A content script is an in-page list, whatever it says.
       const request = host.isExtensionPage(sender)
         ? message.request
         : { ...message.request, surface: 'inpage' as const };
-      return allowed.then(() => owner.announcementFeed(request, sender.tab?.id));
+      return allowed.then((origin) => owner.announcementFeed(request, sender.tab?.id, origin));
     }
     case 'weekrow:page-context':
       return allowed.then(async (): Promise<PageContextReply> => ({
@@ -200,6 +205,7 @@ export function routeDataMessage(
           ? owner.dashboardGradeVisibility(
               typeof message.readToken === 'string' ? message.readToken.slice(0, 64) : undefined,
               sender.tab?.id,
+              origin,
             )
           : owner.dashboardData(origin, sender.tab?.id),
       );
@@ -249,13 +255,14 @@ export function routeDataMessage(
     case 'weekrow:announcement-mark':
       // Only the page of the saved Canvas marks, and only for a tab of its top frame.
       if (host.isExtensionPage(sender)) return reject('Only the page of the saved Canvas may ask');
-      return allowed.then(() =>
+      return allowed.then((origin) =>
         owner.markDashboardAnnouncement(
           message.courseId,
           message.topicId,
           message.read,
           message.userId,
           sender.tab?.id,
+          origin,
         ),
       );
     case 'assignment:details':
@@ -287,10 +294,10 @@ export function routeDataMessage(
       return allowed.then(() => host.markNoteSeen(message.note)).then(ok);
     case 'weekrow:refresh':
       return allowed
-        .then(() => owner.refresh(message.reason, sender.tab?.id))
+        .then((origin) => owner.refresh(message.reason, origin, sender.tab?.id))
         .then((result): RefreshReply => ({ ok: true, retryAt: result.retryAt }));
     case 'weekrow:action':
-      return allowed.then(() => owner.act(message.action, sender.tab?.id));
+      return allowed.then((origin) => owner.act(message.action, sender.tab?.id, origin));
     case 'weekrow:open-page':
       return allowed.then(() => host.openPage(message.page)).then(ok);
   }

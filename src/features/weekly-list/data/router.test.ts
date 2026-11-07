@@ -117,7 +117,7 @@ describe('routeDataMessage', () => {
     );
     await expect(reply).resolves.toEqual({ kind: 'loading' });
     // A content script is the in-page list, whichever surface its message names.
-    expect(owner.getState).toHaveBeenCalledWith({ ...REQUEST, surface: 'inpage' }, 3);
+    expect(owner.getState).toHaveBeenCalledWith({ ...REQUEST, surface: 'inpage' }, 3, SAVED);
   });
 
   it('gives an extension page the surface that it asks for, and a content script never the offer', async () => {
@@ -128,7 +128,7 @@ describe('routeDataMessage', () => {
         EXTENSION_PAGE,
         host,
       );
-      expect(owner.getState).toHaveBeenLastCalledWith({ ...REQUEST, surface }, undefined);
+      expect(owner.getState).toHaveBeenLastCalledWith({ ...REQUEST, surface }, undefined, SAVED);
     }
     for (const surface of ['panel', 'page'] as const) {
       await routeDataMessage(
@@ -137,7 +137,7 @@ describe('routeDataMessage', () => {
         CONTENT_SCRIPT,
         host,
       );
-      expect(owner.getState).toHaveBeenLastCalledWith({ ...REQUEST, surface: 'inpage' }, 3);
+      expect(owner.getState).toHaveBeenLastCalledWith({ ...REQUEST, surface: 'inpage' }, 3, SAVED);
     }
   });
 
@@ -215,7 +215,7 @@ describe('routeDataMessage', () => {
         action: { kind: 'markAnnouncement', courseId: '101', topicId: '31901' },
       };
       await routeDataMessage(owner, message, CONTENT_SCRIPT, host);
-      expect(owner.act).toHaveBeenCalledWith(message.action, 3);
+      expect(owner.act).toHaveBeenCalledWith(message.action, 3, SAVED);
       owner.act.mockClear();
       await expect(routeDataMessage(owner, message, OTHER_CANVAS, host)).rejects.toThrow();
       expect(owner.act).not.toHaveBeenCalled();
@@ -278,7 +278,7 @@ describe('routeDataMessage', () => {
       CONTENT_SCRIPT,
       host,
     );
-    expect(reply).toEqual(await owner.dashboardGradeVisibility());
+    expect(reply).toEqual(await owner.dashboardGradeVisibility(undefined, undefined, SAVED));
     expect(owner.dashboardGradeVisibility).toHaveBeenCalledTimes(2);
     expect(owner.dashboardData).not.toHaveBeenCalled();
   });
@@ -298,8 +298,8 @@ describe('routeDataMessage', () => {
       host,
     );
     expect(owner.dashboardGradeVisibility.mock.calls).toEqual([
-      ['a'.repeat(64), 3],
-      [undefined, 3],
+      ['a'.repeat(64), 3, SAVED],
+      [undefined, 3, SAVED],
     ]);
   });
 
@@ -505,7 +505,14 @@ describe('routeDataMessage', () => {
         SAVED,
         3,
       );
-      expect(owner.markDashboardAnnouncement).toHaveBeenCalledWith('101', '31901', true, '42', 3);
+      expect(owner.markDashboardAnnouncement).toHaveBeenCalledWith(
+        '101',
+        '31901',
+        true,
+        '42',
+        3,
+        SAVED,
+      );
     });
 
     it('answer the People page for the page of the saved Canvas, with the tab of the sender', async () => {
@@ -662,7 +669,7 @@ describe('routeDataMessage', () => {
     await expect(
       routeDataMessage(owner, { type: 'weekrow:refresh', reason: 'timer' }, EXTENSION_PAGE, host),
     ).resolves.toEqual({ ok: true, retryAt: 1234 });
-    expect(owner.refresh).toHaveBeenCalledWith('timer', undefined);
+    expect(owner.refresh).toHaveBeenCalledWith('timer', SAVED, undefined);
 
     await routeDataMessage(
       owner,
@@ -670,17 +677,17 @@ describe('routeDataMessage', () => {
       CONTENT_SCRIPT,
       host,
     );
-    expect(owner.refresh).toHaveBeenLastCalledWith('retry', 3);
+    expect(owner.refresh).toHaveBeenLastCalledWith('retry', SAVED, 3);
 
     const action = { kind: 'setDone', keys: ['assignment:1'], done: true };
     await expect(
       routeDataMessage(owner, { type: 'weekrow:action', action }, CONTENT_SCRIPT, host),
     ).resolves.toEqual({ undo: null });
     // The tab of the sender goes along, so the owner can check its cookie store.
-    expect(owner.act).toHaveBeenCalledWith(action, 3);
+    expect(owner.act).toHaveBeenCalledWith(action, 3, SAVED);
 
     await routeDataMessage(owner, { type: 'weekrow:action', action }, EXTENSION_PAGE, host);
-    expect(owner.act).toHaveBeenLastCalledWith(action, undefined);
+    expect(owner.act).toHaveBeenLastCalledWith(action, undefined, SAVED);
   });
 
   it('treats a Canvas page load as a refresh trigger, with the origin of the sender page', async () => {
