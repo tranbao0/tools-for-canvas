@@ -1017,6 +1017,18 @@ describe('the open bottom group', () => {
         }),
       });
     const line = () => screen.getByRole('button', { name: '2 older' });
+    const olderDoneOnly = () =>
+      readyState({
+        view: mkView({
+          groups: [
+            todayGroup,
+            mkGroup({
+              kind: 'done',
+              older: dueItems(['Old done one', 'Old done two'], { state: 'done' }),
+            }),
+          ],
+        }),
+      });
 
     it('counts only the work of the span in Done, and shows the older line closed with its own count', () => {
       setupSaved(olderDone(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
@@ -1046,23 +1058,25 @@ describe('the open bottom group', () => {
       expect(area()?.textContent).toContain('Old done two');
     });
 
+    it('shows a count that is no number while the span loads or did not load, whatever the older work', () => {
+      const state = olderDoneOnly();
+      if (state.kind !== 'ready') throw new Error('not ready');
+      for (const flag of [{ loading: true }, { incomplete: true }] as const) {
+        cleanup();
+        setupSaved(readyState({ view: { ...state.view, ...flag } }), 'inpage', {
+          ...DEFAULT_SETTINGS,
+          openGroup: 'done',
+        });
+        expect(header(/^Done/).parentElement?.querySelector('.wr-count')?.textContent).toBe('?');
+      }
+    });
+
     it('shows the line under a count of 0 when only older work is done', () => {
-      setupSaved(
-        readyState({
-          view: mkView({
-            groups: [
-              todayGroup,
-              mkGroup({
-                kind: 'done',
-                older: dueItems(['Old done one', 'Old done two'], { state: 'done' }),
-              }),
-            ],
-          }),
-        }),
-        'inpage',
-        { ...DEFAULT_SETTINGS, openGroup: 'done' },
-      );
+      setupSaved(olderDoneOnly(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
       expect(header(/^Done/).parentElement?.querySelector('.wr-count')?.textContent).toBe('0');
+      // The empty line of the span comes first, and the older line follows it.
+      const shown = area() as HTMLElement;
+      expect(shown.textContent).toContain('Nothing done in this span.');
       expect(line()).toBeTruthy();
     });
   });
