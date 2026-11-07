@@ -67,23 +67,46 @@ function titleOf(row: HTMLElement, assignmentId: string): string {
 /** The most characters of the second line of the pane header. */
 const DETAILS_LIMIT = 160;
 
+/** Whether a computed length is at most one pixel: "1px", "0", or "0.0625rem". */
+function isTiny(length: string): boolean {
+  const value = Number.parseFloat(length);
+  if (Number.isNaN(value)) return false;
+  return (/r?em$/.test(length) ? value * 16 : value) <= 1;
+}
+
 /**
- * The text of a node as a student sees it: Canvas draws each date and score twice, once for screen
- * readers (`screenreader-only`) and once for the eye. The walk goes by index and never iterates a
- * list, because the list belongs to the page.
+ * Whether the page draws an element with no room for the eye: `display: none` (Canvas hides the
+ * copy of a date that does not fit the window width this way), or a box of one pixel with hidden
+ * overflow, the way every screen reader only style hides text (`.screenreader-only` of Canvas and
+ * the hashed classes of its React components). The style decides, never a class name.
  */
-function visibleText(node: Node): string {
-  if (node.nodeType === 3) return node.nodeValue ?? '';
+function takesNoRoom(style: CSSStyleDeclaration): boolean {
+  return (
+    style.display === 'none' ||
+    (style.overflow === 'hidden' && isTiny(style.width) && isTiny(style.height))
+  );
+}
+
+/**
+ * The text of a node as a student sees it. Canvas draws a date and a score for screen readers and
+ * again for the eye, and a date once for each window width, so the text of a node is what the
+ * computed styles leave on screen. The walk goes by index and never iterates a list, because the
+ * list belongs to the page.
+ */
+function visibleText(node: Node, seen = true): string {
+  if (node.nodeType === 3) return seen ? (node.nodeValue ?? '') : '';
   if (node.nodeType !== 1) return '';
   const element = node as Element;
-  if (
-    element.classList.contains('screenreader-only') ||
-    /^(?:script|style)$/i.test(element.tagName)
-  )
-    return '';
+  if (/^(?:script|style)$/i.test(element.tagName)) return '';
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+  if (style && takesNoRoom(style)) return '';
+  // A child can show again inside a hidden parent, so the flag goes down instead of stopping here.
+  const shown =
+    style === undefined || (style.visibility !== 'hidden' && style.visibility !== 'collapse');
   let text = '';
   const children = element.childNodes;
-  for (let index = 0; index < children.length; index += 1) text += visibleText(children[index]!);
+  for (let index = 0; index < children.length; index += 1)
+    text += visibleText(children[index]!, shown);
   return text;
 }
 

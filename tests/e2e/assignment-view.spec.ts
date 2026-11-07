@@ -828,7 +828,7 @@ test('the pane is a card with a gap, and its header has a title, a second line a
   expect(header.titleSize).toBe('18px');
   expect(header.ellipsis).toBe('ellipsis');
   // The second line is the due text and the points of the row, in 13 px muted text.
-  expect(header.subText).toBe('Due Nov 3 at 10pm | 10 pts');
+  expect(header.subText).toBe('Due Nov 3 at 10pm | -/10 pts');
   expect(header.subSize).toBe('13px');
   expect(header.subColor).toBe('rgb(88, 104, 116)');
   expect(header.sub.y).toBeGreaterThan(header.title.y + header.title.height);
@@ -882,8 +882,8 @@ test('a row with no due text and no points gives a header with one line, and a l
   await ready(page, canvas);
   await page.evaluate(() => {
     document.querySelector('#assignment_102 .ig-details')!.remove();
-    // Canvas draws the date twice: for screen readers, and for the eye. A long date shows once.
-    const due = document.querySelector('#assignment_103 .non-screenreader')!;
+    // Canvas draws the date for screen readers and for the eye. A long date shows once.
+    const due = document.querySelector('#assignment_103 .visible-desktop')!;
     due.insertAdjacentHTML('beforeend', ' ' + 'long '.repeat(60));
   });
   const read = async () => {
@@ -919,7 +919,7 @@ test('a row with no due text and no points gives a header with one line, and a l
   expect(long.text).not.toContain('Due Nov 5 at 10pm Due');
   // The header follows the frame that shows.
   await preview(page, 'Essay').click();
-  await expect.poll(async () => (await read()).text).toBe('Due Nov 3 at 10pm | 10 pts');
+  await expect.poll(async () => (await read()).text).toBe('Due Nov 3 at 10pm | -/10 pts');
   await preview(page, 'Reading').click();
   await expect.poll(async () => (await read()).hidden).toBe(true);
 });
