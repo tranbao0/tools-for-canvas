@@ -175,8 +175,18 @@ describe('actions', () => {
     { userId: '5501', kind: 'deleteTask', noteId: '8' },
     { origin: 'https://school.instructure.com', kind: 'deleteTask', noteId: '8' },
     // Actions of the removed Skip, as an older script of a tab still sends them.
-    { kind: 'skip', keys: ['assignment:1'] },
-    { kind: 'unskip', key: 'assignment:1' },
+    {
+      userId: '5501',
+      origin: 'https://school.instructure.com',
+      kind: 'skip',
+      keys: ['assignment:1'],
+    },
+    {
+      userId: '5501',
+      origin: 'https://school.instructure.com',
+      kind: 'unskip',
+      key: 'assignment:1',
+    },
     { kind: 'restore', userId: '', origin: 'https://a.edu', entries: [] },
     { kind: 'restore', userId: '9', origin: '', entries: [] },
     { kind: 'restore', userId: '9', entries: [] },
@@ -231,8 +241,13 @@ describe('actions', () => {
       kind: 'createTask',
       input: { ...TASK, title: '' },
     },
-    { kind: 'deleteOverride', key: 'assignment:1' },
-    { kind: 'keepSavedAddress' },
+    {
+      userId: '5501',
+      origin: 'https://school.instructure.com',
+      kind: 'deleteOverride',
+      key: 'assignment:1',
+    },
+    { userId: '5501', origin: 'https://school.instructure.com', kind: 'keepSavedAddress' },
     { key: 'assignment:1' },
   ])('rejects %j', (action) => {
     expect(isDataAction(action)).toBe(false);

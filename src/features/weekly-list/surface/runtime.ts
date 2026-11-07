@@ -393,7 +393,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       listTab = 'tasks';
     }
     identity =
-      reply.userId !== undefined && 'origin' in reply && reply.kind !== 'signed_out'
+      reply.kind === 'ready' && reply.userId !== undefined
         ? { userId: reply.userId, origin: reply.origin }
         : null;
     base = reply;

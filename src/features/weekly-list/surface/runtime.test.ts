@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_TOOLS_SETTINGS, type ToolsSettings } from '../../../shared/settings/tools';
-import type { DataMessage, StateReply } from '../data/protocol';
+import type { DataMessage, StateReply, UndoData } from '../data/protocol';
 import {
   DEFAULT_SETTINGS,
   type ItemView,
@@ -2060,54 +2060,113 @@ describe('the Announcements tab', () => {
 });
 
 describe('write identity', () => {
-  it.each(['ready', 'no_courses', 'cant_load'] as const)(
-    'uses the shown %s identity',
-    async (kind) => {
-      const fake = fakeHost();
-      const reply: StateReply =
-        kind === 'ready'
-          ? readyFor(USER)
-          : kind === 'no_courses'
-            ? { kind, origin: ORIGIN, userId: USER, offer: null, allCourses: [] }
-            : { kind, origin: ORIGIN, userId: USER, offer: null, offline: true };
-      fake.reply = (message) => (message.type === 'weekrow:get-state' ? reply : { undo: null });
-      const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
-      runtime.start();
+  const NO_ROWS: Record<string, StateReply> = {
+    loading: { kind: 'loading' },
+    signed_out: { kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: null },
+    no_courses: { kind: 'no_courses', origin: ORIGIN, offer: null, allCourses: [] },
+    cant_load: { kind: 'cant_load', origin: ORIGIN, offer: null, offline: true },
+  };
+  const TASK = { title: 'Task', date: '2026-10-28', time: null, courseId: null, details: null };
+  const UNDO_DATA: Record<string, UndoData> = {
+    restore: {
+      kind: 'overrides',
+      userId: USER,
+      origin: ORIGIN,
+      entries: [{ key: 'assignment:1', previous: NOT_DONE }],
+    },
+    cancelDelete: { kind: 'delete', userId: USER, origin: ORIGIN, noteId: '8' },
+    restoreAnnouncement: {
+      kind: 'announcement',
+      userId: USER,
+      origin: ORIGIN,
+      courseId: '101',
+      topicId: '5',
+    },
+  };
+
+  /** A runtime with an Undo notice of the given kind on a ready state, and a way to change the state. */
+  async function withNotice(kind: keyof typeof UNDO_DATA) {
+    const fake = fakeHost();
+    let state: StateReply = readyFor(USER, { openDeletes: ['8'] });
+    let first = true;
+    fake.reply = (message) => {
+      if (message.type === 'weekrow:get-state') return state;
+      if (message.type !== 'weekrow:action' || !first) return { undo: null };
+      first = false;
+      return { undo: UNDO_DATA[kind] };
+    };
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    if (kind === 'restore') runtime.actions.setDone('assignment:1', true);
+    else if (kind === 'cancelDelete') runtime.actions.deleteTask('8');
+    else runtime.actions.markAnnouncementRead('101', '5');
+    await settle();
+    const move = async (next: StateReply) => {
+      state = next;
+      fake.changed();
       await settle();
-      runtime.actions.createTask({
-        title: 'Task',
-        date: '2026-10-28',
-        time: null,
-        courseId: null,
-        details: null,
+    };
+    return { fake, runtime, move };
+  }
+
+  it('sends the identity of the shown ready state', async () => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    void runtime.actions.createTask(TASK);
+    await settle();
+    expect(sentActions(fake.sent)).toContainEqual(
+      expect.objectContaining({ kind: 'createTask', userId: USER, origin: ORIGIN }),
+    );
+  });
+
+  it.each(Object.keys(NO_ROWS))('sends no write in the %s state', async (name) => {
+    const fake = fakeHost();
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state' ? NO_ROWS[name] : { undo: null };
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    runtime.actions.setDone('assignment:1', true);
+    expect(await runtime.actions.createTask(TASK)).toBe(false);
+    await settle();
+    expect(sentActions(fake.sent)).toEqual([]);
+  });
+
+  it.each(Object.keys(UNDO_DATA).flatMap((kind) => Object.keys(NO_ROWS).map((to) => [kind, to])))(
+    'undoes with the identity saved in the notice (%s) when the state is %s',
+    async (kind, to) => {
+      const { fake, runtime, move } = await withNotice(kind);
+      await move(NO_ROWS[to] as StateReply);
+      runtime.actions.undo();
+      await settle();
+      expect(sentActions(fake.sent).at(-1)).toMatchObject({
+        kind: kind === 'restore' ? 'restore' : kind,
+        userId: USER,
+        origin: ORIGIN,
       });
+    },
+  );
+
+  it.each(Object.keys(UNDO_DATA))(
+    'ends the notice (%s) when the state moves to another student, and then sends no Undo',
+    async (kind) => {
+      const { fake, runtime, move } = await withNotice(kind);
+      await move(readyFor('other-student'));
+      const count = sentActions(fake.sent).length;
+      runtime.actions.undo();
       await settle();
-      expect(sentActions(fake.sent)).toContainEqual(
-        expect.objectContaining({ kind: 'createTask', userId: USER, origin: ORIGIN }),
-      );
+      expect(sentActions(fake.sent)).toHaveLength(count);
     },
   );
 
   it.each(['loading', 'signed_out'] as const)(
     'drops row identity in %s but keeps delete notice identity',
     async (kind) => {
-      const fake = fakeHost();
-      let state: StateReply = readyFor(USER, { openDeletes: ['8'] });
-      fake.reply = (message) =>
-        message.type === 'weekrow:get-state'
-          ? state
-          : message.type === 'weekrow:action' && message.action.kind === 'deleteTask'
-            ? { undo: { kind: 'delete', userId: USER, origin: ORIGIN, noteId: '8' } }
-            : { undo: null };
-      const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
-      runtime.start();
-      await settle();
-      runtime.actions.deleteTask('8');
-      await settle();
-      state =
-        kind === 'loading' ? { kind } : { kind, origin: ORIGIN, isFirefox: false, offer: null };
-      fake.changed();
-      await settle();
+      const { fake, runtime, move } = await withNotice('cancelDelete');
+      await move(NO_ROWS[kind] as StateReply);
       const count = sentActions(fake.sent).length;
       runtime.actions.setDone('assignment:1', true);
       expect(sentActions(fake.sent)).toHaveLength(count);
@@ -2120,29 +2179,48 @@ describe('write identity', () => {
       });
     },
   );
+
   it('ends a delete notice with the identity saved in the notice, not the shown one', async () => {
-    const fake = fakeHost();
-    let state: StateReply = readyFor(USER, { openDeletes: ['8'] });
-    fake.reply = (message) =>
-      message.type === 'weekrow:get-state'
-        ? state
-        : message.type === 'weekrow:action' && message.action.kind === 'deleteTask'
-          ? { undo: { kind: 'delete', userId: USER, origin: ORIGIN, noteId: '8' } }
-          : { undo: null };
-    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
-    runtime.start();
-    await settle();
-    runtime.actions.deleteTask('8');
-    await settle();
-    state = { kind: 'no_courses', origin: ORIGIN, userId: 'other', offer: null, allCourses: [] };
-    fake.changed();
-    await settle();
+    const { fake, runtime, move } = await withNotice('cancelDelete');
+    await move({ kind: 'cant_load', origin: ORIGIN, offer: null, offline: false });
     runtime.actions.dismissUndo();
     expect(sentActions(fake.sent).at(-1)).toEqual({
       kind: 'sendDelete',
       userId: USER,
       origin: ORIGIN,
       noteId: '8',
+    });
+  });
+
+  it.each([
+    ['ready of another student', readyFor('other-student')],
+    ['loading', { kind: 'loading' } as StateReply],
+  ])('an older %s reply cannot change the identity', async (_name, older) => {
+    const fake = fakeHost();
+    let late: (reply: StateReply) => void = () => undefined;
+    let asks = 0;
+    fake.reply = (message) => {
+      if (message.type !== 'weekrow:get-state') return { undo: null };
+      asks += 1;
+      if (asks === 1) return new Promise<StateReply>((resolve) => (late = resolve));
+      return readyFor(USER);
+    };
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    // The first request is still out. A second one answers first, so the first is older.
+    fake.changed();
+    await settle();
+    expect(runtime.state().kind).toBe('ready');
+    late(older);
+    await settle();
+    expect(runtime.state().kind).toBe('ready');
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+    expect(sentActions(fake.sent).at(-1)).toMatchObject({
+      kind: 'setDone',
+      userId: USER,
+      origin: ORIGIN,
     });
   });
 });

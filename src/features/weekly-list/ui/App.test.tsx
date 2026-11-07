@@ -1833,6 +1833,38 @@ describe('notices', () => {
 });
 
 describe('task form', () => {
+  describe('when the identity of the view changes', () => {
+    const open = (kind: 'new' | 'edit') => {
+      const view = setup();
+      if (kind === 'new') fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
+      else fireEvent.click(screen.getByRole('button', { name: 'Edit task: Buy lab goggles' }));
+      const form = screen.getByRole('form');
+      fireEvent.input(within(form).getByLabelText('Title'), { target: { value: 'Draft' } });
+      return view;
+    };
+
+    it.each(['new', 'edit'] as const)(
+      'keeps the %s form for the same student and the same Canvas',
+      (kind) => {
+        const view = open(kind);
+        view.rerender(readyState({ refreshing: true }));
+        expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Draft');
+      },
+    );
+
+    it.each([
+      ['another student', { userId: '6603' }],
+      ['another Canvas', { origin: 'https://canvas.state.edu' }],
+    ] as const)('closes the new and the edit form for %s and drops the draft', (_name, patch) => {
+      for (const kind of ['new', 'edit'] as const) {
+        const view = open(kind);
+        view.rerender(readyState(patch));
+        expect(screen.queryByRole('form')).toBeNull();
+        view.unmount();
+      }
+    });
+  });
+
   it('creates a task on today with no time', async () => {
     const { actions } = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Add task' }));

@@ -870,7 +870,6 @@ describe('states', () => {
 
     expect(await h.owner.getState(PANEL)).toEqual({
       kind: 'no_courses',
-      userId: IDS.user,
       origin: ORIGIN,
       offer: null,
       allCourses: [],
@@ -902,11 +901,7 @@ describe('states', () => {
     expect(expectReady(await h.owner.getState(later)).view.loading).toBe(true);
     await h.owner.settled();
 
-    expect(await h.owner.getState(later)).toMatchObject({
-      kind: 'cant_load',
-      userId: IDS.user,
-      offline: true,
-    });
+    expect(await h.owner.getState(later)).toMatchObject({ kind: 'cant_load', offline: true });
     expect(expectReady(await h.owner.getState(PANEL)).stale).toMatchObject({ offline: true });
   });
 

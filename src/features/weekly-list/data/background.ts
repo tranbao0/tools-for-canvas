@@ -90,7 +90,6 @@ export function wireDataTriggers(owner: DataOwner): () => void {
     }
     if (!isDataAction(action) || action.kind !== 'deleteTask') return;
     const original = action;
-    const noteId = original.noteId;
     let closed = false;
     const origin = extensionOrigin(() => canvasOriginItem.getValue());
     const pending = origin.then((checked) => owner.act(original, undefined, checked));
@@ -102,7 +101,7 @@ export function wireDataTriggers(owner: DataOwner): () => void {
           if (reply.deleteToken !== undefined)
             return origin.then((checked) =>
               owner.act(
-                { ...original, kind: 'sendDelete', noteId, deleteToken: reply.deleteToken },
+                { ...original, kind: 'sendDelete', deleteToken: reply.deleteToken },
                 undefined,
                 checked,
               ),

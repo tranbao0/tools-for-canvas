@@ -8,7 +8,7 @@ import type { Course, PlannerItem, Profile, UserSelf } from '../../src/shared/ca
 import { CANVAS_ERRORS } from '../fixtures/errors';
 import { IDS, type Scenario } from '../fixtures/scenario';
 import type { WireAssignment } from '../fixtures/wire-types';
-import { errorReply } from './support/canvas-state';
+import { errorReply, writesTo } from './support/canvas-state';
 import { advanceBackgroundClock, freezeBackgroundClock } from './support/clock';
 import { serveFakeCanvas, type FakeCanvas, type FakeCanvasRoute } from './support/fake-canvas';
 import { json, saveAddress } from './support/scenario-api';
@@ -705,4 +705,117 @@ test('an old hidden panel cannot mark rows for a different student', async ({
   await doneBox(page, QUIZ_3).click();
   await expect(doneBox(page, QUIZ_3)).toHaveCount(0);
   expect(second.requests.filter((r) => r.method !== 'GET')).toEqual([]);
+});
+
+/** Hides the panel the way a background tab is hidden, so it asks for no state until it is shown. */
+async function hidePanel(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+}
+
+const DRAFT = 'Draft for the first student';
+
+test.describe('an open form of the first student', () => {
+  test('closes when the state moves to another student, and nothing of it reaches that student', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const first = await serveScenario(context);
+    await addCsrfCookie(context, first.canvas.origin);
+    await saveAddress(background, first.canvas.origin);
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await loadedAccountList(page);
+    await page.getByRole('button', { name: 'Add task' }).click();
+    await page.getByLabel('Title').fill(DRAFT);
+    await hidePanel(page);
+
+    await context.unrouteAll({ behavior: 'ignoreErrors' });
+    const student = secondStudent(first.scenario);
+    const second = await serveFakeCanvas(context, secondStudentRoutes(student));
+    await advanceBackgroundClock(background, AFTER_LIMIT_MS);
+    const other = await context.newPage();
+    await openCanvasPage(other, second.origin);
+    await loadedAccountList(other);
+    await expect(doneBox(inpageList(other), SKETCHBOOK)).toBeVisible();
+
+    // The old form still shows. The first Save is refused, the panel asks for state again, and
+    // the new student's list replaces the first student's.
+    await expect(page.getByLabel('Title')).toHaveValue(DRAFT);
+    await page.getByRole('button', { name: 'Add task' }).click();
+    await expect(doneBox(page, SKETCHBOOK)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'New task' })).toHaveCount(0);
+    await expect(page.getByLabel('Title')).toHaveCount(0);
+    expect(writesTo(second, 'POST', '/api/v1/planner_notes')).toEqual([]);
+    expect(second.requests.filter((request) => request.method !== 'GET')).toEqual([]);
+  });
+
+  test('closes when a visible panel moves to another student', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const first = await serveScenario(context);
+    await addCsrfCookie(context, first.canvas.origin);
+    await saveAddress(background, first.canvas.origin);
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await loadedAccountList(page);
+    await page.getByRole('button', { name: 'Add task' }).click();
+    await page.getByLabel('Title').fill(DRAFT);
+
+    await context.unrouteAll({ behavior: 'ignoreErrors' });
+    const student = secondStudent(first.scenario);
+    const second = await serveFakeCanvas(context, secondStudentRoutes(student));
+    await advanceBackgroundClock(background, AFTER_LIMIT_MS);
+    const other = await context.newPage();
+    await openCanvasPage(other, second.origin);
+    await loadedAccountList(other);
+
+    await expect(doneBox(page, SKETCHBOOK)).toBeVisible();
+    await expect(page.getByLabel('Title')).toHaveCount(0);
+    expect(second.requests.filter((request) => request.method !== 'GET')).toEqual([]);
+  });
+
+  test('closes an edit form when the state moves to another Canvas that has the same note id', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const school = await serveScenario(context);
+    const state = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }], {
+      origin: 'https://canvas.state.edu',
+      alongside: true,
+    });
+    await addCsrfCookie(context, school.canvas.origin);
+    await addCsrfCookie(context, state.canvas.origin);
+    await saveAddress(background, school.canvas.origin);
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await loadedAccountList(page);
+    const edit = (scope: Page) =>
+      scope.getByRole('button', { name: 'Edit task: Return library books', exact: true });
+    await edit(page).click();
+    await page.getByLabel('Title').fill('Edited for the first Canvas');
+    await hidePanel(page);
+
+    await saveAddress(background, state.canvas.origin);
+    const other = await context.newPage();
+    await openCanvasPage(other, state.canvas.origin);
+    await loadedAccountList(other);
+
+    await expect(page.getByLabel('Title')).toHaveValue('Edited for the first Canvas');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await expect(edit(page)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Edit task' })).toHaveCount(0);
+    // The GraphQL query of the grade statuses is a read that uses POST.
+    expect(
+      state.canvas.requests.filter(
+        (request) => request.method !== 'GET' && request.path.startsWith('/api/v1/'),
+      ),
+    ).toEqual([]);
+  });
 });
