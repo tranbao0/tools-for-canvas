@@ -87,6 +87,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
     course: DashboardCourse,
     hidden: boolean,
     context: FixContext,
+    widgetId: string,
   ): HTMLElement {
     const from = cardCourseId(template);
     const card = template.cloneNode(true) as HTMLElement;
@@ -129,6 +130,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         try {
           const reply = await context.send({
             type: 'weekrow:grade-visibility',
+            widgetId,
             courseId: course.id,
             userId: context.data.userId,
             visible: hidden,
@@ -276,7 +278,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
     signatures.set(found.grid, signature);
     if (template === undefined) return;
     for (const course of missing)
-      found.grid.append(copyFor(template, course, hidden(course.id), context));
+      found.grid.append(copyFor(template, course, hidden(course.id), context, widgetId));
   }
 
   return {

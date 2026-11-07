@@ -10,7 +10,7 @@ import type { WidgetGradePreferences } from '../../../shared/canvas/types';
  * runs. The background uses it today; a panel page or a content script could host it instead.
  */
 import type { RequestPriority } from '../../../shared/canvas/limiter';
-import { isCanvasId } from '../../../shared/canvas/ids';
+import { isCanvasId, isGradeWidgetId } from '../../../shared/canvas/ids';
 import type {
   CanvasApi,
   PlannerItem,
@@ -274,6 +274,7 @@ export interface DataOwner {
     userId: string,
     tabId: number | undefined,
     origin: string | null,
+    widgetId: string,
   ): Promise<{ ok: boolean }>;
   dashboardGradeVisibility(
     token: string | undefined,
@@ -3275,6 +3276,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     userId: string,
     tabId: number | undefined,
     origin: string | null,
+    widgetId: string,
   ): Promise<{ ok: boolean }> {
     await ready();
     const refused = { ok: false };
@@ -3283,6 +3285,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       origin === null ||
       origin !== knownOrigin ||
       !isCanvasId(courseId) ||
+      !isGradeWidgetId(widgetId) ||
       !isCanvasId(userId) ||
       typeof visible !== 'boolean'
     )
@@ -3303,7 +3306,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     try {
       const ok = await apiFor(origin)
         .withGuard(writeGuard(fresh))
-        .setWidgetGradeVisibility?.(userId, courseId, visible);
+        .setWidgetGradeVisibility?.(userId, courseId, visible, widgetId);
       return { ok: ok === true && identityHolds(fresh) && (await cookieConfirmed(fresh)) };
     } catch {
       return refused;

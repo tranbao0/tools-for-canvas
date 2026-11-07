@@ -261,6 +261,7 @@ export function routeDataMessage(
           message.userId,
           sender.tab?.id,
           origin,
+          message.widgetId,
         ),
       );
     case 'weekrow:announcement-mark':

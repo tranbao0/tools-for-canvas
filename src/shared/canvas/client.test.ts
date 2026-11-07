@@ -1603,9 +1603,13 @@ describe('grade visibility writes', () => {
     });
     const guard = vi.fn(async () => true);
     const client = testClient().withGuard(guard);
-    await expect(client.setWidgetGradeVisibility!('5', '107', false)).resolves.toBe(true);
+    await expect(
+      client.setWidgetGradeVisibility!('5', '107', false, 'course-grades-widget'),
+    ).resolves.toBe(true);
     filters['fromAnotherTab'] = 'fresh';
-    await expect(client.setWidgetGradeVisibility!('5', '108', true)).resolves.toBe(true);
+    await expect(
+      client.setWidgetGradeVisibility!('5', '108', true, 'course-grades-widget'),
+    ).resolves.toBe(true);
     expect(filters).toEqual({
       showGrades: false,
       extra: { choice: 'keep' },
@@ -1620,7 +1624,12 @@ describe('grade visibility writes', () => {
     const seen = recordAll(() => ({ data: { legacyNode: { widgetDashboardConfig: '{}' } } }));
     const guard = vi.fn().mockResolvedValueOnce(true).mockResolvedValue(false);
     await expect(
-      testClient().withGuard(guard).setWidgetGradeVisibility!('5', '107', true),
+      testClient().withGuard(guard).setWidgetGradeVisibility!(
+        '5',
+        '107',
+        true,
+        'course-grades-widget',
+      ),
     ).rejects.toMatchObject({ kind: 'refused' });
     expect(seen).toHaveLength(1);
   });
@@ -1634,6 +1643,8 @@ describe('grade visibility writes', () => {
         ? { data: { legacyNode: { widgetDashboardConfig: '{}' } } }
         : failure,
     );
-    await expect(testClient().setWidgetGradeVisibility!('5', '107', true)).resolves.toBe(false);
+    await expect(
+      testClient().setWidgetGradeVisibility!('5', '107', true, 'course-grades-widget'),
+    ).resolves.toBe(false);
   });
 });

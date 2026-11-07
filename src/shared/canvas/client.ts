@@ -248,7 +248,7 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
       withGuard: (next) =>
         build(priority, guard === undefined ? next : async () => (await guard()) && (await next())),
 
-      setWidgetGradeVisibility: (userId, courseId, visible) => {
+      setWidgetGradeVisibility: (userId, courseId, visible, widgetId) => {
         pathId(userId);
         pathId(courseId);
         const result = gradeWrite
@@ -275,7 +275,6 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
               if (!isJsonObject(config)) throw new Error('Invalid widget preferences');
               const filters = config['filters'] ?? {};
               if (!isJsonObject(filters)) throw new Error('Invalid widget filters');
-              const widgetId = 'course-grades-widget';
               const widget = filters[widgetId] ?? {};
               if (!isJsonObject(widget)) throw new Error('Invalid grade filters');
               const values = widget['gradeVisibilities'] ?? {};

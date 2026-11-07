@@ -895,7 +895,16 @@ describe('grade visibility writes', () => {
     async (courseId, userId, origin) => {
       const h = await loaded();
       const writer = vi.spyOn(h.canvas, 'withGuard');
-      expect(await h.owner.setGradeVisibility(courseId, false, userId, undefined, origin)).toEqual({
+      expect(
+        await h.owner.setGradeVisibility(
+          courseId,
+          false,
+          userId,
+          undefined,
+          origin,
+          'course-grades-widget',
+        ),
+      ).toEqual({
         ok: false,
       });
       expect(writer).not.toHaveBeenCalled();
@@ -915,9 +924,16 @@ describe('grade visibility writes', () => {
         return write();
       },
     }));
-    expect(await h.owner.setGradeVisibility(C.biology, false, IDS.user, undefined, ORIGIN)).toEqual(
-      { ok: false },
-    );
+    expect(
+      await h.owner.setGradeVisibility(
+        C.biology,
+        false,
+        IDS.user,
+        undefined,
+        ORIGIN,
+        'course-grades-widget',
+      ),
+    ).toEqual({ ok: false });
     expect(guarded).toHaveBeenCalledOnce();
     expect(write).toHaveBeenCalledOnce();
   });

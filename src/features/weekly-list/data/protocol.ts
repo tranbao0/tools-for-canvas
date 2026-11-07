@@ -18,7 +18,7 @@ import type { ToolsSettings } from '../../../shared/settings/tools';
 import { isSettings } from '../model/settings';
 import type { Settings, SurfaceState } from '../model/types';
 import type { SurfaceKind, TaskInput } from '../ui/contract';
-import { isCanvasId } from '../../../shared/canvas/ids';
+import { isCanvasId, isGradeWidgetId } from '../../../shared/canvas/ids';
 import { isListTab, type AnnouncementFeedRequest } from './announcements';
 import type { OverrideFlags } from './patches';
 
@@ -198,6 +198,7 @@ export interface PageChangedMessage {
 
 export interface GradeVisibilityMessage {
   type: 'weekrow:grade-visibility';
+  widgetId: string;
   courseId: string;
   userId: string;
   visible: boolean;
@@ -452,6 +453,7 @@ export function isCanvasPageLoadedMessage(value: unknown): value is CanvasPageLo
 export function isDataMessage(value: unknown): value is DataMessage {
   return (
     (hasType(value, 'weekrow:grade-visibility') &&
+      isGradeWidgetId(value['widgetId']) &&
       isCanvasId(value['courseId']) &&
       isCanvasId(value['userId']) &&
       typeof value['visible'] === 'boolean') ||

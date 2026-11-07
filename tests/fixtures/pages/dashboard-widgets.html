@@ -522,6 +522,12 @@
 <template id="fixture-courses-panel"><div class="fixture-courses-panel">Your courses</div></template>
 
 <script>
+if (new URLSearchParams(location.search).has('fixture_added_grades')) {
+  for (const node of [...document.querySelectorAll('[data-testid]'), ...[...document.querySelectorAll('template')].flatMap(template => [...template.content.querySelectorAll('[data-testid]')])]) {
+    node.dataset.testid = node.dataset.testid.replace('course-grades-widget', 'course_grades-widget-12345678-1234-1234-1234-123456789abc');
+  }
+}
+
 // Acts like React for the pagers of the paged widgets. The pager markup is the one of the
 // InstUI `Pagination` (compact variant) that `TemplateWidget` renders (@instructure/ui-pagination
 // 11.7.4): a nav with the arrow buttons around one list of page buttons, the current one with

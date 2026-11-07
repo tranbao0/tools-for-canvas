@@ -987,6 +987,7 @@ describe('grade visibility messages', () => {
   });
   const message = {
     type: 'weekrow:grade-visibility',
+    widgetId: 'course-grades-widget',
     courseId: '107',
     userId: '42',
     visible: false,
@@ -999,17 +1000,27 @@ describe('grade visibility messages', () => {
       expect(owner.setGradeVisibility).not.toHaveBeenCalled();
     },
   );
-  it.each([{ courseId: '../1' }, { userId: '' }, { visible: 'false' }])(
-    'rejects an invalid field',
-    (field) => {
-      expect(
-        routeDataMessage(fakeOwner(), { ...message, ...field }, CONTENT_SCRIPT, host),
-      ).toBeNull();
-    },
-  );
+  it.each([
+    { courseId: '../1' },
+    { userId: '' },
+    { visible: 'false' },
+    { widgetId: 'other' },
+    { widgetId: undefined },
+  ])('rejects an invalid field', (field) => {
+    expect(
+      routeDataMessage(fakeOwner(), { ...message, ...field }, CONTENT_SCRIPT, host),
+    ).toBeNull();
+  });
   it('passes the checked origin and tab to the owner', async () => {
     const owner = fakeOwner();
     await routeDataMessage(owner, message, CONTENT_SCRIPT, host);
-    expect(owner.setGradeVisibility).toHaveBeenCalledWith('107', false, '42', 3, SAVED);
+    expect(owner.setGradeVisibility).toHaveBeenCalledWith(
+      '107',
+      false,
+      '42',
+      3,
+      SAVED,
+      'course-grades-widget',
+    );
   });
 });

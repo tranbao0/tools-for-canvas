@@ -2066,3 +2066,53 @@ for (const saved of [false, true])
       'Could not save grade visibility. Try again.',
     );
   });
+
+test('an added Course grades widget saves its own filter', async ({ context, page }) => {
+  const widgetId = 'course_grades-widget-12345678-1234-1234-1234-123456789abc';
+  let written: unknown;
+  const served = await serveScenario(
+    context,
+    [
+      ...PAGE,
+      {
+        method: 'POST',
+        path: '/api/graphql',
+        respond: (request): FakeReply => {
+          const body = JSON.parse(request.postData ?? '{}');
+          if (body.query?.includes('updateWidgetDashboardConfig')) {
+            written = body.variables;
+            return { body: { errors: [{ message: 'Refused' }] } };
+          }
+          return {
+            body: {
+              data: {
+                legacyNode: {
+                  widgetDashboardConfig: JSON.stringify({
+                    filters: {
+                      [widgetId]: { showGrades: true, gradeVisibilities: { '101': false } },
+                    },
+                  }),
+                },
+              },
+            },
+          };
+        },
+      },
+    ],
+    EIGHT_COURSES,
+  );
+  await addCsrfCookie(context, served.canvas.origin);
+  await openCanvasPage(
+    page,
+    served.canvas.origin,
+    '/?fixture_course_work=second&fixture_added_grades=1',
+  );
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+  await page.locator('[data-wr-card="107"] button').click();
+  await expect
+    .poll(() => written)
+    .toEqual({
+      widgetId,
+      filters: { showGrades: true, gradeVisibilities: { '101': false, '107': false } },
+    });
+});
