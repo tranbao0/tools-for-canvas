@@ -50,3 +50,26 @@ it.each([null, 'https://other.edu/', 'https://school.edu.evil.example/'])(
     await expect(routeViewerMessage({ type: 'viewer:origin' }, pane, host)).rejects.toThrow();
   },
 );
+
+it('does not reset tabs positively identified in another cookie store', async () => {
+  const { fakeBrowser } = await import('wxt/testing/fake-browser');
+  const { clearViewerTabs } = await import('./background');
+  const query = vi
+    .spyOn(fakeBrowser.tabs, 'query')
+    .mockResolvedValue([{ id: 1 }, { id: 2 }, { id: 3 }] as never);
+  const stores = vi.spyOn(fakeBrowser.cookies, 'getAllCookieStores').mockResolvedValue([
+    { id: '0', tabIds: [1], incognito: false },
+    { id: 'firefox-container-1', tabIds: [2], incognito: false },
+  ] as never);
+  const send = vi.spyOn(fakeBrowser.tabs, 'sendMessage').mockResolvedValue(undefined);
+  try {
+    await clearViewerTabs();
+    expect(send).toHaveBeenCalledWith(1, { type: 'viewer:reset' });
+    expect(send).not.toHaveBeenCalledWith(2, { type: 'viewer:reset' });
+    expect(send).toHaveBeenCalledWith(3, { type: 'viewer:reset' });
+  } finally {
+    query.mockRestore();
+    stores.mockRestore();
+    send.mockRestore();
+  }
+});

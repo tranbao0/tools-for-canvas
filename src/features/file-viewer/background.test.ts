@@ -1293,3 +1293,16 @@ describe('pane identity verdicts', () => {
     ).rejects.toThrow();
   });
 });
+
+it('keeps another store pane valid across a clearing round', async () => {
+  const { host, sender, store } = setup();
+  store.set('viewer:session:epoch', 2);
+  vi.mocked(host.paneCheck).mockResolvedValue({ verdict: 'yes', userId: null });
+  await expect(
+    routeViewerMessage({ type: 'viewer:pane-check', token: '1:store' }, sender, host),
+  ).resolves.toEqual({ verdict: 'yes', token: '2:store' });
+  vi.mocked(host.paneCheck).mockResolvedValue({ verdict: 'unknown' });
+  await expect(
+    routeViewerMessage({ type: 'viewer:pane-check', token: '1:store' }, sender, host),
+  ).resolves.toEqual({ verdict: 'unknown' });
+});

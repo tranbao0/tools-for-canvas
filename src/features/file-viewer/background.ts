@@ -1,3 +1,4 @@
+import { paneCookieStore } from '../../shared/canvas/session';
 import { ACK_TIMEOUT_MS, BYTES_CHUNK, BYTES_PORT, BYTES_WINDOW } from './bytes';
 import {
   checkedMime,
@@ -343,9 +344,12 @@ export function routeViewerMessage(
           return { verdict: 'unknown' };
         const epoch = await readEpoch(host);
         const token = request['token'];
+        const result = await host.paneCheck(origin, tabId, request['retry'] === true);
+        if (result.verdict === 'yes' && result.userId === null)
+          return { verdict: 'yes', token: `${epoch}:store` };
+        if (result.verdict === 'unknown') return result;
         if (typeof token === 'string' && token.split(':')[0] !== String(epoch))
           return { verdict: 'no' };
-        const result = await host.paneCheck(origin, tabId, request['retry'] === true);
         if (epoch !== (await readEpoch(host))) return { verdict: 'no' };
         if (result.verdict !== 'yes') return result;
         const current = `${epoch}:${result.userId === null ? 'store' : studentName(result.userId)}`;
@@ -715,7 +719,14 @@ export function clearViewerTabs(): Promise<void> {
         Promise.allSettled(
           tabs
             .filter((tab) => tab.id !== undefined)
-            .map(async (tab) => browser.tabs.sendMessage(tab.id!, { type: 'viewer:reset' })),
+            .map(async (tab) => {
+              if (
+                import.meta.env.BROWSER === 'firefox' &&
+                (await paneCookieStore(tab.id!).catch(() => 'unknown')) === 'other'
+              )
+                return;
+              await browser.tabs.sendMessage(tab.id!, { type: 'viewer:reset' });
+            }),
         ),
         new Promise((resolve) => setTimeout(resolve, RESET_WAIT_MS)),
       ]);
