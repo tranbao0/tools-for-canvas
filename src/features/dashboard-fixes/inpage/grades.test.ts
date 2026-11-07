@@ -28,7 +28,7 @@ describe('gradesFix', () => {
     // The copy carries the class of the card that the widget drew.
     const native = document.querySelector('[data-testid="course-grade-card-103"]');
     expect(card?.className).toBe(native?.className);
-    expect(card?.querySelectorAll('button')).toHaveLength(0);
+    expect(card?.querySelectorAll('button')).toHaveLength(1);
     expect(card?.querySelector('[data-testid="course-107-last-updated"]')).toBeNull();
     expect(card?.querySelector('a[href="/courses/107/grades"]')?.getAttribute('aria-label')).toBe(
       'View PSYC 100: Intro to Psychology gradebook',
@@ -124,7 +124,7 @@ describe('gradesFix', () => {
   });
 
   it.each([
-    [false, true, true, '•••'],
+    [false, true, true, '95%'],
     [true, true, false, '•••'],
     [true, true, true, '95%'],
     [true, false, true, '•••'],
@@ -169,7 +169,7 @@ describe('gradesFix', () => {
     expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
   });
 
-  it('keeps a saved visible override hidden while the main toggle is off', () => {
+  it('shows a saved visible override while the main toggle is off', () => {
     document
       .querySelector('[data-testid="hide-all-grades-checkbox"]')
       ?.setAttribute('data-testid', 'show-all-grades-checkbox');
@@ -179,7 +179,7 @@ describe('gradesFix', () => {
         gradeVisibilities: { 'course-grades-widget': { '107': true } },
       }),
     );
-    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('95%');
   });
 
   it('keeps a course hidden after its native card leaves the page', () => {

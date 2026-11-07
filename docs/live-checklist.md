@@ -859,3 +859,5 @@ Run them on the widget dashboard, on the classic dashboard and on a course home 
 
 1. Install the Firefox build on a phone with Firefox 142 or later, and open the in-page list on a Canvas page.
    Expect: it works, and you write down every control that does not.
+
+- [ ] On the new dashboard, hide a native grade, hide and show a copied grade, reload, and check that plain Canvas agrees.

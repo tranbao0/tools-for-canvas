@@ -252,6 +252,17 @@ export function routeDataMessage(
           sender.tab?.id,
         ),
       );
+    case 'weekrow:grade-visibility':
+      if (host.isExtensionPage(sender)) return reject('Only the page of the saved Canvas may ask');
+      return allowed.then((origin) =>
+        owner.setGradeVisibility(
+          message.courseId,
+          message.visible,
+          message.userId,
+          sender.tab?.id,
+          origin,
+        ),
+      );
     case 'weekrow:announcement-mark':
       // Only the page of the saved Canvas marks, and only for a tab of its top frame.
       if (host.isExtensionPage(sender)) return reject('Only the page of the saved Canvas may ask');

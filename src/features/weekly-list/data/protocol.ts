@@ -196,7 +196,15 @@ export interface PageChangedMessage {
   type: 'weekrow:changed';
 }
 
+export interface GradeVisibilityMessage {
+  type: 'weekrow:grade-visibility';
+  courseId: string;
+  userId: string;
+  visible: boolean;
+}
+
 export type DataMessage =
+  | GradeVisibilityMessage
   | GetStateMessage
   | AnnouncementFeedMessage
   | RefreshMessage
@@ -443,6 +451,10 @@ export function isCanvasPageLoadedMessage(value: unknown): value is CanvasPageLo
 
 export function isDataMessage(value: unknown): value is DataMessage {
   return (
+    (hasType(value, 'weekrow:grade-visibility') &&
+      isCanvasId(value['courseId']) &&
+      isCanvasId(value['userId']) &&
+      typeof value['visible'] === 'boolean') ||
     isGetStateMessage(value) ||
     isAnnouncementFeedMessage(value) ||
     isRefreshMessage(value) ||

@@ -24,6 +24,7 @@ function fakeOwner(): DataOwner & { [K in keyof DataOwner]: ReturnType<typeof vi
     accessChanged: vi.fn(async () => undefined),
     settled: vi.fn(async () => undefined),
     dashboardData: vi.fn(async () => ({ origin: SAVED, courses: [] })),
+    setGradeVisibility: vi.fn(async () => ({ ok: true })),
     dashboardGradeVisibility: vi.fn(async () => ({
       origin: SAVED,
       courses: [],
@@ -976,5 +977,39 @@ describe('wireDataRouter', () => {
     await expect(
       fakeBrowser.runtime.sendMessage({ type: 'weekrow:get-state', request: REQUEST }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('grade visibility messages', () => {
+  let host: ReturnType<typeof fakeHost>;
+  beforeEach(() => {
+    host = fakeHost();
+  });
+  const message = {
+    type: 'weekrow:grade-visibility',
+    courseId: '107',
+    userId: '42',
+    visible: false,
+  };
+  it.each([EXTENSION_PAGE, OTHER_CANVAS, { ...CONTENT_SCRIPT, frameId: 1 }])(
+    'rejects a sender outside the saved top-frame page',
+    async (sender) => {
+      const owner = fakeOwner();
+      await expect(routeDataMessage(owner, message, sender, host)).rejects.toThrow();
+      expect(owner.setGradeVisibility).not.toHaveBeenCalled();
+    },
+  );
+  it.each([{ courseId: '../1' }, { userId: '' }, { visible: 'false' }])(
+    'rejects an invalid field',
+    (field) => {
+      expect(
+        routeDataMessage(fakeOwner(), { ...message, ...field }, CONTENT_SCRIPT, host),
+      ).toBeNull();
+    },
+  );
+  it('passes the checked origin and tab to the owner', async () => {
+    const owner = fakeOwner();
+    await routeDataMessage(owner, message, CONTENT_SCRIPT, host);
+    expect(owner.setGradeVisibility).toHaveBeenCalledWith('107', false, '42', 3, SAVED);
   });
 });

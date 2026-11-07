@@ -268,6 +268,13 @@ export interface DataOwner {
    * student first, and the reply names that student. `token` names the read for a late result.
    * A tab in another cookie store gets no grade visibilities.
    */
+  setGradeVisibility(
+    courseId: string,
+    visible: boolean,
+    userId: string,
+    tabId: number | undefined,
+    origin: string | null,
+  ): Promise<{ ok: boolean }>;
   dashboardGradeVisibility(
     token: string | undefined,
     tabId: number | undefined,
@@ -3248,6 +3255,47 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return context !== null && identityHolds(context.stamp);
   }
 
+  async function setGradeVisibility(
+    courseId: string,
+    visible: boolean,
+    userId: string,
+    tabId: number | undefined,
+    origin: string | null,
+  ): Promise<{ ok: boolean }> {
+    await ready();
+    const refused = { ok: false };
+    const stamp = writeStamp();
+    if (
+      origin === null ||
+      origin !== knownOrigin ||
+      !isCanvasId(courseId) ||
+      !isCanvasId(userId) ||
+      typeof visible !== 'boolean'
+    )
+      return refused;
+    if (
+      !(await surfaceMayRead(tabId)) ||
+      !identityHolds(stamp) ||
+      !(await signedInStudentOwnsCache())
+    )
+      return refused;
+    if (
+      !identityHolds(stamp) ||
+      cache?.session?.profile.id !== userId ||
+      !cache.session.courses.some((course) => course.id === courseId)
+    )
+      return refused;
+    const fresh = writeStamp();
+    try {
+      const ok = await apiFor(origin)
+        .withGuard(writeGuard(fresh))
+        .setWidgetGradeVisibility?.(userId, courseId, visible);
+      return { ok: ok === true && identityHolds(fresh) && (await cookieConfirmed(fresh)) };
+    } catch {
+      return refused;
+    }
+  }
+
   async function dashboardGradeVisibility(
     token: string | undefined,
     tabId: number | undefined,
@@ -4104,6 +4152,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
     dashboardData,
     dashboardGradeVisibility,
+    setGradeVisibility,
     announcement,
     announcementPage,
     announcementRange: announcementRangeRead,
