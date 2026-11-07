@@ -628,7 +628,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     A group stays open when the card is minimized and expanded, when the settings open and close, and after a reload.
   - A group with no rows in the shown span stays open, with its heading and one line in place of the rows: "Nothing done in this span." for Done, and "Nothing without a due date in this span." for No due date.
     The heading and the part keep the count 0.
-    A Done group that holds only older done work shows its heading with the count 0 and its "N older" line, and not this line.
+    A Done group that holds only older done work shows this line too, with the count 0, and its "N older" line follows it.
     The loading line shows only while a load is on its way.
     While the days of the span still load, the open group shows the loading line in place of the empty line, so it never says that nothing is done before the answer is in.
     After a failed load, nothing is on its way, and some days of the span may never have arrived.
@@ -889,7 +889,7 @@ A span that ended before today has one exception: open work dated inside it stay
   - Its rows are the rows of Done, newest first, each with a check that can be unchecked.
     An item that is unchecked is open again and goes back to Past due.
   - The line has its own count.
-    The Done count in the heading and on the view switch counts the done work of the shown span only, so it stays small, and a Done group with only older work shows the count 0 and the line.
+    The Done count in the heading and on the view switch counts the done work of the shown span only, so it stays small, and a Done group with only older work shows the count 0, "Nothing done in this span." and the line.
   - It has no "Mark all older done" action, because its items are done.
   - It waits for the Past due range to load, as Past due does, so its count never grows while the range loads.
   - It adds nothing to the rings, because its items are not dated in the span.
