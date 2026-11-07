@@ -2491,21 +2491,23 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    While the extension has no course to draw, such as in a tab of another cookie store or after a failed course read, the pager of Canvas and the steady navigator stay, so the cards of the other pages can be reached.
    A reply with no user id and no course leaves the courses of the earlier reply in place.
    A card is a copy of a card that the widget drew, so it has the same markup, classes and theme.
-   The copy loses its buttons, which belong to React, and its ids.
-   So a copy has no eye button and no "Course settings" menu, which a card of the widget has.
-   The eye writes the choice of the student to the `widget_dashboard_config` preference of Canvas, so an eye that changed only the copy would show the grade again after a reload.
-   The menu holds the color picker and the nickname editor, which also write to Canvas.
-   The extension writes nothing to Canvas for these.
-   The eye, the color picker and the nickname editor exist only on the cards that the widget draws.
-   When the copies cover every page, the pager is hidden, so a card that the widget draws on another page cannot be reached on the dashboard, and neither can its eye, its color picker or its nickname editor.
-   The grade of a copy then follows the choice that the student saved earlier and the main toggle "Show all grades", which hides every copy.
-   Whether a copy gets an eye is a decision of the owner that is still open.
+   The copy keeps an eye button with the native look and accessible name, and has no "Course settings" menu.
+   The owner approved the eye on 2026-11-07.
+   Only a trusted click asks the background to change the course's entry in the `widget_dashboard_config` preference through `updateWidgetDashboardConfig`.
+   The background confirms the saved origin, the student, the course and the session cookies, and uses the write guard before each request.
+   It serializes these writes and reads the current widget filter inside the queue slot before each write, preserving all other entries and widget settings.
+   It does not retry a write with a stale filter.
+   A hide conceals the grade at once; a show keeps the grade hidden until Canvas confirms it.
+   A refusal restores the card with a short status note.
+   Canvas holds the widget filter in React state without a public refresh event, so a confirmed write reloads the dashboard to keep native cards and copies in step.
+   Native controls cannot be used during the write on this page.
+   The color picker and nickname editor remain available only on native cards.
    Its header has the color that the widget draws: the saved color of the course (`custom_colors` of the student), or `#334451` for a course with no saved color.
    This is `courseColor ?? DEFAULT_COURSE_COLOR` of `CourseGradeCard.tsx`, with `courseColor` from `custom_colors[course.asset_string]` in `fetch_courses_with_grades` (canvas-lms `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`).
    It is not one of the colors that the rings pick for a course with no saved color, so a copy and a card of the widget look the same.
    A copy shows the letter grade when Canvas sends one, else the whole percent, else "N/A".
    Canvas sends no total for a course that hides its totals, which gives "N/A", as in the widget.
-   While the toggle "Show all grades" is off, the copies show dots, as the widget does.
+   A saved course visibility takes precedence over "Show all grades", as it does in Canvas; without a course preference, the main toggle applies.
    The courses come from the courses request that the extension already makes, with `include[]=total_scores` added, so the course totals need no new request.
    Grade visibility preferences load separately at high priority with a five-second timeout.
    The read uses the current session cookies and does not wait for the cache ownership check.

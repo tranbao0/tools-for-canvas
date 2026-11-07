@@ -415,6 +415,7 @@ export interface CanvasApi {
   /** Every active override, duplicates removed by id. */
   listPlannerOverrides(): Promise<PlannerOverride[]>;
   /** GraphQL `customGradeStatusesConnection`, keyed by course id. */
+  setWidgetGradeVisibility?(userId: string, courseId: string, visible: boolean): Promise<boolean>;
   getWidgetGradeVisibility?(userId: string): Promise<WidgetGradePreferences | null>;
   listCustomGradeStatuses(courseIds: string[]): Promise<Record<string, CustomGradeStatus[]>>;
   createOverride(input: {

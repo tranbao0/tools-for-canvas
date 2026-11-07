@@ -1,7 +1,7 @@
 # Privacy policy
 
 This policy covers the Tools for Canvas browser extension for Chrome, Microsoft Edge and Firefox.
-Last updated: 2026-11-06.
+Last updated: 2026-11-07.
 
 ## Summary
 
@@ -96,6 +96,7 @@ The extension writes only to your own Canvas, and only for something that you do
 - the flags that an item had before, when you press Undo on a done mark;
 - a custom task when you create, edit or delete one;
 - a read mark on an announcement when you press "Mark as read" in the Announcements tab, or an unread mark when you press Undo;
+- a grade visibility preference when you click the eye on a copied course grade card, through the GraphQL `updateWidgetDashboardConfig` mutation (added 2026-11-07);
 - a read mark or an unread mark on an announcement when you click the read control in the Announcements widget of the new dashboard;
 - a read mark on the rubric comments of your own submission (`PUT /api/v1/courses/:id/assignments/:id/submissions/:id/rubric_assessments/read`), when you open the Submission Details page of your own work and its rubric, with unread comments, is in view;
 - nothing of its own when you open View Feedback, but the session address that it loads makes Canvas mark the notes on that file as read, as Canvas's own dialog does;

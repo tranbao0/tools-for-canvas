@@ -1574,3 +1574,66 @@ describe('a stalled reply', () => {
     }
   });
 });
+
+describe('grade visibility writes', () => {
+  it('reads fresh filters for each queued write and preserves every other entry', async () => {
+    let filters = {
+      showGrades: false,
+      extra: { choice: 'keep' },
+      gradeVisibilities: { '101': false },
+    } as Record<string, unknown>;
+    const seen = recordAll((request) => {
+      const body = request.body as {
+        query: string;
+        variables: { filters: Record<string, unknown> };
+      };
+      if (body.query.startsWith('query'))
+        return {
+          data: {
+            legacyNode: {
+              widgetDashboardConfig: JSON.stringify({
+                layout: ['keep'],
+                filters: { 'course-grades-widget': filters },
+              }),
+            },
+          },
+        };
+      filters = body.variables.filters;
+      return { data: { updateWidgetDashboardConfig: { filters, errors: [] } } } as JsonBodyType;
+    });
+    const guard = vi.fn(async () => true);
+    const client = testClient().withGuard(guard);
+    await expect(client.setWidgetGradeVisibility!('5', '107', false)).resolves.toBe(true);
+    filters['fromAnotherTab'] = 'fresh';
+    await expect(client.setWidgetGradeVisibility!('5', '108', true)).resolves.toBe(true);
+    expect(filters).toEqual({
+      showGrades: false,
+      extra: { choice: 'keep' },
+      fromAnotherTab: 'fresh',
+      gradeVisibilities: { '101': false, '107': false, '108': true },
+    });
+    expect(guard).toHaveBeenCalledTimes(4);
+    expect(seen.every((request) => request.csrf === CSRF_TOKEN)).toBe(true);
+  });
+
+  it('refuses the mutation if the guard fails after the fresh read', async () => {
+    const seen = recordAll(() => ({ data: { legacyNode: { widgetDashboardConfig: '{}' } } }));
+    const guard = vi.fn().mockResolvedValueOnce(true).mockResolvedValue(false);
+    await expect(
+      testClient().withGuard(guard).setWidgetGradeVisibility!('5', '107', true),
+    ).rejects.toMatchObject({ kind: 'refused' });
+    expect(seen).toHaveLength(1);
+  });
+
+  it.each([
+    { errors: [{ message: 'refused' }] },
+    { data: { updateWidgetDashboardConfig: { errors: [{ message: 'refused' }] } } },
+  ])('does not confirm a GraphQL refusal', async (failure) => {
+    recordAll((request) =>
+      (request.body as { query: string }).query.startsWith('query')
+        ? { data: { legacyNode: { widgetDashboardConfig: '{}' } } }
+        : failure,
+    );
+    await expect(testClient().setWidgetGradeVisibility!('5', '107', true)).resolves.toBe(false);
+  });
+});
