@@ -1616,7 +1616,7 @@ describe('grade visibility writes', () => {
       fromAnotherTab: 'fresh',
       gradeVisibilities: { '101': false, '107': false, '108': true },
     });
-    expect(guard).toHaveBeenCalledTimes(4);
+    expect(guard).toHaveBeenCalledTimes(6);
     expect(seen.every((request) => request.csrf === CSRF_TOKEN)).toBe(true);
   });
 
@@ -1647,4 +1647,20 @@ describe('grade visibility writes', () => {
       testClient().setWidgetGradeVisibility!('5', '107', true, 'course-grades-widget'),
     ).resolves.toBe(false);
   });
+});
+
+it('refuses a grade mutation when the cookie changes during the CSRF read', async () => {
+  let sameStudent = true;
+  let tokens = 0;
+  const seen = recordAll(() => ({ data: { legacyNode: { widgetDashboardConfig: '{}' } } }));
+  const client = testClient({
+    getCsrfToken: async () => {
+      if (++tokens === 2) sameStudent = false;
+      return CSRF_TOKEN;
+    },
+  }).withGuard(async () => sameStudent);
+  await expect(
+    client.setWidgetGradeVisibility!('5', '107', false, 'course-grades-widget'),
+  ).rejects.toMatchObject({ kind: 'refused' });
+  expect(seen).toHaveLength(1);
 });

@@ -284,6 +284,7 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
               )
                 throw new Error('Invalid grade visibility');
               const written = await attempt({
+                beforeFetch: guard,
                 method: 'POST',
                 url: GRAPHQL_PATH,
                 body: {
