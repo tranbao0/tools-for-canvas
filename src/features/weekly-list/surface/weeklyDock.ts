@@ -17,6 +17,7 @@ import {
   DOCK_CSS,
   paneInView,
   filePaneReported,
+  focusPaneInView,
   leaseRoom,
   watchFilePane,
   WEEKLY_HOST_ID,
@@ -362,6 +363,32 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
     return active !== null && dock.host.contains(active);
   };
 
+  /** The selector of the control of the list that had the focus when a pane covered the dock. */
+  let covering: string | null = null;
+
+  const listRoot = (): ShadowRoot | null => container.firstElementChild?.shadowRoot ?? null;
+
+  /** Notes the focused control by its row and part, which a redraw of the list does not change. */
+  const holdFocus = (): void => {
+    const active = listRoot()?.activeElement;
+    const part = active?.closest<HTMLElement>('[data-part]')?.dataset['part'];
+    const row = active?.closest<HTMLElement>('[data-row-key]')?.dataset['rowKey'];
+    covering =
+      part === undefined
+        ? null
+        : `${row === undefined ? '' : `[data-row-key="${CSS.escape(row)}"] `}[data-part="${part}"]`;
+  };
+
+  /**
+   * Gives the focus back to the control that the pane took it from, when the dock returns and the
+   * focus has fallen to the page. A focus that went to another control of the page stays there.
+   */
+  const returnFocus = (): void => {
+    if (covering !== null && (!doc.activeElement || doc.activeElement === doc.body))
+      listRoot()?.querySelector<HTMLElement>(covering)?.focus();
+    covering = null;
+  };
+
   /**
    * The context ended: stop watching and change nothing. A newer copy may have taken the page, and
    * its dock and its room are not ours to touch.
@@ -428,11 +455,16 @@ export function mountWeeklyDock(options: WeeklyDockOptions): WeeklyDock {
         dock.setWidth(width);
         dock.setHidden(false);
         keeper.restore();
+        returnFocus();
       }
     } else if (onPage && dock.shown) {
       // A scroll event that has not arrived yet would leave an older position behind.
       keeper.capture();
+      // A pane that covers the dock takes the focus along, or the page would get it.
+      const follow = covered && hadFocus;
+      if (follow) holdFocus();
       dock.setHidden(true);
+      if (follow) focusPaneInView();
     }
     if (!wantTab) tab.show(false);
     // A minimize that the student made inside the dock leaves the focus on the tab.
