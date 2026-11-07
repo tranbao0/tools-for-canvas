@@ -162,29 +162,34 @@ test('an old panel port does not send a newer delete', async ({
   const other = await context.newPage();
   await openExtensionPage(other, extensionUrl('sidepanel.html'));
   await settledList(other);
-  await page.evaluate(async (noteId) => {
-    const api = (
-      globalThis as unknown as {
-        chrome: {
-          runtime: {
-            connect(options: { name: string }): {
-              onMessage: { addListener(callback: () => void): void };
+  await page.evaluate(
+    async ({ noteId, userId, origin }) => {
+      const api = (
+        globalThis as unknown as {
+          chrome: {
+            runtime: {
+              connect(options: { name: string }): {
+                onMessage: { addListener(callback: () => void): void };
+              };
+              sendMessage(message: unknown): Promise<unknown>;
             };
-            sendMessage(message: unknown): Promise<unknown>;
           };
-        };
-      }
-    ).chrome;
-    await new Promise<void>((resolve) => {
-      const port = api.runtime.connect({ name: `weekrow-delete:${noteId}` });
-      port.onMessage.addListener(() => resolve());
-    });
-    await api.runtime.sendMessage({
-      type: 'weekrow:action',
-      action: { kind: 'cancelDelete', noteId },
-    });
-    window.addEventListener('pagehide', (event) => event.stopImmediatePropagation(), true);
-  }, NOTES.libraryBooksToday);
+        }
+      ).chrome;
+      await new Promise<void>((resolve) => {
+        const port = api.runtime.connect({
+          name: `weekrow-delete:${JSON.stringify({ kind: 'deleteTask', noteId, userId, origin })}`,
+        });
+        port.onMessage.addListener(() => resolve());
+      });
+      await api.runtime.sendMessage({
+        type: 'weekrow:action',
+        action: { kind: 'cancelDelete', noteId, userId, origin },
+      });
+      window.addEventListener('pagehide', (event) => event.stopImmediatePropagation(), true);
+    },
+    { noteId: NOTES.libraryBooksToday, userId: IDS.user, origin: canvas.origin },
+  );
   await expect(editButton(other, 'Return library books')).toBeVisible();
   await deleteTask(other, group(other, 'today'), 'Return library books');
   await page.close();

@@ -189,6 +189,14 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
+it('sends no write before the surface has state', () => {
+  const fake = fakeHost();
+  const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+  expect(runtime.state()).toEqual({ kind: 'loading' });
+  runtime.actions.setDone('assignment:1', true);
+  expect(sentActions(fake.sent)).toEqual([]);
+});
+
 describe('state', () => {
   it('asks for its state and a refresh when it starts', async () => {
     const fake = fakeHost();
@@ -426,7 +434,7 @@ describe('actions', () => {
 
     expect(fake.sent[0]).toEqual({
       type: 'weekrow:action',
-      action: { kind: 'setDone', keys: ['assignment:1'], done: true },
+      action: { userId: USER, origin: ORIGIN, kind: 'setDone', keys: ['assignment:1'], done: true },
     });
     expect(runtime.state()).toMatchObject({ kind: 'ready', undo: DONE_INFO });
     await vi.advanceTimersByTimeAsync(60 * 60_000);
@@ -510,7 +518,9 @@ describe('actions', () => {
     runtime.actions.markAllOlderDone();
     await settle();
 
-    expect(sentActions(fake.sent)).toEqual([{ kind: 'setDone', keys, done: true }]);
+    expect(sentActions(fake.sent)).toEqual([
+      { userId: USER, origin: ORIGIN, kind: 'setDone', keys, done: true },
+    ]);
     expect(runtime.state()).toMatchObject({ undo: { kind: 'done', count: keys.length } });
   });
 
@@ -542,7 +552,13 @@ describe('actions', () => {
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([
-      { kind: 'setDone', keys: rest.map((item) => item.key), done: true },
+      {
+        userId: USER,
+        origin: ORIGIN,
+        kind: 'setDone',
+        keys: rest.map((item) => item.key),
+        done: true,
+      },
     ]);
   });
 
@@ -697,8 +713,8 @@ describe('actions', () => {
     expect(runtime.state()).toMatchObject({ undo: null });
     await settle();
     expect(sentActions(fake.sent)).toEqual([
-      { kind: 'deleteTask', noteId: '8' },
-      { kind: 'sendDelete', noteId: '8' },
+      { userId: USER, origin: ORIGIN, kind: 'deleteTask', noteId: '8' },
+      { userId: USER, origin: ORIGIN, kind: 'sendDelete', noteId: '8' },
     ]);
 
     fake.sent.length = 0;
@@ -707,7 +723,7 @@ describe('actions', () => {
     runtime.actions.dismissUndo();
     await settle();
     expect(sentActions(fake.sent)).toEqual([
-      { kind: 'setDone', keys: ['assignment:1'], done: true },
+      { userId: USER, origin: ORIGIN, kind: 'setDone', keys: ['assignment:1'], done: true },
     ]);
   });
 
@@ -720,9 +736,9 @@ describe('actions', () => {
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([
-      { kind: 'deleteTask', noteId: '8' },
-      { kind: 'sendDelete', noteId: '8' },
-      { kind: 'setDone', keys: ['assignment:2'], done: true },
+      { userId: USER, origin: ORIGIN, kind: 'deleteTask', noteId: '8' },
+      { userId: USER, origin: ORIGIN, kind: 'sendDelete', noteId: '8' },
+      { userId: USER, origin: ORIGIN, kind: 'setDone', keys: ['assignment:2'], done: true },
     ]);
     expect(runtime.state()).toMatchObject({ undo: DONE_INFO });
   });
@@ -746,7 +762,12 @@ describe('actions', () => {
     first();
     await settle();
 
-    expect(sentActions(fake.sent)).toContainEqual({ kind: 'sendDelete', noteId: '8' });
+    expect(sentActions(fake.sent)).toContainEqual({
+      userId: USER,
+      origin: ORIGIN,
+      kind: 'sendDelete',
+      noteId: '8',
+    });
     expect(runtime.state()).toMatchObject({ undo: DONE_INFO });
   });
 
@@ -757,14 +778,24 @@ describe('actions', () => {
     left.fake.leave();
     await settle();
     expect(left.runtime.state()).toMatchObject({ undo: null });
-    expect(sentActions(left.fake.sent)).toContainEqual({ kind: 'sendDelete', noteId: '8' });
+    expect(sentActions(left.fake.sent)).toContainEqual({
+      userId: USER,
+      origin: ORIGIN,
+      kind: 'sendDelete',
+      noteId: '8',
+    });
 
     const stopped = await started(undoHost());
     stopped.runtime.actions.deleteTask('8');
     await settle();
     stopped.runtime.stop();
     await settle();
-    expect(sentActions(stopped.fake.sent)).toContainEqual({ kind: 'sendDelete', noteId: '8' });
+    expect(sentActions(stopped.fake.sent)).toContainEqual({
+      userId: USER,
+      origin: ORIGIN,
+      kind: 'sendDelete',
+      noteId: '8',
+    });
   });
 
   it('sends Undo of an override action with the previous flags and the user, once', async () => {
@@ -796,8 +827,8 @@ describe('actions', () => {
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([
-      { kind: 'deleteTask', noteId: '8' },
-      { kind: 'cancelDelete', noteId: '8' },
+      { userId: USER, origin: ORIGIN, kind: 'deleteTask', noteId: '8' },
+      { userId: USER, origin: ORIGIN, kind: 'cancelDelete', noteId: '8' },
     ]);
   });
 
@@ -926,9 +957,9 @@ describe('actions', () => {
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([
-      { kind: 'updateTask', noteId: '8', input },
-      { kind: 'moveTaskToToday', noteId: '8' },
-      { kind: 'createTask', input },
+      { userId: USER, origin: ORIGIN, kind: 'updateTask', noteId: '8', input },
+      { userId: USER, origin: ORIGIN, kind: 'moveTaskToToday', noteId: '8' },
+      { userId: USER, origin: ORIGIN, kind: 'createTask', input },
     ]);
   });
 
@@ -1825,7 +1856,7 @@ describe('the Announcements tab', () => {
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([
-      { kind: 'markAnnouncement', courseId: '101', topicId: '31901' },
+      { userId: USER, origin: ORIGIN, kind: 'markAnnouncement', courseId: '101', topicId: '31901' },
     ]);
     expect(runtime.state()).toMatchObject({
       undo: { kind: 'announcement_read', count: 1, target: '101:31901' },
@@ -1897,5 +1928,93 @@ describe('the Announcements tab', () => {
       ORIGIN,
     );
     expect(fake.sent).toEqual([]);
+  });
+});
+
+describe('write identity', () => {
+  it.each(['ready', 'no_courses', 'cant_load'] as const)(
+    'uses the shown %s identity',
+    async (kind) => {
+      const fake = fakeHost();
+      const reply: StateReply =
+        kind === 'ready'
+          ? readyFor(USER)
+          : kind === 'no_courses'
+            ? { kind, origin: ORIGIN, userId: USER, offer: null, allCourses: [] }
+            : { kind, origin: ORIGIN, userId: USER, offer: null, offline: true };
+      fake.reply = (message) => (message.type === 'weekrow:get-state' ? reply : { undo: null });
+      const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+      runtime.start();
+      await settle();
+      runtime.actions.createTask({
+        title: 'Task',
+        date: '2026-10-28',
+        time: null,
+        courseId: null,
+        details: null,
+      });
+      await settle();
+      expect(sentActions(fake.sent)).toContainEqual(
+        expect.objectContaining({ kind: 'createTask', userId: USER, origin: ORIGIN }),
+      );
+    },
+  );
+
+  it.each(['loading', 'signed_out'] as const)(
+    'drops row identity in %s but keeps delete notice identity',
+    async (kind) => {
+      const fake = fakeHost();
+      let state: StateReply = readyFor(USER);
+      fake.reply = (message) =>
+        message.type === 'weekrow:get-state'
+          ? state
+          : message.type === 'weekrow:action' && message.action.kind === 'deleteTask'
+            ? { undo: { kind: 'delete', userId: USER, origin: ORIGIN, noteId: '8' } }
+            : { undo: null };
+      const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+      runtime.start();
+      await settle();
+      runtime.actions.deleteTask('8');
+      await settle();
+      state =
+        kind === 'loading' ? { kind } : { kind, origin: ORIGIN, isFirefox: false, offer: null };
+      fake.changed();
+      await settle();
+      const count = sentActions(fake.sent).length;
+      runtime.actions.setDone('assignment:1', true);
+      expect(sentActions(fake.sent)).toHaveLength(count);
+      runtime.actions.dismissUndo();
+      expect(sentActions(fake.sent).at(-1)).toEqual({
+        kind: 'sendDelete',
+        userId: USER,
+        origin: ORIGIN,
+        noteId: '8',
+      });
+    },
+  );
+  it('ends a delete notice with the identity saved in the notice, not the shown one', async () => {
+    const fake = fakeHost();
+    let state: StateReply = readyFor(USER);
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state'
+        ? state
+        : message.type === 'weekrow:action' && message.action.kind === 'deleteTask'
+          ? { undo: { kind: 'delete', userId: USER, origin: ORIGIN, noteId: '8' } }
+          : { undo: null };
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    runtime.actions.deleteTask('8');
+    await settle();
+    state = { kind: 'no_courses', origin: ORIGIN, userId: 'other', offer: null, allCourses: [] };
+    fake.changed();
+    await settle();
+    runtime.actions.dismissUndo();
+    expect(sentActions(fake.sent).at(-1)).toEqual({
+      kind: 'sendDelete',
+      userId: USER,
+      origin: ORIGIN,
+      noteId: '8',
+    });
   });
 });

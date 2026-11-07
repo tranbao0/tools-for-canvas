@@ -27,21 +27,39 @@ const input = {
   details: '',
 };
 const actions: DataAction[] = [
-  { kind: 'setDone', keys: [key], done: true },
-  { kind: 'setDone', keys: [`assignment:${IDS.assignments.mathProblemSet4Dismissed}`], done: true },
+  {
+    userId: '5501',
+    origin: 'https://school.instructure.com',
+    kind: 'setDone',
+    keys: [key],
+    done: true,
+  },
+  {
+    userId: '5501',
+    origin: 'https://school.instructure.com',
+    kind: 'setDone',
+    keys: [`assignment:${IDS.assignments.mathProblemSet4Dismissed}`],
+    done: true,
+  },
   {
     kind: 'restore',
     userId: IDS.user,
     origin: ORIGIN,
     entries: [{ key, previous: { markedComplete: false, dismissed: false } }],
   },
-  { kind: 'createTask', input },
-  { kind: 'updateTask', noteId, input },
-  { kind: 'deleteTask', noteId },
-  { kind: 'moveTaskToToday', noteId },
-  { kind: 'sendDelete', noteId },
-  { kind: 'cancelDelete', noteId },
-  { kind: 'markAnnouncement', courseId: IDS.courses.biology, topicId: '11' },
+  { userId: '5501', origin: 'https://school.instructure.com', kind: 'createTask', input },
+  { userId: '5501', origin: 'https://school.instructure.com', kind: 'updateTask', noteId, input },
+  { userId: '5501', origin: 'https://school.instructure.com', kind: 'deleteTask', noteId },
+  { userId: '5501', origin: 'https://school.instructure.com', kind: 'moveTaskToToday', noteId },
+  { userId: '5501', origin: 'https://school.instructure.com', kind: 'sendDelete', noteId },
+  { userId: '5501', origin: 'https://school.instructure.com', kind: 'cancelDelete', noteId },
+  {
+    userId: '5501',
+    origin: 'https://school.instructure.com',
+    kind: 'markAnnouncement',
+    courseId: IDS.courses.biology,
+    topicId: '11',
+  },
   {
     kind: 'restoreAnnouncement',
     userId: IDS.user,
@@ -68,18 +86,42 @@ for (const boundary of ['surface', 'settings'] as const) {
     await h.owner.announcementFeed(feed);
     await h.owner.settled();
     if (action.kind === 'cancelDelete' || action.kind === 'sendDelete') {
-      await h.owner.act({ kind: 'deleteTask', noteId });
+      await h.owner.act({
+        userId: '5501',
+        origin: 'https://school.instructure.com',
+        kind: 'deleteTask',
+        noteId,
+      });
     }
-    if (action.kind === 'restore') await h.owner.act({ kind: 'setDone', keys: [key], done: true });
+    if (action.kind === 'restore')
+      await h.owner.act({
+        userId: '5501',
+        origin: 'https://school.instructure.com',
+        kind: 'setDone',
+        keys: [key],
+        done: true,
+      });
     if (action.kind === 'restoreAnnouncement')
-      await h.owner.act({ kind: 'markAnnouncement', courseId: IDS.courses.biology, topicId: '11' });
+      await h.owner.act({
+        userId: '5501',
+        origin: 'https://school.instructure.com',
+        kind: 'markAnnouncement',
+        courseId: IDS.courses.biology,
+        topicId: '11',
+      });
     await h.owner.settled();
     h.canvas.resetCalls();
     let abandoned = false;
     const abandon = async () => {
       abandoned = true;
       h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
-      expect(await h.owner.act({ kind: 'createTask', input }, undefined, ORIGIN)).toMatchObject({
+      expect(
+        await h.owner.act(
+          { userId: '5501', origin: 'https://school.instructure.com', kind: 'createTask', input },
+          undefined,
+          ORIGIN,
+        ),
+      ).toMatchObject({
         created: false,
       });
     };
@@ -159,7 +201,11 @@ it.each(['mark', 'fingerprint', 'fingerprint-after'] as const)(
     const abandon = async () => {
       armed = false;
       h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
-      await h.owner.act({ kind: 'createTask', input }, undefined, ORIGIN);
+      await h.owner.act(
+        { userId: '5501', origin: 'https://school.instructure.com', kind: 'createTask', input },
+        undefined,
+        ORIGIN,
+      );
     };
     const original = h.canvas.markRubricCommentsRead.bind(h.canvas);
     vi.spyOn(h.canvas, 'withGuard').mockReturnValue(h.canvas);
@@ -199,12 +245,26 @@ it('reports one saved create after the same student abandons its queue', async (
     const checks = h.canvas.callsOf('getSelf').length;
     h.canvas.fail('createOverride', canvasError('server', 500), { times: 1 });
     h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
-    await h.owner.act({ kind: 'setDone', keys: [key], done: true }, undefined, ORIGIN);
+    await h.owner.act(
+      {
+        userId: '5501',
+        origin: 'https://school.instructure.com',
+        kind: 'setDone',
+        keys: [key],
+        done: true,
+      },
+      undefined,
+      ORIGIN,
+    );
     await vi.advanceTimersByTimeAsync(0);
     checksAfterSave = h.canvas.callsOf('getSelf').length - checks;
     return saved;
   });
-  const reply = await h.owner.act({ kind: 'createTask', input }, undefined, ORIGIN);
+  const reply = await h.owner.act(
+    { userId: '5501', origin: 'https://school.instructure.com', kind: 'createTask', input },
+    undefined,
+    ORIGIN,
+  );
   expect(reply).toMatchObject({ created: true });
   expect(checksAfterSave).toBeGreaterThanOrEqual(1);
   await h.owner.settled();
@@ -249,7 +309,11 @@ it('keeps live grade visibility after a same-student abandon during the surface 
   h.canvas.getWidgetGradeVisibility = async () => visibility;
   vi.mocked(h.deps.surfaceUsesRequestStore).mockImplementationOnce(async () => {
     h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
-    await h.owner.act({ kind: 'createTask', input }, undefined, ORIGIN);
+    await h.owner.act(
+      { userId: '5501', origin: 'https://school.instructure.com', kind: 'createTask', input },
+      undefined,
+      ORIGIN,
+    );
     return true;
   });
   await expect(h.owner.dashboardGradeVisibility('same-student', 1, ORIGIN)).resolves.toMatchObject({

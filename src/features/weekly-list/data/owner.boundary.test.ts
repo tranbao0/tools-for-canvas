@@ -28,9 +28,29 @@ const input = {
 };
 const key = `assignment:${IDS.assignments.bioQuiz3Today}`;
 const messages = [
-  { type: 'weekrow:action', action: { kind: 'createTask', input } },
-  { type: 'weekrow:action', action: { kind: 'setDone', keys: [key], done: true } },
-  { type: 'weekrow:action', action: { kind: 'deleteTask', noteId: IDS.notes.libraryBooksToday } },
+  {
+    type: 'weekrow:action',
+    action: { userId: '5501', origin: 'https://school.instructure.com', kind: 'createTask', input },
+  },
+  {
+    type: 'weekrow:action',
+    action: {
+      userId: '5501',
+      origin: 'https://school.instructure.com',
+      kind: 'setDone',
+      keys: [key],
+      done: true,
+    },
+  },
+  {
+    type: 'weekrow:action',
+    action: {
+      userId: '5501',
+      origin: 'https://school.instructure.com',
+      kind: 'deleteTask',
+      noteId: IDS.notes.libraryBooksToday,
+    },
+  },
   {
     type: 'weekrow:action',
     action: {
@@ -141,7 +161,12 @@ it.each(['createTask', 'feed'] as const)(
     });
     const reply =
       surface === 'createTask'
-        ? h.owner.act({ kind: 'createTask', input })
+        ? h.owner.act({
+            userId: '5501',
+            origin: 'https://school.instructure.com',
+            kind: 'createTask',
+            input,
+          })
         : h.owner.announcementFeed({
             surface: 'inpage',
             scopeCourseId: null,
@@ -544,7 +569,16 @@ it('refuses an Undo reply after a delete persistence wait crosses an address cha
     });
     await original(value);
   });
-  const reply = h.owner.act({ kind: 'deleteTask', noteId: IDS.notes.libraryBooksToday }, 1, ORIGIN);
+  const reply = h.owner.act(
+    {
+      userId: '5501',
+      origin: 'https://school.instructure.com',
+      kind: 'deleteTask',
+      noteId: IDS.notes.libraryBooksToday,
+    },
+    1,
+    ORIGIN,
+  );
   await waiting;
   await h.owner.originChanged(null);
   release();
@@ -680,4 +714,132 @@ it('does not clear another Canvas late visibility while an old surface check wai
   await vi.advanceTimersByTimeAsync(5000);
   await expect(stale).resolves.toMatchObject({ gradeVisibilities: null });
   expect((await h.owner.dashboardData(OTHER)).visibilityToken).toBe('new');
+});
+
+const writeActions = [
+  {
+    userId: '5501',
+    origin: 'https://school.instructure.com',
+    kind: 'setDone',
+    keys: [key],
+    done: true,
+  },
+  { userId: '5501', origin: 'https://school.instructure.com', kind: 'createTask', input },
+  {
+    userId: '5501',
+    origin: 'https://school.instructure.com',
+    kind: 'updateTask',
+    noteId: IDS.notes.libraryBooksToday,
+    input,
+  },
+  {
+    userId: '5501',
+    origin: 'https://school.instructure.com',
+    kind: 'deleteTask',
+    noteId: IDS.notes.libraryBooksToday,
+  },
+  {
+    userId: '5501',
+    origin: 'https://school.instructure.com',
+    kind: 'moveTaskToToday',
+    noteId: IDS.notes.libraryBooksToday,
+  },
+  {
+    userId: '5501',
+    origin: 'https://school.instructure.com',
+    kind: 'sendDelete',
+    noteId: IDS.notes.libraryBooksToday,
+  },
+  {
+    userId: '5501',
+    origin: 'https://school.instructure.com',
+    kind: 'cancelDelete',
+    noteId: IDS.notes.libraryBooksToday,
+  },
+  {
+    userId: '5501',
+    origin: 'https://school.instructure.com',
+    kind: 'restore',
+    entries: [{ key, previous: { markedComplete: false, dismissed: false } }],
+  },
+  {
+    userId: '5501',
+    origin: 'https://school.instructure.com',
+    kind: 'markAnnouncement',
+    courseId: IDS.courses.biology,
+    topicId: '11',
+  },
+  {
+    userId: '5501',
+    origin: 'https://school.instructure.com',
+    kind: 'restoreAnnouncement',
+    courseId: IDS.courses.biology,
+    topicId: '11',
+  },
+];
+
+for (const mismatch of ['student', 'origin'] as const) {
+  it.each(writeActions)('refuses stale view identity (' + mismatch + '): %j', async (action) => {
+    const h = await createHarness();
+    await loadReady(h);
+    if (action.kind === 'sendDelete' || action.kind === 'cancelDelete') {
+      await h.owner.act({
+        userId: '5501',
+        origin: 'https://school.instructure.com',
+        kind: 'deleteTask',
+        noteId: IDS.notes.libraryBooksToday,
+      });
+    }
+    await h.owner.settled();
+    await settleAll();
+    const before = await sessionCacheItem.getValue();
+    h.canvas.resetCalls();
+    const host: RouterHost = {
+      isExtensionPage: () => true,
+      savedOrigin: async () => ORIGIN,
+      openPage: async () => {},
+      readSettings: () => h.deps.store.settings.getValue(),
+      saveSettings: async () => {},
+      readTools: async () => DEFAULT_TOOLS_SETTINGS,
+      saveTools: async () => {},
+      markNoteSeen: async () => {},
+      openWelcomePrompt: async () => {},
+      injectInpage: async () => {},
+      injectInpageIntoOrigin: async () => {},
+    };
+    const reply = await routeDataMessage(
+      h.owner,
+      {
+        type: 'weekrow:action',
+        action: {
+          ...action,
+          userId: mismatch === 'student' ? '7777' : IDS.user,
+          origin: mismatch === 'origin' ? OTHER : ORIGIN,
+        },
+      },
+      { url: 'chrome-extension://test/sidepanel.html' },
+      host,
+    );
+    await settleAll();
+    expect(h.canvas.calls).toEqual([]);
+    expect(await sessionCacheItem.getValue()).toEqual(before);
+    expect(reply).toEqual(
+      action.kind === 'createTask' ? { undo: null, created: false } : { undo: null },
+    );
+  });
+}
+
+it('accepts the shard id of the shown student', async () => {
+  const h = await createHarness();
+  await loadReady(h);
+  const reply = await h.owner.act({
+    kind: 'setDone',
+    keys: [key],
+    done: true,
+    userId: `0~${IDS.user}`,
+    origin: ORIGIN,
+  });
+  expect(reply.undo).not.toBeNull();
+  await settleAll();
+  expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
 });
