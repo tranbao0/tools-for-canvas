@@ -1,3 +1,7 @@
+// @vitest-environment happy-dom
+import { createElement } from 'preact';
+import { render, fireEvent, cleanup } from '@testing-library/preact';
+import { App } from '../ui/App';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_TOOLS_SETTINGS, type ToolsSettings } from '../../../shared/settings/tools';
 import type { DataMessage, StateReply, UndoData } from '../data/protocol';
@@ -1590,7 +1594,7 @@ describe('settings in place', () => {
     const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
     runtime.start();
     await settle();
-    expect(runtime.settings()).toBeUndefined();
+    expect(runtime.settings()?.courses).toEqual([]);
 
     state = readyFor(USER, { allCourses: [{ id: '1', name: 'Old' }] });
     fake.changed();
@@ -1616,7 +1620,7 @@ describe('settings in place', () => {
     };
     fake.changed();
     await settle();
-    expect(runtime.settings()).toBeUndefined();
+    expect(runtime.settings()?.courses).toEqual([]);
     state = readyFor(USER, {
       origin: 'https://canvas.state.edu',
       allCourses: [{ id: '9', name: 'State' }],
@@ -2222,5 +2226,73 @@ describe('write identity', () => {
       userId: USER,
       origin: ORIGIN,
     });
+  });
+});
+
+describe('settings without courses through App', () => {
+  afterEach(cleanup);
+  const states: StateReply[] = [
+    { kind: 'not_set_up', offer: null },
+    { kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: null },
+    { kind: 'no_access', origin: ORIGIN, offer: null },
+    { kind: 'cant_load', origin: ORIGIN, offline: false, offer: null },
+    { kind: 'loading' },
+    readyFor(USER),
+    { kind: 'no_courses', origin: ORIGIN, offer: null, allCourses: [] },
+  ];
+  it.each(states)('offers settings and minimize in $kind', async (state) => {
+    const fake = fakeHost();
+    fake.stored = { ...DEFAULT_SETTINGS, hiddenCourseIds: ['unlisted'], theme: 'light' };
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state' ? state : { ok: true, retryAt: null };
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: null });
+    const view = () =>
+      createElement(App, {
+        surface: 'inpage',
+        state: runtime.state(),
+        settings: runtime.settings(),
+        actions: runtime.actions,
+      });
+    runtime.start();
+    await settle();
+    const ui = render(view());
+    const stop = runtime.subscribe(() => ui.rerender(view()));
+    expect(ui.getByRole('button', { name: 'Minimize list' })).toBeTruthy();
+    fake.storeSettings({ ...fake.stored, minimized: true });
+    await settle();
+    expect(ui.queryByRole('button', { name: 'Minimize list' })).toBeNull();
+    fake.storeSettings({ ...fake.stored, minimized: false });
+    await settle();
+    fireEvent.click(ui.getAllByRole('button', { name: 'Settings' })[0]!);
+    expect(ui.container.querySelector('.wr-settings')).toBeTruthy();
+    const original = { ...fake.stored };
+    const rings = ui.container.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    // Empty course lists expose only the rings checkbox among the weekly list fields.
+    if (state.kind !== 'ready') {
+      expect(rings).not.toBeNull();
+      fireEvent.click(rings!);
+      await settle();
+      expect(fake.saved.at(-1)).toEqual({ ...original, showRings: !original.showRings });
+    }
+    if (state.kind !== 'ready') {
+      fake.reply = (message) =>
+        message.type === 'weekrow:get-state'
+          ? readyFor(USER, { allCourses: [{ id: 'unlisted', name: 'Hidden course' }] })
+          : { ok: true, retryAt: null };
+      fake.changed();
+      await settle();
+      expect(ui.getByText('Hidden course')).toBeTruthy();
+      expect(fake.stored.hiddenCourseIds).toEqual(['unlisted']);
+      expect(fake.stored.showRings).toBe(!original.showRings);
+      expect(ui.container.querySelector<HTMLInputElement>('.wr-course-list input')?.checked).toBe(
+        false,
+      );
+    }
+    fireEvent.click(ui.getByRole('button', { name: 'Back' }));
+    fake.storeSettings({ ...fake.stored, minimized: true });
+    await settle();
+    expect(ui.queryByRole('button', { name: 'Minimize list' })).toBeNull();
+    stop();
+    runtime.stop();
   });
 });

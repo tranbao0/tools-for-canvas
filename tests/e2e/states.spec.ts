@@ -324,3 +324,51 @@ test.describe('the offer to switch to another Canvas', () => {
     expect(markup).not.toContain('other.instructure');
   });
 });
+
+test('settings fields work before courses load', async ({ page, extensionUrl }) => {
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.locator('.wr-settings')).toBeVisible();
+});
+
+test('first failed dashboard load offers minimize', async ({ context, page, background }) => {
+  const canvas = await serveFakeCanvas(context, [
+    { path: '/', page: 'dashboard-card-view' },
+    { path: /^\/api\//, respond: () => errorReply(CANVAS_ERRORS.serverError) },
+  ]);
+  await saveAddress(background, canvas.origin);
+  await openCanvasPage(page, canvas.origin);
+  const list = inpageList(page);
+  await expect(list.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+  for (const width of [1280, 800]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.screenshot({
+      path: `${process.env['HOME']}/.cache/tools-for-canvas-review/settings-without-courses/cant-load-${width}.png`,
+    });
+  }
+  await list.getByRole('button', { name: 'Minimize list', exact: true }).click();
+  await expect(page.locator('#tools-weekly-tab')).toBeVisible();
+});
+
+test('signed out settings screen shows fields', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const canvas = await serveFakeCanvas(context, [
+    { path: /^\/api\//, respond: () => errorReply(CANVAS_ERRORS.signedOut) },
+  ]);
+  await saveAddress(background, canvas.origin);
+  await page.emulateMedia({ colorScheme: 'light' });
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await expect(page.getByRole('heading', { name: "You're signed out of Canvas" })).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.locator('.wr-settings')).toBeVisible();
+  for (const width of [1280, 800]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.screenshot({
+      path: `${process.env['HOME']}/.cache/tools-for-canvas-review/settings-without-courses/signed-out-${width}.png`,
+    });
+  }
+});

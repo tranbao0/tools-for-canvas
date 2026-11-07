@@ -270,9 +270,9 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   }
 
   function inPlaceSettings(): InPlaceSettings | undefined {
-    return settings === null || courses === null
+    return settings === null
       ? undefined
-      : { value: settings, courses, ...(tools === null ? {} : { tools }) };
+      : { value: settings, courses: courses ?? [], ...(tools === null ? {} : { tools }) };
   }
 
   function loadSettings(): void {
