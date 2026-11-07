@@ -203,6 +203,8 @@ export interface DataOwnerDeps {
   sessionFingerprint(origin: string): Promise<string | null>;
   /** Whether the tab of a surface lives in the store that the requests use. */
   surfaceUsesRequestStore(tabId: number): Promise<boolean>;
+  /** A positive store classification for pane checks; absent tabs remain unknown. */
+  paneCookieStore(tabId: number): Promise<'request' | 'other' | 'unknown'>;
   /** Whether the browser lets the extension reach the origin now (decision 5). */
   hasAccess(origin: string): Promise<boolean>;
   store: DataStore;
@@ -3280,9 +3282,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       if (origin === null || origin !== knownOrigin || tabId === undefined) return unknown;
       const stamp = writeStamp();
       // Only a positive store read grants this exception. An unreadable store stays unknown.
-      if (!(await deps.surfaceUsesRequestStore(tabId))) {
-        return identityHolds(stamp) ? { verdict: 'yes', userId: null } : unknown;
-      }
+      const storeKind = await deps.paneCookieStore(tabId);
+      if (!identityHolds(stamp) || storeKind === 'unknown') return unknown;
+      if (storeKind === 'other') return { verdict: 'yes', userId: null };
       const fingerprint = await readFingerprint(origin);
       if (!identityHolds(stamp) || fingerprint === undefined) return unknown;
       if (fingerprint === null) {

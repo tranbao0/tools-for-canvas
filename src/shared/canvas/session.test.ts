@@ -116,3 +116,20 @@ it('hashes both session cookies and detects a change to either value', async () 
   );
   expect(await sessionFingerprint(ORIGIN)).not.toBe(hosted);
 });
+
+it.each(['chrome', 'firefox'] as const)(
+  'pane store reads require a listed tab in %s',
+  async (kind) => {
+    const { paneCookieStore } = await load(kind);
+    const request = kind === 'firefox' ? 'firefox-default' : '0';
+    const other = kind === 'firefox' ? 'firefox-container-1' : '7';
+    stores({ id: request, tabIds: [1] }, { id: other, tabIds: [2] });
+    await expect(paneCookieStore(1)).resolves.toBe('request');
+    await expect(paneCookieStore(2)).resolves.toBe('other');
+    await expect(paneCookieStore(3)).resolves.toBe('unknown');
+    vi.mocked(browser.cookies.getAllCookieStores).mockRejectedValue(
+      new Error('Stores unavailable'),
+    );
+    await expect(paneCookieStore(2)).rejects.toThrow('Stores unavailable');
+  },
+);

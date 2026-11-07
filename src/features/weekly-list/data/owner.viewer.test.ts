@@ -456,12 +456,14 @@ it('identity verdict: ten idle minutes start no user check', async () => {
 
 it('pane checks distinguish unreadable stores from tabs in another store', async () => {
   const h = await loaded();
-  vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
+  vi.mocked(h.deps.paneCookieStore).mockResolvedValue('other');
   await expect(h.owner.viewerPaneCheck(ORIGIN, TAB)).resolves.toEqual({
     verdict: 'yes',
     userId: null,
   });
-  vi.mocked(h.deps.surfaceUsesRequestStore).mockRejectedValue(new Error('Store unavailable'));
+  vi.mocked(h.deps.paneCookieStore).mockResolvedValue('unknown');
+  await expect(h.owner.viewerPaneCheck(ORIGIN, TAB)).resolves.toEqual({ verdict: 'unknown' });
+  vi.mocked(h.deps.paneCookieStore).mockRejectedValue(new Error('Store unavailable'));
   await expect(h.owner.viewerPaneCheck(ORIGIN, TAB)).resolves.toEqual({ verdict: 'unknown' });
 });
 
