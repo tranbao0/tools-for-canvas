@@ -4469,7 +4469,10 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     At card widths of 360, 420, 480 and 800 px, the title is at least 120 px wide and the header is at most 91 px high, because the second line shows at most two lines.
     The feedback pane has the same header.
   - The second line is the due text and the points of the row, as plain text.
-    The script reads them from Canvas's own row at the click: the visible text of `.ig-details .assignment-date-due` and `.ig-details .js-score`, without the copy for screen readers (`.screenreader-only`) and without script or style content.
+    The script reads them from Canvas's own row at the click: the visible text of `.ig-details .assignment-date-due` and `.ig-details .js-score`, and without script or style content.
+    Visible means what the computed styles leave on screen, never a class name: an element with `display: none` is out, and so is an element with hidden overflow and a box of at most one pixel in both directions, which is how every screen reader only style hides text.
+    Canvas writes a date three times (live facts): once for screen readers in a hashed class of its React component (`css-...-screenReaderContent`), and twice for the eye (`.visible-desktop` and `.hidden-desktop`, one of them hidden by the page for the width of the window).
+    A score has the copy for the eye (`.non-screenreader`, with the grade) and the copy for screen readers (`.screenreader-only`).
     The two parts join with " | ", and the line has at most 160 characters.
     A row with neither part has no second line.
     The text belongs to the frame, so the header follows the frame that shows.
