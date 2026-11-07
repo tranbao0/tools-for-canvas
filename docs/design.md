@@ -1455,6 +1455,11 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
   The list stays on screen with its cached days and the refresh marker.
   A new day that the cache lacks shows as placeholders and loads like any other day (see "The planner cache"), and the light round of the midnight refreshes the cached range.
   The daily load ahead of the new neighbor span, with its assignment details, runs at the lowest priority, so it never delays the days that are shown.
+- A read of the one assignment view, or of the assignment page, that shows work handed in while the cached planner items still show the assignment as not handed in starts a full round at once, and it skips the 60-second limit like a write.
+  The student made that change, so the round is one that somebody asked for.
+  The read is `assignment:details` (the pane, and the Submission Details page) and `assignment:owner` (each load of the assignment page).
+  One hand-in (the assignment with its `submitted_at` and `attempt`) starts one such round, and an assignment that no cached planner item holds starts none.
+  A `visible` refresh alone is not enough, because the limit skips it when the round of the page load ran in the last 60 seconds (live facts, 2026-11-06: a row stayed in Past due with Missing for about a minute after a hand-in, on the assignment page and after a hand-in in the pane).
 - At most one refresh round runs per 60 seconds.
   Loading a week that a surface shows is not a refresh round, so it never waits for this limit or for a running round.
   A write and a change of address skip this limit.
@@ -4581,6 +4586,8 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     After a failed read the next one waits twice as long, up to 5 minutes, and a good read starts over.
   - A change in `submitted_at`, `workflow_state` or `attempt` sends `weekrow:refresh` with the reason `visible`.
     That reason keeps the 60-second round limit and the planner backoff.
+  - The read that finds the change also asks the data layer for the round itself: a read that shows a hand-in the cached list does not show starts a round that skips the 60-second limit (decision 11, "Refresh triggers").
+    The `visible` refresh and its follow-up stay for the case that the cache already shows the hand-in.
   - The data layer skips a `visible` refresh with no answer when a round ran in the last 60 seconds, such as the round of a page load.
     It names a time (`retryAt`) only for a full round that follows a light one.
     No existing reason defers a light round, so the view keeps its own timer, like the weekly list surface.
