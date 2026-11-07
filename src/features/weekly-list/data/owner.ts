@@ -1200,21 +1200,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   /** Applies the refresh policy. Resolves with the time of a full round it put off, if any. */
   async function applyTrigger(trigger: LimitedTrigger, stamp?: WriteStamp): Promise<number | null> {
     await ready();
-    if (
-      knownOrigin === null ||
-      cache === null ||
-      (stamp !== undefined && !actionIdentityHolds(stamp))
-    )
+    if (knownOrigin === null || cache === null || (stamp !== undefined && !identityHolds(stamp)))
       return null;
     // A Canvas page load after a sign-out is the sign-in signal, so it skips the limit. Without
     // a session cookie there is no sign-in, and the limit holds.
     if (trigger === 'page_loaded' && cache.failure?.kind === 'signed_out') {
       const fingerprint = await readFingerprint(knownOrigin);
-      if (
-        knownOrigin === null ||
-        cache === null ||
-        (stamp !== undefined && !actionIdentityHolds(stamp))
-      )
+      if (knownOrigin === null || cache === null || (stamp !== undefined && !identityHolds(stamp)))
         return null;
       if (fingerprint !== null && fingerprint !== undefined) {
         scheduleForcedFull();
@@ -1959,7 +1951,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
   /** A response for another user than the cached one: the cache goes, and the write ends. */
   async function userChanged(stamp: WriteStamp): Promise<false> {
-    if (actionIdentityHolds(stamp)) await dropUserData();
+    if (identityHolds(stamp)) await dropUserData();
     return false;
   }
 
@@ -2040,7 +2032,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       }
       // An abandoned queue ends the generation, but Canvas saved the task for the same student:
       // it shows, and a round syncs the list.
-      if (cache === null || !actionIdentityHolds(stamp)) return { created: false, sync: false };
+      if (cache === null || !identityHolds(stamp)) return { created: false, sync: false };
       const created = noteValue(response);
       const confirmed: NotePatch = {
         kind: 'note',
@@ -2092,7 +2084,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           return userChanged(stamp);
         saved = noteValue(response);
       }
-      if (!actionIdentityHolds(stamp)) return false;
+      if (!identityHolds(stamp)) return false;
       // A DELETE that is out ended the task, whatever happened to the queue after it left.
       if (cache === null || !(operation === 'delete' ? sameStudent(stamp) : isCurrent(stamp))) {
         return false;
@@ -2107,7 +2099,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       await finishWrite();
       return true;
     } catch (error) {
-      if (!actionIdentityHolds(stamp)) return false;
+      if (!identityHolds(stamp)) return false;
       if (isCanvasError(error, 'refused')) {
         // The guard ended the queue before the request left. A DELETE waits for a confirmed
         // cookie, with its entry in `pendingDeletes`.
@@ -2166,8 +2158,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   function scheduleDelete(noteId: string, deleteAt: number, stamp = writeStamp()): void {
     const timer = timers.setTimeout(
       () => {
-        if (!actionIdentityHolds(stamp)) return;
-        const fresh = writeStamp(stamp.actionIdentity);
+        if (!identityHolds(stamp)) return;
+        const fresh = writeStamp();
         deleteTimers.delete(noteId);
         sendDelete(noteId, fresh);
       },
@@ -2178,7 +2170,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
   /** Queues the DELETE of a delayed task delete, once. */
   function sendDelete(noteId: string, stamp: WriteStamp): void {
-    if (!actionIdentityHolds(stamp)) return;
+    if (!identityHolds(stamp)) return;
     const timer = deleteTimers.get(noteId);
     if (timer !== undefined) {
       timers.clearTimeout(timer);
@@ -2228,11 +2220,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   ): Promise<ActionReply> {
     // A mark is a write for the student of the cache, so the cookie check comes first.
     await ready();
-    if (!actionIdentityHolds(stamp)) return NO_UNDO;
+    if (!identityHolds(stamp)) return NO_UNDO;
     if (!(await signedInStudentOwnsCache())) return NO_UNDO;
     const write = await writeContext(stamp);
-    if (!actionIdentityHolds(stamp) || write === null) return NO_UNDO;
-    stamp = writeStamp(stamp.actionIdentity);
+    if (!identityHolds(stamp) || write === null) return NO_UNDO;
+    stamp = writeStamp();
     const entries: PreviousOverride[] = [];
     for (const key of new Set(keys)) {
       const item = write.items.get(key);
@@ -2262,15 +2254,14 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
   /** Undo of an override action: the flags from before go back, for the same user and Canvas only. */
   async function restoreOverrides(
-    userId: string,
     entries: readonly PreviousOverride[],
     stamp: WriteStamp,
   ): Promise<ActionReply> {
     const write = await writeContext(stamp);
-    if (!actionIdentityHolds(stamp) || write === null) {
+    if (!identityHolds(stamp) || write === null) {
       return NO_UNDO;
     }
-    stamp = writeStamp(stamp.actionIdentity);
+    stamp = writeStamp();
     let changed = false;
     const done = new Set<string>();
     for (const { key, previous } of entries) {
@@ -2285,7 +2276,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         previous,
         previousFlags(item),
         item.override?.id ?? '',
-        userId,
+        write.session.profile.id,
         stamp,
       );
       changed = true;
@@ -2306,9 +2297,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     // A task write is a write for the student of the cache, so the cookie check comes first.
     if (!(await signedInStudentOwnsCache())) return NO_UNDO;
     const write = await writeContext(stamp);
-    if (!actionIdentityHolds(stamp) || write === null || cache === null || cache.limited)
-      return NO_UNDO;
-    stamp = writeStamp(stamp.actionIdentity);
+    if (!identityHolds(stamp) || write === null || cache === null || cache.limited) return NO_UNDO;
+    stamp = writeStamp();
     const current = write.items.get(noteKey(noteId));
     if (current === undefined) return NO_UNDO;
     const note = build(write, canvasTimeZone(write.session, write.context), current);
@@ -2323,7 +2313,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     persist();
     if (operation === 'delete') await persistChain;
-    if (actionIdentityHolds(stamp)) bumpLater();
+    if (identityHolds(stamp)) bumpLater();
     if (operation === 'update') return NO_UNDO;
     return {
       deleteToken: patch.id,
@@ -2336,9 +2326,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     // The text of the task goes to the account of the cookie, so the cookie check comes first.
     if (!(await signedInStudentOwnsCache())) return { undo: null, created: false };
     const write = await writeContext(stamp);
-    if (!actionIdentityHolds(stamp) || write === null || cache === null || cache.limited)
-      return NO_UNDO;
-    stamp = writeStamp(stamp.actionIdentity);
+    if (!identityHolds(stamp) || write === null || cache === null || cache.limited) return NO_UNDO;
+    stamp = writeStamp();
     const timeZone = canvasTimeZone(write.session, write.context);
     let created = false;
     await enqueueWrite(
@@ -2391,8 +2380,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         // A refused Undo says so, and the surface shows its notice again, but only while the
         // cache still belongs to the student of the Undo.
         if (!(await signedInStudentOwnsCache(true))) return refusedUndo(action.userId);
-        if (!actionIdentityHolds(stamp)) return refusedUndo(action.userId);
-        return restoreOverrides(action.userId, action.entries, stamp);
+        if (!identityHolds(stamp)) return refusedUndo(action.userId);
+        return restoreOverrides(action.entries, stamp);
       case 'createTask':
         return createTask(action.input, stamp);
       case 'updateTask':
@@ -2428,11 +2417,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         // A refused check leaves the delete to its timer, which sends it after a check.
         if (
           (await signedInStudentOwnsCache()) &&
-          actionIdentityHolds(stamp) &&
+          identityHolds(stamp) &&
           (action.deleteToken === undefined ||
             findDeletePatch(action.noteId)?.id === action.deleteToken)
         )
-          sendDelete(action.noteId, writeStamp(action));
+          sendDelete(action.noteId, writeStamp());
         return NO_UNDO;
       case 'cancelDelete':
         cancelDelete(action.noteId);
@@ -3553,7 +3542,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
     if (!actionIdentityHolds(stamp))
       return undoing === null ? NO_UNDO : refusedUndo(undoing.userId);
-    stamp = writeStamp(stamp.actionIdentity);
+    stamp = writeStamp();
     const origin = stamp.origin;
     const session = cache?.session;
     if (origin === null || cache === null || session == null) return NO_UNDO;
