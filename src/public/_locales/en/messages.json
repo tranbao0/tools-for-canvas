@@ -392,6 +392,9 @@
   "undoDeleted_other": {
     "message": "$1 tasks deleted"
   },
+  "undoFailed": {
+    "message": "Couldn't undo that"
+  },
   "closeNotice": {
     "message": "Close notice"
   },

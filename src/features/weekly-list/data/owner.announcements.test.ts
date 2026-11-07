@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnnouncementTopic } from '../../../shared/canvas/types';
 import { IDS } from '../../../../tests/fixtures/scenario';
 import type { AnnouncementFeed } from './announcements';
+import { changeMarkerItem } from '../../../shared/platform/storage';
 import { sessionCacheItem } from './cache';
 import { canvasError } from './testing/fakeCanvas';
 import {
@@ -195,6 +196,29 @@ describe('announcementFeed', () => {
     release();
     await h.owner.settled();
 
+    expect(h.canvas.callsOf('listAnnouncementFeed')).toHaveLength(2);
+  });
+
+  it('tells the surfaces to ask again after the cookie rule drops a load, and loads once more', async () => {
+    const h = await loaded();
+    const release = h.canvas.hold('listAnnouncementFeed');
+    const first = ready(await h.owner.announcementFeed(PANEL_FEED));
+    expect(first.loading).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    // The cookie changes while the load runs, so its answer belongs to no confirmed cookie.
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-a2');
+    const before = await changeMarkerItem.getValue();
+    release();
+    await h.owner.settled();
+    expect(await changeMarkerItem.getValue()).toBeGreaterThan(before);
+
+    // The surface asks again: one more load, and no loop of drops and marker changes.
+    ready(await h.owner.announcementFeed(PANEL_FEED));
+    await h.owner.settled();
+    const marker = await changeMarkerItem.getValue();
+    expect(ready(await h.owner.announcementFeed(PANEL_FEED))).toMatchObject({ loading: false });
+    await h.owner.settled();
+    expect(await changeMarkerItem.getValue()).toBe(marker);
     expect(h.canvas.callsOf('listAnnouncementFeed')).toHaveLength(2);
   });
 
@@ -459,13 +483,31 @@ describe('marking an announcement as read', () => {
     });
     await h.owner.settled();
 
-    expect(reply.undo).toBeNull();
+    expect(reply).toEqual({ undo: null, restored: true });
     expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([
       [C.biology, '11', true],
       [C.biology, '11', false],
     ]);
     const feed = ready(await h.owner.announcementFeed(PANEL_FEED));
     expect(feed.rows.find((row) => row.id === '11')?.read).toBe(false);
+  });
+
+  it('says it restored nothing when Canvas refuses the DELETE of an Undo', async () => {
+    const { h, undo } = await marked();
+    await h.owner.settled();
+    if (undo.kind !== 'announcement') throw new Error('Wrong Undo data');
+    h.canvas.fail('setAnnouncementRead', canvasError('server', 500), { times: 1 });
+
+    const reply = await h.owner.act({
+      kind: 'restoreAnnouncement',
+      userId: undo.userId,
+      origin: undo.origin,
+      courseId: undo.courseId,
+      topicId: undo.topicId,
+    });
+    await h.owner.settled();
+
+    expect(reply).toEqual({ undo: null, restored: false });
   });
 
   it('ignores an Undo for another student or another Canvas', async () => {
@@ -475,7 +517,7 @@ describe('marking an announcement as read', () => {
     h.canvas.resetCalls();
 
     for (const patch of [{ userId: '1234' }, { origin: 'https://other.instructure.com' }]) {
-      await h.owner.act({
+      const reply = await h.owner.act({
         kind: 'restoreAnnouncement',
         userId: undo.userId,
         origin: undo.origin,
@@ -483,9 +525,28 @@ describe('marking an announcement as read', () => {
         topicId: undo.topicId,
         ...patch,
       });
+      expect(reply).toEqual({ undo: null, restored: false });
     }
     await h.owner.settled();
 
+    expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([]);
+  });
+
+  it('says it restored nothing when the row left the list before the Undo', async () => {
+    const { h, undo } = await marked();
+    await h.owner.settled();
+    if (undo.kind !== 'announcement') throw new Error('Wrong Undo data');
+    h.canvas.resetCalls();
+
+    const reply = await h.owner.act({
+      kind: 'restoreAnnouncement',
+      userId: undo.userId,
+      origin: undo.origin,
+      courseId: undo.courseId,
+      topicId: '999',
+    });
+
+    expect(reply).toEqual({ undo: null, restored: false });
     expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([]);
   });
 
@@ -553,7 +614,8 @@ describe('marking an announcement as read', () => {
       topicId: '11',
     });
     if (reply.undo?.kind !== 'announcement') throw new Error('No Undo data');
-    await h.owner.act({
+    // The reply of the Undo waits for its write, which waits behind the held PUT.
+    const restored = h.owner.act({
       kind: 'restoreAnnouncement',
       userId: reply.undo.userId,
       origin: reply.undo.origin,
@@ -561,6 +623,7 @@ describe('marking an announcement as read', () => {
       topicId: '11',
     });
     release();
+    expect(await restored).toEqual({ undo: null, restored: true });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([

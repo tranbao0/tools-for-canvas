@@ -4,7 +4,6 @@
  * adapter in src/shared/canvas/widgetDashboard.ts reads.
  */
 import type { Locator, Page } from '@playwright/test';
-import { courseJson } from '../fixtures/canvas-json';
 import { HOSTILE_MESSAGE } from '../fixtures/announcements';
 import { defaultColorFor } from '../../src/features/weekly-list/model/colors';
 import {
@@ -23,6 +22,7 @@ import {
 } from './support/weekrow';
 import type { FakeCanvasRoute, FakeReply } from './support/fake-canvas';
 import { HAS_REAL_CANVAS_CSS, useRealCanvasCss } from './support/canvas-css';
+import { EIGHT_COURSES } from './support/eight-courses';
 import { requestsQuiet, stableValue } from './support/settle';
 
 const PAGE = [{ path: '/', page: 'dashboard-widgets' }] as const;
@@ -210,6 +210,7 @@ function slowMarks() {
   const gates = new Map<string, Promise<void>>();
   const opens = new Map<string, () => void>();
   const refused = new Set<string>();
+  const refusedOnce = new Set<string>();
   let canvas: { readAnnouncements: Set<string> } | null = null;
   const route: FakeCanvasRoute = {
     method: 'PUT',
@@ -219,7 +220,7 @@ function slowMarks() {
         /courses\/(\d+)\/discussion_topics\/(\d+)\//.exec(request.path) ?? [];
       const key = `${course}:${topic}`;
       await gates.get(key);
-      if (refused.has(key)) return { status: 500, body: 'Server error' };
+      if (refused.has(key) || refusedOnce.delete(key)) return { status: 500, body: 'Server error' };
       canvas?.readAnnouncements.add(key);
       return { status: 204 };
     },
@@ -234,6 +235,10 @@ function slowMarks() {
     },
     refuse(key: string): void {
       refused.add(key);
+    },
+    /** Refuses the first mark of the topic that gets an answer, and takes the ones after it. */
+    refuseFirst(key: string): void {
+      refusedOnce.add(key);
     },
     release(key: string): void {
       opens.get(key)?.();
@@ -707,6 +712,32 @@ test.describe('announcements: one steady list', () => {
     await page.waitForTimeout(500);
     await expect(articles(page)).toHaveCount(10);
     await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
+  });
+
+  test('take the row out of Unread when Canvas refuses an older mark and takes the newest', async ({
+    context,
+    page,
+  }) => {
+    const slow = slowMarks();
+    const served = await openWith(context, page, [slow.route]);
+    slow.bind(served.state);
+    slow.hold('101:31901');
+    slow.refuseFirst('101:31901');
+    const row = articles(page).first();
+    // Read, unread, read: three marks of the same row, and the first one is still on its way.
+    for (const wanted of ['true', 'false', 'true']) {
+      await row.locator('.wr-a-read').click();
+      await expect(row.locator('.wr-a-read')).toHaveAttribute('aria-pressed', wanted);
+    }
+    slow.release('101:31901');
+    // Canvas took the newest mark, so the row leaves, and no note says that a mark failed.
+    await expect(articles(page)).toHaveCount(9);
+    await expect(
+      page.locator(`${LIST} article[aria-label="Lab room change for Thursday"]`),
+    ).toHaveCount(0);
+    await expect(page.locator(`${LIST} [role="status"]`).first()).not.toContainText(
+      "Couldn't change the read mark.",
+    );
   });
 
   test('keep the row, with the check and the note, when Canvas takes the mark and refuses the way back', async ({
@@ -1287,27 +1318,6 @@ test('match the dark read filter colors', async ({ context, page }, testInfo) =>
 /** The wait for a result that depends on a read of the owner, which may take 5 s under load. */
 const READ_WAIT = 20_000;
 
-const EIGHT_COURSES: ScenarioOptions = {
-  extend(scenario) {
-    for (const [id, name, code] of [
-      ['107', 'PSYC 100: Intro to Psychology', 'PSYC 100'],
-      ['108', 'ENGL 112: Academic Writing', 'ENGL 112'],
-    ] as const) {
-      const term = scenario.courses[0]?.term;
-      scenario.courses.push({
-        ...courseJson({
-          id,
-          name,
-          courseCode: code,
-          term: { id: '27', name: 'Fall 2026', startAt: null, endAt: null },
-          totals: id === '107' ? { score: 95.7, grade: null } : 'hidden',
-        }),
-        ...(term === undefined ? {} : { term }),
-      });
-    }
-  },
-};
-
 test.describe('course grades', () => {
   test('show a card for every course, with N/A for a hidden total', async ({ context, page }) => {
     await open(context, page, { scenario: EIGHT_COURSES });
@@ -1334,6 +1344,31 @@ test.describe('course grades', () => {
     expect(color).toBe(rgb(defaultColorFor('107')));
     // A card that the widget drew is not copied.
     await expect(widget.locator('[data-testid="course-grade-card-103"]')).toHaveCount(1);
+  });
+
+  test('keep the pager of Canvas, so page 2 can be reached, when no course comes to draw', async ({
+    context,
+    page,
+    background,
+  }) => {
+    const served = await serveScenario(
+      context,
+      [{ path: '/api/v1/courses', status: 500, body: { errors: [] } }, ...PAGE],
+      EIGHT_COURSES,
+    );
+    await addCsrfCookie(context, served.canvas.origin);
+    await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+    const widget = page.getByTestId('widget-course-grades-widget');
+    await expect(widget.locator('[data-testid^="course-grade-card-"]')).toHaveCount(6);
+    await requestsQuiet(page, served.canvas.requests, background);
+    expect(
+      served.canvas.requests.some((request) => request.path.startsWith('/api/v1/courses?')),
+    ).toBe(true);
+    // No copy is drawn, so a pager must stay in view, and it must reach page 2 of Canvas.
+    const pager = widget.locator('[data-wr-own="pager"]');
+    await expect(pager).toBeVisible();
+    await pager.getByRole('button', { name: 'Page 2' }).click();
+    await expect(widget.getByTestId('pagination-container')).toHaveAttribute('data-fx-page', '2');
   });
 
   test('keep a saved hidden grade hidden with Show all grades enabled', async ({
@@ -1656,7 +1691,7 @@ test.describe('the switches', () => {
   });
 
   test('the fixes run with the weekly list minimized', async ({ context, page, background }) => {
-    await open(context, page, { background, fixes: {} });
+    await open(context, page, { background, fixes: {}, scenario: EIGHT_COURSES });
     await background.evaluate(async () => {
       const api = (
         globalThis as unknown as {

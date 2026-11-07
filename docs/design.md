@@ -304,7 +304,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The container of the list is a light DOM child of the host, and a `<slot>` in the dock shows it.
   So the list keeps its open shadow root and its place for the page selectors, and it keeps its state while the dock is hidden.
 - The default width is 360 px, which is the narrowest width that a dock can have.
-  The setting `weeklyDockWidth` stores it with the rules of `fileViewerWidth`: at least 360 px, at most 70 percent of the window, and 360 px for a missing value.
+  The setting `weeklyDockWidth` stores it with the rules of `fileViewerWidth`: at least 360 px, at most 70 percent of the window where the dock uses it, and 360 px for a missing value.
+  The stored value has no window limit, only an absolute one of 8192 px, so a width that fits a wide window is saved and comes back after a reload.
   The file pane and the weekly dock never change each other's width.
 - The dock takes room with the same padding lease as the other panes: the `html` element gets a right padding of the width of the dock.
   Canvas's `.ic-Layout-wrapper` has `max-width: 1366px` and stays at the left of the window.
@@ -353,6 +354,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - Only one dock shows at a time.
   While a file pane is open (decision 25), the dock and its tab are hidden, with no state lost.
   When the file pane closes, they come back in the state they had, open or minimized, with the same width, groups and scroll position.
+  When a pane hides the dock with the keyboard focus inside it, for example after Enter on a Preview button, the focus moves into the pane, and the next Tab reaches its header.
+  When the dock comes back and the focus has fallen to the page, the focus returns to the control that had it.
   The dock uses `watchFilePane` and `filePaneOpen` of the dock module, and `setHidden`, as the assignment pane does.
   The two scripts share the lease through the shared state of the dock module, and the file pane script may be injected later, when the File viewer switch goes on.
   A dock never opens while a file pane is open, because opening would write the padding of the dock over the padding of the file pane.
@@ -603,11 +606,14 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     When the last row of an open group leaves, for example when the student unchecks the last Done item, focus goes to the heading of the group.
     When the last row of the day list leaves, focus goes to the part of the switch that is on.
   - A group starts at the top of the list area, also for another span.
+    The same group of the same span keeps its scroll position over the settings, the task form and a minimize, as the day list does.
     The day list keeps its scroll position while a group is open and gets it back on To do.
     The scroll positions stay when the card moves.
   - The day list keeps at least 128 px.
     When the card is too low for 128 px and the bottom bar, the whole card scrolls instead.
   - Keyboard access, focus rings, collapse memory, the older list, and Mark all older done stay available.
+  - The groups and the "N older" lines that the student opened stay open while the task form, the settings, a minimize or the Announcements tab replaces the list.
+    The page keeps this state above those views, as it keeps the scroll positions.
   - These rules also apply to the docked card of a course home page and to the list in the dock of the classic dashboard, but do not affect the side panel or the minimized card.
     The side panel has no bottom bar, so it ignores `openGroup`: its No due date and Done groups open in place, one by one, and each keeps its own state.
   - The scroll bar of the groups sits in the side padding of the card, 4 px from its edge, so it never covers the day counts.
@@ -844,8 +850,15 @@ A span that ended before today has one exception: open work dated inside it stay
 - When the student marks an item done, marks all older items done or deletes a task, an "Undo" notice shows.
   The notice has no timer: it stays until the student acts again or closes it.
   In the in-page list it lies over the end of the list, right above the bottom bar, so the view switch never moves, and the end of the list scrolls clear of it.
-  Ctrl+Z (Cmd+Z on a Mac) also undoes while the notice shows.
+  Ctrl+Z (Cmd+Z on a Mac) also undoes while the notice shows, also over a state that is not the list, such as the signed-out page.
   A fixed time limit would fail keyboard and screen reader users, who need time to reach the notice.
+- Every Undo says whether it restored the item: the reply to an Undo of a done mark, of a task delete or of a read mark has `restored`, true or false.
+  The reply to an Undo of a done mark or of a read mark comes after Canvas answered the write, and it says `restored: true` only when Canvas saved every write.
+  A write that Canvas refuses or that times out gives `restored: false`.
+  An Undo that restored nothing ends its notice and shows one short line in the notice area: "Couldn't undo that".
+  The line has no Undo button and no timer, and it stays until the student acts again or closes it.
+  An Undo of a done mark restores every item or says that it did not: an item that the cache no longer holds (its week was dropped after 10 minutes unused) cannot be written.
+  The refusal of the sign-in check is the other case: the reply has `refused`, nothing was restored, and the Undo notice shows again.
 
 **Checked but missing:**
 
@@ -882,6 +895,10 @@ A student now has one way to clear work: Done.
 - "Mark all older done" in the Past due group sends the write of a check for each older item whose checkbox the student can use.
   Its Undo notice says how many items it marked done, and the first-done note shows if it has not shown yet.
   Undo sends the flags of each item from before.
+- A check or uncheck of an item that already shows the target flags, or that has a waiting write to them, writes nothing and gives no Undo entry.
+  The owner decides this for every caller, so a second click before the row redraws, a double send and a stale second surface cannot give a later Undo the flags of the first write as its "before".
+  The surface also drops a repeat of a mark in the same direction for a key whose newest mark is still on its way, until the list shows it.
+  So a double click sends one write and keeps the Undo notice of the first click.
 - A row action stays on the due line, at the right of the due text: "Move to today" for a custom task with a past date, and the Preview button (decision 26).
   A row with no due text, such as an undated item, shows its actions on a line of their own.
   The actions of a row always share that one line, so a past-due row has no separate row of action targets.
@@ -1203,6 +1220,11 @@ Option A was the first decision, and it put the first days of a long span in the
 - Delete shows the "Undo" notice.
   The DELETE is sent when the notice ends: the student acts again, closes the notice or closes the surface.
   The background sends it after 2 minutes at the latest, so a closed panel cannot keep a task alive.
+  The state reply names the tasks whose DELETE has not started (`openDeletes`), and the background changes the marker when a DELETE starts.
+  A surface that shows the notice of a task that is no longer in that list ends the notice without a message, because Undo can no longer stop the DELETE.
+  A reply to a state request that went out before the notice cannot end it.
+  An Undo that still arrives, because the DELETE started in the same moment, changes nothing and does not create the task again.
+  Its reply says `restored: false`, and the notice area shows the line "Couldn't undo that" (decision 6).
 - The default date is today when today is in the shown span.
   Otherwise, it is the first day of the shown span.
   So a new task never vanishes from the view.
@@ -1255,6 +1277,8 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   The cookie comes from the store that the requests of the extension use: the default store of the browser (`0` on Chrome and Edge, `firefox-default` on Firefox).
   The owner does not take the store from `getAllCookieStores`, because that list holds only stores with an open tab.
   A tab in another store, such as a private window or a container, gets `cant_load` and never cached data.
+  The store check is the first step of every message that comes from a tab, before any state branch, so the tab gets `cant_load` also while the cache has no session yet.
+  Its Retry, its refresh and its page load start no request.
   It causes no check and no sign-out.
   The router passes the tab of the sender, and the owner asks the browser which store lists the tab.
   A surface without a tab, such as the side panel, uses the default store.
@@ -1302,7 +1326,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   A dropped response is not a failure of the course or of the load, so it sets no failure line.
 - A round starts only with a readable session cookie.
   No cookie: no request starts, the student is signed out, and the round keeps the 60-second limit.
-  A cookie store that cannot be read: no request starts, and the state is `cant_load` with Retry.
+  A cookie store that cannot be read: no request starts, and the state is `cant_load` with Retry, on a cold start as well as with a cached session.
   A Canvas page load after a sign-out skips the limit only when the session cookie is there, because only then it is a sign-in.
 - Checks are rare.
   No more than two checks start in any 30 seconds, from all readers together.
@@ -1338,6 +1362,11 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   Any other answer (no cookie, an unreadable store, or a cookie that no check confirmed) makes the request fail with the `refused` error and abandons the queue: the writes that Canvas has not confirmed go, and a forced round syncs the list.
   A refused request sends nothing, and its job ends without a second sync.
   A read mark and a task create also keep the user check before their request, because the text of a task goes to the account of the cookie, and a read mark has no user in its reply.
+  A task create has no key that makes a repeat safe, so a create that ends with a server error, a timeout or a network error may still have saved the task.
+  The owner then reads the planner of the day of the task before the reply, and a task that matches and that the cache does not hold counts as saved.
+  The read compares against the tasks from before the POST, because a round can bring the new task into the cache while the POST waits.
+  A read that fails runs once more after 3 seconds.
+  The form offers Save again only when the reads find nothing or both fail.
   The DELETE of a waiting task that goes to the Canvas the student leaves passes a guard too, with the fingerprints of the cache that the student leaves.
   The write-backs after a reply for another user (the old flags of an override and the DELETE of a task that landed in another account) skip the guard, because they must reach the account that the first request wrote to.
 - A delayed task delete that waits in the queue when the queue is abandoned is parked, not sent again at once.
@@ -1385,6 +1414,14 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   The user check runs outside this queue.
   A free request slot goes first to the days of a span that a surface shows, then to the past-due range of that view, refresh rounds and writes (the same level), then to weeks that load ahead.
   A load for a view that the surface no longer shows drops to the lowest level.
+- Every request of the queue has one limit in the transport: 25 seconds from the start of an attempt to the end of its body (`REQUEST_TIMEOUT_MS`).
+  The reads that have their own limit already give one small answer 10 seconds, so 25 seconds leaves room for a slow Canvas and for a page of 100 items on a bad link.
+  The limit stays below the 30 seconds after which Chrome stops a service worker that waits for a reply [24], because a stopped worker drops the writes that Canvas has not confirmed.
+  A longer limit would let three stalled replies hold all three slots for that long.
+  A request that passes the limit fails with `Couldn't reach Canvas` (not offline) and frees its slot, so the round fails as stale, Retry starts a new round, and the writes behind it go out.
+  A retry after a rate limit starts a new attempt with a new limit.
+  The sign-in check and the grade visibility read keep their shorter limits.
+  File reads for the viewer and the file check do not use the transport and keep their own rules (decisions 23 and 25).
 - After each write, the background stores a change marker (a time stamp only) in `storage.local`.
   Every surface listens to `storage.onChanged` and refreshes.
   `runtime.sendMessage` does not reach content scripts, so it cannot do this job [24].
@@ -2369,7 +2406,10 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The extension never loads the Canvas page of an announcement itself, because it marks the topic as read.
    The ids are checked as Canvas ids at the message boundary and again before they enter a path.
 2. **All course grades.**
-   The fix hides the pager and adds a card for each course that has no card on the page.
+   The fix adds a card for each course that has no card on the page.
+   It hides the pager of Canvas, and the steady navigator, only when the page has a card for every page that the pager reaches: more cards than six for each page before the last.
+   While the extension has no course to draw, such as in a tab of another cookie store or after a failed course read, the pager of Canvas and the steady navigator stay, so the cards of the other pages can be reached.
+   A reply with no user id and no course leaves the courses of the earlier reply in place.
    A card is a copy of a card that the widget drew, so it has the same markup, classes and theme.
    The copy loses its buttons, which belong to React, and its ids.
    Its header takes the course color, and it shows the letter grade when Canvas sends one, else the whole percent, else "N/A".
@@ -2415,7 +2455,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The pager of Canvas, with its spinner, stays in the page and takes no room: one rule of the stylesheet, scoped to the widget mark `data-wr-paged`, hides it with `display: none`.
    So it is out of the accessibility tree and the tab order, and Canvas does not move the focus into it.
    The navigator has `data-wr-own`, so the observer ignores it.
-   Another fix that hides the pager (the grade cards, and the own list of the announcements) hides the navigator too.
+   Another fix that hides the pager (the grade cards when they cover every page, and the own list of the announcements) hides the navigator too.
    The navigator follows the dark theme of the widget, with the link color `#5A9FD4`, the ink `#FFFFFF` and the disabled color `#4A5B68` of the package, and the current page keeps its blue square.
    A widget with one page has no pager of Canvas, so it has no navigator.
 4. **People list.**
@@ -3230,6 +3270,7 @@ With the pane read alone, the default run of the test failed before the fix.
      The input takes a whole number.
      A number outside the document goes to the nearest page.
      Other text is rejected and the input shows the page in view again.
+     Escape cancels the typed number: the input shows the page in view again, no page change follows, and the pane stays open.
    - **Zoom.**
      The default is "Fit width".
      The menu offers "Fit width", "Fit page", 50, 75, 100, 125, 150, 200, 300 and 400 percent.
@@ -3256,7 +3297,7 @@ With the pane read alone, the default run of the test failed before the fix.
      The bar shows "N of M", "No matches" or "Searching…".
      Enter and Shift+Enter, and the arrow buttons, go to the next and the previous match, and wrap around.
      The matches show in the text layer, and the selected match has a stronger color.
-     Escape closes the bar and clears the marks, and it does not close the pane.
+     Escape closes the bar and clears the marks, and it does not close the pane, whichever control of the bar has the focus.
      At most 5,000 matches count.
    - **Thumbnails.**
      The list shows one slot for each page.
@@ -3430,7 +3471,7 @@ With the pane read alone, the default run of the test failed before the fix.
     Every load of the frame after the first drops the port of the document before it.
     If no valid answer with the secret arrives within 15 seconds of the open, or no hello follows a load, the page script removes the pane and restores the padding of the page.
     The stored tabs stay, so the next click opens the pane again.
-  - After the proof, the pane accepts only two messages from the page: `open-file`, with a file id and an optional course id, and `theme`, with the value `light` or `dark`.
+  - After the proof, the pane accepts only four messages from the page: `open-file`, with a file id and an optional course id, `theme`, with the value `light` or `dark`, `full-view`, with the full view state, and `covered`, which says whether another pane hides the file pane.
     It never accepts a path or a full URL to load, and it drops a message with another key or value.
   - The pane frame sits in a closed shadow root, which keeps the frame element and its address from the page.
     A script can still get the window of the pane from the event of the hello, so the channel does not rely on the root.
@@ -4511,6 +4552,9 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     A file click, in the page or in a frame of the pane (decision 25, item 11), opens the file pane as usual, and the pane host is only hidden.
     When the file pane closes, the pane shows again with the same frame.
   - Preview while a file pane is open shows the pane over the file pane, which is hidden and keeps its tabs.
+    The page script tells the file pane page over the port that its host is hidden or shown (the message `covered`).
+    While the host is hidden, the pane page treats every tab as hidden: a hidden tab pauses its media (decision 25, item 10) and keeps its scroll position.
+    Firefox resets the scroll offset of a scroller in a hidden frame, so the PDF tabs restore the position that they saved, and the text and image tabs restore the offset that they last had while they showed.
     The close button of the pane shows the file pane again.
     The page has the padding of the one pane that shows, and its own padding when none shows, after every order of these steps.
   - A page that removes the pane host removes the pane and its frames: the poll stops, the room is given back, and a file pane that it covered shows again.

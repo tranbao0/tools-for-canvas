@@ -8,7 +8,8 @@
  *   after the place of the row, such as "12 older", or to the last such button before it when
  *   none comes after, and last to the caller's fallback.
  * - "Mark all older done", which goes away when the older list empties: focus moves to the Past due
- *   heading, or to the first row.
+ *   heading, or to the first row, or to the part of the view switch that is on, and last to the
+ *   caller's fallback.
  * - Any other control, such as a button of the Undo notice: focus moves to the control that the
  *   caller names, such as the control the student used last.
  */
@@ -37,8 +38,11 @@ export type FocusSnapshot =
 
 const ROW = '[data-row-key]';
 
+/** The part of the view switch that is on. */
+const VIEW_ON = '.wr-views input:checked';
+
 /** The controls that open a group or a line of the list, and the view switch. */
-const TOGGLE = '.wr-group-toggle, .wr-sub-toggle, .wr-views input:checked';
+const TOGGLE = `.wr-group-toggle, .wr-sub-toggle, ${VIEW_ON}`;
 
 /** The Past due heading, which takes focus when "Mark all older done" goes away. */
 export const PAST_DUE_HEADING = '[data-group="past_due"] [data-part="group-head"]';
@@ -191,7 +195,11 @@ export function restoreFocus(
       listTarget(root, snapshot) ??
       fallback();
   else if (snapshot.part === 'done-older')
-    target = root.querySelector<HTMLElement>(PAST_DUE_HEADING) ?? firstRowControl(root);
+    target =
+      root.querySelector<HTMLElement>(PAST_DUE_HEADING) ??
+      firstRowControl(root) ??
+      root.querySelector<HTMLElement>(VIEW_ON) ??
+      fallback();
   else target = fallback();
   target?.focus();
 }

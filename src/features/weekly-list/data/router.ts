@@ -144,7 +144,7 @@ export function routeDataMessage(
   if (isCanvasPageLoadedMessage(message)) {
     const origin = senderPageOrigin(sender);
     if (origin === null) return reject('A page load comes only from the top frame of a tab');
-    return owner.pageLoaded(origin).then(ok);
+    return owner.pageLoaded(origin, sender.tab?.id).then(ok);
   }
   if (!isDataMessage(message)) return null;
   switch (message.type) {
@@ -294,7 +294,7 @@ export function routeDataMessage(
       return allowed.then(() => host.markNoteSeen(message.note)).then(ok);
     case 'weekrow:refresh':
       return allowed
-        .then((origin) => owner.refresh(message.reason, origin))
+        .then((origin) => owner.refresh(message.reason, origin, sender.tab?.id))
         .then((result): RefreshReply => ({ ok: true, retryAt: result.retryAt }));
     case 'weekrow:action':
       return allowed.then((origin) => owner.act(message.action, sender.tab?.id, origin));

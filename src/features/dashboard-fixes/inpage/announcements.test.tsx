@@ -53,6 +53,8 @@ interface Server {
   failPages: boolean;
   failRanges: boolean;
   markOk: boolean;
+  /** When set, a mark waits here for the test to answer it. */
+  heldMarks: ((ok: boolean) => void)[] | null;
   /** The range reply says that the range holds more rows than it carries. */
   truncated: boolean;
   /** The first page holds rows of the server that the projection drops, so it shows no row. */
@@ -91,6 +93,10 @@ function serve(context: FakeContext, server: Server): void {
         };
       }
       case 'weekrow:announcement-mark': {
+        if (server.heldMarks !== null) {
+          const held = server.heldMarks;
+          return new Promise((resolve) => held.push((ok) => resolve({ ok })));
+        }
         const found = server.rows.find(
           (candidate) =>
             candidate.courseId === request['courseId'] && candidate.id === request['topicId'],
@@ -160,6 +166,7 @@ beforeEach(() => {
     failPages: false,
     failRanges: false,
     markOk: true,
+    heldMarks: null,
     truncated: false,
     dropFirstPage: false,
   };
@@ -400,6 +407,29 @@ describe('the read control', () => {
       await vi.advanceTimersByTimeAsync(600);
     });
     await flush();
+    expect(shadowAll('article').map((article) => article.getAttribute('aria-label'))).toEqual([
+      'Topic 2',
+      'Topic 3',
+    ]);
+  });
+
+  it('shows no note and lets the row leave when an older mark is refused after the newest was taken', async () => {
+    await start(many(3));
+    const held: ((ok: boolean) => void)[] = [];
+    server.heldMarks = held;
+    // Read, unread, read: three marks of one row, all on their way.
+    for (let click = 0; click < 3; click++) await clickTrusted(shadowAll('.wr-a-read')[0]);
+    expect(held).toHaveLength(3);
+    // The oldest mark is refused last, after the newest was taken.
+    held[1]?.(true);
+    held[2]?.(true);
+    held[0]?.(false);
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    await flush();
+    expect(shadow('.wr-a-res [role=status]')?.textContent ?? '').not.toContain("Couldn't change");
     expect(shadowAll('article').map((article) => article.getAttribute('aria-label'))).toEqual([
       'Topic 2',
       'Topic 3',

@@ -12,6 +12,7 @@ import {
   settledList,
   test,
 } from './support/weekrow';
+import { EIGHT_COURSES } from './support/eight-courses';
 
 const WRAPPER = '[data-testid="widget-container-course-work-combined-widget"]';
 const SECTION = '[data-testid="widget-course-work-combined-widget"]';
@@ -234,7 +235,11 @@ async function openFixture(
   state: string,
   size = { width: 1440, height: 900 },
 ): Promise<void> {
-  const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
+  const { canvas } = await serveScenario(
+    context,
+    [{ path: '/', page: 'dashboard-widgets' }],
+    EIGHT_COURSES,
+  );
   await addCsrfCookie(context, canvas.origin);
   await page.setViewportSize(size);
   await openCanvasPage(page, canvas.origin, `/?fixture_course_work=${state}`);

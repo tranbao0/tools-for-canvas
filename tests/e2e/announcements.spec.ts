@@ -5,6 +5,8 @@
  */
 import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
+import { CANVAS_ERRORS } from '../fixtures/errors';
+import { errorReply } from './support/canvas-state';
 import { CSRF_TOKEN } from './support/weekrow';
 import {
   addCsrfCookie,
@@ -17,7 +19,7 @@ import {
   settledList,
   test,
 } from './support/weekrow';
-import type { FakeCanvas } from './support/fake-canvas';
+import type { FakeCanvas, FakeCanvasRoute } from './support/fake-canvas';
 import { requestsQuiet } from './support/settle';
 
 const QUIZ_3 = 'Quiz 3: Cell membranes';
@@ -31,10 +33,11 @@ const READ_PATH = /^\/api\/v1\/courses\/\d+\/discussion_topics\/\d+\/read$/;
 async function open(
   context: Parameters<typeof serveScenario>[0],
   page: Page,
-  options: { page?: string; path?: string; width?: number } = {},
+  options: { page?: string; path?: string; width?: number; routes?: FakeCanvasRoute[] } = {},
 ) {
   const path = options.path ?? '/';
   const served = await serveScenario(context, [
+    ...(options.routes ?? []),
     { path, page: options.page ?? 'dashboard-card-view' },
   ]);
   await addCsrfCookie(context, served.canvas.origin);
@@ -246,6 +249,29 @@ test.describe('the Announcements tab', () => {
     await expect(list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` })).toBeFocused();
   });
 
+  test('Undo says so in one line when Canvas refuses to mark the announcement unread', async ({
+    context,
+    page,
+  }) => {
+    const { state } = await open(context, page, {
+      routes: [
+        {
+          method: 'DELETE',
+          path: READ_PATH,
+          respond: () => errorReply(CANVAS_ERRORS.serverError),
+        },
+      ],
+    });
+    const list = await openAnnouncements(page);
+    await list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` }).click();
+    await expect(titleButton(list, LAB_ROOM)).toHaveCount(0);
+
+    await list.locator('.wr-toast').getByRole('button', { name: 'Undo' }).click();
+
+    await expect(list.locator('.wr-toast')).toHaveText("Couldn't undo that");
+    expect(state.readAnnouncements.has('101:31901')).toBe(true);
+  });
+
   test('keeps a marked row in the list while Show read is on', async ({ context, page }) => {
     await open(context, page);
     const list = await openAnnouncements(page);
@@ -355,5 +381,36 @@ test.describe('hidden courses', () => {
         'course_104',
       );
     }
+  });
+});
+
+test.describe('a load that the cookie rule drops', () => {
+  test('is asked for again, so the tab fills without a tap', async ({ context, page }) => {
+    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-card-view' }]);
+    await addCsrfCookie(context, canvas.origin);
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // The first feed request waits, as a slow Canvas does.
+    let asked = 0;
+    await context.route(/\/api\/v1\/announcements/, async (route) => {
+      asked += 1;
+      await held;
+      await route.fallback();
+    });
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await openCanvasPage(page, canvas.origin, '/');
+    await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
+    await expect.poll(() => asked).toBeGreaterThan(0);
+
+    // Canvas renews the session cookie while the load runs, so the answer belongs to no cookie.
+    await context.addCookies([
+      { name: 'canvas_session', value: 'session-a2', url: canvas.origin, secure: true },
+    ]);
+    release();
+
+    const list = inpageList(page);
+    await expect(tab(list, /^Announcements/)).toHaveAccessibleName('Announcements, 3 unread');
   });
 });
