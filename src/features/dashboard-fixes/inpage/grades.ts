@@ -5,8 +5,9 @@
  * adds a card for each course that has no card on the page, and hides the pager once the page has
  * a card for every page that the pager reaches. The cards are
  * copies of a card that the widget drew, so they look the same in every theme. The copy keeps its
- * layout and loses its buttons, because they belong to React. The color of the header is the
- * course color, the grade is the total that Canvas sends for the course, and `N/A` shows when
+ * layout and loses its buttons (the eye and the course settings menu), because they belong to
+ * React and write to Canvas. The color of the header is the one that the widget draws for the
+ * course, the grade is the total that Canvas sends for the course, and `N/A` shows when
  * Canvas sends none (a course that hides its totals, or one with no score yet). While the
  * native main toggle is off, every copy shows dots.
  */
