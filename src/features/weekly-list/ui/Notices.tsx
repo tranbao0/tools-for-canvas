@@ -1,6 +1,6 @@
 /** Lines and banners around the list: offer, notice lines, one-time notes, the notice queue and the Undo dock. */
-import type { ComponentChildren } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import type { ComponentChildren, RefObject } from 'preact';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { t, tp, type MessageKey, type PluralKey } from '../../../shared/ui/i18n';
 import type { Offer, UndoInfo, WeekView } from '../model/types';
 import { formatTimeOrDateTime, hostOf } from './format';
@@ -199,14 +199,42 @@ export function noteText(note: OneTimeNote): string {
 }
 
 /**
+ * Ctrl+Z (Cmd+Z on a Mac) undoes while the Undo notice shows (design decision 6). The key works
+ * anywhere in the surface root, the panel document or the in-page shadow root, but never in a
+ * text field. The listener is in place as soon as the notice is on screen, so a fast key press
+ * right after the action is not lost.
+ */
+function useUndoShortcut(
+  anchor: RefObject<HTMLElement | null>,
+  active: boolean,
+  onUndo: () => void,
+): void {
+  const latest = useRef(onUndo);
+  latest.current = onUndo;
+  useLayoutEffect(() => {
+    if (!active || !anchor.current) return;
+    const scope = anchor.current.getRootNode() as Document | ShadowRoot;
+    const onKeyDown = (event: Event) => {
+      if (!isUndoShortcut(event as KeyboardEvent)) return;
+      event.preventDefault();
+      latest.current();
+    };
+    scope.addEventListener('keydown', onKeyDown);
+    return () => scope.removeEventListener('keydown', onKeyDown);
+  }, [anchor, active]);
+}
+
+/**
  * The dock with the Undo notice: sticky at the bottom of the side panel, and over the end of the
  * list in the card, where the bottom bar stays in place. It is a live region, so screen readers announce
  * the notice. The notice has no timer: it stays until the student acts again or closes it.
- * Ctrl+Z (Cmd+Z on a Mac) also undoes while it shows; `App` handles that key.
+ * Ctrl+Z (Cmd+Z on a Mac) also undoes while it shows, so the key and the notice share one dock.
  */
 export function Dock(props: { undo: UndoInfo | null; onUndo(): void; onClose(): void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useUndoShortcut(ref, props.undo !== null, props.onUndo);
   return (
-    <div class="wr-dock" role="status" aria-live="polite">
+    <div ref={ref} class="wr-dock" role="status" aria-live="polite">
       {props.undo && (
         <div class="wr-toast">
           <span class="wr-toast-text">

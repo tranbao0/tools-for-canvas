@@ -354,6 +354,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - Only one dock shows at a time.
   While a file pane is open (decision 25), the dock and its tab are hidden, with no state lost.
   When the file pane closes, they come back in the state they had, open or minimized, with the same width, groups and scroll position.
+  When a pane hides the dock with the keyboard focus inside it, for example after Enter on a Preview button, the focus moves into the pane, and the next Tab reaches its header.
+  When the dock comes back and the focus has fallen to the page, the focus returns to the control that had it.
   The dock uses `watchFilePane` and `filePaneOpen` of the dock module, and `setHidden`, as the assignment pane does.
   The two scripts share the lease through the shared state of the dock module, and the file pane script may be injected later, when the File viewer switch goes on.
   A dock never opens while a file pane is open, because opening would write the padding of the dock over the padding of the file pane.
@@ -604,11 +606,14 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     When the last row of an open group leaves, for example when the student unchecks the last Done item, focus goes to the heading of the group.
     When the last row of the day list leaves, focus goes to the part of the switch that is on.
   - A group starts at the top of the list area, also for another span.
+    The same group of the same span keeps its scroll position over the settings, the task form and a minimize, as the day list does.
     The day list keeps its scroll position while a group is open and gets it back on To do.
     The scroll positions stay when the card moves.
   - The day list keeps at least 128 px.
     When the card is too low for 128 px and the bottom bar, the whole card scrolls instead.
   - Keyboard access, focus rings, collapse memory, the older list, and Mark all older done stay available.
+  - The groups and the "N older" lines that the student opened stay open while the task form, the settings, a minimize or the Announcements tab replaces the list.
+    The page keeps this state above those views, as it keeps the scroll positions.
   - These rules also apply to the docked card of a course home page and to the list in the dock of the classic dashboard, but do not affect the side panel or the minimized card.
     The side panel has no bottom bar, so it ignores `openGroup`: its No due date and Done groups open in place, one by one, and each keeps its own state.
   - The scroll bar of the groups sits in the side padding of the card, 4 px from its edge, so it never covers the day counts.
@@ -845,7 +850,7 @@ A span that ended before today has one exception: open work dated inside it stay
 - When the student marks an item done, marks all older items done or deletes a task, an "Undo" notice shows.
   The notice has no timer: it stays until the student acts again or closes it.
   In the in-page list it lies over the end of the list, right above the bottom bar, so the view switch never moves, and the end of the list scrolls clear of it.
-  Ctrl+Z (Cmd+Z on a Mac) also undoes while the notice shows.
+  Ctrl+Z (Cmd+Z on a Mac) also undoes while the notice shows, also over a state that is not the list, such as the signed-out page.
   A fixed time limit would fail keyboard and screen reader users, who need time to reach the notice.
 - Every Undo says whether it restored the item: the reply to an Undo of a done mark, of a task delete or of a read mark has `restored`, true or false.
   An Undo that restored nothing ends its notice and shows one short line in the notice area: "Couldn't undo that".
