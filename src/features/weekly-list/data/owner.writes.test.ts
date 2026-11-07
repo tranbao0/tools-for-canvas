@@ -1121,6 +1121,38 @@ describe('a task create whose answer is lost', () => {
     },
   );
 
+  it('finds the task when a round brought it into the cache while the POST waited', async () => {
+    const h = await loaded();
+    const real = h.canvas.createNote.bind(h.canvas);
+    h.canvas.createNote = async (body) => {
+      await real(body);
+      await h.owner.refresh('retry');
+      await h.owner.settled();
+      throw canvasError('server', 504);
+    };
+
+    const reply = await h.owner.act({ kind: 'createTask', input });
+    await h.owner.settled();
+
+    expect(reply.created).toBe(true);
+    expect(h.canvas.callsOf('createNote')).toHaveLength(1);
+    expect(shownTask(expectReady(await h.owner.getState(PANEL)))).toBeDefined();
+  });
+
+  it('reads once more when the read back fails, so a slow Canvas makes no second task', async () => {
+    const h = await loaded();
+    h.canvas.fail('createNote', canvasError('server', 504), { times: 1, saved: true });
+    h.canvas.fail('listPlannerItems', canvasError('server', 504), { times: 1 });
+
+    const pending = h.owner.act({ kind: 'createTask', input });
+    await advance(h, 5000);
+    const reply = await pending;
+    await h.owner.settled();
+
+    expect(reply.created).toBe(true);
+    expect(h.canvas.callsOf('createNote')).toHaveLength(1);
+  });
+
   it('says the task was not saved when the read back finds nothing', async () => {
     const h = await loaded();
     h.canvas.fail('createNote', canvasError('server', 504), { times: 1 });
@@ -1160,7 +1192,10 @@ describe('a failed write', () => {
       h.canvas.fail(write.method, canvasError('server', 500), { times: 1 });
       h.canvas.fail('listPlannerItems', canvasError('server', 503), { times: 10 });
 
-      const reply = await write.send(h);
+      // The read back of a task create waits before its second try.
+      const pending = write.send(h);
+      await vi.advanceTimersByTimeAsync(4000);
+      const reply = await pending;
       await h.owner.settled();
       const state = expectReady(await h.owner.getState(PANEL));
 
