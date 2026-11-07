@@ -105,3 +105,27 @@ it('reads from the background in another extension page without opening IndexedD
     vi.resetModules();
   }
 });
+
+it.each([
+  ['Could not establish connection. Receiving end does not exist.', true],
+  ['Permission denied', false],
+  ['The message port closed before a response was received.', false],
+])('retries only a missing vault receiver: %s', async (message, retry) => {
+  vi.resetModules();
+  vi.stubEnv('BROWSER', 'firefox');
+  const send = vi
+    .spyOn(fakeBrowser.runtime, 'sendMessage')
+    .mockRejectedValueOnce(new Error(message))
+    .mockResolvedValue({ value: 'saved' } as never);
+  try {
+    const { createTrustedItem } = await import('./trustedStorage');
+    const item = createTrustedItem({ key: 'note', fallback: () => '' });
+    if (retry) await expect(item.getValue()).resolves.toBe('saved');
+    else await expect(item.getValue()).rejects.toThrow(message);
+    expect(send).toHaveBeenCalledTimes(retry ? 2 : 1);
+  } finally {
+    send.mockRestore();
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  }
+});

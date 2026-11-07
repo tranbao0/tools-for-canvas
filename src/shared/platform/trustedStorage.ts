@@ -277,11 +277,15 @@ export function wireTrustedVault(): void {
 
 function remoteVault(): Vault {
   const request = async (operation: string, fields: Record<string, unknown> = {}) => {
-    const reply: unknown = await browser.runtime.sendMessage({
-      type: 'trusted-vault',
-      operation,
-      ...fields,
-    });
+    const message = { type: 'trusted-vault', operation, ...fields };
+    let reply: unknown;
+    try {
+      reply = await browser.runtime.sendMessage(message);
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes('Receiving end does not exist'))
+        throw error;
+      reply = await browser.runtime.sendMessage(message);
+    }
     if (typeof reply !== 'object' || reply === null || !('value' in reply))
       throw new Error('The vault did not answer');
     return reply.value;
