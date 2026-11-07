@@ -897,7 +897,8 @@ A student now has one way to clear work: Done.
   Undo sends the flags of each item from before.
 - A check or uncheck of an item that already shows the target flags, or that has a waiting write to them, writes nothing and gives no Undo entry.
   The owner decides this for every caller, so a second click before the row redraws, a double send and a stale second surface cannot give a later Undo the flags of the first write as its "before".
-  The surface ends the notice of the first send when the second one starts, so a double click leaves no Undo notice.
+  The surface also drops a repeat of a mark in the same direction for a key whose newest mark is still on its way, until the list shows it.
+  So a double click sends one write and keeps the Undo notice of the first click.
 - A row action stays on the due line, at the right of the due text: "Move to today" for a custom task with a past date, and the Preview button (decision 26).
   A row with no due text, such as an undated item, shows its actions on a line of their own.
   The actions of a row always share that one line, so a past-due row has no separate row of action targets.

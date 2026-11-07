@@ -449,6 +449,33 @@ describe('actions', () => {
     expect(runtime.state()).toMatchObject({ undo: null });
   });
 
+  it('keeps the Undo notice of a done mark when the same mark repeats before the list shows it', async () => {
+    const { fake, runtime } = await started(undoHost());
+
+    runtime.actions.setDone('assignment:1', true);
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+    expect(sentActions(fake.sent)).toHaveLength(1);
+    expect(runtime.state()).toMatchObject({ undo: DONE_INFO });
+
+    // The opposite direction is a new mark: it ends the notice.
+    runtime.actions.setDone('assignment:1', false);
+    await settle();
+    expect(sentActions(fake.sent)).toHaveLength(2);
+    expect(runtime.state()).toMatchObject({ undo: null });
+  });
+
+  it('sends a mark again when the student reverses it and reverses it back before the first lands', async () => {
+    const { fake, runtime } = await started(undoHost());
+
+    runtime.actions.setDone('assignment:1', true);
+    runtime.actions.setDone('assignment:1', false);
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+
+    expect(sentActions(fake.sent)).toHaveLength(3);
+  });
+
   it('shows the notice again when the data owner refuses the Undo, and sends the restore again on the next tap', async () => {
     const fake = undoHost();
     const { runtime } = await started(fake);

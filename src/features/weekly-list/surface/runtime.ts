@@ -300,8 +300,11 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
    * The read after the last save tells what the storage holds, whether the save worked or not.
    */
   let saving = 0;
-  /** A press of "Mark all older done" is on its way. */
-  let markingOlder = false;
+  /**
+   * The newest done mark of each key that is on its way, until the list shows it. A repeat of the
+   * same direction writes nothing, but it would end the Undo notice of the first.
+   */
+  const marking = new Map<string, { done: boolean }>();
 
   function applySettings(value: Settings): void {
     if (settings !== null && sameSettings(settings, value)) return;
@@ -529,6 +532,19 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       });
   }
 
+  /** Sends a done mark for the keys whose newest mark on its way does not have the same direction. */
+  function markDone(keys: string[], done: boolean): void {
+    const fresh = keys.filter((key) => marking.get(key)?.done !== done);
+    if (fresh.length === 0) return;
+    const mark = { done };
+    for (const key of fresh) marking.set(key, mark);
+    void sendAction({ kind: 'setDone', keys: fresh, done }, done ? 'done' : undefined).finally(
+      () => {
+        for (const key of fresh) if (marking.get(key) === mark) marking.delete(key);
+      },
+    );
+  }
+
   function scheduleRefreshTick(): void {
     refreshTimer = host.timers.setTimeout(() => {
       refreshTimer = null;
@@ -609,19 +625,15 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       reload();
     },
     setDone(key: string, done: boolean) {
-      sendAction({ kind: 'setDone', keys: [key], done }, done ? 'done' : undefined);
+      markDone([key], done);
     },
     markAllOlderDone() {
-      // The list has not drawn the first press yet, so a second one would read its marks as the
-      // state to go back to, and Undo could not restore the items.
-      if (markingOlder || base.kind !== 'ready') return;
+      if (base.kind !== 'ready') return;
       const past = base.view.groups.find((group) => group.kind === 'past_due');
-      const keys = (past ? olderToMarkDone(past) : []).map((item) => item.key);
-      if (keys.length === 0) return;
-      markingOlder = true;
-      void sendAction({ kind: 'setDone', keys, done: true }, 'done').finally(() => {
-        markingOlder = false;
-      });
+      markDone(
+        (past ? olderToMarkDone(past) : []).map((item) => item.key),
+        true,
+      );
     },
     undo() {
       const last = notice;
