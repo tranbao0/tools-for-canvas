@@ -182,3 +182,24 @@ test('three quick clicks on Next week land three spans ahead on a slow Canvas', 
   await expect(weekHeading(page, 'October 27 to November 2')).toBeVisible();
   expect(canvas.unmatched).toEqual([]);
 });
+
+test('a checked reminder stays under Done in a later span', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const { canvas } = await serveScenario(context);
+  await addCsrfCookie(context, canvas.origin);
+  await saveAddress(background, canvas.origin);
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await settledList(page);
+  await doneBox(page, 'Participation: Week 9').click();
+  await group(page, 'done').getByRole('button', { name: /^Done/ }).click();
+  await expect(doneBox(group(page, 'done'), 'Participation: Week 9')).toBeChecked();
+  await page.getByRole('button', { name: 'Next week' }).click();
+  await settledList(page);
+  const done = group(page, 'done');
+  await done.getByRole('button', { name: /older/ }).click();
+  await expect(doneBox(done, 'Participation: Week 9')).toBeChecked();
+});

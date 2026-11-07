@@ -96,7 +96,7 @@ function doneSlot(
 ): Slot | null {
   if (isInSpan(date, context)) return { group: 'done', list: 'items', lookAhead: false };
   if (isLookAheadDate(date, context)) return { group: 'done', list: 'items', lookAhead: true };
-  if (item.isReminder || compareInstants(due, context.horizonFor(item.courseId)) < 0) return null;
+  if (compareInstants(due, context.horizonFor(item.courseId)) < 0) return null;
   const before = compareDates(date, context.spanStart) < 0;
   if (!before && compareInstants(due, context.now) >= 0) return null;
   const warned = context.isCurrentSpan && hasWarning;

@@ -476,7 +476,7 @@ describe('Done', () => {
     },
   );
 
-  it('keeps a done reminder out of the older line', () => {
+  it('keeps a done reminder under the older line', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
@@ -485,7 +485,7 @@ describe('Done', () => {
         assignmentDetails: detailsById([upload('reminder', { types: ['none'] })]),
       }),
     );
-    expect(placesOf(view)).toEqual({});
+    expect(placesOf(view)).toEqual({ 'assignment:reminder': 'done.older' });
   });
 
   it('holds the older line back while the Past due range loads, as Past due does', () => {
@@ -677,7 +677,10 @@ describe('checked but missing', () => {
         ]),
       }),
     );
-    expect(placesOf(view)).toEqual({ 'assignment:reminder': 'done.items' });
+    expect(placesOf(view)).toEqual({
+      'assignment:reminder': 'done.items',
+      'assignment:yesterday': 'done.items',
+    });
   });
 });
 

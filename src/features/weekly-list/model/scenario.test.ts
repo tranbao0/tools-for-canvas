@@ -94,6 +94,7 @@ describe('the fixture scenario: the span that starts today', () => {
       // Dismissed in Canvas with no check: it is done, and the teacher marked it missing.
       [assignment(A.mathProblemSet4Dismissed)]: 'done.items',
       [`sub_assignment:${IDS.subAssignments.historyDebate2ReplyToTopic}`]: 'today@2026-10-27.items',
+      [assignment(A.historyParticipationWeek8)]: 'done.older',
       [assignment(A.historyParticipationWeek9)]: 'today@2026-10-27.items',
       [assignment(A.bioQuiz3Today)]: 'today@2026-10-27.items',
       [`planner_note:${IDS.notes.libraryBooksToday}`]: 'today@2026-10-27.items',

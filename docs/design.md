@@ -887,7 +887,7 @@ A span that ended before today has one exception: open work dated inside it stay
 - In the span that starts today, Done also holds done items from before today that still have a warning chip (decision 7).
   So the warning count on the Done header covers them.
 - Other done work is under a folded "N older" line at the end of the Done group, so work that a student marks done never looks lost.
-  It is a done item with a date before the shown span, inside the Past due horizon of its course (the later of the course start and 16 weeks ago, as for Past due), and it is not a reminder.
+  It is a done item with a date before the shown span, inside the Past due horizon of its course (the later of the course start and 16 weeks ago, as for Past due), including a checked reminder.
   In a span that ended before today, it is also a done item that is overdue and dated after the span, because Past due shows that work in every span.
   A done item with a warning chip in a span other than the one that starts today goes here too: the Done header counts a warning only in the span that starts today.
   So after "Mark all older done", every marked item is in Done or under this line, in the span that shows.
