@@ -1531,10 +1531,6 @@ textarea.wr-input {
   column-gap: 12px;
 }
 
-.wr-setting-row > .wr-setting-help {
-  grid-column: 1 / -1;
-}
-
 .wr-course-list > li {
   display: flex;
   align-items: center;

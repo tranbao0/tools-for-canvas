@@ -1,7 +1,7 @@
 /** Lines and banners around the list: offer, notice lines, one-time notes, the notice queue and the Undo dock. */
 import type { ComponentChildren, RefObject } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { t, tp, type MessageKey, type PluralKey } from '../../../shared/ui/i18n';
+import { t, tp, type PluralKey } from '../../../shared/ui/i18n';
 import type { Offer, UndoInfo, WeekView } from '../model/types';
 import { formatTimeOrDateTime, hostOf } from './format';
 import { CloseIcon } from '../../../shared/ui/icons';
@@ -170,10 +170,6 @@ const UNDO_TEXT = {
 
 export type OneTimeNote = 'firstDone';
 
-const NOTE_TEXT = {
-  firstDone: 'noteFirstDone',
-} as const satisfies Record<OneTimeNote, MessageKey>;
-
 /**
  * The notice queue at the top of the list (design decision 19): one slim notice at a time, the
  * first of `notices`, which the caller sorts by priority. The others wait behind it, and a quiet
@@ -191,11 +187,6 @@ export function NoticeQueue(props: { notices: ComponentChildren[] }) {
       {waiting.length > 0 && <p class="wr-notices-more">{tp('moreNotices', waiting.length)}</p>}
     </>
   );
-}
-
-/** The text of a one-time note, for the notice queue. */
-export function noteText(note: OneTimeNote): string {
-  return t(NOTE_TEXT[note]);
 }
 
 /**

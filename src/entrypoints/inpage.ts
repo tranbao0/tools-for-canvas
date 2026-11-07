@@ -1,3 +1,7 @@
+// The stylesheets come first and together: the list sheet, then the sheets of the weekly dock and
+// of the dock it builds on. The compressor then reuses the text of one sheet in the others.
+import '@/shared/ui/styles';
+import '@/features/weekly-list/surface/weeklyDock';
 import { startInpageSurface } from '@/features/weekly-list/surface/inpage';
 import { createPageScriptContext } from '@/features/weekly-list/surface/pageScript';
 
