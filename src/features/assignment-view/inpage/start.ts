@@ -12,7 +12,7 @@
  */
 import { logFailure } from '../../../shared/platform/log';
 import type { ToolsSettings } from '../../../shared/settings/tools';
-import { detectPageTheme } from '../../../shared/ui/pageTheme';
+import { detectPageTheme, watchPageTheme } from '../../../shared/ui/pageTheme';
 import { inpageTheme } from '../../../shared/ui/theme';
 import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
 import type { DataMessage } from '../../weekly-list/data/protocol';
@@ -274,6 +274,11 @@ export async function startAssignmentView(
       apply();
     }),
     channel.settings.watch(follow),
+    // Canvas turns its dark mode on and off with no reload, and Automatic follows it.
+    watchPageTheme(doc, () => {
+      view.refreshTheme();
+      dock.refreshTheme();
+    }),
   );
   if (options.onStudentReset)
     stops.push(

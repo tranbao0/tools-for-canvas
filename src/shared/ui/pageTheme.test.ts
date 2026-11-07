@@ -1,6 +1,12 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest';
-import { detectPageTheme, isDarkColor, parseCssColor, relativeLuminance } from './pageTheme';
+import {
+  detectPageTheme,
+  isDarkColor,
+  parseCssColor,
+  relativeLuminance,
+  watchPageTheme,
+} from './pageTheme';
 
 afterEach(() => {
   document.body.removeAttribute('style');
@@ -78,5 +84,48 @@ describe('detectPageTheme', () => {
   it('is light for a document without a window', () => {
     const detached = document.implementation.createHTMLDocument('x');
     expect(detectPageTheme(detached)).toBe('light');
+  });
+});
+
+describe('watchPageTheme', () => {
+  const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('reports the new theme each time the page turns dark or light, and only then', async () => {
+    const seen: string[] = [];
+    const stop = watchPageTheme(document, (theme) => seen.push(theme));
+
+    document.body.style.backgroundColor = 'rgb(27, 35, 48)';
+    document.documentElement.style.backgroundColor = 'rgb(27, 35, 48)';
+    await settle();
+    document.body.setAttribute('class', 'changes-nothing');
+    await settle();
+    document.body.style.backgroundColor = 'rgb(255, 255, 255)';
+    await settle();
+
+    expect(seen).toEqual(['dark', 'light']);
+    stop();
+  });
+
+  it('follows a dark page that a class and a stylesheet draw', async () => {
+    const seen: string[] = [];
+    const stop = watchPageTheme(document, (theme) => seen.push(theme));
+    const style = document.createElement('style');
+    style.textContent = 'body.night{background-color:rgb(10,10,10)}';
+    document.head.append(style);
+    document.body.classList.add('night');
+    await settle();
+
+    expect(seen).toEqual(['dark']);
+    stop();
+    style.remove();
+    document.body.classList.remove('night');
+  });
+
+  it('stops watching', async () => {
+    const seen: string[] = [];
+    watchPageTheme(document, (theme) => seen.push(theme))();
+    document.body.style.backgroundColor = 'rgb(0, 0, 0)';
+    await settle();
+    expect(seen).toEqual([]);
   });
 });
