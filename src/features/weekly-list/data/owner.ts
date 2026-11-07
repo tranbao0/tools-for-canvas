@@ -477,6 +477,7 @@ function previousFlags(item: Item): OverrideFlags {
 }
 
 const NOTE_KEY_PREFIX = 'planner_note:';
+const DAY_MS = 86_400_000;
 /** How long a viewer read waits for the claim of a student before it refuses. */
 const VIEWER_CLAIM_WAIT_MS = 3000;
 
@@ -1967,8 +1968,71 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   /**
+   * Adds a created task, confirmed, with the id Canvas gave it. An abandoned queue ends the
+   * generation, but Canvas saved the task for the same student: it shows, and a round syncs the
+   * list.
+   */
+  async function addCreated(created: NoteValue, stamp: WriteStamp): Promise<boolean> {
+    if (cache === null || !sameStudent(stamp)) return false;
+    const confirmed: NotePatch = {
+      kind: 'note',
+      id: nextId(),
+      noteId: created.id,
+      note: created,
+      confirmedAt: clock.now(),
+    };
+    cache = bake({ ...cache, patches: [...cache.patches, confirmed] }, confirmed);
+    await finishWrite();
+    return true;
+  }
+
+  /**
+   * Reads the planner of the day of a task that a failed create may have saved, and returns the
+   * task that matches it and that the cache does not hold yet. A POST has no key that makes a
+   * repeat safe, so a create whose answer is lost must be found before the student saves again.
+   * It returns `null` when nothing matches or the read fails.
+   */
+  async function findSavedNote(note: NoteValue, stamp: WriteStamp): Promise<NoteValue | null> {
+    if (stamp.origin === null) return null;
+    const at = Date.parse(note.todoDate);
+    try {
+      const items = await apiFor(stamp.origin)
+        .withGuard(writeGuard(stamp))
+        .listPlannerItems(toRange({ start: at - DAY_MS, end: at + DAY_MS }));
+      const known = new Set(
+        cache?.patches.flatMap((patch) => (patch.kind === 'note' ? [patch.noteId] : [])),
+      );
+      for (const item of items) {
+        const { plannable } = item;
+        if (item.plannable_type !== 'planner_note' || !isCurrent(stamp)) continue;
+        if (known.has(item.plannable_id) || cache?.planner.items[noteKey(item.plannable_id)])
+          continue;
+        const found: NoteValue = {
+          id: item.plannable_id,
+          title: plannable.title,
+          details: typeof plannable.details === 'string' ? plannable.details : null,
+          todoDate: item.plannable_date,
+          courseId: plannable.course_id ?? null,
+        };
+        if (
+          found.title === note.title &&
+          (found.details || null) === (note.details || null) &&
+          Date.parse(found.todoDate) === at &&
+          found.courseId === note.courseId
+        )
+          return found;
+      }
+    } catch (error) {
+      deps.log('write', error);
+    }
+    return null;
+  }
+
+  /**
    * Creates a custom task and adds it, confirmed, with the id Canvas gave it. `created` tells
-   * whether Canvas saved it. `sync` tells whether the list must sync with Canvas afterward.
+   * whether Canvas saved it. `sync` tells whether the list must sync with Canvas afterward. When
+   * no answer comes in time, Canvas may still hold the task: the planner is read back, and a
+   * match counts as saved.
    */
   async function runNoteCreate(
     note: NoteValue,
@@ -1989,22 +2053,17 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         await userChanged(stamp);
         return { created: false, sync: false };
       }
-      // An abandoned queue ends the generation, but Canvas saved the task for the same student:
-      // it shows, and a round syncs the list.
-      if (cache === null || !sameStudent(stamp)) return { created: false, sync: false };
-      const created = noteValue(response);
-      const confirmed: NotePatch = {
-        kind: 'note',
-        id: nextId(),
-        noteId: created.id,
-        note: created,
-        confirmedAt: clock.now(),
-      };
-      cache = bake({ ...cache, patches: [...cache.patches, confirmed] }, confirmed);
-      await finishWrite();
-      return { created: true, sync: true };
+      const created = await addCreated(noteValue(response), stamp);
+      return { created, sync: created };
     } catch (error) {
       if (isCanvasError(error, 'refused')) return { created: false, sync: false };
+      if (isCanvasError(error, 'server') || isCanvasError(error, 'network')) {
+        const saved = await findSavedNote(note, stamp);
+        if (saved !== null) {
+          const created = await addCreated(saved, stamp);
+          return { created, sync: created };
+        }
+      }
       const gone = await failWrite(undefined, error, stamp);
       await finishWrite();
       return { created: false, sync: !gone };

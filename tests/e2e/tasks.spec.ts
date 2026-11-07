@@ -3,8 +3,10 @@
  * today. A custom task is a Canvas planner note. Its DELETE goes out when the notice ends.
  */
 import type { BrowserContext, Locator, Page, Worker } from '@playwright/test';
+import { REQUEST_TIMEOUT_MS } from '../../src/shared/canvas/http';
 import { IDS } from '../fixtures/scenario';
 import { writesTo } from './support/canvas-state';
+import { shortenTimer } from './support/clock';
 import { saveAddress } from './support/scenario-api';
 import {
   addCsrfCookie,
@@ -82,6 +84,48 @@ test.describe('custom tasks', () => {
       true,
     );
     expect(canvas.unmatched).toEqual([]);
+  });
+
+  test('reads the tasks back after a create that timed out, so the retry cannot make two', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    // Canvas saves the task, but its answer never comes.
+    const served = await serveScenario(context, [
+      {
+        method: 'POST',
+        path: '/api/v1/planner_notes',
+        respond: (request) => {
+          const create = (served.state as unknown as { createNote(body: unknown): unknown })
+            .createNote;
+          create.call(served.state, JSON.parse(request.postData ?? '{}'));
+          return new Promise<never>(() => undefined);
+        },
+      },
+    ]);
+    const { canvas, state } = served;
+    await addCsrfCookie(context, canvas.origin);
+    await shortenTimer(background, REQUEST_TIMEOUT_MS, 1500);
+    await saveAddress(background, canvas.origin);
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await expect(group(page, 'today')).toBeVisible();
+    await settledList(page);
+
+    await page.getByRole('button', { name: 'Add task' }).click();
+    await page.getByLabel('Title').fill('Email lab partner');
+    await page.getByRole('button', { name: 'Add task' }).click();
+
+    // The read back finds the task, so the form closes and the task shows once.
+    const row = group(page, 'today').locator('li', { has: editButton(page, 'Email lab partner') });
+    await expect(row).toBeVisible();
+    await expect(page.getByText("Couldn't save the task. Try again.")).toHaveCount(0);
+    await settledList(page);
+    expect(writesTo(canvas, 'POST', '/api/v1/planner_notes')).toHaveLength(1);
+    expect(
+      state.plannerItems().filter((item) => item.plannable.title === 'Email lab partner'),
+    ).toHaveLength(1);
   });
 
   test('edits a task with a PUT of its title, time and course', async ({

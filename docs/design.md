@@ -1359,6 +1359,9 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   Any other answer (no cookie, an unreadable store, or a cookie that no check confirmed) makes the request fail with the `refused` error and abandons the queue: the writes that Canvas has not confirmed go, and a forced round syncs the list.
   A refused request sends nothing, and its job ends without a second sync.
   A read mark and a task create also keep the user check before their request, because the text of a task goes to the account of the cookie, and a read mark has no user in its reply.
+  A task create has no key that makes a repeat safe, so a create that ends with a server error, a timeout or a network error may still have saved the task.
+  The owner then reads the planner of the day of the task before the reply, and a task that matches and that the cache does not hold counts as saved.
+  The form offers Save again only when the read back finds nothing.
   The DELETE of a waiting task that goes to the Canvas the student leaves passes a guard too, with the fingerprints of the cache that the student leaves.
   The write-backs after a reply for another user (the old flags of an override and the DELETE of a task that landed in another account) skip the guard, because they must reach the account that the first request wrote to.
 - A delayed task delete that waits in the queue when the queue is abandoned is parked, not sent again at once.
