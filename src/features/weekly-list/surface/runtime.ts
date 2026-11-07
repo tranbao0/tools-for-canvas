@@ -532,16 +532,27 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       });
   }
 
-  /** Sends a done mark for the keys whose newest mark on its way does not have the same direction. */
-  function markDone(keys: string[], done: boolean): void {
+  /**
+   * Runs `send` for the keys whose newest mark on its way does not have the same direction. A
+   * repeat writes nothing, so it must not end the notice of the first mark.
+   */
+  function markOnce(
+    keys: string[],
+    done: boolean,
+    send: (fresh: string[]) => Promise<unknown>,
+  ): void {
     const fresh = keys.filter((key) => marking.get(key)?.done !== done);
     if (fresh.length === 0) return;
     const mark = { done };
     for (const key of fresh) marking.set(key, mark);
-    void sendAction({ kind: 'setDone', keys: fresh, done }, done ? 'done' : undefined).finally(
-      () => {
-        for (const key of fresh) if (marking.get(key) === mark) marking.delete(key);
-      },
+    void send(fresh).finally(() => {
+      for (const key of fresh) if (marking.get(key) === mark) marking.delete(key);
+    });
+  }
+
+  function markDone(keys: string[], done: boolean): void {
+    markOnce(keys, done, (fresh) =>
+      sendAction({ kind: 'setDone', keys: fresh, done }, done ? 'done' : undefined),
     );
   }
 
@@ -663,12 +674,12 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       const seq = writeSeq;
       // The data owner refuses an Undo while the sign-in check fails. Nothing was restored then,
       // so the notice shows again, unless the student acted or left meanwhile. A restore is safe
-      // to send twice.
+      // to send twice. A reply that never came says nothing about the write, so the line shows.
       Promise.all(sends)
         .then((replies) => {
           if (stopped || seq !== writeSeq || notice !== null) return;
           if (replies.some((reply) => reply?.refused === true)) notice = last;
-          else if (replies.some((reply) => reply?.restored === false)) {
+          else if (replies.some((reply) => reply === undefined || reply.restored === false)) {
             notice = { info: { kind: 'not_restored', count: 0 }, data: [] };
           } else return;
           emit();
@@ -751,7 +762,9 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       emit();
     },
     markAnnouncementRead(courseId: string, topicId: string) {
-      sendAction({ kind: 'markAnnouncement', courseId, topicId }, 'announcement_read');
+      markOnce([announcementKey(courseId, topicId)], true, () =>
+        sendAction({ kind: 'markAnnouncement', courseId, topicId }, 'announcement_read'),
+      );
     },
     async loadAnnouncementMessage(courseId: string, topicId: string) {
       const reply = (await host.send({ type: 'weekrow:announcement', courseId, topicId })) as

@@ -613,6 +613,35 @@ describe('actions', () => {
     expect(runtime.state()).toMatchObject({ undo: { kind: 'done', count: keys.length } });
   });
 
+  it('shows the line when the reply to an Undo never comes', async () => {
+    const { fake, runtime } = await started(undoHost());
+    const reply = fake.reply;
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+    fake.reply = (message) => {
+      if (message.type === 'weekrow:action' && message.action.kind !== 'setDone') {
+        throw new Error('The message channel closed.');
+      }
+      return reply(message);
+    };
+
+    runtime.actions.undo();
+    await settle();
+
+    expect(runtime.state()).toMatchObject({ undo: { kind: 'not_restored' } });
+  });
+
+  it('keeps the Undo of the first click when a read mark repeats before the list shows it', async () => {
+    const { fake, runtime } = await started(undoHost());
+    runtime.actions.markAnnouncementRead('101', '7');
+    runtime.actions.markAnnouncementRead('101', '7');
+    await settle();
+
+    expect(
+      sentActions(fake.sent).filter((action) => action.kind === 'markAnnouncement'),
+    ).toHaveLength(1);
+  });
+
   it('takes one press of "Mark all older done" until the first has ended', async () => {
     const { fake, runtime } = await started(undoHost());
 

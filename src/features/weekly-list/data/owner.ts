@@ -155,6 +155,8 @@ import {
  * A deleted task is sent to Canvas when its Undo notice ends, and at the latest this long after
  * the delete, so a closed panel cannot keep a task alive (decision 10).
  */
+/** The pause before the second read back of a task whose create lost its answer. */
+const SAVED_NOTE_RETRY_MS = 3000;
 export const MAX_DELETE_DELAY_MS = 2 * 60_000;
 /** A view counts as in use for this long after a surface showed it. */
 export const ACTIVE_RANGE_MS = 10 * 60_000;
@@ -1986,44 +1988,74 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return true;
   }
 
-  /**
-   * Reads the planner of the day of a task that a failed create may have saved, and returns the
-   * task that matches it and that the cache does not hold yet. A POST has no key that makes a
-   * repeat safe, so a create whose answer is lost must be found before the student saves again.
-   * It returns `null` when nothing matches or the read fails.
-   */
-  async function findSavedNote(note: NoteValue, stamp: WriteStamp): Promise<NoteValue | null> {
-    if (stamp.origin === null) return null;
+  /** The keys of the tasks that the cache holds or that a patch names. */
+  function knownNoteKeys(): Set<string> {
+    return new Set([
+      ...Object.keys(cache?.planner.items ?? {}),
+      ...(cache?.patches ?? []).flatMap((patch) =>
+        patch.kind === 'note' ? [noteKey(patch.noteId)] : [],
+      ),
+    ]);
+  }
+
+  /** One read of the planner of a task's day: the task that matches it and is not in `before`. */
+  async function readSavedNote(
+    note: NoteValue,
+    before: ReadonlySet<string>,
+    origin: string,
+    stamp: WriteStamp,
+  ): Promise<NoteValue | null> {
     const at = Date.parse(note.todoDate);
-    try {
-      const items = await apiFor(stamp.origin)
-        .withGuard(writeGuard(stamp))
-        .listPlannerItems(toRange({ start: at - DAY_MS, end: at + DAY_MS }));
-      const known = new Set(
-        cache?.patches.flatMap((patch) => (patch.kind === 'note' ? [patch.noteId] : [])),
-      );
-      for (const item of items) {
-        const { plannable } = item;
-        if (item.plannable_type !== 'planner_note' || !isCurrent(stamp)) continue;
-        if (known.has(item.plannable_id) || cache?.planner.items[noteKey(item.plannable_id)])
-          continue;
-        const found: NoteValue = {
-          id: item.plannable_id,
-          title: plannable.title,
-          details: typeof plannable.details === 'string' ? plannable.details : null,
-          todoDate: item.plannable_date,
-          courseId: plannable.course_id ?? null,
-        };
-        if (
-          found.title === note.title &&
-          (found.details || null) === (note.details || null) &&
-          Date.parse(found.todoDate) === at &&
-          found.courseId === note.courseId
-        )
-          return found;
+    const items = await apiFor(origin)
+      .withGuard(writeGuard(stamp))
+      .listPlannerItems(toRange({ start: at - DAY_MS, end: at + DAY_MS }));
+    for (const item of items) {
+      const { plannable } = item;
+      if (item.plannable_type !== 'planner_note' || !isCurrent(stamp)) continue;
+      if (before.has(noteKey(item.plannable_id))) continue;
+      const found: NoteValue = {
+        id: item.plannable_id,
+        title: plannable.title,
+        details: typeof plannable.details === 'string' ? plannable.details : null,
+        todoDate: item.plannable_date,
+        courseId: plannable.course_id ?? null,
+      };
+      if (
+        found.title === note.title &&
+        (found.details || null) === (note.details || null) &&
+        Date.parse(found.todoDate) === at &&
+        found.courseId === note.courseId
+      )
+        return found;
+    }
+    return null;
+  }
+
+  /**
+   * Looks for a task that a failed create may have saved. A POST has no key that makes a repeat
+   * safe, so a create whose answer is lost must be found before the student saves again. `before`
+   * holds the tasks from before the POST, because a round can bring the new task into the cache
+   * while the POST waits. A slow Canvas is the likely cause of a lost answer, so a read that fails
+   * runs once more after a pause. It returns `null` when nothing matches or both reads fail.
+   */
+  async function findSavedNote(
+    note: NoteValue,
+    before: ReadonlySet<string>,
+    stamp: WriteStamp,
+  ): Promise<NoteValue | null> {
+    const { origin } = stamp;
+    if (origin === null) return null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await readSavedNote(note, before, origin, stamp);
+      } catch (error) {
+        deps.log('write', error);
       }
-    } catch (error) {
-      deps.log('write', error);
+      if (attempt === 0) {
+        await new Promise<void>((resolve) =>
+          timers.setTimeout(() => resolve(), SAVED_NOTE_RETRY_MS),
+        );
+      }
     }
     return null;
   }
@@ -2041,6 +2073,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (stamp.origin === null) return { created: false, sync: false };
     // A create carries free text, so Canvas confirms the student first.
     if (!(await verifyUser(stamp))) return { created: false, sync: false };
+    const before = knownNoteKeys();
     try {
       const api = apiFor(stamp.origin);
       // The user check above can take a while, so the guard reads the cookie again right before
@@ -2058,7 +2091,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     } catch (error) {
       if (isCanvasError(error, 'refused')) return { created: false, sync: false };
       if (isCanvasError(error, 'server') || isCanvasError(error, 'network')) {
-        const saved = await findSavedNote(note, stamp);
+        const saved = await findSavedNote(note, before, stamp);
         if (saved !== null) {
           const created = await addCreated(saved, stamp);
           return { created, sync: created };
