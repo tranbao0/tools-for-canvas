@@ -14,11 +14,15 @@ const CARD_CSS = `:host([data-card]){box-sizing:border-box;padding:${CARD_GAP_PX
 .identity-cover{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:var(--bg);color:var(--text);text-align:center;font:16px/1.5 Lato,Arial,sans-serif}
 .identity-cover[hidden]{display:none}
 .identity-actions{display:flex;gap:12px}
-.identity-cover button{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--btn-line);border-radius:4px;padding:8px 20px;cursor:pointer}
-.identity-cover button:hover{background:var(--btn-hover)}
-.identity-cover button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.identity-cover :is(button,a){font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--btn-line);border-radius:4px;padding:8px 20px;cursor:pointer;text-decoration:none}
+.identity-cover :is(button,a):hover{background:var(--btn-hover)}
+.identity-cover :is(button,a):focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 @media(max-width:875px){:host([data-card]){padding:0}:host([data-card]) section{border:0;border-left:1px solid var(--edge);border-radius:0;box-shadow:none}}
 `;
+
+export interface CardDock extends Dock {
+  showFailure(address: string): void;
+}
 
 /** Makes the dock of a pane, with the rules of a card. */
 export function createCardDock(
@@ -27,7 +31,7 @@ export function createCardDock(
     identityToken?: string;
     onIdentityChange?(confirmed: boolean): void;
   },
-): Dock {
+): CardDock {
   const dock = createDock({ ...options, card: true, css: CARD_CSS });
   const doc = dock.host.ownerDocument;
   const cover = doc.createElement('div');
@@ -59,13 +63,14 @@ export function createCardDock(
   actions.append(retry, button);
   cover.append(message, actions);
   dock.section.append(cover);
+  let failed = false;
   let confirmed = false;
   const inert = new Map<HTMLElement, boolean>();
   const sync = () => {
     for (const child of inert.keys()) if (child.parentElement !== dock.section) inert.delete(child);
     for (const child of dock.section.children) {
       if (!(child instanceof HTMLElement) || child === cover || child.tagName === 'STYLE') continue;
-      if (!confirmed) {
+      if (!confirmed || failed) {
         if (!inert.has(child)) inert.set(child, child.inert);
         child.inert = true;
       } else if (inert.has(child)) {
@@ -85,7 +90,7 @@ export function createCardDock(
       confirmed = yes;
       dock.host.setAttribute('data-identity', yes ? 'yes' : 'unknown');
       const restoreFocus = yes && cover.contains(dock.root.activeElement);
-      cover.hidden = yes;
+      cover.hidden = yes && !failed;
       if (!yes && doc.fullscreenElement === dock.host)
         void doc.exitFullscreen().catch(() => undefined);
       if (!yes && doc.activeElement === dock.host && !cover.contains(dock.root.activeElement))
@@ -102,5 +107,18 @@ export function createCardDock(
     observer.disconnect();
     close();
   };
-  return dock;
+  return Object.assign(dock, {
+    showFailure(address: string) {
+      failed = true;
+      message.textContent = "Couldn't open this file.";
+      const link = doc.createElement('a');
+      link.textContent = 'Open in Canvas';
+      link.href = address;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      retry.replaceWith(link);
+      cover.hidden = false;
+      sync();
+    },
+  });
 }

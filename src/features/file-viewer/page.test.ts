@@ -685,7 +685,7 @@ describe('the page script', () => {
     const open = { type: 'viewer:open-from-frame', fileId: '5' };
     const fromBackground = { id: 'my-extension' };
 
-    it('keeps a frame open request pending and refuses it when no hello arrives', async () => {
+    it('handles a frame open request with a panel when no hello arrives', async () => {
       prepare();
       vi.useFakeTimers();
       try {
@@ -696,8 +696,35 @@ describe('the page script', () => {
         expect(document.getElementById('tools-file-viewer')).not.toBeNull();
         expect(respond).not.toHaveBeenCalled();
         await vi.advanceTimersByTimeAsync(15_000);
-        expect(respond).toHaveBeenCalledWith({ opened: false });
-        expect(document.getElementById('tools-file-viewer')).toBeNull();
+        expect(respond).toHaveBeenCalledWith({ opened: true });
+        expect(document.getElementById('tools-file-viewer')).not.toBeNull();
+        expect(sendMessage).toHaveBeenCalledWith({
+          type: 'viewer:tabs-set',
+          tabs: { ids: [], active: null },
+          token: undefined,
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps earlier tabs when a new file times out', async () => {
+      prepare();
+      vi.useFakeTimers();
+      const stored = { ids: ['42'], active: '42' };
+      sendMessage.mockImplementation(async (message: { type: string; tabs?: typeof stored }) => {
+        if (message.type === 'viewer:tabs-get') return { ...stored };
+        if (message.type === 'viewer:tabs-set') Object.assign(stored, message.tabs);
+        return reply(message);
+      });
+      try {
+        await startViewer();
+        const { respond } = ask(open, fromBackground);
+        await vi.advanceTimersByTimeAsync(100);
+        expect(stored.ids).toEqual(['42', '5']);
+        await vi.advanceTimersByTimeAsync(15_000);
+        expect(stored).toEqual({ ids: ['42'], active: '42' });
+        expect(respond).toHaveBeenCalledWith({ opened: true });
       } finally {
         vi.useRealTimers();
       }
@@ -779,6 +806,32 @@ describe('the page script', () => {
       });
       return seen;
     }
+
+    it('does not follow a module failure that arrives after the hello timeout', async () => {
+      prepare();
+      vi.useFakeTimers();
+      document.body.innerHTML = MODULE_HTML;
+      let finish!: () => void;
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'viewer:module-item')
+          return new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+        return reply(message);
+      });
+      const seen = followed();
+      try {
+        await startViewer();
+        click(true);
+        await vi.advanceTimersByTimeAsync(15_100);
+        finish();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(seen).toEqual([]);
+        expect(paneHost()).not.toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
 
     it('clicks the link again and closes the empty pane when the module item read fails', async () => {
       prepare();

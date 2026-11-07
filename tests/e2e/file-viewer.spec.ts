@@ -738,7 +738,7 @@ for (const width of [1280, 1366, 1440, 1600, 1200])
     await expect(toggle).toBeVisible();
   });
 
-test('a file link follows its destination when the pane hello never arrives', async ({
+test('a failed hello keeps typed work and offers a student link', async ({
   context,
   page,
   background,
@@ -753,9 +753,52 @@ test('a file link follows its destination when the pane hello never arrives', as
       true,
     );
   });
+  const before = page.url();
+  await page.evaluate(() => {
+    const input = document.createElement('textarea');
+    input.setAttribute('aria-label', 'Draft');
+    document.body.prepend(input);
+  });
   await page.getByText('Read notes').first().click();
-  await expect(page.locator('#tools-file-viewer')).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('waiting-for-hello.png') });
-  await expect(page).toHaveURL(`${canvas.origin}/courses/101/files/42`, { timeout: 20_000 });
-  await page.screenshot({ path: testInfo.outputPath('followed-link.png') });
+  await page.getByRole('textbox', { name: 'Draft' }).fill('Keep my work');
+  const cdp = await context.newCDPSession(page);
+  await expect
+    .poll(
+      async () => {
+        const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+        return nodes.some(
+          (node) => !node.ignored && node.name?.value === "Couldn't open this file.",
+        );
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(true);
+  await expect(page).toHaveURL(before);
+  await expect(page.getByRole('textbox', { name: 'Draft' })).toHaveValue('Keep my work');
+  const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+  const link = nodes.find(
+    (node) => !node.ignored && node.role?.value === 'link' && node.name?.value === 'Open in Canvas',
+  )!;
+  const { node } = await cdp.send('DOM.describeNode', { backendNodeId: link.backendDOMNodeId! });
+  expect(node.attributes).toEqual(
+    expect.arrayContaining([
+      'href',
+      `${canvas.origin}/courses/101/files/42`,
+      'target',
+      '_blank',
+      'rel',
+      'noopener',
+    ]),
+  );
+  await page.screenshot({ path: testInfo.outputPath('hello-failure.png') });
+  const { model } = await cdp.send('DOM.getBoxModel', { backendNodeId: link.backendDOMNodeId! });
+  const popup = page.waitForEvent('popup');
+  await page.mouse.click(
+    (model.border[0]! + model.border[4]!) / 2,
+    (model.border[1]! + model.border[5]!) / 2,
+  );
+  const opened = await popup;
+  await opened.close();
+  await page.reload();
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
 });
