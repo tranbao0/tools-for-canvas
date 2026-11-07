@@ -2629,3 +2629,45 @@ test('identity verdict: a 401 runs the full reset and removes the cover', async 
   await expect(page.locator('[data-identity="unknown"]')).toHaveCount(0);
   expect(frame.isDetached()).toBe(true);
 });
+
+test('identity cover: Retry resumes a draft after a failed check', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Keep this draft');
+  await background.evaluate(() => {
+    const scope = globalThis as unknown as { fetch: typeof fetch; restoreFetch: () => void };
+    const savedFetch = scope.fetch;
+    scope.restoreFetch = () => {
+      scope.fetch = savedFetch;
+    };
+    scope.fetch = (input, init) =>
+      String(input).includes('/users/self')
+        ? Promise.reject(new Error('Temporary failure'))
+        : savedFetch(input, init);
+  });
+  await context.addCookies([
+    { name: 'canvas_session', value: 'retry-cookie', url: canvas.origin, secure: true },
+  ]);
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown');
+  await page.waitForTimeout(1000);
+  await background.evaluate(() =>
+    (globalThis as unknown as { restoreFetch(): void }).restoreFetch(),
+  );
+  expect(
+    await frame.evaluate(() =>
+      [
+        ...(window.frameElement!.getRootNode() as ShadowRoot).querySelectorAll(
+          '.identity-cover button',
+        ),
+      ].map((b) => b.textContent),
+    ),
+  ).toEqual(['Retry', 'Close']);
+  await clickPane(page, '.identity-cover button');
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes', { timeout: 3000 });
+  await expect(frame.locator('#marker')).toHaveValue('Keep this draft');
+});

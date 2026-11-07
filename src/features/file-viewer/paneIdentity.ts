@@ -100,3 +100,16 @@ export function watchPaneIdentity(show: (confirmed: boolean) => void, token?: st
     }
   };
 }
+
+/** A student tap shares the active check or starts one without the automatic limits. */
+export async function retryPaneIdentity(token?: string): Promise<void> {
+  try {
+    await browser.runtime.sendMessage({
+      type: 'viewer:pane-check',
+      retry: true,
+      ...(token === undefined ? {} : { token }),
+    });
+  } catch {
+    // The watcher keeps the cover on when the extension cannot answer.
+  }
+}

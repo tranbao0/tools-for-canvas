@@ -46,7 +46,7 @@ type ViewerSender = Pick<Browser.runtime.MessageSender, 'url' | 'frameId' | 'doc
 type ViewerApi = Pick<CanvasApi, 'getViewerFile' | 'getViewerModuleItem'>;
 
 export interface ViewerHost {
-  paneCheck(origin: string, tabId: number | undefined): Promise<PaneOwnerVerdict>;
+  paneCheck(origin: string, tabId: number | undefined, retry?: boolean): Promise<PaneOwnerVerdict>;
   savedOrigin(): Promise<string | null>;
   isExtensionPage(sender: ViewerSender): boolean;
   /**
@@ -309,7 +309,7 @@ export function routeViewerMessage(
         const token = request['token'];
         if (typeof token === 'string' && token.split(':')[0] !== String(epoch))
           return { verdict: 'no' };
-        const result = await host.paneCheck(origin, tabId);
+        const result = await host.paneCheck(origin, tabId, request['retry'] === true);
         if (epoch !== (await readEpoch(host))) return { verdict: 'no' };
         if (result.verdict !== 'yes') return result;
         const current = `${epoch}:${result.userId === null ? 'store' : studentName(result.userId)}`;
@@ -587,7 +587,7 @@ export function wireViewerRouter(
     savedOrigin: () => canvasOriginItem.getValue(),
     isExtensionPage: browserRouterHost.isExtensionPage,
     read: (origin, tabId, read) => owner.viewerRead(origin, tabId, read),
-    paneCheck: (origin, tabId) => owner.viewerPaneCheck(origin, tabId),
+    paneCheck: (origin, tabId, retry) => owner.viewerPaneCheck(origin, tabId, retry),
     mayFetch: (origin, tabId) => owner.viewerMayFetch(origin, tabId),
     userId: (origin, tabId) => owner.viewerUserId(origin, tabId),
     confirm: (origin, tabId) => owner.viewerConfirm(origin, tabId),
