@@ -2282,6 +2282,7 @@ for (const timing of ['before click', 'during wait'])
       'Close the open pane first.',
     );
     await expect(frame.getByRole('textbox', { name: 'Draft' })).toHaveValue('Keep this text');
+    await expect(page.getByTestId('course-107-grade')).toHaveText('95%');
     await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(0);
     await expect(page.locator('[data-wr-card][aria-busy]')).toHaveCount(0);
     expect(
@@ -2289,5 +2290,29 @@ for (const timing of ['before click', 'during wait'])
         request.postData?.includes('updateWidgetDashboardConfig'),
       ),
     ).toHaveLength(0);
+    await page.locator('[data-wr-card="107"]').scrollIntoViewIfNeeded();
     await page.screenshot({ path: test.info().outputPath(`pane-${timing}.png`) });
   });
+
+test('a copied eye restores the saved grade when a form opens during the wait', async ({
+  context,
+  page,
+}) => {
+  const { canvas } = await open(context, page, { scenario: EIGHT_COURSES });
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+  await page
+    .locator('[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]')
+    .click();
+  await page.locator('[data-wr-card="107"] button').click();
+  await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
+  await page.getByRole('button', { name: 'Add task', exact: true }).click();
+  await expect(page.locator('[data-wr-card="107"] [role="status"]')).toHaveText(
+    'Close the open form first.',
+  );
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%');
+  await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(0);
+  await expect(page.locator('[data-wr-card][aria-busy]')).toHaveCount(0);
+  expect(
+    canvas.requests.filter((request) => request.postData?.includes('updateWidgetDashboardConfig')),
+  ).toHaveLength(0);
+});

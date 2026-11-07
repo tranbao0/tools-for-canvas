@@ -193,7 +193,9 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
           if (note) {
             setSaving(false);
             notes.set(course.id, note);
-            showNote(card, course.id, note);
+            focusCourse = course.id;
+            card.remove();
+            context.again();
             return;
           }
           const reply = await context.send({
