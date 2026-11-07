@@ -563,10 +563,15 @@ export function createDock(options: DockOptions): Dock {
   handle.addEventListener('keydown', (event) => {
     if (!event.isTrusted || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     event.preventDefault();
-    setWidth(
-      normalizeWidth(width, win.innerWidth, options.role === 'weekly' ? 0 : 516) +
-        (event.key === 'ArrowLeft' ? 20 : -20),
+    const reserved = options.role === 'weekly' ? 0 : 516;
+    const before = normalizeWidth(width, win.innerWidth, reserved);
+    const next = normalizeWidth(
+      before + (event.key === 'ArrowLeft' ? 20 : -20),
+      win.innerWidth,
+      reserved,
     );
+    if (next === before) return;
+    setWidth(next);
     options.onResized(width);
   });
   // In full view, Escape leaves it first. A frame of the Canvas page can reach this root, so only

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { Page, Worker } from '@playwright/test';
-import { test, expect, serveScenario } from './support/weekrow';
+import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
+import { test, expect, serveScenario, saveTools } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
 import {
   FILE_NAME,
@@ -691,4 +692,24 @@ test('a comment attachment that does not load keeps a working Download button', 
   );
   expect(canvas.requests.some((request) => request.path.startsWith('/api/v1/files'))).toBe(false);
   await page.screenshot({ path: 'test-results/f2b-comment-error.png' });
+});
+
+test('a resize key at the window clamp preserves the wider choice', async ({
+  context,
+  page,
+  background,
+}) => {
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewerWidth: 800 });
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await openCoursePage(context, page, background);
+  await openFirstFile(page, 'Read notes');
+  const host = page.locator('#tools-file-viewer');
+  await expect(host).toHaveCSS('width', '812px');
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await expect(host).toHaveCSS('width', '496px');
+  await focusPaneHandle(page);
+  await page.keyboard.press('ArrowLeft');
+  await expect(host).toHaveCSS('width', '496px');
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await expect(host).toHaveCSS('width', '812px');
 });
