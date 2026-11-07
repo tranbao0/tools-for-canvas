@@ -777,3 +777,31 @@ test('a done mark after a hand-in reaches Canvas', async ({ context, page, backg
     )
     .toBe(1);
 });
+
+test('a wide pane stacks the widget columns in the room beside it', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background);
+  await preview(page, QUIZ_3).click();
+  const host = page.locator(PANE_HOST);
+  const box = await host.boundingBox();
+  if (!box) throw new Error('No assignment pane');
+  await page.mouse.move(box.x + 2, 450);
+  await page.mouse.down();
+  await page.mouse.move(box.x - 300, 450, { steps: 20 });
+  await page.mouse.up();
+  for (const width of [900, 1000, 1100, 1280, 1440, 1600]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.locator('[data-testid="widget-columns"]')).toHaveCSS(
+      'flex-direction',
+      'column',
+    );
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+  }
+  await closeAssignment(page);
+  await expect(page.locator('html')).not.toHaveAttribute('data-weekrow-widget-stack');
+});
