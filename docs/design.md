@@ -2265,6 +2265,11 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The read filter of Canvas and the course filter of the fix stay above it, and the fix reads the value of the read filter as the widget shows it.
    The fix reads that value from the English labels of the input of Canvas: "Unread" is the Unread filter, "Read" is the Read filter, and any other text counts as All.
    The course filter takes the look of the read filter, and it lines up with it on screen: the two filters share one top, the labels share one top, and the boxes share one top and one height, within 1 px.
+   The course filter has the arrow of the read filter, the `IconArrowOpenDown` icon of InstUI with the size, the color and the place that the arrow of the read filter has, and not an arrow that the fix draws with a border.
+   The read filter is 7 rem wide (`width="7rem"` of its `SimpleSelect` in `AnnouncementsWidget.tsx`), and its three short options fit.
+   The course filter is as wide as its longest course name needs, and never narrower than the read filter, so no course name is cut off.
+   Its width does not change with the chosen course, because the select sizes to its longest option.
+   A course name that is longer than the widget is cut with an ellipsis at the edge of the widget.
    The fix measures the label and the box of the read filter and gives its own label the same height, padding and gap, because rules of Canvas, such as a margin under every input, change the size of the read filter and its label.
    The filter bar aligns its items at the top, so no rule under the box moves one filter against the other.
    From the first pass on, the list of Canvas is hidden, so no flash shows while the first page loads.

@@ -1252,6 +1252,58 @@ test.describe('announcements: one steady list', () => {
   }
 });
 
+test('the course filter has the arrow and the box of the read filter, and shows its longest course name', async ({
+  context,
+  page,
+}) => {
+  await open(context, page);
+  const widget = page.getByTestId('widget-announcements-widget');
+  const read = widget.getByTestId('announcement-filter-select');
+  const course = widget.getByLabel('Course filter:');
+  await expect(course).toBeVisible();
+  /** The arrow of a filter: its path, its size, and its distance from the right and the top of the box. */
+  const arrowOf = (box: Locator, arrow: Locator) =>
+    Promise.all([
+      box.boundingBox(),
+      arrow.boundingBox(),
+      arrow.locator('path').getAttribute('d'),
+    ]).then(([frame, icon, path]) => ({
+      path,
+      width: Math.round(icon!.width),
+      height: Math.round(icon!.height),
+      fromRight: Math.round(frame!.x + frame!.width - (icon!.x + icon!.width)),
+      fromTop: Math.round(icon!.y - frame!.y),
+    }));
+  const nativeArrow = read.locator('xpath=following-sibling::span[1]').locator('svg');
+  const ownArrow = widget.locator('.wr-caret svg');
+  await expect(ownArrow).toHaveCount(1);
+  expect(await arrowOf(course, ownArrow)).toEqual(await arrowOf(read, nativeArrow));
+  // The box has the height and the corners of the read filter.
+  const frame = (locator: Locator) =>
+    locator.evaluate((el) => {
+      const css = getComputedStyle(el);
+      return [el.getBoundingClientRect().height, css.borderRadius, css.fontSize];
+    });
+  expect(await frame(course)).toEqual(await frame(read));
+  // The box is never narrower than the read filter, and it is wide enough for its longest option.
+  const widths = await course.evaluate((el) => {
+    const select = el as HTMLSelectElement;
+    const css = getComputedStyle(select);
+    const canvas = document.createElement('canvas').getContext('2d')!;
+    canvas.font = `${css.fontWeight} ${css.fontSize} ${css.fontFamily}`;
+    const text = Math.max(
+      ...[...select.options].map((option) => canvas.measureText(option.text).width),
+    );
+    return {
+      box: select.getBoundingClientRect().width,
+      needed: text + parseFloat(css.paddingLeft) + parseFloat(css.paddingRight),
+    };
+  });
+  const readWidth = (await read.boundingBox())!.width;
+  expect(widths.box).toBeGreaterThanOrEqual(readWidth);
+  expect(widths.box).toBeGreaterThanOrEqual(widths.needed - 1);
+});
+
 test('match the dark read filter colors', async ({ context, page }, testInfo) => {
   await open(context, page);
   await expect(page.locator('[data-wr-filter]')).toBeVisible();
@@ -1274,7 +1326,7 @@ test('match the dark read filter colors', async ({ context, page }, testInfo) =>
     background: expected.background,
   });
   expect(await widget.locator('.wr-caret').evaluate((el) => getComputedStyle(el).color)).toBe(
-    await read.evaluate((el) => getComputedStyle(el.nextElementSibling!).borderRightColor),
+    await read.evaluate((el) => getComputedStyle(el.nextElementSibling!).color),
   );
   // The course filter keeps the extension's brand focus ring, the same as its other controls.
   await course.focus();
