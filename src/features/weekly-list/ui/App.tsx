@@ -408,12 +408,16 @@ function ListView(props: {
     : null;
   /** A new task waits for Canvas, or the last try to save one failed. */
   const [save, setSave] = useState<'idle' | 'saving' | 'failed'>('idle');
+  const submission = useRef<TaskInput | null>(null);
   useLayoutEffect(() => {
     if (state.kind !== 'ready') {
       setForm(null);
       setSave('idle');
     }
-  }, [state.kind]);
+    return () => {
+      submission.current = null;
+    };
+  }, [state.kind, form]);
   const [notes, setNotes] = useState<OneTimeNote[]>([]);
   const [limitedId] = useState(() => newId('limited'));
   const [tabIds] = useState(() => newIds('tab', ['tasks', 'announcements', 'panel'] as const));
@@ -536,8 +540,11 @@ function ListView(props: {
 
   /** Creates a task. The form stays open until Canvas answers, so a slow save is never sent twice. */
   const createTask = async (input: TaskInput) => {
+    submission.current = input;
     setSave('saving');
-    if (await actions.createTask(input)) closeForm(null);
+    const saved = await actions.createTask(input);
+    if (submission.current !== input) return;
+    if (saved) closeForm(null);
     else setSave('failed');
   };
   /** Closes the form and focuses the control that opened it, or the Add button. */

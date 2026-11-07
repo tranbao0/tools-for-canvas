@@ -1937,6 +1937,48 @@ describe('task form', () => {
     expect(actions.createTask).toHaveBeenCalledTimes(2);
   });
 
+  describe('a create answer after its form leaves', () => {
+    function pendingCreate() {
+      const ui = setup();
+      let answer!: (saved: boolean) => void;
+      ui.actions.createTask.mockImplementation(
+        () =>
+          new Promise<boolean>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
+      fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'First task' } });
+      fireEvent.submit(screen.getByRole('form'));
+      ui.rerender({ kind: 'loading' });
+      return { ...ui, answer };
+    }
+    it.each([false, true])('ignores a late create result of %s on a newer form', async (saved) => {
+      const ui = pendingCreate();
+      ui.rerender(readyState());
+      fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
+      const form = screen.getByRole('form');
+      fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'New draft' } });
+      await act(async () => {
+        ui.answer(saved);
+      });
+      expect(screen.getByRole('form')).toBe(form);
+      expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('New draft');
+      expect(within(form).queryByRole('alert')).toBeNull();
+      expect(ui.actions.createTask).toHaveBeenCalledTimes(1);
+    });
+    it('ignores the old create focus request on the next refresh', async () => {
+      const ui = pendingCreate();
+      await act(async () => {
+        ui.answer(true);
+      });
+      const gear = screen.getByRole('button', { name: 'Settings' });
+      gear.focus();
+      ui.rerender(readyState());
+      expect(document.activeElement).toBe(gear);
+    });
+  });
+
   it('requires a title', () => {
     const { actions } = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
