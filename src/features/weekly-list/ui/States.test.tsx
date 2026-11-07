@@ -275,9 +275,9 @@ describe('in-page surface', () => {
     setup(readyState({ view: hiddenCourseView() }), 'inpage');
     expect(screen.getByText('You hid this course from the weekly list.')).toBeTruthy();
     expect(screen.queryByRole('checkbox')).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Weekly list' })).toBeTruthy();
+    expect(screen.queryByRole('heading')).toBeNull();
     expect(document.querySelector('.wr')?.getAttribute('data-surface')).toBe('inpage');
-    fireEvent.click(document.querySelector<HTMLElement>('[data-opener="note"]')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     // The link opens the settings in place.
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
   });

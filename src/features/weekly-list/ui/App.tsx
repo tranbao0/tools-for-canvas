@@ -26,7 +26,7 @@ import {
   staleText,
   type OneTimeNote,
 } from './Notices';
-import { Bar, newId, newIds, type HeadingLevel } from '../../../shared/ui/parts';
+import { Bar, MinimizeButton, newId, newIds, type HeadingLevel } from '../../../shared/ui/parts';
 import type { ListTab } from '../data/announcements';
 import { Announcements } from './Announcements';
 import { ListTabs, tabId } from './ListTabs';
@@ -250,12 +250,19 @@ export function App(props: AppProps) {
 
   const openSettings: OpenSettings = (opener) => setSettingsFrom(opener);
   const level = baseLevel(surface);
-  const identity = useRef<string | null>(null);
+  const origin = useRef<string | undefined>(undefined);
+  const user = useRef<string | undefined>(undefined);
   const generation = useRef(0);
-  if (state.kind === 'ready') {
-    const next = `${state.origin}\n${state.userId}`;
-    if (identity.current !== null && identity.current !== next) generation.current++;
-    identity.current = next;
+  if ('origin' in state) {
+    if (origin.current !== undefined && origin.current !== state.origin) {
+      generation.current++;
+      user.current = undefined;
+    }
+    origin.current = state.origin;
+  }
+  if ('userId' in state) {
+    if (user.current !== undefined && user.current !== state.userId) generation.current++;
+    user.current = state.userId;
   }
 
   let body: ComponentChildren;
@@ -282,17 +289,14 @@ export function App(props: AppProps) {
     showDock = false;
     // The note on the home page of a course the student hid (design decision 4).
     body = (
-      <>
-        {surface === 'inpage' && (
-          <Bar level={level} onSettings={() => openSettings('gear')} onMinimize={onMinimize} />
-        )}
-        <NoticeLine
-          text={t('hiddenCourseHere')}
-          action={t('settings')}
-          opener="note"
-          onAction={() => openSettings('note')}
-        />
-      </>
+      <NoticeLine
+        text={t('hiddenCourseHere')}
+        action={t('settings')}
+        opener="note"
+        onAction={() => openSettings('note')}
+      >
+        {onMinimize && <MinimizeButton onClick={onMinimize} />}
+      </NoticeLine>
     );
   } else if (state.kind === 'ready' || state.kind === 'loading' || state.kind === 'cant_load') {
     showDock = state.kind !== 'ready' && state.undo != null;
@@ -404,6 +408,12 @@ function ListView(props: {
     : null;
   /** A new task waits for Canvas, or the last try to save one failed. */
   const [save, setSave] = useState<'idle' | 'saving' | 'failed'>('idle');
+  useLayoutEffect(() => {
+    if (state.kind !== 'ready') {
+      setForm(null);
+      setSave('idle');
+    }
+  }, [state.kind]);
   const [notes, setNotes] = useState<OneTimeNote[]>([]);
   const [limitedId] = useState(() => newId('limited'));
   const [tabIds] = useState(() => newIds('tab', ['tasks', 'announcements', 'panel'] as const));
@@ -462,7 +472,7 @@ function ListView(props: {
     restoredRow.current = null;
     control.focus();
   });
-  useStickyInsets(rootRef, surface, form === null);
+  useStickyInsets(rootRef, surface, form === null && state.kind === 'ready');
   // The side panel has no list that scrolls: its page does, so the task panel is the list there.
   // The card, the dock and the widgets pull in the lists that own the scroll, which mount and
   // leave with the view.

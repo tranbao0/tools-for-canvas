@@ -1537,14 +1537,12 @@ describe('settings in place', () => {
 
   it('opens from the note on a hidden course, and returns focus to its link', () => {
     setupSettings(data, readyState({ view: hiddenCourseView() }), 'inpage');
-    const link = document.querySelector<HTMLElement>('[data-opener="note"]')!;
+    const link = screen.getByRole('button', { name: 'Settings' });
     fireEvent.click(link);
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(screen.getByText('You hid this course from the weekly list.')).toBeTruthy();
-    expect(document.activeElement).toBe(
-      document.querySelector<HTMLElement>('[data-opener="note"]')!,
-    );
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Settings' }));
   });
 });
 
@@ -1853,6 +1851,15 @@ describe('task form', () => {
         expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Draft');
       },
     );
+
+    it.each(['new', 'edit'] as const)('closes the %s form across a loading gap', (kind) => {
+      const view = open(kind);
+      view.rerender({ kind: 'loading' });
+      expect(screen.queryByRole('form')).toBeNull();
+      view.rerender(readyState());
+      expect(screen.queryByRole('form')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Add task' })).toBeTruthy();
+    });
 
     it.each([
       ['another student', { userId: '6603' }],
@@ -2372,6 +2379,24 @@ describe('sticky header and dock', () => {
     vi.unstubAllGlobals();
   });
 
+  it('observes the dock that arrives after loading', () => {
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    try {
+      const ui = setup({ kind: 'loading' });
+      ui.rerender(readyState({ undo: { kind: 'done', count: 1 } }));
+      const dock = document.querySelector('.wr-dock');
+      const observer = FakeResizeObserver.last!;
+      expect(observer.observed).toContain(dock);
+      setHeight(dock, 56);
+      observer.callback();
+      expect(
+        document.querySelector<HTMLElement>('.wr')?.style.getPropertyValue('--wr-inset-bottom'),
+      ).toBe('56px');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('counts only the dock in a Canvas page, where the header scrolls with the page', () => {
     vi.stubGlobal('ResizeObserver', FakeResizeObserver);
     setup(readyState(), 'inpage');
@@ -2885,5 +2910,23 @@ describe('progressive loading', () => {
 
     expect(actions.stepSpan.mock.calls).toEqual([[1], [-1]]);
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+  });
+});
+
+describe('header identity', () => {
+  it('drops custom days when a failed Canvas changes through loading', () => {
+    const view = setupSaved(
+      { kind: 'cant_load', origin: 'https://x.instructure.com', offline: false, offer: null },
+      'panel',
+      { ...DEFAULT_SETTINGS, span: { kind: 'custom', days: 10 } },
+    );
+    const field = screen.getByRole('spinbutton') as HTMLInputElement;
+    field.focus();
+    field.value = '17';
+    view.rerender({ kind: 'loading' });
+    expect(screen.getByRole('spinbutton')).toBe(field);
+    view.rerender(readyState({ origin: 'https://y.instructure.com' }));
+    expect((screen.getByRole('spinbutton') as HTMLInputElement).value).toBe('10');
+    expect(screen.getByRole('spinbutton')).not.toBe(field);
   });
 });

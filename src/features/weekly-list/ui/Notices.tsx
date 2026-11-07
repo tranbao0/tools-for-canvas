@@ -108,6 +108,7 @@ export function NoticeLine(props: {
   onAction?(): void;
   opener?: string;
   id?: string;
+  children?: ComponentChildren;
 }) {
   return (
     <p class="wr-notice" id={props.id}>
@@ -122,6 +123,7 @@ export function NoticeLine(props: {
           {props.action}
         </button>
       )}
+      {props.children}
     </p>
   );
 }
