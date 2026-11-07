@@ -41,6 +41,7 @@ import {
 } from '../../dashboard-fixes/protocol';
 import { normalizeCanvasId, sameCanvasId } from '../../../shared/canvas/ids';
 import { assignmentIdsToLookup } from '../model/normalize';
+import { isDone } from '../model/rules';
 import {
   DEFAULT_LIST_TABS,
   announcementKey,
@@ -465,9 +466,13 @@ function sameFlags(a: OverrideFlags, b: OverrideFlags): boolean {
   return a.markedComplete === b.markedComplete && a.dismissed === b.dismissed;
 }
 
+/**
+ * The flags that give the done state the list shows for an item. Work with no override is done
+ * when Canvas counts it as submitted, graded, excused or reviewed, so its flags are a check.
+ */
 function previousFlags(item: Item): OverrideFlags {
   return item.override === null
-    ? { markedComplete: false, dismissed: false }
+    ? { markedComplete: isDone(item), dismissed: false }
     : { markedComplete: item.override.markedComplete, dismissed: item.override.dismissed };
 }
 
