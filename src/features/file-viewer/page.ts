@@ -1,7 +1,6 @@
 import { browser, type Browser } from 'wxt/browser';
 import { t } from '../../shared/ui/i18n';
 import {
-  createDock,
   FILE_HOST_ID,
   fullViewAvailable,
   isFullView,
@@ -12,6 +11,7 @@ import {
   watchFullView,
   type Dock,
 } from './dock';
+import { createCardDock } from './cardDock';
 import { TOP_OPEN } from './frame';
 import {
   acceptPaneHello,
@@ -245,12 +245,11 @@ export async function startViewer(): Promise<void> {
     }
     if (!live || generation !== started) return;
     lastHelloAt = -Infinity;
-    const created = createDock({
+    const created = createCardDock({
       role: 'file',
       id: FILE_HOST_ID,
       label: 'File viewer',
       resizeLabel: 'Resize file viewer',
-      card: true,
       width,
       onResized(next) {
         width = next;

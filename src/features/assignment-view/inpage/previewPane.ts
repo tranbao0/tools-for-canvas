@@ -18,13 +18,13 @@
  * never reads the DOM of a frame. It reads only the address of a frame.
  */
 import {
-  createDock,
   filePaneOpen,
   hideFilePane,
   setFullView,
   watchFilePane,
   type Dock,
 } from '../../file-viewer/dock';
+import { createCardDock } from '../../file-viewer/cardDock';
 import { CLOSE_PATH } from '../../../shared/ui/iconPaths';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { OWN } from './own';
@@ -448,12 +448,11 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       if (next === null) return;
       const left = visible;
       if (!dock) {
-        const created = createDock({
+        const created = createCardDock({
           role: 'turn-in',
           id: PREVIEW_HOST_ID,
           label: 'Assignment',
           resizeLabel: 'Resize assignment',
-          card: true,
           width: options.width(),
           onResized: options.saveWidth,
           doc,

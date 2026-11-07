@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Offer, SurfaceState } from '../model/types';
 import { App } from './App';
-import { OFFER_ARM_MS } from './Notices';
+import { OFFER_ARM_MS, OfferBanner } from './Notices';
 import type { SurfaceKind } from './contract';
 import { spyActions } from './testing/actions';
 import { hiddenCourseView, nonReadyStates, ORIGIN, OTHER_OFFER, readyState } from './testing/mocks';
@@ -22,7 +22,14 @@ function armOffer(): void {
 
 function setup(state: SurfaceState, surface: SurfaceKind = 'panel') {
   const actions = spyActions();
-  render(<App surface={surface} state={state} actions={actions} />);
+  render(
+    <App
+      surface={surface}
+      state={state}
+      actions={actions}
+      offerView={surface === 'panel' ? OfferBanner : undefined}
+    />,
+  );
   return actions;
 }
 

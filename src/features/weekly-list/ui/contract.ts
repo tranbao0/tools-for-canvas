@@ -3,8 +3,9 @@
  * Views are pure: they render props and call actions. They never call Canvas or browser APIs,
  * except `allowAccess`, which the runtime implements so that it runs inside the click handler.
  */
+import type { ComponentType } from 'preact';
 import type { ToolsSettings } from '../../../shared/settings/tools';
-import type { Settings, SurfaceState } from '../model/types';
+import type { Offer, Settings, SurfaceState } from '../model/types';
 import type { AnnouncementFeed, ListTab } from '../data/announcements';
 
 export type SurfaceKind = 'panel' | 'inpage';
@@ -85,10 +86,30 @@ export interface AnnouncementsProps {
   showRead: boolean;
 }
 
+export interface OfferProps {
+  offer: Offer;
+  mode: 'use' | 'switch';
+  onAccept(origin: string): void;
+  onDismiss(): void;
+  /**
+   * Whether the offer is a labelled region of its own. In the notice queue it is not: the live
+   * region around it already announces it.
+   */
+  region?: boolean;
+}
+
+/** The offer of a Canvas that the detector found, as a view that an extension page passes in. */
+export type OfferView = ComponentType<OfferProps>;
+
 export interface AppProps {
   surface: SurfaceKind;
   state: SurfaceState;
   actions: Actions;
+  /**
+   * The view of the "Use this Canvas?" offer. Only extension pages show the offer (decision 4), so
+   * they pass it in, and the in-page script carries none of its code.
+   */
+  offerView?: OfferView;
   /**
    * Set on a surface that shows the Tasks and Announcements tabs: the side panel, the classic
    * dashboard, List View and course home pages. Missing on the new widget dashboard, which has

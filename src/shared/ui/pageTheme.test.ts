@@ -106,7 +106,7 @@ describe('watchPageTheme', () => {
     stop();
   });
 
-  it('follows a dark page that a class and a stylesheet draw', async () => {
+  it('follows a dark page that a class draws', async () => {
     const seen: string[] = [];
     const stop = watchPageTheme(document, (theme) => seen.push(theme));
     const style = document.createElement('style');

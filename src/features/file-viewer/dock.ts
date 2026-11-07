@@ -109,6 +109,8 @@ export interface DockOptions {
    * the width of the card, and the host and the room beside it are one gap wider.
    */
   card?: boolean;
+  /** More rules for the root, after the dock rules. `createCardDock` passes the rules of a card. */
+  css?: string;
   /** Called with the new width when the student has finished a resize. */
   onResized(width: number): void;
   doc?: Document;
@@ -465,7 +467,7 @@ function tell(): void {
   for (const watcher of [...shared().watchers]) watcher();
 }
 
-/** The frame, header and handle rules that both panes share. */
+/** The frame, header and handle rules that every dock shares. */
 export const DOCK_CSS = `
 :host{--bg:#fff;--text:#273540;--muted:#586874;--line:#e8eaec;--edge:#c7cdd1;--hover:#f2f4f4;--focus:#0374b5;--btn-line:#d7dade;--btn-hover:#e8eaec;color:var(--text)}
 :host([data-theme='dark']){--bg:#1b2330;--text:#fff;--muted:#aab6c0;--line:#2e3e4e;--edge:#4a5b68;--hover:#253443;--focus:#5a9fd4;--btn-line:#4a5b68;--btn-hover:#2e3e4e}
@@ -474,13 +476,6 @@ iframe{border:0;width:100%;flex:1;min-height:0;background:transparent}
 .handle{position:absolute;left:-4px;top:0;width:8px;height:100%;cursor:ew-resize;touch-action:none}
 .handle:hover,.handle:focus-visible{background:var(--focus)}
 @media(max-width:899px){.handle{display:none}}
-:host([data-card]){box-sizing:border-box;padding:${CARD_GAP_PX}px ${CARD_GAP_PX}px ${CARD_GAP_PX}px 0;pointer-events:none}
-:host([data-card][data-full]){padding:${CARD_GAP_PX}px;pointer-events:auto}
-:host([data-card]) section{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.2);pointer-events:auto}
-:host([data-card][data-theme='dark']) section{box-shadow:0 2px 14px rgba(0,0,0,.55)}
-:host([data-card]) .handle{z-index:1;top:${CARD_GAP_PX}px;height:calc(100% - ${2 * CARD_GAP_PX}px);pointer-events:auto}
-:host([data-card][data-full]) .handle{display:none}
-@media(max-width:899px){:host([data-card]){padding:0}:host([data-card]) section{border:0;border-left:1px solid var(--edge);border-radius:0;box-shadow:none}}
 `;
 
 export function createDock(options: DockOptions): Dock {
@@ -506,7 +501,7 @@ export function createDock(options: DockOptions): Dock {
   // Canvas origin inside the root still reaches the root, so such a frame belongs in a root of its own.
   const root = host.attachShadow({ mode: 'closed' });
   const style = doc.createElement('style');
-  style.textContent = DOCK_CSS;
+  style.textContent = DOCK_CSS + (options.css ?? '');
   const section = doc.createElement('section');
   section.setAttribute('aria-label', options.label);
   // A script can take the focus into the pane, and a Tab from there goes to its first control.

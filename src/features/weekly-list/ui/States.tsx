@@ -2,9 +2,9 @@
 import type { ComponentChildren } from 'preact';
 import { t } from '../../../shared/ui/i18n';
 import type { SurfaceState } from '../model/types';
-import type { Actions } from './contract';
+import type { Actions, OfferView } from './contract';
 import { hostOf } from './format';
-import { OfferBanner, browserIsOffline } from './Notices';
+import { browserIsOffline } from './Notices';
 import { Heading, HostText, MARKER, withNode, type HeadingLevel } from '../../../shared/ui/parts';
 
 /** A sentence with the host of `origin` in it, as breakable host text. */
@@ -58,15 +58,16 @@ export function StateBody(props: {
   level: HeadingLevel;
   context: StateBodyContext;
   /**
-   * Shows the "Use <host> as your Canvas?" or "Switch to this Canvas?" offer. Only extension pages
-   * show it (design decision 4).
+   * The view of the "Use <host> as your Canvas?" or "Switch to this Canvas?" offer. Only extension
+   * pages pass it (design decision 4).
    */
-  showOffer?: boolean;
+  offerView?: OfferView;
 }) {
   const { state, actions, level } = props;
   const offerSource = 'offer' in state ? state.offer : null;
+  const OfferBanner = props.offerView;
   const offer =
-    props.showOffer && offerSource ? (
+    OfferBanner && offerSource ? (
       <OfferBanner
         offer={offerSource}
         mode={state.kind === 'not_set_up' ? 'use' : 'switch'}
