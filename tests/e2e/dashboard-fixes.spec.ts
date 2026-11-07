@@ -5,7 +5,6 @@
  */
 import type { Locator, Page } from '@playwright/test';
 import { HOSTILE_MESSAGE } from '../fixtures/announcements';
-import { defaultColorFor } from '../../src/features/weekly-list/model/colors';
 import {
   DASHBOARD_FIX_KEYS,
   DEFAULT_TOOLS_SETTINGS,
@@ -73,11 +72,6 @@ async function open(
     await expect(page.locator(`${LIST} article`).first()).toBeAttached();
   }
   return served;
-}
-
-function rgb(hex: string): string {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
 }
 
 /** The text of the message of the opened announcement, from its shadow root. */
@@ -1334,14 +1328,19 @@ test.describe('course grades', () => {
     );
     // The copy has no button of its own: the buttons belong to the widget.
     await expect(widget.locator('[data-wr-card] button')).toHaveCount(0);
-    const color = await widget
-      .getByTestId('course-107-grade')
-      .evaluate(
-        (node) =>
-          getComputedStyle(node.parentElement?.parentElement?.parentElement as Element)
-            .backgroundColor,
-      );
-    expect(color).toBe(rgb(defaultColorFor('107')));
+    // The header of a card is the saved color of the course, or `#334451` when the student saved
+    // none, as the widget draws it. Chemistry (a card of the widget) and Psychology (a copy) have
+    // no saved color, so the two headers are one color.
+    const headerColor = (testId: string) =>
+      widget
+        .getByTestId(testId)
+        .evaluate(
+          (node) =>
+            getComputedStyle(node.parentElement?.parentElement?.parentElement as Element)
+              .backgroundColor,
+        );
+    expect(await headerColor('course-107-grade')).toBe('rgb(51, 68, 81)');
+    expect(await headerColor('course-107-grade')).toBe(await headerColor('course-104-grade'));
     // A card that the widget drew is not copied.
     await expect(widget.locator('[data-testid="course-grade-card-103"]')).toHaveCount(1);
   });

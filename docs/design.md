@@ -2433,7 +2433,14 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    A reply with no user id and no course leaves the courses of the earlier reply in place.
    A card is a copy of a card that the widget drew, so it has the same markup, classes and theme.
    The copy loses its buttons, which belong to React, and its ids.
-   Its header takes the course color, and it shows the letter grade when Canvas sends one, else the whole percent, else "N/A".
+   So a copy has no eye button and no "Course settings" menu, which a card of the widget has.
+   The eye writes the choice of the student to the `widget_dashboard_config` preference of Canvas, so an eye that changed only the copy would show the grade again after a reload.
+   The menu holds the color picker and the nickname editor, which also write to Canvas.
+   The extension writes nothing to Canvas for these, so a student who wants either one goes to the page of the card that the widget draws.
+   Its header has the color that the widget draws: the saved color of the course (`custom_colors` of the student), or `#334451` for a course with no saved color.
+   This is `courseColor ?? DEFAULT_COURSE_COLOR` of `CourseGradeCard.tsx`, with `courseColor` from `custom_colors[course.asset_string]` in `fetch_courses_with_grades` (canvas-lms `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`).
+   It is not one of the colors that the rings pick for a course with no saved color, so a copy and a card of the widget look the same.
+   A copy shows the letter grade when Canvas sends one, else the whole percent, else "N/A".
    Canvas sends no total for a course that hides its totals, which gives "N/A", as in the widget.
    While the toggle "Show all grades" is off, the copies show dots, as the widget does.
    The courses come from the courses request that the extension already makes, with `include[]=total_scores` added, so the course totals need no new request.
