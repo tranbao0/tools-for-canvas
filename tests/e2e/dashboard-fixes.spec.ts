@@ -5,6 +5,7 @@
  */
 import type { Locator, Page } from '@playwright/test';
 import { HOSTILE_MESSAGE } from '../fixtures/announcements';
+import { courseJson } from '../fixtures/canvas-json';
 import {
   DASHBOARD_FIX_KEYS,
   DEFAULT_TOOLS_SETTINGS,
@@ -1058,6 +1059,53 @@ test.describe('announcements: one steady list', () => {
 
     await widget.getByLabel('Course filter:').selectOption({ label: 'All courses' });
     await expect(articles(page).filter({ hasText: 'Office hours move' })).toHaveCount(1);
+  });
+
+  test('keep the course filter inside the widget when a course name is longer than the widget', async ({
+    context,
+    page,
+  }) => {
+    const longName = `HIST 305: ${'Topics in the History of Science and Technology, '.repeat(6)}Seminar`;
+    await open(context, page, {
+      width: 1280,
+      scenario: {
+        extend(scenario) {
+          scenario.courses.push(
+            courseJson({
+              id: '109',
+              name: longName,
+              courseCode: 'HIST 305',
+              term: { id: '27', name: 'Fall 2026', startAt: null, endAt: null },
+            }),
+          );
+        },
+      },
+    });
+    const widget = page.locator(WIDGET);
+    await widget.getByLabel('Course filter:').selectOption({ label: longName });
+    const select = widget.locator('[data-wr-filter] select');
+    const edges = async () =>
+      page.evaluate(
+        ([widgetSelector, selectSelector]) => {
+          const box = (selector: string) => {
+            const rect = document.querySelector(selector)!.getBoundingClientRect();
+            return { left: rect.left, right: rect.right };
+          };
+          return { widget: box(widgetSelector!), select: box(selectSelector!) };
+        },
+        [WIDGET, `${WIDGET} [data-wr-filter] select`],
+      );
+    const found = await edges();
+    expect(found.select.right).toBeLessThanOrEqual(found.widget.right);
+    expect(found.select.left).toBeGreaterThanOrEqual(found.widget.left);
+    await expect(select).toHaveCSS('text-overflow', 'ellipsis');
+    await page.setViewportSize({ width: 1000, height: 1000 });
+    await expect
+      .poll(async () => {
+        const narrow = await edges();
+        return narrow.select.right <= narrow.widget.right;
+      })
+      .toBe(true);
   });
 
   test('search the title and the message for every word, and mark the match', async ({

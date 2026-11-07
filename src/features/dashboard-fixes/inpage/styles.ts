@@ -33,6 +33,7 @@ export const FIXES_CSS = `
 .wr-pg[data-wr-dark] button:focus-visible{outline-color:#5a9fd4}
 [data-wr-bar]{flex-flow:row wrap!important;align-items:flex-start!important;column-gap:.75rem}
 [data-wr-bar]>[data-wr-list]{flex:1 1 100%!important;min-width:0}
+[data-wr-bar]>[data-wr-filter]{min-width:0;max-width:100%}
 .wr-filter-label{display:block;margin-bottom:.25rem}
 .wr-select{position:relative;display:inline-block;max-width:100%;vertical-align:top}
 .wr-filter-select{box-sizing:border-box;display:block;width:auto;max-width:100%;height:1.75rem;margin:0;padding:0 2.25rem 0 .75rem;font:inherit;font-size:.875rem;color:inherit;background:transparent;border:.0625rem solid #8d959f;border-radius:.25rem;appearance:none;text-overflow:ellipsis;cursor:pointer}
