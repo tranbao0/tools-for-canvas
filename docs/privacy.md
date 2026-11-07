@@ -308,7 +308,7 @@ The pane reads nothing while covered, and its frames and typed text stay alive u
 The cover goes when the same student is confirmed again.
 A confirmed change of student, a sign-out (including a 401 answer), or a changed clearing round removes the frames and clears the page's stored feedback sessions.
 A network failure, timeout, invalid reply, 5xx, or 429 leaves the content under the cover.
-A tab confirmed to be in another cookie store keeps its Canvas Preview open with that tab's own cookies.
+On Firefox, a tab confirmed to be in another cookie store keeps its Canvas Preview open with that tab's own cookies, also when the Canvas of the extension signs out or changes student.
 File reads in that tab still refuse and show the file error card with Retry, Download and Open in Canvas.
 The file viewer switch and pane width stay in local settings.
 With the File viewer on, it also reads the address of the file link that you click in a frame of the assignment pane, to open that file in the file pane, and it reads nothing else of those frames, apart from the Escape key (see "What the one assignment view does").

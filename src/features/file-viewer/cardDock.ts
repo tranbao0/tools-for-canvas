@@ -89,11 +89,16 @@ export function createCardDock(
       const changed = confirmed !== yes;
       confirmed = yes;
       dock.host.setAttribute('data-identity', yes ? 'yes' : 'unknown');
-      const restoreFocus = yes && cover.contains(dock.root.activeElement);
+      const restoreFocus = yes && !failed && cover.contains(dock.root.activeElement);
       cover.hidden = yes && !failed;
       if (!yes && doc.fullscreenElement === dock.host)
         void doc.exitFullscreen().catch(() => undefined);
-      if (!yes && doc.activeElement === dock.host && !cover.contains(dock.root.activeElement))
+      if (
+        !yes &&
+        !failed &&
+        doc.activeElement === dock.host &&
+        !cover.contains(dock.root.activeElement)
+      )
         retry.focus({ preventScroll: true });
       sync();
       if (restoreFocus) dock.section.focus({ preventScroll: true });
@@ -109,6 +114,7 @@ export function createCardDock(
   };
   return Object.assign(dock, {
     showFailure(address: string) {
+      const focused = doc.activeElement === dock.host;
       failed = true;
       message.textContent = "Couldn't open this file.";
       const link = doc.createElement('a');
@@ -119,6 +125,7 @@ export function createCardDock(
       retry.replaceWith(link);
       cover.hidden = false;
       sync();
+      if (focused) link.focus({ preventScroll: true });
     },
   });
 }

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { Page, Worker } from '@playwright/test';
 import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
+import { pageQuiet } from './support/settle';
 import { test, expect, serveScenario, saveTools } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
 import {
@@ -738,6 +739,29 @@ for (const width of [1280, 1366, 1440, 1600, 1200])
     await expect(toggle).toBeVisible();
   });
 
+test('a reload while a file waits for its pane leaves no pane on the next page', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openCoursePage(context, page, background);
+  const blockHello = () =>
+    window.addEventListener(
+      'message',
+      (event) => {
+        if (event.data?.type === 'viewer-hello') event.stopImmediatePropagation();
+      },
+      true,
+    );
+  await page.addInitScript(blockHello);
+  await page.evaluate(blockHello);
+  await page.getByText('Read notes').first().click();
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(1);
+  await page.reload();
+  await pageQuiet(page);
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+});
+
 test('a failed hello keeps typed work and offers a student link', async ({
   context,
   page,
@@ -791,6 +815,15 @@ test('a failed hello keeps typed work and offers a student link', async ({
     ]),
   );
   await page.screenshot({ path: testInfo.outputPath('hello-failure.png') });
+  // The identity tick of each second leaves the keyboard on the link.
+  await cdp.send('DOM.focus', { backendNodeId: link.backendDOMNodeId! });
+  await page.waitForTimeout(1500);
+  const focused = await cdp.send('Accessibility.getFullAXTree');
+  expect(
+    focused.nodes
+      .find((node) => node.backendDOMNodeId === link.backendDOMNodeId)
+      ?.properties?.find((property) => property.name === 'focused')?.value.value,
+  ).toBe(true);
   const { model } = await cdp.send('DOM.getBoxModel', { backendNodeId: link.backendDOMNodeId! });
   const popup = page.waitForEvent('popup');
   await page.mouse.click(

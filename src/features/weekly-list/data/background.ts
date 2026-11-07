@@ -3,7 +3,7 @@
  * events. See docs/design.md, decision 11, option A.
  */
 import { isDataAction } from './protocol';
-import { extensionOrigin } from './router';
+import { browserRouterHost, extensionOrigin } from './router';
 import { browser } from 'wxt/browser';
 import {
   sessionFingerprint,
@@ -84,7 +84,8 @@ export function wireDataTriggers(owner: DataOwner): () => void {
   const onConnect = (port: import('wxt/browser').Browser.runtime.Port): void => {
     if (
       !port.name.startsWith('weekrow-delete:') ||
-      !port.sender?.url?.startsWith(browser.runtime.getURL('/'))
+      port.sender === undefined ||
+      !browserRouterHost.isExtensionPage(port.sender)
     )
       return;
     let action: unknown;

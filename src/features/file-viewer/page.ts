@@ -148,6 +148,11 @@ export async function startViewer(): Promise<void> {
   const addedTabs = new Set<string>();
   let failureAddress = '';
   let failedConnection = false;
+  /** The address of a file or a comment attachment in Canvas. */
+  const canvasAddress = (id: string, courseId: string | null | undefined = courses.get(id)) => {
+    const links = fileLinks(location.origin, id, courseId);
+    return links?.canvas ?? links!.download;
+  };
   const connectionFailed = () => {
     failedConnection = true;
     clearTimeout(handshake);
@@ -157,6 +162,7 @@ export async function startViewer(): Promise<void> {
     pending = undefined;
     port?.close();
     port = undefined;
+    const address = failureAddress || (tabs.active ? canvasAddress(tabs.active) : location.origin);
     const ids = tabs.ids.filter((id) => !addedTabs.has(id));
     tabs = {
       ids,
@@ -164,8 +170,7 @@ export async function startViewer(): Promise<void> {
     };
     addedTabs.clear();
     waitingFile = null;
-    void writeTabs(tabs).catch(() => undefined);
-    dock?.showFailure(failureAddress || `${location.origin}/files/${tabs.active ?? ''}`);
+    dock?.showFailure(address);
     settleConnection?.('timeout');
     settleConnection = undefined;
   };
@@ -179,8 +184,16 @@ export async function startViewer(): Promise<void> {
     if (!live || generation !== started) return;
     if (latest?.settings?.theme) themeChoice = latest.settings.theme;
     if (stored) {
-      tabs = waitingFile ? openFile(stored.tabs, waitingFile) : stored.tabs;
+      const next = [...addedTabs].reduce(openFile, stored.tabs);
+      tabs = waitingFile ? openFile(next, waitingFile) : next;
       tabsToken = stored.token;
+    }
+    // The pane has connected, so the files of the clicks that waited for it join the stored tabs,
+    // and the pane restores them.
+    if (port && addedTabs.size > 0) {
+      await writeTabs(tabs).catch(() => undefined);
+      if (!live || generation !== started) return;
+      addedTabs.clear();
     }
     applyTheme();
     sendFullView();
@@ -356,7 +369,6 @@ export async function startViewer(): Promise<void> {
           return;
         }
         port = candidate;
-        addedTabs.clear();
         settleConnection?.('opened');
         settleConnection = undefined;
         synced = false;
@@ -477,13 +489,13 @@ export async function startViewer(): Promise<void> {
     failureAddress =
       addresses.get(file.fileId) ??
       keptAddress(href, location.origin) ??
-      fileLinks(location.origin, file.fileId, courseId)?.canvas ??
-      fileLinks(location.origin, file.fileId, courseId)!.download;
+      canvasAddress(file.fileId, courseId);
     const open = () => {
       // The pane is open and owns the tabs, so it opens the file and saves the tabs itself. This
       // request also makes a pane that has not been told yet restore the stored tabs.
       synced = true;
       waitingFile = null;
+      addedTabs.clear();
       port?.postMessage(openMessage(file.fileId));
       return 'opened' as const;
     };
@@ -492,15 +504,14 @@ export async function startViewer(): Promise<void> {
     if (ended()) return 'ended';
     if (failedConnection) return connected ? { connected } : 'timeout';
     if (stored) tabsToken = stored.token;
-    const previous = stored?.tabs ?? tabs;
+    const previous = [...addedTabs].reduce(openFile, stored?.tabs ?? tabs);
     if (!previous.ids.includes(file.fileId)) addedTabs.add(file.fileId);
     tabs = openFile(previous, file.fileId);
-    // A refused write leaves the file out of the stored tabs, so it waits here for the pane.
+    // The file stays out of the stored tabs until the pane connects, so a failed open leaves
+    // nothing that brings the pane back on the next page.
     waitingFile = file.fileId;
-    await writeTabs(tabs).catch(() => undefined);
-    if (ended()) return 'ended';
-    // The pane may have connected while the tabs were written. It owns them from then on, and
-    // it has not seen this file, so it gets the file as a request, never as a copy of the store.
+    // The pane may have connected during the read. It owns the tabs from then on, and it has not
+    // seen this file, so it gets the file as a request, never as a copy of the store.
     if (paneOpen() && port) return open();
     return connected ? { connected } : 'failed';
   };

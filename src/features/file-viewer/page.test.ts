@@ -234,43 +234,6 @@ describe('the page script', () => {
       expect(html.style.getPropertyValue('padding-right')).toBe('');
     });
 
-    it('clears the tabs of the page, so the next file starts a new list', async () => {
-      prepare();
-      document.body.insertAdjacentHTML(
-        'beforeend',
-        '<a id="other" href="/files/6">Other notes</a>',
-      );
-      // The background keeps the tabs that the page writes, with a token.
-      let stored: unknown = { ids: [], active: null, token: '1:1' };
-      let refuse = false;
-      sendMessage.mockImplementation(async (message: { type: string; tabs?: unknown }) => {
-        if (message.type === 'viewer:tabs-get') {
-          if (refuse) throw new Error('refused');
-          return stored;
-        }
-        if (message.type === 'viewer:tabs-set') {
-          stored = { ...(message.tabs as object), token: '1:1' };
-          return { ok: true };
-        }
-        return reply(message);
-      });
-      await startViewer();
-      click(true);
-      await vi.waitFor(() => expect(paneHost()).not.toBeNull());
-      await vi.waitFor(() => expect(writes()).toHaveLength(1));
-      expect(writes()[0]).toMatchObject({ tabs: { ids: ['5'], active: '5' }, token: '1:1' });
-      resetMessage();
-      // The background has cleared the tabs and does not answer a read, so only the memory of the
-      // page could bring the file of the earlier student back, with the old token.
-      refuse = true;
-      const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
-      Object.defineProperty(event, 'isTrusted', { value: true });
-      document.getElementById('other')!.dispatchEvent(event);
-      await vi.waitFor(() => expect(writes()).toHaveLength(2));
-      expect(writes()[1]).toMatchObject({ tabs: { ids: ['6'], active: '6' } });
-      expect(writes()[1].token).toBeUndefined();
-    });
-
     it('ends no copy of the script, and writes no tabs of its own', async () => {
       await openPane();
       const before = writes().length;
@@ -381,8 +344,7 @@ describe('the page script', () => {
       expect(paneHost()).toBeNull();
       held[1]!();
       await vi.waitFor(() => expect(paneHost()).not.toBeNull());
-      await vi.waitFor(() => expect(writes()).toHaveLength(1));
-      expect(writes()[0]).toMatchObject({ tabs: { ids: ['6'], active: '6' } });
+      expect(writes()).toEqual([]);
     });
 
     it('ignores a reset that does not come from the extension itself', async () => {
@@ -641,34 +603,6 @@ describe('the page script', () => {
     expect(seen).toEqual([]);
   });
 
-  it('keeps both files when two clicks come before the pane has connected', async () => {
-    prepare();
-    document.body.innerHTML =
-      '<a id="file" href="/files/5">A</a><a id="other" href="/files/6">B</a>';
-    let stored: { ids: string[]; active: string | null } = { ids: [], active: null };
-    const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
-    sendMessage.mockImplementation(async (message: { type: string; tabs?: typeof stored }) => {
-      if (message.type === 'viewer:tabs-get') {
-        const snapshot = { ...stored, token: '1:1' };
-        await tick();
-        return snapshot;
-      }
-      if (message.type === 'viewer:tabs-set') {
-        await tick();
-        stored = message.tabs!;
-        return { ok: true };
-      }
-      return reply(message);
-    });
-    await startViewer();
-    for (const id of ['file', 'other']) {
-      const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
-      Object.defineProperty(event, 'isTrusted', { value: true });
-      document.getElementById(id)!.dispatchEvent(event);
-    }
-    await vi.waitFor(() => expect(stored).toEqual({ ids: ['5', '6'], active: '6' }));
-  });
-
   describe('a file from the click catcher of the preview frame', () => {
     type Listener = (
       message: unknown,
@@ -698,11 +632,7 @@ describe('the page script', () => {
         await vi.advanceTimersByTimeAsync(15_000);
         expect(respond).toHaveBeenCalledWith({ opened: true });
         expect(document.getElementById('tools-file-viewer')).not.toBeNull();
-        expect(sendMessage).toHaveBeenCalledWith({
-          type: 'viewer:tabs-set',
-          tabs: { ids: [], active: null },
-          token: undefined,
-        });
+        expect(sendMessage.mock.calls.some(([m]) => m.type === 'viewer:tabs-set')).toBe(false);
       } finally {
         vi.useRealTimers();
       }
@@ -721,7 +651,7 @@ describe('the page script', () => {
         await startViewer();
         const { respond } = ask(open, fromBackground);
         await vi.advanceTimersByTimeAsync(100);
-        expect(stored.ids).toEqual(['42', '5']);
+        expect(stored.ids).toEqual(['42']);
         await vi.advanceTimersByTimeAsync(15_000);
         expect(stored).toEqual({ ids: ['42'], active: '42' });
         expect(respond).toHaveBeenCalledWith({ opened: true });
@@ -799,19 +729,6 @@ describe('the page script', () => {
     });
   });
 
-  it('writes the tabs with the token of the last read', async () => {
-    prepare();
-    sendMessage.mockImplementation(async (message: { type: string }) =>
-      message.type === 'viewer:tabs-get' ? { ids: [], active: null, token: '4:7' } : reply(message),
-    );
-    await startViewer();
-    click(true);
-    await vi.waitFor(() =>
-      expect(sendMessage.mock.calls.some(([m]) => m.type === 'viewer:tabs-set')).toBe(true),
-    );
-    const write = sendMessage.mock.calls.find(([m]) => m.type === 'viewer:tabs-set')![0];
-    expect(write).toMatchObject({ tabs: { ids: ['5'], active: '5' }, token: '4:7' });
-  });
   describe('a click that the pane could not open', () => {
     const MODULE_HTML =
       '<div data-module-id="3"><a id="file" class="attachment" href="/courses/12/modules/items/9">Notes</a></div>';

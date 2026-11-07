@@ -8,6 +8,8 @@ import {
   sessionKey,
   type ViewerHost,
 } from './background';
+import { watchPaneIdentity } from './paneIdentity';
+import { watchPaneReset } from './paneReset';
 import { MAX_POSITIONS, positionKey } from './positions';
 import { ViewerUnconfirmedError } from './unconfirmed';
 import { ACK_TIMEOUT_MS, BYTES_CHUNK, BYTES_PORT, BYTES_WINDOW } from './bytes';
@@ -986,6 +988,18 @@ describe('file bytes port', () => {
     expect(fetchBytes).not.toHaveBeenCalled();
   });
 
+  it('refuses a pane frame in a tab that does not show the saved Canvas', async () => {
+    const { host, pane } = setup();
+    vi.mocked(host.tabUrl).mockResolvedValue('https://evil.example/page');
+    const fetchBytes = vi.fn();
+    const p = port(pane);
+    serveBytesPort(p as never, host, fetchBytes, false);
+    p.send({ fileId: '1' });
+    await settle();
+    expect(p.postMessage).toHaveBeenCalledWith({ error: { kind: 'unconfirmed' } });
+    expect(fetchBytes).not.toHaveBeenCalled();
+  });
+
   it('builds the address of a file from its record inside the cookie-bound read', async () => {
     const { host, pane, read, api } = setup();
     const fetchBytes = vi.fn(async () => new Uint8Array([1]));
@@ -1300,9 +1314,30 @@ it('keeps another store pane valid across a clearing round', async () => {
   vi.mocked(host.paneCheck).mockResolvedValue({ verdict: 'yes', userId: null });
   await expect(
     routeViewerMessage({ type: 'viewer:pane-check', token: '1:store' }, sender, host),
-  ).resolves.toEqual({ verdict: 'yes', token: '2:store' });
+  ).resolves.toEqual({ verdict: 'yes', token: 'store' });
   vi.mocked(host.paneCheck).mockResolvedValue({ verdict: 'unknown' });
   await expect(
-    routeViewerMessage({ type: 'viewer:pane-check', token: '1:store' }, sender, host),
+    routeViewerMessage({ type: 'viewer:pane-check', token: 'store' }, sender, host),
   ).resolves.toEqual({ verdict: 'unknown' });
+});
+
+it('leaves the watcher of another store pane alone when the request store clears', async () => {
+  vi.useFakeTimers();
+  const { host, sender, store } = setup();
+  store.set('viewer:session:epoch', 1);
+  vi.mocked(host.paneCheck).mockResolvedValue({ verdict: 'yes', userId: null });
+  vi.spyOn(fakeBrowser.runtime, 'sendMessage').mockImplementation(((message: unknown) =>
+    routeViewerMessage(message, sender, host)) as never);
+  const reset = vi.fn();
+  const stopReset = watchPaneReset(reset);
+  const show = vi.fn();
+  const stop = watchPaneIdentity(show);
+  await vi.advanceTimersByTimeAsync(0);
+  store.set('viewer:session:epoch', 2);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(show).toHaveBeenLastCalledWith(true);
+  expect(reset).not.toHaveBeenCalled();
+  stop();
+  stopReset();
+  vi.useRealTimers();
 });

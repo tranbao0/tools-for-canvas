@@ -211,7 +211,11 @@ async function openFromFrame(
   };
 }
 
-async function tabShowsOrigin(host: ViewerHost, tabId: number, origin: string): Promise<boolean> {
+async function tabShowsOrigin(
+  host: Pick<ViewerHost, 'tabUrl'>,
+  tabId: number,
+  origin: string,
+): Promise<boolean> {
   try {
     const url = await host.tabUrl(tabId);
     return url !== null && new URL(url).origin === origin;
@@ -345,17 +349,17 @@ export function routeViewerMessage(
         const epoch = await readEpoch(host);
         const token = request['token'];
         const result = await host.paneCheck(origin, tabId, request['retry'] === true);
-        if (result.verdict === 'yes' && result.userId === null)
-          return { verdict: 'yes', token: `${epoch}:store` };
         if (result.verdict === 'unknown') return result;
+        // A tab outside the request store uses its own cookies for its Canvas frames, so a
+        // clearing round of the request store does not touch it.
+        if (result.verdict === 'yes' && result.userId === null)
+          return { verdict: 'yes', token: 'store' };
         if (typeof token === 'string' && token.split(':')[0] !== String(epoch))
           return { verdict: 'no' };
         if (epoch !== (await readEpoch(host))) return { verdict: 'no' };
         if (result.verdict !== 'yes') return result;
-        const current = `${epoch}:${result.userId === null ? 'store' : studentName(result.userId)}`;
-        // A tab outside the request store uses its own cookies for its Canvas frames.
-        if (result.userId !== null && token !== undefined && token !== current)
-          return { verdict: 'no' };
+        const current = `${epoch}:${studentName(result.userId!)}`;
+        if (token !== undefined && token !== current) return { verdict: 'no' };
         return { verdict: 'yes', token: current };
       }
       case 'viewer:fetch-allowed': {
@@ -496,7 +500,7 @@ export function serveBytesPort(
     onDisconnect: Pick<Browser.runtime.Port['onDisconnect'], 'addListener'>;
     onMessage: { addListener(listener: (message: BytesRequest) => void): void };
   },
-  host: Pick<ViewerHost, 'savedOrigin' | 'isExtensionPage' | 'read'>,
+  host: Pick<ViewerHost, 'savedOrigin' | 'isExtensionPage' | 'read' | 'tabUrl'>,
   fetchBytes: typeof fetchFileBytes = fetchFileBytes,
   /** The port clones typed arrays (Firefox). Other ports send JSON, so the bytes go as base64. */
   binary: boolean = BROWSER_KIND === 'firefox',
@@ -537,6 +541,8 @@ export function serveBytesPort(
         const commentRead =
           typeof commentTab === 'string' && isCommentTab(commentTab) && fileId === undefined;
         if (!origin || (!fileRead && !commentRead)) throw new Error('Invalid file read');
+        if (sender.tab?.id === undefined || !(await tabShowsOrigin(host, sender.tab.id, origin)))
+          throw new Error('The tab does not show the saved Canvas');
         if (
           truncateAt !== undefined &&
           (typeof truncateAt !== 'number' || !Number.isSafeInteger(truncateAt) || truncateAt <= 0)
