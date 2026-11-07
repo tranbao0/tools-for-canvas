@@ -14,7 +14,7 @@ interface Watcher {
   round: number;
   sequence: number;
   applied: number;
-  lastReply: number;
+  pending: Map<number, number>;
 }
 function watcher(): Watcher {
   const scope = globalThis as unknown as Record<symbol, Watcher | undefined>;
@@ -23,7 +23,7 @@ function watcher(): Watcher {
     round: 0,
     sequence: 0,
     applied: 0,
-    lastReply: Date.now(),
+    pending: new Map(),
   });
 }
 
@@ -63,12 +63,14 @@ export function watchPaneIdentity(show: (confirmed: boolean) => void, token?: st
     const round = state.round;
     const sequence = ++state.sequence;
     const bound = [...state.panes].find((pane) => pane.token !== undefined)?.token;
-    if (Date.now() - state.lastReply >= TIMEOUT_MS)
+    const oldest = state.pending.values().next().value;
+    if (oldest !== undefined && Date.now() - oldest >= TIMEOUT_MS)
       for (const pane of state.panes) pane.show(false);
+    state.pending.set(sequence, Date.now());
     void checkPaneIdentity(bound).then((reply) => {
+      state.pending.delete(sequence);
       if (round !== state.round || state.panes.size === 0 || sequence < state.applied) return;
       state.applied = sequence;
-      state.lastReply = Date.now();
       if (
         reply.verdict === 'no' ||
         (reply.verdict === 'yes' &&
@@ -84,7 +86,6 @@ export function watchPaneIdentity(show: (confirmed: boolean) => void, token?: st
     });
   };
   if (state.timer === undefined) {
-    state.lastReply = Date.now();
     tick();
     state.timer = setInterval(tick, 1000);
   } else {
@@ -97,6 +98,7 @@ export function watchPaneIdentity(show: (confirmed: boolean) => void, token?: st
       clearInterval(state.timer);
       state.timer = undefined;
       state.round++;
+      state.pending.clear();
     }
   };
 }

@@ -96,3 +96,15 @@ it('a one-shot token read times out as unknown', async () => {
   await vi.advanceTimersByTimeAsync(5000);
   await expect(read).resolves.toEqual({ verdict: 'unknown' });
 });
+
+it('a late tick with no unanswered request does not cover a healthy pane', async () => {
+  vi.useFakeTimers();
+  send.mockResolvedValue({ verdict: 'yes', token: '3:42' });
+  const show = vi.fn();
+  stops.push(watchPaneIdentity(show));
+  await vi.advanceTimersByTimeAsync(0);
+  show.mockClear();
+  vi.setSystemTime(Date.now() + 60000);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(show.mock.calls).toEqual([[true]]);
+});

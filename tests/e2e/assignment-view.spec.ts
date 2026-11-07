@@ -2794,3 +2794,26 @@ test('a second injection retires the old assignment view through later page chan
   await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
   await expect(page.locator('[data-av-preview]')).toHaveCount(0);
 });
+
+test('identity verdict: a late idle tick never flashes the cover', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  await openPane(page, 'Essay');
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes');
+  const world = await contentScriptWorld(page);
+  await world.evaluate(`(() => {
+    globalThis.__lateCovers = 0;
+    const host = document.querySelector('#tools-turn-in');
+    new MutationObserver(() => {
+      if (host.getAttribute('data-identity') === 'unknown') globalThis.__lateCovers++;
+    }).observe(host, { attributes: true, attributeFilter: ['data-identity'] });
+    const now = Date.now;
+    Date.now = () => now() + 60000;
+  })()`);
+  await page.waitForTimeout(2200);
+  expect(await world.evaluate('globalThis.__lateCovers')).toBe(0);
+});
