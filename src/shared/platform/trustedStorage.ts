@@ -1,14 +1,16 @@
 /**
- * Storage that a web page cannot change. See docs/design.md, decisions 5 and 20.
+ * Storage with checks against ordinary web pages and content scripts. See docs/design.md, decisions 5 and 20.
  *
  * The detector runs in every https page, so a compromised page process could use the world of
  * the extension's content script to write the settings, the notes or the saved address, if
  * content scripts could write `storage.local`.
  * - Chrome and Edge lock `storage.local` to trusted contexts, so content scripts can neither read
  *   nor write it. The items stay in `storage.local`.
- * - Firefox cannot lock it. Only the background opens the IndexedDB vault. Verified extension
+ * - Firefox cannot lock it. The shipped code opens IndexedDB only in the background. Verified extension
  *   pages use a runtime message; embedded pane frames have no access to this API. If IndexedDB
- *   cannot open, the vault uses storage.session, which content contexts cannot read.
+ *   fails with InvalidStateError or the context is private, the vault uses storage.session.
+ *   A compromised Firefox page process can reach the database through an extension-origin
+ *   frame and can reach storage.session. These stores do not stop that threat.
  *   `storage.local` holds a mirror for extension pages to watch. Nothing trusts that mirror:
  *   a mirror that differs from the vault is repaired, and every read comes from the vault.
  * Every read also normalizes the value, so a bad value in either place never breaks the extension.
@@ -178,7 +180,7 @@ export function indexedDbVault(fallback?: Vault): Vault {
   };
 }
 
-/** Session storage is unavailable to Firefox content contexts, including embedded pane pages. */
+/** Ordinary Firefox content scripts have no session API; a compromised process can reach it. */
 export function sessionVault(): Vault {
   const prefix = 'trustedVault:';
   return {
@@ -262,7 +264,7 @@ export function vaultMessageHandler(vault: Vault, extensionId: string, extension
 
 let backgroundVault: Vault | undefined;
 
-/** Installs the owner before any background reads. No other context opens IndexedDB. */
+/** Installs the owner used by shipped code. A compromised extension-origin frame can open IndexedDB. */
 export function wireTrustedVault(): void {
   if (import.meta.env.BROWSER !== 'firefox') return;
   backgroundVault = orderedVault(indexedDbVault(sessionVault()));

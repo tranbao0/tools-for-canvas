@@ -802,27 +802,35 @@ An earlier version used option B; schools on their own domain then needed an "Al
 - On Chrome and Edge, the background calls `storage.local.setAccessLevel('TRUSTED_CONTEXTS')` when it starts, so only extension pages and the background can use `storage.local`.
   Chrome 144 is the first version that accepts this call for `local`, which sets the minimum version.
 - Firefox has no such lock.
-  Only the background opens the existing `weekrow-trusted` IndexedDB database and its `values` store.
+  The shipped code opens the existing `weekrow-trusted` IndexedDB database and its `values` store only in the background.
   The database name, version, keys and values stay unchanged, so an update preserves the saved address, settings, notes, positions and salt.
   Other extension pages use the `trusted-vault` runtime message for the existing `Vault` operations.
   The handler requires this extension's ID, its origin and Firefox's `addon_child` sender type.
   Firefox verifies that type against the extension principal and process in `ConduitsParent.sys.mjs`; a URL alone is insufficient.
   Direct operations and message operations use one queue, so they retain their arrival order even after a failed operation.
   The mirror and its watch and repair logic stay in place, and no trusted read uses the mirror.
-  If IndexedDB cannot open in the background, the vault uses namespaced `storage.session` entries for that browser session.
+  In private browsing or after an IndexedDB `InvalidStateError`, the vault uses namespaced `storage.session` entries for that browser session.
+  Any other open error rejects the read or write and clears the cached open so the next call retries.
   A failed transaction after a successful open does not switch stores or hide persistent data.
   The next browser start requires another "Use it" answer when IndexedDB is still unavailable; the extension does not import the local mirror.
   The salt and PDF positions have no mirror.
   Firefox's storage schema excludes content contexts from `storage.session`, and real Firefox 159 confirms that a Canvas content script sees it as undefined.
 - The embedded Firefox file pane runs in the Canvas content process, as measured by equal process IDs in real Firefox 159.
   It must not use the full vault API.
-  Its separate read-only `viewer:origin` message returns only `{ canvasOrigin }`, after the existing extension-page and pane-frame checks, a tab check and an exact request-field check.
-  It cannot select a key, read the salt, enumerate the vault or read another student's positions.
+  Its separate read-only `viewer:origin` message returns only `{ canvasOrigin }`, after a pane-frame check, a saved-origin check on the top tab and an exact request-field check.
+  That message cannot select a key, read the salt, enumerate the vault or read another student's positions.
   Its other reads and writes retain the existing viewer messages and student checks.
   The origin reply stays on the private runtime channel and is never sent through page-readable messages.
   The test-channel diagnostic frame has its own read-only origin message with an exact `/file-probe.html` sender check; this handler and frame are absent from store builds.
   Real Firefox tests cover the error card and stable Preview in private and container tabs, sidebar completion, and refusal of both APIs to Canvas content scripts.
-- Content scripts never get `storage.session`, so the cached Canvas data and a pending domain offer stay out of reach on every browser.
+- These Firefox rules stop ordinary content scripts, not a compromised page process.
+  A process that frames `viewer.html` holds the extension origin and can open its IndexedDB directly.
+  The manifest must allow `https://*/*` for schools with their own domains.
+  The Firefox parent also serves `storage.session` without the child-side restriction, so a compromised page process can reach the always-private vault and the cached Canvas data in normal profiles.
+  The vault stays as it is with these limits.
+  All Firefox process and storage measurements here use Firefox 159.
+  The `addon_child` gate depends on `sender.envType`.
+  Firefox 140, the desktop manifest minimum, includes that field in `ExtensionParent.sys.mjs` `getSender`; this is a source check, not a browser run on 140.
 - The background checks every stored value when it reads it, and uses the default for a field that is not valid.
 - The in-page script has no storage access.
   It talks to the background only through messages, and the background answers only the top frame of the saved Canvas:
@@ -2116,7 +2124,8 @@ They show in the same three places, below Row size, and they are stored apart fr
 
 - Firefox vault reads and writes stay inside the extension through the background-owned vault of decision 5.
   The full vault API accepts only verified extension-process pages, and Canvas content scripts get no response data.
-  The embedded file pane has only the read-only saved-origin API, with no salt or whole-vault access.
+  The embedded file pane has a read-only saved-origin API.
+  The API does not grant salt or whole-vault reads, but it does not remove the Firefox process limits in decision 5.
   Neither API sends its reply through a window message or another page-readable path.
   The session fallback makes no network request and never restores values from the untrusted local mirror.
 
@@ -3179,7 +3188,7 @@ With the pane read alone, the default run of the test failed before the fix.
      The background keeps them with the id of the student of the cache.
      It reads and writes them only when the cookie rules confirm that student (decision 11), and it gives back none when the student is another one.
      A sign-out, another student and a new address clear them.
-     The same clearing sends `viewer:reset` to every tab.
+     The same clearing sends `viewer:reset` to every tab except Firefox tabs positively identified in another cookie store.
      The page script of the file pane closes the pane, also a pane that the assignment pane covers, and clears the tabs, the courses and the names in its memory, so no pane stays open with the file of the earlier student.
      It writes nothing to the background when it resets.
      A page script cannot send it: the page script handles it only from the extension itself (the sender is this extension and has no tab).
@@ -3635,8 +3644,10 @@ With the pane read alone, the default run of the test failed before the fix.
     A script of the Canvas page can send a port too, and it must not block the port of the page script.
   - Each frame reload repeats the hello, and each open of the pane makes a new secret.
     Every load of the frame after the first drops the port of the document before it.
-    If no valid answer with the secret arrives within 15 seconds of the open, or no hello follows a load, the page script removes the pane and restores the padding of the page.
-    The stored tabs stay, so the next click opens the pane again.
+    If no valid answer with the secret arrives within 15 seconds of the open, or no hello follows a load, the dock shows "Couldn't open this file." with an "Open in Canvas" link and a Close button.
+    The link opens in a new tab with `rel=noopener` only when the student clicks it.
+    The failed connection removes the tabs that its opens added and keeps any earlier tabs.
+    The timeout follows no link, and the frame catcher treats it as handled.
   - After the proof, the pane accepts only four messages from the page: `open-file`, with a file id and an optional course id, `theme`, with the value `light` or `dark`, `full-view`, with the full view state, and `covered`, which says whether another pane hides the file pane.
     It never accepts a path or a full URL to load, and it drops a message with another key or value.
   - The pane frame sits in a closed shadow root, which keeps the frame element and its address from the page.
