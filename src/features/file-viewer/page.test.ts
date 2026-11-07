@@ -102,6 +102,12 @@ describe('the page script', () => {
     document.getElementById('file')!.dispatchEvent(event);
   }
 
+  const broadcast = (message: unknown, sender: unknown, respond = () => undefined) => {
+    for (const [listener] of addListener.mock.calls) {
+      if (!removeListener.mock.calls.some(([removed]) => removed === listener))
+        listener(message, sender, respond);
+    }
+  };
   const sessionRequests = () =>
     sendMessage.mock.calls.filter(([message]) => message.type === 'viewer:session').length;
 
@@ -125,7 +131,7 @@ describe('the page script', () => {
     await startViewer();
     click(true);
     await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
-    const listener = addListener.mock.calls[0]![0] as (message: unknown, sender: unknown) => void;
+    const listener = broadcast;
     sendMessage.mockImplementation(async (message: { type: string }) =>
       message.type === 'weekrow:page-context'
         ? { tools: { fileViewer: false, fileViewerWidth: 480 }, settings: {} }
@@ -133,7 +139,7 @@ describe('the page script', () => {
     );
     listener({ type: 'weekrow:changed' }, { id: 'my-extension' });
     await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).toBeNull());
-    expect(removeListener).toHaveBeenCalledTimes(1);
+    expect(removeListener).toHaveBeenCalledTimes(2);
     const before = sessionRequests();
     click(true);
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -174,7 +180,7 @@ describe('the page script', () => {
   it('keeps working when a change leaves the File viewer switch on', async () => {
     prepare();
     await startViewer();
-    const listener = addListener.mock.calls[0]![0] as (message: unknown, sender: unknown) => void;
+    const listener = broadcast;
     listener({ type: 'weekrow:changed' }, { id: 'my-extension' });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(removeListener).not.toHaveBeenCalled();
@@ -185,7 +191,7 @@ describe('the page script', () => {
   describe('when the background clears the data of a student', () => {
     const html = document.documentElement;
     const resetMessage = () => {
-      const listener = addListener.mock.calls[0]![0] as (message: unknown, sender: unknown) => void;
+      const listener = broadcast;
       listener({ type: 'viewer:reset' }, { id: 'my-extension' });
     };
     const paneHost = () => document.getElementById('tools-file-viewer');
@@ -280,8 +286,7 @@ describe('the page script', () => {
     const paneHost = () => document.getElementById('tools-file-viewer');
     const writes = () =>
       sendMessage.mock.calls.filter(([m]) => m.type === 'viewer:tabs-set').map(([m]) => m);
-    const listener = () =>
-      addListener.mock.calls[0]![0] as (message: unknown, sender: unknown) => void;
+    const listener = () => broadcast;
     /** Holds the answers of the session reads until the test releases them, in order. */
     function holdSessions() {
       const held: Array<() => void> = [];
@@ -493,7 +498,7 @@ describe('the page script', () => {
     prepare();
     await startViewer();
     await startViewer();
-    expect(removeListener).toHaveBeenCalledTimes(1);
+    expect(removeListener).toHaveBeenCalledTimes(2);
     expect(removeListener.mock.calls[0]![0]).toBe(addListener.mock.calls[0]![0]);
     click(true);
     await vi.waitFor(() => expect(sessionRequests()).toBe(1));
@@ -515,7 +520,7 @@ describe('the page script', () => {
     prepare();
     document.body.insertAdjacentHTML('beforeend', '<div id="tools-file-viewer"></div>');
     await startViewer();
-    expect(addListener).toHaveBeenCalledTimes(1);
+    expect(addListener).toHaveBeenCalledTimes(2);
   });
 
   it('opens a new pane after the page removed the pane', async () => {
@@ -533,8 +538,8 @@ describe('the page script', () => {
     prepare();
     document.documentElement.style.setProperty('padding-right', '13px');
     await Promise.all([startViewer(), startViewer()]);
-    expect(addListener).toHaveBeenCalledTimes(2);
-    expect(removeListener).toHaveBeenCalledTimes(1);
+    expect(addListener).toHaveBeenCalledTimes(4);
+    expect(removeListener).toHaveBeenCalledTimes(2);
     click(true);
     await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -862,7 +867,7 @@ describe('the page script', () => {
       expect(seen).toHaveLength(0);
     });
 
-    it('gives the link no click after a reset during the click', async () => {
+    it('follows the link after a reset ends the open', async () => {
       prepare();
       document.body.innerHTML = MODULE_HTML;
       let answer = (_file: undefined): void => undefined;
@@ -876,15 +881,11 @@ describe('the page script', () => {
       await startViewer();
       click(true);
       await vi.waitFor(() => expect(paneHost()).not.toBeNull());
-      const listener = addListener.mock.calls.at(-1)![0] as (
-        message: unknown,
-        sender: { id: string },
-        respond: () => void,
-      ) => unknown;
+      const listener = broadcast;
       listener({ type: 'viewer:reset' }, { id: 'my-extension' }, () => undefined);
       answer(undefined);
       await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(seen).toHaveLength(0);
+      expect(seen).toHaveLength(1);
     });
 
     it('lets a newer click win over a failed older one', async () => {
@@ -948,4 +949,10 @@ describe('the page script', () => {
   });
 });
 
-vi.mock('./paneIdentity', () => ({ watchPaneIdentity: () => () => undefined }));
+vi.mock('./paneIdentity', () => ({
+  watchPaneIdentity: (show: (yes: boolean) => void) => {
+    show(true);
+    return () => undefined;
+  },
+  checkPaneIdentity: async () => ({ verdict: 'yes', token: '0:42' }),
+}));

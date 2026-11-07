@@ -148,13 +148,20 @@ const paneFrames = (page: Page): Frame[] =>
 const paddingRight = (page: Page): Promise<number> =>
   page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).paddingRight) || 0);
 
+/** A dock can be visible under its cover before identity permits its frame to load. */
+async function readyPaneFrame(page: Page): Promise<Frame> {
+  await expect.poll(() => paneFrames(page).length).toBeGreaterThan(0);
+  const frame = paneFrames(page)[0]!;
+  await expect(frame.locator('#marker')).toBeVisible();
+  return frame;
+}
+
 /**
  * Clicks the close button of the assignment pane with the mouse. The root of the pane is closed,
  * but a frame of the Canvas origin reaches it, which is how a test finds the button.
  */
 async function closeAssignment(page: Page): Promise<void> {
-  const frame = paneFrames(page)[0];
-  if (frame === undefined) throw new Error('The pane has no frame');
+  const frame = await readyPaneFrame(page);
   const box = await frame.evaluate(() => {
     const root = window.frameElement!.getRootNode() as ShadowRoot;
     const rect = root.querySelector('.icon-btn')!.getBoundingClientRect();
@@ -338,14 +345,16 @@ for (const [name, options] of [
   });
 }
 
-test('the pane leaves the page when the extension context ends', async ({
+test('the pane covers its draft when the extension context ends', async ({
   context,
   page,
   background,
 }) => {
   await open(context, page, background);
   await preview(page, LAB_4).click();
-  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes');
+  const frame = await readyPaneFrame(page);
+  await frame.locator('#marker').fill('Keep this draft after the context ends');
   // The worker goes with the reload, so the answer of this call may never come.
   void background
     .evaluate(() =>
@@ -354,10 +363,11 @@ test('the pane leaves the page when the extension context ends', async ({
       ).chrome.runtime.reload(),
     )
     .catch(() => undefined);
-  await expect(page.locator(PANE_HOST)).toHaveCount(0, { timeout: 15_000 });
-  await expect
-    .poll(() => page.evaluate(() => document.documentElement.style.paddingRight))
-    .toBe('');
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown', {
+    timeout: 6000,
+  });
+  await expect(frame.locator('#marker')).toHaveValue('Keep this draft after the context ends');
+  expect(frame.isDetached()).toBe(false);
 });
 
 /** The height of a row, whose title is `title`. */
@@ -660,7 +670,7 @@ test('a file pane and a pane from the card cover each other in turn, and nothing
   const first = (await page.locator(PANE_HOST).boundingBox())!;
   await expect.poll(() => paddingRight(page)).toBe(first.width);
   // A file link inside the pane opens the file pane over it.
-  const frame = paneFrames(page)[0]!;
+  const frame = await readyPaneFrame(page);
   await openFilePane(page, () => frame.locator('#file').click({ timeout: 2000 }));
   await expect(page.locator(PANE_HOST)).toBeHidden();
   const second = (await page.locator(FILE_PANE).boundingBox())!;
@@ -686,7 +696,7 @@ test('a file link in the pane of the classic dashboard opens the file pane, and 
   });
   await preview(page, LAB_4).click();
   await expect(page.locator(PANE_HOST)).toBeVisible();
-  const frame = paneFrames(page)[0]!;
+  const frame = await readyPaneFrame(page);
   await openFilePane(page, () => frame.locator('#file').click({ timeout: 2000 }));
   await expect(page.locator(WEEKLY_DOCK)).toBeHidden();
   await closePane(page);

@@ -1,3 +1,5 @@
+import { checkPaneIdentity } from '../../file-viewer/paneIdentity';
+import { resetPanes } from '../../file-viewer/paneReset';
 /**
  * The Submission Details page of the student's own submission (design decision 26).
  *
@@ -144,6 +146,8 @@ export interface SubmissionViewOptions {
   now?(): number;
   openFeedback(request: FeedbackRequest): void;
   closeFeedback(): void;
+  /** Captures the student before the page reads a signed feedback address. */
+  paneIdentity?: typeof checkPaneIdentity;
 }
 
 export interface SubmissionView {
@@ -429,6 +433,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     mode: Mode,
     first: readonly BoxFile[],
     textReport: FileReport | null,
+    identityToken?: string,
   ): (next: readonly BoxFile[]) => void {
     const { details } = reply;
     const replace = mode === 'replace';
@@ -467,7 +472,14 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       submissionReport: textReport,
       openFeedback: (file) => {
         if (file.sessionUrl === null) return;
-        options.openFeedback({ title: file.name, url: file.sessionUrl });
+        // Validate the original token before any signed address enters a frame.
+        if (options.paneIdentity && identityToken !== undefined) {
+          void checkPaneIdentity(identityToken).then((verdict) => {
+            if (verdict.verdict === 'no') resetPanes();
+            else if (active && !stopped)
+              options.openFeedback({ title: file.name, url: file.sessionUrl!, identityToken });
+          });
+        } else options.openFeedback({ title: file.name, url: file.sessionUrl });
         opened.add(file.fileId);
       },
     });
@@ -511,7 +523,12 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
    * cannot show, for a report of an asset processor that Canvas's script draws in the frame, and
    * for a file whose session address failed the check, until a frame row has given it one.
    */
-  function show(reply: AssignmentDetailsReply, anchors: Anchors, token: number): void {
+  function show(
+    reply: AssignmentDetailsReply,
+    anchors: Anchors,
+    token: number,
+    identityToken?: string,
+  ): void {
     const { submission } = reply.details;
     const type = submission.submission_type;
     const context = { origin, pagePath: pathname };
@@ -555,7 +572,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       if (wanted === 'above' && reason !== null) logReason(reason);
       else if (wanted === 'replace') logged = null;
       try {
-        return mount(reply, anchors, mode, files, textReport);
+        return mount(reply, anchors, mode, files, textReport, identityToken);
       } catch (error) {
         if (mode === 'above') return giveUp(error);
         logMountFailure(error, 'above');
@@ -563,7 +580,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
         fixed = 'mount-failed';
         mode = 'above';
         try {
-          return mount(reply, anchors, mode, [], null);
+          return mount(reply, anchors, mode, [], null, identityToken);
         } catch (again) {
           return giveUp(again);
         }
@@ -644,7 +661,13 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     const token = ++generation;
     if (!findAnchors(doc)) return;
     let reply: unknown;
+    let identityToken: string | undefined;
     try {
+      if (options.paneIdentity) {
+        const identity = await options.paneIdentity();
+        if (identity.verdict !== 'yes') throw new Error('Student is not confirmed');
+        identityToken = identity.token;
+      }
       reply = await send({
         type: 'assignment:details',
         courseId: options.courseId,
@@ -675,7 +698,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     const anchors = findAnchors(doc);
     if (!anchors) return;
     try {
-      show(reply, anchors, token);
+      show(reply, anchors, token, identityToken);
     } catch (error) {
       logMountFailure(error, 'given-back');
       clear();

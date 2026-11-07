@@ -22,6 +22,7 @@ import {
   simpleHtml,
   waitForListLoaded,
 } from './support/file-viewer';
+import { dropResetMessages, moveTabsToAnotherStore } from './support/pane-identity';
 import { advanceBackgroundClock } from './support/clock';
 import { isExtensionWorker } from './support/extension';
 import { json } from './support/scenario-api';
@@ -1127,20 +1128,6 @@ test('the first file of a new student opens while the new cookie is not confirme
   await slowExpect(frame.getByRole('status').filter({ hasText: 'Loading file' })).toHaveCount(0);
 });
 
-/** Makes the background skip the `viewer:reset` broadcast to test a lost reset message. */
-async function dropResetMessages(background: Parameters<typeof openCoursePage>[2]) {
-  await background.evaluate(() => {
-    const tabs = (
-      globalThis as unknown as {
-        chrome: { tabs: { sendMessage(id: number, message: { type?: string }): Promise<unknown> } };
-      }
-    ).chrome.tabs;
-    const send = tabs.sendMessage.bind(tabs);
-    tabs.sendMessage = (id, message) =>
-      message.type === 'viewer:reset' ? Promise.resolve(undefined) : send(id, message);
-  });
-}
-
 test('the pane closes when another student signs in, in this tab and in every other', async ({
   context,
   page,
@@ -1651,4 +1638,39 @@ test('a module file whose item read fails ends with the link followed, and never
   await expect(page).toHaveURL(`${canvas.origin}/courses/101/modules/items/9`);
   await expect(page.getByRole('heading', { name: 'Module item page' })).toBeVisible();
   await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+});
+
+test('identity verdict: a cold profile survives a worker restart', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+  fileHost,
+}) => {
+  const student = studentCanvas();
+  student.failProfile();
+  await openCoursePage(context, page, background, html, [...student.routes, ...routes(fileHost)]);
+  await openFirstFile(page, 'Read notes');
+  await slowExpect(pageBox(await pane(page), 1).locator('canvas')).toBeVisible();
+  await restartWorker(context, page, background, extensionUrl);
+  await page.waitForTimeout(6500);
+  await expect(page.locator('#tools-file-viewer')).toBeVisible();
+});
+
+test('identity verdict: another store keeps the file error card and the click', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  await openCoursePage(context, page, background, html, routes(fileHost));
+  await moveTabsToAnotherStore(background);
+  await openFirstFile(page, 'Read notes');
+  const frame = await pane(page);
+  await expect(frame.getByText("Couldn't load this file")).toBeVisible();
+  await expect(frame.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+  await expect(frame.getByRole('link', { name: 'Download', exact: true })).toBeVisible();
+  await expect(frame.getByRole('link', { name: 'Open in Canvas' })).toBeVisible();
+  await page.waitForTimeout(2000);
+  await expect(page.locator('#tools-file-viewer')).toBeVisible();
 });

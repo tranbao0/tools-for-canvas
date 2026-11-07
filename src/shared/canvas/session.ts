@@ -45,6 +45,14 @@ export async function surfaceUsesRequestStore(tabId: number): Promise<boolean> {
   return stores.find((store) => store.tabIds.includes(tabId))?.id === REQUEST_STORE_ID;
 }
 
+/** A pane needs positive evidence of another store before it can show that tab's own frames. */
+export async function paneCookieStore(tabId: number): Promise<'request' | 'other' | 'unknown'> {
+  const stores = await browser.cookies.getAllCookieStores();
+  const store = stores.find((candidate) => candidate.tabIds.includes(tabId));
+  if (store === undefined) return 'unknown';
+  return store.id === REQUEST_STORE_ID ? 'request' : 'other';
+}
+
 /**
  * A salted SHA-256 fingerprint of the Canvas session cookie in the store of the requests, or
  * `null` when that store has no session cookie. The value of the cookie is never kept.

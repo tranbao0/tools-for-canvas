@@ -1,3 +1,5 @@
+import { contentScriptWorld } from './support/content-script';
+import { moveTabsToAnotherStore } from './support/pane-identity';
 /**
  * The Assignments list of the assignment view (design decision 26): the Preview buttons and the
  * assignment pane, on the Assignments fixture through the fake Canvas server. The fixture rows
@@ -2516,4 +2518,114 @@ test.describe('a file pane that the assignment pane covers', () => {
       await host.close();
     }
   });
+});
+
+test('identity verdict: a draft survives three cookie changes in thirty seconds', async ({
+  context,
+  page,
+  background,
+}) => {
+  test.setTimeout(90000);
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Keep this unsent draft');
+  await advanceBackgroundClock(background, 60000);
+  for (let change = 0; change < 3; change++) {
+    await context.addCookies([
+      {
+        name: 'canvas_session',
+        value: `rotation-${change}`,
+        url: canvas.origin,
+        secure: true,
+        sameSite: 'Lax',
+      },
+    ]);
+    await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown');
+    await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes', {
+      timeout: 40000,
+    });
+    await expect(frame.locator('#marker')).toHaveValue('Keep this unsent draft');
+  }
+});
+
+test('identity verdict: a missing reply covers the pane within six seconds', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Keep this unsent draft');
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes');
+  const world = await contentScriptWorld(page);
+  expect(
+    await world.evaluate(`(() => {
+    const runtime = (globalThis.browser?.runtime?.id ? globalThis.browser : chrome).runtime;
+    const send = runtime.sendMessage.bind(runtime);
+    const began = performance.now();
+    new MutationObserver(() => {
+      if (document.querySelector('#tools-turn-in').getAttribute('data-identity') === 'unknown')
+        globalThis.__paneCoveredAfter ??= performance.now() - began;
+    }).observe(document.querySelector('#tools-turn-in'), {attributes: true, attributeFilter: ['data-identity']});
+    globalThis.__paneHeld = 0;
+    runtime.sendMessage = (message) => { if (['viewer:pane-check', 'viewer:fetch-allowed'].includes(message.type)) { globalThis.__paneHeld++; return new Promise(() => {}); } return send(message); };
+    return runtime.sendMessage.toString();
+  })()`),
+  ).toContain('__paneHeld');
+  await expect
+    .poll(() => world.evaluate('globalThis.__paneHeld'), { timeout: 2000 })
+    .toBeGreaterThan(0);
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown', {
+    timeout: 6000,
+  });
+  expect(await world.evaluate('globalThis.__paneCoveredAfter')).toBeLessThanOrEqual(6000);
+  await expect(frame.locator('#marker')).toHaveValue('Keep this unsent draft');
+});
+
+test('identity verdict: Preview in another store stays open', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  await moveTabsToAnotherStore(background);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Container draft');
+  await page.waitForTimeout(6500);
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await expect(frame.locator('#marker')).toHaveValue('Container draft');
+});
+
+test('identity verdict: a 401 runs the full reset and removes the cover', async ({
+  context,
+  page,
+  background,
+}) => {
+  let signedOut = false;
+  const scenario = buildScenario(SCENARIO_NOW);
+  const { canvas } = await open(context, page, background, {
+    extra: [
+      {
+        path: '/api/v1/users/self',
+        respond: () =>
+          signedOut
+            ? { status: 401, body: { errors: [{ message: 'Signed out' }] } }
+            : { body: json(scenario.self) },
+      },
+    ],
+  });
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Draft before sign-out');
+  await advanceBackgroundClock(background, 60000);
+  signedOut = true;
+  await context.addCookies([
+    { name: 'canvas_session', value: 'expired', url: canvas.origin, secure: true, sameSite: 'Lax' },
+  ]);
+  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect(page.locator('[data-identity="unknown"]')).toHaveCount(0);
+  expect(frame.isDetached()).toBe(true);
 });

@@ -33,6 +33,7 @@ export interface FeedbackRequest {
   title: string;
   /** A checked session address (see `sessionUrl`). */
   url: string;
+  identityToken?: string;
 }
 
 export interface FeedbackPaneOptions {
@@ -54,6 +55,7 @@ export interface FeedbackPane {
 export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
   const { doc } = options;
   let dock: Dock | undefined;
+  let current: FeedbackRequest | undefined;
   let frame: HTMLIFrameElement | undefined;
   let title: HTMLElement | undefined;
   let link: HTMLAnchorElement | undefined;
@@ -89,7 +91,7 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
     title.textContent = request.title;
     link.href = request.url;
     frame.title = `Feedback on ${request.title}`;
-    frame.src = request.url;
+    if (frame.getAttribute('src') !== request.url) frame.src = request.url;
   }
 
   return {
@@ -97,15 +99,20 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
       return dock !== undefined;
     },
     open(request) {
+      current = request;
       if (dock) {
         hideFilePane(true);
         sync();
-        show(request);
+        if (dock.host.getAttribute('data-identity') === 'yes') show(request);
         return;
       }
       const created = createCardDock({
         role: 'feedback',
-        onIdentityLost: shut,
+        onClose: shut,
+        identityToken: request.identityToken,
+        onIdentityChange(confirmed) {
+          if (confirmed && current) show(current);
+        },
         id: FEEDBACK_HOST_ID,
         label: 'Feedback',
         resizeLabel: 'Resize feedback',
@@ -139,7 +146,6 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
       frame.style.background = '#fff';
       created.section.append(style, bar, frame);
       dock = created;
-      show(request);
       hideFilePane(true);
       created.open();
       fullView.update();

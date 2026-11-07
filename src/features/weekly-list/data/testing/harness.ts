@@ -151,6 +151,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     createApi,
     sessionFingerprint: vi.fn(async () => 'session-a'),
     surfaceUsesRequestStore: vi.fn(async () => true),
+    paneCookieStore: vi.fn(async () => 'request' as const),
     hasAccess,
     store: {
       origin: canvasOriginItem,

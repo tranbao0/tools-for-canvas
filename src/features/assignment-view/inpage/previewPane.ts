@@ -186,7 +186,13 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
   let delay = PREVIEW_POLL_MS;
   // A failed read makes the next poll wait longer, and a good read starts over.
   const read = async (ref: PaneRef): Promise<void> => {
-    delay = nextPollDelay(delay, PREVIEW_POLL_MS, await reader(ref)());
+    delay = nextPollDelay(
+      delay,
+      PREVIEW_POLL_MS,
+      await (dock?.host.getAttribute('data-identity') === 'unknown'
+        ? Promise.resolve(false)
+        : reader(ref)()),
+    );
   };
 
   const shownRef = (): PaneRef | null =>
@@ -450,9 +456,13 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       if (!dock) {
         const created = createCardDock({
           role: 'turn-in',
-          onIdentityLost() {
-            session++;
-            shut();
+          onClose: shut,
+          onIdentityChange(confirmed) {
+            if (!confirmed) return;
+            for (const slot of slots.values()) {
+              if (!slot.frame.isConnected) parts?.wrapper.append(slot.frame);
+            }
+            if (visible) void read(visible);
           },
           id: PREVIEW_HOST_ID,
           label: 'Assignment',
@@ -479,7 +489,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       if (!slot) {
         evict();
         slot = makeSlot(next);
-        parts?.wrapper.append(slot.frame);
+        if (dock?.host.getAttribute('data-identity') === 'yes') parts?.wrapper.append(slot.frame);
       }
       show(slot);
       sync();

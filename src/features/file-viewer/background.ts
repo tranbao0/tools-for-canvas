@@ -19,7 +19,7 @@ import { browser, type Browser } from 'wxt/browser';
 import type { CanvasApi } from '../../shared/canvas/types';
 import { canvasOriginItem } from '../../shared/platform/storage';
 import { browserRouterHost, senderPageOrigin } from '../weekly-list/data/router';
-import type { DataOwner } from '../weekly-list/data/owner';
+import type { DataOwner, PaneOwnerVerdict } from '../weekly-list/data/owner';
 import { injectFrameCatchers, injectViewerIntoOrigin } from '../../shared/platform/inject';
 import { toolsSettingsItem } from '../../shared/settings/toolsItem';
 import { logFailure } from '../../shared/platform/log';
@@ -46,6 +46,7 @@ type ViewerSender = Pick<Browser.runtime.MessageSender, 'url' | 'frameId' | 'doc
 type ViewerApi = Pick<CanvasApi, 'getViewerFile' | 'getViewerModuleItem'>;
 
 export interface ViewerHost {
+  paneCheck(origin: string, tabId: number | undefined): Promise<PaneOwnerVerdict>;
   savedOrigin(): Promise<string | null>;
   isExtensionPage(sender: ViewerSender): boolean;
   /**
@@ -228,6 +229,7 @@ export function routeViewerMessage(
       'viewer:permission',
       'viewer:session',
       'viewer:fetch-allowed',
+      'viewer:pane-check',
       'viewer:confirm-cookie',
       'viewer:inject-frames',
       FRAME_OPEN,
@@ -299,6 +301,23 @@ export function routeViewerMessage(
         );
       case 'viewer:permission':
         return host.permission(origin);
+      case 'viewer:pane-check': {
+        if (tabId === undefined || fromPane || sender.frameId !== 0) return { verdict: 'unknown' };
+        if (request['token'] !== undefined && typeof request['token'] !== 'string')
+          return { verdict: 'unknown' };
+        const epoch = await readEpoch(host);
+        const token = request['token'];
+        if (typeof token === 'string' && token.split(':')[0] !== String(epoch))
+          return { verdict: 'no' };
+        const result = await host.paneCheck(origin, tabId);
+        if (epoch !== (await readEpoch(host))) return { verdict: 'no' };
+        if (result.verdict !== 'yes') return result;
+        const current = `${epoch}:${result.userId === null ? 'store' : studentName(result.userId)}`;
+        // A tab outside the request store uses its own cookies for its Canvas frames.
+        if (result.userId !== null && token !== undefined && token !== current)
+          return { verdict: 'no' };
+        return { verdict: 'yes', token: current };
+      }
       case 'viewer:fetch-allowed': {
         if (!(await host.mayFetch(origin, tabId))) return false;
         // The pane names the student and the clearing round of its tabs. A pane that a lost reset
@@ -559,12 +578,16 @@ function toBase64(part: Uint8Array): string {
 }
 
 export function wireViewerRouter(
-  owner: Pick<DataOwner, 'viewerRead' | 'viewerMayFetch' | 'viewerUserId' | 'viewerConfirm'>,
+  owner: Pick<
+    DataOwner,
+    'viewerRead' | 'viewerMayFetch' | 'viewerUserId' | 'viewerConfirm' | 'viewerPaneCheck'
+  >,
 ): void {
   const host: ViewerHost = {
     savedOrigin: () => canvasOriginItem.getValue(),
     isExtensionPage: browserRouterHost.isExtensionPage,
     read: (origin, tabId, read) => owner.viewerRead(origin, tabId, read),
+    paneCheck: (origin, tabId) => owner.viewerPaneCheck(origin, tabId),
     mayFetch: (origin, tabId) => owner.viewerMayFetch(origin, tabId),
     userId: (origin, tabId) => owner.viewerUserId(origin, tabId),
     confirm: (origin, tabId) => owner.viewerConfirm(origin, tabId),

@@ -203,6 +203,8 @@ export interface DataOwnerDeps {
   sessionFingerprint(origin: string): Promise<string | null>;
   /** Whether the tab of a surface lives in the store that the requests use. */
   surfaceUsesRequestStore(tabId: number): Promise<boolean>;
+  /** A positive store classification for pane checks; absent tabs remain unknown. */
+  paneCookieStore(tabId: number): Promise<'request' | 'other' | 'unknown'>;
   /** Whether the browser lets the extension reach the origin now (decision 5). */
   hasAccess(origin: string): Promise<boolean>;
   store: DataStore;
@@ -230,7 +232,12 @@ interface RefreshResult {
   retryAt: number | null;
 }
 
+export type PaneOwnerVerdict =
+  { verdict: 'yes'; userId: string | null } | { verdict: 'no' | 'unknown' };
+
 export interface DataOwner {
+  /** Reads the cookie proof without an age-based check or a wait for Canvas. */
+  viewerPaneCheck(origin: string | null, tabId: number | undefined): Promise<PaneOwnerVerdict>;
   /** Restores delayed deletes when the worker wakes. */
   resumeDeletes(): Promise<void>;
   /** `tabId` is the tab of the surface, when it has one. */
@@ -3265,6 +3272,44 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return context !== null && identityHolds(context.stamp);
   }
 
+  async function viewerPaneCheck(
+    origin: string | null,
+    tabId: number | undefined,
+  ): Promise<PaneOwnerVerdict> {
+    const unknown: PaneOwnerVerdict = { verdict: 'unknown' };
+    try {
+      await ready();
+      if (origin === null || origin !== knownOrigin || tabId === undefined) return unknown;
+      const stamp = writeStamp();
+      // Only a positive store read grants this exception. An unreadable store stays unknown.
+      const storeKind = await deps.paneCookieStore(tabId);
+      if (!identityHolds(stamp) || storeKind === 'unknown') return unknown;
+      if (storeKind === 'other') return { verdict: 'yes', userId: null };
+      const fingerprint = await readFingerprint(origin);
+      if (!identityHolds(stamp) || fingerprint === undefined) return unknown;
+      if (fingerprint === null) {
+        if (cache?.failure?.kind !== 'signed_out') signOut({ kind: 'signed_out' });
+        return { verdict: 'no' };
+      }
+      const proof = viewerProof;
+      const userId = confirmedFingerprint(fingerprint)
+        ? cache!.session!.profile.id
+        : proof?.origin === origin && proof.gen === generation && proof.fingerprint === fingerprint
+          ? proof.userId
+          : null;
+      if (userId === null) {
+        if (userCheck === null && checkAllowed(false)) void startUserCheck();
+        return unknown;
+      }
+      // A pending or unreadable claim cannot supply a token for content.
+      const held = await store.viewerStudent.getValue();
+      if (!identityHolds(stamp) || held === null || !sameCanvasId(held, userId)) return unknown;
+      return { verdict: 'yes', userId };
+    } catch {
+      return unknown;
+    }
+  }
+
   async function viewerConfirm(origin: string | null, tabId: number | undefined): Promise<boolean> {
     await ready();
     if (origin === null || origin !== knownOrigin) return false;
@@ -4189,6 +4234,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     viewerMayFetch,
     viewerUserId,
     viewerConfirm,
+    viewerPaneCheck,
 
     async originChanged(origin) {
       await ready();

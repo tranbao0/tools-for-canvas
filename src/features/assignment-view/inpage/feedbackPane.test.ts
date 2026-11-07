@@ -9,6 +9,7 @@ window.innerWidth = 1600;
 const URL_ONE = 'https://school.instructure.com/api/v1/canvadoc_session?blob=a&hmac=b';
 const URL_TWO = 'https://school.instructure.com/api/v1/canvadoc_session?blob=c&hmac=d';
 
+const identity = vi.hoisted(() => ({ show: (_yes: boolean) => undefined as void }));
 let pane: FeedbackPane;
 const saveWidth = vi.fn<(width: number) => void>();
 
@@ -35,6 +36,18 @@ describe('the feedback pane', () => {
     // The root is closed, so the page cannot reach the frame or the address.
     expect(host()?.shadowRoot).toBeNull();
     expect(document.documentElement.outerHTML).not.toContain('canvadoc_session');
+  });
+
+  it('keeps a new feedback address pending while identity is unknown', () => {
+    const source = vi.spyOn(HTMLIFrameElement.prototype, 'src', 'set');
+    pane.open({ title: 'one.pdf', url: URL_ONE });
+    source.mockClear();
+    identity.show(false);
+    pane.open({ title: 'two.pdf', url: URL_TWO });
+    expect(source).not.toHaveBeenCalled();
+    identity.show(true);
+    expect(source).toHaveBeenCalledWith(URL_TWO);
+    source.mockRestore();
   });
 
   it('shows another session in the same frame', () => {
@@ -136,4 +149,11 @@ describe('the feedback pane in full view', () => {
   });
 });
 
-vi.mock('../../file-viewer/paneIdentity', () => ({ watchPaneIdentity: () => () => undefined }));
+vi.mock('../../file-viewer/paneIdentity', () => ({
+  watchPaneIdentity: (show: (yes: boolean) => void) => {
+    identity.show = show;
+    show(true);
+    return () => undefined;
+  },
+  checkPaneIdentity: async () => ({ verdict: 'yes', token: '0:42' }),
+}));

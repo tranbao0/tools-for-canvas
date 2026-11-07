@@ -34,6 +34,7 @@ function setup() {
     savedOrigin: async () => 'https://school.edu',
     isExtensionPage: (sender) => sender.url?.startsWith('extension://x/') === true,
     read: read as ViewerHost['read'],
+    paneCheck: vi.fn(async () => ({ verdict: 'yes' as const, userId: '42' })),
     mayFetch: vi.fn(async () => true),
     userId: vi.fn(async () => 'u1'),
     confirm: vi.fn(async () => false),
@@ -1242,5 +1243,53 @@ describe('file bytes port', () => {
       expect(vi.getTimerCount()).toBe(0);
       expect(p.disconnect).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('pane identity verdicts', () => {
+  it('binds the student and clearing round without using the byte gate', async () => {
+    const { host, sender, store } = setup();
+    const ask = (token?: string) =>
+      routeViewerMessage({ type: 'viewer:pane-check', token }, sender, host);
+    await expect(ask()).resolves.toEqual({ verdict: 'yes', token: '0:42' });
+    await expect(ask('0:42')).resolves.toEqual({ verdict: 'yes', token: '0:42' });
+    await expect(ask('0:43')).resolves.toEqual({ verdict: 'no' });
+    store.set('viewer:session:epoch', 1);
+    await expect(ask('0:42')).resolves.toEqual({ verdict: 'no' });
+    expect(host.mayFetch).not.toHaveBeenCalled();
+    expect(host.userId).not.toHaveBeenCalled();
+    expect(host.confirm).not.toHaveBeenCalled();
+  });
+
+  it('bypasses a held tab read and returns unknown without a confirmation retry', async () => {
+    const { host, sender } = setup();
+    let finish!: (student: string) => void;
+    vi.mocked(host.userId).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const held = tabsGet(sender, host);
+    vi.mocked(host.paneCheck).mockResolvedValue({ verdict: 'unknown' });
+    await expect(routeViewerMessage({ type: 'viewer:pane-check' }, sender, host)).resolves.toEqual({
+      verdict: 'unknown',
+    });
+    expect(host.confirm).not.toHaveBeenCalled();
+    finish('42');
+    await held;
+  });
+
+  it('does not give a page token to an extension frame or another origin', async () => {
+    const { host, pane, sender } = setup();
+    await expect(routeViewerMessage({ type: 'viewer:pane-check' }, pane, host)).resolves.toEqual({
+      verdict: 'unknown',
+    });
+    await expect(
+      routeViewerMessage(
+        { type: 'viewer:pane-check' },
+        { ...sender, url: 'https://other.edu/' },
+        host,
+      ),
+    ).rejects.toThrow();
   });
 });
