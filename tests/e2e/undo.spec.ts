@@ -16,6 +16,7 @@ import {
   expect,
   group,
   openExtensionPage,
+  refreshedSince,
   serveScenario,
   settledList,
   test,
@@ -237,6 +238,7 @@ test.describe('an Undo that cannot restore', () => {
     await page.getByRole('button', { name: 'Today', exact: true }).click();
     await expect(doneBox(page, QUIZ_3)).toBeVisible();
     await advanceBackgroundClock(background, 16 * 60_000);
+    const before = served.canvas.requests.length;
     await page.evaluate(async () => {
       const api = (
         globalThis as unknown as {
@@ -245,7 +247,8 @@ test.describe('an Undo that cannot restore', () => {
       ).chrome;
       await api.runtime.sendMessage({ type: 'weekrow:refresh', reason: 'timer' });
     });
-    await settledList(page);
+    await refreshedSince(page, served.canvas, before);
+    await requestsQuiet(page, served.canvas.requests, background);
 
     await toast.getByRole('button', { name: 'Undo' }).click();
     await expect(toast).toHaveText("Couldn't undo that");
