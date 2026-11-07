@@ -138,7 +138,7 @@ export interface CanvasRequest {
    * the shared limit. The transport sends one attempt and ignores this number.
    */
   readonly maxRetries?: number;
-  /** Rechecks a current-user write after the asynchronous CSRF read. */
+  /** Runs after the asynchronous CSRF read, right before the fetch. A refusal sends nothing. */
   readonly beforeFetch?: () => Promise<boolean>;
 }
 

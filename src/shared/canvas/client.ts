@@ -142,7 +142,12 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
       if (guard !== undefined && !(await guard())) {
         throw new CanvasError('refused', 'The request guard refused the request');
       }
-      return transport(request);
+      // The student can change during the CSRF read of a write, so the guard runs again after it.
+      return transport(
+        guard !== undefined && request.method !== 'GET'
+          ? { ...request, beforeFetch: guard }
+          : request,
+      );
     };
     /** Retries a rate limit answer at most `maxRetries` times. The last answer ends the request. */
     const retryAtMost = (request: CanvasRequest, maxRetries: number): Promise<CanvasResponse> => {
@@ -290,7 +295,6 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
                 throw new Error('Invalid widget preferences');
               const wanted = { ...widget, gradeVisibilities: { ...values, [courseId]: visible } };
               const written = await attempt({
-                beforeFetch: guard,
                 method: 'POST',
                 url: GRAPHQL_PATH,
                 body: {

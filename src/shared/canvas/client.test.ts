@@ -870,7 +870,8 @@ describe('request guard', () => {
 
     await testClient().withGuard(guard).deleteNote('5');
 
-    expect(guard).toHaveBeenCalledTimes(1);
+    // Once before the CSRF read and once after it.
+    expect(guard).toHaveBeenCalledTimes(2);
     expect(seen.map((request) => `${request.method} ${request.path}`)).toEqual([
       'DELETE /api/v1/planner_notes/5',
     ]);
@@ -928,14 +929,14 @@ describe('request guard', () => {
     });
     const error = catchError(testClient().withGuard(guard).markRubricCommentsRead('12', '8', '42'));
 
-    await settleUntil(() => events.length === 2);
+    await settleUntil(() => events.length === 3);
     await vi.advanceTimersByTimeAsync(1000);
-    await settleUntil(() => events.length === 4);
+    await settleUntil(() => events.length === 6);
     // A second retry would wait 2 s. The request ends at once instead.
     await vi.advanceTimersByTimeAsync(10_000);
 
     expect(await error).toMatchObject({ kind: 'rate_limited', status: 429 });
-    expect(events).toEqual(['guard', 'put', 'guard', 'put']);
+    expect(events).toEqual(['guard', 'guard', 'put', 'guard', 'guard', 'put']);
   });
 
   it('keeps the 3 retries of every other write', async () => {
@@ -1013,7 +1014,7 @@ describe('request guard', () => {
     await expect(guarded.deleteNote('5')).rejects.toMatchObject({ kind: 'refused' });
     await outer.withPriority(() => 'low').deleteNote('6');
 
-    expect(order).toEqual(['outer', 'inner', 'outer']);
+    expect(order).toEqual(['outer', 'inner', 'outer', 'outer']);
     expect(seen.map((request) => request.path)).toEqual(['/api/v1/planner_notes/6']);
   });
 
@@ -1616,13 +1617,17 @@ describe('grade visibility writes', () => {
       fromAnotherTab: 'fresh',
       gradeVisibilities: { '101': false, '107': false, '108': true },
     });
-    expect(guard).toHaveBeenCalledTimes(8);
+    expect(guard).toHaveBeenCalledTimes(12);
     expect(seen.every((request) => request.csrf === CSRF_TOKEN)).toBe(true);
   });
 
   it('refuses the mutation if the guard fails after the fresh read', async () => {
     const seen = recordAll(() => ({ data: { legacyNode: { widgetDashboardConfig: '{}' } } }));
-    const guard = vi.fn().mockResolvedValueOnce(true).mockResolvedValue(false);
+    const guard = vi
+      .fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValue(false);
     await expect(
       testClient().withGuard(guard).setWidgetGradeVisibility!(
         '5',
@@ -1647,6 +1652,25 @@ describe('grade visibility writes', () => {
       testClient().setWidgetGradeVisibility!('5', '107', true, 'course-grades-widget'),
     ).resolves.toBe(false);
   });
+});
+
+it.each([
+  [
+    'an announcement read mark',
+    (client: CanvasApi) => client.setAnnouncementRead!('12', '8', true),
+  ],
+  ['a task delete', (client: CanvasApi) => client.deleteNote('5')],
+])('refuses %s when the cookie changes during the CSRF read', async (_name, write) => {
+  let sameStudent = true;
+  const seen = recordAll();
+  const client = testClient({
+    getCsrfToken: async () => {
+      sameStudent = false;
+      return CSRF_TOKEN;
+    },
+  }).withGuard(async () => sameStudent);
+  await expect(write(client)).rejects.toMatchObject({ kind: 'refused' });
+  expect(seen).toEqual([]);
 });
 
 it('refuses a grade mutation when the cookie changes during the CSRF read', async () => {
