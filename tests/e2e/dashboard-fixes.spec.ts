@@ -2239,3 +2239,55 @@ for (const work of ['task', 'search', 'message', 'customize'])
       ),
     ).toHaveLength(0);
   });
+
+for (const timing of ['before click', 'during wait'])
+  test(`a copied eye protects a pane opened ${timing}`, async ({ context, page }) => {
+    const served = await serveScenario(
+      context,
+      [
+        ...PAGE,
+        {
+          path: '/courses/101/assignments/1004',
+          contentType: 'text/html',
+          body: '<!doctype html><html><body><input aria-label="Draft"></body></html>',
+        },
+      ],
+      EIGHT_COURSES,
+    );
+    await addCsrfCookie(context, served.canvas.origin);
+    await page.setViewportSize({ width: 1920, height: 1000 });
+    await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+    await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+    const eye = page.locator('[data-wr-card="107"] button');
+    if (timing === 'during wait') {
+      await page
+        .locator(
+          '[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]',
+        )
+        .click();
+      await eye.click();
+      await expect(eye).toBeDisabled();
+    }
+    await page
+      .getByRole('button', { name: 'Preview Lab report 4: Cellular respiration', exact: true })
+      .click();
+    await expect(page.locator('#tools-turn-in')).toBeVisible();
+    await expect
+      .poll(() => page.frames().some((frame) => frame.url().includes('content_only=1')))
+      .toBe(true);
+    const frame = page.frames().find((frame) => frame.url().includes('content_only=1'))!;
+    await frame.getByRole('textbox', { name: 'Draft' }).fill('Keep this text');
+    if (timing === 'before click') await eye.click();
+    await expect(page.locator('[data-wr-card="107"] [role="status"]')).toHaveText(
+      'Close the open pane first.',
+    );
+    await expect(frame.getByRole('textbox', { name: 'Draft' })).toHaveValue('Keep this text');
+    await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(0);
+    await expect(page.locator('[data-wr-card][aria-busy]')).toHaveCount(0);
+    expect(
+      served.canvas.requests.filter((request) =>
+        request.postData?.includes('updateWidgetDashboardConfig'),
+      ),
+    ).toHaveLength(0);
+    await page.screenshot({ path: test.info().outputPath(`pane-${timing}.png`) });
+  });

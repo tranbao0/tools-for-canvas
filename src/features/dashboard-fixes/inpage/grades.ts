@@ -19,6 +19,7 @@ import {
   type GradeCards,
 } from '../../../shared/canvas/widgetDashboard';
 import { t } from '../../../shared/ui/i18n';
+import { paneInView } from '../../file-viewer/dock';
 import type { DashboardCourse } from '../protocol';
 import type { Fix, FixContext } from './context';
 
@@ -70,6 +71,11 @@ function hasOpenWork(root: Document | ShadowRoot): boolean {
   );
 }
 
+function openWorkNote(doc: Document): string | null {
+  if (paneInView()) return 'Close the open pane first.';
+  return hasOpenWork(doc) ? 'Close the open form first.' : null;
+}
+
 function showNote(card: HTMLElement, id: string, text: string): void {
   card.querySelector('[data-wr-grade-note]')?.remove();
   const note = card.ownerDocument.createElement('span');
@@ -89,7 +95,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
   let saving = false;
   let nativeChangedAt = -Infinity;
   let lifetime = 0;
-  const failures = new Set<string>();
+  const notes = new Map<string, string>();
   let focusCourse: string | undefined;
 
   function setSaving(value: boolean): void {
@@ -165,13 +171,15 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         if (!event.isTrusted || saving || !context.data?.userId) return;
         event.preventDefault();
         event.stopPropagation();
-        if (hasOpenWork(context.doc)) {
-          showNote(card, course.id, 'Close the open form first.');
+        const note = openWorkNote(context.doc);
+        if (note) {
+          notes.set(course.id, note);
+          showNote(card, course.id, note);
           return;
         }
         const started = lifetime;
         setSaving(true);
-        failures.delete(course.id);
+        notes.delete(course.id);
         card.querySelector('[data-wr-grade-note]')?.remove();
         // Showing waits for the saved preference; hiding conceals the text immediately.
         fill(card, course.id, 'grade', HIDDEN_GRADE);
@@ -181,9 +189,11 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
               setTimeout(resolve, 3000 - (Date.now() - nativeChangedAt)),
             );
           if (started !== lifetime) return;
-          if (hasOpenWork(context.doc)) {
+          const note = openWorkNote(context.doc);
+          if (note) {
             setSaving(false);
-            showNote(card, course.id, 'Close the open form first.');
+            notes.set(course.id, note);
+            showNote(card, course.id, note);
             return;
           }
           const reply = await context.send({
@@ -203,15 +213,15 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         }
         if (started !== lifetime) return;
         setSaving(false);
-        failures.add(course.id);
+        notes.set(course.id, 'Could not save grade visibility. Try again.');
         focusCourse = course.id;
         context.refreshGrades();
         card.remove();
         context.again();
       });
     }
-    if (failures.has(course.id))
-      showNote(card, course.id, 'Could not save grade visibility. Try again.');
+    const note = notes.get(course.id);
+    if (note) showNote(card, course.id, note);
     card.setAttribute('data-wr-own', 'card');
     card.setAttribute('data-wr-card', course.id);
     card.setAttribute('aria-label', course.name);
