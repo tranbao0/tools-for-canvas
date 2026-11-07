@@ -140,7 +140,9 @@ This also covers work with no due date and work handed in outside Canvas, such a
   The student must know this when they check an item off, not only in the store listing.
   So the first done mark shows a one-time note: "Done marks sync to Canvas and its apps. On a module item, this can count as 'Mark as done'."
   The README and the store listing say the same.
-- When a student submits, Canvas sets `marked_complete` to true on an existing override [10].
+- When a submission's state changes to `submitted`, Canvas sets `marked_complete` to true on an existing override [10].
+  A new attempt on work that is already `submitted` changes no state, so an uncheck from before it stays.
+  The row then stays open until the student checks it, as it does in the Canvas planner.
 
 ### 3. What counts as a task
 
@@ -1101,7 +1103,9 @@ Availability is a separate small marker next to the status chip, because it answ
 **Why:**
 
 - Rules 2 and 3 match the Canvas planner [10].
-  Canvas also sets an existing override to done when the student submits, so the override can safely win [10].
+  Canvas also sets an existing override to done when a submission's state changes to `submitted`, so the override can safely win [10].
+  A new attempt on work that is already `submitted` leaves the override as it is, so an uncheck stays until the student checks the item again.
+  No date compare covers this case: Canvas keeps `updated_at` on a save that changes nothing, so a later uncheck could not win.
 - Rule 1 is stricter than the Canvas planner.
   A redo request means the teacher wants more work.
   Canvas clears the request only when a new submission attempt is saved [10], so a resubmission finishes the item.
