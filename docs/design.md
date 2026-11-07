@@ -3535,6 +3535,8 @@ With the pane read alone, the default run of the test failed before the fix.
     The catcher never runs in a frame of another origin.
   - A trusted click is required, so a script of the Canvas page cannot make the catcher open a file.
   - The background accepts the forward only from a child frame whose URL is on the saved origin and that the page of the top frame serves, in a tab whose top frame is on the saved origin, and it sends to the top frame of that tab only.
+    It reads that URL from the frame itself (`location.href` of the document that sent the message, through `scripting.executeScript`), never from `sender.url`.
+    Chromium keeps `about:blank` in `sender.url` for the pane frame on a real Canvas, so a check on it refused every click and the browser saved the file.
     The page script of the top frame accepts the message only from the background.
   - The file id is the only data that crosses.
     It is a number that the page already shows in the link, and the pane reads the file with the same cookie rules as for any click.
