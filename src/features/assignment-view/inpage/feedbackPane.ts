@@ -103,7 +103,7 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
       if (dock) {
         hideFilePane(true);
         sync();
-        show(request);
+        if (dock.host.getAttribute('data-identity') === 'yes') show(request);
         return;
       }
       const created = createCardDock({
