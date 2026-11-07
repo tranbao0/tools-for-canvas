@@ -1153,6 +1153,57 @@ describe('a task create whose answer is lost', () => {
     expect(h.canvas.callsOf('createNote')).toHaveLength(1);
   });
 
+  it('finds the task when a failed write ends the queue for the same student in the pause', async () => {
+    const h = await loaded();
+    h.canvas.fail('createNote', canvasError('server', 504), { times: 1, saved: true });
+    h.canvas.fail('listPlannerItems', canvasError('server', 504), { times: 1 });
+
+    const pending = h.owner.act({ kind: 'createTask', input });
+    await vi.advanceTimersByTimeAsync(100);
+    h.canvas.fail('createOverride', canvasError('server', 502), { times: 1 });
+    h.canvas.fail('getSelf', canvasError('server', 502), { times: 1 });
+    await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true });
+    await vi.advanceTimersByTimeAsync(3000);
+    const reply = await pending;
+    await h.owner.settled();
+
+    expect(reply.created).toBe(true);
+    expect(h.canvas.callsOf('createNote')).toHaveLength(1);
+  });
+
+  it('counts no task of another account, and no read under another cookie', async () => {
+    const h = await loaded();
+    h.canvas.fail('createNote', canvasError('server', 504), { times: 2 });
+    const realRead = h.canvas.listPlannerItems.bind(h.canvas);
+    const foreign = async (range: Parameters<typeof realRead>[0], user: string) => [
+      ...(await realRead(range)),
+      {
+        plannable_id: '555000',
+        plannable_type: 'planner_note' as const,
+        plannable_date: (h.canvas.callsOf('createNote')[0]?.[0] as { todoDate: string }).todoDate,
+        new_activity: false,
+        submissions: false as const,
+        planner_override: null,
+        plannable: {
+          id: '555000',
+          title: 'Buy lab coat',
+          details: null,
+          course_id: null,
+          user_id: user,
+        },
+      },
+    ];
+    const spy = vi.spyOn(h.canvas, 'listPlannerItems');
+    spy.mockImplementation((range) => foreign(range, '7777') as never);
+    expect((await h.owner.act({ kind: 'createTask', input })).created).toBe(false);
+
+    spy.mockImplementation(async (range) => {
+      vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-b');
+      return foreign(range, '5501') as never;
+    });
+    expect((await h.owner.act({ kind: 'createTask', input })).created).toBe(false);
+  });
+
   it('says the task was not saved when the read back finds nothing', async () => {
     const h = await loaded();
     h.canvas.fail('createNote', canvasError('server', 504), { times: 1 });
