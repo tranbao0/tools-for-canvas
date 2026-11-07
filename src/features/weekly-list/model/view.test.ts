@@ -367,7 +367,7 @@ describe('the Past due group', () => {
 });
 
 describe('Done', () => {
-  it('holds done items of the span and earlier done items with a warning only', () => {
+  it('holds done items of the span, and earlier done items under the older line, a warning in Done', () => {
     const view = buildWeekView(
       input({
         plannerItems: [
@@ -394,9 +394,109 @@ describe('Done', () => {
       'assignment:earlier-redo': 'done.items',
       'assignment:in-span': 'done.items',
       'assignment:later-in-span': 'done.items',
+      'assignment:yesterday': 'done.older',
+      'assignment:earlier-plain': 'done.older',
     });
-    expect(view.groups.find((group) => group.kind === 'done')?.warningCount).toBe(1);
+    const done = view.groups.find((group) => group.kind === 'done');
+    expect(done?.warningCount).toBe(1);
+    // The older line is newest first, and it adds nothing to the rings.
+    expect(done?.older.map((item) => item.key)).toEqual([
+      'assignment:yesterday',
+      'assignment:earlier-plain',
+    ]);
     expect(view.rings[0]).toMatchObject({ done: 2, total: 2, pastDue: 0 });
+  });
+
+  it('puts a done item that is before the span and a warning in another span under the older line', () => {
+    const view = buildWeekView(
+      input({
+        spanOffset: 1,
+        plannerItems: [
+          task('earlier-redo', '2026-10-14T17:00:00Z', {
+            submissions: { redo_request: true },
+            override: override('o1', { markedComplete: true, dismissed: false }),
+          }),
+          task('before-horizon', '2026-08-01T17:00:00Z', {
+            submissions: { submitted: true },
+          }),
+        ],
+        assignmentDetails: detailsById([
+          upload('earlier-redo', { types: ['on_paper'] }),
+          upload('before-horizon', { types: ['on_paper'] }),
+        ]),
+      }),
+    );
+    expect(placesOf(view)).toEqual({ 'assignment:earlier-redo': 'done.older' });
+    expect(view.groups.find((group) => group.kind === 'done')?.warningCount).toBe(0);
+  });
+
+  it('puts done work that is overdue and dated after a past span under the older line, as Past due shows it in every span', () => {
+    const view = buildWeekView(
+      input({
+        spanOffset: -1,
+        plannerItems: [
+          task('after-span', '2026-10-27T13:00:00Z', { submissions: { submitted: true } }),
+          task('open-after-span', '2026-10-27T12:00:00Z', {}),
+          task('future', '2026-11-20T16:00:00Z', { submissions: { submitted: true } }),
+        ],
+      }),
+    );
+    expect(placesOf(view)).toEqual({
+      'assignment:after-span': 'done.older',
+      'assignment:open-after-span': 'past_due.items',
+    });
+  });
+
+  it.each([-2, -1, 0, 1, 2])(
+    'shows every item of Past due in Done or under its older line after it is marked done, in the span at offset %i',
+    (spanOffset) => {
+      const dates = ['2026-10-27T13:00:00Z', '2026-10-24T16:00:00Z', '2026-10-14T16:00:00Z'];
+      const spec = (done: boolean) =>
+        dates.flatMap((due, index) =>
+          [false, true].map((missing) =>
+            task(`w${index}${missing ? 'm' : ''}`, due, {
+              submissions: { missing },
+              ...(done
+                ? {
+                    override: override(`o${index}${missing}`, {
+                      markedComplete: true,
+                      dismissed: false,
+                    }),
+                  }
+                : {}),
+            }),
+          ),
+        );
+      const open = buildWeekView(input({ spanOffset, plannerItems: spec(false) }));
+      const past = open.groups.find((group) => group.kind === 'past_due');
+      const keys = [...(past?.items ?? []), ...(past?.older ?? [])].map((item) => item.key);
+      expect(keys.length).toBeGreaterThan(0);
+      const done = buildWeekView(input({ spanOffset, plannerItems: spec(true) }));
+      for (const key of keys) expect(placesOf(done)[key], key).toMatch(/^done\.(items|older)$/);
+    },
+  );
+
+  it('keeps a done reminder out of the older line', () => {
+    const view = buildWeekView(
+      input({
+        plannerItems: [
+          task('reminder', '2026-10-14T16:00:00Z', { submissions: { submitted: true } }),
+        ],
+        assignmentDetails: detailsById([upload('reminder', { types: ['none'] })]),
+      }),
+    );
+    expect(placesOf(view)).toEqual({});
+  });
+
+  it('holds the older line back while the Past due range loads, as Past due does', () => {
+    const plannerItems = [
+      task('plain', '2026-10-14T16:00:00Z', { submissions: { submitted: true } }),
+    ];
+    const waiting = buildWeekView(input({ plannerItems, loading: { days: [], pastDue: true } }));
+    expect(placesOf(waiting)).toEqual({});
+    expect(placesOf(buildWeekView(input({ plannerItems })))).toEqual({
+      'assignment:plain': 'done.older',
+    });
   });
 
   it('holds a done undated item with a warning, and counts the warning', () => {
@@ -436,22 +536,6 @@ describe('Done', () => {
       isLookAhead: false,
     });
     expect(view.rings[0]).toMatchObject({ done: 1, total: 1 });
-  });
-
-  it('does not hold earlier warnings in other spans', () => {
-    const view = buildWeekView(
-      input({
-        spanOffset: 1,
-        plannerItems: [
-          task('earlier-redo', '2026-10-14T17:00:00Z', {
-            submissions: { redo_request: true },
-            override: override('o1', { markedComplete: true, dismissed: false }),
-          }),
-        ],
-        assignmentDetails: detailsById([upload('earlier-redo', { types: ['on_paper'] })]),
-      }),
-    );
-    expect(view.groups).toEqual([]);
   });
 });
 
@@ -517,7 +601,10 @@ describe('checked but missing', () => {
         ],
       }),
     );
-    expect(placesOf(view)).toEqual({ 'assignment:open': 'past_due.items' });
+    expect(placesOf(view)).toEqual({
+      'assignment:open': 'past_due.items',
+      'assignment:yesterday': 'done.older',
+    });
     expect(view.rings[0]).toMatchObject({ pastDue: 1 });
   });
 

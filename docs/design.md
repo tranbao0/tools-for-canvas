@@ -588,6 +588,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   On 2026-10-30 the owner replaced it: the card has a fixed height, so a long list no longer pushes the page.
   - Every group and every item shows: Past due in full, Today, Tomorrow, the later days, No due date and Done.
     "N older" and "Mark all older done" work as in the side panel.
+    Done has its own "N older" line, with no action (decision 6).
   - The glance had a "N past due" summary line, "Show N more" links and a link for the rest of the span.
     These are gone.
   - The card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
@@ -608,6 +609,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The focus ring is drawn inside the part, 4 px from its edge, in the text color of the part, so the fill does not hide it.
   - Each part shows its count, in a lighter weight than the name.
     To do counts the rows that its view shows: the Past due rows (with "N older") and the day rows.
+    Done counts the done work of the shown span, and not the work under its own "N older" line.
     Done keeps a red warning mark with its number, such as "1" after a triangle, with the accessible name "1 warning" (the mark is white on the fill when Done is on).
     A part with no rows shows the count 0, so a click never adds or removes a part.
   - In a card narrower than 320 px (the inside of the card, as the container query measures it) the counts and the number of the warning mark are hidden, and a name that does not fit takes two lines.
@@ -626,6 +628,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     A group stays open when the card is minimized and expanded, when the settings open and close, and after a reload.
   - A group with no rows in the shown span stays open, with its heading and one line in place of the rows: "Nothing done in this span." for Done, and "Nothing without a due date in this span." for No due date.
     The heading and the part keep the count 0.
+    A Done group that holds only older done work shows its heading with the count 0 and its "N older" line, and not this line.
     The loading line shows only while a load is on its way.
     While the days of the span still load, the open group shows the loading line in place of the empty line, so it never says that nothing is done before the answer is in.
     After a failed load, nothing is on its way, and some days of the span may never have arrived.
@@ -854,7 +857,8 @@ Each item is in one of two states:
      An item whose checkbox is off because of a redo request stays in the list, and the action shows only while an older item has a checkbox to use.
 2. **Today**, **Tomorrow**, then each later day of the span that has items.
 3. **No due date:** collapsed, with a count.
-4. **Done:** collapsed, with a count.
+4. **Done:** collapsed, with a count of the done work of the shown span.
+   At its end it has a folded "N older" line for older done work (see "Placement rules").
 
 When the span has no items, "Nothing due in these 7 days" replaces the day groups only.
 Past due, No due date and Done still show.
@@ -876,6 +880,19 @@ A span that ended before today has one exception: open work dated inside it stay
   - open with no due date: No due date.
 - In the span that starts today, Done also holds done items from before today that still have a warning chip (decision 7).
   So the warning count on the Done header covers them.
+- Other done work is under a folded "N older" line at the end of the Done group, so work that a student marks done never looks lost.
+  It is a done item with a date before the shown span, inside the Past due horizon of its course (the later of the course start and 16 weeks ago, as for Past due), and it is not a reminder.
+  In a span that ended before today, it is also a done item that is overdue and dated after the span, because Past due shows that work in every span.
+  A done item with a warning chip in a span other than the one that starts today goes here too: the Done header counts a warning only in the span that starts today.
+  So after "Mark all older done", every marked item is in Done or under this line, in the span that shows.
+  - The line looks like the "N older" line of Past due: it is closed at the start, its open state is kept by the same memory (by its place in the list), and the open state stays across the views that replace the list.
+  - Its rows are the rows of Done, newest first, each with a check that can be unchecked.
+    An item that is unchecked is open again and goes back to Past due.
+  - The line has its own count.
+    The Done count in the heading and on the view switch counts the done work of the shown span only, so it stays small, and a Done group with only older work shows the count 0 and the line.
+  - It has no "Mark all older done" action, because its items are done.
+  - It waits for the Past due range to load, as Past due does, so its count never grows while the range loads.
+  - It adds nothing to the rings, because its items are not dated in the span.
 - Reminders (decision 7) follow their own rule: until they are checked, they show only on their day.
 - A status never moves an item.
   So the list renders as soon as the planner items arrive, and the chips fill in later without any item moving.
@@ -918,7 +935,7 @@ A student now has one way to clear work: Done.
 
 - An item whose override has `dismissed` set to true and `marked_complete` set to false is done.
   A dismiss that an earlier version of the extension wrote and a dismiss made in Canvas both show the item as done, with a check, and the rings count it as done.
-  Like any done item, it shows in the Done view of the span that holds its date, so old work leaves the current view and its own past span shows it.
+  Like any done item, it shows in the Done view of the span that holds its date, and in the other spans under the "N older" line of Done.
   Canvas also sets `dismissed` to true when a student uses a module's "Mark as done" [10].
 - Work handed in on Canvas with a redo request stays open, with a dismiss on it or not (decision 8, rule 1).
   Its checkbox is off and "Mark all older done" leaves it out, so it stays in Past due until Canvas clears the request.

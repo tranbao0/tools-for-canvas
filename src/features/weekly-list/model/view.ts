@@ -220,7 +220,8 @@ function buildGroups(
         noDueDate[slot.list].push(view);
         break;
       case 'done':
-        done.items.push(view);
+        // Older done work waits for the Past due range, as Past due does, so its count never grows while it loads.
+        if (slot.list === 'items' || !loading.pastDue) done[slot.list].push(view);
         break;
       case 'day': {
         const group =
@@ -240,6 +241,7 @@ function buildGroups(
   noDueDate.items.sort(byCourseThenTitle);
   noDueDate.doneUndated.sort(byCourseThenTitle);
   done.items.sort(chronological);
+  done.older.sort(newestFirst);
   done.warningCount = done.items.filter((view) => view.hasWarning).length;
   const dayGroups = [...days.values()].sort((a, b) => ((a.date ?? '') < (b.date ?? '') ? -1 : 1));
   for (const group of dayGroups) group.items.sort(chronological);

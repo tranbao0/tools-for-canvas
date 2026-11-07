@@ -121,6 +121,21 @@ describe('the fixture scenario: the span that starts today', () => {
       [assignment(A.orientationIntegrityPledge)]: 'no_due_date.doneUndated',
       [assignment(A.mathHomework4)]: 'done.items',
       [assignment(A.historyEquianoDiscussion)]: 'done.items',
+      // Done work from before the span, inside the horizon, is under the folded older line of Done.
+      [assignment(A.bioLabReport1)]: 'done.older',
+      [assignment(A.bioLabReport3)]: 'done.older',
+      [assignment(A.bioLabPracticalExcused)]: 'done.older',
+      [assignment(A.bioQuiz2)]: 'done.older',
+      [assignment(A.mathHomework6)]: 'done.older',
+      [assignment(A.mathExam1)]: 'done.older',
+      [assignment(A.chemLab5Graded)]: 'done.older',
+      [assignment(A.chemLabReportDraft)]: 'done.older',
+      [`assessment_request:${IDS.assessmentRequests.bioLabReport2ReviewCompleted}`]: 'done.older',
+      [`discussion_topic:${IDS.topics.historyIntroduceYourself}`]: 'done.older',
+      [`planner_note:${IDS.notes.labGogglesDone}`]: 'done.older',
+      [`sub_assignment:${IDS.subAssignments.historyDebate1ReplyToTopic}`]: 'done.older',
+      [`sub_assignment:${IDS.subAssignments.historyDebate1ReplyToEntry}`]: 'done.older',
+      [`wiki_page:${IDS.pages.bioSafetyVideo}`]: 'done.older',
     });
   });
 
@@ -278,8 +293,14 @@ describe('the fixture scenario: other spans and scopes', () => {
       place.startsWith('past_due.'),
     );
     expect(pastDue.length).toBeGreaterThan(5);
+    // Everything that is done in the span that starts today is before the next span.
+    const done = Object.entries(placesOf(buildWeekView(scenarioInput()))).filter(([, place]) =>
+      place.startsWith('done.'),
+    );
+    expect(done.length).toBeGreaterThan(5);
     expect(placesOf(view)).toEqual({
       ...Object.fromEntries(pastDue),
+      ...Object.fromEntries(done.map(([key]) => [key, 'done.older'])),
       [assignment(A.historyParticipationWeek10)]: 'day@2026-11-03.items',
       [`planner_note:${IDS.notes.springRegistration}`]: 'day@2026-11-03.items',
       [`assessment_request:${IDS.assessmentRequests.bioLabReport3Review}`]: 'day@2026-11-04.items',

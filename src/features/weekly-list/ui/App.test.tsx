@@ -995,6 +995,71 @@ describe('the open bottom group', () => {
     },
   );
 
+  describe('with older done work', () => {
+    const olderDone = () =>
+      readyState({
+        view: mkView({
+          groups: [
+            todayGroup,
+            mkGroup({
+              kind: 'done',
+              items: dueItems(['Finished one'], { state: 'done' }),
+              older: dueItems(['Old done one', 'Old done two'], { state: 'done' }),
+            }),
+          ],
+        }),
+      });
+    const line = () => screen.getByRole('button', { name: '2 older' });
+
+    it('counts only the work of the span in Done, and shows the older line closed with its own count', () => {
+      setupSaved(olderDone(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
+      expect(header(/^Done/).parentElement?.querySelector('.wr-count')?.textContent).toBe('1');
+      expect(within(area() as HTMLElement).getByRole('heading').textContent).toMatch(/^Done1/);
+      expect(line().getAttribute('aria-expanded')).toBe('false');
+      expect(area()?.textContent).not.toContain('Old done one');
+      // Done has no Mark all older done: only Past due has it.
+      expect(screen.queryByRole('button', { name: 'Mark all older done' })).toBeNull();
+    });
+
+    it('opens to rows with a check that can be unchecked, and keeps the line open across the views', () => {
+      const { actions } = setupSaved(olderDone(), 'inpage', {
+        ...DEFAULT_SETTINGS,
+        openGroup: 'done',
+      });
+      fireEvent.click(line());
+      const box = within(area() as HTMLElement).getByRole<HTMLInputElement>('checkbox', {
+        name: 'Done: Old done one',
+      });
+      expect(box.checked).toBe(true);
+      fireEvent.click(box);
+      expect(actions.setDone).toHaveBeenCalledWith(expect.any(String), false);
+      fireEvent.click(header(/^To do/));
+      fireEvent.click(header(/^Done/));
+      expect(line().getAttribute('aria-expanded')).toBe('true');
+      expect(area()?.textContent).toContain('Old done two');
+    });
+
+    it('shows the line under a count of 0 when only older work is done', () => {
+      setupSaved(
+        readyState({
+          view: mkView({
+            groups: [
+              todayGroup,
+              mkGroup({
+                kind: 'done',
+                older: dueItems(['Old done one', 'Old done two'], { state: 'done' }),
+              }),
+            ],
+          }),
+        }),
+        'inpage',
+        { ...DEFAULT_SETTINGS, openGroup: 'done' },
+      );
+      expect(header(/^Done/).parentElement?.querySelector('.wr-count')?.textContent).toBe('0');
+      expect(line()).toBeTruthy();
+    });
+  });
+
   it('keeps the headers in their order when the open group is empty', () => {
     setupSaved(readyState({ view: mkView({ groups: [todayGroup, doneGroup] }) }), 'inpage', {
       ...DEFAULT_SETTINGS,
