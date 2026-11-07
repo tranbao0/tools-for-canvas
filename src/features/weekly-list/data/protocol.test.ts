@@ -170,6 +170,10 @@ describe('actions', () => {
       keys: ['assignment:1', ''],
       done: true,
     },
+    { kind: 'setDone', keys: ['assignment:1'], done: true },
+    { kind: 'deleteTask', noteId: '8' },
+    { userId: '5501', kind: 'deleteTask', noteId: '8' },
+    { origin: 'https://school.instructure.com', kind: 'deleteTask', noteId: '8' },
     // Actions of the removed Skip, as an older script of a tab still sends them.
     { kind: 'skip', keys: ['assignment:1'] },
     { kind: 'unskip', key: 'assignment:1' },

@@ -586,7 +586,11 @@ it('serves again once the cookie stops changing and a check confirms it', async 
 it('does not read the cookie of a tab in another store, and does not sign out', async () => {
   const h = await loaded();
   vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
-  expect(await h.owner.getState(PANEL, 9)).toMatchObject({ kind: 'cant_load', offline: false });
+  expect(await h.owner.getState(PANEL, 9)).toMatchObject({
+    kind: 'cant_load',
+    userId: IDS.user,
+    offline: false,
+  });
   expect(await h.owner.dashboardData(ORIGIN, 9)).toMatchObject({ courses: [] });
   expect(h.canvas.callsOf('getSelf')).toHaveLength(0);
   expect(h.deps.surfaceUsesRequestStore).toHaveBeenCalledWith(9);
@@ -598,7 +602,7 @@ it('does not read the cookie of a tab in another store, and does not sign out', 
 it('refuses cached data, without signing out, when the store of the requests is unknown', async () => {
   const h = await loaded();
   vi.mocked(h.deps.sessionFingerprint).mockRejectedValue(new Error('no store'));
-  expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'cant_load' });
+  expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'cant_load', userId: IDS.user });
   vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('session-a');
   expect((await h.owner.getState(PANEL)).kind).toBe('ready');
 });
@@ -649,7 +653,11 @@ it('never serves a mismatched fingerprint after a failed check or a restart', as
   const h = await loaded();
   vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('student-b');
   h.canvas.fail('getSelf', canvasError('network'));
-  expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'cant_load', offline: true });
+  expect(await h.owner.getState(PANEL)).toMatchObject({
+    kind: 'cant_load',
+    userId: IDS.user,
+    offline: true,
+  });
   expect(await h.owner.dashboardData()).toMatchObject({ courses: [] });
   await h.owner.settled();
   expect(await h.restart().getState(PANEL)).toMatchObject({ kind: 'cant_load', offline: true });
