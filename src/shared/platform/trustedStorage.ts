@@ -6,13 +6,13 @@
  * content scripts could write `storage.local`.
  * - Chrome and Edge lock `storage.local` to trusted contexts, so content scripts can neither read
  *   nor write it. The items stay in `storage.local`.
- * - Firefox cannot lock it. Each trusted item lives in the IndexedDB of the extension, which
- *   content scripts cannot open, and `storage.local` holds a mirror for the extension pages to
- *   watch. Nothing trusts the mirror: a mirror that differs from the vault is repaired, and every
- *   read comes from the vault.
+ * - Firefox cannot lock it. Only the background opens the IndexedDB vault. Verified extension
+ *   pages use a runtime message; embedded pane frames have no access to this API.
+ *   `storage.local` holds a mirror for extension pages to watch. Nothing trusts that mirror:
+ *   a mirror that differs from the vault is repaired, and every read comes from the vault.
  * Every read also normalizes the value, so a bad value in either place never breaks the extension.
  */
-import { browser } from 'wxt/browser';
+import { browser, type Browser } from 'wxt/browser';
 import { BROWSER_KIND } from './browserKind';
 import { defineItem, sameValue, type StorageItem } from './storageItem';
 
@@ -156,8 +156,113 @@ export function indexedDbVault(): Vault {
   };
 }
 
-/** The vault of this browser: the IndexedDB on Firefox, none where `storage.local` can be locked. */
-const defaultVault: Vault | null = BROWSER_KIND === 'firefox' ? indexedDbVault() : null;
+/** Direct calls and runtime requests share one queue, including after a failed operation. */
+export function orderedVault(vault: Vault): Vault {
+  let tail: Promise<unknown> = Promise.resolve();
+  const enqueue = <T>(work: () => Promise<T>): Promise<T> => {
+    const result = tail.then(work);
+    tail = result.catch(() => undefined);
+    return result;
+  };
+  return {
+    get: (key) => enqueue(() => vault.get(key)),
+    set: (key, value) => enqueue(() => vault.set(key, value)),
+    keys: () => enqueue(() => vault.keys()),
+  };
+}
+
+type VaultSender = Pick<Browser.runtime.MessageSender, 'id' | 'url'> & {
+  origin?: string;
+  envType?: string;
+};
+
+/** Firefox verifies addon_child against the extension principal and process in ConduitsParent. */
+export function vaultMessageHandler(vault: Vault, extensionId: string, extensionOrigin: string) {
+  return (message: unknown, sender: VaultSender): Promise<{ value: unknown }> | undefined => {
+    if (typeof message !== 'object' || message === null) return undefined;
+    const request = message as Record<string, unknown>;
+    if (request['type'] !== 'trusted-vault') return undefined;
+    return (async () => {
+      if (
+        sender.id !== extensionId ||
+        sender.envType !== 'addon_child' ||
+        sender.origin !== extensionOrigin
+      )
+        throw new Error('Only a verified extension page may use the vault');
+      const operation = request['operation'];
+      const fields =
+        operation === 'keys'
+          ? ['type', 'operation']
+          : operation === 'get'
+            ? ['type', 'operation', 'key']
+            : operation === 'set'
+              ? ['type', 'operation', 'key', 'value']
+              : [];
+      if (
+        Object.keys(request).some((key) => !fields.includes(key)) ||
+        (operation !== 'keys' && typeof request['key'] !== 'string')
+      )
+        throw new Error('Invalid vault request');
+      const key = request['key'] as string;
+      switch (operation) {
+        case 'keys':
+          return { value: await vault.keys() };
+        case 'get':
+          return { value: await vault.get(key) };
+        case 'set':
+          await vault.set(key, request['value']);
+          return { value: null };
+        default:
+          throw new Error('Invalid vault operation');
+      }
+    })();
+  };
+}
+
+let backgroundVault: Vault | undefined;
+
+/** Installs the owner before any background reads. No other context opens IndexedDB. */
+export function wireTrustedVault(): void {
+  if (import.meta.env.BROWSER !== 'firefox') return;
+  backgroundVault = orderedVault(indexedDbVault());
+  browser.runtime.onMessage.addListener(
+    vaultMessageHandler(
+      backgroundVault,
+      browser.runtime.id,
+      browser.runtime.getURL('/').replace(/\/$/, ''),
+    ),
+  );
+}
+
+function remoteVault(): Vault {
+  const request = async (operation: string, fields: Record<string, unknown> = {}) => {
+    const reply: unknown = await browser.runtime.sendMessage({
+      type: 'trusted-vault',
+      operation,
+      ...fields,
+    });
+    if (typeof reply !== 'object' || reply === null || !('value' in reply))
+      throw new Error('The vault did not answer');
+    return reply.value;
+  };
+  return {
+    get: (key) => (backgroundVault ? backgroundVault.get(key) : request('get', { key })),
+    async set(key, value) {
+      if (backgroundVault) await backgroundVault.set(key, value);
+      else await request('set', { key, value });
+    },
+    async keys() {
+      if (backgroundVault) return backgroundVault.keys();
+      const keys = await request('keys');
+      if (!Array.isArray(keys) || !keys.every((key): key is string => typeof key === 'string'))
+        throw new Error('Invalid vault keys');
+      return keys;
+    },
+  };
+}
+
+/** Firefox uses its background owner; Chrome and Edge keep their locked storage.local. */
+const defaultVault: Vault | null = import.meta.env.BROWSER === 'firefox' ? remoteVault() : null;
 
 /**
  * Locks `storage.local` to trusted contexts on Chrome and Edge, so no content script can read or

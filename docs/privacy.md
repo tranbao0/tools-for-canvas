@@ -61,7 +61,8 @@ When both cookies exist, the fingerprint includes both salted hashes.
 It stores up to three confirmed fingerprints with their cookie names, the user id and the check time in session storage.
 It stores a random per-install salt in a trusted storage item.
 On Chrome and Edge, the item lives in `storage.local`, which the browser locks to trusted extension contexts, so web pages and content scripts cannot read it.
-On Firefox, the item lives in the IndexedDB of the extension, which content scripts cannot open, and it has no copy in `storage.local`, which content scripts can read.
+On Firefox, only the background reads and writes the salt in its IndexedDB vault.
+The salt has no copy in `storage.local`, and neither Canvas content scripts nor the embedded file pane can read it.
 It never stores or sends the session cookie value.
 It reads the fingerprint before and after each request that fills its cache.
 It keeps the answer only when both fingerprints match and the check confirmed that fingerprint for the same student.
@@ -186,7 +187,11 @@ The extension also drops the Canvas data, the announcements, the read marks, the
 
 The settings, the address, the notes, the switches of the fixes and the salt are in storage that web pages cannot reach.
 In Chrome and Edge, the extension locks its `storage.local` against page scripts.
-In Firefox, they live in the extension's own IndexedDB, with a copy in `storage.local` that the extension checks and repairs.
+In Firefox, only the background opens the extension's IndexedDB vault.
+Other extension pages use a runtime message that Firefox verifies as coming from the extension process.
+The file pane inside Canvas has no full vault access; its separate read-only message returns only the saved Canvas address.
+These replies never pass through a message that a page script can read.
+The normal copy in `storage.local` and its check and repair logic remain, but the extension never uses that copy to restore trusted data.
 The salt has no such copy.
 
 ## What the extension sends elsewhere
@@ -312,7 +317,8 @@ SVG files appear only in image elements, and text files appear as plain text.
 The extension stores the page number, zoom mode or scale, and save time for each PDF.
 Each entry uses the Canvas address, student ID and file ID as its key.
 On Chrome and Edge, the entries live in local browser storage (`storage.local`), which the browser locks to the extension.
-On Firefox, they live in an IndexedDB store of the extension, with no copy in `storage.local`.
+On Firefox, only the background reads and writes them in its IndexedDB vault, with no copy in `storage.local`.
+The pane requests one position through the existing background check for the current student; it cannot read the whole vault or another student's positions.
 The store keeps at most 200 entries and removes the oldest entries first.
 The extension clears these entries on sign-out and when it finds that another student is signed in.
 It also removes the entries of other students and of other Canvas addresses each time a student opens or saves a PDF position.

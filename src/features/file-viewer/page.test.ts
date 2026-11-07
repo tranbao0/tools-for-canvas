@@ -685,13 +685,22 @@ describe('the page script', () => {
     const open = { type: 'viewer:open-from-frame', fileId: '5' };
     const fromBackground = { id: 'my-extension' };
 
-    it('opens the file for a message of the background and answers after it', async () => {
+    it('keeps a frame open request pending and refuses it when no hello arrives', async () => {
       prepare();
-      await startViewer();
-      const { respond, kept } = ask(open, fromBackground);
-      expect(kept).toBe(true);
-      await vi.waitFor(() => expect(respond).toHaveBeenCalledWith({ opened: true }));
-      expect(document.getElementById('tools-file-viewer')).not.toBeNull();
+      vi.useFakeTimers();
+      try {
+        await startViewer();
+        const { respond, kept } = ask(open, fromBackground);
+        expect(kept).toBe(true);
+        await vi.advanceTimersByTimeAsync(100);
+        expect(document.getElementById('tools-file-viewer')).not.toBeNull();
+        expect(respond).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(15_000);
+        expect(respond).toHaveBeenCalledWith({ opened: false });
+        expect(document.getElementById('tools-file-viewer')).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it.each([

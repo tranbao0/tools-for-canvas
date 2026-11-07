@@ -33,7 +33,15 @@ function accessOrigins(origin: string): string[] {
 }
 
 export default defineUnlistedScript(() => {
-  const origin = canvasOriginItem.getValue();
+  // Firefox embeds this frame in the page process. It has no access to the full vault.
+  const origin =
+    import.meta.env.BROWSER === 'firefox'
+      ? browser.runtime.sendMessage({ type: 'viewer:origin' }).then((reply: unknown) => {
+          if (typeof reply !== 'object' || reply === null || !('canvasOrigin' in reply))
+            return null;
+          return typeof reply.canvasOrigin === 'string' ? reply.canvasOrigin : null;
+        })
+      : canvasOriginItem.getValue();
   const style = document.createElement('style');
   style.textContent = `${APP_CSS}\n${viewerCss}\n${pdfCss}`;
   document.head.append(style);

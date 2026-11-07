@@ -737,3 +737,25 @@ for (const width of [1280, 1366, 1440, 1600, 1200])
     await expect(menu).toBeVisible();
     await expect(toggle).toBeVisible();
   });
+
+test('a file link follows its destination when the pane hello never arrives', async ({
+  context,
+  page,
+  background,
+}, testInfo) => {
+  const canvas = await openCoursePage(context, page, background);
+  await page.evaluate(() => {
+    window.addEventListener(
+      'message',
+      (event) => {
+        if (event.data?.type === 'viewer-hello') event.stopImmediatePropagation();
+      },
+      true,
+    );
+  });
+  await page.getByText('Read notes').first().click();
+  await expect(page.locator('#tools-file-viewer')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('waiting-for-hello.png') });
+  await expect(page).toHaveURL(`${canvas.origin}/courses/101/files/42`, { timeout: 20_000 });
+  await page.screenshot({ path: testInfo.outputPath('followed-link.png') });
+});
