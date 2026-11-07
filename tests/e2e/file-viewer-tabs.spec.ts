@@ -174,6 +174,9 @@ test('the card shows the name, the type and the size, and links to Canvas', asyn
 
   await tabs.nth(2).click();
   await expect(card.locator(FILE_META)).toHaveText('Word document · 20 KB');
+  await expect(card.locator('[data-part="card-note"]')).toHaveText(
+    "This file can't be shown here. Use Download or Open in Canvas.",
+  );
   expect((await links()).canvas.href.pathname).toBe('/courses/101/files/44');
   await expect(card.locator('[data-part="viewer-body"]')).toBeAttached();
   await expect(card.getByRole('button', { name: 'Allow access' })).toHaveCount(0);

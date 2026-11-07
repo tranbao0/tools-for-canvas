@@ -1,5 +1,7 @@
+import { MAX_FILE_BYTES } from '../../../shared/canvas/fileBytes';
 import { t } from '../../../shared/ui/i18n';
 import type { FileIconKind } from '../../../shared/ui/icons';
+import { playerType } from './player';
 
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
 
@@ -20,6 +22,18 @@ export function formatSize(bytes: number): string {
 /** Whether the viewer shows the file as a PDF. The content type decides, not the name. */
 export function isPdf(contentType: string): boolean {
   return contentType.toLowerCase().split(';')[0]?.trim() === 'application/pdf';
+}
+
+/**
+ * Whether the pane has a viewer that draws the file: a PDF or a passive format with a player, and
+ * a file that the pane reads in full (`MAX_FILE_BYTES`). Any other file gets the card with a note,
+ * Download and Open in Canvas.
+ */
+export function canShow(contentType: string, name: string, size: number): boolean {
+  return (
+    (isPdf(contentType) || playerType(contentType, name) !== null) &&
+    !(Number.isFinite(size) && size > MAX_FILE_BYTES)
+  );
 }
 
 function extensionOf(name: string): string {

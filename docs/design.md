@@ -3139,7 +3139,9 @@ With the pane read alone, the default run of the test failed before the fix.
    - Image: a raster image shows in an image element, and an SVG is drawn on a canvas (item 10).
    - Audio and video: the browser's own elements, from a blob URL of the fetched bytes.
    - Plain text and code: shown as text, never rendered as HTML.
-   - Any other type, such as Word or PowerPoint: a short card with "Open in Canvas" and "Download", because Canvas converts those files on its own servers.
+   - Any other type, such as Word, PowerPoint or a ZIP: a short card with "Open in Canvas" and "Download", because Canvas converts those files on its own servers.
+     The card says why the body is empty: "This file can't be shown here. Use Download or Open in Canvas." (`canShow` in `fileInfo.ts`).
+     The same card and sentence show for a PDF or a passive format that is larger than the limit of the pane (item 5), which also has no viewer.
    - Every tab has "Download" and "Open in Canvas".
 5. **Fetching.**
    - The pane's extension page reads the file record from the background, then fetches the bytes with the student's session through the redirect, as decision 23 proved.
