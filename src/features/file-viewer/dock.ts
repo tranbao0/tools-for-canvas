@@ -34,7 +34,7 @@ const WIDE_MENU_ROOM_PX = 1140;
 /** The attribute of the `html` element, and the style that it turns on, for the one column layout. */
 const STACK_ATTRIBUTE = 'data-weekrow-stack';
 const STACK_STYLE_ID = 'weekrow-stack-style';
-const STACK_CSS = `html[${STACK_ATTRIBUTE}] .ic-app-main-content{display:block!important}html[${STACK_ATTRIBUTE}] .ic-app-main-content__secondary{width:auto!important}`;
+const STACK_CSS = `html[${STACK_ATTRIBUTE}] .ic-app-main-content{display:block!important}html[${STACK_ATTRIBUTE}] .ic-app-main-content__secondary{width:auto!important}html[${STACK_ATTRIBUTE}] .ic-app-course-menu{display:none!important}html[${STACK_ATTRIBUTE}] .ic-Layout-columns{margin-left:0!important}`;
 
 /** Whether a dock that would take `px` of room leaves the page alone: the window is narrow, or the room of the weekly dock would be. */
 function covers(win: Window, px: number, role: DockRole): boolean {

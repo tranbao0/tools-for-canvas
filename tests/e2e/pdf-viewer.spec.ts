@@ -14,7 +14,7 @@ import {
   FILE_META,
   clickInFrame,
   NOTES,
-  courseHomeHtml,
+  courseHomeWithFileLinks,
   openCoursePage,
   openFirstFile,
   pane,
@@ -94,9 +94,8 @@ const SECOND = {
 };
 
 /** The course page with a link to a second PDF. */
-const html = courseHomeHtml.replace(
-  '<a class="instructure_file_link" href="/files/43">Lecture photo</a>',
-  '<a class="instructure_file_link" href="/files/43">Lecture photo</a> <a class="instructure_file_link" href="/courses/101/files/45">Second notes</a>',
+const html = courseHomeWithFileLinks(
+  '<a class="instructure_file_link" href="/courses/101/files/45">Second notes</a>',
 );
 
 /** A course page whose link to the notes carries a verifier and a location. */

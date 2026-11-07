@@ -5,7 +5,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './support/weekrow';
 import {
-  courseHomeHtml,
+  courseHomeWithFileLinks,
   SYLLABUS,
   FILE_META,
   clickInFrame,
@@ -223,11 +223,10 @@ test('an evicted file loads fresh after its failed read succeeds', async ({
   background,
 }) => {
   const ids = Array.from({ length: 8 }, (_, index) => String(50 + index));
-  const html = courseHomeHtml.replace(
-    '</p>',
+  const html = courseHomeWithFileLinks(
     ids
       .map((id) => `<a class="instructure_file_link" href="/files/${id}">File ${id}</a>`)
-      .join(' ') + '</p>',
+      .join(' '),
   );
   const canvas = await openCoursePage(
     context,

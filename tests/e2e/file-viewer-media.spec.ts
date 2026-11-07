@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { Frame } from '@playwright/test';
 import { test, expect } from './support/weekrow';
 import {
-  courseHomeHtml,
+  courseHomeWithFileLinks,
   openCoursePage,
   openFirstFile,
   pane,
@@ -12,9 +12,8 @@ import { startFileHost, TRUST_TEST_CERTIFICATE } from './support/file-host';
 
 test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
 
-const html = courseHomeHtml.replace(
-  'Syllabus</a>',
-  'Syllabus</a> <a class="instructure_file_link" href="/files/45">Lecture audio</a> <a class="instructure_file_link" href="/files/46">Lecture video</a>',
+const html = courseHomeWithFileLinks(
+  '<a class="instructure_file_link" href="/files/45">Lecture audio</a> <a class="instructure_file_link" href="/files/46">Lecture video</a>',
 );
 
 const FILES = {

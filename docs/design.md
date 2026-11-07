@@ -341,7 +341,9 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     While the window minus the room that the lease holds is below that width, the `html` element carries the attribute `data-weekrow-stack`, and a style turns on the rules that Canvas drops below that width.
     The main content (`.ic-app-main-content`) is a block and not a flex row, and the right column (`.ic-app-main-content__secondary`) has an automatic width.
     These are the three rules of `shared-main-content`, `shared-primary` and `shared-secondary` in `app/stylesheets/base/_ic_app_layout.scss` (canvas-lms `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`).
-    The global navigation, the margin of the wrapper and the other rules of Canvas stay as they are, because they belong to the window.
+    While `data-weekrow-stack` is present, the course menu column is hidden and the content takes its room.
+    The class on `body` stays as Canvas sets it, so the menu returns with the student's choice when the pane closes.
+    The global navigation and its wrapper margin stay as they are.
     The attribute and the style go with the last holder of room.
   - The code does not read the style sheets of Canvas to move their breakpoints, because a hosted Canvas serves them from another origin (`stylesheet_link_tag` has no `crossorigin`), and the browser then hides their rules.
   - Accepted result on the local Canvas, student dana, Card View, dock of 360 px, expanded navigation: at 1000 px and 1100 px the dock lies over the page and the right column of Canvas is under it, as the plain page at that width has it, and no part of the header overlaps another; at 1200 px and 1280 px the room is below 992 px and the right column stands under the cards; at 1366 px and 1440 px the two columns stay.
