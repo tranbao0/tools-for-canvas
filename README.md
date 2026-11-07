@@ -156,7 +156,7 @@ On another Canvas, the side panel offers "Switch to this Canvas?".
 ## Privacy
 
 Tools for Canvas reads your Canvas data in your browser and shows it to you.
-It writes only done marks, your own tasks, announcement read and unread marks and the read mark of your rubric comments, and only to your own Canvas.
+It writes only done marks, your own tasks, announcement read and unread marks, the read mark of your rubric comments and your grade visibility preference, and only to your own Canvas.
 On your device, it stores its settings, which tools are on, your Canvas address, a change time stamp, which one-time notes you have seen, a fingerprint salt and the page and zoom of your PDFs.
 Nothing goes to the developer: there are no analytics, no error reports and no remote configuration.
 A lint rule and a CI check enforce this in the code.

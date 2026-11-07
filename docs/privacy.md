@@ -7,7 +7,7 @@ Last updated: 2026-11-07.
 
 Tools for Canvas has no account, no server of its own and no telemetry.
 It reads your Canvas data in your browser and shows it to you.
-It writes only done marks, custom tasks, announcement read and unread marks and the read mark of your rubric comments, and only to your own Canvas.
+It writes only done marks, custom tasks, announcement read and unread marks, the read mark of your rubric comments and your grade visibility preference, and only to your own Canvas.
 Nothing goes to the developer.
 Canvas can send a file, View Feedback or Preview to its own storage and DocViewer hosts, and images and profile pictures can load from other hosts that a teacher or Canvas chose (see "What the extension sends elsewhere").
 
@@ -69,8 +69,10 @@ It starts no load of Canvas data when there is no session cookie or when the coo
 The one request that it can send without that check is the question to Canvas who is signed in, which comes before a write or after a request that Canvas refused.
 It reads the fingerprint again right before each request that writes to Canvas, also before a retry after a rate limit.
 It sends a write only when a check confirmed that fingerprint for the same student.
-This covers done marks, read marks of announcements, the read mark of rubric comments, and the creation, change and deletion of your own tasks.
-The one exception is a correction: if a write reached another account because the sign-in changed during the request, the extension sends one more request to take that write back.
+This covers done marks, read marks of announcements, the read mark of rubric comments, your grade visibility preference, and the creation, change and deletion of your own tasks.
+For done marks, tasks and read marks, if a write reaches another account because the sign-in changes during the request, the extension sends one corrective request to take it back.
+The grade visibility preference write has no correction because Canvas writes to the current user and its reply does not identify that user.
+The extension checks the cookie again after reading the CSRF token, just before it sends that mutation.
 The detector does not announce itself to the page.
 The detector sends nothing to any server.
 On a page that is not Canvas, it stops at once and keeps nothing.

@@ -1843,8 +1843,10 @@ These sizes come from one test build of the same small app [19].
 - Publish the same version on the Chrome Web Store, Microsoft Edge Add-ons and Firefox Add-ons.
 - Host one privacy policy page on the project's GitHub Pages site.
   - It says the extension reads Canvas data in the browser.
-  - It says the extension writes only these items, and only to the student's own Canvas: planner overrides for done marks (POST and PUT), which set and clear the `marked_complete` and `dismissed` flags, planner notes for custom tasks (POST, PUT and DELETE), announcement read and unread marks (PUT and DELETE on the `read` route, from the Announcements tab and the widget), and the read mark of the student's rubric comments (PUT on `rubric_assessments/read`).
-  - It says that a write that reached another account gets one corrective write.
+  - It says the extension writes only these items, and only to the student's own Canvas: planner overrides for done marks (POST and PUT), which set and clear the `marked_complete` and `dismissed` flags, planner notes for custom tasks (POST, PUT and DELETE), announcement read and unread marks (PUT and DELETE on the `read` route, from the Announcements tab and the widget), the read mark of the student's rubric comments (PUT on `rubric_assessments/read`), and the grade visibility preference (the `updateWidgetDashboardConfig` GraphQL mutation).
+  - It says that done marks, tasks and read marks that reach another account get one corrective write.
+    The grade visibility preference write has no correction because the mutation writes to `current_user` and its reply names no user.
+    Its cookie guard runs again after the CSRF read, immediately before the mutation fetch.
   - It says that View Feedback and Preview load the DocViewer session of Canvas, and that Canvas then marks the notes of that file as read.
   - It says that a read of a file in the pane counts as opening that file, so Canvas can mark the view requirement of a module as done and record the access.
   - It says the extension stores on the device only the settings, the Canvas address, a change time stamp, the one-time notes that were seen, a fingerprint salt, and the page and zoom of up to 200 PDFs with the student id and the file ids, or the address in Canvas of a file attached to a comment.
