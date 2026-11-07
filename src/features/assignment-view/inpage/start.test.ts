@@ -616,3 +616,5 @@ describe('on a page that shows the weekly card', () => {
     },
   );
 });
+
+vi.mock('../../file-viewer/paneIdentity', () => ({ watchPaneIdentity: () => () => undefined }));

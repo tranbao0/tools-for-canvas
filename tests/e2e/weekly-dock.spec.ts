@@ -761,6 +761,20 @@ test.describe('the load order with a file pane that opens at the start', () => {
     await open(context, page, background, { withFile: true });
     await openFirstFile(page, FILE_LINK, () => addFileLink(page));
     await expect(page.locator(DOCK)).toBeHidden();
+    // The reload starts only after the open file is stored, not merely after its host appears.
+    const frame = await pane(page);
+    await expect
+      .poll(() =>
+        frame.evaluate(async () => {
+          const api = (
+            globalThis as unknown as {
+              chrome: { runtime: { sendMessage(message: object): Promise<{ ids: string[] }> } };
+            }
+          ).chrome;
+          return (await api.runtime.sendMessage({ type: 'viewer:tabs-get' })).ids;
+        }),
+      )
+      .toEqual(['42']);
     // Every value that the padding takes while the page loads again, with the file pane stored.
     await page.addInitScript(() => {
       const values: string[] = [];

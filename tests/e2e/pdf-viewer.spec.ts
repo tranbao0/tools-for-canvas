@@ -1127,7 +1127,7 @@ test('the first file of a new student opens while the new cookie is not confirme
   await slowExpect(frame.getByRole('status').filter({ hasText: 'Loading file' })).toHaveCount(0);
 });
 
-/** Makes the background skip the `viewer:reset` message, so no tab learns of the new student. */
+/** Makes the background skip the `viewer:reset` broadcast to test a lost reset message. */
 async function dropResetMessages(background: Parameters<typeof openCoursePage>[2]) {
   await background.evaluate(() => {
     const tabs = (
@@ -1372,7 +1372,7 @@ test('the error card keeps the address of a link with a verifier in memory, and 
   );
 });
 
-test('a pane that stayed open cannot save its position for the next student', async ({
+test('a pane closes after a student change even when the reset broadcast is lost', async ({
   context,
   page,
   background,
@@ -1390,24 +1390,7 @@ test('a pane that stayed open cannot save its position for the next student', as
   const frame = await pane(page);
   await slowExpect(pageBox(frame, 1).locator('canvas')).toBeVisible();
   await saveThirdPageAtZoom(frame, background);
-  // The pane records the answer to each save, so the test waits for it and needs no sleep.
-  await frame.evaluate(() => {
-    const runtime = (globalThis as unknown as { chrome: typeof browser }).chrome.runtime;
-    const send = runtime.sendMessage.bind(runtime) as (message: unknown) => Promise<unknown>;
-    const replies: { zoom: unknown; reply: unknown }[] = [];
-    (globalThis as unknown as { __saves: unknown[] }).__saves = replies;
-    (runtime as unknown as { sendMessage: unknown }).sendMessage = async (message: {
-      type?: string;
-      zoom?: unknown;
-    }) => {
-      const reply = await send(message);
-      if (message.type === 'viewer:position-set') replies.push({ zoom: message.zoom, reply });
-      return reply;
-    };
-  });
-
-  // The reset message of the background does not reach this tab, so its pane stays open. Only the
-  // token of the pane stops the save of the position then.
+  // The pane must check its owner even when the reset broadcast does not reach this tab.
   await dropResetMessages(background);
 
   // The other student signs in, in another tab. That tab opens a file, so the background
@@ -1419,22 +1402,10 @@ test('a pane that stayed open cannot save its position for the next student', as
   await openFirstFile(other, 'Read notes');
   await slowExpect(pageBox(await pane(other), 1).locator('canvas')).toBeVisible();
 
-  // The first tab still shows the first student's pane. A zoom change there saves after a second.
-  await frame.getByRole('button', { name: 'Zoom level' }).click();
-  await frame.getByRole('menuitemradio', { name: '200%' }).click();
-  // The save of the 200 percent zoom reached the background and got its answer.
-  await slowExpect
-    .poll(() =>
-      frame.evaluate(() =>
-        (globalThis as unknown as { __saves: { zoom: unknown }[] }).__saves.some(
-          (save) => save.zoom === 2,
-        ),
-      ),
-    )
-    .toBe(true);
+  await slowExpect(page.locator('#tools-file-viewer')).toHaveCount(0);
+  await expect(pageInput(await pane(other))).toHaveValue('1');
   const stored = await savedPositions(background);
   expect(Object.keys(stored).filter((key) => studentOf(key) === OTHER_STUDENT)).toEqual([]);
-  expect(Object.values(stored).filter((value) => value.zoom === 2)).toEqual([]);
 });
 
 test('a closed tab leaves its saved page and zoom for the next tab', async ({

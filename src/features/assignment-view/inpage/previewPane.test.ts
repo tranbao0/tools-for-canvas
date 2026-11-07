@@ -1297,3 +1297,5 @@ describe('the header of the assignment pane', () => {
     expect(host()?.style.width).toBe('');
   });
 });
+
+vi.mock('../../file-viewer/paneIdentity', () => ({ watchPaneIdentity: () => () => undefined }));

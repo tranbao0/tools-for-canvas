@@ -105,6 +105,7 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
       }
       const created = createCardDock({
         role: 'feedback',
+        onIdentityLost: shut,
         id: FEEDBACK_HOST_ID,
         label: 'Feedback',
         resizeLabel: 'Resize feedback',

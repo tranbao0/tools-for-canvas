@@ -450,6 +450,10 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       if (!dock) {
         const created = createCardDock({
           role: 'turn-in',
+          onIdentityLost() {
+            session++;
+            shut();
+          },
           id: PREVIEW_HOST_ID,
           label: 'Assignment',
           resizeLabel: 'Resize assignment',

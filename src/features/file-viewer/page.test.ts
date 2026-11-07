@@ -947,3 +947,5 @@ describe('the page script', () => {
     });
   });
 });
+
+vi.mock('./paneIdentity', () => ({ watchPaneIdentity: () => () => undefined }));

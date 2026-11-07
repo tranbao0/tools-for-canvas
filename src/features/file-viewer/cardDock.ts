@@ -2,6 +2,7 @@
  * The dock of a pane: a card with a gap around it that can fill the window. The weekly list dock
  * is no card, so the rules of a card live here and only the panes carry them.
  */
+import { watchPaneIdentity } from './paneIdentity';
 import { CARD_GAP_PX, createDock, type Dock, type DockOptions } from './dock';
 
 const CARD_CSS = `:host([data-card]){box-sizing:border-box;padding:${CARD_GAP_PX}px ${CARD_GAP_PX}px ${CARD_GAP_PX}px 0;pointer-events:none}
@@ -14,6 +15,15 @@ const CARD_CSS = `:host([data-card]){box-sizing:border-box;padding:${CARD_GAP_PX
 `;
 
 /** Makes the dock of a pane, with the rules of a card. */
-export function createCardDock(options: Omit<DockOptions, 'card' | 'css'>): Dock {
-  return createDock({ ...options, card: true, css: CARD_CSS });
+export function createCardDock(
+  options: Omit<DockOptions, 'card' | 'css'> & { onIdentityLost(): void },
+): Dock {
+  const dock = createDock({ ...options, card: true, css: CARD_CSS });
+  const stop = watchPaneIdentity(options.onIdentityLost);
+  const close = dock.close;
+  dock.close = () => {
+    stop();
+    close();
+  };
+  return dock;
 }

@@ -86,3 +86,5 @@ for (const mode of ['refused', 'rejected'] as const) {
     expect(opened).toContainEqual(expect.objectContaining({ fileId: '5' }));
   });
 }
+
+vi.mock('./paneIdentity', () => ({ watchPaneIdentity: () => () => undefined }));

@@ -247,6 +247,7 @@ export async function startViewer(): Promise<void> {
     lastHelloAt = -Infinity;
     const created = createCardDock({
       role: 'file',
+      onIdentityLost: reset,
       id: FILE_HOST_ID,
       label: 'File viewer',
       resizeLabel: 'Resize file viewer',

@@ -135,3 +135,5 @@ describe('the feedback pane in full view', () => {
     expect(host()?.style.width).toBe('492px');
   });
 });
+
+vi.mock('../../file-viewer/paneIdentity', () => ({ watchPaneIdentity: () => () => undefined }));
