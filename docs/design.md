@@ -1451,6 +1451,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 - Open risk: a cookie that changes from F0 to another value and back to F0 while a request waits passes the two reads.
   Only a request that carries the other cookie can break the rule, and the reads cannot see it.
 - Open risk: a Canvas that renews the session cookie on every reply drops most responses and ends in `cant_load` until the cookie stops changing.
+  An open pane stays covered there, and the checks keep to their normal limits.
 - Open risk: the open surfaces learn of a sign-out only from a Canvas page load, a focus change, a visibility change or the timer.
   A sign-out that ends on another site, such as a single sign-on page, shows the list until one of them happens.
   The ticket removed the cookie event listener on purpose.
