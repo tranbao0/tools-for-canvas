@@ -9,6 +9,9 @@ import {
   PREVIEW_POLL_MS,
 } from './previewPane';
 
+// A dock lies over the page when it would leave Canvas less than 768 px, so these tests use a wide window.
+window.innerWidth = 1600;
+
 const ORIGIN = 'https://school.instructure.com';
 const COURSE = '12';
 

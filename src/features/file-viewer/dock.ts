@@ -13,6 +13,59 @@ import { normalizeWidth } from './width';
 /** Below this window width the dock covers the page instead of making room beside it. */
 const NARROW_PX = 900;
 
+/**
+ * The least room that a dock leaves beside it. Canvas starts its mobile layout below 768 px
+ * (`tablet` in `app/stylesheets/base/mixins/_breakpoints.scss`), but its media queries read the
+ * window and not the room, so a room that small cannot get that layout. A dock that would leave
+ * less lies over the page at its own width and leaves the padding of the page alone.
+ */
+const MIN_ROOM_PX = 768;
+
+/**
+ * The room from which Canvas lays its right column beside the content, with no course menu
+ * (`desktop`) and with it (`desktop--nav-open`), in the same file. The window decides in Canvas,
+ * so below these widths a room needs the one column layout that Canvas gives a narrow window.
+ */
+const WIDE_ROOM_PX = 992;
+const WIDE_MENU_ROOM_PX = 1140;
+
+/** The attribute of the `html` element, and the style that it turns on, for the one column layout. */
+const STACK_ATTRIBUTE = 'data-weekrow-stack';
+const STACK_STYLE_ID = 'weekrow-stack-style';
+const STACK_CSS = `html[${STACK_ATTRIBUTE}] .ic-app-main-content{display:block!important}html[${STACK_ATTRIBUTE}] .ic-app-main-content__secondary{width:auto!important}`;
+
+/** Whether a dock that would take `px` of room leaves the page alone: the window is narrow, or the room would be. */
+function covers(win: Window, px: number): boolean {
+  return win.innerWidth < NARROW_PX || win.innerWidth - px < MIN_ROOM_PX;
+}
+
+/**
+ * Gives the page the one column layout that Canvas gives a window as wide as the room, while the
+ * room is below the width of Canvas's two column layout. The rules are the ones that Canvas drops
+ * below that width: the main content stops being a flex row, and the right column fills the row.
+ */
+function markStack(page: HTMLElement, taken: number): void {
+  const doc = page.ownerDocument;
+  const win = doc.defaultView;
+  if (win === null) return;
+  const wide = doc.body?.classList.contains('course-menu-expanded')
+    ? WIDE_MENU_ROOM_PX
+    : WIDE_ROOM_PX;
+  const stack = win.innerWidth - taken < wide;
+  if (stack && doc.getElementById(STACK_STYLE_ID) === null) {
+    const style = doc.createElement('style');
+    style.id = STACK_STYLE_ID;
+    style.textContent = STACK_CSS;
+    (doc.head ?? page).append(style);
+  }
+  page.toggleAttribute(STACK_ATTRIBUTE, stack);
+}
+
+function clearStack(page: HTMLElement): void {
+  page.removeAttribute(STACK_ATTRIBUTE);
+  page.ownerDocument.getElementById(STACK_STYLE_ID)?.remove();
+}
+
 export type DockRole = 'file' | 'turn-in' | 'feedback' | 'weekly';
 
 /** The gap between a card pane and the edge of the window, and between it and the page. */
@@ -187,18 +240,24 @@ export function giveBackRoom(doc: Document = document): void {
   const saved = state.saved ?? readRecord(page);
   state.saved = null;
   page.removeAttribute(ROOM_ATTRIBUTE);
+  clearStack(page);
   if (saved) page.style.setProperty('padding-right', saved.value, saved.priority);
 }
 
-/** The inline right padding of the page, as one dock or tab writes it. */
-function writePadding(page: HTMLElement, value: string, narrow: boolean): void {
+/**
+ * The inline right padding of the page, as one dock or tab writes it. `taken` is the room that the
+ * writer holds, in px. A writer that `cover`s the page leaves the padding that the page had.
+ */
+function writePadding(page: HTMLElement, taken: number, cover: boolean): void {
   const { saved } = shared();
-  const [text, priority] = narrow && saved ? [saved.value, saved.priority] : [value, 'important'];
+  const [text, priority] =
+    cover && saved ? [saved.value, saved.priority] : [`${taken}px`, 'important'];
   if (
     page.style.getPropertyValue('padding-right') !== text ||
     page.style.getPropertyPriority('padding-right') !== priority
   )
     page.style.setProperty('padding-right', text, priority);
+  markStack(page, cover ? 0 : taken);
 }
 
 function prune(state: Shared): void {
@@ -230,6 +289,7 @@ function releaseRoom(page: HTMLElement, holder: Holder): void {
   if (state.holders.size === 0 && state.saved) {
     page.style.setProperty('padding-right', state.saved.value, state.saved.priority);
     page.removeAttribute(ROOM_ATTRIBUTE);
+    clearStack(page);
     state.saved = null;
   }
 }
@@ -257,7 +317,7 @@ export function leaseRoom(host: HTMLElement, width: number, doc: Document = docu
   claimRoom(page, holder);
   const layout = (): void => {
     if (!live || !host.isConnected) return;
-    writePadding(page, `${width}px`, win.innerWidth < NARROW_PX);
+    writePadding(page, width, covers(win, width));
   };
   const stop = (): void => {
     live = false;
@@ -450,8 +510,8 @@ export function createDock(options: DockOptions): Dock {
 
   const layout = (): void => {
     if (!opened) return;
+    const taken = normalizeWidth(width, win.innerWidth) + gap;
     const narrow = win.innerWidth < NARROW_PX;
-    const room = narrow ? '100vw' : `${normalizeWidth(width, win.innerWidth) + gap}px`;
     full = card && !narrow && shared().fullView === true;
     host.toggleAttribute('data-full', full);
     // Full view and a narrow window stretch the host from the left edge to the right edge of the
@@ -459,10 +519,10 @@ export function createDock(options: DockOptions): Dock {
     // bar). In full view the room stays as it is, so the page stays put.
     const stretched = full || narrow;
     host.style.left = stretched ? '0' : '';
-    host.style.width = stretched ? '' : room;
+    host.style.width = stretched ? '' : `${taken}px`;
     // A host that a page removed takes no room.
     if (hidden || !host.isConnected) return;
-    writePadding(page, room, narrow);
+    writePadding(page, taken, covers(win, taken));
   };
   const setWidth = (next: number): void => {
     width = normalizeWidth(next, win.innerWidth);

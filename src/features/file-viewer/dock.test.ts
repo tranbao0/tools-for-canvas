@@ -18,6 +18,9 @@ import {
   type DockRole,
 } from './dock';
 
+// A dock lies over the page when it would leave Canvas less than 768 px, so these tests use a wide window.
+window.innerWidth = 1600;
+
 const padding = () => document.documentElement.style.getPropertyValue('padding-right');
 const docks: Dock[] = [];
 
@@ -88,6 +91,86 @@ describe('the record of the room on the page', () => {
     giveBackRoom(document);
     expect(padding()).toBe('13px');
     lookalike.remove();
+  });
+});
+
+describe('the room that Canvas gets beside a dock', () => {
+  const html = document.documentElement;
+  const stacked = () => html.hasAttribute('data-weekrow-stack');
+  const style = () => document.getElementById('weekrow-stack-style');
+  /** Runs with a window of this width, and puts the width back. */
+  function inWindow(width: number, run: () => void): void {
+    const { innerWidth } = window;
+    try {
+      window.innerWidth = width;
+      run();
+    } finally {
+      window.innerWidth = innerWidth;
+    }
+  }
+
+  it('lies over the page at its own width when it would leave less than 768 px, on a window of 900 px or more', () => {
+    inWindow(1000, () => {
+      const weekly = dock('weekly', 360);
+      weekly.open();
+      expect(weekly.host.style.width).toBe('360px');
+      expect(weekly.host.style.left).toBe('');
+      expect(padding()).toBe('');
+      window.innerWidth = 1200;
+      window.dispatchEvent(new Event('resize'));
+      expect(weekly.host.style.width).toBe('360px');
+      expect(padding()).toBe('360px');
+    });
+  });
+
+  it('gives the one column layout of Canvas while the room is below 992 px', () => {
+    inWindow(1300, () => {
+      const weekly = dock('weekly', 360);
+      weekly.open();
+      expect(stacked()).toBe(true);
+      expect(style()?.textContent).toContain('.ic-app-main-content{display:block!important}');
+      window.innerWidth = 1352;
+      window.dispatchEvent(new Event('resize'));
+      expect(stacked()).toBe(false);
+      weekly.close();
+      expect(style()).toBeNull();
+    });
+  });
+
+  it('waits for 1140 px of room beside the course menu, as Canvas does', () => {
+    inWindow(1400, () => {
+      document.body.classList.add('course-menu-expanded');
+      try {
+        const file = dock('file', 480, true);
+        file.open();
+        expect(stacked()).toBe(true);
+        window.innerWidth = 1700;
+        window.dispatchEvent(new Event('resize'));
+        expect(stacked()).toBe(false);
+        file.close();
+      } finally {
+        document.body.classList.remove('course-menu-expanded');
+      }
+    });
+  });
+
+  it('leaves no mark on the page after the last holder, and gives back what a dead copy left', () => {
+    inWindow(1300, () => {
+      const file = dock('file', 480);
+      file.open();
+      const turnIn = dock('turn-in', 480);
+      turnIn.open();
+      file.close();
+      expect(stacked()).toBe(true);
+      turnIn.close();
+      expect(stacked()).toBe(false);
+      expect(style()).toBeNull();
+      dock('file', 480).open();
+      document.getElementById('tools-file')?.remove();
+      giveBackRoom(document);
+      expect(stacked()).toBe(false);
+      expect(style()).toBeNull();
+    });
   });
 });
 
@@ -544,7 +627,7 @@ describe('full view', () => {
       expect(turnIn.host.style.width).toBe('');
       expect(turnIn.host.style.left).toBe('0px');
       expect(turnIn.host.hasAttribute('data-full')).toBe(false);
-      window.innerWidth = 1200;
+      window.innerWidth = 1400;
       window.dispatchEvent(new Event('resize'));
       expect(fullViewAvailable()).toBe(true);
       expect(turnIn.full).toBe(true);
