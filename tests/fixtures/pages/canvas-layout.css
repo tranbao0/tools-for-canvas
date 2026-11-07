@@ -253,15 +253,19 @@ body:not(.full-width):not(.outcomes):not(.body--login-confirmation):not(.content
 .fixture-widget-tabs [role="tab"][aria-selected="true"] { border-bottom: 3px solid #2b7abc; font-weight: 700; }
 .fixture-widget-app { margin-left: 12px; margin-right: 12px; }
 .fixture-widget-grid { padding: 24px; }
+/* The package draws the grid as spans. Each column sits in a flex item with no test id, and the
+   test id of a column is `widget-column-<n>` (`widget-column-<n>-stacked` on a narrow window). The
+   box is a span, and a flex item makes it a block. */
 [data-testid="widget-columns"] { display: flex; align-items: flex-start; gap: 24px; }
+.fx-flex-item { flex: 1 1 auto; min-width: 0; }
+.fx-flex-item:has(> [data-testid="widget-column-1"]) { width: 66%; }
+.fx-flex-item:has(> [data-testid="widget-column-2"]) { width: 33%; }
 /* A column is a flex column, as in the package (Flex direction="column" gap="medium"), so a
    widget wrapper is a flex item and holds the margin of its section. */
-[data-testid^="widget-column-"] { display: flex; flex-direction: column; gap: 1.5rem; }
-[data-testid="widget-column-1"] { flex: 1 1 auto; width: 66%; min-width: 0; }
-[data-testid="widget-column-2"] { flex: 1 1 auto; width: 33%; min-width: 0; }
+[data-testid^="widget-column-"] { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
 @media (max-width: 1379px) {
   [data-testid="widget-columns"] { flex-direction: column; align-items: stretch; }
-  [data-testid="widget-column-1"], [data-testid="widget-column-2"] { width: 100%; }
+  .fx-flex-item:has(> [data-testid^="widget-column-"]) { width: 100%; }
 }
 /* The visible card of a widget is the section of TemplateWidget, an InstUI View with
    margin="x-small" (8px), padding="medium" (24px), shadow="above", borderRadius="large" and
