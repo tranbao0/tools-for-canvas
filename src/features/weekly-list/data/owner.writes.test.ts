@@ -1092,6 +1092,34 @@ describe('optimistic updates', () => {
   });
 });
 
+describe('a task create whose answer is lost', () => {
+  it.each([canvasError('server', 504), canvasError('network')])(
+    'reads the planner back and counts a saved task as created, so a retry cannot make two ($kind)',
+    async (error) => {
+      const h = await loaded();
+      h.canvas.fail('createNote', error, { times: 1, saved: true });
+
+      const reply = await h.owner.act({ kind: 'createTask', input });
+      await h.owner.settled();
+
+      expect(reply.created).toBe(true);
+      expect(h.canvas.callsOf('createNote')).toHaveLength(1);
+      expect(shownTask(expectReady(await h.owner.getState(PANEL)))).toBeDefined();
+    },
+  );
+
+  it('says the task was not saved when the read back finds nothing', async () => {
+    const h = await loaded();
+    h.canvas.fail('createNote', canvasError('server', 504), { times: 1 });
+
+    const reply = await h.owner.act({ kind: 'createTask', input });
+    await h.owner.settled();
+
+    expect(reply.created).toBe(false);
+    expect(shownTask(expectReady(await h.owner.getState(PANEL)))).toBeUndefined();
+  });
+});
+
 describe('a failed write', () => {
   const writes = [
     {
