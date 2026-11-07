@@ -2145,6 +2145,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     cache = { ...cache, patches: [...cache.patches, patch] };
   }
 
+  /** Adds a waiting override write and queues it. Resolves with whether Canvas saved it. */
   function addOverridePatch(
     key: string,
     target: OverrideTarget,
@@ -2152,7 +2153,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     previous: OverrideFlags,
     overrideId: string,
     userId: string,
-  ): void {
+  ): Promise<boolean> {
     const patch: OverridePatch = {
       kind: 'override',
       id: nextId(),
@@ -2162,7 +2163,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       confirmedAt: null,
     };
     addPatch(patch);
-    void enqueueWrite((stamp) => runOverrideWrite(patch.id, previous, stamp));
+    return enqueueWrite((stamp) => runOverrideWrite(patch.id, previous, stamp)).then(() => {
+      const written = findPatch(patch.id);
+      return written?.kind === 'override' && written.confirmedAt !== null;
+    });
   }
 
   function addNotePatch(noteId: string, note: NoteValue | null): NotePatch {
@@ -2277,7 +2281,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       const previous = shownFlags(item);
       const flags = flagsFor(previous);
       if (sameFlags(previous, flags)) continue;
-      addOverridePatch(
+      void addOverridePatch(
         key,
         target,
         flags,
@@ -2296,7 +2300,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     };
   }
 
-  /** Undo of an override action: the flags from before go back, for the same user and Canvas only. */
+  /**
+   * Undo of an override action: the flags from before go back, for the same user and Canvas only.
+   * The reply comes after Canvas answered, and says that the items came back only when it saved
+   * every write.
+   */
   async function restoreOverrides(
     userId: string,
     origin: string,
@@ -2306,7 +2314,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (write === null || write.session.profile.id !== userId || write.origin !== origin) {
       return NOT_RESTORED;
     }
-    let changed = false;
+    const saved: Promise<boolean>[] = [];
     // An item that the cache no longer holds cannot be written, so it is not restored.
     let restored = true;
     const done = new Set<string>();
@@ -2321,14 +2329,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       }
       const shown = shownFlags(item);
       if (sameFlags(shown, previous)) continue;
-      addOverridePatch(key, target, previous, shown, item.override?.id ?? '', userId);
-      changed = true;
+      saved.push(addOverridePatch(key, target, previous, shown, item.override?.id ?? '', userId));
     }
-    if (changed) {
+    if (saved.length > 0) {
       persist();
       bumpLater();
     }
-    return restored ? RESTORED : NOT_RESTORED;
+    return (await Promise.all(saved)).every(Boolean) && restored ? RESTORED : NOT_RESTORED;
   }
 
   async function writeNote(
@@ -3479,6 +3486,21 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return true;
   }
 
+  /** Queues the read mark write of an announcement. Resolves with whether Canvas took the mark. */
+  async function queueAnnouncementWrite(
+    courseId: string,
+    topicId: string,
+    read: boolean,
+    seq: number,
+  ): Promise<boolean> {
+    let ok = false;
+    await enqueueWrite(async (stamp) => {
+      ok = await runAnnouncementWrite(courseId, topicId, read, seq, stamp);
+      return false;
+    });
+    return ok;
+  }
+
   async function markAnnouncement(
     courseId: string,
     topicId: string,
@@ -3519,11 +3541,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     };
     persist();
     bumpLater();
-    void enqueueWrite(async (stamp) => {
-      await runAnnouncementWrite(courseId, topicId, read, seq, stamp);
-      return false;
-    });
-    return read ? { undo: { kind: 'announcement', userId, origin, courseId, topicId } } : RESTORED;
+    const written = queueAnnouncementWrite(courseId, topicId, read, seq);
+    if (read) return { undo: { kind: 'announcement', userId, origin, courseId, topicId } };
+    // An Undo says that the announcement is unread again only when Canvas took the mark back.
+    return (await written) ? RESTORED : NOT_RESTORED;
   }
 
   /**
@@ -3562,12 +3583,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     };
     persist();
     if (listed) bumpLater();
-    let ok = false;
-    await enqueueWrite(async (stamp) => {
-      ok = await runAnnouncementWrite(courseId, topicId, read, seq, stamp);
-      return false;
-    });
-    return { ok };
+    return { ok: await queueAnnouncementWrite(courseId, topicId, read, seq) };
   }
 
   // ---------------------------------------------------------------------------------------------

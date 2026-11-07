@@ -317,8 +317,8 @@ describe('writes and Undo go through the cookie check', () => {
     expect(await h.owner.act(undo)).toEqual({ undo: null, refused: true });
     expect(await h.owner.act(undo)).toEqual({ undo: null, refused: true });
     expect(await h.owner.act(undo)).toEqual({ undo: null, restored: true });
-    expect(h.canvas.callsOf('getSelf')).toHaveLength(3);
-    await h.owner.settled();
+    // The checks of the three taps, and the profile request of the round that follows the saved write.
+    expect(h.canvas.callsOf('getSelf')).toHaveLength(4);
     expect(h.canvas.callsOf('updateOverride')).toHaveLength(1);
   });
 });

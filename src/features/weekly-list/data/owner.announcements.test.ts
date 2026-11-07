@@ -492,6 +492,24 @@ describe('marking an announcement as read', () => {
     expect(feed.rows.find((row) => row.id === '11')?.read).toBe(false);
   });
 
+  it('says it restored nothing when Canvas refuses the DELETE of an Undo', async () => {
+    const { h, undo } = await marked();
+    await h.owner.settled();
+    if (undo.kind !== 'announcement') throw new Error('Wrong Undo data');
+    h.canvas.fail('setAnnouncementRead', canvasError('server', 500), { times: 1 });
+
+    const reply = await h.owner.act({
+      kind: 'restoreAnnouncement',
+      userId: undo.userId,
+      origin: undo.origin,
+      courseId: undo.courseId,
+      topicId: undo.topicId,
+    });
+    await h.owner.settled();
+
+    expect(reply).toEqual({ undo: null, restored: false });
+  });
+
   it('ignores an Undo for another student or another Canvas', async () => {
     const { h, undo } = await marked();
     await h.owner.settled();
@@ -596,7 +614,8 @@ describe('marking an announcement as read', () => {
       topicId: '11',
     });
     if (reply.undo?.kind !== 'announcement') throw new Error('No Undo data');
-    await h.owner.act({
+    // The reply of the Undo waits for its write, which waits behind the held PUT.
+    const restored = h.owner.act({
       kind: 'restoreAnnouncement',
       userId: reply.undo.userId,
       origin: reply.undo.origin,
@@ -604,6 +623,7 @@ describe('marking an announcement as read', () => {
       topicId: '11',
     });
     release();
+    expect(await restored).toEqual({ undo: null, restored: true });
     await h.owner.settled();
 
     expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([
