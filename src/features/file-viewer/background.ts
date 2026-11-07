@@ -39,7 +39,7 @@ import { STUDENT_KEY, studentName } from './student';
 import { ViewerUnconfirmedError } from './unconfirmed';
 import { readAddress } from './ui/links';
 
-type ViewerSender = Pick<Browser.runtime.MessageSender, 'url' | 'frameId'> & {
+type ViewerSender = Pick<Browser.runtime.MessageSender, 'url' | 'frameId' | 'documentId'> & {
   tab?: { id?: number };
 };
 
@@ -71,6 +71,12 @@ export interface ViewerHost {
   permission(origin: string): Promise<boolean>;
   /** The address that a browser tab shows now, or `null` when it cannot be read. */
   tabUrl(tabId: number): Promise<string | null>;
+  /**
+   * The address that a child frame shows now, read from the frame itself, or `null` when it cannot
+   * be read. The `url` of a message sender is not used for this: Chromium can keep the address
+   * `about:blank` there for a frame whose page has loaded since.
+   */
+  frameUrl(tabId: number, frameId: number, documentId?: string): Promise<string | null>;
   /** Puts the click catcher into the same-origin child frames of a submission page or a page that holds the assignment pane. */
   injectFrames(tabId: number, origin: string): Promise<void>;
   /** Passes a file to the viewer script of the top frame. `true` when it took the file. */
@@ -125,14 +131,15 @@ function isPaneFrame(sender: ViewerSender): boolean {
 }
 
 /**
- * The address of a child frame that sent a message, or `null` when the sender is not a frame of a
- * tab. The top frame has the frame id 0 and is not a child frame.
+ * The address of a child frame that sent a message, read from the frame, or `null` when the sender
+ * is not a frame of a tab or the frame cannot be read. The top frame has the frame id 0 and is not
+ * a child frame.
  */
-function childFrameUrl(sender: ViewerSender): URL | null {
-  if (sender.tab?.id === undefined || sender.frameId === undefined || sender.frameId === 0)
-    return null;
+async function childFrameUrl(sender: ViewerSender, host: ViewerHost): Promise<URL | null> {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined || sender.frameId === undefined || sender.frameId === 0) return null;
   try {
-    return new URL(sender.url ?? '');
+    return new URL((await host.frameUrl(tabId, sender.frameId, sender.documentId)) ?? '');
   } catch {
     return null;
   }
@@ -182,7 +189,7 @@ async function openFromFrame(
 ): Promise<{ opened: boolean }> {
   const origin = await host.savedOrigin();
   const tabId = sender.tab?.id;
-  const frame = childFrameUrl(sender);
+  const frame = await childFrameUrl(sender, host);
   if (!origin || tabId === undefined || frame === null)
     throw new Error('Only a frame of the saved Canvas may open a file');
   if (!isFileId(request['fileId'])) throw new Error('Invalid file id');
@@ -567,6 +574,23 @@ export function wireViewerRouter(
     permission: (origin) =>
       browser.permissions.contains({ origins: [`${origin}/*`, 'https://*/*'] }),
     tabUrl: async (tabId) => (await browser.tabs.get(tabId).catch(() => undefined))?.url ?? null,
+    frameUrl: async (tabId, frameId, documentId) => {
+      // A document id names the document that sent the message. Firefox before 153 has none.
+      const target =
+        documentId === undefined
+          ? { tabId, frameIds: [frameId] }
+          : { tabId, documentIds: [documentId] };
+      try {
+        const [read] = await browser.scripting.executeScript({
+          target,
+          injectImmediately: true,
+          func: () => location.href,
+        });
+        return typeof read?.result === 'string' ? read.result : null;
+      } catch {
+        return null;
+      }
+    },
     injectFrames: (tabId, origin) => injectFrameCatchers(tabId, origin),
     openInTop: async (tabId, fileId, address) => {
       try {
