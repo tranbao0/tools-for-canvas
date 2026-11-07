@@ -76,7 +76,12 @@ function load(html = submissionDetailsPage()): void {
     .replace(/(<iframe id="preview_frame") src="[^"]*"/, '$1');
 }
 
-function start(user = '42', assignment = '101', course = '12'): SubmissionView {
+function start(
+  user = '42',
+  assignment = '101',
+  course = '12',
+  paneIdentity?: Parameters<typeof createSubmissionView>[0]['paneIdentity'],
+): SubmissionView {
   view = createSubmissionView({
     doc: document,
     origin: ORIGIN,
@@ -88,6 +93,7 @@ function start(user = '42', assignment = '101', course = '12'): SubmissionView {
     theme: () => 'light',
     openFeedback,
     closeFeedback,
+    ...(paneIdentity ? { paneIdentity } : {}),
   });
   view.setActive(true);
   return view;
@@ -2098,4 +2104,39 @@ describe('a comment that holds the markup of the page', () => {
       document.documentElement.removeAttribute('lang');
     }
   });
+});
+
+it('waits through repeated unknown verdicts before reading Submission Details', async () => {
+  const identity = vi.fn().mockResolvedValue({ verdict: 'unknown' });
+  start('42', '101', '12', identity);
+  await vi.advanceTimersByTimeAsync(6000);
+  expect(send).not.toHaveBeenCalled();
+  identity.mockResolvedValue({ verdict: 'yes', token: '0:42' });
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(send).toHaveBeenCalledOnce();
+  expect(host()).not.toBeNull();
+});
+
+it('ends unknown confirmation at sixty seconds and leaves Canvas intact', async () => {
+  const identity = vi.fn().mockResolvedValue({ verdict: 'unknown' });
+  const before = document.body.innerHTML;
+  start('42', '101', '12', identity);
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(identity).toHaveBeenCalledTimes(30);
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(identity).toHaveBeenCalledTimes(30);
+  expect(send).not.toHaveBeenCalled();
+  expect(document.body.innerHTML).toBe(before);
+});
+
+it('stops asking for confirmation when the view is switched off', async () => {
+  const identity = vi.fn().mockResolvedValue({ verdict: 'unknown' });
+  start('42', '101', '12', identity);
+  await vi.advanceTimersByTimeAsync(4000);
+  view.setActive(false);
+  const before = identity.mock.calls.length;
+  identity.mockResolvedValue({ verdict: 'yes', token: '0:42' });
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(identity).toHaveBeenCalledTimes(before);
+  expect(send).not.toHaveBeenCalled();
 });

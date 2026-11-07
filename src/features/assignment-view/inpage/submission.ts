@@ -657,7 +657,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     if (readFrame(anchors.frame, origin, pathname).state === 'ready') watchReports();
   }
 
-  async function start(retry = true): Promise<void> {
+  async function start(retry = true, confirmUntil = Date.now() + 60000): Promise<void> {
     const token = ++generation;
     if (!findAnchors(doc)) return;
     let reply: unknown;
@@ -665,7 +665,19 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     try {
       if (options.paneIdentity) {
         const identity = await options.paneIdentity();
-        if (identity.verdict !== 'yes') throw new Error('Student is not confirmed');
+        if (token !== generation || stopped || !active || Date.now() >= confirmUntil) return;
+        if (identity.verdict !== 'yes') {
+          if (identity.verdict === 'unknown') {
+            setTimeout(
+              () => {
+                if (token === generation && !stopped && active && Date.now() < confirmUntil)
+                  void start(retry, confirmUntil);
+              },
+              Math.min(RETRY_MS, confirmUntil - Date.now()),
+            );
+          }
+          return;
+        }
         identityToken = identity.token;
       }
       reply = await send({
